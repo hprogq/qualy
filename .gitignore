@@ -1,0 +1,52 @@
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# generated files
+**/*.gen.ts
+
+# environment
+.env
+.env.*
+!.env.example
+
+# logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# test & coverage
+coverage/
+.nyc_output/
+
+# caches
+.cache/
+.vite/
+.turbo/
+.eslintcache
+.rollup.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# not for publication
+/CLAUDE.md
+/STATUS.md
+/docs/
+
+# misc
+*.local
