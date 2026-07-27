@@ -11,6 +11,7 @@
     "@cordisjs/plugin-loader": "catalog:",
     "@cordisjs/plugin-logger-console": "catalog:",
     "@cordisjs/plugin-timer": "catalog:",
+    "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "cordis": "catalog:",
     "tsx": "catalog:",
@@ -19,12 +20,14 @@
   "devDependencies": {
     "@cordisjs/plugin-hmr": "catalog:",
     "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "drizzle-kit": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
   },
   "scripts": {
     "dev": "node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
     "dev:web": "pnpm --filter web dev",
-    "gen": "tsx scripts/gen-schema.ts && tsx scripts/gen-contracts.ts && tsx scripts/gen-plugins.ts",
+    "gen": "tsx scripts/gen-schema.ts",
     "build": "pnpm gen && pnpm --filter web build",
     "db:generate": "tsx scripts/gen-schema.ts && drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

@@ -2,6 +2,7 @@ import type { Context } from "cordis";
 import { z } from "zod";
 
 export const name = "ping";
+export const inject = ["db"];
 
 export const Config = z
   .object({
