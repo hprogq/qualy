@@ -1,0 +1,10 @@
+- id: 0df0526e
+  name: '@cordisjs/plugin-logger-console'
+- id: a01434b6
+  name: '@cordisjs/plugin-timer'
+- id: fa0fc2af
+  name: '@cordisjs/plugin-hmr'
+- id: a8f253e5
+  name: '@qualy/plugin-ping'
+  config:
+    greeting: hello

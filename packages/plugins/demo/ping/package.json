@@ -1,0 +1,16 @@
+{
+  "name": "@qualy/plugin-ping",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "cordis": "catalog:"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  }
+}
