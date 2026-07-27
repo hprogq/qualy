@@ -4,6 +4,9 @@
   name: '@cordisjs/plugin-timer'
 - id: fa0fc2af
   name: '@cordisjs/plugin-hmr'
+  config:
+    root:
+      - packages
 - id: a8f253e5
   name: '@qualy/plugin-ping'
   config:

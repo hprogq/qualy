@@ -1,0 +1,10 @@
+{
+  "name": "@qualy/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cordisjs/plugin-loader": "catalog:",
+    "cordis": "catalog:"
+  }
+}
