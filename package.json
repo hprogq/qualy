@@ -1,6 +1,7 @@
 {
   "name": "qualy",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "engines": {
