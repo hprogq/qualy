@@ -11,7 +11,8 @@
   },
   "qualy": {
     "database": {
-      "schemaEntry": "./src/db/schema.entry.ts"
+      "schemaEntry": "./src/db/schema.entry.ts",
+      "behaviorDir": "./db/behavior"
     },
     "dependsOn": [
       "@qualy/plugin-database"

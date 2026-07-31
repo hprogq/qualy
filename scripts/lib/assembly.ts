@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { writeGenerated } from './codegen.ts'
 import { loadInstalled, type ResolvedPlugin } from './installed.ts'
 
 export interface AssemblyPlugin {
@@ -70,6 +71,24 @@ export function buildAssembly(): Assembly {
     schemaEntries: plugins.map((plugin) => plugin.schemaEntry),
     resolved,
   }
+}
+
+export function writeAssemblyArtifacts(
+  assembly: Assembly,
+  options: { initEmpty?: boolean } = {},
+): void {
+  if (assembly.plugins.length === 0 && !options.initEmpty) {
+    throw new Error(
+      'the installed set contributes no database schema; pass --init-empty if this is intentional',
+    )
+  }
+  const body = [
+    'export const schemaEntries: string[] = [',
+    ...assembly.schemaEntries.map((entry) => `  '${entry}',`),
+    ']',
+  ].join('\n')
+  writeGenerated('generated/db/assembly.gen.ts', body, { source: 'installed.lock.json' })
+  writeAssemblyLock(assembly)
 }
 
 export function writeAssemblyLock(assembly: Assembly): void {
