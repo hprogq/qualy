@@ -40,13 +40,22 @@ export default class Server extends Service {
 
   async *[Service.init]() {
     const http = createServer(async (req, res) => {
-      const { matched } = await this.handler.handle(req, res, {
-        prefix: this.config.prefix as `/${string}`,
-        context: { cordis: this.ctx },
-      })
-      if (!matched) {
-        res.statusCode = 404
-        res.end('Not Found')
+      // last-resort guard: a single failing request must never kill the process
+      try {
+        const { matched } = await this.handler.handle(req, res, {
+          prefix: this.config.prefix as `/${string}`,
+          context: { cordis: this.ctx },
+        })
+        if (!matched) {
+          res.statusCode = 404
+          res.end('Not Found')
+        }
+      } catch (error) {
+        this.ctx.logger.error(error)
+        if (!res.headersSent) {
+          res.statusCode = 500
+          res.end('Internal Server Error')
+        }
       }
     })
     // dependents activate only after the port is actually bound

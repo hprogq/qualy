@@ -11,6 +11,8 @@ services:
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
+      # postgres:18 series images keep the data volume at /var/lib/postgresql
+      # (not the older /data subdirectory); adjust when downgrading the image
       - pg_data:/var/lib/postgresql
       - pg_backups:/backups
     logging:
