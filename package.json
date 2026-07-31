@@ -38,6 +38,7 @@
     "dev": "pnpm db:migrate && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
     "dev:web": "pnpm --filter web dev",
     "format": "prettier --write .",
+    "gen": "tsx scripts/gen-contracts.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
     "test": "vitest run",
     "typecheck": "tsc -p . --noEmit"

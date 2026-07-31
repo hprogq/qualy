@@ -34,6 +34,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 插件统一**具名导出**形态:`export const name/inject/Config` + `export function apply`,模块命名空间即对象插件(loader unwrapExports 无 default 导出时整体使用);禁用 `export default function` + 属性赋值(default 解包后元属性丢失)。Service 类插件维持 `export default class`(静态属性随类走)。函数插件体不要有返回值:返回值会被当作 effect 清理函数,箭头函数隐式返回是事故源。
 - 对象型 Config 顶层统一 `.prefault({})`,**禁止**用 `.default({})` 替代:cordis resolveConfig 对 yml 缺失的 config 原样传 undefined(不预处理),裸 `z.object()` 启动即 ValidationError;Zod 4 `.default({})` 短路跳过解析,字段默认全不生效且无报错;`.prefault({})` 走完整解析,必填字段照样报字段级错误(不吞错)。
 - 类型门禁:根 tsconfig.json 是 solution 式检查入口(不参与构建),`pnpm typecheck` 必须零错误,列入每次会话验收;web 侧未来单独 `tsc -p apps/web --noEmit`。不建 @qualy/tsconfig 共享包;重评触发条件:插件出现独立构建产物(tsup/dist)、出现第三种 tsconfig 变体、或有第二个仓库要复用配置。
+- API handler 的服务访问一律走**本插件自己的 ctx**(inject 声明过);经 `context.cordis` 取服务会撞 rc.7 的声明检查(cannot get property without inject)。ApiContext.cordis 只作请求管道。契约模块导出名约定 `<ns>Contract`(gen-contracts 依赖);契约包禁依赖 drizzle/node 专属模块。
 - 语言规范:标识符、注释、日志、CLI 输出一律英文;业务/UI 字符串内容可中文;项目文档(docs/、STATUS.md)用中文。该规范优先于教程示例,抄录示例代码时注释就地译为英文。
 - 注释只写外人需要的信息,选型理由归 docs/;目录用到才创建(脚本同理,不留占位空壳)。
 

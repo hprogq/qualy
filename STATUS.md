@@ -1,6 +1,6 @@
 # STATUS
 
-阶段:P0 / 最近会话:s4(2026-08-01,server + oRPC v2)
+阶段:P0 / 最近会话:s5(2026-08-01,ping 全链路 + 契约聚合 + api-client)
 
 ## 已完成
 
@@ -10,6 +10,8 @@
 - [s3] 生成器基建 + database 插件:scripts/lib(read-entries 组展平+--all+漏装警告、codegen banner+write-if-changed)与 gen-schema 落地;@qualy/plugin-database(drizzle v1,Service.init 异步初始化+fail-fast,withRelations 视图工厂);ping 补 /schema(snakeCase.table,uuidv7 DB 默认主键)与 inject 门控;首个命名迁移建表并实测
 
 - [s4] server 插件 + oRPC v2 接入:@qualy/plugin-server(OpenAPIHandler + CORSHandlerPlugin + onError 拦截;Service.init 绑定端口,disposal 等端口真释放;contribute/rebuild 全 effect,ns 冲突抛错);开场四条探针实录 notes/orpc-v2.md;HTTP 404 链路通
+
+- [s5] ping 后端全链路:契约先行(oc.meta(openapi) GET /ping/hello)→ implement.$context<ApiContext> → contribute('ping');gen-contracts 生成器(exports["./contract"] 声明式发现,导出名约定 <ns>Contract)入 gen 管线;api-client(OpenAPILink@/fetch + createORPCClient + 类型标注);会话 4 收尾修令四条同批落地(server 请求兜底/db:reset/卷注释/vector 迁移备忘)
 
 ## 验收输出摘录
 
@@ -29,6 +31,12 @@
 - s4 hmr 端口安全:改 server 源码 → `hmr reload` → `http server closed` → `http server listening on :3000` → curl 仍 404,无 EADDRINUSE(disposal await close 实证)
 - s4 实查:CORS 插件 v2 名为 CORSHandlerPlugin(v1 的 CORSPlugin 已亡);onError 在 @orpc/server 根;OpenAPIHandler 泛型 Router<ApiContext>;四条探针全文 notes/orpc-v2.md
 - s4 类型门禁:`pnpm typecheck` → 零错误
+- s5 (a):`curl --get .../api/ping/hello --data-urlencode name=毕设` → `{"msg":"hello, 毕设"}`(裸 UTF-8 不编码会 400,属客户端编码责任)
+- s5 (b):ping_logs 计数随请求递增,中文值落库
+- s5 (c):api-client 类型化客户端 `c.ping.hello({name:'client'})` → `{ msg: 'hello, client' }`
+- s5 (d):yml 停用 ping → 同 curl 404(贡献点 effect 摘除,零重建热生效);恢复 → 200 + ping 重载日志
+- s5 关键实测:rc.7 服务访问受 inject 声明约束(cannot get property without inject),handler 必须闭包自插件 ctx;OpenAPILink 在 /fetch 子路径;RouterContractClient/JsonifiedClient 是纯类型导出(值探针盲区);弃用需 meta.path 印章的 client factory;sed -i 换 inode 会弄丢 yml watcher(脚本改 yml 用 python 原地重写)
+- s5 类型门禁:`pnpm typecheck` → 零错误
 
 ## 会话中定下的约定(已写入 CLAUDE.md / docs/notes/)
 
@@ -74,4 +82,4 @@
 
 ## 下一会话
 
-- s5:ping 后端全链路 + 契约聚合 + api-client(docs/p0-tutorial.md 会话5)。要点:ping 补 /contract(禁依赖 drizzle)与 implement(pingContract).$context<ApiContext>()、inject 加 server、gen-contracts 生成器落地并入 gen 管线、api-client 包(OpenAPILink 位置实查)、验收四连含停用 ping → 接口真 404
+- s6:ui-registry + manifest(docs/p0-tutorial.md 会话6)。要点:@qualy/plugin-ui-registry(addPage 全 effect,manifest 契约 GET /ui/manifest 匿名可访问);ping inject 加 'ui' 并 addPage;验收 manifest 含 /ping 条目、停用 ping 双重消失(接口 404 + manifest 条目消失)

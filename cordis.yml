@@ -10,7 +10,8 @@
       - cordis.yml
 - id: '83873047'
   name: '@qualy/plugin-database'
-- name: '@qualy/plugin-server'
+- id: 5c1c1e85
+  name: '@qualy/plugin-server'
 - id: a8f253e5
   name: '@qualy/plugin-ping'
   config:

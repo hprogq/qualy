@@ -9,7 +9,7 @@ import { readEntries } from './read-entries.ts'
 // without qualy.database.schemaEntry contributes nothing, a declared entry
 // that fails to resolve is a hard error.
 
-function resolvePackageDir(id: string): string {
+export function resolvePackageDir(id: string): string {
   let entryUrl: string
   try {
     entryUrl = import.meta.resolve(id)

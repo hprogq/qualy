@@ -513,12 +513,14 @@ export const inject = ['server', 'db']
 export const Config = z.object({ greeting: z.string().default('hi') }).prefault({})
 
 export function apply(ctx: Context, config: z.infer<typeof Config>) {
-  const impl = implement(pingContract).$context<ApiContext>() // $context 形态若不符,以类型提示实查为准并记 notes
+  const impl = implement(pingContract).$context<ApiContext>()
   ctx.server.contribute(
     'ping',
     impl.router({
-      hello: impl.hello.handler(async ({ input, context }) => {
-        await context.cordis.db.drizzle.insert(pingLogs).values({ name: input.name ?? 'world' })
+      // 服务访问一律走本插件自己的 ctx(inject 声明过);经 context.cordis 取服务
+      // 会撞 rc.7 的声明检查抛 "cannot get property without inject"(实测,notes/cordis.md)
+      hello: impl.hello.handler(async ({ input }) => {
+        await ctx.db.drizzle.insert(pingLogs).values({ name: input.name ?? 'world' })
         return { msg: `${config.greeting}, ${input.name ?? 'world'}` }
       }),
     }),
@@ -554,16 +556,33 @@ console.log('contracts.gen.ts 写入完成')
 
 ```ts
 import { createORPCClient } from '@orpc/client'
-import { OpenAPILink } from '@orpc/openapi/client' // 位置实查,不符记 notes
-import type { ContractRouterClient } from '@orpc/contract'
+import type { RouterContractClient } from '@orpc/contract'
+import type { JsonifiedClient } from '@orpc/openapi'
+import { populateRouterContractOpenAPIPaths } from '@orpc/openapi'
+import { OpenAPILink } from '@orpc/openapi/fetch' // beta.21 无 /client 子路径(实测)
 import { appContract, type AppContract } from './contracts.gen.ts'
 
-export function createApiClient(url: string) {
-  const link = new OpenAPILink(appContract, { url })
-  return createORPCClient<ContractRouterClient<AppContract>>(link)
+const populated = populateRouterContractOpenAPIPaths(appContract)
+
+export function createApiClient(base: string) {
+  let origin: string | undefined
+  let url: `/${string}`
+  if (base.startsWith('/')) {
+    url = base as `/${string}`
+  } else {
+    const parsed = new URL(base)
+    origin = parsed.origin
+    url = parsed.pathname as `/${string}`
+  }
+  // url 是 StandardUrl(必须 / 开头的纯路径),origin 单列;类型是纯类型导出,值探针看不见
+  const link = new OpenAPILink(populated, { origin, url })
+  const client: JsonifiedClient<RouterContractClient<AppContract>> = createORPCClient(link)
+  return client
 }
 export type AppClient = ReturnType<typeof createApiClient>
 ```
+
+(弃用 createContractJsonifiedClientFactory:它要求手工 meta.path 位置印章,对插件聚合契约不友好,见 notes/orpc-v2.md。)
 
 **验收四连**:`pnpm gen && pnpm dev` 后 (a) `curl 'localhost:3000/api/ping/hello?name=毕设'` 200 且含问候;(b) `psql -c 'select count(*) from ping_logs'` 递增;(c) 根下写临时脚本 `node --import tsx -e "import('./packages/api-client/src/index.ts').then(async m=>{const c=m.createApiClient('http://localhost:3000/api');console.log(await c.ping.hello({name:'client'}))})"` 输出 msg;(d) **cordis.yml 将 ping 置 `disabled: true`,重启后 (a) 的 curl 变 404,恢复后再 200**。
 

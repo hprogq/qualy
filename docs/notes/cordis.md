@@ -43,6 +43,11 @@
 - **重载安全检查项**:服务持有的任何缓存,若其内容绑定了会被 disposal 销毁的资源(如 withRelations 的视图缓存包着连接池),必须在**同一个 disposal 里清空**;否则 restart 后新资源就位、旧缓存仍被命中,报错(如 "Cannot use a pool after calling end")离病根十万八千里。将来 sandbox 的编译缓存、queue 的连接同理。
 - **寄生副作用不用单独 effect 化**:生命周期与被清理对象同体的副作用(如 `pool.on('error')` 监听器随 `pool.end()` 一起消亡)不需要独立登记清理,这是判断"哪些动作要包 effect"的边界准则。
 
+## 服务访问受 inject 声明约束(实测,会话 5)
+
+- rc.7 的 Context 代理对服务访问做**声明检查**:经某插件的 ctx 取它未声明 inject 的服务,直接抛 `cannot get property "db" without inject`——不是 undefined,是硬错误。
+- 由此定案 API handler 的服务访问约定:**handler 闭包使用所属插件自己的 ctx**(它的 inject 声明过);`ApiContext.cordis`(server 插件的 ctx)只作请求管道用途(日志溯源/事件),不作服务访问入口。教程早期的 `context.cordis.db` 写法已被此实测推翻。
+
 ## 信号处理与优雅关闭(定案:自建入口 packages/app/src/main.ts)
 
 - cordis 核心与 bin.js **零信号处理**:Ctrl+C 走 Node 默认行为,退出码 130(pnpm 报 ELIFECYCLE "Command failed"),所有 effect 清理不会执行(HTTP close、pg 池 end 等全部跳过)。
