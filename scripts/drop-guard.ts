@@ -1,13 +1,18 @@
+import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-// destructive statements never leave a generator silently: a migration that
-// drops tables or columns requires ALLOW_DESTRUCTIVE=1 at generation time,
-// or an explicit '-- destructive: approved' marker for reviewed purge
-// migrations already in the lineage.
+// destructive statements never leave `pnpm db:generate` silently: a freshly
+// generated migration that drops tables, columns or whole schemas requires
+// ALLOW_DESTRUCTIVE=1, or an explicit '-- destructive: approved' marker for
+// reviewed destructive migrations.
 
-const destructivePatterns = [/\bdrop\s+table\b/i, /\bdrop\s+column\b/i]
+const destructivePatterns = [
+  /\bdrop\s+table\b/i,
+  /\bdrop\s+column\b/i,
+  /\bdrop\s+schema\b[^;]*\bcascade\b/i,
+]
 const approvalMarker = /^--\s*destructive:\s*approved\s*$/m
 
 export function scanDestructive(files: string[]): string[] {
@@ -23,22 +28,33 @@ export function scanDestructive(files: string[]): string[] {
   return hits
 }
 
-function allMigrationFiles(): string[] {
-  const root = 'db/migrations'
-  if (!fs.existsSync(root)) return []
-  return fs
-    .readdirSync(root)
-    .map((folder) => path.join(root, folder, 'migration.sql'))
-    .filter((file) => fs.existsSync(file))
+// default scope: migrations added or modified since the last commit, i.e.
+// whatever the generate step that just ran has produced
+function newMigrationFiles(): string[] {
+  const status = execSync('git status --porcelain -- db/migrations', { encoding: 'utf8' })
+  return status
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.slice(3).trim())
+    .filter((file) => file.endsWith('.sql') || fs.statSync(file, { throwIfNoEntry: false })?.isDirectory())
+    .flatMap((entry) => {
+      const stat = fs.statSync(entry, { throwIfNoEntry: false })
+      if (stat?.isDirectory()) {
+        const file = path.join(entry, 'migration.sql')
+        return fs.existsSync(file) ? [file] : []
+      }
+      return fs.existsSync(entry) ? [entry] : []
+    })
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const files = process.argv.slice(2).filter((arg) => !arg.startsWith('-'))
-  const hits = scanDestructive(files.length > 0 ? files : allMigrationFiles())
+  const args = process.argv.slice(2).filter((arg) => !arg.startsWith('-') && fs.existsSync(arg))
+  const files = args.length > 0 ? args : newMigrationFiles()
+  const hits = scanDestructive(files)
   if (hits.length > 0 && process.env.ALLOW_DESTRUCTIVE !== '1') {
-    console.error('drop-guard: destructive statements detected')
+    console.error('drop-guard: destructive statements detected, set ALLOW_DESTRUCTIVE=1 to proceed')
     for (const hit of hits) console.error(`  ${hit}`)
     process.exit(1)
   }
-  console.log('drop-guard: ok')
+  console.log(`drop-guard: ok (${files.length} file(s) scanned)`)
 }

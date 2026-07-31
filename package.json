@@ -28,6 +28,8 @@
   },
   "scripts": {
     "build": "pnpm --filter web build",
+    "db:generate": "drizzle-kit generate && tsx scripts/drop-guard.ts",
+    "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "dev": "pnpm db:migrate && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
