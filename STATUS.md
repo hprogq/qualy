@@ -1,6 +1,6 @@
 # STATUS
 
-阶段:P0 / 最近会话:s3 尾声 + 数据层完整定案落地(2026-08-01)
+阶段:P0 / 最近会话:s4(2026-08-01,server + oRPC v2)
 
 ## 已完成
 
@@ -8,6 +8,8 @@
 - [s2] cordis 启动闭环:`pnpm dev`(bin.js + include 读 cordis.yml)装载 TS 冒烟插件 @qualy/plugin-ping;官方 @cordisjs/plugin-logger-console 输出日志;hmr 粒度重载可用(高风险项通过,未动用 tsup 退路);根 typecheck 门禁建立(TS 6.0.3);三视角复核 14 条发现已裁决(4 条现改、7 条修入教程/手册、不采纳 2 条、1 条推迟到 s7)
 
 - [s3] 生成器基建 + database 插件:scripts/lib(read-entries 组展平+--all+漏装警告、codegen banner+write-if-changed)与 gen-schema 落地;@qualy/plugin-database(drizzle v1,Service.init 异步初始化+fail-fast,withRelations 视图工厂);ping 补 /schema(snakeCase.table,uuidv7 DB 默认主键)与 inject 门控;首个命名迁移建表并实测
+
+- [s4] server 插件 + oRPC v2 接入:@qualy/plugin-server(OpenAPIHandler + CORSHandlerPlugin + onError 拦截;Service.init 绑定端口,disposal 等端口真释放;contribute/rebuild 全 effect,ns 冲突抛错);开场四条探针实录 notes/orpc-v2.md;HTTP 404 链路通
 
 ## 验收输出摘录
 
@@ -21,6 +23,12 @@
 - s3 uuidv7:裸 SQL insert 返回 `019fa4b9-80c7-7467-...`(版本位 7,DDL 兜底路径实证)
 - s3 门控联动:ping 装载被 db 的 Service.init(含 select 1 探活)门控;yml 停用 database → ping 回卷;恢复 → 01:58:33 ping 自动重载
 - s3 类型门禁:`pnpm typecheck` → 零错误
+
+- s4 启动:`[I] server http server listening on :3000` → database connected → ping loaded
+- s4 链路:`curl -i localhost:3000/api/anything` → `HTTP/1.1 404 Not Found`(空 fragments,链路通)
+- s4 hmr 端口安全:改 server 源码 → `hmr reload` → `http server closed` → `http server listening on :3000` → curl 仍 404,无 EADDRINUSE(disposal await close 实证)
+- s4 实查:CORS 插件 v2 名为 CORSHandlerPlugin(v1 的 CORSPlugin 已亡);onError 在 @orpc/server 根;OpenAPIHandler 泛型 Router<ApiContext>;四条探针全文 notes/orpc-v2.md
+- s4 类型门禁:`pnpm typecheck` → 零错误
 
 ## 会话中定下的约定(已写入 CLAUDE.md / docs/notes/)
 
@@ -66,4 +74,4 @@
 
 ## 下一会话
 
-- s4:server 插件 + oRPC v2 接入(docs/p0-tutorial.md 会话4,高风险 beta API,建议人工在场)。开场四条探针实查 @orpc 导出位置记 notes/orpc-v2.md;server 关停返回 Promise 防 EADDRINUSE(教程已修);contribute/rebuild 全 effect 化
+- s5:ping 后端全链路 + 契约聚合 + api-client(docs/p0-tutorial.md 会话5)。要点:ping 补 /contract(禁依赖 drizzle)与 implement(pingContract).$context<ApiContext>()、inject 加 server、gen-contracts 生成器落地并入 gen 管线、api-client 包(OpenAPILink 位置实查)、验收四连含停用 ping → 接口真 404
