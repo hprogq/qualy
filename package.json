@@ -27,13 +27,11 @@
     "yaml": "catalog:"
   },
   "scripts": {
-    "build": "pnpm gen && pnpm --filter web build",
-    "db:gen": "tsx scripts/db-gen.ts",
+    "build": "pnpm --filter web build",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "dev": "node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
     "dev:web": "pnpm --filter web dev",
-    "gen": "tsx scripts/gen-schema.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
     "test": "vitest run",
     "typecheck": "tsc -p . --noEmit"
