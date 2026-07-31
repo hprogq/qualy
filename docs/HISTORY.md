@@ -1242,12 +1242,12 @@ Koishi 用 minato 适配多数据库是因为它要跑在用户各种环境里�
 ```ts
 // 由"专业竞赛"题型的字段配置自动生成
 interface Answer {
-  competitionId: string; // 来自字典数据源
-  level: "national" | "provincial" | "school";
-  award: "first" | "second" | "third";
-  isTeam: boolean;
+  competitionId: string // 来自字典数据源
+  level: 'national' | 'provincial' | 'school'
+  award: 'first' | 'second' | 'third'
+  isTeam: boolean
 }
-declare function score(answer: Answer, ctx: ScoringContext): ScoreResult;
+declare function score(answer: Answer, ctx: ScoringContext): ScoreResult
 ```
 
 第二步，前端编辑器用 Monaco。Monaco 内置完整的 TypeScript 语言服务（跑在 web worker 里），通过 `monaco.languages.typescript.typescriptDefaults.addExtraLib()` 注入 .d.ts 后就能获得补全和类型检查——管理员打开某题型的函数编辑器时，你把这个题型刚生成的 .d.ts 注入进去，补全、悬停提示、实时红线全有，体验就是 VS Code。你问的"接入 LSP"其实不必：真正的外置 LSP 方案是本地起 typescript-language-server、通过 WebSocket 接 monaco-languageclient，它解决的是 Monaco 内置 worker 只能理解单文件、无法跨文件分析的局限——而你的计分函数**恰好就是单文件纯函数**，内置 worker 刚好够用，省掉一整个服务端组件。
@@ -1478,21 +1478,21 @@ function sandboxPlugin(ctx: Context, config: SandboxConfig) {
 sandboxPlugin.Config = z.object({
   timeoutMs: z.number().int().positive().default(1000),
   memoryMb: z.number().int().max(512).default(64),
-});
-sandboxPlugin.inject = ["logger"];
+})
+sandboxPlugin.inject = ['logger']
 ```
 
 **Service 抽象类——领域服务的标准写法**。继承 `Service` 并在构造器里 `super(ctx, 'gradebook')`，插件加载时该实例自动注册为 `ctx.gradebook`，全局可注入。配 TypeScript 声明合并获得类型：
 
 ```ts
-declare module "cordis" {
+declare module 'cordis' {
   interface Context {
-    gradebook: Gradebook;
+    gradebook: Gradebook
   }
 }
 export class Gradebook extends Service {
   constructor(ctx: Context) {
-    super(ctx, "gradebook");
+    super(ctx, 'gradebook')
   }
   async getMajorFirstAttempts(uid: string, term: string) {
     /* SQL 过滤取数 */
@@ -1624,13 +1624,13 @@ packages/plugin-paradigm-declaration/
 ```ts
 // 后端：ui-registry 插件提供 ctx.ui（贡献点全部 effect 化）
 ctx.ui.addNav({
-  key: "review",
-  label: "审核工作台",
-  path: "/review",
+  key: 'review',
+  label: '审核工作台',
+  path: '/review',
   order: 30,
-  permission: "review:read",
-});
-ctx.ui.addRenderer("peer-review", "PeerReviewMatrix"); // 题型 → 渲染器名
+  permission: 'review:read',
+})
+ctx.ui.addRenderer('peer-review', 'PeerReviewMatrix') // 题型 → 渲染器名
 ```
 
 manifest 经 oRPC 暴露（`GET /ui/manifest`），服务端按登录者权限过滤后返回导航树、路由表、渲染器映射——权限过滤放服务端做，前端永远见不到无权菜单，这比前端自己 if 判断干净得多。
@@ -1639,15 +1639,13 @@ manifest 经 oRPC 暴露（`GET /ui/manifest`），服务端按登录者权限�
 // 构建期：scripts/gen-plugins.ts 读 cordis.yml，产出 plugins.gen.ts
 export const clientRegistry = {
   ...declarationClient.renderers, // '@qualy/plugin-paradigm-declaration/client'
-  PeerReviewMatrix: lazy(
-    () => import("@qualy/plugin-peer-review/client/matrix"),
-  ),
-};
+  PeerReviewMatrix: lazy(() => import('@qualy/plugin-peer-review/client/matrix')),
+}
 ```
 
 ```tsx
 // 前端壳：启动拉 manifest，导航和路由全是数据驱动
-const { nav, routes, renderers } = useManifest();
+const { nav, routes, renderers } = useManifest()
 // 渲染题型时：const C = clientRegistry[renderers[qt.key]] ?? DynamicForm
 ```
 
@@ -1688,39 +1686,37 @@ SSR 和 iframe 微前端两条路明确不走：前者放弃你整个 React + oR
 
 ```ts
 // src/index.ts —— server 入口：业务 + 贡献点（全是字符串）
-import { z } from "zod";
+import { z } from 'zod'
 export function peerReview(ctx: Context, config: Config) {
-  ctx.questionTypes.registerParadigm("peer-review", {
-    /* 生命周期钩子 */
-  });
-  ctx.server.mount(peerReviewRouter); // oRPC 路由
+  ctx.questionTypes.registerParadigm('peer-review', {/* 生命周期钩子 */})
+  ctx.server.mount(peerReviewRouter) // oRPC 路由
   ctx.ui.addNav({
-    key: "peer",
-    label: "互评",
-    path: "/peer",
-    permission: "peer:read",
-  });
-  ctx.ui.addRenderer("peer-review", "PeerReviewMatrix"); // 题型 → 渲染器名（字符串！）
+    key: 'peer',
+    label: '互评',
+    path: '/peer',
+    permission: 'peer:read',
+  })
+  ctx.ui.addRenderer('peer-review', 'PeerReviewMatrix') // 题型 → 渲染器名（字符串！）
 }
-peerReview.inject = ["questionTypes", "server", "ui", "db"];
-peerReview.Config = z.object({ anonymous: z.boolean().default(true) });
+peerReview.inject = ['questionTypes', 'server', 'ui', 'db']
+peerReview.Config = z.object({ anonymous: z.boolean().default(true) })
 ```
 
 ```ts
 // client/index.ts —— 前端入口：渲染器名 → 组件加载器
 export const renderers = {
-  PeerReviewMatrix: () => import("./PeerReviewMatrix"), // thunk，由壳包 lazy
-};
+  PeerReviewMatrix: () => import('./PeerReviewMatrix'), // thunk，由壳包 lazy
+}
 ```
 
 **2）cordis.yml**
 
 ```yaml
-- name: "@qualy/plugin-ui-registry"
-- name: "@qualy/plugin-paradigm-declaration" # 纯配置题型，无 client 导出
-- name: "@qualy/plugin-peer-review"
+- name: '@qualy/plugin-ui-registry'
+- name: '@qualy/plugin-paradigm-declaration' # 纯配置题型，无 client 导出
+- name: '@qualy/plugin-peer-review'
   config: { anonymous: true }
-- name: "@qualy/plugin-ai-precheck"
+- name: '@qualy/plugin-ai-precheck'
   disabled: true # 停用：manifest 里消失，前端自动不显示，无需重建
 ```
 
@@ -1728,31 +1724,29 @@ export const renderers = {
 
 ```ts
 // scripts/gen-plugins.ts —— 核心逻辑不到 30 行
-const entries = YAML.parse(fs.readFileSync("cordis.yml", "utf8")).filter(
-  (e) => !e.disabled,
-);
+const entries = YAML.parse(fs.readFileSync('cordis.yml', 'utf8')).filter((e) => !e.disabled)
 
-const lines = [`// 本文件由 gen-plugins.ts 生成，勿手改`];
-const spreads: string[] = [];
+const lines = [`// 本文件由 gen-plugins.ts 生成，勿手改`]
+const spreads: string[] = []
 for (const [i, e] of entries.entries()) {
   try {
-    resolve(`${e.name}/client`); // 有 ./client 导出才收编
-    lines.push(`import { renderers as r${i} } from '${e.name}/client'`);
-    spreads.push(`...r${i}`);
+    resolve(`${e.name}/client`) // 有 ./client 导出才收编
+    lines.push(`import { renderers as r${i} } from '${e.name}/client'`)
+    spreads.push(`...r${i}`)
   } catch {
     /* 纯后端插件，跳过 */
   }
 }
-lines.push(`export const clientRegistry = { ${spreads.join(", ")} }`);
-fs.writeFileSync("apps/web/src/plugins.gen.ts", lines.join("\n"));
+lines.push(`export const clientRegistry = { ${spreads.join(', ')} }`)
+fs.writeFileSync('apps/web/src/plugins.gen.ts', lines.join('\n'))
 ```
 
 生成产物长这样：
 
 ```ts
 // apps/web/src/plugins.gen.ts（构建产物）
-import { renderers as r2 } from "@qualy/plugin-peer-review/client";
-export const clientRegistry = { ...r2 };
+import { renderers as r2 } from '@qualy/plugin-peer-review/client'
+export const clientRegistry = { ...r2 }
 ```
 
 Vite 打包时每个 thunk 自动成为独立 chunk（按需加载），没被写进这个文件的插件前端代码根本不会进产物。
@@ -1770,20 +1764,20 @@ Vite 打包时每个 thunk 自动成为独立 chunk（按需加载），没被�
 **5）前端壳消费两样东西**
 
 ```tsx
-const manifest = useManifest(); // 运行时数据：显示什么
-const registry = useMemo(() => mapValues(clientRegistry, (t) => lazy(t)), []);
+const manifest = useManifest() // 运行时数据：显示什么
+const registry = useMemo(() => mapValues(clientRegistry, (t) => lazy(t)), [])
 
 function QuestionRenderer({ qt }) {
-  const name = manifest.renderers[qt.paradigm]; // 'PeerReviewMatrix'
-  const C = name && registry[name];
-  if (name && !C) console.warn(`渲染器 ${name} 不在构建产物中，回退动态表单`); // 防呆
+  const name = manifest.renderers[qt.paradigm] // 'PeerReviewMatrix'
+  const C = name && registry[name]
+  if (name && !C) console.warn(`渲染器 ${name} 不在构建产物中，回退动态表单`) // 防呆
   return C ? (
     <Suspense fallback={<Spin />}>
       <C qt={qt} />
     </Suspense>
   ) : (
     <DynamicForm qt={qt} />
-  );
+  )
 }
 ```
 
@@ -1820,42 +1814,40 @@ function QuestionRenderer({ qt }) {
 ```ts
 // L0 server 插件
 export class ServerService extends Service {
-  private fragments = new Map<string, AnyContractRouter>();
-  private handler!: OpenAPIHandler<any>;
+  private fragments = new Map<string, AnyContractRouter>()
+  private handler!: OpenAPIHandler<any>
 
   constructor(ctx: Context, config: Config) {
-    super(ctx, "server");
+    super(ctx, 'server')
     // HTTP 服务器只建一次；监听函数永远委托给"当前的" handler
     const httpServer = createServer((req, res) =>
       this.handler.handle(req, res, {
         context: { cordis: this.ctx /* 每请求上下文 */ },
       }),
-    );
+    )
     ctx.effect(() => {
-      httpServer.listen(config.port);
-      return () => httpServer.close();
-    });
-    this.rebuild();
+      httpServer.listen(config.port)
+      return () => httpServer.close()
+    })
+    this.rebuild()
   }
 
   contribute(ns: string, router: AnyRouter) {
     return this.ctx.effect(() => {
       // effect 化：插件卸载自动摘除
-      this.fragments.set(ns, router);
-      this.rebuild();
+      this.fragments.set(ns, router)
+      this.rebuild()
       return () => {
-        this.fragments.delete(ns);
-        this.rebuild();
-      };
-    });
+        this.fragments.delete(ns)
+        this.rebuild()
+      }
+    })
   }
 
   private rebuild() {
     this.handler = new OpenAPIHandler(Object.fromEntries(this.fragments), {
-      plugins: [
-        /* CORS、OpenAPI Reference 等 */
-      ],
-    });
+      plugins: [/* CORS、OpenAPI Reference 等 */],
+    })
   }
 }
 ```
@@ -1864,15 +1856,15 @@ export class ServerService extends Service {
 // 业务插件（contract-first 照旧）
 function peerReview(ctx: Context) {
   ctx.server.contribute(
-    "peer",
+    'peer',
     implement(peerContract).router({
       submit: implement(peerContract.submit).handler(({ input, context }) => {
-        return context.cordis.db; /* ... */
+        return context.cordis.db /* ... */
       }),
     }),
-  );
+  )
 }
-peerReview.inject = ["server", "db"];
+peerReview.inject = ['server', 'db']
 ```
 
 注意两个细节：HTTP 服务器和 handler 解耦（重建只换 handler 引用，在途请求用旧的跑完，原子切换）；每请求把 cordis 的 `ctx` 塞进 oRPC 的 context，handler 里就能访问所有服务。OpenAPI 文档也是重建时自动重生成的——停用一个插件，Swagger 页面上它的接口同步消失，演示效果很好。
@@ -1883,10 +1875,10 @@ peerReview.inject = ["server", "db"];
 
 ```ts
 // contracts.gen.ts（生成产物）
-import { contract as peer } from "@qualy/plugin-peer-review/contract";
-import { contract as batch } from "@qualy/plugin-batch/contract";
-export const appContract = { peer, batch };
-export type AppContract = typeof appContract;
+import { contract as peer } from '@qualy/plugin-peer-review/contract'
+import { contract as batch } from '@qualy/plugin-batch/contract'
+export const appContract = { peer, batch }
+export type AppContract = typeof appContract
 ```
 
 前端 `createORPCClient<ContractRouterClient<AppContract>>(link)`，全链路类型就位。一份 cordis.yml，三个生成物（前端组件注册表、契约聚合、Drizzle schema 聚合），同一条构建期装配哲学——这个对称性本身就能在论文里画成一张很漂亮的图。
@@ -1979,26 +1971,26 @@ export type AppContract = typeof appContract;
 ```ts
 // auth-core 插件（server 侧）
 ctx.ui.addPage({
-  path: "/login",
-  layout: "blank",
-  component: "LoginPage",
+  path: '/login',
+  layout: 'blank',
+  component: 'LoginPage',
   public: true,
-});
+})
 ctx.ui.addPage({
-  path: "/profile",
-  layout: "admin",
-  component: "ProfilePage",
-  nav: { label: "个人中心", icon: "user", order: 90 },
-});
+  path: '/profile',
+  layout: 'admin',
+  component: 'ProfilePage',
+  nav: { label: '个人中心', icon: 'user', order: 90 },
+})
 
 // auth-password 插件：往登录页的插槽里塞一个登录方式
-ctx.ui.addWidget("login.methods", {
-  component: "PasswordLoginForm",
+ctx.ui.addWidget('login.methods', {
+  component: 'PasswordLoginForm',
   order: 10,
-});
+})
 
 // auth-cas 插件
-ctx.ui.addWidget("login.methods", { component: "CasLoginButton", order: 20 });
+ctx.ui.addWidget('login.methods', { component: 'CasLoginButton', order: 20 })
 ```
 
 manifest 相应多一段 `widgets: { "login.methods": [{component,order}...] }`。**停用 CAS 插件，登录页上那个按钮就消失了，零重建**——这正是插槽比硬编码强的地方。
@@ -2010,23 +2002,22 @@ manifest 相应多一段 `widgets: { "login.methods": [{component,order}...] }`�
 export function LoginPage() {
   return (
     <CenteredCard title="综测系统登录">
-      <Slot id="login.methods" />{" "}
-      {/* 渲染 manifest 里该插槽的所有部件，按 order 排 */}
+      <Slot id="login.methods" /> {/* 渲染 manifest 里该插槽的所有部件，按 order 排 */}
     </CenteredCard>
-  );
+  )
 }
 ```
 
 ```ts
 // @qualy/plugin-auth-core/client/index.ts —— 注意：全部是 thunk，不做顶层 import
 export const components = {
-  LoginPage: () => import("./LoginPage"),
-  ProfilePage: () => import("./ProfilePage"),
-};
+  LoginPage: () => import('./LoginPage'),
+  ProfilePage: () => import('./ProfilePage'),
+}
 // @qualy/plugin-auth-password/client/index.ts
 export const components = {
-  PasswordLoginForm: () => import("./PasswordLoginForm"),
-};
+  PasswordLoginForm: () => import('./PasswordLoginForm'),
+}
 ```
 
 **壳怎么消费**（启动流程里有一个登录特有的坑要先说）：manifest 接口必须**允许匿名访问**，匿名身份能看到的就是 `public: true` 的页面和它们的插槽（即登录页 + 登录方式们）；登录成功后重新拉一次 manifest，拿到 RBAC 过滤后的完整导航路由。壳的组装逻辑：

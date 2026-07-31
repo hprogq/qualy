@@ -51,7 +51,7 @@
 
 ## 主键定案:UUIDv7,数据库侧生成
 
-- `uuid().primaryKey().default(sql\`uuidv7()\`)`:PG18 原生函数,默认值进 DDL,psql 修数、ETL、任何裸 SQL 写入都自动拿到 ID(实测:插入返回版本位为 7 的 id)。rc.4 无 v7 专用 builder(只有 `defaultRandom()` 对应 v4),走 `sql` 模板。
+- `uuid().primaryKey().default(sql\`uuidv7()\`)`:PG18 原生函数,默认值进 DDL,psql 修数、ETL、任何裸 SQL 写入都自动拿到 ID(实测:插入返回版本位为 7 的 id)。rc.4 无 v7 专用 builder(只有 `defaultRandom()`对应 v4),走`sql` 模板。
 - `$defaultFn` 的正确场景是"插入前就要拿到 ID"(先入队再落库、乐观 UI):届时在该表**叠加** `$defaultFn`(应用预生成 + DDL 兜底),不是二选一。
 - 时间戳列统一 `createdAt/updatedAt` + `withTimezone: true`。
 

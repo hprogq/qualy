@@ -36,7 +36,10 @@ function newMigrationFiles(): string[] {
     .split('\n')
     .filter(Boolean)
     .map((line) => line.slice(3).trim())
-    .filter((file) => file.endsWith('.sql') || fs.statSync(file, { throwIfNoEntry: false })?.isDirectory())
+    .filter(
+      (file) =>
+        file.endsWith('.sql') || fs.statSync(file, { throwIfNoEntry: false })?.isDirectory(),
+    )
     .flatMap((entry) => {
       const stat = fs.statSync(entry, { throwIfNoEntry: false })
       if (stat?.isDirectory()) {

@@ -49,15 +49,15 @@ pnpm add cordis@4.0.0-rc.7        # rc 阶段锁定版本,不带 ^
 ### 2.2 最小应用
 
 ```ts
-import { Context } from "cordis";
+import { Context } from 'cordis'
 
 function hello(ctx: Context) {
   // 一个插件就是一个函数
-  console.log("你好,综测系统");
+  console.log('你好,综测系统')
 }
 
-const ctx = new Context();
-ctx.plugin(hello); // 装载即生效
+const ctx = new Context()
+ctx.plugin(hello) // 装载即生效
 ```
 
 > **版本注记**:3.x 需要 `ctx.start()` 触发 ready 事件后应用才算启动;4.x 已移除该模式,插件装载即执行。异步初始化见第 7 章。
@@ -91,11 +91,11 @@ class Gradebook {
 
 // ③ 对象插件
 export default {
-  name: "gradebook",
+  name: 'gradebook',
   apply(ctx: Context, config: Config) {
     /* ... */
   },
-};
+}
 ```
 
 三种形态能力等价。约定:默认函数插件,提供服务时用类插件继承 `Service`。
@@ -103,9 +103,9 @@ export default {
 ### 3.3 装载与卸载
 
 ```ts
-const fiber = ctx.plugin(gradebook, { someOption: true });
-await fiber; // 返回值可直接 await 至就绪
-await fiber.dispose(); // 卸载:该插件注册的一切自动撤销
+const fiber = ctx.plugin(gradebook, { someOption: true })
+await fiber // 返回值可直接 await 至就绪
+await fiber.dispose() // 卸载:该插件注册的一切自动撤销
 ```
 
 `ctx.plugin()` 的返回值是 **Fiber**——本次装载的句柄,可 `dispose()` 卸载、`restart()` 重启、`update(config)` 更新配置。业务代码很少直接操作 Fiber,装配交给配置文件。
@@ -115,8 +115,8 @@ await fiber.dispose(); // 卸载:该插件注册的一切自动撤销
 同一插件可装载多次,传入不同配置,产生多个互不干扰的 Fiber:
 
 ```ts
-ctx.plugin(notifier, { channel: "email" });
-ctx.plugin(notifier, { channel: "sms" });
+ctx.plugin(notifier, { channel: 'email' })
+ctx.plugin(notifier, { channel: 'sms' })
 ```
 
 > **版本注记(重要)**:3.x 中重复装载同一插件默认只执行一次,需声明 `reusable: true` 或使用 `fork` 事件才能多实例;官方指南「生命周期」一节对此有大量论述。**4.x 已移除 reusable 与 fork 机制,所有插件天然可多实例**——每次 `ctx.plugin()` 即产生新 Fiber。若需要"全局仅一份"的语义(如注册中心),应将其实现为服务(第 4 章),而非依赖装载去重。
@@ -140,11 +140,11 @@ ctx.plugin(notifier, { channel: "sms" });
 ### 4.3 提供服务:继承 Service
 
 ```ts
-import { Context, Service } from "cordis";
+import { Context, Service } from 'cordis'
 
 export class Gradebook extends Service {
   constructor(ctx: Context) {
-    super(ctx, "gradebook"); // 服务名,即 ctx.gradebook
+    super(ctx, 'gradebook') // 服务名,即 ctx.gradebook
   }
   async getTermScores(uid: string, term: string) {
     /* ... */
@@ -153,7 +153,7 @@ export class Gradebook extends Service {
 ```
 
 ```ts
-ctx.plugin(Gradebook); // Service 子类本身就是插件;装载后全局可用 ctx.gradebook
+ctx.plugin(Gradebook) // Service 子类本身就是插件;装载后全局可用 ctx.gradebook
 ```
 
 卸载提供服务的插件,服务即从所有上下文移除,依赖它的插件联动回卷(第 5 章)。
@@ -163,9 +163,9 @@ ctx.plugin(Gradebook); // Service 子类本身就是插件;装载后全局可用
 服务是运行时挂载的,需告知 TypeScript:
 
 ```ts
-declare module "cordis" {
+declare module 'cordis' {
   interface Context {
-    gradebook: Gradebook;
+    gradebook: Gradebook
   }
 }
 ```
@@ -177,7 +177,7 @@ declare module "cordis" {
 不值得写类的简单共享:
 
 ```ts
-const dispose = ctx.provide("appConfig", { schoolName: "大连外国语大学" });
+const dispose = ctx.provide('appConfig', { schoolName: '大连外国语大学' })
 // 其他插件:ctx.appConfig.schoolName;调用 dispose() 可提前移除
 ```
 
@@ -189,14 +189,14 @@ const dispose = ctx.provide("appConfig", { schoolName: "大连外国语大学" }
 
 ```ts
 export class UiRegistry extends Service {
-  private pages = new Map<string, PageDecl>();
+  private pages = new Map<string, PageDecl>()
 
   addPage(p: PageDecl) {
     // this.ctx 是调用 addPage 的那个插件的上下文
     return this.ctx.effect(() => {
-      this.pages.set(p.path, p);
-      return () => this.pages.delete(p.path); // 调用方卸载时自动执行
-    }, `page:${p.path}`);
+      this.pages.set(p.path, p)
+      return () => this.pages.delete(p.path) // 调用方卸载时自动执行
+    }, `page:${p.path}`)
   }
 }
 ```
@@ -205,7 +205,7 @@ export class UiRegistry extends Service {
 
 ```ts
 function ping(ctx: Context) {
-  ctx.ui.addPage({ path: "/ping", component: "PingPage", layout: "admin" });
+  ctx.ui.addPage({ path: '/ping', component: 'PingPage', layout: 'admin' })
   // 无需任何清理代码;ping 卸载时页面登记自动消失
 }
 ```
@@ -227,8 +227,8 @@ function ping(ctx: Context) {
 ```ts
 // 错误示范!不要这样写
 export function apply(ctx: Context) {
-  if (!ctx.db) return; // ① 装载顺序不可控,此刻 db 可能尚未就绪
-  ctx.server.contribute("review", router);
+  if (!ctx.db) return // ① 装载顺序不可控,此刻 db 可能尚未就绪
+  ctx.server.contribute('review', router)
   if (ctx.storage) {
     // ② db/storage 所在插件运行时被重载后,
     /* 使用对象存储 */
@@ -244,9 +244,9 @@ export function apply(ctx: Context) {
 ```ts
 function reviewPlugin(ctx: Context) {
   // 执行到这里,db 与 server 一定就绪
-  ctx.server.contribute("review", buildRouter(ctx.db));
+  ctx.server.contribute('review', buildRouter(ctx.db))
 }
-reviewPlugin.inject = ["db", "server"];
+reviewPlugin.inject = ['db', 'server']
 ```
 
 `inject` 数组声明必需依赖,语义(实测):
@@ -264,18 +264,18 @@ reviewPlugin.inject = ["db", "server"];
 
 ```ts
 function dialogue(ctx: Context) {
-  ctx.server.contribute("dialogue", router); // 主体功能
+  ctx.server.contribute('dialogue', router) // 主体功能
 
-  ctx.inject(["ui"], (ctx) => {
+  ctx.inject(['ui'], (ctx) => {
     // 仅这一段依赖 ui
     ctx.ui.addPage({
-      path: "/dialogue",
-      component: "DialoguePage",
-      layout: "admin",
-    });
-  });
+      path: '/dialogue',
+      component: 'DialoguePage',
+      layout: 'admin',
+    })
+  })
 }
-dialogue.inject = ["server"];
+dialogue.inject = ['server']
 ```
 
 > **注意:这里出现了两个 `ctx`**,它们属于不同插件。子插件回调内务必使用**参数**的 ctx 而非外层 ctx——否则热重载时子插件的副作用会被记到外层账上,造成清理错位与泄漏。这是官方指南特别强调的陷阱,4.x 同样适用。
@@ -290,14 +290,14 @@ dialogue.inject = ["server"];
 
 ```ts
 function precheck(ctx: Context) {
-  ctx.on("submission/created", (s) => {
-    const storage = ctx.get("storage"); // 运行时探测,可能为 undefined
+  ctx.on('submission/created', (s) => {
+    const storage = ctx.get('storage') // 运行时探测,可能为 undefined
     if (storage) {
       /* 附件走对象存储 */
     }
-  });
+  })
 }
-precheck.inject = ["queue"]; // 必需依赖仍用数组
+precheck.inject = ['queue'] // 必需依赖仍用数组
 ```
 
 `inject` 的对象形式(`{ db: true }` 等)在 4.x 类型上存在,但其布尔值语义与 3.x 文档不符且未稳定,教程建议:**必需依赖一律用数组,可选依赖一律用 ctx.inject 子插件或运行时探测。**
@@ -307,23 +307,23 @@ precheck.inject = ["queue"]; // 必需依赖仍用数组
 ```ts
 export default function dialogue(ctx: Context) {
   // 部分功能依赖 → ctx.inject 子插件
-  ctx.inject(["ui"], (ctx) => {
+  ctx.inject(['ui'], (ctx) => {
     ctx.ui.addPage({
-      path: "/dialogue",
-      component: "DialoguePage",
-      layout: "admin",
-    });
-  });
+      path: '/dialogue',
+      component: 'DialoguePage',
+      layout: 'admin',
+    })
+  })
 
   // 可选增强 → 运行时探测
-  ctx.on("dialogue/answer", (content) => {
-    ctx.get("storage")?.transform(content);
-  });
+  ctx.on('dialogue/answer', (content) => {
+    ctx.get('storage')?.transform(content)
+  })
 
   // 主体逻辑直接使用必需依赖
-  ctx.server.contribute("dialogue", buildRouter(ctx.db));
+  ctx.server.contribute('dialogue', buildRouter(ctx.db))
 }
-dialogue.inject = ["db", "server"]; // 整体必需依赖
+dialogue.inject = ['db', 'server'] // 整体必需依赖
 ```
 
 ---
@@ -335,22 +335,22 @@ dialogue.inject = ["db", "server"]; // 整体必需依赖
 将 Zod schema 赋给插件的 `Config` 属性,装载时自动校验并填默认值:
 
 ```ts
-import { z } from "zod";
+import { z } from 'zod'
 
 const SandboxConfig = z.object({
   timeoutMs: z.number().int().positive().default(1000),
   memoryMb: z.number().int().max(512).default(64),
-});
+})
 
 function sandbox(ctx: Context, config: z.infer<typeof SandboxConfig>) {
   // config 一定合法且默认值已填
 }
-sandbox.Config = SandboxConfig;
+sandbox.Config = SandboxConfig
 ```
 
 ```ts
-ctx.plugin(sandbox, { timeoutMs: 3000 }); // 收到 { timeoutMs: 3000, memoryMb: 64 }
-ctx.plugin(sandbox, { memoryMb: 4096 }); // 抛 ValidationError,插件不装载
+ctx.plugin(sandbox, { timeoutMs: 3000 }) // 收到 { timeoutMs: 3000, memoryMb: 64 }
+ctx.plugin(sandbox, { memoryMb: 4096 }) // 抛 ValidationError,插件不装载
 ```
 
 类插件将 Config 声明为静态属性:`static Config = z.object({...})`。
@@ -372,9 +372,9 @@ ctx.plugin(sandbox, { memoryMb: 4096 }); // 抛 ValidationError,插件不装载
 ```ts
 function reminder(ctx: Context) {
   ctx.effect(() => {
-    const timer = setInterval(() => checkDeadlines(), 60_000);
-    return () => clearInterval(timer); // 撤销函数
-  }, "deadline-timer"); // 可选标签,便于调试
+    const timer = setInterval(() => checkDeadlines(), 60_000)
+    return () => clearInterval(timer) // 撤销函数
+  }, 'deadline-timer') // 可选标签,便于调试
 }
 ```
 
@@ -397,11 +397,11 @@ function reminder(ctx: Context) {
 
 ```ts
 ctx.effect(function* () {
-  const conn = openConnection();
-  yield () => conn.close();
-  const sub = conn.subscribe();
-  yield () => sub.cancel();
-});
+  const conn = openConnection()
+  yield () => conn.close()
+  const sub = conn.subscribe()
+  yield () => sub.cancel()
+})
 ```
 
 异步初始化可用 `async` effect 或 async 生成器。
@@ -422,10 +422,10 @@ ctx.effect(function* () {
 ```ts
 function server(ctx: Context, config: { port: number }) {
   ctx.effect(() => {
-    const srv = createServer(handler);
-    srv.listen(config.port);
-    return () => srv.close();
-  });
+    const srv = createServer(handler)
+    srv.listen(config.port)
+    return () => srv.close()
+  })
 }
 ```
 
@@ -439,10 +439,10 @@ function server(ctx: Context, config: { port: number }) {
 
 ```ts
 // 提交模块:材料提交成功后广播
-ctx.emit("submission/created", submission);
+ctx.emit('submission/created', submission)
 
 // AI 预检插件:
-ctx.on("submission/created", (s) => ctx.queue.add("precheck", s.id));
+ctx.on('submission/created', (s) => ctx.queue.add('precheck', s.id))
 ```
 
 提交模块无需知道预检的存在;日后新增"提交后发站内信"插件,提交模块零改动。
@@ -450,7 +450,7 @@ ctx.on("submission/created", (s) => ctx.queue.add("precheck", s.id));
 ### 8.2 parallel —— 通知所有人,等大家做完
 
 ```ts
-await ctx.parallel("batch/settled", batchId); // 等全部异步监听器完成
+await ctx.parallel('batch/settled', batchId) // 等全部异步监听器完成
 // 之后才标记批次归档
 ```
 
@@ -458,13 +458,13 @@ await ctx.parallel("batch/settled", batchId); // 等全部异步监听器完成
 
 ```ts
 // 题型中心:这道题由哪个范式处理?
-const paradigm = ctx.bail("paradigm/resolve", questionType);
+const paradigm = ctx.bail('paradigm/resolve', questionType)
 
 // 申报审核范式:
-ctx.on("paradigm/resolve", (qt) => {
-  if (qt.paradigm === "declaration") return declarationHandler;
+ctx.on('paradigm/resolve', (qt) => {
+  if (qt.paradigm === 'declaration') return declarationHandler
   // 不是自己的就不返回(undefined),框架继续问下一个
-});
+})
 ```
 
 按注册顺序依次询问,**第一个返回非 undefined 的监听器胜出**并短路后续。实现注册中心/责任链的标准姿势。
@@ -472,13 +472,13 @@ ctx.on("paradigm/resolve", (qt) => {
 ### 8.4 serial —— 异步版 bail,常用于投票否决
 
 ```ts
-const veto = await ctx.serial("submission/check", draft);
-if (veto) throw new BadRequestError(veto);
+const veto = await ctx.serial('submission/check', draft)
+if (veto) throw new BadRequestError(veto)
 
 // 黑名单插件:
-ctx.on("submission/check", async (draft) => {
-  if (await ctx.db.isBlacklisted(draft.uid)) return "该用户已被限制提交";
-});
+ctx.on('submission/check', async (draft) => {
+  if (await ctx.db.isBlacklisted(draft.uid)) return '该用户已被限制提交'
+})
 ```
 
 ### 8.5 waterfall —— 有一套默认做法,允许别的插件拦截或加工
@@ -487,16 +487,16 @@ ctx.on("submission/check", async (draft) => {
 
 ```ts
 // 审核链插件:把默认做法作为最后一个参数传入
-const assignee = ctx.waterfall("review/assign", task, () => {
-  return findByRole(task.node.role); // 默认分派
-});
+const assignee = ctx.waterfall('review/assign', task, () => {
+  return findByRole(task.node.role) // 默认分派
+})
 
 // 回避插件:
-ctx.on("review/assign", (task, next) => {
-  const assignee = next(); // 放行给下一层(或默认实现)
-  if (isConflicted(assignee, task)) return findAlternate(task);
-  return assignee;
-});
+ctx.on('review/assign', (task, next) => {
+  const assignee = next() // 放行给下一层(或默认实现)
+  if (isConflicted(assignee, task)) return findAlternate(task)
+  return assignee
+})
 ```
 
 规则:
@@ -512,11 +512,11 @@ ctx.on("review/assign", (task, next) => {
 ### 8.6 定义事件类型
 
 ```ts
-declare module "cordis" {
+declare module 'cordis' {
   interface Events {
-    "submission/created"(s: Submission): void;
-    "submission/check"(d: Draft): string | void; // serial:返回否决理由
-    "review/assign"(t: ReviewTask, next: () => Reviewer): Reviewer; // waterfall
+    'submission/created'(s: Submission): void
+    'submission/check'(d: Draft): string | void // serial:返回否决理由
+    'review/assign'(t: ReviewTask, next: () => Reviewer): Reviewer // waterfall
   }
 }
 ```
@@ -540,12 +540,12 @@ npx cordis            # 读取 ./cordis.yml 依次装配
 ### 9.2 cordis.yml 基本形态
 
 ```yaml
-- name: "@qualy/plugin-server"
+- name: '@qualy/plugin-server'
   config:
     port: 3000
-- name: "@qualy/plugin-database"
-- name: "@qualy/plugin-gradebook"
-- name: "@qualy/plugin-ai-precheck"
+- name: '@qualy/plugin-database'
+- name: '@qualy/plugin-gradebook'
+- name: '@qualy/plugin-ai-precheck'
   disabled: true # 保留配置但停用
 ```
 
@@ -558,8 +558,8 @@ npx cordis            # 读取 ./cordis.yml 依次装配
 ```yaml
 - name: loader:group
   config:
-    - name: "@qualy/plugin-paradigm-declaration"
-    - name: "@qualy/plugin-paradigm-import"
+    - name: '@qualy/plugin-paradigm-declaration'
+    - name: '@qualy/plugin-paradigm-import'
 ```
 
 ### 9.4 服务隔离(isolate)
@@ -573,6 +573,7 @@ npx cordis            # 读取 ./cordis.yml 依次装配
   config:
     - name: driver-mysql
     -  # 该组其他插件
+
 
 - name: driver-sqlite
   isolate:
@@ -589,7 +590,7 @@ npx cordis            # 读取 ./cordis.yml 依次装配
 ```yaml
 - name: plugin-a
   intercept:
-    http: { proxy: "http://localhost:7890" }
+    http: { proxy: 'http://localhost:7890' }
 - name: plugin-b
   intercept:
     http: { timeout: 60000 }
@@ -608,31 +609,31 @@ npx cordis            # 读取 ./cordis.yml 依次装配
 `new Context()` 即全新隔离环境,依赖用 `ctx.provide` 打桩,无需 mock 框架:
 
 ```ts
-import { describe, it, expect } from "vitest";
-import { Context } from "cordis";
-import { declarationParadigm } from "../src";
+import { describe, it, expect } from 'vitest'
+import { Context } from 'cordis'
+import { declarationParadigm } from '../src'
 
-describe("申报审核范式", () => {
-  it("装载后注册,卸载后清理", async () => {
-    const ctx = new Context();
-    const registered: string[] = [];
+describe('申报审核范式', () => {
+  it('装载后注册,卸载后清理', async () => {
+    const ctx = new Context()
+    const registered: string[] = []
 
-    ctx.provide("questionTypes", {
+    ctx.provide('questionTypes', {
       register: (name: string) =>
         ctx.effect(() => {
-          registered.push(name);
-          return () => registered.splice(registered.indexOf(name), 1);
+          registered.push(name)
+          return () => registered.splice(registered.indexOf(name), 1)
         }),
-    });
+    })
 
-    const fiber = ctx.plugin(declarationParadigm);
-    await fiber;
-    expect(registered).toContain("declaration");
+    const fiber = ctx.plugin(declarationParadigm)
+    await fiber
+    expect(registered).toContain('declaration')
 
-    await fiber.dispose();
-    expect(registered).not.toContain("declaration");
-  });
-});
+    await fiber.dispose()
+    expect(registered).not.toContain('declaration')
+  })
+})
 ```
 
 每个插件配一个"装载 → 断言注册 → 卸载 → 断言清理"的测试,即可持续验证可逆性。

@@ -20,7 +20,8 @@ function workspacePackageExists(id: string): boolean {
       continue
     }
     for (const child of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (child.isDirectory() && child.name !== 'node_modules') stack.push(path.join(dir, child.name))
+      if (child.isDirectory() && child.name !== 'node_modules')
+        stack.push(path.join(dir, child.name))
     }
   }
   return false
@@ -43,4 +44,6 @@ if (!yml.includes(`name: "${name}"`) && !yml.includes(`name: '${name}'`)) {
 }
 
 execSync('pnpm install', { stdio: 'inherit' })
-console.log(`${name} added; declare qualy.database.schemaEntry in its package.json if it owns tables`)
+console.log(
+  `${name} added; declare qualy.database.schemaEntry in its package.json if it owns tables`,
+)

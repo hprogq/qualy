@@ -130,13 +130,13 @@ packages:
   - apps/*
 catalog:
   cordis: 4.0.0-rc.7
-  "@cordisjs/plugin-loader": 1.0.0-rc.5
-  "@cordisjs/plugin-include": 1.0.4
-  "@cordisjs/plugin-hmr": 1.0.15
-  "@orpc/server": 2.0.0-beta.21
-  "@orpc/contract": 2.0.0-beta.21
-  "@orpc/openapi": 2.0.0-beta.21
-  "@orpc/client": 2.0.0-beta.21
+  '@cordisjs/plugin-loader': 1.0.0-rc.5
+  '@cordisjs/plugin-include': 1.0.4
+  '@cordisjs/plugin-hmr': 1.0.15
+  '@orpc/server': 2.0.0-beta.21
+  '@orpc/contract': 2.0.0-beta.21
+  '@orpc/openapi': 2.0.0-beta.21
+  '@orpc/client': 2.0.0-beta.21
   zod: 4.4.3
   tsx: 4.23.1
 ```
@@ -168,9 +168,8 @@ catalog:
 services:
   postgres:
     image: postgres:16-alpine
-    environment:
-      { POSTGRES_USER: qualy, POSTGRES_PASSWORD: qualy, POSTGRES_DB: qualy }
-    ports: ["5432:5432"]
+    environment: { POSTGRES_USER: qualy, POSTGRES_PASSWORD: qualy, POSTGRES_DB: qualy }
+    ports: ['5432:5432']
     volumes: [pgdata:/var/lib/postgresql/data]
 volumes: { pgdata: {} }
 ```
@@ -217,21 +216,19 @@ volumes: { pgdata: {} }
 `src/index.ts` 最小版(插件统一**具名导出**形态:模块命名空间即对象插件,loader 无 default 导出时整体使用,name/inject/Config/apply 各自有完整类型;禁用 default 导出函数 + 属性赋值,default 解包后元属性会丢失。函数插件体不要有返回值,返回值会被当作 effect 清理函数):
 
 ```ts
-import type { Context } from "cordis";
-import { z } from "zod";
+import type { Context } from 'cordis'
+import { z } from 'zod'
 
-export const name = "ping";
+export const name = 'ping'
 
-export const Config = z
-  .object({ greeting: z.string().default("hi") })
-  .prefault({});
+export const Config = z.object({ greeting: z.string().default('hi') }).prefault({})
 
 export function apply(ctx: Context, config: z.infer<typeof Config>) {
-  ctx.logger.info("ping plugin loaded: %s", config.greeting);
+  ctx.logger.info('ping plugin loaded: %s', config.greeting)
   ctx.effect(() => {
-    const t = setInterval(() => ctx.logger.info("heartbeat"), 30_000);
-    return () => clearInterval(t);
-  }, "heartbeat-timer");
+    const t = setInterval(() => ctx.logger.info('heartbeat'), 30_000)
+    return () => clearInterval(t)
+  }, 'heartbeat-timer')
 }
 ```
 
@@ -239,13 +236,13 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 4. 根 `cordis.yml`:
 
 ```yaml
-- name: "@cordisjs/plugin-logger-console"
-- name: "@cordisjs/plugin-timer"
-- name: "@cordisjs/plugin-hmr" # 仅 dev;生产 yml 不含
+- name: '@cordisjs/plugin-logger-console'
+- name: '@cordisjs/plugin-timer'
+- name: '@cordisjs/plugin-hmr' # 仅 dev;生产 yml 不含
   config:
-    root: ["packages", "cordis.yml"] # 定则:loader 装载的代码目录 + 全部装配清单;include 零自监听,yml 热更靠 hmr watcher,见 notes/hmr.md
-- name: "@qualy/plugin-ping"
-  config: { greeting: "hello" }
+    root: ['packages', 'cordis.yml'] # 定则:loader 装载的代码目录 + 全部装配清单;include 零自监听,yml 热更靠 hmr watcher,见 notes/hmr.md
+- name: '@qualy/plugin-ping'
+  config: { greeting: 'hello' }
 ```
 
 (loader 启动后会写回 yml 并为每个条目补 `id:` 字段,属预期行为,id 提交进 git。)
@@ -268,40 +265,38 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
 1. `scripts/lib/read-entries.ts`:
 
 ```ts
-import fs from "node:fs";
-import YAML from "yaml";
+import fs from 'node:fs'
+import YAML from 'yaml'
 export interface Entry {
-  name: string;
-  config?: any;
-  disabled?: boolean;
+  name: string
+  config?: any
+  disabled?: boolean
 }
 export const readEntries = (): Entry[] =>
-  YAML.parse(fs.readFileSync("cordis.yml", "utf8")).filter(
-    (e: Entry) => !e.disabled,
-  );
+  YAML.parse(fs.readFileSync('cordis.yml', 'utf8')).filter((e: Entry) => !e.disabled)
 export const hasExport = (name: string, sub: string) => {
   try {
-    import.meta.resolve(`${name}/${sub}`);
-    return true;
+    import.meta.resolve(`${name}/${sub}`)
+    return true
   } catch {
-    return false;
+    return false
   }
-};
+}
 ```
 
 2. `scripts/gen-schema.ts`:
 
 ```ts
-import fs from "node:fs";
-import { readEntries, hasExport } from "./lib/read-entries.ts";
-const lines = ["// 由 gen-schema.ts 生成,勿手改"];
+import fs from 'node:fs'
+import { readEntries, hasExport } from './lib/read-entries.ts'
+const lines = ['// 由 gen-schema.ts 生成,勿手改']
 for (const e of readEntries()) {
-  if (e.name.startsWith("@qualy/") && hasExport(e.name, "schema"))
-    lines.push(`export * from '${e.name}/schema'`);
+  if (e.name.startsWith('@qualy/') && hasExport(e.name, 'schema'))
+    lines.push(`export * from '${e.name}/schema'`)
 }
-fs.mkdirSync("db", { recursive: true });
-fs.writeFileSync("db/schema.gen.ts", lines.join("\n") + "\n");
-console.log("schema.gen.ts 写入完成");
+fs.mkdirSync('db', { recursive: true })
+fs.writeFileSync('db/schema.gen.ts', lines.join('\n') + '\n')
+console.log('schema.gen.ts 写入完成')
 ```
 
 (设计前瞻,见 PLAN §2.7:三个生成器都要支持 `--all` 模式——发行构建按全量超集聚合、忽略 disabled;开发默认按 yml 过滤。落地时给 readEntries 加参数即可,本会话实现该参数但 dev 流程不使用。)
@@ -309,58 +304,60 @@ console.log("schema.gen.ts 写入完成");
 3. 依赖(先实查版本进 catalog):`drizzle-orm`、`drizzle-kit`、`pg`、`@types/pg`(pg 8.x 不带类型声明,strict 下缺它必报 TS7016)、`yaml`。database 包 dependencies 写 drizzle-orm、pg(catalog:),devDependencies 写 @types/pg;根 devDependencies 加 drizzle-kit、yaml(db:generate 与 gen 脚本的直接依赖,pnpm 严格 node_modules 下必须显式声明)。`packages/plugins/infra/database`(包名 `@qualy/plugin-database`,根加 workspace 依赖,yml 加条目并置于 ping 之前;Config 必须给默认值,否则 yml 无 config 时启动即 ValidationError 退出):
 
 ```ts
-import { Context, Service } from "cordis";
-import type { AnyRelations } from "drizzle-orm";
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-import { z } from "zod";
+import { Context, Service } from 'cordis'
+import type { AnyRelations } from 'drizzle-orm'
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { Pool } from 'pg'
+import { z } from 'zod'
 
-declare module "cordis" {
+declare module 'cordis' {
   interface Context {
-    db: Database;
+    db: Database
   }
 }
 
-const localFallback = "postgres://qualy:qualy@localhost:5432/qualy";
+const localFallback = 'postgres://qualy:qualy@localhost:5432/qualy'
 
 export default class Database extends Service {
   static Config = z
     .object({
       url: z.string().default(() => process.env.DATABASE_URL ?? localFallback),
     })
-    .prefault({});
+    .prefault({})
 
-  private pool!: Pool;
-  private views = new WeakMap<AnyRelations, unknown>();
-  drizzle!: NodePgDatabase;
+  private pool!: Pool
+  private views = new WeakMap<AnyRelations, unknown>()
+  drizzle!: NodePgDatabase
 
   constructor(
     ctx: Context,
     private config: z.infer<typeof Database.Config>,
   ) {
-    super(ctx, "db");
+    super(ctx, 'db')
     if (!process.env.DATABASE_URL && config.url === localFallback) {
-      ctx.logger.warn("DATABASE_URL is not set, falling back to %s", localFallback);
+      ctx.logger.warn('DATABASE_URL is not set, falling back to %s', localFallback)
     }
   }
 
   async *[Service.init]() {
-    const pool = new Pool({ connectionString: this.config.url });
-    pool.on("error", (error) => this.ctx.logger.error("idle client error: %s", error.message));
+    const pool = new Pool({ connectionString: this.config.url })
+    pool.on('error', (error) => this.ctx.logger.error('idle client error: %s', error.message))
     // dependents activate only after init completes, so this await is a real gate
-    await pool.query("select 1");
-    this.pool = pool;
-    this.drizzle = drizzle({ client: pool });
-    yield () => pool.end();
+    await pool.query('select 1')
+    this.pool = pool
+    this.drizzle = drizzle({ client: pool })
+    yield () => pool.end()
   }
 
-  withRelations<TRelations extends AnyRelations>(relations: TRelations): NodePgDatabase<TRelations> {
-    let view = this.views.get(relations) as NodePgDatabase<TRelations> | undefined;
+  withRelations<TRelations extends AnyRelations>(
+    relations: TRelations,
+  ): NodePgDatabase<TRelations> {
+    let view = this.views.get(relations) as NodePgDatabase<TRelations> | undefined
     if (!view) {
-      view = drizzle({ client: this.pool, relations });
-      this.views.set(relations, view);
+      view = drizzle({ client: this.pool, relations })
+      this.views.set(relations, view)
     }
-    return view;
+    return view
   }
 }
 ```
@@ -371,8 +368,8 @@ export default class Database extends Service {
 5. 根 `drizzle.config.ts`:schema 指 `./db/schema.gen.ts`,out `./db/migrations`,dialect postgresql,url 取 `process.env.DATABASE_URL`(strict 下需断言或 fallback)。顶部必须自行加载 .env(drizzle-kit 独立 CLI 不经过 dev 脚本的 --env-file):
 
 ```ts
-import { existsSync } from "node:fs";
-if (existsSync(".env")) process.loadEnvFile(".env");
+import { existsSync } from 'node:fs'
+if (existsSync('.env')) process.loadEnvFile('.env')
 ```
 
 6. `.env` 写 `DATABASE_URL=postgres://qualy:qualy@localhost:5432/qualy`(已在 gitignore)。
@@ -401,78 +398,78 @@ node -e "import('@orpc/openapi/node').then(m=>console.log('openapi/node:',Object
 **步骤**:根 package.json 加 oRPC 四包 `2.0.0-beta.21`;建 `packages/plugins/infra/server`(`@qualy/plugin-server`,根 workspace 依赖 + yml 条目置于 database 之后 ping 之前),代码:
 
 ```ts
-import { Context, Service } from "cordis";
-import { createServer, type Server } from "node:http";
-import { OpenAPIHandler } from "@orpc/openapi/node";
-import { z } from "zod";
+import { Context, Service } from 'cordis'
+import { createServer, type Server } from 'node:http'
+import { OpenAPIHandler } from '@orpc/openapi/node'
+import { z } from 'zod'
 // CORSPlugin / onError 按实查结果 import
 
-declare module "cordis" {
+declare module 'cordis' {
   interface Context {
-    server: ServerService;
+    server: ServerService
   }
 }
 export interface ApiContext {
-  cordis: Context;
+  cordis: Context
 }
 
 export class ServerService extends Service {
   static Config = z.object({
     port: z.number().int().default(3000),
-    prefix: z.string().default("/api"),
-  });
-  private fragments = new Map<string, any>();
-  private handler!: OpenAPIHandler<ApiContext>;
-  private http!: Server;
+    prefix: z.string().default('/api'),
+  })
+  private fragments = new Map<string, any>()
+  private handler!: OpenAPIHandler<ApiContext>
+  private http!: Server
 
   constructor(
     ctx: Context,
     private config: z.infer<typeof ServerService.Config>,
   ) {
-    super(ctx, "server");
-    this.rebuild();
+    super(ctx, 'server')
+    this.rebuild()
     ctx.effect(() => {
       this.http = createServer(async (req, res) => {
         const r = await this.handler.handle(req, res, {
           prefix: this.config.prefix as `/${string}`,
           context: { cordis: this.ctx },
-        });
+        })
         if (!r.matched) {
-          res.statusCode = 404;
-          res.end("Not Found");
+          res.statusCode = 404
+          res.end('Not Found')
         }
-      });
-      this.http.listen(this.config.port);
-      this.ctx.logger.info("http server listening on :%d", this.config.port);
+      })
+      this.http.listen(this.config.port)
+      this.ctx.logger.info('http server listening on :%d', this.config.port)
       // 必须返回 Promise 等端口真正释放:cordis 会 await 处置返回值,
       // 返回裸 this.http.close() 时旧 fd 未释放就重建监听,hmr 重载或改 port 热更时 EADDRINUSE 崩进程
       return () =>
         new Promise<void>((resolve) => {
-          this.http.closeAllConnections();
-          this.http.close(() => resolve());
-        });
-    });
+          this.http.closeAllConnections()
+          this.http.close(() => resolve())
+        })
+    })
   }
 
   contribute(ns: string, router: any) {
     return this.ctx.effect(() => {
-      if (this.fragments.has(ns)) throw new Error(`路由命名空间冲突: ${ns}`);
-      this.fragments.set(ns, router);
-      this.rebuild();
+      if (this.fragments.has(ns)) throw new Error(`路由命名空间冲突: ${ns}`)
+      this.fragments.set(ns, router)
+      this.rebuild()
       return () => {
-        this.fragments.delete(ns);
-        this.rebuild();
-      };
-    }, `route:${ns}`);
+        this.fragments.delete(ns)
+        this.rebuild()
+      }
+    }, `route:${ns}`)
   }
 
   private rebuild() {
     this.handler = new OpenAPIHandler(Object.fromEntries(this.fragments), {
       /* plugins/interceptors 按实查补 */
-    });
+    })
   }
 }
-export default ServerService;
+export default ServerService
 ```
 
 **验收**:`pnpm dev` 后 `curl -i localhost:3000/api/anything` 返回 404(链路通、无路由);`docs/notes/orpc-v2.md` 已含四条探针输出。
@@ -488,91 +485,84 @@ export default ServerService;
 1. ping 包 exports 补 `"./contract": "./src/contract.ts"`,`src/contract.ts`(**禁止依赖 drizzle**):
 
 ```ts
-import { oc } from "@orpc/contract";
-import { openapi } from "@orpc/openapi";
-import { z } from "zod";
+import { oc } from '@orpc/contract'
+import { openapi } from '@orpc/openapi'
+import { z } from 'zod'
 
 export const pingContract = {
   hello: oc
-    .meta(openapi({ method: "GET", path: "/ping/hello" }))
+    .meta(openapi({ method: 'GET', path: '/ping/hello' }))
     .input(z.object({ name: z.string().optional() }))
     .output(z.object({ msg: z.string() })),
-};
+}
 ```
 
 2. `src/index.ts` 全量替换:
 
 ```ts
-import type { Context } from "cordis";
-import { implement } from "@orpc/server";
-import { z } from "zod";
-import { pingContract } from "./contract.ts";
-import { pingLogs } from "./schema.ts";
-import type { ApiContext } from "@qualy/plugin-server";
+import type { Context } from 'cordis'
+import { implement } from '@orpc/server'
+import { z } from 'zod'
+import { pingContract } from './contract.ts'
+import { pingLogs } from './schema.ts'
+import type { ApiContext } from '@qualy/plugin-server'
 
-export const name = "ping";
-export const inject = ["server", "db"];
+export const name = 'ping'
+export const inject = ['server', 'db']
 
-export const Config = z
-  .object({ greeting: z.string().default("hi") })
-  .prefault({});
+export const Config = z.object({ greeting: z.string().default('hi') }).prefault({})
 
 export function apply(ctx: Context, config: z.infer<typeof Config>) {
-  const impl = implement(pingContract).$context<ApiContext>(); // $context 形态若不符,以类型提示实查为准并记 notes
+  const impl = implement(pingContract).$context<ApiContext>() // $context 形态若不符,以类型提示实查为准并记 notes
   ctx.server.contribute(
-    "ping",
+    'ping',
     impl.router({
       hello: impl.hello.handler(async ({ input, context }) => {
-        await context.cordis.db.drizzle
-          .insert(pingLogs)
-          .values({ name: input.name ?? "world" });
-        return { msg: `${config.greeting}, ${input.name ?? "world"}` };
+        await context.cordis.db.drizzle.insert(pingLogs).values({ name: input.name ?? 'world' })
+        return { msg: `${config.greeting}, ${input.name ?? 'world'}` }
       }),
     }),
-  );
+  )
 }
 ```
 
 3. `scripts/gen-contracts.ts`(替换占位):
 
 ```ts
-import fs from "node:fs";
-import { readEntries, hasExport } from "./lib/read-entries.ts";
-const imports = ["// 由 gen-contracts.ts 生成,勿手改"],
-  fields: string[] = [];
+import fs from 'node:fs'
+import { readEntries, hasExport } from './lib/read-entries.ts'
+const imports = ['// 由 gen-contracts.ts 生成,勿手改'],
+  fields: string[] = []
 for (const [i, e] of readEntries().entries()) {
-  if (!e.name.startsWith("@qualy/") || !hasExport(e.name, "contract")) continue;
-  const ns = e.name.split("/").pop()!.replace("plugin-", "");
-  imports.push(`import * as m${i} from '${e.name}/contract'`);
-  fields.push(`  ${ns}: Object.values(m${i})[0]!,`);
+  if (!e.name.startsWith('@qualy/') || !hasExport(e.name, 'contract')) continue
+  const ns = e.name.split('/').pop()!.replace('plugin-', '')
+  imports.push(`import * as m${i} from '${e.name}/contract'`)
+  fields.push(`  ${ns}: Object.values(m${i})[0]!,`)
 }
 imports.push(
-  "",
-  "export const appContract = {",
+  '',
+  'export const appContract = {',
   ...fields,
-  "} as const",
-  "export type AppContract = typeof appContract",
-);
-fs.writeFileSync(
-  "packages/api-client/src/contracts.gen.ts",
-  imports.join("\n") + "\n",
-);
-console.log("contracts.gen.ts 写入完成");
+  '} as const',
+  'export type AppContract = typeof appContract',
+)
+fs.writeFileSync('packages/api-client/src/contracts.gen.ts', imports.join('\n') + '\n')
+console.log('contracts.gen.ts 写入完成')
 ```
 
 4. `packages/api-client`(`@qualy/api-client`;依赖 @orpc/client、@orpc/contract、@orpc/openapi):
 
 ```ts
-import { createORPCClient } from "@orpc/client";
-import { OpenAPILink } from "@orpc/openapi/client"; // 位置实查,不符记 notes
-import type { ContractRouterClient } from "@orpc/contract";
-import { appContract, type AppContract } from "./contracts.gen.ts";
+import { createORPCClient } from '@orpc/client'
+import { OpenAPILink } from '@orpc/openapi/client' // 位置实查,不符记 notes
+import type { ContractRouterClient } from '@orpc/contract'
+import { appContract, type AppContract } from './contracts.gen.ts'
 
 export function createApiClient(url: string) {
-  const link = new OpenAPILink(appContract, { url });
-  return createORPCClient<ContractRouterClient<AppContract>>(link);
+  const link = new OpenAPILink(appContract, { url })
+  return createORPCClient<ContractRouterClient<AppContract>>(link)
 }
-export type AppClient = ReturnType<typeof createApiClient>;
+export type AppClient = ReturnType<typeof createApiClient>
 ```
 
 **验收四连**:`pnpm gen && pnpm dev` 后 (a) `curl 'localhost:3000/api/ping/hello?name=毕设'` 200 且含问候;(b) `psql -c 'select count(*) from ping_logs'` 递增;(c) 根下写临时脚本 `node --import tsx -e "import('./packages/api-client/src/index.ts').then(async m=>{const c=m.createApiClient('http://localhost:3000/api');console.log(await c.ping.hello({name:'client'}))})"` 输出 msg;(d) **cordis.yml 将 ping 置 `disabled: true`,重启后 (a) 的 curl 变 404,恢复后再 200**。
@@ -586,70 +576,70 @@ export type AppClient = ReturnType<typeof createApiClient>;
 **步骤**:建 `packages/plugins/infra/ui-registry`(`@qualy/plugin-ui-registry`,workspace 依赖 + yml 条目):`src/contract.ts` 定义 `getManifest`(GET `/ui/manifest`,input 空对象,output `{ pages: PageOut[], nav: NavOut[] }` 的 zod);`src/index.ts`:
 
 ```ts
-import { Context, Service } from "cordis";
-import { implement } from "@orpc/server";
-import { uiContract } from "./contract.ts";
-import type { ApiContext } from "@qualy/plugin-server";
+import { Context, Service } from 'cordis'
+import { implement } from '@orpc/server'
+import { uiContract } from './contract.ts'
+import type { ApiContext } from '@qualy/plugin-server'
 
-declare module "cordis" {
+declare module 'cordis' {
   interface Context {
-    ui: UiRegistry;
+    ui: UiRegistry
   }
 }
 
 export interface PageDecl {
-  path: string;
-  component: string;
-  layout: "admin" | "blank";
-  public?: boolean;
-  permission?: string;
-  nav?: { label: string; icon?: string; order?: number };
+  path: string
+  component: string
+  layout: 'admin' | 'blank'
+  public?: boolean
+  permission?: string
+  nav?: { label: string; icon?: string; order?: number }
 }
 
 export class UiRegistry extends Service {
-  private pages = new Map<string, PageDecl>();
+  private pages = new Map<string, PageDecl>()
   constructor(ctx: Context) {
-    super(ctx, "ui");
-    const impl = implement(uiContract).$context<ApiContext>();
-    ctx.inject(["server"], (ctx) => {
+    super(ctx, 'ui')
+    const impl = implement(uiContract).$context<ApiContext>()
+    ctx.inject(['server'], (ctx) => {
       ctx.server.contribute(
-        "ui",
+        'ui',
         impl.router({
           getManifest: impl.getManifest.handler(() => this.build()),
         }),
-      );
-    });
+      )
+    })
   }
   addPage(p: PageDecl) {
     return this.ctx.effect(() => {
-      this.pages.set(p.path, p);
-      return () => this.pages.delete(p.path);
-    }, `page:${p.path}`);
+      this.pages.set(p.path, p)
+      return () => this.pages.delete(p.path)
+    }, `page:${p.path}`)
   }
   private build() {
-    const visible = [...this.pages.values()]; // P1 在此接 RBAC 过滤
+    const visible = [...this.pages.values()] // P1 在此接 RBAC 过滤
     return {
       pages: visible.map(({ nav, ...rest }) => rest),
       nav: visible
         .filter((p) => p.nav)
         .map((p) => ({ path: p.path, ...p.nav! }))
         .sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
-    };
+    }
   }
 }
-export default UiRegistry;
+export default UiRegistry
 ```
 
 ping 插件 inject 加 `'ui'`,函数体加:
 
 ```ts
 ctx.ui.addPage({
-  path: "/ping",
-  layout: "admin",
-  component: "PingPage",
+  path: '/ping',
+  layout: 'admin',
+  component: 'PingPage',
   public: true,
-  nav: { label: "Ping 演示", order: 10 },
-});
+  nav: { label: 'Ping 演示', order: 10 },
+})
 ```
 
 **验收**:`curl localhost:3000/api/ui/manifest` 返回含 /ping 的 pages 与 nav;yml 停用 ping → manifest 两处条目消失(同时接口 404,双重验证贡献点 effect 化)。
@@ -673,70 +663,68 @@ import {
   Suspense,
   type LazyExoticComponent,
   type ComponentType,
-} from "react";
-import type { AppClient } from "@qualy/api-client";
+} from 'react'
+import type { AppClient } from '@qualy/api-client'
 
-export type Manifest = Awaited<ReturnType<AppClient["ui"]["getManifest"]>>;
+export type Manifest = Awaited<ReturnType<AppClient['ui']['getManifest']>>
 export interface Runtime {
-  client: AppClient;
-  manifest: Manifest | null;
-  registry: Record<string, LazyExoticComponent<ComponentType<any>>>;
+  client: AppClient
+  manifest: Manifest | null
+  registry: Record<string, LazyExoticComponent<ComponentType<any>>>
 }
-const RuntimeContext = createContext<Runtime | null>(null);
+const RuntimeContext = createContext<Runtime | null>(null)
 export function RuntimeProvider({
   value,
   children,
 }: {
-  value: Runtime;
-  children: React.ReactNode;
+  value: Runtime
+  children: React.ReactNode
 }) {
-  return (
-    <RuntimeContext.Provider value={value}>{children}</RuntimeContext.Provider>
-  );
+  return <RuntimeContext.Provider value={value}>{children}</RuntimeContext.Provider>
 }
 export function useRuntime() {
-  const r = useContext(RuntimeContext);
-  if (!r) throw new Error("必须在 RuntimeProvider 内使用");
-  return r;
+  const r = useContext(RuntimeContext)
+  if (!r) throw new Error('必须在 RuntimeProvider 内使用')
+  return r
 }
-export const useApi = () => useRuntime().client;
-export const useManifest = () => useRuntime().manifest;
+export const useApi = () => useRuntime().client
+export const useManifest = () => useRuntime().manifest
 export function Slot({ id }: { id: string }) {
-  const { manifest, registry } = useRuntime();
-  const widgets = (manifest as any)?.widgets?.[id] ?? []; // P0 恒为空,P1 启用
+  const { manifest, registry } = useRuntime()
+  const widgets = (manifest as any)?.widgets?.[id] ?? [] // P0 恒为空,P1 启用
   return (
     <>
       {widgets.map((w: any, i: number) => {
-        const C = registry[w.component];
+        const C = registry[w.component]
         return C ? (
           <Suspense key={i} fallback={null}>
             <C />
           </Suspense>
-        ) : null;
+        ) : null
       })}
     </>
-  );
+  )
 }
 ```
 
 2. ping 包 exports 补 `"./client": "./client/index.ts"`,并声明 client 侧依赖:`"@qualy/web-runtime": "workspace:*"` 与 `"react": "catalog:"`(catalog 补 react/react-dom/react-router 精确版本;§0.3 规则:插件带 client 目录必须自声明 react 与 web-runtime,pnpm 严格 node_modules 下靠根解析必失败)。`client/index.ts` 只导出 thunk 表:
 
 ```ts
-export const components = { PingPage: () => import("./PingPage.tsx") };
+export const components = { PingPage: () => import('./PingPage.tsx') }
 ```
 
 `client/PingPage.tsx`(**只依赖 web-runtime,禁止反向 import 壳**):
 
 ```tsx
-import { useEffect, useState } from "react";
-import { useApi } from "@qualy/web-runtime";
+import { useEffect, useState } from 'react'
+import { useApi } from '@qualy/web-runtime'
 export default function PingPage() {
-  const api = useApi();
-  const [msg, setMsg] = useState("…");
+  const api = useApi()
+  const [msg, setMsg] = useState('…')
   useEffect(() => {
-    api.ping.hello({ name: "前端" }).then((r) => setMsg(r.msg));
-  }, []);
-  return <h2>{msg}</h2>;
+    api.ping.hello({ name: '前端' }).then((r) => setMsg(r.msg))
+  }, [])
+  return <h2>{msg}</h2>
 }
 ```
 
@@ -744,33 +732,32 @@ export default function PingPage() {
 4. `apps/web`:`pnpm create vite apps/web --template react-ts`;依赖加 react-router、@qualy/api-client、@qualy/web-runtime;vite.config 加 dev 代理 `'/api' → 'http://localhost:3000'`;`src/App.tsx`:
 
 ```tsx
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Routes, Route, Link, Outlet } from "react-router";
-import { createApiClient } from "@qualy/api-client";
-import { RuntimeProvider, type Manifest } from "@qualy/web-runtime";
-import { components } from "./plugins.gen";
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { BrowserRouter, Routes, Route, Link, Outlet } from 'react-router'
+import { createApiClient } from '@qualy/api-client'
+import { RuntimeProvider, type Manifest } from '@qualy/web-runtime'
+import { components } from './plugins.gen'
 
-const client = createApiClient("/api");
+const client = createApiClient('/api')
 const registry = Object.fromEntries(
   Object.entries(components).map(([k, t]) => [k, lazy(t as any)]),
-) as any;
+) as any
 
 export default function App() {
-  const [manifest, setManifest] = useState<Manifest | null>(null);
+  const [manifest, setManifest] = useState<Manifest | null>(null)
   useEffect(() => {
-    client.ui.getManifest({}).then(setManifest);
-  }, []);
-  const runtime = useMemo(() => ({ client, manifest, registry }), [manifest]);
-  if (!manifest) return null;
-  const pages = (l: string) =>
-    manifest.pages.filter((p: any) => p.layout === l);
+    client.ui.getManifest({}).then(setManifest)
+  }, [])
+  const runtime = useMemo(() => ({ client, manifest, registry }), [manifest])
+  if (!manifest) return null
+  const pages = (l: string) => manifest.pages.filter((p: any) => p.layout === l)
   return (
     <RuntimeProvider value={runtime}>
       <BrowserRouter>
         <Routes>
           <Route element={<AdminLayout nav={manifest.nav} />}>
-            {pages("admin").map((p: any) => {
-              const C = registry[p.component];
+            {pages('admin').map((p: any) => {
+              const C = registry[p.component]
               return (
                 <Route
                   key={p.path}
@@ -785,18 +772,18 @@ export default function App() {
                     )
                   }
                 />
-              );
+              )
             })}
           </Route>
           {/* blank 布局同构;P0 无 blank 页可留空 */}
         </Routes>
       </BrowserRouter>
     </RuntimeProvider>
-  );
+  )
 }
 function AdminLayout({ nav }: any) {
   return (
-    <div style={{ display: "flex" }}>
+    <div style={{ display: 'flex' }}>
       <nav style={{ width: 200 }}>
         {nav.map((n: any) => (
           <div key={n.path}>
@@ -808,19 +795,18 @@ function AdminLayout({ nav }: any) {
         <Outlet />
       </main>
     </div>
-  );
+  )
 }
 ```
 
 5. `scripts/check-chunks.mjs`(树摇验证器):
 
 ```js
-import fs from "node:fs";
-const dir = "apps/web/dist/assets";
-const hit =
-  fs.existsSync(dir) && fs.readdirSync(dir).some((f) => /PingPage/.test(f));
-console.log(hit ? "PingPage 独立 chunk ✓" : "PingPage chunk 不存在 ✗");
-process.exit(hit ? 0 : 1);
+import fs from 'node:fs'
+const dir = 'apps/web/dist/assets'
+const hit = fs.existsSync(dir) && fs.readdirSync(dir).some((f) => /PingPage/.test(f))
+console.log(hit ? 'PingPage 独立 chunk ✓' : 'PingPage chunk 不存在 ✗')
+process.exit(hit ? 0 : 1)
 ```
 
 **验收(全部命令化)**:(a) 后端起、`pnpm dev:web`,浏览器人工走查:侧边栏「Ping 演示」、页面显示问候(此条留给人);(b) `pnpm gen && pnpm --filter web build && node scripts/check-chunks.mjs` → ✓;(c) yml 停用 ping,`pnpm gen` 后重新 build,`node scripts/check-chunks.mjs` 退出码 1(✗ 即树摇成立),恢复。
@@ -836,42 +822,42 @@ process.exit(hit ? 0 : 1);
 1. 根 devDependencies 加 vitest;`packages/plugins/demo/ping/tests/ping.test.ts`:
 
 ```ts
-import { describe, it, expect } from "vitest";
-import { Context } from "cordis";
-import * as ping from "../src/index.ts";
+import { describe, it, expect } from 'vitest'
+import { Context } from 'cordis'
+import * as ping from '../src/index.ts'
 
-describe("plugin-ping", () => {
-  it("装载注册路由与页面,卸载后全部清理", async () => {
-    const ctx = new Context();
+describe('plugin-ping', () => {
+  it('装载注册路由与页面,卸载后全部清理', async () => {
+    const ctx = new Context()
     const routes = new Map(),
-      pages = new Map();
-    ctx.provide("server", {
+      pages = new Map()
+    ctx.provide('server', {
       contribute: (ns: string, r: any) =>
         (ctx as any).effect(() => {
-          routes.set(ns, r);
-          return () => routes.delete(ns);
+          routes.set(ns, r)
+          return () => routes.delete(ns)
         }),
-    });
-    ctx.provide("ui", {
+    })
+    ctx.provide('ui', {
       addPage: (p: any) =>
         (ctx as any).effect(() => {
-          pages.set(p.path, p);
-          return () => pages.delete(p.path);
+          pages.set(p.path, p)
+          return () => pages.delete(p.path)
         }),
-    });
-    ctx.provide("db", {
+    })
+    ctx.provide('db', {
       drizzle: { insert: () => ({ values: async () => {} }) },
-    });
+    })
 
-    const fiber = ctx.plugin(ping, { greeting: "测" });
-    await fiber;
-    expect(routes.has("ping")).toBe(true);
-    expect(pages.has("/ping")).toBe(true);
-    await fiber.dispose();
-    expect(routes.size).toBe(0);
-    expect(pages.size).toBe(0);
-  });
-});
+    const fiber = ctx.plugin(ping, { greeting: '测' })
+    await fiber
+    expect(routes.has('ping')).toBe(true)
+    expect(pages.has('/ping')).toBe(true)
+    await fiber.dispose()
+    expect(routes.size).toBe(0)
+    expect(pages.size).toBe(0)
+  })
+})
 ```
 
 同构地给 database/server/ui-registry 各补一个最小「装载→就绪→卸载→清理」测试(server 测 contribute 冲突抛错与卸载后 fragments 清空,可不起真 http:端口 0 或将 listen 包在可注入开关后)。
@@ -910,8 +896,8 @@ describe("plugin-ping", () => {
 | 启动/重载报 Invalid effect        | 函数插件体隐式返回了非函数值(箭头函数单表达式体慎用);插件返回值会被当作 effect 清理函数 |
 | 相对导入报 TS2835/TS2307          | 补 `.ts` 扩展名(软约定);别把 base 切回 NodeNext,cordis 生态 d.ts 不兼容                 |
 | 改 cordis.yml 不热更了            | hmr root 漏了装配清单;include 零自监听,root 必须含 cordis.yml(见 notes/hmr.md)          |
-| 改完源码后插件配置"变回去了"      | hmr 源码重载以启动时 config 复插,不随 yml 热更同步;真改一次 yml 值或重启 dev 恢复        |
+| 改完源码后插件配置"变回去了"      | hmr 源码重载以启动时 config 复插,不随 yml 热更同步;真改一次 yml 值或重启 dev 恢复       |
 | drizzle 代码出现陌生 API          | v0/v1 教程混杂,先跑导出探针再信(casing/RQB/迁移结构 v1 全变了,见 notes/drizzle.md)      |
 | 服务字段在依赖方里是 undefined    | 异步初始化写在了构造器 effect 里;必须搬进 `async *[Service.init]()`(见 notes/cordis.md) |
 | 停用插件后 generate 想 DROP 表    | schema 聚合必须恒超集(gen-schema 已定案);只有从 yml 删除条目才显式产出 DROP 并人工审阅  |
-| 要写 function/trigger 等手工 SQL  | `pnpm db:custom --name <插件>-<描述>`(drizzle-kit generate --custom 空迁移,同账本)     |
+| 要写 function/trigger 等手工 SQL  | `pnpm db:custom --name <插件>-<描述>`(drizzle-kit generate --custom 空迁移,同账本)      |

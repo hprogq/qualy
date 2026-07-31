@@ -73,7 +73,9 @@ export default class Database extends Service {
   }
 
   // per-relations view over the shared pool, for plugins that want the db.query relational API
-  withRelations<TRelations extends AnyRelations>(relations: TRelations): NodePgDatabase<TRelations> {
+  withRelations<TRelations extends AnyRelations>(
+    relations: TRelations,
+  ): NodePgDatabase<TRelations> {
     let view = this.views.get(relations) as NodePgDatabase<TRelations> | undefined
     if (!view) {
       view = drizzle({ client: this.pool, relations, ...this.options })

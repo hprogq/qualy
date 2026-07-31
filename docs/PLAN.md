@@ -63,27 +63,28 @@ AI 只出建议与草案,人做决定。AI 生成计分函数必须通过类型�
 
 ## 3. 技术选型定案(含否决清单,勿重启讨论)
 
-| 层 | 选定 | 版本纪律 | 关键理由 | 已否决 |
-|---|---|---|---|---|
-| 插件运行时 | cordis | **锁 `4.0.0-rc.7` 不带 ^** | 插件一等公民、inject 门控、热插拔联动、Standard Schema 直连 Zod;作者生态(Koishi/Hydro)开发者有维护经验 | NestJS(需自造插件语义)、方案2远程装插件市场 |
-| API 层 | oRPC | **锁 `2.0.0-beta.21` 全家** | 契约先行 + OpenAPI + 端到端类型;对象式路由天然适配动态合并/卸载(命令式框架无法干净反注册) | Hono RPC/Fastify/Express/tRPC/ts-rest |
-| HTTP 宿主 | node:http + oRPC handler | — | server 插件持 fragments Map,rebuild 原子换 handler;非 RPC 流量(静态文件/回调)可旁挂薄 Hono | — |
-| 数据库 | PostgreSQL 16 + Drizzle | — | 强关系域(成绩/审核链/结果);jsonb 存配置与答案;pgvector 做章程 RAG | MongoDB、Elasticsearch、Neo4j |
-| 校验 | Zod 4 | 锁小版本 | 全链路单一 schema 语言:插件 Config、oRPC 契约、动态表单、AI 结构化输出 | JSON Schema 表单库(RJSF/JSON Forms) |
-| AI SDK | Vercel AI SDK v6 | — | `generateText` + `Output.object()`(v6 弃用 generateObject)配 Zod;比 LangChain 薄且类型友好 | LangChain 核心、LangGraph(有界重试用 for 循环)、DeepAgents、Mem0 |
-| 模型 | DashScope Qwen 系 | — | 文本 qwen-max/plus;多模态 Qwen-VL;embedding text-embedding 系;OpenAI 兼容接入 | — |
-| 队列 | BullMQ + Redis | — | LLM 调用必须异步化;重试/限流/结果缓存(按材料哈希去重) | — |
-| 对象存储 | MinIO | — | S3 兼容,证明材料存储,VL 模型取件 | 裸文件系统(仅 P2 临时) |
-| 沙箱 | QuickJS-WASM(quickjs-emscripten)优先 | — | 纯计分函数无 IO,天然隔离限时限内存;备选 isolated-vm | vm2(已死)、裸 eval/new Function(禁止) |
-| 可观测 | Langfuse 自托管 | — | MIT 开源自托管一等公民;traces/datasets 直接供论文实验 | LangSmith(闭源,自托管需企业合同) |
-| 前端 | Vite + React + react-router + RHF + Monaco | — | 壳 + manifest 数据驱动 + 注册表 lazy;Monaco 内置 TS worker 做计分函数编辑 | SSR、qiankun/iframe 微前端、真 LSP 服务器 |
-| 编排 | Docker Compose | — | pg/redis/minio/langfuse 一键 | — |
+| 层         | 选定                                       | 版本纪律                    | 关键理由                                                                                               | 已否决                                                           |
+| ---------- | ------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| 插件运行时 | cordis                                     | **锁 `4.0.0-rc.7` 不带 ^**  | 插件一等公民、inject 门控、热插拔联动、Standard Schema 直连 Zod;作者生态(Koishi/Hydro)开发者有维护经验 | NestJS(需自造插件语义)、方案2远程装插件市场                      |
+| API 层     | oRPC                                       | **锁 `2.0.0-beta.21` 全家** | 契约先行 + OpenAPI + 端到端类型;对象式路由天然适配动态合并/卸载(命令式框架无法干净反注册)              | Hono RPC/Fastify/Express/tRPC/ts-rest                            |
+| HTTP 宿主  | node:http + oRPC handler                   | —                           | server 插件持 fragments Map,rebuild 原子换 handler;非 RPC 流量(静态文件/回调)可旁挂薄 Hono             | —                                                                |
+| 数据库     | PostgreSQL 16 + Drizzle                    | —                           | 强关系域(成绩/审核链/结果);jsonb 存配置与答案;pgvector 做章程 RAG                                      | MongoDB、Elasticsearch、Neo4j                                    |
+| 校验       | Zod 4                                      | 锁小版本                    | 全链路单一 schema 语言:插件 Config、oRPC 契约、动态表单、AI 结构化输出                                 | JSON Schema 表单库(RJSF/JSON Forms)                              |
+| AI SDK     | Vercel AI SDK v6                           | —                           | `generateText` + `Output.object()`(v6 弃用 generateObject)配 Zod;比 LangChain 薄且类型友好             | LangChain 核心、LangGraph(有界重试用 for 循环)、DeepAgents、Mem0 |
+| 模型       | DashScope Qwen 系                          | —                           | 文本 qwen-max/plus;多模态 Qwen-VL;embedding text-embedding 系;OpenAI 兼容接入                          | —                                                                |
+| 队列       | BullMQ + Redis                             | —                           | LLM 调用必须异步化;重试/限流/结果缓存(按材料哈希去重)                                                  | —                                                                |
+| 对象存储   | MinIO                                      | —                           | S3 兼容,证明材料存储,VL 模型取件                                                                       | 裸文件系统(仅 P2 临时)                                           |
+| 沙箱       | QuickJS-WASM(quickjs-emscripten)优先       | —                           | 纯计分函数无 IO,天然隔离限时限内存;备选 isolated-vm                                                    | vm2(已死)、裸 eval/new Function(禁止)                            |
+| 可观测     | Langfuse 自托管                            | —                           | MIT 开源自托管一等公民;traces/datasets 直接供论文实验                                                  | LangSmith(闭源,自托管需企业合同)                                 |
+| 前端       | Vite + React + react-router + RHF + Monaco | —                           | 壳 + manifest 数据驱动 + 注册表 lazy;Monaco 内置 TS worker 做计分函数编辑                              | SSR、qiankun/iframe 微前端、真 LSP 服务器                        |
+| 编排       | Docker Compose                             | —                           | pg/redis/minio/langfuse 一键                                                                           | —                                                                |
 
 ## 4. 已实测验证的事实(直接信任,勿重新调研)
 
 以下均在 Node 22 实机验证(2026-07):
 
 **cordis 4.0.0-rc.7**
+
 1. 依赖门控:声明 `inject` 的插件在依赖服务未就绪时停 PENDING 不执行,就绪自动执行。
 2. 热插拔联动:卸载被依赖服务 → 依赖方 effect 全释放、状态**回卷 PENDING**;服务恢复 → 依赖方自动重新执行回 ACTIVE。
 3. Zod 直连:`plugin.Config = z.object(...)` 装载时校验、填默认值,非法抛 ValidationError。
@@ -92,14 +93,9 @@ AI 只出建议与草案,人做决定。AI 生成计分函数必须通过类型�
 6. 多实例:同插件多次 plugin() = 多 fiber,各持独立 config(3.x fork 的替代)。
 7. CLI:`NODE_OPTIONS='--import tsx' node node_modules/cordis/bin.js` 直接装载 cordis.yml 中**相对路径的 .ts 插件**,配置正常注入。cordis.yml 条目字段:id/name/config/disabled/inject/intercept/isolate/group。
 
-**oRPC 2.0.0-beta.21**
-8. **破坏性变更:`oc.route()` 已移除**,路由声明为 `oc.meta(openapi({ method, path }))`(`openapi` 自 `@orpc/openapi`)。网上 v1 教程此处全部失效。
-9. 入口:`OpenAPIHandler` 在 `@orpc/openapi/node`;`RPCHandler`、`NodeHttpHandler` 在 `@orpc/server/node`。
-10. 最小闭环已通:contract → `implement(contract)` → `impl.x.y.handler` → `new OpenAPIHandler(router)` → `handler.handle(req,res,{prefix,context})` → HTTP 200。
-11. 存疑待验:middleware 定义的 errors 并入 procedure 类型——v1 作者明确拒绝过该特性,v2 是否改变**未证实**。规避方案:公共 errors 定义在 base builder(`os.errors({...})`),procedure 从 base 派生。
+**oRPC 2.0.0-beta.21** 8. **破坏性变更:`oc.route()` 已移除**,路由声明为 `oc.meta(openapi({ method, path }))`(`openapi` 自 `@orpc/openapi`)。网上 v1 教程此处全部失效。9. 入口:`OpenAPIHandler` 在 `@orpc/openapi/node`;`RPCHandler`、`NodeHttpHandler` 在 `@orpc/server/node`。10. 最小闭环已通:contract → `implement(contract)` → `impl.x.y.handler` → `new OpenAPIHandler(router)` → `handler.handle(req,res,{prefix,context})` → HTTP 200。11. 存疑待验:middleware 定义的 errors 并入 procedure 类型——v1 作者明确拒绝过该特性,v2 是否改变**未证实**。规避方案:公共 errors 定义在 base builder(`os.errors({...})`),procedure 从 base 派生。
 
-**其他**
-12. npm 官网页面有反爬,查包信息用 `registry.npmjs.org` API 或直接下 tarball 读 d.ts;beta/rc 期 API 以 `node -e "import('包').then(m=>console.log(Object.keys(m)))"` 实查为准,勿凭记忆或教程。
+**其他** 12. npm 官网页面有反爬,查包信息用 `registry.npmjs.org` API 或直接下 tarball 读 d.ts;beta/rc 期 API 以 `node -e "import('包').then(m=>console.log(Object.keys(m)))"` 实查为准,勿凭记忆或教程。
 
 ## 5. 系统架构
 
@@ -155,12 +151,12 @@ qualy-next/
 
 ### 6.3 事件语义映射(cordis 五模式的用途约定)
 
-| 模式 | 本项目用途 |
-|---|---|
-| emit | 领域广播:`submission/created`、`batch/settled`(通知型) |
-| parallel | 结算后善后:等所有插件完成再归档 |
-| bail | 注册中心路由:`paradigm/resolve` 首个应答的范式接手 |
-| serial | 投票否决:`submission/check` 首个返回否决理由即拒绝 |
+| 模式      | 本项目用途                                                      |
+| --------- | --------------------------------------------------------------- |
+| emit      | 领域广播:`submission/created`、`batch/settled`(通知型)          |
+| parallel  | 结算后善后:等所有插件完成再归档                                 |
+| bail      | 注册中心路由:`paradigm/resolve` 首个应答的范式接手              |
+| serial    | 投票否决:`submission/check` 首个返回否决理由即拒绝              |
 | waterfall | 可拦截默认行为:`review/assign` 审核分派(回避插件包装)、配置保存 |
 
 ### 6.4 审核链
@@ -180,13 +176,13 @@ fragments Map + contribute(ns, router) 全 effect 化 + rebuild 原子换 handle
 
 ### 6.7 AI 能力管线(五场景)
 
-| 场景 | 管线 | 要点 |
-|---|---|---|
-| genform | 贴章程 → pgvector 召回相关条款 → Output.object(FieldConfigSchema) → 单独生成计分函数源码 → vfs 类型检查 + 沙箱跑 AI 同产测试用例 → 失败带诊断回喂修复(≤3 轮)→ 管理员确认发布 | 有界 for 循环,不引入 LangGraph |
-| precheck | 提交触发 BullMQ → VL 读材料 → 结构化输出{完整性,风险项[]} | 措辞用「预检提示」,**不给通过率百分比** |
-| review-assist | VL 按题型字段 Zod 提取 → 代码比对申报值 vs 提取值 → 差异 + streamText 建议稿 | 与「材料问题定位」同模块 |
-| explain | 沙箱执行轨迹(命中分支/中间值)+ 函数注释 → 自然语言 | 成本最低 |
-| qa | 章程按条款切块 → embedding → pgvector →(rerank)→ 带引用回答 | 复用于 genform 的召回 |
+| 场景          | 管线                                                                                                                                                                         | 要点                                    |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| genform       | 贴章程 → pgvector 召回相关条款 → Output.object(FieldConfigSchema) → 单独生成计分函数源码 → vfs 类型检查 + 沙箱跑 AI 同产测试用例 → 失败带诊断回喂修复(≤3 轮)→ 管理员确认发布 | 有界 for 循环,不引入 LangGraph          |
+| precheck      | 提交触发 BullMQ → VL 读材料 → 结构化输出{完整性,风险项[]}                                                                                                                    | 措辞用「预检提示」,**不给通过率百分比** |
+| review-assist | VL 按题型字段 Zod 提取 → 代码比对申报值 vs 提取值 → 差异 + streamText 建议稿                                                                                                 | 与「材料问题定位」同模块                |
+| explain       | 沙箱执行轨迹(命中分支/中间值)+ 函数注释 → 自然语言                                                                                                                           | 成本最低                                |
+| qa            | 章程按条款切块 → embedding → pgvector →(rerank)→ 带引用回答                                                                                                                  | 复用于 genform 的召回                   |
 
 工程通则:LLM 调用一律走队列不占 HTTP 请求;按材料哈希缓存 VL 结果;Langfuse 从 P4 开头接入采集全部调用(token/延迟/成本),datasets+scores 支撑论文实验。
 
@@ -200,14 +196,14 @@ fragments Map + contribute(ns, router) 全 effect 化 + rebuild 原子换 handle
 
 ## 8. 开发路线图(P0–P5)
 
-| 阶段 | 时长 | 交付 | 验收关键 |
-|---|---|---|---|
-| **P0 装配骨架** | 1–1.5 周 | monorepo + cordis 闭环 + server/database + 三生成器雏形 + 前端壳最小版 + ping 全链路 + vitest 模板 | 详见 p0-manual.md 的 8 条清单;核心:停用零重建、剔除后树摇成立 |
-| **P1 基座迁移** | 1–2 周 | Qualy auth/org/rbac → 三插件 + dict;manifest 接 RBAC | 登录/组织树/授权走通;不同角色见不同导航。**搬家不重写,超时即镀金** |
-| **P2 双层机制** | 2–3 周 | question-type + sandbox + 类型门禁链(Monaco+vfs) + paradigm-declaration + submission | **手写**「献血分」题型端到端;改字段配置旧函数飘红待修复 |
-| **P3 流程闭环** | ~2 周 | review + batch + settle + 公示申诉基础 + gradebook + paradigm-import + MinIO 转正 | 一个批次全流程;导入成绩自动算学分绩/挂科 |
-| **P4 AI 链路** | 2–3 周 | ai + queue 插件;五 AI 场景按 genform→precheck→assist→explain→qa 顺序;Langfuse 开头接入 | 答辩主线演示:贴章程→生成→确认→发布→填报→预检→建议稿 |
-| **P5 收尾实验** | ~2 周 | peer/fixed 范式、打磨、Langfuse 实验数据、ACM 场景换配置验证、(可选)运行时前端加载演示 | 论文实验章节数据齐;通用性实证 |
+| 阶段            | 时长     | 交付                                                                                               | 验收关键                                                           |
+| --------------- | -------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **P0 装配骨架** | 1–1.5 周 | monorepo + cordis 闭环 + server/database + 三生成器雏形 + 前端壳最小版 + ping 全链路 + vitest 模板 | 详见 p0-manual.md 的 8 条清单;核心:停用零重建、剔除后树摇成立      |
+| **P1 基座迁移** | 1–2 周   | Qualy auth/org/rbac → 三插件 + dict;manifest 接 RBAC                                               | 登录/组织树/授权走通;不同角色见不同导航。**搬家不重写,超时即镀金** |
+| **P2 双层机制** | 2–3 周   | question-type + sandbox + 类型门禁链(Monaco+vfs) + paradigm-declaration + submission               | **手写**「献血分」题型端到端;改字段配置旧函数飘红待修复            |
+| **P3 流程闭环** | ~2 周    | review + batch + settle + 公示申诉基础 + gradebook + paradigm-import + MinIO 转正                  | 一个批次全流程;导入成绩自动算学分绩/挂科                           |
+| **P4 AI 链路**  | 2–3 周   | ai + queue 插件;五 AI 场景按 genform→precheck→assist→explain→qa 顺序;Langfuse 开头接入             | 答辩主线演示:贴章程→生成→确认→发布→填报→预检→建议稿                |
+| **P5 收尾实验** | ~2 周    | peer/fixed 范式、打磨、Langfuse 实验数据、ACM 场景换配置验证、(可选)运行时前端加载演示             | 论文实验章节数据齐;通用性实证                                      |
 
 论文咬合:开题在 P0–P1;中期卡 P3 末;P4 边做边写第四章;P5 写实验与成稿。git 提交从 P0 规范(即工作量证明)。
 
@@ -225,14 +221,14 @@ fragments Map + contribute(ns, router) 全 effect 化 + rebuild 原子换 handle
 
 ## 10. 风险登记与降级预案
 
-| 风险 | 预案 |
-|---|---|
-| cordis rc / oRPC beta API 变动 | 锁版本;契约层隔离(最坏退 oRPC v1 只伤 server 插件百行胶水) |
-| hmr 对 tsx 装载 TS 的监听异常 | 限时 2h 排查;退路 tsup --watch 出 dist,yml 指向 dist |
-| oRPC v2 middleware errors 未如预期 | base builder `.errors()` 派生模式规避(§4.11) |
-| 沙箱选型受阻 | QuickJS-WASM 优先,isolated-vm 备选;接口抽象为 ctx.sandbox 服务可换实现 |
-| 工期崩 | 砍单顺序:运行时前端加载演示 → ai-qa → paradigm-peer → 公示申诉细节。**不可砍底线**(标题承诺):双层机制 + 沙箱 + genform + 多模态助审 |
-| AI 输出质量不稳 | 三道门禁兜底;precheck/assist 仅建议不决策;Langfuse datasets 持续回归 |
+| 风险                               | 预案                                                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| cordis rc / oRPC beta API 变动     | 锁版本;契约层隔离(最坏退 oRPC v1 只伤 server 插件百行胶水)                                                                          |
+| hmr 对 tsx 装载 TS 的监听异常      | 限时 2h 排查;退路 tsup --watch 出 dist,yml 指向 dist                                                                                |
+| oRPC v2 middleware errors 未如预期 | base builder `.errors()` 派生模式规避(§4.11)                                                                                        |
+| 沙箱选型受阻                       | QuickJS-WASM 优先,isolated-vm 备选;接口抽象为 ctx.sandbox 服务可换实现                                                              |
+| 工期崩                             | 砍单顺序:运行时前端加载演示 → ai-qa → paradigm-peer → 公示申诉细节。**不可砍底线**(标题承诺):双层机制 + 沙箱 + genform + 多模态助审 |
+| AI 输出质量不稳                    | 三道门禁兜底;precheck/assist 仅建议不决策;Langfuse datasets 持续回归                                                                |
 
 ## 11. 参考文档索引
 
@@ -242,13 +238,13 @@ fragments Map + contribute(ns, router) 全 effect 化 + rebuild 原子换 handle
 
 ## 12. 术语表
 
-| 术语 | 含义 |
-|---|---|
-| 范式 paradigm | 交互模式的代码实现(申报审核/导入计算/互评/打卡/固定分/混合) |
-| 题型 question-type | 范式扩展点上的配置实例,版本化 |
-| 贡献点 | 后端插件以字符串声明的 UI 元数据(页面/导航/插槽部件/渲染器) |
-| 插槽 slot | 前端具名扩展位,部件按 order 渲染(如 login.methods) |
-| manifest | 按登录者权限过滤后的 UI 元数据集合,匿名可得 public 子集 |
-| 双层机制 | 代码插件层 × 配置层(§2.1) |
-| 三生成物 | schema.gen / contracts.gen / plugins.gen(§2.4) |
-| 三道门禁 | 计分函数发布前:类型检查 + 测试样例 + 属性检查 |
+| 术语               | 含义                                                        |
+| ------------------ | ----------------------------------------------------------- |
+| 范式 paradigm      | 交互模式的代码实现(申报审核/导入计算/互评/打卡/固定分/混合) |
+| 题型 question-type | 范式扩展点上的配置实例,版本化                               |
+| 贡献点             | 后端插件以字符串声明的 UI 元数据(页面/导航/插槽部件/渲染器) |
+| 插槽 slot          | 前端具名扩展位,部件按 order 渲染(如 login.methods)          |
+| manifest           | 按登录者权限过滤后的 UI 元数据集合,匿名可得 public 子集     |
+| 双层机制           | 代码插件层 × 配置层(§2.1)                                   |
+| 三生成物           | schema.gen / contracts.gen / plugins.gen(§2.4)              |
+| 三道门禁           | 计分函数发布前:类型检查 + 测试样例 + 属性检查               |

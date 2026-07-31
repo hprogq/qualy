@@ -6,11 +6,11 @@
 
 ## 1. 三集合模型与所有权
 
-| 集合 | 含义 | 权威 |
-|---|---|---|
-| available | 包可被发现(workspace 里存在) | 文件系统 |
+| 集合      | 含义                            | 权威                            |
+| --------- | ------------------------------- | ------------------------------- |
+| available | 包可被发现(workspace 里存在)    | 文件系统                        |
 | installed | 数据库对象必须存在;**依赖闭包** | `installed.lock.json`(提交入库) |
-| active | 业务入口与 worker 运行中 | `cordis.yml` |
+| active    | 业务入口与 worker 运行中        | `cordis.yml`                    |
 
 - cordis.yml 只决定 active。**active 的任何变化(含 disabled)不得改变 installed 驱动的任何生成物**(CI 不变式测试守护)。
 - 仅显式 PURGE 流程(§7)可使插件退出 installed。
@@ -26,10 +26,10 @@
   "qualy": {
     "database": {
       "schemaEntry": "./src/db/schema.entry.ts",
-      "behaviorDir": "./db/behavior"
+      "behaviorDir": "./db/behavior",
     },
-    "dependsOn": ["@qualy/plugin-database"]
-  }
+    "dependsOn": ["@qualy/plugin-database"],
+  },
 }
 ```
 

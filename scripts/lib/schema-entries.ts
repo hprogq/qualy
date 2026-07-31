@@ -53,7 +53,9 @@ export function resolveSchemaEntries(options: { ymlPath?: string } = {}): string
     if (!schemaEntry) continue
     const file = path.resolve(packageDir, schemaEntry)
     if (!fs.existsSync(file)) {
-      throw new Error(`${entry.name}: declared schemaEntry ${schemaEntry} does not resolve to a file`)
+      throw new Error(
+        `${entry.name}: declared schemaEntry ${schemaEntry} does not resolve to a file`,
+      )
     }
     // cross-plugin imports and kit aggregation must share one file
     const exported = exportTarget(pkg.exports?.['./schema'])

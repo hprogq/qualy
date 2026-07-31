@@ -30,7 +30,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - Service 异步初始化必须放 `async *[Service.init]()`(yield 登记清理):依赖门控在 init 完成后才放行;构造器里的 async effect **不会**阻塞依赖方激活(实测,见 docs/notes/cordis.md)。
 - 主键统一 UUIDv7 且数据库侧生成:`uuid().primaryKey().default(sql\`uuidv7()\`)`(PG18 原生函数,默认值进 DDL,兜住 psql/ETL 等一切裸写入路径);仅当应用需要插入前预拿 ID 时,在该表上叠加 `$defaultFn`(与 sql 默认并存,不是替代)。时间戳列命名 createdAt/updatedAt(禁用 at 这类含糊短名),一律 `withTimezone: true`。
 - 新增插件包必须做两件事:cordis.yml 加条目 + 根 package.json 加 `"@qualy/plugin-<名>": "workspace:*"`。漏第二步的症状:loader 找不到包 / gen 脚本静默跳过。新包 package.json 一律带 `"license": "AGPL-3.0-only"`。
-- 共享框架级依赖(cordis、@cordisjs/*、@orpc/*、zod、drizzle、react 系等)一律走 pnpm catalog:版本只写在 pnpm-workspace.yaml 的 catalog 节,各包内写 `"cordis": "catalog:"`,禁止写具体版本(防止版本分裂出两份 Context)。插件独享的依赖(如 bullmq、quickjs)正常写在自己包里。第三方传递依赖漂移用 pnpm.overrides 归一。
+- 共享框架级依赖(cordis、@cordisjs/_、@orpc/_、zod、drizzle、react 系等)一律走 pnpm catalog:版本只写在 pnpm-workspace.yaml 的 catalog 节,各包内写 `"cordis": "catalog:"`,禁止写具体版本(防止版本分裂出两份 Context)。插件独享的依赖(如 bullmq、quickjs)正常写在自己包里。第三方传递依赖漂移用 pnpm.overrides 归一。
 - 插件统一**具名导出**形态:`export const name/inject/Config` + `export function apply`,模块命名空间即对象插件(loader unwrapExports 无 default 导出时整体使用);禁用 `export default function` + 属性赋值(default 解包后元属性丢失)。Service 类插件维持 `export default class`(静态属性随类走)。函数插件体不要有返回值:返回值会被当作 effect 清理函数,箭头函数隐式返回是事故源。
 - 对象型 Config 顶层统一 `.prefault({})`,**禁止**用 `.default({})` 替代:cordis resolveConfig 对 yml 缺失的 config 原样传 undefined(不预处理),裸 `z.object()` 启动即 ValidationError;Zod 4 `.default({})` 短路跳过解析,字段默认全不生效且无报错;`.prefault({})` 走完整解析,必填字段照样报字段级错误(不吞错)。
 - 类型门禁:根 tsconfig.json 是 solution 式检查入口(不参与构建),`pnpm typecheck` 必须零错误,列入每次会话验收;web 侧未来单独 `tsc -p apps/web --noEmit`。不建 @qualy/tsconfig 共享包;重评触发条件:插件出现独立构建产物(tsup/dist)、出现第三种 tsconfig 变体、或有第二个仓库要复用配置。

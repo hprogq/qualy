@@ -28,9 +28,9 @@ Cordis 自称 Meta-Framework（元框架）：它不提供 HTTP、数据库等�
 import { Context } from 'cordis'
 
 const ctx = new Context()
-ctx.plugin(myPlugin)            // 加载插件
+ctx.plugin(myPlugin) // 加载插件
 ctx.plugin(myService)
-await ctx.plugin(another, { some: 'config' })  // 返回值可 await 至就绪
+await ctx.plugin(another, { some: 'config' }) // 返回值可 await 至就绪
 ```
 
 注意：4.x 的 `Context` 构造器不接收配置参数，也没有 `ctx.start()`——插件加载即生效（3.x 需要 `start()` 触发 ready 事件，4.x 已移除该模式）。
@@ -42,10 +42,10 @@ await ctx.plugin(another, { some: 'config' })  // 返回值可 await 至就绪
 ```js
 const ctx = new Context()
 ctx.baseUrl = pathToFileURL(process.cwd()).href + '/'
-await ctx.plugin(Loader)                      // @cordisjs/plugin-loader
+await ctx.plugin(Loader) // @cordisjs/plugin-loader
 await ctx.loader.create({
   name: '@cordisjs/plugin-include',
-  config: { path: './cordis.yml' },           // 从 cordis.yml 装配其余插件
+  config: { path: './cordis.yml' }, // 从 cordis.yml 装配其余插件
 })
 ```
 
@@ -59,12 +59,12 @@ await ctx.loader.create({
 
 `new Context()` 后自带四个服务（见 `context.d.ts`）：
 
-| 属性 | 类型 | 职责 |
-|---|---|---|
-| `ctx.events` | `EventsService` | 事件注册与五种派发模式 |
-| `ctx.logger` | `LoggerService` | 日志（可调用：`ctx.logger('name')` 得子 logger） |
-| `ctx.reflect` | `ReflectService` | 服务注册表：get/set/provide/accessor/mixin |
-| `ctx.registry` | `RegistryService` | 插件注册表：plugin/inject 与 Runtime 管理 |
+| 属性           | 类型              | 职责                                             |
+| -------------- | ----------------- | ------------------------------------------------ |
+| `ctx.events`   | `EventsService`   | 事件注册与五种派发模式                           |
+| `ctx.logger`   | `LoggerService`   | 日志（可调用：`ctx.logger('name')` 得子 logger） |
+| `ctx.reflect`  | `ReflectService`  | 服务注册表：get/set/provide/accessor/mixin       |
+| `ctx.registry` | `RegistryService` | 插件注册表：plugin/inject 与 Runtime 管理        |
 
 另有 `ctx.fiber`（当前上下文关联的 Fiber）与 `ctx.root`（根上下文，标注 experimental）。`ctx.effect` 实为 `ctx.fiber.effect` 的委托。
 
@@ -97,23 +97,33 @@ Context 是 Proxy（`ReflectService.handler`）。`ctx.foo`：
 
 ```ts
 // 函数插件
-function plugin(ctx: Context, config: Config) { /* ... */ }
+function plugin(ctx: Context, config: Config) {
+  /* ... */
+}
 
 // 类插件（构造器即入口；Service 子类属于此类）
-class MyPlugin { constructor(ctx: Context, config: Config) { /* ... */ } }
+class MyPlugin {
+  constructor(ctx: Context, config: Config) {
+    /* ... */
+  }
+}
 
 // 对象插件
-const plugin = { apply(ctx: Context, config: Config) { /* ... */ } }
+const plugin = {
+  apply(ctx: Context, config: Config) {
+    /* ... */
+  },
+}
 ```
 
 ### 4.2 插件元属性（`Plugin.Base`）
 
 ```ts
 interface Base<T> {
-  name?: string                  // 显示名（日志、调试）
-  Config?: StandardSchemaV1<any, T>   // 配置校验器（Zod 4 直接可用，见第 5 节）
-  inject?: Inject                // 依赖声明：['db', 'server'] 或 { db: true, logger: {...配置} }
-  provide?: string | string[]    // 声明提供的服务名（配合 ctx.provide/Service）
+  name?: string // 显示名（日志、调试）
+  Config?: StandardSchemaV1<any, T> // 配置校验器（Zod 4 直接可用，见第 5 节）
+  inject?: Inject // 依赖声明：['db', 'server'] 或 { db: true, logger: {...配置} }
+  provide?: string | string[] // 声明提供的服务名（配合 ctx.provide/Service）
   intercept?: Dict<boolean>
 }
 ```
@@ -121,9 +131,9 @@ interface Base<T> {
 ### 4.3 加载、就绪与卸载
 
 ```ts
-const fiber = ctx.plugin(plugin, config)   // 返回 Fiber & PromiseLike<Fiber>
-await fiber                                 // 等待至激活（实测：await 返回时插件体已执行）
-await fiber.dispose()                       // 卸载：释放全部 effect，状态置 DISPOSED(4)
+const fiber = ctx.plugin(plugin, config) // 返回 Fiber & PromiseLike<Fiber>
+await fiber // 等待至激活（实测：await 返回时插件体已执行）
+await fiber.dispose() // 卸载：释放全部 effect，状态置 DISPOSED(4)
 ```
 
 实测确认的关键行为：
@@ -157,10 +167,12 @@ ctx.inject(['database', 'server'], (ctx) => {
 ```ts
 import { z } from 'zod'
 
-function sandbox(ctx: Context, config: SandboxConfig) { /* ... */ }
+function sandbox(ctx: Context, config: SandboxConfig) {
+  /* ... */
+}
 sandbox.Config = z.object({
   timeoutMs: z.number().int().positive().default(1000),
-  memoryMb:  z.number().int().max(512).default(64),
+  memoryMb: z.number().int().max(512).default(64),
 })
 ```
 
@@ -208,9 +220,11 @@ import { Context, Service } from 'cordis'
 
 export class Gradebook extends Service {
   constructor(ctx: Context) {
-    super(ctx, 'gradebook')      // 第二参数为服务名：注册为 ctx.gradebook
+    super(ctx, 'gradebook') // 第二参数为服务名：注册为 ctx.gradebook
   }
-  async getMajorFirstAttempts(uid: string, term: string) { /* ... */ }
+  async getMajorFirstAttempts(uid: string, term: string) {
+    /* ... */
+  }
 }
 ```
 
@@ -218,15 +232,15 @@ export class Gradebook extends Service {
 
 `service.d.ts` 上的生命周期与扩展符号（覆写方式为计算属性名 `[Service.init]() {...}`）：
 
-| 符号 | 作用 |
-|---|---|
-| `Service.init` | 异步初始化钩子。生态实证：include 插件的 `[Service.init]` 是一个 **AsyncGenerator**，即初始化过程本身可以 yield 释放函数（与 effect 生成器同构）。**依赖门控在 init 完成后才放行**；构造器里注册的 async effect 不会阻塞依赖方激活（实测，异步初始化必须放这里，见 notes/cordis.md） |
-| `Service.check` | 就绪检查，返回 boolean（loader 实现了它） |
-| `Service.config` | 声明该服务的 Intercept 配置类型（供 `ctx.intercept(name, ...)` 用） |
-| `Service.invoke` | 让服务实例本身可调用（LoggerService 借此实现 `ctx.logger('name')`） |
-| `Service.extend` | 派生服务实例 |
-| `Service.resolveConfig` | 自定义配置合并逻辑 |
-| `symbols.filter` | 控制服务在哪些上下文可见（protected 方法） |
+| 符号                    | 作用                                                                                                                                                                                                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Service.init`          | 异步初始化钩子。生态实证：include 插件的 `[Service.init]` 是一个 **AsyncGenerator**，即初始化过程本身可以 yield 释放函数（与 effect 生成器同构）。**依赖门控在 init 完成后才放行**；构造器里注册的 async effect 不会阻塞依赖方激活（实测，异步初始化必须放这里，见 notes/cordis.md） |
+| `Service.check`         | 就绪检查，返回 boolean（loader 实现了它）                                                                                                                                                                                                                                            |
+| `Service.config`        | 声明该服务的 Intercept 配置类型（供 `ctx.intercept(name, ...)` 用）                                                                                                                                                                                                                  |
+| `Service.invoke`        | 让服务实例本身可调用（LoggerService 借此实现 `ctx.logger('name')`）                                                                                                                                                                                                                  |
+| `Service.extend`        | 派生服务实例                                                                                                                                                                                                                                                                         |
+| `Service.resolveConfig` | 自定义配置合并逻辑                                                                                                                                                                                                                                                                   |
+| `symbols.filter`        | 控制服务在哪些上下文可见（protected 方法）                                                                                                                                                                                                                                           |
 
 ---
 
@@ -271,8 +285,8 @@ fiber.name / fiber.state / fiber.config / fiber.runtime / fiber.parent
 ```ts
 ctx.effect(() => {
   const timer = setInterval(tick, 1000)
-  return () => clearInterval(timer)        // 返回释放函数
-}, 'tick-timer')                            // 可选 label，出现在 getEffects() 里
+  return () => clearInterval(timer) // 返回释放函数
+}, 'tick-timer') // 可选 label，出现在 getEffects() 里
 ```
 
 三种形态（`fiber.d.ts` 的 `Effect` 类型）：
@@ -299,13 +313,13 @@ ctx.once('event/name', listener)                        // 一次性
 
 ### 10.2 五种派发模式（全部实测）
 
-| 方法 | 同步性 | 语义 | 实测结果 |
-|---|---|---|---|
-| `emit` | 同步 | 广播，忽略返回值 | 全部执行 |
-| `parallel` | 异步 | `Promise.all` 式并发 | 全部执行 |
-| `bail` | 同步 | 依次调用，**首个非 undefined 返回值即为结果并停止** | 三个监听器返回 `undefined/'B'/'C'`，结果 `'B'`，第三个不执行 |
-| `serial` | 异步 | bail 的异步版：依次 await，首个非空即停 | 同上，返回 `'S2'` |
-| `waterfall` | 同步调用链 | **洋葱中间件**，详见下 | 见下 |
+| 方法        | 同步性     | 语义                                                | 实测结果                                                     |
+| ----------- | ---------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| `emit`      | 同步       | 广播，忽略返回值                                    | 全部执行                                                     |
+| `parallel`  | 异步       | `Promise.all` 式并发                                | 全部执行                                                     |
+| `bail`      | 同步       | 依次调用，**首个非 undefined 返回值即为结果并停止** | 三个监听器返回 `undefined/'B'/'C'`，结果 `'B'`，第三个不执行 |
+| `serial`    | 异步       | bail 的异步版：依次 await，首个非空即停             | 同上，返回 `'S2'`                                            |
+| `waterfall` | 同步调用链 | **洋葱中间件**，详见下                              | 见下                                                         |
 
 **waterfall 的真实语义（源码 + 实测）**：
 
@@ -328,15 +342,15 @@ ctx.waterfall(name, ...args, inner)
 
 ### 10.4 内部事件（`events.d.ts`）
 
-| 事件 | 触发时机 |
-|---|---|
-| `internal/plugin` | Fiber 创建/注销时 |
-| `internal/status` | Fiber 状态变更（参数含旧状态）——做插件管理面板就靠它 |
-| `internal/service` | 服务上线/下线 |
-| `internal/update` | `fiber.update()` 时（waterfall，可拦截） |
-| `internal/get` / `internal/set` | 服务读写兜底（waterfall 式 next） |
-| `internal/listener` | 新监听器注册时 |
-| `internal/dispatch` | 任意事件派发时（做事件追踪/调试器） |
+| 事件                            | 触发时机                                             |
+| ------------------------------- | ---------------------------------------------------- |
+| `internal/plugin`               | Fiber 创建/注销时                                    |
+| `internal/status`               | Fiber 状态变更（参数含旧状态）——做插件管理面板就靠它 |
+| `internal/service`              | 服务上线/下线                                        |
+| `internal/update`               | `fiber.update()` 时（waterfall，可拦截）             |
+| `internal/get` / `internal/set` | 服务读写兜底（waterfall 式 next）                    |
+| `internal/listener`             | 新监听器注册时                                       |
+| `internal/dispatch`             | 任意事件派发时（做事件追踪/调试器）                  |
 
 ### 10.5 事件类型扩展
 
@@ -344,7 +358,7 @@ ctx.waterfall(name, ...args, inner)
 declare module 'cordis' {
   interface Events {
     'submission/created'(submission: Submission): void
-    'review/intercept'(task: ReviewTask, next: () => void): void   // waterfall 用
+    'review/intercept'(task: ReviewTask, next: () => void): void // waterfall 用
   }
 }
 ```
@@ -368,8 +382,8 @@ ctx.mixin(source, ['method1', 'method2'])   // 把服务方法平铺到 ctx；�
 ## 12. 内置 Logger
 
 ```ts
-ctx.logger.info('hello %s', name)        // error / info / warn / debug 四级
-const log = ctx.logger('gradebook')      // 命名子 logger（Service.invoke 机制）
+ctx.logger.info('hello %s', name) // error / info / warn / debug 四级
+const log = ctx.logger('gradebook') // 命名子 logger（Service.invoke 机制）
 log.warn('...')
 ```
 
@@ -381,28 +395,28 @@ log.warn('...')
 
 ## 13. 生态包与 cordis.yml
 
-| 包 | 用途 |
-|---|---|
-| `@cordisjs/plugin-loader` | 配置驱动的插件装载（EntryTree：条目树、增删改、写回） |
-| `@cordisjs/plugin-include` | 读取 cordis.yml/JSON 并交给 loader；支持 `initial`（首次生成的默认配置）与 `patches` |
-| `@cordisjs/plugin-hmr` | 开发期热重载：文件变更 → 对应 Fiber restart（配合依赖联动，改一个服务全链路自动重載） |
-| `@cordisjs/group` | 插件分组（组内可整体启停） |
-| `@cordisjs/plugin-timer` | `ctx.setTimeout/setInterval/debounce` 等托管定时器（自动随 fiber 清理；注意 `@cordisjs/timer` 是 3.x 旧包） |
-| `@cordisjs/plugin-logger-console` | 控制台日志 exporter |
-| `create-cordis`（`create` 包） | 脚手架 |
+| 包                                | 用途                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `@cordisjs/plugin-loader`         | 配置驱动的插件装载（EntryTree：条目树、增删改、写回）                                                       |
+| `@cordisjs/plugin-include`        | 读取 cordis.yml/JSON 并交给 loader；支持 `initial`（首次生成的默认配置）与 `patches`                        |
+| `@cordisjs/plugin-hmr`            | 开发期热重载：文件变更 → 对应 Fiber restart（配合依赖联动，改一个服务全链路自动重載）                       |
+| `@cordisjs/group`                 | 插件分组（组内可整体启停）                                                                                  |
+| `@cordisjs/plugin-timer`          | `ctx.setTimeout/setInterval/debounce` 等托管定时器（自动随 fiber 清理；注意 `@cordisjs/timer` 是 3.x 旧包） |
+| `@cordisjs/plugin-logger-console` | 控制台日志 exporter                                                                                         |
+| `create-cordis`（`create` 包）    | 脚手架                                                                                                      |
 
 **cordis.yml 条目结构**（实读 loader 的 `EntryOptions` + isolate 扩展）：
 
 ```yaml
-- id: a1b2c3           # 条目唯一 id（loader 生成/维护，手写可省略让其补全）
-  name: '@qualy/plugin-server'   # 插件包名或路径（经模块解析加载）
+- id: a1b2c3 # 条目唯一 id（loader 生成/维护，手写可省略让其补全）
+  name: '@qualy/plugin-server' # 插件包名或路径（经模块解析加载）
   config:
     port: 3000
-  disabled: false       # 停用但保留配置
-  inject: null          # 覆写注入声明（可选）
-  group: false          # 是否为分组节点
-  intercept: null       # 可选：注入拦截配置
-  isolate: null         # 可选：服务隔离映射 Dict<true | string>
+  disabled: false # 停用但保留配置
+  inject: null # 覆写注入声明（可选）
+  group: false # 是否为分组节点
+  intercept: null # 可选：注入拦截配置
+  isolate: null # 可选：服务隔离映射 Dict<true | string>
 - id: d4e5f6
   name: '@qualy/plugin-gradebook'
 ```
@@ -413,16 +427,16 @@ log.warn('...')
 
 ## 14. 3.x → 4.x 概念对照（Koishi / Hydro 背景读者）
 
-| 3.x | 4.x | 说明 |
-|---|---|---|
-| `ctx.using(deps, cb)` / `using` 属性 | `inject`（属性或 `ctx.inject()`） | 语义相同 |
-| `EffectScope` / `ctx.scope` | `Fiber` / `ctx.fiber` | 状态机重设计（六态） |
-| fork 事件 / `reusable` 标记 | （移除）多次 `ctx.plugin()` 天然多实例 | Runtime.fibers 列表 |
-| `ctx.lifecycle` | `ctx.events` | 派发模式增加 waterfall |
-| `ctx.start()` / ready 事件 | （移除）加载即生效 | 异步初始化用 `[Service.init]` |
-| Schema（schemastery）配置 | Standard Schema（Zod 等直连） | 重大改进 |
-| `Service` 的 `start()/stop()` | `[Service.init]`（支持 AsyncGenerator）+ effect | 生命周期统一到 effect 模型 |
-| `ctx.plugin` 返回 fork | 返回 `Fiber & PromiseLike<Fiber>` | 可直接 await |
+| 3.x                                  | 4.x                                             | 说明                          |
+| ------------------------------------ | ----------------------------------------------- | ----------------------------- |
+| `ctx.using(deps, cb)` / `using` 属性 | `inject`（属性或 `ctx.inject()`）               | 语义相同                      |
+| `EffectScope` / `ctx.scope`          | `Fiber` / `ctx.fiber`                           | 状态机重设计（六态）          |
+| fork 事件 / `reusable` 标记          | （移除）多次 `ctx.plugin()` 天然多实例          | Runtime.fibers 列表           |
+| `ctx.lifecycle`                      | `ctx.events`                                    | 派发模式增加 waterfall        |
+| `ctx.start()` / ready 事件           | （移除）加载即生效                              | 异步初始化用 `[Service.init]` |
+| Schema（schemastery）配置            | Standard Schema（Zod 等直连）                   | 重大改进                      |
+| `Service` 的 `start()/stop()`        | `[Service.init]`（支持 AsyncGenerator）+ effect | 生命周期统一到 effect 模型    |
+| `ctx.plugin` 返回 fork               | 返回 `Fiber & PromiseLike<Fiber>`               | 可直接 await                  |
 
 ---
 

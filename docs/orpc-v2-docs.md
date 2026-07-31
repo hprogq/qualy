@@ -161,26 +161,24 @@ Procedures are the core building blocks of oRPC. They define the logic for handl
 ## Overview
 
 ```ts twoslash
-import { z } from "zod";
-import type { AnyMetaPlugin } from "@orpc/server";
+import { z } from 'zod'
+import type { AnyMetaPlugin } from '@orpc/server'
 
-declare const someMeta: AnyMetaPlugin;
+declare const someMeta: AnyMetaPlugin
 
 const requireAuth = os.middleware(({ context, next }) => {
   return next({
     context: {
       user: { id: 1 },
     },
-  });
-});
+  })
+})
 
-const canEdit = os
-  .$context<{ user: { id: number } }>()
-  .middleware(async ({ next }, id: number) => {
-    return next();
-  });
+const canEdit = os.$context<{ user: { id: number } }>().middleware(async ({ next }, id: number) => {
+  return next()
+})
 // ---cut---
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
 const example = os
   .$context<{ something?: string }>() // <- define initial context
@@ -192,8 +190,8 @@ const example = os
   .output(z.object({ id: z.number(), name: z.string() })) // <- output validation
   .handler(async ({ input, context, errors }) => {
     // <- handler logic
-    return { id: 1, name: "example" };
-  });
+    return { id: 1, name: 'example' }
+  })
 ```
 
 :::info
@@ -232,8 +230,8 @@ const example = os
   .output(z.looseObject({ name: z.string() }))
   .output(z.looseObject({ id: z.number() }))
   .handler(async ({ input }) => {
-    return { id: 1, name: "example" };
-  });
+    return { id: 1, name: 'example' }
+  })
 ```
 
 ::: warning
@@ -245,12 +243,12 @@ When you stack schemas, the input or output must satisfy all of them, so the sch
 For simple use cases without external libraries, use oRPC's built-in `type` utility. It takes a mapping function as its first argument:
 
 ```ts
-import { type } from "@orpc/server";
+import { type } from '@orpc/server'
 
 const example = os
   .input(type<{ value: number }>())
   .output(type<{ value: number }, number>(({ value }) => value))
-  .handler(async ({ input }) => input);
+  .handler(async ({ input }) => input)
 ```
 
 ## Using Middleware
@@ -258,14 +256,14 @@ const example = os
 The `.use` method allows you to pass [middleware](/docs/middleware), which must call `next` to continue execution.
 
 ```ts
-const aMiddleware = os.middleware(async ({ context, next }) => next());
+const aMiddleware = os.middleware(async ({ context, next }) => next())
 
 const example = os
   .use(aMiddleware) // Apply middleware
   .use(async ({ context, next }) => next()) // Inline middleware
   .handler(async ({ context }) => {
     /* logic */
-  });
+  })
 ```
 
 ::: warning
@@ -278,18 +276,18 @@ You can use [`.adaptInput`](/docs/middleware#middleware-input) when applying mid
 ```ts
 const canEdit = os.middleware(async ({ next }, id: string) => {
   if (!canUserEdit(id)) {
-    throw new ORPCError("UNAUTHORIZED");
+    throw new ORPCError('UNAUTHORIZED')
   }
 
-  return next();
-});
+  return next()
+})
 
 const example = os
   .input(z.object({ id: z.string(), name: z.string() }))
   .use(canEdit.adaptInput((input) => input.id)) // Adapt input to match middleware's expected shape
   .handler(async ({ context }) => {
     /* logic */
-  });
+  })
 ```
 
 :::
@@ -299,16 +297,16 @@ const example = os
 Each modification to a builder creates a completely new instance, avoiding reference issues. This makes it easy to reuse and extend procedures efficiently.
 
 ```ts
-const pub = os.use(logMiddleware); // Base setup for procedures that publish
-const authed = pub.use(requireAuth); // Extends 'pub' with authentication
+const pub = os.use(logMiddleware) // Base setup for procedures that publish
+const authed = pub.use(requireAuth) // Extends 'pub' with authentication
 
 const pubExample = pub.handler(async ({ context }) => {
   /* logic */
-});
+})
 
 const authedExample = authed.handler(async ({ context }) => {
   /* logic */
-});
+})
 ```
 
 This pattern helps prevent duplication while maintaining flexibility.
@@ -332,16 +330,16 @@ A standalone [procedure](/docs/procedure) is also a router, so you can use all r
 Define a router as a plain JavaScript object where each key maps to a procedure:
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-const ping = os.handler(async () => "ping");
-const pong = os.handler(async () => "pong");
+const ping = os.handler(async () => 'ping')
+const pong = os.handler(async () => 'pong')
 
 export const router = {
   ping,
   pong,
   nested: { ping, pong },
-};
+}
 ```
 
 ::: warning
@@ -360,7 +358,7 @@ const router = os.use(requiredAuth).meta(requireAuthMeta).router({
     ping,
     pong,
   },
-});
+})
 ```
 
 ::: danger
@@ -377,8 +375,8 @@ Routers can also be lazy-loaded. This is useful for code splitting and can impro
 const router = {
   ping,
   pong,
-  planet: os.lazy(() => import("./planet")),
-};
+  planet: os.lazy(() => import('./planet')),
+}
 ```
 
 ```ts [planet.ts]
@@ -386,7 +384,7 @@ const PlanetSchema = z.object({
   id: z.number().int().min(1),
   name: z.string(),
   description: z.string().optional(),
-});
+})
 
 export const listPlanet = os
   .input(
@@ -397,13 +395,13 @@ export const listPlanet = os
   )
   .handler(async ({ input }) => {
     // your list code here
-    return [{ id: 1, name: "name" }];
-  });
+    return [{ id: 1, name: 'name' }]
+  })
 
 export default {
   list: listPlanet,
   // ...
-};
+}
 ```
 
 :::
@@ -419,13 +417,13 @@ A standalone [procedure](/docs/procedure) is also a router, so these utilities w
 Infers the input type for each procedure in the router.
 
 ```ts twoslash
-import type { router } from "./shared/planet";
+import type { router } from './shared/planet'
 // ---cut---
-import type { InferRouterInputs } from "@orpc/server";
+import type { InferRouterInputs } from '@orpc/server'
 
-export type Inputs = InferRouterInputs<typeof router>;
+export type Inputs = InferRouterInputs<typeof router>
 
-type FindPlanetInput = Inputs["planet"]["find"];
+type FindPlanetInput = Inputs['planet']['find']
 ```
 
 ### Infer Router Outputs
@@ -433,13 +431,13 @@ type FindPlanetInput = Inputs["planet"]["find"];
 Infers the output type for each procedure in the router.
 
 ```ts twoslash
-import type { router } from "./shared/planet";
+import type { router } from './shared/planet'
 // ---cut---
-import type { InferRouterOutputs } from "@orpc/server";
+import type { InferRouterOutputs } from '@orpc/server'
 
-export type Outputs = InferRouterOutputs<typeof router>;
+export type Outputs = InferRouterOutputs<typeof router>
 
-type FindPlanetOutput = Outputs["planet"]["find"];
+type FindPlanetOutput = Outputs['planet']['find']
 ```
 
 ### Infer Router Initial Contexts
@@ -447,13 +445,13 @@ type FindPlanetOutput = Outputs["planet"]["find"];
 Infers the [initial context](/docs/context#initial-context) for each procedure in the router.
 
 ```ts twoslash
-import type { router } from "./shared/planet";
+import type { router } from './shared/planet'
 // ---cut---
-import type { InferRouterInitialContexts } from "@orpc/server";
+import type { InferRouterInitialContexts } from '@orpc/server'
 
-export type InitialContexts = InferRouterInitialContexts<typeof router>;
+export type InitialContexts = InferRouterInitialContexts<typeof router>
 
-type FindPlanetInitialContext = InitialContexts["planet"]["find"];
+type FindPlanetInitialContext = InitialContexts['planet']['find']
 ```
 
 ### Infer Router Final Contexts
@@ -461,13 +459,13 @@ type FindPlanetInitialContext = InitialContexts["planet"]["find"];
 Infers the final context for each procedure in the router by combining the [initial and injected context](/docs/context#combining-initial-and-injected-context). This is the closest match to the context the procedure's handler receives.
 
 ```ts twoslash
-import type { router } from "./shared/planet";
+import type { router } from './shared/planet'
 // ---cut---
-import type { InferRouterFinalContexts } from "@orpc/server";
+import type { InferRouterFinalContexts } from '@orpc/server'
 
-export type FinalContexts = InferRouterFinalContexts<typeof router>;
+export type FinalContexts = InferRouterFinalContexts<typeof router>
 
-type FindPlanetFinalContext = FinalContexts["planet"]["find"];
+type FindPlanetFinalContext = FinalContexts['planet']['find']
 ```
 
 ### Infer Router Errors
@@ -475,13 +473,13 @@ type FindPlanetFinalContext = FinalContexts["planet"]["find"];
 Infers the throwable errors each procedure in a router can produce.
 
 ```ts twoslash
-import type { router } from "./shared/planet";
+import type { router } from './shared/planet'
 // ---cut---
-import type { InferRouterErrors } from "@orpc/server";
+import type { InferRouterErrors } from '@orpc/server'
 
-export type Errors = InferRouterErrors<typeof router>;
+export type Errors = InferRouterErrors<typeof router>
 
-type FindPlanetError = Errors["planet"]["find"];
+type FindPlanetError = Errors['planet']['find']
 ```
 
 ### Infer Router Error
@@ -489,11 +487,11 @@ type FindPlanetError = Errors["planet"]["find"];
 Infers all possible throwable errors the entire router can produce. This is useful when you want a single type for router-wide error handling.
 
 ```ts twoslash
-import type { router } from "./shared/planet";
+import type { router } from './shared/planet'
 // ---cut---
-import type { InferRouterError } from "@orpc/server";
+import type { InferRouterError } from '@orpc/server'
 
-export type RouterError = InferRouterError<typeof router>;
+export type RouterError = InferRouterError<typeof router>
 ```
 
 ---
@@ -509,11 +507,11 @@ Middleware is a powerful mechanism in oRPC that allows you to execute code befor
 ## Overview
 
 ```ts twoslash
-import type { AnyMetaPlugin } from "@orpc/server";
+import type { AnyMetaPlugin } from '@orpc/server'
 
-declare const someMeta: AnyMetaPlugin;
+declare const someMeta: AnyMetaPlugin
 // ---cut---
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
 const example = os
   .$context<{ something?: string }>() // <- define initial context
@@ -526,16 +524,16 @@ const example = os
       return await next({
         context: {
           // <- Inject additional context
-          user: { id: 1, name: "John" },
+          user: { id: 1, name: 'John' },
         },
-      });
+      })
     } catch (error) {
-      console.error(error);
-      throw error;
+      console.error(error)
+      throw error
     } finally {
       // Cleanup logic after execution
     }
-  });
+  })
 ```
 
 ## Initial Context
@@ -556,9 +554,9 @@ Use `.errors` to attach error definitions to middleware. These errors are availa
 Middleware can be used to inject or guard the [context](/docs/context).
 
 ```ts twoslash
-import { ORPCError, os } from "@orpc/server";
+import { ORPCError, os } from '@orpc/server'
 
-declare function auth(): { userId: number } | null;
+declare function auth(): { userId: number } | null
 // ---cut---
 const setting = os
   .use(async ({ context, next }) => {
@@ -566,23 +564,23 @@ const setting = os
       context: {
         auth: await auth(), // <- inject auth
       },
-    });
+    })
   })
   .use(async ({ context, next }) => {
     if (!context.auth) {
       // <- guard auth
-      throw new ORPCError("UNAUTHORIZED");
+      throw new ORPCError('UNAUTHORIZED')
     }
 
     return next({
       context: {
         auth: context.auth, // <- override auth (now guaranteed to be non-null)
       },
-    });
+    })
   })
   .handler(async ({ context }) => {
-    console.log(context.auth); // <- auth is guaranteed to be non-null here
-  });
+    console.log(context.auth) // <- auth is guaranteed to be non-null here
+  })
 ```
 
 ::: warning
@@ -596,22 +594,22 @@ Middleware can access input in type-safe manner, enabling use cases like permiss
 ```ts
 const canUpdate = os.middleware(async ({ context, next }, input: number) => {
   // Perform permission check
-  return next();
-});
+  return next()
+})
 
 const ping = os
   .input(z.number())
   .use(canUpdate) // <- input already matches middleware's expected shape
   .handler(async ({ input }) => {
     // Handler logic
-  });
+  })
 
 const pong = os
   .input(z.object({ id: z.number() }))
   .use(canUpdate.adaptInput((input) => input.id)) // <- adapt input to match middleware's expected shape
   .handler(async ({ input }) => {
     // Handler logic
-  });
+  })
 ```
 
 ::: info
@@ -619,13 +617,11 @@ You can adapt a middleware to accept a different input shape by using `.adaptInp
 
 ```ts
 const canUpdate = os.middleware(async ({ context, next }, input: number) => {
-  return next();
-});
+  return next()
+})
 
 // Transform middleware to accept a new input shape
-const adaptedCanUpdate = canUpdate.adaptInput(
-  (input: { id: number }) => input.id,
-);
+const adaptedCanUpdate = canUpdate.adaptInput((input: { id: number }) => input.id)
 ```
 
 :::
@@ -636,18 +632,18 @@ Middleware can also modify the output of a handler, such as implementing caching
 
 ```ts
 const cache = os.middleware(async ({ context, next, path }, input, done) => {
-  const cacheKey = path.join("/") + JSON.stringify(input);
+  const cacheKey = path.join('/') + JSON.stringify(input)
 
   if (db.has(cacheKey)) {
-    return done({ output: db.get(cacheKey) });
+    return done({ output: db.get(cacheKey) })
   }
 
-  const result = await next({});
+  const result = await next({})
 
-  db.set(cacheKey, result.output);
+  db.set(cacheKey, result.output)
 
-  return result;
-});
+  return result
+})
 ```
 
 ## Inline Middleware
@@ -658,11 +654,11 @@ Middleware is simply a function that can be defined inline with `.use`, which is
 const example = os
   .use(async ({ context, next }) => {
     // Execute logic before the handler
-    return next();
+    return next()
   })
   .handler(async ({ context }) => {
     // Handler logic
-  });
+  })
 ```
 
 ## Combining Middleware
@@ -670,9 +666,7 @@ const example = os
 Multiple middleware functions can be combined using `.use`.
 
 ```ts
-const mergedMiddleware = aMiddleware
-  .use(async ({ next }) => next())
-  .use(anotherMiddleware);
+const mergedMiddleware = aMiddleware.use(async ({ next }) => next()).use(anotherMiddleware)
 ```
 
 ::: info
@@ -694,30 +688,30 @@ The context mechanism provides a type-safe dependency injection pattern. It lets
 Use initial context for values that come from the environment. Declare it with `.$context`, then provide it when executing the procedure:
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 // ---cut---
-const base = os.$context<{ env: { DB_URL: string } }>();
+const base = os.$context<{ env: { DB_URL: string } }>()
 
 export const getting = base.handler(async ({ context }) => {
-  console.log(context.env);
-});
+  console.log(context.env)
+})
 ```
 
 ::: info
 When a procedure requires initial context when calling, you must manually pass it:
 
 ```ts twoslash
-import { call, os } from "@orpc/server";
+import { call, os } from '@orpc/server'
 
-const base = os.$context<{ env: { DB_URL: string } }>();
-const getting = base.handler(async ({ context }) => {});
+const base = os.$context<{ env: { DB_URL: string } }>()
+const getting = base.handler(async ({ context }) => {})
 // ---cut---
 const output = await call(getting, undefined, {
   context: {
     // <- initial context must be passed when calling
-    env: { DB_URL: "postgres://..." },
+    env: { DB_URL: 'postgres://...' },
   },
-});
+})
 ```
 
 :::
@@ -727,9 +721,9 @@ const output = await call(getting, undefined, {
 To avoid repeating `.$context` declarations, you can define a default initial context type globally.
 
 ```ts
-declare module "@orpc/server" {
+declare module '@orpc/server' {
   export interface DefaultInitialContext {
-    env: { DB_URL: string };
+    env: { DB_URL: string }
   }
 }
 ```
@@ -739,9 +733,9 @@ declare module "@orpc/server" {
 Injected context is injected at runtime through [middleware](/docs/middleware#middleware-context):
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-declare const env: { DB_URL: string };
+declare const env: { DB_URL: string }
 // ---cut---
 const base = os.use(async ({ next }) =>
   next({
@@ -749,20 +743,20 @@ const base = os.use(async ({ next }) =>
       env: { DB_URL: env.DB_URL },
     },
   }),
-);
+)
 
 export const getting = base.handler(async ({ context }) => {
-  console.log(context.env);
-});
+  console.log(context.env)
+})
 ```
 
 ::: info
 When you use middleware context, you do not need to pass context manually when calling:
 
 ```ts twoslash
-import { call, os } from "@orpc/server";
+import { call, os } from '@orpc/server'
 
-declare const env: { DB_URL: string };
+declare const env: { DB_URL: string }
 
 const base = os.use(async ({ next }) =>
   next({
@@ -770,12 +764,12 @@ const base = os.use(async ({ next }) =>
       env: { DB_URL: env.DB_URL },
     },
   }),
-);
+)
 
-const getting = base.handler(async ({ context }) => {});
+const getting = base.handler(async ({ context }) => {})
 // ---cut---
 // no need to pass context manually when calling
-const output = await call(getting);
+const output = await call(getting)
 ```
 
 :::
@@ -785,32 +779,26 @@ const output = await call(getting);
 In many cases, you will use both. Use initial context for environment-specific values, such as database URLs, and injected context for runtime data, such as authenticated users.
 
 ```ts twoslash
-import { ORPCError, os } from "@orpc/server";
+import { ORPCError, os } from '@orpc/server'
 
-declare function parseJWT(
-  token: string | undefined,
-  secret: string,
-): { userId: number } | null;
+declare function parseJWT(token: string | undefined, secret: string): { userId: number } | null
 // ---cut---
-const base = os.$context<{ headers: Headers; env: { JWT_SECRET: string } }>();
+const base = os.$context<{ headers: Headers; env: { JWT_SECRET: string } }>()
 
 const requireAuth = base.middleware(async ({ context, next }) => {
-  const user = parseJWT(
-    context.headers.get("authorization")?.split(" ")[1],
-    context.env.JWT_SECRET,
-  );
+  const user = parseJWT(context.headers.get('authorization')?.split(' ')[1], context.env.JWT_SECRET)
 
   if (!user) {
-    throw new ORPCError("UNAUTHORIZED");
+    throw new ORPCError('UNAUTHORIZED')
   }
 
-  return next({ context: { user } });
-});
+  return next({ context: { user } })
+})
 
 const getting = base.use(requireAuth).handler(async ({ context }) => {
-  console.log(context.env);
-  console.log(context.user);
-});
+  console.log(context.env)
+  console.log(context.user)
+})
 ```
 
 ---
@@ -832,24 +820,24 @@ Error handling in oRPC is flexible and consistent. You can use the `ORPCError` c
 :::
 
 ```ts twoslash
-declare const notFound: boolean;
+declare const notFound: boolean
 // ---cut---
-import { ORPCError, os } from "@orpc/server";
+import { ORPCError, os } from '@orpc/server'
 
 const rateLimitMiddleware = os.middleware(async ({ next }) => {
-  throw new ORPCError("RATE_LIMITED", {
-    message: "You are being rate limited",
+  throw new ORPCError('RATE_LIMITED', {
+    message: 'You are being rate limited',
     data: { retryAfter: 60 },
-  });
+  })
 
-  return next();
-});
+  return next()
+})
 
 const example = os.use(rateLimitMiddleware).handler(async ({ input }) => {
   if (notFound) {
-    throw new ORPCError("NOT_FOUND");
+    throw new ORPCError('NOT_FOUND')
   }
-});
+})
 ```
 
 ## Typesafe Errors
@@ -861,10 +849,10 @@ For end-to-end type safety, define your errors with `.errors` or [return `ORPCEr
 :::
 
 ```ts twoslash
-import { os } from "@orpc/server";
-import * as z from "zod";
+import { os } from '@orpc/server'
+import * as z from 'zod'
 
-declare const notFound: boolean;
+declare const notFound: boolean
 // ---cut---
 const rateLimitMiddleware = os
   .errors({
@@ -876,25 +864,25 @@ const rateLimitMiddleware = os
   })
   .middleware(async ({ next, errors }) => {
     throw errors.RATE_LIMITED({
-      message: "You are being rate limited",
+      message: 'You are being rate limited',
       data: { retryAfter: 60 },
-    });
+    })
 
-    return next();
-  });
+    return next()
+  })
 
 const exampleProcedure = os
   .use(rateLimitMiddleware)
   .errors({
     NOT_FOUND: {
-      message: "The resource was not found", // <- default message
+      message: 'The resource was not found', // <- default message
     },
   })
   .handler(async ({ input, errors }) => {
     if (notFound) {
-      throw errors.NOT_FOUND();
+      throw errors.NOT_FOUND()
     }
-  });
+  })
 ```
 
 ::: tip
@@ -909,18 +897,18 @@ If you cannot access the `errors` object, for example in a utility function or a
 const exampleProcedure = os
   .errors({
     NOT_FOUND: {
-      message: "The resource was not found",
+      message: 'The resource was not found',
     },
   })
   .handler(async ({ errors }) => {
-    throw errors.NOT_FOUND();
+    throw errors.NOT_FOUND()
 
     // Treated as errors.NOT_FOUND because the code and data match
-    throw new ORPCError("NOT_FOUND");
+    throw new ORPCError('NOT_FOUND')
 
     // Treated as an unknown error because it does not match any defined error
-    throw new ORPCError("BAD_REQUEST");
-  });
+    throw new ORPCError('BAD_REQUEST')
+  })
 ```
 
 ### Returning an `ORPCError`
@@ -934,14 +922,14 @@ When [implementing a contract](/docs/contract/implementation), returning an `ORP
 ```ts
 const exampleProcedure = os.handler(async ({ errors }) => {
   if (reachRateLimit) {
-    return new ORPCError("RATE_LIMITED", {
-      message: "You are being rate limited",
+    return new ORPCError('RATE_LIMITED', {
+      message: 'You are being rate limited',
       data: { retryAfter: 60 },
-    });
+    })
   }
 
-  return "Success";
-});
+  return 'Success'
+})
 ```
 
 ::: danger
@@ -953,15 +941,10 @@ const exampleProcedure = os.handler(async ({ errors }) => {
 By default, oRPC allows any string as an error code and suggests common HTTP codes like `NOT_FOUND` and `UNAUTHORIZED`. You can override this with your own set of allowed error codes for better type safety and consistency.
 
 ```ts
-declare module "@orpc/server" {
+declare module '@orpc/server' {
   // or '@orpc/client'
   interface Registry {
-    ORPCErrorCode:
-      | "NOT_FOUND"
-      | "UNAUTHORIZED"
-      | "RATE_LIMITED"
-      | "MY_CUSTOM_ERROR"
-      | (string & {});
+    ORPCErrorCode: 'NOT_FOUND' | 'UNAUTHORIZED' | 'RATE_LIMITED' | 'MY_CUSTOM_ERROR' | (string & {})
   }
 }
 ```
@@ -981,18 +964,18 @@ class MyCustomError extends Error {}
 
 const customErrorConverterMiddleware = os.middleware(async ({ next }) => {
   try {
-    return await next();
+    return await next()
   } catch (err) {
     if (err instanceof MyCustomError) {
-      throw new ORPCError("MY_CUSTOM_ERROR", {
+      throw new ORPCError('MY_CUSTOM_ERROR', {
         message: err.message,
         cause: err,
-      });
+      })
     }
 
-    throw err;
+    throw err
   }
-});
+})
 ```
 
 ## Client Error Handling
@@ -1015,9 +998,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -1031,23 +1014,23 @@ Procedures can accept `File` and `Blob` as input and return them directly or ins
 :::
 
 ```ts twoslash
-import { os } from "@orpc/server";
-import * as z from "zod";
+import { os } from '@orpc/server'
+import * as z from 'zod'
 // ---cut---
 const example = os
   .input(z.file())
   .output(z.object({ anyFieldName: z.instanceof(File) }))
   .handler(async ({ input }) => {
-    const file = input;
+    const file = input
 
-    console.log(file.name);
+    console.log(file.name)
 
     return {
-      anyFieldName: new File(["Hello World"], "hello.txt", {
-        type: "text/plain",
+      anyFieldName: new File(['Hello World'], 'hello.txt', {
+        type: 'text/plain',
       }),
-    };
-  });
+    }
+  })
 ```
 
 ## ReadableStream\<Uint8Array>
@@ -1055,28 +1038,26 @@ const example = os
 Procedures can return `ReadableStream<Uint8Array>` to stream binary responses. The example below uses the [Response Headers Plugin](/docs/plugins/response-headers) to set the appropriate `Content-Type` header.
 
 ```ts twoslash
-import { os } from "@orpc/server";
-import { ResponseHeadersHandlerPluginContext } from "@orpc/server/plugins";
-import * as z from "zod";
+import { os } from '@orpc/server'
+import { ResponseHeadersHandlerPluginContext } from '@orpc/server/plugins'
+import * as z from 'zod'
 
 interface ServerContext extends ResponseHeadersHandlerPluginContext {}
 
-const base = os.$context<ServerContext>();
+const base = os.$context<ServerContext>()
 // ---cut---
-const example = base
-  .output(z.instanceof(ReadableStream))
-  .handler(async ({ context }) => {
-    context.resHeaders?.set("Content-Type", "text/plain");
+const example = base.output(z.instanceof(ReadableStream)).handler(async ({ context }) => {
+  context.resHeaders?.set('Content-Type', 'text/plain')
 
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("Hello World"));
-        controller.close();
-      },
-    });
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('Hello World'))
+      controller.close()
+    },
+  })
 
-    return stream;
-  });
+  return stream
+})
 ```
 
 ---
@@ -1096,11 +1077,11 @@ An `AsyncIteratorObject` is implemented as an [asynchronous generator function](
 ```ts
 const example = os.handler(async function* ({ input, signal, lastEventId }) {
   while (true) {
-    signal?.throwIfAborted();
-    yield { message: "Hello, world!" };
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    signal?.throwIfAborted()
+    yield { message: 'Hello, world!' }
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
-});
+})
 ```
 
 ::: info
@@ -1112,17 +1093,17 @@ Learn how to consume an `AsyncIteratorObject` from the client in the [client gui
 Use the built‑in `asyncIteratorObject` schema that works with any [Standard Schema](https://standardschema.dev/schema#what-schema-libraries-implement-the-spec) library to validate events.
 
 ```ts
-import { asyncIteratorObject } from "@orpc/server";
+import { asyncIteratorObject } from '@orpc/server'
 
 const example = os
   .output(asyncIteratorObject(z.object({ message: z.string() })))
   .handler(async function* ({ input, signal, lastEventId }) {
     while (true) {
-      signal?.throwIfAborted();
-      yield { message: "Hello, world!" };
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      signal?.throwIfAborted()
+      yield { message: 'Hello, world!' }
+      await new Promise((resolve) => setTimeout(resolve, 1000))
     }
-  });
+  })
 ```
 
 ## Last Event ID & Event Metadata
@@ -1134,22 +1115,19 @@ When used with the [Retry Plugin](/docs/plugins/retry) or [EventSource](https://
 :::
 
 ```ts
-import { withEventMeta } from "@orpc/server";
+import { withEventMeta } from '@orpc/server'
 
 const example = os.handler(async function* ({ input, signal, lastEventId }) {
   if (lastEventId) {
     // Resume streaming from lastEventId
   } else {
     while (true) {
-      signal?.throwIfAborted();
-      yield withEventMeta(
-        { message: "Hello, world!" },
-        { id: "some-id", retry: 10_000 },
-      );
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      signal?.throwIfAborted()
+      yield withEventMeta({ message: 'Hello, world!' }, { id: 'some-id', retry: 10_000 })
+      await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   }
-});
+})
 ```
 
 ## Stop AsyncIteratorObject
@@ -1163,16 +1141,16 @@ This behavior is specific to oRPC. Standard [SSE](https://developer.mozilla.org/
 ```ts
 const example = os.handler(async function* ({ input, signal, lastEventId }) {
   while (true) {
-    signal?.throwIfAborted();
+    signal?.throwIfAborted()
 
     if (done) {
-      return;
+      return
     }
 
-    yield { message: "Hello, world!" };
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    yield { message: 'Hello, world!' }
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
-});
+})
 ```
 
 ## Signal and Side-Effects
@@ -1183,14 +1161,14 @@ When the client closes the connection or an unexpected error occurs, oRPC aborts
 const example = os.handler(async function* ({ input, signal, lastEventId }) {
   try {
     while (true) {
-      signal?.throwIfAborted();
-      yield { message: "Hello, world!" };
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      signal?.throwIfAborted()
+      yield { message: 'Hello, world!' }
+      await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   } finally {
-    console.log("Cleanup logic here");
+    console.log('Cleanup logic here')
   }
-});
+})
 ```
 
 ## Publisher Helper
@@ -1199,27 +1177,25 @@ You can combine the [AsyncIteratorObject](/docs/async-iterator-object) with the 
 
 ```ts
 const publisher = new MemoryPublisher<{
-  "something-updated": {
-    id: string;
-  };
-}>();
+  'something-updated': {
+    id: string
+  }
+}>()
 
 const live = os.handler(async function* ({ input, signal, lastEventId }) {
-  const iterator = publisher.subscribe("something-updated", {
+  const iterator = publisher.subscribe('something-updated', {
     signal,
     lastEventId,
-  });
+  })
   for await (const payload of iterator) {
     // Handle payload here or yield directly to client
-    yield payload;
+    yield payload
   }
-});
+})
 
-const publish = os
-  .input(z.object({ id: z.string() }))
-  .handler(async ({ input }) => {
-    await publisher.publish("something-updated", { id: input.id });
-  });
+const publish = os.input(z.object({ id: z.string() })).handler(async ({ input }) => {
+  await publisher.publish('something-updated', { id: input.id })
+})
 ```
 
 ---
@@ -1237,43 +1213,43 @@ Metadata lets you attach extra information to procedures. Middleware, plugins, a
 In most cases, use `defineMeta` to create a metadata plugin. It takes a unique name and a merge function that defines how metadata is combined across repeated calls, then returns a tuple of `[metaPlugin, getMeta]`:
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-declare const store: Map<string, unknown>;
+declare const store: Map<string, unknown>
 // ---cut---
-import { defineMeta } from "@orpc/server";
+import { defineMeta } from '@orpc/server'
 
-type CacheMeta = boolean;
+type CacheMeta = boolean
 
 const [cacheMeta, getCacheMeta] = defineMeta(
   // [!code highlight]
-  "cache", // [!code highlight]
+  'cache', // [!code highlight]
   (incoming: CacheMeta, current) => incoming, // [!code highlight]
-); // [!code highlight]
+) // [!code highlight]
 
 const base = os.use(async ({ procedure, next, path }, input, done) => {
   if (getCacheMeta(procedure) !== true) {
     // [!code highlight]
-    return next();
+    return next()
   }
 
-  const key = path.join("/") + JSON.stringify(input);
+  const key = path.join('/') + JSON.stringify(input)
 
   if (store.has(key)) {
-    return done({ output: store.get(key)! });
+    return done({ output: store.get(key)! })
   }
 
-  const result = await next();
-  store.set(key, result.output);
+  const result = await next()
+  store.set(key, result.output)
 
-  return result;
-});
+  return result
+})
 
 const cachedProcedure = base
   .meta(cacheMeta(true)) // [!code highlight]
   .handler(async () => {
-    return "Earth";
-  });
+    return 'Earth'
+  })
 ```
 
 ## Manually Define Meta
@@ -1281,8 +1257,8 @@ const cachedProcedure = base
 If `defineMeta` is not flexible enough, define a plugin directly with `MetaPlugin<TInputSchema, TOutputSchema, TErrorMap>`. This gives you full control and lets the plugin infer or restrict procedure types.
 
 ```ts twoslash
-import { os } from "@orpc/server";
-import z from "zod";
+import { os } from '@orpc/server'
+import z from 'zod'
 // ---cut---
 import type {
   AnySchema,
@@ -1291,15 +1267,15 @@ import type {
   InferSchemaOutput,
   Meta,
   MetaPlugin,
-} from "@orpc/server";
+} from '@orpc/server'
 
 interface ExampleMeta<
   TInputSchema extends AnySchema,
   TOutputSchema extends AnySchema,
   TErrorMap extends ErrorMap,
 > {
-  inputExamples?: InferSchemaInput<TInputSchema>[];
-  outputExamples?: InferSchemaOutput<TOutputSchema>[];
+  inputExamples?: InferSchemaInput<TInputSchema>[]
+  outputExamples?: InferSchemaOutput<TOutputSchema>[]
 }
 
 interface ExampleMetaPlugin<
@@ -1307,7 +1283,7 @@ interface ExampleMetaPlugin<
   TOutputSchema extends AnySchema,
   TErrorMap extends ErrorMap,
 > extends MetaPlugin<TInputSchema, TOutputSchema, TErrorMap> {
-  name: "example";
+  name: 'example'
 }
 
 function exampleMeta<
@@ -1318,11 +1294,10 @@ function exampleMeta<
   incoming: ExampleMeta<TInputSchema, TOutputSchema, TErrorMap>,
 ): ExampleMetaPlugin<TInputSchema, TOutputSchema, TErrorMap> {
   return {
-    name: "example",
+    name: 'example',
     apply(meta) {
       const current = meta.example as
-        | ExampleMeta<TInputSchema, TOutputSchema, TErrorMap>
-        | undefined;
+        ExampleMeta<TInputSchema, TOutputSchema, TErrorMap> | undefined
 
       return {
         ...meta,
@@ -1330,17 +1305,15 @@ function exampleMeta<
           ...current,
           ...incoming,
         },
-      };
+      }
     },
-  };
+  }
 }
 
 function getExampleMeta(procedureOrLazy: {
-  "~orpc": { meta: Meta };
+  '~orpc': { meta: Meta }
 }): ExampleMeta<any, any, any> | undefined {
-  return procedureOrLazy["~orpc"].meta.example as
-    | ExampleMeta<any, any, any>
-    | undefined;
+  return procedureOrLazy['~orpc'].meta.example as ExampleMeta<any, any, any> | undefined
 }
 
 const procedure = os
@@ -1348,13 +1321,13 @@ const procedure = os
   .output(z.object({ id: z.string(), name: z.string() }))
   .meta(
     exampleMeta({
-      inputExamples: [{ name: "Alice" }], // <- typesafe
-      outputExamples: [{ id: "1", name: "Alice" }], // <- typesafe
+      inputExamples: [{ name: 'Alice' }], // <- typesafe
+      outputExamples: [{ id: '1', name: 'Alice' }], // <- typesafe
     }),
   )
   .handler(async ({ input }) => {
-    return { id: "1", name: "Alice" };
-  });
+    return { id: '1', name: 'Alice' }
+  })
 ```
 
 ---
@@ -1438,9 +1411,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -1460,7 +1433,7 @@ const router = {
   planet: {
     create: os.handler(() => {}), // [!code highlight]
   },
-};
+}
 ```
 
 ## Sending Input
@@ -1474,20 +1447,20 @@ Request payloads depend on the serializer and are not plain JSON. Learn more in 
 ### Query String
 
 ```ts
-const url = new URL("https://example.com/rpc/planet/create");
+const url = new URL('https://example.com/rpc/planet/create')
 
 url.searchParams.append(
-  "data",
+  'data',
   JSON.stringify({
     json: {
-      name: "Earth",
-      detached_at: "2022-01-01T00:00:00.000Z",
+      name: 'Earth',
+      detached_at: '2022-01-01T00:00:00.000Z',
     },
-    meta: [["date", "detached_at"]],
+    meta: [['date', 'detached_at']],
   }),
-);
+)
 
-const response = await fetch(url);
+const response = await fetch(url)
 ```
 
 ### Request Body
@@ -1507,27 +1480,27 @@ curl -X POST https://example.com/rpc/planet/create \
 ### With Files
 
 ```ts
-const form = new FormData();
+const form = new FormData()
 
 form.set(
-  "data",
+  'data',
   JSON.stringify({
     json: {
-      name: "Earth",
+      name: 'Earth',
       thumbnail: {},
       images: [{}],
     },
-    maps: [["thumbnail"], ["images", 0]],
+    maps: [['thumbnail'], ['images', 0]],
   }),
-);
+)
 
-form.set("0", new Blob([""], { type: "image/png" }));
-form.set("1", new Blob([""], { type: "image/png" }));
+form.set('0', new Blob([''], { type: 'image/png' }))
+form.set('1', new Blob([''], { type: 'image/png' }))
 
-const response = await fetch("https://example.com/rpc/planet/create", {
-  method: "POST",
+const response = await fetch('https://example.com/rpc/planet/create', {
+  method: 'POST',
   body: form,
-});
+})
 ```
 
 ## Success Response
@@ -1619,9 +1592,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -1638,7 +1611,7 @@ class Person {
   ) {}
 }
 // ---cut---
-import { RPCSerializer } from "@orpc/client";
+import { RPCSerializer } from '@orpc/client'
 
 const serializer = new RPCSerializer({
   handlers: {
@@ -1655,7 +1628,7 @@ const serializer = new RPCSerializer({
       deserialize: (v) => new Date(v),
     },
   },
-});
+})
 ```
 
 ::: info Use a custom serializer with RPCHandler and RPCLink
@@ -1663,11 +1636,11 @@ const serializer = new RPCSerializer({
 ```ts
 const handler = new RPCHandler(router, {
   serializer,
-});
+})
 
 const link = new RPCLink({
   serializer,
-});
+})
 ```
 
 :::
@@ -1706,24 +1679,24 @@ For example, `[['thumbnail'], ['images', 0]]` means the first file part correspo
 :::
 
 ```ts
-const form = new FormData();
+const form = new FormData()
 
 form.set(
-  "data",
+  'data',
   JSON.stringify({
     json: {
-      name: "Earth",
+      name: 'Earth',
       thumbnail: {},
       images: [{}],
-      createdAt: "2022-01-01T00:00:00.000Z",
+      createdAt: '2022-01-01T00:00:00.000Z',
     },
-    meta: [["date", "createdAt"]],
-    maps: [["thumbnail"], ["images", 0]],
+    meta: [['date', 'createdAt']],
+    maps: [['thumbnail'], ['images', 0]],
   }),
-);
+)
 
-form.set("0", new Blob([""], { type: "image/png" }));
-form.set("1", new Blob([""], { type: "image/png" }));
+form.set('0', new Blob([''], { type: 'image/png' }))
+form.set('1', new Blob([''], { type: 'image/png' }))
 ```
 
 ### Direct File
@@ -1797,20 +1770,20 @@ Use `RPCHandler` to communicate with [RPC Link](/docs/rpc/link) and other client
 const handler = new RPCHandler(router, {
   interceptors: [
     async ({ next, path }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        return await next();
+        return await next()
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
   plugins: [new CORSHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -1819,11 +1792,11 @@ The actual usage of `RPCHandler` depends on the adapter you use. For example, wh
 ```ts
 export async function fetch(request: Request) {
   const { response } = await handler.fetch(request, {
-    prefix: "/rpc",
+    prefix: '/rpc',
     context: {}, // <- provide initial context if needed
-  });
+  })
 
-  return response ?? new Response("Not Found", { status: 404 });
+  return response ?? new Response('Not Found', { status: 404 })
 }
 ```
 
@@ -1835,9 +1808,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -1855,14 +1828,14 @@ const handler = new RPCHandler(router, {
   routingInterceptors: [
     async ({ next, request, context }) => {
       if (condition) {
-        return { matched: false };
+        return { matched: false }
       }
 
-      const { matched, response } = await next();
-      return { matched, response };
+      const { matched, response } = await next()
+      return { matched, response }
     },
   ],
-});
+})
 ```
 
 ### Interceptors
@@ -1878,34 +1851,34 @@ const handler = new RPCHandler(router, {
   interceptors: [
     async ({ next, request, procedure, context }) => {
       try {
-        const response = await next();
-        return response;
+        const response = await next()
+        return response
       } catch (err) {
         if (err instanceof CustomError) {
-          throw new ORPCError("CUSTOM_ERROR", {
+          throw new ORPCError('CUSTOM_ERROR', {
             message: err.message,
             cause: err,
-          });
+          })
         }
 
-        throw err;
+        throw err
       }
     },
     async ({ next, path }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        const response = await next();
-        return response;
+        const response = await next()
+        return response
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
-});
+})
 ```
 
 ### Client Interceptors
@@ -1916,11 +1889,11 @@ Client interceptors run only for matched requests, after input decoding, before 
 const handler = new RPCHandler(router, {
   clientInterceptors: [
     async ({ next, input, context, procedure }) => {
-      const output = await next();
-      return output;
+      const output = await next()
+      return output
     },
   ],
-});
+})
 ```
 
 ### Adapter Interceptors
@@ -1931,11 +1904,11 @@ Some `RPCHandler` implementations, such as fetch or node adapters, also support 
 const handler = new RPCHandler(router, {
   fetchInterceptors: [
     async ({ next, request }) => {
-      const { matched, response } = await next();
-      return { matched, response };
+      const { matched, response } = await next()
+      return { matched, response }
     },
   ],
-});
+})
 ```
 
 ::: info
@@ -1949,7 +1922,7 @@ Plugins package reusable interceptors. For example, [CORS Plugin](/docs/plugins/
 ```ts
 const handler = new RPCHandler(router, {
   plugins: [new CORSHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -1960,7 +1933,7 @@ const handler = new RPCHandler(router, {
   csrfGuardHandlerPlugin: {
     enabled: false,
   },
-});
+})
 ```
 
 :::
@@ -1976,7 +1949,7 @@ const handler = new RPCHandler(router, {
       // ...custom handlers
     },
   }),
-});
+})
 ```
 
 ## Filtering Procedures
@@ -1986,7 +1959,7 @@ Use the `filter` option to exclude procedures from matching:
 ```ts
 const handler = new RPCHandler(router, {
   filter: (contract, path) => getIsInternalMeta(contract) !== true,
-});
+})
 ```
 
 ## Custom Error Response
@@ -1994,7 +1967,7 @@ const handler = new RPCHandler(router, {
 By default, `RPCHandler` uses `COMMON_ERROR_STATUS_MAP` to determine response status codes. Use `errorStatusMap` to customize them:
 
 ```ts
-import { COMMON_ERROR_STATUS_MAP } from "@orpc/server";
+import { COMMON_ERROR_STATUS_MAP } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   /**
@@ -2004,7 +1977,7 @@ const handler = new RPCHandler(router, {
     ...COMMON_ERROR_STATUS_MAP,
     CUSTOM_ERROR: 599,
   },
-});
+})
 ```
 
 ::: details Common Error Status Map
@@ -2057,7 +2030,7 @@ const handler = new RPCHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       keepAlive: {
         /**
@@ -2077,7 +2050,7 @@ const handler = new RPCHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       /**
        * If true, a `close` event is sent even when the iterator completes with `undefined`.
@@ -2088,7 +2061,7 @@ const handler = new RPCHandler(router, {
       emptyCloseEventEnabled: true,
     },
   },
-});
+})
 ```
 
 ## Lifecycle
@@ -2109,22 +2082,22 @@ Use `RPCLink` to communicate with [RPC Handler](/docs/rpc/handler) and other ser
 
 ```ts
 const link = new RPCLink({
-  origin: "https://example.com",
-  url: "/rpc",
+  origin: 'https://example.com',
+  url: '/rpc',
   headers: ({ context }) => ({
     authorization: `Bearer ${token}`,
   }),
   interceptors: [
     async ({ next, path }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        return await next();
+        return await next()
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
@@ -2133,12 +2106,12 @@ const link = new RPCLink({
     // <- only available in fetch adapter
     return globalThis.fetch(request, {
       ...init,
-      credentials: "include", // Include cookies on cross-origin requests
-    });
+      credentials: 'include', // Include cookies on cross-origin requests
+    })
   },
-});
+})
 
-export const client = createORPCClient(link);
+export const client = createORPCClient(link)
 ```
 
 ::: warning
@@ -2147,9 +2120,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -2159,16 +2132,15 @@ const cors = new CORSHandlerPlugin({
 After you create an `RPCLink`, pass it to `createORPCClient` to build a typesafe client for either a [contract](/docs/contract/router) or a [router](/docs/router):
 
 ```ts
-import { createORPCClient } from "@orpc/client";
-import { RouterContractClient } from "@orpc/contract";
-import { RouterClient } from "@orpc/server";
+import { createORPCClient } from '@orpc/client'
+import { RouterContractClient } from '@orpc/contract'
+import { RouterClient } from '@orpc/server'
 
 // if you are following contract-first approach
-const contractClient: RouterContractClient<typeof contract> =
-  createORPCClient(link);
+const contractClient: RouterContractClient<typeof contract> = createORPCClient(link)
 
 // if you are following normal approach
-const normalClient: RouterClient<typeof router> = createORPCClient(link);
+const normalClient: RouterClient<typeof router> = createORPCClient(link)
 ```
 
 ## Client Context
@@ -2177,7 +2149,7 @@ Client context lets you pass per-call values, such as auth tokens or cache hints
 
 ```ts
 interface ClientContext {
-  token?: string;
+  token?: string
 }
 
 const link = new RPCLink<ClientContext>({
@@ -2186,11 +2158,11 @@ const link = new RPCLink<ClientContext>({
   }),
   interceptors: [
     async ({ next, context }) => {
-      console.log("Client context:", context);
-      return await next();
+      console.log('Client context:', context)
+      return await next()
     },
   ],
-});
+})
 ```
 
 ::: info
@@ -2198,18 +2170,16 @@ Pass `ClientContext` when creating the client, then provide context on each call
 
 ```ts
 // if you are using the contract-first approach
-const client: RouterContractClient<typeof contract, ClientContext> =
-  createORPCClient(link);
+const client: RouterContractClient<typeof contract, ClientContext> = createORPCClient(link)
 
 // if you are using the standard approach
-const client: RouterClient<typeof router, ClientContext> =
-  createORPCClient(link);
+const client: RouterClient<typeof router, ClientContext> = createORPCClient(link)
 
 const output = await client.someProcedure(input, {
   context: {
-    token: "abc123",
+    token: 'abc123',
   },
-});
+})
 ```
 
 :::
@@ -2224,12 +2194,12 @@ Use `origin`, `url`, and `headers` to control request destination and headers.
 
 ```ts
 const link = new RPCLink({
-  origin: "https://api.example.com",
-  url: "/rpc?v=2",
+  origin: 'https://api.example.com',
+  url: '/rpc?v=2',
   headers: {
     authorization: `Bearer ${getAuthToken()}`,
   },
-});
+})
 ```
 
 ::: info
@@ -2238,16 +2208,16 @@ Each option can also be a function to dynamically customize values per request. 
 ```ts
 const link = new RPCLink<ClientContext>({
   origin: ({ path, context }) => {
-    if (path[0] === "internal") {
-      return "https://internal.example.com";
+    if (path[0] === 'internal') {
+      return 'https://internal.example.com'
     }
 
-    return "https://api.example.com";
+    return 'https://api.example.com'
   },
   headers: ({ context }) => ({
     authorization: context?.token ? `Bearer ${context.token}` : undefined,
   }),
-});
+})
 ```
 
 :::
@@ -2264,20 +2234,20 @@ Interceptors run around the entire call, including input encoding, transport, an
 const link = new RPCLink({
   interceptors: [
     async ({ next, path, input }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        const output = await next();
-        return output;
+        const output = await next()
+        return output
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
-});
+})
 ```
 
 ### Transport Interceptors
@@ -2294,15 +2264,15 @@ const link = new RPCLink({
           ...options.request,
           headers: {
             ...options.request.headers,
-            "x-request-id": crypto.randomUUID(),
+            'x-request-id': crypto.randomUUID(),
           },
         },
-      });
+      })
 
-      return response;
+      return response
     },
   ],
-});
+})
 ```
 
 ### Adapter Interceptors
@@ -2317,14 +2287,14 @@ const link = new RPCLink({
         ...options,
         init: {
           ...options.init,
-          credentials: "include",
+          credentials: 'include',
         },
-      });
+      })
 
-      return response;
+      return response
     },
   ],
-});
+})
 ```
 
 ::: info
@@ -2338,7 +2308,7 @@ Plugins package reusable interceptors. For example, [Retry After Plugin](/docs/p
 ```ts
 const link = new RPCLink({
   plugins: [new RetryAfterLinkPlugin()],
-});
+})
 ```
 
 ## Custom Serializer
@@ -2352,7 +2322,7 @@ const link = new RPCLink({
       // ...custom handlers
     },
   }),
-});
+})
 ```
 
 ## Request Method
@@ -2361,29 +2331,29 @@ const link = new RPCLink({
 
 ```ts
 type ClientContext = {
-  cache?: RequestCache;
-};
+  cache?: RequestCache
+}
 
 const link = new RPCLink<ClientContext>({
-  url: "/rpc",
+  url: '/rpc',
   method: ({ context }, path) => {
     if (context.cache) {
-      return "GET";
+      return 'GET'
     }
 
     if (path.at(-1)?.match(/^(?:get|find|list|search)(?:[A-Z].*)?$/)) {
-      return "GET";
+      return 'GET'
     }
 
-    return "POST";
+    return 'POST'
   },
   fetch: (url, init, { context }) => {
     return fetch(url, {
       ...init,
       cache: context.cache,
-    });
+    })
   },
-});
+})
 ```
 
 ## Event Stream Options
@@ -2407,7 +2377,7 @@ const link = new RPCLink({
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       keepAlive: {
         /**
@@ -2427,7 +2397,7 @@ const link = new RPCLink({
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       /**
        * If true, a `close` event is sent even when the iterator completes with `undefined`.
@@ -2438,7 +2408,7 @@ const link = new RPCLink({
       emptyCloseEventEnabled: true,
     },
   },
-});
+})
 ```
 
 ## Lifecycle
@@ -2460,18 +2430,18 @@ Use `openapi` metadata to control how a procedure is exposed over HTTP.
 If you do not set OpenAPI routing metadata, a procedure is exposed as a `POST` endpoint whose path is derived from the router structure. For example:
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 // ---cut---
-import { openapi } from "@orpc/openapi";
+import { openapi } from '@orpc/openapi'
 
 const router = {
   planet: {
     list: os
-      .meta(openapi({ method: "GET", path: "/planets" }))
-      .handler(async () => [{ id: "earth", name: "Earth" }]),
+      .meta(openapi({ method: 'GET', path: '/planets' }))
+      .handler(async () => [{ id: 'earth', name: 'Earth' }]),
     create: os.handler(async () => ({})),
   },
-};
+}
 ```
 
 In this example, `list` is exposed as `GET /planets` because it overrides the default method and path. `create` keeps the default behavior, so it is exposed as `POST /planet/create`.
@@ -2481,19 +2451,19 @@ In this example, `list` is exposed as `GET /planets` because it overrides the de
 To define a path parameter, use `{name}` in the `path` and add the same field as a required key in the input schema:
 
 ```ts
-import { z } from "zod";
+import { z } from 'zod'
 
 const getPlanet = os
-  .meta(openapi({ method: "GET", path: "/planets/{id}" }))
-  .input(z.object({ id: z.string() }));
+  .meta(openapi({ method: 'GET', path: '/planets/{id}' }))
+  .input(z.object({ id: z.string() }))
 ```
 
 For catch-all path segments that may include `/`, use `{+name}`:
 
 ```ts
 const getFile = os
-  .meta(openapi({ method: "GET", path: "/files/{+path}" }))
-  .input(z.object({ path: z.string() }));
+  .meta(openapi({ method: 'GET', path: '/files/{+path}' }))
+  .input(z.object({ path: z.string() }))
 ```
 
 ::: info
@@ -2505,20 +2475,20 @@ To customize path parameter encoding and decoding, see [Path Parameter Styles](/
 Define `prefix` to prepend a path to a procedure, or an entire router:
 
 ```ts
-const planetBuilder = os.meta(openapi({ prefix: "/planets" }));
+const planetBuilder = os.meta(openapi({ prefix: '/planets' }))
 
 const listPlanets = planetBuilder
-  .meta(openapi({ method: "GET", path: "/" }))
-  .handler(async () => [{ id: "earth", name: "Earth" }]);
+  .meta(openapi({ method: 'GET', path: '/' }))
+  .handler(async () => [{ id: 'earth', name: 'Earth' }])
 
-const createPlanet = planetBuilder.handler(async () => ({}));
+const createPlanet = planetBuilder.handler(async () => ({}))
 
-const router = os.meta(openapi({ prefix: "/api/v2" })).router({
+const router = os.meta(openapi({ prefix: '/api/v2' })).router({
   planet: {
     list: listPlanets,
     create: createPlanet,
   },
-});
+})
 ```
 
 In this example, `listPlanets` is exposed as `GET /api/v2/planets/`. `createPlanet` is exposed as `POST /api/v2/planets/planet/create`.
@@ -2529,20 +2499,20 @@ Prefixes can also include path parameters, but they must be defined as required 
 
 ```ts
 const base = os
-  .meta(openapi({ prefix: "/{workspaceId}" }))
+  .meta(openapi({ prefix: '/{workspaceId}' }))
   .input(z.looseObject({ workspaceId: z.string() }))
   .use(({ next }, { workspaceId }) => {
-    console.log("Workspace ID:", workspaceId);
-    return next();
-  });
+    console.log('Workspace ID:', workspaceId)
+    return next()
+  })
 
 const procedure = base
-  .meta(openapi({ method: "GET", path: "/planets/{id}" }))
+  .meta(openapi({ method: 'GET', path: '/planets/{id}' }))
   .input(z.looseObject({ id: z.string() }))
   .handler(async ({ input }) => {
-    console.log("Workspace ID:", input.workspaceId);
-    console.log("Planet ID:", input.id);
-  });
+    console.log('Workspace ID:', input.workspaceId)
+    console.log('Planet ID:', input.id)
+  })
 ```
 
 ## Lazy Router
@@ -2551,10 +2521,8 @@ When using a [lazy router](/docs/router#lazy-router), define a `prefix` so lazy 
 
 ```ts
 const router = {
-  project: os
-    .meta(openapi({ prefix: "/projects" }))
-    .lazy(() => import("./project")),
-};
+  project: os.meta(openapi({ prefix: '/projects' })).lazy(() => import('./project')),
+}
 ```
 
 ## Metadata Merging
@@ -2562,14 +2530,14 @@ const router = {
 When `openapi` is applied multiple times, `prefix` values are concatenated in definition order, while `method`, `path`, and `successStatus` are overridden by the most recent call. For the full merge behavior of every field, see [Metadata Merging](/docs/openapi/specification#metadata-merging).
 
 ```ts
-const router = os.meta(openapi({ prefix: "/api/v2" })).router({
+const router = os.meta(openapi({ prefix: '/api/v2' })).router({
   get: os
-    .meta(openapi({ prefix: "/planets" }))
-    .meta(openapi({ method: "GET", path: "/planets/{id}" }))
-    .meta(openapi({ path: "/{id}" }))
+    .meta(openapi({ prefix: '/planets' }))
+    .meta(openapi({ method: 'GET', path: '/planets/{id}' }))
+    .meta(openapi({ path: '/{id}' }))
     .input(z.object({ id: z.string() }))
     .handler(async () => ({})),
-});
+})
 ```
 
 These calls are equivalent to:
@@ -2579,22 +2547,20 @@ const router = {
   get: os
     .meta(
       openapi({
-        prefix: "/api/v2/planets",
-        method: "GET",
-        path: "/{id}",
+        prefix: '/api/v2/planets',
+        method: 'GET',
+        path: '/{id}',
       }),
     )
     .handler(async () => ({})),
-};
+}
 ```
 
 ::: info
 Metadata resets to its default behavior when set to `undefined` in subsequent calls:
 
 ```ts
-const example = os
-  .meta(openapi({ prefix: "/api/v2" }))
-  .meta(openapi({ prefix: undefined }));
+const example = os.meta(openapi({ prefix: '/api/v2' })).meta(openapi({ prefix: undefined }))
 ```
 
 In this example, the final `prefix` is `undefined`, so no prefix is applied to `example`.
@@ -2607,9 +2573,9 @@ For common cases, use the shorthand helpers:
 
 ```ts
 const listPlanets = os
-  .meta(openapi.prefix("/planets"))
-  .meta(openapi.method("GET"))
-  .meta(openapi.path("/"));
+  .meta(openapi.prefix('/planets'))
+  .meta(openapi.method('GET'))
+  .meta(openapi.path('/'))
 ```
 
 ## `.route` extension
@@ -2621,21 +2587,21 @@ Import `@orpc/openapi/extensions/route` from a module that always runs during in
 ```ts [usage]
 const ping = base
   .route({
-    method: "GET",
-    path: "/ping",
+    method: 'GET',
+    path: '/ping',
   })
   .input(z.object({ name: z.string() }))
   .handler(async ({ input }) => {
-    return `Hello ${input.name}!`;
-  });
+    return `Hello ${input.name}!`
+  })
 ```
 
 ```ts [setup]
-import "@orpc/openapi/extensions/route";
+import '@orpc/openapi/extensions/route'
 
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-export const base = os;
+export const base = os
 ```
 
 :::
@@ -2656,7 +2622,7 @@ By default, oRPC uses `compact` mode where path parameters are merged with eithe
 
 ```ts
 const searchPlanets = os
-  .meta(openapi({ method: "GET", path: "/planets/{id}" }))
+  .meta(openapi({ method: 'GET', path: '/planets/{id}' }))
   .input(
     z.object({
       id: z.string(),
@@ -2664,8 +2630,8 @@ const searchPlanets = os
     }),
   )
   .handler(async ({ input }) => {
-    return { id: input.id, q: input.q };
-  });
+    return { id: input.id, q: input.q }
+  })
 ```
 
 For `GET /planets/earth?q=life`, the procedure receives:
@@ -2689,22 +2655,22 @@ In `detailed` mode, the input is an object with separate `params`, `query`, `hea
 const updatePlanet = os
   .meta(
     openapi({
-      method: "POST",
-      path: "/planets/{id}",
-      inputStructure: "detailed",
+      method: 'POST',
+      path: '/planets/{id}',
+      inputStructure: 'detailed',
     }),
   )
   .input(
     z.object({
       params: z.object({ id: z.string() }),
       query: z.object({ dryRun: z.coerce.boolean().optional() }).optional(),
-      headers: z.object({ "x-trace-id": z.string() }).optional(),
+      headers: z.object({ 'x-trace-id': z.string() }).optional(),
       body: z.object({ name: z.string() }),
     }),
   )
   .handler(async ({ input }) => {
-    return input;
-  });
+    return input
+  })
 ```
 
 For `POST /planets/earth?dryRun=true` with header `x-trace-id: abc123` and body `{ "name": "Earth" }`, the procedure receives:
@@ -2730,11 +2696,11 @@ By default, path parameters are decoded as plain strings. Use `paramsStyles` to 
 const getPlanets = os
   .meta(
     openapi({
-      method: "GET",
-      path: "/planets/{ids}/{filters}",
+      method: 'GET',
+      path: '/planets/{ids}/{filters}',
       paramsStyles: {
-        ids: "comma-delimited-array",
-        filters: "comma-delimited-object",
+        ids: 'comma-delimited-array',
+        filters: 'comma-delimited-object',
       },
     }),
   )
@@ -2747,7 +2713,7 @@ const getPlanets = os
       }),
     }),
   )
-  .handler(async () => []);
+  .handler(async () => [])
 ```
 
 Supported path parameter styles:
@@ -2770,17 +2736,17 @@ By default, query parameters are decoded with [bracket notation](/docs/openapi/b
 const searchPlanets = os
   .meta(
     openapi({
-      method: "GET",
-      path: "/planets",
+      method: 'GET',
+      path: '/planets',
       queryStyles: {
-        keyword: "primitive",
-        tags: "comma-delimited-array",
-        filters: "comma-delimited-object",
-        meta: "json",
+        keyword: 'primitive',
+        tags: 'comma-delimited-array',
+        filters: 'comma-delimited-object',
+        meta: 'json',
       },
     }),
   )
-  .handler(async () => []);
+  .handler(async () => [])
 ```
 
 Supported query styles:
@@ -2808,10 +2774,10 @@ By default, oRPC uses `compact` mode. The procedure's return value becomes the r
 
 ```ts
 const getPlanet = os
-  .meta(openapi({ method: "GET", path: "/planets", successStatus: 200 }))
+  .meta(openapi({ method: 'GET', path: '/planets', successStatus: 200 }))
   .handler(async () => {
-    return { id: "earth", name: "Earth" };
-  });
+    return { id: 'earth', name: 'Earth' }
+  })
 ```
 
 ### Detailed Output Structure
@@ -2826,9 +2792,9 @@ In `detailed` mode, return an object with the following fields:
 const savePlanet = os
   .meta(
     openapi({
-      method: "PUT",
-      path: "/planets/{id}",
-      outputStructure: "detailed",
+      method: 'PUT',
+      path: '/planets/{id}',
+      outputStructure: 'detailed',
       successStatus: 200,
     }),
   )
@@ -2836,11 +2802,11 @@ const savePlanet = os
   .output(
     z.union([
       z.object({
-        status: z.literal(201).meta({ description: "Created" }),
+        status: z.literal(201).meta({ description: 'Created' }),
         body: z.object({ id: z.string(), name: z.string() }),
       }),
       z.object({
-        status: z.literal(200).meta({ description: "Updated" }),
+        status: z.literal(200).meta({ description: 'Updated' }),
         body: z.object({ id: z.string(), name: z.string() }),
       }),
     ]),
@@ -2849,15 +2815,15 @@ const savePlanet = os
     if (!isExistingPlanet(input.id)) {
       return {
         status: 201,
-        headers: { "x-created": "true" },
-        body: { id: "earth", name: "Earth" },
-      };
+        headers: { 'x-created': 'true' },
+        body: { id: 'earth', name: 'Earth' },
+      }
     }
 
     return {
-      body: { id: "earth", name: "Earth" },
-    };
-  });
+      body: { id: 'earth', name: 'Earth' },
+    }
+  })
 ```
 
 ## Body Hints
@@ -2868,8 +2834,8 @@ The body parser normally uses `Content-Type`, `Content-Length`, `Content-Disposi
 const uploadLargeFile = os
   .meta(
     openapi({
-      requestBodyHint: "octet-stream",
-      responseBodyHint: "json",
+      requestBodyHint: 'octet-stream',
+      responseBodyHint: 'json',
     }),
   )
   .input(z.instanceof(ReadableStream))
@@ -2878,8 +2844,8 @@ const uploadLargeFile = os
       // process chunk
     }
 
-    return { ok: true };
-  });
+    return { ok: true }
+  })
 ```
 
 Supported body hints:
@@ -2903,16 +2869,14 @@ Learn more about body hints in the [Standard Server documentation](https://githu
 When `openapi` is applied multiple times, `paramsStyles` and `queryStyles` are merged per parameter, and the most recent style defined for a parameter wins. `inputStructure`, `outputStructure`, `responseBodyHint`, and `requestBodyHint` are overridden by the most recent call. For the full merge behavior of every field, see [Metadata Merging](/docs/openapi/specification#metadata-merging).
 
 ```ts
-const router = os.meta(openapi({ inputStructure: "detailed" })).router({
+const router = os.meta(openapi({ inputStructure: 'detailed' })).router({
   get: os
-    .meta(
-      openapi({ method: "GET", path: "/planets", inputStructure: "compact" }),
-    )
-    .meta(openapi({ queryStyles: { tags: "comma-delimited-array" } }))
-    .meta(openapi({ queryStyles: { q: "primitive" } }))
+    .meta(openapi({ method: 'GET', path: '/planets', inputStructure: 'compact' }))
+    .meta(openapi({ queryStyles: { tags: 'comma-delimited-array' } }))
+    .meta(openapi({ queryStyles: { q: 'primitive' } }))
     .input(z.object({ tags: z.array(z.string()), q: z.string().optional() }))
     .handler(async () => []),
-});
+})
 ```
 
 These are equivalent to:
@@ -2922,18 +2886,18 @@ const router = {
   get: os
     .meta(
       openapi({
-        method: "GET",
-        path: "/planets",
-        inputStructure: "compact",
+        method: 'GET',
+        path: '/planets',
+        inputStructure: 'compact',
         queryStyles: {
-          tags: "comma-delimited-array",
-          q: "primitive",
+          tags: 'comma-delimited-array',
+          q: 'primitive',
         },
       }),
     )
     .input(z.object({ tags: z.array(z.string()), q: z.string().optional() }))
     .handler(async () => []),
-};
+}
 ```
 
 ::: info
@@ -2941,8 +2905,8 @@ Metadata resets to its default behavior when set to `undefined` in subsequent ca
 
 ```ts
 const example = os
-  .meta(openapi({ queryStyles: { tags: "comma-delimited-array" } }))
-  .meta(openapi({ queryStyles: undefined }));
+  .meta(openapi({ queryStyles: { tags: 'comma-delimited-array' } }))
+  .meta(openapi({ queryStyles: undefined }))
 ```
 
 In this example, the final `queryStyles` is `undefined`, so query parameters are parsed with the default bracket notation.
@@ -2989,7 +2953,7 @@ Bracket notation encodes structured data in flat key-value formats such as query
      bracketNotation: {
        maxExplicitDeserializingArrayIndex: 1999,
      },
-   });
+   })
    ```
 
    :::
@@ -3125,9 +3089,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -3154,7 +3118,7 @@ class Person {
   ) {}
 }
 // ---cut---
-import { OpenAPISerializer } from "@orpc/openapi";
+import { OpenAPISerializer } from '@orpc/openapi'
 
 const serializer = new OpenAPISerializer({
   handlers: {
@@ -3169,7 +3133,7 @@ const serializer = new OpenAPISerializer({
       serialize: (v: Date) => v.getTime(),
     },
   },
-});
+})
 ```
 
 ::: info Use a custom serializer with OpenAPIHandler and OpenAPILink
@@ -3177,11 +3141,11 @@ const serializer = new OpenAPISerializer({
 ```ts
 const handler = new OpenAPIHandler(router, {
   serializer,
-});
+})
 
 const link = new OpenAPILink(contract, {
   serializer,
-});
+})
 ```
 
 :::
@@ -3203,12 +3167,12 @@ In most cases, serialized data is JSON-serializable.
 If the data includes nested `Blob` or `File`, the serializer returns a `FormData` object using [Bracket Notation](/docs/openapi/bracket-notation). Non-file values are converted to strings, and `null` or `undefined` fields are omitted.
 
 ```ts
-const form = new FormData();
+const form = new FormData()
 
-form.append("name", "Earth");
-form.append("thumbnail", new Blob([""], { type: "image/png" }));
-form.append("images[0]", new Blob([""], { type: "image/png" }));
-form.append("createdAt", "2022-01-01T00:00:00.000Z");
+form.append('name', 'Earth')
+form.append('thumbnail', new Blob([''], { type: 'image/png' }))
+form.append('images[0]', new Blob([''], { type: 'image/png' }))
+form.append('createdAt', '2022-01-01T00:00:00.000Z')
 ```
 
 ::: info
@@ -3286,20 +3250,20 @@ Use `OpenAPIHandler` to expose HTTP endpoints or communicate with [OpenAPI Link]
 const handler = new OpenAPIHandler(router, {
   interceptors: [
     async ({ next, path }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        return await next();
+        return await next()
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
   plugins: [new CORSHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -3308,11 +3272,11 @@ The actual usage of `OpenAPIHandler` depends on the adapter you use. For example
 ```ts
 export async function fetch(request: Request) {
   const { response } = await handler.fetch(request, {
-    prefix: "/api",
+    prefix: '/api',
     context: {}, // <- provide initial context if needed
-  });
+  })
 
-  return response ?? new Response("Not Found", { status: 404 });
+  return response ?? new Response('Not Found', { status: 404 })
 }
 ```
 
@@ -3324,9 +3288,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -3344,14 +3308,14 @@ const handler = new OpenAPIHandler(router, {
   routingInterceptors: [
     async ({ next, request, context }) => {
       if (condition) {
-        return { matched: false };
+        return { matched: false }
       }
 
-      const { matched, response } = await next();
-      return { matched, response };
+      const { matched, response } = await next()
+      return { matched, response }
     },
   ],
-});
+})
 ```
 
 ### Interceptors
@@ -3367,34 +3331,34 @@ const handler = new OpenAPIHandler(router, {
   interceptors: [
     async ({ next, request, procedure, context }) => {
       try {
-        const response = await next();
-        return response;
+        const response = await next()
+        return response
       } catch (err) {
         if (err instanceof CustomError) {
-          throw new ORPCError("CUSTOM_ERROR", {
+          throw new ORPCError('CUSTOM_ERROR', {
             message: err.message,
             cause: err,
-          });
+          })
         }
 
-        throw err;
+        throw err
       }
     },
     async ({ next, path }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        const response = await next();
-        return response;
+        const response = await next()
+        return response
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
-});
+})
 ```
 
 ### Client Interceptors
@@ -3405,11 +3369,11 @@ Client interceptors run only for matched requests, after input decoding, before 
 const handler = new OpenAPIHandler(router, {
   clientInterceptors: [
     async ({ next, input, context, procedure }) => {
-      const output = await next();
-      return output;
+      const output = await next()
+      return output
     },
   ],
-});
+})
 ```
 
 ### Adapter Interceptors
@@ -3420,11 +3384,11 @@ Some `OpenAPIHandler` implementations, such as fetch or node adapters, also supp
 const handler = new OpenAPIHandler(router, {
   fetchInterceptors: [
     async ({ next, request }) => {
-      const { matched, response } = await next();
-      return { matched, response };
+      const { matched, response } = await next()
+      return { matched, response }
     },
   ],
-});
+})
 ```
 
 ::: info
@@ -3438,7 +3402,7 @@ Plugins package reusable interceptors. For example, [CORS Plugin](/docs/plugins/
 ```ts
 const handler = new OpenAPIHandler(router, {
   plugins: [new CORSHandlerPlugin()],
-});
+})
 ```
 
 ## Custom Serializer
@@ -3452,7 +3416,7 @@ const handler = new OpenAPIHandler(router, {
       // ...custom handlers
     },
   }),
-});
+})
 ```
 
 ## Filtering Procedures
@@ -3462,7 +3426,7 @@ Use the `filter` option to exclude procedures from matching:
 ```ts
 const handler = new OpenAPIHandler(router, {
   filter: (contract, path) => getIsInternalMeta(contract) !== true,
-});
+})
 ```
 
 ## Custom Error Response
@@ -3470,7 +3434,7 @@ const handler = new OpenAPIHandler(router, {
 By default, `OpenAPIHandler` determines response status codes using `COMMON_ERROR_STATUS_MAP` and encodes error bodies in the ORPC error format. Use `errorStatusMap` and `customErrorResponseBodyEncoder` to customize this behavior:
 
 ```ts
-import { COMMON_ERROR_STATUS_MAP } from "@orpc/openapi";
+import { COMMON_ERROR_STATUS_MAP } from '@orpc/openapi'
 
 const handler = new OpenAPIHandler(router, {
   /**
@@ -3481,17 +3445,17 @@ const handler = new OpenAPIHandler(router, {
     CUSTOM_ERROR: 599,
   },
   customErrorResponseBodyEncoder: (error) => {
-    if (error.code === "CUSTOM_ERROR") {
+    if (error.code === 'CUSTOM_ERROR') {
       return {
         customMessage: error.message,
         customCode: error.code,
-      };
+      }
     }
 
     // fallback to default by returning null or undefined
-    return null;
+    return null
   },
-});
+})
 ```
 
 ::: details Common Error Status Map
@@ -3548,7 +3512,7 @@ const handler = new OpenAPIHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       keepAlive: {
         /**
@@ -3568,7 +3532,7 @@ const handler = new OpenAPIHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       /**
        * If true, a `close` event is sent even when the iterator completes with `undefined`.
@@ -3579,7 +3543,7 @@ const handler = new OpenAPIHandler(router, {
       emptyCloseEventEnabled: true,
     },
   },
-});
+})
 ```
 
 ## Lifecycle
@@ -3600,19 +3564,19 @@ Use `OpenAPILink` to call HTTP endpoints served by [OpenAPI Handler](/docs/opena
 
 ```ts
 const link = new OpenAPILink(contract, {
-  origin: "https://api.example.com",
-  url: "/api",
+  origin: 'https://api.example.com',
+  url: '/api',
   headers: ({ context }) => ({
     authorization: context?.token ? `Bearer ${context.token}` : undefined,
   }),
   interceptors: [
     async ({ next, path }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        return await next();
+        return await next()
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
@@ -3621,10 +3585,10 @@ const link = new OpenAPILink(contract, {
     // <- only available in fetch adapter
     return globalThis.fetch(request, {
       ...init,
-      credentials: "include", // Include cookies on cross-origin requests
-    });
+      credentials: 'include', // Include cookies on cross-origin requests
+    })
   },
-});
+})
 ```
 
 ::: warning
@@ -3633,9 +3597,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -3645,17 +3609,16 @@ const cors = new CORSHandlerPlugin({
 After you create an `OpenAPILink`, pass it to `createORPCClient` to build a typesafe client for either a [contract](/docs/contract/router) or a [router](/docs/router):
 
 ```ts
-import { createORPCClient } from "@orpc/client";
-import { JsonifiedClient, RouterContractClient } from "@orpc/contract";
-import { RouterClient } from "@orpc/server";
+import { createORPCClient } from '@orpc/client'
+import { JsonifiedClient, RouterContractClient } from '@orpc/contract'
+import { RouterClient } from '@orpc/server'
 
 // if you are following contract-first approach
 const contractClient: JsonifiedClient<RouterContractClient<typeof contract>> =
-  createORPCClient(link);
+  createORPCClient(link)
 
 // if you are following normal approach
-const routerClient: JsonifiedClient<RouterClient<typeof router>> =
-  createORPCClient(link);
+const routerClient: JsonifiedClient<RouterClient<typeof router>> = createORPCClient(link)
 ```
 
 ::: info
@@ -3668,14 +3631,14 @@ Client context lets you pass per-call values, such as auth tokens or cache hints
 
 ```ts
 type ClientContext = {
-  token?: string;
-};
+  token?: string
+}
 
 const link = new OpenAPILink<ClientContext>(contract, {
   headers: ({ context }) => ({
     authorization: context?.token ? `Bearer ${context.token}` : undefined,
   }),
-});
+})
 ```
 
 ::: info
@@ -3683,18 +3646,16 @@ Pass `ClientContext` when creating the client, then provide context on each call
 
 ```ts
 // if you are using the contract-first approach
-const client: RouterContractClient<typeof contract, ClientContext> =
-  createORPCClient(link);
+const client: RouterContractClient<typeof contract, ClientContext> = createORPCClient(link)
 
 // if you are using the standard approach
-const client: RouterClient<typeof router, ClientContext> =
-  createORPCClient(link);
+const client: RouterClient<typeof router, ClientContext> = createORPCClient(link)
 
 const output = await client.someProcedure(input, {
   context: {
-    token: "abc123",
+    token: 'abc123',
   },
-});
+})
 ```
 
 :::
@@ -3709,12 +3670,12 @@ Use `origin`, `url`, and `headers` to control request destination and headers.
 
 ```ts
 const link = new OpenAPILink(contract, {
-  origin: "https://api.example.com",
-  url: "/api?v=2",
+  origin: 'https://api.example.com',
+  url: '/api?v=2',
   headers: {
     authorization: `Bearer ${getAuthToken()}`,
   },
-});
+})
 ```
 
 ::: info
@@ -3723,16 +3684,16 @@ Each option can also be a function to dynamically customize values per request. 
 ```ts
 const link = new OpenAPILink<ClientContext>(contract, {
   origin: ({ path, context }) => {
-    if (path[0] === "internal") {
-      return "https://internal.example.com";
+    if (path[0] === 'internal') {
+      return 'https://internal.example.com'
     }
 
-    return "https://api.example.com";
+    return 'https://api.example.com'
   },
   headers: ({ context }) => ({
     authorization: context?.token ? `Bearer ${context.token}` : undefined,
   }),
-});
+})
 ```
 
 :::
@@ -3749,20 +3710,20 @@ Interceptors run around the entire call, including input encoding, transport, an
 const link = new OpenAPILink(contract, {
   interceptors: [
     async ({ next, path, input }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        const output = await next();
-        return output;
+        const output = await next()
+        return output
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
-});
+})
 ```
 
 ### Transport Interceptors
@@ -3779,15 +3740,15 @@ const link = new OpenAPILink(contract, {
           ...options.request,
           headers: {
             ...options.request.headers,
-            "x-request-id": crypto.randomUUID(),
+            'x-request-id': crypto.randomUUID(),
           },
         },
-      });
+      })
 
-      return response;
+      return response
     },
   ],
-});
+})
 ```
 
 ### Adapter Interceptors
@@ -3802,14 +3763,14 @@ const link = new OpenAPILink(contract, {
         ...options,
         init: {
           ...options.init,
-          credentials: "include",
+          credentials: 'include',
         },
-      });
+      })
 
-      return response;
+      return response
     },
   ],
-});
+})
 ```
 
 ::: info
@@ -3823,7 +3784,7 @@ Plugins package reusable interceptors. For example, [Retry After Plugin](/docs/p
 ```ts
 const link = new OpenAPILink(contract, {
   plugins: [new RetryAfterLinkPlugin()],
-});
+})
 ```
 
 ## Custom Serializer
@@ -3837,7 +3798,7 @@ const link = new OpenAPILink(contract, {
       // ...custom handlers
     },
   }),
-});
+})
 ```
 
 ## Custom Error Decoding
@@ -3847,21 +3808,16 @@ If your server returns error responses that don't match oRPC's expected format, 
 ```ts
 const link = new OpenAPILink(contract, {
   customErrorResponseBodyDecoder: (body, response) => {
-    if (
-      response.status === 422 &&
-      typeof body === "object" &&
-      body &&
-      "detail" in body
-    ) {
-      return new ORPCError("BAD_REQUEST", {
+    if (response.status === 422 && typeof body === 'object' && body && 'detail' in body) {
+      return new ORPCError('BAD_REQUEST', {
         message: String(body.detail),
-      });
+      })
     }
 
     // fallback to default error decoding logic by returning null or undefined
-    return null;
+    return null
   },
-});
+})
 ```
 
 ## Event Stream Options
@@ -3885,7 +3841,7 @@ const link = new OpenAPILink(contract, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       keepAlive: {
         /**
@@ -3905,7 +3861,7 @@ const link = new OpenAPILink(contract, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       /**
        * If true, a `close` event is sent even when the iterator completes with `undefined`.
@@ -3916,7 +3872,7 @@ const link = new OpenAPILink(contract, {
       emptyCloseEventEnabled: true,
     },
   },
-});
+})
 ```
 
 ## Lifecycle
@@ -3938,21 +3894,21 @@ Learn how to configure metadata and generate OpenAPI documents from your oRPC [c
 Use `openapi` metadata to control how a procedure appears in the generated OpenAPI document:
 
 ```ts
-import { oc } from "@orpc/contract";
-import { openapi } from "@orpc/openapi";
-import { z } from "zod";
+import { oc } from '@orpc/contract'
+import { openapi } from '@orpc/openapi'
+import { z } from 'zod'
 
 const getPlanet = oc
   .meta(
     openapi({
-      method: "GET",
-      path: "/planets/{id}",
-      operationId: "getPlanet",
-      summary: "Get a planet",
-      description: "Returns a single planet.",
-      tags: ["planets"],
+      method: 'GET',
+      path: '/planets/{id}',
+      operationId: 'getPlanet',
+      summary: 'Get a planet',
+      description: 'Returns a single planet.',
+      tags: ['planets'],
       successStatus: 200,
-      successDescription: "Planet payload",
+      successDescription: 'Planet payload',
     }),
   )
   .input(
@@ -3965,7 +3921,7 @@ const getPlanet = oc
       id: z.string(),
       name: z.string(),
     }),
-  );
+  )
 ```
 
 ::: info
@@ -3980,15 +3936,15 @@ Use `spec` to customize the generated operation object. If `spec` is an object, 
 const getPlanet = oc
   .meta(
     openapi({
-      method: "GET",
-      path: "/planets/{id}",
+      method: 'GET',
+      path: '/planets/{id}',
       spec: (current) => ({
         ...current,
         security: [{ bearerAuth: [] }],
       }),
     }),
   )
-  .input(z.object({ id: z.string() }));
+  .input(z.object({ id: z.string() }))
 ```
 
 ### Metadata Merging
@@ -4005,7 +3961,7 @@ For implementation details, see the [source code](https://github.com/orpc/orpc/b
 const router = os
   .meta(
     openapi({
-      tags: ["planets"],
+      tags: ['planets'],
       spec: (current) => ({
         ...current,
         security: [{ bearerAuth: [] }],
@@ -4014,15 +3970,15 @@ const router = os
   )
   .router({
     list: os
-      .meta(openapi({ method: "GET", summary: "List planets", tags: ["list"] }))
+      .meta(openapi({ method: 'GET', summary: 'List planets', tags: ['list'] }))
       .meta(
         openapi({
           spec: {
-            operationId: "getPlanet",
-            summary: "List planets",
+            operationId: 'getPlanet',
+            summary: 'List planets',
             responses: {
               200: {
-                description: "List of planets",
+                description: 'List of planets',
               },
             },
           },
@@ -4030,7 +3986,7 @@ const router = os
       )
       .input(z.object({ q: z.string().optional() }))
       .handler(async () => []),
-  });
+  })
 ```
 
 These are equivalent to:
@@ -4040,15 +3996,15 @@ const router = {
   list: os
     .meta(
       openapi({
-        method: "GET",
-        tags: ["planets", "list"],
-        summary: "List planets",
+        method: 'GET',
+        tags: ['planets', 'list'],
+        summary: 'List planets',
         spec: {
-          operationId: "getPlanet",
-          summary: "List planets",
+          operationId: 'getPlanet',
+          summary: 'List planets',
           responses: {
             200: {
-              description: "List of planets",
+              description: 'List of planets',
             },
           },
           security: [{ bearerAuth: [] }],
@@ -4057,16 +4013,14 @@ const router = {
     )
     .input(z.object({ q: z.string().optional() }))
     .handler(async () => []),
-};
+}
 ```
 
 ::: info
 Metadata resets to its default behavior when set to `undefined` in subsequent calls:
 
 ```ts
-const example = os
-  .meta(openapi({ tags: ["planets"] }))
-  .meta(openapi({ tags: undefined }));
+const example = os.meta(openapi({ tags: ['planets'] })).meta(openapi({ tags: undefined }))
 ```
 
 In this example, the final `tags` is `undefined`, so no tags are applied to `example`.
@@ -4078,21 +4032,21 @@ In this example, the final `tags` is `undefined`, so no tags are applied to `exa
 `OpenAPIGenerator` accepts either a [contract](/docs/contract/router) or a [router](/docs/router) and generates an OpenAPI 3.1 document.
 
 ```ts
-import { OpenAPIGenerator } from "@orpc/openapi";
+import { OpenAPIGenerator } from '@orpc/openapi'
 
 const generator = new OpenAPIGenerator({
   converters: [new ZodToJsonSchemaConverter()],
-});
+})
 
 const spec = await generator.generate(router, {
   base: {
     info: {
-      title: "Planet API",
-      version: "1.0.0",
+      title: 'Planet API',
+      version: '1.0.0',
     },
-    servers: [{ url: "https://example.com/api" }],
+    servers: [{ url: 'https://example.com/api' }],
   },
-});
+})
 ```
 
 ### Json Schema Converters
@@ -4100,9 +4054,9 @@ const spec = await generator.generate(router, {
 `OpenAPIGenerator` relies on JSON Schema converters to translate your input, output, and error schemas into JSON Schemas. oRPC provides dedicated converters through the [Zod](/docs/integrations/zod), [Valibot](/docs/integrations/valibot), and [ArkType](/docs/integrations/arktype) integrations:
 
 ```ts
-import { ZodToJsonSchemaConverter } from "@orpc/zod";
-import { ValibotToJsonSchemaConverter } from "@orpc/valibot";
-import { ArkTypeToJsonSchemaConverter } from "@orpc/arktype";
+import { ZodToJsonSchemaConverter } from '@orpc/zod'
+import { ValibotToJsonSchemaConverter } from '@orpc/valibot'
+import { ArkTypeToJsonSchemaConverter } from '@orpc/arktype'
 
 const generator = new OpenAPIGenerator({
   converters: [
@@ -4110,7 +4064,7 @@ const generator = new OpenAPIGenerator({
     new ValibotToJsonSchemaConverter(),
     new ArkTypeToJsonSchemaConverter(),
   ],
-});
+})
 ```
 
 ::: info
@@ -4128,7 +4082,7 @@ const handler = new OpenAPIGenerator({
       // ...custom handlers
     },
   }),
-});
+})
 ```
 
 ### Filtering Procedures
@@ -4137,8 +4091,8 @@ Use `filter` to exclude procedures from the generated document:
 
 ```ts
 const spec = await generator.generate(router, {
-  filter: (_procedure, path) => !path.includes("internal"),
-});
+  filter: (_procedure, path) => !path.includes('internal'),
+})
 ```
 
 ### Hoisting `$defs`
@@ -4148,7 +4102,7 @@ Root `$defs` generated by your converters are moved into `components.schemas`. U
 ```ts
 const spec = await generator.generate(router, {
   customComponentName: (defName, defSchema) => `Api${defName}`,
-});
+})
 ```
 
 #### Custom Error Response Schemas
@@ -4156,7 +4110,7 @@ const spec = await generator.generate(router, {
 If your [OpenAPI Handler](/docs/openapi/handler#custom-error-response) uses custom error response formats, configure `OpenAPIGenerator` with the same logic so the generated document matches the actual error response formats.
 
 ```ts
-import { COMMON_ERROR_STATUS_MAP } from "@orpc/openapi";
+import { COMMON_ERROR_STATUS_MAP } from '@orpc/openapi'
 
 const spec = await generator.generate(router, {
   errorStatusMap: {
@@ -4166,19 +4120,19 @@ const spec = await generator.generate(router, {
   customErrorResponseBodySchema: (definedErrors, status) => {
     if (status === 410) {
       return {
-        type: "object",
+        type: 'object',
         properties: {
-          code: { type: "string" },
-          message: { type: "string" },
+          code: { type: 'string' },
+          message: { type: 'string' },
         },
-        required: ["code", "message"],
-      };
+        required: ['code', 'message'],
+      }
     }
 
     // fallback to default by returning null or undefined
-    return null;
+    return null
   },
-});
+})
 ```
 
 ---
@@ -4200,50 +4154,50 @@ This guide shows a manual setup. If you want a simpler option, use the [OpenAPI 
 This example serves the OpenAPI document at `/spec.json` and renders Scalar at `/`.
 
 ```ts
-import { createServer } from "node:http";
-import { OpenAPIGenerator } from "@orpc/openapi";
-import { OpenAPIHandler } from "@orpc/openapi/node";
-import { CORSPlugin } from "@orpc/server/plugins";
-import { ZodToJsonSchemaConverter } from "@orpc/zod";
+import { createServer } from 'node:http'
+import { OpenAPIGenerator } from '@orpc/openapi'
+import { OpenAPIHandler } from '@orpc/openapi/node'
+import { CORSPlugin } from '@orpc/server/plugins'
+import { ZodToJsonSchemaConverter } from '@orpc/zod'
 
 const openAPIHandler = new OpenAPIHandler(router, {
   plugins: [new CORSHandlerPlugin()],
-});
+})
 
 const openAPIGenerator = new OpenAPIGenerator({
   schemaConverters: [new ZodToJsonSchemaConverter()],
-});
+})
 
 const server = createServer(async (req, res) => {
   const { matched } = await openAPIHandler.handle(req, res, {
-    prefix: "/api",
-  });
+    prefix: '/api',
+  })
 
   if (matched) {
-    return;
+    return
   }
 
-  if (req.url === "/spec.json") {
+  if (req.url === '/spec.json') {
     const spec = await openAPIGenerator.generate(router, {
       info: {
-        title: "My Playground",
-        version: "1.0.0",
+        title: 'My Playground',
+        version: '1.0.0',
       },
-      servers: [{ url: "/api" } /** Use an absolute URL in production. */],
+      servers: [{ url: '/api' } /** Use an absolute URL in production. */],
       security: [{ bearerAuth: [] }],
       components: {
         securitySchemes: {
           bearerAuth: {
-            type: "http",
-            scheme: "bearer",
+            type: 'http',
+            scheme: 'bearer',
           },
         },
       },
-    });
+    })
 
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(spec));
-    return;
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(spec))
+    return
   }
 
   const html = `
@@ -4273,15 +4227,15 @@ const server = createServer(async (req, res) => {
         </script>
       </body>
     </html>
-  `;
+  `
 
-  res.writeHead(200, { "Content-Type": "text/html" });
-  res.end(html);
-});
+  res.writeHead(200, { 'Content-Type': 'text/html' })
+  res.end(html)
+})
 
 server.listen(3000, () => {
-  console.log("Playground is available at http://localhost:3000");
-});
+  console.log('Playground is available at http://localhost:3000')
+})
 ```
 
 Open `http://localhost:3000` to view the API reference UI.
@@ -4299,18 +4253,18 @@ Procedure contracts define the expected shape of a [procedure](/docs/procedure) 
 ## Overview
 
 ```ts twoslash
-import { z } from "zod";
-import type { AnyMetaPlugin } from "@orpc/contract";
+import { z } from 'zod'
+import type { AnyMetaPlugin } from '@orpc/contract'
 
-declare const someMeta: AnyMetaPlugin;
+declare const someMeta: AnyMetaPlugin
 // ---cut---
-import { oc } from "@orpc/contract";
+import { oc } from '@orpc/contract'
 
 const example = oc
   .meta(someMeta) // <- attach metadata
   .errors({ NOT_FOUND: {} }) // <- define errors
   .input(z.object({ id: z.number(), name: z.string() })) // <- input validation
-  .output(z.object({ id: z.number(), name: z.string() })); // <- output validation
+  .output(z.object({ id: z.number(), name: z.string() })) // <- output validation
 ```
 
 :::info
@@ -4342,7 +4296,7 @@ const example = oc
   .input(z.looseObject({ name: z.string() }))
   .input(z.looseObject({ id: z.number() }))
   .output(z.looseObject({ name: z.string() }))
-  .output(z.looseObject({ id: z.number() }));
+  .output(z.looseObject({ id: z.number() }))
 ```
 
 ::: warning
@@ -4354,11 +4308,11 @@ When you stack schemas, the input or output must satisfy all of them, so the sch
 For simple use cases without external libraries, use oRPC's built-in `type` utility. It takes a mapping function as its first argument:
 
 ```ts
-import { type } from "@orpc/contract";
+import { type } from '@orpc/contract'
 
 const example = oc
   .input(type<{ value: number }>())
-  .output(type<{ value: number }, number>(({ value }) => value));
+  .output(type<{ value: number }, number>(({ value }) => value))
 ```
 
 ## Reusability
@@ -4366,12 +4320,12 @@ const example = oc
 Each builder call creates a new instance, which avoids reference issues and makes contracts easy to reuse and extend.
 
 ```ts
-const pub = oc; // Base setup for procedures that publish
-const authed = pub.meta(requireAuthMeta); // Extends 'pub' with authentication
+const pub = oc // Base setup for procedures that publish
+const authed = pub.meta(requireAuthMeta) // Extends 'pub' with authentication
 
-const pubExample = pub.input(z.object({ name: z.string() }));
+const pubExample = pub.input(z.object({ name: z.string() }))
 
-const authedExample = authed.input(z.object({ id: z.number() }));
+const authedExample = authed.input(z.object({ id: z.number() }))
 ```
 
 This pattern helps prevent duplication while maintaining flexibility.
@@ -4395,18 +4349,18 @@ A standalone [procedure contract](/docs/contract/procedure) is also a router con
 Define a router contract as a plain JavaScript object where each key maps to a procedure contract:
 
 ```ts twoslash
-import { z } from "zod";
+import { z } from 'zod'
 // ---cut---
-import { oc } from "@orpc/contract";
+import { oc } from '@orpc/contract'
 
-const ping = oc.output(z.string());
-const pong = oc.output(z.string());
+const ping = oc.output(z.string())
+const pong = oc.output(z.string())
 
 export const router = {
   ping,
   pong,
   nested: { ping, pong },
-};
+}
 ```
 
 ::: warning
@@ -4425,7 +4379,7 @@ const router = oc.meta(requireAuthMeta).router({
     ping,
     pong,
   },
-});
+})
 ```
 
 ## Router to Contract
@@ -4433,9 +4387,9 @@ const router = oc.meta(requireAuthMeta).router({
 A normal [router](/docs/router) can be used as a contract router as long as it does not include a [lazy router](/docs/router#lazy-router). If necessary, use `unlazyRouter` to fully resolve it and make it contract-compatible.
 
 ```ts
-import { unlazyRouter } from "@orpc/server";
+import { unlazyRouter } from '@orpc/server'
 
-const compatibleContract = await unlazyRouter(router);
+const compatibleContract = await unlazyRouter(router)
 ```
 
 ### Safely Importing Router on the Client
@@ -4445,14 +4399,14 @@ Sometimes you need to import the contract on the client, for example when using 
 1. **Minify the Contract Router and Export to JSON**
 
    ```ts
-   import fs from "node:fs";
-   import { unlazyRouter } from "@orpc/server";
-   import { minifyRouterContract } from "@orpc/contract";
+   import fs from 'node:fs'
+   import { unlazyRouter } from '@orpc/server'
+   import { minifyRouterContract } from '@orpc/contract'
 
-   const compatibleContract = await unlazyRouter(router);
-   const minifiedRouter = minifyRouterContract(compatibleContract);
+   const compatibleContract = await unlazyRouter(router)
+   const minifiedRouter = minifyRouterContract(compatibleContract)
 
-   fs.writeFileSync("./contract.json", JSON.stringify(minifiedRouter));
+   fs.writeFileSync('./contract.json', JSON.stringify(minifiedRouter))
    ```
 
    ::: info
@@ -4462,9 +4416,9 @@ Sometimes you need to import the contract on the client, for example when using 
 2. **Import the Contract JSON on the Client Side**
 
    ```ts
-   import contract from "./contract.json"; // [!code highlight]
+   import contract from './contract.json' // [!code highlight]
 
-   const link = new OpenAPILink(contract as typeof router);
+   const link = new OpenAPILink(contract as typeof router)
    ```
 
    ::: info
@@ -4482,13 +4436,13 @@ A standalone [procedure contract](/docs/contract/procedure) is also a router con
 Infers the input type of each procedure contract in a router contract.
 
 ```ts twoslash
-import type { contract } from "./shared/planet";
+import type { contract } from './shared/planet'
 // ---cut---
-import type { InferRouterContractInputs } from "@orpc/contract";
+import type { InferRouterContractInputs } from '@orpc/contract'
 
-export type Inputs = InferRouterContractInputs<typeof contract>;
+export type Inputs = InferRouterContractInputs<typeof contract>
 
-type FindPlanetInput = Inputs["planet"]["find"];
+type FindPlanetInput = Inputs['planet']['find']
 ```
 
 ### Infer Router Contract Outputs
@@ -4496,13 +4450,13 @@ type FindPlanetInput = Inputs["planet"]["find"];
 Infers the output type of each procedure contract in a router contract.
 
 ```ts twoslash
-import type { contract } from "./shared/planet";
+import type { contract } from './shared/planet'
 // ---cut---
-import type { InferRouterContractOutputs } from "@orpc/contract";
+import type { InferRouterContractOutputs } from '@orpc/contract'
 
-export type Outputs = InferRouterContractOutputs<typeof contract>;
+export type Outputs = InferRouterContractOutputs<typeof contract>
 
-type FindPlanetOutput = Outputs["planet"]["find"];
+type FindPlanetOutput = Outputs['planet']['find']
 ```
 
 ### Infer Router Contract Error Map
@@ -4510,11 +4464,11 @@ type FindPlanetOutput = Outputs["planet"]["find"];
 Collects the error maps from every procedure contract in a router contract into a single type.
 
 ```ts twoslash
-import type { contract } from "./shared/planet";
+import type { contract } from './shared/planet'
 // ---cut---
-import type { InferRouterContractErrorMap } from "@orpc/contract";
+import type { InferRouterContractErrorMap } from '@orpc/contract'
 
-export type ErrorMap = InferRouterContractErrorMap<typeof contract>;
+export type ErrorMap = InferRouterContractErrorMap<typeof contract>
 ```
 
 ### Infer Router Contract Errors
@@ -4522,13 +4476,13 @@ export type ErrorMap = InferRouterContractErrorMap<typeof contract>;
 Infers the throwable errors each procedure contract in a router contract can describe.
 
 ```ts twoslash
-import type { contract } from "./shared/planet";
+import type { contract } from './shared/planet'
 // ---cut---
-import type { InferRouterContractErrors } from "@orpc/contract";
+import type { InferRouterContractErrors } from '@orpc/contract'
 
-export type Errors = InferRouterContractErrors<typeof contract>;
+export type Errors = InferRouterContractErrors<typeof contract>
 
-type FindPlanetError = Errors["planet"]["find"];
+type FindPlanetError = Errors['planet']['find']
 ```
 
 ### Infer Router Contract Error
@@ -4536,11 +4490,11 @@ type FindPlanetError = Errors["planet"]["find"];
 Infers all possible throwable errors the entire router contract can describe. This is useful when you want a single type for contract-wide error handling.
 
 ```ts twoslash
-import type { contract } from "./shared/planet";
+import type { contract } from './shared/planet'
 // ---cut---
-import type { InferRouterContractError } from "@orpc/contract";
+import type { InferRouterContractError } from '@orpc/contract'
 
-export type ContractError = InferRouterContractError<typeof contract>;
+export type ContractError = InferRouterContractError<typeof contract>
 ```
 
 ---
@@ -4558,13 +4512,13 @@ Implementing a contract means adding business logic to each procedure defined in
 The `implement` function turns a contract into an implementer. Use it to build procedures, routers, and create middleware with full type safety.
 
 ```ts twoslash
-import { contract } from "./shared/planet";
+import { contract } from './shared/planet'
 // ---cut---
-import { implement } from "@orpc/server";
+import { implement } from '@orpc/server'
 
-const implementer = implement(contract).$context<{ something?: string }>(); // <- define initial context
+const implementer = implement(contract).$context<{ something?: string }>() // <- define initial context
 
-implementer.planet.list;
+implementer.planet.list
 //                 ^|
 
 //
@@ -4585,18 +4539,18 @@ Learn more in the [Context Documentation](/docs/context).
 Define a `.handler` for a procedure contract to provide its business logic.
 
 ```ts twoslash
-import { contract } from "./shared/planet";
-import { implement } from "@orpc/server";
+import { contract } from './shared/planet'
+import { implement } from '@orpc/server'
 
-const implementer = implement(contract);
-const requireAuth = implementer.middleware(({ next }) => next());
+const implementer = implement(contract)
+const requireAuth = implementer.middleware(({ next }) => next())
 // ---cut---
 const listPlanet = implementer.planet.list
   .use(requireAuth) // <- Apply authentication middleware
   .handler(({ input }) => {
     // Your logic for listing planets
-    return [];
-  });
+    return []
+  })
 ```
 
 ::: info
@@ -4607,8 +4561,8 @@ const listPlanet = implementer.planet
   .use(requireAuth) // <- middleware wraps validation
   .list.handler(({ input }) => {
     // Your logic for listing planets
-    return [];
-  });
+    return []
+  })
 ```
 
 :::
@@ -4624,7 +4578,7 @@ const router = implementer.router({
     find: findPlanet,
     create: createPlanet,
   },
-});
+})
 ```
 
 ### Extending Router
@@ -4638,7 +4592,7 @@ const router = implementer.use(requireAuth).router({
     find: findPlanet,
     create: createPlanet,
   },
-});
+})
 ```
 
 ::: danger
@@ -4651,15 +4605,15 @@ The implementer can also create [middleware](/docs/middleware). Middleware creat
 
 ```ts
 const ratelimit = implementer.middleware(async ({ next, errors }) => {
-  if ("TOO_MANY_REQUESTS" in errors) {
+  if ('TOO_MANY_REQUESTS' in errors) {
     // Apply rate limiting only when TOO_MANY_REQUESTS is defined by the contract.
     if (isRatelimitReached) {
-      throw errors.TOO_MANY_REQUESTS();
+      throw errors.TOO_MANY_REQUESTS()
     }
   }
 
-  return next();
-});
+  return next()
+})
 ```
 
 ::: info
@@ -4671,18 +4625,18 @@ You do not have to create middleware from the implementer. Any type-compatible m
 Each implementer call creates a new instance, which avoids reference issues and makes contracts easy to reuse and extend.
 
 ```ts
-const pub = implementer; // Base setup for procedures that publish
-const authed = implementer.use(requireAuth); // Extends 'pub' with authentication
+const pub = implementer // Base setup for procedures that publish
+const authed = implementer.use(requireAuth) // Extends 'pub' with authentication
 
 const listPlanets = pub.planet.list.handler(({ input }) => {
   // Your logic for listing planets without authentication
-  return [];
-});
+  return []
+})
 
 const createPlanet = authed.planet.create.handler(({ input }) => {
   // Your logic for creating planets with authentication
-  return {};
-});
+  return {}
+})
 ```
 
 This pattern helps prevent duplication while maintaining flexibility.
@@ -4702,17 +4656,15 @@ Server-side clients call procedures locally, within the same process. They are u
 Use `call` when you need to invoke a single procedure without creating a client instance.
 
 ```ts twoslash
-import * as z from "zod";
+import * as z from 'zod'
 
-const exampleProcedure = os
-  .input(z.string())
-  .handler(async ({ input }) => ({ id: input }));
+const exampleProcedure = os.input(z.string()).handler(async ({ input }) => ({ id: input }))
 // ---cut---
-import { call, os } from "@orpc/server";
+import { call, os } from '@orpc/server'
 
-const result = await call(exampleProcedure, "input", {
+const result = await call(exampleProcedure, 'input', {
   context: {}, // <- provide initial context if needed
-});
+})
 ```
 
 ## Router Clients
@@ -4720,35 +4672,35 @@ const result = await call(exampleProcedure, "input", {
 Use `createRouterClient` to create a client for your [router](/docs/router). This is useful when you want to call multiple procedures.
 
 ```ts twoslash
-import * as z from "zod";
-import { os } from "@orpc/server";
+import * as z from 'zod'
+import { os } from '@orpc/server'
 
 const router = {
-  ping: os.handler(() => "pong"),
-  pong: os.handler(() => "ping"),
-};
+  ping: os.handler(() => 'pong'),
+  pong: os.handler(() => 'ping'),
+}
 // ---cut---
-import { createRouterClient } from "@orpc/server";
+import { createRouterClient } from '@orpc/server'
 
 const client = createRouterClient(router, {
   context: {}, // <- provide initial context if needed, can be async function
   interceptors: [
     async ({ next, path }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        return await next();
+        return await next()
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
-});
+})
 
-const result = await client.ping();
+const result = await client.ping()
 ```
 
 ### Client Context
@@ -4756,30 +4708,30 @@ const result = await client.ping();
 Client context is passed with each call. Use it to switch between contexts, such as different users or tenants, without creating multiple client instances.
 
 ```ts twoslash
-import * as z from "zod";
-import { createRouterClient, os } from "@orpc/server";
+import * as z from 'zod'
+import { createRouterClient, os } from '@orpc/server'
 
 const router = {
-  ping: os.handler(() => "pong"),
-  pong: os.handler(() => "ping"),
-};
+  ping: os.handler(() => 'pong'),
+  pong: os.handler(() => 'ping'),
+}
 // ---cut---
 interface ClientContext {
-  cache?: boolean;
+  cache?: boolean
 }
 
 const client = createRouterClient(router, {
   context: ({ cache }: ClientContext) => {
     // [!code highlight]
     if (cache) {
-      return {}; // <- context when cache enabled
+      return {} // <- context when cache enabled
     }
 
-    return {};
+    return {}
   },
-});
+})
 
-const result = await client.ping(undefined, { context: { cache: true } });
+const result = await client.ping(undefined, { context: { cache: true } })
 ```
 
 ### Interceptors
@@ -4790,20 +4742,20 @@ Interceptors let you observe or modify an entire call. Common use cases include 
 const client = createRouterClient(router, {
   interceptors: [
     async ({ next, path, context }) => {
-      console.time(path.join("."));
+      console.time(path.join('.'))
 
       try {
-        const output = await next();
-        return output;
+        const output = await next()
+        return output
       } catch (err) {
-        console.error(`${path.join(".")}:`, err);
-        throw err;
+        console.error(`${path.join('.')}:`, err)
+        throw err
       } finally {
-        console.timeEnd(path.join("."));
+        console.timeEnd(path.join('.'))
       }
     },
   ],
-});
+})
 ```
 
 ## `.callable` extension
@@ -4819,21 +4771,21 @@ const ping = base
   .callable({
     context: async () => ({}), // <- provide initial context if needed, can be async function
     interceptors: [], // <- client interceptors
-  });
+  })
 
 const router = {
   ping, // <- still use it as a regular procedure
-};
+}
 
-const message = await ping({ name: "World" }); // <- or call it directly
+const message = await ping({ name: 'World' }) // <- or call it directly
 ```
 
 ```ts [setup]
-import "@orpc/server/extensions/callable";
+import '@orpc/server/extensions/callable'
 
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-export const base = os;
+export const base = os
 ```
 
 :::
@@ -4883,16 +4835,15 @@ deno add npm:@orpc/client@beta
 To create a client, first set up a link that defines how the client communicates with the server. This can be an [RPC Link](/docs/rpc/link), an [OpenAPI Link](/docs/openapi/link), or any custom link. Then create a client for your [router](/docs/router) or [contract](/docs/contract/router) using `createORPCClient`.
 
 ```ts
-import { createORPCClient } from "@orpc/client";
-import { RouterContractClient } from "@orpc/contract";
-import { RouterClient } from "@orpc/server";
+import { createORPCClient } from '@orpc/client'
+import { RouterContractClient } from '@orpc/contract'
+import { RouterClient } from '@orpc/server'
 
 // if you are following contract-first approach
-const contractClient: RouterContractClient<typeof contract> =
-  createORPCClient(link);
+const contractClient: RouterContractClient<typeof contract> = createORPCClient(link)
 
 // if you are following normal approach
-const normalClient: RouterClient<typeof router> = createORPCClient(link);
+const normalClient: RouterClient<typeof router> = createORPCClient(link)
 ```
 
 :::tip
@@ -4904,19 +4855,19 @@ You can export `RouterClient<typeof router>` or `RouterContractClient<typeof con
 Once your client is set up, you can call your [procedures](/docs/procedure) as if they were local functions.
 
 ```ts twoslash
-import * as z from "zod";
-import { os, RouterClient } from "@orpc/server";
+import * as z from 'zod'
+import { os, RouterClient } from '@orpc/server'
 
 const router = {
-  ping: os.handler(() => "pong"),
-  pong: os.handler(() => "ping"),
-};
+  ping: os.handler(() => 'pong'),
+  pong: os.handler(() => 'ping'),
+}
 
-declare const client: RouterClient<typeof router>;
+declare const client: RouterClient<typeof router>
 // ---cut---
-const pong = await client.ping();
+const pong = await client.ping()
 
-client.ping;
+client.ping
 //     ^|
 ```
 
@@ -4926,22 +4877,20 @@ Client context lets you pass values with each call, such as auth tokens or cache
 
 ```ts
 interface ClientContext {
-  token?: string;
+  token?: string
 }
 
 // if you are following contract-first approach
-const client: RouterContractClient<typeof contract, ClientContext> =
-  createORPCClient(link);
+const client: RouterContractClient<typeof contract, ClientContext> = createORPCClient(link)
 
 // if you are following normal approach
-const client: RouterClient<typeof router, ClientContext> =
-  createORPCClient(link);
+const client: RouterClient<typeof router, ClientContext> = createORPCClient(link)
 
 const output = await client.someProcedure(input, {
   context: {
-    token: "abc123",
+    token: 'abc123',
   },
-});
+})
 ```
 
 ## Interceptors
@@ -4949,40 +4898,37 @@ const output = await client.someProcedure(input, {
 Interceptors let you wrap client calls. They are similar to interceptors in links, but are more typesafe because the exact input, output, and error types of each client are known. You can provide per-client interceptors with `scoped`.
 
 ```ts
-import { isInferableError, safe } from "@orpc/client";
+import { isInferableError, safe } from '@orpc/client'
 
-const client: RouterClient<typeof router, ClientContext> = createORPCClient(
-  link,
-  {
-    interceptors: [
-      async ({ context, path, next }) => {
-        const [error, data] = await safe(next());
+const client: RouterClient<typeof router, ClientContext> = createORPCClient(link, {
+  interceptors: [
+    async ({ context, path, next }) => {
+      const [error, data] = await safe(next())
 
-        if (error) {
-          if (isInferableError(error)) {
-            // handle typesafe errors
-          }
-
-          throw error;
+      if (error) {
+        if (isInferableError(error)) {
+          // handle typesafe errors
         }
 
-        return data;
-      },
-    ],
-    scoped: {
-      planet: {
-        find: {
-          interceptors: [
-            // <- these interceptors only apply to client.planet.find
-            async ({ context, path, next }) => {
-              return next();
-            },
-          ],
-        },
+        throw error
+      }
+
+      return data
+    },
+  ],
+  scoped: {
+    planet: {
+      find: {
+        interceptors: [
+          // <- these interceptors only apply to client.planet.find
+          async ({ context, path, next }) => {
+            return next()
+          },
+        ],
       },
     },
   },
-);
+})
 ```
 
 ::: info
@@ -4994,15 +4940,15 @@ You can use [`safe` and `isInferableError`](/docs/client/error-handling#using-sa
 In oRPC, a client is just an object-like structure. To merge multiple clients, assign each client to a property on a new object:
 
 ```ts
-const clientA: RouterClient<typeof routerA> = createORPCClient(linkA);
-const clientB: RouterClient<typeof routerB> = createORPCClient(linkB);
-const clientC: RouterClient<typeof routerC> = createORPCClient(linkC);
+const clientA: RouterClient<typeof routerA> = createORPCClient(linkA)
+const clientB: RouterClient<typeof routerB> = createORPCClient(linkB)
+const clientC: RouterClient<typeof routerC> = createORPCClient(linkC)
 
 export const orpc = {
   a: clientA,
   b: clientB,
   c: clientC,
-};
+}
 ```
 
 ## Utilities
@@ -5016,11 +4962,11 @@ These utilities can also be used for [server-side clients](/docs/client/server-s
 Infers input types for each procedure in a client.
 
 ```ts
-import type { InferClientInputs } from "@orpc/client";
+import type { InferClientInputs } from '@orpc/client'
 
-type Inputs = InferClientInputs<typeof client>;
+type Inputs = InferClientInputs<typeof client>
 
-type FindPlanetInput = Inputs["planet"]["find"];
+type FindPlanetInput = Inputs['planet']['find']
 ```
 
 ### Infer Client Body Inputs
@@ -5028,11 +4974,11 @@ type FindPlanetInput = Inputs["planet"]["find"];
 Infers body input types for each procedure in a client. If an endpoint's input includes `{ body: ... }`, only the `body` portion is extracted. Otherwise, the entire input type is used.
 
 ```ts
-import type { InferClientBodyInputs } from "@orpc/client";
+import type { InferClientBodyInputs } from '@orpc/client'
 
-type BodyInputs = InferClientBodyInputs<typeof client>;
+type BodyInputs = InferClientBodyInputs<typeof client>
 
-type FindPlanetBodyInput = BodyInputs["planet"]["find"];
+type FindPlanetBodyInput = BodyInputs['planet']['find']
 ```
 
 ### Infer Client Outputs
@@ -5040,11 +4986,11 @@ type FindPlanetBodyInput = BodyInputs["planet"]["find"];
 Infers output types for each procedure in a client.
 
 ```ts
-import type { InferClientOutputs } from "@orpc/client";
+import type { InferClientOutputs } from '@orpc/client'
 
-type Outputs = InferClientOutputs<typeof client>;
+type Outputs = InferClientOutputs<typeof client>
 
-type FindPlanetOutput = Outputs["planet"]["find"];
+type FindPlanetOutput = Outputs['planet']['find']
 ```
 
 ### Infer Client Body Outputs
@@ -5052,11 +4998,11 @@ type FindPlanetOutput = Outputs["planet"]["find"];
 Infers body output types for each procedure in a client. If an endpoint's output includes `{ body: ... }`, only the `body` portion is extracted. Otherwise, the entire output type is used.
 
 ```ts
-import type { InferClientBodyOutputs } from "@orpc/client";
+import type { InferClientBodyOutputs } from '@orpc/client'
 
-type BodyOutputs = InferClientBodyOutputs<typeof client>;
+type BodyOutputs = InferClientBodyOutputs<typeof client>
 
-type FindPlanetBodyOutput = BodyOutputs["planet"]["find"];
+type FindPlanetBodyOutput = BodyOutputs['planet']['find']
 ```
 
 ### Infer Client Errors
@@ -5064,11 +5010,11 @@ type FindPlanetBodyOutput = BodyOutputs["planet"]["find"];
 Infers the errors each procedure in a client can throw when using [type-safe error handling](/docs/error-handling#typesafe-errors).
 
 ```ts
-import type { InferClientErrors } from "@orpc/client";
+import type { InferClientErrors } from '@orpc/client'
 
-type Errors = InferClientErrors<typeof client>;
+type Errors = InferClientErrors<typeof client>
 
-type FindPlanetError = Errors["planet"]["find"];
+type FindPlanetError = Errors['planet']['find']
 ```
 
 ### Infer Client Error
@@ -5076,9 +5022,9 @@ type FindPlanetError = Errors["planet"]["find"];
 Infers all possible errors the entire client can throw. This is useful with [type-safe error handling](/docs/error-handling#typesafe-errors).
 
 ```ts
-import type { InferClientError } from "@orpc/client";
+import type { InferClientError } from '@orpc/client'
 
-type ClientError = InferClientError<typeof client>;
+type ClientError = InferClientError<typeof client>
 ```
 
 ### Infer Client Context
@@ -5086,9 +5032,9 @@ type ClientError = InferClientError<typeof client>;
 Infers the [client context](#client-context) type from a client.
 
 ```ts
-import type { InferClientContext } from "@orpc/client";
+import type { InferClientContext } from '@orpc/client'
 
-type Context = InferClientContext<typeof client>;
+type Context = InferClientContext<typeof client>
 ```
 
 ---
@@ -5107,7 +5053,7 @@ For most calls, use regular `try/catch`.
 
 ```ts
 try {
-  const data = await client.doSomething({ id: "123" });
+  const data = await client.doSomething({ id: '123' })
 } catch (error) {
   // handle error
 }
@@ -5118,10 +5064,10 @@ try {
 When working with [Typesafe Errors](/docs/error-handling#typesafe-errors), use `safe` to preserve error type inference. It behaves like `try/catch`, but returns the typesafe result instead of throwing.
 
 ```ts twoslash
-import { call, os } from "@orpc/server";
-import * as z from "zod";
+import { call, os } from '@orpc/server'
+import * as z from 'zod'
 // ---cut---
-import { isInferableError, safe } from "@orpc/client";
+import { isInferableError, safe } from '@orpc/client'
 
 const exampleProcedure = os
   .input(z.object({ id: z.string() }))
@@ -5131,25 +5077,23 @@ const exampleProcedure = os
     },
   })
   .handler(async ({ input, errors }) => {
-    throw errors.RATE_LIMIT_EXCEEDED({ data: { retryAfter: 1000 } });
-  });
+    throw errors.RATE_LIMIT_EXCEEDED({ data: { retryAfter: 1000 } })
+  })
 
 // or { error, data, inferableError }
-const [error, data, inferableError] = await safe(
-  call(exampleProcedure, { id: "123" }),
-);
+const [error, data, inferableError] = await safe(call(exampleProcedure, { id: '123' }))
 
 if (isInferableError(error)) {
   // or inferableError
   // handle inferable error
 
   // or inferableError.data.retryAfter
-  console.log(error.data.retryAfter);
+  console.log(error.data.retryAfter)
 } else if (error) {
   // handle unknown error
 } else {
   // handle success
-  console.log(data);
+  console.log(data)
 }
 ```
 
@@ -5167,11 +5111,11 @@ if (isInferableError(error)) {
 If you use `safe` often, `createSafeClient` can reduce repetition by wrapping entire client calls with `safe`.
 
 ```ts
-import { createSafeClient } from "@orpc/client";
+import { createSafeClient } from '@orpc/client'
 
-const safeClient = createSafeClient(client);
+const safeClient = createSafeClient(client)
 
-const [error, data] = await safeClient.doSomething({ id: "123" });
+const [error, data] = await safeClient.doSomething({ id: '123' })
 ```
 
 ---
@@ -5187,19 +5131,19 @@ Consume an [AsyncIteratorObject](/docs/async-iterator-object) like an [AsyncGene
 ## Basic Usage
 
 ```ts twoslash
-import { asyncIteratorObject, oc, RouterContractClient } from "@orpc/contract";
-import { z } from "zod";
+import { asyncIteratorObject, oc, RouterContractClient } from '@orpc/contract'
+import { z } from 'zod'
 
 const contract = {
   streaming: oc.output(asyncIteratorObject(z.object({ message: z.string() }))),
-};
+}
 
-declare const client: RouterContractClient<typeof contract>;
+declare const client: RouterContractClient<typeof contract>
 // ---cut---
-const iterator = await client.streaming();
+const iterator = await client.streaming()
 
 for await (const event of iterator) {
-  console.log(event.message);
+  console.log(event.message)
 }
 ```
 
@@ -5208,20 +5152,20 @@ for await (const event of iterator) {
 Use an `AbortSignal` or call `.return` to stop the iterator.
 
 ```ts
-const controller = new AbortController();
+const controller = new AbortController()
 const iterator = await client.streaming(undefined, {
   signal: controller.signal,
-});
+})
 
 // Stop the stream after 1 second
 setTimeout(async () => {
-  controller.abort();
+  controller.abort()
 
   // Or call `await iterator.return()` if you already have the iterator instance.
-}, 1000);
+}, 1000)
 
 for await (const event of iterator) {
-  console.log(event.message);
+  console.log(event.message)
 }
 ```
 
@@ -5232,11 +5176,11 @@ Unlike traditional SSE, AsyncIteratorObjects do not retry automatically after an
 :::
 
 ```ts
-const iterator = await client.streaming();
+const iterator = await client.streaming()
 
 try {
   for await (const event of iterator) {
-    console.log(event.message);
+    console.log(event.message)
   }
 } catch (error) {
   if (error instanceof ORPCError) {
@@ -5250,13 +5194,13 @@ try {
 Use `getEventMeta` to read [event metadata](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#event_stream_format) for each item, such as the event ID and retry interval.
 
 ```ts
-import { getEventMeta } from "@orpc/client";
+import { getEventMeta } from '@orpc/client'
 
-const iterator = await client.streaming();
+const iterator = await client.streaming()
 
 for await (const event of iterator) {
-  const meta = getEventMeta(event);
-  console.log(event.message, meta?.id, meta?.retry);
+  const meta = getEventMeta(event)
+  console.log(event.message, meta?.id, meta?.retry)
 }
 ```
 
@@ -5265,27 +5209,27 @@ for await (const event of iterator) {
 Use `consumeAsyncIterator` to consume an `AsyncIterator` with lifecycle callbacks. It accepts either an iterator or a promise that resolves to one.
 
 ```ts
-import { consumeAsyncIterator } from "@orpc/client";
+import { consumeAsyncIterator } from '@orpc/client'
 
 const cancel = consumeAsyncIterator(client.streaming(), {
   onEvent: (event) => {
-    console.log(event.message);
+    console.log(event.message)
   },
   onError: (error) => {
-    console.error(error);
+    console.error(error)
   },
   onSuccess: (value) => {
-    console.log(value);
+    console.log(value)
   },
   onFinish: (state) => {
-    console.log(state);
+    console.log(state)
   },
-});
+})
 
 setTimeout(async () => {
   // Stop the stream after 1 second
-  await cancel();
-}, 1000);
+  await cancel()
+}, 1000)
 ```
 
 ---
@@ -5301,38 +5245,37 @@ setTimeout(async () => {
 ## Example
 
 ```ts twoslash
-import { os, RouterClient } from "@orpc/server";
-import { RPCLink } from "@orpc/client/fetch";
+import { os, RouterClient } from '@orpc/server'
+import { RPCLink } from '@orpc/client/fetch'
 
 const router = {
-  ping: os.handler(() => "pong"),
-  pong: os.handler(() => "ping"),
-};
+  ping: os.handler(() => 'pong'),
+  pong: os.handler(() => 'ping'),
+}
 // ---cut---
-import { createORPCClient, DynamicLink } from "@orpc/client";
+import { createORPCClient, DynamicLink } from '@orpc/client'
 
 interface ClientContext {
-  cache?: boolean;
+  cache?: boolean
 }
 
 const cacheLink = new RPCLink({
-  origin: "https://cache.example.com",
-});
+  origin: 'https://cache.example.com',
+})
 
 const noCacheLink = new RPCLink({
-  origin: "https://example.com",
-});
+  origin: 'https://example.com',
+})
 
 const link = new DynamicLink<ClientContext>((options, path, input) => {
   if (options.context?.cache) {
-    return cacheLink;
+    return cacheLink
   }
 
-  return noCacheLink;
-});
+  return noCacheLink
+})
 
-const client: RouterClient<typeof router, ClientContext> =
-  createORPCClient(link);
+const client: RouterClient<typeof router, ClientContext> = createORPCClient(link)
 ```
 
 ::: info
@@ -5354,58 +5297,58 @@ oRPC supports the [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/F
 ::: code-group
 
 ```ts [RPC]
-import { RPCHandler } from "@orpc/server/fetch";
-import { CORSPlugin } from "@orpc/server/plugins";
-import { onError } from "@orpc/server";
+import { RPCHandler } from '@orpc/server/fetch'
+import { CORSPlugin } from '@orpc/server/plugins'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   plugins: [new CORSHandlerPlugin()],
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 export async function fetch(request: Request): Promise<Response> {
   const { matched, response } = await handler.handle(request, {
-    prefix: "/rpc",
+    prefix: '/rpc',
     context: {}, // Provide initial context if needed
-  });
+  })
 
   if (matched) {
-    return response;
+    return response
   }
 
-  return new Response("Not found", { status: 404 });
+  return new Response('Not found', { status: 404 })
 }
 ```
 
 ```ts [OpenAPI]
-import { OpenAPIHandler } from "@orpc/openapi/fetch";
-import { CORSPlugin } from "@orpc/server/plugins";
-import { onError } from "@orpc/server";
+import { OpenAPIHandler } from '@orpc/openapi/fetch'
+import { CORSPlugin } from '@orpc/server/plugins'
+import { onError } from '@orpc/server'
 
 const handler = new OpenAPIHandler(router, {
   plugins: [new CORSHandlerPlugin()],
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 export async function fetch(request: Request): Promise<Response> {
   const { matched, response } = await handler.handle(request, {
-    prefix: "/api",
+    prefix: '/api',
     context: {}, // Provide initial context if needed
-  });
+  })
 
   if (matched) {
-    return response;
+    return response
   }
 
-  return new Response("Not found", { status: 404 });
+  return new Response('Not found', { status: 404 })
 }
 ```
 
@@ -5419,23 +5362,23 @@ The actual usage of `fetch` depends on the runtime environment or library you us
 ```ts [Bun]
 Bun.serve({
   fetch,
-});
+})
 ```
 
 ```ts [Cloudflare Workers]
 export default {
   fetch,
-};
+}
 ```
 
 ```ts [Deno]
-Deno.serve(fetch);
+Deno.serve(fetch)
 ```
 
 ```ts [Hono Lambda]
-import { handle } from "hono/aws-lambda";
+import { handle } from 'hono/aws-lambda'
 
-export const handler = handle({ fetch });
+export const handler = handle({ fetch })
 ```
 
 :::
@@ -5446,9 +5389,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -5458,49 +5401,49 @@ const cors = new CORSHandlerPlugin({
 ::: code-group
 
 ```ts [RPC]
-import { RPCLink } from "@orpc/client/fetch";
-import { onError } from "@orpc/client";
+import { RPCLink } from '@orpc/client/fetch'
+import { onError } from '@orpc/client'
 
 const link = new RPCLink({
-  origin: "https://api.example.com", // accepts async function, defaults to current origin
-  url: "/rpc", // accepts async function
-  headers: { authorization: "bearer token" }, // accept async function
+  origin: 'https://api.example.com', // accepts async function, defaults to current origin
+  url: '/rpc', // accepts async function
+  headers: { authorization: 'bearer token' }, // accept async function
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
   fetch: (request, init) => {
     // <- override fetch if needed
     return globalThis.fetch(request, {
       ...init,
-      credentials: "include", // Include cookies on cross-origin requests
-    });
+      credentials: 'include', // Include cookies on cross-origin requests
+    })
   },
-});
+})
 ```
 
 ```ts [OpenAPI]
-import { OpenAPILink } from "@orpc/openapi/fetch";
-import { onError } from "@orpc/client";
+import { OpenAPILink } from '@orpc/openapi/fetch'
+import { onError } from '@orpc/client'
 
 const link = new OpenAPILink(contract, {
-  origin: "https://api.example.com", // accepts async function, defaults to current origin
-  url: "/rpc", // accepts async function
-  headers: { authorization: "bearer token" }, // accept async function
+  origin: 'https://api.example.com', // accepts async function, defaults to current origin
+  url: '/rpc', // accepts async function
+  headers: { authorization: 'bearer token' }, // accept async function
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
   fetch: (request, init) => {
     // <- override fetch if needed
     return globalThis.fetch(request, {
       ...init,
-      credentials: "include", // Include cookies on cross-origin requests
-    });
+      credentials: 'include', // Include cookies on cross-origin requests
+    })
   },
-});
+})
 ```
 
 :::
@@ -5530,7 +5473,7 @@ const handler = new OpenAPIHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       keepAlive: {
         /**
@@ -5550,7 +5493,7 @@ const handler = new OpenAPIHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       /**
        * If true, a `close` event is sent even when the iterator completes with `undefined`.
@@ -5561,7 +5504,7 @@ const handler = new OpenAPIHandler(router, {
       emptyCloseEventEnabled: true,
     },
   },
-});
+})
 ```
 
 ::: info
@@ -5583,71 +5526,67 @@ oRPC supports [Node HTTP](https://nodejs.org/api/http.html), [Node HTTPS](https:
 ::: code-group
 
 ```ts [RPC]
-import { createServer } from "node:http"; // or 'node:https' or 'node:http2'
-import { RPCHandler } from "@orpc/server/node";
-import { CORSHandlerPlugin } from "@orpc/server/plugins";
-import { onError } from "@orpc/server";
+import { createServer } from 'node:http' // or 'node:https' or 'node:http2'
+import { RPCHandler } from '@orpc/server/node'
+import { CORSHandlerPlugin } from '@orpc/server/plugins'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   plugins: [new CORSHandlerPlugin()],
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 const server = createServer(async (req, res) => {
   const { matched } = await handler.handle(req, res, {
-    prefix: "/rpc",
+    prefix: '/rpc',
     context: {}, // Provide initial context if needed
-  });
+  })
 
   if (matched) {
-    return;
+    return
   }
 
-  res.statusCode = 404;
-  res.end("Not found");
-});
+  res.statusCode = 404
+  res.end('Not found')
+})
 
-server.listen(3000, "127.0.0.1", () =>
-  console.log("Listening on 127.0.0.1:3000"),
-);
+server.listen(3000, '127.0.0.1', () => console.log('Listening on 127.0.0.1:3000'))
 ```
 
 ```ts [OpenAPI]
-import { createServer } from "node:http"; // or 'node:https' or 'node:http2'
-import { OpenAPIHandler } from "@orpc/openapi/node";
-import { CORSHandlerPlugin } from "@orpc/server/plugins";
-import { onError } from "@orpc/server";
+import { createServer } from 'node:http' // or 'node:https' or 'node:http2'
+import { OpenAPIHandler } from '@orpc/openapi/node'
+import { CORSHandlerPlugin } from '@orpc/server/plugins'
+import { onError } from '@orpc/server'
 
 const handler = new OpenAPIHandler(router, {
   plugins: [new CORSHandlerPlugin()],
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 const server = createServer(async (req, res) => {
   const { matched } = await handler.handle(req, res, {
-    prefix: "/api",
+    prefix: '/api',
     context: {}, // Provide initial context if needed
-  });
+  })
 
   if (matched) {
-    return;
+    return
   }
 
-  res.statusCode = 404;
-  res.end("Not found");
-});
+  res.statusCode = 404
+  res.end('Not found')
+})
 
-server.listen(3000, "127.0.0.1", () =>
-  console.log("Listening on 127.0.0.1:3000"),
-);
+server.listen(3000, '127.0.0.1', () => console.log('Listening on 127.0.0.1:3000'))
 ```
 
 :::
@@ -5658,9 +5597,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -5686,7 +5625,7 @@ const handler = new OpenAPIHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       keepAlive: {
         /**
@@ -5706,7 +5645,7 @@ const handler = new OpenAPIHandler(router, {
          *
          * @default ''
          */
-        comment: "",
+        comment: '',
       },
       /**
        * If true, a `close` event is sent even when the iterator completes with `undefined`.
@@ -5717,7 +5656,7 @@ const handler = new OpenAPIHandler(router, {
       emptyCloseEventEnabled: true,
     },
   },
-});
+})
 ```
 
 ---
@@ -5740,21 +5679,21 @@ oRPC supports WebSockets for low-latency, full-duplex communication between clie
 ::: code-group
 
 ```ts [ws]
-import { WebSocketServer } from "ws";
-import { RPCHandler } from "@orpc/server/websocket";
-import { onError } from "@orpc/server";
+import { WebSocketServer } from 'ws'
+import { RPCHandler } from '@orpc/server/websocket'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
-const wss = new WebSocketServer({ port: 8080 });
+const wss = new WebSocketServer({ port: 8080 })
 
-wss.on("connection", (ws) => {
+wss.on('connection', (ws) => {
   handler.upgrade(ws, {
     /**
      * Provide initial context if needed. The context can be an async function
@@ -5762,25 +5701,25 @@ wss.on("connection", (ws) => {
      * related to the initial WebSocket upgrade request.
      */
     context: (request) => ({}),
-  });
-});
+  })
+})
 ```
 
 ```ts [crossws]
-import { createServer } from "node:http";
-import { experimental_RPCHandler as RPCHandler } from "@orpc/server/crossws";
-import { onError } from "@orpc/server";
+import { createServer } from 'node:http'
+import { experimental_RPCHandler as RPCHandler } from '@orpc/server/crossws'
+import { onError } from '@orpc/server'
 
 // any crossws adapter is supported
-import crossws from "crossws/adapters/node";
+import crossws from 'crossws/adapters/node'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 const ws = crossws({
   hooks: {
@@ -5792,43 +5731,43 @@ const ws = crossws({
          * related to the initial WebSocket upgrade request.
          */
         context: (request) => ({}),
-      });
+      })
     },
     close: async (peer) => {
-      await handler.close(peer);
+      await handler.close(peer)
     },
   },
-});
+})
 
 const server = createServer((req, res) => {
-  res.end(`Hello World`);
-}).listen(3000);
+  res.end(`Hello World`)
+}).listen(3000)
 
-server.on("upgrade", (req, socket, head) => {
-  if (req.headers.upgrade === "websocket") {
-    ws.handleUpgrade(req, socket, head);
+server.on('upgrade', (req, socket, head) => {
+  if (req.headers.upgrade === 'websocket') {
+    ws.handleUpgrade(req, socket, head)
   }
-});
+})
 ```
 
 ```ts [Bun]
-import { RPCHandler } from "@orpc/server/websocket";
-import { onError } from "@orpc/server";
+import { RPCHandler } from '@orpc/server/websocket'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 Bun.serve({
   fetch(req, server) {
     if (server.upgrade(req)) {
-      return;
+      return
     }
-    return new Response("Upgrade failed", { status: 500 });
+    return new Response('Upgrade failed', { status: 500 })
   },
   websocket: {
     async message(ws, message) {
@@ -5839,33 +5778,33 @@ Bun.serve({
          * related to the initial WebSocket upgrade request.
          */
         context: (request) => ({}),
-      });
+      })
     },
     async close(ws) {
-      await handler.close(ws);
+      await handler.close(ws)
     },
   },
-});
+})
 ```
 
 ```ts [Deno]
-import { RPCHandler } from "@orpc/server/websocket";
-import { onError } from "@orpc/server";
+import { RPCHandler } from '@orpc/server/websocket'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 Deno.serve((req) => {
-  if (req.headers.get("upgrade") !== "websocket") {
-    return new Response(null, { status: 501 });
+  if (req.headers.get('upgrade') !== 'websocket') {
+    return new Response(null, { status: 501 })
   }
 
-  const { socket, response } = Deno.upgradeWebSocket(req);
+  const { socket, response } = Deno.upgradeWebSocket(req)
 
   handler.upgrade(socket, {
     /**
@@ -5874,40 +5813,37 @@ Deno.serve((req) => {
      * related to the initial WebSocket upgrade request.
      */
     context: (request) => ({}),
-  });
+  })
 
-  return response;
-});
+  return response
+})
 ```
 
 ```ts [Cloudflare]
-import { RPCHandler } from "@orpc/server/websocket";
-import { onError } from "@orpc/server";
+import { RPCHandler } from '@orpc/server/websocket'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 export class ChatRoom extends DurableObject {
   async fetch(): Promise<Response> {
-    const { "0": client, "1": server } = new WebSocketPair();
+    const { '0': client, '1': server } = new WebSocketPair()
 
-    this.ctx.acceptWebSocket(server);
+    this.ctx.acceptWebSocket(server)
 
     return new Response(null, {
       status: 101,
       webSocket: client,
-    });
+    })
   }
 
-  async webSocketMessage(
-    ws: WebSocket,
-    message: string | ArrayBuffer,
-  ): Promise<void> {
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     await handler.message(ws, message, {
       /**
        * Provide initial context if needed. The context can be an async function
@@ -5915,30 +5851,30 @@ export class ChatRoom extends DurableObject {
        * related to the initial WebSocket upgrade request.
        */
       context: (request) => ({}),
-    });
+    })
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
-    await handler.close(ws);
+    await handler.close(ws)
   }
 }
 ```
 
 ```ts [uWebSockets]
-import { App } from "uWebSockets.js";
-import { RPCHandler } from "@orpc/server/websocket";
-import { onError } from "@orpc/server";
+import { App } from 'uWebSockets.js'
+import { RPCHandler } from '@orpc/server/websocket'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 const app = App()
-  .ws("/*", {
+  .ws('/*', {
     async message(ws, message, isBinary) {
       await handler.message(ws, message, {
         /**
@@ -5947,17 +5883,17 @@ const app = App()
          * related to the initial WebSocket upgrade request.
          */
         context: (request) => ({}),
-      });
+      })
     },
     async close(ws, code, message) {
-      await handler.close(ws);
+      await handler.close(ws)
     },
   })
   .listen(3000, (token) => {
     if (token) {
-      console.log("Listening to port 3000");
+      console.log('Listening to port 3000')
     }
-  });
+  })
 ```
 
 :::
@@ -5969,10 +5905,10 @@ const app = App()
 | `websocket` | [MDN WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket) |
 
 ```ts
-import { RPCLink } from "@orpc/client/websocket";
+import { RPCLink } from '@orpc/client/websocket'
 
 const link = new RPCLink({
-  connect: (info) => new WebSocket("ws://localhost:3000"),
+  connect: (info) => new WebSocket('ws://localhost:3000'),
   /**
    * Whether to connect immediately on initialization, instead of waiting
    * for the first call. Reduces latency for the first request.
@@ -5986,7 +5922,7 @@ const link = new RPCLink({
    * These can be accessed in the server context or via the Request Headers Plugin.
    */
   headers: () => ({}),
-});
+})
 ```
 
 ::: info
@@ -6041,7 +5977,7 @@ const link = new RPCLink({
       delay: 0,
     },
   },
-});
+})
 ```
 
 ---
@@ -6059,22 +5995,22 @@ oRPC supports the [Message Port](https://developer.mozilla.org/en-US/docs/Web/AP
 Message Ports work by establishing two endpoints that can communicate with each other:
 
 ```ts [Bridge]
-const channel = new MessageChannel();
-const serverPort = channel.port1;
-const clientPort = channel.port2;
+const channel = new MessageChannel()
+const serverPort = channel.port1
+const clientPort = channel.port2
 ```
 
 ```ts [Server]
-import { RPCHandler } from "@orpc/server/message-port";
-import { onError } from "@orpc/server";
+import { RPCHandler } from '@orpc/server/message-port'
+import { onError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
 handler.upgrade(serverPort, {
   /**
@@ -6083,20 +6019,20 @@ handler.upgrade(serverPort, {
    * related to the initial upgrade request.
    */
   context: (request) => ({}),
-});
+})
 
-serverPort.start();
+serverPort.start()
 ```
 
 ```ts [Client]
-import { RPCLink } from "@orpc/client/message-port";
-import { onError } from "@orpc/client";
+import { RPCLink } from '@orpc/client/message-port'
+import { onError } from '@orpc/client'
 
 const link = new RPCLink({
   port: clientPort,
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
   /**
@@ -6104,9 +6040,9 @@ const link = new RPCLink({
    * These can be accessed in the server context or via the Request Headers Plugin.
    */
   headers: () => ({}),
-});
+})
 
-clientPort.start();
+clientPort.start()
 ```
 
 ::: info
@@ -6122,19 +6058,19 @@ By default, oRPC serializes request/response messages to string/binary data befo
 ```ts [handler]
 const handler = new RPCHandler(router, {
   experimental_transfer: (message, port) => {
-    const transfer = deepFindTransferableObjects(message); // implement your own logic
-    return transfer.length ? transfer : null; // only enable when needed
+    const transfer = deepFindTransferableObjects(message) // implement your own logic
+    return transfer.length ? transfer : null // only enable when needed
   },
-});
+})
 ```
 
 ```ts [link]
 const link = new RPCLink({
   experimental_transfer: (message) => {
-    const transfer = deepFindTransferableObjects(message); // implement your own logic
-    return transfer.length ? transfer : null; // only enable when needed
+    const transfer = deepFindTransferableObjects(message) // implement your own logic
+    return transfer.length ? transfer : null // only enable when needed
   },
-});
+})
 ```
 
 :::
@@ -6158,15 +6094,15 @@ This guide explains how to use oRPC with React Native, including the platform's 
 React Native provides a built-in [Fetch API](https://reactnative.dev/docs/network), allowing you to connect to an oRPC server over HTTP. Learn more in the [Fetch Client Adapter](/docs/adapters/fetch-api#client-usage) documentation.
 
 ```ts
-import { RPCLink } from "@orpc/client/fetch";
+import { RPCLink } from '@orpc/client/fetch'
 
 const link = new RPCLink({
-  origin: "https://api.example.com",
-  url: "/rpc",
+  origin: 'https://api.example.com',
+  url: '/rpc',
   headers: async ({ context }) => ({
-    "x-api-key": context?.something ?? "",
+    'x-api-key': context?.something ?? '',
   }),
-});
+})
 ```
 
 ::: info
@@ -6199,11 +6135,11 @@ If you're using [RPC Link](/docs/rpc/link), you can extend the [RPC JSON Seriali
 React Native also provides built-in [WebSocket](https://reactnative.dev/docs/network#websocket) support, allowing you to connect to an oRPC server over WebSocket. Learn more in the [WebSocket Client Adapter](/docs/adapters/websocket#client-usage) documentation.
 
 ```ts
-import { RPCLink } from "@orpc/client/websocket";
+import { RPCLink } from '@orpc/client/websocket'
 
 const link = new RPCLink({
-  connect: () => new WebSocket("ws://localhost:3000"),
-});
+  connect: () => new WebSocket('ws://localhost:3000'),
+})
 ```
 
 ::: info
@@ -6231,18 +6167,18 @@ Set up batching on both the server and the client. The server plugin handles inc
 ::: code-group
 
 ```ts [server.ts]
-import { BatchHandlerPlugin } from "@orpc/server/plugins";
+import { BatchHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [new BatchHandlerPlugin()],
-});
+})
 ```
 
 ```ts [client.ts]
-import { BatchLinkPlugin } from "@orpc/client/plugins";
+import { BatchLinkPlugin } from '@orpc/client/plugins'
 
 const link = new RPCLink({
-  url: "/rpc",
+  url: '/rpc',
   plugins: [
     new BatchLinkPlugin({
       groups: [
@@ -6253,7 +6189,7 @@ const link = new RPCLink({
       ],
     }),
   ],
-});
+})
 ```
 
 :::
@@ -6263,8 +6199,8 @@ const link = new RPCLink({
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["orpc-batch"],
-});
+  allowHeaders: ['orpc-batch'],
+})
 ```
 
 :::
@@ -6277,10 +6213,10 @@ If your environment does not support streaming responses, such as some serverles
 
 ```ts
 const link = new RPCLink({
-  url: "/rpc",
+  url: '/rpc',
   plugins: [
     new BatchLinkPlugin({
-      mode: "buffered",
+      mode: 'buffered',
       groups: [
         {
           condition: () => true,
@@ -6289,7 +6225,7 @@ const link = new RPCLink({
       ],
     }),
   ],
-});
+})
 ```
 
 ### Keep-Alive Timer
@@ -6316,7 +6252,7 @@ const handler = new RPCHandler(router, {
       },
     }),
   ],
-});
+})
 ```
 
 ## Groups
@@ -6327,25 +6263,25 @@ The following example batches requests by cache policy:
 
 ```ts
 interface ClientContext {
-  cache?: RequestCache;
+  cache?: RequestCache
 }
 
 const link = new RPCLink<ClientContext>({
   method: ({ context }) => {
     if (context?.cache) {
-      return "GET";
+      return 'GET'
     }
 
-    return "POST";
+    return 'POST'
   },
   plugins: [
     new BatchLinkPlugin({
       groups: [
         {
-          condition: ({ context }) => context?.cache === "force-cache",
+          condition: ({ context }) => context?.cache === 'force-cache',
           context: {
             // used for the rest of the request lifecycle
-            cache: "force-cache",
+            cache: 'force-cache',
           },
         },
         {
@@ -6361,7 +6297,7 @@ const link = new RPCLink<ClientContext>({
       ...init,
       cache: context?.cache,
     }),
-});
+})
 ```
 
 Now, calls made with `cache = 'force-cache'` use that cache setting whether they are batched or sent individually.
@@ -6372,10 +6308,10 @@ Use `filter` to skip batching for specific requests before group matching runs. 
 
 ```ts
 const link = new RPCLink({
-  url: "/rpc",
+  url: '/rpc',
   plugins: [
     new BatchLinkPlugin({
-      filter: ({ path }) => !path.includes("upload"),
+      filter: ({ path }) => !path.includes('upload'),
       groups: [
         {
           condition: () => true,
@@ -6384,7 +6320,7 @@ const link = new RPCLink({
       ],
     }),
   ],
-});
+})
 ```
 
 ## Learn More
@@ -6404,20 +6340,20 @@ Use `CORSHandlerPlugin` to configure [CORS Policy](https://developer.mozilla.org
 ## Basic
 
 ```ts twoslash
-import { RPCHandler } from "@orpc/server/fetch";
-import { router } from "./shared/planet";
+import { RPCHandler } from '@orpc/server/fetch'
+import { router } from './shared/planet'
 // ---cut---
-import { CORSHandlerPlugin } from "@orpc/server/plugins";
+import { CORSHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [
     new CORSHandlerPlugin({
       origin: (origin, options) => origin,
-      allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
+      allowMethods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH'],
       // ...
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -6430,9 +6366,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::
@@ -6458,12 +6394,12 @@ The plugin inspects the [Sec-Fetch-Mode header](https://developer.mozilla.org/en
 ## Setup
 
 ```ts
-import { OpenAPIHandler } from "@orpc/openapi/fetch";
-import { CSRFGuardHandlerPlugin } from "@orpc/server/plugins";
+import { OpenAPIHandler } from '@orpc/openapi/fetch'
+import { CSRFGuardHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new OpenAPIHandler(router, {
   plugins: [new CSRFGuardHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -6474,7 +6410,7 @@ const handler = new RPCHandler(router, {
   csrfGuardHandlerPlugin: {
     enabled: false,
   },
-});
+})
 ```
 
 :::
@@ -6500,7 +6436,7 @@ For implementation details, see the [source code](https://github.com/middleapi/o
 ## Overview
 
 ```ts
-import { DedupeLinkPlugin } from "@orpc/client/plugins";
+import { DedupeLinkPlugin } from '@orpc/client/plugins'
 
 const link = new RPCLink({
   plugins: [
@@ -6513,7 +6449,7 @@ const link = new RPCLink({
       ],
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -6528,7 +6464,7 @@ By default, the plugin deduplicates only `GET` requests. You can customize this 
 const link = new RPCLink({
   plugins: [
     new DedupeLinkPlugin({
-      filter: ({ request }) => request.method === "GET",
+      filter: ({ request }) => request.method === 'GET',
       groups: [
         {
           condition: () => true,
@@ -6537,7 +6473,7 @@ const link = new RPCLink({
       ],
     }),
   ],
-});
+})
 ```
 
 ::: warning
@@ -6557,25 +6493,25 @@ The following example deduplicates requests by cache policy:
 
 ```ts
 interface ClientContext {
-  cache?: RequestCache;
+  cache?: RequestCache
 }
 
 const link = new RPCLink<ClientContext>({
   method: ({ context }) => {
     if (context?.cache) {
-      return "GET";
+      return 'GET'
     }
 
-    return "POST";
+    return 'POST'
   },
   plugins: [
     new DedupeLinkPlugin({
       groups: [
         {
-          condition: ({ context }) => context?.cache === "force-cache",
+          condition: ({ context }) => context?.cache === 'force-cache',
           context: {
             // used for the rest of the request lifecycle
-            cache: "force-cache",
+            cache: 'force-cache',
           },
         },
         {
@@ -6591,7 +6527,7 @@ const link = new RPCLink<ClientContext>({
       ...init,
       cache: context?.cache,
     }),
-});
+})
 ```
 
 Now, calls made with `cache = 'force-cache'` use that cache setting whether they are deduplicated or sent individually.
@@ -6619,12 +6555,12 @@ This plugin depends on the [OpenAPI Generator](/docs/openapi/specification). Rev
 To use this plugin, first create an [OpenAPI Generator](/docs/openapi/specification). The plugin uses it to generate the OpenAPI specification.
 
 ```ts
-import { OpenAPIGenerator } from "@orpc/openapi";
-import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
+import { OpenAPIGenerator } from '@orpc/openapi'
+import { OpenAPIReferencePlugin } from '@orpc/openapi/plugins'
 
 const generator = new OpenAPIGenerator({
   converters: [new ZodToJsonSchemaConverter()],
-});
+})
 
 const handler = new OpenAPIHandler(router, {
   plugins: [
@@ -6632,14 +6568,14 @@ const handler = new OpenAPIHandler(router, {
       spec: () =>
         generator.generateSpec(router, {
           info: {
-            title: "ORPC Playground",
-            version: "1.0.0",
+            title: 'ORPC Playground',
+            version: '1.0.0',
           },
-          servers: [{ url: "https://api.example.com/v1" }],
+          servers: [{ url: 'https://api.example.com/v1' }],
         }),
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -6654,13 +6590,13 @@ By default, the API reference UI is served from `/`, and the OpenAPI specificati
 const handler = new OpenAPIHandler(router, {
   plugins: [
     new OpenAPIReferencePlugin({
-      provider: "swagger",
+      provider: 'swagger',
       providerConfig: {
         // Swagger UI specific configuration
       },
     }),
   ],
-});
+})
 ```
 
 ::: tip
@@ -6701,7 +6637,7 @@ Compresses request bodies before sending to the server, reducing bandwidth usage
 Use `RequestCompressionLinkPlugin` to compress request bodies. Configure the compression scheme and size threshold:
 
 ```ts
-import { RequestCompressionLinkPlugin } from "@orpc/client/plugins";
+import { RequestCompressionLinkPlugin } from '@orpc/client/plugins'
 
 const link = new RPCLink({
   plugins: [
@@ -6712,7 +6648,7 @@ const link = new RPCLink({
        *
        * @default 'gzip'
        */
-      encoding: "gzip",
+      encoding: 'gzip',
 
       /**
        * The minimum request size in bytes required to trigger compression.
@@ -6724,7 +6660,7 @@ const link = new RPCLink({
       threshold: 1024,
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -6736,11 +6672,11 @@ The `link` can be any supported oRPC link, such as [RPCLink](/docs/rpc/link), [O
 Use `RequestCompressionHandlerPlugin` to decompress request bodies. The plugin automatically detects the client's compression scheme based on the [Content-Encoding header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Encoding):
 
 ```ts [handler]
-import { RequestCompressionHandlerPlugin } from "@orpc/server/plugins";
+import { RequestCompressionHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [new RequestCompressionHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -6768,24 +6704,24 @@ Use `RequestHeadersHandlerPlugin` to expose incoming request headers as `context
 ## Context Access
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 // ---cut---
-import { getCookie } from "@orpc/server/helpers";
-import type { RequestHeadersHandlerPluginContext } from "@orpc/server/plugins";
+import { getCookie } from '@orpc/server/helpers'
+import type { RequestHeadersHandlerPluginContext } from '@orpc/server/plugins'
 
 interface ServerContext extends RequestHeadersHandlerPluginContext {}
 
-const base = os.$context<ServerContext>();
+const base = os.$context<ServerContext>()
 
 const example = base
   .use(({ context, next }) => {
-    const sessionId = getCookie(context.reqHeaders, "session_id");
-    return next();
+    const sessionId = getCookie(context.reqHeaders, 'session_id')
+    return next()
   })
   .handler(({ context }) => {
-    const userAgent = context.reqHeaders?.get("user-agent");
-    return { userAgent };
-  });
+    const userAgent = context.reqHeaders?.get('user-agent')
+    return { userAgent }
+  })
 ```
 
 ::: info Why can `reqHeaders` be undefined?
@@ -6799,11 +6735,11 @@ Combine with [Cookie Helpers](/docs/helpers/cookie) for streamlined cookie manag
 ## Handler Setup
 
 ```ts
-import { RequestHeadersHandlerPlugin } from "@orpc/server/plugins";
+import { RequestHeadersHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [new RequestHeadersHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -6829,7 +6765,7 @@ Restricts the size of incoming request bodies to protect the server from oversiz
 Use `RequestLimitHandlerPlugin` to limit the size of incoming request bodies.
 
 ```ts
-import { RequestLimitHandlerPlugin } from "@orpc/server/plugins";
+import { RequestLimitHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [
@@ -6840,7 +6776,7 @@ const handler = new RPCHandler(router, {
       maxBodySize: 1024 * 1024, // 1MB
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -6868,11 +6804,11 @@ For implementation details, see the [source code](https://github.com/middleapi/o
 ## Setup
 
 ```ts
-import { RequestValidationLinkPlugin } from "@orpc/contract/plugins";
+import { RequestValidationLinkPlugin } from '@orpc/contract/plugins'
 
 const link = new RPCLink({
   plugins: [new RequestValidationLinkPlugin(contract)],
-});
+})
 ```
 
 ::: info
@@ -6894,7 +6830,7 @@ const link = new RPCLink({
       forwardValidatedInput: true,
     }),
   ],
-});
+})
 ```
 
 ## Custom Validation Errors
@@ -6902,29 +6838,29 @@ const link = new RPCLink({
 If you have already [customized validation errors on the server](/docs/advanced/validation-customization#custom-validation-errors), you can use interceptors to catch and map the validation errors thrown by this plugin so they match your server-side errors.
 
 ```ts
-import { ORPCError } from "@orpc/client";
-import { ValidationError } from "@orpc/contract";
+import { ORPCError } from '@orpc/client'
+import { ValidationError } from '@orpc/contract'
 
 const link = new RPCLink({
   plugins: [new RequestValidationLinkPlugin(contract)],
   interceptors: [
     async ({ next }) => {
       try {
-        return await next();
+        return await next()
       } catch (error) {
         if (
           error instanceof ORPCError &&
-          error.code === "BAD_REQUEST" &&
+          error.code === 'BAD_REQUEST' &&
           error.cause instanceof ValidationError
         ) {
-          throw new CustomInputValidationError(error.cause.issues);
+          throw new CustomInputValidationError(error.cause.issues)
         }
 
-        throw error;
+        throw error
       }
     },
   ],
-});
+})
 ```
 
 ## Form Validation
@@ -6932,31 +6868,31 @@ const link = new RPCLink({
 You can pair this plugin with [Form Data Helpers](/docs/helpers/form-data) to avoid heavier form validation libraries and keep your contract as the single source of truth on both the client and server.
 
 ```tsx
-import { getIssueMessage, parseFormData } from "@orpc/openapi/helpers";
+import { getIssueMessage, parseFormData } from '@orpc/openapi/helpers'
 
 export function ContactForm() {
-  const [error, setError] = useState();
+  const [error, setError] = useState()
 
   const handleSubmit = async (form: FormData) => {
     try {
-      const output = await client.someProcedure(parseFormData(form));
-      console.log(output);
+      const output = await client.someProcedure(parseFormData(form))
+      console.log(output)
     } catch (error) {
-      setError(error);
+      setError(error)
     }
-  };
+  }
 
   return (
     <form action={handleSubmit}>
       <input name="user[name]" type="text" />
-      <span>{getIssueMessage(error, "user[name]")}</span>
+      <span>{getIssueMessage(error, 'user[name]')}</span>
 
       <input name="user[emails][]" type="email" />
-      <span>{getIssueMessage(error, "user[emails][]")}</span>
+      <span>{getIssueMessage(error, 'user[emails][]')}</span>
 
       <button type="submit">Submit</button>
     </form>
-  );
+  )
 }
 ```
 
@@ -6979,7 +6915,7 @@ Compresses response bodies to reduce bandwidth usage and improve performance for
 Use `ResponseCompressionHandlerPlugin` to compress response bodies. The plugin selects an encoding based on [Accept-Encoding header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Encoding):
 
 ```ts [handler]
-import { ResponseCompressionHandlerPlugin } from "@orpc/server/plugins";
+import { ResponseCompressionHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [
@@ -6992,7 +6928,7 @@ const handler = new RPCHandler(router, {
        *
        * @default ['gzip', 'deflate']
        */
-      encodings: ["gzip", "deflate"],
+      encodings: ['gzip', 'deflate'],
 
       /**
        * The minimum response size in bytes required to trigger compression.
@@ -7004,7 +6940,7 @@ const handler = new RPCHandler(router, {
       threshold: 1024,
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -7016,7 +6952,7 @@ The `handler` can be any supported oRPC handler, such as [RPCHandler](/docs/rpc/
 Use `ResponseCompressionLinkPlugin` to advertise supported encodings via [Accept-Encoding header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Encoding) and automatically decompress response bodies based on the [Content-Encoding header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Encoding):
 
 ```ts
-import { ResponseCompressionLinkPlugin } from "@orpc/client/plugins";
+import { ResponseCompressionLinkPlugin } from '@orpc/client/plugins'
 
 const link = new RPCLink({
   plugins: [
@@ -7027,10 +6963,10 @@ const link = new RPCLink({
        *
        * @default ['gzip', 'deflate']
        */
-      encodings: ["gzip", "deflate"],
+      encodings: ['gzip', 'deflate'],
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -7058,26 +6994,26 @@ Use `ResponseHeadersHandlerPlugin` to accumulate response headers in `context.re
 ## Context Access
 
 ```ts twoslash
-import { os } from "@orpc/server";
-import { setCookie } from "@orpc/server/helpers";
+import { os } from '@orpc/server'
+import { setCookie } from '@orpc/server/helpers'
 // ---cut---
-import type { ResponseHeadersHandlerPluginContext } from "@orpc/server/plugins";
+import type { ResponseHeadersHandlerPluginContext } from '@orpc/server/plugins'
 
 interface ServerContext extends ResponseHeadersHandlerPluginContext {}
 
-const base = os.$context<ServerContext>();
+const base = os.$context<ServerContext>()
 
 const procedure = base
   .use(({ context, next }) => {
-    context.resHeaders?.set("x-request-id", "req_123");
-    return next();
+    context.resHeaders?.set('x-request-id', 'req_123')
+    return next()
   })
   .handler(({ context }) => {
-    setCookie(context.resHeaders, "session_id", "abc123", {
+    setCookie(context.resHeaders, 'session_id', 'abc123', {
       secure: true,
       maxAge: 3600,
-    });
-  });
+    })
+  })
 ```
 
 ::: info Why can `resHeaders` be undefined?
@@ -7091,11 +7027,11 @@ Combine with [Cookie Helpers](/docs/helpers/cookie) for streamlined cookie manag
 ## Handler Setup
 
 ```ts
-import { ResponseHeadersHandlerPlugin } from "@orpc/server/plugins";
+import { ResponseHeadersHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [new ResponseHeadersHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -7119,11 +7055,11 @@ For implementation details, see the [source code](https://github.com/middleapi/o
 ## Setup
 
 ```ts
-import { ResponseValidationLinkPlugin } from "@orpc/contract/plugins";
+import { ResponseValidationLinkPlugin } from '@orpc/contract/plugins'
 
 const link = new RPCLink({
   plugins: [new ResponseValidationLinkPlugin(contract)],
-});
+})
 ```
 
 ::: info
@@ -7141,7 +7077,7 @@ Schemas that transform values into a different type are not supported.
 **Why?** Consider this schema, which accepts a `number` and transforms it into a `string`:
 
 ```ts
-const unsupported = z.number().transform((value) => value.toString());
+const unsupported = z.number().transform((value) => value.toString())
 ```
 
 When the server validates the output, it transforms the `number` into a `string`. The client then receives that `string`, but the schema still expects a `number` as input, so validation fails.
@@ -7155,29 +7091,29 @@ This plugin reconciles ORPC errors from other interceptors and plugins, allowing
 If you have already [customized validation errors on the server](/docs/advanced/validation-customization#custom-validation-errors), you can use interceptors to catch and map the validation errors thrown by this plugin so they match your server-side errors.
 
 ```ts
-import { ORPCError } from "@orpc/client";
-import { ValidationError } from "@orpc/contract";
+import { ORPCError } from '@orpc/client'
+import { ValidationError } from '@orpc/contract'
 
 const link = new RPCLink({
   plugins: [new ResponseValidationLinkPlugin(contract)],
   interceptors: [
     async ({ next }) => {
       try {
-        return await next();
+        return await next()
       } catch (error) {
         if (
           error instanceof ORPCError &&
-          error.code === "INTERNAL_SERVER_ERROR" &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
           error.cause instanceof ValidationError
         ) {
-          throw new CustomOutputValidationError(error.cause.issues);
+          throw new CustomOutputValidationError(error.cause.issues)
         }
 
-        throw error;
+        throw error
       }
     },
   ],
-});
+})
 ```
 
 ## Advanced Usage
@@ -7201,21 +7137,21 @@ For implementation details, see the [source code](https://github.com/middleapi/o
 ## Usage
 
 ```ts
-import { RethrowHandlerPlugin } from "@orpc/server/plugins";
+import { RethrowHandlerPlugin } from '@orpc/server/plugins'
 
 const handler = new RPCHandler(router, {
   plugins: [
     new RethrowHandlerPlugin({
       filter: (error, options) => {
         // Example: Rethrow all non-ORPCError errors
-        return !(error instanceof ORPCError);
+        return !(error instanceof ORPCError)
       },
     }),
   ],
-});
+})
 
 try {
-  await handler.handle(request);
+  await handler.handle(request)
 } catch (error) {
   // If the filter returns true, the error can be caught here
 }
@@ -7238,11 +7174,11 @@ The `handler` can be any supported oRPC handler, such as [RPCHandler](/docs/rpc/
 ## Usage
 
 ```ts
-import { RetryAfterLinkPlugin } from "@orpc/client/plugins";
+import { RetryAfterLinkPlugin } from '@orpc/client/plugins'
 
 const link = new RPCLink({
   plugins: [new RetryAfterLinkPlugin()],
-});
+})
 ```
 
 ::: info
@@ -7262,7 +7198,7 @@ const link = new RPCLink({
       maxAttempts: 3,
     }),
   ],
-});
+})
 ```
 
 ## Learn More
@@ -7286,13 +7222,13 @@ Before using this plugin, make sure you understand [client context](/docs/client
 ## Setup
 
 ```ts
-import { RetryLinkPlugin, RetryLinkPluginContext } from "@orpc/client/plugins";
+import { RetryLinkPlugin, RetryLinkPluginContext } from '@orpc/client/plugins'
 
 interface ClientContext extends RetryLinkPluginContext {}
 
 const link = new RPCLink<ClientContext>({
   plugins: [new RetryLinkPlugin()],
-});
+})
 ```
 
 ::: info
@@ -7304,11 +7240,11 @@ The `link` can be any supported oRPC link, such as [RPCLink](/docs/rpc/link), [O
 By default, retries are disabled. To enable retries, set the `retry` count in the request context:
 
 ```ts twoslash
-import { router } from "./shared/planet";
-import { RetryLinkPluginContext } from "@orpc/client/plugins";
-import { RouterClient } from "@orpc/server";
+import { router } from './shared/planet'
+import { RetryLinkPluginContext } from '@orpc/client/plugins'
+import { RouterClient } from '@orpc/server'
 
-declare const client: RouterClient<typeof router, RetryLinkPluginContext>;
+declare const client: RouterClient<typeof router, RetryLinkPluginContext>
 // ---cut---
 const planets = await client.planet.list(
   { limit: 10 },
@@ -7322,11 +7258,11 @@ const planets = await client.planet.list(
 
         return (isSuccess) => {
           // Execute after the retry is complete
-        };
+        }
       },
     },
   },
-);
+)
 ```
 
 ::: info
@@ -7349,7 +7285,7 @@ const link = new RPCLink<ClientContext>({
       },
     }),
   ],
-});
+})
 ```
 
 :::
@@ -7359,14 +7295,14 @@ const link = new RPCLink<ClientContext>({
 To replicate the behavior of [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource) for an [AsyncIteratorObject](/docs/async-iterator-object), use the following configuration:
 
 ```ts
-const streaming = await client.streaming("the input", {
+const streaming = await client.streaming('the input', {
   context: {
     retry: Number.POSITIVE_INFINITY,
   },
-});
+})
 
 for await (const message of streaming) {
-  console.log(message);
+  console.log(message)
 }
 ```
 
@@ -7419,7 +7355,7 @@ deno add npm:@orpc/json-schema@beta
 Use `SmartCoercionHandlerPlugin` in your handler to coerce incoming request data to the expected `.input` schema:
 
 ```ts
-import { SmartCoercionHandlerPlugin } from "@orpc/json-schema";
+import { SmartCoercionHandlerPlugin } from '@orpc/json-schema'
 
 const handler = new OpenAPIHandler(router, {
   plugins: [
@@ -7430,13 +7366,13 @@ const handler = new OpenAPIHandler(router, {
       ],
     }),
   ],
-});
+})
 ```
 
 Use `SmartCoercionLinkPlugin` in your link to coerce server responses to the expected `.output` or `.errors` schemas:
 
 ```ts
-import { SmartCoercionLinkPlugin } from "@orpc/json-schema";
+import { SmartCoercionLinkPlugin } from '@orpc/json-schema'
 
 const link = new OpenAPILink(contract, {
   plugins: [
@@ -7447,7 +7383,7 @@ const link = new OpenAPILink(contract, {
       ],
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -7571,7 +7507,7 @@ For implementation details, see the [SmartCoercionHandlerPlugin source code](htt
 ## Usage
 
 ```ts
-import { TimeoutLinkPlugin } from "@orpc/client/plugins";
+import { TimeoutLinkPlugin } from '@orpc/client/plugins'
 
 const link = new RPCLink({
   plugins: [
@@ -7579,7 +7515,7 @@ const link = new RPCLink({
       timeout: 10_000, // 10 seconds
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -7597,7 +7533,7 @@ const link = new RPCLink({
       timeout: ({ context, path }) => context.timeout ?? 10_000,
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -7621,13 +7557,13 @@ Base64Url helpers provide functions to encode and decode base64url strings, a UR
 ## Basic Usage
 
 ```ts twoslash
-import { decodeBase64url, encodeBase64url } from "@orpc/server/helpers";
+import { decodeBase64url, encodeBase64url } from '@orpc/server/helpers'
 
-const originalText = "Hello World";
-const textBytes = new TextEncoder().encode(originalText);
-const encodedData = encodeBase64url(textBytes);
-const decodedBytes = decodeBase64url(encodedData);
-const decodedText = new TextDecoder().decode(decodedBytes); // 'Hello World'
+const originalText = 'Hello World'
+const textBytes = new TextEncoder().encode(originalText)
+const encodedData = encodeBase64url(textBytes)
+const decodedBytes = decodeBase64url(encodedData)
+const decodedText = new TextDecoder().decode(decodedBytes) // 'Hello World'
 ```
 
 ::: info
@@ -7647,19 +7583,19 @@ Cookie helpers provide utilities for setting and reading HTTP cookies from fetch
 ## Basic Usage
 
 ```ts twoslash
-import { deleteCookie, getCookie, setCookie } from "@orpc/server/helpers";
+import { deleteCookie, getCookie, setCookie } from '@orpc/server/helpers'
 
-const reqHeaders = new Headers();
-const resHeaders = new Headers();
+const reqHeaders = new Headers()
+const resHeaders = new Headers()
 
-setCookie(resHeaders, "sessionId", "abc123", {
+setCookie(resHeaders, 'sessionId', 'abc123', {
   secure: true,
   maxAge: 3600,
-});
+})
 
-deleteCookie(resHeaders, "sessionId");
+deleteCookie(resHeaders, 'sessionId')
 
-const sessionId = getCookie(reqHeaders, "sessionId");
+const sessionId = getCookie(reqHeaders, 'sessionId')
 ```
 
 ::: info
@@ -7671,23 +7607,20 @@ Both helpers accept `undefined` as headers for seamless integration with plugins
 Combine cookies with [signing](/docs/helpers/signing) or [encryption](/docs/helpers/encryption) for enhanced security:
 
 ```ts twoslash
-import { getCookie, setCookie, sign, unsign } from "@orpc/server/helpers";
+import { getCookie, setCookie, sign, unsign } from '@orpc/server/helpers'
 
-const secret = "your-secret-key";
+const secret = 'your-secret-key'
 
-const reqHeaders = new Headers();
-const resHeaders = new Headers();
+const reqHeaders = new Headers()
+const resHeaders = new Headers()
 
-setCookie(resHeaders, "sessionId", await sign("abc123", secret), {
+setCookie(resHeaders, 'sessionId', await sign('abc123', secret), {
   httpOnly: true,
   secure: true,
   maxAge: 3600,
-});
+})
 
-const signedSessionId = await unsign(
-  getCookie(reqHeaders, "sessionId"),
-  secret,
-);
+const signedSessionId = await unsign(getCookie(reqHeaders, 'sessionId'), secret)
 ```
 
 ---
@@ -7707,15 +7640,15 @@ Encryption secures data content but has performance trade-offs compared to [sign
 ## Basic Usage
 
 ```ts twoslash
-import { decrypt, encrypt } from "@orpc/server/helpers";
+import { decrypt, encrypt } from '@orpc/server/helpers'
 
-const secret = "your-encryption-key";
-const sensitiveData = "user-email@example.com";
+const secret = 'your-encryption-key'
+const sensitiveData = 'user-email@example.com'
 
-const encryptedData = await encrypt(sensitiveData, secret);
+const encryptedData = await encrypt(sensitiveData, secret)
 // 'Rq7wF8...' (base64url encoded, unreadable)
 
-const decryptedData = await decrypt(encryptedData, secret);
+const decryptedData = await decrypt(encryptedData, secret)
 // 'user-email@example.com'
 ```
 
@@ -7738,15 +7671,15 @@ Form data helpers provide utilities for parsing HTML form data and extracting va
 Parses HTML form data using [bracket notation](/docs/openapi/bracket-notation) to deserialize complex nested objects and arrays.
 
 ```ts twoslash
-import { parseFormData } from "@orpc/openapi/helpers";
+import { parseFormData } from '@orpc/openapi/helpers'
 
-const form = new FormData();
-form.append("name", "John");
-form.append("user[email]", "john@example.com");
-form.append("user[hobbies][]", "reading");
-form.append("user[hobbies][]", "gaming");
+const form = new FormData()
+form.append('name', 'John')
+form.append('user[email]', 'john@example.com')
+form.append('user[hobbies][]', 'reading')
+form.append('user[hobbies][]', 'gaming')
 
-const parsed = parseFormData(form);
+const parsed = parseFormData(form)
 // Result:
 // {
 //   name: 'John',
@@ -7762,26 +7695,26 @@ const parsed = parseFormData(form);
 Extracts validation error messages from [standard schema](https://standardschema.dev/) issues using [bracket notation](/docs/openapi/bracket-notation) paths.
 
 ```ts twoslash
-import { getIssueMessage } from "@orpc/openapi/helpers";
+import { getIssueMessage } from '@orpc/openapi/helpers'
 
 const error = {
   data: {
     issues: [
       {
-        path: ["user", "email"],
-        message: "Invalid email format",
+        path: ['user', 'email'],
+        message: 'Invalid email format',
       },
     ],
   },
-};
+}
 
-const emailError = getIssueMessage(error, "user[email]");
+const emailError = getIssueMessage(error, 'user[email]')
 // Returns: 'Invalid email format'
 
-const tagError = getIssueMessage(error, "user[tags][]");
+const tagError = getIssueMessage(error, 'user[tags][]')
 // Returns error message for any array item
 
-const anyError = getIssueMessage("anything", "path");
+const anyError = getIssueMessage('anything', 'path')
 // Returns undefined if cannot find issue
 ```
 
@@ -7792,31 +7725,31 @@ The `getIssueMessage` utility works with any data type but requires validation e
 ## Usage Example
 
 ```tsx
-import { getIssueMessage, parseFormData } from "@orpc/openapi/helpers";
+import { getIssueMessage, parseFormData } from '@orpc/openapi/helpers'
 
 export function ContactForm() {
-  const [error, setError] = useState();
+  const [error, setError] = useState()
 
   const handleSubmit = (form: FormData) => {
     try {
-      const data = parseFormData(form);
+      const data = parseFormData(form)
       // Process structured data
     } catch (error) {
-      setError(error);
+      setError(error)
     }
-  };
+  }
 
   return (
     <form action={handleSubmit}>
       <input name="user[name]" type="text" />
-      <span>{getIssueMessage(error, "user[name]")}</span>
+      <span>{getIssueMessage(error, 'user[name]')}</span>
 
       <input name="user[emails][]" type="email" />
-      <span>{getIssueMessage(error, "user[emails][]")}</span>
+      <span>{getIssueMessage(error, 'user[emails][]')}</span>
 
       <button type="submit">Submit</button>
     </form>
-  );
+  )
 }
 ```
 
@@ -7861,39 +7794,37 @@ deno add npm:@orpc/publisher@beta
 The core concept is the `Publisher` interface, which defines a standard way to publish events and subscribe to them. You can create your own publisher or use one of the provided adapters for popular storage backends. The `publish` method accepts an event name and payload, while `subscribe` lets you listen to specific events using either callback or iterator styles.
 
 ```ts twoslash
-import { MemoryPublisher } from "@orpc/publisher/memory";
-import { os } from "@orpc/server";
-import * as z from "zod";
+import { MemoryPublisher } from '@orpc/publisher/memory'
+import { os } from '@orpc/server'
+import * as z from 'zod'
 // ---cut---
 const publisher = new MemoryPublisher<{
-  "something-updated": {
-    id: string;
-  };
-}>();
+  'something-updated': {
+    id: string
+  }
+}>()
 
 const live = os.handler(async function* ({ input, signal, lastEventId }) {
-  const iterator = publisher.subscribe("something-updated", {
+  const iterator = publisher.subscribe('something-updated', {
     signal,
     lastEventId,
-  });
+  })
   for await (const payload of iterator) {
     // Handle payload here or yield directly to client
-    yield payload;
+    yield payload
   }
-});
+})
 
-const publish = os
-  .input(z.object({ id: z.string() }))
-  .handler(async ({ input }) => {
-    await publisher.publish("something-updated", { id: input.id });
-  });
+const publish = os.input(z.object({ id: z.string() })).handler(async ({ input }) => {
+  await publisher.publish('something-updated', { id: input.id })
+})
 ```
 
 ::: tip
 The publisher supports both static and dynamic event names.
 
 ```ts
-const publisher = new MemoryPublisher<Record<string, { message: string }>>();
+const publisher = new MemoryPublisher<Record<string, { message: string }>>()
 ```
 
 :::
@@ -7911,7 +7842,7 @@ const publisher = new MemoryPublisher<Record<string, { message: string }>>();
 ::: code-group
 
 ```ts [memory]
-import { MemoryPublisher } from "@orpc/publisher/memory";
+import { MemoryPublisher } from '@orpc/publisher/memory'
 
 const publisher = new MemoryPublisher<Events>({
   resume: {
@@ -7935,18 +7866,18 @@ const publisher = new MemoryPublisher<Events>({
      */
     seconds: 300,
   },
-});
+})
 ```
 
 ```ts [redis]
-import { createClient } from "redis";
-import { RedisPublisher } from "@orpc/publisher/redis";
+import { createClient } from 'redis'
+import { RedisPublisher } from '@orpc/publisher/redis'
 
-const client = createClient({ url: "redis://localhost:6379" });
+const client = createClient({ url: 'redis://localhost:6379' })
 
 // RedisRateLimiter lazily connects to Redis when needed.
 // You can still call `client.connect()` manually, but it is optional.
-await client.connect();
+await client.connect()
 
 const publisher = new RedisPublisher<Events>(client, {
   /**
@@ -7963,7 +7894,7 @@ const publisher = new RedisPublisher<Events>(client, {
    *
    * @default ''
    */
-  prefix: "",
+  prefix: '',
 
   /**
    * Serializer for serialize and deserialize payloads.
@@ -7993,14 +7924,14 @@ const publisher = new RedisPublisher<Events>(client, {
      */
     seconds: 300,
   },
-});
+})
 ```
 
 ```ts [upstash]
-import { Redis } from "@upstash/redis";
-import { UpstashPublisher } from "@orpc/publisher/upstash";
+import { Redis } from '@upstash/redis'
+import { UpstashPublisher } from '@orpc/publisher/upstash'
 
-const redis = Redis.fromEnv();
+const redis = Redis.fromEnv()
 
 const publisher = new UpstashPublisher<Events>(redis, {
   /**
@@ -8008,7 +7939,7 @@ const publisher = new UpstashPublisher<Events>(redis, {
    *
    * @default ''
    */
-  prefix: "",
+  prefix: '',
 
   /**
    * Serializer for serialize and deserialize payloads.
@@ -8038,12 +7969,12 @@ const publisher = new UpstashPublisher<Events>(redis, {
      */
     seconds: 300,
   },
-});
+})
 ```
 
 ```ts [bun]
-import { BunRedisPublisher } from "@orpc/bun";
-import { redis } from "bun";
+import { BunRedisPublisher } from '@orpc/bun'
+import { redis } from 'bun'
 
 const publisher = new BunRedisPublisher<Events>(redis, {
   /**
@@ -8060,7 +7991,7 @@ const publisher = new BunRedisPublisher<Events>(redis, {
    *
    * @default ''
    */
-  prefix: "",
+  prefix: '',
 
   /**
    * Serializer for serialize and deserialize payloads.
@@ -8090,11 +8021,11 @@ const publisher = new BunRedisPublisher<Events>(redis, {
      */
     seconds: 300,
   },
-});
+})
 ```
 
 ```ts [cloudflare]
-import { DurablePublisher, DurablePublisherObject } from "@orpc/cloudflare";
+import { DurablePublisher, DurablePublisherObject } from '@orpc/cloudflare'
 
 export class PublisherDO extends DurablePublisherObject {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -8137,9 +8068,9 @@ export class PublisherDO extends DurablePublisherObject {
          *
          * @default 'orpc:'
          */
-        schemaPrefix: "orpc:",
+        schemaPrefix: 'orpc:',
       },
-    });
+    })
   }
 }
 
@@ -8151,7 +8082,7 @@ export default {
        *
        * @default ''
        */
-      prefix: "",
+      prefix: '',
 
       /**
        * Serializer for serialize and deserialize payloads.
@@ -8166,9 +8097,9 @@ export default {
        * @default ((namespace, event) => namespace.getByName(event))
        */
       getStubByName: (namespace, event) => namespace.getByName(event),
-    });
+    })
   },
-};
+}
 ```
 
 :::
@@ -8183,12 +8114,12 @@ const publisher = new MemoryPublisher({
     enabled: true, // Enable resuming missed events
     seconds: 60 * 5, // TTL in seconds
   },
-});
+})
 
-const iterator = publisher.subscribe("something-updated", {
+const iterator = publisher.subscribe('something-updated', {
   signal,
   lastEventId, // The publisher will attempt to deliver missed events since this event id
-});
+})
 ```
 
 ::: warning
@@ -8198,29 +8129,27 @@ When resume is enabled, the publisher manages event ids automatically. This mean
 - When subscribing, you must preserve and forward the event id when yielding custom payloads
 
 ```ts
-import { getEventMeta, withEventMeta } from "@orpc/server";
+import { getEventMeta, withEventMeta } from '@orpc/server'
 
 const live = os.handler(async function* ({ input, signal, lastEventId }) {
-  const iterator = publisher.subscribe("something-updated", {
+  const iterator = publisher.subscribe('something-updated', {
     signal,
     lastEventId,
-  });
+  })
   for await (const payload of iterator) {
     // Preserve event id when yielding custom payloads
-    const id = getEventMeta(payload)?.id;
-    yield withEventMeta({ custom: "value" }, { id });
+    const id = getEventMeta(payload)?.id
+    yield withEventMeta({ custom: 'value' }, { id })
   }
-});
+})
 
-const publish = os
-  .input(z.object({ id: z.string() }))
-  .handler(async ({ input }) => {
-    // The event id 'this-will-be-ignored' will be replaced by the publisher
-    await publisher.publish(
-      "something-updated",
-      withEventMeta({ id: input.id }, { id: "this-will-be-ignored" }),
-    );
-  });
+const publish = os.input(z.object({ id: z.string() })).handler(async ({ input }) => {
+  // The event id 'this-will-be-ignored' will be replaced by the publisher
+  await publisher.publish(
+    'something-updated',
+    withEventMeta({ id: input.id }, { id: 'this-will-be-ignored' }),
+  )
+})
 ```
 
 :::
@@ -8230,21 +8159,21 @@ const publish = os
 On the client, you can use the [Retry Plugin](/docs/plugins/retry), which automatically controls and passes `lastEventId` to the server when reconnecting. Alternatively, you can manage `lastEventId` manually:
 
 ```ts
-import { getEventMeta } from "@orpc/client";
+import { getEventMeta } from '@orpc/client'
 
-let lastEventId: string | undefined;
+let lastEventId: string | undefined
 
 while (true) {
   try {
-    const iterator = await client.live("input", { lastEventId });
+    const iterator = await client.live('input', { lastEventId })
 
     for await (const payload of iterator) {
-      lastEventId = getEventMeta(payload)?.id; // Update lastEventId
+      lastEventId = getEventMeta(payload)?.id // Update lastEventId
 
-      console.log(payload);
+      console.log(payload)
     }
   } catch {
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second before retrying
+    await new Promise((resolve) => setTimeout(resolve, 1000)) // Wait 1 second before retrying
   }
 }
 ```
@@ -8290,25 +8219,25 @@ deno add npm:@orpc/ratelimit@beta
 The core concept is the `RateLimiter` interface, which defines a standard way to check and enforce rate limits. You can create your own custom limiter or use one of the provided adapters for popular storage backends. The `limit` method accepts a key and an optional `weight` value, which defaults to `1`, so a single request can consume multiple points.
 
 ```ts twoslash
-import { MemoryRateLimiter } from "@orpc/ratelimit/memory";
+import { MemoryRateLimiter } from '@orpc/ratelimit/memory'
 // ---cut---
-import { ORPCError } from "@orpc/server";
+import { ORPCError } from '@orpc/server'
 
 const limiter = new MemoryRateLimiter({
   maxRequests: 5,
   window: 60000,
-});
+})
 
-const result = await limiter.limit("user:123", { weight: 2 });
+const result = await limiter.limit('user:123', { weight: 2 })
 
 if (!result.success) {
-  throw new ORPCError("TOO_MANY_REQUESTS", {
+  throw new ORPCError('TOO_MANY_REQUESTS', {
     data: {
       limit: result.limit,
       remaining: result.remaining,
       reset: result.reset,
     },
-  });
+  })
 }
 ```
 
@@ -8328,7 +8257,7 @@ Each adapter might require `maxRequests` and `window` to configure the limit, al
 ::: code-group
 
 ```ts [memory]
-import { MemoryRateLimiter } from "@orpc/ratelimit/memory";
+import { MemoryRateLimiter } from '@orpc/ratelimit/memory'
 
 const limiter = new MemoryRateLimiter({
   /**
@@ -8354,18 +8283,18 @@ const limiter = new MemoryRateLimiter({
      */
     timeout: 5000,
   },
-});
+})
 ```
 
 ```ts [redis]
-import { RedisRateLimiter } from "@orpc/ratelimit/redis";
-import { createClient } from "redis";
+import { RedisRateLimiter } from '@orpc/ratelimit/redis'
+import { createClient } from 'redis'
 
-const client = createClient({ url: "redis://localhost:6379" });
+const client = createClient({ url: 'redis://localhost:6379' })
 
 // RedisRateLimiter lazily connects to Redis when needed.
 // You can still call `client.connect()` manually, but it is optional.
-await client.connect();
+await client.connect()
 
 const limiter = new RedisRateLimiter(client, {
   /**
@@ -8373,7 +8302,7 @@ const limiter = new RedisRateLimiter(client, {
    *
    * @default ''
    */
-  prefix: "",
+  prefix: '',
 
   /**
    * Maximum number of requests allowed within the window.
@@ -8398,20 +8327,20 @@ const limiter = new RedisRateLimiter(client, {
      */
     timeout: 5000,
   },
-});
+})
 ```
 
 ````ts [upstash]
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
-import { UpstashRateLimiter } from "@orpc/ratelimit/upstash";
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
+import { UpstashRateLimiter } from '@orpc/ratelimit/upstash'
 
-const redis = Redis.fromEnv();
+const redis = Redis.fromEnv()
 const ratelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(10, "60 s"),
-  prefix: "orpc:", // Optional key prefix
-});
+  limiter: Ratelimit.slidingWindow(10, '60 s'),
+  prefix: 'orpc:', // Optional key prefix
+})
 
 const limiter = new UpstashRateLimiter(ratelimit, {
   blockingUntilReady: {
@@ -8441,12 +8370,12 @@ const limiter = new UpstashRateLimiter(ratelimit, {
    * ```
    */
   waitUntil: undefined,
-});
+})
 ````
 
 ```ts [bun]
-import { BunRedisRateLimiter } from "@orpc/bun";
-import { redis } from "bun";
+import { BunRedisRateLimiter } from '@orpc/bun'
+import { redis } from 'bun'
 
 const limiter = new BunRedisRateLimiter(redis, {
   /**
@@ -8454,7 +8383,7 @@ const limiter = new BunRedisRateLimiter(redis, {
    *
    * @default ''
    */
-  prefix: "",
+  prefix: '',
 
   /**
    * Maximum number of requests allowed within the window.
@@ -8479,11 +8408,11 @@ const limiter = new BunRedisRateLimiter(redis, {
      */
     timeout: 5000,
   },
-});
+})
 ```
 
 ```ts [cloudflare]
-import { CloudflareRateLimiter } from "@orpc/cloudflare";
+import { CloudflareRateLimiter } from '@orpc/cloudflare'
 
 export default {
   async fetch(request, env) {
@@ -8493,10 +8422,10 @@ export default {
        *
        * @default ''
        */
-      prefix: "",
-    });
+      prefix: '',
+    })
   },
-};
+}
 ```
 
 :::
@@ -8513,7 +8442,7 @@ const limiter = new MemoryRateLimiter({
     enabled: true, // Disabled by default
     timeout: 5000, // Wait up to 5 seconds
   },
-});
+})
 ```
 
 ## Ratelimit Middleware
@@ -8521,7 +8450,7 @@ const limiter = new MemoryRateLimiter({
 The `ratelimit` helper creates middleware that enforces rate limits for [procedures](/docs/procedure).
 
 ```ts
-import { ratelimit, RateLimiter } from "@orpc/ratelimit";
+import { ratelimit, RateLimiter } from '@orpc/ratelimit'
 
 const procedure = os
   .$context<{ ratelimiter: RateLimiter }>()
@@ -8534,19 +8463,15 @@ const procedure = os
     }),
   )
   .handler(({ input }) => {
-    return { success: true };
-  });
+    return { success: true }
+  })
 
 const ratelimiter = new MemoryRateLimiter({
   maxRequests: 10,
   window: 60000,
-});
+})
 
-const result = await call(
-  procedure,
-  { email: "user@example.com" },
-  { context: { ratelimiter } },
-);
+const result = await call(procedure, { email: 'user@example.com' }, { context: { ratelimiter } })
 ```
 
 ::: info Automatic Deduplication
@@ -8560,22 +8485,22 @@ You can choose different limiters dynamically based on the request context:
 const premiumLimiter = new MemoryRateLimiter({
   maxRequests: 100,
   window: 60000,
-});
+})
 
 const standardLimiter = new MemoryRateLimiter({
   maxRequests: 10,
   window: 60000,
-});
+})
 
 const result = await call(
   procedure,
-  { email: "user@example.com" },
+  { email: 'user@example.com' },
   {
     context: {
       ratelimiter: isPremiumUser ? premiumLimiter : standardLimiter,
     },
   },
-);
+)
 ```
 
 :::
@@ -8585,11 +8510,11 @@ const result = await call(
 The `RateLimitHandlerPlugin` automatically adds HTTP rate limiting headers (`RateLimit-*` and `Retry-After`) to responses when used with [Ratelimit Middleware](#ratelimit-middleware). This lets clients inspect the current limit state and know when they can retry after hitting a limit.
 
 ```ts
-import { RateLimitHandlerPlugin } from "@orpc/ratelimit";
+import { RateLimitHandlerPlugin } from '@orpc/ratelimit'
 
 const handler = new RPCHandler(router, {
   plugins: [new RateLimitHandlerPlugin()],
-});
+})
 ```
 
 ::: info
@@ -8617,19 +8542,19 @@ Signing is faster than [encryption](/docs/helpers/encryption) but users can view
 ## Basic Usage
 
 ```ts twoslash
-import { getSignedValue, sign, unsign } from "@orpc/server/helpers";
+import { getSignedValue, sign, unsign } from '@orpc/server/helpers'
 
-const secret = "your-secret-key";
-const userData = "user123";
+const secret = 'your-secret-key'
+const userData = 'user123'
 
-const signedValue = await sign(userData, secret);
+const signedValue = await sign(userData, secret)
 // 'user123.oneQsU0r5dvwQFHFEjjV1uOI_IR3gZfkYHij3TRauVA'
 // ↑ Original data is visible to users
 
-const verifiedValue = await unsign(signedValue, secret); // 'user123'
+const verifiedValue = await unsign(signedValue, secret) // 'user123'
 
 // Extract value without verification
-const extractedValue = getSignedValue(signedValue); // 'user123'
+const extractedValue = getSignedValue(signedValue) // 'user123'
 ```
 
 ::: info
@@ -8659,26 +8584,21 @@ Use oRPC as the transport for AI SDK streams, sending them as either an [AsyncIt
 Use `streamToAsyncIteratorObject` to convert AI SDK streams into [AsyncIteratorObject](/docs/async-iterator-object)s.
 
 ```ts
-import { os, streamToAsyncIteratorObject, type } from "@orpc/server";
-import {
-  convertToModelMessages,
-  streamText,
-  toUIMessageStream,
-  UIMessage,
-} from "ai";
-import { google } from "@ai-sdk/google";
+import { os, streamToAsyncIteratorObject, type } from '@orpc/server'
+import { convertToModelMessages, streamText, toUIMessageStream, UIMessage } from 'ai'
+import { google } from '@ai-sdk/google'
 
 export const chat = os
   .input(type<{ chatId: string; messages: UIMessage[] }>())
   .handler(async ({ input }) => {
     const result = streamText({
-      model: google("gemini-2.5-flash"),
-      system: "You are a helpful assistant.",
+      model: google('gemini-2.5-flash'),
+      system: 'You are a helpful assistant.',
       messages: await convertToModelMessages(input.messages),
-    });
+    })
 
-    return streamToAsyncIteratorObject(toUIMessageStream(result));
-  });
+    return streamToAsyncIteratorObject(toUIMessageStream(result))
+  })
 ```
 
 ### Client
@@ -8686,10 +8606,10 @@ export const chat = os
 On the client side, convert the `AsyncIteratorObject` back to a stream using `asyncIteratorToUnproxiedDataStream` or `asyncIteratorToStream`.
 
 ```tsx
-import { useState } from "react";
-import { useChat } from "@ai-sdk/react";
-import { asyncIteratorToUnproxiedDataStream } from "@orpc/client";
-import { client } from "./client";
+import { useState } from 'react'
+import { useChat } from '@ai-sdk/react'
+import { asyncIteratorToUnproxiedDataStream } from '@orpc/client'
+import { client } from './client'
 
 export function Example() {
   const { messages, sendMessage, status } = useChat({
@@ -8703,47 +8623,47 @@ export function Example() {
             },
             { signal: options.abortSignal },
           ),
-        );
+        )
       },
       reconnectToStream(options) {
-        throw new Error("Unsupported");
+        throw new Error('Unsupported')
       },
     },
-  });
-  const [input, setInput] = useState("");
+  })
+  const [input, setInput] = useState('')
 
   return (
     <>
       {messages.map((message) => (
         <div key={message.id}>
-          {message.role === "user" ? "User: " : "AI: "}
+          {message.role === 'user' ? 'User: ' : 'AI: '}
           {message.parts.map((part, index) =>
-            part.type === "text" ? <span key={index}>{part.text}</span> : null,
+            part.type === 'text' ? <span key={index}>{part.text}</span> : null,
           )}
         </div>
       ))}
 
       <form
         onSubmit={(e) => {
-          e.preventDefault();
+          e.preventDefault()
           if (input.trim()) {
-            sendMessage({ text: input });
-            setInput("");
+            sendMessage({ text: input })
+            setInput('')
           }
         }}
       >
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={status !== "ready"}
+          disabled={status !== 'ready'}
           placeholder="Say something..."
         />
-        <button type="submit" disabled={status !== "ready"}>
+        <button type="submit" disabled={status !== 'ready'}>
           Submit
         </button>
       </form>
     </>
-  );
+  )
 }
 ```
 
@@ -8762,29 +8682,29 @@ oRPC may proxy events for [metadata](/docs/client/async-iterator-object#event-me
 Implements a [procedure contract](/docs/contract/procedure) as an [AI SDK Tool](https://ai-sdk.dev/docs/foundations/tools) by leveraging existing contract definitions.
 
 ```ts
-import { aiSdkTool, implementToolFactory } from "@orpc/ai-sdk";
+import { aiSdkTool, implementToolFactory } from '@orpc/ai-sdk'
 
 const getWeatherContract = oc
   .meta(
     aiSdkTool({
       // Base AI SDK tool options
-      description: "Get the weather in a location",
-      metadata: { source: "weather-service" },
+      description: 'Get the weather in a location',
+      metadata: { source: 'weather-service' },
     }),
   )
   .input(
     z.object({
-      location: z.string().describe("The location to get the weather for"),
+      location: z.string().describe('The location to get the weather for'),
     }),
   )
   .output(
     z.object({
-      location: z.string().describe("The location the weather is for"),
-      temperature: z.number().describe("The temperature in Celsius"),
+      location: z.string().describe('The location the weather is for'),
+      temperature: z.number().describe('The temperature in Celsius'),
     }),
-  );
+  )
 
-const implementTool = implementToolFactory();
+const implementTool = implementToolFactory()
 
 const getWeatherTool = implementTool(getWeatherContract, {
   execute: async ({ location }) => ({
@@ -8792,7 +8712,7 @@ const getWeatherTool = implementTool(getWeatherContract, {
     temperature: 72 + Math.floor(Math.random() * 21) - 10,
   }),
   // ...add any additional AI SDK tool options or overrides here
-});
+})
 ```
 
 ::: info
@@ -8808,42 +8728,42 @@ The `aiSdkTool` [metadata](/docs/metadata) attaches base AI SDK tool options tha
 Converts a [procedure](/docs/procedure) into an [AI SDK Tool](https://ai-sdk.dev/docs/foundations/tools) by leveraging existing procedure definitions.
 
 ```ts
-import { aiSdkTool, createToolFactory } from "@orpc/ai-sdk";
-import { os } from "@orpc/server";
-import { z } from "zod";
+import { aiSdkTool, createToolFactory } from '@orpc/ai-sdk'
+import { os } from '@orpc/server'
+import { z } from 'zod'
 
 const getWeatherProcedure = os
   .meta(
     aiSdkTool({
       // Base AI SDK tool options
-      description: "Get the weather in a location",
-      metadata: { source: "weather-service" },
+      description: 'Get the weather in a location',
+      metadata: { source: 'weather-service' },
     }),
   )
   .input(
     z.object({
-      location: z.string().describe("The location to get the weather for"),
+      location: z.string().describe('The location to get the weather for'),
     }),
   )
   .output(
     z.object({
-      location: z.string().describe("The location the weather is for"),
-      temperature: z.number().describe("The temperature in Celsius"),
+      location: z.string().describe('The location the weather is for'),
+      temperature: z.number().describe('The temperature in Celsius'),
     }),
   )
   .handler(async ({ input }) => ({
     location: input.location,
     temperature: 72 + Math.floor(Math.random() * 21) - 10,
-  }));
+  }))
 
 const createTool = createToolFactory({
   context: {}, // provide initial context if needed
   interceptors: [], // oRPC interceptors if needed
-});
+})
 
 const getWeatherTool = createTool(getWeatherProcedure, {
   // ...add any additional AI SDK tool options or overrides here
-});
+})
 ```
 
 ### Streaming Tool Outputs
@@ -8851,7 +8771,7 @@ const getWeatherTool = createTool(getWeatherProcedure, {
 When a procedure outputs an [AsyncIteratorObject](/docs/async-iterator-object) validated with `asyncIteratorObject`, the resulting tool streams every event as a [preliminary tool result](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling#preliminary-tool-results): each event replaces the tool output in the UI, and the last event becomes the final tool result sent to the model.
 
 ```ts
-import { asyncIteratorObject, os } from "@orpc/server";
+import { asyncIteratorObject, os } from '@orpc/server'
 
 const deployProcedure = os
   .input(z.object({ app: z.string() }))
@@ -8859,20 +8779,17 @@ const deployProcedure = os
     asyncIteratorObject(
       z.object({
         status: z.string(),
-        url: z
-          .string()
-          .optional()
-          .describe("Available once the deploy finishes"),
+        url: z.string().optional().describe('Available once the deploy finishes'),
       }),
     ),
   )
   .handler(async function* ({ input }) {
-    yield { status: "building" };
-    yield { status: "uploading" };
-    yield { status: "ready", url: `https://${input.app}.example.com` };
-  });
+    yield { status: 'building' }
+    yield { status: 'uploading' }
+    yield { status: 'ready', url: `https://${input.app}.example.com` }
+  })
 
-const deployTool = createTool(deployProcedure);
+const deployTool = createTool(deployProcedure)
 ```
 
 ---
@@ -8916,12 +8833,12 @@ deno add npm:@orpc/arktype@beta npm:arktype
 `ArkTypeToJsonSchemaConverter` wraps [ArkType's built-in toJsonSchema](https://arktype.io/docs/type-api#tojsonschema) and adds support for additional types such as `bigint` and `Date`. Use it with tools such as the [OpenAPI Generator](/docs/openapi/specification#openapi-generator) and [Smart Coercion](/docs/plugins/smart-coercion). It accepts the same options as ArkType's `toJsonSchema`, see the [source code](https://github.com/middleapi/orpc/blob/main/packages/arktype/src/converter.ts) and ArkType's [JSON Schema configuration docs](https://arktype.io/docs/configuration#tojsonschema) for implementation details.
 
 ```ts
-import { OpenAPIGenerator } from "@orpc/openapi";
-import { ArkTypeToJsonSchemaConverter } from "@orpc/arktype";
+import { OpenAPIGenerator } from '@orpc/openapi'
+import { ArkTypeToJsonSchemaConverter } from '@orpc/arktype'
 
 const generator = new OpenAPIGenerator({
   converters: [new ArkTypeToJsonSchemaConverter()],
-});
+})
 ```
 
 ### Reusable Types
@@ -8929,16 +8846,16 @@ const generator = new OpenAPIGenerator({
 A common pattern is defining reusable or recursive types using scopes. The converter preserves them in `$defs`, which `OpenAPIGenerator` can then [hoist](/docs/openapi/specification#hoisting-defs) into `components.schemas`.
 
 ```ts
-import { scope } from "arktype";
+import { scope } from 'arktype'
 
 const types = scope({
   Planet: {
-    name: "string",
-    neighbors: "Planet[]",
+    name: 'string',
+    neighbors: 'Planet[]',
   },
-});
+})
 
-const PlanetSchema = types.export().Planet;
+const PlanetSchema = types.export().Planet
 ```
 
 ---
@@ -8986,18 +8903,18 @@ deno add npm:@orpc/experimental-effect@beta npm:effect@beta
 `handlerGen` allows you to write effectful handlers using generator functions. Inside the generator, you can yield Effect operations, and `handlerGen` will handle the execution and error handling for you.
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 // ---cut---
-import { handlerGen } from "@orpc/experimental-effect";
-import { Effect } from "effect";
+import { handlerGen } from '@orpc/experimental-effect'
+import { Effect } from 'effect'
 
 const procedure = os.handler(
   handlerGen(function* ({ input, context }) {
     // You can use Effect's features here, such as concurrency, error handling, etc.
-    const result = yield* Effect.promise(() => Promise.resolve(5));
-    return result;
+    const result = yield* Effect.promise(() => Promise.resolve(5))
+    return result
   }),
-);
+)
 ```
 
 ### `.effect` extension
@@ -9009,17 +8926,17 @@ Import `@orpc/experimental-effect/extensions/effect` from a module that always r
 ```ts [usage]
 const procedure = base.effect(function* ({ input, context }) {
   // You can use Effect's features here, such as concurrency, error handling, etc.
-  const result = yield* Effect.promise(() => Promise.resolve(5));
-  return result;
-});
+  const result = yield* Effect.promise(() => Promise.resolve(5))
+  return result
+})
 ```
 
 ```ts [setup]
-import "@orpc/experimental-effect/extensions/effect";
+import '@orpc/experimental-effect/extensions/effect'
 
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-export const base = os;
+export const base = os
 ```
 
 :::
@@ -9029,37 +8946,37 @@ export const base = os;
 You can provide Effect services through the oRPC context in a typesafe way with `WithEffectContext` and `effect/context`:
 
 ```ts twoslash
-import { call, os } from "@orpc/server";
+import { call, os } from '@orpc/server'
 // ---cut---
-import { handlerGen, WithEffectContext } from "@orpc/experimental-effect";
-import { Context, Effect } from "effect";
+import { handlerGen, WithEffectContext } from '@orpc/experimental-effect'
+import { Context, Effect } from 'effect'
 
 class Random extends Context.Service<
   Random,
   {
-    readonly next: Effect.Effect<number>;
+    readonly next: Effect.Effect<number>
   }
->()("MyRandomService") {}
+>()('MyRandomService') {}
 
 interface ServerContext extends WithEffectContext<Random> {}
 
 const procedure = os.$context<ServerContext>().handler(
   handlerGen(function* ({ input, context }) {
-    const random = yield* Random;
-    const result = yield* random.next;
-    return result;
+    const random = yield* Random
+    const result = yield* random.next
+    return result
   }),
-);
+)
 
 const random = await call(procedure, undefined, {
   context: {
-    "effect/context": Context.empty().pipe(
+    'effect/context': Context.empty().pipe(
       Context.add(Random, {
         next: Effect.succeed(Math.random()),
       }),
     ),
   },
-});
+})
 ```
 
 ::: info
@@ -9071,17 +8988,15 @@ const procedure = os
   .use(({ context, next }) => {
     return next({
       context: {
-        "effect/context": context["effect/context"].pipe(
-          Context.add(AdditionService, {}),
-        ),
+        'effect/context': context['effect/context'].pipe(Context.add(AdditionService, {})),
       },
-    });
+    })
   })
   .handler(
     handlerGen(function* ({ input, context }) {
-      const additionService = yield* AdditionService;
+      const additionService = yield* AdditionService
     }),
-  );
+  )
 ```
 
 :::
@@ -9093,20 +9008,19 @@ This integration preserves the original error whenever possible. If you call `Ef
 To customize this behavior, wrap the effect before execution using `effect/wrap` in the context:
 
 ```ts
-import { Context, Effect } from "effect";
+import { Context, Effect } from 'effect'
 
 interface ServerContext extends WithEffectContext<never> {}
 
 export async function fetch(request: Request) {
   const { response } = await handler.fetch(request, {
     context: {
-      "effect/context": Context.empty(),
-      "effect/wrap": (effect, opts) =>
-        effect.pipe(Effect.catchCause((cause) => {})),
+      'effect/context': Context.empty(),
+      'effect/wrap': (effect, opts) => effect.pipe(Effect.catchCause((cause) => {})),
     },
-  });
+  })
 
-  return response ?? new Response("Not Found", { status: 404 });
+  return response ?? new Response('Not Found', { status: 404 })
 }
 ```
 
@@ -9123,21 +9037,21 @@ const procedure = os.handler(
   handlerGen(function* ({ errors }) {
     if (resourceNotFound) {
       yield* Effect.fail(
-        new ORPCError("NOT_FOUND", {
-          message: "The resource you are looking for does not exist",
+        new ORPCError('NOT_FOUND', {
+          message: 'The resource you are looking for does not exist',
         }),
-      );
+      )
       // -- or -
-      return new ORPCError("NOT_FOUND", {
-        message: "The resource you are looking for does not exist",
-      });
+      return new ORPCError('NOT_FOUND', {
+        message: 'The resource you are looking for does not exist',
+      })
     }
 
-    return "Success";
+    return 'Success'
   }),
-);
+)
 
-const [error, result] = await call(procedure);
+const [error, result] = await call(procedure)
 
 if (isInferableError(error)) {
   // typesafe error handling
@@ -9149,15 +9063,15 @@ if (isInferableError(error)) {
 oRPC natively supports [Standard Schema](https://standardschema.dev/schema#what-schema-libraries-implement-the-spec), and [Effect Schema](https://effect.website/docs/schema/introduction/) implements that spec through [Schema.toStandardSchemaV1](https://effect.website/docs/schema/standard-schema/):
 
 ```ts
-import { Schema } from "effect";
+import { Schema } from 'effect'
 
 const procedure = os
   .input(Schema.toStandardSchemaV1(Schema.Struct({ name: Schema.String })))
   .handler(
     handlerGen(function* ({ input, context }) {
-      return `Hello ${input.name}!`;
+      return `Hello ${input.name}!`
     }),
-  );
+  )
 ```
 
 ### `.input` and `.output` Extensions
@@ -9172,17 +9086,17 @@ const procedure = base
   .output(Schema.Struct({ greeting: Schema.String }))
   .handler(
     handlerGen(function* ({ input, context }) {
-      return { greeting: `Hello ${input.name}!` };
+      return { greeting: `Hello ${input.name}!` }
     }),
-  );
+  )
 ```
 
 ```ts [setup]
-import "@orpc/experimental-effect/extensions/input-output";
+import '@orpc/experimental-effect/extensions/input-output'
 
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-export const base = os;
+export const base = os
 ```
 
 :::
@@ -9196,11 +9110,11 @@ You can also use these extensions with the [contract builder](/docs/contract/pro
 This integration also provides `EffectSchemaToJsonSchemaConverter`, built on top of [Effect Schema to JSON Schema](https://effect.website/docs/schema/json-schema/). You can use it with tools such as the [OpenAPI Generator](/docs/openapi/specification#openapi-generator):
 
 ```ts
-import { EffectSchemaToJsonSchemaConverter } from "@orpc/experimental-effect";
+import { EffectSchemaToJsonSchemaConverter } from '@orpc/experimental-effect'
 
 const generator = new OpenAPIGenerator({
   converters: [new EffectSchemaToJsonSchemaConverter()],
-});
+})
 ```
 
 ## OpenTelemetry Integration
@@ -9208,24 +9122,22 @@ const generator = new OpenAPIGenerator({
 First, set up the [oRPC OpenTelemetry integration](/docs/integrations/opentelemetry). Then instrument your Effect to work seamlessly with OpenTelemetry by providing `TracingLive` through `effect/wrap` in the context. This makes Effect tracing equivalent to OpenTelemetry tracing:
 
 ```ts
-import { Resource, Tracer } from "@effect/opentelemetry";
-import { Context, Effect, Layer } from "effect";
+import { Resource, Tracer } from '@effect/opentelemetry'
+import { Context, Effect, Layer } from 'effect'
 
 interface ServerContext extends WithEffectContext<never> {}
 
-const TracingLive = Tracer.layerGlobal.pipe(
-  Layer.provide(Resource.layerFromEnv()),
-);
+const TracingLive = Tracer.layerGlobal.pipe(Layer.provide(Resource.layerFromEnv()))
 
 export async function fetch(request: Request) {
   const { response } = await handler.fetch(request, {
     context: {
-      "effect/context": Context.empty(),
-      "effect/wrap": (effect, opts) => effect.pipe(Effect.provide(TracingLive)),
+      'effect/context': Context.empty(),
+      'effect/wrap': (effect, opts) => effect.pipe(Effect.provide(TracingLive)),
     },
-  });
+  })
 
-  return response ?? new Response("Not Found", { status: 404 });
+  return response ?? new Response('Not Found', { status: 404 })
 }
 ```
 
@@ -9274,10 +9186,10 @@ deno add npm:@orpc/evlog@beta npm:evlog@beta
 Use `EvlogHandlerPlugin` to instrument your handler with structured logs, request tracking, and error monitoring.
 
 ```ts twoslash
-import { RPCHandler } from "@orpc/server/fetch";
-import { router } from "./shared/planet";
+import { RPCHandler } from '@orpc/server/fetch'
+import { router } from './shared/planet'
 // ---cut---
-import { EvlogHandlerPlugin } from "@orpc/evlog";
+import { EvlogHandlerPlugin } from '@orpc/evlog'
 
 const handler = new RPCHandler(router, {
   plugins: [
@@ -9287,7 +9199,7 @@ const handler = new RPCHandler(router, {
       logAbort: true, // <- log when requests are aborted (disabled by default)
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -9301,25 +9213,25 @@ This plugin supports using [AsyncLocalStorage](https://nodejs.org/api/async_cont
 ::: code-group
 
 ```ts [business logic]
-import { createLoggerStorage } from "@orpc/evlog/node";
+import { createLoggerStorage } from '@orpc/evlog/node'
 
 /**
  * Pass `storage` to the plugin configuration.
  * Call `useLogger` inside a procedure to access the request logger.
  */
-export const { storage, useLogger } = createLoggerStorage();
+export const { storage, useLogger } = createLoggerStorage()
 
 const procedure = os.handler(async () => {
-  const logger = useLogger(); // [!code highlight]
+  const logger = useLogger() // [!code highlight]
 
-  logger?.set({ user: { id: 123, name: "John Doe" } }); // [!code highlight]
+  logger?.set({ user: { id: 123, name: 'John Doe' } }) // [!code highlight]
 
-  await logger.fork("child-procedure", () => {
-    const logger = useLogger(); // [!code highlight]
-  });
+  await logger.fork('child-procedure', () => {
+    const logger = useLogger() // [!code highlight]
+  })
 
-  return { success: true };
-});
+  return { success: true }
+})
 ```
 
 ```ts [handler setup]
@@ -9329,7 +9241,7 @@ const handler = new RPCHandler(router, {
       storage, // <- pass the storage to the plugin
     }),
   ],
-});
+})
 ```
 
 :::
@@ -9339,17 +9251,17 @@ const handler = new RPCHandler(router, {
 If you do not want to use AsyncLocalStorage, or your runtime does not support it, you can still read the logger from the context.
 
 ```ts
-import { getLogger, LoggerContext } from "@orpc/evlog";
+import { getLogger, LoggerContext } from '@orpc/evlog'
 
 interface ServerContext extends LoggerContext {} // [!code highlight]
 
 const procedure = os.$context<ServerContext>().handler(({ context }) => {
-  const logger = getLogger(context); // [!code highlight]
+  const logger = getLogger(context) // [!code highlight]
 
-  logger?.set({ user: { id: 123, name: "John Doe" } }); // [!code highlight]
+  logger?.set({ user: { id: 123, name: 'John Doe' } }) // [!code highlight]
 
-  return { success: true };
-});
+  return { success: true }
+})
 ```
 
 ---
@@ -9407,20 +9319,20 @@ oRPC is an ESM-only library, but NestJS versions below v12 do not natively suppo
 Before implementation, define your [contract](/docs/contract/procedure) as usual, including [routing](/docs/openapi/routing). There is no special requirement, except that each contract must define an `openapi.path` meta.
 
 ```ts
-import { oc } from "@orpc/contract";
-import { openapi, populateRouterContractOpenAPIPaths } from "@orpc/openapi";
+import { oc } from '@orpc/contract'
+import { openapi, populateRouterContractOpenAPIPaths } from '@orpc/openapi'
 
 const example = oc.meta(
   openapi({
-    path: "/example", // [!code highlight]
+    path: '/example', // [!code highlight]
   }),
-);
+)
 
 // or using the `populateRouterContractOpenAPIPaths` helper to
 // automatically populate OpenAPI paths for all contracts
 const contract = populateRouterContractOpenAPIPaths({
   example,
-});
+})
 ```
 
 ## Implement Your Contract
@@ -9428,8 +9340,8 @@ const contract = populateRouterContractOpenAPIPaths({
 To implement your contract in NestJS, use the `@Implement` decorator and the `implement` function. The `@Implement` very similar to NestJS built-in HTTP method decorators (e.g., `@Get`, `@Post`) and can be used to implement either a single procedure contract or an router contract or combine with other NestJS decorators.
 
 ```ts
-import { Implement } from "@orpc/nest";
-import { implement, ORPCError } from "@orpc/server";
+import { Implement } from '@orpc/nest'
+import { implement, ORPCError } from '@orpc/server'
 
 @Controller()
 export class PlanetController {
@@ -9440,7 +9352,7 @@ export class PlanetController {
   list() {
     return implement(contract.planet.list).handler(({ input }) => {
       // Implement logic here
-    });
+    })
   }
 
   /**
@@ -9458,7 +9370,7 @@ export class PlanetController {
       create: implement(contract.planet.create).handler(({ input }) => {
         // Implement logic here
       }),
-    };
+    }
   }
 
   // other handlers...
@@ -9476,7 +9388,7 @@ export class PlanetController {
   planet(@Req() req: Request) {
     return {
       // your implementation
-    };
+    }
   }
 }
 ```
@@ -9499,15 +9411,15 @@ oRPC uses bodies parsed by NestJS when available, and falls back to its own pars
 - File uploads with common content types like `application/json` may not be parsed as `File` instances.
 
 ```ts
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./app.module";
+import { NestFactory } from '@nestjs/core'
+import { AppModule } from './app.module'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bodyParser: false, // [!code highlight]
-  });
+  })
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3000)
 }
 ```
 
@@ -9519,15 +9431,15 @@ options as the [OpenAPI Handler](/docs/openapi/handler), except for options that
 ::: code-group
 
 ```ts [Static]
-import { onError } from "@orpc/server";
-import { ORPCModule } from "@orpc/nest";
+import { onError } from '@orpc/server'
+import { ORPCModule } from '@orpc/nest'
 
 @Module({
   imports: [
     ORPCModule.forRoot({
       interceptors: [
         onError((error) => {
-          console.error(error);
+          console.error(error)
         }),
       ],
     }),
@@ -9537,8 +9449,8 @@ export class AppModule {}
 ```
 
 ```ts [Dynamic with Dependency Injection]
-import { onError } from "@orpc/server";
-import { ORPCModule } from "@orpc/nest";
+import { onError } from '@orpc/server'
+import { ORPCModule } from '@orpc/nest'
 
 @Module({
   imports: [
@@ -9547,7 +9459,7 @@ import { ORPCModule } from "@orpc/nest";
       useFactory: (logger: YourLoggerService) => ({
         interceptors: [
           onError((error) => {
-            logger.error(error);
+            logger.error(error)
           }),
         ],
       }),
@@ -9564,14 +9476,14 @@ export class AppModule {}
 To define [initial context](/docs/context#initial-context) for use in oRPC scopes, extend the `DefaultInitialContext` interface and provide `context` through `ORPCModule`.
 
 ```ts
-import { ExecutionContext } from "@nestjs/common";
+import { ExecutionContext } from '@nestjs/common'
 
-declare module "@orpc/server" {
+declare module '@orpc/server' {
   /**
    * Extend the context interface to enable typesafe access across oRPC scopes
    */
   interface DefaultInitialContext {
-    request: Request;
+    request: Request
   }
 }
 
@@ -9583,8 +9495,8 @@ declare module "@orpc/server" {
        * receives the ExecutionContext on each request
        */
       context: (ctx: ExecutionContext) => {
-        const request = ctx.switchToHttp().getRequest() as Request;
-        return { request };
+        const request = ctx.switchToHttp().getRequest() as Request
+        return { request }
       },
     }),
   ],
@@ -9639,7 +9551,7 @@ Configure how an [AsyncIteratorObject](/docs/async-iterator-object) is streamed 
              *
              * @default ''
              */
-            comment: "",
+            comment: '',
           },
           keepAlive: {
             /**
@@ -9659,7 +9571,7 @@ Configure how an [AsyncIteratorObject](/docs/async-iterator-object) is streamed 
              *
              * @default ''
              */
-            comment: "",
+            comment: '',
           },
           /**
            * If true, a `close` event is sent even when the iterator completes with `undefined`.
@@ -9681,19 +9593,17 @@ export class AppModule {}
 By default, `@orpc/nest` supports the Express and Fastify adapters. If you use another adapter, you may need to customize how a NestJS request is converted into a standard request (including additional params). For details, see [Standard Server](http://standardserver.dev/).
 
 ```ts
-import { NestStandardLazyRequest } from "@orpc/nest";
-import { toStandardLazyRequest } from "@standardserver/fetch";
+import { NestStandardLazyRequest } from '@orpc/nest'
+import { toStandardLazyRequest } from '@standardserver/fetch'
 
 @Module({
   imports: [
     ORPCModule.forRoot({
       toNestStandardLazyRequest: (req, res) => {
         // example Hono platform support
-        const standardRequest: NestStandardLazyRequest = toStandardLazyRequest(
-          req.raw,
-        );
-        standardRequest.params = req.params;
-        return standardRequest;
+        const standardRequest: NestStandardLazyRequest = toStandardLazyRequest(req.raw)
+        standardRequest.params = req.params
+        return standardRequest
       },
     }),
   ],
@@ -9746,43 +9656,43 @@ deno add npm:@orpc/next@beta
 Use `createServerFunction` to turn a [procedure](/docs/procedure) into a [server function](https://nextjs.org/docs/app/api-reference/directives/use-server). It accepts the same options as [server-side clients](/docs/client/server-side#router-clients), and the returned function accepts the same input as the original procedure.
 
 ```ts twoslash
-"use server";
+'use server'
 
-import { os } from "@orpc/server";
-import { createServerFunction } from "@orpc/next";
+import { os } from '@orpc/server'
+import { createServerFunction } from '@orpc/next'
 
-const procedure = os.handler(async () => "Hello from oRPC + Next.js!");
+const procedure = os.handler(async () => 'Hello from oRPC + Next.js!')
 
 export const serverFunction = createServerFunction(procedure, {
   context: async () => {
     // <- provide initial context if needed
-    return { user: { id: "123", name: "Alice" } };
+    return { user: { id: '123', name: 'Alice' } }
   },
   interceptors: [], // <- add interceptors if needed
-});
+})
 ```
 
 You can call the returned `serverFunction` from a client component.
 
 ```tsx
-"use client";
+'use client'
 
-import { serverFunction } from "./path/to/server/function";
+import { serverFunction } from './path/to/server/function'
 
 export default function Page() {
   const handleClick = async () => {
-    const [error, message] = await serverFunction();
+    const [error, message] = await serverFunction()
 
     if (!error) {
-      console.log({ message });
+      console.log({ message })
     }
-  };
+  }
 
   return (
     <div>
       <button onClick={handleClick}>Call Server Function</button>
     </div>
-  );
+  )
 }
 ```
 
@@ -9795,13 +9705,13 @@ Special Next.js errors such as [redirect](https://nextjs.org/docs/app/api-refere
 ::: code-group
 
 ```tsx [client]
-"use client";
+'use client'
 
-import { serverFunction } from "./path/to/server/function";
+import { serverFunction } from './path/to/server/function'
 
 export default function Page() {
   const handleClick = async () => {
-    const [error, message] = await serverFunction();
+    const [error, message] = await serverFunction()
 
     if (error) {
       if (error.inferable) {
@@ -9812,30 +9722,30 @@ export default function Page() {
     } else {
       // handle success case
     }
-  };
+  }
 
   return (
     <div>
       <button onClick={handleClick}>Call Server Function</button>
     </div>
-  );
+  )
 }
 ```
 
 ```ts [server]
-"use server";
+'use server'
 
 const procedure = os
   .errors({
     NOT_FOUND: {
-      message: "The resource was not found",
+      message: 'The resource was not found',
     },
   })
   .handler(async ({ errors }) => {
-    throw errors.NOT_FOUND();
-  });
+    throw errors.NOT_FOUND()
+  })
 
-export const serverFunction = createServerFunction(procedure);
+export const serverFunction = createServerFunction(procedure)
 ```
 
 :::
@@ -9845,19 +9755,19 @@ export const serverFunction = createServerFunction(procedure);
 If you reuse the same options across multiple server functions, `createServerFunctionable` creates a preconfigured helper. The helper takes a procedure and returns a value that works as both a server function and the original [procedure](/docs/procedure) on the server.
 
 ```ts
-import { createServerFunctionable } from "@orpc/next";
+import { createServerFunctionable } from '@orpc/next'
 
 const functionable = createServerFunctionable({
   context: async () => {
     // <- provide initial context if needed
-    return { user: { id: "123", name: "Alice" } };
+    return { user: { id: '123', name: 'Alice' } }
   },
-});
+})
 
 // Works as both a server function and a procedure.
 export const functionableProcedure = functionable(
-  os.handler(async () => "Hello from oRPC + Next.js!"),
-);
+  os.handler(async () => 'Hello from oRPC + Next.js!'),
+)
 ```
 
 ### `.actionable` Extension
@@ -9868,21 +9778,21 @@ Import `@orpc/next/extensions/actionable` from a module that always runs during 
 
 ```ts [usage]
 export const functionableProcedure = base
-  .handler(async () => "Hello from oRPC + Next.js!")
+  .handler(async () => 'Hello from oRPC + Next.js!')
   .actionable({
     context: async () => {
       // <- provide initial context if needed
-      return { user: { id: "123", name: "Alice" } };
+      return { user: { id: '123', name: 'Alice' } }
     },
-  });
+  })
 ```
 
 ```ts [setup]
-import "@orpc/next/extensions/actionable";
+import '@orpc/next/extensions/actionable'
 
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-export const base = os;
+export const base = os
 ```
 
 :::
@@ -9894,57 +9804,52 @@ This integration also includes React hooks for server functions. `useServerFunct
 ::: code-group
 
 ```tsx [useServerFunction]
-"use client";
+'use client'
 
-import { useServerFunction } from "@orpc/next/hooks";
-import {
-  getIssueMessage,
-  isInferableError,
-  onErrorDeferred,
-  parseFormData,
-} from "@orpc/next/hooks";
+import { useServerFunction } from '@orpc/next/hooks'
+import { getIssueMessage, isInferableError, onErrorDeferred, parseFormData } from '@orpc/next/hooks'
 
 export function MyComponent() {
   const { execute, data, error, status } = useServerFunction(serverFunction, {
     interceptors: [
       onErrorDeferred((error) => {
         if (isInferableError(error)) {
-          console.error(error.data);
+          console.error(error.data)
           //                   ^ Typed error data
         }
       }),
     ],
-  });
+  })
 
   return (
     <form action={(form) => execute(parseFormData(form))}>
       <input type="text" name="name" required />
-      <span>{getIssueMessage(error, "name")}</span>
+      <span>{getIssueMessage(error, 'name')}</span>
 
       <button type="submit">Submit</button>
-      {status === "pending" && <p>Loading...</p>}
+      {status === 'pending' && <p>Loading...</p>}
     </form>
-  );
+  )
 }
 ```
 
 ```tsx [useOptimisticServerFunction]
-"use client";
+'use client'
 
-import { useOptimisticServerAction } from "@orpc/next/hooks";
-import { getIssueMessage, onSuccessDeferred, parseFormData } from "@orpc/next";
+import { useOptimisticServerAction } from '@orpc/next/hooks'
+import { getIssueMessage, onSuccessDeferred, parseFormData } from '@orpc/next'
 
 export function MyComponent() {
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const [todos, setTodos] = useState<Todo[]>([])
   const { execute, optimisticState } = useOptimisticServerAction(someAction, {
     optimisticPassthrough: todos,
     optimisticReducer: (currentState, newTodo) => [...currentState, newTodo],
     interceptors: [
       onSuccessDeferred(({ data }) => {
-        setTodos((prevTodos) => [...prevTodos, data]);
+        setTodos((prevTodos) => [...prevTodos, data])
       }),
     ],
-  });
+  })
 
   return (
     <div>
@@ -9955,12 +9860,12 @@ export function MyComponent() {
       </ul>
       <form action={(form) => execute(parseFormData(form))}>
         <input type="text" name="todo" required />
-        <span>{getIssueMessage(error, "todo")}</span>
+        <span>{getIssueMessage(error, 'todo')}</span>
 
         <button type="submit">Add Todo</button>
       </form>
     </div>
-  );
+  )
 }
 ```
 
@@ -9987,29 +9892,27 @@ export default function Page() {
       <input name="name" />
       <button type="submit">Submit</button>
     </form>
-  );
+  )
 }
 ```
 
 ```ts [server]
-"use server";
+'use server'
 
-import { redirect } from "next/navigation";
+import { redirect } from 'next/navigation'
 
-const procedure = os
-  .input(z.object({ name: z.string() }))
-  .handler(async ({ input }) => {
-    // do something
-  });
+const procedure = os.input(z.object({ name: z.string() })).handler(async ({ input }) => {
+  // do something
+})
 
 export const serverFormFunction = createServerFormFunction(procedure, {
   interceptors: [
     async ({ next }) => {
-      await next();
-      redirect("/thank-you"); // redirect on success
+      await next()
+      redirect('/thank-you') // redirect on success
     },
   ],
-});
+})
 ```
 
 :::
@@ -10019,19 +9922,19 @@ export const serverFormFunction = createServerFormFunction(procedure, {
 If you reuse the same options across multiple form actions, `createServerFormFunctionable` creates a preconfigured helper. Like [`createServerFunctionable`](#createserverfunctionable), it takes a procedure and returns a value that works as both a server form function and the original [procedure](/docs/procedure).
 
 ```ts
-import { createServerFormFunctionable } from "@orpc/next";
+import { createServerFormFunctionable } from '@orpc/next'
 
 const formFunctionable = createServerFormFunctionable({
   context: async () => {
     // <- provide initial context if needed
-    return { user: { id: "123", name: "Alice" } };
+    return { user: { id: '123', name: 'Alice' } }
   },
-});
+})
 
 // Works as both a server form function and a procedure.
 export const formFunctionableProcedure = formFunctionable(
-  os.handler(async () => "Hello from oRPC + Next.js!"),
-);
+  os.handler(async () => 'Hello from oRPC + Next.js!'),
+)
 ```
 
 ---
@@ -10087,32 +9990,32 @@ To integrate OpenTelemetry with oRPC, use `ORPCInstrumentation`. It automaticall
 ::: code-group
 
 ```ts twoslash [server]
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { ORPCInstrumentation } from "@orpc/opentelemetry";
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { ORPCInstrumentation } from '@orpc/opentelemetry'
 
 const sdk = new NodeSDK({
   instrumentations: [
     new ORPCInstrumentation(), // [!code highlight]
   ],
-});
+})
 
-sdk.start();
+sdk.start()
 ```
 
 ```ts twoslash [client]
-import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
-import { ORPCInstrumentation } from "@orpc/opentelemetry";
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web'
+import { registerInstrumentations } from '@opentelemetry/instrumentation'
+import { ORPCInstrumentation } from '@orpc/opentelemetry'
 
-const provider = new WebTracerProvider();
+const provider = new WebTracerProvider()
 
-provider.register();
+provider.register()
 
 registerInstrumentations({
   instrumentations: [
     new ORPCInstrumentation(), // [!code highlight]
   ],
-});
+})
 ```
 
 :::
@@ -10128,7 +10031,7 @@ By default, `ORPCInstrumentation` enables [context propagation](https://opentele
 ```ts
 const instrumentation = new ORPCInstrumentation({
   propagationEnabled: false,
-});
+})
 ```
 
 ::: warning
@@ -10140,20 +10043,20 @@ Popular instrumentations that already handle context propagation include [@hono/
 oRPC automatically creates spans for each [middleware](/docs/middleware) execution. You can access the active span to customize attributes, events, and other span data:
 
 ```ts
-import { trace } from "@opentelemetry/api";
+import { trace } from '@opentelemetry/api'
 
 export const someMiddleware = os.middleware(async (ctx, next) => {
-  const span = trace.getActiveSpan();
+  const span = trace.getActiveSpan()
 
-  span?.setAttribute("someAttribute", "someValue");
-  span?.addEvent("someEvent");
+  span?.setAttribute('someAttribute', 'someValue')
+  span?.addEvent('someEvent')
 
-  return next();
-});
+  return next()
+})
 
-Object.defineProperty(someMiddleware, "name", {
-  value: "someName",
-});
+Object.defineProperty(someMiddleware, 'name', {
+  value: 'someName',
+})
 ```
 
 ::: tip
@@ -10165,21 +10068,21 @@ Define the `name` property on your middleware to improve span naming and make tr
 If your application heavily uses [AsyncIteratorObject](/docs/async-iterator-object) or similar streaming patterns, we recommend capturing an event when the `signal` is aborted to properly track and detach unexpected long-running operations:
 
 ```ts
-import { trace } from "@opentelemetry/api";
+import { trace } from '@opentelemetry/api'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     ({ request, next }) => {
-      const span = trace.getActiveSpan();
+      const span = trace.getActiveSpan()
 
-      request.signal?.addEventListener("abort", () => {
-        span?.addEvent("aborted", { reason: String(request.signal?.reason) });
-      });
+      request.signal?.addEventListener('abort', () => {
+        span?.addEvent('aborted', { reason: String(request.signal?.reason) })
+      })
 
-      return next();
+      return next()
     },
   ],
-});
+})
 ```
 
 ---
@@ -10227,9 +10130,9 @@ deno add npm:@orpc/pinia-colada@beta
 Before you begin, set up either a [server-side client](/docs/client/server-side) or a [client-side client](/docs/client/client-side).
 
 ```ts
-import { createPiniaColadaUtils } from "@orpc/pinia-colada";
+import { createPiniaColadaUtils } from '@orpc/pinia-colada'
 
-const orpc = createPiniaColadaUtils(client);
+const orpc = createPiniaColadaUtils(client)
 ```
 
 ::: details Avoiding Query and Mutation Key Conflicts?
@@ -10238,12 +10141,12 @@ To avoid key conflicts when creating multiple sets of utils, pass a unique `pref
 
 ```ts
 const userORPC = createPiniaColadaUtils(userClient, {
-  prefix: "user",
-});
+  prefix: 'user',
+})
 
 const postORPC = createPiniaColadaUtils(postClient, {
-  prefix: "post",
-});
+  prefix: 'post',
+})
 ```
 
 :::
@@ -10259,7 +10162,7 @@ const query = useQuery(
     context: { cache: true }, // Provide client context if needed
     // additional options...
   }),
-);
+)
 ```
 
 ::: info
@@ -10277,12 +10180,12 @@ const query = useQuery(
     context: { cache: true }, // Provide client context if needed
     fnOptions: {
       // Configure streamed query behavior
-      refetchMode: "reset",
+      refetchMode: 'reset',
       maxChunks: 3,
     },
     // additional options...
   }),
-);
+)
 ```
 
 ::: info
@@ -10305,7 +10208,7 @@ const query = useQuery(
     context: { cache: true }, // Provide client context if needed
     // additional options...
   }),
-);
+)
 ```
 
 ## Infinite Query Options Utility
@@ -10325,7 +10228,7 @@ const query = useInfiniteQuery(() =>
     getNextPageParam: (lastPage) => lastPage.nextOffset,
     // additional options...
   }),
-);
+)
 ```
 
 ## Mutation Options
@@ -10338,9 +10241,9 @@ const mutation = useMutation(
     context: { cache: true }, // Provide client context if needed
     // additional options...
   }),
-);
+)
 
-mutation.mutate({ name: "Earth" });
+mutation.mutate({ name: 'Earth' })
 ```
 
 ## Query/Mutation Key
@@ -10355,30 +10258,27 @@ oRPC provides helper methods for generating query and mutation keys:
 - `.mutationKey`: Generates a **full-match** key for [Mutation Options](#mutation-options).
 
 ```ts
-const queryCache = useQueryCache();
+const queryCache = useQueryCache()
 
 // Invalidate all planet queries
 queryCache.invalidateQueries({
   key: orpc.planet.key(),
-});
+})
 
 // Invalidate only regular (non-infinite) planet queries
 queryCache.invalidateQueries({
-  key: orpc.planet.key({ type: "query" }),
-});
+  key: orpc.planet.key({ type: 'query' }),
+})
 
 // Invalidate the planet find query with id 123
 queryCache.invalidateQueries({
   key: orpc.planet.find.key({ input: { id: 123 } }),
-});
+})
 
 // Update the planet find query with id 123
-queryCache.setQueryData(
-  orpc.planet.find.queryKey({ input: { id: 123 } }),
-  (old) => {
-    return { ...old, id: 123, name: "Earth" };
-  },
-);
+queryCache.setQueryData(orpc.planet.find.queryKey({ input: { id: 123 } }), (old) => {
+  return { ...old, id: 123, name: 'Earth' }
+})
 ```
 
 ::: info
@@ -10390,7 +10290,7 @@ Because Pinia Colada requires entry keys to be serializable, oRPC serializes inp
 The `.call` method provides direct access to the underlying procedure client when needed.
 
 ```ts
-const planet = await orpc.planet.find.call({ id: 123 });
+const planet = await orpc.planet.find.call({ id: 123 })
 ```
 
 ## Reactive Options
@@ -10398,13 +10298,13 @@ const planet = await orpc.planet.find.call({ id: 123 });
 Option utilities accept plain values only. For reactive inputs, pass a callback to `useQuery` instead — it re-evaluates whenever its dependencies change.
 
 ```ts
-const id = ref(123);
+const id = ref(123)
 
 const query = useQuery(() =>
   orpc.planet.find.queryOptions({
     input: { id: id.value },
   }),
-);
+)
 ```
 
 ## Default Options
@@ -10418,7 +10318,7 @@ const orpc = createPiniaColadaUtils(client, {
       find: {
         queryKey: (options) => ({
           // Override the auto-generated key for .queryKey and .queryOptions
-          key: options.key ?? ["planet", "find", options.input],
+          key: options.key ?? ['planet', 'find', options.input],
         }),
         queryOptions: {
           staleTime: 60 * 1000, // 1 minute
@@ -10433,11 +10333,11 @@ const orpc = createPiniaColadaUtils(client, {
       },
     },
   },
-});
+})
 
 // These calls automatically use the default options
-const query = useQuery(orpc.planet.find.queryOptions({ input: { id: 123 } }));
-const mutation = useMutation(orpc.planet.create.mutationOptions());
+const query = useQuery(orpc.planet.find.queryOptions({ input: { id: 123 } }))
+const mutation = useMutation(orpc.planet.create.mutationOptions())
 
 // User-provided options take precedence
 const customQuery = useQuery(
@@ -10445,7 +10345,7 @@ const customQuery = useQuery(
     input: { id: 123 },
     staleTime: 0, // overrides the default staleTime
   }),
-);
+)
 ```
 
 ::: info
@@ -10457,7 +10357,7 @@ When you configure `queryKey`, it also affects `.queryOptions` because it is use
 Interceptors let you wrap `query` and `mutation` calls. Unlike [default options](#default-options), which can be overridden by per-call options, interceptors always run for every query and mutation.
 
 ```ts
-import { isInferableError, safe } from "@orpc/client";
+import { isInferableError, safe } from '@orpc/client'
 
 const orpc = createPiniaColadaUtils(client, {
   queryInterceptors: [],
@@ -10466,20 +10366,20 @@ const orpc = createPiniaColadaUtils(client, {
   infiniteInterceptors: [],
   mutationInterceptors: [
     async ({ context, path, next }) => {
-      const [error, data] = await safe(next());
+      const [error, data] = await safe(next())
 
       if (error) {
         if (isInferableError(error)) {
           // handle typesafe errors
         }
 
-        throw error;
+        throw error
       }
 
-      return data;
+      return data
     },
   ],
-});
+})
 ```
 
 ::: info
@@ -10493,7 +10393,7 @@ Plugins package reusable defaults and interceptors for queries and mutations.
 ```ts
 const orpc = createPiniaColadaUtils(client, {
   plugins: [],
-});
+})
 ```
 
 ### Contract Options Plugin
@@ -10501,7 +10401,7 @@ const orpc = createPiniaColadaUtils(client, {
 Use `piniaColada` to define base options and interceptors directly on a [procedure contract](/docs/contract/procedure), then pass the contract to `ContractOptionsUtilsPlugin` to apply them automatically. Meta options act as the base layer: [default options](#default-options) and [interceptors](#interceptors) defined on the utils merge on top of them. Passing `undefined` explicitly for a key resets the value from lower layers instead of merging.
 
 ```ts
-import { ContractOptionsUtilsPlugin, piniaColada } from "@orpc/pinia-colada";
+import { ContractOptionsUtilsPlugin, piniaColada } from '@orpc/pinia-colada'
 
 export const contract = {
   planet: {
@@ -10513,17 +10413,17 @@ export const contract = {
         queryInterceptors: [
           async ({ input, next }) => {
             // input, output, and errors are typed based on the contract
-            return await next();
+            return await next()
           },
         ],
       }),
     ),
   },
-};
+}
 
 const orpc = createPiniaColadaUtils(client, {
   plugins: [new ContractOptionsUtilsPlugin(contract)],
-});
+})
 ```
 
 ::: warning
@@ -10534,14 +10434,14 @@ Types inferred from the contract are for reference only. The actual types depend
 Contracts are defined separately from your app, so anything inside `piniaColada` cannot import runtime values such as your router utils. Instead, augment [`UseMutationContextCommon`](https://pinia-colada.esm.dev/api/@pinia/colada/interfaces/UseMutationContextCommon.html) and provide the values through a global `onMutate` hook, which merges them into the `fnContext` of every mutation. The example below reads router utils and the query cache from `fnContext` to optimistically update a query:
 
 ```ts
-import type { RouterContractClient } from "@orpc/contract";
-import type { RouterUtils } from "@orpc/pinia-colada";
-import type { QueryCache } from "@pinia/colada";
+import type { RouterContractClient } from '@orpc/contract'
+import type { RouterUtils } from '@orpc/pinia-colada'
+import type { QueryCache } from '@pinia/colada'
 
-declare module "@pinia/colada" {
+declare module '@pinia/colada' {
   interface UseMutationContextCommon {
-    utils: RouterUtils<RouterContractClient<typeof contract>>;
-    queryCache: QueryCache;
+    utils: RouterUtils<RouterContractClient<typeof contract>>
+    queryCache: QueryCache
   }
 }
 
@@ -10552,35 +10452,35 @@ export const contract = {
       piniaColada({
         mutationInterceptors: [
           async ({ input, next, fnContext }) => {
-            const { utils, queryCache } = fnContext;
+            const { utils, queryCache } = fnContext
 
             if (!utils || !queryCache) {
-              return next();
+              return next()
             }
 
             const queryKey = utils.planet.find.queryKey({
               input: { id: input.id },
-            });
-            const previous = queryCache.getQueryData(queryKey);
+            })
+            const previous = queryCache.getQueryData(queryKey)
 
             // optimistically update before the request
-            queryCache.setQueryData(queryKey, input);
+            queryCache.setQueryData(queryKey, input)
 
             try {
-              return await next();
+              return await next()
             } catch (error) {
               // roll back on error
-              queryCache.setQueryData(queryKey, previous);
-              throw error;
+              queryCache.setQueryData(queryKey, previous)
+              throw error
             } finally {
-              queryCache.invalidateQueries({ key: queryKey });
+              queryCache.invalidateQueries({ key: queryKey })
             }
           },
         ],
       }),
     ),
   },
-};
+}
 
 app.use(PiniaColada, {
   mutationOptions: {
@@ -10589,7 +10489,7 @@ app.use(PiniaColada, {
       queryCache: useQueryCache(pinia),
     }),
   },
-});
+})
 ```
 
 :::
@@ -10602,24 +10502,24 @@ When a client is invoked through the Pinia Colada integration, an **operation co
 import {
   PINIA_COLADA_OPERATION_CONTEXT_SYMBOL,
   PiniaColadaOperationContext,
-} from "@orpc/pinia-colada";
-import { RPCLink } from "@orpc/client/fetch";
+} from '@orpc/pinia-colada'
+import { RPCLink } from '@orpc/client/fetch'
 
 interface ClientContext extends PiniaColadaOperationContext {}
 
-const GET_OPERATION_TYPE = new Set(["query", "streamed", "live", "infinite"]);
+const GET_OPERATION_TYPE = new Set(['query', 'streamed', 'live', 'infinite'])
 
 const link = new RPCLink<ClientContext>({
   method: ({ context }) => {
-    const operationType = context[PINIA_COLADA_OPERATION_CONTEXT_SYMBOL]?.type;
+    const operationType = context[PINIA_COLADA_OPERATION_CONTEXT_SYMBOL]?.type
 
     if (operationType && GET_OPERATION_TYPE.has(operationType)) {
-      return "GET";
+      return 'GET'
     }
 
-    return "POST";
+    return 'POST'
   },
-});
+})
 ```
 
 ## Typesafe Error Handling
@@ -10627,7 +10527,7 @@ const link = new RPCLink<ClientContext>({
 Use the built-in `isInferableError` helper to handle [typesafe errors](/docs/error-handling#typesafe-errors) in queries and mutations.
 
 ```ts
-import { isInferableError } from "@orpc/client";
+import { isInferableError } from '@orpc/client'
 
 const mutation = useMutation(
   orpc.planet.create.mutationOptions({
@@ -10637,9 +10537,9 @@ const mutation = useMutation(
       }
     },
   }),
-);
+)
 
-mutation.mutate({ name: "Earth" });
+mutation.mutate({ name: 'Earth' })
 
 if (mutation.error.value && isInferableError(mutation.error.value)) {
   // Handle the typesafe errors here
@@ -10691,13 +10591,13 @@ deno add npm:@orpc/pino@beta npm:pino@beta
 To set up Pino with oRPC, use the `PinoHandlerPlugin` class. This plugin automatically instruments your handler with structured logging, request tracking, and error monitoring.
 
 ```ts twoslash
-import { RPCHandler } from "@orpc/server/fetch";
-import { router } from "./shared/planet";
+import { RPCHandler } from '@orpc/server/fetch'
+import { router } from './shared/planet'
 // ---cut---
-import { PinoHandlerPlugin } from "@orpc/pino";
-import pino from "pino";
+import { PinoHandlerPlugin } from '@orpc/pino'
+import pino from 'pino'
 
-const logger = pino();
+const logger = pino()
 
 const handler = new RPCHandler(router, {
   plugins: [
@@ -10708,7 +10608,7 @@ const handler = new RPCHandler(router, {
       logAbort: true, // <- log information when requests are aborted (disabled by default)
     }),
   ],
-});
+})
 ```
 
 ::: info
@@ -10729,18 +10629,18 @@ npm run dev | npx pino-pretty
 You can access the logger from the context object using the `getLogger` function:
 
 ```ts
-import { getLogger, LoggerContext } from "@orpc/pino";
+import { getLogger, LoggerContext } from '@orpc/pino'
 
 interface ServerContext extends LoggerContext {} // [!code highlight]
 
 const procedure = os.$context<ServerContext>().handler(({ context }) => {
-  const logger = getLogger(context); // [!code highlight]
+  const logger = getLogger(context) // [!code highlight]
 
-  logger?.info("Processing request");
-  logger?.debug({ userId: 123 }, "User data");
+  logger?.info('Processing request')
+  logger?.debug({ userId: 123 }, 'User data')
 
-  return { success: true };
-});
+  return { success: true }
+})
 ```
 
 ## Providing Custom Logger per Request
@@ -10748,42 +10648,38 @@ const procedure = os.$context<ServerContext>().handler(({ context }) => {
 You can provide a custom logger instance for specific requests by passing it through the context. This is especially useful when integrating with [pino-http](https://github.com/pinojs/pino-http) for enhanced HTTP logging:
 
 ```ts
-import {
-  LOGGER_CONTEXT_SYMBOL,
-  LoggerContext,
-  PinoHandlerPlugin,
-} from "@orpc/pino";
+import { LOGGER_CONTEXT_SYMBOL, LoggerContext, PinoHandlerPlugin } from '@orpc/pino'
 
-const logger = pino();
-const httpLogger = pinoHttp({ logger });
+const logger = pino()
+const httpLogger = pinoHttp({ logger })
 
 interface ServerContext extends LoggerContext {} // [!code highlight]
 
 const router = {
-  ping: os.$context<ServerContext>().handler(() => "pong"),
-};
+  ping: os.$context<ServerContext>().handler(() => 'pong'),
+}
 
 const handler = new RPCHandler(router, {
   plugins: [
     new PinoHandlerPlugin({ logger }), // [!code highlight]
   ],
-});
+})
 
 const server = createServer(async (req, res) => {
-  httpLogger(req, res);
+  httpLogger(req, res)
 
   const { matched } = await handler.handle(req, res, {
-    prefix: "/api",
+    prefix: '/api',
     context: {
       [LOGGER_CONTEXT_SYMBOL]: req.log, // [!code highlight]
     },
-  });
+  })
 
   if (!matched) {
-    res.statusCode = 404;
-    res.end("Not Found");
+    res.statusCode = 404
+    res.end('Not Found')
   }
-});
+})
 ```
 
 ---
@@ -10831,11 +10727,11 @@ deno add npm:@orpc/swr@beta
 Before you begin, set up either a [server-side client](/docs/client/server-side) or a [client-side client](/docs/client/client-side).
 
 ```ts
-import { createSWRUtils } from "@orpc/swr";
+import { createSWRUtils } from '@orpc/swr'
 
-export const orpc = createSWRUtils(client);
+export const orpc = createSWRUtils(client)
 
-orpc.planet.find.key({ input: { id: 123 } });
+orpc.planet.find.key({ input: { id: 123 } })
 ```
 
 ::: details Avoiding Key Conflicts?
@@ -10844,12 +10740,12 @@ You can avoid key conflicts by passing a unique prefix when creating your utils:
 
 ```ts
 const userORPC = createSWRUtils(userClient, {
-  prefix: "user",
-});
+  prefix: 'user',
+})
 
 const postORPC = createSWRUtils(postClient, {
-  prefix: "post",
-});
+  prefix: 'post',
+})
 ```
 
 :::
@@ -10859,12 +10755,12 @@ const postORPC = createSWRUtils(postClient, {
 Use `.key` and `.fetcher` methods to configure `useSWR` for data fetching:
 
 ```ts
-import useSWR from "swr";
+import useSWR from 'swr'
 
 const { data, error, isLoading } = useSWR(
   orpc.planet.find.key({ input: { id: 123 } }),
   orpc.planet.find.fetcher({ context: { cache: true } }), // Provide client context if needed
-);
+)
 ```
 
 ## Infinite Queries
@@ -10872,20 +10768,20 @@ const { data, error, isLoading } = useSWR(
 Use `.key` and `.fetcher` methods to configure `useSWRInfinite` for infinite queries:
 
 ```ts
-import useSWRInfinite from "swr/infinite";
+import useSWRInfinite from 'swr/infinite'
 
 const { data, error, isLoading, size, setSize } = useSWRInfinite(
   (index, previousPageData) => {
     if (previousPageData && !previousPageData.nextCursor) {
-      return null; // reached the end
+      return null // reached the end
     }
 
     return orpc.planet.list.key({
       input: { cursor: previousPageData?.nextCursor },
-    });
+    })
   },
   orpc.planet.list.fetcher({ context: { cache: true } }), // Provide client context if needed
-);
+)
 ```
 
 ## Subscriptions
@@ -10893,23 +10789,23 @@ const { data, error, isLoading, size, setSize } = useSWRInfinite(
 Use `.key` and `.subscriber` methods to configure `useSWRSubscription` to subscribe to an [AsyncIteratorObject](/docs/async-iterator-object):
 
 ```ts
-import useSWRSubscription from "swr/subscription";
+import useSWRSubscription from 'swr/subscription'
 
 const { data, error } = useSWRSubscription(
   orpc.streamed.key({ input: { id: 3 } }),
   orpc.streamed.subscriber({ context: { cache: true }, maxChunks: 10 }), // Provide client context if needed
-);
+)
 ```
 
 Use `.liveSubscriber` to subscribe to the latest events without chunking:
 
 ```ts
-import useSWRSubscription from "swr/subscription";
+import useSWRSubscription from 'swr/subscription'
 
 const { data, error } = useSWRSubscription(
   orpc.streamed.key({ input: { id: 3 } }),
   orpc.streamed.liveSubscriber({ context: { cache: true } }), // Provide client context if needed
-);
+)
 ```
 
 ## Mutations
@@ -10917,14 +10813,14 @@ const { data, error } = useSWRSubscription(
 Use `.key` and `.mutator` methods to configure `useSWRMutation` for mutations with automatic revalidation on success:
 
 ```ts
-import useSWRMutation from "swr/mutation";
+import useSWRMutation from 'swr/mutation'
 
 const { trigger, isMutating } = useSWRMutation(
   orpc.planet.list.key(),
   orpc.planet.create.mutator({ context: { cache: true } }), // Provide client context if needed
-);
+)
 
-trigger({ name: "New Planet" }); // auto revalidate orpc.planet.list.key() on success
+trigger({ name: 'New Planet' }) // auto revalidate orpc.planet.list.key() on success
 ```
 
 ## Manual Revalidation
@@ -10932,11 +10828,11 @@ trigger({ name: "New Planet" }); // auto revalidate orpc.planet.list.key() on su
 Use `.matcher` to invalidate data manually:
 
 ```ts
-import { mutate } from "swr";
+import { mutate } from 'swr'
 
-mutate(orpc.matcher()); // invalidate all orpc data
-mutate(orpc.planet.matcher()); // invalidate all planet data
-mutate(orpc.planet.find.matcher({ input: { id: 123 }, strategy: "exact" })); // invalidate specific planet data
+mutate(orpc.matcher()) // invalidate all orpc data
+mutate(orpc.planet.matcher()) // invalidate all planet data
+mutate(orpc.planet.find.matcher({ input: { id: 123 }, strategy: 'exact' })) // invalidate specific planet data
 ```
 
 ## Calling Clients
@@ -10944,7 +10840,7 @@ mutate(orpc.planet.find.matcher({ input: { id: 123 }, strategy: "exact" })); // 
 Use `.call` to call a procedure client directly. It's an alias for corresponding procedure client.
 
 ```ts
-const planet = await orpc.planet.find.call({ id: 123 });
+const planet = await orpc.planet.find.call({ id: 123 })
 ```
 
 ## Operation Context
@@ -10952,23 +10848,23 @@ const planet = await orpc.planet.find.call({ id: 123 });
 When clients are invoked through the SWR integration, an **operation context** is automatically added to the [client context](/docs/client/rpc-link#using-client-context). This context can be used to configure the request behavior, like setting the HTTP method.
 
 ```ts
-import { SWR_OPERATION_CONTEXT_SYMBOL, SWROperationContext } from "@orpc/swr";
+import { SWR_OPERATION_CONTEXT_SYMBOL, SWROperationContext } from '@orpc/swr'
 
 interface ClientContext extends SWROperationContext {}
 
-const GET_OPERATION_TYPE = new Set(["fetcher", "subscriber", "liveSubscriber"]);
+const GET_OPERATION_TYPE = new Set(['fetcher', 'subscriber', 'liveSubscriber'])
 
 const link = new RPCLink<ClientContext>({
   method: ({ context }, path) => {
-    const operationType = context[SWR_OPERATION_CONTEXT_SYMBOL]?.type;
+    const operationType = context[SWR_OPERATION_CONTEXT_SYMBOL]?.type
 
     if (operationType && GET_OPERATION_TYPE.has(operationType)) {
-      return "GET";
+      return 'GET'
     }
 
-    return "POST";
+    return 'POST'
   },
-});
+})
 ```
 
 ---
@@ -10982,12 +10878,10 @@ const link = new RPCLink<ClientContext>({
 oRPC natively supports any library that implements the [Standard Schema](https://standardschema.dev/) specification, such as [Zod](/docs/integrations/zod), [Valibot](/docs/integrations/valibot), [ArkType](/docs/integrations/arktype), and [many more](https://standardschema.dev/schema#what-schema-libraries-implement-the-spec). Use them directly in `.input`, `.output`, and `.errors` without any extra setup.
 
 ```ts
-import * as z from "zod";
-import * as v from "valibot";
+import * as z from 'zod'
+import * as v from 'valibot'
 
-const example = os
-  .input(z.object({ name: z.string() }))
-  .output(v.object({ name: v.string() }));
+const example = os.input(z.object({ name: z.string() })).output(v.object({ name: v.string() }))
 ```
 
 ## Standard JSON Schema
@@ -10999,20 +10893,17 @@ const example = os
 If your library does not implement Standard JSON Schema, or you want more control over the conversion, you can build your own converter by implementing the `JsonSchemaConverter` interface and passing it to the `converters` option. The first converter whose `condition` matches handles the schema:
 
 ```ts
-import type { AnySchema } from "@orpc/contract";
+import type { AnySchema } from '@orpc/contract'
 import type {
   JsonSchema,
   JsonSchemaConverter,
   JsonSchemaConverterDirection,
-} from "@orpc/json-schema";
-import { toJsonSchema } from "@valibot/to-json-schema";
+} from '@orpc/json-schema'
+import { toJsonSchema } from '@valibot/to-json-schema'
 
 class MyCustomConverter implements JsonSchemaConverter {
-  condition(
-    schema: AnySchema | undefined,
-    _direction: JsonSchemaConverterDirection,
-  ): boolean {
-    return schema?.["~standard"].vendor === "valibot";
+  condition(schema: AnySchema | undefined, _direction: JsonSchemaConverterDirection): boolean {
+    return schema?.['~standard'].vendor === 'valibot'
   }
 
   convert(
@@ -11020,7 +10911,7 @@ class MyCustomConverter implements JsonSchemaConverter {
     direction: JsonSchemaConverterDirection,
   ): [jsonSchema: JsonSchema, optional: boolean] {
     // In most cases, treating the schema as required is acceptable.
-    return [toJsonSchema(schema as any), false] as any;
+    return [toJsonSchema(schema as any), false] as any
   }
 }
 ```
@@ -11070,13 +10961,13 @@ deno add npm:@orpc/tanstack-query@beta
 Before you begin, set up either a [server-side client](/docs/client/server-side) or a [client-side client](/docs/client/client-side).
 
 ```ts twoslash
-import { client } from "./shared/planet";
+import { client } from './shared/planet'
 // ---cut---
-import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 
-const orpc = createTanstackQueryUtils(client);
+const orpc = createTanstackQueryUtils(client)
 
-orpc.planet.find.queryOptions({ input: { id: 123 } });
+orpc.planet.find.queryOptions({ input: { id: 123 } })
 //               ^|
 
 //
@@ -11098,12 +10989,12 @@ To avoid key conflicts when creating multiple sets of utils, pass a unique `pref
 
 ```ts
 const userORPC = createTanstackQueryUtils(userClient, {
-  prefix: "user",
-});
+  prefix: 'user',
+})
 
 const postORPC = createTanstackQueryUtils(postClient, {
-  prefix: "post",
-});
+  prefix: 'post',
+})
 ```
 
 :::
@@ -11119,7 +11010,7 @@ const query = useQuery(
     context: { cache: true }, // Provide client context if needed
     // additional options...
   }),
-);
+)
 ```
 
 ## Streamed Query Options
@@ -11135,13 +11026,13 @@ const query = useQuery(
     context: { cache: true }, // Provide client context if needed
     queryFnOptions: {
       // Configure streamed query behavior
-      refetchMode: "reset",
+      refetchMode: 'reset',
       maxChunks: 3,
     },
     retry: true, // Infinite retry for more reliable streaming
     // additional options...
   }),
-);
+)
 ```
 
 ::: info
@@ -11167,7 +11058,7 @@ const query = useQuery(
     retry: true, // Infinite retry for more reliable streaming
     // additional options...
   }),
-);
+)
 ```
 
 ## Infinite Query Options
@@ -11190,7 +11081,7 @@ const query = useInfiniteQuery(
     getNextPageParam: (lastPage) => lastPage.nextPageParam,
     // additional options...
   }),
-);
+)
 ```
 
 ## Mutation Options
@@ -11203,9 +11094,9 @@ const mutation = useMutation(
     context: { cache: true }, // Provide client context if needed
     // additional options...
   }),
-);
+)
 
-mutation.mutate({ name: "Earth" });
+mutation.mutate({ name: 'Earth' })
 ```
 
 ## Query and Mutation Keys
@@ -11220,30 +11111,27 @@ oRPC provides helper methods for generating query and mutation keys:
 - `.mutationKey`: Generates a **full-match** key for [Mutation Options](#mutation-options).
 
 ```ts
-const queryClient = useQueryClient();
+const queryClient = useQueryClient()
 
 // Invalidate all planet queries
 queryClient.invalidateQueries({
   queryKey: orpc.planet.key(),
-});
+})
 
 // Invalidate only regular (non-infinite) planet queries
 queryClient.invalidateQueries({
-  queryKey: orpc.planet.key({ type: "query" }),
-});
+  queryKey: orpc.planet.key({ type: 'query' }),
+})
 
 // Invalidate the planet find query with id 123
 queryClient.invalidateQueries({
   queryKey: orpc.planet.find.key({ input: { id: 123 } }),
-});
+})
 
 // Update the planet find query with id 123
-queryClient.setQueryData(
-  orpc.planet.find.queryKey({ input: { id: 123 } }),
-  (old) => {
-    return { ...old, id: 123, name: "Earth" };
-  },
-);
+queryClient.setQueryData(orpc.planet.find.queryKey({ input: { id: 123 } }), (old) => {
+  return { ...old, id: 123, name: 'Earth' }
+})
 ```
 
 ## Calling Clients
@@ -11251,7 +11139,7 @@ queryClient.setQueryData(
 The `.call` method provides direct access to the underlying procedure client when needed.
 
 ```ts
-const planet = await orpc.planet.find.call({ id: 123 });
+const planet = await orpc.planet.find.call({ id: 123 })
 ```
 
 ## Reactive Options
@@ -11265,7 +11153,7 @@ const query = useQuery(() =>
   orpc.planet.find.queryOptions({
     input: { id: id() },
   }),
-);
+)
 ```
 
 ```ts [Computed Options]
@@ -11275,7 +11163,7 @@ const query = useQuery(
       input: { id: id.value },
     }),
   ),
-);
+)
 ```
 
 :::
@@ -11291,7 +11179,7 @@ const orpc = createTanstackQueryUtils(client, {
       find: {
         queryKey: (options) => ({
           // Override the auto-generated query key for .queryKey and .queryOptions
-          queryKey: options.queryKey ?? ["planet", "find", options.input],
+          queryKey: options.queryKey ?? ['planet', 'find', options.input],
         }),
         queryOptions: {
           staleTime: 60 * 1000, // 1 minute
@@ -11307,17 +11195,17 @@ const orpc = createTanstackQueryUtils(client, {
       create: {
         mutationOptions: {
           onSuccess: (output, input, _, ctx) => {
-            ctx.client.invalidateQueries({ queryKey: orpc.planet.key() });
+            ctx.client.invalidateQueries({ queryKey: orpc.planet.key() })
           },
         },
       },
     },
   },
-});
+})
 
 // These calls automatically use the default options
-const query = useQuery(orpc.planet.find.queryOptions({ input: { id: 123 } }));
-const mutation = useMutation(orpc.planet.create.mutationOptions());
+const query = useQuery(orpc.planet.find.queryOptions({ input: { id: 123 } }))
+const mutation = useMutation(orpc.planet.create.mutationOptions())
 
 // User-provided options take precedence
 const customQuery = useQuery(
@@ -11325,7 +11213,7 @@ const customQuery = useQuery(
     input: { id: 123 },
     staleTime: 0, // overrides the default staleTime
   }),
-);
+)
 ```
 
 ::: info
@@ -11337,7 +11225,7 @@ When you configure `queryKey`, it also affects `.queryOptions` because it is use
 Interceptors let you wrap `queryFn` and `mutationFn` calls. Unlike [default options](#default-options), which can be overridden by per-call options, interceptors always run for every query and mutation.
 
 ```ts
-import { isInferableError, safe } from "@orpc/client";
+import { isInferableError, safe } from '@orpc/client'
 
 const orpc = createTanstackQueryUtils(client, {
   queryInterceptors: [],
@@ -11346,17 +11234,17 @@ const orpc = createTanstackQueryUtils(client, {
   infiniteInterceptors: [],
   mutationInterceptors: [
     async ({ context, path, next }) => {
-      const [error, data] = await safe(next());
+      const [error, data] = await safe(next())
 
       if (error) {
         if (isInferableError(error)) {
           // handle typesafe errors
         }
 
-        throw error;
+        throw error
       }
 
-      return data;
+      return data
     },
   ],
   scoped: {
@@ -11364,15 +11252,15 @@ const orpc = createTanstackQueryUtils(client, {
       create: {
         mutationInterceptors: [
           async ({ next, fnContext }) => {
-            const result = await next();
-            fnContext.client.invalidateQueries({ queryKey: orpc.planet.key() });
-            return result;
+            const result = await next()
+            fnContext.client.invalidateQueries({ queryKey: orpc.planet.key() })
+            return result
           },
         ],
       },
     },
   },
-});
+})
 ```
 
 ::: info
@@ -11386,7 +11274,7 @@ Plugins package reusable defaults and interceptors for queries and mutations.
 ```ts
 const orpc = createTanstackQueryUtils(client, {
   plugins: [],
-});
+})
 ```
 
 ### Contract Options Plugin
@@ -11394,10 +11282,7 @@ const orpc = createTanstackQueryUtils(client, {
 Use `tanstackQuery` to define base options and interceptors directly on a [procedure contract](/docs/contract/procedure), then pass the contract to `ContractOptionsUtilsPlugin` to apply them automatically. Meta options act as the base layer: [default options](#default-options) and [interceptors](#interceptors) defined on the utils merge on top of them. Passing `undefined` explicitly for a key resets the value from lower layers instead of merging.
 
 ```ts
-import {
-  ContractOptionsUtilsPlugin,
-  tanstackQuery,
-} from "@orpc/tanstack-query";
+import { ContractOptionsUtilsPlugin, tanstackQuery } from '@orpc/tanstack-query'
 
 export const contract = {
   planet: {
@@ -11409,17 +11294,17 @@ export const contract = {
         queryInterceptors: [
           async ({ input, next }) => {
             // input, output, and errors are typed based on the contract
-            return await next();
+            return await next()
           },
         ],
       }),
     ),
   },
-};
+}
 
 const orpc = createTanstackQueryUtils(client, {
   plugins: [new ContractOptionsUtilsPlugin(contract)],
-});
+})
 ```
 
 ::: warning
@@ -11430,14 +11315,14 @@ Types inferred from the contract are for reference only. The actual types depend
 Contracts are defined separately from your app, so anything inside `tanstackQuery` cannot import runtime values such as your router utils. Instead, [register a global meta type](https://tanstack.com/query/latest/docs/framework/react/typescript#registering-global-meta) and pass the values through the `meta` option, per hook or globally via query client default options. The example below reads router utils from `fnContext.meta` to optimistically update a query:
 
 ```ts
-import type { RouterContractClient } from "@orpc/contract";
-import type { RouterUtils } from "@orpc/tanstack-query";
+import type { RouterContractClient } from '@orpc/contract'
+import type { RouterUtils } from '@orpc/tanstack-query'
 
-declare module "@tanstack/react-query" {
+declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: {
-      utils?: RouterUtils<RouterContractClient<typeof contract>>;
-    };
+      utils?: RouterUtils<RouterContractClient<typeof contract>>
+    }
   }
 }
 
@@ -11448,35 +11333,35 @@ export const contract = {
       tanstackQuery({
         mutationInterceptors: [
           async ({ input, next, fnContext }) => {
-            const utils = fnContext.meta?.utils;
+            const utils = fnContext.meta?.utils
 
             if (!utils) {
-              return next();
+              return next()
             }
 
             const queryKey = utils.planet.find.queryKey({
               input: { id: input.id },
-            });
-            const previous = fnContext.client.getQueryData(queryKey);
+            })
+            const previous = fnContext.client.getQueryData(queryKey)
 
             // optimistically update before the request
-            fnContext.client.setQueryData(queryKey, input);
+            fnContext.client.setQueryData(queryKey, input)
 
             try {
-              return await next();
+              return await next()
             } catch (error) {
               // roll back on error
-              fnContext.client.setQueryData(queryKey, previous);
-              throw error;
+              fnContext.client.setQueryData(queryKey, previous)
+              throw error
             } finally {
-              fnContext.client.invalidateQueries({ queryKey });
+              fnContext.client.invalidateQueries({ queryKey })
             }
           },
         ],
       }),
     ),
   },
-};
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -11484,7 +11369,7 @@ const queryClient = new QueryClient({
       meta: { utils: orpc },
     },
   },
-});
+})
 ```
 
 :::
@@ -11499,10 +11384,10 @@ const query = useQuery(
   orpc.planet.find.queryOptions({
     context: { cache: true },
     // manually include context in the query key
-    queryKey: [["planet", "find"], { context: { cache: true } }],
+    queryKey: [['planet', 'find'], { context: { cache: true } }],
     // additional options...
   }),
-);
+)
 ```
 
 :::
@@ -11510,29 +11395,28 @@ const query = useQuery(
 When a client is invoked through the TanStack Query integration, an **operation context** is automatically added to the [client context](/docs/client/client-side#client-context). You can use this context to configure request behavior, such as selecting the HTTP method for [RPC Link](/docs/rpc/link#request-method).
 
 ```ts twoslash
-import { RPCLink } from "@orpc/client/fetch";
+import { RPCLink } from '@orpc/client/fetch'
 // ---cut---
 import {
   TANSTACK_QUERY_OPERATION_CONTEXT_SYMBOL,
   TanstackQueryOperationContext,
-} from "@orpc/tanstack-query";
+} from '@orpc/tanstack-query'
 
 interface ClientContext extends TanstackQueryOperationContext {}
 
-const GET_OPERATION_TYPE = new Set(["query", "streamed", "live", "infinite"]);
+const GET_OPERATION_TYPE = new Set(['query', 'streamed', 'live', 'infinite'])
 
 const link = new RPCLink<ClientContext>({
   method: ({ context }) => {
-    const operationType =
-      context[TANSTACK_QUERY_OPERATION_CONTEXT_SYMBOL]?.type;
+    const operationType = context[TANSTACK_QUERY_OPERATION_CONTEXT_SYMBOL]?.type
 
     if (operationType && GET_OPERATION_TYPE.has(operationType)) {
-      return "GET";
+      return 'GET'
     }
 
-    return "POST";
+    return 'POST'
   },
-});
+})
 ```
 
 ## Typesafe Error Handling
@@ -11540,7 +11424,7 @@ const link = new RPCLink<ClientContext>({
 Use the built-in `isInferableError` helper to handle [typesafe errors](/docs/error-handling#typesafe-errors) in queries and mutations.
 
 ```ts
-import { isInferableError } from "@orpc/client";
+import { isInferableError } from '@orpc/client'
 
 const mutation = useMutation(
   orpc.planet.create.mutationOptions({
@@ -11550,9 +11434,9 @@ const mutation = useMutation(
       }
     },
   }),
-);
+)
 
-mutation.mutate({ name: "Earth" });
+mutation.mutate({ name: 'Earth' })
 
 if (mutation.error && isInferableError(mutation.error)) {
   // Handle the typesafe errors here
@@ -11568,7 +11452,7 @@ const query = useQuery(
   orpc.planet.list.queryOptions({
     input: search ? { search } : skipToken, // [!code highlight]
   }),
-);
+)
 
 const query = useInfiniteQuery(
   orpc.planet.list.infiniteOptions({
@@ -11578,7 +11462,7 @@ const query = useInfiniteQuery(
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => lastPage.nextPageParam,
   }),
-);
+)
 ```
 
 ## Custom Serializers
@@ -11586,13 +11470,13 @@ const query = useInfiniteQuery(
 If needed, you can extend the default TanStack Query serializer to support additional types supported by oRPC. Learn more about [RPC Serializers](/docs/rpc/serializer) and [TanStack Query Server Rendering & Hydration](https://tanstack.com/query/latest/docs/framework/react/guides/ssr).
 
 ```ts
-import { RPCSerializer } from "@orpc/client";
+import { RPCSerializer } from '@orpc/client'
 
 const serializer = new RPCSerializer({
   handlers: {
     // put custom serializers here
   },
-});
+})
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -11600,23 +11484,23 @@ const queryClient = new QueryClient({
       queryKeyHashFn(queryKey) {
         const serialized = serializer.serialize(queryKey, {
           useFormDataForBlobFields: false,
-        });
-        return JSON.stringify(serialized);
+        })
+        return JSON.stringify(serialized)
       },
       staleTime: 60 * 1000, // > 0 to prevent immediate refetching on mount
     },
     dehydrate: {
       serializeData(data) {
-        return serializer.serialize(data, { useFormDataForBlobFields: false });
+        return serializer.serialize(data, { useFormDataForBlobFields: false })
       },
     },
     hydrate: {
       deserializeData(data) {
-        return serializer.deserialize(data);
+        return serializer.deserialize(data)
       },
     },
   },
-});
+})
 ```
 
 ---
@@ -11660,9 +11544,9 @@ deno add npm:@orpc/trpc@beta
 `toORPCRouter` converts a [tRPC router](https://trpc.io/docs/server/routers) into an [oRPC router](/docs/router):
 
 ```ts
-import { toORPCRouter } from "@orpc/trpc";
+import { toORPCRouter } from '@orpc/trpc'
 
-const orpcRouter = toORPCRouter(trpcRouter);
+const orpcRouter = toORPCRouter(trpcRouter)
 ```
 
 The result is a regular oRPC router that works with any oRPC feature. For example, you can expose it through an [RPC Handler](/docs/rpc/handler) or [OpenAPI Handler](/docs/openapi/handler), or call it directly with [Server-Side Clients](/docs/client/server-side).
@@ -11676,25 +11560,25 @@ const handler = new OpenAPIHandler(orpcRouter, {
   interceptors: [
     async ({ next }) => {
       try {
-        return await next();
+        return await next()
       } catch (error) {
         if (
           error instanceof ORPCError &&
           error.cause instanceof TRPCError &&
           error.cause.cause instanceof z.ZodError
         ) {
-          throw new ORPCError("UNPROCESSABLE_CONTENT", {
+          throw new ORPCError('UNPROCESSABLE_CONTENT', {
             message: z.prettifyError(error.cause.cause),
             data: z.flattenError(error.cause.cause),
             cause: error.cause.cause,
-          });
+          })
         }
 
-        throw error;
+        throw error
       }
     },
   ],
-});
+})
 ```
 
 ## Metadata
@@ -11702,31 +11586,31 @@ const handler = new OpenAPIHandler(orpcRouter, {
 `toTRPCMeta` bridges [oRPC metadata](/docs/metadata) with tRPC meta. It returns a plain object that you can pass to tRPC `.meta` calls.
 
 ```ts
-import { openapi } from "@orpc/openapi";
-import { toTRPCMeta } from "@orpc/trpc";
+import { openapi } from '@orpc/openapi'
+import { toTRPCMeta } from '@orpc/trpc'
 
-export const t = initTRPC.context<Context>().create();
+export const t = initTRPC.context<Context>().create()
 
 const example = t.procedure
-  .meta(toTRPCMeta(openapi({ path: "/hello", summary: "Hello procedure" }))) // [!code highlight]
+  .meta(toTRPCMeta(openapi({ path: '/hello', summary: 'Hello procedure' }))) // [!code highlight]
   .input(z.object({ name: z.string() }))
   .query(({ input }) => {
-    return `Hello, ${input.name}!`;
-  });
+    return `Hello, ${input.name}!`
+  })
 
 const merged = t.procedure
   .meta({
     ...toTRPCMeta(
       // [!code highlight]
-      openapi({ path: "/hello" }), // [!code highlight]
-      openapi({ method: "POST" }), // [!code highlight]
+      openapi({ path: '/hello' }), // [!code highlight]
+      openapi({ method: 'POST' }), // [!code highlight]
     ), // [!code highlight]
-    other: "value",
+    other: 'value',
   })
   .input(z.object({ name: z.string() }))
   .mutation(({ input }) => {
-    return `Hello, ${input.name}!`;
-  });
+    return `Hello, ${input.name}!`
+  })
 ```
 
 ::: warning
@@ -11774,12 +11658,12 @@ deno add npm:@orpc/valibot@beta npm:valibot
 `ValibotToJsonSchemaConverter` wraps [Valibot's built-in toJsonSchema](https://github.com/open-circle/valibot/blob/main/packages/to-json-schema/README.md) and adds support for additional types such as `v.bigint()`, `v.date()`, `v.set()`, and `v.map()`. Use it with tools such as the [OpenAPI Generator](/docs/openapi/specification#openapi-generator) and [Smart Coercion](/docs/plugins/smart-coercion). It accepts the same options as Valibot's `toJsonSchema`, see the [source code](https://github.com/middleapi/orpc/blob/main/packages/valibot/src/converter.ts) for implementation details.
 
 ```ts
-import { OpenAPIGenerator } from "@orpc/openapi";
-import { ValibotToJsonSchemaConverter } from "@orpc/valibot";
+import { OpenAPIGenerator } from '@orpc/openapi'
+import { ValibotToJsonSchemaConverter } from '@orpc/valibot'
 
 const generator = new OpenAPIGenerator({
   converters: [new ValibotToJsonSchemaConverter()],
-});
+})
 ```
 
 ### Reusable Schemas
@@ -11787,12 +11671,12 @@ const generator = new OpenAPIGenerator({
 A common pattern is defining reusable or recursive schemas via definitions. The converter preserves them in `$defs`, which `OpenAPIGenerator` can then [hoist](/docs/openapi/specification#hoisting-defs) into `components.schemas`. For more on how definitions work in Valibot, see [Valibot JSON Schema Definitions](https://github.com/open-circle/valibot/blob/main/packages/to-json-schema/README.md#definitions).
 
 ```ts
-import * as v from "valibot";
+import * as v from 'valibot'
 
 const PlanetSchema = v.object({
   id: v.string(),
   name: v.string(),
-});
+})
 
 const generator = new OpenAPIGenerator({
   converters: [
@@ -11800,7 +11684,7 @@ const generator = new OpenAPIGenerator({
       definitions: { PlanetSchema },
     }),
   ],
-});
+})
 ```
 
 ---
@@ -11848,12 +11732,12 @@ deno add npm:@orpc/zod@beta npm:zod
 `ZodToJsonSchemaConverter` wraps [Zod's built-in toJSONSchema](https://zod.dev/json-schema?id=ztojsonschema#ztojsonschema) and adds support for additional types such as `z.bigint()`, `z.date()`, `z.set()`, and `z.map()`. Use it with tools such as the [OpenAPI Generator](/docs/openapi/specification#openapi-generator) and [Smart Coercion](/docs/plugins/smart-coercion). It accepts the same options as Zod's `toJSONSchema`, see the [source code](https://github.com/middleapi/orpc/blob/main/packages/zod/src/converter.ts) for implementation details.
 
 ```ts
-import { OpenAPIGenerator } from "@orpc/openapi";
-import { ZodToJsonSchemaConverter } from "@orpc/zod";
+import { OpenAPIGenerator } from '@orpc/openapi'
+import { ZodToJsonSchemaConverter } from '@orpc/zod'
 
 const generator = new OpenAPIGenerator({
   converters: [new ZodToJsonSchemaConverter()],
-});
+})
 ```
 
 ### Reusable Schemas
@@ -11861,14 +11745,14 @@ const generator = new OpenAPIGenerator({
 A common pattern is defining reusable schemas with `id` metadata. The converter places them in `$defs`, which `OpenAPIGenerator` then [hoists](/docs/openapi/specification#hoisting-defs) into `components.schemas`. For more on `id` and `$ref` in Zod, see [Zod JSON Schema Registries](https://zod.dev/json-schema?id=registries#registries).
 
 ```ts
-import * as z from "zod";
+import * as z from 'zod'
 
 const PlanetSchema = z
   .object({
     id: z.string(),
     name: z.string(),
   })
-  .meta({ id: "Planet" });
+  .meta({ id: 'Planet' })
 ```
 
 ### Customizing Generated JSON Schemas
@@ -11880,25 +11764,25 @@ import {
   JSON_SCHEMA_INPUT_REGISTRY,
   JSON_SCHEMA_OUTPUT_REGISTRY,
   JSON_SCHEMA_REGISTRY,
-} from "@orpc/zod";
-import * as z from "zod";
+} from '@orpc/zod'
+import * as z from 'zod'
 
 const user = z.object({
   name: z.string(),
   age: z.string().transform((v) => Number(v)),
-});
+})
 
 JSON_SCHEMA_REGISTRY.add(user, {
-  description: "A user",
-});
+  description: 'A user',
+})
 
 JSON_SCHEMA_INPUT_REGISTRY.add(user, {
-  examples: [{ name: "John", age: "20" }],
-});
+  examples: [{ name: 'John', age: '20' }],
+})
 
 JSON_SCHEMA_OUTPUT_REGISTRY.add(user, {
-  examples: [{ name: "John", age: 20 }],
-});
+  examples: [{ name: 'John', age: 20 }],
+})
 ```
 
 ---
@@ -11929,71 +11813,63 @@ Store the computed value in `context` and reuse it when the middleware runs agai
 For example, this middleware loads auth at most once per call:
 
 ```ts twoslash
-import { os } from "@orpc/server";
+import { os } from '@orpc/server'
 
-declare function loadAuth(
-  headers: Headers,
-): Promise<{ id: string } | undefined>;
+declare function loadAuth(headers: Headers): Promise<{ id: string } | undefined>
 // ---cut---
 const authProvider = os
   .$context<{
-    headers: Headers;
-    auth?: { id: string } | undefined;
-    authLoaded?: boolean | undefined;
+    headers: Headers
+    auth?: { id: string } | undefined
+    authLoaded?: boolean | undefined
   }>()
   .middleware(async ({ context, next }) => {
     // reuse the loaded auth value if it was already loaded
-    const auth = context.authLoaded
-      ? context.auth
-      : await loadAuth(context.headers);
+    const auth = context.authLoaded ? context.auth : await loadAuth(context.headers)
 
-    return next({ context: { auth, authLoaded: true } });
-  });
+    return next({ context: { auth, authLoaded: true } })
+  })
 ```
 
 You can now apply `authProvider` multiple times without loading auth again:
 
 ```ts twoslash
-import { call, os } from "@orpc/server";
+import { call, os } from '@orpc/server'
 
-declare function loadAuth(
-  headers: Headers,
-): Promise<{ id: string } | undefined>;
+declare function loadAuth(headers: Headers): Promise<{ id: string } | undefined>
 const authProvider = os
   .$context<{
-    headers: Headers;
-    auth?: { id: string } | undefined;
-    authLoaded?: boolean | undefined;
+    headers: Headers
+    auth?: { id: string } | undefined
+    authLoaded?: boolean | undefined
   }>()
   .middleware(async ({ context, next }) => {
     // reuse the loaded auth value if it was already loaded
-    const auth = context.authLoaded
-      ? context.auth
-      : await loadAuth(context.headers);
+    const auth = context.authLoaded ? context.auth : await loadAuth(context.headers)
 
-    return next({ context: { auth, authLoaded: true } });
-  });
+    return next({ context: { auth, authLoaded: true } })
+  })
 // ---cut---
-const base = os.$context<{ headers: Headers }>();
+const base = os.$context<{ headers: Headers }>()
 
-const foo = base.use(authProvider).handler(({ context }) => "Hello World");
+const foo = base.use(authProvider).handler(({ context }) => 'Hello World')
 
 const bar = base.use(authProvider).handler(({ context }) => {
   // Reuse the auth value that is already stored in context.
-  return call(foo, undefined, { context }); // [!code highlight]
-});
+  return call(foo, undefined, { context }) // [!code highlight]
+})
 
 // Applying authProvider again does not load auth a second time.
 const router = base
   .use(authProvider) // [!code highlight]
   .use(({ next }) => {
     // Additional middleware logic
-    return next();
+    return next()
   })
   .router({
     foo,
     bar,
-  });
+  })
 ```
 
 ---
@@ -12046,7 +11922,7 @@ The most common issue with `composite` is missing type definitions, resulting in
 If you encounter this, try installing package `Y` if not already installed and adding this to your codebase where the error occurs:
 
 ```ts
-import type * as _A from "../../node_modules/detail_Y_path_here";
+import type * as _A from '../../node_modules/detail_Y_path_here'
 ```
 
 :::
@@ -12118,8 +11994,8 @@ In JavaScript, you can throw any value, but it's best to throw only `Error` inst
 
 ```ts
 // eslint-disable-next-line no-throw-literal
-throw "error"; // ✗ avoid
-throw new Error("error"); // ✓ recommended
+throw 'error' // ✗ avoid
+throw new Error('error') // ✓ recommended
 ```
 
 :::info
@@ -12131,10 +12007,10 @@ oRPC treats thrown `Error` instances as best practice by default, as recommended
 Customize oRPC's behavior by setting `ThrowableError` in the `Registry`:
 
 ```ts
-declare module "@orpc/server" {
+declare module '@orpc/server' {
   // or '@orpc/contract', or '@orpc/client'
   interface Registry {
-    ThrowableError: Error; // [!code highlight]
+    ThrowableError: Error // [!code highlight]
   }
 }
 ```
@@ -12147,7 +12023,7 @@ Avoid using `any` or `unknown` for `ThrowableError` because doing so prevents th
 If `ThrowableError` is configured as `null | undefined | {}`, check `isSuccess` instead of relying on `error`:
 
 ```ts
-const { error, data, isSuccess } = await safe(client("input"));
+const { error, data, isSuccess } = await safe(client('input'))
 
 if (!isSuccess) {
   if (isInferableError(error)) {
@@ -12194,10 +12070,10 @@ With [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) sup
 
 ```ts
 // During SSR, use an internal link
-const orpc: RouterClient<typeof router> = createORPCClient(internalLink);
+const orpc: RouterClient<typeof router> = createORPCClient(internalLink)
 
 // In the browser, use a normal remote link
-const orpc: RouterClient<typeof router> = createORPCClient(remoteLink);
+const orpc: RouterClient<typeof router> = createORPCClient(remoteLink)
 ```
 
 But how? A naive `typeof window === 'undefined'` check works, **but exposes your router logic to the client**. We need a hack that ensures server‑only code never reaches the browser.
@@ -12213,43 +12089,42 @@ This setup is not limited to [RPC Link](/docs/rpc/link) or [Next.js](https://nex
 ::: code-group
 
 ```ts [lib/orpc.ts]
-import type { RouterClient } from "@orpc/server";
-import { RPCLink } from "@orpc/client/fetch";
-import { createORPCClient } from "@orpc/client";
+import type { RouterClient } from '@orpc/server'
+import { RPCLink } from '@orpc/client/fetch'
+import { createORPCClient } from '@orpc/client'
 
 declare global {
-  var $client: RouterClient<typeof router> | undefined;
+  var $client: RouterClient<typeof router> | undefined
 }
 
 const link = new RPCLink({
   origin: () => {
-    if (typeof window === "undefined") {
-      throw new Error("This link is not allowed on the server side.");
+    if (typeof window === 'undefined') {
+      throw new Error('This link is not allowed on the server side.')
     }
 
-    return window.location.origin;
+    return window.location.origin
   },
-});
+})
 
 /**
  * Fall back to a browser client when no SSR client is registered.
  */
-export const client: RouterClient<typeof router> =
-  globalThis.$client ?? createORPCClient(link);
+export const client: RouterClient<typeof router> = globalThis.$client ?? createORPCClient(link)
 ```
 
 ```ts [lib/orpc.server.ts]
-import "server-only";
+import 'server-only'
 
-import { createORPCClient } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
-import type { RouterClient } from "@orpc/server";
-import { headers } from "next/headers";
+import { createORPCClient } from '@orpc/client'
+import { RPCLink } from '@orpc/client/fetch'
+import type { RouterClient } from '@orpc/server'
+import { headers } from 'next/headers'
 
 const internalLink = new RPCLink({
-  origin: "http://localhost",
+  origin: 'http://localhost',
   fetch: async (url, init) => {
-    const request = new Request(url, init);
+    const request = new Request(url, init)
 
     // Use a fetch handler here
     const { response } = await handler.handle(request, {
@@ -12257,13 +12132,13 @@ const internalLink = new RPCLink({
         // provide initial context if needed
         headers: await headers(),
       },
-    });
+    })
 
-    return response ?? new Response("Not Found", { status: 404 });
+    return response ?? new Response('Not Found', { status: 404 })
   },
-});
+})
 
-globalThis.$client = createORPCClient(internalLink);
+globalThis.$client = createORPCClient(internalLink)
 ```
 
 :::
@@ -12276,13 +12151,13 @@ Import `lib/orpc.server.ts` before other server code so the SSR client is regist
 export async function register() {
   // Conditionally import if facing runtime compatibility issues
   // if (process.env.NEXT_RUNTIME === "nodejs") {
-  await import("./lib/orpc.server");
+  await import('./lib/orpc.server')
   // }
 }
 ```
 
 ```ts [app/layout.tsx]
-import "../lib/orpc.server"; // for pre-rendering
+import '../lib/orpc.server' // for pre-rendering
 
 // Rest of the code
 ```
@@ -12300,10 +12175,10 @@ Both a [fetch-based internal link](#implementation) and the [server-side client]
 :::
 
 ```ts
-import "server-only";
+import 'server-only'
 
-import { createRouterClient } from "@orpc/server";
-import { headers } from "next/headers";
+import { createRouterClient } from '@orpc/server'
+import { headers } from 'next/headers'
 
 globalThis.$client = createRouterClient(router, {
   /**
@@ -12316,7 +12191,7 @@ globalThis.$client = createRouterClient(router, {
   context: async () => ({
     headers: await headers(), // provide headers if initial context required
   }),
-});
+})
 ```
 
 ## Using the client
@@ -12325,7 +12200,7 @@ The `client` needs no special handling. Use it like any other oRPC client.
 
 ```tsx
 export default async function PlanetListPage() {
-  const planets = await client.planet.list({ limit: 10 });
+  const planets = await client.planet.list({ limit: 10 })
 
   return (
     <div>
@@ -12333,7 +12208,7 @@ export default async function PlanetListPage() {
         <div key={planet.id}>{planet.name}</div>
       ))}
     </div>
-  );
+  )
 }
 ```
 
@@ -12355,7 +12230,7 @@ TypeScript may report this error when you export a large or complex [router](/do
 // @error: The inferred type of this node exceeds the maximum length the compiler will serialize. An explicit type annotation is needed.
 export const router = {
   // many procedures here
-};
+}
 ```
 
 ## When It Happens
@@ -12394,27 +12269,21 @@ Use the [type](/docs/procedure#type-utility) utility if you just want to specify
 If you need `"declaration": true`, avoid exporting a single massive router object from the server. Instead, export smaller router segments and combine them on the client side, where `"declaration": false`:
 
 ```ts
-export const userRouter = {
-  /** ... */
-};
-export const planetRouter = {
-  /** ... */
-};
-export const publicRouter = {
-  /** ... */
-};
+export const userRouter = {/** ... */}
+export const planetRouter = {/** ... */}
+export const publicRouter = {/** ... */}
 ```
 
 Then define the client type from those smaller exports:
 
 ```ts
 interface Router {
-  user: typeof userRouter;
-  planet: typeof planetRouter;
-  public: typeof publicRouter;
+  user: typeof userRouter
+  planet: typeof planetRouter
+  public: typeof publicRouter
 }
 
-export const client: RouterClient<Router> = createORPCClient(link);
+export const client: RouterClient<Router> = createORPCClient(link)
 ```
 
 ---
@@ -12448,30 +12317,30 @@ const contract = oc.output(
     date: z.coerce.date<Date>(),
     bigint: z.coerce.bigint<bigint>(),
   }),
-);
+)
 
 const procedure = implement(contract).handler(() => ({
   date: new Date(),
   bigint: 123n,
-}));
+}))
 ```
 
 The server still returns JSON-friendly data:
 
 ```ts
 const rawOutput = {
-  date: "2025-09-01T07:24:39.000Z",
-  bigint: "123",
-};
+  date: '2025-09-01T07:24:39.000Z',
+  bigint: '123',
+}
 ```
 
 With `ResponseValidationLinkPlugin`, the client validates that response and applies your schema coercion before your code uses it.
 
 ```ts
 const output = {
-  date: new Date("2025-09-01T07:24:39.000Z"),
+  date: new Date('2025-09-01T07:24:39.000Z'),
   bigint: 123n,
-};
+}
 ```
 
 ### Setup
@@ -12479,18 +12348,17 @@ const output = {
 Add the plugin to your link, then remove the `JsonifiedClient` wrapper from the client type.
 
 ```ts
-import type { RouterContractClient } from "@orpc/contract";
-import { ResponseValidationLinkPlugin } from "@orpc/contract/plugins";
+import type { RouterContractClient } from '@orpc/contract'
+import { ResponseValidationLinkPlugin } from '@orpc/contract/plugins'
 
 const link = new OpenAPILink(contract, {
   plugins: [
     new ResponseValidationLinkPlugin(contract), // [!code ++]
   ],
-});
+})
 
-const client: JsonifiedClient<RouterContractClient<typeof contract>> =
-  createORPCClient(link); // [!code --]
-const client: RouterContractClient<typeof contract> = createORPCClient(link); // [!code ++]
+const client: JsonifiedClient<RouterContractClient<typeof contract>> = createORPCClient(link) // [!code --]
+const client: RouterContractClient<typeof contract> = createORPCClient(link) // [!code ++]
 ```
 
 ## Use Smart Coercion Plugin
@@ -12498,18 +12366,17 @@ const client: RouterContractClient<typeof contract> = createORPCClient(link); //
 Use [Smart Coercion Plugin](/docs/plugins/smart-coercion) when you want the client to coerce values automatically from schema instead of adding coercion logic to each schema manually.
 
 ```ts
-import type { RouterContractClient } from "@orpc/contract";
-import { SmartCoercionLinkPlugin } from "@orpc/json-schema";
+import type { RouterContractClient } from '@orpc/contract'
+import { SmartCoercionLinkPlugin } from '@orpc/json-schema'
 
 const link = new OpenAPILink(contract, {
   plugins: [
     new SmartCoercionLinkPlugin(contract), // [!code ++]
   ],
-});
+})
 
-const client: JsonifiedClient<RouterContractClient<typeof contract>> =
-  createORPCClient(link); // [!code --]
-const client: RouterContractClient<typeof contract> = createORPCClient(link); // [!code ++]
+const client: JsonifiedClient<RouterContractClient<typeof contract>> = createORPCClient(link) // [!code --]
+const client: RouterContractClient<typeof contract> = createORPCClient(link) // [!code ++]
 ```
 
 ---
@@ -12539,22 +12406,20 @@ In this guide, we'll use [pnpm](https://pnpm.io/) as the package manager and [ts
 First, create a `src/index.ts` file to set up and export your client.
 
 ```ts [src/index.ts]
-import { createORPCClient } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
-import type { RouterContractClient } from "@orpc/contract";
+import { createORPCClient } from '@orpc/client'
+import { RPCLink } from '@orpc/client/fetch'
+import type { RouterContractClient } from '@orpc/contract'
 
-export function createMyApi(
-  apiKey: string,
-): RouterContractClient<typeof contract> {
+export function createMyApi(apiKey: string): RouterContractClient<typeof contract> {
   const link = new RPCLink({
-    origin: "https://example.com",
-    url: "/rpc",
+    origin: 'https://example.com',
+    url: '/rpc',
     headers: {
-      "x-api-key": apiKey,
+      'x-api-key': apiKey,
     },
-  });
+  })
 
-  return createORPCClient(link);
+  return createORPCClient(link)
 }
 ```
 
@@ -12617,11 +12482,11 @@ pnpm add "<package-name>"
 ```
 
 ```ts [example.ts]
-import { createMyApi } from "<package-name>";
+import { createMyApi } from '<package-name>'
 
-const myApi = createMyApi("your-api-key");
+const myApi = createMyApi('your-api-key')
 
-const output = await myApi.someMethod("input");
+const output = await myApi.someMethod('input')
 ```
 
 ::: info
@@ -12645,18 +12510,18 @@ This guide shows an alternative pattern for large projects: import and use indiv
 This pattern depends on one consistency rule: every [procedure contract](/docs/contract/procedure) must define `meta.path`, and that path must exactly match the procedure's location in the root contract.
 
 ```ts
-import { meta, oc } from "@orpc/contract";
+import { meta, oc } from '@orpc/contract'
 
 export const procedure = oc
-  .meta(meta.path(["real", "path", "to", "procedure"]))
+  .meta(meta.path(['real', 'path', 'to', 'procedure']))
   .input(z.object({ name: z.string() }))
-  .output(z.object({ message: z.string() }));
+  .output(z.object({ message: z.string() }))
 ```
 
 If you use `['real', 'path', 'to', 'procedure']` as the path, the procedure must be mounted at `real.path.to.procedure` in the root contract. This is required for the pattern to work correctly:
 
 ```ts
-import { procedure } from "./path/to/procedure";
+import { procedure } from './path/to/procedure'
 
 const router = {
   real: {
@@ -12666,7 +12531,7 @@ const router = {
       },
     },
   },
-};
+}
 ```
 
 ## Contract Client Factory
@@ -12674,11 +12539,9 @@ const router = {
 This pattern does not require a single root client. Instead, you configure a client factory that communicates with the server. `createContractClientFactory` accepts an [RPC Link](/docs/rpc/link), an [OpenAPI Link](/docs/openapi/link), or a custom link. It also accepts options similar to [`createORPCClient`](/docs/client/client-side), but with less typesafe because the full contract is not known up front:
 
 ```ts
-import { createContractClientFactory } from "@orpc/contract";
+import { createContractClientFactory } from '@orpc/contract'
 
-export const createClient = createContractClientFactory(link, {
-  /** options */
-});
+export const createClient = createContractClientFactory(link, {/** options */})
 ```
 
 ::: warning
@@ -12688,23 +12551,19 @@ If you are using [OpenAPI Link](/docs/openapi/link), or any link that requires t
 You can then create a client by importing a procedure contract directly in the client:
 
 ```ts
-import { procedure } from "./path/to/procedure";
+import { procedure } from './path/to/procedure'
 
-const client = createClient(procedure);
-const output = await client(input, {
-  /** options */
-});
+const client = createClient(procedure)
+const output = await client(input, {/** options */})
 ```
 
 The factory also accepts a [router contract](/docs/contract/router), returning a client that mirrors its shape. Procedure paths follow the router shape, prefixed with a base path derived from the first procedure that defines `meta.path`, so passing a sub-router of the root contract works too:
 
 ```ts
-import { router } from "./path/to/router";
+import { router } from './path/to/router'
 
-const client = createClient(router);
-const output = await client.path.to.procedure(input, {
-  /** options */
-});
+const client = createClient(router)
+const output = await client.path.to.procedure(input, {/** options */})
 ```
 
 ### `contractRef`
@@ -12712,17 +12571,17 @@ const output = await client.path.to.procedure(input, {
 Some integrations still need a root contract. For example, [OpenAPI Link](/docs/openapi/link) and some plugins depend on one. In those cases, `contractRef` can help:
 
 ```ts
-import { RouterContract } from "@orpc/contract";
+import { RouterContract } from '@orpc/contract'
 
-const contractRef: RouterContract = {};
+const contractRef: RouterContract = {}
 
 const link = new OpenAPILink(contractRef, {
   plugins: [new PluginRequireContract(contractRef)],
-});
+})
 
 export const createClient = createContractJsonifiedClientFactory(link, {
   contractRef,
-});
+})
 ```
 
 The idea behind `contractRef` is simple: every time `createClient` is used, the factory automatically registers every procedure contract inside the passed contract into `contractRef` at its resolved path.
@@ -12736,11 +12595,9 @@ Some features may not support `contractRef` well. In those cases, import the roo
 [TanStack Query Integration](/docs/integrations/tanstack-query) also supports this pattern. First, create a factory that accepts a [contract client factory](#contract-client-factory) and options similar to the [TanStack Query interceptor options](/docs/integrations/tanstack-query#interceptors), but with less type safety because the full contract is not known up front:
 
 ```ts
-import { createContractUtilsFactory } from "@orpc/tanstack-query";
+import { createContractUtilsFactory } from '@orpc/tanstack-query'
 
-export const createUtils = createContractUtilsFactory(createClient, {
-  /** options */
-});
+export const createUtils = createContractUtilsFactory(createClient, {/** options */})
 ```
 
 ::: warning
@@ -12750,29 +12607,21 @@ If you are using [OpenAPI Link](/docs/openapi/link), or any link that requires t
 You can then create utilities for each procedure contract:
 
 ```ts
-import { procedure } from "./path/to/procedure";
+import { procedure } from './path/to/procedure'
 
-const utils = createUtils(procedure);
+const utils = createUtils(procedure)
 
-const query = useQuery(
-  utils.queryOptions({
-    /** options */
-  }),
-);
+const query = useQuery(utils.queryOptions({/** options */}))
 ```
 
 Like the [contract client factory](#contract-client-factory), it also accepts a [router contract](/docs/contract/router), returning utilities that mirror its shape:
 
 ```ts
-import { router } from "./path/to/router";
+import { router } from './path/to/router'
 
-const utils = createUtils(router);
+const utils = createUtils(router)
 
-const query = useQuery(
-  utils.path.to.procedure.queryOptions({
-    /** options */
-  }),
-);
+const query = useQuery(utils.path.to.procedure.queryOptions({/** options */}))
 ```
 
 ## Pinia Colada Integration
@@ -12780,11 +12629,9 @@ const query = useQuery(
 [Pinia Colada Integration](/docs/integrations/pinia-colada) also supports this pattern. First, create a factory that accepts a [contract client factory](#contract-client-factory) and options similar to the [Pinia Colada interceptor options](/docs/integrations/pinia-colada#interceptors), but with less type safety because the full contract is not known up front:
 
 ```ts
-import { createContractUtilsFactory } from "@orpc/pinia-colada";
+import { createContractUtilsFactory } from '@orpc/pinia-colada'
 
-export const createUtils = createContractUtilsFactory(createClient, {
-  /** options */
-});
+export const createUtils = createContractUtilsFactory(createClient, {/** options */})
 ```
 
 ::: warning
@@ -12794,29 +12641,21 @@ If you are using [OpenAPI Link](/docs/openapi/link), or any link that requires t
 You can then create utilities for each procedure contract:
 
 ```ts
-import { procedure } from "./path/to/procedure";
+import { procedure } from './path/to/procedure'
 
-const utils = createUtils(procedure);
+const utils = createUtils(procedure)
 
-const query = useQuery(
-  utils.queryOptions({
-    /** options */
-  }),
-);
+const query = useQuery(utils.queryOptions({/** options */}))
 ```
 
 Like the [contract client factory](#contract-client-factory), it also accepts a [router contract](/docs/contract/router), returning utilities that mirror its shape:
 
 ```ts
-import { router } from "./path/to/router";
+import { router } from './path/to/router'
 
-const utils = createUtils(router);
+const utils = createUtils(router)
 
-const query = useQuery(
-  utils.path.to.procedure.queryOptions({
-    /** options */
-  }),
-);
+const query = useQuery(utils.path.to.procedure.queryOptions({/** options */}))
 ```
 
 ---
@@ -12834,16 +12673,14 @@ Testing and mocking are essential for building reliable applications. In this se
 For fast, focused tests, use [Server-Side Clients](/docs/client/server-side) or call your procedures directly with `call`. This lets you verify validation, middleware, and handler logic without going through HTTP.
 
 ```ts
-import { call } from "@orpc/server";
+import { call } from '@orpc/server'
 
-it("lists planets", async () => {
-  await expect(
-    call(router.planet.list, { page: 1, size: 10 }),
-  ).resolves.toEqual([
-    { id: "1", name: "Earth" },
-    { id: "2", name: "Mars" },
-  ]);
-});
+it('lists planets', async () => {
+  await expect(call(router.planet.list, { page: 1, size: 10 })).resolves.toEqual([
+    { id: '1', name: 'Earth' },
+    { id: '2', name: 'Mars' },
+  ])
+})
 ```
 
 ::: info
@@ -12855,11 +12692,11 @@ For a production-like test setup, create [fetch-based internal clients](/docs/be
 Use the [Implementer](/docs/contract/implementation) to create test-specific versions of a [procedure](/docs/procedure) or [router](/docs/router). This is useful when one part of your system depends on another procedure, but your test should not execute the real implementation.
 
 ```ts twoslash
-import { router } from "./shared/planet";
+import { router } from './shared/planet'
 // ---cut---
-import { implement } from "@orpc/server";
+import { implement } from '@orpc/server'
 
-const fakeListPlanet = implement(router.planet.list).handler(() => []);
+const fakeListPlanet = implement(router.planet.list).handler(() => [])
 ```
 
 Use `fakeListPlanet` anywhere your test would normally use the real `listPlanet` procedure.
@@ -12909,7 +12746,7 @@ const base = os.$config({
    * @default false
    */
   disableOutputValidation: true,
-});
+})
 ```
 
 ::: warning
@@ -12919,7 +12756,7 @@ For example, the following schema accepts a `number` but returns a `string`:
 ```ts
 z.object({
   value: z.number().transform((value) => String(value)),
-});
+})
 ```
 
 If runtime validation is disabled, the transformation is skipped. As a result, the server returns a `number` while the client expects a `string`, leading to unexpected behavior.
@@ -12930,51 +12767,49 @@ If runtime validation is disabled, the transformation is skipped. As a result, t
 You can catch validation errors with [interceptors](/docs/rpc/handler#interceptors), [client interceptors](/docs/rpc/handler#client-interceptors), or [middleware](/docs/middleware) applied before `.input` or `.output` and then throw a custom error. This is useful if you want to change the error message or shape.
 
 ```ts twoslash
-import { RPCHandler } from "@orpc/server/fetch";
-import { router } from "./shared/planet";
+import { RPCHandler } from '@orpc/server/fetch'
+import { router } from './shared/planet'
 // ---cut---
-import * as z from "zod";
-import { ORPCError, ValidationError } from "@orpc/server";
+import * as z from 'zod'
+import { ORPCError, ValidationError } from '@orpc/server'
 
 const handler = new RPCHandler(router, {
   interceptors: [
     async ({ next }) => {
       try {
-        return await next();
+        return await next()
       } catch (error) {
         if (
           error instanceof ORPCError &&
-          error.code === "BAD_REQUEST" &&
+          error.code === 'BAD_REQUEST' &&
           error.cause instanceof ValidationError
         ) {
           // If you only use Zod you can safely cast to ZodIssue[]
-          const zodError = new z.ZodError(
-            error.cause.issues as z.core.$ZodIssue[],
-          );
+          const zodError = new z.ZodError(error.cause.issues as z.core.$ZodIssue[])
 
-          throw new ORPCError("INPUT_VALIDATION_FAILED", {
+          throw new ORPCError('INPUT_VALIDATION_FAILED', {
             message: z.prettifyError(zodError),
             data: z.flattenError(zodError),
             cause: error,
-          });
+          })
         }
 
         if (
           error instanceof ORPCError &&
-          error.code === "INTERNAL_SERVER_ERROR" &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
           error.cause instanceof ValidationError
         ) {
           // do not expose validation details for output validation errors
-          throw new ORPCError("OUTPUT_VALIDATION_FAILED", {
+          throw new ORPCError('OUTPUT_VALIDATION_FAILED', {
             cause: error,
-          });
+          })
         }
 
-        throw error;
+        throw error
       }
     },
   ],
-});
+})
 ```
 
 ### Typesafe Validation Errors
@@ -12984,10 +12819,10 @@ As explained in the [error handling guide](/docs/error-handling#orpcerror-compat
 This does not work in [interceptors](/docs/rpc/handler#interceptors). Use [client interceptors](/docs/rpc/handler#client-interceptors) or [middleware](/docs/middleware) applied before `.input` or `.output` instead.
 
 ```ts twoslash
-import { RPCHandler } from "@orpc/server/fetch";
+import { RPCHandler } from '@orpc/server/fetch'
 // ---cut---
-import { ORPCError, os, ValidationError } from "@orpc/server";
-import * as z from "zod";
+import { ORPCError, os, ValidationError } from '@orpc/server'
+import * as z from 'zod'
 
 const base = os.errors({
   INPUT_VALIDATION_FAILED: {
@@ -12996,11 +12831,11 @@ const base = os.errors({
       fieldErrors: z.record(z.string(), z.array(z.string()).optional()),
     }),
   },
-});
+})
 
 const example = base.input(z.object({ id: z.uuid() })).handler(() => {
   /** do something */
-});
+})
 
 const handler = new RPCHandler(
   { example },
@@ -13008,31 +12843,29 @@ const handler = new RPCHandler(
     clientInterceptors: [
       async ({ next }) => {
         try {
-          return await next();
+          return await next()
         } catch (error) {
           if (
             error instanceof ORPCError &&
-            error.code === "BAD_REQUEST" &&
+            error.code === 'BAD_REQUEST' &&
             error.cause instanceof ValidationError
           ) {
             // If you only use Zod you can safely cast to ZodIssue[]
-            const zodError = new z.ZodError(
-              error.cause.issues as z.core.$ZodIssue[],
-            );
+            const zodError = new z.ZodError(error.cause.issues as z.core.$ZodIssue[])
 
-            throw new ORPCError("INPUT_VALIDATION_FAILED", {
+            throw new ORPCError('INPUT_VALIDATION_FAILED', {
               message: z.prettifyError(zodError),
               data: z.flattenError(zodError),
               cause: error,
-            });
+            })
           }
 
-          throw error;
+          throw error
         }
       },
     ],
   },
-);
+)
 ```
 
 ---
@@ -13109,89 +12942,87 @@ Initialization is optional in oRPC. You can use `os` directly, but creating shar
 ::: code-group
 
 ```ts [orpc/base.ts]
-import { ORPCError, os } from "@orpc/server";
+import { ORPCError, os } from '@orpc/server'
 
 export async function createORPCContext(opts: { headers: Headers }) {
-  const session = await auth();
+  const session = await auth()
 
   return {
     headers: opts.headers,
     session,
-  };
+  }
 }
 
-const o = os.$context<Awaited<ReturnType<typeof createORPCContext>>>();
+const o = os.$context<Awaited<ReturnType<typeof createORPCContext>>>()
 
 const timingMiddleware = o.middleware(async ({ next, path }) => {
-  const start = Date.now();
+  const start = Date.now()
 
   try {
-    return await next();
+    return await next()
   } finally {
-    console.log(`[oRPC] ${path} took ${Date.now() - start}ms to execute`);
+    console.log(`[oRPC] ${path} took ${Date.now() - start}ms to execute`)
   }
-});
+})
 
-export const publicProcedure = o.use(timingMiddleware);
+export const publicProcedure = o.use(timingMiddleware)
 
 export const protectedProcedure = publicProcedure.use(({ context, next }) => {
   if (!context.session?.user) {
-    throw new ORPCError("UNAUTHORIZED");
+    throw new ORPCError('UNAUTHORIZED')
   }
 
   return next({
     context: {
       session: { ...context.session, user: context.session.user },
     },
-  });
-});
+  })
+})
 ```
 
 ```ts [trpc/base.ts]
-import { initTRPC, TRPCError } from "@trpc/server";
-import superjson from "superjson";
+import { initTRPC, TRPCError } from '@trpc/server'
+import superjson from 'superjson'
 
 export async function createTRPCContext(opts: { headers: Headers }) {
-  const session = await auth();
+  const session = await auth()
 
   return {
     headers: opts.headers,
     session,
-  };
+  }
 }
 
 const t = initTRPC.context<typeof createTRPCContext>().create({
   transformer: superjson,
-});
+})
 
-export const createTRPCRouter = t.router;
+export const createTRPCRouter = t.router
 
 const timingMiddleware = t.middleware(async ({ next, path }) => {
-  const start = Date.now();
+  const start = Date.now()
 
-  const result = await next();
+  const result = await next()
 
-  const end = Date.now();
-  console.log(`[tRPC] ${path} took ${end - start}ms to execute`);
+  const end = Date.now()
+  console.log(`[tRPC] ${path} took ${end - start}ms to execute`)
 
-  return result;
-});
+  return result
+})
 
-export const publicProcedure = t.procedure.use(timingMiddleware);
+export const publicProcedure = t.procedure.use(timingMiddleware)
 
-export const protectedProcedure = t.procedure
-  .use(timingMiddleware)
-  .use(({ ctx, next }) => {
-    if (!ctx.session?.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
-    }
+export const protectedProcedure = t.procedure.use(timingMiddleware).use(({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new TRPCError({ code: 'UNAUTHORIZED' })
+  }
 
-    return next({
-      ctx: {
-        session: { ...ctx.session, user: ctx.session.user },
-      },
-    });
-  });
+  return next({
+    ctx: {
+      session: { ...ctx.session, user: ctx.session.user },
+    },
+  })
+})
 ```
 
 :::
@@ -13216,12 +13047,12 @@ export const planetRouter = {
       return {
         planets: [
           {
-            name: "Earth",
+            name: 'Earth',
             distanceFromSun: 149.6,
           },
         ],
         nextCursor: input.cursor + 1,
-      };
+      }
     }),
 
   create: protectedProcedure
@@ -13234,7 +13065,7 @@ export const planetRouter = {
     .handler(async ({ context, input }) => {
       // Logic here
     }),
-};
+}
 ```
 
 ```ts [trpc/routers/planet.ts]
@@ -13247,12 +13078,12 @@ export const planetRouter = createTRPCRouter({
       return {
         planets: [
           {
-            name: "Earth",
+            name: 'Earth',
             distanceFromSun: 149.6,
           },
         ],
         nextCursor: input.cursor + 1,
-      };
+      }
     }),
 
   create: protectedProcedure
@@ -13265,7 +13096,7 @@ export const planetRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       // Logic here
     }),
-});
+})
 ```
 
 :::
@@ -13281,19 +13112,19 @@ The overall router structure stays similar. In oRPC, you do not wrap routers in 
 ::: code-group
 
 ```ts [orpc/routers/index.ts]
-import { planetRouter } from "./planet";
+import { planetRouter } from './planet'
 
 export const appRouter = {
   planet: planetRouter,
-};
+}
 ```
 
 ```ts [trpc/routers/index.ts]
-import { planetRouter } from "./planet";
+import { planetRouter } from './planet'
 
 export const appRouter = createTRPCRouter({
   planet: planetRouter,
-});
+})
 ```
 
 :::
@@ -13309,20 +13140,20 @@ Error handling is similar, but `ORPCError` takes the error code as its first arg
 ::: code-group
 
 ```ts [orpc]
-throw new ORPCError("BAD_REQUEST", {
-  message: "Invalid input",
-  data: "some data",
+throw new ORPCError('BAD_REQUEST', {
+  message: 'Invalid input',
+  data: 'some data',
   cause: validationError,
-});
+})
 ```
 
 ```ts [trpc]
 throw new TRPCError({
-  code: "BAD_REQUEST",
-  message: "Invalid input",
-  data: "some data",
+  code: 'BAD_REQUEST',
+  message: 'Invalid input',
+  data: 'some data',
   cause: validationError,
-});
+})
 ```
 
 :::
@@ -13338,52 +13169,50 @@ This example uses [Next.js](https://nextjs.org/). If you use another framework, 
 ::: code-group
 
 ```ts [app/api/orpc/[[...rest]]/route.ts]
-import { RPCHandler } from "@orpc/server/fetch";
+import { RPCHandler } from '@orpc/server/fetch'
 
 const handler = new RPCHandler(appRouter, {
   interceptors: [
     async ({ next, path }) => {
       try {
-        return await next();
+        return await next()
       } catch (error) {
-        console.error(`❌ oRPC failed on ${path.join(".")}: `, error);
-        throw error;
+        console.error(`❌ oRPC failed on ${path.join('.')}: `, error)
+        throw error
       }
     },
   ],
-});
+})
 
 async function handleRequest(request: Request) {
   const { response } = await handler.handle(request, {
-    prefix: "/api/orpc",
+    prefix: '/api/orpc',
     context: await createORPCContext({ headers: request.headers }),
-  });
+  })
 
-  return response ?? new Response("Not found", { status: 404 });
+  return response ?? new Response('Not found', { status: 404 })
 }
 
-export const GET = handleRequest;
-export const POST = handleRequest;
+export const GET = handleRequest
+export const POST = handleRequest
 ```
 
 ```ts [app/api/trpc/[trpc]/route.ts]
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
 
 function handler(req: Request) {
   return fetchRequestHandler({
-    endpoint: "/api/trpc",
+    endpoint: '/api/trpc',
     req,
     router: appRouter,
     createContext: () => createTRPCContext({ headers: req.headers }),
     onError: ({ path, error }) => {
-      console.error(
-        `❌ tRPC failed on ${path ?? "<no-path>"}: ${error.message}`,
-      );
+      console.error(`❌ tRPC failed on ${path ?? '<no-path>'}: ${error.message}`)
     },
-  });
+  })
 }
 
-export { handler as GET, handler as POST };
+export { handler as GET, handler as POST }
 ```
 
 :::
@@ -13395,41 +13224,41 @@ Create a transport link, then use it to build a typed client.
 ::: code-group
 
 ```ts [orpc/client.ts]
-import { createORPCClient, onError } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
-import { RouterClient } from "@orpc/server";
+import { createORPCClient, onError } from '@orpc/client'
+import { RPCLink } from '@orpc/client/fetch'
+import { RouterClient } from '@orpc/server'
 
 const link = new RPCLink({
-  origin: "http://localhost:3000",
-  url: "/api/orpc",
+  origin: 'http://localhost:3000',
+  url: '/api/orpc',
   interceptors: [
     onError((error) => {
-      console.error(error);
+      console.error(error)
     }),
   ],
-});
+})
 
-export const client: RouterClient<typeof appRouter> = createORPCClient(link);
+export const client: RouterClient<typeof appRouter> = createORPCClient(link)
 
 // ---------------- Usage ----------------
 
-const { planets } = await client.planet.list({ cursor: 0 });
+const { planets } = await client.planet.list({ cursor: 0 })
 ```
 
 ```ts [trpc/client.ts]
-import { createTRPCProxyClient, httpLink } from "@trpc/client";
+import { createTRPCProxyClient, httpLink } from '@trpc/client'
 
 export const client = createTRPCProxyClient<typeof appRouter>({
   links: [
     httpLink({
-      url: "http://localhost:3000/api/trpc",
+      url: 'http://localhost:3000/api/trpc',
     }),
   ],
-});
+})
 
 // ---------------- Usage ----------------
 
-const { planets } = await client.planet.list.query({ cursor: 0 });
+const { planets } = await client.planet.list.query({ cursor: 0 })
 ```
 
 :::
@@ -13445,9 +13274,9 @@ The TanStack Query integration feels similar to tRPC, but it is lighter. You can
 ::: code-group
 
 ```ts [orpc/tanstack-query.ts]
-import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 
-export const orpc = createTanstackQueryUtils(client);
+export const orpc = createTanstackQueryUtils(client)
 
 // ---------------- Usage in React Components ----------------
 
@@ -13455,7 +13284,7 @@ const query = useQuery(
   orpc.planet.list.queryOptions({
     input: { cursor: 0 },
   }),
-);
+)
 
 const infinite = useInfiniteQuery(
   orpc.planet.list.infiniteOptions({
@@ -13463,22 +13292,21 @@ const infinite = useInfiniteQuery(
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   }),
-);
+)
 
-const mutation = useMutation(orpc.planet.create.mutationOptions());
+const mutation = useMutation(orpc.planet.create.mutationOptions())
 ```
 
 ```ts [trpc/tanstack-query.ts]
-import { createTRPCContext } from "@trpc/tanstack-react-query";
+import { createTRPCContext } from '@trpc/tanstack-react-query'
 
-export const { TRPCProvider, useTRPC, useTRPCClient } =
-  createTRPCContext<typeof appRouter>();
+export const { TRPCProvider, useTRPC, useTRPCClient } = createTRPCContext<typeof appRouter>()
 
 // ---------------- Usage in React Components ----------------
 
-const trpc = useTRPC();
+const trpc = useTRPC()
 
-const query = useQuery(trpc.planet.list.queryOptions({ cursor: 0 }));
+const query = useQuery(trpc.planet.list.queryOptions({ cursor: 0 }))
 
 const infinite = useInfiniteQuery(
   trpc.planet.list.infiniteQueryOptions(
@@ -13488,9 +13316,9 @@ const infinite = useInfiniteQuery(
       getNextPageParam: (lastPage) => lastPage.nextCursor,
     },
   ),
-);
+)
 
-const mutation = useMutation(trpc.planet.create.mutationOptions());
+const mutation = useMutation(trpc.planet.create.mutationOptions())
 ```
 
 :::
@@ -13553,17 +13381,11 @@ Here is the complete procedure builder system implementation over the basic [pro
 ::: code-group
 
 ```ts [server/src/builder.ts]
-import type { IntersectPick } from "@orpc/shared";
-import type { Middleware } from "./middleware";
-import type { ProcedureDef, ProcedureHandler } from "./procedure";
-import type {
-  AnySchema,
-  Context,
-  InferSchemaInput,
-  InferSchemaOutput,
-  Schema,
-} from "./types";
-import { Procedure } from "./procedure";
+import type { IntersectPick } from '@orpc/shared'
+import type { Middleware } from './middleware'
+import type { ProcedureDef, ProcedureHandler } from './procedure'
+import type { AnySchema, Context, InferSchemaInput, InferSchemaOutput, Schema } from './types'
+import { Procedure } from './procedure'
 
 export interface BuilderDef<
   TInitialContext extends Context,
@@ -13572,7 +13394,7 @@ export interface BuilderDef<
   TOutputSchema extends AnySchema,
 > extends Omit<
   ProcedureDef<TInitialContext, TCurrentContext, TInputSchema, TOutputSchema>,
-  "handler"
+  'handler'
 > {}
 
 export class Builder<
@@ -13584,38 +13406,21 @@ export class Builder<
   /**
    * Holds the builder configuration.
    */
-  "~orpc": BuilderDef<
-    TInitialContext,
-    TCurrentContext,
-    TInputSchema,
-    TOutputSchema
-  >;
+  '~orpc': BuilderDef<TInitialContext, TCurrentContext, TInputSchema, TOutputSchema>
 
-  constructor(
-    def: BuilderDef<
-      TInitialContext,
-      TCurrentContext,
-      TInputSchema,
-      TOutputSchema
-    >,
-  ) {
-    this["~orpc"] = def;
+  constructor(def: BuilderDef<TInitialContext, TCurrentContext, TInputSchema, TOutputSchema>) {
+    this['~orpc'] = def
   }
 
   /**
    * Sets the initial context type.
    */
-  $context<U extends Context>(): Builder<
-    U & Record<never, never>,
-    U,
-    TInputSchema,
-    TOutputSchema
-  > {
+  $context<U extends Context>(): Builder<U & Record<never, never>, U, TInputSchema, TOutputSchema> {
     // `& Record<never, never>` prevents "has no properties in common" TypeScript errors
     return new Builder({
-      ...this["~orpc"],
+      ...this['~orpc'],
       middlewares: [],
-    });
+    })
   }
 
   /**
@@ -13625,7 +13430,7 @@ export class Builder<
     middleware: Middleware<TInitialContext, UOutContext>,
   ): Middleware<TInitialContext, UOutContext> {
     // Ensures UOutContext doesn't conflict with current context
-    return middleware;
+    return middleware
   }
 
   /**
@@ -13641,9 +13446,9 @@ export class Builder<
   > {
     // UOutContext merges with and overrides current context properties
     return new Builder({
-      ...this["~orpc"],
-      middlewares: [...this["~orpc"].middlewares, middleware],
-    });
+      ...this['~orpc'],
+      middlewares: [...this['~orpc'].middlewares, middleware],
+    })
   }
 
   /**
@@ -13653,9 +13458,9 @@ export class Builder<
     schema: USchema,
   ): Builder<TInitialContext, TCurrentContext, USchema, TOutputSchema> {
     return new Builder({
-      ...this["~orpc"],
+      ...this['~orpc'],
       inputSchema: schema,
-    });
+    })
   }
 
   /**
@@ -13665,33 +13470,27 @@ export class Builder<
     schema: USchema,
   ): Builder<TInitialContext, TCurrentContext, TInputSchema, USchema> {
     return new Builder({
-      ...this["~orpc"],
+      ...this['~orpc'],
       outputSchema: schema,
-    });
+    })
   }
 
   /**
    * Defines the procedure handler and creates the final procedure.
    */
   handler<UFuncOutput extends InferSchemaInput<TOutputSchema>>(
-    handler: ProcedureHandler<
-      TCurrentContext,
-      InferSchemaOutput<TInputSchema>,
-      UFuncOutput
-    >,
+    handler: ProcedureHandler<TCurrentContext, InferSchemaOutput<TInputSchema>, UFuncOutput>,
   ): Procedure<
     TInitialContext,
     TCurrentContext,
     TInputSchema,
-    TOutputSchema extends { initial?: true }
-      ? Schema<UFuncOutput>
-      : TOutputSchema
+    TOutputSchema extends { initial?: true } ? Schema<UFuncOutput> : TOutputSchema
   > {
     // If no output schema is defined, infer it from handler return type
     return new Procedure({
-      ...this["~orpc"],
+      ...this['~orpc'],
       handler,
-    }) as any;
+    }) as any
   }
 }
 
@@ -13702,32 +13501,23 @@ export const os = new Builder<
   Schema<unknown, unknown> & { initial?: true }
 >({
   middlewares: [],
-});
+})
 ```
 
 ```ts [server/src/procedure.ts]
-import type { AnyMiddleware } from "./middleware";
-import type { AnySchema, Context } from "./types";
+import type { AnyMiddleware } from './middleware'
+import type { AnySchema, Context } from './types'
 
-export interface ProcedureHandlerOptions<
-  TCurrentContext extends Context,
-  TInput,
-> {
-  context: TCurrentContext;
-  input: TInput;
-  path: readonly string[];
-  procedure: AnyProcedure;
-  signal?: AbortSignal;
+export interface ProcedureHandlerOptions<TCurrentContext extends Context, TInput> {
+  context: TCurrentContext
+  input: TInput
+  path: readonly string[]
+  procedure: AnyProcedure
+  signal?: AbortSignal
 }
 
-export interface ProcedureHandler<
-  TCurrentContext extends Context,
-  TInput,
-  THandlerOutput,
-> {
-  (
-    opt: ProcedureHandlerOptions<TCurrentContext, TInput>,
-  ): Promise<THandlerOutput>;
+export interface ProcedureHandler<TCurrentContext extends Context, TInput, THandlerOutput> {
+  (opt: ProcedureHandlerOptions<TCurrentContext, TInput>): Promise<THandlerOutput>
 }
 
 export interface ProcedureDef<
@@ -13742,11 +13532,11 @@ export interface ProcedureDef<
    * Why `(type: TInitialContext) => unknown` instead of `TInitialContext`?
    * You can read detail about this topic [here](https://www.typescriptlang.org/docs/handbook/2/generics.html#variance-annotations)
    */
-  __initialContext?: (type: TInitialContext) => unknown;
-  middlewares: readonly AnyMiddleware[];
-  inputSchema?: TInputSchema;
-  outputSchema?: TOutputSchema;
-  handler: ProcedureHandler<TCurrentContext, any, any>;
+  __initialContext?: (type: TInitialContext) => unknown
+  middlewares: readonly AnyMiddleware[]
+  inputSchema?: TInputSchema
+  outputSchema?: TOutputSchema
+  handler: ProcedureHandler<TCurrentContext, any, any>
 }
 
 export class Procedure<
@@ -13755,26 +13545,14 @@ export class Procedure<
   TInputSchema extends AnySchema,
   TOutputSchema extends AnySchema,
 > {
-  "~orpc": ProcedureDef<
-    TInitialContext,
-    TCurrentContext,
-    TInputSchema,
-    TOutputSchema
-  >;
+  '~orpc': ProcedureDef<TInitialContext, TCurrentContext, TInputSchema, TOutputSchema>
 
-  constructor(
-    def: ProcedureDef<
-      TInitialContext,
-      TCurrentContext,
-      TInputSchema,
-      TOutputSchema
-    >,
-  ) {
-    this["~orpc"] = def;
+  constructor(def: ProcedureDef<TInitialContext, TCurrentContext, TInputSchema, TOutputSchema>) {
+    this['~orpc'] = def
   }
 }
 
-export type AnyProcedure = Procedure<any, any, any, any>;
+export type AnyProcedure = Procedure<any, any, any, any>
 
 /**
  * TypeScript only enforces type constraints at compile time.
@@ -13784,30 +13562,30 @@ export type AnyProcedure = Procedure<any, any, any, any>;
  */
 export function isProcedure(item: unknown): item is AnyProcedure {
   if (item instanceof Procedure) {
-    return true;
+    return true
   }
 
   return (
-    (typeof item === "object" || typeof item === "function") &&
+    (typeof item === 'object' || typeof item === 'function') &&
     item !== null &&
-    "~orpc" in item &&
-    typeof item["~orpc"] === "object" &&
-    item["~orpc"] !== null &&
-    "middlewares" in item["~orpc"] &&
-    "handler" in item["~orpc"]
-  );
+    '~orpc' in item &&
+    typeof item['~orpc'] === 'object' &&
+    item['~orpc'] !== null &&
+    'middlewares' in item['~orpc'] &&
+    'handler' in item['~orpc']
+  )
 }
 ```
 
 ```ts [server/src/middleware.ts]
-import type { MaybeOptionalOptions, Promisable } from "@orpc/shared";
-import type { AnyProcedure } from "./procedure";
-import type { Context } from "./types";
+import type { MaybeOptionalOptions, Promisable } from '@orpc/shared'
+import type { AnyProcedure } from './procedure'
+import type { Context } from './types'
 
 export type MiddlewareResult<TOutContext extends Context> = Promisable<{
-  output: any;
-  context: TOutContext;
-}>;
+  output: any
+  context: TOutContext
+}>
 
 /**
  * By conditional checking `Record<never, never> extends TOutContext`
@@ -13815,34 +13593,27 @@ export type MiddlewareResult<TOutContext extends Context> = Promisable<{
  *
  */
 export type MiddlewareNextFnOptions<TOutContext extends Context> =
-  Record<never, never> extends TOutContext
-    ? { context?: TOutContext }
-    : { context: TOutContext };
+  Record<never, never> extends TOutContext ? { context?: TOutContext } : { context: TOutContext }
 
 export interface MiddlewareNextFn {
   <U extends Context = Record<never, never>>(
     ...rest: MaybeOptionalOptions<MiddlewareNextFnOptions<U>>
-  ): MiddlewareResult<U>;
+  ): MiddlewareResult<U>
 }
 
 export interface MiddlewareOptions<TInContext extends Context> {
-  context: TInContext;
-  path: readonly string[];
-  procedure: AnyProcedure;
-  signal?: AbortSignal;
-  next: MiddlewareNextFn;
+  context: TInContext
+  path: readonly string[]
+  procedure: AnyProcedure
+  signal?: AbortSignal
+  next: MiddlewareNextFn
 }
 
-export interface Middleware<
-  TInContext extends Context,
-  TOutContext extends Context,
-> {
-  (
-    options: MiddlewareOptions<TInContext>,
-  ): Promisable<MiddlewareResult<TOutContext>>;
+export interface Middleware<TInContext extends Context, TOutContext extends Context> {
+  (options: MiddlewareOptions<TInContext>): Promisable<MiddlewareResult<TOutContext>>
 }
 
-export type AnyMiddleware = Middleware<any, any>;
+export type AnyMiddleware = Middleware<any, any>
 ```
 
 :::
@@ -13854,18 +13625,16 @@ The router is another essential component of oRPC that organizes procedures into
 ::: code-group
 
 ```ts [server/src/router.ts]
-import type { Procedure } from "./procedure";
-import type { Context } from "./types";
+import type { Procedure } from './procedure'
+import type { Context } from './types'
 
 /**
  * Router can be either a single procedure or a nested object of routers.
  * This recursive structure allows for unlimited nesting depth.
  */
-export type Router<T extends Context> =
-  | Procedure<T, any, any, any>
-  | { [k: string]: Router<T> };
+export type Router<T extends Context> = Procedure<T, any, any, any> | { [k: string]: Router<T> }
 
-export type AnyRouter = Router<any>;
+export type AnyRouter = Router<any>
 
 /**
  * Utility type that extracts the initial context types
@@ -13875,10 +13644,8 @@ export type InferRouterInitialContexts<T extends AnyRouter> =
   T extends Procedure<infer UInitialContext, any, any, any>
     ? UInitialContext
     : {
-        [K in keyof T]: T[K] extends AnyRouter
-          ? InferRouterInitialContexts<T[K]>
-          : never;
-      };
+        [K in keyof T]: T[K] extends AnyRouter ? InferRouterInitialContexts<T[K]> : never
+      }
 ```
 
 :::
@@ -13893,15 +13660,15 @@ const authMiddleware = os
   .$context<{ user?: { id: string; name: string } }>()
   .middleware(async ({ context, next }) => {
     if (!context.user) {
-      throw new Error("Unauthorized");
+      throw new Error('Unauthorized')
     }
 
     return next({
       context: {
         user: context.user,
       },
-    });
-  });
+    })
+  })
 
 // Public procedure with input validation
 export const listPlanet = os
@@ -13913,8 +13680,8 @@ export const listPlanet = os
   )
   .handler(async ({ input }) => {
     // Fetch planets with pagination
-    return [{ id: 1, name: "Earth" }];
-  });
+    return [{ id: 1, name: 'Earth' }]
+  })
 
 // Protected procedure with context and middleware
 export const createPlanet = os
@@ -13923,13 +13690,13 @@ export const createPlanet = os
   .input(PlanetSchema.omit({ id: true }))
   .handler(async ({ input, context }) => {
     // Create new planet (user is guaranteed to exist via middleware)
-    return { id: 2, name: input.name };
-  });
+    return { id: 2, name: input.name }
+  })
 
 export const router = {
   listPlanet,
   createPlanet,
-};
+}
 ```
 
 ---
@@ -13958,40 +13725,31 @@ Here is the complete implementation of the [server-side client](/docs/client/ser
 ::: code-group
 
 ```ts [server/src/procedure-client.ts]
-import type { Client } from "@mini-orpc/client";
-import type { MaybeOptionalOptions } from "@orpc/shared";
-import type {
-  AnyProcedure,
-  Procedure,
-  ProcedureHandlerOptions,
-} from "./procedure";
-import type {
-  AnySchema,
-  Context,
-  InferSchemaInput,
-  InferSchemaOutput,
-} from "./types";
-import { ORPCError } from "@mini-orpc/client";
-import { resolveMaybeOptionalOptions } from "@orpc/shared";
-import { ValidationError } from "./error";
+import type { Client } from '@mini-orpc/client'
+import type { MaybeOptionalOptions } from '@orpc/shared'
+import type { AnyProcedure, Procedure, ProcedureHandlerOptions } from './procedure'
+import type { AnySchema, Context, InferSchemaInput, InferSchemaOutput } from './types'
+import { ORPCError } from '@mini-orpc/client'
+import { resolveMaybeOptionalOptions } from '@orpc/shared'
+import { ValidationError } from './error'
 
 export type ProcedureClient<
   TInputSchema extends AnySchema,
   TOutputSchema extends AnySchema,
-> = Client<InferSchemaInput<TInputSchema>, InferSchemaOutput<TOutputSchema>>;
+> = Client<InferSchemaInput<TInputSchema>, InferSchemaOutput<TOutputSchema>>
 
 /**
  * context can be optional if `Record<never, never> extends TInitialContext`
  */
 export type CreateProcedureClientOptions<TInitialContext extends Context> = {
-  path?: readonly string[];
+  path?: readonly string[]
 } & (Record<never, never> extends TInitialContext
   ? {
-      context?: TInitialContext;
+      context?: TInitialContext
     }
   : {
-      context: TInitialContext;
-    });
+      context: TInitialContext
+    })
 
 /**
  * Turn a procedure into a callable function
@@ -14004,7 +13762,7 @@ export function createProcedureClient<
   procedure: Procedure<TInitialContext, any, TInputSchema, TOutputSchema>,
   ...rest: MaybeOptionalOptions<CreateProcedureClientOptions<TInitialContext>>
 ): ProcedureClient<TInputSchema, TOutputSchema> {
-  const options = resolveMaybeOptionalOptions(rest);
+  const options = resolveMaybeOptionalOptions(rest)
 
   return (...[input, callerOptions]) => {
     return executeProcedureInternal(procedure, {
@@ -14013,81 +13771,71 @@ export function createProcedureClient<
       path: options.path ?? [],
       procedure,
       signal: callerOptions?.signal,
-    });
-  };
+    })
+  }
 }
 
-async function validateInput(
-  procedure: AnyProcedure,
-  input: unknown,
-): Promise<any> {
-  const schema = procedure["~orpc"].inputSchema;
+async function validateInput(procedure: AnyProcedure, input: unknown): Promise<any> {
+  const schema = procedure['~orpc'].inputSchema
 
   if (!schema) {
-    return input;
+    return input
   }
 
-  const result = await schema["~standard"].validate(input);
+  const result = await schema['~standard'].validate(input)
   if (result.issues) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "Input validation failed",
+    throw new ORPCError('BAD_REQUEST', {
+      message: 'Input validation failed',
       data: {
         issues: result.issues,
       },
       cause: new ValidationError({
-        message: "Input validation failed",
+        message: 'Input validation failed',
         issues: result.issues,
       }),
-    });
+    })
   }
 
-  return result.value;
+  return result.value
 }
 
-async function validateOutput(
-  procedure: AnyProcedure,
-  output: unknown,
-): Promise<any> {
-  const schema = procedure["~orpc"].outputSchema;
+async function validateOutput(procedure: AnyProcedure, output: unknown): Promise<any> {
+  const schema = procedure['~orpc'].outputSchema
 
   if (!schema) {
-    return output;
+    return output
   }
 
-  const result = await schema["~standard"].validate(output);
+  const result = await schema['~standard'].validate(output)
   if (result.issues) {
-    throw new ORPCError("INTERNAL_SERVER_ERROR", {
-      message: "Output validation failed",
+    throw new ORPCError('INTERNAL_SERVER_ERROR', {
+      message: 'Output validation failed',
       cause: new ValidationError({
-        message: "Output validation failed",
+        message: 'Output validation failed',
         issues: result.issues,
       }),
-    });
+    })
   }
 
-  return result.value;
+  return result.value
 }
 
 function executeProcedureInternal(
   procedure: AnyProcedure,
   options: ProcedureHandlerOptions<any, any>,
 ): Promise<any> {
-  const middlewares = procedure["~orpc"].middlewares;
-  const inputValidationIndex = 0;
-  const outputValidationIndex = 0;
+  const middlewares = procedure['~orpc'].middlewares
+  const inputValidationIndex = 0
+  const outputValidationIndex = 0
 
-  const next = async (
-    index: number,
-    context: Context,
-    input: unknown,
-  ): Promise<unknown> => {
-    let currentInput = input;
+  const next = async (index: number, context: Context, input: unknown): Promise<unknown> => {
+    let currentInput = input
 
     if (index === inputValidationIndex) {
-      currentInput = await validateInput(procedure, currentInput);
+      currentInput = await validateInput(procedure, currentInput)
     }
 
-    const mid = middlewares[index];
+    const mid = middlewares[index]
 
     const output = mid
       ? (
@@ -14095,65 +13843,58 @@ function executeProcedureInternal(
             ...options,
             context,
             next: async (...[nextOptions]) => {
-              const nextContext: Context = nextOptions?.context ?? {};
+              const nextContext: Context = nextOptions?.context ?? {}
 
               return {
-                output: await next(
-                  index + 1,
-                  { ...context, ...nextContext },
-                  currentInput,
-                ),
+                output: await next(index + 1, { ...context, ...nextContext }, currentInput),
                 context: nextContext,
-              };
+              }
             },
           })
         ).output
-      : await procedure["~orpc"].handler({
+      : await procedure['~orpc'].handler({
           ...options,
           context,
           input: currentInput,
-        });
+        })
 
     if (index === outputValidationIndex) {
-      return await validateOutput(procedure, output);
+      return await validateOutput(procedure, output)
     }
 
-    return output;
-  };
+    return output
+  }
 
-  return next(0, options.context, options.input);
+  return next(0, options.context, options.input)
 }
 ```
 
 ```ts [client/src/error.ts]
-import type { MaybeOptionalOptions } from "@orpc/shared";
-import { isObject, resolveMaybeOptionalOptions } from "@orpc/shared";
+import type { MaybeOptionalOptions } from '@orpc/shared'
+import { isObject, resolveMaybeOptionalOptions } from '@orpc/shared'
 
 export type ORPCErrorOptions<TData> = ErrorOptions & {
-  status?: number;
-  message?: string;
-} & (undefined extends TData ? { data?: TData } : { data: TData });
+  status?: number
+  message?: string
+} & (undefined extends TData ? { data?: TData } : { data: TData })
 
 export class ORPCError<TCode extends string, TData> extends Error {
-  readonly code: TCode;
-  readonly status: number;
-  readonly data: TData;
+  readonly code: TCode
+  readonly status: number
+  readonly data: TData
 
-  constructor(
-    code: TCode,
-    ...rest: MaybeOptionalOptions<ORPCErrorOptions<TData>>
-  ) {
-    const options = resolveMaybeOptionalOptions(rest);
+  constructor(code: TCode, ...rest: MaybeOptionalOptions<ORPCErrorOptions<TData>>) {
+    const options = resolveMaybeOptionalOptions(rest)
 
     if (options?.status && !isORPCErrorStatus(options.status)) {
-      throw new Error("[ORPCError] Invalid error status code.");
+      throw new Error('[ORPCError] Invalid error status code.')
     }
 
-    super(options.message, options);
+    super(options.message, options)
 
-    this.code = code;
-    this.status = options.status ?? 500; // Default to 500 if not provided
-    this.data = options.data as TData; // data only optional when TData is undefinable so can safely cast here
+    this.code = code
+    this.status = options.status ?? 500 // Default to 500 if not provided
+    this.data = options.data as TData // data only optional when TData is undefinable so can safely cast here
   }
 
   toJSON(): ORPCErrorJSON<TCode, TData> {
@@ -14162,57 +13903,55 @@ export class ORPCError<TCode extends string, TData> extends Error {
       status: this.status,
       message: this.message,
       data: this.data,
-    };
+    }
   }
 }
 
 export type ORPCErrorJSON<TCode extends string, TData> = Pick<
   ORPCError<TCode, TData>,
-  "code" | "status" | "message" | "data"
->;
+  'code' | 'status' | 'message' | 'data'
+>
 
 export function isORPCErrorStatus(status: number): boolean {
-  return status < 200 || status >= 400;
+  return status < 200 || status >= 400
 }
 
-export function isORPCErrorJson(
-  json: unknown,
-): json is ORPCErrorJSON<string, unknown> {
+export function isORPCErrorJson(json: unknown): json is ORPCErrorJSON<string, unknown> {
   if (!isObject(json)) {
-    return false;
+    return false
   }
 
-  const validKeys = ["code", "status", "message", "data"];
+  const validKeys = ['code', 'status', 'message', 'data']
   if (Object.keys(json).some((k) => !validKeys.includes(k))) {
-    return false;
+    return false
   }
 
   return (
-    "code" in json &&
-    typeof json.code === "string" &&
-    "status" in json &&
-    typeof json.status === "number" &&
+    'code' in json &&
+    typeof json.code === 'string' &&
+    'status' in json &&
+    typeof json.status === 'number' &&
     isORPCErrorStatus(json.status) &&
-    "message" in json &&
-    typeof json.message === "string"
-  );
+    'message' in json &&
+    typeof json.message === 'string'
+  )
 }
 ```
 
 ```ts [client/src/types.ts]
 export interface ClientOptions {
-  signal?: AbortSignal;
+  signal?: AbortSignal
 }
 
 export type ClientRest<TInput> = undefined extends TInput
   ? [input?: TInput, options?: ClientOptions]
-  : [input: TInput, options?: ClientOptions];
+  : [input: TInput, options?: ClientOptions]
 
 export interface Client<TInput, TOutput> {
-  (...rest: ClientRest<TInput>): Promise<TOutput>;
+  (...rest: ClientRest<TInput>): Promise<TOutput>
 }
 
-export type NestedClient = Client<any, any> | { [k: string]: NestedClient };
+export type NestedClient = Client<any, any> | { [k: string]: NestedClient }
 ```
 
 :::
@@ -14224,63 +13963,56 @@ Creating a client for each procedure individually can be tedious. Here is how to
 ::: code-group
 
 ```ts [server/src/router-client.ts]
-import type { MaybeOptionalOptions } from "@orpc/shared";
-import type { Procedure } from "./procedure";
-import type {
-  CreateProcedureClientOptions,
-  ProcedureClient,
-} from "./procedure-client";
-import type { AnyRouter, InferRouterInitialContexts } from "./router";
-import { resolveMaybeOptionalOptions, toArray } from "@orpc/shared";
-import { isProcedure } from "./procedure";
-import { createProcedureClient } from "./procedure-client";
+import type { MaybeOptionalOptions } from '@orpc/shared'
+import type { Procedure } from './procedure'
+import type { CreateProcedureClientOptions, ProcedureClient } from './procedure-client'
+import type { AnyRouter, InferRouterInitialContexts } from './router'
+import { resolveMaybeOptionalOptions, toArray } from '@orpc/shared'
+import { isProcedure } from './procedure'
+import { createProcedureClient } from './procedure-client'
 
 export type RouterClient<TRouter extends AnyRouter> =
   TRouter extends Procedure<any, any, infer UInputSchema, infer UOutputSchema>
     ? ProcedureClient<UInputSchema, UOutputSchema>
     : {
-        [K in keyof TRouter]: TRouter[K] extends AnyRouter
-          ? RouterClient<TRouter[K]>
-          : never;
-      };
+        [K in keyof TRouter]: TRouter[K] extends AnyRouter ? RouterClient<TRouter[K]> : never
+      }
 
 /**
  * Turn a router into a chainable procedure client.
  */
 export function createRouterClient<T extends AnyRouter>(
   router: T,
-  ...rest: MaybeOptionalOptions<
-    CreateProcedureClientOptions<InferRouterInitialContexts<T>>
-  >
+  ...rest: MaybeOptionalOptions<CreateProcedureClientOptions<InferRouterInitialContexts<T>>>
 ): RouterClient<T> {
-  const options = resolveMaybeOptionalOptions(rest);
+  const options = resolveMaybeOptionalOptions(rest)
 
   if (isProcedure(router)) {
-    const caller = createProcedureClient(router, options);
+    const caller = createProcedureClient(router, options)
 
-    return caller as RouterClient<T>;
+    return caller as RouterClient<T>
   }
 
   const recursive = new Proxy(router, {
     get(target, key) {
-      if (typeof key !== "string") {
-        return Reflect.get(target, key);
+      if (typeof key !== 'string') {
+        return Reflect.get(target, key)
       }
 
-      const next = router[key] as AnyRouter | undefined;
+      const next = router[key] as AnyRouter | undefined
 
       if (!next) {
-        return Reflect.get(target, key);
+        return Reflect.get(target, key)
       }
 
       return createRouterClient(next, {
         ...options,
         path: [...toArray(options.path), key],
-      });
+      })
     },
-  });
+  })
 
-  return recursive as unknown as RouterClient<T>;
+  return recursive as unknown as RouterClient<T>
 }
 ```
 
@@ -14293,17 +14025,17 @@ Transform any procedure or router into a callable client for server-side use:
 ```ts
 // Create a client for a single procedure
 const procedureClient = createProcedureClient(myProcedure, {
-  context: { userId: "123" },
-});
+  context: { userId: '123' },
+})
 
-const result = await procedureClient({ input: "example" });
+const result = await procedureClient({ input: 'example' })
 
 // Create a client for an entire router
 const routerClient = createRouterClient(myRouter, {
-  context: { userId: "123" },
-});
+  context: { userId: '123' },
+})
 
-const result = await routerClient.someProcedure({ input: "example" });
+const result = await routerClient.someProcedure({ input: 'example' })
 ```
 
 ---
@@ -14332,61 +14064,56 @@ Here's the complete implementation of the [client-side client](/docs/client/clie
 ::: code-group
 
 ```ts [server/src/fetch/handler.ts]
-import { ORPCError } from "@mini-orpc/client";
-import { get, parseEmptyableJSON } from "@orpc/shared";
-import { isProcedure } from "../procedure";
-import { createProcedureClient } from "../procedure-client";
-import type { Router } from "../router";
-import type { Context } from "../types";
+import { ORPCError } from '@mini-orpc/client'
+import { get, parseEmptyableJSON } from '@orpc/shared'
+import { isProcedure } from '../procedure'
+import { createProcedureClient } from '../procedure-client'
+import type { Router } from '../router'
+import type { Context } from '../types'
 
 export interface JSONHandlerHandleOptions<T extends Context> {
-  prefix?: `/${string}`;
-  context: T;
+  prefix?: `/${string}`
+  context: T
 }
 
 export type JSONHandlerHandleResult =
-  | { matched: true; response: Response }
-  | { matched: false; response?: undefined };
+  { matched: true; response: Response } | { matched: false; response?: undefined }
 
 export class RPCHandler<T extends Context> {
-  private readonly router: Router<T>;
+  private readonly router: Router<T>
 
   constructor(router: Router<T>) {
-    this.router = router;
+    this.router = router
   }
 
   async handle(
     request: Request,
     options: JSONHandlerHandleOptions<T>,
   ): Promise<JSONHandlerHandleResult> {
-    const prefix = options.prefix;
-    const url = new URL(request.url);
+    const prefix = options.prefix
+    const url = new URL(request.url)
 
-    if (
-      prefix &&
-      !url.pathname.startsWith(`${prefix}/`) &&
-      url.pathname !== prefix
-    ) {
-      return { matched: false, response: undefined };
+    if (prefix && !url.pathname.startsWith(`${prefix}/`) && url.pathname !== prefix) {
+      return { matched: false, response: undefined }
     }
 
-    const pathname = prefix ? url.pathname.replace(prefix, "") : url.pathname;
+    const pathname = prefix ? url.pathname.replace(prefix, '') : url.pathname
 
     const path = pathname
-      .replace(/^\/|\/$/g, "")
-      .split("/")
-      .map(decodeURIComponent);
+      .replace(/^\/|\/$/g, '')
+      .split('/')
+      .map(decodeURIComponent)
 
-    const procedure = get(this.router, path);
+    const procedure = get(this.router, path)
 
     if (!isProcedure(procedure)) {
-      return { matched: false, response: undefined };
+      return { matched: false, response: undefined }
     }
 
     const client = createProcedureClient(procedure, {
       context: options.context,
       path,
-    });
+    })
 
     try {
       /**
@@ -14395,75 +14122,71 @@ export class RPCHandler<T extends Context> {
        * For more complex data types, consider using a library like [SuperJSON](https://github.com/flightcontrolhq/superjson).
        * Note: oRPC uses its own optimized serialization for internal transfers.
        */
-      const input = parseEmptyableJSON(await request.text());
+      const input = parseEmptyableJSON(await request.text())
 
       const output = await client(input, {
         signal: request.signal,
-      });
+      })
 
-      const response = Response.json(output);
+      const response = Response.json(output)
 
       return {
         matched: true,
         response,
-      };
+      }
     } catch (e) {
       const error =
         e instanceof ORPCError
           ? e
-          : new ORPCError("INTERNAL_ERROR", {
-              message: "An error occurred while processing the request.",
+          : new ORPCError('INTERNAL_ERROR', {
+              message: 'An error occurred while processing the request.',
               cause: e,
-            });
+            })
 
       const response = new Response(JSON.stringify(error.toJSON()), {
         status: error.status,
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-      });
+      })
 
       return {
         matched: true,
         response,
-      };
+      }
     }
   }
 }
 ```
 
 ```ts [client/src/fetch/link.ts]
-import { parseEmptyableJSON } from "@orpc/shared";
-import { isORPCErrorJson, isORPCErrorStatus, ORPCError } from "../error";
-import type { ClientOptions } from "../types";
+import { parseEmptyableJSON } from '@orpc/shared'
+import { isORPCErrorJson, isORPCErrorStatus, ORPCError } from '../error'
+import type { ClientOptions } from '../types'
 
 export interface JSONLinkOptions {
-  url: string | URL;
+  url: string | URL
 }
 
 export class RPCLink {
-  private readonly url: string | URL;
+  private readonly url: string | URL
 
   constructor(options: JSONLinkOptions) {
-    this.url = options.url;
+    this.url = options.url
   }
 
-  async call(
-    path: readonly string[],
-    input: any,
-    options: ClientOptions,
-  ): Promise<any> {
-    const url = new URL(this.url);
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/${path.join("/")}`;
+  async call(path: readonly string[], input: any, options: ClientOptions): Promise<any> {
+    const url = new URL(this.url)
+    url.pathname = `${url.pathname.replace(/\/$/, '')}/${path.join('/')}`
 
     const response = await fetch(url, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(input),
       signal: options.signal,
-    });
+    })
 
     /**
      * The request body may be empty, which is interpreted as `undefined` output/error.
@@ -14471,20 +14194,20 @@ export class RPCLink {
      * For more complex data types, consider using a library like [SuperJSON](https://github.com/flightcontrolhq/superjson).
      * Note: oRPC uses its own optimized serialization for internal transfers.
      */
-    const body = await parseEmptyableJSON(await response.text());
+    const body = await parseEmptyableJSON(await response.text())
 
     if (isORPCErrorStatus(response.status) && isORPCErrorJson(body)) {
-      throw new ORPCError(body.code, body);
+      throw new ORPCError(body.code, body)
     }
 
     if (!response.ok) {
       throw new Error(
         `[ORPC] Request failed with status ${response.status}: ${response.statusText}`,
         { cause: response },
-      );
+      )
     }
 
-    return body;
+    return body
   }
 }
 ```
@@ -14498,14 +14221,14 @@ We can create a type-safe wrapper for easier client-side usage:
 ::: code-group
 
 ```ts [client/src/client.ts]
-import type { RPCLink } from "./fetch";
-import type { Client, ClientOptions, NestedClient } from "./types";
+import type { RPCLink } from './fetch'
+import type { Client, ClientOptions, NestedClient } from './types'
 
 export interface createORPCClientOptions {
   /**
    * Base path for all procedures. Useful when calling only a subset of procedures.
    */
-  path?: readonly string[];
+  path?: readonly string[]
 }
 
 /**
@@ -14515,28 +14238,28 @@ export function createORPCClient<T extends NestedClient>(
   link: RPCLink,
   options: createORPCClientOptions = {},
 ): T {
-  const path = options.path ?? [];
+  const path = options.path ?? []
 
   const procedureClient: Client<unknown, unknown> = async (
     ...[input, clientOptions = {} as ClientOptions]
   ) => {
-    return await link.call(path, input, clientOptions);
-  };
+    return await link.call(path, input, clientOptions)
+  }
 
   const recursive = new Proxy(procedureClient, {
     get(target, key) {
-      if (typeof key !== "string") {
-        return Reflect.get(target, key);
+      if (typeof key !== 'string') {
+        return Reflect.get(target, key)
       }
 
       return createORPCClient(link, {
         ...options,
         path: [...path, key],
-      });
+      })
     },
-  });
+  })
 
-  return recursive as any;
+  return recursive as any
 }
 ```
 
@@ -14549,11 +14272,11 @@ Simply set up a client and enjoy a server-side-like experience:
 ```ts
 const link = new RPCLink({
   url: `${window.location.origin}/rpc`,
-});
+})
 
-export const orpc: RouterClient<typeof router> = createORPCClient(link);
+export const orpc: RouterClient<typeof router> = createORPCClient(link)
 
-const result = await orpc.someProcedure({ input: "example" });
+const result = await orpc.someProcedure({ input: 'example' })
 ```
 
 ---
@@ -14683,9 +14406,9 @@ extend your [CORS allowlist](https://developer.mozilla.org/en-US/docs/Glossary/C
 
 ```ts
 const cors = new CORSHandlerPlugin({
-  allowHeaders: ["Content-Disposition", "Standard-Server"],
-  exposeHeaders: ["Content-Disposition", "Standard-Server"],
-});
+  allowHeaders: ['Content-Disposition', 'Standard-Server'],
+  exposeHeaders: ['Content-Disposition', 'Standard-Server'],
+})
 ```
 
 :::

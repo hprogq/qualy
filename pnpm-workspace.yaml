@@ -6,22 +6,23 @@ allowBuilds:
   esbuild: true
 catalog:
   cordis: 4.0.0-rc.7
-  "@cordisjs/plugin-loader": 1.0.0-rc.5
-  "@cordisjs/plugin-include": 1.0.4
-  "@cordisjs/plugin-hmr": 1.0.15
-  "@cordisjs/plugin-timer": 1.1.2
-  "@cordisjs/plugin-logger-console": 1.0.0
-  "@types/node": 24.13.3
+  '@cordisjs/plugin-loader': 1.0.0-rc.5
+  '@cordisjs/plugin-include': 1.0.4
+  '@cordisjs/plugin-hmr': 1.0.15
+  '@cordisjs/plugin-timer': 1.1.2
+  '@cordisjs/plugin-logger-console': 1.0.0
+  '@types/node': 24.13.3
   typescript: ~6.0.3
-  "@orpc/server": 2.0.0-beta.21
-  "@orpc/contract": 2.0.0-beta.21
-  "@orpc/openapi": 2.0.0-beta.21
-  "@orpc/client": 2.0.0-beta.21
+  '@orpc/server': 2.0.0-beta.21
+  '@orpc/contract': 2.0.0-beta.21
+  '@orpc/openapi': 2.0.0-beta.21
+  '@orpc/client': 2.0.0-beta.21
   zod: 4.4.3
   tsx: 4.23.1
   drizzle-orm: 1.0.0-rc.4
   drizzle-kit: 1.0.0-rc.4
   pg: 8.22.0
-  "@types/pg": 8.20.0
+  '@types/pg': 8.20.0
   yaml: 2.9.0
   vitest: 4.1.10
+  prettier: 3.9.6

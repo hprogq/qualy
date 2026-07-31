@@ -30,15 +30,15 @@
 
 ## 逐条处置对照
 
-| 指令 | 处置 | 落点 |
-|---|---|---|
-| A1-A5 | 已实现 | installed.lock.json、scripts/lib/installed.ts、scripts/plugin-add.ts、gen 硬失败、CI 不变式测试(scripts/tests/invariants.test.ts);commit "installed lock as schema authority"(amend 原 7da7ac0) |
-| B6-B8 | 已实现 | generated/db/assembly.gen.ts、各插件 schema.entry.ts、assembly.lock.json、drizzle.config migrations 配置;commit "assembly manifest with per-plugin schema entries" |
-| C9-C10 | 已实现 | packages/plugins/infra/database(Service.init 全序列、checksum 拒启实测、migration_audit、register + ping 示范);commit "migration execution with checksum verification and object registry" |
-| D11-D15 | 已实现 | scripts/lib/behavior.ts、scripts/db-gen.ts、scripts/drop-guard.ts、CLAUDE.md 纪律条款;片段编译/免疫/回滚全部实测;commit "behavior fragment lane with orchestrated generation and drop guard" |
-| E16-E18 | 文档定案(实现随 P3) | docs/architecture/database.md §6 |
-| F19-F20 | 已实现 | .github/workflows/ci.yml、vitest 4.1.10;commit "ci gate, vitest, pinned toolchain and tracked docs" |
-| G21-G25 | 已实现/已确认 | mise.toml 钉死 24.18.0/11.8.0、docs 解除忽略入库、PURGE 文档化(architecture §7)、RC 风控入 CLAUDE、既有实现确认保留 |
-| H26-H27 | 本批文档 | notes/drizzle.md 扩写、本文、architecture/database.md、CLAUDE/STATUS 更新 |
+| 指令    | 处置                | 落点                                                                                                                                                                                            |
+| ------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1-A5   | 已实现              | installed.lock.json、scripts/lib/installed.ts、scripts/plugin-add.ts、gen 硬失败、CI 不变式测试(scripts/tests/invariants.test.ts);commit "installed lock as schema authority"(amend 原 7da7ac0) |
+| B6-B8   | 已实现              | generated/db/assembly.gen.ts、各插件 schema.entry.ts、assembly.lock.json、drizzle.config migrations 配置;commit "assembly manifest with per-plugin schema entries"                              |
+| C9-C10  | 已实现              | packages/plugins/infra/database(Service.init 全序列、checksum 拒启实测、migration_audit、register + ping 示范);commit "migration execution with checksum verification and object registry"      |
+| D11-D15 | 已实现              | scripts/lib/behavior.ts、scripts/db-gen.ts、scripts/drop-guard.ts、CLAUDE.md 纪律条款;片段编译/免疫/回滚全部实测;commit "behavior fragment lane with orchestrated generation and drop guard"    |
+| E16-E18 | 文档定案(实现随 P3) | docs/architecture/database.md §6                                                                                                                                                                |
+| F19-F20 | 已实现              | .github/workflows/ci.yml、vitest 4.1.10;commit "ci gate, vitest, pinned toolchain and tracked docs"                                                                                             |
+| G21-G25 | 已实现/已确认       | mise.toml 钉死 24.18.0/11.8.0、docs 解除忽略入库、PURGE 文档化(architecture §7)、RC 风控入 CLAUDE、既有实现确认保留                                                                             |
+| H26-H27 | 本批文档            | notes/drizzle.md 扩写、本文、architecture/database.md、CLAUDE/STATUS 更新                                                                                                                       |
 
 审计基线:第一轮产物 commit 7da7ac0(经 A 组 amend 为新哈希);第二轮六个 commit 见 git log(feat(db)×4 + chore(repo) + docs(db))。

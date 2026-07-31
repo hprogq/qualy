@@ -16,7 +16,10 @@ describe('schema aggregation invariants', () => {
       "name: '@qualy/plugin-ping'\n  disabled: true",
     )
     expect(mutated, 'test fixture must actually disable ping').not.toBe(yml)
-    const tmpYml = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-invariant-')), 'cordis.yml')
+    const tmpYml = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-invariant-')),
+      'cordis.yml',
+    )
     fs.writeFileSync(tmpYml, mutated)
     expect(
       resolveSchemaEntries({ ymlPath: tmpYml }),
