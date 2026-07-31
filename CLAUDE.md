@@ -22,7 +22,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 启动入口是 packages/app/src/main.ts(复刻 cordis bin + SIGINT/SIGTERM 优雅关闭:根 fiber dispose 级联清理、5s 超时与二次信号强退);不要直跑 node_modules/cordis/bin.js(零信号处理,Ctrl+C 即硬杀)。
 - database 插件 url 可选,回退 process.env.DATABASE_URL;cordis.yml 不写连接串。
 - drizzle 用 v1(rc):表/视图定义一律 `snakeCase.*` 系列构建器(定义期 casing,TS camelCase 属性自动映射 snake_case 列名,schema 自包含);**禁止**使用 `drizzle()` 或 drizzle.config 的 `casing` 选项(v0 时代产物)。跨插件取表:import 对方包的 /schema 子导出 + inject 对方服务;需要 db.query 关系 API 用 `ctx.db.withRelations(defineRelations(...))`(RQB v2),基础实例 ctx.db.drizzle 永远 schema 无知。
-- 数据层聚合(零生成物):drizzle.config 经 `resolveSchemaEntries()` 直接读 cordis.yml **全量条目(含 disabled)** + 各插件 package.json `qualy.database.schemaEntry`。能力靠声明不靠探测:未声明 = 无数据库能力;声明了但解析失败 = 硬失败。停用不改变聚合(表与数据保留,有不变式测试守护);schema entry 只做直接命名导出。
+- 数据层聚合(零生成物):drizzle.config 经 `resolveSchemaEntries()` 直接读 cordis.yml **全量条目(含 disabled)** + 各插件 package.json `qualy.database.schemaEntry`。能力靠声明不靠探测:未声明 = 无数据库能力;声明了但解析失败 = 硬失败。停用不改变聚合(表与数据保留,有不变式测试守护)。schemaEntry 指向的文件只允许表/枚举/视图的直接命名导出,禁止辅助函数、常量与条件导出;跨插件引用(exports["./schema"])与 kit 聚合共用同一文件(不一致即抛错)。
 - 迁移:`pnpm db:generate`(generate 后自动 drop-guard:新增迁移含 DROP TABLE/COLUMN/SCHEMA...CASCADE 即退出非零,`ALLOW_DESTRUCTIVE=1` 或迁移内 `-- destructive: approved` 放行;命名迁移直接 `pnpm exec drizzle-kit generate --name <名>` 再跑 guard)。已应用迁移不可回改,只 fix-forward。dev 与部署一律先 migrate 后 start(dev 脚本已内置)。
 - 手工 SQL(trigger/function 等):`pnpm db:generate:custom` 产出空迁移,SQL 首行注释 `-- owner: @qualy/plugin-<name>`;首建严格 CREATE,同签名升级 CREATE OR REPLACE,签名变更走 `_v2` 新建切换。
 - **数据层冻结规则**:数据层新增任何机制,必须由触发表(docs/notes/data-layer-retrospective.md)中实际发生的事故或需求触发,禁止预防性建设。元规则:复杂度必须由已发生的问题证明其存在,外部评审意见按此过滤。

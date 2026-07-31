@@ -14,10 +14,11 @@ export interface Entry {
 
 // pass { all: true } (or run with --all) to include disabled entries,
 // release builds aggregate the full superset this way
-export function readEntries(options: { all?: boolean } = {}): Entry[] {
+export function readEntries(options: { all?: boolean; ymlPath?: string } = {}): Entry[] {
   const all = options.all ?? process.argv.includes('--all')
-  const raw = YAML.parse(fs.readFileSync('cordis.yml', 'utf8'))
-  if (!Array.isArray(raw)) throw new Error('cordis.yml must be a top-level array of entries')
+  const ymlPath = options.ymlPath ?? 'cordis.yml'
+  const raw = YAML.parse(fs.readFileSync(ymlPath, 'utf8'))
+  if (!Array.isArray(raw)) throw new Error(`${ymlPath} must be a top-level array of entries`)
 
   const flatten = (entries: Entry[]): Entry[] =>
     entries.flatMap((entry) => {
