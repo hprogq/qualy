@@ -1,6 +1,6 @@
 [tools]
-node = "lts"
-pnpm = "latest"
+node = "24.18.0"
+pnpm = "11.8.0"
 
 [env]
 _.path = ["{{config_root}}/node_modules/.bin"]

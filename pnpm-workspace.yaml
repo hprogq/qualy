@@ -24,3 +24,4 @@ catalog:
   pg: 8.22.0
   "@types/pg": 8.20.0
   yaml: 2.9.0
+  vitest: 4.1.10

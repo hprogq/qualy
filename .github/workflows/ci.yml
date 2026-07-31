@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm gen
+      - name: migration conflict check
+        run: pnpm exec drizzle-kit check
+      - name: no-op generation must leave a clean tree
+        run: |
+          pnpm db:gen
+          git diff --exit-code -- db/migrations installed.lock.json assembly.lock.json behavior.lock.json
+      - name: drop guard over committed lineage
+        run: pnpm exec tsx scripts/drop-guard.ts
+      - run: pnpm test

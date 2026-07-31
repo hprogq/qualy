@@ -43,10 +43,5 @@ Thumbs.db
 *.swp
 *.swo
 
-# not for publication
-/CLAUDE.md
-/STATUS.md
-/docs/
-
 # misc
 *.local
