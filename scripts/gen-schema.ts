@@ -1,6 +1,5 @@
-import path from 'node:path'
+import { buildAssembly, writeAssemblyLock } from './lib/assembly.ts'
 import { writeGenerated } from './lib/codegen.ts'
-import { loadInstalled } from './lib/installed.ts'
 
 // aggregation is driven exclusively by installed.lock.json: deactivating a
 // plugin in cordis.yml must never change this output, so tables outlive
@@ -9,18 +8,19 @@ import { loadInstalled } from './lib/installed.ts'
 
 const initEmpty = process.argv.includes('--init-empty')
 
-const plugins = loadInstalled().filter((plugin) => plugin.database)
+const assembly = buildAssembly()
 
-if (plugins.length === 0 && !initEmpty) {
+if (assembly.plugins.length === 0 && !initEmpty) {
   throw new Error(
     'the installed set contributes no database schema; pass --init-empty if this is intentional',
   )
 }
 
-const lines = plugins.map((plugin) => {
-  const relative = path.relative('db', plugin.database!.schemaEntryFile).split(path.sep).join('/')
-  return `export * from '${relative}'`
-})
-if (lines.length === 0) lines.push('export {}')
+const body = [
+  'export const schemaEntries: string[] = [',
+  ...assembly.schemaEntries.map((entry) => `  '${entry}',`),
+  ']',
+].join('\n')
 
-writeGenerated('db/schema.gen.ts', lines.join('\n'), { source: 'installed.lock.json' })
+writeGenerated('generated/db/assembly.gen.ts', body, { source: 'installed.lock.json' })
+writeAssemblyLock(assembly)

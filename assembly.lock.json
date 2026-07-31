@@ -1,0 +1,15 @@
+{
+  "assemblySha256": "dfa1b967e36777f42d36c4536342e5ab33372819062a437d80756732afdbe381",
+  "plugins": [
+    {
+      "id": "@qualy/plugin-ping",
+      "version": "0.0.0",
+      "schemaEntry": "packages/plugins/demo/ping/src/db/schema.entry.ts",
+      "schemaHash": "7367a849dd6bd6fbf1900cfa179b123f08f56bca773ef0d7c97e35d517e54476",
+      "behaviorHash": null,
+      "dependsOn": [
+        "@qualy/plugin-database"
+      ]
+    }
+  ]
+}

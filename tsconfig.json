@@ -3,7 +3,7 @@
   "include": [
     "*.config.ts",
     "scripts",
-    "db",
+    "generated",
     "packages/*/src",
     "packages/plugins/*/*/src",
     "packages/plugins/*/*/client",

@@ -1,4 +1,5 @@
 import { defineConfig } from 'drizzle-kit'
+import { schemaEntries } from './generated/db/assembly.gen.ts'
 
 try {
   process.loadEnvFile()
@@ -9,8 +10,12 @@ if (!url) console.warn('drizzle-kit: DATABASE_URL is not set, falling back to th
 
 export default defineConfig({
   dialect: 'postgresql',
-  schema: './db/schema.gen.ts',
+  schema: schemaEntries,
   out: './db/migrations',
+  migrations: {
+    schema: 'cordis_meta',
+    table: 'schema_migrations',
+  },
   dbCredentials: {
     url: url ?? 'postgres://qualy:qualy@localhost:5432/qualy',
   },

@@ -7,13 +7,15 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema.ts"
+    "./schema": "./src/db/schema.ts"
   },
   "qualy": {
     "database": {
-      "schemaEntry": "./src/schema.ts"
+      "schemaEntry": "./src/db/schema.entry.ts"
     },
-    "dependsOn": ["@qualy/plugin-database"]
+    "dependsOn": [
+      "@qualy/plugin-database"
+    ]
   },
   "peerDependencies": {
     "cordis": "catalog:"
