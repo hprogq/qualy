@@ -9,6 +9,12 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts"
   },
+  "qualy": {
+    "database": {
+      "schemaEntry": "./src/schema.ts"
+    },
+    "dependsOn": ["@qualy/plugin-database"]
+  },
   "peerDependencies": {
     "cordis": "catalog:"
   },

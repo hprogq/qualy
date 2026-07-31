@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "qualy": {
+    "dependsOn": []
+  },
   "peerDependencies": {
     "cordis": "catalog:"
   },
