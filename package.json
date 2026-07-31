@@ -30,7 +30,7 @@
     "build": "pnpm --filter web build",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "dev": "node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
+    "dev": "pnpm db:migrate && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
     "dev:web": "pnpm --filter web dev",
     "plugin:add": "tsx scripts/plugin-add.ts",
     "test": "vitest run",
