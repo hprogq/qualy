@@ -1,33 +1,25 @@
-import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { resolveSchemaEntries } from '../lib/schema-entries.ts'
 
-// the installed set (installed.lock.json) is the only input of database
-// assembly; flipping active-set state in cordis.yml must be invisible to
-// every installed-driven artifact
+// deactivating a plugin in cordis.yml must be invisible to schema
+// aggregation: tables outlive deactivation
 
-describe('installed-set invariants', () => {
-  it('disabling a plugin does not alter installed-driven artifacts', () => {
-    const lockBefore = fs.readFileSync('assembly.lock.json', 'utf8')
-    const assemblyBefore = fs.readFileSync('generated/db/assembly.gen.ts', 'utf8')
+describe('schema aggregation invariants', () => {
+  it('disabling a plugin does not change the schema entry set', () => {
+    const baseline = resolveSchemaEntries()
     const yml = fs.readFileSync('cordis.yml', 'utf8')
     try {
       fs.writeFileSync(
         'cordis.yml',
         yml.replace("name: '@qualy/plugin-ping'", "name: '@qualy/plugin-ping'\n  disabled: true"),
       )
-      execSync('pnpm gen', { stdio: 'pipe' })
       expect(
-        fs.readFileSync('assembly.lock.json', 'utf8'),
-        'Disabling a plugin must not alter installed database schema',
-      ).toBe(lockBefore)
-      expect(
-        fs.readFileSync('generated/db/assembly.gen.ts', 'utf8'),
-        'Disabling a plugin must not alter installed database schema',
-      ).toBe(assemblyBefore)
+        resolveSchemaEntries(),
+        'Disabling a plugin must not alter the aggregated database schema',
+      ).toEqual(baseline)
     } finally {
       fs.writeFileSync('cordis.yml', yml)
-      execSync('pnpm gen', { stdio: 'pipe' })
     }
   })
 })

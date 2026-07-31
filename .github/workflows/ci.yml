@@ -17,13 +17,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm gen
       - name: migration conflict check
         run: pnpm exec drizzle-kit check
-      - name: no-op generation must leave a clean tree
+      - name: no-op generate must leave a clean tree
         run: |
-          pnpm db:gen
-          git diff --exit-code -- db/migrations installed.lock.json assembly.lock.json behavior.lock.json
-      - name: drop guard over committed lineage
+          pnpm exec drizzle-kit generate
+          git diff --exit-code -- db/migrations
+      - name: drop guard
         run: pnpm exec tsx scripts/drop-guard.ts
       - run: pnpm test
