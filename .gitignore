@@ -7,7 +7,7 @@ build/
 out/
 *.tsbuildinfo
 
-# generated files
+# generated files, reserved for contracts/plugins generators (P0 sessions 5/7), do not remove
 **/*.gen.ts
 
 # environment

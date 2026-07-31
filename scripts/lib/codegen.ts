@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+// reserved for contracts/plugins generators (P0 sessions 5/7), do not remove
+
 export function writeGenerated(
   file: string,
   body: string,

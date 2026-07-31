@@ -1,9 +1,9 @@
 import fs from 'node:fs'
 import YAML from 'yaml'
 
-// cordis.yml describes the ACTIVE set only (what runs); anything derived from
-// the installed set (database schema, migrations) must go through
-// scripts/lib/installed.ts instead and never read this file.
+// cordis.yml describes the ACTIVE set (what runs); schema aggregation goes
+// through scripts/lib/schema-entries.ts, which reads this file with all: true
+// so that disabled entries still contribute their tables.
 
 export interface Entry {
   id?: string

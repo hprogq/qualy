@@ -11,12 +11,8 @@
   },
   "qualy": {
     "database": {
-      "schemaEntry": "./src/db/schema.ts",
-      "behaviorDir": "./db/behavior"
-    },
-    "dependsOn": [
-      "@qualy/plugin-database"
-    ]
+      "schemaEntry": "./src/db/schema.ts"
+    }
   },
   "peerDependencies": {
     "cordis": "catalog:"
