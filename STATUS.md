@@ -52,8 +52,8 @@
 - 服务日志本分:启动(目标+耗时,凭据脱敏)、拆除、异常(传整个 error 对象);查询级日志走 logQueries 配置开关
 - 迁移策略定案(2026-07-31,三组实验):gen-schema 恒超集聚合,停用不删表(实测停用 ping 后 generate 零变更;过滤聚合下 --explain 实证会计划 DROP);删除 yml 条目 = 显式 DROP 审阅动作;手工 SQL 走 pnpm db:custom(--custom 空迁移实测可用)
 - ORM 终审结案维持 drizzle:Orchid 的 rake-db 生成器把外来表纳入改名/删除候选且无范围过滤(双插件实验实锤);翻案条件与全过程归档 notes/drizzle.md;git 已连 github.com/hprogq/qualy 并推送;仓库 AGPL-3.0
-- **数据层完整定案已按 A→H 六提交落地(2026-08-01,唯一权威指令)**:三集合模型(available/installed/active,installed 权威 = installed.lock.json);qualy 声明字段废除探测;assembly.gen.ts + assembly.lock.json 装配;宿主迁移(autoMigrate/advisory lock/checksum 拒启实测/审计旁挂/register 注册表);行为片段车道(NNNN 只增不改/behavior.lock/db:gen 单一编排/drop-guard 实测回滚);CI 最小集 + vitest + mise 钉死;docs 解除忽略入库;E 组 dirty/projection DDL 定案待 P3 实现;PURGE 文档化。机制文档 docs/architecture/database.md,证据 notes/drizzle.md,评审归档 notes/orm-review.md
-- 注意:原 7da7ac0 已被 A 组 amend 重写,远程需 force-with-lease 推送
+- 数据层 v3 治理栈曾按 A→H 六提交建成,随即被**数据层简化令**回退(2026-08-01):完整栈归档于 tag `archive/data-governance-v3`(2c6e8dc),回退动因、删除/保留清单与**约束性触发表**见 docs/notes/data-layer-retrospective.md。现行形态:零生成物聚合(resolveSchemaEntries 读 yml 全量 + qualy.database.schemaEntry 声明)、db:generate + drop-guard、db:generate:custom 手工 SQL 通道、dev 先 migrate 后 start、CI 六步精简版。冻结规则与元规则已入 CLAUDE.md。历史文档(architecture/database.md、orm-review.md)描述的是 v3 形态,查阅时以 tag 与 retrospective 为准
+- 注意:main 历史含 amend 重写,远程需 force-with-lease 推送
 
 ## 下一会话
 

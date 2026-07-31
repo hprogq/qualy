@@ -22,11 +22,10 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 启动入口是 packages/app/src/main.ts(复刻 cordis bin + SIGINT/SIGTERM 优雅关闭:根 fiber dispose 级联清理、5s 超时与二次信号强退);不要直跑 node_modules/cordis/bin.js(零信号处理,Ctrl+C 即硬杀)。
 - database 插件 url 可选,回退 process.env.DATABASE_URL;cordis.yml 不写连接串。
 - drizzle 用 v1(rc):表/视图定义一律 `snakeCase.*` 系列构建器(定义期 casing,TS camelCase 属性自动映射 snake_case 列名,schema 自包含);**禁止**使用 `drizzle()` 或 drizzle.config 的 `casing` 选项(v0 时代产物)。跨插件取表:import 对方包的 /schema 子导出 + inject 对方服务;需要 db.query 关系 API 用 `ctx.db.withRelations(defineRelations(...))`(RQB v2),基础实例 ctx.db.drizzle 永远 schema 无知。
-- 数据层三集合模型:available(包可发现)/ installed(数据库对象必须存在,依赖闭包,唯一权威是 `installed.lock.json`)/ active(cordis.yml,只管运行)。停用永不删表;仅显式 PURGE 流程可使插件退出 installed。新插件用 `pnpm plugin:add`,禁止手删 installed 条目。
-- 数据库能力靠 package.json `qualy` 字段**声明**(database.schemaEntry/behaviorDir、dependsOn),禁止探测式发现;声明了但解析失败 = 硬失败。schema entry 文件只做直接命名导出,禁止嵌套包装/多层 re-export/条件导出。
-- 一切改动迁移史的操作只走 `pnpm db:gen`(单一编排:装配 → pre-structure 片段 → Kit 结构 diff → post-structure 片段 → drop-guard → lock 更新),禁止分段手跑。结构迁移必须 `--name`。DROP TABLE/COLUMN 被 drop-guard 拦截,`ALLOW_DESTRUCTIVE=1` 或迁移内 `-- destructive: approved` 才放行。
-- 行为 SQL(function/trigger/view)= 插件 `db/behavior/NNNN_name.sql` 编号片段,**只增不改**(behavior.lock.json 登记 sha256,已登记片段变更或消失即构建失败);可声明 `-- phase: pre-structure|post-structure|manual`(默认 post)。幂等纪律:首建严格 CREATE;函数体升级 CREATE OR REPLACE FUNCTION;触发器升级 CREATE OR REPLACE TRIGGER;**签名变化**走 `_v2` 新建→切换引用→显式 `DROP ... RESTRICT`;`IF [NOT] EXISTS` 仅限标注的补偿迁移。
-- 分支纪律:db/migrations 与 installed/assembly/behavior 三个 lock **禁止机械合并**,分叉后基于最新主线重新生成;迁移与 lock 生成必须串行(db:gen 自带文件锁)。
+- 数据层聚合(零生成物):drizzle.config 经 `resolveSchemaEntries()` 直接读 cordis.yml **全量条目(含 disabled)** + 各插件 package.json `qualy.database.schemaEntry`。能力靠声明不靠探测:未声明 = 无数据库能力;声明了但解析失败 = 硬失败。停用不改变聚合(表与数据保留,有不变式测试守护);schema entry 只做直接命名导出。
+- 迁移:`pnpm db:generate`(generate 后自动 drop-guard:新增迁移含 DROP TABLE/COLUMN/SCHEMA...CASCADE 即退出非零,`ALLOW_DESTRUCTIVE=1` 或迁移内 `-- destructive: approved` 放行;命名迁移直接 `pnpm exec drizzle-kit generate --name <名>` 再跑 guard)。已应用迁移不可回改,只 fix-forward。dev 与部署一律先 migrate 后 start(dev 脚本已内置)。
+- 手工 SQL(trigger/function 等):`pnpm db:generate:custom` 产出空迁移,SQL 首行注释 `-- owner: @qualy/plugin-<name>`;首建严格 CREATE,同签名升级 CREATE OR REPLACE,签名变更走 `_v2` 新建切换。
+- **数据层冻结规则**:数据层新增任何机制,必须由触发表(docs/notes/data-layer-retrospective.md)中实际发生的事故或需求触发,禁止预防性建设。元规则:复杂度必须由已发生的问题证明其存在,外部评审意见按此过滤。
 - ORM 选型已终审维持 drizzle(Orchid 生成器无 diff 范围过滤,见 notes/drizzle.md),勿重启讨论。禁止 import 任何 drizzle 内部路径(只用文档化导出);迁移 SQL 必须可脱离 Drizzle 执行(灾备 = PG18 + SQL 顺序执行);正式版发布后不追随升级,走契约矩阵重放再决策。
 - Service 异步初始化必须放 `async *[Service.init]()`(yield 登记清理):依赖门控在 init 完成后才放行;构造器里的 async effect **不会**阻塞依赖方激活(实测,见 docs/notes/cordis.md)。
 - 主键统一 UUIDv7 且数据库侧生成:`uuid().primaryKey().default(sql\`uuidv7()\`)`(PG18 原生函数,默认值进 DDL,兜住 psql/ETL 等一切裸写入路径);仅当应用需要插入前预拿 ID 时,在该表上叠加 `$defaultFn`(与 sql 默认并存,不是替代)。时间戳列命名 createdAt/updatedAt(禁用 at 这类含糊短名),一律 `withTimezone: true`。

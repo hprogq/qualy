@@ -1,7 +1,8 @@
-# 数据层架构
+# 数据层架构(v3 治理栈,已归档)
 
-> 本文是数据层的规范文档:三集合模型、装配、迁移、行为层、dirty/projection 与 PURGE。
-> 决策论证与实验证据见 docs/notes/drizzle.md 与 docs/notes/orm-review.md,此处只陈述形态。
+> **本文描述的治理栈已于 2026-08-01 按「数据层简化令」整体回退**,实现归档于 tag `archive/data-governance-v3`。
+> 现行形态与重新引入的约束性触发表见 docs/notes/data-layer-retrospective.md;本文保留作 v3 设计档案与触发表兑现时的施工蓝图。
+> 决策论证与实验证据见 docs/notes/drizzle.md 与 docs/notes/orm-review.md。
 
 ## 1. 三集合模型与所有权
 
