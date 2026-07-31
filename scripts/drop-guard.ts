@@ -47,9 +47,22 @@ function newMigrationFiles(): string[] {
     })
 }
 
+// --base-ref <ref>: scan migrations added or changed since <ref> (CI mode)
+function diffMigrationFiles(baseRef: string): string[] {
+  const diff = execSync(`git diff --name-only ${baseRef}...HEAD -- db/migrations`, {
+    encoding: 'utf8',
+  })
+  return diff
+    .split('\n')
+    .filter((file) => file.endsWith('.sql'))
+    .filter((file) => fs.existsSync(file))
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  const baseRefIndex = process.argv.indexOf('--base-ref')
+  const baseRef = baseRefIndex >= 0 ? process.argv[baseRefIndex + 1] : undefined
   const args = process.argv.slice(2).filter((arg) => !arg.startsWith('-') && fs.existsSync(arg))
-  const files = args.length > 0 ? args : newMigrationFiles()
+  const files = baseRef ? diffMigrationFiles(baseRef) : args.length > 0 ? args : newMigrationFiles()
   const hits = scanDestructive(files)
   if (hits.length > 0 && process.env.ALLOW_DESTRUCTIVE !== '1') {
     console.error('drop-guard: destructive statements detected, set ALLOW_DESTRUCTIVE=1 to proceed')

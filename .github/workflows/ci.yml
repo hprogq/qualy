@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -24,5 +26,5 @@ jobs:
           pnpm exec drizzle-kit generate
           git diff --exit-code -- db/migrations
       - name: drop guard
-        run: pnpm exec tsx scripts/drop-guard.ts
+        run: pnpm exec tsx scripts/drop-guard.ts --base-ref origin/main
       - run: pnpm test
