@@ -70,3 +70,17 @@
 - P2 类型门禁链路(@typescript/vfs 虚拟项目 + getSemanticDiagnostics)需要完整 Strada 程序化 API,TS6 必须在场;TS7 唯一卖点是大仓检查提速,本仓规模无感,双版本共存纯增复杂度。catalog 锁 `~6.0.3`。
 - 重评条件:TS 7.1 稳定 API 发布且 vfs 生态适配。
 - P2 补充定案:计分函数语法收敛为可擦除子集(禁 enum/namespace/class 参数属性,已入 PLAN §6.1),为转译层降级到 Node 原生 stripTypeScriptTypes 留退路。
+
+## Traceable proxy pitfall: mutable service state
+
+Service methods invoked through a caller context (`child.server.fallback(...)`) receive a
+traceable-proxied `this`. Closures created there must not rely on `this.prop = value`
+reassignment or `this.prop === capturedFn` identity checks: the proxy wraps function-valued
+properties on get, so the identity check fails and stale state survives disposal. Verified
+on rc.7 with a minimal repro (fallback handler stayed registered after fiber dispose).
+
+Rule: keep per-service mutable slots in a stable container captured once
+(`const slot = this.fallbackSlot` before `ctx.effect`), and mutate the container.
+Map-based state (`this.fragments.set/delete`) is safe for the same reason.
+`Service.init` and its yielded disposers run on the real instance, so `this.pool = ...`
+there is fine.

@@ -18,6 +18,14 @@ export interface ApiContext {
 
 export type ApiRouter = Router<ApiContext>
 
+// connect-style middleware, the natural shape of vite middlewares and sirv:
+// call next() to fall through to the 404, next(error) for a logged 500
+export type FallbackMiddleware = (
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+  next: (error?: unknown) => void,
+) => void
+
 export default class Server extends Service {
   static Config = z
     .object({
@@ -30,12 +38,34 @@ export default class Server extends Service {
   private fragments = new Map<string, ApiRouter>()
   private handler!: OpenAPIHandler<ApiContext>
   private http!: HttpServer
+  // mutable slot lives in a stable box: reassigning service properties from
+  // closures captured through caller-traceable proxies does not stick
+  private fallbackSlot: { handler?: FallbackMiddleware } = {}
 
   // the actually bound port (differs from config when config.port is 0)
   get port(): number {
     const address = this.http.address()
     if (!address || typeof address === 'string') throw new Error('server is not listening')
     return address.port
+  }
+
+  // the underlying node server, needed by middleware that attaches upgrade
+  // listeners (vite hmr websocket)
+  get httpServer(): HttpServer {
+    return this.http
+  }
+
+  // single fallback slot for everything the api did not match outside the
+  // api prefix; revoked with the registrant's fiber
+  fallback(handler: FallbackMiddleware) {
+    const slot = this.fallbackSlot
+    return this.ctx.effect(() => {
+      if (slot.handler) throw new Error('fallback already registered')
+      slot.handler = handler
+      return () => {
+        if (slot.handler === handler) slot.handler = undefined
+      }
+    }, 'server-fallback')
   }
 
   constructor(
@@ -54,10 +84,32 @@ export default class Server extends Service {
           prefix: this.config.prefix as `/${string}`,
           context: { cordis: this.ctx },
         })
-        if (!matched) {
-          res.statusCode = 404
-          res.end('Not Found')
+        if (matched) return
+        const url = req.url ?? ''
+        const insideApi =
+          url === this.config.prefix ||
+          url.startsWith(`${this.config.prefix}/`) ||
+          url.startsWith(`${this.config.prefix}?`)
+        const fallbackHandler = this.fallbackSlot.handler
+        if (!insideApi && fallbackHandler) {
+          fallbackHandler(req, res, (error?: unknown) => {
+            if (error) {
+              this.ctx.logger.error(error)
+              if (!res.headersSent) {
+                res.statusCode = 500
+                res.end('Internal Server Error')
+              }
+              return
+            }
+            if (!res.headersSent) {
+              res.statusCode = 404
+              res.end('Not Found')
+            }
+          })
+          return
         }
+        res.statusCode = 404
+        res.end('Not Found')
       } catch (error) {
         this.ctx.logger.error(error)
         if (!res.headersSent) {

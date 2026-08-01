@@ -46,4 +46,47 @@ describe('plugin-server', () => {
 
     await serverFiber.dispose()
   })
+
+  it('routes unmatched non-api requests through the single fallback slot', async () => {
+    const ctx = new Context()
+    const serverFiber = ctx.plugin(Server, { port: 0 })
+    await serverFiber
+    const base = `http://127.0.0.1:${ctx.server.port}`
+
+    const holder = ctx.plugin({
+      name: 'fallback-holder',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.fallback((req, res, next) => {
+          if (req.url === '/hello.txt') {
+            res.setHeader('content-type', 'text/plain')
+            res.end('from fallback')
+            return
+          }
+          next()
+        })
+      },
+    })
+    await holder
+
+    expect(await (await fetch(`${base}/hello.txt`)).text()).toBe('from fallback')
+    // inside the api prefix the fallback never runs
+    expect((await fetch(`${base}/api/nothing`)).status).toBe(404)
+    // next() falls through to 404
+    expect((await fetch(`${base}/other`)).status).toBe(404)
+
+    const second = ctx.plugin({
+      name: 'fallback-second',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.fallback((_req, _res, next) => next())
+      },
+    })
+    await expect(Promise.resolve(second)).rejects.toThrow('fallback already registered')
+
+    await holder.dispose()
+    expect((await fetch(`${base}/hello.txt`)).status).toBe(404)
+
+    await serverFiber.dispose()
+  })
 })
