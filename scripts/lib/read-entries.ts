@@ -13,10 +13,16 @@ export interface Entry {
 }
 
 // pass { all: true } (or run with --all) to include disabled entries,
-// release builds aggregate the full superset this way
+// release builds aggregate the full superset this way; --yml <path> points
+// the generators at an alternate manifest (tests use throwaway copies so
+// they never mutate the working manifest)
 export function readEntries(options: { all?: boolean; ymlPath?: string } = {}): Entry[] {
   const all = options.all ?? process.argv.includes('--all')
-  const ymlPath = options.ymlPath ?? 'packages/app/qualy.yml'
+  const ymlArg = process.argv.indexOf('--yml')
+  const ymlPath =
+    options.ymlPath ??
+    (ymlArg >= 0 ? process.argv[ymlArg + 1] : undefined) ??
+    'packages/app/qualy.yml'
   const raw = YAML.parse(fs.readFileSync(ymlPath, 'utf8'))
   if (!Array.isArray(raw)) throw new Error(`${ymlPath} must be a top-level array of entries`)
 
