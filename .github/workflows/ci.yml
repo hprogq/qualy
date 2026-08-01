@@ -18,7 +18,6 @@ jobs:
           node-version: 24.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm gen
       - run: pnpm typecheck
       - name: migration conflict check
         run: pnpm exec drizzle-kit check

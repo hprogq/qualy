@@ -29,11 +29,11 @@
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:reset": "docker compose down -v && docker compose up -d && pnpm db:migrate",
     "db:studio": "drizzle-kit studio",
-    "dev": "pnpm db:migrate && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
+    "dev": "tsx scripts/gen.ts && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
     "format": "prettier --write .",
     "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
-    "test": "vitest run",
-    "typecheck": "tsx scripts/typecheck.ts"
+    "test": "tsx scripts/gen.ts && vitest run",
+    "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts"
   }
 }

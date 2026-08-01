@@ -77,6 +77,7 @@ if (pluginManifest.exports?.['./contract']) declareIn('packages/api-client/packa
 if (pluginManifest.exports?.['./client']) declareIn('apps/web/package.json')
 
 execSync('pnpm install', { stdio: 'inherit' })
+execSync('pnpm exec tsx scripts/gen.ts', { stdio: 'inherit' })
 console.log(
   `${name} added; declare qualy.database.schemaEntry in its package.json if it owns tables`,
 )
