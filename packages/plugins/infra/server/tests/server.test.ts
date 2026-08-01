@@ -3,7 +3,7 @@ import { os } from '@orpc/server'
 import { Context } from 'cordis'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import Server from '../src/index.ts'
+import Server, { type ApiContext } from '../src/index.ts'
 
 const echoRouter = {
   hello: os
@@ -43,6 +43,62 @@ describe('plugin-server', () => {
 
     await contributor.dispose()
     expect((await fetch(`${base}/echo/hello`)).status).toBe(404)
+
+    await serverFiber.dispose()
+  })
+
+  it('runs context enrichers serially and revokes them with their fiber', async () => {
+    const ctx = new Context()
+    const serverFiber = ctx.plugin(Server, { port: 0 })
+    await serverFiber
+    const base = `http://127.0.0.1:${ctx.server.port}/api`
+
+    const whoRouter = {
+      who: os
+        .$context<ApiContext>()
+        .meta(openapi({ method: 'GET', path: '/who/ami' }))
+        .handler(({ context }) => ({ principal: context.principal ?? null })),
+    }
+    await ctx.plugin({
+      name: 'who',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contribute('who', whoRouter)
+      },
+    })
+    const who = async () => (await (await fetch(`${base}/who/ami`)).json()).principal
+
+    expect(await who()).toBeNull()
+
+    const holder = ctx.plugin({
+      name: 'enricher-holder',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.enrich('first', (context) => {
+          context.principal = { tenantId: 't1', userId: 'u1', sessionId: 's1' }
+        })
+        // serial order: the second enricher sees what the first attached
+        child.server.enrich('second', (context) => {
+          if (context.principal) context.principal.userId = 'u1-amended'
+        })
+      },
+    })
+    await holder
+
+    expect(await who()).toEqual({ tenantId: 't1', userId: 'u1-amended', sessionId: 's1' })
+
+    const conflicting = ctx.plugin({
+      name: 'enricher-conflict',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.enrich('first', () => {})
+      },
+    })
+    await expect(Promise.resolve(conflicting)).rejects.toThrow('context enricher conflict')
+
+    // fiber disposal (the hmr reload path) must leave no stale enricher
+    await holder.dispose()
+    expect(await who()).toBeNull()
 
     await serverFiber.dispose()
   })

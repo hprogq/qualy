@@ -1,4 +1,9 @@
-import { createServer, type Server as HttpServer } from 'node:http'
+import {
+  createServer,
+  type IncomingMessage,
+  type Server as HttpServer,
+  type ServerResponse,
+} from 'node:http'
 import { OpenAPIHandler } from '@orpc/openapi/node'
 import { onError, type Router } from '@orpc/server'
 import { CORSHandlerPlugin } from '@orpc/server/plugins'
@@ -11,18 +16,34 @@ declare module 'cordis' {
   }
 }
 
-// per-request initial context handed to every procedure implementation
+// authenticated identity attached to a request by the auth plugin's
+// enricher; absence means the request is anonymous
+export interface AuthPrincipal {
+  tenantId: string
+  userId: string
+  sessionId: string
+}
+
+// per-request context handed to every procedure implementation; enrichers
+// registered via server.enrich add fields (principal) before the handler runs
 export interface ApiContext {
   cordis: Context
+  request: IncomingMessage
+  response: ServerResponse
+  principal?: AuthPrincipal
 }
+
+// enrichers mutate the request context in place; they run serially so a
+// later enricher can read what an earlier one attached
+export type ContextEnricher = (context: ApiContext) => void | Promise<void>
 
 export type ApiRouter = Router<ApiContext>
 
 // connect-style middleware, the natural shape of vite middlewares and sirv:
 // call next() to fall through to the 404, next(error) for a logged 500
 export type FallbackMiddleware = (
-  req: import('node:http').IncomingMessage,
-  res: import('node:http').ServerResponse,
+  req: IncomingMessage,
+  res: ServerResponse,
   next: (error?: unknown) => void,
 ) => void
 
@@ -36,6 +57,7 @@ export default class Server extends Service {
     .prefault({})
 
   private fragments = new Map<string, ApiRouter>()
+  private enrichers = new Map<string, ContextEnricher>()
   private handler!: OpenAPIHandler<ApiContext>
   private http!: HttpServer
   // mutable slot lives in a stable box: reassigning service properties from
@@ -68,6 +90,19 @@ export default class Server extends Service {
     }, 'server-fallback')
   }
 
+  // context enrichers run serially for every api request before the handler,
+  // keyed per registrant so conflicts fail loudly and a fiber reload replaces
+  // only its own entry; revoked with the registrant's fiber
+  enrich(key: string, enricher: ContextEnricher) {
+    return this.ctx.effect(() => {
+      if (this.enrichers.has(key)) throw new Error(`context enricher conflict: ${key}`)
+      this.enrichers.set(key, enricher)
+      return () => {
+        this.enrichers.delete(key)
+      }
+    }, `enricher:${key}`)
+  }
+
   constructor(
     ctx: Context,
     private config: z.infer<typeof Server.Config>,
@@ -80,18 +115,25 @@ export default class Server extends Service {
     const http = createServer(async (req, res) => {
       // last-resort guard: a single failing request must never kill the process
       try {
-        const { matched } = await this.handler.handle(req, res, {
-          prefix: this.config.prefix as `/${string}`,
-          context: { cordis: this.ctx },
-        })
-        if (matched) return
         const url = req.url ?? ''
         const insideApi =
           url === this.config.prefix ||
           url.startsWith(`${this.config.prefix}/`) ||
           url.startsWith(`${this.config.prefix}?`)
+        if (insideApi) {
+          const context: ApiContext = { cordis: this.ctx, request: req, response: res }
+          for (const enricher of this.enrichers.values()) await enricher(context)
+          const { matched } = await this.handler.handle(req, res, {
+            prefix: this.config.prefix as `/${string}`,
+            context,
+          })
+          if (matched) return
+          res.statusCode = 404
+          res.end('Not Found')
+          return
+        }
         const fallbackHandler = this.fallbackSlot.handler
-        if (!insideApi && fallbackHandler) {
+        if (fallbackHandler) {
           fallbackHandler(req, res, (error?: unknown) => {
             if (error) {
               this.ctx.logger.error(error)
