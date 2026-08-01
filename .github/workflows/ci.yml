@@ -29,3 +29,9 @@ jobs:
       - name: drop guard
         run: pnpm exec tsx scripts/drop-guard.ts --base-ref origin/main
       - run: pnpm test
+      - name: build web superset and stage assets
+        run: pnpm build
+      - name: staged web assets must exist
+        run: test -f packages/plugins/infra/web/client-dist/index.html
+      - name: plugin chunk sentinel
+        run: pnpm exec tsx apps/web/scripts/check-chunks.ts
