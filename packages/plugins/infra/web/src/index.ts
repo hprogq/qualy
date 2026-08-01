@@ -70,10 +70,29 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
       } catch {
         throw new Error('vite is not installed; development mode of @qualy/plugin-web requires it')
       }
+      // route vite's output through the runtime logger so the dev console
+      // has a single uniform log format
+      const logger = ctx.logger('vite')
+      const stripAnsi = (msg: string) => msg.replace(/\x1b\[[0-9;]*m/g, '').trim()
+      const warned = new Set<string>()
       const devServer = await vite.createServer({
         configFile: path.join(sourceRoot, 'vite.config.ts'),
         root: sourceRoot,
         appType: 'spa',
+        clearScreen: false,
+        customLogger: {
+          info: (msg) => logger.info(stripAnsi(msg)),
+          warn: (msg) => logger.warn(stripAnsi(msg)),
+          warnOnce: (msg) => {
+            if (warned.has(msg)) return
+            warned.add(msg)
+            logger.warn(stripAnsi(msg))
+          },
+          error: (msg) => logger.error(stripAnsi(msg)),
+          clearScreen: () => {},
+          hasErrorLogged: () => false,
+          hasWarned: false,
+        },
         server: {
           // attach to the host server so the hmr websocket shares the port
           middlewareMode: { server: ctx.server.httpServer },
