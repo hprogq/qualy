@@ -40,6 +40,8 @@
 
 - [seed 语义边界] core/demo 拆层(2026-08-02,进会话 3 前):同一 seed 此前混装两类收敛语义——系统启动数据(租户/类型/规则,会话 3 将加 provider/管理员)必须严格校验,而样例组织树是业务数据,合法移动/改名不得阻断 core seed。现在 `seedCore` 恒严格;`seedDemoOrg` 仅在 `QUALY_SEED_DEMO=1` 显式要求(此时严格校验)或目标租户组织为空(首次引导)时执行,默认对已有组织数据直接 skip。seed 测试改为三例:空库全建(demo created)→ 二跑收敛(demo skipped)→ 移动节点后普通 seed 照常通过(核心不被业务漂移阻断)+ 显式 demo 模式对漂移拒绝。cascade 测试补有效 rule 并断言四表零残留。会话 3 裁决预留:管理员密码属操作性输入,QUALY_ADMIN_PASSWORD 的存在时语义(校验/忽略/重置)开场定案
 
+- [org schema 拆层] 表文件下沉(2026-08-02,进会话 3 前):插件级 schema 所有权不动(四插件各持 ./schema 入口),org 内部拆为 db/tables/{tenants,org-types,org-type-rules,org-nodes}.ts + 共享 code-pattern.ts;schema.ts 变纯具名再导出入口(拒绝 export *,防辅助物泄入表导出集)。定义逐字搬移,`drizzle-kit generate` no-op 且 db/migrations 零 diff 实证纯重排。relations 裁决:RQB v2 基础设施已备(withRelations/WeakMap 缓存),业务关系图**按查询需求落地**——会话 3 在 validateSession/getCurrentUser 前建 auth/src/db/relations.ts(顶层单例导出,defineRelations 覆盖跨插件 org 表与复合键关系,先对 rc.4 类型探针),不预建全系统关系大图,不建全局 relations 注册表;auth 四表从一开始采用同款多文件布局
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`
