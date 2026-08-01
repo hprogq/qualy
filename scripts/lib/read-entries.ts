@@ -16,7 +16,7 @@ export interface Entry {
 // release builds aggregate the full superset this way
 export function readEntries(options: { all?: boolean; ymlPath?: string } = {}): Entry[] {
   const all = options.all ?? process.argv.includes('--all')
-  const ymlPath = options.ymlPath ?? 'cordis.yml'
+  const ymlPath = options.ymlPath ?? 'packages/app/cordis.yml'
   const raw = YAML.parse(fs.readFileSync(ymlPath, 'utf8'))
   if (!Array.isArray(raw)) throw new Error(`${ymlPath} must be a top-level array of entries`)
 

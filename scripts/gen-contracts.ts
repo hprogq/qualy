@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { writeGenerated } from './lib/codegen.ts'
 import { readEntries } from './lib/read-entries.ts'
-import { resolvePackageDir } from './lib/schema-entries.ts'
+import { resolvePackageDir, resolvePluginModuleUrl } from './lib/schema-entries.ts'
 
 // contract aggregation follows the ACTIVE set: a disabled plugin loses its
 // routes at runtime, so its contract disappears from the client and the web
@@ -12,6 +12,16 @@ import { resolvePackageDir } from './lib/schema-entries.ts'
 // namespace.
 
 const all = process.argv.includes('--all')
+
+const apiClientDeps = new Set(
+  Object.keys(
+    (
+      JSON.parse(fs.readFileSync('packages/api-client/package.json', 'utf8')) as {
+        dependencies?: Record<string, string>
+      }
+    ).dependencies ?? {},
+  ),
+)
 
 const imports: string[] = []
 const fields: string[] = []
@@ -23,7 +33,15 @@ for (const entry of readEntries({ all })) {
     exports?: Record<string, unknown>
   }
   if (!pkg.exports?.['./contract']) continue
-  const module = (await import(`${entry.name}/contract`)) as Record<string, unknown>
+  if (!apiClientDeps.has(entry.name)) {
+    throw new Error(
+      `${entry.name} aggregates a contract but packages/api-client does not declare it; run pnpm plugin:add`,
+    )
+  }
+  const module = (await import(resolvePluginModuleUrl(`${entry.name}/contract`))) as Record<
+    string,
+    unknown
+  >
   const exportNames = Object.keys(module).filter((name) => name.endsWith('Contract'))
   if (exportNames.length !== 1) {
     throw new Error(`${entry.name}: contract module must have exactly one <ns>Contract export`)

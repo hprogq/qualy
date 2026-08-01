@@ -6,6 +6,10 @@
   "type": "module",
   "dependencies": {
     "@cordisjs/plugin-loader": "catalog:",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-ping": "workspace:*",
+    "@qualy/plugin-server": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "cordis": "catalog:"
   }
 }

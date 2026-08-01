@@ -29,7 +29,7 @@ function workspacePackageExists(id: string): boolean {
 
 if (!workspacePackageExists(name)) throw new Error(`${name} not found under packages/`)
 
-const rootManifestPath = 'package.json'
+const rootManifestPath = 'packages/app/package.json'
 const rootManifest = JSON.parse(fs.readFileSync(rootManifestPath, 'utf8'))
 rootManifest.dependencies = Object.fromEntries(
   Object.entries({ ...rootManifest.dependencies, [name]: 'workspace:*' }).sort(([a], [b]) =>
@@ -38,10 +38,43 @@ rootManifest.dependencies = Object.fromEntries(
 )
 fs.writeFileSync(rootManifestPath, JSON.stringify(rootManifest, null, 2) + '\n')
 
-const yml = fs.readFileSync('cordis.yml', 'utf8')
+const yml = fs.readFileSync('packages/app/cordis.yml', 'utf8')
 if (!yml.includes(`name: "${name}"`) && !yml.includes(`name: '${name}'`)) {
-  fs.writeFileSync('cordis.yml', yml.trimEnd() + `\n- name: '${name}'\n`)
+  fs.writeFileSync('packages/app/cordis.yml', yml.trimEnd() + `\n- name: '${name}'\n`)
 }
+
+const pluginManifest = (() => {
+  const stack = ['packages']
+  while (stack.length > 0) {
+    const dir = stack.pop()!
+    const manifest = path.join(dir, 'package.json')
+    if (fs.existsSync(manifest)) {
+      const pkg = JSON.parse(fs.readFileSync(manifest, 'utf8'))
+      if (pkg.name === name) return pkg
+      continue
+    }
+    for (const child of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (child.isDirectory() && child.name !== 'node_modules')
+        stack.push(path.join(dir, child.name))
+    }
+  }
+  return {}
+})()
+
+// aggregators own their inputs: contract consumers and component consumers
+// must declare the plugin, the generators hard-fail otherwise
+const pluginName: string = name
+function declareIn(manifestPath: string) {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  manifest.dependencies = Object.fromEntries(
+    Object.entries({ ...manifest.dependencies, [pluginName]: 'workspace:*' }).sort(([a], [b]) =>
+      a.localeCompare(b),
+    ),
+  )
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+}
+if (pluginManifest.exports?.['./contract']) declareIn('packages/api-client/package.json')
+if (pluginManifest.exports?.['./client']) declareIn('apps/web/package.json')
 
 execSync('pnpm install', { stdio: 'inherit' })
 console.log(

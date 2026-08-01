@@ -1,24 +1,33 @@
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import { readEntries } from './read-entries.ts'
 
-// schema aggregation reads the FULL cordis.yml entry list (disabled included):
+// schema aggregation reads the FULL entry list (disabled included):
 // deactivating a plugin never changes the schema set, so tables outlive
 // deactivation. Database capability is declared, never probed: a plugin
 // without qualy.database.schemaEntry contributes nothing, a declared entry
 // that fails to resolve is a hard error.
 
+// the host owns its plugins: all plugin resolution anchors at packages/app,
+// mirroring how the loader resolves entries at runtime
+const hostRequire = createRequire(path.resolve('packages/app/package.json'))
+
+export function resolvePluginModuleUrl(specifier: string): string {
+  return pathToFileURL(hostRequire.resolve(specifier)).href
+}
+
 export function resolvePackageDir(id: string): string {
-  let entryUrl: string
+  let entryPath: string
   try {
-    entryUrl = import.meta.resolve(id)
+    entryPath = hostRequire.resolve(id)
   } catch {
     throw new Error(
-      `${id} cannot be resolved: add it to the root package.json dependencies, or check that its exports map declares a "." entry`,
+      `${id} cannot be resolved: add it to packages/app dependencies, or check that its exports map declares a "." entry`,
     )
   }
-  let dir = path.dirname(fileURLToPath(entryUrl))
+  let dir = path.dirname(entryPath)
   while (!fs.existsSync(path.join(dir, 'package.json'))) {
     const parent = path.dirname(dir)
     if (parent === dir) throw new Error(`cannot locate package.json for ${id}`)

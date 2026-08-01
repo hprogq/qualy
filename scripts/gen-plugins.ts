@@ -12,6 +12,16 @@ import { resolvePackageDir } from './lib/schema-entries.ts'
 
 const all = process.argv.includes('--all')
 
+const webDeps = new Set(
+  Object.keys(
+    (
+      JSON.parse(fs.readFileSync('apps/web/package.json', 'utf8')) as {
+        dependencies?: Record<string, string>
+      }
+    ).dependencies ?? {},
+  ),
+)
+
 const imports: string[] = []
 const spreads: string[] = []
 for (const entry of readEntries({ all })) {
@@ -21,6 +31,11 @@ for (const entry of readEntries({ all })) {
     exports?: Record<string, unknown>
   }
   if (!pkg.exports?.['./client']) continue
+  if (!webDeps.has(entry.name)) {
+    throw new Error(
+      `${entry.name} contributes components but apps/web does not declare it; run pnpm plugin:add`,
+    )
+  }
   const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
   imports.push(`import { components as ${ns}Components } from '${entry.name}/client'`)
   spreads.push(`  ...${ns}Components,`)

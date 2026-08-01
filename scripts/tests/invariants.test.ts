@@ -10,7 +10,7 @@ import { resolveSchemaEntries } from '../lib/schema-entries.ts'
 describe('schema aggregation invariants', () => {
   it('disabling a plugin does not change the schema entry set', () => {
     const baseline = resolveSchemaEntries()
-    const yml = fs.readFileSync('cordis.yml', 'utf8')
+    const yml = fs.readFileSync('packages/app/cordis.yml', 'utf8')
     const mutated = yml.replace(
       "name: '@qualy/plugin-ping'",
       "name: '@qualy/plugin-ping'\n  disabled: true",

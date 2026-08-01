@@ -107,18 +107,6 @@ importers:
       '@cordisjs/plugin-timer':
         specifier: 'catalog:'
         version: 1.1.2(cordis@4.0.0-rc.7)
-      '@qualy/plugin-database':
-        specifier: workspace:*
-        version: link:packages/plugins/infra/database
-      '@qualy/plugin-ping':
-        specifier: workspace:*
-        version: link:packages/plugins/demo/ping
-      '@qualy/plugin-server':
-        specifier: workspace:*
-        version: link:packages/plugins/infra/server
-      '@qualy/plugin-ui-registry':
-        specifier: workspace:*
-        version: link:packages/plugins/infra/ui-registry
       cordis:
         specifier: 'catalog:'
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
@@ -156,6 +144,9 @@ importers:
       '@qualy/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@qualy/plugin-ping':
+        specifier: workspace:*
+        version: link:../../packages/plugins/demo/ping
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../packages/web-runtime
@@ -193,12 +184,30 @@ importers:
       '@orpc/openapi':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/plugin-ping':
+        specifier: workspace:*
+        version: link:../plugins/demo/ping
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../plugins/infra/ui-registry
 
   packages/app:
     dependencies:
       '@cordisjs/plugin-loader':
         specifier: 'catalog:'
         version: 1.0.0-rc.5(cordis@4.0.0-rc.7)
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../plugins/infra/database
+      '@qualy/plugin-ping':
+        specifier: workspace:*
+        version: link:../plugins/demo/ping
+      '@qualy/plugin-server':
+        specifier: workspace:*
+        version: link:../plugins/infra/server
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../plugins/infra/ui-registry
       cordis:
         specifier: 'catalog:'
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)

@@ -7,7 +7,6 @@
   config:
     root:
       - packages
-      - cordis.yml
 - id: '83873047'
   name: '@qualy/plugin-database'
 - id: 5c1c1e85

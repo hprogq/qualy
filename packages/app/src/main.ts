@@ -6,9 +6,12 @@ const ctx = new Context()
 ctx.baseUrl = pathToFileURL(process.cwd()).href + '/'
 
 await ctx.plugin(Loader)
+// the assembly manifest lives with the host: include re-anchors ctx.baseUrl
+// to the manifest's directory, so plugin packages resolve from the host's
+// own dependencies rather than the repo root
 await ctx.loader.create({
   name: '@cordisjs/plugin-include',
-  config: { path: './cordis.yml' },
+  config: { path: 'packages/app/cordis.yml' },
 })
 
 let closing = false
