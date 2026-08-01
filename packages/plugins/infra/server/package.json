@@ -12,6 +12,7 @@
     "cordis": "catalog:"
   },
   "dependencies": {
+    "@orpc/client": "catalog:",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "zod": "catalog:"

@@ -4,6 +4,7 @@ import {
   type Server as HttpServer,
   type ServerResponse,
 } from 'node:http'
+import { COMMON_ERROR_STATUS_MAP } from '@orpc/client'
 import { OpenAPIHandler } from '@orpc/openapi/node'
 import { onError, type Router } from '@orpc/server'
 import { CORSHandlerPlugin } from '@orpc/server/plugins'
@@ -59,6 +60,7 @@ export default class Server extends Service {
   static Config = Config
 
   private fragments = new Map<string, ApiRouter>()
+  private errorStatuses = new Map<string, number>()
   private enrichers = new Map<string, ContextEnricher>()
   private handler!: OpenAPIHandler<ApiContext>
   private http!: HttpServer
@@ -188,14 +190,32 @@ export default class Server extends Service {
   }
 
   // route fragments are contributed per plugin namespace and revoked with the
-  // contributor's fiber; every change atomically swaps the handler
-  contribute(ns: string, router: ApiRouter) {
+  // contributor's fiber; every change atomically swaps the handler. Custom
+  // error codes ride along: the openapi handler maps http status per code
+  // (contract-level status declarations are ignored by beta.21, probed), so
+  // contributors register their codes here
+  contribute(
+    ns: string,
+    router: ApiRouter,
+    options: { errorStatuses?: Record<string, number> } = {},
+  ) {
     return this.ctx.effect(() => {
       if (this.fragments.has(ns)) throw new Error(`route namespace conflict: ${ns}`)
+      for (const [code, status] of Object.entries(options.errorStatuses ?? {})) {
+        const existing = this.errorStatuses.get(code)
+        if (existing !== undefined && existing !== status) {
+          throw new Error(`error status conflict for ${code}: ${existing} vs ${status}`)
+        }
+      }
       this.fragments.set(ns, router)
+      const owned = Object.entries(options.errorStatuses ?? {}).filter(
+        ([code]) => !this.errorStatuses.has(code),
+      )
+      for (const [code, status] of owned) this.errorStatuses.set(code, status)
       this.rebuild()
       return () => {
         this.fragments.delete(ns)
+        for (const [code] of owned) this.errorStatuses.delete(code)
         this.rebuild()
       }
     }, `route:${ns}`)
@@ -205,6 +225,7 @@ export default class Server extends Service {
     this.handler = new OpenAPIHandler<ApiContext>(Object.fromEntries(this.fragments) as ApiRouter, {
       plugins: [new CORSHandlerPlugin()],
       interceptors: [onError((error) => this.ctx.logger.error(error))],
+      errorStatusMap: { ...COMMON_ERROR_STATUS_MAP, ...Object.fromEntries(this.errorStatuses) },
     })
   }
 }
