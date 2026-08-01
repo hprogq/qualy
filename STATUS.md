@@ -30,6 +30,8 @@
 
 - [类型盲区修复] 插件 tests 纳入类型门禁(2026-08-02):IDE 报 server.test 传 `{ port: 0 }` 缺 prefix 而 `pnpm typecheck` 不报——根因一:根 tsconfig include 只有各包 src,插件 tests/ 不在任何 tsc 程序里(vitest 不查类型);根因二:cordis 的 `GetPluginConfig` 从构造器/apply 参数推调用方 config 类型,参数标 `z.infer`(输出型)会逼调用方传全量。修法:include 补 `packages/*/tests` 与 `packages/plugins/*/*/tests`;server/database/web/ping 的 Config 参数统一改 `z.input` + 体内 cast `z.output`(cordis 先校验再调用,运行时恒为解析后输出),双面约定入 CLAUDE
 
+- [工具链审计裁决] 迁移下沉 + 自动 codegen(2026-08-02):外部审计建议按冻结元规则过滤,三档裁决入 notes/tooling.md。**采纳**:①迁移执行下沉 database 插件——`runMigrations()` 归 `@qualy/plugin-database/migrator`(零 cordis 依赖),Service.init 按 `migrations: apply|off` 执行已提交迁移(依赖 db 的插件迁移完成后才激活;migrate 幂等,hmr 重跑仅台账检查数十 ms,不做 once-guard);`pnpm db:migrate` 改为同一实现的薄适配器(经 hostRequire 解析,根包不依赖插件);dev 脚本去掉前置 db:migrate。②codegen 自动化——dev/typecheck/test 前置 gen(build 原有),plugin:add 收尾自动 regen,CI 独立 gen 步骤删除。**缓建**(触发条件入 tooling.md + 回顾表):@qualy/tooling 包/CodegenRegistry/qualy bin/Vite adapter/gen watcher/verify mode/插件自带 migration。**永久禁令**:应用进程禁 drizzle-kit generate 与写 .gen.ts、codegen 不进 cordis core、不按 active 集合动删库对象
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`
@@ -64,6 +66,7 @@
 - plugin-web dev 冒烟:`pnpm dev` 单进程 → `curl :3000/` 返回 vite 注入 react-refresh 的 HTML,`/api/ui/manifest` 正常,`/api/nope` 404
 - plugin-web 生产冒烟:`pnpm build`(gen --all → web-app build → staging)后 NODE_ENV=production 启动 → `/` no-cache、`/ping` 200(spa 回退)、哈希资源 `public,max-age=31536000,immutable`
 - plugin-web 类型门禁:`pnpm typecheck` → 零错误(tc: 0)
+- 工具链裁决验收:`pnpm db:migrate`(薄适配器)→ migrations up to date (42ms);`pnpm dev` 启动序列 = gen(unchanged, skipped)→ `[I] database migrations up to date (228ms)` → connected → 四骨架激活(迁移先于依赖方,门控实证);typecheck(自动 gen)零错误;vitest 12/12
 - P1 会话 1:resolveSchemaEntries → 5 条(ping + rbac/auth/org/dict);drizzle-kit generate no-op + porcelain clean + drop-guard --all 1 file;dev 冒烟四条 "scaffold loaded" 日志齐 + ping API 200 + `/` 200;enricher 测试(两 enricher 串行合成 principal、同 key 二次注册拒绝、dispose 后回 null);`pnpm gen` unchanged;typecheck 零错误;vitest 12/12
 
 ## 会话中定下的约定(已写入 CLAUDE.md / docs/notes/)
