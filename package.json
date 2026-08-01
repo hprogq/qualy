@@ -12,10 +12,6 @@
     "@cordisjs/plugin-loader": "catalog:",
     "@cordisjs/plugin-logger-console": "catalog:",
     "@cordisjs/plugin-timer": "catalog:",
-    "@qualy/plugin-database": "workspace:*",
-    "@qualy/plugin-ping": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*",
     "cordis": "catalog:",
     "tsx": "catalog:",
     "zod": "catalog:"
@@ -30,7 +26,7 @@
     "yaml": "catalog:"
   },
   "scripts": {
-    "build": "pnpm gen && pnpm --filter web build",
+    "build": "tsx scripts/gen.ts --all && pnpm --filter web build",
     "db:generate": "drizzle-kit generate && tsx scripts/drop-guard.ts",
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "drizzle-kit migrate",
@@ -39,9 +35,9 @@
     "dev": "pnpm db:migrate && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
     "dev:web": "pnpm --filter web dev",
     "format": "prettier --write .",
-    "gen": "tsx scripts/gen-contracts.ts && tsx scripts/gen-plugins.ts",
+    "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p . --noEmit && tsc -p packages/web-runtime --noEmit && tsc -p packages/plugins/demo/ping/client --noEmit && tsc -p apps/web --noEmit"
+    "typecheck": "tsx scripts/typecheck.ts"
   }
 }
