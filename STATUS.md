@@ -122,7 +122,7 @@
 - 确认项:tsc 通过且 include 覆盖 scripts/**(含 tests,vitest 导入参与类型检查);notes/hmr.md 已含 --expose-internals 必要性与 dev-only/生产禁带;pnpm-workspace 的 allowBuilds 字段对 pnpm 11.8 有效(实证:approve-builds 写入该字段后 esbuild postinstall 正常执行)
 - prettier 最小配置(semi:false/singleQuote/printWidth:100)+ 全量格式化独立提交
 
-## 下一会话(P1 会话 3)
+## 下一会话(P1 会话 3,按 2026-08-02 修订版教程)
 
-- 按 docs/p1-tutorial.md 会话 3 执行:本地认证与 session——auth schema(users/auth_providers/user_identities/sessions,复合 FK 引用 org)、Argon2id 哈希、Cookie session(库存 sha256 hash)、principal resolver 接 server.enrich、contract(login/logout/me)、LoginPage、seed 管理员(凭据走 QUALY_ADMIN_* 环境变量)。argon2/cookie 已登记 catalog,安装时 argon2 需走 approve-builds;旧代码在 legacy/qualy_old/apps/api/src/modules/auth/
+- **领域修订**:p1-tutorial.md 已整体替换(旧版归档 p1-tutorial-old.md),user_types 回归为独立领域概念(用户类型=稳定身份类别+登录开关+租户级基础权限;角色=组织节点职务)。会话 3 = 用户类型+本地认证+Session+bootstrap 修订:org 前置补丁(tenants.enabled/expires_at+单根唯一)、auth 五表(user_types/users[business_no,user_type_id 与 primary_org_node_id 必填]/auth_providers/user_identities/sessions)、错误码 INVALID_CREDENTIALS/AUTH_REQUIRED/SESSION_EXPIRED、seed 四层化(platform 定义严格/租户 provision 只建不改/demo 显式/管理员密码 QUALY_RESET_ADMIN_PASSWORD 显式重置)
 - 浏览器人工走查(P0-REPORT 第 3 项)在 P1 第一个 commit 前人工补记:/ping 页面与导航、改 PingPage 文本验 HMR、停用 ping 后导航与路由消失、恢复、控制台无 React 双实例/Router/chunk 错误
