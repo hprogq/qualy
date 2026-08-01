@@ -32,8 +32,17 @@ if (!available) console.warn('postgres unreachable, auth tests skipped')
 
 const PASSWORD = 'alice-password-123'
 
+// drop database ... with (force) races graceful client teardown: a killed
+// backend's fatal 57P01 lands on a closing socket and would surface as an
+// unhandled error without a listener
+const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
+  const pool = new Pool(config)
+  pool.on('error', () => {})
+  return pool
+}
+
 describe.runIf(available)('auth', () => {
-  const admin = new Pool({ connectionString: baseUrl })
+  const admin = quietPool({ connectionString: baseUrl })
   const dbName = `qualy_auth_${randomUUID().slice(0, 8)}`
   let pool: Pool
   let ctx: Context
@@ -72,7 +81,7 @@ describe.runIf(available)('auth', () => {
     await admin.query(`create database "${dbName}"`)
     const url = new URL(baseUrl)
     url.pathname = `/${dbName}`
-    pool = new Pool({ connectionString: url.href })
+    pool = quietPool({ connectionString: url.href })
     await runMigrations(pool, { folder: migrationsFolder })
 
     const row = async (text: string, params: unknown[]) =>

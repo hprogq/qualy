@@ -35,8 +35,17 @@ if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
 }
 if (!available) console.warn('postgres unreachable, database lifecycle tests skipped')
 
+// drop database ... with (force) races graceful client teardown: a killed
+// backend's fatal 57P01 lands on a closing socket and would surface as an
+// unhandled error without a listener
+const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
+  const pool = new Pool(config)
+  pool.on('error', () => {})
+  return pool
+}
+
 describe.runIf(available)('database plugin lifecycle on real postgres', () => {
-  const admin = new Pool({ connectionString: baseUrl })
+  const admin = quietPool({ connectionString: baseUrl })
   const scratches: string[] = []
 
   const createScratch = async () => {
@@ -47,7 +56,7 @@ describe.runIf(available)('database plugin lifecycle on real postgres', () => {
   }
 
   const tableCount = async (db: string) => {
-    const probe = new Pool({ connectionString: scratchUrl(db) })
+    const probe = quietPool({ connectionString: scratchUrl(db) })
     try {
       const tables = await probe.query(
         `select count(*) from information_schema.tables where table_name = 'ping_logs'`,
