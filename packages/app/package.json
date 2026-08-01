@@ -5,12 +5,18 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "dependencies": {
+    "@cordisjs/plugin-include": "catalog:",
     "@cordisjs/plugin-loader": "catalog:",
+    "@cordisjs/plugin-logger-console": "catalog:",
+    "@cordisjs/plugin-timer": "catalog:",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/plugin-web": "workspace:*",
     "cordis": "catalog:"
+  },
+  "devDependencies": {
+    "@cordisjs/plugin-hmr": "catalog:"
   }
 }

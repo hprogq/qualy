@@ -1,9 +1,17 @@
-import { pathToFileURL } from 'node:url'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from 'cordis'
 import Loader from '@cordisjs/plugin-loader'
 
+// anchor at the host package instead of cwd, so the entry works no matter
+// where the process is launched from
+const appRoot = fileURLToPath(new URL('../', import.meta.url))
+// deployments point QUALY_CONFIG at an external manifest (e.g. a mounted
+// /etc/qualy/qualy.yml); it can only toggle plugins the image ships with
+const configPath = path.resolve(process.env.QUALY_CONFIG ?? path.join(appRoot, 'qualy.yml'))
+
 const ctx = new Context()
-ctx.baseUrl = pathToFileURL(process.cwd()).href + '/'
+ctx.baseUrl = pathToFileURL(appRoot).href
 
 await ctx.plugin(Loader)
 // the assembly manifest lives with the host: include re-anchors ctx.baseUrl
@@ -11,7 +19,7 @@ await ctx.plugin(Loader)
 // own dependencies rather than the repo root
 await ctx.loader.create({
   name: '@cordisjs/plugin-include',
-  config: { path: 'packages/app/qualy.yml' },
+  config: { path: configPath },
 })
 
 let closing = false

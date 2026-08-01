@@ -8,16 +8,9 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@cordisjs/plugin-include": "catalog:",
-    "@cordisjs/plugin-loader": "catalog:",
-    "@cordisjs/plugin-logger-console": "catalog:",
-    "@cordisjs/plugin-timer": "catalog:",
-    "cordis": "catalog:",
-    "tsx": "catalog:",
-    "zod": "catalog:"
+    "tsx": "catalog:"
   },
   "devDependencies": {
-    "@cordisjs/plugin-hmr": "catalog:",
     "@electric-sql/pglite": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",

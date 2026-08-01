@@ -84,3 +84,24 @@ Rule: keep per-service mutable slots in a stable container captured once
 Map-based state (`this.fragments.set/delete`) is safe for the same reason.
 `Service.init` and its yielded disposers run on the real instance, so `this.pool = ...`
 there is fine.
+
+## Loader bare-name resolution (plugin-loader 1.0.0-rc.5)
+
+`EntryTree.import` has two paths:
+
+- with `--expose-internals`: `loader.internal.import(name, baseUrl)` resolves bare
+  plugin names against the manifest directory (include re-anchors the tree baseUrl
+  there). Host-owned dependencies (packages/app) work; a manifest outside any
+  package tree (e.g. /etc/qualy) does not resolve bare names.
+- without internals: only `./`-relative names use baseUrl; bare names fall back to
+  a plain `import(name)` evaluated inside the loader package itself. Under pnpm
+  strict isolation the host's direct deps are invisible from there (only the
+  transitive hidden hoist in .pnpm/node_modules), so every entry fails to load
+  SILENTLY: the fiber records the error, no logger is up yet, the event loop
+  drains and the process exits 0 with zero output. Verified after moving the
+  cordis plugin deps from the repo root into packages/app.
+
+Consequences: any in-monorepo boot (dev or smoke) must carry `--expose-internals`;
+a standalone deploy (flat node_modules with the loader inside the app tree) needs
+neither internals nor an in-package manifest, so QUALY_CONFIG may point anywhere
+there. The production external manifest must not include @cordisjs/plugin-hmr.
