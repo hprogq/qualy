@@ -315,16 +315,16 @@ P1 不开放自定义 tenant 角色，避免普通角色意外携带全租户权
 
 ## 0.5 会话地图
 
-| 会话 | 状态 | 主题 | 预计 |
-| --- | --- | --- | ---: |
-| 1 | 已完成 | 基座插件骨架与请求上下文 | — |
-| 2 | 已完成 | 租户与组织树 Schema、迁移、初始 seed | — |
-| 3 | 下一步 | 用户类型、本地认证、Session 与 bootstrap 修订 | 1.5–2 天 |
-| 4 | 计划 | RBAC、用户类型权限与角色资格 | 1.5–2 天 |
-| 5 | 计划 | 组织树 service / API / UI | 1–1.5 天 |
-| 6 | 计划 | 用户、用户类型、身份和角色管理闭环 | 1.5–2 天 |
-| 7 | 计划 | Manifest 权限过滤与 dict 插件 | 0.5–1 天 |
-| 8 | 计划 | 集成验收、隔离测试和文档收口 | 1 天 |
+| 会话 | 状态   | 主题                                          |     预计 |
+| ---- | ------ | --------------------------------------------- | -------: |
+| 1    | 已完成 | 基座插件骨架与请求上下文                      |        — |
+| 2    | 已完成 | 租户与组织树 Schema、迁移、初始 seed          |        — |
+| 3    | 下一步 | 用户类型、本地认证、Session 与 bootstrap 修订 | 1.5–2 天 |
+| 4    | 计划   | RBAC、用户类型权限与角色资格                  | 1.5–2 天 |
+| 5    | 计划   | 组织树 service / API / UI                     | 1–1.5 天 |
+| 6    | 计划   | 用户、用户类型、身份和角色管理闭环            | 1.5–2 天 |
+| 7    | 计划   | Manifest 权限过滤与 dict 插件                 | 0.5–1 天 |
+| 8    | 计划   | 集成验收、隔离测试和文档收口                  |     1 天 |
 
 本次领域修订后，P1 合理总量约为 10–13 个有效开发日。不得为了维持旧版“1–2 周”口号删除已确认的核心领域约束。
 
@@ -1179,21 +1179,21 @@ requireAt(
 
 P1 权限目录建议：
 
-| Code | Scope | User type | Role |
-| --- | --- | --- | --- |
-| `auth.portal.access` | tenant | 是 | 是 |
-| `auth.user-type.read` | tenant | 否 | 是 |
-| `auth.user-type.manage` | tenant | 否 | 是 |
-| `auth.user.read` | org | 否 | 是 |
-| `auth.user.manage` | org | 否 | 是 |
-| `org.tree.read` | org | 否 | 是 |
-| `org.tree.manage` | org | 否 | 是 |
-| `rbac.role.read` | tenant | 否 | 是 |
-| `rbac.role.manage` | tenant | 否 | 是 |
-| `rbac.assignment.read` | org | 否 | 是 |
-| `rbac.assignment.manage` | org | 否 | 是 |
-| `dict.read` | tenant | 可选 | 是 |
-| `dict.manage` | tenant | 否 | 是 |
+| Code                     | Scope  | User type | Role |
+| ------------------------ | ------ | --------- | ---- |
+| `auth.portal.access`     | tenant | 是        | 是   |
+| `auth.user-type.read`    | tenant | 否        | 是   |
+| `auth.user-type.manage`  | tenant | 否        | 是   |
+| `auth.user.read`         | org    | 否        | 是   |
+| `auth.user.manage`       | org    | 否        | 是   |
+| `org.tree.read`          | org    | 否        | 是   |
+| `org.tree.manage`        | org    | 否        | 是   |
+| `rbac.role.read`         | tenant | 否        | 是   |
+| `rbac.role.manage`       | tenant | 否        | 是   |
+| `rbac.assignment.read`   | org    | 否        | 是   |
+| `rbac.assignment.manage` | org    | 否        | 是   |
+| `dict.read`              | tenant | 可选      | 是   |
+| `dict.manage`            | tenant | 否        | 是   |
 
 ---
 
@@ -1895,13 +1895,13 @@ student
 
 验证：
 
-| 操作 | admin | manager | student |
-| --- | --- | --- | --- |
-| portal access | 允许 | 允许 | 允许 |
-| 管理角色 | 允许 | 拒绝 | 拒绝 |
-| 修改授权学院子树 | 允许 | 允许 | 拒绝 |
-| 修改其他学院 | 允许 | 拒绝 | 拒绝 |
-| 管理授权子树用户 | 允许 | 允许 | 拒绝 |
+| 操作             | admin | manager | student |
+| ---------------- | ----- | ------- | ------- |
+| portal access    | 允许  | 允许    | 允许    |
+| 管理角色         | 允许  | 拒绝    | 拒绝    |
+| 修改授权学院子树 | 允许  | 允许    | 拒绝    |
+| 修改其他学院     | 允许  | 拒绝    | 拒绝    |
+| 管理授权子树用户 | 允许  | 允许    | 拒绝    |
 
 还必须验证：
 
@@ -2547,24 +2547,24 @@ docs(repo): close identity and access foundation
 
 `docs/notes/p1-migration-audit.md` 应调整为：
 
-| 旧对象 | 新落点 | 裁决 |
-| --- | --- | --- |
-| tenant | org/tenants | 迁移并简化 |
-| org type/rule/node | org | 已迁移并加租户复合 FK |
-| user type | auth/user_types | 恢复概念、重写字段 |
-| user type capabilities | rbac/user_type_permissions | 规范化 |
-| isSuperAdmin | — | dropped |
-| user | auth/users | businessNo + 单类型 + 单归属 |
-| auth provider | auth | 迁移，P1 local |
-| identity | auth | 迁移并加固 |
-| session | auth | raw token 改 hash |
-| role permissions array | rbac/role_permissions | 规范化 |
-| role-user-type | rbac/role_allowed_user_types | 迁移并加租户 FK |
-| org-type-role | rbac/role_allowed_org_types | 迁移并加租户 FK |
-| org-type-user-type | — | deferred |
-| user-role | rbac/user_role_assignments | 迁移并加 tenant/scope |
-| CASL/Guard | — | dropped |
-| 旧 dashboard | — | dropped |
+| 旧对象                 | 新落点                       | 裁决                         |
+| ---------------------- | ---------------------------- | ---------------------------- |
+| tenant                 | org/tenants                  | 迁移并简化                   |
+| org type/rule/node     | org                          | 已迁移并加租户复合 FK        |
+| user type              | auth/user_types              | 恢复概念、重写字段           |
+| user type capabilities | rbac/user_type_permissions   | 规范化                       |
+| isSuperAdmin           | —                            | dropped                      |
+| user                   | auth/users                   | businessNo + 单类型 + 单归属 |
+| auth provider          | auth                         | 迁移，P1 local               |
+| identity               | auth                         | 迁移并加固                   |
+| session                | auth                         | raw token 改 hash            |
+| role permissions array | rbac/role_permissions        | 规范化                       |
+| role-user-type         | rbac/role_allowed_user_types | 迁移并加租户 FK              |
+| org-type-role          | rbac/role_allowed_org_types  | 迁移并加租户 FK              |
+| org-type-user-type     | —                            | deferred                     |
+| user-role              | rbac/user_role_assignments   | 迁移并加 tenant/scope        |
+| CASL/Guard             | —                            | dropped                      |
+| 旧 dashboard           | —                            | dropped                      |
 
 审计状态必须以实际代码为准，不因本教程计划提前标记完成。
 
