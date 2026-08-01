@@ -3,6 +3,7 @@ import type { AnyRelations } from 'drizzle-orm'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { z } from 'zod'
+import { runMigrations } from './migrator.ts'
 
 declare module 'cordis' {
   interface Context {
@@ -25,6 +26,13 @@ const Config = z
   .object({
     url: z.string().default(() => process.env.DATABASE_URL ?? localFallback),
     logQueries: z.boolean().default(false),
+    // 'apply' runs committed migrations during init (dev, single-instance
+    // deployments); 'off' leaves them to an external `pnpm db:migrate` job.
+    // Generation never happens here regardless of mode.
+    migrations: z.enum(['apply', 'off']).default('apply'),
+    // resolved against the working directory; boots are anchored at the repo
+    // root by the dev script and deployment WORKDIR
+    migrationsFolder: z.string().default('db/migrations'),
   })
   .prefault({})
 
@@ -63,7 +71,19 @@ export default class Database extends Service {
     const pool = new Pool({ connectionString: this.config.url })
     // an unhandled 'error' event from an idle client would crash the process
     pool.on('error', (error) => this.ctx.logger.error(error))
-    // dependents activate only after init completes, so this await is a real gate
+    // dependents activate only after init completes, so migrations and the
+    // liveness probe are a real gate; runMigrations is idempotent, so an hmr
+    // reload of this plugin re-checks the ledger in a few milliseconds
+    if (this.config.migrations === 'apply') {
+      const { applied, elapsed } = await runMigrations(pool, {
+        folder: this.config.migrationsFolder,
+      })
+      if (applied > 0) {
+        this.ctx.logger.info('applied %d migration(s) (%dms)', applied, elapsed)
+      } else {
+        this.ctx.logger.info('migrations up to date (%dms)', elapsed)
+      }
+    }
     await pool.query('select 1')
     this.pool = pool
     this.drizzle = drizzle({ client: pool, ...this.options })
