@@ -1,0 +1,1 @@
+CREATE INDEX "idx_org_nodes_tenant_type" ON "org_nodes" ("tenant_id","org_type_id");

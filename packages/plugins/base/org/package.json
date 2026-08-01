@@ -21,5 +21,8 @@
     "@qualy/plugin-database": "workspace:*",
     "@types/pg": "catalog:",
     "pg": "catalog:"
+  },
+  "dependencies": {
+    "drizzle-orm": "catalog:"
   }
 }

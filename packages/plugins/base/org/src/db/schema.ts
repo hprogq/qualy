@@ -153,6 +153,9 @@ export const orgNodes = snakeCase.table(
       table.sortOrder,
       table.name,
     ),
+    // backs type-scoped node queries and the referencing side of the type
+    // foreign key (postgres never indexes that side automatically)
+    index('idx_org_nodes_tenant_type').on(table.tenantId, table.orgTypeId),
     index('idx_org_nodes_path_gist').using('gist', table.path),
   ],
 )
