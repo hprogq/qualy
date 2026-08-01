@@ -22,33 +22,32 @@ export default function App() {
   )
 }
 
+function renderPage(page: Manifest['pages'][number]) {
+  const Component = registry[page.component]
+  if (!Component) return <p>渲染器缺失:{page.component}</p>
+  return (
+    <Suspense fallback={<p>加载中…</p>}>
+      <Component />
+    </Suspense>
+  )
+}
+
 function ManifestRouter() {
   const manifest = useManifest()
   const adminPages = manifest.pages.filter((page) => page.layout === 'admin')
+  const blankPages = manifest.pages.filter((page) => page.layout === 'blank')
   return (
     <BrowserRouter>
       <Routes>
+        {blankPages.map((page) => (
+          <Route key={page.path} path={page.path} element={renderPage(page)} />
+        ))}
         <Route element={<AdminLayout nav={manifest.nav} />}>
           <Route index element={<HomeRedirect nav={manifest.nav} />} />
           <Route path="*" element={<NotFound />} />
-          {adminPages.map((page) => {
-            const Component = registry[page.component]
-            return (
-              <Route
-                key={page.path}
-                path={page.path}
-                element={
-                  Component ? (
-                    <Suspense fallback={<p>加载中…</p>}>
-                      <Component />
-                    </Suspense>
-                  ) : (
-                    <p>渲染器缺失:{page.component}</p>
-                  )
-                }
-              />
-            )
-          })}
+          {adminPages.map((page) => (
+            <Route key={page.path} path={page.path} element={renderPage(page)} />
+          ))}
         </Route>
       </Routes>
     </BrowserRouter>
