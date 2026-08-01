@@ -260,6 +260,16 @@ importers:
       cordis:
         specifier: 'catalog:'
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
+    devDependencies:
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../infra/database
+      '@types/pg':
+        specifier: 'catalog:'
+        version: 8.20.0
+      pg:
+        specifier: 'catalog:'
+        version: 8.22.0
 
   packages/plugins/base/rbac:
     dependencies:

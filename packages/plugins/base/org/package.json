@@ -16,5 +16,10 @@
   },
   "peerDependencies": {
     "cordis": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-database": "workspace:*",
+    "@types/pg": "catalog:",
+    "pg": "catalog:"
   }
 }

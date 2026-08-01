@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite'
+import { ltree } from '@electric-sql/pglite/contrib/ltree'
 import { defineRelations } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
@@ -9,7 +10,8 @@ import { pingLogs } from '../../../demo/ping/src/db/schema.ts'
 
 describe('migration lineage', () => {
   it('replays on a fresh postgres 18 and serves typed queries', async () => {
-    const client = new PGlite()
+    // the migration lineage now creates the ltree extension
+    const client = new PGlite({ extensions: { ltree } })
     const relations = defineRelations({ pingLogs })
     const db = drizzle({ client, relations })
 
