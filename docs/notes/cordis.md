@@ -105,3 +105,14 @@ Consequences: any in-monorepo boot (dev or smoke) must carry `--expose-internals
 a standalone deploy (flat node_modules with the loader inside the app tree) needs
 neither internals nor an in-package manifest, so QUALY_CONFIG may point anywhere
 there. The production external manifest must not include @cordisjs/plugin-hmr.
+
+## Logger race on first boot
+
+Messages logged before @cordisjs/plugin-logger-console activates are dropped, not
+buffered. A plugin without inject applies immediately during manifest load and its
+apply-time logs can beat the console plugin (verified: four scaffold plugins were
+ACTIVE with zero errors, yet their single log line never appeared; loader apply
+logs for entries applied before the console are equally invisible). Plugins that
+declare inject activate after their services and log normally. Rule of thumb:
+apply-time logs are only reliable in plugins with at least one inject; treat a
+missing scaffold log as a logging race before suspecting the loader.

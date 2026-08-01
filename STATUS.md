@@ -26,6 +26,8 @@
 
 - [CI 竞态修复] generators 测试隔离(2026-08-02):CI 上 invariants 测试撞 YAML 重复键——根因是 generators 测试原地改写真实 qualy.yml(afterAll 恢复),vitest 测试文件并行,慢机器上 invariants 在 ping 带 disabled 的窗口读到清单再插一行成重复键(本地快、从未复现)。修法:read-entries 增 `--yml <path>` 注入(与 --all 同型),generators 的 disabled 用例改临时清单副本,仓库清单全程只读;教训并入注入化纪律——**测试禁止改写仓库跟踪文件**
 
+- [P1 会话 1] 基座插件骨架与请求上下文(2026-08-02):server 的 ApiContext 扩展为 { cordis, request, response, principal? }(AuthPrincipal = tenantId/userId/sessionId),新增 ContextEnricher 多槽注册表(`server.enrich(key, fn)`:Map 稳定容器 + effect 托管,key 冲突抛错,仅 API 请求且每请求串行执行,fiber dispose 即撤销);请求流重构为 insideApi 提前分流(enricher 与 oRPC 只在 /api 前缀内运行,静态资源不跑)。四基座插件骨架 packages/plugins/base/{rbac,auth,org,dict}(具名导出 + 空 schema + schemaEntry 声明 + infra inject ['db','server','ui'],不含业务),`pnpm plugin:add` 装配;argon2 0.45.1 / cookie 2.0.1 入 catalog(会话 3 用,暂无包引用不安装);CLAUDE 增租户纪律。**实查**:logger 首启竞态入 notes/cordis.md——无 inject 的插件 apply 即时执行,日志早于 logger-console 激活即丢弃(fiber 实为 ACTIVE 零错误,勿误判装载失败);声明真实 inject 后日志自然归位
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`
@@ -60,6 +62,7 @@
 - plugin-web dev 冒烟:`pnpm dev` 单进程 → `curl :3000/` 返回 vite 注入 react-refresh 的 HTML,`/api/ui/manifest` 正常,`/api/nope` 404
 - plugin-web 生产冒烟:`pnpm build`(gen --all → web-app build → staging)后 NODE_ENV=production 启动 → `/` no-cache、`/ping` 200(spa 回退)、哈希资源 `public,max-age=31536000,immutable`
 - plugin-web 类型门禁:`pnpm typecheck` → 零错误(tc: 0)
+- P1 会话 1:resolveSchemaEntries → 5 条(ping + rbac/auth/org/dict);drizzle-kit generate no-op + porcelain clean + drop-guard --all 1 file;dev 冒烟四条 "scaffold loaded" 日志齐 + ping API 200 + `/` 200;enricher 测试(两 enricher 串行合成 principal、同 key 二次注册拒绝、dispose 后回 null);`pnpm gen` unchanged;typecheck 零错误;vitest 12/12
 
 ## 会话中定下的约定(已写入 CLAUDE.md / docs/notes/)
 
@@ -103,7 +106,7 @@
 - 确认项:tsc 通过且 include 覆盖 scripts/**(含 tests,vitest 导入参与类型检查);notes/hmr.md 已含 --expose-internals 必要性与 dev-only/生产禁带;pnpm-workspace 的 allowBuilds 字段对 pnpm 11.8 有效(实证:approve-builds 写入该字段后 esbuild postinstall 正常执行)
 - prettier 最小配置(semi:false/singleQuote/printWidth:100)+ 全量格式化独立提交
 
-## 下一会话(P1 会话 1)
+## 下一会话(P1 会话 2)
 
-- 按 docs/p1-tutorial.md 会话 1 执行:迁移边界、四插件骨架(@qualy/plugin-org/auth/rbac/dict)与 server 请求上下文。**搬家不重写,超时即镀金**。旧代码只读参考在 legacy/(qualy_old + algryth);旧数据在 qualy-postgres-old 容器(卷 qualy_postgres_data)。提交格式冲突已裁决:教程的 `p1-s<N>` 不用,一律英文 Conventional Commits(CLAUDE.md 优先)
+- 按 docs/p1-tutorial.md 会话 2 执行:租户与组织树 schema(tenants/org_types/org_type_rules/org_nodes,复合 FK + ltree custom type + GiST),普通迁移建表 + custom 迁移建扩展与索引,seed 脚本 scripts/seed-p1.ts。旧 schema 在 legacy/qualy_old/apps/api/src/db/schema/;**搬家不重写**。注意:ltree/GiST 是 PGlite 盲区,集成测试用真 PG18
 - 浏览器人工走查(P0-REPORT 第 3 项)在 P1 第一个 commit 前人工补记:/ping 页面与导航、改 PingPage 文本验 HMR、停用 ping 后导航与路由消失、恢复、控制台无 React 双实例/Router/chunk 错误
