@@ -138,9 +138,18 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      '@types/pg':
+        specifier: 'catalog:'
+        version: 8.20.0
       drizzle-kit:
         specifier: 'catalog:'
         version: 1.0.0-rc.4
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 1.0.0-rc.4(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3)
+      pg:
+        specifier: 'catalog:'
+        version: 8.22.0
       prettier:
         specifier: 'catalog:'
         version: 3.9.6
