@@ -33,6 +33,7 @@
     "format": "prettier --write .",
     "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
+    "seed": "tsx scripts/seed.ts",
     "test": "tsx scripts/gen.ts && vitest run",
     "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts"
   }
