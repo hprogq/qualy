@@ -1,6 +1,6 @@
 # STATUS
 
-阶段:P0 / 最近会话:s7(2026-08-01,连排完成 s5 增补+s6+s7)
+阶段:**P0 已收官**(2026-08-02,tag v0.1.0-p0)/ 下一阶段:P1 基座迁移
 
 ## 已完成
 
@@ -15,6 +15,8 @@
 
 - [s6] ui-registry + manifest:@qualy/plugin-ui-registry(Service 'ui',static inject ['server'],addPage 全 effect + path 冲突抛错 + 确定性排序,RBAC 过滤留 P1 钩子);ping inject 'ui' 并 addPage(/ping,PingPage,admin,nav)
 - [s7] web-runtime + 前端壳:@qualy/web-runtime(Provider/useApi/useManifest/Slot,react 为 peerDependency 防双实例);ping /client(thunk 表 + PingPage);gen-plugins 生成器;apps/web(vite 8 + react 19 + react-router 8,manifest 驱动路由,/api 代理);tsconfig 四程序分治(root node + web-runtime + ping/client + apps/web),typecheck 链式;check-chunks 树摇哨兵(头注注明依赖默认 [name]-[hash] 命名);契约 ns 定案改为按契约模块导出名派生(<ns>Contract,连字符包名陷阱实锤)
+
+- [s8+收官令] P0 合卷:A 组修 CI(typecheck 前置 gen)、gen.ts 单入口(argv 共享根治 --all 只达链尾)、check-chunks/typecheck 声明化(根脚本零插件名)、**宿主拥有插件**(依赖与 cordis.yml 归位 packages/app,hoist 桥接实验失败后走结构正解;聚合方声明输入 + 生成器硬失败校验;hmr base 回锚修复 watcher 全盲);B 组 8 个 vitest(生命周期集成×3、PGlite PG18.3 迁移重放、生成器确定性×2、不变式、类型活性)+ 八项总验收归档 docs/reports/P0-REPORT.md + tag v0.1.0-p0;C 组角色表与两纪律入 CLAUDE、TanStack Query 接入(web-runtime 自持 manifest 生命周期,错误态可重试,@orpc/tanstack-query 同族锁定)
 
 ## 验收输出摘录
 
@@ -89,6 +91,6 @@
 - 确认项:tsc 通过且 include 覆盖 scripts/**(含 tests,vitest 导入参与类型检查);notes/hmr.md 已含 --expose-internals 必要性与 dev-only/生产禁带;pnpm-workspace 的 allowBuilds 字段对 pnpm 11.8 有效(实证:approve-builds 写入该字段后 esbuild postinstall 正常执行)
 - prettier 最小配置(semi:false/singleQuote/printWidth:100)+ 全量格式化独立提交
 
-## 下一会话
+## 下一会话(P1 开工)
 
-- s8:测试骨架 + 总验收固化(docs/p0-tutorial.md 会话8)。要点:ping/database/server/ui-registry 各配「装载→断言注册→卸载→断言清理」vitest(ctx.provide 打桩);八条总验收逐条执行摘录进 docs/reports/P0-REPORT.md;git tag v0.1.0-p0;浏览器人工走查(s7 验收 a)由人完成
+- P1 基座迁移(PLAN §8):Qualy auth/org/rbac → 三插件 + dict;manifest 接 RBAC。**搬家不重写,超时即镀金**。第一个业务页面直接写在 TanStack Query 范式上(web-runtime 已就绪);旧数据在 qualy-postgres-old 容器(卷 qualy_postgres_data)。浏览器人工走查(P0-REPORT 第 3 项)仍留人工补记

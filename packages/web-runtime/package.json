@@ -14,5 +14,9 @@
   "devDependencies": {
     "@qualy/api-client": "workspace:*",
     "@types/react": "catalog:"
+  },
+  "dependencies": {
+    "@orpc/tanstack-query": "catalog:",
+    "@tanstack/react-query": "catalog:"
   }
 }

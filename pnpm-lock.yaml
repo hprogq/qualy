@@ -36,6 +36,12 @@ catalogs:
     '@orpc/server':
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
+    '@orpc/tanstack-query':
+      specifier: 2.0.0-beta.21
+      version: 2.0.0-beta.21
+    '@tanstack/react-query':
+      specifier: 5.101.4
+      version: 5.101.4
     '@types/node':
       specifier: 24.13.3
       version: 24.13.3
@@ -312,6 +318,12 @@ importers:
 
   packages/web-runtime:
     dependencies:
+      '@orpc/tanstack-query':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21(@tanstack/query-core@5.101.4)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.101.4(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -750,6 +762,11 @@ packages:
       '@opentelemetry/api':
         optional: true
 
+  '@orpc/tanstack-query@2.0.0-beta.21':
+    resolution: {integrity: sha512-HGJGggTxWVAEjtGyDUW11ZravBab0qBlb4w8IB7Wxj7gh15nyXh1M86Di0AQgy5YWw0wGv9Lq7uTA3RlaFWhFw==}
+    peerDependencies:
+      '@tanstack/query-core': '>=5.80.2'
+
   '@oxc-project/types@0.142.0':
     resolution: {integrity: sha512-7W+2q5AKQVU36fkaryontrHn3YDt1RyUYXatw9i5H8ocYe2sPKSFB6eS8WNPeRKiN1qAWWZUPm7gwFzJGrccqQ==}
 
@@ -867,6 +884,14 @@ packages:
 
   '@standardserver/shared@0.5.0':
     resolution: {integrity: sha512-YPkkdqyKQ+6tvtP2pPLzIIrvhjrsvnI006tTTSWqFc2US6X8r1zfYVhfHf9Zpn4HsdhyhwpWwF4fIsN+nlr1Ow==}
+
+  '@tanstack/query-core@5.101.4':
+    resolution: {integrity: sha512-gNwcvOJcRbLWPOLG/2OBm+zM+Yv+MKsXKEOWC57USuZDEsI71hEErQsiEGx5wX9rzWWkfwM0fVSPoiIFSsxfiw==}
+
+  '@tanstack/react-query@5.101.4':
+    resolution: {integrity: sha512-yRg2pfOCxIs4ZJW3XYYHU/WgtD04FHSnfHlpRT7h7pR77hwkdRG4wxbKe4aq6P0RvXUTBSQpQeadS1SUYUe+KA==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
@@ -1849,6 +1874,20 @@ snapshots:
       radash: 12.1.1
       type-fest: 5.8.0
 
+  '@orpc/tanstack-query@2.0.0-beta.21(@tanstack/query-core@5.101.4)':
+    dependencies:
+      '@orpc/client': 2.0.0-beta.21
+      '@orpc/contract': 2.0.0-beta.21
+      '@orpc/openapi': 2.0.0-beta.21
+      '@orpc/shared': 2.0.0-beta.21
+      '@tanstack/query-core': 5.101.4
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+      - '@scalar/api-reference'
+      - '@types/swagger-ui'
+      - crossws
+      - swagger-ui
+
   '@oxc-project/types@0.142.0': {}
 
   '@rolldown/binding-android-arm64@1.2.1':
@@ -1925,6 +1964,13 @@ snapshots:
       '@standardserver/shared': 0.5.0
 
   '@standardserver/shared@0.5.0': {}
+
+  '@tanstack/query-core@5.101.4': {}
+
+  '@tanstack/react-query@5.101.4(react@19.2.8)':
+    dependencies:
+      '@tanstack/query-core': 5.101.4
+      react: 19.2.8
 
   '@tybys/wasm-util@0.10.3':
     dependencies:

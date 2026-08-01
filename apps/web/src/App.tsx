@@ -1,7 +1,12 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Link, Outlet, Route, Routes } from 'react-router'
 import { createApiClient } from '@qualy/api-client'
-import { RuntimeProvider, type ComponentRegistry, type Manifest } from '@qualy/web-runtime'
+import {
+  RuntimeProvider,
+  useManifest,
+  type ComponentRegistry,
+  type Manifest,
+} from '@qualy/web-runtime'
 import { components } from './plugins.gen.ts'
 
 const client = createApiClient('/api')
@@ -10,40 +15,41 @@ const registry: ComponentRegistry = Object.fromEntries(
 )
 
 export default function App() {
-  const [manifest, setManifest] = useState<Manifest | null>(null)
-  useEffect(() => {
-    client.ui.getManifest().then(setManifest)
-  }, [])
-  const runtime = useMemo(() => ({ client, manifest, registry }), [manifest])
-  if (!manifest) return null
+  return (
+    <RuntimeProvider client={client} registry={registry}>
+      <ManifestRouter />
+    </RuntimeProvider>
+  )
+}
+
+function ManifestRouter() {
+  const manifest = useManifest()
   const adminPages = manifest.pages.filter((page) => page.layout === 'admin')
   return (
-    <RuntimeProvider value={runtime}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AdminLayout nav={manifest.nav} />}>
-            {adminPages.map((page) => {
-              const Component = registry[page.component]
-              return (
-                <Route
-                  key={page.path}
-                  path={page.path}
-                  element={
-                    Component ? (
-                      <Suspense fallback={<p>loading…</p>}>
-                        <Component />
-                      </Suspense>
-                    ) : (
-                      <p>missing renderer: {page.component}</p>
-                    )
-                  }
-                />
-              )
-            })}
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </RuntimeProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AdminLayout nav={manifest.nav} />}>
+          {adminPages.map((page) => {
+            const Component = registry[page.component]
+            return (
+              <Route
+                key={page.path}
+                path={page.path}
+                element={
+                  Component ? (
+                    <Suspense fallback={<p>加载中…</p>}>
+                      <Component />
+                    </Suspense>
+                  ) : (
+                    <p>渲染器缺失:{page.component}</p>
+                  )
+                }
+              />
+            )
+          })}
+        </Route>
+      </Routes>
+    </BrowserRouter>
   )
 }
 
