@@ -21,6 +21,9 @@ catalogs:
     '@cordisjs/plugin-timer':
       specifier: 1.1.2
       version: 1.1.2
+    '@electric-sql/pglite':
+      specifier: 0.5.4
+      version: 0.5.4
     '@orpc/client':
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
@@ -120,6 +123,9 @@ importers:
       '@cordisjs/plugin-hmr':
         specifier: 'catalog:'
         version: 1.0.15(@cordisjs/plugin-timer@1.1.2(cordis@4.0.0-rc.7))(cordis@4.0.0-rc.7)
+      '@electric-sql/pglite':
+        specifier: 'catalog:'
+        version: 0.5.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -237,7 +243,7 @@ importers:
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
       drizzle-orm:
         specifier: 'catalog:'
-        version: 1.0.0-rc.4(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3)
+        version: 1.0.0-rc.4(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -256,7 +262,7 @@ importers:
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
       drizzle-orm:
         specifier: 'catalog:'
-        version: 1.0.0-rc.4(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3)
+        version: 1.0.0-rc.4(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3)
       pg:
         specifier: 'catalog:'
         version: 8.22.0
@@ -360,6 +366,9 @@ packages:
 
   '@drizzle-team/brocli@0.12.0':
     resolution: {integrity: sha512-mlUE+rZ8CatQekLhnaiN91Iemdd+e2gFKooGlnRB3oPTL3VghLfX24dx7HrzMNeC1JrIB/0kpsfyty3f5HNfxQ==}
+
+  '@electric-sql/pglite@0.5.4':
+    resolution: {integrity: sha512-yYZUyyXrHU7tPlCjwZQJ6hIG9DscdCCn7Uk0mYKwC1FeHX286AbcmFveMiRBEak8e9iPupjsoVImN3yJZVed2g==}
 
   '@emnapi/core@2.0.0-alpha.3':
     resolution: {integrity: sha512-AZypUeJ/yByuxyS7BlSNRDOMLMlROYtjYdIAuBmJssVz1UJDSeYxLrdizhXCFYhedC5bqd/ASy8EuNXbVVXp9g==}
@@ -1584,6 +1593,8 @@ snapshots:
 
   '@drizzle-team/brocli@0.12.0': {}
 
+  '@electric-sql/pglite@0.5.4': {}
+
   '@emnapi/core@2.0.0-alpha.3':
     dependencies:
       '@emnapi/wasi-threads': 2.0.1
@@ -2031,8 +2042,9 @@ snapshots:
       get-tsconfig: 4.14.0
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.4(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3):
+  drizzle-orm@1.0.0-rc.4(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3):
     optionalDependencies:
+      '@electric-sql/pglite': 0.5.4
       '@types/pg': 8.20.0
       pg: 8.22.0
       zod: 4.4.3

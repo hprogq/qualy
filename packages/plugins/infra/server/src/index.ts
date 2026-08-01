@@ -21,7 +21,8 @@ export type ApiRouter = Router<ApiContext>
 export default class Server extends Service {
   static Config = z
     .object({
-      port: z.number().int().positive().default(3000),
+      // port 0 binds an ephemeral port, used by tests
+      port: z.number().int().min(0).default(3000),
       prefix: z.string().regex(/^\//, 'prefix must start with /').default('/api'),
     })
     .prefault({})
@@ -29,6 +30,13 @@ export default class Server extends Service {
   private fragments = new Map<string, ApiRouter>()
   private handler!: OpenAPIHandler<ApiContext>
   private http!: HttpServer
+
+  // the actually bound port (differs from config when config.port is 0)
+  get port(): number {
+    const address = this.http.address()
+    if (!address || typeof address === 'string') throw new Error('server is not listening')
+    return address.port
+  }
 
   constructor(
     ctx: Context,
