@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./contract": "./src/contract.ts",
-    "./schema": "./src/db/schema.ts"
+    "./schema": "./src/db/schema.ts",
+    "./client": "./client/index.ts"
   },
   "qualy": {
     "database": {
@@ -16,7 +17,8 @@
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:"
+    "cordis": "catalog:",
+    "react": "catalog:"
   },
   "dependencies": {
     "@orpc/contract": "catalog:",
@@ -24,7 +26,11 @@
     "@orpc/server": "catalog:",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:"
   }
 }

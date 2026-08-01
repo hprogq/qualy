@@ -1,6 +1,6 @@
 # STATUS
 
-阶段:P0 / 最近会话:s5(2026-08-01,ping 全链路 + 契约聚合 + api-client)
+阶段:P0 / 最近会话:s7(2026-08-01,连排完成 s5 增补+s6+s7)
 
 ## 已完成
 
@@ -12,6 +12,9 @@
 - [s4] server 插件 + oRPC v2 接入:@qualy/plugin-server(OpenAPIHandler + CORSHandlerPlugin + onError 拦截;Service.init 绑定端口,disposal 等端口真释放;contribute/rebuild 全 effect,ns 冲突抛错);开场四条探针实录 notes/orpc-v2.md;HTTP 404 链路通
 
 - [s5] ping 后端全链路:契约先行(oc.meta(openapi) GET /ping/hello)→ implement.$context<ApiContext> → contribute('ping');gen-contracts 生成器(exports["./contract"] 声明式发现,导出名约定 <ns>Contract)入 gen 管线;api-client(OpenAPILink@/fetch + createORPCClient + 类型标注);会话 4 收尾修令四条同批落地(server 请求兜底/db:reset/卷注释/vector 迁移备忘)
+
+- [s6] ui-registry + manifest:@qualy/plugin-ui-registry(Service 'ui',static inject ['server'],addPage 全 effect + path 冲突抛错 + 确定性排序,RBAC 过滤留 P1 钩子);ping inject 'ui' 并 addPage(/ping,PingPage,admin,nav)
+- [s7] web-runtime + 前端壳:@qualy/web-runtime(Provider/useApi/useManifest/Slot,react 为 peerDependency 防双实例);ping /client(thunk 表 + PingPage);gen-plugins 生成器;apps/web(vite 8 + react 19 + react-router 8,manifest 驱动路由,/api 代理);tsconfig 四程序分治(root node + web-runtime + ping/client + apps/web),typecheck 链式;check-chunks 树摇哨兵(头注注明依赖默认 [name]-[hash] 命名);契约 ns 定案改为按契约模块导出名派生(<ns>Contract,连字符包名陷阱实锤)
 
 ## 验收输出摘录
 
@@ -36,7 +39,13 @@
 - s5 (c):api-client 类型化客户端 `c.ping.hello({name:'client'})` → `{ msg: 'hello, client' }`
 - s5 (d):yml 停用 ping → 同 curl 404(贡献点 effect 摘除,零重建热生效);恢复 → 200 + ping 重载日志
 - s5 关键实测:rc.7 服务访问受 inject 声明约束(cannot get property without inject),handler 必须闭包自插件 ctx;OpenAPILink 在 /fetch 子路径;RouterContractClient/JsonifiedClient 是纯类型导出(值探针盲区);弃用需 meta.path 印章的 client factory;sed -i 换 inode 会弄丢 yml watcher(脚本改 yml 用 python 原地重写)
-- s5 类型门禁:`pnpm typecheck` → 零错误
+- s5 类型门禁:`pnpm typecheck` → 零错误;类型活性验收(@ts-expect-error 错误调用)入 vitest
+- s6 manifest:`curl /api/ui/manifest` → pages 含 /ping(PingPage/admin/public)+ nav Ping(order 10)
+- s6 停用双重消失:yml 停用 ping → manifest 空 + /ping/hello 404(effect disposal 实证);恢复经重启路径回全(yml watcher 写回后失效怪癖二次复现,已归档 notes/hmr.md,勿会话中途深挖)
+- s7 构建:`pnpm build` → `dist/assets/PingPage-*.js 0.26 kB` 独立 chunk;`node scripts/check-chunks.mjs` → present
+- s7 树摇负测:停用 ping → build 产物无 PingPage chunk(check-chunks exit 1),index 体积同步减小;恢复 regen 正常
+- s7 冒烟:vite dev 起壳(title Qualy),`localhost:5173/api/ui/manifest` 经代理返回 pages ['/ping'];浏览器人工走查留给人
+- s7 类型门禁:四程序链(root/web-runtime/ping-client/apps-web)全绿
 
 ## 会话中定下的约定(已写入 CLAUDE.md / docs/notes/)
 
@@ -82,4 +91,4 @@
 
 ## 下一会话
 
-- s6:ui-registry + manifest(docs/p0-tutorial.md 会话6)。要点:@qualy/plugin-ui-registry(addPage 全 effect,manifest 契约 GET /ui/manifest 匿名可访问);ping inject 加 'ui' 并 addPage;验收 manifest 含 /ping 条目、停用 ping 双重消失(接口 404 + manifest 条目消失)
+- s8:测试骨架 + 总验收固化(docs/p0-tutorial.md 会话8)。要点:ping/database/server/ui-registry 各配「装载→断言注册→卸载→断言清理」vitest(ctx.provide 打桩);八条总验收逐条执行摘录进 docs/reports/P0-REPORT.md;git tag v0.1.0-p0;浏览器人工走查(s7 验收 a)由人完成
