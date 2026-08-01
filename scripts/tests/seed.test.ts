@@ -23,7 +23,9 @@ if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
 }
 if (!available) console.warn('postgres unreachable, seed tests skipped')
 
-describe.runIf(available)('bootstrap seed', () => {
+const ADMIN = { adminPassword: 'seed-test-password-123' }
+
+describe.runIf(available)('tenant bootstrap seed', () => {
   const admin = new Pool({ connectionString: baseUrl })
   const dbName = `qualy_seed_${randomUUID().slice(0, 8)}`
   let pool: Pool
@@ -60,37 +62,109 @@ describe.runIf(available)('bootstrap seed', () => {
     await admin.end()
   })
 
-  it('creates core and the demo tree once, then converges to a no-op', async () => {
-    const first = await inTransaction(seed)
-    expect(first).toEqual({ tenants: 1, types: 4, rules: 3, nodes: 4, demo: 'created' })
+  it('provisions a fresh tenant and converges to a no-op', async () => {
+    const first = await inTransaction((client) => seed(client, ADMIN))
+    expect(first.created).toEqual({
+      tenant: 1,
+      orgTypes: 8,
+      rules: 9,
+      root: 1,
+      userTypes: 1,
+      provider: 1,
+      demoNodes: 0,
+      demoUsers: 0,
+    })
+    expect(first.admin).toBe('created')
+    expect(first.demo).toBe('skipped')
 
-    // the tenant has org data now, so the demo layer is skipped by default
-    const second = await inTransaction(seed)
-    expect(second).toEqual({ tenants: 0, types: 0, rules: 0, nodes: 0, demo: 'skipped' })
+    // no demo descendants without the explicit flag
+    const nodes = await pool.query(`select count(*) from org_nodes`)
+    expect(Number(nodes.rows[0].count)).toBe(1)
 
-    const nodes = await pool.query(
+    const second = await inTransaction((client) => seed(client, ADMIN))
+    expect(Object.values(second.created).every((count) => count === 0)).toBe(true)
+    expect(second.admin).toBe('unchanged')
+  })
+
+  it('leaves business-edited display fields alone', async () => {
+    await pool.query(`update tenants set name = '改名大学'`)
+    await pool.query(`update org_types set name = '书院' where code = 'college'`)
+    await pool.query(`update org_nodes set name = '改名大学' where parent_id is null`)
+    const report = await inTransaction((client) => seed(client, ADMIN))
+    expect(Object.values(report.created).every((count) => count === 0)).toBe(true)
+    const college = await pool.query(`select name from org_types where code = 'college'`)
+    expect(college.rows[0].name).toBe('书院')
+  })
+
+  it('never resets the admin password without the explicit flag', async () => {
+    const before = await pool.query(
+      `select credential_hash from user_identities where identifier = 'admin'`,
+    )
+    await inTransaction((client) => seed(client, { adminPassword: 'a-different-password-1' }))
+    const unchanged = await pool.query(
+      `select credential_hash from user_identities where identifier = 'admin'`,
+    )
+    expect(unchanged.rows[0].credential_hash).toBe(before.rows[0].credential_hash)
+
+    const reset = await inTransaction((client) =>
+      seed(client, { adminPassword: 'a-brand-new-password-1', resetAdminPassword: true }),
+    )
+    expect(reset.admin).toBe('reset')
+    const after = await pool.query(
+      `select credential_hash from user_identities where identifier = 'admin'`,
+    )
+    expect(after.rows[0].credential_hash).not.toBe(before.rows[0].credential_hash)
+    const { verifyPassword } = (await import(
+      resolvePluginModuleUrl('@qualy/plugin-auth/password')
+    )) as typeof import('../../packages/plugins/base/auth/src/password.ts')
+    expect(await verifyPassword(after.rows[0].credential_hash, 'a-brand-new-password-1')).toBe(true)
+  })
+
+  it('creates demo data only when asked and idempotently', async () => {
+    const demo = await inTransaction((client) =>
+      seed(client, { ...ADMIN, demo: true, demoPassword: 'demo-test-password-1' }),
+    )
+    expect(demo.demo).toBe('created')
+    expect(demo.created.demoNodes).toBe(4)
+    expect(demo.created.demoUsers).toBe(2)
+    expect(demo.created.userTypes).toBe(2)
+
+    const again = await inTransaction((client) =>
+      seed(client, { ...ADMIN, demo: true, demoPassword: 'demo-test-password-1' }),
+    )
+    expect(again.created.demoNodes).toBe(0)
+    expect(again.created.demoUsers).toBe(0)
+
+    const depths = await pool.query(
       `select code, depth, nlevel(path) as levels from org_nodes order by path`,
     )
-    expect(nodes.rows.map((row) => [row.code, row.depth, Number(row.levels)])).toEqual([
-      ['qualy-university', 0, 1],
+    expect(depths.rows.map((row) => [row.code, row.depth, Number(row.levels)])).toEqual([
+      ['root', 0, 1],
       ['software-college', 1, 2],
-      ['computer-science', 2, 3],
-      ['class-1', 3, 4],
+      ['grade-2023', 2, 3],
+      ['computer-science', 3, 4],
+      ['class-2023-1', 4, 5],
     ])
   })
 
-  it('never blocks the core seed on legitimately changed org data', async () => {
-    await pool.query(`update org_nodes set parent_id = null where code = 'software-college'`)
-    const result = await inTransaction(seed)
-    expect(result.demo).toBe('skipped')
+  it('fails loudly on stable platform semantics drift without partial writes', async () => {
+    await pool.query(`update auth_providers set type = 'cas' where code = 'local'`)
+    await expect(inTransaction((client) => seed(client, ADMIN))).rejects.toThrow(
+      /seed drift: auth provider local/,
+    )
+    await pool.query(`update auth_providers set type = 'local' where code = 'local'`)
   })
 
-  it('verifies the demo tree strictly when explicitly requested', async () => {
-    await expect(inTransaction((client) => seed(client, { demo: true }))).rejects.toThrow(
-      /seed drift: org node software-college/,
+  it('demands an admin password only when the admin must be created', async () => {
+    // admin exists: no password needed at all
+    const report = await inTransaction((client) => seed(client, {}))
+    expect(report.admin).toBe('unchanged')
+    // a fresh database without a password fails with a clear message
+    await pool.query(`delete from user_identities where identifier = 'admin'`)
+    await pool.query(`delete from users where display_name = '系统管理员'`)
+    await expect(inTransaction((client) => seed(client, {}))).rejects.toThrow(
+      /QUALY_ADMIN_PASSWORD/,
     )
-    // drift detection aborts inside the transaction, nothing is written
-    const count = await pool.query(`select count(*) from org_nodes`)
-    expect(Number(count.rows[0].count)).toBe(4)
+    await inTransaction((client) => seed(client, ADMIN))
   })
 })

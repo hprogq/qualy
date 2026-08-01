@@ -1,5 +1,6 @@
 // bootstrap runner over scripts/lib/seed.ts; the whole seed executes in one
-// transaction, so drift detection aborts without partial writes
+// transaction, so any failure aborts without partial writes. Credentials come
+// only from environment variables and are never logged.
 import { Pool } from 'pg'
 import { seed } from './lib/seed.ts'
 
@@ -8,18 +9,24 @@ try {
 } catch {}
 
 const url = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
-// QUALY_SEED_DEMO=1 forces the sample org tree (with strict verification);
-// by default it is only created into a tenant without org data
-const demo = process.env.QUALY_SEED_DEMO === '1' ? true : undefined
 const pool = new Pool({ connectionString: url })
 const client = await pool.connect()
 try {
   await client.query('begin')
-  const created = await seed(client, { demo })
+  const report = await seed(client, {
+    demo: process.env.QUALY_SEED_DEMO === '1',
+    adminUsername: process.env.QUALY_ADMIN_USERNAME,
+    adminPassword: process.env.QUALY_ADMIN_PASSWORD,
+    resetAdminPassword: process.env.QUALY_RESET_ADMIN_PASSWORD === '1',
+    demoPassword: process.env.QUALY_DEMO_PASSWORD,
+  })
   await client.query('commit')
+  const c = report.created
   console.log(
-    `seed complete: ${created.tenants} tenant(s), ${created.types} org type(s), ` +
-      `${created.rules} rule(s), ${created.nodes} node(s) created, demo tree ${created.demo}`,
+    `seed complete: tenant +${c.tenant}, org types +${c.orgTypes}, rules +${c.rules}, ` +
+      `root +${c.root}, user types +${c.userTypes}, provider +${c.provider}, ` +
+      `admin ${report.admin}, demo ${report.demo}` +
+      (report.demo === 'created' ? ` (+${c.demoNodes} nodes, +${c.demoUsers} users)` : ''),
   )
 } catch (error) {
   await client.query('rollback')
