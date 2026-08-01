@@ -14,12 +14,17 @@ export const migrationDefaults = {
   table: 'schema_migrations',
 }
 
-async function appliedCount(pool: Pool, schema: string, table: string) {
+async function appliedCount(pool: Pool, schema: string, table: string, allowMissing: boolean) {
   try {
     const result = await pool.query(`select count(*) from "${schema}"."${table}"`)
     return Number(result.rows[0].count)
-  } catch {
-    return 0
+  } catch (error) {
+    // a fresh database legitimately lacks the ledger (3F000 schema missing,
+    // 42P01 table missing); anything else — permissions, broken connection —
+    // must surface, especially on the recount after a successful migrate
+    const code = (error as { code?: string }).code
+    if (allowMissing && (code === '3F000' || code === '42P01')) return 0
+    throw error
   }
 }
 
@@ -34,14 +39,14 @@ export async function runMigrations(
 ): Promise<MigrationResult> {
   const { folder, schema, table } = { ...migrationDefaults, ...options }
   const started = performance.now()
-  const before = await appliedCount(pool, schema, table)
+  const before = await appliedCount(pool, schema, table, true)
   await migrate(drizzle({ client: pool }), {
     migrationsFolder: folder,
     migrationsSchema: schema,
     migrationsTable: table,
   })
   return {
-    applied: (await appliedCount(pool, schema, table)) - before,
+    applied: (await appliedCount(pool, schema, table, false)) - before,
     elapsed: Math.round(performance.now() - started),
   }
 }

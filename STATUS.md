@@ -32,6 +32,8 @@
 
 - [工具链审计裁决] 迁移下沉 + 自动 codegen(2026-08-02):外部审计建议按冻结元规则过滤,三档裁决入 notes/tooling.md。**采纳**:①迁移执行下沉 database 插件——`runMigrations()` 归 `@qualy/plugin-database/migrator`(零 cordis 依赖),Service.init 按 `migrations: apply|off` 执行已提交迁移(依赖 db 的插件迁移完成后才激活;migrate 幂等,hmr 重跑仅台账检查数十 ms,不做 once-guard);`pnpm db:migrate` 改为同一实现的薄适配器(经 hostRequire 解析,根包不依赖插件);dev 脚本去掉前置 db:migrate。②codegen 自动化——dev/typecheck/test 前置 gen(build 原有),plugin:add 收尾自动 regen,CI 独立 gen 步骤删除。**缓建**(触发条件入 tooling.md + 回顾表):@qualy/tooling 包/CodegenRegistry/qualy bin/Vite adapter/gen watcher/verify mode/插件自带 migration。**永久禁令**:应用进程禁 drizzle-kit generate 与写 .gen.ts、codegen 不进 cordis core、不按 active 集合动删库对象
 
+- [迁移生命周期加固] 复审四项修复(2026-08-02):①migrationsFolder 相对路径改按装配清单目录(ctx.baseUrl)解析,qualy.yml 显式声明 `../../db/migrations`——此前按 cwd 解析实际回退了 import.meta.url 锚定的 cwd 无关启动保证;②init 失败(迁移目录缺失/SQL 失败/探活失败)时 disposer 尚未登记,补 try/catch 关闭 Pool 再抛;③appliedCount 只吞 3F000/42P01(缺 schema/缺表),迁移成功后的复数不再容错;④off 模式打印明确日志(区分「无待迁移」与「未检查」)。新增真 PG 生命周期集成测试(lifecycle.test.ts:apply 建表门控 + 重载幂等 + off 不建表 + 坏目录失败且 pg_stat_activity 零连接;PG 不可达自动跳过),CI 增 pgvector:pg18-bookworm service(与 compose 同镜像)。「幂等」表述限定为单实例串行(rc4 无 advisory lock,多副本走 off + 迁移 Job)
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`

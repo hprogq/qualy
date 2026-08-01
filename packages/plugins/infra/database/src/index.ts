@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Context, Service } from 'cordis'
 import type { AnyRelations } from 'drizzle-orm'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
@@ -30,8 +32,8 @@ const Config = z
     // deployments); 'off' leaves them to an external `pnpm db:migrate` job.
     // Generation never happens here regardless of mode.
     migrations: z.enum(['apply', 'off']).default('apply'),
-    // resolved against the working directory; boots are anchored at the repo
-    // root by the dev script and deployment WORKDIR
+    // relative paths resolve against the assembly manifest's directory
+    // (ctx.baseUrl), keeping boots cwd-independent; absolute paths pass through
     migrationsFolder: z.string().default('db/migrations'),
   })
   .prefault({})
@@ -65,6 +67,15 @@ export default class Database extends Service {
     }
   }
 
+  private resolveMigrationsFolder() {
+    const folder = this.config.migrationsFolder
+    if (path.isAbsolute(folder)) return folder
+    // baseUrl is anchored at the assembly manifest by the include plugin, so
+    // the same relative declaration works for in-repo and external manifests
+    if (this.ctx.baseUrl) return fileURLToPath(new URL(folder, this.ctx.baseUrl))
+    return path.resolve(folder)
+  }
+
   async *[Service.init]() {
     const target = redact(this.config.url)
     const started = performance.now()
@@ -72,19 +83,28 @@ export default class Database extends Service {
     // an unhandled 'error' event from an idle client would crash the process
     pool.on('error', (error) => this.ctx.logger.error(error))
     // dependents activate only after init completes, so migrations and the
-    // liveness probe are a real gate; runMigrations is idempotent, so an hmr
-    // reload of this plugin re-checks the ledger in a few milliseconds
-    if (this.config.migrations === 'apply') {
-      const { applied, elapsed } = await runMigrations(pool, {
-        folder: this.config.migrationsFolder,
-      })
-      if (applied > 0) {
-        this.ctx.logger.info('applied %d migration(s) (%dms)', applied, elapsed)
+    // liveness probe are a real gate; safe to re-run on an hmr reload because
+    // the ledger check is fast and this process executes serially (rc4's
+    // migrator has no advisory lock — multi-replica boots must use 'off')
+    try {
+      if (this.config.migrations === 'apply') {
+        const { applied, elapsed } = await runMigrations(pool, {
+          folder: this.resolveMigrationsFolder(),
+        })
+        if (applied > 0) {
+          this.ctx.logger.info('applied %d migration(s) (%dms)', applied, elapsed)
+        } else {
+          this.ctx.logger.info('migrations up to date (%dms)', elapsed)
+        }
       } else {
-        this.ctx.logger.info('migrations up to date (%dms)', elapsed)
+        this.ctx.logger.info('migration execution disabled, expecting an external migration job')
       }
+      await pool.query('select 1')
+    } catch (error) {
+      // the disposer below is not registered yet, so close the pool here
+      await pool.end().catch((closeError) => this.ctx.logger.error(closeError))
+      throw error
     }
-    await pool.query('select 1')
     this.pool = pool
     this.drizzle = drizzle({ client: pool, ...this.options })
     this.ctx.logger.info('connected to %s (%dms)', target, Math.round(performance.now() - started))

@@ -12,8 +12,11 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
   `@qualy/plugin-database/migrator`(零 cordis 依赖),Service.init 按
   `migrations: 'apply' | 'off'` 执行**已提交**迁移,依赖 db 的插件在迁移完成后才激活;
   `pnpm db:migrate` 是同一实现的薄适配器,留给部署 Job(mode off 时)与手动使用。
-  migrate() 幂等且台账检查仅数十毫秒,hmr 重载 database 插件重跑无害,不做进程级
-  once-guard。
+  **单实例串行执行条件下**可安全重复调用(台账检查仅数十毫秒,hmr 重载重跑无害,
+  不做进程级 once-guard);rc4 migrator 无 advisory lock,多副本并发启动会竞争 DDL,
+  届时必须 mode off + 独立迁移 Job,或按回顾表触发 advisory lock。
+  migrationsFolder 相对路径按装配清单目录(ctx.baseUrl)解析,启动与 cwd 无关,
+  仓库装配在 qualy.yml 显式声明 `../../db/migrations`。
 - **codegen 自动化**:手动 `pnpm gen` 是踩过的 footgun(fresh clone CI 曾因 typecheck
   前置缺 gen 断链)。dev/typecheck/test 现在前置 gen(build 原本就有 --all),
   plugin:add 收尾自动 regen;写前比对使无变更时零写入,重复执行代价 ~1-2s。
@@ -21,14 +24,14 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
 
 ## 缓建(记录触发条件,条件未发生前禁止预防性重建)
 
-| 机制                                               | 触发条件                                                                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| @qualy/tooling 包(qualy bin/CLI)                   | 第四类 codegen 能力落地(如 rbac.permissions 权限码生成)、插件出现私有 codegen 需求、或 CLI 需在本仓库之外使用 |
-| AssemblyGraph / CodegenRegistry(贡献-任务双层模型) | 同上——审计自己的实施顺序也把 registry 排在第四条真实能力之后                                                  |
-| Vite adapter / plugins.gen 虚拟模块                | 物理 gen 文件造成真实构建摩擦(如 watch 竞态、fresh clone 解析失败复发)                                        |
-| gen watcher(dev 期间自动重生成)                    | 结构性变更(增删 contract/client 导出)在会话内高频发生;当前 plugin:add 自动 regen 已覆盖主路径                 |
-| 迁移 mode 'verify'(校验不执行)                     | 应用容器无 DDL 权限的生产部署真实出现                                                                         |
-| 插件自带 migration 序列                            | 出现需要独立发版的外部插件生态(需要版本 DAG/拓扑排序/多 ledger,见审计第七节)                                  |
+| 机制                                               | 触发条件                                                                                                                                                                   |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| @qualy/tooling 包(qualy bin/CLI)                   | 第四类 codegen 能力落地(如 rbac.permissions 权限码生成)、插件出现私有 codegen 需求、或 CLI 需在本仓库之外使用                                                              |
+| AssemblyGraph / CodegenRegistry(贡献-任务双层模型) | 同上——审计自己的实施顺序也把 registry 排在第四条真实能力之后                                                                                                               |
+| Vite adapter / plugins.gen 虚拟模块                | 物理 gen 文件造成真实构建摩擦(如 watch 竞态、fresh clone 解析失败复发)                                                                                                     |
+| gen watcher(dev 期间自动重生成)                    | 第一次要求不重启 dev 进程热启用「启动时 disabled 且贡献 contract/client」的插件;届时先评估更简单的 dev 用 gen --all(shipped 超集 + manifest 决定可见性),不一定需要 watcher |
+| 迁移 mode 'verify'(校验不执行)                     | 应用容器无 DDL 权限的生产部署真实出现                                                                                                                                      |
+| 插件自带 migration 序列                            | 出现需要独立发版的外部插件生态(需要版本 DAG/拓扑排序/多 ledger,见审计第七节)                                                                                               |
 
 ## 永久禁令(审计与既有纪律一致)
 

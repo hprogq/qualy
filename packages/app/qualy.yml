@@ -10,6 +10,8 @@
       - packages
 - id: '83873047'
   name: '@qualy/plugin-database'
+  config:
+    migrationsFolder: ../../db/migrations
 - id: 5c1c1e85
   name: '@qualy/plugin-server'
   config:
