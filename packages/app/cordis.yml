@@ -5,6 +5,7 @@
 - id: fa0fc2af
   name: '@cordisjs/plugin-hmr'
   config:
+    base: '../..'
     root:
       - packages
 - id: '83873047'
