@@ -3,6 +3,7 @@ packages:
   - packages/plugins/*/*
   - apps/*
 allowBuilds:
+  argon2: true
   esbuild: true
 catalog:
   cordis: 4.0.0-rc.7

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@qualy/api-client": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "react": "catalog:",

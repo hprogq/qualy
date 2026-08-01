@@ -7,7 +7,10 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/db/schema.ts"
+    "./contract": "./src/contract.ts",
+    "./schema": "./src/db/schema.ts",
+    "./password": "./src/password.ts",
+    "./client": "./client/index.ts"
   },
   "qualy": {
     "database": {
@@ -15,6 +18,26 @@
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:"
+    "cordis": "catalog:",
+    "react": "catalog:"
+  },
+  "dependencies": {
+    "@orpc/contract": "catalog:",
+    "@orpc/openapi": "catalog:",
+    "@orpc/server": "catalog:",
+    "@qualy/plugin-org": "workspace:*",
+    "@qualy/plugin-server": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "argon2": "catalog:",
+    "cookie": "catalog:",
+    "drizzle-orm": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-database": "workspace:*",
+    "@types/pg": "catalog:",
+    "@types/react": "catalog:",
+    "pg": "catalog:"
   }
 }
