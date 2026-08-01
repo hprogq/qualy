@@ -2,11 +2,12 @@ import { implement } from '@orpc/server'
 import type { Context } from 'cordis'
 import { z } from 'zod'
 import type { ApiContext } from '@qualy/plugin-server'
+import type {} from '@qualy/plugin-ui-registry'
 import { pingContract } from './contract.ts'
 import { pingLogs } from './db/schema.ts'
 
 export const name = 'ping'
-export const inject = ['db', 'server']
+export const inject = ['db', 'server', 'ui']
 
 export const Config = z
   .object({
@@ -20,6 +21,14 @@ export function apply(ctx: Context, config: z.infer<typeof Config>) {
     const timer = setInterval(() => ctx.logger.info('heartbeat'), 30_000)
     return () => clearInterval(timer)
   }, 'heartbeat-timer')
+
+  ctx.ui.addPage({
+    path: '/ping',
+    component: 'PingPage',
+    layout: 'admin',
+    public: true,
+    nav: { label: 'Ping', order: 10 },
+  })
 
   const impl = implement(pingContract).$context<ApiContext>()
   ctx.server.contribute(

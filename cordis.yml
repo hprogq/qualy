@@ -14,7 +14,9 @@
   name: '@qualy/plugin-server'
   config:
     port: 3000
-    prefix: '/api'
+    prefix: /api
+- id: d24f3cdb
+  name: '@qualy/plugin-ui-registry'
 - id: a8f253e5
   name: '@qualy/plugin-ping'
   config:

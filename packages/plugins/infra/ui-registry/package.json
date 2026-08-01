@@ -1,5 +1,5 @@
 {
-  "name": "@qualy/plugin-ping",
+  "name": "@qualy/plugin-ui-registry",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -7,13 +7,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./contract": "./src/contract.ts",
-    "./schema": "./src/db/schema.ts"
-  },
-  "qualy": {
-    "database": {
-      "schemaEntry": "./src/db/schema.ts"
-    }
+    "./contract": "./src/contract.ts"
   },
   "peerDependencies": {
     "cordis": "catalog:"
@@ -23,8 +17,6 @@
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "@qualy/plugin-server": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*",
-    "drizzle-orm": "catalog:",
     "zod": "catalog:"
   }
 }

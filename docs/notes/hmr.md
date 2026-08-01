@@ -16,6 +16,7 @@
 - **watch 集合的定则:loader 装载的代码目录 + 全部装配清单文件**,当前为 `root: ["packages", "cordis.yml"]`。原因:include 插件**自身零文件监听**,cordis.yml 的热应用靠 hmr watcher 的 change 回调命中 `include.filename` 后调用 `include.refresh()` 实现(源码实证);root 里漏掉 yml 就会静默失去配置热更(踩过:曾收窄为仅 packages)。默认 `["."]` 则会监听整个仓库根(docs、db 等),编辑文档也进 watcher 扫描。packages 之外的启动入口 main.ts 属 externals,本就需手动重启。未来新增 include 文件(如 cordis.dev.yml)必须同步加进 root。
 - **已知坑(rc 上游怪癖,实测两轮稳定复现):源码触发的插件重载会把该插件配置回退到进程启动时的值**——hmr 以 `oldFiber.config` 复插,该值不随 include 驱动的 yml 热更同步。且回退后仅 touch yml 无法修复(entry 层 options 无 diff 不触发更新),需真改一次 yml 值或重启 dev。日常影响小(改完源码顺手重启即可),但排查"配置怎么变回去了"时先想到它。
 
+- **未决怪癖(2026-08-01,两次复现)**:loader 对 cordis.yml 的写回发生后,yml 的 change 事件偶发不再触达 include(改 yml 无任何热应用,显式 disabled: false 也无反应;插件源码的 hmr 正常)。恢复手段:重启 dev。候选上游问题,触发条件未定位;验收涉及"恢复"半程时走重启路径,勿在会话中途深挖。
 - 工具坑:`sed -i ''` 等原子替换会换 inode,watcher 可能从此丢失 cordis.yml(实测:一次 sed 后 yml 编辑不再触发热更,且当次还引发了全量 reconcile 连 server 都重启)。脚本改 yml 用保 inode 的写法(python `open(path, 'w')` 原地截断重写);手工编辑器保存无此问题。
 
 生产 yml 不含 hmr 与 timer 条目;`--expose-internals` 仅存在于 dev 脚本,生产启动脚本与 Dockerfile(见 PLAN §2.7)不得携带,写 Dockerfile 时列为必查项。
