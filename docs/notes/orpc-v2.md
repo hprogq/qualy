@@ -24,6 +24,8 @@
 ## 客户端侧实查(会话 5,beta.21 与新版文档漂移全录)
 
 - **`@orpc/openapi/client` 子路径不存在**(ERR_PACKAGE_PATH_NOT_EXPORTED);`OpenAPILink` 在 **`@orpc/openapi/fetch`**。beta.21 的 openapi exports:`. /helpers /plugins /standard /fetch /node /extensions/route`。
+- **独立包 `@orpc/openapi-client` 在 v2 已死**(registry 停在 1.14.13,无任何 2.x):v1 教程的 `@orpc/openapi-client/fetch` 若照抄会把 1.x 混进 2.x 体系、类型当场崩。api-client 的依赖清单就是 `@orpc/client + @orpc/openapi + @orpc/contract` 三件,全部钉 2.0.0-beta.21。
+- **beta 标签已漂到 beta.23**:`pnpm add @orpc/xxx@beta` 现在装的不是 .21。oRPC 一律精确版本,**禁用 @beta 标签**(已入 CLAUDE.md);升级 .22/.23 的评估放 P0 收官后单独做,不在会话中途做。
 - **类型导出是运行时探针的盲区**:`RouterContractClient` 是 `@orpc/contract` 的纯类型导出、`JsonifiedClient` 是 `@orpc/openapi` 的纯类型导出——`Object.keys(module)` 看不见它们,差点误判不存在。探针纪律补一条:值探针失败后再查 d.mts 的 `export type`。
 - 客户端定稿写法:`createORPCClient(link)`(自 `@orpc/client`)+ 显式标注 `JsonifiedClient<RouterContractClient<AppContract>>`。
 - **弃用 `createContractJsonifiedClientFactory`**:它要求每个 procedure 带 `meta['~path']` 位置印章(`meta.path([...])` 手工盖,oc.router/augment/populate/minify 都不自动盖),对插件聚合契约不友好;classic client 完全不需要。

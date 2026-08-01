@@ -22,6 +22,9 @@ for (const entry of readEntries({ all })) {
   }
   if (!pkg.exports?.['./contract']) continue
   const ns = entry.name.split('/').pop()!.replace('plugin-', '')
+  if (imports.some((line) => line.includes(` ${ns}Contract `))) {
+    throw new Error(`duplicate contract namespace: ${ns}`)
+  }
   imports.push(`import { ${ns}Contract } from '${entry.name}/contract'`)
   fields.push(`  ${ns}: ${ns}Contract,`)
 }

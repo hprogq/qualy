@@ -12,6 +12,9 @@
   name: '@qualy/plugin-database'
 - id: 5c1c1e85
   name: '@qualy/plugin-server'
+  config:
+    port: 3000
+    prefix: '/api'
 - id: a8f253e5
   name: '@qualy/plugin-ping'
   config:

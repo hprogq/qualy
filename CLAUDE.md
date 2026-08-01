@@ -52,7 +52,8 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 ## 禁止
 
 - 重启技术选型讨论(PLAN §3 已定案)。
-- 照搬 oRPC v1 教程(v2 已移除 oc.route,见 PLAN §4.8)。
+- 照搬 oRPC v1 教程(v2 已移除 oc.route,见 PLAN §4.8;`@orpc/openapi-client` 包已死于 1.x,勿装)。
+- oRPC 使用 @beta 等浮动标签(beta 已漂过 .21,一律精确版本;升级评估只在 P0 收官后单独做)。
 - 裸副作用——一切有反动作的操作必须包 ctx.effect。
 - 偏离 docs/p0-tutorial.md §0.3 的目录结构与命名。
 - dev 脚本加 --watch(与 hmr 插件的粒度重载冲突)。
