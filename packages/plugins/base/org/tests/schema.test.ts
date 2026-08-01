@@ -113,6 +113,29 @@ describe.runIf(available)('org schema tenant boundary', () => {
     await createNode(tenantB, typeB, rootB, 'Child', 'nb.c1')
   })
 
+  it('allows a single root per tenant and tracks tenant access state', async () => {
+    const tenantA = await createTenant('root-a')
+    const tenantB = await createTenant('root-b')
+    const typeA = await createType(tenantA, 'unit')
+    const typeB = await createType(tenantB, 'unit')
+
+    await createNode(tenantA, typeA, null, 'Root A', 'ra')
+    // a second root in the same tenant violates the single-root invariant
+    expect(await pgCode(createNode(tenantA, typeA, null, 'Root A2', 'ra2'))).toBe('23505')
+    // other tenants keep their own root
+    await createNode(tenantB, typeB, null, 'Root B', 'rb')
+
+    await pool.query(
+      `update tenants set enabled = false, expires_at = now() - interval '1 day' where id = $1`,
+      [tenantA],
+    )
+    const state = await pool.query(`select enabled, expires_at from tenants where id = $1`, [
+      tenantA,
+    ])
+    expect(state.rows[0].enabled).toBe(false)
+    expect(state.rows[0].expires_at).toBeInstanceOf(Date)
+  })
+
   it('rejects self-loop type rules', async () => {
     const tenant = await createTenant('rules-a')
     const type = await createType(tenant, 'college')

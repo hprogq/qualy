@@ -71,6 +71,11 @@ export const orgNodes = snakeCase.table(
     uniqueIndex('uq_org_nodes_tenant_root_name')
       .on(table.tenantId, table.name)
       .where(sql`${table.parentId} IS NULL`),
+    // the database guarantees at most one root per tenant; the org service
+    // owns "at least one root" and root protection
+    uniqueIndex('uq_org_nodes_tenant_single_root')
+      .on(table.tenantId)
+      .where(sql`${table.parentId} IS NULL`),
     index('idx_org_nodes_parent_sort').on(
       table.tenantId,
       table.parentId,
