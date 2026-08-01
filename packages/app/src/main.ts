@@ -11,7 +11,7 @@ await ctx.plugin(Loader)
 // own dependencies rather than the repo root
 await ctx.loader.create({
   name: '@cordisjs/plugin-include',
-  config: { path: 'packages/app/cordis.yml' },
+  config: { path: 'packages/app/qualy.yml' },
 })
 
 let closing = false

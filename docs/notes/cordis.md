@@ -29,7 +29,7 @@
 ## loader / include(1.0.0-rc.5 / 1.0.4)
 
 - 插件模块解包:`unwrapExports = exports.default ?? exports`(两层)。**无 default 导出时模块命名空间整体就是对象插件**——具名导出 `name/inject/Config` + `apply` 即合法插件形态,这是本仓库的统一约定(已实测:装载、hmr 重载、yml 热应用均正常)。default 导出函数则只拿到裸函数,元属性需属性赋值挂回,弃用该形态。Service 类插件维持 `export default class`(静态属性随类走)。
-- cordis.yml 是**双向**的:loader 运行期写回并规范化(补 `id:` 字段、单引号)。id 是条目稳定标识,提交进 git,勿手删。
+- qualy.yml 是**双向**的:loader 运行期写回并规范化(补 `id:` 字段、单引号)。id 是条目稳定标识,提交进 git,勿手删。
 - 修改 yml 中的 config 保存 → 运行中进程热应用(fiber restart),无需重启。
 
 ## 函数插件的返回值会被当作 effect 清理函数

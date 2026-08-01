@@ -34,9 +34,9 @@
 
 几十种题型收敛为约 6 种**交互范式**(代码):固定赋分、互评、材料申报审核、周期打卡、数据导入计算、混合录入。题型是范式扩展点上的**配置实例**(字段 schema + 计分函数 + 审核链定义)。少数交互特殊的「重题型」允许额外注册前端组件(渐进式:轻题型=纯配置,重题型=配置+组件)。
 
-### 2.4 构建期装配哲学:一份 cordis.yml,三个生成物
+### 2.4 构建期装配哲学:一份 qualy.yml,三个生成物
 
-选装插件是**构建/部署期决策**(方案 4)。cordis.yml 是唯一装配清单,被读两次:
+选装插件是**构建/部署期决策**(方案 4)。qualy.yml 是唯一装配清单,被读两次:
 
 - 构建期:三个生成脚本读它 → `db/schema.gen.ts`(Drizzle 聚合迁移)、`contracts.gen.ts`(oRPC 契约聚合)、`plugins.gen.ts`(前端组件注册表)
 - 运行期:loader 读它装载后端插件
@@ -53,11 +53,11 @@ AI 只出建议与草案,人做决定。AI 生成计分函数必须通过类型�
 
 ### 2.7 发行与一键部署:构建清单与运行清单分离
 
-「Web 勾选生成 cordis.yml → 直接跑」的发行愿景,靠双清单成立:
+「Web 勾选生成 qualy.yml → 直接跑」的发行愿景,靠双清单成立:
 
 - **构建清单**:发行构建按 full-manifest(全部官方插件的超集)跑三生成器与迁移——所有表都建、所有契约聚合、所有前端 lazy chunk 都在产物里。schema 生成器**恒按超集聚合**(迁移语义:停用不删表,详见 notes/drizzle.md 迁移策略);contracts/plugins 生成器区分开发(按 yml 过滤)与发行(`--all` 超集)。
-- **运行清单**:用户的 cordis.yml 只负责启停与配置。停用零重建是 P0 已验收能力,启用同样零重建:后端代码在 node_modules 里等 loader 按名 import,前端 chunk 在产物里等 manifest 放行。
-- **一键部署三件套**:纯静态配置生成器页(零后端;勾选插件、填配置,各插件的 Zod Config 经动态表单引擎自举渲染成表单)产出 cordis.yml + docker-compose.yml + .env 模板;multi-stage 镜像(builder: pnpm install + gen --all + vite build + drizzle-kit generate;runtime: 源码 + tsx 直跑 packages/app/src/main.ts,entrypoint 先 db:migrate 再启动;docker stop 发 SIGTERM,main.ts 的优雅关闭在此兑现);用户 cordis.yml 以 volume 挂载,改配置 = 改文件 + restart。
+- **运行清单**:用户的 qualy.yml 只负责启停与配置。停用零重建是 P0 已验收能力,启用同样零重建:后端代码在 node_modules 里等 loader 按名 import,前端 chunk 在产物里等 manifest 放行。
+- **一键部署三件套**:纯静态配置生成器页(零后端;勾选插件、填配置,各插件的 Zod Config 经动态表单引擎自举渲染成表单)产出 qualy.yml + docker-compose.yml + .env 模板;multi-stage 镜像(builder: pnpm install + gen --all + vite build + drizzle-kit generate;runtime: 源码 + tsx 直跑 packages/app/src/main.ts,entrypoint 先 db:migrate 再启动;docker stop 发 SIGTERM,main.ts 的优雅关闭在此兑现);用户 qualy.yml 以 volume 挂载,改配置 = 改文件 + restart。
 - **延伸路线**:create-qualy 脚手架为次要路径;终局是管理页在线启停插件(loader.write() 双向写回,ui-registry + RBAC 已备),放 P5 后,现有架构无需返工。
 - **诚实边界**:第三方/自研插件不在超集镜像内,需自建镜像(构建期装配的固有代价,对应已否决的方案 2 语义),README 写明。整套内容即论文「系统部署与分发」一节素材。
 
@@ -91,7 +91,7 @@ AI 只出建议与草案,人做决定。AI 生成计分函数必须通过类型�
 4. 事件语义:bail/serial 首个非 undefined 胜出并短路;parallel 全并发;**waterfall 是洋葱中间件**——`ctx.waterfall(name, ...args, inner)` 最后一参为默认实现,监听器签名 `(...args, next)`,不是返回值接力。
 5. effect:生成器多段 yield,释放顺序 **LIFO**;事件监听本质是 effect,卸载自动移除。
 6. 多实例:同插件多次 plugin() = 多 fiber,各持独立 config(3.x fork 的替代)。
-7. CLI:`NODE_OPTIONS='--import tsx' node node_modules/cordis/bin.js` 直接装载 cordis.yml 中**相对路径的 .ts 插件**,配置正常注入。cordis.yml 条目字段:id/name/config/disabled/inject/intercept/isolate/group。
+7. CLI:`NODE_OPTIONS='--import tsx' node node_modules/cordis/bin.js` 直接装载 qualy.yml 中**相对路径的 .ts 插件**,配置正常注入。qualy.yml 条目字段:id/name/config/disabled/inject/intercept/isolate/group。
 
 **oRPC 2.0.0-beta.21** 8. **破坏性变更:`oc.route()` 已移除**,路由声明为 `oc.meta(openapi({ method, path }))`(`openapi` 自 `@orpc/openapi`)。网上 v1 教程此处全部失效。9. 入口:`OpenAPIHandler` 在 `@orpc/openapi/node`;`RPCHandler`、`NodeHttpHandler` 在 `@orpc/server/node`。10. 最小闭环已通:contract → `implement(contract)` → `impl.x.y.handler` → `new OpenAPIHandler(router)` → `handler.handle(req,res,{prefix,context})` → HTTP 200。11. 存疑待验:middleware 定义的 errors 并入 procedure 类型——v1 作者明确拒绝过该特性,v2 是否改变**未证实**。规避方案:公共 errors 定义在 base builder(`os.errors({...})`),procedure 从 base 派生。
 
@@ -113,7 +113,7 @@ AI 只出建议与草案,人做决定。AI 生成计分函数必须通过类型�
 
 ```
 qualy-next/
-  cordis.yml            # 唯一装配清单
+  qualy.yml            # 唯一装配清单
   docker-compose.yml
   drizzle.config.ts     # schema 指向 db/schema.gen.ts
   scripts/              # read-entries / gen-schema / gen-contracts / gen-plugins

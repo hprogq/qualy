@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 
-const ymlPath = 'packages/app/cordis.yml'
+const ymlPath = 'packages/app/qualy.yml'
 const contractsPath = 'packages/api-client/src/contracts.gen.ts'
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
 

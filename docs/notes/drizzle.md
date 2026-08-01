@@ -46,7 +46,7 @@
 
 ## 迁移策略定案:停用不删表 + 显式 PURGE
 
-- schema 聚合由 installed.lock.json 驱动(见 architecture/database.md 三集合模型),cordis.yml 的启停对聚合物不可见(CI 有不变式测试)。停用插件 = 功能下线、表与数据保留。
+- schema 聚合由 installed.lock.json 驱动(见 architecture/database.md 三集合模型),qualy.yml 的启停对聚合物不可见(CI 有不变式测试)。停用插件 = 功能下线、表与数据保留。
 - 插件退出 installed 仅通过显式 PURGE 流程(文档化于 architecture/database.md,DROP 一律 RESTRICT,禁 CASCADE);drop-guard 拦截生成物里的 DROP TABLE/COLUMN,`ALLOW_DESTRUCTIVE=1` 或迁移内 `-- destructive: approved` 才放行。
 
 补充:vector 扩展由 pgvector 镜像预装,但 `CREATE EXTENSION IF NOT EXISTS vector` 的 custom 迁移在 P4 仍必须编写(幂等),保障非 Docker 部署路径。

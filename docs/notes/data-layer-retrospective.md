@@ -16,7 +16,7 @@
 
 ## 保留清单
 
-- 声明式聚合(零生成物):cordis.yml 全量条目 + `qualy.database.schemaEntry` → `resolveSchemaEntries()`,停用不改变聚合(不变式测试);声明了解析失败 = 硬失败
+- 声明式聚合(零生成物):qualy.yml 全量条目 + `qualy.database.schemaEntry` → `resolveSchemaEntries()`,停用不改变聚合(不变式测试);声明了解析失败 = 硬失败
 - `drop-guard`(接在 `pnpm db:generate` 后,拦 DROP TABLE/COLUMN/SCHEMA...CASCADE)
 - `cordis_meta.schema_migrations` 账本配置;先 migrate 后 start 的启动顺序
 - schema 三规范(`snakeCase.*`、uuidv7 DDL 默认主键、`createdAt/updatedAt` + withTimezone)、跨插件真外键(onDelete 基线 restrict)、卫星表约定、`Service.init` 异步初始化模式、PGlite 测试路径

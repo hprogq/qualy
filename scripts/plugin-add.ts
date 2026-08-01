@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 // convenience scaffold for a new workspace plugin: root workspace dependency
-// plus cordis.yml entry, then install
+// plus qualy.yml entry, then install
 
 const name = process.argv[2]
 if (!name?.startsWith('@qualy/plugin-')) {
@@ -38,9 +38,9 @@ rootManifest.dependencies = Object.fromEntries(
 )
 fs.writeFileSync(rootManifestPath, JSON.stringify(rootManifest, null, 2) + '\n')
 
-const yml = fs.readFileSync('packages/app/cordis.yml', 'utf8')
+const yml = fs.readFileSync('packages/app/qualy.yml', 'utf8')
 if (!yml.includes(`name: "${name}"`) && !yml.includes(`name: '${name}'`)) {
-  fs.writeFileSync('packages/app/cordis.yml', yml.trimEnd() + `\n- name: '${name}'\n`)
+  fs.writeFileSync('packages/app/qualy.yml', yml.trimEnd() + `\n- name: '${name}'\n`)
 }
 
 const pluginManifest = (() => {

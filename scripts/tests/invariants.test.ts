@@ -4,13 +4,13 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveSchemaEntries } from '../lib/schema-entries.ts'
 
-// deactivating a plugin in cordis.yml must be invisible to schema
+// deactivating a plugin in qualy.yml must be invisible to schema
 // aggregation: tables outlive deactivation
 
 describe('schema aggregation invariants', () => {
   it('disabling a plugin does not change the schema entry set', () => {
     const baseline = resolveSchemaEntries()
-    const yml = fs.readFileSync('packages/app/cordis.yml', 'utf8')
+    const yml = fs.readFileSync('packages/app/qualy.yml', 'utf8')
     const mutated = yml.replace(
       "name: '@qualy/plugin-ping'",
       "name: '@qualy/plugin-ping'\n  disabled: true",
@@ -18,7 +18,7 @@ describe('schema aggregation invariants', () => {
     expect(mutated, 'test fixture must actually disable ping').not.toBe(yml)
     const tmpYml = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-invariant-')),
-      'cordis.yml',
+      'qualy.yml',
     )
     fs.writeFileSync(tmpYml, mutated)
     expect(
