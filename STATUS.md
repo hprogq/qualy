@@ -36,6 +36,8 @@
 
 - [P1 会话 2] 租户与组织树 schema(2026-08-02):@qualy/plugin-org 落地四表(tenants/org_types/org_type_rules/org_nodes),租户边界由数据库自证——(tenant_id, id) 复合唯一 + 复合外键(parent restrict/type restrict/rules cascade),跨租户引用 23503 直接拒绝;ltree 自定义类型(src/db/ltree.ts,不经 schema entry 导出)+ path 标签 = uuid 去连字符(沿用旧仓方案,会话 5 repo 复用)。**对旧版的修正**(不照搬):①GiST 改声明式——drizzle v1 kit 原生支持 `.using('gist')`,custom 迁移只装 extension(教程「GiST 走 custom」方案废弃);②补 code 稳定标识(org_types 必填、org_nodes 可空 + partial unique),seed 纪律「稳定 code 查找」的前提;③同父同名唯一改两个分区索引(parent NOT NULL / IS NULL 各一),堵住旧版 NULLS DISTINCT 下根节点同名漏洞;④砍冗余索引(旧 idx_org_nodes_parent 是 parent_sort 前缀、depth 索引与 rules 的 tenant_parent 索引无消费查询)。检查约束(slug/code 格式、not blank、非负、parent 非自身)保留——裸写入路径防线。迁移:20260801222248_org-ltree(custom,严格 CREATE EXTENSION)+ 20260801222256_org-base(命名生成);PGlite 重放测试接 contrib/ltree 扩展照常通过。seed 落 scripts/seed.ts + `pnpm seed`(去教程的 p1 阶段标记):默认租户 + 四类型 + 三规则 + 四层示例树,全部稳定 code 幂等 upsert,双跑第二次零创建
 
+- [会话 2 复审修复] 六项裁决(2026-08-02):①org 包补 `drizzle-orm` 依赖(此前靠根包侥幸解析,包边界破洞);②补 `(tenant_id, org_type_id)` 索引(复合 FK 引用侧,fix-forward 迁移 org-node-type-index)——上会话砍索引砍过头;③**删除语义实证推翻担忧**:PG18 的 RI 检查是语句级 AFTER 触发器(看语句终态),现有 RESTRICT 下 tenant CASCADE 完整兑现、整树单语句删除可行,而删在用类型/删有子节点的行级保护照常 23001——无需改 FK 动作,探针固化为 deletion-semantics 测试;④seed 升级为「insert-if-absent + 漂移校验」:存在行的结构字段(parent/type/depth/path/name/sort)与定义不符即抛 seed drift 中止(事务内,零部分写入);⑤seed 核心下沉 scripts/lib/seed.ts,新增 seed.test.ts(临时库双跑断言 1/4/3/4→全零 + 四级路径 + 漂移注入拒绝);⑥CI 增 QUALY_REQUIRE_POSTGRES_TESTS=1——service 在位时集成测试不可达即失败,不再静默跳过(本地无 PG 仍跳过);PGlite 测试标题纠正。会话 3 注意:seed 的 create-only 语义不适用于凭据(管理员密码是否随环境变量重置需显式裁决)
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`
