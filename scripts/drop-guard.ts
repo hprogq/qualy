@@ -50,7 +50,19 @@ function newMigrationFiles(): string[] {
     })
 }
 
-// --base-ref <ref>: scan migrations added or changed since <ref> (CI mode)
+// --all: scan the complete migration history; approved destructive migrations
+// carry their '-- destructive: approved' marker forever, so a full scan stays
+// clean and never depends on computing the right diff base
+function allMigrationFiles(root = 'db/migrations'): string[] {
+  if (!fs.existsSync(root)) return []
+  return fs
+    .readdirSync(root, { recursive: true })
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => path.join(root, entry))
+    .filter((file) => path.basename(file) === 'migration.sql')
+}
+
+// --base-ref <ref>: scan migrations added or changed since <ref>
 function diffMigrationFiles(baseRef: string): string[] {
   const diff = execSync(`git diff --name-only ${baseRef}...HEAD -- db/migrations`, {
     encoding: 'utf8',
@@ -65,7 +77,14 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const baseRefIndex = process.argv.indexOf('--base-ref')
   const baseRef = baseRefIndex >= 0 ? process.argv[baseRefIndex + 1] : undefined
   const args = process.argv.slice(2).filter((arg) => !arg.startsWith('-') && fs.existsSync(arg))
-  const files = baseRef ? diffMigrationFiles(baseRef) : args.length > 0 ? args : newMigrationFiles()
+  const scanAll = process.argv.includes('--all')
+  const files = scanAll
+    ? allMigrationFiles()
+    : baseRef
+      ? diffMigrationFiles(baseRef)
+      : args.length > 0
+        ? args
+        : newMigrationFiles()
   const hits = scanDestructive(files)
   if (hits.length > 0 && process.env.ALLOW_DESTRUCTIVE !== '1') {
     console.error('drop-guard: destructive statements detected, set ALLOW_DESTRUCTIVE=1 to proceed')

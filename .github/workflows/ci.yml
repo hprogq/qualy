@@ -22,12 +22,16 @@ jobs:
       - run: pnpm typecheck
       - name: migration conflict check
         run: pnpm exec drizzle-kit check
-      - name: no-op generate must leave a clean tree
+      - name: no-op generate must leave migrations clean
         run: |
           pnpm exec drizzle-kit generate
-          git diff --exit-code -- db/migrations
+          status="$(git status --porcelain -- db/migrations)"
+          if [ -n "$status" ]; then
+            printf '%s\n' "$status"
+            exit 1
+          fi
       - name: drop guard
-        run: pnpm exec tsx scripts/drop-guard.ts --base-ref origin/main
+        run: pnpm exec tsx scripts/drop-guard.ts --all
       - run: pnpm test
       - name: build web superset and stage assets
         run: pnpm build
