@@ -30,6 +30,9 @@ const available = await (async () => {
   }
 })()
 
+if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
+  throw new Error('postgres-backed tests are required but the server is unreachable')
+}
 if (!available) console.warn('postgres unreachable, database lifecycle tests skipped')
 
 describe.runIf(available)('database plugin lifecycle on real postgres', () => {

@@ -8,6 +8,10 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      # this job provisions a postgres service: integration tests must not
+      # silently skip when it is unreachable
+      QUALY_REQUIRE_POSTGRES_TESTS: '1'
     services:
       postgres:
         # same image as the local compose stack

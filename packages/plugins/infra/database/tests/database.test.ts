@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { pingLogs } from '../../../demo/ping/src/db/schema.ts'
 
 describe('migration lineage', () => {
-  it('replays on a fresh postgres 18 and serves typed queries', async () => {
+  it('replays on a fresh pglite and serves typed queries', async () => {
     // the migration lineage now creates the ltree extension
     const client = new PGlite({ extensions: { ltree } })
     const relations = defineRelations({ pingLogs })
