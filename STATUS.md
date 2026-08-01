@@ -34,6 +34,8 @@
 
 - [迁移生命周期加固] 复审四项修复(2026-08-02):①migrationsFolder 相对路径改按装配清单目录(ctx.baseUrl)解析,qualy.yml 显式声明 `../../db/migrations`——此前按 cwd 解析实际回退了 import.meta.url 锚定的 cwd 无关启动保证;②init 失败(迁移目录缺失/SQL 失败/探活失败)时 disposer 尚未登记,补 try/catch 关闭 Pool 再抛;③appliedCount 只吞 3F000/42P01(缺 schema/缺表),迁移成功后的复数不再容错;④off 模式打印明确日志(区分「无待迁移」与「未检查」)。新增真 PG 生命周期集成测试(lifecycle.test.ts:apply 建表门控 + 重载幂等 + off 不建表 + 坏目录失败且 pg_stat_activity 零连接;PG 不可达自动跳过),CI 增 pgvector:pg18-bookworm service(与 compose 同镜像)。「幂等」表述限定为单实例串行(rc4 无 advisory lock,多副本走 off + 迁移 Job)
 
+- [P1 会话 2] 租户与组织树 schema(2026-08-02):@qualy/plugin-org 落地四表(tenants/org_types/org_type_rules/org_nodes),租户边界由数据库自证——(tenant_id, id) 复合唯一 + 复合外键(parent restrict/type restrict/rules cascade),跨租户引用 23503 直接拒绝;ltree 自定义类型(src/db/ltree.ts,不经 schema entry 导出)+ path 标签 = uuid 去连字符(沿用旧仓方案,会话 5 repo 复用)。**对旧版的修正**(不照搬):①GiST 改声明式——drizzle v1 kit 原生支持 `.using('gist')`,custom 迁移只装 extension(教程「GiST 走 custom」方案废弃);②补 code 稳定标识(org_types 必填、org_nodes 可空 + partial unique),seed 纪律「稳定 code 查找」的前提;③同父同名唯一改两个分区索引(parent NOT NULL / IS NULL 各一),堵住旧版 NULLS DISTINCT 下根节点同名漏洞;④砍冗余索引(旧 idx_org_nodes_parent 是 parent_sort 前缀、depth 索引与 rules 的 tenant_parent 索引无消费查询)。检查约束(slug/code 格式、not blank、非负、parent 非自身)保留——裸写入路径防线。迁移:20260801222248_org-ltree(custom,严格 CREATE EXTENSION)+ 20260801222256_org-base(命名生成);PGlite 重放测试接 contrib/ltree 扩展照常通过。seed 落 scripts/seed.ts + `pnpm seed`(去教程的 p1 阶段标记):默认租户 + 四类型 + 三规则 + 四层示例树,全部稳定 code 幂等 upsert,双跑第二次零创建
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`
@@ -68,6 +70,7 @@
 - plugin-web dev 冒烟:`pnpm dev` 单进程 → `curl :3000/` 返回 vite 注入 react-refresh 的 HTML,`/api/ui/manifest` 正常,`/api/nope` 404
 - plugin-web 生产冒烟:`pnpm build`(gen --all → web-app build → staging)后 NODE_ENV=production 启动 → `/` no-cache、`/ping` 200(spa 回退)、哈希资源 `public,max-age=31536000,immutable`
 - plugin-web 类型门禁:`pnpm typecheck` → 零错误(tc: 0)
+- P1 会话 2 验收:`pnpm db:migrate` → applied 2 migration(s);seed 双跑 → 1/4/3/4 created 后 0/0/0/0;dev 库层级实查 path 四级 uuid 标签链、depth 0-3;org 边界测试 4/4(真 PG 临时库:跨租户 parent/type 23503、同父同名与同租户双根 23505、跨租户同名放行、rule 自环 23514、GiST 索引存在、path <@ 子树计数、uuidv7 版本位);PGlite 重放(含 CREATE EXTENSION ltree)通过;`drizzle-kit generate` no-op + check 干净;typecheck 零错误;vitest 19/19
 - 工具链裁决验收:`pnpm db:migrate`(薄适配器)→ migrations up to date (42ms);`pnpm dev` 启动序列 = gen(unchanged, skipped)→ `[I] database migrations up to date (228ms)` → connected → 四骨架激活(迁移先于依赖方,门控实证);typecheck(自动 gen)零错误;vitest 12/12
 - P1 会话 1:resolveSchemaEntries → 5 条(ping + rbac/auth/org/dict);drizzle-kit generate no-op + porcelain clean + drop-guard --all 1 file;dev 冒烟四条 "scaffold loaded" 日志齐 + ping API 200 + `/` 200;enricher 测试(两 enricher 串行合成 principal、同 key 二次注册拒绝、dispose 后回 null);`pnpm gen` unchanged;typecheck 零错误;vitest 12/12
 
@@ -113,7 +116,7 @@
 - 确认项:tsc 通过且 include 覆盖 scripts/**(含 tests,vitest 导入参与类型检查);notes/hmr.md 已含 --expose-internals 必要性与 dev-only/生产禁带;pnpm-workspace 的 allowBuilds 字段对 pnpm 11.8 有效(实证:approve-builds 写入该字段后 esbuild postinstall 正常执行)
 - prettier 最小配置(semi:false/singleQuote/printWidth:100)+ 全量格式化独立提交
 
-## 下一会话(P1 会话 2)
+## 下一会话(P1 会话 3)
 
-- 按 docs/p1-tutorial.md 会话 2 执行:租户与组织树 schema(tenants/org_types/org_type_rules/org_nodes,复合 FK + ltree custom type + GiST),普通迁移建表 + custom 迁移建扩展与索引,seed 脚本 scripts/seed-p1.ts。旧 schema 在 legacy/qualy_old/apps/api/src/db/schema/;**搬家不重写**。注意:ltree/GiST 是 PGlite 盲区,集成测试用真 PG18
+- 按 docs/p1-tutorial.md 会话 3 执行:本地认证与 session——auth schema(users/auth_providers/user_identities/sessions,复合 FK 引用 org)、Argon2id 哈希、Cookie session(库存 sha256 hash)、principal resolver 接 server.enrich、contract(login/logout/me)、LoginPage、seed 管理员(凭据走 QUALY_ADMIN_* 环境变量)。argon2/cookie 已登记 catalog,安装时 argon2 需走 approve-builds;旧代码在 legacy/qualy_old/apps/api/src/modules/auth/
 - 浏览器人工走查(P0-REPORT 第 3 项)在 P1 第一个 commit 前人工补记:/ping 页面与导航、改 PingPage 文本验 HMR、停用 ping 后导航与路由消失、恢复、控制台无 React 双实例/Router/chunk 错误
