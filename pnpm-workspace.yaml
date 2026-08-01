@@ -36,3 +36,4 @@ catalog:
   '@electric-sql/pglite': 0.5.4
   '@orpc/tanstack-query': 2.0.0-beta.21
   '@tanstack/react-query': 5.101.4
+  sirv: 3.0.2

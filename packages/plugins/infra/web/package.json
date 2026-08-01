@@ -1,0 +1,22 @@
+{
+  "name": "@qualy/plugin-web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "cordis": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/plugin-server": "workspace:*",
+    "sirv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "vite": "catalog:"
+  }
+}

@@ -10,6 +10,7 @@
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/plugin-web": "workspace:*",
     "cordis": "catalog:"
   }
 }

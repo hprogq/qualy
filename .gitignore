@@ -7,6 +7,9 @@ build/
 out/
 *.tsbuildinfo
 
+# staged web assets
+client-dist/
+
 # generated files, reserved for contracts/plugins generators (P0 sessions 5/7), do not remove
 **/*.gen.ts
 

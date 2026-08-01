@@ -21,3 +21,4 @@
   name: '@qualy/plugin-ping'
   config:
     greeting: hello
+- name: '@qualy/plugin-web'
