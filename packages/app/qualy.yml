@@ -22,3 +22,7 @@
   config:
     greeting: hello
 - name: '@qualy/plugin-web'
+- name: '@qualy/plugin-rbac'
+- name: '@qualy/plugin-auth'
+- name: '@qualy/plugin-org'
+- name: '@qualy/plugin-dict'

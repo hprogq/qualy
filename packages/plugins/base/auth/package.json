@@ -1,0 +1,20 @@
+{
+  "name": "@qualy/plugin-auth",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/db/schema.ts"
+  },
+  "qualy": {
+    "database": {
+      "schemaEntry": "src/db/schema.ts"
+    }
+  },
+  "peerDependencies": {
+    "cordis": "catalog:"
+  }
+}
