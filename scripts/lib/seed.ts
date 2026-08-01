@@ -1,10 +1,17 @@
 import type { PoolClient } from 'pg'
 
-// insert-if-absent bootstrap with drift verification: rows are looked up by
-// stable codes and never modified, but an existing row whose structural
-// fields disagree with the seed definition fails loudly instead of being
-// silently accepted (a later seed entry would otherwise build on top of a
-// corrupted hierarchy).
+// two seed layers with different convergence semantics:
+//
+// - core bootstrap (tenant, org types, rules — later auth provider/admin):
+//   insert-if-absent with strict drift verification; these rows define the
+//   system and must match the seed definition.
+// - demo org data (the sample hierarchy): created only when explicitly
+//   requested or when the tenant has no org nodes yet. Existing org data is
+//   business state — the service may legitimately move or rename nodes, and
+//   that must never block the core seed.
+//
+// org node verification covers topology and type structure only (parent,
+// type, depth, path); names and sort order are business-editable.
 
 const TENANT = { slug: 'default', name: 'Qualy' }
 
@@ -22,7 +29,7 @@ const ORG_TYPE_RULES = [
 ]
 
 // parent: null marks the root; the chain must satisfy the rules above
-const ORG_NODES = [
+const DEMO_ORG_NODES = [
   { code: 'qualy-university', name: 'Qualy 大学', type: 'university', parent: null },
   { code: 'software-college', name: '软件学院', type: 'college', parent: 'qualy-university' },
   { code: 'computer-science', name: '计算机科学与技术', type: 'major', parent: 'software-college' },
@@ -37,22 +44,25 @@ function drift(subject: string, field: string, expected: unknown, actual: unknow
   )
 }
 
-export interface SeedResult {
+export interface CoreSeedResult {
   tenants: number
   types: number
   rules: number
-  nodes: number
+  tenantId: string
+  typeIds: Map<string, string>
 }
 
-export async function seed(client: PoolClient): Promise<SeedResult> {
-  const created: SeedResult = { tenants: 0, types: 0, rules: 0, nodes: 0 }
+export async function seedCore(client: PoolClient): Promise<CoreSeedResult> {
+  let tenants = 0
+  let types = 0
+  let rules = 0
 
   const tenantUpsert = await client.query(
     `insert into tenants (slug, name) values ($1, $2)
      on conflict (slug) do nothing`,
     [TENANT.slug, TENANT.name],
   )
-  created.tenants += tenantUpsert.rowCount ?? 0
+  tenants += tenantUpsert.rowCount ?? 0
   const tenantRow = (
     await client.query(`select id, name from tenants where slug = $1`, [TENANT.slug])
   ).rows[0]
@@ -68,7 +78,7 @@ export async function seed(client: PoolClient): Promise<SeedResult> {
        on conflict (tenant_id, code) do nothing`,
       [tenantId, type.code, type.name, type.sortOrder],
     )
-    created.types += upsert.rowCount ?? 0
+    types += upsert.rowCount ?? 0
     const row = (
       await client.query(
         `select id, name, sort_order from org_types where tenant_id = $1 and code = $2`,
@@ -90,11 +100,20 @@ export async function seed(client: PoolClient): Promise<SeedResult> {
        on conflict (tenant_id, parent_type_id, child_type_id) do nothing`,
       [tenantId, typeIds.get(rule.parent), typeIds.get(rule.child)],
     )
-    created.rules += upsert.rowCount ?? 0
+    rules += upsert.rowCount ?? 0
   }
 
+  return { tenants, types, rules, tenantId, typeIds }
+}
+
+export async function seedDemoOrg(
+  client: PoolClient,
+  tenantId: string,
+  typeIds: Map<string, string>,
+): Promise<number> {
+  let created = 0
   const nodes = new Map<string, { id: string; path: string; depth: number }>()
-  for (const node of ORG_NODES) {
+  for (const node of DEMO_ORG_NODES) {
     const parent = node.parent ? nodes.get(node.parent) : undefined
     if (node.parent && !parent) throw new Error(`seed order broken: missing parent ${node.parent}`)
     const expectedDepth = parent ? parent.depth + 1 : 0
@@ -134,8 +153,39 @@ export async function seed(client: PoolClient): Promise<SeedResult> {
     const path = parent ? `${parent.path}.${label(id)}` : label(id)
     await client.query(`update org_nodes set path = $1 where id = $2`, [path, id])
     nodes.set(node.code, { id, path, depth: expectedDepth })
-    created.nodes += 1
+    created += 1
+  }
+  return created
+}
+
+export interface SeedOptions {
+  // true forces the demo tree (and verifies it strictly if present);
+  // undefined seeds it only when the tenant has no org nodes yet
+  demo?: boolean
+}
+
+export interface SeedResult {
+  tenants: number
+  types: number
+  rules: number
+  nodes: number
+  demo: 'created' | 'verified' | 'skipped'
+}
+
+export async function seed(client: PoolClient, options: SeedOptions = {}): Promise<SeedResult> {
+  const core = await seedCore(client)
+
+  let nodes = 0
+  let demo: SeedResult['demo'] = 'skipped'
+  const hasOrgData =
+    Number(
+      (await client.query(`select count(*) from org_nodes where tenant_id = $1`, [core.tenantId]))
+        .rows[0].count,
+    ) > 0
+  if (options.demo === true || !hasOrgData) {
+    nodes = await seedDemoOrg(client, core.tenantId, core.typeIds)
+    demo = nodes > 0 ? 'created' : 'verified'
   }
 
-  return created
+  return { tenants: core.tenants, types: core.types, rules: core.rules, nodes, demo }
 }

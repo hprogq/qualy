@@ -129,8 +129,13 @@ describe.runIf(available)('org schema tenant boundary', () => {
   it('honors cascade and restrict deletion semantics', async () => {
     const tenant = await createTenant('del-a')
     const type = await createType(tenant, 'unit')
+    const childType = await createType(tenant, 'unit-child')
+    await pool.query(
+      `insert into org_type_rules (tenant_id, parent_type_id, child_type_id) values ($1, $2, $3)`,
+      [tenant, type, childType],
+    )
     const root = await createNode(tenant, type, null, 'Root', 'da')
-    await createNode(tenant, type, root, 'Child', 'da.c')
+    await createNode(tenant, childType, root, 'Child', 'da.c')
 
     // row-level protection: a referenced type or parent cannot go away alone
     expect(await pgCode(pool.query(`delete from org_types where id = $1`, [type]))).toBe('23001')
@@ -140,11 +145,13 @@ describe.runIf(available)('org schema tenant boundary', () => {
     // remove a whole tree, and the tenant cascade is real (probed on pg18)
     await pool.query(`delete from org_nodes where tenant_id = $1`, [tenant])
     const root2 = await createNode(tenant, type, null, 'Root', 'da')
-    await createNode(tenant, type, root2, 'Child', 'da.c')
+    await createNode(tenant, childType, root2, 'Child', 'da.c')
     await pool.query(`delete from tenants where id = $1`, [tenant])
     const left = await pool.query(
       `select (select count(*) from org_nodes where tenant_id = $1)::int
-            + (select count(*) from org_types where tenant_id = $1)::int as count`,
+            + (select count(*) from org_types where tenant_id = $1)::int
+            + (select count(*) from org_type_rules where tenant_id = $1)::int
+            + (select count(*) from tenants where id = $1)::int as count`,
       [tenant],
     )
     expect(left.rows[0].count).toBe(0)

@@ -60,12 +60,13 @@ describe.runIf(available)('bootstrap seed', () => {
     await admin.end()
   })
 
-  it('creates the hierarchy once and is a no-op on the second run', async () => {
+  it('creates core and the demo tree once, then converges to a no-op', async () => {
     const first = await inTransaction(seed)
-    expect(first).toEqual({ tenants: 1, types: 4, rules: 3, nodes: 4 })
+    expect(first).toEqual({ tenants: 1, types: 4, rules: 3, nodes: 4, demo: 'created' })
 
+    // the tenant has org data now, so the demo layer is skipped by default
     const second = await inTransaction(seed)
-    expect(second).toEqual({ tenants: 0, types: 0, rules: 0, nodes: 0 })
+    expect(second).toEqual({ tenants: 0, types: 0, rules: 0, nodes: 0, demo: 'skipped' })
 
     const nodes = await pool.query(
       `select code, depth, nlevel(path) as levels from org_nodes order by path`,
@@ -78,10 +79,17 @@ describe.runIf(available)('bootstrap seed', () => {
     ])
   })
 
-  it('fails loudly when an existing row drifted from the seed definition', async () => {
+  it('never blocks the core seed on legitimately changed org data', async () => {
     await pool.query(`update org_nodes set parent_id = null where code = 'software-college'`)
-    await expect(inTransaction(seed)).rejects.toThrow(/seed drift: org node software-college/)
-    // drift detection aborts before creating anything
+    const result = await inTransaction(seed)
+    expect(result.demo).toBe('skipped')
+  })
+
+  it('verifies the demo tree strictly when explicitly requested', async () => {
+    await expect(inTransaction((client) => seed(client, { demo: true }))).rejects.toThrow(
+      /seed drift: org node software-college/,
+    )
+    // drift detection aborts inside the transaction, nothing is written
     const count = await pool.query(`select count(*) from org_nodes`)
     expect(Number(count.rows[0].count)).toBe(4)
   })
