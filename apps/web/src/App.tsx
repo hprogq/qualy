@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Link, Outlet, Route, Routes } from 'react-router'
+import { BrowserRouter, Link, Navigate, Outlet, Route, Routes } from 'react-router'
 import { createApiClient } from '@qualy/api-client'
 import {
   RuntimeProvider,
@@ -29,6 +29,8 @@ function ManifestRouter() {
     <BrowserRouter>
       <Routes>
         <Route element={<AdminLayout nav={manifest.nav} />}>
+          <Route index element={<HomeRedirect nav={manifest.nav} />} />
+          <Route path="*" element={<NotFound />} />
           {adminPages.map((page) => {
             const Component = registry[page.component]
             return (
@@ -50,6 +52,21 @@ function ManifestRouter() {
         </Route>
       </Routes>
     </BrowserRouter>
+  )
+}
+
+function HomeRedirect({ nav }: { nav: Manifest['nav'] }) {
+  const first = nav[0]
+  if (!first) return <p>暂无可用页面,请在装配清单中启用业务插件。</p>
+  return <Navigate to={first.path} replace />
+}
+
+function NotFound() {
+  return (
+    <div>
+      <h2>页面不存在</h2>
+      <p>请检查地址,或从左侧导航进入其他页面。</p>
+    </div>
   )
 }
 
