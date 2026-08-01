@@ -15,7 +15,9 @@ export const Config = z
   })
   .prefault({})
 
-export function apply(ctx: Context, config: z.infer<typeof Config>) {
+export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
+  // the loader validates through Config before apply, so the value is parsed
+  const config = rawConfig as z.output<typeof Config>
   ctx.logger.info('ping plugin loaded: %s', config.greeting)
   ctx.effect(() => {
     const timer = setInterval(() => ctx.logger.info('heartbeat'), 30_000)

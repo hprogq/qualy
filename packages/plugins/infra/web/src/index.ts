@@ -24,7 +24,9 @@ export const Config = z
 // enabling this plugin means the web ui must actually be served: missing
 // assets or a missing vite are startup failures, headless deployments
 // disable the plugin instead
-export function apply(ctx: Context, config: z.infer<typeof Config>) {
+export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
+  // the loader validates through Config before apply, so the value is parsed
+  const config = rawConfig as z.output<typeof Config>
   const mode =
     config.mode === 'auto'
       ? process.env.NODE_ENV === 'production'

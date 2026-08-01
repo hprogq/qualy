@@ -47,14 +47,16 @@ export type FallbackMiddleware = (
   next: (error?: unknown) => void,
 ) => void
 
+const Config = z
+  .object({
+    // port 0 binds an ephemeral port, used by tests
+    port: z.number().int().min(0).default(3000),
+    prefix: z.string().regex(/^\//, 'prefix must start with /').default('/api'),
+  })
+  .prefault({})
+
 export default class Server extends Service {
-  static Config = z
-    .object({
-      // port 0 binds an ephemeral port, used by tests
-      port: z.number().int().min(0).default(3000),
-      prefix: z.string().regex(/^\//, 'prefix must start with /').default('/api'),
-    })
-    .prefault({})
+  static Config = Config
 
   private fragments = new Map<string, ApiRouter>()
   private enrichers = new Map<string, ContextEnricher>()
@@ -103,11 +105,14 @@ export default class Server extends Service {
     }, `enricher:${key}`)
   }
 
-  constructor(
-    ctx: Context,
-    private config: z.infer<typeof Server.Config>,
-  ) {
+  // the parameter carries the input shape so callers may pass partial config;
+  // cordis validates through static Config first, so the value received at
+  // runtime is always the parsed output
+  private config: z.output<typeof Config>
+
+  constructor(ctx: Context, config: z.input<typeof Config>) {
     super(ctx, 'server')
+    this.config = config as z.output<typeof Config>
     this.rebuild()
   }
 

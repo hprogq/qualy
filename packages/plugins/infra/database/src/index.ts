@@ -21,13 +21,15 @@ function redact(url: string): string {
   }
 }
 
+const Config = z
+  .object({
+    url: z.string().default(() => process.env.DATABASE_URL ?? localFallback),
+    logQueries: z.boolean().default(false),
+  })
+  .prefault({})
+
 export default class Database extends Service {
-  static Config = z
-    .object({
-      url: z.string().default(() => process.env.DATABASE_URL ?? localFallback),
-      logQueries: z.boolean().default(false),
-    })
-    .prefault({})
+  static Config = Config
 
   private pool!: Pool
   private views = new WeakMap<AnyRelations, unknown>()
@@ -35,12 +37,14 @@ export default class Database extends Service {
   // relations-agnostic instance, column-level typing comes from the imported table objects
   drizzle!: NodePgDatabase
 
-  constructor(
-    ctx: Context,
-    private config: z.infer<typeof Database.Config>,
-  ) {
+  // input shape for callers; cordis validates through static Config first,
+  // so the runtime value is always the parsed output
+  private config: z.output<typeof Config>
+
+  constructor(ctx: Context, config: z.input<typeof Config>) {
     super(ctx, 'db')
-    if (!process.env.DATABASE_URL && config.url === localFallback) {
+    this.config = config as z.output<typeof Config>
+    if (!process.env.DATABASE_URL && this.config.url === localFallback) {
       ctx.logger.warn('DATABASE_URL is not set, falling back to %s', localFallback)
     }
   }

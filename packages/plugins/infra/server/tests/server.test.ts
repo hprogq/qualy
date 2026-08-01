@@ -66,7 +66,10 @@ describe('plugin-server', () => {
         child.server.contribute('who', whoRouter)
       },
     })
-    const who = async () => (await (await fetch(`${base}/who/ami`)).json()).principal
+    const who = async () => {
+      const body = (await (await fetch(`${base}/who/ami`)).json()) as { principal: unknown }
+      return body.principal
+    }
 
     expect(await who()).toBeNull()
 
