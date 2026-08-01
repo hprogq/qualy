@@ -1,6 +1,6 @@
 # STATUS
 
-阶段:**P0 已收官**(2026-08-02,tag v0.1.0-p0)/ 下一阶段:P1 基座迁移
+阶段:**P1 基座迁移**(入场基线 tag p1-base,2026-08-02;P0 收官 tag v0.1.0-p0)
 
 ## 已完成
 
@@ -19,6 +19,8 @@
 - [s8+收官令] P0 合卷:A 组修 CI(typecheck 前置 gen)、gen.ts 单入口(argv 共享根治 --all 只达链尾)、check-chunks/typecheck 声明化(根脚本零插件名)、**宿主拥有插件**(依赖与 cordis.yml 归位 packages/app,hoist 桥接实验失败后走结构正解;聚合方声明输入 + 生成器硬失败校验;hmr base 回锚修复 watcher 全盲);B 组 8 个 vitest(生命周期集成×3、PGlite PG18.3 迁移重放、生成器确定性×2、不变式、类型活性)+ 八项总验收归档 docs/reports/P0-REPORT.md + tag v0.1.0-p0;C 组角色表与两纪律入 CLAUDE、TanStack Query 接入(web-runtime 自持 manifest 生命周期,错误态可重试,@orpc/tanstack-query 同族锁定)
 
 - [plugin-web 定案] 前端交付插件化(2026-08-02):server 增单槽 Connect 风格 fallback(effect 托管,/api 前缀内永不触发,next()→404、next(err)→日志+500)+ httpServer/port 暴露;新建 @qualy/plugin-web(mode auto 按 NODE_ENV 分流:development 挂 Vite middlewareMode 到宿主 server 共端口,production 用 sirv 服务 staged 产物;启用即必须可服务,缺产物/缺 vite 启动硬失败);apps/web 改名 @qualy/web-app 留守组合根,产物经 stage-web-assets 归插件 client-dist/(gitignored);独立 dev:web 与 /api 代理删除,dev 单进程。修复两坑:traceable 代理下服务可变槽重赋值不粘(fallback 撤销失效,改稳定容器盒,入 notes/cordis.md);sirv setHeaders 收请求路径致 html 壳误带 immutable(改无扩展名判定)
+
+- [P1 入场收口] 基线冻结与三修复(2026-08-02):①装配清单更名 `packages/app/qualy.yml`(审计确认文件名在 cordis 库中零特殊化,仅弃用的 bin.js 有默认值;代码引用 main.ts/read-entries/plugin-add/codegen banner/两测试全量切换,归档文档与上游手册不动);②终端日志归一——db:migrate 换自研静音脚本(drizzle-orm migrate() 程序化调用,与 kit 台账实测兼容;注意 v1 必须 `drizzle({client})`,裸 `drizzle(pool)` 会被当 config 自建无凭据连接),vite 日志经 customLogger 走 `ctx.logger('vite')`;③web 壳补 index 重定向(首个 nav 项)与 404 页,根路径不再空白;④CI 增 `pnpm build` + staged assets 存在检查 + check-chunks 树摇门禁;⑤p1-tutorial.md 与 p1-migration-audit.md 入库(审计表已按真实旧仓校对路径),CLAUDE 切到 P1;⑥旧代码克隆 legacy/(gitignored,vitest 排除):qualy_old + algryth(RBAC 参考);⑦当前 HEAD 全量验收重跑并补记 P0-REPORT,打不可变基线 tag `p1-base`
 
 ## 验收输出摘录
 
@@ -97,6 +99,7 @@
 - 确认项:tsc 通过且 include 覆盖 scripts/**(含 tests,vitest 导入参与类型检查);notes/hmr.md 已含 --expose-internals 必要性与 dev-only/生产禁带;pnpm-workspace 的 allowBuilds 字段对 pnpm 11.8 有效(实证:approve-builds 写入该字段后 esbuild postinstall 正常执行)
 - prettier 最小配置(semi:false/singleQuote/printWidth:100)+ 全量格式化独立提交
 
-## 下一会话(P1 开工)
+## 下一会话(P1 会话 1)
 
-- P1 基座迁移(PLAN §8):Qualy auth/org/rbac → 三插件 + dict;manifest 接 RBAC。**搬家不重写,超时即镀金**。第一个业务页面直接写在 TanStack Query 范式上(web-runtime 已就绪);旧数据在 qualy-postgres-old 容器(卷 qualy_postgres_data)。浏览器人工走查(P0-REPORT 第 3 项)仍留人工补记
+- 按 docs/p1-tutorial.md 会话 1 执行:迁移边界、四插件骨架(@qualy/plugin-org/auth/rbac/dict)与 server 请求上下文。**搬家不重写,超时即镀金**。旧代码只读参考在 legacy/(qualy_old + algryth);旧数据在 qualy-postgres-old 容器(卷 qualy_postgres_data)。提交格式冲突已裁决:教程的 `p1-s<N>` 不用,一律英文 Conventional Commits(CLAUDE.md 优先)
+- 浏览器人工走查(P0-REPORT 第 3 项)在 P1 第一个 commit 前人工补记:/ping 页面与导航、改 PingPage 文本验 HMR、停用 ping 后导航与路由消失、恢复、控制台无 React 双实例/Router/chunk 错误

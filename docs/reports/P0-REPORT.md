@@ -98,3 +98,44 @@ PGlite(PG 18.3)全新库重放迁移 + uuidv7 断言 + RQB v2 查询、
 
 八项全部通过(第 3 项接口侧通过,浏览器走查留人工)。P0 两大灵魂命题闭环:
 **停用插件零重建生效**(第 4 项)与**剔除插件后前端树摇成立**(第 5 项),均有自动化哨兵看护(vitest + check-chunks)。
+
+---
+
+## 附:当前 HEAD 补充验收(2026-08-02,P1 入场基线 p1-base)
+
+原报告验收于 v0.1.0-p0,其前端项描述的是独立 Vite 服务与 /api 代理。此后架构变更:
+server 增单槽 Connect fallback、@qualy/plugin-web 单进程交付(dev 挂 Vite middleware、
+prod 走 sirv staged 产物)、traceable 代理可变槽修复、装配清单更名 qualy.yml、
+静音迁移脚本与 vite 日志归一、web 壳补 index 重定向与 404 页。旧 tag 不动,
+在当前 HEAD 重跑全量验收后另打不可变基线 tag `p1-base`。
+
+静态门禁(逐条实跑):
+
+```
+pnpm install --frozen-lockfile → 0
+pnpm gen → 0
+pnpm typecheck → 0
+pnpm test → Test Files 8 passed / Tests 11 passed
+pnpm build → 0(gen --all → @qualy/web-app build → staging)
+test -f packages/plugins/infra/web/client-dist/index.html → 0
+tsx apps/web/scripts/check-chunks.ts → PingPage: chunk present
+drizzle-kit check → Everything's fine
+drizzle-kit generate(no-op)→ No schema changes;git diff db/migrations 干净
+drop-guard → ok (0 file(s) scanned)
+```
+
+运行时三态(NODE_ENV 分流,单端口 3000):
+
+```
+dev:     / 200(Vite middleware),/ping 200,/api/ping/hello?name=P1 → {"msg":"hello, P1"},/api/not-found 404
+prod:    / 200 HTML 且 Cache-Control: no-cache;/ping 深链 200 text/html;
+         /api/not-found 404 "Not Found"(不回落 index.html);
+         哈希资源 Cache-Control: public,max-age=31536000,immutable
+headless(qualy.yml 停用 plugin-web): / 404,/api/ping/hello 正常 → 启用即必须可服务、停用即显式 headless 成立
+```
+
+新增测试覆盖:server fallback 槽生命周期(注册/api 内不触发/二次注册拒绝/dispose 撤销)、
+plugin-web 生产态(spa 回退、缓存头两断言、缺产物启动硬失败)。
+
+浏览器人工走查仍留人工(P1 第一个 commit 前补:/ping 页面、HMR、停用 ping 后导航消失、
+控制台无 React 双实例/chunk 错误)。
