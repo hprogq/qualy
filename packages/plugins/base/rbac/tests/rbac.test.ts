@@ -1,0 +1,471 @@
+import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+import { Context } from 'cordis'
+import { Pool } from 'pg'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { runMigrations } from '@qualy/plugin-database/migrator'
+import Database from '@qualy/plugin-database'
+import Rbac from '../src/index.ts'
+
+const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
+const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
+
+const available = await (async () => {
+  const probe = new Pool({ connectionString: baseUrl, connectionTimeoutMillis: 1500 })
+  try {
+    await probe.query('select 1')
+    return true
+  } catch {
+    return false
+  } finally {
+    await probe.end().catch(() => {})
+  }
+})()
+
+if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
+  throw new Error('postgres-backed tests are required but the server is unreachable')
+}
+if (!available) console.warn('postgres unreachable, rbac tests skipped')
+
+// drop database ... with (force) races graceful client teardown: a killed
+// backend's fatal 57P01 lands on a closing socket and would surface as an
+// unhandled error without a listener
+const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
+  const pool = new Pool(config)
+  pool.on('error', () => {})
+  return pool
+}
+
+const CATALOG = [
+  {
+    code: 'test.portal.access',
+    name: 'portal',
+    scope: 'tenant',
+    grantToUserType: true,
+    grantToRole: true,
+    defaultTenantAdmin: true,
+  },
+  {
+    code: 'test.role.manage',
+    name: 'manage roles',
+    scope: 'tenant',
+    grantToUserType: false,
+    grantToRole: true,
+    defaultTenantAdmin: true,
+  },
+  {
+    code: 'test.tree.manage',
+    name: 'manage tree',
+    scope: 'org',
+    grantToUserType: false,
+    grantToRole: true,
+    defaultTenantAdmin: true,
+  },
+  {
+    code: 'test.user.manage',
+    name: 'manage users',
+    scope: 'org',
+    grantToUserType: false,
+    grantToRole: true,
+    defaultTenantAdmin: true,
+  },
+] as const
+
+describe.runIf(available)('rbac', () => {
+  const adminPool = quietPool({ connectionString: baseUrl })
+  const dbName = `qualy_rbac_${randomUUID().slice(0, 8)}`
+  let pool: Pool
+  let ctx: Context
+  let rbac: Rbac
+  // fixture ids
+  const f = {
+    tenant: '',
+    tenantB: '',
+    root: '',
+    college: '',
+    otherCollege: '',
+    class1: '',
+    typeAdmin: '',
+    typeFaculty: '',
+    typeStudent: '',
+    admin: '',
+    manager: '',
+    student: '',
+    adminB: '',
+    tenantAdminRole: '',
+    managerRole: '',
+    collegeType: '',
+    classType: '',
+  }
+  const principal = (userId: string, tenantId = f.tenant) => ({
+    tenantId,
+    userId,
+    sessionId: 'test-session',
+  })
+
+  beforeAll(async () => {
+    await adminPool.query(`create database "${dbName}"`)
+    const url = new URL(baseUrl)
+    url.pathname = `/${dbName}`
+    pool = quietPool({ connectionString: url.href })
+    await runMigrations(pool, { folder: migrationsFolder })
+
+    const row = async (text: string, params: unknown[] = []) =>
+      (await pool.query(text, params)).rows[0].id as string
+
+    // two tenants with a small org tree, three user types, three users
+    f.tenant = await row(`insert into tenants (slug, name) values ('a', 'A') returning id`)
+    f.tenantB = await row(`insert into tenants (slug, name) values ('b', 'B') returning id`)
+    const uniType = await row(
+      `insert into org_types (tenant_id, code, name) values ($1, 'university', 'U') returning id`,
+      [f.tenant],
+    )
+    f.collegeType = await row(
+      `insert into org_types (tenant_id, code, name) values ($1, 'college', 'C') returning id`,
+      [f.tenant],
+    )
+    f.classType = await row(
+      `insert into org_types (tenant_id, code, name) values ($1, 'class', 'K') returning id`,
+      [f.tenant],
+    )
+    f.root = await row(
+      `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+       values ($1, $2, 'Root', 'r', 0) returning id`,
+      [f.tenant, uniType],
+    )
+    f.college = await row(
+      `insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+       values ($1, $2, $3, 'College', 'r.c1', 1) returning id`,
+      [f.tenant, f.collegeType, f.root],
+    )
+    f.otherCollege = await row(
+      `insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+       values ($1, $2, $3, 'Other College', 'r.c2', 1) returning id`,
+      [f.tenant, f.collegeType, f.root],
+    )
+    f.class1 = await row(
+      `insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+       values ($1, $2, $3, 'Class 1', 'r.c1.k1', 2) returning id`,
+      [f.tenant, f.classType, f.college],
+    )
+    f.typeAdmin = await row(
+      `insert into user_types (tenant_id, code, name) values ($1, 'administrator', 'Admin') returning id`,
+      [f.tenant],
+    )
+    f.typeFaculty = await row(
+      `insert into user_types (tenant_id, code, name) values ($1, 'faculty', 'Faculty') returning id`,
+      [f.tenant],
+    )
+    f.typeStudent = await row(
+      `insert into user_types (tenant_id, code, name) values ($1, 'student', 'Student') returning id`,
+      [f.tenant],
+    )
+    const user = (name: string, typeId: string, node: string, tenant = f.tenant) =>
+      row(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, $2, $3, $4) returning id`,
+        [tenant, name, typeId, node],
+      )
+    f.admin = await user('Admin', f.typeAdmin, f.root)
+    f.manager = await user('Manager', f.typeFaculty, f.college)
+    f.student = await user('Student', f.typeStudent, f.class1)
+
+    // tenant B mirrors the admin setup to prove isolation
+    const uniTypeB = await row(
+      `insert into org_types (tenant_id, code, name) values ($1, 'university', 'U') returning id`,
+      [f.tenantB],
+    )
+    const rootB = await row(
+      `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+       values ($1, $2, 'Root B', 'rb', 0) returning id`,
+      [f.tenantB, uniTypeB],
+    )
+    const typeAdminB = await row(
+      `insert into user_types (tenant_id, code, name) values ($1, 'administrator', 'Admin') returning id`,
+      [f.tenantB],
+    )
+    f.adminB = await user('Admin B', typeAdminB, rootB, f.tenantB)
+
+    // roles: system tenant-admin plus an org role restricted to faculty@college
+    f.tenantAdminRole = await row(
+      `insert into roles (tenant_id, code, name, kind, is_system)
+       values ($1, 'tenant-admin', 'TA', 'tenant', true) returning id`,
+      [f.tenant],
+    )
+    f.managerRole = await row(
+      `insert into roles (tenant_id, code, name, kind) values ($1, 'org-manager', 'OM', 'org') returning id`,
+      [f.tenant],
+    )
+    await pool.query(
+      `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
+      [f.tenant, f.managerRole, f.typeFaculty],
+    )
+    await pool.query(
+      `insert into role_allowed_org_types (tenant_id, role_id, org_type_id) values ($1, $2, $3)`,
+      [f.tenant, f.managerRole, f.collegeType],
+    )
+
+    ctx = new Context()
+    await ctx.plugin(Database, { url: url.href, migrations: 'off' })
+    await ctx.plugin(Rbac)
+    rbac = ctx.rbac
+    // register the test catalog through a scoped plugin and wait for the
+    // database mirror (creates rows + tenant-admin mappings)
+    await ctx.plugin({
+      name: 'catalog',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('test', CATALOG)
+      },
+    })
+    await rbac.whenSynced()
+
+    // manager role gets the org-scope permissions; user types get portal
+    await pool.query(
+      `insert into role_permissions (tenant_id, role_id, permission_id)
+       select $1, $2, p.id from permissions p where p.code in ('test.tree.manage', 'test.user.manage')`,
+      [f.tenant, f.managerRole],
+    )
+    await pool.query(
+      `insert into user_type_permissions (tenant_id, user_type_id, permission_id)
+       select $1, ut.id, p.id from user_types ut, permissions p
+       where ut.tenant_id = $1 and p.code = 'test.portal.access'`,
+      [f.tenant],
+    )
+    // assignments: admin over root/subtree, manager over college/subtree
+    await pool.query(
+      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+       values ($1, $2, $3, $4, 'subtree')`,
+      [f.tenant, f.admin, f.tenantAdminRole, f.root],
+    )
+    await pool.query(
+      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+       values ($1, $2, $3, $4, 'subtree')`,
+      [f.tenant, f.manager, f.managerRole, f.college],
+    )
+  })
+
+  afterAll(async () => {
+    await ctx?.fiber.dispose()
+    await pool?.end()
+    await adminPool.query(`drop database if exists "${dbName}" with (force)`)
+    await adminPool.end()
+  })
+
+  const orpcCode = (promise: Promise<unknown>) =>
+    promise.then(
+      () => 'ok',
+      (error) => (error as { code?: string }).code ?? (error as Error).message,
+    )
+
+  it('matches the access matrix for admin, manager and student', async () => {
+    // portal access flows from the user type for everyone
+    for (const user of [f.admin, f.manager, f.student]) {
+      expect(await rbac.hasPermission(principal(user), 'test.portal.access')).toBe(true)
+    }
+    // role management is tenant scope: admin only
+    expect(await orpcCode(rbac.require(principal(f.admin), 'test.role.manage'))).toBe('ok')
+    expect(await orpcCode(rbac.require(principal(f.manager), 'test.role.manage'))).toBe('FORBIDDEN')
+    expect(await orpcCode(rbac.require(principal(f.student), 'test.role.manage'))).toBe('FORBIDDEN')
+    // college subtree: admin (root subtree) and manager (college subtree)
+    expect(await rbac.canAt(principal(f.admin), 'test.tree.manage', f.class1)).toBe(true)
+    expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(true)
+    expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.class1)).toBe(true)
+    expect(await rbac.canAt(principal(f.student), 'test.tree.manage', f.class1)).toBe(false)
+    // the other college stays out of the manager's reach
+    expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.otherCollege)).toBe(false)
+    expect(await rbac.canAt(principal(f.admin), 'test.user.manage', f.otherCollege)).toBe(true)
+  })
+
+  it('distinguishes 401 from 403 and validates scope usage', async () => {
+    expect(await orpcCode(rbac.require(undefined, 'test.role.manage'))).toBe('AUTH_REQUIRED')
+    expect(await orpcCode(rbac.requireAt(undefined, 'test.tree.manage', f.college))).toBe(
+      'AUTH_REQUIRED',
+    )
+    expect(
+      await orpcCode(rbac.requireAt(principal(f.student), 'test.tree.manage', f.college)),
+    ).toBe('FORBIDDEN')
+    // wrong scope is a programming error, not a 403
+    await expect(rbac.require(principal(f.admin), 'test.tree.manage')).rejects.toThrow(
+      /use requireAt/,
+    )
+    await expect(rbac.canAt(principal(f.admin), 'test.role.manage', f.root)).rejects.toThrow(
+      /use require/,
+    )
+  })
+
+  it('self scope covers exactly the node, subtree includes itself', async () => {
+    await pool.query(
+      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+       values ($1, $2, $3, $4, 'self')`,
+      [f.tenant, f.student, f.managerRole, f.college],
+    )
+    // wrong-typed grant on purpose: the check only cares about scope shape
+    expect(await rbac.canAt(principal(f.student), 'test.tree.manage', f.college)).toBe(true)
+    expect(await rbac.canAt(principal(f.student), 'test.tree.manage', f.class1)).toBe(false)
+    await pool.query(`delete from user_role_assignments where user_id = $1 and scope = 'self'`, [
+      f.student,
+    ])
+  })
+
+  it('fails closed on disabled roles, permissions and inactive plugins', async () => {
+    await pool.query(`update roles set enabled = false where id = $1`, [f.managerRole])
+    expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(false)
+    await pool.query(`update roles set enabled = true where id = $1`, [f.managerRole])
+
+    await pool.query(`update permissions set enabled = false where code = 'test.tree.manage'`)
+    expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(false)
+    await pool.query(`update permissions set enabled = true where code = 'test.tree.manage'`)
+
+    // deactivating the declaring plugin removes the codes from the active
+    // set while rows and grants survive
+    const scoped = ctx.plugin({
+      name: 'transient',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('transient', [
+          {
+            code: 'transient.thing.use',
+            name: 't',
+            scope: 'tenant',
+            grantToUserType: false,
+            grantToRole: true,
+            defaultTenantAdmin: true,
+          },
+        ])
+      },
+    })
+    await scoped
+    await rbac.whenSynced()
+    expect(await orpcCode(rbac.require(principal(f.admin), 'transient.thing.use'))).toBe('ok')
+    await scoped.dispose()
+    expect(await orpcCode(rbac.require(principal(f.admin), 'transient.thing.use'))).toBe(
+      'FORBIDDEN',
+    )
+    const rows = await pool.query(`select count(*) from permissions where code like 'transient.%'`)
+    expect(Number(rows.rows[0].count)).toBe(1)
+  })
+
+  it('keeps tenants fully isolated', async () => {
+    expect(await rbac.canAt(principal(f.adminB, f.tenantB), 'test.tree.manage', f.college)).toBe(
+      false,
+    )
+    expect(await orpcCode(rbac.require(principal(f.adminB, f.tenantB), 'test.role.manage'))).toBe(
+      'FORBIDDEN',
+    )
+    // a forged principal mixing tenant A's user with tenant B fails too
+    expect(await orpcCode(rbac.require(principal(f.admin, f.tenantB), 'test.role.manage'))).toBe(
+      'FORBIDDEN',
+    )
+  })
+
+  it('reports the profile as the union of both grant sources', async () => {
+    const admin = await rbac.getProfile(principal(f.admin))
+    expect(admin.tenantPermissions).toContain('test.portal.access')
+    expect(admin.tenantPermissions).toContain('test.role.manage')
+    expect(admin.orgPermissions).toContain('test.tree.manage')
+    const student = await rbac.getProfile(principal(f.student))
+    expect(student.tenantPermissions).toEqual(['test.portal.access'])
+    expect(student.orgPermissions).toEqual([])
+  })
+
+  it('rejects semantics drift by disabling the code', async () => {
+    const scoped = ctx.plugin({
+      name: 'drift',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('drift', [
+          {
+            // same code as the test catalog but org scope: the database row
+            // wins, the definition is disabled loudly
+            code: 'test.role.manage',
+            name: 'drifted',
+            scope: 'org',
+            grantToUserType: false,
+            grantToRole: true,
+            defaultTenantAdmin: false,
+          },
+        ])
+      },
+    })
+    // in-memory conflict with the active catalog fires first
+    await expect(Promise.resolve(scoped)).rejects.toThrow('permission code conflict')
+  })
+
+  it('enforces assignment eligibility', async () => {
+    // student type is not in the allowed set of the manager role
+    await expect(
+      rbac.createAssignment({
+        tenantId: f.tenant,
+        userId: f.student,
+        roleId: f.managerRole,
+        orgNodeId: f.college,
+        scope: 'self',
+      }),
+    ).rejects.toThrow(/user type is not allowed/)
+    // class node type is not in the allowed org types
+    await expect(
+      rbac.createAssignment({
+        tenantId: f.tenant,
+        userId: f.manager,
+        roleId: f.managerRole,
+        orgNodeId: f.class1,
+        scope: 'self',
+      }),
+    ).rejects.toThrow(/org node type is not allowed/)
+    // tenant roles only bind to the root with subtree scope
+    await expect(
+      rbac.createAssignment({
+        tenantId: f.tenant,
+        userId: f.admin,
+        roleId: f.tenantAdminRole,
+        orgNodeId: f.college,
+        scope: 'subtree',
+      }),
+    ).rejects.toThrow(/bind to the root/)
+    // duplicates are refused
+    await expect(
+      rbac.createAssignment({
+        tenantId: f.tenant,
+        userId: f.manager,
+        roleId: f.managerRole,
+        orgNodeId: f.college,
+        scope: 'subtree',
+      }),
+    ).rejects.toThrow(/already exists/)
+    // a valid one passes and can be removed again
+    const id = await rbac.createAssignment({
+      tenantId: f.tenant,
+      userId: f.manager,
+      roleId: f.managerRole,
+      orgNodeId: f.college,
+      scope: 'self',
+    })
+    await rbac.removeAssignment(f.tenant, id)
+  })
+
+  it('protects the last tenant administrator', async () => {
+    const assignment = (
+      await pool.query(
+        `select id from user_role_assignments where tenant_id = $1 and role_id = $2`,
+        [f.tenant, f.tenantAdminRole],
+      )
+    ).rows[0]
+    await expect(rbac.removeAssignment(f.tenant, assignment.id)).rejects.toThrow(
+      /last tenant administrator/,
+    )
+    // a second admin makes removal legal again
+    const second = await rbac.createAssignment({
+      tenantId: f.tenant,
+      userId: f.manager,
+      roleId: f.tenantAdminRole,
+      orgNodeId: f.root,
+      scope: 'subtree',
+    })
+    await rbac.removeAssignment(f.tenant, assignment.id)
+    // and the survivor is now protected
+    await expect(rbac.removeAssignment(f.tenant, second)).rejects.toThrow(
+      /last tenant administrator/,
+    )
+  })
+})

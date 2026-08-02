@@ -7,6 +7,7 @@ import { runMigrations } from '@qualy/plugin-database/migrator'
 import Database from '@qualy/plugin-database'
 import Server from '@qualy/plugin-server'
 import UiRegistry from '@qualy/plugin-ui-registry'
+import Rbac from '@qualy/plugin-rbac'
 import Auth from '@qualy/plugin-auth'
 import { hashPassword } from '../src/password.ts'
 import * as authLocal from '../src/index.ts'
@@ -150,6 +151,7 @@ describe.runIf(available)('local login through the auth core', () => {
     await ctx.plugin(Database, { url: url.href, migrations: 'off' })
     await ctx.plugin(Server, { port: 0 })
     await ctx.plugin(UiRegistry)
+    await ctx.plugin(Rbac)
     await ctx.plugin(Auth, { defaultTenantSlug: 'flow' })
     await ctx.plugin(authLocal)
     base = `http://127.0.0.1:${ctx.server.port}/api`

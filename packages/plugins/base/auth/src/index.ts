@@ -6,6 +6,7 @@ import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
 import { headerActions } from '@qualy/ui-contract'
 import { authContract, authErrorStatuses, type LoginMethod, type UserDto } from './contract.ts'
+import { authPermissions } from './permissions.ts'
 import { authRelations } from './db/relations.ts'
 import {
   createSession,
@@ -76,7 +77,7 @@ const Config = z
 // proof into a qualy session (cookie, principal, revocation)
 export default class Auth extends Service {
   static Config = Config
-  static inject = ['db', 'server', 'ui']
+  static inject = ['db', 'server', 'ui', 'rbac']
 
   private db: AuthDb
   private cookie: CookieSettings
@@ -95,6 +96,7 @@ export default class Auth extends Service {
           : this.config.secureCookies === 'true',
     }
     this.db = ctx.db.withRelations(authRelations)
+    ctx.rbac.definePermissions('auth', authPermissions)
 
     // anonymous requests pass through untouched; an invalid or expired cookie
     // is cleared but never turns into an error at this stage
