@@ -61,20 +61,13 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
         const principal = requirePrincipal(context)
         // authorization IS the anchor projection: subtree anchors expand,
         // self anchors stay bare (also for an explicit nodeId), everything
-        // else is invisible. Both anchor sets resolve inside the service's
-        // single read snapshot.
-        const [readAnchors, manageAnchors] = await Promise.all([
-          ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.read'),
-          ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.manage'),
-        ])
-        const forest = await service.readForest(
-          principal.tenantId,
-          { read: readAnchors, manage: manageAnchors },
-          input.nodeId,
-        )
+        // else is invisible. Anchors and tree resolve in one snapshot
+        // inside the service.
+        const forest = await service.readForest(principal, input.nodeId)
         const nodes: OrgTreeNodeDto[] = forest.nodes.map((row) => ({
           ...toNodeDto(row),
           manageable: row.manageable,
+          subtreeManageable: row.subtreeManageable,
         }))
         return { roots: forest.roots, nodes }
       } catch (error) {
@@ -98,7 +91,7 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
       try {
         const principal = requirePrincipal(context)
         await requireManageAtRoot(principal)
-        const type = await service.createType(principal.tenantId, input)
+        const type = await service.createType(principal.tenantId, input, principal)
         return {
           type: { id: type.id, code: type.code, name: type.name, sortOrder: type.sort_order },
         }
@@ -110,7 +103,7 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
       try {
         const principal = requirePrincipal(context)
         await requireManageAtRoot(principal)
-        const type = await service.updateType(principal.tenantId, input.typeId, input)
+        const type = await service.updateType(principal.tenantId, input.typeId, input, principal)
         return {
           type: { id: type.id, code: type.code, name: type.name, sortOrder: type.sort_order },
         }
@@ -122,7 +115,7 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
       try {
         const principal = requirePrincipal(context)
         await requireManageAtRoot(principal)
-        await service.deleteType(principal.tenantId, input.typeId)
+        await service.deleteType(principal.tenantId, input.typeId, principal)
         return { ok: true }
       } catch (error) {
         mapDomain(errors, error)
@@ -143,7 +136,12 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
       try {
         const principal = requirePrincipal(context)
         await requireManageAtRoot(principal)
-        await service.createRule(principal.tenantId, input.parentTypeId, input.childTypeId)
+        await service.createRule(
+          principal.tenantId,
+          input.parentTypeId,
+          input.childTypeId,
+          principal,
+        )
         return { ok: true }
       } catch (error) {
         mapDomain(errors, error)
@@ -153,7 +151,12 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
       try {
         const principal = requirePrincipal(context)
         await requireManageAtRoot(principal)
-        await service.deleteRule(principal.tenantId, input.parentTypeId, input.childTypeId)
+        await service.deleteRule(
+          principal.tenantId,
+          input.parentTypeId,
+          input.childTypeId,
+          principal,
+        )
         return { ok: true }
       } catch (error) {
         mapDomain(errors, error)

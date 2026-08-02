@@ -174,23 +174,32 @@ export class OrgTreeService {
     })
   }
 
-  // the authorized projection of the tree, computed in one repeatable-read
-  // read-only transaction so a concurrent move can never tear the response
-  // (per-statement snapshots would let a whole subtree vanish mid-read).
-  // With nodeId the caller's read anchors decide the slice: subtree
-  // coverage yields the whole subtree, bare self coverage only the node.
+  // the authorized projection of the tree. Anchors (rbac assignments and
+  // roles) AND the tree resolve inside the same repeatable-read read-only
+  // transaction: a concurrent move can never tear the response, and a
+  // revoked grant can never outlive the snapshot it was read in. With
+  // nodeId the caller's read anchors decide the slice: subtree coverage
+  // yields the whole subtree, bare self coverage only the node.
   async readForest(
-    tenantId: string,
-    principalAnchors: {
-      read: readonly AuthorizationAnchor[]
-      manage: readonly AuthorizationAnchor[]
-    },
+    principal: Principal,
     nodeId?: string,
-  ): Promise<{ roots: string[]; nodes: (NodeRow & { manageable: boolean })[] }> {
+  ): Promise<{
+    roots: string[]
+    nodes: (NodeRow & { manageable: boolean; subtreeManageable: boolean })[]
+  }> {
+    const tenantId = principal.tenantId
     return this.db.transaction(
       async (tx) => {
-        const readAnchors = await this.anchorPaths(tx, tenantId, principalAnchors.read)
-        const manageAnchors = await this.anchorPaths(tx, tenantId, principalAnchors.manage)
+        const readAnchors = await this.anchorPaths(
+          tx,
+          tenantId,
+          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.read', tx),
+        )
+        const manageAnchors = await this.anchorPaths(
+          tx,
+          tenantId,
+          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.manage', tx),
+        )
         let forest: OrgForest
         if (nodeId) {
           const node = await getNode(tx, tenantId, nodeId)
@@ -208,12 +217,29 @@ export class OrgTreeService {
           roots: forest.roots,
           nodes: forest.nodes.map((node) => ({
             ...node,
+            // manageable covers single-node mutations; a move relocates the
+            // whole subtree and needs subtree-scoped coverage
             manageable: coveredBy(manageAnchors, node),
+            subtreeManageable: subtreeCoveredBy(manageAnchors, node),
           })),
         }
       },
       { isolationLevel: 'repeatable read', accessMode: 'read only' },
     )
+  }
+
+  // type/rule management targets the root; the root never moves, but the
+  // caller's grants can be revoked between the router pre-check and the
+  // lock, so re-validate on the locked connection like every node write
+  private async assertManagesRoot(
+    tx: OrgTx,
+    principal: Principal | undefined,
+    tenantId: string,
+  ): Promise<void> {
+    if (!principal) return
+    const root = await getRoot(tx, tenantId)
+    if (!root) throw new OrgError('ORG_NODE_NOT_FOUND', 'tenant has no root node')
+    await this.assertManages(tx, principal, tenantId, [{ node: root }])
   }
 
   createNode(
@@ -389,9 +415,14 @@ export class OrgTreeService {
     return listTypes(this.db, tenantId)
   }
 
-  createType(tenantId: string, input: { code: string; name: string; sortOrder?: number }) {
+  createType(
+    tenantId: string,
+    input: { code: string; name: string; sortOrder?: number },
+    as?: Principal,
+  ) {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
+      await this.assertManagesRoot(tx, as, tenantId)
       return insertType(tx, {
         tenantId,
         code: input.code,
@@ -401,9 +432,15 @@ export class OrgTreeService {
     })
   }
 
-  updateType(tenantId: string, typeId: string, fields: { name?: string; sortOrder?: number }) {
+  updateType(
+    tenantId: string,
+    typeId: string,
+    fields: { name?: string; sortOrder?: number },
+    as?: Principal,
+  ) {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
+      await this.assertManagesRoot(tx, as, tenantId)
       const type = await getType(tx, tenantId, typeId)
       if (!type) throw new OrgError('ORG_TYPE_NOT_FOUND', 'org type not found')
       await updateType(tx, tenantId, typeId, fields)
@@ -411,9 +448,10 @@ export class OrgTreeService {
     })
   }
 
-  deleteType(tenantId: string, typeId: string): Promise<void> {
+  deleteType(tenantId: string, typeId: string, as?: Principal): Promise<void> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
+      await this.assertManagesRoot(tx, as, tenantId)
       const type = await getType(tx, tenantId, typeId)
       if (!type) throw new OrgError('ORG_TYPE_NOT_FOUND', 'org type not found')
       if (await typeHasNodes(tx, tenantId, typeId)) {
@@ -430,9 +468,15 @@ export class OrgTreeService {
     return listRules(this.db, tenantId)
   }
 
-  createRule(tenantId: string, parentTypeId: string, childTypeId: string): Promise<void> {
+  createRule(
+    tenantId: string,
+    parentTypeId: string,
+    childTypeId: string,
+    as?: Principal,
+  ): Promise<void> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
+      await this.assertManagesRoot(tx, as, tenantId)
       if (parentTypeId === childTypeId) {
         throw new OrgError('ORG_RULE_INVALID', 'a type cannot parent itself')
       }
@@ -448,9 +492,15 @@ export class OrgTreeService {
     })
   }
 
-  deleteRule(tenantId: string, parentTypeId: string, childTypeId: string): Promise<void> {
+  deleteRule(
+    tenantId: string,
+    parentTypeId: string,
+    childTypeId: string,
+    as?: Principal,
+  ): Promise<void> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
+      await this.assertManagesRoot(tx, as, tenantId)
       if (!(await ruleExists(tx, tenantId, parentTypeId, childTypeId))) {
         throw new OrgError('ORG_RULE_NOT_FOUND', 'rule not found')
       }

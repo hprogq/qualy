@@ -23,9 +23,11 @@ export default function OrgPage() {
   const typesQuery = useQuery(orpc.org.listTypes.queryOptions())
   const rulesQuery = useQuery(orpc.org.listRules.queryOptions())
 
+  // targeted invalidation: only this plugin's queries, never the whole
+  // cache (me, manifest and other plugins are unaffected by org mutations)
   const refresh = () => {
     setFeedback(null)
-    return queryClient.invalidateQueries()
+    return queryClient.invalidateQueries({ queryKey: orpc.org.key() })
   }
   const run = (work: Promise<unknown>) =>
     work.then(refresh).catch((error: unknown) => {
@@ -280,7 +282,7 @@ function NodePanel({
                 </Button>
               </div>
             </div>
-            {!isRoot && (
+            {!isRoot && node.subtreeManageable && (
               <div className="space-y-2">
                 <Label>移动到</Label>
                 <div className="flex gap-2">

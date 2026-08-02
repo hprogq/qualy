@@ -20,9 +20,14 @@ export const orgNodeDto = z.object({
   sortOrder: z.number().int(),
 })
 
-// tree nodes additionally say whether the caller may mutate them, so the
-// page can hide mutation controls it could never use
-export const orgTreeNodeDto = orgNodeDto.extend({ manageable: z.boolean() })
+// tree nodes additionally say what the caller may do with them, so the
+// page can hide mutation controls it could never use: manageable covers
+// single-node mutations, subtreeManageable is required for moves (they
+// relocate every descendant)
+export const orgTreeNodeDto = orgNodeDto.extend({
+  manageable: z.boolean(),
+  subtreeManageable: z.boolean(),
+})
 
 export const orgTypeDto = z.object({
   id: z.string(),

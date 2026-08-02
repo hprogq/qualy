@@ -657,6 +657,50 @@ describe.runIf(available)('org tree domain', () => {
     ])
   })
 
+  it('reports subtree capability separately from single-node capability', async () => {
+    // a self manage grant can rename but never move: the ui must see the
+    // difference instead of offering a move the server will refuse
+    const selfGrant = await pool.query(
+      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+       values ($1, $2, $3, $4, 'self') returning id`,
+      [f.tenant, f.student, f.managerRole, f.collegeA],
+    )
+    const selfView = await call('GET', '/org/tree', undefined, principal(f.student))
+    const selfNode = ((await selfView.json()) as {
+      nodes: { id: string; manageable: boolean; subtreeManageable: boolean }[]
+    }).nodes.find((node) => node.id === f.collegeA)
+    expect(selfNode).toMatchObject({ manageable: true, subtreeManageable: false })
+
+    const managerView = await call('GET', '/org/tree', undefined, principal(f.manager))
+    const managerNode = ((await managerView.json()) as {
+      nodes: { id: string; manageable: boolean; subtreeManageable: boolean }[]
+    }).nodes.find((node) => node.id === f.collegeA)
+    expect(managerNode).toMatchObject({ manageable: true, subtreeManageable: true })
+    await pool.query(`delete from user_role_assignments where id = $1`, [selfGrant.rows[0].id])
+  })
+
+  it('re-validates type and rule management at the root inside the lock', async () => {
+    // service-level calls carrying a principal without root manage fail even
+    // though no router pre-check ran
+    expect(
+      await orgCode(
+        tree().createType(f.tenant, { code: 'nope', name: '不行' }, principal(f.manager)),
+      ),
+    ).toBe('ORG_FORBIDDEN')
+    expect(
+      await orgCode(
+        tree().deleteRule(f.tenant, f.collegeType, f.classType, principal(f.manager)),
+      ),
+    ).toBe('ORG_FORBIDDEN')
+    // the admin passes the same in-lock check
+    const spare = await tree().createType(
+      f.tenant,
+      { code: 'inlock-spare', name: '锁内备用' },
+      principal(f.admin),
+    )
+    await tree().deleteType(f.tenant, spare.id, principal(f.admin))
+  })
+
   it('re-validates authorization inside the locked transaction', async () => {
     // the in-lock check stands alone: a service call carrying a principal
     // whose anchors do not cover the target fails even though no router
