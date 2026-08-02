@@ -103,6 +103,59 @@ describe('plugin-server', () => {
     await serverFiber.dispose()
   })
 
+  it('rolls back a failing openapi plugin factory without poisoning the handler', async () => {
+    const ctx = new Context()
+    const serverFiber = ctx.plugin(Server, { port: 0 })
+    await serverFiber
+    const base = `http://127.0.0.1:${ctx.server.port}/api`
+
+    await ctx.plugin({
+      name: 'echo',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contribute('echo', echoRouter)
+      },
+    })
+    expect((await fetch(`${base}/echo/hello`)).status).toBe(200)
+
+    const throwing = ctx.plugin({
+      name: 'bad-factory',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contributeOpenApiPlugin('bad-factory', () => {
+          throw new Error('factory exploded')
+        })
+      },
+    })
+    await expect(Promise.resolve(throwing)).rejects.toThrow('factory exploded')
+    // the served handler is untouched and the key is free again: later
+    // route contributions must not re-run the bad factory
+    expect((await fetch(`${base}/echo/hello`)).status).toBe(200)
+
+    const marker = ctx.plugin({
+      name: 'good-factory',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contributeOpenApiPlugin('bad-factory', () => ({
+          name: 'noop',
+          init: (options) => options,
+        }))
+      },
+    })
+    await marker
+    expect((await fetch(`${base}/echo/hello`)).status).toBe(200)
+
+    await serverFiber.dispose()
+  })
+
+  it('rejects prefixes that are not normalized mount paths', async () => {
+    for (const prefix of ['/api/', '//example.com', '/api?x=1', '/']) {
+      const ctx = new Context()
+      await expect(Promise.resolve(ctx.plugin(Server, { port: 0, prefix }))).rejects.toThrow()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('runs context enrichers serially and revokes them with their fiber', async () => {
     const ctx = new Context()
     const serverFiber = ctx.plugin(Server, { port: 0 })

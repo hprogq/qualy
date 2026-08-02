@@ -59,11 +59,23 @@ export type FallbackMiddleware = (
   next: (error?: unknown) => void,
 ) => void
 
+// mount paths end up in routing decisions and generated openapi servers
+// entries, so they must be normalized origin-relative pathnames: no root
+// '/', no trailing slash, no query/hash, no empty or protocol-relative
+// segments
+export const mountPath = (label: string) =>
+  z
+    .string()
+    .regex(
+      /^\/[a-zA-Z0-9._~-]+(?:\/[a-zA-Z0-9._~-]+)*$/,
+      `${label} must be an origin-relative path without a trailing slash`,
+    )
+
 const Config = z
   .object({
     // port 0 binds an ephemeral port, used by tests
     port: z.number().int().min(0).default(3000),
-    prefix: z.string().regex(/^\//, 'prefix must start with /').default('/api'),
+    prefix: mountPath('prefix').default('/api'),
   })
   .prefault({})
 
@@ -97,7 +109,8 @@ export default class Server extends Service {
   private fragments = new Map<string, RouteFragment>()
   private enrichers = new Map<string, ContextEnricher>()
   private openApiPluginFactories = new Map<string, OpenApiHandlerPluginFactory>()
-  private handler!: OpenAPIHandler<ApiContext>
+  // stable box, mutated in place (traceable-proxy discipline)
+  private handlerBox: { handler?: OpenAPIHandler<ApiContext> } = {}
   private http!: HttpServer
   // mutable slot lives in a stable box: reassigning service properties from
   // closures captured through caller-traceable proxies does not stick
@@ -150,7 +163,7 @@ export default class Server extends Service {
   constructor(ctx: Context, config: z.input<typeof Config>) {
     super(ctx, 'server')
     this.config = config as z.output<typeof Config>
-    this.rebuild()
+    this.commit(this.fragments, this.openApiPluginFactories)
   }
 
   async *[Service.init]() {
@@ -165,7 +178,7 @@ export default class Server extends Service {
         if (insideApi) {
           const context: ApiContext = { cordis: this.ctx, request: req, response: res }
           for (const enricher of this.enrichers.values()) await enricher(context)
-          const { matched } = await this.handler.handle(req, res, {
+          const { matched } = await this.handlerBox.handler!.handle(req, res, {
             prefix: this.config.prefix as `/${string}`,
             context,
           })
@@ -236,16 +249,13 @@ export default class Server extends Service {
   ) {
     return this.ctx.effect(() => {
       if (this.fragments.has(ns)) throw new Error(`route namespace conflict: ${ns}`)
-      const fragment: RouteFragment = { router, errorStatuses: options.errorStatuses ?? {} }
-      // status conflicts fail the contributor before any state is written
       const next = new Map(this.fragments)
-      next.set(ns, fragment)
-      deriveErrorStatuses(next)
-      this.fragments.set(ns, fragment)
-      this.rebuild()
+      next.set(ns, { router, errorStatuses: options.errorStatuses ?? {} })
+      this.commit(next, this.openApiPluginFactories)
       return () => {
-        this.fragments.delete(ns)
-        this.rebuild()
+        const reverted = new Map(this.fragments)
+        reverted.delete(ns)
+        this.commit(reverted, this.openApiPluginFactories)
       }
     }, `route:${ns}`)
   }
@@ -257,28 +267,36 @@ export default class Server extends Service {
       if (this.openApiPluginFactories.has(key)) {
         throw new Error(`openapi handler plugin conflict: ${key}`)
       }
-      this.openApiPluginFactories.set(key, factory)
-      this.rebuild()
+      const next = new Map(this.openApiPluginFactories)
+      next.set(key, factory)
+      this.commit(this.fragments, next)
       return () => {
-        this.openApiPluginFactories.delete(key)
-        this.rebuild()
+        const reverted = new Map(this.openApiPluginFactories)
+        reverted.delete(key)
+        this.commit(this.fragments, reverted)
       }
     }, `openapi-plugin:${key}`)
   }
 
-  private rebuild() {
+  // build the complete next handler first, commit only on success: a status
+  // conflict or a throwing plugin factory fails the contributor and leaves
+  // the served state untouched
+  private commit(
+    fragments: Map<string, RouteFragment>,
+    factories: Map<string, OpenApiHandlerPluginFactory>,
+  ) {
     const statusMap: Record<string, number> = {
       ...COMMON_ERROR_STATUS_MAP,
-      ...deriveErrorStatuses(this.fragments),
+      ...deriveErrorStatuses(fragments),
     }
     const router = Object.fromEntries(
-      [...this.fragments].map(([ns, fragment]) => [ns, fragment.router]),
+      [...fragments].map(([ns, fragment]) => [ns, fragment.router]),
     ) as ApiRouter
     const prefix = this.config.prefix as `/${string}`
-    this.handler = new OpenAPIHandler<ApiContext>(router, {
+    const handler = new OpenAPIHandler<ApiContext>(router, {
       plugins: [
         new CORSHandlerPlugin(),
-        ...[...this.openApiPluginFactories.values()].map((factory) => factory({ router, prefix })),
+        ...[...factories.values()].map((factory) => factory({ router, prefix })),
       ],
       interceptors: [
         onError((error) => {
@@ -290,5 +308,14 @@ export default class Server extends Service {
       ],
       errorStatusMap: statusMap,
     })
+    if (fragments !== this.fragments) {
+      this.fragments.clear()
+      for (const [ns, fragment] of fragments) this.fragments.set(ns, fragment)
+    }
+    if (factories !== this.openApiPluginFactories) {
+      this.openApiPluginFactories.clear()
+      for (const [key, factory] of factories) this.openApiPluginFactories.set(key, factory)
+    }
+    this.handlerBox.handler = handler
   }
 }

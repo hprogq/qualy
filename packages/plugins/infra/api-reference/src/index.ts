@@ -3,7 +3,7 @@ import { OpenAPIGenerator } from '@orpc/openapi'
 import { OpenAPIReferenceHandlerPlugin } from '@orpc/openapi/plugins'
 import type { Context } from 'cordis'
 import { z } from 'zod'
-import type {} from '@qualy/plugin-server'
+import { mountPath } from '@qualy/plugin-server'
 
 export const name = 'api-reference'
 export const inject = ['server']
@@ -15,10 +15,13 @@ export const Config = z
     exposure: z.enum(['auto', 'off', 'public']).default('auto'),
     // both paths live under the api prefix, so the defaults resolve to
     // /api/docs and /api/openapi.json
-    docsPath: z.string().regex(/^\//, 'docsPath must start with /').default('/docs'),
-    specPath: z.string().regex(/^\//, 'specPath must start with /').default('/openapi.json'),
+    docsPath: mountPath('docsPath').default('/docs'),
+    specPath: mountPath('specPath').default('/openapi.json'),
     title: z.string().default('Qualy API'),
     version: z.string().default('0.0.0'),
+  })
+  .refine((config) => config.docsPath !== config.specPath, {
+    message: 'docsPath and specPath must differ',
   })
   .prefault({})
 

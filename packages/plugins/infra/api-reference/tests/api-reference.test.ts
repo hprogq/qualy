@@ -86,6 +86,38 @@ describe('plugin-api-reference', () => {
     expect((await fetch(`${base}/openapi.json`)).status).toBe(404)
   })
 
+  it('follows a non-default api prefix end to end', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Server, { port: 0, prefix: '/backend' })
+    await ctx.plugin(ApiReference, {})
+    contexts.push(ctx)
+    const base = `http://127.0.0.1:${ctx.server.port}/backend`
+
+    expect((await fetch(`${base}/docs`)).status).toBe(200)
+    await ctx.plugin({
+      name: 'echo',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contribute('echo', echoRouter)
+      },
+    })
+    const spec = (await (await fetch(`${base}/openapi.json`)).json()) as {
+      servers: { url: string }[]
+      paths: Record<string, unknown>
+    }
+    expect(spec.servers).toEqual([{ url: '/backend' }])
+    const tryIt = new URL(`${spec.servers[0]?.url}/echo/hello`, base)
+    expect((await fetch(tryIt)).status).toBe(200)
+  })
+
+  it('rejects identical docs and spec paths', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Server, { port: 0 })
+    contexts.push(ctx)
+    const identical = ctx.plugin(ApiReference, { docsPath: '/same', specPath: '/same' })
+    await expect(Promise.resolve(identical)).rejects.toThrow()
+  })
+
   it('stays dark in production unless exposure is public', async () => {
     const nodeEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'production'
