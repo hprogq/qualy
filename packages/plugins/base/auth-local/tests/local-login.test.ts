@@ -170,11 +170,13 @@ describe.runIf(available)('local login through the auth core', () => {
     const res = await fetch(`${base}/auth/methods`)
     expect(res.status).toBe(200)
     const { methods } = (await res.json()) as {
-      methods: { code: string; interaction: string }[]
+      methods: { code: string; mode: string; component?: string }[]
     }
     // the cas row exists in the database but no cas driver is installed
     expect(methods.map((method) => method.code)).toEqual(['local-primary', 'local-secondary'])
-    expect(methods[0]!.interaction).toBe('credentials')
+    // the driver owns its presentation: an embedded renderer component
+    expect(methods[0]!.mode).toBe('component')
+    expect(methods[0]!.component).toBe('auth-local/LoginMethod')
   })
 
   it('selects the provider instance by code', async () => {
@@ -273,7 +275,13 @@ describe.runIf(available)('local login through the auth core', () => {
       name: 'driver-probe',
       inject: ['auth'],
       apply: (child: Context) => {
-        child.auth.registerProviderType({ type: 'probe', interaction: 'redirect' })
+        child.auth.registerProviderType({
+          type: 'probe',
+          describe: (provider) => ({
+            mode: 'redirect',
+            href: `/api/auth/probe/${provider.code}/start`,
+          }),
+        })
       },
     })
     await scoped
@@ -288,5 +296,30 @@ describe.runIf(available)('local login through the auth core', () => {
     await scoped.dispose()
     res = (await (await fetch(`${base}/auth/methods`)).json()) as { methods: { code: string }[] }
     expect(res.methods.map((method) => method.code)).not.toContain('probe-x')
+    await pool.query(`delete from auth_providers where code = 'probe-x'`)
+  })
+
+  it('drops methods whose driver returns a non-relative redirect target', async () => {
+    const scoped = ctx.plugin({
+      name: 'evil-driver-probe',
+      inject: ['auth'],
+      apply: (child: Context) => {
+        child.auth.registerProviderType({
+          type: 'evil',
+          describe: () => ({ mode: 'redirect', href: 'https://evil.example/phish' }),
+        })
+      },
+    })
+    await scoped
+    await pool.query(
+      `insert into auth_providers (tenant_id, code, type, name) values ($1, 'evil-x', 'evil', 'E')`,
+      [ids.tenant],
+    )
+    const res = (await (await fetch(`${base}/auth/methods`)).json()) as {
+      methods: { code: string }[]
+    }
+    expect(res.methods.map((method) => method.code)).not.toContain('evil-x')
+    await scoped.dispose()
+    await pool.query(`delete from auth_providers where code = 'evil-x'`)
   })
 })

@@ -1,5 +1,5 @@
 // thunk table only: no top-level side effects, no heavy imports, so every
 // component stays an independently code-split chunk
 export const components = {
-  LocalLoginPage: () => import('./LocalLoginPage.tsx'),
+  'auth-local/LoginMethod': () => import('./LoginMethod.tsx'),
 }

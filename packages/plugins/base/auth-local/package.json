@@ -21,13 +21,14 @@
     "@orpc/server": "catalog:",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/ui": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "argon2": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "@types/pg": "catalog:",
     "@types/react": "catalog:",
     "pg": "catalog:"

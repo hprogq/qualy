@@ -1,12 +1,11 @@
 import { implement } from '@orpc/server'
 import type { Context } from 'cordis'
 import type { ApiContext } from '@qualy/plugin-server'
-import type {} from '@qualy/plugin-ui-registry'
 import { authLocalContract, authLocalErrorStatuses } from './contract.ts'
 import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from './password.ts'
 
 export const name = 'auth-local'
-export const inject = ['auth', 'server', 'ui']
+export const inject = ['auth', 'server']
 
 // password authentication driver: proves the user against a local provider
 // instance, then hands the proof to the auth core for session creation.
@@ -14,7 +13,10 @@ export const inject = ['auth', 'server', 'ui']
 // uniform INVALID_CREDENTIALS; unknown identifiers still burn one argon2
 // verification so timing does not reveal account existence.
 export function apply(ctx: Context) {
-  ctx.auth.registerProviderType({ type: 'local', interaction: 'credentials' })
+  ctx.auth.registerProviderType({
+    type: 'local',
+    describe: () => ({ mode: 'component', component: 'auth-local/LoginMethod' }),
+  })
 
   const impl = implement(authLocalContract).$context<ApiContext>()
   ctx.server.contribute(
@@ -52,11 +54,4 @@ export function apply(ctx: Context) {
     }),
     { errorStatuses: authLocalErrorStatuses },
   )
-
-  ctx.ui.addPage({
-    path: '/login/local',
-    component: 'LocalLoginPage',
-    layout: 'blank',
-    public: true,
-  })
 }
