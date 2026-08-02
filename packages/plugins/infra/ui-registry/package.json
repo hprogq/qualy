@@ -17,6 +17,7 @@
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "@qualy/plugin-server": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
     "zod": "catalog:"
   }
 }
