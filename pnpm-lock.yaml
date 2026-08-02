@@ -30,6 +30,9 @@ catalogs:
     '@orpc/contract':
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
+    '@orpc/json-schema':
+      specifier: 2.0.0-beta.21
+      version: 2.0.0-beta.21
     '@orpc/openapi':
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
@@ -262,6 +265,9 @@ importers:
       '@cordisjs/plugin-timer':
         specifier: 'catalog:'
         version: 1.1.2(cordis@4.0.0-rc.7)
+      '@qualy/plugin-api-reference':
+        specifier: workspace:*
+        version: link:../plugins/infra/api-reference
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../plugins/base/auth
@@ -323,6 +329,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:../../../rbac-contract
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../ui
@@ -458,6 +467,9 @@ importers:
 
   packages/plugins/base/org:
     dependencies:
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:../../../rbac-contract
       cordis:
         specifier: 'catalog:'
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
@@ -489,6 +501,9 @@ importers:
       '@qualy/plugin-server':
         specifier: workspace:*
         version: link:../../infra/server
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:../../../rbac-contract
       cordis:
         specifier: 'catalog:'
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
@@ -545,6 +560,28 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
+
+  packages/plugins/infra/api-reference:
+    dependencies:
+      '@orpc/json-schema':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
+      '@orpc/openapi':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
+      '@qualy/plugin-server':
+        specifier: workspace:*
+        version: link:../server
+      cordis:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
 
   packages/plugins/infra/database:
     dependencies:
@@ -625,6 +662,12 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
+
+  packages/rbac-contract:
+    dependencies:
+      cordis:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
 
   packages/ui:
     dependencies:
