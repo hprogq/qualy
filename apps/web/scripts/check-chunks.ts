@@ -12,9 +12,13 @@ const files = fs.existsSync(distDir) ? fs.readdirSync(distDir) : []
 const absentIndex = process.argv.indexOf('--expect-absent')
 const expectAbsent = absentIndex >= 0 ? process.argv[absentIndex + 1] : undefined
 
+// keys are namespaced "<plugin>/<Component>"; chunk files carry the
+// component file's basename
+const chunkName = (key: string) => key.split('/').pop()!
+
 let failed = false
 for (const name of Object.keys(components)) {
-  const present = files.some((file) => file.startsWith(`${name}-`))
+  const present = files.some((file) => file.startsWith(`${chunkName(name)}-`))
   console.log(`${name}: ${present ? 'chunk present' : 'CHUNK MISSING'}`)
   if (!present) failed = true
 }
@@ -23,7 +27,7 @@ if (expectAbsent) {
     console.log(`${expectAbsent}: still registered, regenerate first`)
     failed = true
   }
-  const present = files.some((file) => file.startsWith(`${expectAbsent}-`))
+  const present = files.some((file) => file.startsWith(`${chunkName(expectAbsent)}-`))
   console.log(`${expectAbsent}: ${present ? 'UNEXPECTED CHUNK' : 'absent as expected'}`)
   if (present) failed = true
 }

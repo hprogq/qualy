@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { validateComponentKeys } from './lib/component-keys.ts'
 import { writeGenerated } from './lib/codegen.ts'
 import { readEntries } from './lib/read-entries.ts'
-import { resolvePackageDir } from './lib/schema-entries.ts'
+import { resolvePackageDir, resolvePluginModuleUrl } from './lib/schema-entries.ts'
 
 // frontend component registry follows the ACTIVE set: a disabled plugin's
 // thunks never enter the module graph, so its chunks tree-shake away;
@@ -36,6 +37,12 @@ for (const entry of readEntries({ all })) {
       `${entry.name} contributes components but apps/web does not declare it; run pnpm plugin:add`,
     )
   }
+  // enforce the "<plugin>/<Component>" key namespace at generation time,
+  // so merged registries can never silently shadow one another
+  const module = (await import(resolvePluginModuleUrl(`${entry.name}/client`))) as {
+    components?: Record<string, unknown>
+  }
+  validateComponentKeys(entry.name, Object.keys(module.components ?? {}))
   const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
   imports.push(`import { components as ${ns}Components } from '${entry.name}/client'`)
   spreads.push(`  ...${ns}Components,`)

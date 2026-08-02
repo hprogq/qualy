@@ -26,7 +26,7 @@ export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
 
   ctx.ui.addPage({
     path: '/ping',
-    component: 'PingPage',
+    component: 'ping/PingPage',
     layout: 'admin',
     public: true,
     nav: { label: 'Ping', order: 10 },
