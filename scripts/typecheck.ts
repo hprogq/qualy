@@ -23,7 +23,13 @@ function findClientProjects(root: string): string[] {
   return projects.sort()
 }
 
-const projects = ['.', 'packages/web-runtime', 'apps/web', ...findClientProjects('packages')]
+const projects = [
+  '.',
+  'packages/web-runtime',
+  'packages/ui',
+  'apps/web',
+  ...findClientProjects('packages'),
+]
 for (const project of projects) {
   console.log(`typecheck ${project}`)
   execSync(`./node_modules/.bin/tsc -p ${project} --noEmit`, { stdio: 'inherit' })

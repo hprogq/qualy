@@ -62,24 +62,32 @@ function HomeRedirect({ nav }: { nav: Manifest['nav'] }) {
 
 function NotFound() {
   return (
-    <div>
-      <h2>页面不存在</h2>
-      <p>请检查地址,或从左侧导航进入其他页面。</p>
+    <div className="space-y-2">
+      <h2 className="text-xl font-semibold">页面不存在</h2>
+      <p className="text-sm text-muted-foreground">请检查地址,或从左侧导航进入其他页面。</p>
     </div>
   )
 }
 
 function AdminLayout({ nav }: { nav: Manifest['nav'] }) {
   return (
-    <div style={{ display: 'flex' }}>
-      <nav style={{ width: 200 }}>
-        {nav.map((item) => (
-          <div key={item.path}>
-            <Link to={item.path}>{item.label}</Link>
-          </div>
-        ))}
+    <div className="flex min-h-screen">
+      <nav className="w-52 shrink-0 border-r p-4">
+        <p className="mb-4 text-lg font-semibold">Qualy</p>
+        <ul className="space-y-1">
+          {nav.map((item) => (
+            <li key={item.path}>
+              <Link
+                className="block rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                to={item.path}
+              >
+                {item.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </nav>
-      <main style={{ flex: 1 }}>
+      <main className="flex-1 p-6">
         <Outlet />
       </main>
     </div>

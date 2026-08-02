@@ -13,15 +13,18 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
+    "@qualy/ui": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "tailwindcss": "catalog:",
     "vite": "catalog:"
   }
 }

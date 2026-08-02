@@ -11,7 +11,9 @@ import {
 import type { AppClient } from '@qualy/api-client'
 
 export type Manifest = Awaited<ReturnType<AppClient['ui']['getManifest']>>
-export type ComponentRegistry = Record<string, LazyExoticComponent<ComponentType>>
+// heterogeneous by design: each page or renderer declares its own props,
+// consumers pass whatever the target component expects
+export type ComponentRegistry = Record<string, LazyExoticComponent<ComponentType<any>>>
 
 const buildQueryUtils = (client: AppClient) => createTanstackQueryUtils(client)
 export type ApiQueryUtils = ReturnType<typeof buildQueryUtils>
@@ -75,6 +77,9 @@ export function useRuntime(): Runtime {
 }
 
 export const useApi = () => useRuntime().client
+// resolve one registered component by its namespaced key ('plugin/Component');
+// undefined means the owning plugin is not part of this build
+export const useComponent = (name: string) => useRuntime().registry[name]
 export const useApiQuery = () => useRuntime().orpc
 export const useManifest = () => useRuntime().manifest
 
