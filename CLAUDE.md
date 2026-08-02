@@ -41,6 +41,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 类型门禁:根 tsconfig.json 是 solution 式检查入口(不参与构建),include 覆盖各包 src 与 **tests**(vitest 不做类型检查,漏 include 的测试目录 = 类型盲区);`pnpm typecheck` 必须零错误,列入每次会话验收;web 侧未来单独 `tsc -p apps/web --noEmit`。不建 @qualy/tsconfig 共享包;重评触发条件:插件出现独立构建产物(tsup/dist)、出现第三种 tsconfig 变体、或有第二个仓库要复用配置。
 - API handler 的服务访问一律走**本插件自己的 ctx**(inject 声明过);经 `context.cordis` 取服务会撞 rc.7 的声明检查(cannot get property without inject)。ApiContext.cordis 只作请求管道。契约模块导出名约定 `<ns>Contract`(gen-contracts 依赖);契约包禁依赖 drizzle/node 专属模块。
 - 语言规范:标识符、注释、日志、CLI 输出一律英文;业务/UI 字符串内容可中文;项目文档(docs/、STATUS.md)用中文。该规范优先于教程示例,抄录示例代码时注释就地译为英文。
+- **UI 组合模型**(概念冻结见 notes/ui-composition.md):Page=唯一主组件引用 Layout Contract(非实现);布局插件 registerLayout 提供实现;导航走 Collection、松耦合组件走 Slot(token 定义于 @qualy/ui-contract);业务插件禁止依赖布局实现插件,布局插件禁止依赖业务插件;manifest 是授权后投影,permission 等内部声明不出服务端;一切注册 effect 托管、ID 命名空间化、无加载顺序语义。
 - **租户纪律(P1 起)**:tenantId 只能来自配置、session 或服务端查出的关联对象;普通 contract input 禁止出现可自由填写的 tenantId;租户拥有的 repository 查询必须显式 tenant scoped。
 - 注释只写外人需要的信息,选型理由归 docs/;目录用到才创建(脚本同理,不留占位空壳)。
 
