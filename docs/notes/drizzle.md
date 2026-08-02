@@ -64,3 +64,7 @@
 - **Kysely 三口径**:`drizzle-orm/kysely` 子路径 **v1 已移除**(实测 ERR_PACKAGE_PATH_NOT_EXPORTED);Kysely 作为查询层替补无必要(RQB v2 够用);作为**迁移层后备**保留——若 rc 期 Kit 生成器出现无法锁版本规避的快照语义破坏,退路是保留 drizzle 表定义 + Kysely/裸 SQL 手写迁移层(迁移 SQL 本就要求可脱离 Drizzle 执行)。
 
 结案:**"Drizzle v1,2026-07 终审,三轮对比两轮实验,证据在案,不再重开。"**
+
+## 手工迁移的多语句分隔(2026-08-02)
+
+`db:generate:custom` 写的多语句 SQL 必须用 `--> statement-breakpoint` 分隔(kit 生成的迁移同款标记,drizzle migrator 按它切分逐条执行)。真 PG(pg 驱动,简单查询协议)容忍整文件一次发送,PGlite 走 extended protocol 单次只收一条语句,缺分隔符即 42601 语法错——PGlite 重放测试就是这道防线。dollar-quoted 函数体内部不放分隔符(一个 CREATE FUNCTION 是一条语句)。
