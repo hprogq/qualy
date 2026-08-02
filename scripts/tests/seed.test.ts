@@ -80,6 +80,14 @@ describe.runIf(available)('tenant bootstrap seed', () => {
       root: 1,
       userTypes: 1,
       provider: 1,
+      // 11 catalog rows (rbac 4 + auth 5 + org 2), the tenant-admin role,
+      // its full defaultTenantAdmin mapping, the administrator portal grant
+      // and the admin root/subtree assignment
+      permissions: 11,
+      roles: 1,
+      rolePermissions: 11,
+      userTypeGrants: 1,
+      assignments: 1,
       demoNodes: 0,
       demoUsers: 0,
     })
@@ -137,6 +145,12 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     expect(demo.created.demoNodes).toBe(4)
     expect(demo.created.demoUsers).toBe(2)
     expect(demo.created.userTypes).toBe(2)
+    // org-manager with its six permissions, two portal grants and the
+    // manager's college/subtree assignment
+    expect(demo.created.roles).toBe(1)
+    expect(demo.created.rolePermissions).toBe(6)
+    expect(demo.created.userTypeGrants).toBe(2)
+    expect(demo.created.assignments).toBe(1)
 
     const again = await inTransaction((client) =>
       seed(client, { ...ADMIN, demo: true, demoPassword: 'demo-test-password-1' }),

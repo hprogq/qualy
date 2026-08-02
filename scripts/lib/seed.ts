@@ -18,6 +18,41 @@ const passwordModule = () =>
     typeof import('../../packages/plugins/base/auth-local/src/password.ts')
   >
 
+interface PermissionRow {
+  code: string
+  name: string
+  description?: string
+  groupKey?: string
+  scope: 'tenant' | 'org'
+  grantToUserType: boolean
+  grantToRole: boolean
+  defaultTenantAdmin: boolean
+}
+
+// the permission catalogs live in the plugins (single source shared with the
+// runtime registry); the seed provisions the rows so tenant grants can bind
+// before any plugin has ever booted
+async function permissionCatalog(): Promise<{ plugin: string; rows: readonly PermissionRow[] }[]> {
+  const [rbac, auth, org] = await Promise.all([
+    import(resolvePluginModuleUrl('@qualy/plugin-rbac/permissions')) as Promise<
+      typeof import('../../packages/plugins/base/rbac/src/permissions.ts')
+    >,
+    import(resolvePluginModuleUrl('@qualy/plugin-auth/permissions')) as Promise<
+      typeof import('../../packages/plugins/base/auth/src/permissions.ts')
+    >,
+    import(resolvePluginModuleUrl('@qualy/plugin-org/permissions')) as Promise<
+      typeof import('../../packages/plugins/base/org/src/permissions.ts')
+    >,
+  ])
+  return [
+    { plugin: 'rbac', rows: rbac.rbacPermissions },
+    { plugin: 'auth', rows: auth.authPermissions },
+    { plugin: 'org', rows: org.orgPermissions },
+  ]
+}
+
+const TENANT_ADMIN_ROLE = { code: 'tenant-admin', name: '租户管理员' }
+
 const TENANT = { slug: 'default', name: 'Qualy' }
 
 const ORG_TYPES = [
@@ -58,6 +93,21 @@ const DEMO_ORG_NODES = [
   { code: 'class-2023-1', name: '软件2023级1班', type: 'class', parent: 'computer-science' },
 ]
 
+const DEMO_ORG_MANAGER = {
+  code: 'org-manager',
+  name: '组织管理员',
+  allowedUserTypes: ['administrator', 'faculty'],
+  allowedOrgTypes: ['college', 'major'],
+  permissions: [
+    'org.tree.read',
+    'org.tree.manage',
+    'auth.user.read',
+    'auth.user.manage',
+    'rbac.assignment.read',
+    'rbac.assignment.manage',
+  ],
+}
+
 const DEMO_USERS = [
   {
     identifier: 'manager',
@@ -76,6 +126,87 @@ function drift(subject: string, field: string, expected: unknown, actual: unknow
   )
 }
 
+async function provisionRbac(
+  ctx: Ctx,
+  adminUserId: string,
+  adminTypeId: string,
+  report: SeedReport,
+): Promise<void> {
+  for (const { plugin, rows } of await permissionCatalog()) {
+    for (const row of rows) {
+      const inserted = await ctx.client.query(
+        `insert into permissions (code, plugin, name, description, group_key, scope,
+           grant_to_user_type, grant_to_role, default_tenant_admin)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         on conflict (code) do nothing`,
+        [
+          row.code,
+          plugin,
+          row.name,
+          row.description ?? null,
+          row.groupKey ?? null,
+          row.scope,
+          row.grantToUserType,
+          row.grantToRole,
+          row.defaultTenantAdmin,
+        ],
+      )
+      report.created.permissions += inserted.rowCount ?? 0
+    }
+  }
+
+  const roleInsert = await ctx.client.query(
+    `insert into roles (tenant_id, code, name, kind, is_system, assignable, enabled)
+     values ($1, $2, $3, 'tenant', true, true, true)
+     on conflict (tenant_id, code) do nothing`,
+    [ctx.tenantId, TENANT_ADMIN_ROLE.code, TENANT_ADMIN_ROLE.name],
+  )
+  report.created.roles += roleInsert.rowCount ?? 0
+  const role = (
+    await ctx.client.query(
+      `select id, kind, is_system from roles where tenant_id = $1 and code = $2`,
+      [ctx.tenantId, TENANT_ADMIN_ROLE.code],
+    )
+  ).rows[0]
+  if (roleInsert.rowCount === 0) {
+    if (role.kind !== 'tenant') drift('role tenant-admin', 'kind', 'tenant', role.kind)
+    if (role.is_system !== true) drift('role tenant-admin', 'is_system', true, role.is_system)
+  }
+
+  // every defaultTenantAdmin permission joins the system role (the runtime
+  // registry keeps doing this idempotently for future plugins)
+  const mapped = await ctx.client.query(
+    `insert into role_permissions (tenant_id, role_id, permission_id)
+     select $1, $2, p.id from permissions p where p.default_tenant_admin
+     on conflict do nothing`,
+    [ctx.tenantId, role.id],
+  )
+  report.created.rolePermissions += mapped.rowCount ?? 0
+
+  // administrators keep portal access even without any role assignment
+  const typeGrants = await ctx.client.query(
+    `insert into user_type_permissions (tenant_id, user_type_id, permission_id)
+     select $1, $2, p.id from permissions p
+     where p.grant_to_user_type and p.code = 'auth.portal.access'
+     on conflict do nothing`,
+    [ctx.tenantId, adminTypeId],
+  )
+  report.created.userTypeGrants += typeGrants.rowCount ?? 0
+
+  const root = (
+    await ctx.client.query(`select id from org_nodes where tenant_id = $1 and parent_id is null`, [
+      ctx.tenantId,
+    ])
+  ).rows[0]
+  const assignment = await ctx.client.query(
+    `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+     values ($1, $2, $3, $4, 'subtree')
+     on conflict do nothing`,
+    [ctx.tenantId, adminUserId, role.id, root.id],
+  )
+  report.created.assignments += assignment.rowCount ?? 0
+}
+
 export interface SeedOptions {
   demo?: boolean
   adminUsername?: string
@@ -92,6 +223,11 @@ export interface SeedReport {
     root: number
     userTypes: number
     provider: number
+    permissions: number
+    roles: number
+    rolePermissions: number
+    userTypeGrants: number
+    assignments: number
     demoNodes: number
     demoUsers: number
   }
@@ -255,14 +391,14 @@ async function provisionAdmin(
   adminTypeId: string,
   options: SeedOptions,
   report: SeedReport,
-): Promise<void> {
+): Promise<string> {
   const { hashPassword, normalizeLocalIdentifier } = await passwordModule()
   const username = normalizeLocalIdentifier(options.adminUsername ?? 'admin')
   if (!username) throw new Error('seed: QUALY_ADMIN_USERNAME is not a valid login name')
 
   const identity = (
     await ctx.client.query(
-      `select id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3`,
+      `select id, user_id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3`,
       [ctx.tenantId, providerId, username],
     )
   ).rows[0]
@@ -288,7 +424,13 @@ async function provisionAdmin(
       credentialHash: await hashPassword(options.adminPassword),
     })
     report.admin = 'created'
-    return
+    const created = (
+      await ctx.client.query(
+        `select user_id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3`,
+        [ctx.tenantId, providerId, username],
+      )
+    ).rows[0]
+    return created.user_id
   }
 
   if (options.resetAdminPassword) {
@@ -300,9 +442,10 @@ async function provisionAdmin(
       identity.id,
     ])
     report.admin = 'reset'
-    return
+    return identity.user_id
   }
   report.admin = 'unchanged'
+  return identity.user_id
 }
 
 async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport): Promise<void> {
@@ -379,6 +522,75 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
     })
     report.created.demoUsers += 1
   }
+
+  // demo user types may enter the portal
+  for (const typeId of demoTypeIds.values()) {
+    const granted = await ctx.client.query(
+      `insert into user_type_permissions (tenant_id, user_type_id, permission_id)
+       select $1, $2, p.id from permissions p
+       where p.grant_to_user_type and p.code = 'auth.portal.access'
+       on conflict do nothing`,
+      [ctx.tenantId, typeId],
+    )
+    report.created.userTypeGrants += granted.rowCount ?? 0
+  }
+
+  // sample org role: applicability-constrained, permission-mapped, and the
+  // demo manager holds it over the college subtree
+  const roleInsert = await ctx.client.query(
+    `insert into roles (tenant_id, code, name, kind) values ($1, $2, $3, 'org')
+     on conflict (tenant_id, code) do nothing`,
+    [ctx.tenantId, DEMO_ORG_MANAGER.code, DEMO_ORG_MANAGER.name],
+  )
+  report.created.roles += roleInsert.rowCount ?? 0
+  const role = (
+    await ctx.client.query(`select id from roles where tenant_id = $1 and code = $2`, [
+      ctx.tenantId,
+      DEMO_ORG_MANAGER.code,
+    ])
+  ).rows[0]
+  for (const typeCode of DEMO_ORG_MANAGER.allowedUserTypes) {
+    await ctx.client.query(
+      `insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+       select $1, $2, ut.id from user_types ut
+       where ut.tenant_id = $1 and ut.code = $3
+       on conflict do nothing`,
+      [ctx.tenantId, role.id, typeCode],
+    )
+  }
+  for (const orgTypeCode of DEMO_ORG_MANAGER.allowedOrgTypes) {
+    await ctx.client.query(
+      `insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+       select $1, $2, ot.id from org_types ot
+       where ot.tenant_id = $1 and ot.code = $3
+       on conflict do nothing`,
+      [ctx.tenantId, role.id, orgTypeCode],
+    )
+  }
+  const mapped = await ctx.client.query(
+    `insert into role_permissions (tenant_id, role_id, permission_id)
+     select $1, $2, p.id from permissions p where p.code = any($3)
+     on conflict do nothing`,
+    [ctx.tenantId, role.id, DEMO_ORG_MANAGER.permissions],
+  )
+  report.created.rolePermissions += mapped.rowCount ?? 0
+
+  const manager = (
+    await ctx.client.query(
+      `select u.id from users u
+       join user_identities i on i.tenant_id = u.tenant_id and i.user_id = u.id
+       where u.tenant_id = $1 and i.identifier = 'manager'`,
+      [ctx.tenantId],
+    )
+  ).rows[0]
+  const college = nodes.get('software-college')!
+  const assignment = await ctx.client.query(
+    `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+     values ($1, $2, $3, $4, 'subtree')
+     on conflict do nothing`,
+    [ctx.tenantId, manager.id, role.id, college.id],
+  )
+  report.created.assignments += assignment.rowCount ?? 0
 }
 
 export async function seed(client: PoolClient, options: SeedOptions = {}): Promise<SeedReport> {
@@ -390,6 +602,11 @@ export async function seed(client: PoolClient, options: SeedOptions = {}): Promi
       root: 0,
       userTypes: 0,
       provider: 0,
+      permissions: 0,
+      roles: 0,
+      rolePermissions: 0,
+      userTypeGrants: 0,
+      assignments: 0,
       demoNodes: 0,
       demoUsers: 0,
     },
@@ -404,7 +621,8 @@ export async function seed(client: PoolClient, options: SeedOptions = {}): Promi
     report,
   )
   const providerId = await ensureLocalProvider(ctx, report)
-  await provisionAdmin(ctx, providerId, adminTypeId, options, report)
+  const adminUserId = await provisionAdmin(ctx, providerId, adminTypeId, options, report)
+  await provisionRbac(ctx, adminUserId, adminTypeId, report)
   if (options.demo) {
     await seedDemoData(ctx, options, report)
     report.demo = 'created'

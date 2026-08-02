@@ -25,7 +25,8 @@ try {
   console.log(
     `seed complete: tenant +${c.tenant}, org types +${c.orgTypes}, rules +${c.rules}, ` +
       `root +${c.root}, user types +${c.userTypes}, provider +${c.provider}, ` +
-      `admin ${report.admin}, demo ${report.demo}` +
+      `permissions +${c.permissions}, roles +${c.roles}, grants +${c.rolePermissions + c.userTypeGrants}, ` +
+      `assignments +${c.assignments}, admin ${report.admin}, demo ${report.demo}` +
       (report.demo === 'created' ? ` (+${c.demoNodes} nodes, +${c.demoUsers} users)` : ''),
   )
 } catch (error) {
