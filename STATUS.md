@@ -54,6 +54,8 @@
 
 - [3.7 小修] 登录链路打磨(2026-08-02):①UserMenu 登录按钮改 react-router Link(SPA 内导航,不再整页重载进登录页);②server 的 onError 只记录 5xx 级真故障——已定义客户端错误(AUTH_REQUIRED/INVALID_CREDENTIALS 等按 errorStatusMap <500 的码)是正常业务流,不再刷整页堆栈(冒烟:匿名 me×2 + 错误登录均 401 且日志零 [E] 行)
 
+- [3.7 软导航收口] 硬跳转清零与加载态统一(2026-08-02):全项目硬跳转审计后仅保留一处**刻意的**跨文档导航(redirect 型登录方式跳驱动 302 端点,注释注明);登录成功与退出改软导航——`queryClient.invalidateQueries()`(me/manifest 一并失效,为会话 7 RBAC 过滤后的 manifest 变化预留正确语义)+ react-router navigate。@qualy/ui 增 spinner(Spinner/LoadingScreen/PageLoading),替换全部裸文本加载态:RuntimeLoader isPending 从 null(白屏)改全屏居中 spinner、失败态样式化重试;宿主 renderPage/LayoutBoundary、登录页 methods 与 renderer fallback 均居中 spinner
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`

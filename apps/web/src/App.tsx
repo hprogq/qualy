@@ -9,6 +9,7 @@ import {
   type ComponentRegistry,
   type Manifest,
 } from '@qualy/web-runtime'
+import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { components } from './plugins.gen.ts'
 
 const client = createApiClient('/api')
@@ -35,7 +36,7 @@ function renderPage(page: Manifest['pages'][number]) {
   const Component = resolve(page.component)
   if (!Component) return <p>渲染器缺失:{page.component}</p>
   return (
-    <Suspense fallback={<p>加载中…</p>}>
+    <Suspense fallback={<PageLoading />}>
       <Component />
     </Suspense>
   )
@@ -72,7 +73,7 @@ function LayoutBoundary({ component }: { component: string }) {
   const Layout = resolve(component)
   if (!Layout) return <p>布局渲染器缺失:{component}</p>
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<LoadingScreen />}>
       <Layout />
     </Suspense>
   )

@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Suspense, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useApiQuery, useComponent } from '@qualy/web-runtime'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
 import { Button } from '@qualy/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@qualy/ui/card'
+import { Spinner } from '@qualy/ui/spinner'
 import type { LoginMethod } from '@qualy/plugin-auth/contract'
 
 // single login page: the method list and the selected driver renderer are
@@ -12,12 +13,24 @@ import type { LoginMethod } from '@qualy/plugin-auth/contract'
 // their presentation; this shell never guesses driver routes.
 export default function LoginPage() {
   const orpc = useApiQuery()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // soft transition: refetch everything the session changes (me, manifest)
+  // and stay inside the spa
+  const onAuthenticated = () => {
+    void queryClient.invalidateQueries().then(() => navigate('/', { replace: true }))
+  }
   const methodsQuery = useQuery(orpc.auth.methods.queryOptions())
 
   const body = () => {
     if (methodsQuery.isPending) {
-      return <p className="text-sm text-muted-foreground">加载登录方式…</p>
+      return (
+        <div className="flex justify-center py-6">
+          <Spinner />
+        </div>
+      )
     }
     if (methodsQuery.isError) {
       return (
@@ -41,7 +54,11 @@ export default function LoginPage() {
     )
     if (selected && selected.mode === 'component') {
       return (
-        <MethodRenderer method={selected} onBack={() => setSearchParams({})}>
+        <MethodRenderer
+          method={selected}
+          onBack={() => setSearchParams({})}
+          onAuthenticated={onAuthenticated}
+        >
           <Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>
             ← 其他登录方式
           </Button>
@@ -56,6 +73,8 @@ export default function LoginPage() {
             variant="outline"
             className="w-full"
             onClick={() => {
+              // redirect drivers are document navigations by design: the api
+              // endpoint answers 302 towards the external identity provider
               if (method.mode === 'redirect') window.location.assign(method.href)
               else setSearchParams({ method: method.code })
             }}
@@ -82,10 +101,12 @@ export default function LoginPage() {
 function MethodRenderer({
   method,
   onBack,
+  onAuthenticated,
   children,
 }: {
   method: LoginMethod & { mode: 'component' }
   onBack: () => void
+  onAuthenticated: () => void
   children: ReactNode
 }) {
   const Renderer = useComponent(method.component)
@@ -104,8 +125,14 @@ function MethodRenderer({
   }
   return (
     <div className="space-y-4">
-      <Suspense fallback={<p className="text-sm text-muted-foreground">加载中…</p>}>
-        <Renderer method={method} onAuthenticated={() => window.location.assign('/')} />
+      <Suspense
+        fallback={
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        }
+      >
+        <Renderer method={method} onAuthenticated={onAuthenticated} />
       </Suspense>
       {children}
     </div>

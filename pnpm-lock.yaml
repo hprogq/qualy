@@ -627,6 +627,9 @@ importers:
       '@orpc/tanstack-query':
         specifier: 'catalog:'
         version: 2.0.0-beta.21(@tanstack/query-core@5.101.4)
+      '@qualy/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@qualy/ui-contract':
         specifier: workspace:*
         version: link:../ui-contract

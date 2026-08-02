@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
+import { Button } from '@qualy/ui/button'
+import { LoadingScreen } from '@qualy/ui/spinner'
 import type { AppClient } from '@qualy/api-client'
 
 export type Manifest = Awaited<ReturnType<AppClient['ui']['getManifest']>>
@@ -57,12 +59,14 @@ function RuntimeLoader({
   children,
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
   const manifest = useQuery(orpc.ui.getManifest.queryOptions())
-  if (manifest.isPending) return null
+  if (manifest.isPending) return <LoadingScreen />
   if (manifest.isError) {
     return (
-      <div>
-        <p>界面清单加载失败</p>
-        <button onClick={() => void manifest.refetch()}>重试</button>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+        <p className="text-sm text-muted-foreground">界面清单加载失败，请检查网络。</p>
+        <Button variant="outline" onClick={() => void manifest.refetch()}>
+          重试
+        </Button>
       </div>
     )
   }

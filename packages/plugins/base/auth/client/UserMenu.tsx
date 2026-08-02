@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from 'react-router'
 import { useApi, useApiQuery } from '@qualy/web-runtime'
 import { Button } from '@qualy/ui/button'
 
@@ -8,6 +8,8 @@ import { Button } from '@qualy/ui/button'
 export default function UserMenu() {
   const api = useApi()
   const orpc = useApiQuery()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const me = useQuery({ ...orpc.auth.me.queryOptions(), retry: false })
 
   if (me.isPending) return null
@@ -25,7 +27,10 @@ export default function UserMenu() {
         variant="ghost"
         size="sm"
         onClick={() => {
-          void api.auth.logout().then(() => window.location.assign('/login'))
+          void api.auth
+            .logout()
+            .then(() => queryClient.invalidateQueries())
+            .then(() => navigate('/login'))
         }}
       >
         退出登录

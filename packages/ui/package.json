@@ -14,7 +14,8 @@
     "./label": "./src/components/label.tsx",
     "./card": "./src/components/card.tsx",
     "./alert": "./src/components/alert.tsx",
-    "./theme.css": "./src/styles/theme.css"
+    "./theme.css": "./src/styles/theme.css",
+    "./spinner": "./src/components/spinner.tsx"
   },
   "peerDependencies": {
     "react": "catalog:"
