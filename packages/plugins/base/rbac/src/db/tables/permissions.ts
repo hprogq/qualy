@@ -41,5 +41,10 @@ export const permissions = snakeCase.table(
       'chk_permissions_user_type_scope',
       sql`NOT ${table.grantToUserType} OR ${table.scope} = 'tenant'`,
     ),
+    // tenant-admin default injection goes through role permissions
+    check(
+      'chk_permissions_default_admin_channel',
+      sql`NOT ${table.defaultTenantAdmin} OR ${table.grantToRole}`,
+    ),
   ],
 )

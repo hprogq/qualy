@@ -1,0 +1,1 @@
+ALTER TABLE "permissions" ADD CONSTRAINT "chk_permissions_default_admin_channel" CHECK (NOT "default_tenant_admin" OR "grant_to_role");
