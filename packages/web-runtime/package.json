@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@orpc/tanstack-query": "catalog:",
+    "@qualy/ui-contract": "workspace:*",
     "@tanstack/react-query": "catalog:"
   }
 }

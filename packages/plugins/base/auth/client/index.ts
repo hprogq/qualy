@@ -2,4 +2,5 @@
 // component stays an independently code-split chunk
 export const components = {
   'auth/LoginPage': () => import('./LoginPage.tsx'),
+  'auth/UserMenu': () => import('./UserMenu.tsx'),
 }

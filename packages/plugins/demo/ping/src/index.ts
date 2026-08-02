@@ -25,11 +25,12 @@ export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
   }, 'heartbeat-timer')
 
   ctx.ui.addPage({
+    id: 'ping/page',
     path: '/ping',
     component: 'ping/PingPage',
-    layout: 'admin',
+    layout: 'admin-shell/v1',
     public: true,
-    nav: { label: 'Ping', order: 10 },
+    navigation: { label: 'Ping', order: 10 },
   })
 
   const impl = implement(pingContract).$context<ApiContext>()

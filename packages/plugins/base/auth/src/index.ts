@@ -4,6 +4,7 @@ import { Context, Service } from 'cordis'
 import { z } from 'zod'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
+import { headerActions } from '@qualy/ui-contract'
 import { authContract, authErrorStatuses, type LoginMethod, type UserDto } from './contract.ts'
 import { authRelations } from './db/relations.ts'
 import {
@@ -133,7 +134,18 @@ export default class Auth extends Service {
       { errorStatuses: authErrorStatuses },
     )
 
-    ctx.ui.addPage({ path: '/login', component: 'auth/LoginPage', layout: 'blank', public: true })
+    ctx.ui.addPage({
+      id: 'auth/login',
+      path: '/login',
+      component: 'auth/LoginPage',
+      layout: 'blank-shell/v1',
+      public: true,
+    })
+    ctx.ui.contribute(headerActions, {
+      id: 'auth/user-menu',
+      component: 'auth/UserMenu',
+      order: 100,
+    })
   }
 
   // driver plugins register their protocol family; revoked with their fiber,

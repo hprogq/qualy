@@ -22,6 +22,17 @@ describe('plugin-ping', () => {
     await ctx.plugin(UiRegistry)
     const base = `http://127.0.0.1:${ctx.server.port}/api`
 
+    await ctx.plugin({
+      name: 'test-layout',
+      inject: ['ui'],
+      apply: (child: Context) => {
+        child.ui.registerLayout({
+          contract: 'admin-shell/v1',
+          provider: 'test/admin',
+          component: 'test/AdminShell',
+        })
+      },
+    })
     const fiber = ctx.plugin(ping, { greeting: 'test' })
     await fiber
 
