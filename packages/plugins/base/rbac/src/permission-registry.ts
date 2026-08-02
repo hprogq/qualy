@@ -158,12 +158,19 @@ export class PermissionRegistry {
           group_key = ${def.groupKey ?? null}, updated_at = now()
         where code = ${def.code}`)
       if (def.defaultTenantAdmin) {
-        // every tenant's system tenant-admin role picks the code up idempotently
+        // every tenant's system tenant-admin role picks the code up
+        // idempotently; the row is re-pinned to the verified semantics so a
+        // change between verification and this write maps nothing
         await db.execute(sql`
           insert into role_permissions (tenant_id, role_id, permission_id)
           select r.tenant_id, r.id, p.id
           from roles r, permissions p
-          where r.code = 'tenant-admin' and r.is_system and p.code = ${def.code}
+          where r.code = 'tenant-admin' and r.is_system
+            and p.code = ${def.code} and p.plugin = ${entry.plugin}
+            and p.scope = ${def.scope}
+            and p.grant_to_user_type = ${def.grantToUserType}
+            and p.grant_to_role = ${def.grantToRole}
+            and p.default_tenant_admin
           on conflict do nothing`)
       }
       // activation only after full verification, and only while the

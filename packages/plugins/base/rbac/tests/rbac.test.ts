@@ -70,6 +70,15 @@ const CATALOG = [
     grantToRole: true,
     defaultTenantAdmin: true,
   },
+  {
+    // a user-type-only permission: the role channel is declared closed
+    code: 'test.usertype.only',
+    name: 'user type only',
+    scope: 'tenant',
+    grantToUserType: true,
+    grantToRole: false,
+    defaultTenantAdmin: false,
+  },
 ] as const
 
 describe.runIf(available)('rbac', () => {
@@ -572,6 +581,46 @@ describe.runIf(available)('rbac', () => {
     expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(false)
     await pool.query(`update permissions set grant_to_role = true, default_tenant_admin = true
       where code = 'test.tree.manage'`)
+  })
+
+  it('never widens authorization when a closed channel is flipped open', async () => {
+    // user-type channel: test.role.manage declares grantToUserType false.
+    // Once the flag is flipped out of band, the trigger accepts the grant
+    // row, but the query branch stays closed by the active definition
+    await pool.query(`update permissions set grant_to_user_type = true
+      where code = 'test.role.manage'`)
+    await pool.query(
+      `insert into user_type_permissions (tenant_id, user_type_id, permission_id)
+       select $1, $2, p.id from permissions p where p.code = 'test.role.manage'`,
+      [f.tenant, f.typeStudent],
+    )
+    expect(await rbac.hasPermission(principal(f.student), 'test.role.manage')).toBe(false)
+    expect(await orpcCode(rbac.require(principal(f.student), 'test.role.manage'))).toBe('FORBIDDEN')
+    const studentProfile = await rbac.getProfile(principal(f.student))
+    expect(studentProfile.tenantPermissions).not.toContain('test.role.manage')
+    await pool.query(`delete from user_type_permissions where permission_id in
+      (select id from permissions where code = 'test.role.manage')`)
+    await pool.query(`update permissions set grant_to_user_type = false
+      where code = 'test.role.manage'`)
+    // legitimate grants recover once the row matches the definition again
+    expect(await orpcCode(rbac.require(principal(f.admin), 'test.role.manage'))).toBe('ok')
+
+    // role channel: test.usertype.only declares grantToRole false
+    await pool.query(`update permissions set grant_to_role = true
+      where code = 'test.usertype.only'`)
+    await pool.query(
+      `insert into role_permissions (tenant_id, role_id, permission_id)
+       select $1, $2, p.id from permissions p where p.code = 'test.usertype.only'`,
+      [f.tenant, f.tenantAdminRole],
+    )
+    expect(await rbac.hasPermission(principal(f.admin), 'test.usertype.only')).toBe(false)
+    expect(await orpcCode(rbac.require(principal(f.admin), 'test.usertype.only'))).toBe('FORBIDDEN')
+    const adminProfile = await rbac.getProfile(principal(f.admin))
+    expect(adminProfile.tenantPermissions).not.toContain('test.usertype.only')
+    await pool.query(`delete from role_permissions where permission_id in
+      (select id from permissions where code = 'test.usertype.only')`)
+    await pool.query(`update permissions set grant_to_role = false
+      where code = 'test.usertype.only'`)
   })
 
   it('fails closed when a declaration conflicts with the stored owner', async () => {
