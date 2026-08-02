@@ -406,6 +406,9 @@ importers:
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../infra/database
+      '@qualy/plugin-rbac':
+        specifier: workspace:*
+        version: link:../rbac
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
@@ -474,9 +477,37 @@ importers:
 
   packages/plugins/base/rbac:
     dependencies:
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@qualy/plugin-org':
+        specifier: workspace:*
+        version: link:../org
+      '@qualy/plugin-server':
+        specifier: workspace:*
+        version: link:../../infra/server
       cordis:
         specifier: 'catalog:'
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 1.0.0-rc.4(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(pg@8.22.0)(zod@4.4.3)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../infra/database
+      '@types/pg':
+        specifier: 'catalog:'
+        version: 8.20.0
+      pg:
+        specifier: 'catalog:'
+        version: 8.22.0
 
   packages/plugins/demo/ping:
     dependencies:
