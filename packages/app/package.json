@@ -13,6 +13,7 @@
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-dict": "workspace:*",
+    "@qualy/plugin-layout-default": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",

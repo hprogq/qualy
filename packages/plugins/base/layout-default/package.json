@@ -1,0 +1,26 @@
+{
+  "name": "@qualy/plugin-layout-default",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./client/index.ts"
+  },
+  "peerDependencies": {
+    "cordis": "catalog:",
+    "react": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/ui": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "react-router": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:"
+  }
+}

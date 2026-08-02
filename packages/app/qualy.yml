@@ -29,3 +29,4 @@
 - name: '@qualy/plugin-org'
 - name: '@qualy/plugin-dict'
 - name: '@qualy/plugin-auth-local'
+- name: '@qualy/plugin-layout-default'
