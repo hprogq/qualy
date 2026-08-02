@@ -36,14 +36,19 @@ export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
   // zod 4 speaks standard json schema natively, no zod-specific converter
   // package needed (probed against beta.21)
   const generator = new OpenAPIGenerator({ converters: [new StandardJsonSchemaConverter()] })
-  ctx.server.contributeOpenApiPlugin('api-reference', ({ router }) => {
+  ctx.server.contributeOpenApiPlugin('api-reference', ({ router, prefix }) => {
     // the factory runs on every handler rebuild, so this cache lives exactly
     // as long as the router snapshot it documents
     let document: ReturnType<OpenAPIGenerator['generate']> | undefined
     return new OpenAPIReferenceHandlerPlugin({
       spec: () =>
         (document ??= generator.generate(router, {
-          base: { info: { title: config.title, version: config.version } },
+          base: {
+            info: { title: config.title, version: config.version },
+            // paths are prefix-relative; the servers entry makes scalar (and
+            // any other spec consumer) resolve requests against the mount
+            servers: [{ url: prefix }],
+          },
         })),
       specPath: config.specPath as `/${string}`,
       docsPath: config.docsPath as `/${string}`,

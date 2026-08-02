@@ -43,9 +43,12 @@ export type ApiRouter = Router<ApiContext>
 
 // handler plugins are contributed as factories, not instances: the handler
 // is rebuilt on every route change and orpc plugins are single-init, so each
-// rebuild needs a fresh instance built against the current merged router
+// rebuild needs a fresh instance built against the current merged router.
+// prefix rides along because generated documents must advertise it (openapi
+// servers) while contracts and paths stay deployment-agnostic
 export type OpenApiHandlerPluginFactory = (options: {
   router: ApiRouter
+  prefix: `/${string}`
 }) => StandardHandlerPlugin<ApiContext>
 
 // connect-style middleware, the natural shape of vite middlewares and sirv:
@@ -252,10 +255,11 @@ export default class Server extends Service {
       ...Object.fromEntries(this.errorStatuses),
     }
     const router = Object.fromEntries(this.fragments) as ApiRouter
+    const prefix = this.config.prefix as `/${string}`
     this.handler = new OpenAPIHandler<ApiContext>(router, {
       plugins: [
         new CORSHandlerPlugin(),
-        ...[...this.openApiPluginFactories.values()].map((factory) => factory({ router })),
+        ...[...this.openApiPluginFactories.values()].map((factory) => factory({ router, prefix })),
       ],
       interceptors: [
         onError((error) => {

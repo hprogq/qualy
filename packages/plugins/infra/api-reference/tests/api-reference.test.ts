@@ -40,12 +40,16 @@ describe('plugin-api-reference', () => {
     // the scalar page inlines the generated spec (probed: no url reference)
     expect(await docs.text()).toContain('Scalar.createApiReference')
 
-    // empty assembly still yields a valid 3.1 document
+    // empty assembly still yields a valid 3.1 document; the servers entry
+    // carries the api prefix so try-it requests resolve against the mount
+    // (paths themselves stay prefix-relative)
     const empty = (await (await fetch(`${base}/openapi.json`)).json()) as {
       openapi: string
+      servers?: { url: string }[]
       paths?: Record<string, unknown>
     }
     expect(empty.openapi).toMatch(/^3\.1\./)
+    expect(empty.servers).toEqual([{ url: '/api' }])
     expect(Object.keys(empty.paths ?? {})).toHaveLength(0)
 
     // contributed fragments appear in the spec and vanish with their fiber
@@ -58,9 +62,14 @@ describe('plugin-api-reference', () => {
     })
     await contributor
     const withEcho = (await (await fetch(`${base}/openapi.json`)).json()) as {
+      servers: { url: string }[]
       paths: Record<string, unknown>
     }
     expect(Object.keys(withEcho.paths)).toContain('/echo/hello')
+    // a try-it request assembled from the document (servers url + path)
+    // reaches the real handler
+    const tryIt = new URL(`${withEcho.servers[0]?.url}/echo/hello`, base)
+    expect((await fetch(tryIt)).status).toBe(200)
 
     await contributor.dispose()
     const withoutEcho = (await (await fetch(`${base}/openapi.json`)).json()) as {

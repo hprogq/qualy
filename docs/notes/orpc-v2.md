@@ -46,4 +46,5 @@
 - **不需要 `@orpc/zod`**:Zod 4 原生实现 Standard JSON Schema,`@orpc/json-schema` 的 `StandardJsonSchemaConverter` 直接转出(minLength、format: uuid 等探针全通过),生成 OpenAPI 3.1.2。`@orpc/json-schema` 本就是 `@orpc/openapi` 的传递依赖,显式声明进 catalog 即可。
 - `OpenAPIGenerator.generate(router, options)` 的 `info` 不是顶层选项,走 `base: { info: {...} }`(`base` 是 `Partial<OpenAPIDocument>` 整体合并)。
 - Scalar 页把生成的 spec **内联**进 HTML(`content: stringifyJSON(spec)`),不引用 specPath URL;断言文档页应查 `Scalar.createApiReference` 标记。脚本默认走 jsdelivr CDN(dev-only 可接受,离线需 `providerScriptUrl` 自托管)。
+- 生成器对 handler prefix **零感知**:paths 恒为前缀相对,Try-it 会按页面 origin 打根路径 404。修法是文档级 `servers: [{ url: prefix }]`(经 `base` 注入,Scalar 与一切 spec 消费者按相对 server URL 解析到 origin+prefix)——**不要**把前缀写进 contract path(handler 匹配前先剥 prefix,会变双前缀;契约必须部署无关)。prefix 真源在 server 插件 config,由扩展点 factory 参数带出。
 - orpc handler plugin 是单 init 实例,handler 每次路由变更整体重建——扩展点必须注册 **factory** 而非实例(server.contributeOpenApiPlugin 每次 rebuild 以当前 router 快照造新实例,spec 缓存随实例自然失效)。
