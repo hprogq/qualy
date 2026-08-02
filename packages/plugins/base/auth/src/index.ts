@@ -4,9 +4,10 @@ import { Context, Service } from 'cordis'
 import { z } from 'zod'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
+import type {} from '@qualy/rbac-contract'
 import { headerActions } from '@qualy/ui-contract'
 import { authContract, authErrorStatuses, type LoginMethod, type UserDto } from './contract.ts'
-import { authPermissions } from './permissions.ts'
+import { permissions as authPermissions } from './permissions.ts'
 import { authRelations } from './db/relations.ts'
 import {
   createSession,

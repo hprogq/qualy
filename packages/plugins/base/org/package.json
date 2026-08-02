@@ -13,6 +13,9 @@
   "qualy": {
     "database": {
       "schemaEntry": "src/db/schema.ts"
+    },
+    "permissions": {
+      "entry": "src/permissions.ts"
     }
   },
   "peerDependencies": {
@@ -24,6 +27,7 @@
     "pg": "catalog:"
   },
   "dependencies": {
+    "@qualy/rbac-contract": "workspace:*",
     "drizzle-orm": "catalog:"
   }
 }

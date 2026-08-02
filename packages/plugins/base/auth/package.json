@@ -15,6 +15,9 @@
   "qualy": {
     "database": {
       "schemaEntry": "src/db/schema.ts"
+    },
+    "permissions": {
+      "entry": "src/permissions.ts"
     }
   },
   "peerDependencies": {
@@ -28,6 +31,7 @@
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",

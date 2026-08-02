@@ -5,6 +5,7 @@ import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { runMigrations } from '@qualy/plugin-database/migrator'
 import Database from '@qualy/plugin-database'
+import type { RbacService } from '@qualy/rbac-contract'
 import Rbac from '../src/index.ts'
 
 const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
@@ -76,7 +77,7 @@ describe.runIf(available)('rbac', () => {
   const dbName = `qualy_rbac_${randomUUID().slice(0, 8)}`
   let pool: Pool
   let ctx: Context
-  let rbac: Rbac
+  let rbac: RbacService
   // fixture ids
   const f = {
     tenant: '',
@@ -467,5 +468,174 @@ describe.runIf(available)('rbac', () => {
     await expect(rbac.removeAssignment(f.tenant, second)).rejects.toThrow(
       /last tenant administrator/,
     )
+  })
+
+  it('serializes concurrent administrator removals', async () => {
+    // two administrators, both assignments removed concurrently: the role
+    // row lock forces the second transaction to see the first delete, so
+    // exactly one removal wins
+    await rbac.createAssignment({
+      tenantId: f.tenant,
+      userId: f.admin,
+      roleId: f.tenantAdminRole,
+      orgNodeId: f.root,
+      scope: 'subtree',
+    })
+    const ids = (
+      await pool.query(
+        `select id from user_role_assignments where tenant_id = $1 and role_id = $2`,
+        [f.tenant, f.tenantAdminRole],
+      )
+    ).rows.map((row) => row.id as string)
+    expect(ids).toHaveLength(2)
+    const results = await Promise.allSettled(ids.map((id) => rbac.removeAssignment(f.tenant, id)))
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    const left = await pool.query(
+      `select count(distinct user_id) from user_role_assignments where tenant_id = $1 and role_id = $2`,
+      [f.tenant, f.tenantAdminRole],
+    )
+    expect(Number(left.rows[0].count)).toBe(1)
+  })
+
+  it('validates catalogs before activation', () => {
+    expect(() => rbac.definePermissions('dup', [CATALOG[0], CATALOG[0]])).toThrow(/twice/)
+    expect(() =>
+      rbac.definePermissions('bad', [
+        {
+          code: 'bad.thing.use',
+          name: 'b',
+          scope: 'tenant',
+          grantToUserType: false,
+          grantToRole: false,
+          defaultTenantAdmin: true,
+        },
+      ]),
+    ).toThrow(/requires grantToRole/)
+  })
+
+  it('rejects grant rows that violate the permission channels at the write path', async () => {
+    const pgCode = (promise: Promise<unknown>) =>
+      promise.then(
+        () => 'no error',
+        (error) => (error as { code?: string }).code,
+      )
+    const grantToType = (code: string) =>
+      pool.query(
+        `insert into user_type_permissions (tenant_id, user_type_id, permission_id)
+         select $1, $2, p.id from permissions p where p.code = $3`,
+        [f.tenant, f.typeStudent, code],
+      )
+    // org scope and a closed user-type channel are both refused
+    expect(await pgCode(grantToType('test.tree.manage'))).toBe('23514')
+    expect(await pgCode(grantToType('test.role.manage'))).toBe('23514')
+    // a user-type-only permission cannot be granted to roles
+    await pool.query(
+      `insert into permissions (code, plugin, name, scope, grant_to_user_type, grant_to_role, default_tenant_admin)
+       values ('usertype.only.use', 'test', 'UT only', 'tenant', true, false, false)`,
+    )
+    expect(
+      await pgCode(
+        pool.query(
+          `insert into role_permissions (tenant_id, role_id, permission_id)
+           select $1, $2, p.id from permissions p where p.code = 'usertype.only.use'`,
+          [f.tenant, f.managerRole],
+        ),
+      ),
+    ).toBe('23514')
+    // defaultTenantAdmin without the role channel dies on the check constraint
+    expect(
+      await pgCode(
+        pool.query(
+          `insert into permissions (code, plugin, name, scope, grant_to_user_type, grant_to_role, default_tenant_admin)
+           values ('bad.default.use', 'test', 'bad', 'tenant', true, false, true)`,
+        ),
+      ),
+    ).toBe('23514')
+  })
+
+  it('ignores grants whose permission channel was turned off later', async () => {
+    // triggers cannot retract rows that were legal when written; the read
+    // path re-checks the channel flags so stale grants go dead immediately
+    expect(await rbac.hasPermission(principal(f.student), 'test.portal.access')).toBe(true)
+    await pool.query(`update permissions set grant_to_user_type = false
+      where code = 'test.portal.access'`)
+    expect(await rbac.hasPermission(principal(f.student), 'test.portal.access')).toBe(false)
+    const profile = await rbac.getProfile(principal(f.student))
+    expect(profile.tenantPermissions).not.toContain('test.portal.access')
+    await pool.query(`update permissions set grant_to_user_type = true
+      where code = 'test.portal.access'`)
+
+    expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(true)
+    await pool.query(`update permissions set grant_to_role = false, default_tenant_admin = false
+      where code = 'test.tree.manage'`)
+    expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(false)
+    await pool.query(`update permissions set grant_to_role = true, default_tenant_admin = true
+      where code = 'test.tree.manage'`)
+  })
+
+  it('fails closed when a declaration conflicts with the stored owner', async () => {
+    await pool.query(
+      `insert into permissions (code, plugin, name, scope, grant_to_user_type, grant_to_role, default_tenant_admin)
+       values ('ghost.thing.use', 'ghost', 'G', 'tenant', false, true, false)`,
+    )
+    const scoped = ctx.plugin({
+      name: 'intruder',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('intruder', [
+          {
+            code: 'ghost.thing.use',
+            name: 'G',
+            scope: 'tenant',
+            grantToUserType: false,
+            grantToRole: true,
+            defaultTenantAdmin: false,
+          },
+        ])
+      },
+    })
+    await scoped
+    await expect(rbac.whenSynced()).rejects.toThrow(/rejected: ghost\.thing\.use/)
+    expect(await orpcCode(rbac.require(principal(f.admin), 'ghost.thing.use'))).toBe('FORBIDDEN')
+    // the stored row keeps its original owner
+    const row = await pool.query(`select plugin from permissions where code = 'ghost.thing.use'`)
+    expect(row.rows[0].plugin).toBe('ghost')
+    await scoped.dispose()
+  })
+
+  it('treats defaultTenantAdmin as stable semantics', async () => {
+    await pool.query(
+      `insert into permissions (code, plugin, name, scope, grant_to_user_type, grant_to_role, default_tenant_admin)
+       values ('flip.thing.use', 'flipper', 'F', 'tenant', false, true, false)`,
+    )
+    const scoped = ctx.plugin({
+      name: 'flipper',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('flipper', [
+          {
+            code: 'flip.thing.use',
+            name: 'F',
+            scope: 'tenant',
+            grantToUserType: false,
+            grantToRole: true,
+            // true against a stored false: silently widening tenant-admin
+            // is exactly what stable semantics forbid
+            defaultTenantAdmin: true,
+          },
+        ])
+      },
+    })
+    await scoped
+    await expect(rbac.whenSynced()).rejects.toThrow(/rejected: flip\.thing\.use/)
+    expect(await orpcCode(rbac.require(principal(f.admin), 'flip.thing.use'))).toBe('FORBIDDEN')
+    // no tenant-admin mapping was injected on the way down
+    const mapped = await pool.query(
+      `select count(*) from role_permissions rp
+       join permissions p on p.id = rp.permission_id where p.code = 'flip.thing.use'`,
+    )
+    expect(Number(mapped.rows[0].count)).toBe(0)
+    await scoped.dispose()
   })
 })

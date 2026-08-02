@@ -1,7 +1,9 @@
 // the rbac plugin's own permission catalog. Permission modules are pure
 // constants shared by the runtime registry (definePermissions) and the seed
 // (row upsert before any plugin has booted) — one source, two consumers.
-export const rbacPermissions = [
+import type { PermissionDefinition } from '@qualy/rbac-contract'
+
+export const permissions = [
   {
     code: 'rbac.role.read',
     name: '查看角色',
@@ -34,4 +36,4 @@ export const rbacPermissions = [
     grantToRole: true,
     defaultTenantAdmin: true,
   },
-] as const
+] as const satisfies readonly PermissionDefinition[]

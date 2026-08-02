@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg'
+import { resolvePermissionCatalogs } from './permission-entries.ts'
 import { resolvePluginModuleUrl } from './schema-entries.ts'
 
 // tenant bootstrap in layers with different convergence semantics:
@@ -18,37 +19,21 @@ const passwordModule = () =>
     typeof import('../../packages/plugins/base/auth-local/src/password.ts')
   >
 
-interface PermissionRow {
-  code: string
-  name: string
-  description?: string
-  groupKey?: string
-  scope: 'tenant' | 'org'
-  grantToUserType: boolean
-  grantToRole: boolean
-  defaultTenantAdmin: boolean
-}
+type PermissionRow = import('../../packages/rbac-contract/src/index.ts').PermissionDefinition
 
-// the permission catalogs live in the plugins (single source shared with the
-// runtime registry); the seed provisions the rows so tenant grants can bind
-// before any plugin has ever booted
+// permission catalogs are discovered through package metadata
+// (qualy.permissions.entry) so the seed never enumerates plugin names; the
+// same modules feed the runtime registry
 async function permissionCatalog(): Promise<{ plugin: string; rows: readonly PermissionRow[] }[]> {
-  const [rbac, auth, org] = await Promise.all([
-    import(resolvePluginModuleUrl('@qualy/plugin-rbac/permissions')) as Promise<
-      typeof import('../../packages/plugins/base/rbac/src/permissions.ts')
-    >,
-    import(resolvePluginModuleUrl('@qualy/plugin-auth/permissions')) as Promise<
-      typeof import('../../packages/plugins/base/auth/src/permissions.ts')
-    >,
-    import(resolvePluginModuleUrl('@qualy/plugin-org/permissions')) as Promise<
-      typeof import('../../packages/plugins/base/org/src/permissions.ts')
-    >,
-  ])
-  return [
-    { plugin: 'rbac', rows: rbac.rbacPermissions },
-    { plugin: 'auth', rows: auth.authPermissions },
-    { plugin: 'org', rows: org.orgPermissions },
-  ]
+  return Promise.all(
+    resolvePermissionCatalogs().map(async (ref) => {
+      const module = (await import(ref.moduleUrl)) as { permissions?: readonly PermissionRow[] }
+      if (!module.permissions) {
+        throw new Error(`${ref.plugin}: the permissions module must export "permissions"`)
+      }
+      return { plugin: ref.plugin, rows: module.permissions }
+    }),
+  )
 }
 
 const TENANT_ADMIN_ROLE = { code: 'tenant-admin', name: '租户管理员' }
@@ -152,6 +137,28 @@ async function provisionRbac(
         ],
       )
       report.created.permissions += inserted.rowCount ?? 0
+      if ((inserted.rowCount ?? 0) === 0) {
+        // stable platform semantics on existing rows, same rule as the
+        // runtime registry (changed meaning or ownership needs a new code)
+        const existing = (
+          await ctx.client.query(
+            `select plugin, scope, grant_to_user_type, grant_to_role, default_tenant_admin
+             from permissions where code = $1`,
+            [row.code],
+          )
+        ).rows[0]
+        if (existing.plugin !== plugin) drift(`permission ${row.code}`, 'plugin', plugin, existing.plugin)
+        if (existing.scope !== row.scope) drift(`permission ${row.code}`, 'scope', row.scope, existing.scope)
+        if (existing.grant_to_user_type !== row.grantToUserType) {
+          drift(`permission ${row.code}`, 'grant_to_user_type', row.grantToUserType, existing.grant_to_user_type)
+        }
+        if (existing.grant_to_role !== row.grantToRole) {
+          drift(`permission ${row.code}`, 'grant_to_role', row.grantToRole, existing.grant_to_role)
+        }
+        if (existing.default_tenant_admin !== row.defaultTenantAdmin) {
+          drift(`permission ${row.code}`, 'default_tenant_admin', row.defaultTenantAdmin, existing.default_tenant_admin)
+        }
+      }
     }
   }
 

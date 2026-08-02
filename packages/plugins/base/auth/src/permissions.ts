@@ -1,6 +1,8 @@
 // the auth plugin's permission catalog; shape is validated where it meets
 // rbac.definePermissions, and the seed upserts the same rows by code
-export const authPermissions = [
+import type { PermissionDefinition } from '@qualy/rbac-contract'
+
+export const permissions = [
   {
     code: 'auth.portal.access',
     name: '访问门户',
@@ -41,4 +43,4 @@ export const authPermissions = [
     grantToRole: true,
     defaultTenantAdmin: true,
   },
-] as const
+] as const satisfies readonly PermissionDefinition[]
