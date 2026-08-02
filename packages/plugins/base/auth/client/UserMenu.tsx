@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { useApi, useApiQuery } from '@qualy/web-runtime'
 import { Button } from '@qualy/ui/button'
 
@@ -13,7 +14,7 @@ export default function UserMenu() {
   if (me.isError) {
     return (
       <Button variant="outline" size="sm" asChild>
-        <a href="/login">登录</a>
+        <Link to="/login">登录</Link>
       </Button>
     )
   }

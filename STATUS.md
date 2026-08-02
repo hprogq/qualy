@@ -52,6 +52,8 @@
 
 - [P1 会话 3.7] UI Composition Runtime(2026-08-02):按七概念模型完成改造(全案 notes/ui-composition.md)。①新共享包 @qualy/ui-contract:命名空间 ID 正则、Layout Contract 常量(admin-shell/v1、blank-shell/v1)、defineUiCollection/defineUiSlot token 原语、admin-shell 表面定义(navigation-primary、header-actions);②ui-registry 重写为组合内核:PageDecl 增必填 id(逻辑标识与 path/component 解耦),registerLayout(单 Provider/契约,冲突硬失败),contribute(token, contribution)统一收集 Collection/Slot(ID 冲突/cardinality 硬失败,effect 托管,无加载顺序语义),manifest 变授权后投影(layouts/pages/collections/slots,permission/public 不出服务端,导航 pageId→path build 期解析、页面消失项脱落,无 Provider 布局的页面丢弃并告警);③新 @qualy/plugin-layout-default:AdminShell(消费导航 collection + header-actions slot + NavLink 高亮)与 BlankShell;④apps/web 收缩为纯路由引擎(layouts×pages 动态生成路由,LayoutBoundary/渲染器缺失 fail closed),AdminLayout/导航 DOM 从宿主移除;⑤web-runtime 增 useUiCollection/UiSlot(逐项 ErrorBoundary+Suspense 隔离);⑥Slot 首个真实消费者:auth 贡献 auth/UserMenu 到 header-actions(登录态显示用户名+退出,匿名显示登录入口)——此前系统无任何登出 UI。缓建带触发表:多 Provider/Theme 注册/页面级 Slot/config schema/bootstrap 插件(会话 7)/ui:validate
 
+- [3.7 小修] 登录链路打磨(2026-08-02):①UserMenu 登录按钮改 react-router Link(SPA 内导航,不再整页重载进登录页);②server 的 onError 只记录 5xx 级真故障——已定义客户端错误(AUTH_REQUIRED/INVALID_CREDENTIALS 等按 errorStatusMap <500 的码)是正常业务流,不再刷整页堆栈(冒烟:匿名 me×2 + 错误登录均 401 且日志零 [E] 行)
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`

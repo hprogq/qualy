@@ -6,7 +6,7 @@ import {
 } from 'node:http'
 import { COMMON_ERROR_STATUS_MAP } from '@orpc/client'
 import { OpenAPIHandler } from '@orpc/openapi/node'
-import { onError, type Router } from '@orpc/server'
+import { onError, ORPCError, type Router } from '@orpc/server'
 import { CORSHandlerPlugin } from '@orpc/server/plugins'
 import { Context, Service } from 'cordis'
 import { z } from 'zod'
@@ -222,10 +222,21 @@ export default class Server extends Service {
   }
 
   private rebuild() {
+    const statusMap: Record<string, number> = {
+      ...COMMON_ERROR_STATUS_MAP,
+      ...Object.fromEntries(this.errorStatuses),
+    }
     this.handler = new OpenAPIHandler<ApiContext>(Object.fromEntries(this.fragments) as ApiRouter, {
       plugins: [new CORSHandlerPlugin()],
-      interceptors: [onError((error) => this.ctx.logger.error(error))],
-      errorStatusMap: { ...COMMON_ERROR_STATUS_MAP, ...Object.fromEntries(this.errorStatuses) },
+      interceptors: [
+        onError((error) => {
+          // client-status orpc errors (401/403/...) are ordinary business
+          // flow; only genuine server faults belong in the log
+          if (error instanceof ORPCError && (statusMap[error.code] ?? 500) < 500) return
+          this.ctx.logger.error(error)
+        }),
+      ],
+      errorStatusMap: statusMap,
     })
   }
 }
