@@ -575,9 +575,16 @@ describe.runIf(available)('rbac', () => {
   })
 
   it('fails closed when a declaration conflicts with the stored owner', async () => {
+    // the stored row belongs to ghost and already carries a live grant, so a
+    // pre-verification activation would authorize immediately
     await pool.query(
       `insert into permissions (code, plugin, name, scope, grant_to_user_type, grant_to_role, default_tenant_admin)
        values ('ghost.thing.use', 'ghost', 'G', 'tenant', false, true, false)`,
+    )
+    await pool.query(
+      `insert into role_permissions (tenant_id, role_id, permission_id)
+       select $1, $2, p.id from permissions p where p.code = 'ghost.thing.use'`,
+      [f.tenant, f.tenantAdminRole],
     )
     const scoped = ctx.plugin({
       name: 'intruder',
@@ -596,12 +603,92 @@ describe.runIf(available)('rbac', () => {
       },
     })
     await scoped
+    // before the database sync settles the definition is pending, not
+    // active: no fail-open window between registration and verification
+    expect(await orpcCode(rbac.require(principal(f.admin), 'ghost.thing.use'))).toBe('FORBIDDEN')
     await expect(rbac.whenSynced()).rejects.toThrow(/rejected: ghost\.thing\.use/)
     expect(await orpcCode(rbac.require(principal(f.admin), 'ghost.thing.use'))).toBe('FORBIDDEN')
     // the stored row keeps its original owner
     const row = await pool.query(`select plugin from permissions where code = 'ghost.thing.use'`)
     expect(row.rows[0].plugin).toBe('ghost')
+
+    // a later successful catalog must not mask the standing failure
+    const clean = ctx.plugin({
+      name: 'clean-after',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('clean-after', [
+          {
+            code: 'clean.thing.use',
+            name: 'C',
+            scope: 'tenant',
+            grantToUserType: false,
+            grantToRole: true,
+            defaultTenantAdmin: false,
+          },
+        ])
+      },
+    })
+    await clean
+    await expect(rbac.whenSynced()).rejects.toThrow(/ghost\.thing\.use/)
+    // disposing the failed registration clears the error, the clean one stays
     await scoped.dispose()
+    await rbac.whenSynced()
+    expect(await orpcCode(rbac.require(principal(f.admin), 'ghost.thing.use'))).toBe('FORBIDDEN')
+    await clean.dispose()
+    await pool.query(`delete from role_permissions where permission_id in
+      (select id from permissions where code = 'ghost.thing.use')`)
+  })
+
+  it('re-checks the stored owner on every authorization', async () => {
+    // hijacking the row's owner after activation kills the grant at read time
+    expect(await orpcCode(rbac.require(principal(f.admin), 'test.role.manage'))).toBe('ok')
+    await pool.query(`update permissions set plugin = 'hijacker' where code = 'test.role.manage'`)
+    expect(await orpcCode(rbac.require(principal(f.admin), 'test.role.manage'))).toBe('FORBIDDEN')
+    const profile = await rbac.getProfile(principal(f.admin))
+    expect(profile.tenantPermissions).not.toContain('test.role.manage')
+    await pool.query(`update permissions set plugin = 'test' where code = 'test.role.manage'`)
+    expect(await orpcCode(rbac.require(principal(f.admin), 'test.role.manage'))).toBe('ok')
+  })
+
+  it('lets concurrent instances converge on a single owner', async () => {
+    // two application instances race to claim the same fresh code with
+    // different owners: insert-then-reread converges both on the stored row
+    const url = new URL(baseUrl)
+    url.pathname = `/${dbName}`
+    const other = new Context()
+    await other.plugin(Database, { url: url.href, migrations: 'off' })
+    await other.plugin(Rbac)
+    const definition = {
+      code: 'contested.thing.use',
+      name: 'contested',
+      scope: 'tenant' as const,
+      grantToUserType: false,
+      grantToRole: true,
+      defaultTenantAdmin: false,
+    }
+    const alpha = ctx.plugin({
+      name: 'alpha',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('alpha', [definition])
+      },
+    })
+    const beta = other.plugin({
+      name: 'beta',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('beta', [definition])
+      },
+    })
+    await Promise.all([alpha, beta])
+    const settled = await Promise.allSettled([rbac.whenSynced(), other.rbac.whenSynced()])
+    expect(settled.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    // the stored row names the winner
+    const row = await pool.query(`select plugin from permissions where code = 'contested.thing.use'`)
+    expect(row.rows[0].plugin).toBe(settled[0]!.status === 'fulfilled' ? 'alpha' : 'beta')
+    await alpha.dispose()
+    await other.fiber.dispose()
   })
 
   it('treats defaultTenantAdmin as stable semantics', async () => {

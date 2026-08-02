@@ -18,8 +18,8 @@ export class Authorization {
     const def = this.registry.get(code)
     if (!def) return false
     return def.scope === 'tenant'
-      ? this.hasTenantPermission(principal, code)
-      : this.hasAnyOrgPermission(principal, code)
+      ? this.hasTenantPermission(principal, def)
+      : this.hasAnyOrgPermission(principal, def)
   }
 
   // tenant-scope gate: user-type grants and tenant-role grants, unioned
@@ -30,7 +30,7 @@ export class Authorization {
     if (def.scope !== 'tenant') {
       throw new Error(`require() got org-scope permission ${code}, use requireAt()`)
     }
-    if (!(await this.hasTenantPermission(principal, code))) throw new ORPCError('FORBIDDEN')
+    if (!(await this.hasTenantPermission(principal, def))) throw new ORPCError('FORBIDDEN')
   }
 
   async canAt(principal: Principal, code: string, targetOrgNodeId: string): Promise<boolean> {
@@ -47,7 +47,7 @@ export class Authorization {
         join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.enabled
         join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
         join permissions p on p.id = rp.permission_id and p.enabled and p.grant_to_role
-          and p.scope = 'org' and p.code = ${code}
+          and p.scope = 'org' and p.code = ${code} and p.plugin = ${def.plugin}
         join org_nodes target on target.tenant_id = a.tenant_id and target.id = ${targetOrgNodeId}
         join org_nodes anchor on anchor.tenant_id = a.tenant_id and anchor.id = a.org_node_id
         where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}
@@ -71,8 +71,12 @@ export class Authorization {
 
   // for the manifest: which active codes does the user hold from any source
   async getProfile(principal: Principal): Promise<AccessProfile> {
-    const result = await this.ctx.db.drizzle.execute<{ code: string; scope: string }>(sql`
-      select distinct p.code, p.scope
+    const result = await this.ctx.db.drizzle.execute<{
+      code: string
+      scope: string
+      plugin: string
+    }>(sql`
+      select distinct p.code, p.scope, p.plugin
       from permissions p
       where p.enabled and (
         (p.grant_to_user_type and exists(
@@ -95,14 +99,17 @@ export class Authorization {
     const tenantPermissions: string[] = []
     const orgPermissions: string[] = []
     for (const row of result.rows) {
-      if (!this.registry.has(row.code)) continue
+      if (this.registry.get(row.code)?.plugin !== row.plugin) continue
       if (row.scope === 'tenant') tenantPermissions.push(row.code)
       else orgPermissions.push(row.code)
     }
     return { tenantPermissions: tenantPermissions.sort(), orgPermissions: orgPermissions.sort() }
   }
 
-  private async hasTenantPermission(principal: Principal, code: string): Promise<boolean> {
+  private async hasTenantPermission(
+    principal: Principal,
+    def: { code: string; plugin: string },
+  ): Promise<boolean> {
     const result = await this.ctx.db.drizzle.execute<{ allowed: boolean }>(sql`
       select (
         exists(
@@ -111,7 +118,7 @@ export class Authorization {
           join user_type_permissions utp on utp.tenant_id = u.tenant_id
             and utp.user_type_id = u.user_type_id
           join permissions p on p.id = utp.permission_id and p.enabled and p.grant_to_user_type
-            and p.scope = 'tenant' and p.code = ${code}
+            and p.scope = 'tenant' and p.code = ${def.code} and p.plugin = ${def.plugin}
           where u.id = ${principal.userId} and u.tenant_id = ${principal.tenantId} and u.enabled
         )
         or exists(
@@ -121,14 +128,17 @@ export class Authorization {
             and r.enabled and r.kind = 'tenant'
           join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
           join permissions p on p.id = rp.permission_id and p.enabled and p.grant_to_role
-            and p.scope = 'tenant' and p.code = ${code}
+            and p.scope = 'tenant' and p.code = ${def.code} and p.plugin = ${def.plugin}
           where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}
         )
       ) as allowed`)
     return result.rows[0]?.allowed ?? false
   }
 
-  private async hasAnyOrgPermission(principal: Principal, code: string): Promise<boolean> {
+  private async hasAnyOrgPermission(
+    principal: Principal,
+    def: { code: string; plugin: string },
+  ): Promise<boolean> {
     const result = await this.ctx.db.drizzle.execute<{ allowed: boolean }>(sql`
       select exists(
         select 1 from user_role_assignments a
@@ -136,7 +146,7 @@ export class Authorization {
         join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.enabled
         join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
         join permissions p on p.id = rp.permission_id and p.enabled and p.grant_to_role
-          and p.scope = 'org' and p.code = ${code}
+          and p.scope = 'org' and p.code = ${def.code} and p.plugin = ${def.plugin}
         where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}
       ) as allowed`)
     return result.rows[0]?.allowed ?? false
