@@ -2,8 +2,10 @@ import { Context, Service } from 'cordis'
 import type {
   AccessProfile,
   AssignmentInput,
+  AuthorizationAnchor,
   PermissionDefinition,
   Principal,
+  RbacDbHandle,
   RbacService,
 } from '@qualy/rbac-contract'
 import { Assignments } from './assignments.ts'
@@ -66,6 +68,23 @@ export default class Rbac extends Service implements RbacService {
 
   getProfile(principal: Principal): Promise<AccessProfile> {
     return this.authorization.getProfile(principal)
+  }
+
+  listAuthorizedAnchors(
+    principal: Principal,
+    code: string,
+    handle?: RbacDbHandle,
+  ): Promise<AuthorizationAnchor[]> {
+    return this.authorization.listAuthorizedAnchors(principal, code, handle)
+  }
+
+  assignmentsBlockingOrgType(
+    tenantId: string,
+    orgNodeId: string,
+    orgTypeId: string,
+    handle?: RbacDbHandle,
+  ): Promise<string[]> {
+    return this.assignments.assignmentsBlockingOrgType(tenantId, orgNodeId, orgTypeId, handle)
   }
 
   createAssignment(input: AssignmentInput): Promise<string> {

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import type { Context } from 'cordis'
-import type { AssignmentInput } from '@qualy/rbac-contract'
+import type { AssignmentInput, RbacDbHandle } from '@qualy/rbac-contract'
 
 type Tx = Parameters<Parameters<Context['db']['drizzle']['transaction']>[0]>[0]
 
@@ -45,6 +45,10 @@ export class Assignments {
   async createAssignment(input: AssignmentInput): Promise<string> {
     const db = this.ctx.db.drizzle
     return db.transaction(async (tx) => {
+      // assignments read org topology (node, type); taking the tenant row
+      // lock serializes them against org structural writes, which take the
+      // same lock, so neither side can validate against a stale tree
+      await tx.execute(sql`select 1 from tenants where id = ${input.tenantId} for update`)
       const role = (
         await tx.execute<{ kind: string; enabled: boolean; assignable: boolean }>(
           sql`select kind, enabled, assignable from roles
@@ -103,6 +107,30 @@ export class Assignments {
       if (!id) throw new Error('assignment rejected: identical assignment already exists')
       return id
     })
+  }
+
+  // org-kind assignments at the node whose role does not allow the given
+  // org type; a lock-holding caller must pass its own transaction handle
+  // (a second pool connection under a held lock can deadlock the pool)
+  async assignmentsBlockingOrgType(
+    tenantId: string,
+    orgNodeId: string,
+    orgTypeId: string,
+    handle?: RbacDbHandle,
+  ): Promise<string[]> {
+    const db = (handle ?? this.ctx.db.drizzle) as Context['db']['drizzle']
+    const result = await db.execute<{ code: string }>(sql`
+      select distinct r.code
+      from user_role_assignments a
+      join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.kind = 'org'
+      where a.tenant_id = ${tenantId} and a.org_node_id = ${orgNodeId}
+        and not exists (
+          select 1 from role_allowed_org_types t
+          where t.tenant_id = a.tenant_id and t.role_id = a.role_id
+            and t.org_type_id = ${orgTypeId}
+        )
+      order by r.code`)
+    return result.rows.map((row) => row.code)
   }
 
   async removeAssignment(tenantId: string, assignmentId: string): Promise<void> {

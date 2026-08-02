@@ -1,7 +1,12 @@
 import { ORPCError } from '@orpc/server'
 import { sql, type SQL } from 'drizzle-orm'
 import type { Context } from 'cordis'
-import type { AccessProfile, Principal } from '@qualy/rbac-contract'
+import type {
+  AccessProfile,
+  AuthorizationAnchor,
+  Principal,
+  RbacDbHandle,
+} from '@qualy/rbac-contract'
 import type { PermissionRegistry } from './permission-registry.ts'
 
 type ActivePermission = NonNullable<ReturnType<PermissionRegistry['get']>>
@@ -141,6 +146,31 @@ export class Authorization {
       else orgPermissions.push(def.code)
     }
     return { tenantPermissions: tenantPermissions.sort(), orgPermissions: orgPermissions.sort() }
+  }
+
+  // assignment anchors granting one org-scope code, pinned like every
+  // other read; consumers use them to project subtree coverage. The handle
+  // lets a caller that holds a lock run the read on its own connection.
+  async listAuthorizedAnchors(
+    principal: Principal,
+    code: string,
+    handle?: RbacDbHandle,
+  ): Promise<AuthorizationAnchor[]> {
+    const def = this.registry.get(code)
+    if (!def || def.scope !== 'org' || !def.grantToRole) return []
+    const db = (handle ?? this.ctx.db.drizzle) as Context['db']['drizzle']
+    const result = await db.execute<{
+      org_node_id: string
+      scope: 'self' | 'subtree'
+    }>(sql`
+      select distinct a.org_node_id, a.scope
+      from user_role_assignments a
+      join users u on u.tenant_id = a.tenant_id and u.id = a.user_id and u.enabled
+      join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.enabled
+      join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
+      join permissions p on p.id = rp.permission_id and ${this.pinned(def)}
+      where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}`)
+    return result.rows.map((row) => ({ orgNodeId: row.org_node_id, scope: row.scope }))
   }
 
   private async hasTenantPermission(

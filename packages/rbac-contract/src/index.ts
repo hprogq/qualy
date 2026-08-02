@@ -34,6 +34,21 @@ export interface Principal {
   sessionId: string
 }
 
+// where a principal's grants for one org-scope permission are anchored;
+// consumers project subtree coverage onto their own structures
+export interface AuthorizationAnchor {
+  orgNodeId: string
+  scope: 'self' | 'subtree'
+}
+
+// minimal query surface a caller may pass so an rbac read runs on the
+// caller's own transaction connection. Never omit it while holding a lock:
+// a second pool connection under a held lock can exhaust the pool and
+// deadlock the whole process.
+export interface RbacDbHandle {
+  execute(query: unknown): Promise<{ rows: unknown[] }>
+}
+
 export interface RbacService {
   definePermissions(plugin: string, definitions: readonly PermissionDefinition[]): void
   whenSynced(): Promise<void>
@@ -46,8 +61,21 @@ export interface RbacService {
     targetOrgNodeId: string,
   ): Promise<void>
   getProfile(principal: Principal): Promise<AccessProfile>
+  listAuthorizedAnchors(
+    principal: Principal,
+    code: string,
+    handle?: RbacDbHandle,
+  ): Promise<AuthorizationAnchor[]>
   createAssignment(input: AssignmentInput): Promise<string>
   removeAssignment(tenantId: string, assignmentId: string): Promise<void>
+  // role codes of org-kind assignments at the node whose role does not allow
+  // the given org type; used by org before a node type change
+  assignmentsBlockingOrgType(
+    tenantId: string,
+    orgNodeId: string,
+    orgTypeId: string,
+    handle?: RbacDbHandle,
+  ): Promise<string[]>
 }
 
 declare module 'cordis' {
