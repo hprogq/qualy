@@ -14,13 +14,14 @@ export const userDto = z.object({
 export type UserDto = z.infer<typeof userDto>
 
 // public descriptor of one tenant login method (an auth_providers row whose
-// driver plugin is active); never exposes config or internal ids
-const loginMethod = z.object({
-  code: z.string(),
-  type: z.string(),
-  name: z.string(),
-  interaction: z.enum(['credentials', 'redirect']),
-})
+// driver plugin is active); the driver owns the presentation: either an
+// embedded renderer component or a same-origin redirect target. Never
+// exposes config or internal ids.
+const loginMethodBase = { code: z.string(), type: z.string(), name: z.string() }
+const loginMethod = z.discriminatedUnion('mode', [
+  z.object({ ...loginMethodBase, mode: z.literal('component'), component: z.string() }),
+  z.object({ ...loginMethodBase, mode: z.literal('redirect'), href: z.string() }),
+])
 
 export type LoginMethod = z.infer<typeof loginMethod>
 

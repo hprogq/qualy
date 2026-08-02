@@ -31,11 +31,17 @@ declare module '@qualy/plugin-server' {
   }
 }
 
+// how one provider instance is presented on the login page: an embedded
+// renderer component (registered in the plugin's client) or a same-origin
+// redirect target owned by the driver's routes
+export type LoginPresentation =
+  { mode: 'component'; component: string } | { mode: 'redirect'; href: string }
+
 // an authentication protocol family shipped by a driver plugin (auth-local,
 // auth-cas, ...); auth_providers rows reference it through their type column
 export interface ProviderTypeDefinition {
   type: string
-  interaction: 'credentials' | 'redirect'
+  describe(provider: { code: string }): LoginPresentation
 }
 
 const Config = z
@@ -111,7 +117,7 @@ export default class Auth extends Service {
       { errorStatuses: authErrorStatuses },
     )
 
-    ctx.ui.addPage({ path: '/login', component: 'LoginPage', layout: 'blank', public: true })
+    ctx.ui.addPage({ path: '/login', component: 'auth/LoginPage', layout: 'blank', public: true })
   }
 
   // driver plugins register their protocol family; revoked with their fiber,
@@ -138,15 +144,33 @@ export default class Auth extends Service {
     const providers = await this.db.query.authProviders.findMany({
       where: { tenantId: tenant.id, enabled: true },
     })
-    return providers
-      .filter((provider) => this.providerTypes.has(provider.type))
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
-      .map((provider) => ({
+    const methods: LoginMethod[] = []
+    for (const provider of providers.sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
+    )) {
+      const definition = this.providerTypes.get(provider.type)
+      if (!definition) continue
+      const presentation = definition.describe({ code: provider.code })
+      // redirect targets must stay same-origin relative paths
+      if (
+        presentation.mode === 'redirect' &&
+        (!presentation.href.startsWith('/') || presentation.href.startsWith('//'))
+      ) {
+        this.ctx.logger.warn(
+          'login method %s dropped: driver %s returned a non-relative href',
+          provider.code,
+          provider.type,
+        )
+        continue
+      }
+      methods.push({
         code: provider.code,
         type: provider.type,
         name: provider.name,
-        interaction: this.providerTypes.get(provider.type)!.interaction,
-      }))
+        ...presentation,
+      })
+    }
+    return methods
   }
 
   // resolves a public provider code to a row of the anonymous tenant; the
