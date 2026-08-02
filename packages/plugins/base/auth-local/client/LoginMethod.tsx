@@ -3,16 +3,11 @@ import { useApi } from '@qualy/web-runtime'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
-import type { LoginMethod } from '@qualy/plugin-auth/contract'
-
-interface Props {
-  method: LoginMethod
-  onAuthenticated: () => void
-}
+import type { LoginMethodRendererProps } from '@qualy/plugin-auth/contract'
 
 // embedded credential renderer: the auth core's login shell owns the page,
 // this form only proves the user against one local provider instance
-export default function LocalLoginMethod({ method, onAuthenticated }: Props) {
+export default function LocalLoginMethod({ method, onAuthenticated }: LoginMethodRendererProps) {
   const api = useApi()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')

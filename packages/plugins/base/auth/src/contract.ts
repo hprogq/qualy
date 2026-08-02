@@ -24,6 +24,13 @@ const loginMethod = z.discriminatedUnion('mode', [
 ])
 
 export type LoginMethod = z.infer<typeof loginMethod>
+export type ComponentLoginMethod = Extract<LoginMethod, { mode: 'component' }>
+
+// props every embedded credential renderer receives from the login shell
+export interface LoginMethodRendererProps {
+  method: ComponentLoginMethod
+  onAuthenticated: () => void
+}
 
 // http statuses for these codes are registered through server.contribute
 // (beta.21 maps status per code via the handler's errorStatusMap; the status

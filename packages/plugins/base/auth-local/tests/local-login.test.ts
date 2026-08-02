@@ -299,27 +299,41 @@ describe.runIf(available)('local login through the auth core', () => {
     await pool.query(`delete from auth_providers where code = 'probe-x'`)
   })
 
-  it('drops methods whose driver returns a non-relative redirect target', async () => {
+  it('accepts only same-origin redirect targets, surviving backslash tricks', async () => {
+    // one driver, per-instance hrefs: three escape attempts and one good url
+    const hrefs: Record<string, string> = {
+      'evil-abs': 'https://evil.example/phish',
+      'evil-scheme': '//evil.example/phish',
+      'evil-backslash': '/\\evil.example/phish',
+      'probe-good': '/api/auth/probe2/probe-good/start?q=1',
+    }
     const scoped = ctx.plugin({
-      name: 'evil-driver-probe',
+      name: 'redirect-driver-probe',
       inject: ['auth'],
       apply: (child: Context) => {
         child.auth.registerProviderType({
-          type: 'evil',
-          describe: () => ({ mode: 'redirect', href: 'https://evil.example/phish' }),
+          type: 'probe2',
+          describe: (provider) => ({ mode: 'redirect', href: hrefs[provider.code]! }),
         })
       },
     })
     await scoped
-    await pool.query(
-      `insert into auth_providers (tenant_id, code, type, name) values ($1, 'evil-x', 'evil', 'E')`,
-      [ids.tenant],
-    )
-    const res = (await (await fetch(`${base}/auth/methods`)).json()) as {
-      methods: { code: string }[]
+    for (const code of Object.keys(hrefs)) {
+      await pool.query(
+        `insert into auth_providers (tenant_id, code, type, name) values ($1, $2, 'probe2', 'P')`,
+        [ids.tenant, code],
+      )
     }
-    expect(res.methods.map((method) => method.code)).not.toContain('evil-x')
+    const res = (await (await fetch(`${base}/auth/methods`)).json()) as {
+      methods: { code: string; href?: string }[]
+    }
+    const codes = res.methods.map((method) => method.code)
+    expect(codes).not.toContain('evil-abs')
+    expect(codes).not.toContain('evil-scheme')
+    expect(codes).not.toContain('evil-backslash')
+    const good = res.methods.find((method) => method.code === 'probe-good')
+    expect(good?.href).toBe('/api/auth/probe2/probe-good/start?q=1')
     await scoped.dispose()
-    await pool.query(`delete from auth_providers where code = 'evil-x'`)
+    await pool.query(`delete from auth_providers where type = 'probe2'`)
   })
 })

@@ -9,7 +9,6 @@
     ".": "./src/index.ts",
     "./contract": "./src/contract.ts",
     "./schema": "./src/db/schema.ts",
-    "./password": "./src/password.ts",
     "./client": "./client/index.ts"
   },
   "qualy": {

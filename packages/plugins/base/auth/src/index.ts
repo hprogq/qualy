@@ -17,6 +17,22 @@ import {
 } from './service.ts'
 import { clearSessionCookie, sessionCookie, type CookieSettings } from './session.ts'
 
+// browsers normalize backslashes to slashes, so plain prefix checks can be
+// bypassed with values like /\evil.example; parse against a sentinel origin
+// and only accept targets that stay on it
+function sameOriginPath(href: string): string | null {
+  if (!href.startsWith('/')) return null
+  const sentinel = 'https://qualy.invalid'
+  let target: URL
+  try {
+    target = new URL(href, sentinel)
+  } catch {
+    return null
+  }
+  if (target.origin !== sentinel) return null
+  return `${target.pathname}${target.search}${target.hash}`
+}
+
 declare module 'cordis' {
   interface Context {
     auth: Auth
@@ -150,18 +166,19 @@ export default class Auth extends Service {
     )) {
       const definition = this.providerTypes.get(provider.type)
       if (!definition) continue
-      const presentation = definition.describe({ code: provider.code })
+      let presentation = definition.describe({ code: provider.code })
       // redirect targets must stay same-origin relative paths
-      if (
-        presentation.mode === 'redirect' &&
-        (!presentation.href.startsWith('/') || presentation.href.startsWith('//'))
-      ) {
-        this.ctx.logger.warn(
-          'login method %s dropped: driver %s returned a non-relative href',
-          provider.code,
-          provider.type,
-        )
-        continue
+      if (presentation.mode === 'redirect') {
+        const path = sameOriginPath(presentation.href)
+        if (!path) {
+          this.ctx.logger.warn(
+            'login method %s dropped: driver %s returned a non-relative href',
+            provider.code,
+            provider.type,
+          )
+          continue
+        }
+        presentation = { mode: 'redirect', href: path }
       }
       methods.push({
         code: provider.code,
