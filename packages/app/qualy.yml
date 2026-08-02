@@ -28,3 +28,4 @@
 - name: '@qualy/plugin-auth'
 - name: '@qualy/plugin-org'
 - name: '@qualy/plugin-dict'
+- name: '@qualy/plugin-auth-local'

@@ -10,6 +10,7 @@
     "@cordisjs/plugin-logger-console": "catalog:",
     "@cordisjs/plugin-timer": "catalog:",
     "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-dict": "workspace:*",
     "@qualy/plugin-org": "workspace:*",

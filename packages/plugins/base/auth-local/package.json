@@ -1,0 +1,35 @@
+{
+  "name": "@qualy/plugin-auth-local",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./src/contract.ts",
+    "./password": "./src/password.ts",
+    "./client": "./client/index.ts"
+  },
+  "peerDependencies": {
+    "cordis": "catalog:",
+    "react": "catalog:"
+  },
+  "dependencies": {
+    "@orpc/contract": "catalog:",
+    "@orpc/openapi": "catalog:",
+    "@orpc/server": "catalog:",
+    "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-server": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "argon2": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-database": "workspace:*",
+    "@types/pg": "catalog:",
+    "@types/react": "catalog:",
+    "pg": "catalog:"
+  }
+}

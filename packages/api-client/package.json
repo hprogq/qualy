@@ -13,6 +13,7 @@
     "@orpc/contract": "catalog:",
     "@orpc/openapi": "catalog:",
     "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*"
   }
