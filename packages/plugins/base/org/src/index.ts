@@ -1,9 +1,43 @@
-import type { Context } from 'cordis'
+import { Context, Service } from 'cordis'
+import type { ApiContext } from '@qualy/plugin-server'
+import type {} from '@qualy/plugin-database'
+import type {} from '@qualy/plugin-ui-registry'
+import type {} from '@qualy/rbac-contract'
+import { orgErrorStatuses } from './contract.ts'
+import { permissions as orgPermissions } from './permissions.ts'
+import { createOrgRouter } from './router.ts'
+import { OrgTreeService } from './service.ts'
 
-export const name = 'org'
-// infra gating per p1-tutorial §0.3; domain wiring arrives in later sessions
-export const inject = ['db', 'server', 'ui']
+declare module 'cordis' {
+  interface Context {
+    org: Org
+  }
+}
 
-export function apply(ctx: Context) {
-  ctx.logger.info('org plugin scaffold loaded')
+export type { ApiContext }
+
+// composition root: permissions, the tree domain service, the scoped api
+// and the management page. Domain logic lives in service.ts, transport in
+// router.ts, data access in repo.ts.
+export default class Org extends Service {
+  static inject = ['db', 'server', 'ui', 'rbac']
+
+  readonly tree: OrgTreeService
+
+  constructor(ctx: Context) {
+    super(ctx, 'org')
+    ctx.rbac.definePermissions('org', orgPermissions)
+    this.tree = new OrgTreeService(ctx)
+    ctx.server.contribute('org', createOrgRouter(ctx, this.tree), {
+      errorStatuses: orgErrorStatuses,
+    })
+    ctx.ui.addPage({
+      id: 'org/page',
+      path: '/admin/org',
+      component: 'org/OrgPage',
+      layout: 'admin-shell/v1',
+      permission: 'org.tree.read',
+      navigation: { label: '\u7ec4\u7ec7\u67b6\u6784', order: 20 },
+    })
+  }
 }

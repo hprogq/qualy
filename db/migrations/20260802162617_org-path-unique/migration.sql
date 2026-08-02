@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "uq_org_nodes_tenant_path" ON "org_nodes" ("tenant_id","path");

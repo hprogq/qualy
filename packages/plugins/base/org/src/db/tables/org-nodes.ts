@@ -86,5 +86,9 @@ export const orgNodes = snakeCase.table(
     // foreign key (postgres never indexes that side automatically)
     index('idx_org_nodes_tenant_type').on(table.tenantId, table.orgTypeId),
     index('idx_org_nodes_path_gist').using('gist', table.path),
+    // path is a derived projection of the parent chain maintained by the
+    // org service; uniqueness turns any maintenance bug into a loud
+    // constraint error instead of silent tree corruption
+    uniqueIndex('uq_org_nodes_tenant_path').on(table.tenantId, table.path),
   ],
 )

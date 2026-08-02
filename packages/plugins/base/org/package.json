@@ -8,7 +8,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/db/schema.ts",
-    "./permissions": "./src/permissions.ts"
+    "./permissions": "./src/permissions.ts",
+    "./contract": "./src/contract.ts",
+    "./client": "./client/index.ts"
   },
   "qualy": {
     "database": {
@@ -19,15 +21,27 @@
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:"
+    "cordis": "catalog:",
+    "react": "catalog:"
   },
   "devDependencies": {
     "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*",
     "@types/pg": "catalog:",
+    "@types/react": "catalog:",
     "pg": "catalog:"
   },
   "dependencies": {
+    "@orpc/contract": "catalog:",
+    "@orpc/openapi": "catalog:",
+    "@orpc/server": "catalog:",
+    "@qualy/plugin-server": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "@qualy/ui": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "drizzle-orm": "catalog:",
+    "zod": "catalog:"
   }
 }
