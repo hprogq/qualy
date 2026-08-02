@@ -124,8 +124,8 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     )
     expect(after.rows[0].credential_hash).not.toBe(before.rows[0].credential_hash)
     const { verifyPassword } = (await import(
-      resolvePluginModuleUrl('@qualy/plugin-auth/password')
-    )) as typeof import('../../packages/plugins/base/auth/src/password.ts')
+      resolvePluginModuleUrl('@qualy/plugin-auth-local/password')
+    )) as typeof import('../../packages/plugins/base/auth-local/src/password.ts')
     expect(await verifyPassword(after.rows[0].credential_hash, 'a-brand-new-password-1')).toBe(true)
   })
 

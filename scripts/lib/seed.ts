@@ -14,8 +14,8 @@ import { resolvePluginModuleUrl } from './schema-entries.ts'
 //   reset flag is required once the identity exists.
 
 const passwordModule = () =>
-  import(resolvePluginModuleUrl('@qualy/plugin-auth/password')) as Promise<
-    typeof import('../../packages/plugins/base/auth/src/password.ts')
+  import(resolvePluginModuleUrl('@qualy/plugin-auth-local/password')) as Promise<
+    typeof import('../../packages/plugins/base/auth-local/src/password.ts')
   >
 
 const TENANT = { slug: 'default', name: 'Qualy' }
