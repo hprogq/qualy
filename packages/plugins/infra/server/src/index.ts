@@ -8,6 +8,7 @@ import { COMMON_ERROR_STATUS_MAP } from '@orpc/client'
 import { OpenAPIHandler } from '@orpc/openapi/node'
 import { onError, ORPCError, type Router } from '@orpc/server'
 import { CORSHandlerPlugin } from '@orpc/server/plugins'
+import type { StandardHandlerPlugin } from '@orpc/server/standard'
 import { Context, Service } from 'cordis'
 import { z } from 'zod'
 
@@ -40,6 +41,13 @@ export type ContextEnricher = (context: ApiContext) => void | Promise<void>
 
 export type ApiRouter = Router<ApiContext>
 
+// handler plugins are contributed as factories, not instances: the handler
+// is rebuilt on every route change and orpc plugins are single-init, so each
+// rebuild needs a fresh instance built against the current merged router
+export type OpenApiHandlerPluginFactory = (options: {
+  router: ApiRouter
+}) => StandardHandlerPlugin<ApiContext>
+
 // connect-style middleware, the natural shape of vite middlewares and sirv:
 // call next() to fall through to the 404, next(error) for a logged 500
 export type FallbackMiddleware = (
@@ -62,6 +70,7 @@ export default class Server extends Service {
   private fragments = new Map<string, ApiRouter>()
   private errorStatuses = new Map<string, number>()
   private enrichers = new Map<string, ContextEnricher>()
+  private openApiPluginFactories = new Map<string, OpenApiHandlerPluginFactory>()
   private handler!: OpenAPIHandler<ApiContext>
   private http!: HttpServer
   // mutable slot lives in a stable box: reassigning service properties from
@@ -221,13 +230,33 @@ export default class Server extends Service {
     }, `route:${ns}`)
   }
 
+  // additional openapi handler plugins (reference ui, custom encoders) keyed
+  // per contributor; revoked with the contributor's fiber
+  contributeOpenApiPlugin(key: string, factory: OpenApiHandlerPluginFactory) {
+    return this.ctx.effect(() => {
+      if (this.openApiPluginFactories.has(key)) {
+        throw new Error(`openapi handler plugin conflict: ${key}`)
+      }
+      this.openApiPluginFactories.set(key, factory)
+      this.rebuild()
+      return () => {
+        this.openApiPluginFactories.delete(key)
+        this.rebuild()
+      }
+    }, `openapi-plugin:${key}`)
+  }
+
   private rebuild() {
     const statusMap: Record<string, number> = {
       ...COMMON_ERROR_STATUS_MAP,
       ...Object.fromEntries(this.errorStatuses),
     }
-    this.handler = new OpenAPIHandler<ApiContext>(Object.fromEntries(this.fragments) as ApiRouter, {
-      plugins: [new CORSHandlerPlugin()],
+    const router = Object.fromEntries(this.fragments) as ApiRouter
+    this.handler = new OpenAPIHandler<ApiContext>(router, {
+      plugins: [
+        new CORSHandlerPlugin(),
+        ...[...this.openApiPluginFactories.values()].map((factory) => factory({ router })),
+      ],
       interceptors: [
         onError((error) => {
           // client-status orpc errors (401/403/...) are ordinary business
