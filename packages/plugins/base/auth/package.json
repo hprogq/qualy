@@ -29,7 +29,6 @@
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
-    "argon2": "catalog:",
     "cookie": "catalog:",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"

@@ -1,12 +1,27 @@
+import { implement } from '@orpc/server'
 import { parseCookie } from 'cookie'
-import type { Context } from 'cordis'
+import { Context, Service } from 'cordis'
 import { z } from 'zod'
+import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
+import { authContract, authErrorStatuses, type LoginMethod, type UserDto } from './contract.ts'
 import { authRelations } from './db/relations.ts'
-import { authErrorStatuses } from './contract.ts'
-import { createAuthRouter } from './router.ts'
-import { clearSessionCookie, type CookieSettings } from './session.ts'
-import { validateSession } from './service.ts'
+import {
+  createSession,
+  loadUser,
+  revokeSession,
+  tenantActive,
+  touchIdentity,
+  validateSession,
+  type AuthDb,
+} from './service.ts'
+import { clearSessionCookie, sessionCookie, type CookieSettings } from './session.ts'
+
+declare module 'cordis' {
+  interface Context {
+    auth: Auth
+  }
+}
 
 declare module '@qualy/plugin-server' {
   interface ApiContext {
@@ -16,10 +31,14 @@ declare module '@qualy/plugin-server' {
   }
 }
 
-export const name = 'auth'
-export const inject = ['db', 'server', 'ui']
+// an authentication protocol family shipped by a driver plugin (auth-local,
+// auth-cas, ...); auth_providers rows reference it through their type column
+export interface ProviderTypeDefinition {
+  type: string
+  interaction: 'credentials' | 'redirect'
+}
 
-export const Config = z
+const Config = z
   .object({
     defaultTenantSlug: z.string().default('default'),
     cookieName: z.string().default('qualy_session'),
@@ -30,42 +49,172 @@ export const Config = z
   })
   .prefault({})
 
-export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
-  const config = rawConfig as z.output<typeof Config>
-  const cookie: CookieSettings = {
-    name: config.cookieName,
-    secure:
-      config.secureCookies === 'auto'
-        ? process.env.NODE_ENV === 'production'
-        : config.secureCookies === 'true',
-  }
-  const db = ctx.db.withRelations(authRelations)
+// the session core: drivers prove who the user is, this service turns that
+// proof into a qualy session (cookie, principal, revocation)
+export default class Auth extends Service {
+  static Config = Config
+  static inject = ['db', 'server', 'ui']
 
-  // anonymous requests pass through untouched; an invalid or expired cookie
-  // is cleared but never turns into an error at this stage
-  ctx.server.enrich('auth', async (context) => {
-    const header = context.request.headers.cookie
-    if (!header) return
-    const token = parseCookie(header)[cookie.name]
-    if (!token) return
-    const check = await validateSession(db, token, config.touchIntervalSeconds)
-    if (check.state === 'valid') {
-      context.principal = check.principal
-      return
+  private db: AuthDb
+  private cookie: CookieSettings
+  private providerTypes = new Map<string, ProviderTypeDefinition>()
+
+  private config: z.output<typeof Config>
+
+  constructor(ctx: Context, config: z.input<typeof Config>) {
+    super(ctx, 'auth')
+    this.config = config as z.output<typeof Config>
+    this.cookie = {
+      name: this.config.cookieName,
+      secure:
+        this.config.secureCookies === 'auto'
+          ? process.env.NODE_ENV === 'production'
+          : this.config.secureCookies === 'true',
     }
-    if (check.state === 'expired') context.sessionExpired = true
-    context.response.setHeader('Set-Cookie', clearSessionCookie(cookie))
-  })
+    this.db = ctx.db.withRelations(authRelations)
 
-  ctx.server.contribute(
-    'auth',
-    createAuthRouter(db, {
-      tenantSlug: config.defaultTenantSlug,
-      sessionTtlSeconds: config.sessionTtlSeconds,
-      cookie,
-    }),
-    { errorStatuses: authErrorStatuses },
-  )
+    // anonymous requests pass through untouched; an invalid or expired cookie
+    // is cleared but never turns into an error at this stage
+    ctx.server.enrich('auth', async (context) => {
+      const header = context.request.headers.cookie
+      if (!header) return
+      const token = parseCookie(header)[this.cookie.name]
+      if (!token) return
+      const check = await validateSession(this.db, token, this.config.touchIntervalSeconds)
+      if (check.state === 'valid') {
+        context.principal = check.principal
+        return
+      }
+      if (check.state === 'expired') context.sessionExpired = true
+      context.response.setHeader('Set-Cookie', clearSessionCookie(this.cookie))
+    })
 
-  ctx.ui.addPage({ path: '/login', component: 'LoginPage', layout: 'blank', public: true })
+    const impl = implement(authContract).$context<ApiContext>()
+    ctx.server.contribute(
+      'auth',
+      impl.router({
+        methods: impl.methods.handler(async () => ({ methods: await this.listLoginMethods() })),
+        logout: impl.logout.handler(async ({ context }) => {
+          if (context.principal) await revokeSession(this.db, context.principal)
+          context.response.setHeader('Set-Cookie', clearSessionCookie(this.cookie))
+          return { ok: true }
+        }),
+        me: impl.me.handler(async ({ context, errors }) => {
+          if (!context.principal) {
+            throw context.sessionExpired ? errors.SESSION_EXPIRED() : errors.AUTH_REQUIRED()
+          }
+          const user = await loadUser(this.db, context.principal.tenantId, context.principal.userId)
+          if (!user) throw errors.AUTH_REQUIRED()
+          return { user: this.toUserDto(user) }
+        }),
+      }),
+      { errorStatuses: authErrorStatuses },
+    )
+
+    ctx.ui.addPage({ path: '/login', component: 'LoginPage', layout: 'blank', public: true })
+  }
+
+  // driver plugins register their protocol family; revoked with their fiber,
+  // so deactivating a driver removes its login methods without touching data
+  registerProviderType(definition: ProviderTypeDefinition) {
+    return this.ctx.effect(() => {
+      if (this.providerTypes.has(definition.type)) {
+        throw new Error(`auth provider type conflict: ${definition.type}`)
+      }
+      this.providerTypes.set(definition.type, definition)
+      return () => {
+        this.providerTypes.delete(definition.type)
+      }
+    }, `auth-provider-type:${definition.type}`)
+  }
+
+  // login methods = enabled provider rows of the anonymous tenant whose
+  // driver plugin is currently active (fail closed for missing drivers)
+  async listLoginMethods(): Promise<LoginMethod[]> {
+    const tenant = await this.db.query.tenants.findFirst({
+      where: { slug: this.config.defaultTenantSlug },
+    })
+    if (!tenant || !tenantActive(tenant)) return []
+    const providers = await this.db.query.authProviders.findMany({
+      where: { tenantId: tenant.id, enabled: true },
+    })
+    return providers
+      .filter((provider) => this.providerTypes.has(provider.type))
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
+      .map((provider) => ({
+        code: provider.code,
+        type: provider.type,
+        name: provider.name,
+        interaction: this.providerTypes.get(provider.type)!.interaction,
+      }))
+  }
+
+  // resolves a public provider code to a row of the anonymous tenant; the
+  // expected type stops cross-driver routes (a cas row through /auth/local)
+  async resolveProvider(input: { providerCode: string; expectedType: string }) {
+    const tenant = await this.db.query.tenants.findFirst({
+      where: { slug: this.config.defaultTenantSlug },
+    })
+    if (!tenant || !tenantActive(tenant)) return null
+    if (!this.providerTypes.has(input.expectedType)) return null
+    const provider = await this.db.query.authProviders.findFirst({
+      where: {
+        tenantId: tenant.id,
+        code: input.providerCode,
+        type: input.expectedType,
+        enabled: true,
+      },
+    })
+    if (!provider) return null
+    return { tenant, provider }
+  }
+
+  async findIdentity(input: { tenantId: string; providerId: string; identifier: string }) {
+    return this.db.query.userIdentities.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        authProviderId: input.providerId,
+        identifier: input.identifier,
+      },
+      with: { user: { with: { userType: true } } },
+    })
+  }
+
+  // the driver proved the user; create the session and set the cookie.
+  // Returns null when the account state forbids login after all.
+  async completeLogin(
+    context: ApiContext,
+    input: { tenantId: string; userId: string; identityId?: string },
+  ): Promise<UserDto | null> {
+    const user = await loadUser(this.db, input.tenantId, input.userId)
+    if (!user || !user.enabled || !user.userType.enabled || !tenantActive(user.tenant)) return null
+    const session = await createSession(this.db, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      ttlSeconds: this.config.sessionTtlSeconds,
+      loginIp: context.request.socket.remoteAddress ?? undefined,
+      userAgent: context.request.headers['user-agent'],
+    })
+    if (input.identityId) await touchIdentity(this.db, input.identityId)
+    context.response.setHeader(
+      'Set-Cookie',
+      sessionCookie(this.cookie, session.token, session.expiresAt),
+    )
+    return this.toUserDto(user)
+  }
+
+  private toUserDto(user: NonNullable<Awaited<ReturnType<typeof loadUser>>>): UserDto {
+    return {
+      id: user.id,
+      displayName: user.displayName,
+      businessNo: user.businessNo,
+      userType: { id: user.userType.id, code: user.userType.code, name: user.userType.name },
+      primaryOrgNode: {
+        id: user.primaryOrgNode.id,
+        code: user.primaryOrgNode.code,
+        name: user.primaryOrgNode.name,
+      },
+      tenant: { id: user.tenant.id, slug: user.tenant.slug, name: user.tenant.name },
+    }
+  }
 }

@@ -2,7 +2,7 @@ import { oc } from '@orpc/contract'
 import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
 
-const userDto = z.object({
+export const userDto = z.object({
   id: z.string(),
   displayName: z.string(),
   businessNo: z.string().nullable(),
@@ -13,21 +13,29 @@ const userDto = z.object({
 
 export type UserDto = z.infer<typeof userDto>
 
+// public descriptor of one tenant login method (an auth_providers row whose
+// driver plugin is active); never exposes config or internal ids
+const loginMethod = z.object({
+  code: z.string(),
+  type: z.string(),
+  name: z.string(),
+  interaction: z.enum(['credentials', 'redirect']),
+})
+
+export type LoginMethod = z.infer<typeof loginMethod>
+
 // http statuses for these codes are registered through server.contribute
 // (beta.21 maps status per code via the handler's errorStatusMap; the status
 // field below documents intent and types the client)
 export const authErrorStatuses = {
-  INVALID_CREDENTIALS: 401,
   AUTH_REQUIRED: 401,
   SESSION_EXPIRED: 401,
 } as const
 
 export const authContract = {
-  loginLocal: oc
-    .meta(openapi({ method: 'POST', path: '/auth/local/login' }))
-    .errors({ INVALID_CREDENTIALS: { status: 401, message: 'invalid credentials' } })
-    .input(z.object({ identifier: z.string().min(1).max(255), password: z.string().min(1) }))
-    .output(z.object({ user: userDto })),
+  methods: oc
+    .meta(openapi({ method: 'GET', path: '/auth/methods' }))
+    .output(z.object({ methods: z.array(loginMethod) })),
   logout: oc
     .meta(openapi({ method: 'POST', path: '/auth/logout' }))
     .output(z.object({ ok: z.boolean() })),
