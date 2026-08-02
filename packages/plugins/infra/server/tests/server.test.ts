@@ -1,5 +1,5 @@
 import { openapi } from '@orpc/openapi'
-import { os } from '@orpc/server'
+import { ORPCError, os } from '@orpc/server'
 import { Context } from 'cordis'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -43,6 +43,62 @@ describe('plugin-server', () => {
 
     await contributor.dispose()
     expect((await fetch(`${base}/echo/hello`)).status).toBe(404)
+
+    await serverFiber.dispose()
+  })
+
+  it('keeps shared error statuses alive across contributor disposal', async () => {
+    const ctx = new Context()
+    const serverFiber = ctx.plugin(Server, { port: 0 })
+    await serverFiber
+    const base = `http://127.0.0.1:${ctx.server.port}/api`
+
+    const throwing = (path: `/${string}`) => ({
+      boom: os
+        .meta(openapi({ method: 'GET', path }))
+        .handler(() => {
+          throw new ORPCError('SHARED_ERROR')
+        }),
+    })
+    const first = ctx.plugin({
+      name: 'shared-a',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contribute('shared-a', throwing('/shared-a/boom'), {
+          errorStatuses: { SHARED_ERROR: 409 },
+        })
+      },
+    })
+    const second = ctx.plugin({
+      name: 'shared-b',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contribute('shared-b', throwing('/shared-b/boom'), {
+          errorStatuses: { SHARED_ERROR: 409 },
+        })
+      },
+    })
+    await first
+    await second
+    expect((await fetch(`${base}/shared-a/boom`)).status).toBe(409)
+    expect((await fetch(`${base}/shared-b/boom`)).status).toBe(409)
+
+    // a disagreeing status for the same code fails the contributor cleanly
+    const disagreeing = ctx.plugin({
+      name: 'shared-conflict',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contribute('shared-c', throwing('/shared-c/boom'), {
+          errorStatuses: { SHARED_ERROR: 400 },
+        })
+      },
+    })
+    await expect(Promise.resolve(disagreeing)).rejects.toThrow('error status conflict')
+    expect((await fetch(`${base}/shared-a/boom`)).status).toBe(409)
+
+    // the surviving contributor keeps the mapping after the first leaves
+    await first.dispose()
+    expect((await fetch(`${base}/shared-b/boom`)).status).toBe(409)
 
     await serverFiber.dispose()
   })

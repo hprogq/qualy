@@ -67,11 +67,34 @@ const Config = z
   })
   .prefault({})
 
+// a route fragment carries its own error statuses: the status map is
+// re-derived from all active fragments on every rebuild, so shared codes
+// survive any single contributor's disposal
+interface RouteFragment {
+  router: ApiRouter
+  errorStatuses: Record<string, number>
+}
+
+// same code from several fragments is fine as long as the statuses agree;
+// disagreement is a contributor error surfaced at contribution time
+function deriveErrorStatuses(fragments: ReadonlyMap<string, RouteFragment>) {
+  const contributed: Record<string, number> = {}
+  for (const fragment of fragments.values()) {
+    for (const [code, status] of Object.entries(fragment.errorStatuses)) {
+      const existing = contributed[code]
+      if (existing !== undefined && existing !== status) {
+        throw new Error(`error status conflict for ${code}: ${existing} vs ${status}`)
+      }
+      contributed[code] = status
+    }
+  }
+  return contributed
+}
+
 export default class Server extends Service {
   static Config = Config
 
-  private fragments = new Map<string, ApiRouter>()
-  private errorStatuses = new Map<string, number>()
+  private fragments = new Map<string, RouteFragment>()
   private enrichers = new Map<string, ContextEnricher>()
   private openApiPluginFactories = new Map<string, OpenApiHandlerPluginFactory>()
   private handler!: OpenAPIHandler<ApiContext>
@@ -213,21 +236,15 @@ export default class Server extends Service {
   ) {
     return this.ctx.effect(() => {
       if (this.fragments.has(ns)) throw new Error(`route namespace conflict: ${ns}`)
-      for (const [code, status] of Object.entries(options.errorStatuses ?? {})) {
-        const existing = this.errorStatuses.get(code)
-        if (existing !== undefined && existing !== status) {
-          throw new Error(`error status conflict for ${code}: ${existing} vs ${status}`)
-        }
-      }
-      this.fragments.set(ns, router)
-      const owned = Object.entries(options.errorStatuses ?? {}).filter(
-        ([code]) => !this.errorStatuses.has(code),
-      )
-      for (const [code, status] of owned) this.errorStatuses.set(code, status)
+      const fragment: RouteFragment = { router, errorStatuses: options.errorStatuses ?? {} }
+      // status conflicts fail the contributor before any state is written
+      const next = new Map(this.fragments)
+      next.set(ns, fragment)
+      deriveErrorStatuses(next)
+      this.fragments.set(ns, fragment)
       this.rebuild()
       return () => {
         this.fragments.delete(ns)
-        for (const [code] of owned) this.errorStatuses.delete(code)
         this.rebuild()
       }
     }, `route:${ns}`)
@@ -252,9 +269,11 @@ export default class Server extends Service {
   private rebuild() {
     const statusMap: Record<string, number> = {
       ...COMMON_ERROR_STATUS_MAP,
-      ...Object.fromEntries(this.errorStatuses),
+      ...deriveErrorStatuses(this.fragments),
     }
-    const router = Object.fromEntries(this.fragments) as ApiRouter
+    const router = Object.fromEntries(
+      [...this.fragments].map(([ns, fragment]) => [ns, fragment.router]),
+    ) as ApiRouter
     const prefix = this.config.prefix as `/${string}`
     this.handler = new OpenAPIHandler<ApiContext>(router, {
       plugins: [
