@@ -56,6 +56,8 @@
 
 - [3.7 软导航收口] 硬跳转清零与加载态统一(2026-08-02):全项目硬跳转审计后仅保留一处**刻意的**跨文档导航(redirect 型登录方式跳驱动 302 端点,注释注明);登录成功与退出改软导航——`queryClient.invalidateQueries()`(me/manifest 一并失效,为会话 7 RBAC 过滤后的 manifest 变化预留正确语义)+ react-router navigate。@qualy/ui 增 spinner(Spinner/LoadingScreen/PageLoading),替换全部裸文本加载态:RuntimeLoader isPending 从 null(白屏)改全屏居中 spinner、失败态样式化重试;宿主 renderPage/LayoutBoundary、登录页 methods 与 renderer fallback 均居中 spinner
 
+- [P1 会话 4] RBAC、用户类型权限与角色资格(2026-08-02):rbac 七表落地(permissions 平台级 code 全局唯一+点分格式 check+「grantToUserType→必须 tenant scope」DB 级不变式;其余六表全租户复合 FK;迁移 rbac-base)。**关键裁决**(不照搬处):①auth 运行时 inject 'rbac' 但不加包依赖(类型走 root 程序全局声明合并,避免 auth↔rbac 包循环——rbac 单向依赖 auth/org schema);②definePermissions 双层——同步内存 active registry(effect 托管,双活同 code 冲突硬失败)+ 异步串行 DB 镜像队列(syncBox 稳定盒防 traceable 重赋值坑;稳定语义=scope+双 grant 通道,漂移→响亮报错+移出 active 集 fail closed,展示字段与 defaultTenantAdmin 可更新;whenSynced() 供等待);③**权限目录单源**破解 bootstrap 死结——各插件导出纯常量 ./permissions(org 的会话 5 才接 definePermissions),runtime registry 与 seed 共用同一常量,seed 得以在插件首次启动前 upsert rows 并绑定租户授权。授权核心:require(tenant scope,user-type∪tenant-role 并集,r.kind='tenant' 防御过滤)/canAt(org scope,ltree `path <@` self/subtree)/getProfile(manifest 用,active 过滤)/错 scope=程序错误抛非 403;无任何 bypass,tenant-admin 走真实 role_permissions(defaultTenantAdmin 幂等注入,registry 与 seed 双写同语义)。assignment 资格(4.8,管理 API 会话 6 消费):createAssignment 事务校验(同租户/enabled/assignable/tenant 角色仅 root+subtree/org 角色 allowed user+org types)+removeAssignment last-admin 保护(最后有效租户管理员不可移除)。seed:provision 层 +permissions 11/tenant-admin/defaultTenantAdmin 全映射/administrator portal 授权/admin root-subtree assignment;demo 层 +org-manager(资格约束+六权限)/student+faculty portal/manager college-subtree assignment
+
 ## 验收输出摘录
 
 - s2 启动:`[I] hmr watching [ '.' ]` + `[I] ping ping plugin loaded: 你好P0`
@@ -90,6 +92,7 @@
 - plugin-web dev 冒烟:`pnpm dev` 单进程 → `curl :3000/` 返回 vite 注入 react-refresh 的 HTML,`/api/ui/manifest` 正常,`/api/nope` 404
 - plugin-web 生产冒烟:`pnpm build`(gen --all → web-app build → staging)后 NODE_ENV=production 启动 → `/` no-cache、`/ping` 200(spa 回退)、哈希资源 `public,max-age=31536000,immutable`
 - plugin-web 类型门禁:`pnpm typecheck` → 零错误(tc: 0)
+- 会话 4 验收:rbac 测试 9 组全过(4.9 矩阵:admin/manager/student × portal/角色管理/授权子树/他学院/用户管理;401 vs 403;self 不扩散/subtree 含自身;disabled role+permission+inactive plugin 三重 fail closed 且 DB 行存活;租户隔离含伪造 principal;profile 双源并集;语义漂移拒绝;资格校验五拒一过;last-admin 双向保护);`pnpm db:reset` 空库 8 迁移重放;全量 seed(含 demo)fresh 计数 permissions+11/roles+2/grants+20/assignments+2,二跑全零;dev 冒烟 admin 与 demo manager 双登录 200、日志零 [E];typecheck 零错误;vitest 52/52
 - 会话 3.7 验收:manifest 新投影(2 layouts/2 pages/导航已解析 path/slots 含 user-menu);六 chunk 哨兵(PingPage/LoginPage/UserMenu/LoginMethod/AdminShell/BlankShell)present;`/`、`/ping`、`/login` 均 200;typecheck 零错误;vitest 43/43(ui-registry 重写为组合/撤销/冲突/格式校验两大用例组)
 - 会话 3.6 验收:methods → mode:component + component:auth-local/LoginMethod;build CSS 探针四 class 全 present(含插件 client 独有);三 chunk 哨兵(ping/PingPage、auth/LoginPage、auth-local/LoginMethod)present;login 链路 200;typecheck(含 packages/ui 程序)零错误;vitest 39/39(新增非同源 href 丢弃 + 命名空间校验单测)
 - 会话 3.5 验收:methods → [{code:local,type:local,interaction:credentials}];`/api/auth/local/local/login` → 200 + HttpOnly Cookie;me/logout/401 链路不变;build 三 chunk 哨兵(PingPage/LoginPage/LocalLoginPage)present;typecheck 零错误;vitest 38/38(新增多实例矩阵/methods fail-closed/驱动停用即时性)
@@ -140,7 +143,7 @@
 - 确认项:tsc 通过且 include 覆盖 scripts/**(含 tests,vitest 导入参与类型检查);notes/hmr.md 已含 --expose-internals 必要性与 dev-only/生产禁带;pnpm-workspace 的 allowBuilds 字段对 pnpm 11.8 有效(实证:approve-builds 写入该字段后 esbuild postinstall 正常执行)
 - prettier 最小配置(semi:false/singleQuote/printWidth:100)+ 全量格式化独立提交
 
-## 下一会话(P1 会话 4)
+## 下一会话(P1 会话 5)
 
-- 按 docs/p1-tutorial.md 会话 4 执行:RBAC 七表(permissions/user_type_permissions/roles/role_permissions/role_allowed_user_types/role_allowed_org_types/user_role_assignments)、Rbac Service(§0.11 API:definePermissions/getProfile/hasPermission/require/canAt/requireAt)、permission registry(effect 托管,稳定语义冲突硬失败,插件停用 fail closed)、bootstrap tenant-admin 系统角色 + 管理员 assignment(root/subtree)+ last-admin 保护。注意:tenant-admin 走真实 role_permissions 不做 bypass;seed 的 provision 层需接入系统角色与 assignment;demo 层接 org-manager 角色。dev .env 已有 QUALY_ADMIN_USERNAME/QUALY_ADMIN_PASSWORD(gitignored)
+- 按 docs/p1-tutorial.md 会话 5 执行:组织树领域搬迁(errors→tests→repo→service→contract/router→client 顺序,禁止整目录复制)。旧代码 legacy/qualy_old/apps/api/src/modules/org/;必须保留/新增规则见 5.2(单根/根保护/规则图无环/类型规则校验/自移动+移入后代拒绝/子树 path+depth 事务更新/改类型验 children+现有 assignments 的 allowed org types/删除保护)。org 声明权限接 definePermissions(常量已在 ./permissions);路由鉴权 requireAt(read/manage,目标节点语义见 5.3);OrgPage 最小管理界面(树/选中/CRUD/parent selector 移动,无拖拽)。demo 账号密码 QUALY_DEMO_PASSWORD(dev 库当前 demo 密码 qualy-dev-demo-123)
 - 浏览器人工走查(P0-REPORT 第 3 项)在 P1 第一个 commit 前人工补记:/ping 页面与导航、改 PingPage 文本验 HMR、停用 ping 后导航与路由消失、恢复、控制台无 React 双实例/Router/chunk 错误
