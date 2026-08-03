@@ -1,0 +1,162 @@
+import { setupI18n, type I18n } from '@lingui/core'
+import { compileMessage } from '@lingui/message-utils/compileMessage'
+import {
+  defaultLocale,
+  supportedLocales,
+  type ErrorMessageMap,
+  type MessageCatalog,
+  type MessageDescriptor,
+  type PluginCatalogs,
+  type SupportedLocale,
+  type UiText,
+} from '@qualy/i18n-contract'
+import {
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
+import { formatApiError, type MessageFormatter } from './format.ts'
+
+export { commonErrorMessages, formatApiError } from './format.ts'
+export type { MessageFormatter } from './format.ts'
+
+// the web localization runtime: one lingui core instance holding raw icu
+// catalogs (compiled on demand, so catalogs stay plain typescript modules
+// inside the normal typecheck and test pipeline) plus a small react binding.
+// Plugins own their namespace and ship their own catalogs; this runtime only
+// assembles, activates and falls back.
+
+const STORAGE_KEY = 'qualy.locale'
+
+export interface I18nRuntime extends MessageFormatter {
+  locale: SupportedLocale
+  setLocale(locale: SupportedLocale): void
+  formatText(text: UiText): string
+  formatError(error: unknown, registry?: ErrorMessageMap): string
+}
+
+const I18nContext = createContext<I18nRuntime | undefined>(undefined)
+
+export function useI18n(): I18nRuntime {
+  const runtime = use(I18nContext)
+  if (!runtime) throw new Error('useI18n must be used inside <I18nProvider>')
+  return runtime
+}
+
+export function useLocale(): [SupportedLocale, (locale: SupportedLocale) => void] {
+  const { locale, setLocale } = useI18n()
+  return [locale, setLocale]
+}
+
+const isSupported = (value: string | null | undefined): value is SupportedLocale =>
+  !!value && (supportedLocales as readonly string[]).includes(value)
+
+// stored preference, then the browser's ranked languages (exact match first,
+// then language subtag), then the deployment default. A signed-in user's
+// stored preference arrives here once user preferences exist.
+export function resolveInitialLocale(): SupportedLocale {
+  const stored = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY)
+  if (isSupported(stored)) return stored
+  const candidates = typeof navigator === 'undefined' ? [] : (navigator.languages ?? [])
+  for (const candidate of candidates) {
+    if (isSupported(candidate)) return candidate
+    const match = supportedLocales.find(
+      (locale) => locale.split('-')[0] === candidate.split('-')[0],
+    )
+    if (match) return match
+  }
+  return defaultLocale
+}
+
+// the runtime's own catalogs (common/*), shipped with this package
+const commonCatalogs: Partial<
+  Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>
+> = {
+  'zh-CN': () => import('./catalogs/zh-CN.ts'),
+}
+
+async function loadCatalogs(
+  locale: SupportedLocale,
+  plugins: readonly PluginCatalogs[],
+): Promise<MessageCatalog> {
+  const sources = [commonCatalogs, ...plugins.map((plugin) => plugin.locales)]
+  const loaded = await Promise.all(
+    sources.map(async (locales) => {
+      const load = locales[locale]
+      // a missing catalog is normal: english lives in the defaultMessage of
+      // each reference, and a partially translated locale falls back per key
+      return load ? (await load()).default : {}
+    }),
+  )
+  return Object.assign({}, ...loaded) as MessageCatalog
+}
+
+export interface I18nProviderProps {
+  // per-plugin catalogs, assembled by the web host from its plugin registry
+  catalogs?: readonly PluginCatalogs[]
+  children: ReactNode
+  // rendered until the first catalog activation completes, so the ui never
+  // flashes untranslated english
+  fallback?: ReactNode
+}
+
+export function I18nProvider({ catalogs = [], children, fallback = null }: I18nProviderProps) {
+  const i18n = useMemo<I18n>(() => {
+    const instance = setupI18n()
+    // raw icu strings are compiled lazily; no extraction or compile step
+    instance.setMessagesCompiler(compileMessage)
+    return instance
+  }, [])
+  const [locale, setLocaleState] = useState<SupportedLocale>(resolveInitialLocale)
+  const [activated, setActivated] = useState<SupportedLocale | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    void loadCatalogs(locale, catalogs).then((messages) => {
+      if (cancelled) return
+      i18n.load(locale, messages)
+      i18n.activate(locale)
+      document.documentElement.lang = locale
+      setActivated(locale)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [i18n, locale, catalogs])
+
+  const setLocale = useCallback((next: SupportedLocale) => {
+    localStorage.setItem(STORAGE_KEY, next)
+    setLocaleState(next)
+  }, [])
+
+  const runtime = useMemo<I18nRuntime>(() => {
+    const format = (descriptor: MessageDescriptor, values?: Record<string, unknown>) =>
+      i18n._({ id: descriptor.id, message: descriptor.defaultMessage, values })
+    return {
+      locale,
+      setLocale,
+      format,
+      // literals are business data (an org name, a tenant name): shown as is
+      formatText: (text: UiText) =>
+        text.kind === 'literal'
+          ? text.value
+          : format({ id: text.id, defaultMessage: text.defaultMessage }),
+      formatError: (error: unknown, registry?: ErrorMessageMap) =>
+        formatApiError(error, { format }, registry),
+    }
+    // `activated` is not read but ties the memo to the active catalog, so
+    // every consumer re-renders after a locale switch
+  }, [i18n, locale, setLocale, activated])
+
+  if (activated === undefined) return <>{fallback}</>
+  return <I18nContext value={runtime}>{children}</I18nContext>
+}
+
+// declarative rendering of a manifest-carried text reference
+export function LocalizedText({ value }: { value: UiText }) {
+  return <>{useI18n().formatText(value)}</>
+}

@@ -28,6 +28,8 @@ catalog:
   yaml: 2.9.0
   vitest: 4.1.10
   prettier: 3.9.6
+  '@lingui/core': 6.6.0
+  '@lingui/message-utils': 6.6.0
   react: 19.2.8
   react-dom: 19.2.8
   react-router: 8.3.0

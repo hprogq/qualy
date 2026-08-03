@@ -1,0 +1,24 @@
+{
+  "name": "@qualy/web-i18n",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.tsx",
+    "./format": "./src/format.ts",
+    "./messages": "./src/messages.ts"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  },
+  "dependencies": {
+    "@lingui/core": "catalog:",
+    "@lingui/message-utils": "catalog:",
+    "@qualy/i18n-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:"
+  }
+}

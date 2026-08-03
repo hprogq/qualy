@@ -8,5 +8,5 @@
     "packages/plugins/*/*/src",
     "packages/plugins/*/*/tests"
   ],
-  "exclude": ["packages/web-runtime", "packages/ui"]
+  "exclude": ["packages/web-runtime", "packages/web-i18n", "packages/ui"]
 }
