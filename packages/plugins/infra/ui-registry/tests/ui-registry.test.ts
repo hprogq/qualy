@@ -50,7 +50,7 @@ describe('plugin-ui-registry', () => {
         })
       },
     })
-    const url = `http://127.0.0.1:${ctx.server.port}/api/ui/manifest`
+    const url = `http://127.0.0.1:${ctx.server.port}/api/app/manifest`
     const manifest = async (as?: AuthPrincipal): Promise<ManifestShape> => {
       principalBox.current = as
       try {

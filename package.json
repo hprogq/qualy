@@ -15,12 +15,16 @@
     "@qualy/i18n-contract": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
     "drizzle-kit": "catalog:",
     "drizzle-orm": "catalog:",
     "pg": "catalog:",
+    "playwright": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
+    "vitest-browser-react": "catalog:",
     "yaml": "catalog:"
   },
   "scripts": {
@@ -36,6 +40,8 @@
     "plugin:add": "tsx scripts/plugin-add.ts",
     "seed": "tsx scripts/seed.ts",
     "test": "tsx scripts/gen.ts && vitest run",
-    "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts"
+    "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts",
+    "test:browser": "tsx scripts/gen.ts && vitest run --config vitest.browser.config.ts",
+    "test:all": "pnpm test && pnpm test:browser"
   }
 }

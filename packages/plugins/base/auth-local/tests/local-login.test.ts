@@ -67,7 +67,7 @@ describe.runIf(available)('local login through the auth core', () => {
       body: JSON.stringify({ identifier, password }),
     })
 
-  const me = (cookie?: string) => fetch(`${base}/auth/me`, { headers: cookie ? { cookie } : {} })
+  const me = (cookie?: string) => fetch(`${base}/auth/session`, { headers: cookie ? { cookie } : {} })
 
   const sessionCookieOf = (res: Response) => {
     const header = res.headers.get('set-cookie') ?? ''
@@ -169,7 +169,7 @@ describe.runIf(available)('local login through the auth core', () => {
   })
 
   it('lists only methods whose driver plugin is active, sorted', async () => {
-    const res = await fetch(`${base}/auth/methods`)
+    const res = await fetch(`${base}/auth/login-methods`)
     expect(res.status).toBe(200)
     const { methods } = (await res.json()) as {
       methods: { code: string; mode: string; component?: string }[]
@@ -224,7 +224,7 @@ describe.runIf(available)('local login through the auth core', () => {
     }
   })
 
-  it('serves /auth/me and expires sessions with cleanup', async () => {
+  it('serves the current session and expires stale ones with cleanup', async () => {
     await pool.query(`delete from sessions`)
     const cookie = sessionCookieOf(await login('local-primary', 'alice', PRIMARY_PASSWORD))
     expect((await me(cookie)).status).toBe(200)
@@ -264,11 +264,11 @@ describe.runIf(available)('local login through the auth core', () => {
 
   it('logs out idempotently and clears the cookie', async () => {
     const cookie = sessionCookieOf(await login('local-primary', 'alice', PRIMARY_PASSWORD))
-    const first = await fetch(`${base}/auth/logout`, { method: 'POST', headers: { cookie } })
+    const first = await fetch(`${base}/auth/session`, { method: 'DELETE', headers: { cookie } })
     expect(first.status).toBe(200)
     expect(first.headers.get('set-cookie')).toContain('qualy_session=;')
     expect((await me(cookie)).status).toBe(401)
-    const second = await fetch(`${base}/auth/logout`, { method: 'POST' })
+    const second = await fetch(`${base}/auth/session`, { method: 'DELETE' })
     expect(((await second.json()) as { ok: boolean }).ok).toBe(true)
   })
 
@@ -291,12 +291,12 @@ describe.runIf(available)('local login through the auth core', () => {
       `insert into auth_providers (tenant_id, code, type, name) values ($1, 'probe-x', 'probe', 'P')`,
       [ids.tenant],
     )
-    let res = (await (await fetch(`${base}/auth/methods`)).json()) as {
+    let res = (await (await fetch(`${base}/auth/login-methods`)).json()) as {
       methods: { code: string }[]
     }
     expect(res.methods.map((method) => method.code)).toContain('probe-x')
     await scoped.dispose()
-    res = (await (await fetch(`${base}/auth/methods`)).json()) as { methods: { code: string }[] }
+    res = (await (await fetch(`${base}/auth/login-methods`)).json()) as { methods: { code: string }[] }
     expect(res.methods.map((method) => method.code)).not.toContain('probe-x')
     await pool.query(`delete from auth_providers where code = 'probe-x'`)
   })
@@ -326,7 +326,7 @@ describe.runIf(available)('local login through the auth core', () => {
         [ids.tenant, code],
       )
     }
-    const res = (await (await fetch(`${base}/auth/methods`)).json()) as {
+    const res = (await (await fetch(`${base}/auth/login-methods`)).json()) as {
       methods: { code: string; href?: string }[]
     }
     const codes = res.methods.map((method) => method.code)

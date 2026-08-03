@@ -114,6 +114,9 @@ describe.runIf(available)('rbac', () => {
     userId,
     sessionId: 'test-session',
   })
+  // the service owns the wired instance: administration now decides
+  // authorization itself, so it needs the same authorization the api uses
+  const administration = () => (rbac as unknown as { administration: Administration }).administration
 
   beforeAll(async () => {
     await adminPool.query(`create database "${dbName}"`)
@@ -161,15 +164,18 @@ describe.runIf(available)('rbac', () => {
       [f.tenant, f.classType, f.college],
     )
     f.typeAdmin = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'administrator', 'Admin') returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login)
+       values ($1, 'administrator', 'Admin', true) returning id`,
       [f.tenant],
     )
     f.typeFaculty = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'faculty', 'Faculty') returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login)
+       values ($1, 'faculty', 'Faculty', true) returning id`,
       [f.tenant],
     )
     f.typeStudent = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'student', 'Student') returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login)
+       values ($1, 'student', 'Student', true) returning id`,
       [f.tenant],
     )
     const user = (name: string, typeId: string, node: string, tenant = f.tenant) =>
@@ -193,7 +199,8 @@ describe.runIf(available)('rbac', () => {
       [f.tenantB, uniTypeB],
     )
     const typeAdminB = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'administrator', 'Admin') returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login)
+       values ($1, 'administrator', 'Admin', true) returning id`,
       [f.tenantB],
     )
     f.adminB = await user('Admin B', typeAdminB, rootB, f.tenantB)
@@ -421,7 +428,7 @@ describe.runIf(available)('rbac', () => {
         orgNodeId: f.college,
         scope: 'self',
       }),
-    ).rejects.toThrow(/user type is not allowed/)
+    ).rejects.toThrow(/cannot be granted to this user at this node/)
     // class node type is not in the allowed org types
     await expect(
       rbac.createAssignment({
@@ -431,7 +438,7 @@ describe.runIf(available)('rbac', () => {
         orgNodeId: f.class1,
         scope: 'self',
       }),
-    ).rejects.toThrow(/org node type is not allowed/)
+    ).rejects.toThrow(/cannot be granted to this user at this node/)
     // tenant roles only bind to the root with subtree scope
     await expect(
       rbac.createAssignment({
@@ -441,7 +448,7 @@ describe.runIf(available)('rbac', () => {
         orgNodeId: f.college,
         scope: 'subtree',
       }),
-    ).rejects.toThrow(/bind to the root/)
+    ).rejects.toThrow(/cannot be granted to this user at this node/)
     // duplicates are refused
     await expect(
       rbac.createAssignment({
@@ -471,7 +478,7 @@ describe.runIf(available)('rbac', () => {
       )
     ).rows[0]
     await expect(rbac.removeAssignment(f.tenant, assignment.id)).rejects.toThrow(
-      /last tenant administrator/,
+      /must keep an administrator who can still sign in/,
     )
     // a second admin makes removal legal again
     const second = await rbac.createAssignment({
@@ -484,7 +491,7 @@ describe.runIf(available)('rbac', () => {
     await rbac.removeAssignment(f.tenant, assignment.id)
     // and the survivor is now protected
     await expect(rbac.removeAssignment(f.tenant, second)).rejects.toThrow(
-      /last tenant administrator/,
+      /must keep an administrator who can still sign in/,
     )
   })
 
@@ -785,7 +792,7 @@ describe.runIf(available)('rbac', () => {
   })
 
   it('administers roles without letting the tenant lock itself out', async () => {
-    const admin = new Administration(ctx)
+    const admin = administration()
     const roles = await admin.listRoles(f.tenant)
     const canonical = roles.find((role: RoleRow) => role.code === 'tenant-admin')!
     const manager = roles.find((role: RoleRow) => role.code === 'org-manager')!
@@ -824,41 +831,85 @@ describe.runIf(available)('rbac', () => {
       )
     ).rows[0].id as string
     expect(
-      await domainCode(admin.syncRoleAllowedSets(f.tenant, manager.id, { orgTypeIds: [otherType] })),
-    ).toBe('ASSIGNMENT_NOT_ELIGIBLE')
+      await domainCode(admin.syncRoleEligibility(f.tenant, manager.id, { orgTypeIds: [otherType] })),
+    ).toBe('ASSIGNMENT_STRANDED')
     // an empty set is refused outright
     expect(
-      await domainCode(admin.syncRoleAllowedSets(f.tenant, manager.id, { orgTypeIds: [] })),
-    ).toBe('ROLE_NEEDS_ALLOWED_SETS')
+      await domainCode(admin.syncRoleEligibility(f.tenant, manager.id, { orgTypeIds: [] })),
+    ).toBe('ROLE_NEEDS_ELIGIBILITY')
     // widening is fine
-    await admin.syncRoleAllowedSets(f.tenant, manager.id, {
+    await admin.syncRoleEligibility(f.tenant, manager.id, {
       orgTypeIds: [f.collegeType, otherType],
     })
   })
 
   it('reserves the canonical administrator role for its own holders', async () => {
-    const admin = new Administration(ctx)
+    const admin = administration()
     const roles = await admin.listRoles(f.tenant)
     const canonical = roles.find((role: RoleRow) => role.code === 'tenant-admin')!
-    const manager = roles.find((role: RoleRow) => role.code === 'org-manager')!
 
-    // the manager holds no tenant-admin assignment, so they may not grant it
+    // The scenario the reservation exists for: an org manager who legitimately
+    // administers grants across the whole tree, and still must not be able to
+    // promote themselves. Giving them that authority first is what isolates
+    // the role rule from the node rule.
+    const broad = (
+      await pool.query(
+        `insert into roles (tenant_id, code, name, kind) values ($1, 'grant-admin', 'GA', 'org')
+         returning id`,
+        [f.tenant],
+      )
+    ).rows[0].id as string
+    await pool.query(
+      `insert into role_permissions (tenant_id, role_id, permission_id)
+       select $1, $2, id from permissions where code = 'rbac.assignment.manage'`,
+      [f.tenant, broad],
+    )
+    await pool.query(
+      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+       values ($1, $2, $3, $4, 'subtree')`,
+      [f.tenant, f.manager, broad, f.root],
+    )
+    const keep = (await admin.listAssignments(f.tenant, { userId: f.manager })).map((row) => ({
+      roleId: row.role_id,
+      orgNodeId: row.org_node_id,
+      scope: row.scope,
+    }))
+    const grant = { roleId: canonical.id, orgNodeId: f.root, scope: 'subtree' as const }
+
+    // they may administer every node they touch, and are still refused
     expect(
-      await domainCode(admin.assertMayAdministerRole(f.tenant, canonical.id, f.manager)),
+      await domainCode(
+        admin.syncUserAssignments(f.tenant, f.manager, [...keep, grant], principal(f.manager)),
+      ),
     ).toBe('TENANT_ADMIN_REQUIRED')
-    // an administrator may
-    expect(await domainCode(admin.assertMayAdministerRole(f.tenant, canonical.id, f.admin))).toBe('ok')
-    // an ordinary role needs no such holder
-    expect(await domainCode(admin.assertMayAdministerRole(f.tenant, manager.id, f.manager))).toBe('ok')
+    // an administrator may, which proves the refusal was about the role
+    await admin.syncUserAssignments(f.tenant, f.manager, [...keep, grant], principal(f.admin))
+    expect(
+      (await admin.listAssignments(f.tenant, { userId: f.manager })).some(
+        (row) => row.role_id === canonical.id,
+      ),
+    ).toBe(true)
+    // now that they hold it they may also give it up: holding the role IS
+    // what authorizes administering it, and the tenant is still protected by
+    // the survivor invariant rather than by this rule
+    await admin.syncUserAssignments(f.tenant, f.manager, keep, principal(f.manager))
+    // and having given it up they cannot take it back
+    expect(
+      await domainCode(
+        admin.syncUserAssignments(f.tenant, f.manager, [...keep, grant], principal(f.manager)),
+      ),
+    ).toBe('TENANT_ADMIN_REQUIRED')
+    await pool.query(`delete from user_role_assignments where role_id = $1`, [broad])
+    await pool.query(`delete from roles where id = $1`, [broad])
   })
 
   it('replaces a user assignment set without dropping the last administrator', async () => {
-    const admin = new Administration(ctx)
-    // the admin is the only holder: clearing their set must fail as a whole
-    // the invariant is shared with removeAssignment, which raises a plain
-    // error rather than a domain code (it predates the dsl)
-    expect(await domainCode(admin.syncUserAssignments(f.tenant, f.admin, []))).toMatch(
-      /last tenant administrator/,
+    const admin = administration()
+    // the admin is the only holder: clearing their set must fail as a whole,
+    // and it fails with a declared code rather than a plain error that would
+    // reach a browser as an unexplained 500
+    expect(await domainCode(admin.syncUserAssignments(f.tenant, f.admin, []))).toBe(
+      'LAST_ADMINISTRATOR',
     )
     const kept = await admin.listAssignments(f.tenant, { userId: f.admin })
     expect(kept.length).toBeGreaterThan(0)

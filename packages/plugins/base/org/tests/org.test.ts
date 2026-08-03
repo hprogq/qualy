@@ -164,8 +164,8 @@ describe.runIf(available)('org tree domain', () => {
     f.universityType = (await tree().createType(f.tenant, { code: 'university', name: '大学' })).id
     f.collegeType = (await tree().createType(f.tenant, { code: 'college', name: '学院' })).id
     f.classType = (await tree().createType(f.tenant, { code: 'class', name: '班级' })).id
-    await tree().createRule(f.tenant, f.universityType, f.collegeType)
-    await tree().createRule(f.tenant, f.collegeType, f.classType)
+    await tree().putRule(f.tenant, f.universityType, f.collegeType)
+    await tree().putRule(f.tenant, f.collegeType, f.classType)
 
     f.root = await insertRoot(f.tenant, f.universityType, 'A 大学')
     f.collegeA = (
@@ -314,23 +314,22 @@ describe.runIf(available)('org tree domain', () => {
   })
 
   it('keeps the type rule graph acyclic', async () => {
-    expect(await orgCode(tree().createRule(f.tenant, f.collegeType, f.collegeType))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.collegeType, f.collegeType))).toBe(
       'ORG_RULE_INVALID',
     )
     // direct back edge: college -> university while university -> college exists
-    expect(await orgCode(tree().createRule(f.tenant, f.collegeType, f.universityType))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.collegeType, f.universityType))).toBe(
       'ORG_RULE_CYCLE',
     )
     // transitive back edge: class -> university closes a 3-cycle
-    expect(await orgCode(tree().createRule(f.tenant, f.classType, f.universityType))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.classType, f.universityType))).toBe(
       'ORG_RULE_CYCLE',
     )
-    // duplicate rule
-    expect(await orgCode(tree().createRule(f.tenant, f.universityType, f.collegeType))).toBe(
-      'ORG_RULE_CONFLICT',
-    )
+    // the pair identifies the rule, so putting it again converges instead of
+    // reporting a conflict
+    expect(await orgCode(tree().putRule(f.tenant, f.universityType, f.collegeType))).toBe('ok')
     // unknown type
-    expect(await orgCode(tree().createRule(f.tenant, f.universityType, randomUUID()))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.universityType, randomUUID()))).toBe(
       'ORG_TYPE_NOT_FOUND',
     )
   })
@@ -360,8 +359,8 @@ describe.runIf(available)('org tree domain', () => {
     // a campus level between root and college gives the move real depth:
     // moving collegeA (with class1 inside) from the root under campus1
     const campus = await tree().createType(f.tenant, { code: 'campus', name: '校区' })
-    await tree().createRule(f.tenant, f.universityType, campus.id)
-    await tree().createRule(f.tenant, campus.id, f.collegeType)
+    await tree().putRule(f.tenant, f.universityType, campus.id)
+    await tree().putRule(f.tenant, campus.id, f.collegeType)
     const campus1 = await tree().createNode(f.tenant, {
       parentId: f.root,
       orgTypeId: campus.id,
@@ -395,8 +394,8 @@ describe.runIf(available)('org tree domain', () => {
     const x = await tree().createType(f.tenant, { code: 'cycle-x', name: '环X' })
     const y = await tree().createType(f.tenant, { code: 'cycle-y', name: '环Y' })
     const rules = await Promise.allSettled([
-      tree().createRule(f.tenant, x.id, y.id),
-      tree().createRule(f.tenant, y.id, x.id),
+      tree().putRule(f.tenant, x.id, y.id),
+      tree().putRule(f.tenant, y.id, x.id),
     ])
     expect(rules.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     const lost = rules.find((result) => result.status === 'rejected') as PromiseRejectedResult
@@ -438,7 +437,7 @@ describe.runIf(available)('org tree domain', () => {
     )
     // children rule: allow university -> class, then collegeA (with class1
     // child) still fails because class -> class is not allowed
-    await tree().createRule(f.tenant, f.universityType, f.classType)
+    await tree().putRule(f.tenant, f.universityType, f.classType)
     expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeA, f.classType))).toBe(
       'ORG_NODE_RULE_VIOLATION',
     )
@@ -481,7 +480,7 @@ describe.runIf(available)('org tree domain', () => {
     // types: in use by nodes, then by rules, then by role allowed lists
     expect(await orgCode(tree().deleteType(f.tenant, f.collegeType))).toBe('ORG_TYPE_IN_USE')
     const spare = await tree().createType(f.tenant, { code: 'spare', name: '备用类型' })
-    await tree().createRule(f.tenant, f.universityType, spare.id)
+    await tree().putRule(f.tenant, f.universityType, spare.id)
     expect(await orgCode(tree().deleteType(f.tenant, spare.id))).toBe('ORG_TYPE_IN_USE')
     await tree().deleteRule(f.tenant, f.universityType, spare.id)
     await pool.query(
@@ -564,7 +563,7 @@ describe.runIf(available)('org tree domain', () => {
     ).toBe(403)
     expect(
       (
-        await call('POST', `/org/nodes/${f.class1}/move`, { newParentId: f.collegeB }, manager)
+        await call('PUT', `/org/nodes/${f.class1}/placement`, { parentId: f.collegeB }, manager)
       ).status,
     ).toBe(403)
     // type/rule management targets the root: manager holds no grant there
@@ -578,9 +577,9 @@ describe.runIf(available)('org tree domain', () => {
     expect(conflict.status).toBe(409)
     expect(((await conflict.json()) as { code: string }).code).toBe('ORG_NODE_CONFLICT')
     const invalid = await call(
-      'POST',
-      `/org/nodes/${f.collegeA}/move`,
-      { newParentId: f.class1 },
+      'PUT',
+      `/org/nodes/${f.collegeA}/placement`,
+      { parentId: f.class1 },
       admin,
     )
     expect(invalid.status).toBe(422)
@@ -590,7 +589,7 @@ describe.runIf(available)('org tree domain', () => {
     // browser formats the count into its own locale. collegeB needs a legal
     // target type (university -> class) so the check reaches the assignment
     // rule instead of failing on the parent rule first.
-    await tree().createRule(f.tenant, f.universityType, f.classType)
+    await tree().putRule(f.tenant, f.universityType, f.classType)
     const guarded = await pool.query(
       `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
        values ($1, $2, $3, $4, 'self') returning id`,
@@ -681,9 +680,9 @@ describe.runIf(available)('org tree domain', () => {
       [f.tenant, f.student, f.managerRole, f.collegeB],
     )
     const response = await call(
-      'POST',
-      `/org/nodes/${f.collegeA}/move`,
-      { newParentId: f.collegeB },
+      'PUT',
+      `/org/nodes/${f.collegeA}/placement`,
+      { parentId: f.collegeB },
       principal(f.student),
     )
     expect(response.status).toBe(403)

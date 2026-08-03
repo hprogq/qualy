@@ -41,14 +41,14 @@ describe('plugin-ping', () => {
     expect(await response.json()).toEqual({ msg: 'test, case' })
     expect(inserted).toEqual([{ name: 'case' }])
 
-    const manifest = (await (await fetch(`${base}/ui/manifest`)).json()) as {
+    const manifest = (await (await fetch(`${base}/app/manifest`)).json()) as {
       pages: { path: string }[]
     }
     expect(manifest.pages.map((entry) => entry.path)).toEqual(['/ping'])
 
     await fiber.dispose()
     expect((await fetch(`${base}/ping/hello?name=x`)).status).toBe(404)
-    const after = (await (await fetch(`${base}/ui/manifest`)).json()) as { pages: unknown[] }
+    const after = (await (await fetch(`${base}/app/manifest`)).json()) as { pages: unknown[] }
     expect(after.pages).toEqual([])
 
     await serverFiber.dispose()
