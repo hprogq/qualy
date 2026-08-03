@@ -64,8 +64,11 @@ export default function UserTypesPage() {
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {format(m.userCount, { count: type.userCount })}
-                      {type.allowedOrgTypeIds.length > 0 &&
-                        ` · ${format(m.placementCount, { count: type.allowedOrgTypeIds.length })}`}
+                      {type.placementPolicy.mode === 'allow-list'
+                        ? ` · ${format(m.placementCount, {
+                            count: type.placementPolicy.orgTypeIds.length,
+                          })}`
+                        : ` · ${format(m.placementUnrestricted)}`}
                     </span>
                   </button>
                 </li>

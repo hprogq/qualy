@@ -1,14 +1,17 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { CheckboxGroup, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { AsyncSection, CheckboxGroup, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
 
-// A type is created complete. Creating a bare one leaves it enabled with no
-// sign-in channel and no permissions, which looks configured and is not.
+// A type is created complete, placement policy included. A type created
+// without one constrains nothing while looking configured, and the window
+// before somebody remembers to set it is exactly when a person gets placed
+// where that kind of person should never be.
 export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string) => void }) {
   const api = useApi()
   const orpc = useApiQuery()
@@ -18,8 +21,9 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [channels, setChannels] = useState<string[]>(['local'])
-
-
+  const [unrestricted, setUnrestricted] = useState(false)
+  const [orgTypeIds, setOrgTypeIds] = useState<string[]>([])
+  const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
 
   const create = useMutation({
     mutationFn: () =>
@@ -28,11 +32,15 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
         name,
         allowLocalLogin: channels.includes('local'),
         allowSsoLogin: channels.includes('sso'),
+        placementPolicy: unrestricted
+          ? { mode: 'unrestricted' }
+          : { mode: 'allow-list', orgTypeIds },
       }),
     onMutate: () => setFeedback(null),
     onSuccess: async (result) => {
       setCode('')
       setName('')
+      setOrgTypeIds([])
 
       await queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
       onCreated(result.id)
@@ -72,10 +80,47 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
           selected={channels}
           onChange={setChannels}
         />
+        <AsyncSection
+          pending={catalog.isPending}
+          error={catalog.isError ? formatError(catalog.error) : null}
+          loadingLabel={format(commonMessages.loading)}
+          retryLabel={format(commonMessages.retry)}
+          onRetry={() => void catalog.refetch()}
+        >
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">{format(m.placementHint)}</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={unrestricted}
+                onChange={(event) => setUnrestricted(event.target.checked)}
+              />
+              {format(m.placementUnrestricted)}
+            </label>
+            {!unrestricted && (
+              <CheckboxGroup
+                legend={format(m.allowedOrgTypesLegend)}
+                emptyLabel={format(m.noOptions)}
+                options={(catalog.data?.orgTypes ?? []).map((type) => ({
+                  value: type.id,
+                  label: type.name,
+                  hint: type.code,
+                }))}
+                selected={orgTypeIds}
+                onChange={setOrgTypeIds}
+              />
+            )}
+          </div>
+        </AsyncSection>
         <Button
           size="sm"
           type="submit"
-          disabled={create.isPending || code.trim() === '' || name.trim() === ''}
+          disabled={
+            create.isPending ||
+            code.trim() === '' ||
+            name.trim() === '' ||
+            (!unrestricted && orgTypeIds.length === 0)
+          }
         >
           {format(m.create)}
         </Button>

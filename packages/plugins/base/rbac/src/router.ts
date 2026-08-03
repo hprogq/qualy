@@ -32,8 +32,8 @@ const toRoleDto = (
   grantCount: row.grant_count,
   permissions: permissions.active,
   unavailablePermissions: permissions.unavailable,
-  allowedUserTypeIds: row.allowed_user_types,
-  allowedOrgTypeIds: row.allowed_org_types,
+  eligibleUserTypeIds: row.allowed_user_types,
+  anchorOrgTypeIds: row.allowed_org_types,
 })
 
 const toGrantDto = (row: GrantRow): RoleGrantDto => ({

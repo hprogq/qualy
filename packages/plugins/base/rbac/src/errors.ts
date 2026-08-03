@@ -32,7 +32,7 @@ export const accessErrors = defineDomainErrors({
   },
   ROLE_NEEDS_ELIGIBILITY: {
     status: 422,
-    message: 'an org role needs at least one allowed user type and org type',
+    message: 'an active role needs at least one eligible user type, and an org role an org type',
   },
   // a tenant role may hold anything; an org role is anchored, so a
   // tenant-wide capability inside it would have nowhere to apply

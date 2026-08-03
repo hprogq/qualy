@@ -31,8 +31,14 @@ export const userTypes = snakeCase.table(
     allowSsoLogin: boolean().default(false).notNull(),
     enabled: boolean().default(true).notNull(),
     isSystem: boolean().default(false).notNull(),
-    // the allowed org types are replaced as a set, and replacing a set read
-    // a moment ago must not silently undo what happened in between
+    // Whether this kind of person may stand anywhere, or only under the org
+    // types listed in user_type_allowed_org_types. It is a column rather
+    // than "an empty list means anywhere" because that reading made
+    // unchecking the last box widen the rule instead of narrowing it, with
+    // no warning and no stranded-user check.
+    placementMode: varchar({ length: 16 }).default('unrestricted').notNull(),
+    // the whole row is versioned, not one part of it: every mutation bumps
+    // it, so a set replacement based on a stale read is refused
     version: integer().default(1).notNull(),
     sortOrder: smallint().default(0).notNull(),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
@@ -42,6 +48,10 @@ export const userTypes = snakeCase.table(
     check('chk_user_types_code_format', sql`${table.code} ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'`),
     check('chk_user_types_name_not_blank', sql`btrim(${table.name}) <> ''`),
     check('chk_user_types_sort_order_non_negative', sql`${table.sortOrder} >= 0`),
+    check(
+      'chk_user_types_placement_mode',
+      sql`${table.placementMode} in ('unrestricted', 'allow-list')`,
+    ),
     uniqueIndex('uq_user_types_tenant_id_id').on(table.tenantId, table.id),
     uniqueIndex('uq_user_types_tenant_code').on(table.tenantId, table.code),
     uniqueIndex('uq_user_types_tenant_name').on(table.tenantId, table.name),

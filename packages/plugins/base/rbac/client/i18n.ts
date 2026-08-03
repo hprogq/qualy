@@ -73,13 +73,16 @@ const i18n = definePluginMessages({
     codeLabel: { id: 'rbac/field/code', defaultMessage: 'Code' },
     descriptionLabel: { id: 'rbac/field/description', defaultMessage: 'Description' },
     permissionsLegend: { id: 'rbac/field/permissions', defaultMessage: 'Permissions' },
+    // named for the question each answers: a role is granted TO people and
+    // applies AT places, and neither is the same as where those people
+    // personally belong
     userTypesLegend: {
       id: 'rbac/field/allowed-user-types',
       defaultMessage: 'May be granted to these user types',
     },
     orgTypesLegend: {
       id: 'rbac/field/allowed-org-types',
-      defaultMessage: 'May be anchored at these node types',
+      defaultMessage: 'This duty applies at these kinds of node',
     },
     noOptions: { id: 'rbac/field/no-options', defaultMessage: 'Nothing to choose from yet.' },
     assignableLabel: { id: 'rbac/field/assignable', defaultMessage: 'Can be granted' },
@@ -123,7 +126,8 @@ const i18n = definePluginMessages({
       },
       ROLE_NEEDS_ELIGIBILITY: {
         id: 'rbac/error/role-needs-eligibility',
-        defaultMessage: 'An organization role needs at least one user type and one node type.',
+        defaultMessage:
+          'An active role needs at least one eligible user type, and an organization role a node type.',
       },
       GRANT_STRANDED: {
         message: strandedMessage,

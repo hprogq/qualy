@@ -13,6 +13,18 @@ const description = z.string().max(500)
 
 export const resourceStatus = z.enum(['active', 'disabled'])
 
+// Where a kind of person may stand, stated rather than inferred. The list
+// used to carry the whole meaning, with "empty" reading as "anywhere", so
+// unchecking the last entry widened the rule instead of narrowing it and
+// skipped the check for people already standing somewhere it no longer
+// allowed. An allow-list must name at least one type; meaning "anywhere" is
+// a different answer and says so.
+export const placementPolicy = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('unrestricted') }),
+  z.object({ mode: z.literal('allow-list'), orgTypeIds: z.array(z.uuid()).min(1).max(50) }),
+])
+export type PlacementPolicyInput = z.infer<typeof placementPolicy>
+
 export const userTypeDto = z.object({
   id: z.string(),
   code: z.string(),
@@ -26,10 +38,9 @@ export const userTypeDto = z.object({
   sortOrder: z.number().int(),
   version: z.number().int(),
   userCount: z.number().int(),
-  // Where this kind of person may stand. A user type confers no authority —
-  // that is what roles are for — so this is the whole of what it decides.
-  // An empty set means unconstrained.
-  allowedOrgTypeIds: z.array(z.string()),
+  // Where this kind of person may stand. A user type confers no authority
+  // (that is what roles are for), so this is the whole of what it decides.
+  placementPolicy,
 })
 
 export const userDto = z.object({
@@ -76,9 +87,12 @@ export const identityContract = {
         allowLocalLogin: z.boolean().optional(),
         allowSsoLogin: z.boolean().optional(),
         sortOrder: z.number().int().min(0).max(32767).optional(),
+        // required: a type created without one constrains nothing, and
+        // "not configured yet" is indistinguishable from "deliberately open"
+        placementPolicy,
       }),
     )
-    .errors(e.pick('USER_TYPE_CONFLICT'))
+    .errors(e.pick('USER_TYPE_CONFLICT', 'USER_TYPE_ORG_TYPE_NOT_FOUND'))
     .output(z.object({ id: z.string() })),
   getUserType: get('/iam/user-types/{userTypeId}')
     .input(z.object({ userTypeId: z.uuid() }))
@@ -103,28 +117,38 @@ export const identityContract = {
       ...accessInvariantErrors.pick('LAST_ADMINISTRATOR'),
     })
     .output(okOutput),
-  // where this kind of person may stand, replaced as a set
-  getUserTypeOrgTypes: get('/iam/user-types/{userTypeId}/allowed-org-types')
+  // where this kind of person may stand, replaced whole
+  getPlacementPolicy: get('/iam/user-types/{userTypeId}/placement-policy')
     .input(z.object({ userTypeId: z.uuid() }))
     .errors(e.pick('USER_TYPE_NOT_FOUND'))
-    .output(z.object({ orgTypeIds: z.array(z.string()), version: z.number().int() })),
-  syncUserTypeOrgTypes: put('/iam/user-types/{userTypeId}/allowed-org-types')
+    .output(z.object({ policy: placementPolicy, version: z.number().int() })),
+  setPlacementPolicy: put('/iam/user-types/{userTypeId}/placement-policy')
     .input(
       z.object({
         userTypeId: z.uuid(),
-        orgTypeIds: z.array(z.uuid()).max(50),
+        policy: placementPolicy,
         expectedVersion: z.number().int().min(1),
       }),
     )
     .errors(
       e.pick(
         'USER_TYPE_NOT_FOUND',
+        'USER_TYPE_IS_SYSTEM',
         'USER_TYPE_ORG_TYPE_NOT_FOUND',
         'USER_TYPE_PLACEMENT_IN_USE',
         'USER_TYPE_VERSION_CONFLICT',
       ),
     )
     .output(z.object({ version: z.number().int() })),
+  // The org types a user type screen needs to state its placement policy,
+  // behind that screen's own permission. Borrowing the role screen's options
+  // endpoint meant a user type administrator had to also hold role read, and
+  // a legitimate one would have seen an empty picker instead.
+  getUserTypeOptions: get('/iam/user-type-options').output(
+    z.object({
+      orgTypes: z.array(z.object({ id: z.string(), code: z.string(), name: z.string() })),
+    }),
+  ),
   setUserTypeStatus: put('/iam/user-types/{userTypeId}/status')
     .input(z.object({ userTypeId: z.uuid(), status: resourceStatus }))
     .errors(e.pick('USER_TYPE_NOT_FOUND', 'USER_TYPE_IN_USE'))
@@ -174,7 +198,7 @@ export const identityContract = {
             id: z.string(),
             code: z.string(),
             name: z.string(),
-            allowedOrgTypeIds: z.array(z.string()),
+            placementPolicy,
           }),
         ),
       }),

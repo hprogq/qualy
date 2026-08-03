@@ -24,6 +24,15 @@ export const orgErrors = defineDomainErrors({
     message: 'role assignments reject the requested organization type',
     data: z.object({ assignmentCount: z.number().int().nonnegative() }),
   },
+  // The people standing here do not move when the node is retyped, so the
+  // node changing under them strands them exactly as a transfer would. Only
+  // grants were checked before, which let a school retype a class into a
+  // college and leave its students standing somewhere their type forbids.
+  ORG_NODE_PLACEMENT_INCOMPATIBLE: {
+    status: 409,
+    message: 'users standing here may not be placed on the requested organization type',
+    data: z.object({ userCount: z.number().int().nonnegative() }),
+  },
   ORG_RULE_INVALID: { status: 422, message: 'invalid hierarchy rule' },
   ORG_RULE_CYCLE: { status: 422, message: 'the rule would create a cycle in the type graph' },
   ORG_NODE_RULE_VIOLATION: {

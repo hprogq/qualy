@@ -20,8 +20,8 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [permissionCodes, setPermissionCodes] = useState<string[]>([])
-  const [allowedUserTypeIds, setAllowedUserTypeIds] = useState<string[]>([])
-  const [allowedOrgTypeIds, setAllowedOrgTypeIds] = useState<string[]>([])
+  const [eligibleUserTypeIds, setEligibleUserTypeIds] = useState<string[]>([])
+  const [anchorOrgTypeIds, setAnchorOrgTypeIds] = useState<string[]>([])
 
   const catalog = useQuery(
     orpc.access.listPermissions.queryOptions({
@@ -40,8 +40,8 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
       setCode('')
       setName('')
       setPermissionCodes([])
-      setAllowedUserTypeIds([])
-      setAllowedOrgTypeIds([])
+      setEligibleUserTypeIds([])
+      setAnchorOrgTypeIds([])
       await queryClient.invalidateQueries({ queryKey: orpc.access.key() })
       onCreated(result.id)
     },
@@ -51,8 +51,8 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
   const incomplete =
     code.trim() === '' ||
     name.trim() === '' ||
-    allowedUserTypeIds.length === 0 ||
-    allowedOrgTypeIds.length === 0
+    eligibleUserTypeIds.length === 0 ||
+    anchorOrgTypeIds.length === 0
 
   return (
     <Panel title={format(m.newRole)} description={format(m.newRoleHint)}>
@@ -113,8 +113,8 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
                 label: type.name,
                 hint: type.code,
               }))}
-              selected={allowedUserTypeIds}
-              onChange={setAllowedUserTypeIds}
+              selected={eligibleUserTypeIds}
+              onChange={setEligibleUserTypeIds}
             />
             <CheckboxGroup
               legend={format(m.orgTypesLegend)}
@@ -124,8 +124,8 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
                 label: type.name,
                 hint: type.code,
               }))}
-              selected={allowedOrgTypeIds}
-              onChange={setAllowedOrgTypeIds}
+              selected={anchorOrgTypeIds}
+              onChange={setAnchorOrgTypeIds}
             />
           </div>
         </AsyncSection>

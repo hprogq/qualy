@@ -8,6 +8,7 @@ import Database from '@qualy/plugin-database'
 import Server, { type AuthPrincipal } from '@qualy/plugin-server'
 import UiRegistry from '@qualy/plugin-ui-registry'
 import Rbac from '@qualy/plugin-rbac'
+import Auth from '@qualy/plugin-auth'
 import { isAccessDeniedError, isDomainError, type DomainError } from '@qualy/api-contract'
 import Org from '../src/index.ts'
 
@@ -147,6 +148,9 @@ describe.runIf(available)('org tree domain', () => {
     await ctx.plugin(Server, { port: 0 })
     await ctx.plugin(UiRegistry)
     await ctx.plugin(Rbac)
+    // org asks auth whether retyping a node would strand the people standing
+    // on it, so the two are assembled together here as they are in the host
+    await ctx.plugin(Auth)
     await ctx.plugin(Org)
     await ctx.plugin({
       name: 'test-principal',
@@ -212,12 +216,14 @@ describe.runIf(available)('org tree domain', () => {
     f.student = await user('Student', typeFaculty, f.class1)
 
     f.tenantAdminRole = await row(
-      `insert into roles (tenant_id, code, name, kind, is_system)
-       values ($1, 'tenant-admin', 'TA', 'tenant', true) returning id`,
+      `insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+       values ($1, 'tenant-admin', 'TA', 'tenant', 'active', 'all-active', 'tenant-admin')
+       returning id`,
       [f.tenant],
     )
     f.managerRole = await row(
-      `insert into roles (tenant_id, code, name, kind) values ($1, 'org-manager', 'OM', 'org') returning id`,
+      `insert into roles (tenant_id, code, name, kind, status)
+       values ($1, 'org-manager', 'OM', 'org', 'active') returning id`,
       [f.tenant],
     )
     await pool.query(
@@ -235,12 +241,12 @@ describe.runIf(available)('org tree domain', () => {
       [f.tenant, [f.tenantAdminRole, f.managerRole]],
     )
     await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
-       values ($1, $2, $3, $4, 'subtree')`,
-      [f.tenant, f.admin, f.tenantAdminRole, f.root],
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+       values ($1, $2, $3, null, null)`,
+      [f.tenant, f.admin, f.tenantAdminRole],
     )
     await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'subtree')`,
       [f.tenant, f.manager, f.managerRole, f.collegeA],
     )
@@ -444,14 +450,14 @@ describe.runIf(available)('org tree domain', () => {
     // assignment rule: collegeB has no children, but give it an org-manager
     // assignment (allowed org types: college only) and the change is blocked
     await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.managerRole, f.collegeB],
     )
     expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeB, f.classType))).toBe(
       'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
     )
-    await pool.query(`delete from user_role_assignments where org_node_id = $1`, [f.collegeB])
+    await pool.query(`delete from role_grants where org_node_id = $1`, [f.collegeB])
     // now the change works both ways
     await tree().changeNodeType(f.tenant, f.collegeB, f.classType)
     await tree().changeNodeType(f.tenant, f.collegeB, f.collegeType)
@@ -469,12 +475,12 @@ describe.runIf(available)('org tree domain', () => {
       name: '空班级',
     })
     await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.managerRole, empty.id],
     )
     expect(await orgCode(tree().deleteNode(f.tenant, empty.id))).toBe('ORG_NODE_IN_USE')
-    await pool.query(`delete from user_role_assignments where org_node_id = $1`, [empty.id])
+    await pool.query(`delete from role_grants where org_node_id = $1`, [empty.id])
     await tree().deleteNode(f.tenant, empty.id)
 
     // types: in use by nodes, then by rules, then by role allowed lists
@@ -591,7 +597,7 @@ describe.runIf(available)('org tree domain', () => {
     // rule instead of failing on the parent rule first.
     await tree().putRule(f.tenant, f.universityType, f.classType)
     const guarded = await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.manager, f.managerRole, f.collegeB],
     )
@@ -614,7 +620,7 @@ describe.runIf(available)('org tree domain', () => {
       // interpolates the count
       expect(payload.message).not.toMatch(/\d/)
     } finally {
-      await pool.query(`delete from user_role_assignments where id = $1`, [guarded.rows[0].id])
+      await pool.query(`delete from role_grants where id = $1`, [guarded.rows[0].id])
       await tree().deleteRule(f.tenant, f.universityType, f.classType)
     }
     const missing = await call('DELETE', `/org/nodes/${randomUUID()}`, undefined, admin)
@@ -636,7 +642,7 @@ describe.runIf(available)('org tree domain', () => {
     // a self-scope read grant must never widen into the subtree through the
     // nodeId branch of getTree
     const selfGrant = await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeA],
     )
@@ -663,19 +669,19 @@ describe.runIf(available)('org tree domain', () => {
       principal(f.manager),
     )
     expect(((await managed.json()) as { nodes: unknown[] }).nodes.length).toBeGreaterThan(1)
-    await pool.query(`delete from user_role_assignments where id = $1`, [selfGrant.rows[0].id])
+    await pool.query(`delete from role_grants where id = $1`, [selfGrant.rows[0].id])
   })
 
   it('refuses to move a subtree the caller only holds a self anchor on', async () => {
     // escalation attempt: self anchor on collegeA (whose subtree is not
     // granted) plus a managed destination must not relocate the descendants
     const selfGrant = await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeA],
     )
     const destGrant = await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'subtree') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeB],
     )
@@ -689,7 +695,7 @@ describe.runIf(available)('org tree domain', () => {
     // the tree is untouched
     const row = await pool.query(`select parent_id from org_nodes where id = $1`, [f.collegeA])
     expect(row.rows[0].parent_id).toBe(f.root)
-    await pool.query(`delete from user_role_assignments where id = any($1::uuid[])`, [
+    await pool.query(`delete from role_grants where id = any($1::uuid[])`, [
       [selfGrant.rows[0].id, destGrant.rows[0].id],
     ])
   })
@@ -698,7 +704,7 @@ describe.runIf(available)('org tree domain', () => {
     // a self manage grant can rename but never move: the ui must see the
     // difference instead of offering a move the server will refuse
     const selfGrant = await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeA],
     )
@@ -713,7 +719,7 @@ describe.runIf(available)('org tree domain', () => {
       nodes: { id: string; manageable: boolean; subtreeManageable: boolean }[]
     }).nodes.find((node) => node.id === f.collegeA)
     expect(managerNode).toMatchObject({ manageable: true, subtreeManageable: true })
-    await pool.query(`delete from user_role_assignments where id = $1`, [selfGrant.rows[0].id])
+    await pool.query(`delete from role_grants where id = $1`, [selfGrant.rows[0].id])
   })
 
   it('re-validates type and rule management at the root inside the lock', async () => {
@@ -762,12 +768,12 @@ describe.runIf(available)('org tree domain', () => {
     // a second, nested subtree grant collapses into the root grant; a self
     // grant on an uncovered node surfaces as a bare node
     await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
-       values ($1, $2, $3, $4, 'subtree')`,
-      [f.tenant, f.admin, f.tenantAdminRole, f.root],
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+       values ($1, $2, $3, null, null)`,
+      [f.tenant, f.admin, f.tenantAdminRole],
     ).catch(() => {})
     const managerSelf = await pool.query(
-      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+      `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.manager, f.managerRole, f.collegeB],
     )
@@ -781,7 +787,7 @@ describe.runIf(available)('org tree domain', () => {
     const ids = new Set(body.nodes.map((node) => node.id))
     expect(ids.has(f.collegeB)).toBe(true)
     expect(ids.has(f.class1)).toBe(true)
-    await pool.query(`delete from user_role_assignments where id = $1`, [
+    await pool.query(`delete from role_grants where id = $1`, [
       managerSelf.rows[0].id,
     ])
   })

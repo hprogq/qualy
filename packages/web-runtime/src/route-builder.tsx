@@ -39,23 +39,28 @@ export function buildManifestRoutes({
     byLayout.set(page.layout, [...(byLayout.get(page.layout) ?? []), page])
   }
 
-  // host-level policy: the origin goes to the home page when there is one,
-  // and anything unmatched, including a route that vanished when the
-  // viewer's permissions changed, lands on one not-found screen
-  const index: RouteObject = {
-    index: true,
-    element: homePath ? <Navigate to={homePath} replace /> : slots.empty,
-  }
-  const catchAll: RouteObject = { path: '*', element: slots.notFound }
-
-  // Both of those are screens, so they belong inside a shell: mistyping an
-  // address used to drop the viewer onto a bare page with no navigation and
-  // no way back. The shell chosen is the one the viewer's own home page
-  // lives in. The host names no layout contract of its own, and a viewer
-  // with nothing to see keeps the standalone rendering below.
+  // Both of the screens below belong inside a shell: mistyping an address
+  // used to drop the viewer onto a bare page with no navigation and no way
+  // back. The shell chosen is the one the viewer's own home page lives in.
+  // The host names no layout contract of its own, and a viewer with nothing
+  // to see keeps the standalone rendering at the end.
   const provided = new Set(manifest.layouts.map((layout) => layout.contract))
   const home = manifest.pages.find((page) => page.path === homePath) ?? manifest.pages[0]
   const shell = home && provided.has(home.layout) ? home.layout : undefined
+
+  // host-level policy: the origin goes to the home page when there is one,
+  // and anything unmatched, including a route that vanished when the
+  // viewer's permissions changed, lands on one not-found screen.
+  //
+  // The redirect follows the resolved page rather than the requested path.
+  // A navigation entry can name a page the manifest no longer carries, and
+  // sending the viewer to it meant bouncing the origin straight onto the
+  // not-found screen instead of onto whatever they can actually open.
+  const index: RouteObject = {
+    index: true,
+    element: home ? <Navigate to={home.path} replace /> : slots.empty,
+  }
+  const catchAll: RouteObject = { path: '*', element: slots.notFound }
 
   const routes: RouteObject[] = manifest.layouts.map((layout) => ({
     element: (

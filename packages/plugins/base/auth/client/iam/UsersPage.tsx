@@ -142,7 +142,16 @@ export default function UsersPage() {
       </Panel>
 
       {active?.manageable && (
-        <NewUserForm orgNodeId={active.orgNodeId} userTypes={options.data?.userTypes ?? []} />
+        // only the kinds of person this node may hold: the api refuses the
+        // rest, and a picker offering them turns a rule into an error message
+        <NewUserForm
+          orgNodeId={active.orgNodeId}
+          userTypes={(options.data?.userTypes ?? []).filter(
+            (type) =>
+              type.placementPolicy.mode === 'unrestricted' ||
+              type.placementPolicy.orgTypeIds.includes(active.orgTypeId),
+          )}
+        />
       )}
     </div>
   )

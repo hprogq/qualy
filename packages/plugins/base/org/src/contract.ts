@@ -127,6 +127,7 @@ export const orgContract = {
         'ORG_TYPE_NOT_FOUND',
         'ORG_NODE_RULE_VIOLATION',
         'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
+        'ORG_NODE_PLACEMENT_INCOMPATIBLE',
       ),
     )
     .output(z.object({ node: orgNodeDto })),

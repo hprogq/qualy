@@ -29,7 +29,12 @@ export function UserTypeEditor({
   const [name, setName] = useState(userType.name)
   const [description, setDescription] = useState(userType.description ?? '')
   const [channels, setChannels] = useState<string[]>([])
-  const [orgTypeIds, setOrgTypeIds] = useState<string[]>(userType.allowedOrgTypeIds)
+  const [unrestricted, setUnrestricted] = useState(
+    userType.placementPolicy.mode === 'unrestricted',
+  )
+  const [orgTypeIds, setOrgTypeIds] = useState<string[]>(
+    userType.placementPolicy.mode === 'allow-list' ? userType.placementPolicy.orgTypeIds : [],
+  )
 
   useEffect(() => {
     setName(userType.name)
@@ -44,11 +49,14 @@ export function UserTypeEditor({
   }, [userType])
 
   // A user type decides where its people may stand, and nothing about what
-  // they may do — that is what roles are for. So the only set it edits is
-  // the org types it admits.
-  const catalog = useQuery(orpc.access.getRoleOptions.queryOptions())
+  // they may do (that is what roles are for). Its own options endpoint, so
+  // administering types needs no permission over roles.
+  const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
   useEffect(() => {
-    setOrgTypeIds(userType.allowedOrgTypeIds)
+    setUnrestricted(userType.placementPolicy.mode === 'unrestricted')
+    setOrgTypeIds(
+      userType.placementPolicy.mode === 'allow-list' ? userType.placementPolicy.orgTypeIds : [],
+    )
   }, [userType])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
@@ -76,12 +84,12 @@ export function UserTypeEditor({
       }),
     ),
   )
-  const saveOrgTypes = useMutation(
+  const savePlacement = useMutation(
     run(() =>
-      api.identity.syncUserTypeOrgTypes({
+      api.identity.setPlacementPolicy({
         userTypeId: userType.id,
         expectedVersion: userType.version,
-        orgTypeIds,
+        policy: unrestricted ? { mode: 'unrestricted' } : { mode: 'allow-list', orgTypeIds },
       }),
     ),
   )
@@ -193,23 +201,42 @@ export function UserTypeEditor({
         onRetry={() => void catalog.refetch()}
       >
         <div className="space-y-2">
-          <CheckboxGroup
-            legend={format(m.allowedOrgTypesLegend)}
-            emptyLabel={format(m.noOptions)}
-            disabled={!canManage}
-            options={(catalog.data?.orgTypes ?? []).map((type) => ({
-              value: type.id,
-              label: type.name,
-              hint: type.code,
-            }))}
-            selected={orgTypeIds}
-            onChange={setOrgTypeIds}
-          />
+          <p className="text-xs text-muted-foreground">{format(m.placementHint)}</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={unrestricted}
+              disabled={!canManage || userType.isSystem}
+              onChange={(event) => setUnrestricted(event.target.checked)}
+            />
+            {format(m.placementUnrestricted)}
+          </label>
+          {!unrestricted && (
+            <CheckboxGroup
+              legend={format(m.allowedOrgTypesLegend)}
+              emptyLabel={format(m.noOptions)}
+              disabled={!canManage || userType.isSystem}
+              options={(catalog.data?.orgTypes ?? []).map((type) => ({
+                value: type.id,
+                label: type.name,
+                hint: type.code,
+              }))}
+              selected={orgTypeIds}
+              onChange={setOrgTypeIds}
+            />
+          )}
           <Button
             size="sm"
             variant="outline"
-            disabled={!canManage || saveOrgTypes.isPending}
-            onClick={() => saveOrgTypes.mutate(undefined as never)}
+            // an allow-list naming nothing is not a policy, and the api says
+            // so; the button says so first
+            disabled={
+              !canManage ||
+              userType.isSystem ||
+              savePlacement.isPending ||
+              (!unrestricted && orgTypeIds.length === 0)
+            }
+            onClick={() => savePlacement.mutate(undefined as never)}
           >
             {format(m.save)}
           </Button>

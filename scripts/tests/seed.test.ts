@@ -80,13 +80,15 @@ describe.runIf(available)('tenant bootstrap seed', () => {
       root: 1,
       userTypes: 1,
       provider: 1,
-      // 11 catalog rows (rbac 4 + auth 5 + org 2), the tenant-admin role,
-      // its full defaultTenantAdmin mapping, the administrator portal grant
-      // and the admin root/subtree assignment
-      permissions: 11,
+      // the catalogue, the canonical tenant-admin role and the one grant
+      // that hands it to the recovery account. The role maps no permissions
+      // of its own: it reaches every active capability by mode rather than
+      // by a mapping that a new plugin would have to backfill. Nothing is
+      // granted to a user type, because a type confers no authority at all.
+      permissions: 16,
       roles: 1,
-      rolePermissions: 11,
-      userTypeGrants: 1,
+      rolePermissions: 0,
+      userTypeGrants: 0,
       assignments: 1,
       demoNodes: 0,
       demoUsers: 0,
@@ -145,12 +147,43 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     expect(demo.created.demoNodes).toBe(4)
     expect(demo.created.demoUsers).toBe(2)
     expect(demo.created.userTypes).toBe(2)
-    // org-manager with its six permissions, two portal grants and the
-    // manager's college/subtree assignment
+    // org-manager with its six permissions and the manager's college/subtree
+    // grant. No user type receives anything: what a kind of person may do is
+    // decided entirely by the roles they hold.
     expect(demo.created.roles).toBe(1)
     expect(demo.created.rolePermissions).toBe(6)
-    expect(demo.created.userTypeGrants).toBe(2)
+    expect(demo.created.userTypeGrants).toBe(0)
     expect(demo.created.assignments).toBe(1)
+
+    // The invariant both plugins can break, asked of the whole tenant at
+    // once: every enabled person stands where their type permits, and a
+    // system identity stands at the root. Checked here because this is the
+    // one place a migration and a seed have both just run.
+    const violations = await pool.query(`
+      select count(*)::int as count
+      from users u
+      join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
+      join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+      where not case
+        when t.is_system then n.parent_id is null
+        when t.placement_mode = 'unrestricted' then true
+        else exists (
+          select 1 from user_type_allowed_org_types a
+          where a.tenant_id = u.tenant_id and a.user_type_id = u.user_type_id
+            and a.org_type_id = n.org_type_id)
+      end`)
+    expect(violations.rows[0].count).toBe(0)
+
+    // and every type says which of the two it means, rather than leaving it
+    // to be inferred from whether a list happens to be empty
+    const modes = await pool.query(
+      `select code, placement_mode from user_types order by code`,
+    )
+    expect(modes.rows.map((row) => [row.code, row.placement_mode])).toEqual([
+      ['faculty', 'allow-list'],
+      ['student', 'allow-list'],
+      ['system-account', 'allow-list'],
+    ])
 
     const again = await inTransaction((client) =>
       seed(client, { ...ADMIN, demo: true, demoPassword: 'demo-test-password-1' }),

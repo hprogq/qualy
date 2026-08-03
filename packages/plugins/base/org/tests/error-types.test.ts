@@ -28,6 +28,13 @@ export const throughFacade = defineErrorTranslations(orgErrors, {
   ORG_NODE_IN_USE: plain,
   ORG_NODE_IS_ROOT: plain,
   ORG_NODE_HAS_CHILDREN: plain,
+  ORG_NODE_PLACEMENT_INCOMPATIBLE: {
+    message: defineMessage<{ userCount: number }>()({
+      id: 'org/probe/placement',
+      defaultMessage: '{userCount} people',
+    }),
+    values: (data) => ({ userCount: data.userCount }),
+  },
   ORG_NODE_ASSIGNMENT_INCOMPATIBLE: {
     message: valued,
     // @ts-expect-error the message declares assignmentCount, not total
@@ -58,6 +65,13 @@ export const foreignCode = defineErrorTranslations(orgErrors, {
   ORG_NODE_IN_USE: plain,
   ORG_NODE_IS_ROOT: plain,
   ORG_NODE_HAS_CHILDREN: plain,
+  ORG_NODE_PLACEMENT_INCOMPATIBLE: {
+    message: defineMessage<{ userCount: number }>()({
+      id: 'org/probe/placement',
+      defaultMessage: '{userCount} people',
+    }),
+    values: (data) => ({ userCount: data.userCount }),
+  },
   ORG_NODE_ASSIGNMENT_INCOMPATIBLE: {
     message: valued,
     values: (data) => ({ assignmentCount: data.assignmentCount }),
@@ -83,6 +97,13 @@ export const wrongData = defineErrorTranslations(orgErrors, {
   ORG_NODE_IN_USE: plain,
   ORG_NODE_IS_ROOT: plain,
   ORG_NODE_HAS_CHILDREN: plain,
+  ORG_NODE_PLACEMENT_INCOMPATIBLE: {
+    message: defineMessage<{ userCount: number }>()({
+      id: 'org/probe/placement',
+      defaultMessage: '{userCount} people',
+    }),
+    values: (data) => ({ userCount: data.userCount }),
+  },
   ORG_NODE_ASSIGNMENT_INCOMPATIBLE: {
     message: valued,
     // @ts-expect-error the schema calls it assignmentCount, not blockingCount

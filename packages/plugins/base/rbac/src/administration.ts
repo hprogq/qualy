@@ -15,14 +15,15 @@ import { assertGrantEligible } from './eligibility.ts'
 import { assertMayDefineRole, assertMayGrantRole } from './escalation.ts'
 import { accessErrors } from './errors.ts'
 
-// the refusals that mean "not offerable here", as distinct from everything
-// else, which means something is broken
+// The refusals that mean "this role is not offerable here", as distinct
+// from everything else, which means something is broken or absent. A
+// missing user or node is deliberately not in this set: it says the request
+// named something that does not exist, which is an answer of its own and
+// must not be flattened into an empty list of options.
 const GRANT_REFUSALS = new Set([
   'GRANT_NOT_ELIGIBLE',
   'GRANT_ESCALATION_REFUSED',
   'TENANT_ADMIN_REQUIRED',
-  'GRANT_USER_NOT_FOUND',
-  'GRANT_NODE_NOT_FOUND',
 ])
 const isGrantRefusal = (error: unknown) =>
   isAccessDeniedError(error) || (isDomainError(error) && GRANT_REFUSALS.has(error.code))
@@ -241,18 +242,20 @@ export class Administration {
     // nothing, so it is as incomplete as one with no rows at all
     const active = new Set(this.authorization.activeCodes())
     if (codes.filter((code) => active.has(code)).length === 0) missing.push('permissions')
-    if (role.kind === 'org') {
-      const counts = (
-        await tx.execute<{ user_types: number; org_types: number }>(sql`
-          select
-            (select count(*)::int from role_allowed_user_types
-             where tenant_id = ${tenantId} and role_id = ${role.id}) as user_types,
-            (select count(*)::int from role_allowed_org_types
-             where tenant_id = ${tenantId} and role_id = ${role.id}) as org_types`)
-      ).rows[0]!
-      if (counts.user_types === 0) missing.push('user-types')
-      if (counts.org_types === 0) missing.push('org-types')
-    }
+    const counts = (
+      await tx.execute<{ user_types: number; org_types: number }>(sql`
+        select
+          (select count(*)::int from role_allowed_user_types
+           where tenant_id = ${tenantId} and role_id = ${role.id}) as user_types,
+          (select count(*)::int from role_allowed_org_types
+           where tenant_id = ${tenantId} and role_id = ${role.id}) as org_types`)
+    ).rows[0]!
+    // every role says who may hold it, whatever its kind: a role nobody is
+    // eligible for is as inert as one with no permissions, and leaving the
+    // set empty for tenant roles was what let the grant check skip it
+    if (counts.user_types === 0) missing.push('user-types')
+    // only an anchored role needs to say what it may anchor to
+    if (role.kind === 'org' && counts.org_types === 0) missing.push('org-types')
     if (missing.length > 0) throw accessErrors.create('ROLE_INCOMPLETE', { missing })
   }
 
@@ -348,31 +351,42 @@ export class Administration {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const role = await this.requireRole(tx, tenantId, roleId, expectedVersion)
-      if (role.kind !== 'org') throw accessErrors.create('ROLE_IS_SYSTEM')
+      // the canonical administrator is grantable to whoever the tenant
+      // designates; everything else declares who may hold it
+      if (role.system_key !== null) throw accessErrors.create('ROLE_IS_SYSTEM')
       const userTypeIds = [...new Set(sets.userTypeIds)]
-      const orgTypeIds = [...new Set(sets.orgTypeIds)]
-      if (role.status === 'active' && (userTypeIds.length === 0 || orgTypeIds.length === 0)) {
+      // A tenant role reaches the whole tenant, so it anchors to nothing and
+      // admits no org types: the field is simply not part of its policy, and
+      // the editor does not offer it.
+      const orgTypeIds = role.kind === 'org' ? [...new Set(sets.orgTypeIds)] : []
+      if (
+        role.status === 'active' &&
+        (userTypeIds.length === 0 || (role.kind === 'org' && orgTypeIds.length === 0))
+      ) {
         throw accessErrors.create('ROLE_NEEDS_ELIGIBILITY')
       }
       await this.replaceEligibility(tx, tenantId, role.id, { userTypeIds, orgTypeIds })
 
-      // the sets and the grants are checked together under one lock, so a
-      // narrowing that would orphan a grant fails as a whole
+      // The sets and the grants are checked together under one lock, so a
+      // narrowing that would orphan a grant fails as a whole. The node is
+      // joined outward because a tenant grant has none: an inner join
+      // dropped every one of them, so narrowing a tenant role's user types
+      // would have stranded its holders silently.
       const stranded = (
         await tx.execute<{ count: number }>(sql`
           select count(*)::int as count
           from role_grants g
           join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
-          join org_nodes n on n.tenant_id = g.tenant_id and n.id = g.org_node_id
+          left join org_nodes n on n.tenant_id = g.tenant_id and n.id = g.org_node_id
           where g.tenant_id = ${tenantId} and g.role_id = ${role.id}
             and (not exists (
                   select 1 from role_allowed_user_types t
                   where t.tenant_id = g.tenant_id and t.role_id = g.role_id
                     and t.user_type_id = u.user_type_id)
-              or not exists (
+              or (n.id is not null and not exists (
                   select 1 from role_allowed_org_types t
                   where t.tenant_id = g.tenant_id and t.role_id = g.role_id
-                    and t.org_type_id = n.org_type_id))`)
+                    and t.org_type_id = n.org_type_id)))`)
       ).rows[0]!.count
       if (stranded > 0) throw accessErrors.create('GRANT_STRANDED', { grantCount: stranded })
       await this.bump(tx, tenantId, role.id)
@@ -620,6 +634,25 @@ export class Administration {
     request: { userId: string; target: GrantTarget },
     actor?: Principal,
   ): Promise<{ id: string; code: string; name: string; kind: 'tenant' | 'org' }[]> {
+    // Asked once, up front, so a request naming somebody who is not there
+    // gets told so. Per-candidate probing treats every refusal alike, and a
+    // mistyped id used to come back as "no role can be offered here", which
+    // reads as a permission answer rather than a missing record.
+    const user = (
+      await this.db.execute(
+        sql`select 1 from users where tenant_id = ${tenantId} and id = ${request.userId}`,
+      )
+    ).rows[0]
+    if (!user) throw accessErrors.create('GRANT_USER_NOT_FOUND')
+    if (request.target.kind === 'org-node') {
+      const node = (
+        await this.db.execute(
+          sql`select 1 from org_nodes
+              where tenant_id = ${tenantId} and id = ${request.target.orgNodeId}`,
+        )
+      ).rows[0]
+      if (!node) throw accessErrors.create('GRANT_NODE_NOT_FOUND')
+    }
     const wantedKind = request.target.kind === 'tenant' ? 'tenant' : 'org'
     const candidates = (await this.listRoles(tenantId)).filter(
       (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,

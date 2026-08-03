@@ -39,6 +39,7 @@ export default {
   'org/error/node-is-root': '根节点不可移动或删除。',
   'org/error/node-has-children': '只能删除没有子节点的节点。',
   'org/error/assignment-incompatible': '有 {assignmentCount} 个角色授权不允许新的组织类型。',
+  'org/error/placement-incompatible': '有 {userCount} 个用户站在这里，其用户类型不允许挂在该组织类型下。',
   'org/error/rule-invalid': '该层级规则不合法。',
   'org/error/rule-cycle': '该规则会让类型层级成环。',
   'org/error/rule-violation': '层级规则不允许这样的父子类型组合。',

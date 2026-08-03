@@ -24,8 +24,14 @@ const toUserTypeDto = (row: UserTypeRow): UserTypeDto => ({
   sortOrder: row.sort_order,
   version: row.version,
   userCount: row.user_count,
-  allowedOrgTypeIds: row.allowed_org_types,
+  placementPolicy: toPolicy(row),
 })
+
+// the stored shape, read back as the union the contract speaks
+const toPolicy = (row: Pick<UserTypeRow, 'placement_mode' | 'allowed_org_types'>) =>
+  row.placement_mode === 'allow-list'
+    ? ({ mode: 'allow-list', orgTypeIds: row.allowed_org_types } as const)
+    : ({ mode: 'unrestricted' } as const)
 
 const toUserDto = (row: UserRow): IamUserDto => ({
   id: row.id,
@@ -77,21 +83,25 @@ export function createIdentityRouter(ctx: Context, service: IamService) {
       await service.updateUserType(context.principal.tenantId, input.userTypeId, input)
       return { ok: true as const }
     }),
-    getUserTypeOrgTypes: impl.getUserTypeOrgTypes.handler(async ({ context, input }) => {
+    getPlacementPolicy: impl.getPlacementPolicy.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.read')
       const row = await service.getUserType(context.principal.tenantId, input.userTypeId)
-      return { orgTypeIds: row.allowed_org_types, version: row.version }
+      return { policy: toPolicy(row), version: row.version }
     }),
-    syncUserTypeOrgTypes: impl.syncUserTypeOrgTypes.handler(async ({ context, input }) => {
+    setPlacementPolicy: impl.setPlacementPolicy.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
       return {
-        version: await service.syncUserTypeOrgTypes(
+        version: await service.syncPlacementPolicy(
           context.principal.tenantId,
           input.userTypeId,
-          input.orgTypeIds,
+          input.policy,
           input.expectedVersion,
         ),
       }
+    }),
+    getUserTypeOptions: impl.getUserTypeOptions.handler(async ({ context }) => {
+      await requireTenant(context.principal, 'auth.user-type.read')
+      return { orgTypes: await service.listOrgTypeOptions(context.principal.tenantId) }
     }),
     setUserTypeStatus: impl.setUserTypeStatus.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')

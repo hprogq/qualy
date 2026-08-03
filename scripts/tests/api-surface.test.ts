@@ -20,7 +20,7 @@ import { pingContract } from '../../packages/plugins/demo/ping/src/contract.ts'
 //   the first segment is a product domain (auth, iam, org, app, ping), never
 //   an implementation (rbac, ui-registry);
 //   a mutable subresource is replaced with PUT (status, placement,
-//   permissions, eligibility, role-assignments), not poked with a verb;
+//   permissions, eligibility, placement-policy), not poked with a verb;
 //   collections are plural nouns and relationships say what they relate.
 
 type Meta = { '~orpc'?: { meta?: { '~openapi'?: { method: string; path: string } } } }
@@ -58,24 +58,32 @@ const EXPECTED = [
   'GET /app/manifest',
 
   'GET /iam/permissions',
+  'POST /iam/access-evaluations',
   'GET /iam/role-options',
   'GET /iam/roles',
   'POST /iam/roles',
   'GET /iam/roles/{roleId}',
   'PATCH /iam/roles/{roleId}',
   'DELETE /iam/roles/{roleId}',
+  'GET /iam/roles/{roleId}/eligibility',
   'PUT /iam/roles/{roleId}/eligibility',
+  'GET /iam/roles/{roleId}/permissions',
   'PUT /iam/roles/{roleId}/permissions',
   'PUT /iam/roles/{roleId}/status',
-  'GET /iam/role-assignments',
+  'GET /iam/role-grants',
+  'POST /iam/role-grants',
+  'DELETE /iam/role-grants/{grantId}',
+  'GET /iam/role-grant-options',
 
   'GET /iam/user-options',
+  'GET /iam/user-type-options',
   'GET /iam/user-types',
   'POST /iam/user-types',
   'GET /iam/user-types/{userTypeId}',
   'PATCH /iam/user-types/{userTypeId}',
   'DELETE /iam/user-types/{userTypeId}',
-  'PUT /iam/user-types/{userTypeId}/permissions',
+  'GET /iam/user-types/{userTypeId}/placement-policy',
+  'PUT /iam/user-types/{userTypeId}/placement-policy',
   'PUT /iam/user-types/{userTypeId}/status',
 
   'GET /iam/users',
@@ -84,8 +92,8 @@ const EXPECTED = [
   'PATCH /iam/users/{userId}',
   'PUT /iam/users/{userId}/placement',
   'PUT /iam/users/{userId}/status',
-  'GET /iam/users/{userId}/role-assignments',
-  'PUT /iam/users/{userId}/role-assignments',
+  'GET /iam/users/{userId}/effective-permissions',
+  'GET /iam/users/{userId}/role-grants',
 
   'GET /org/tree',
   'GET /org/types',
@@ -128,8 +136,13 @@ describe('http surface', () => {
     // and every subresource of a single record is replaced with PUT, so
     // repeating the call converges instead of doing something else
     for (const route of surface()) {
-      if (/\{[^}]+\}\/(status|placement|permissions|eligibility)$/.test(route)) {
+      if (/\{[^}]+\}\/(status|placement)$/.test(route)) {
         expect(route.startsWith('PUT ')).toBe(true)
+      }
+      // a subresource that is both read and replaced offers GET and PUT and
+      // nothing else: no POST that appends, no DELETE that empties
+      if (/\{[^}]+\}\/(permissions|eligibility|placement-policy)$/.test(route)) {
+        expect(route.startsWith('PUT ') || route.startsWith('GET ')).toBe(true)
       }
     }
   })

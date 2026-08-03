@@ -68,7 +68,7 @@ const i18n = definePluginMessages({
     userTypesHint: {
       id: 'auth/user-types/hint',
       defaultMessage:
-        'A user type decides how a class of people signs in and what they may do tenant-wide.',
+        'A user type decides how a class of people signs in and where they may belong. What they may do is decided by the roles they hold.',
     },
     userTypesEmpty: { id: 'auth/user-types/empty', defaultMessage: 'No user types yet.' },
     userDetailTitle: { id: 'auth/users/detail-title', defaultMessage: 'User' },
@@ -114,6 +114,15 @@ const i18n = definePluginMessages({
     allowedOrgTypesLegend: {
       id: 'auth/field/allowed-org-types',
       defaultMessage: 'May be placed on these kinds of organization node',
+    },
+    placementUnrestricted: {
+      id: 'auth/field/placement-unrestricted',
+      defaultMessage: 'May be placed anywhere',
+    },
+    placementHint: {
+      id: 'auth/field/placement-hint',
+      defaultMessage:
+        'Where this kind of person belongs. It says nothing about what they may do, which is what roles decide.',
     },
     placementCount: placementCountMessage,
     noOptions: { id: 'auth/field/no-options', defaultMessage: 'Nothing to choose from yet.' },

@@ -80,8 +80,8 @@ const translateDbError: (error: unknown) => never = createConstraintTranslator({
   fk_org_nodes_parent: () => orgErrors.create('ORG_NODE_HAS_CHILDREN'),
   fk_users_primary_org_node: () =>
     orgErrors.create('ORG_NODE_IN_USE', 'users are attached to this node'),
-  fk_user_role_assignments_node: () =>
-    orgErrors.create('ORG_NODE_IN_USE', 'role assignments are anchored at this node'),
+  fk_role_grants_node: () =>
+    orgErrors.create('ORG_NODE_IN_USE', 'role grants are anchored at this node'),
   fk_org_nodes_org_type: () => orgErrors.create('ORG_TYPE_IN_USE', 'nodes still use this org type'),
   fk_role_allowed_org_types_type: () =>
     orgErrors.create('ORG_TYPE_IN_USE', 'roles still allow this org type'),
@@ -393,6 +393,16 @@ export class OrgTreeService {
         throw orgErrors.create('ORG_NODE_ASSIGNMENT_INCOMPATIBLE', {
           assignmentCount: blocking.length,
         })
+      }
+      // and the people standing here, who do not move when the node does
+      const stranded = await this.ctx.auth.iam.usersBlockingOrgType(
+        tenantId,
+        nodeId,
+        newTypeId,
+        tx,
+      )
+      if (stranded > 0) {
+        throw orgErrors.create('ORG_NODE_PLACEMENT_INCOMPATIBLE', { userCount: stranded })
       }
       await setNodeType(tx, tenantId, nodeId, newTypeId)
       return (await getNode(tx, tenantId, nodeId))!

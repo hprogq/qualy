@@ -23,8 +23,8 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
   const [name, setName] = useState(role.name)
   const [description, setDescription] = useState(role.description ?? '')
   const [permissions, setPermissions] = useState<string[]>(role.permissions)
-  const [userTypeIds, setUserTypeIds] = useState<string[]>(role.allowedUserTypeIds)
-  const [orgTypeIds, setOrgTypeIds] = useState<string[]>(role.allowedOrgTypeIds)
+  const [userTypeIds, setUserTypeIds] = useState<string[]>(role.eligibleUserTypeIds)
+  const [orgTypeIds, setOrgTypeIds] = useState<string[]>(role.anchorOrgTypeIds)
 
   // a different record is a different form, so the draft re-seeds when the
   // selection changes or when a save brings back new server state
@@ -32,8 +32,8 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
     setName(role.name)
     setDescription(role.description ?? '')
     setPermissions(role.permissions)
-    setUserTypeIds(role.allowedUserTypeIds)
-    setOrgTypeIds(role.allowedOrgTypeIds)
+    setUserTypeIds(role.eligibleUserTypeIds)
+    setOrgTypeIds(role.anchorOrgTypeIds)
     setFeedback(null)
     setSaved(false)
   }, [role])

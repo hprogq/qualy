@@ -26,6 +26,7 @@
     "react": "catalog:"
   },
   "devDependencies": {
+    "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@types/pg": "catalog:",

@@ -618,6 +618,9 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../auth
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../infra/database

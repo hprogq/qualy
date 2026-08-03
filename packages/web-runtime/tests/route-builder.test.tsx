@@ -130,6 +130,19 @@ describe('manifest route projection', () => {
     expect(render(routes, '/')).toEqual(['EMPTY'])
   })
 
+  it('redirects the origin to a page that exists, not to a stale navigation target', () => {
+    // the navigation entry outlived the page it named; sending the viewer
+    // there would bounce the origin onto the not-found screen
+    const routes = buildManifestRoutes({
+      manifest: manifest(pages),
+      registry: {},
+      homePath: '/withdrawn',
+      slots,
+    })
+    const landing = matchRoutes(routes, '/')?.at(-1)?.route.element as { props: { to: string } }
+    expect(landing.props.to).toBe('/ping')
+  })
+
   it('sends the origin to the home page when there is one', () => {
     const routes = buildManifestRoutes({
       manifest: manifest(pages),

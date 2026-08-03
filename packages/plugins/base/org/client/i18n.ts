@@ -15,6 +15,12 @@ import { orgNavigationLabel } from '../src/messages.ts'
 // the one message that interpolates declares its placeholders: both a
 // format() call and this translation's projection must produce exactly
 // assignmentCount, checked at compile time
+const placementIncompatible = defineMessage<{ userCount: number }>()({
+  id: 'org/error/placement-incompatible',
+  defaultMessage:
+    '{userCount, plural, one {# person stands here and} other {# people stand here and}} may not be placed on that organization type.',
+})
+
 const assignmentIncompatible = defineMessage<{ assignmentCount: number }>()({
   id: 'org/error/assignment-incompatible',
   defaultMessage:
@@ -107,6 +113,10 @@ const i18n = definePluginMessages({
     ORG_NODE_HAS_CHILDREN: {
       id: 'org/error/node-has-children',
       defaultMessage: 'Only nodes without children can be deleted.',
+    },
+    ORG_NODE_PLACEMENT_INCOMPATIBLE: {
+      message: placementIncompatible,
+      values: (data) => ({ userCount: data.userCount }),
     },
     ORG_NODE_ASSIGNMENT_INCOMPATIBLE: {
       message: assignmentIncompatible,

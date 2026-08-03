@@ -54,8 +54,14 @@ export const roleDto = z.object({
   // grants something it does not.
   permissions: z.array(z.string()),
   unavailablePermissions: z.array(z.string()),
-  allowedUserTypeIds: z.array(z.string()),
-  allowedOrgTypeIds: z.array(z.string()),
+  // Two different questions, and calling both of them "allowed" is what
+  // made them look like duplicates of the user type's own placement rule.
+  // Who may hold this duty:
+  eligibleUserTypeIds: z.array(z.string()),
+  // and where the duty applies, which is about the grant's anchor and has
+  // nothing to do with where the holder personally belongs. A tenant role
+  // anchors to nothing, so it leaves this empty.
+  anchorOrgTypeIds: z.array(z.string()),
 })
 
 // a tenant role reaches the whole tenant and carries no node; an org role is

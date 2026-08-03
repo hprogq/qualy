@@ -22,7 +22,7 @@ export type { ApiContext }
 // and the management page. Domain logic lives in service.ts, transport in
 // router.ts, data access in repo.ts.
 export default class Org extends Service {
-  static inject = ['db', 'server', 'ui', 'rbac']
+  static inject = ['db', 'server', 'ui', 'rbac', 'auth']
 
   readonly tree: OrgTreeService
 

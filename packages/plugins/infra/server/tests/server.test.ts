@@ -419,6 +419,16 @@ describe('plugin-server', () => {
     // health lives outside the api prefix: it serves orchestrators, not api
     // clients, and must stay out of the generated document
     expect(await get('/health/live')).toEqual({ status: 200, body: { status: 'live' } })
+    // The port is bound during assembly, so between listening and the last
+    // plugin loading there is a window where the probe set is still empty.
+    // Answering ready there would send traffic to an instance whose database
+    // had not started, so the gate answers not-ready until the host says the
+    // manifest is fully applied.
+    expect(await get('/health/ready')).toEqual({
+      status: 503,
+      body: { status: 'not-ready', checks: { assembly: 'pending' } },
+    })
+    ctx.server.markAssemblyComplete()
     expect(await get('/health/ready')).toEqual({
       status: 200,
       body: { status: 'ready', checks: {} },

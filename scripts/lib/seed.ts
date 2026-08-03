@@ -201,6 +201,10 @@ async function provisionRbac(
      values ($1, $2, $3) on conflict do nothing`,
     [ctx.tenantId, adminTypeId, rootType.org_type_id],
   )
+  await ctx.client.query(
+    `update user_types set placement_mode = 'allow-list' where tenant_id = $1 and id = $2`,
+    [ctx.tenantId, adminTypeId],
+  )
 
   const grant = await ctx.client.query(
     `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
@@ -504,6 +508,11 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
         [ctx.tenantId, id, orgTypeCode],
       )
     }
+    // stated, not inferred from the list being non-empty
+    await ctx.client.query(
+      `update user_types set placement_mode = 'allow-list' where tenant_id = $1 and id = $2`,
+      [ctx.tenantId, id],
+    )
   }
 
   const provider = (

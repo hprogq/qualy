@@ -45,6 +45,25 @@ export async function assertGrantEligible(
   if (!user) throw accessErrors.create('GRANT_USER_NOT_FOUND')
   if (!user.enabled) throw accessErrors.create('GRANT_NOT_ELIGIBLE', { reason: 'user-disabled' })
 
+  // Who may hold this duty is a fact about the role, not about how it is
+  // anchored, so it is asked of both kinds. Only org roles used to be
+  // checked, which meant a tenant-wide role could be handed to anybody
+  // regardless of what it declared: a reviewer role meant for teachers and
+  // students would have gone to a system account just as readily.
+  //
+  // The canonical administrator is the exception, and the only one: it is
+  // how a tenant is recovered, so it is grantable to whoever the tenant
+  // designates rather than to a list configured in advance.
+  if (role.system_key === null) {
+    const allowsUserType = await one(
+      handle,
+      sql`select 1 from role_allowed_user_types
+          where tenant_id = ${tenantId} and role_id = ${role.id}
+            and user_type_id = ${user.user_type_id}`,
+    )
+    if (!allowsUserType) throw accessErrors.create('GRANT_NOT_ELIGIBLE', { reason: 'user-type' })
+  }
+
   // the kind of the role decides the shape of the grant: tenant authority
   // has nowhere to anchor, org authority has nowhere to apply without one
   if (role.kind === 'tenant') {
@@ -64,13 +83,6 @@ export async function assertGrantEligible(
   )
   if (!node) throw accessErrors.create('GRANT_NODE_NOT_FOUND')
 
-  const allowsUserType = await one(
-    handle,
-    sql`select 1 from role_allowed_user_types
-        where tenant_id = ${tenantId} and role_id = ${role.id}
-          and user_type_id = ${user.user_type_id}`,
-  )
-  if (!allowsUserType) throw accessErrors.create('GRANT_NOT_ELIGIBLE', { reason: 'user-type' })
   const allowsOrgType = await one(
     handle,
     sql`select 1 from role_allowed_org_types

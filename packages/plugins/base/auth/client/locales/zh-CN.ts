@@ -16,7 +16,7 @@ export default {
   'auth/users/hint': '用户在组织中所处的位置决定了谁能管理他们。',
   'auth/users/empty': '这里还没有用户。',
   'auth/user-types/title': '用户类型',
-  'auth/user-types/hint': '用户类型决定一类人怎么登录、在租户范围内能做什么。',
+  'auth/user-types/hint': '用户类型决定一类人怎么登录、可以挂在哪；能做什么由他们持有的角色决定。',
   'auth/user-types/empty': '还没有用户类型。',
   'auth/users/detail-title': '用户',
   'auth/users/back': '← 返回用户列表',
@@ -47,6 +47,9 @@ export default {
   'auth/field/login-channels': '登录通道',
   'auth/field/allow-local-login': '密码登录',
   'auth/field/allow-sso-login': '单点登录',
+  'auth/field/placement-unrestricted': '可以挂在任何组织节点下',
+  'auth/field/placement-hint':
+    '这里只决定这类人可以站在哪；能做什么由角色决定。',
   'auth/field/allowed-org-types': '可挂在这些类型的组织节点下',
   'auth/user-types/placement-count': '{count} 种节点类型',
   'auth/error/user-type-placement-not-allowed': '这类人不能挂在这类节点下。',
