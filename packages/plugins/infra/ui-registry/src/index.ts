@@ -18,7 +18,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { uiTextSchema, type UiText } from '@qualy/i18n-contract'
 import { primaryNavigation } from '@qualy/ui-contract'
 import type { ApiContext, AuthPrincipal } from '@qualy/plugin-server'
-import { uiContract } from './contract.ts'
+import { appContract } from './contract.ts'
 
 declare module 'cordis' {
   interface Context {
@@ -99,9 +99,9 @@ export default class UiRegistry extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'ui')
-    const impl = implement(uiContract).$context<ApiContext>()
+    const impl = implement(appContract).$context<ApiContext>()
     ctx.server.contribute(
-      'ui',
+      'app',
       impl.router({
         // anonymous callers are served on purpose: the login page and every
         // other public surface is discovered through this same manifest

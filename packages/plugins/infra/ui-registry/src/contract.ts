@@ -22,11 +22,11 @@ const slotItemSchema = z.object({
   order: z.number(),
 })
 
-// the manifest is an authorized projection (rbac filtering lands with the
-// authorizer): core fields are precise, surface payloads stay open because
-// collection item shapes belong to their tokens
-export const uiContract = {
-  getManifest: get('/ui/manifest').output(
+// The authorized projection of the application shell for one viewer.
+// /app rather than /ui-registry or /ui: the registry is how it is built, but
+// what a browser asks for here is the application it may see.
+export const appContract = {
+  getManifest: get('/app/manifest').output(
     z.object({
       layouts: layoutSchema.array(),
       pages: pageSchema.array(),

@@ -25,7 +25,7 @@ const apiClientDeps = new Set(
 
 const imports: string[] = []
 const fields: string[] = []
-const seen = new Set<string>()
+const seen = new Map<string, string>()
 for (const entry of readEntries({ all })) {
   if (!entry.name.startsWith('@qualy/')) continue
   const packageDir = resolvePackageDir(entry.name)
@@ -52,11 +52,23 @@ for (const entry of readEntries({ all })) {
     throw new Error(`${entry.name}: contract module must export at least one <ns>Contract`)
   }
   for (const exportName of exportNames) {
+    // the namespace is the export name, so the export name must be able to
+    // be one: a namespace reaches client call sites as api.<ns>.method()
+    if (!/^[a-z][A-Za-z0-9]*Contract$/.test(exportName)) {
+      throw new Error(
+        `${entry.name}: contract export ${exportName} must be named <ns>Contract in camelCase`,
+      )
+    }
     const ns = exportName.slice(0, -'Contract'.length)
-    if (seen.has(ns)) throw new Error(`duplicate contract namespace: ${ns}`)
-    seen.add(ns)
-    imports.push(`import { ${exportName} } from '${entry.name}/contract'`)
-    fields.push(`  ${ns}: ${exportName},`)
+    const previous = seen.get(ns)
+    if (previous) {
+      throw new Error(`duplicate contract namespace ${ns}: ${previous} and ${entry.name}`)
+    }
+    seen.set(ns, entry.name)
+    // aliased on import: a plugin is free to export `appContract`, and the
+    // aggregate this file declares is called that too
+    imports.push(`import { ${exportName} as ${ns}Namespace } from '${entry.name}/contract'`)
+    fields.push(`  ${ns}: ${ns}Namespace,`)
   }
 }
 
