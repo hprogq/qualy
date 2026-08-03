@@ -36,6 +36,8 @@ export default {
   'common/layout/missing': '布局渲染器缺失：{component}',
   'common/page/empty-title': '暂无可用页面',
   'common/page/empty-hint': '请在装配清单中启用业务插件。',
+  'common/component/page-failed': '该页面无法显示。',
+  'common/component/layout-failed': '应用框架无法显示。',
   'common/page/not-found-title': '页面不存在',
   'common/page/not-found-hint': '请检查地址，或从导航进入其他页面。',
 } satisfies CatalogFor<typeof runtimeMessages>

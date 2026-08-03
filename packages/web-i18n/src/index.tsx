@@ -23,7 +23,15 @@ import {
 } from 'react'
 import { formatApiError, type FormatArgs, type MessageFormatter } from './format.ts'
 
-export { commonErrorMessages, formatApiError } from './format.ts'
+export {
+  commonErrorMessages,
+  formatApiError,
+  getApiErrorCode,
+  isApiError,
+  isApiErrorCode,
+  isAuthenticationError,
+  isTransportError,
+} from './format.ts'
 export type { MessageFormatter } from './format.ts'
 
 // the web localization runtime: one lingui core instance holding raw icu

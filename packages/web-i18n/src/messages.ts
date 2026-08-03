@@ -30,6 +30,14 @@ export const commonMessages = {
     defaultMessage: 'Enable a business plugin in the assembly manifest.',
   },
   notFoundTitle: { id: 'common/page/not-found-title', defaultMessage: 'Page not found' },
+  pageFailed: {
+    id: 'common/component/page-failed',
+    defaultMessage: 'This page could not be displayed.',
+  },
+  layoutFailed: {
+    id: 'common/component/layout-failed',
+    defaultMessage: 'The application shell could not be displayed.',
+  },
   notFoundHint: {
     id: 'common/page/not-found-hint',
     defaultMessage: 'Check the address, or pick another page from the navigation.',

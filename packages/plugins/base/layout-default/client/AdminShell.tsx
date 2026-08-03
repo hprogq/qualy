@@ -6,8 +6,14 @@ import { cn } from '@qualy/ui/cn'
 
 // admin-shell/v1 provider: renders the primary navigation collection and the
 // header-actions slot; the page itself arrives through the router outlet
+const linkClass = (isActive: boolean) =>
+  cn(
+    'block rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground',
+    isActive && 'bg-accent font-medium text-accent-foreground',
+  )
+
 export default function AdminShell() {
-  const navigation = useUiCollection(primaryNavigation).filter((item) => item.path)
+  const navigation = useUiCollection(primaryNavigation)
   return (
     <div className="flex min-h-screen">
       <nav className="w-52 shrink-0 border-r p-4">
@@ -15,17 +21,23 @@ export default function AdminShell() {
         <ul className="space-y-1">
           {navigation.map((item) => (
             <li key={item.id}>
-              <NavLink
-                className={({ isActive }) =>
-                  cn(
-                    'block rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground',
-                    isActive && 'bg-accent font-medium text-accent-foreground',
-                  )
-                }
-                to={item.path!}
-              >
-                <LocalizedText value={item.label} />
-              </NavLink>
+              {item.target.kind === 'page' ? (
+                <NavLink className={({ isActive }) => linkClass(isActive)} to={item.target.path}>
+                  <LocalizedText value={item.label} />
+                </NavLink>
+              ) : (
+                // an external target leaves the app entirely and never
+                // enters the router
+                <a
+                  className={linkClass(false)}
+                  href={item.target.href}
+                  {...(item.target.newWindow
+                    ? { target: '_blank', rel: 'noreferrer noopener' }
+                    : {})}
+                >
+                  <LocalizedText value={item.label} />
+                </a>
+              )}
             </li>
           ))}
         </ul>

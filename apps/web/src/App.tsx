@@ -1,16 +1,17 @@
-import { lazy, Suspense, type ComponentType } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { lazy, type ComponentType } from 'react'
+import { BrowserRouter } from 'react-router'
 import { createApiClient } from '@qualy/api-client'
-import { primaryNavigation, type NavigationItem } from '@qualy/ui-contract'
+import { primaryNavigation } from '@qualy/ui-contract'
 import {
+  ManifestRoutes,
   RuntimeProvider,
   useManifest,
   useUiCollection,
   type ComponentRegistry,
-  type Manifest,
 } from '@qualy/web-runtime'
 import { I18nProvider, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { Button } from '@qualy/ui/button'
 import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { catalogs, components, errorMessages } from './plugins.gen.ts'
 
@@ -28,87 +29,90 @@ export default function App() {
   return (
     <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
       <RuntimeProvider client={client} registry={registry}>
-        <ManifestRouter />
+        <BrowserRouter>
+          <ManifestRouter />
+        </BrowserRouter>
       </RuntimeProvider>
     </I18nProvider>
   )
 }
 
-function resolve(component: string) {
-  return registry[component]
-}
-
-function RenderPage({ page }: { page: Manifest['pages'][number] }) {
-  const { format } = useI18n()
-  const Component = resolve(page.component)
-  if (!Component) {
-    return <p>{format(commonMessages.componentMissing, { component: page.component })}</p>
-  }
-  return (
-    <Suspense fallback={<PageLoading />}>
-      <Component />
-    </Suspense>
-  )
-}
-
-// the host is only a routing engine: layout providers and pages both come
-// from the manifest, the shell renders whatever the assembly declares
+// the host is only a routing engine: layouts, pages and the home target all
+// come from the authorized manifest, and the route tree itself is built by
+// the runtime so its rules stay testable outside a browser
 function ManifestRouter() {
   const manifest = useManifest()
+  const { format } = useI18n()
+  const navigation = useUiCollection(primaryNavigation)
+  const home = navigation.find((item) => item.target.kind === 'page')
   return (
-    <BrowserRouter>
-      <Routes>
-        {manifest.layouts.map((layout) => (
-          <Route key={layout.contract} element={<LayoutBoundary component={layout.component} />}>
-            {layout.contract === 'admin-shell/v1' && (
-              <>
-                <Route index element={<HomeRedirect />} />
-                <Route path="*" element={<NotFound />} />
-              </>
-            )}
-            {manifest.pages
-              .filter((page) => page.layout === layout.contract)
-              .map((page) => (
-                <Route key={page.id} path={page.path} element={<RenderPage page={page} />} />
-              ))}
-          </Route>
-        ))}
-      </Routes>
-    </BrowserRouter>
+    <ManifestRoutes
+      manifest={manifest}
+      registry={registry}
+      homePath={home?.target.kind === 'page' ? home.target.path : undefined}
+      slots={{
+        pageLoading: <PageLoading />,
+        layoutLoading: <LoadingScreen />,
+        pageError: (retry) => <Failure message={format(commonMessages.pageFailed)} onRetry={retry} />,
+        layoutError: (retry) => (
+          <Failure message={format(commonMessages.layoutFailed)} onRetry={retry} fullscreen />
+        ),
+        componentMissing: (component) => (
+          <Failure message={format(commonMessages.componentMissing, { component })} />
+        ),
+        notFound: (
+          <Notice
+            title={format(commonMessages.notFoundTitle)}
+            hint={format(commonMessages.notFoundHint)}
+          />
+        ),
+        empty: (
+          <Notice
+            title={format(commonMessages.emptyPagesTitle)}
+            hint={format(commonMessages.emptyPagesHint)}
+          />
+        ),
+      }}
+    />
   )
 }
 
-function LayoutBoundary({ component }: { component: string }) {
-  const { format } = useI18n()
-  const Layout = resolve(component)
-  if (!Layout) return <p>{format(commonMessages.layoutMissing, { component })}</p>
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <Layout />
-    </Suspense>
-  )
-}
-
-function HomeRedirect() {
-  const { format } = useI18n()
-  const first = useUiCollection<NavigationItem>(primaryNavigation).find((item) => item.path)
-  if (!first) {
-    return (
-      <div className="space-y-2">
-        <h2 className="text-xl font-semibold">{format(commonMessages.emptyPagesTitle)}</h2>
-        <p className="text-sm text-muted-foreground">{format(commonMessages.emptyPagesHint)}</p>
-      </div>
-    )
-  }
-  return <Navigate to={first.path!} replace />
-}
-
-function NotFound() {
-  const { format } = useI18n()
+function Notice({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="space-y-2">
-      <h2 className="text-xl font-semibold">{format(commonMessages.notFoundTitle)}</h2>
-      <p className="text-sm text-muted-foreground">{format(commonMessages.notFoundHint)}</p>
+      <h2 className="text-xl font-semibold">{title}</h2>
+      <p className="text-sm text-muted-foreground">{hint}</p>
+    </div>
+  )
+}
+
+// a plugin component failed: the user gets a localized message and a retry,
+// never a stack trace
+function Failure({
+  message,
+  onRetry,
+  fullscreen,
+}: {
+  message: string
+  onRetry?: () => void
+  fullscreen?: boolean
+}) {
+  const { format } = useI18n()
+  return (
+    <div
+      className={
+        fullscreen
+          ? 'flex min-h-screen flex-col items-center justify-center gap-4'
+          : 'flex flex-col items-start gap-3 py-8'
+      }
+      role="alert"
+    >
+      <p className="text-sm text-muted-foreground">{message}</p>
+      {onRetry && (
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          {format(commonMessages.retry)}
+        </Button>
+      )}
     </div>
   )
 }

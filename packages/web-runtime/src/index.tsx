@@ -1,21 +1,38 @@
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import {
-  Component,
-  Suspense,
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import {
   createContext,
+  useCallback,
   useContext,
+  useMemo,
   useState,
   type ComponentType,
   type LazyExoticComponent,
   type ReactNode,
 } from 'react'
-import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
+import { useNavigate } from 'react-router'
+import type { PageRef, UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
 import { Button } from '@qualy/ui/button'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import type { AppClient } from '@qualy/api-client'
+import { buildPageHref, type PageHrefOptions } from './pages.ts'
+import { PluginComponent } from './component-boundary.tsx'
+
+export { buildPageHref, type PageHrefOptions } from './pages.ts'
+export {
+  PluginComponent,
+  PluginComponentBoundary,
+  type PluginComponentKind,
+} from './component-boundary.tsx'
+export { buildManifestRoutes, ManifestRoutes } from './route-builder.tsx'
+export { PageLink } from './links.tsx'
 
 export type Manifest = Awaited<ReturnType<AppClient['ui']['getManifest']>>
 // heterogeneous by design: each page or renderer declares its own props,
@@ -80,6 +97,31 @@ function RuntimeLoader({
   )
 }
 
+// Identity changes must not leave one user's data reachable by the next.
+// Nothing in the cache is keyed by session, so the honest move is to drop
+// all of it and let the manifest and page queries refetch under the new
+// identity — a session-partitioned key scheme would be more surgical and
+// far easier to get subtly wrong.
+export function useSessionTransition() {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const manifest = useManifest()
+  return useCallback(
+    async (options: { to?: PageRef; replace?: boolean } = {}) => {
+      queryClient.clear()
+      const target = options.to
+      if (target) {
+        // resolved from the shared reference, not from a copied path
+        void navigate(buildPageHref(target), { replace: options.replace ?? true })
+      }
+      // the new identity's manifest decides what is reachable next
+      await queryClient.refetchQueries()
+    },
+    // manifest identity ties the callback to the active session
+    [queryClient, navigate, manifest],
+  )
+}
+
 export function useRuntime(): Runtime {
   const runtime = useContext(RuntimeContext)
   if (!runtime) throw new Error('useRuntime must be used inside a RuntimeProvider')
@@ -93,27 +135,69 @@ export const useComponent = (name: string) => useRuntime().registry[name]
 export const useApiQuery = () => useRuntime().orpc
 export const useManifest = () => useRuntime().manifest
 
-// items of a collection surface, already authorized and path-resolved by
-// the server; the token carries the item type
-export function useUiCollection<T>(token: UiCollectionToken<T>): T[] {
+// the manifest entry for a page reference, or undefined when the viewer
+// cannot see it in this deployment. In development a path that disagrees
+// with the shared reference is a loud failure: it means the server and the
+// browser bundle were built from different sources.
+// development-only diagnostics: the bundler replaces this at build time and
+// the guard keeps the package free of both node and vite typings
+declare const process: { env?: Record<string, string | undefined> } | undefined
+const isDev = () => typeof process === 'undefined' || process.env?.['NODE_ENV'] !== 'production'
+
+export function useManifestPage(page: PageRef) {
   const manifest = useManifest()
-  return (manifest.collections[token.key] ?? []) as T[]
+  const entry = manifest.pages.find((candidate) => candidate.id === page.id)
+  if (isDev() && entry && entry.path !== page.path) {
+    throw new Error(
+      `page ${page.id} is mounted at ${entry.path} but this build references ${page.path}`,
+    )
+  }
+  return entry
 }
 
-// one crashing contribution must never take the shell down with it
-class SlotItemBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false }
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-  override render() {
-    return this.state.failed ? null : this.props.children
-  }
+export const usePageAvailable = (page: PageRef) => useManifestPage(page) !== undefined
+
+// the url of a page, or undefined when it is not part of this manifest
+export function usePageHref(page: PageRef, options?: PageHrefOptions): string | undefined {
+  const entry = useManifestPage(page)
+  return entry ? buildPageHref(page, options) : undefined
+}
+
+// navigate by naming a page instead of repeating its path; navigating to a
+// page the viewer cannot see is a bug, so it fails loudly in development
+// and does nothing in production rather than landing on a dead route
+export function usePageNavigate() {
+  const navigate = useNavigate()
+  const manifest = useManifest()
+  return useCallback(
+    (page: PageRef, options: PageHrefOptions & { replace?: boolean } = {}) => {
+      const available = manifest.pages.some((candidate) => candidate.id === page.id)
+      if (!available) {
+        const message = `cannot navigate to ${page.id}: not visible in the current manifest`
+        if (isDev()) throw new Error(message)
+        console.error(`[qualy] ${message}`)
+        return
+      }
+      void navigate(buildPageHref(page, options), { replace: options.replace })
+    },
+    [navigate, manifest],
+  )
+}
+
+// items of a collection surface, already authorized and path-resolved by
+// the server; the token carries the item type
+export function useUiCollection<TContribution, TResolved>(
+  token: UiCollectionToken<TContribution, TResolved>,
+): TResolved[] {
+  const manifest = useManifest()
+  return (manifest.collections[token.key] ?? []) as TResolved[]
 }
 
 // renders every contribution of a slot surface, each item isolated behind
 // its own suspense and error boundary; context is runtime state handed down
-// by the surrounding layout or page, never serialized into the manifest
+// by the surrounding layout or page, never serialized into the manifest.
+// A failing or missing slot item takes no layout space but is always
+// reported — silence here used to hide broken contributions completely.
 export function UiSlot({ token, context }: { token: UiSlotToken; context?: unknown }) {
   const manifest = useManifest()
   const registry = useRuntime().registry
@@ -121,14 +205,19 @@ export function UiSlot({ token, context }: { token: UiSlotToken; context?: unkno
   return (
     <>
       {items.map((item) => {
-        const Renderer = registry[item.component]
-        if (!Renderer) return null
+        const Renderer = registry[item.component] as ComponentType<{ context?: unknown }> | undefined
         return (
-          <SlotItemBoundary key={item.id}>
-            <Suspense fallback={null}>
-              <Renderer context={context} />
-            </Suspense>
-          </SlotItemBoundary>
+          <PluginComponent
+            key={item.id}
+            componentId={item.component}
+            kind="slot"
+            component={
+              Renderer ? () => <Renderer context={context} /> : undefined
+            }
+            loading={null}
+            fallback={() => null}
+            missing={null}
+          />
         )
       })}
     </>

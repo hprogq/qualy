@@ -33,6 +33,31 @@ interface ApiErrorShape {
   message?: string
 }
 
+// public identification helpers: the ui must be able to tell "you are not
+// signed in" from "the server is unreachable" before it decides what to
+// render, and neither may be inferred from a failed query alone
+export function isApiError(error: unknown): boolean {
+  return asApiError(error) !== undefined
+}
+
+export function getApiErrorCode(error: unknown): string | undefined {
+  return asApiError(error)?.code
+}
+
+export function isApiErrorCode(error: unknown, code: string): boolean {
+  return asApiError(error)?.code === code
+}
+
+// the two codes that mean "no usable session", whatever produced them
+export function isAuthenticationError(error: unknown): boolean {
+  const code = getApiErrorCode(error)
+  return code === 'AUTH_REQUIRED' || code === 'SESSION_EXPIRED'
+}
+
+export function isTransportError(error: unknown): boolean {
+  return isNetworkError(error)
+}
+
 function asApiError(error: unknown): ApiErrorShape | undefined {
   if (!error || typeof error !== 'object') return undefined
   const candidate = error as { name?: unknown; code?: unknown }
