@@ -557,6 +557,9 @@ importers:
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../ui
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../ui-contract
       '@qualy/web-i18n':
         specifier: workspace:*
         version: link:../../../web-i18n
@@ -609,6 +612,9 @@ importers:
       '@qualy/plugin-server':
         specifier: workspace:*
         version: link:../../infra/server
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../infra/ui-registry
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../rbac-contract
@@ -655,6 +661,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../ui-contract
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web-runtime
@@ -877,6 +886,9 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@qualy/api-client':
         specifier: workspace:*

@@ -1,17 +1,23 @@
 import { implement } from '@orpc/server'
 import { Context, Service } from 'cordis'
 import {
-  NAMESPACED_ID,
+  assertNamespacedId,
+  isVisibleTo,
+  uiVisibilitySchema,
   type LayoutContractId,
   type NamespacedId,
   type NavigationItem,
+  type PageRef,
+  type ResolvedNavigationItem,
   type UiCollectionToken,
   type UiSlotToken,
+  type UiVisibility,
+  type ViewerAccess,
 } from '@qualy/ui-contract'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { uiTextSchema, type UiText } from '@qualy/i18n-contract'
 import { primaryNavigation } from '@qualy/ui-contract'
-import type { ApiContext } from '@qualy/plugin-server'
+import type { ApiContext, AuthPrincipal } from '@qualy/plugin-server'
 import { uiContract } from './contract.ts'
 
 declare module 'cordis' {
@@ -20,17 +26,17 @@ declare module 'cordis' {
   }
 }
 
-// a page is one routable main content unit: exactly one main component,
-// rendered inside the layout CONTRACT it references (never a concrete
-// layout implementation)
+// a page is one routable main content unit: the shared page reference says
+// which screen it is, the component implements it and the layout CONTRACT
+// (never a concrete implementation) frames it. Visibility is mandatory: a
+// registration cannot become public by forgetting a field.
 export interface PageDecl {
-  id: NamespacedId
-  path: string
+  page: PageRef
   component: string
   layout: LayoutContractId
-  public?: boolean
-  permission?: string
-  // sugar: most pages also register one primary navigation entry
+  visibility: UiVisibility
+  // sugar: most pages also register one primary navigation entry, which
+  // inherits the page's visibility and disappears with it
   navigation?: { label: UiText; icon?: string; order?: number }
 }
 
@@ -44,20 +50,18 @@ export interface LayoutProvider {
 export interface CollectionContribution<T> {
   id: NamespacedId
   value: T
+  visibility: UiVisibility
   order?: number
 }
 
 export interface SlotContribution {
   id: NamespacedId
   component: string
+  visibility: UiVisibility
   order?: number
 }
 
-const assertId = (id: string, what: string) => {
-  if (!NAMESPACED_ID.test(id)) {
-    throw new Error(`${what} "${id}" must be a namespaced id like "plugin/name"`)
-  }
-}
+const assertId = assertNamespacedId
 
 // payloads that travel through the manifest are validated where they are
 // contributed: a plugin shipping a bare display string as a label fails at
@@ -75,6 +79,12 @@ const assertUiText = (value: UiText, what: string) => {
   assertShape(uiTextSchema, value, what)
 }
 
+// resolves which permission codes a viewer holds. rbac registers one; with
+// no authorizer present every permission-gated surface stays invisible, so
+// removing the authorization plugin hides capabilities rather than exposing
+// them.
+export type UiAuthorizer = (principal: AuthPrincipal) => Promise<Iterable<string>>
+
 export default class UiRegistry extends Service {
   static inject = ['server']
 
@@ -83,6 +93,9 @@ export default class UiRegistry extends Service {
   private layouts = new Map<LayoutContractId, LayoutProvider>()
   private collections = new Map<string, Map<string, CollectionContribution<unknown>>>()
   private slots = new Map<string, Map<string, SlotContribution>>()
+  // stable box: reassigning a service property from a caller-traceable
+  // closure does not stick (see notes/cordis.md)
+  private authorizerSlot: { resolve?: UiAuthorizer } = {}
 
   constructor(ctx: Context) {
     super(ctx, 'ui')
@@ -90,39 +103,58 @@ export default class UiRegistry extends Service {
     ctx.server.contribute(
       'ui',
       impl.router({
-        getManifest: impl.getManifest.handler(() => this.build()),
+        // anonymous callers are served on purpose: the login page and every
+        // other public surface is discovered through this same manifest
+        getManifest: impl.getManifest.handler(({ context }) => this.build(context.principal)),
       }),
     )
   }
 
-  addPage(page: PageDecl) {
-    assertId(page.id, 'page id')
-    assertId(page.layout, 'layout contract')
-    if (page.navigation) assertUiText(page.navigation.label, `page ${page.id} navigation label`)
+  // single slot, revoked with the registrant's fiber: the authorization
+  // plugin owns the mapping from principal to permission codes
+  setAuthorizer(resolve: UiAuthorizer) {
+    const slot = this.authorizerSlot
     return this.ctx.effect(() => {
-      if (this.pages.has(page.id)) throw new Error(`page id conflict: ${page.id}`)
-      if (this.pagePaths.has(page.path)) throw new Error(`page path conflict: ${page.path}`)
-      this.pages.set(page.id, page)
-      this.pagePaths.set(page.path, page.id)
-      const disposeNav = page.navigation
+      if (slot.resolve) throw new Error('ui authorizer already registered')
+      slot.resolve = resolve
+      return () => {
+        if (slot.resolve === resolve) slot.resolve = undefined
+      }
+    }, 'ui-authorizer')
+  }
+
+  addPage(decl: PageDecl) {
+    const { id, path } = decl.page
+    assertId(decl.layout, 'layout contract')
+    assertShape(uiVisibilitySchema, decl.visibility, `page ${id} visibility`)
+    if (decl.navigation) assertUiText(decl.navigation.label, `page ${id} navigation label`)
+    return this.ctx.effect(() => {
+      if (this.pages.has(id)) throw new Error(`page id conflict: ${id}`)
+      if (this.pagePaths.has(path)) throw new Error(`page path conflict: ${path}`)
+      this.pages.set(id, decl)
+      this.pagePaths.set(path, id)
+      const disposeNav = decl.navigation
         ? this.registerContribution(this.collections, primaryNavigation.key, {
-            id: `${page.id}/nav` as NamespacedId,
-            order: page.navigation.order,
+            id: `${id}/nav` as NamespacedId,
+            order: decl.navigation.order,
+            // the entry inherits the page's visibility: a protected page can
+            // never grow a public navigation item
+            visibility: decl.visibility,
             value: {
-              id: `${page.id}/nav`,
-              pageId: page.id,
-              label: page.navigation.label,
-              icon: page.navigation.icon,
-              order: page.navigation.order,
+              id: `${id}/nav`,
+              target: { kind: 'page', pageId: id },
+              label: decl.navigation.label,
+              icon: decl.navigation.icon,
+              order: decl.navigation.order,
             } satisfies NavigationItem,
           })
         : undefined
       return () => {
         disposeNav?.()
-        this.pages.delete(page.id)
-        this.pagePaths.delete(page.path)
+        this.pages.delete(id)
+        this.pagePaths.delete(path)
       }
-    }, `page:${page.id}`)
+    }, `page:${id}`)
   }
 
   // one active provider per layout contract; a second registration is a
@@ -144,13 +176,17 @@ export default class UiRegistry extends Service {
 
   // contributions are order-independent across plugins: the token itself is
   // the contract, unknown keys simply never render
-  contribute<T>(token: UiCollectionToken<T>, contribution: CollectionContribution<T>): void
+  contribute<TContribution>(
+    token: UiCollectionToken<TContribution, unknown>,
+    contribution: CollectionContribution<TContribution>,
+  ): void
   contribute(token: UiSlotToken, contribution: SlotContribution): void
   contribute(
-    token: UiCollectionToken<unknown> | UiSlotToken,
+    token: UiCollectionToken<unknown, unknown> | UiSlotToken,
     contribution: CollectionContribution<unknown> | SlotContribution,
   ) {
     assertId(contribution.id, 'contribution id')
+    assertShape(uiVisibilitySchema, contribution.visibility, `contribution ${contribution.id} visibility`)
     if (token.kind === 'collection' && token.schema) {
       assertShape(
         token.schema,
@@ -199,29 +235,42 @@ export default class UiRegistry extends Service {
     }, `collection:${key}:${contribution.id}`)
   }
 
-  // deterministic authorized projection: internal declarations (permission,
-  // public) never leave the server; navigation items resolve page ids to
-  // paths and silently drop entries whose page is absent
-  private build() {
+  // the manifest is an authorized projection: one rbac profile lookup per
+  // request decides which surfaces the viewer may DISCOVER. Hiding a page is
+  // never authorization — every api call is authorized on its own — but a
+  // viewer must not learn that a capability, its route or its component even
+  // exists. Internal declarations (visibility, permission codes) never leave.
+  private async build(principal?: AuthPrincipal) {
+    const viewer = await this.viewerAccess(principal)
     const sorted = <T extends { order?: number; id: string }>(items: T[]) =>
       [...items].sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.id.localeCompare(b.id))
 
-    const pages = [...this.pages.values()].filter((page) => {
-      if (this.layouts.has(page.layout)) return true
-      this.ctx.logger.warn('page %s dropped: no provider for layout %s', page.id, page.layout)
+    const pages = [...this.pages.values()].filter((decl) => {
+      if (!isVisibleTo(decl.visibility, viewer)) return false
+      if (this.layouts.has(decl.layout)) return true
+      this.ctx.logger.warn('page %s dropped: no provider for layout %s', decl.page.id, decl.layout)
       return false
     })
+    const visiblePages = new Map(pages.map((decl) => [decl.page.id, decl]))
 
     const collections: Record<string, unknown[]> = {}
     for (const [key, store] of this.collections) {
       const items = sorted([...store.values()])
+        .filter((entry) => isVisibleTo(entry.visibility, viewer))
         .map((entry) => entry.value)
         .map((value) => {
           if (key !== primaryNavigation.key) return value
           const item = value as NavigationItem
-          if (!item.pageId) return item.path ? item : undefined
-          const page = this.pages.get(item.pageId)
-          return page ? { ...item, path: page.path } : undefined
+          if (item.target.kind === 'external') return item as ResolvedNavigationItem
+          // a page target resolves to the path the router mounts, and drops
+          // out entirely when the viewer cannot see that page
+          const page = visiblePages.get(item.target.pageId)
+          return page
+            ? ({
+                ...item,
+                target: { kind: 'page', pageId: page.page.id, path: page.page.path },
+              } satisfies ResolvedNavigationItem)
+            : undefined
         })
         .filter((value) => value !== undefined)
       if (items.length > 0) collections[key] = items
@@ -229,24 +278,38 @@ export default class UiRegistry extends Service {
 
     const slots: Record<string, { id: string; component: string; order: number }[]> = {}
     for (const [key, store] of this.slots) {
-      const items = sorted([...store.values()]).map((entry) => ({
-        id: entry.id,
-        component: entry.component,
-        order: entry.order ?? 99,
-      }))
+      const items = sorted([...store.values()])
+        .filter((entry) => isVisibleTo(entry.visibility, viewer))
+        .map((entry) => ({ id: entry.id, component: entry.component, order: entry.order ?? 99 }))
       if (items.length > 0) slots[key] = items
     }
 
+    // only the layouts the surviving pages actually need
+    const usedLayouts = new Set(pages.map((decl) => decl.layout))
     return {
-      layouts: [...this.layouts.values()].sort((a, b) => a.contract.localeCompare(b.contract)),
-      pages: pages.map((page) => ({
-        id: page.id,
-        path: page.path,
-        component: page.component,
-        layout: page.layout,
+      layouts: [...this.layouts.values()]
+        .filter((layout) => usedLayouts.has(layout.contract))
+        .sort((a, b) => a.contract.localeCompare(b.contract)),
+      pages: pages.map((decl) => ({
+        id: decl.page.id,
+        path: decl.page.path,
+        component: decl.component,
+        layout: decl.layout,
       })),
       collections,
       slots,
     }
+  }
+
+  // one authorizer call covers every permission-gated surface of a request;
+  // an org-scope permission held at any anchor makes its page discoverable,
+  // and that page's own api still decides which nodes the viewer may touch
+  private async viewerAccess(principal?: AuthPrincipal): Promise<ViewerAccess> {
+    if (!principal) return { authenticated: false, permissions: new Set() }
+    const resolve = this.authorizerSlot.resolve
+    // fail closed: without an authorizer a signed-in viewer still sees only
+    // public and authenticated surfaces
+    if (!resolve) return { authenticated: true, permissions: new Set() }
+    return { authenticated: true, permissions: new Set(await resolve(principal)) }
   }
 }
