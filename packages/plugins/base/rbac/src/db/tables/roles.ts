@@ -57,11 +57,18 @@ export const roles = snakeCase.table(
       'chk_roles_permission_mode',
       sql`${table.permissionMode} IN ('explicit', 'all-active')`,
     ),
-    // holding every capability is reserved for the administrator role the
-    // platform provisions; a tenant cannot mint a second one
+    // Holding every capability is reserved for the administrator role the
+    // platform provisions; a tenant cannot mint a second one.
+    //
+    // IS NOT DISTINCT FROM rather than =, because a check that evaluates to
+    // null is satisfied: with a null system_key the equality was null, so
+    // `false or null` accepted exactly the row this forbids. Nothing in the
+    // api can write it, which is the point of stating it here at all, since
+    // what this guards against is a seed, a migration or a hand-run insert.
     check(
       'chk_roles_all_active_is_system',
-      sql`${table.permissionMode} <> 'all-active' OR ${table.systemKey} = 'tenant-admin'`,
+      sql`${table.permissionMode} <> 'all-active'
+        OR ${table.systemKey} IS NOT DISTINCT FROM 'tenant-admin'`,
     ),
     // and the converse, which is the half that actually protects a tenant:
     // without it the administrator row could be re-kinded, disabled or made
