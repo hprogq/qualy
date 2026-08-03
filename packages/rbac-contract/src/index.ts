@@ -4,6 +4,9 @@
 // on auth/org schemas)
 import type {} from 'cordis'
 
+export { accessInvariantErrors } from './errors.ts'
+export { anchorCoverage } from './scope.ts'
+
 export interface PermissionDefinition {
   code: string
   name: string
@@ -54,11 +57,17 @@ export interface RbacService {
   whenSynced(): Promise<void>
   hasPermission(principal: Principal, code: string): Promise<boolean>
   require(principal: Principal | undefined, code: string): Promise<void>
-  canAt(principal: Principal, code: string, targetOrgNodeId: string): Promise<boolean>
+  canAt(
+    principal: Principal,
+    code: string,
+    targetOrgNodeId: string,
+    handle?: RbacDbHandle,
+  ): Promise<boolean>
   requireAt(
     principal: Principal | undefined,
     code: string,
     targetOrgNodeId: string,
+    handle?: RbacDbHandle,
   ): Promise<void>
   getProfile(principal: Principal): Promise<AccessProfile>
   listAuthorizedAnchors(
@@ -66,6 +75,11 @@ export interface RbacService {
     code: string,
     handle?: RbacDbHandle,
   ): Promise<AuthorizationAnchor[]>
+  // the cross-domain invariant: after the caller's own writes, the tenant
+  // must still have at least one administrator who can sign in. Always runs
+  // inside the caller's transaction — it takes row locks and must see the
+  // uncommitted final state, so the handle is required.
+  assertTenantKeepsAdministrator(tenantId: string, handle: RbacDbHandle): Promise<void>
   createAssignment(input: AssignmentInput): Promise<string>
   removeAssignment(tenantId: string, assignmentId: string): Promise<void>
   // role codes of org-kind assignments at the node whose role does not allow

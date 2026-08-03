@@ -10,5 +10,9 @@
   },
   "peerDependencies": {
     "cordis": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/api-contract": "workspace:*",
+    "drizzle-orm": "catalog:"
   }
 }

@@ -51,14 +51,23 @@ export class Authorization {
     if (!(await this.hasTenantPermission(principal, def))) throw new ORPCError('FORBIDDEN')
   }
 
-  async canAt(principal: Principal, code: string, targetOrgNodeId: string): Promise<boolean> {
+  // the handle lets a caller holding the tenant lock re-decide authorization
+  // on its own connection: the router's check ran before the lock, and a
+  // concurrent move can re-anchor the target in between
+  async canAt(
+    principal: Principal,
+    code: string,
+    targetOrgNodeId: string,
+    handle?: RbacDbHandle,
+  ): Promise<boolean> {
     const def = this.registry.get(code)
     if (!def) return false
     if (def.scope !== 'org') {
       throw new Error(`canAt() got tenant-scope permission ${code}, use require()`)
     }
     if (!def.grantToRole) return false
-    const result = await this.ctx.db.drizzle.execute<{ allowed: boolean }>(sql`
+    const db = (handle ?? this.ctx.db.drizzle) as Context['db']['drizzle']
+    const result = await db.execute<{ allowed: boolean }>(sql`
       select exists(
         select 1
         from user_role_assignments a
@@ -81,10 +90,13 @@ export class Authorization {
     principal: Principal | undefined,
     code: string,
     targetOrgNodeId: string,
+    handle?: RbacDbHandle,
   ): Promise<void> {
     if (!principal) throw new ORPCError('AUTH_REQUIRED')
     if (!this.registry.has(code)) throw new ORPCError('FORBIDDEN')
-    if (!(await this.canAt(principal, code, targetOrgNodeId))) throw new ORPCError('FORBIDDEN')
+    if (!(await this.canAt(principal, code, targetOrgNodeId, handle))) {
+      throw new ORPCError('FORBIDDEN')
+    }
   }
 
   // for the manifest: which active codes does the user hold from any source.
