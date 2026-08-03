@@ -41,3 +41,8 @@ export const authContract = {
     })
     .output(z.object({ user: userDto })),
 }
+
+// identity administration is the same plugin's second api surface, so it
+// becomes its own client namespace rather than crowding the session core
+export { iamContract } from './iam/contract.ts'
+export type { IamUserDto, UserTypeDto } from './iam/contract.ts'

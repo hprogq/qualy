@@ -31,6 +31,7 @@
     "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
@@ -46,7 +47,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "@types/pg": "catalog:",
     "@types/react": "catalog:",
     "pg": "catalog:"

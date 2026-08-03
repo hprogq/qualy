@@ -5,8 +5,11 @@ import { z } from 'zod'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
-import { BLANK_SHELL, headerActions, PUBLIC } from '@qualy/ui-contract'
-import { loginPage } from './ui.ts'
+import { ADMIN_SHELL, BLANK_SHELL, headerActions, permissionOf, PUBLIC } from '@qualy/ui-contract'
+import { loginPage, userTypesPage, usersPage } from './ui.ts'
+import { createIamRouter } from './iam/router.ts'
+import { IamService } from './iam/service.ts'
+import { iamMessages } from './iam/messages.ts'
 import { authContract, type LoginMethod, type UserDto } from './contract.ts'
 import { permissions as authPermissions } from './permissions.ts'
 import { authRelations } from './db/relations.ts'
@@ -84,6 +87,7 @@ export default class Auth extends Service {
   private db: AuthDb
   private cookie: CookieSettings
   private providerTypes = new Map<string, ProviderTypeDefinition>()
+  readonly iam: IamService
 
   private config: z.output<typeof Config>
 
@@ -144,6 +148,23 @@ export default class Auth extends Service {
       visibility: PUBLIC,
     })
     // the menu shows a sign-in link to anonymous visitors, so it is public
+    // identity administration rides the same session core
+    this.iam = new IamService(ctx)
+    ctx.server.contribute('iam', createIamRouter(ctx, this.iam))
+    ctx.ui.addPage({
+      page: usersPage,
+      component: 'auth/UsersPage',
+      layout: ADMIN_SHELL,
+      visibility: permissionOf('auth.user.read'),
+      navigation: { label: iamMessages.usersNav, order: 30 },
+    })
+    ctx.ui.addPage({
+      page: userTypesPage,
+      component: 'auth/UserTypesPage',
+      layout: ADMIN_SHELL,
+      visibility: permissionOf('auth.user-type.read'),
+      navigation: { label: iamMessages.userTypesNav, order: 31 },
+    })
     ctx.ui.contribute(headerActions, {
       id: 'auth/user-menu',
       component: 'auth/UserMenu',
