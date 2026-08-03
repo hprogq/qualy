@@ -1,10 +1,12 @@
-import type { PluginCatalogs } from '@qualy/i18n-contract'
+import { definePluginMessages } from '@qualy/i18n-contract'
 import { pingNavigationLabel } from '../src/messages.ts'
 
-export const catalogs: PluginCatalogs = {
+const i18n = definePluginMessages({
   namespace: 'ping',
-  messages: [pingNavigationLabel],
+  messages: { navigation: pingNavigationLabel },
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),
   },
-}
+})
+
+export const catalogs = i18n.catalogs

@@ -1,6 +1,5 @@
-import { oc } from '@orpc/contract'
-import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
+import { get, post } from '@qualy/api-contract'
 
 export const userDto = z.object({
   id: z.string(),
@@ -33,22 +32,17 @@ export interface LoginMethodRendererProps {
 }
 
 // http statuses for these codes are registered through server.contribute
-// (beta.21 maps status per code via the handler's errorStatusMap; the status
-// field below documents intent and types the client)
+// (beta.21 maps status per code via the handler's errorStatusMap; the
+// status field below documents intent and types the client). AUTH_REQUIRED
+// is server-owned and needs no entry here.
 export const authErrorStatuses = {
-  AUTH_REQUIRED: 401,
   SESSION_EXPIRED: 401,
 } as const
 
 export const authContract = {
-  methods: oc
-    .meta(openapi({ method: 'GET', path: '/auth/methods' }))
-    .output(z.object({ methods: z.array(loginMethod) })),
-  logout: oc
-    .meta(openapi({ method: 'POST', path: '/auth/logout' }))
-    .output(z.object({ ok: z.boolean() })),
-  me: oc
-    .meta(openapi({ method: 'GET', path: '/auth/me' }))
+  methods: get('/auth/methods').output(z.object({ methods: z.array(loginMethod) })),
+  logout: post('/auth/logout').output(z.object({ ok: z.boolean() })),
+  me: get('/auth/me')
     .errors({
       AUTH_REQUIRED: { status: 401, message: 'authentication required' },
       SESSION_EXPIRED: { status: 401, message: 'session expired' },

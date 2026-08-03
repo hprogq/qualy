@@ -1,10 +1,8 @@
-import { oc } from '@orpc/contract'
-import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
+import { get } from '@qualy/api-contract'
 
 export const pingContract = {
-  hello: oc
-    .meta(openapi({ method: 'GET', path: '/ping/hello' }))
+  hello: get('/ping/hello')
     .input(z.object({ name: z.string().optional() }))
     .output(z.object({ msg: z.string() })),
 }

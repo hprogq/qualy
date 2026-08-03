@@ -1,6 +1,5 @@
-import { oc } from '@orpc/contract'
-import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
+import { get } from '@qualy/api-contract'
 
 const namespaced = z.string().regex(/^[a-z][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)+$/i)
 
@@ -27,7 +26,7 @@ const slotItemSchema = z.object({
 // authorizer): core fields are precise, surface payloads stay open because
 // collection item shapes belong to their tokens
 export const uiContract = {
-  getManifest: oc.meta(openapi({ method: 'GET', path: '/ui/manifest' })).output(
+  getManifest: get('/ui/manifest').output(
     z.object({
       layouts: layoutSchema.array(),
       pages: pageSchema.array(),

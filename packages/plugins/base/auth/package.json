@@ -28,6 +28,7 @@
     "@orpc/contract": "catalog:",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
+    "@qualy/api-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
