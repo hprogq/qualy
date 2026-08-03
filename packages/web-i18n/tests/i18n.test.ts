@@ -2,6 +2,7 @@ import { setupI18n } from '@lingui/core'
 import { compileMessage } from '@lingui/message-utils/compileMessage'
 import { uiTextSchema, literal, message, type MessageCatalog } from '@qualy/i18n-contract'
 import { describe, expect, it } from 'vitest'
+import { loadCatalogs, resolveLocale } from '../src/index.tsx'
 import zhCN from '../src/catalogs/zh-CN.ts'
 import { commonMessages } from '../src/messages.ts'
 import {
@@ -111,5 +112,38 @@ describe('web i18n runtime', () => {
     expect(
       uiTextSchema.safeParse({ kind: 'message', id: 'org/nav', defaultMessage: '' }).success,
     ).toBe(false)
+  })
+
+  it('resolves the locale through the documented preference chain', () => {
+    // a stored preference always wins
+    expect(resolveLocale({ stored: 'en-US', preferred: ['zh-CN'] })).toBe('en-US')
+    // an unsupported or absent preference falls through to the browser
+    expect(resolveLocale({ stored: 'fr-FR', preferred: ['en-US'] })).toBe('en-US')
+    // exact match beats a later subtag match
+    expect(resolveLocale({ preferred: ['en-GB', 'en-US'] })).toBe('en-US')
+    // a subtag match is accepted when no exact match exists
+    expect(resolveLocale({ preferred: ['zh-TW'] })).toBe('zh-CN')
+    // nothing usable falls back to the deployment default
+    expect(resolveLocale({ preferred: ['fr-FR', 'de-DE'] })).toBe('zh-CN')
+    expect(resolveLocale({})).toBe('zh-CN')
+  })
+
+  it('merges the common catalog with every plugin catalog for a locale', async () => {
+    const merged = await loadCatalogs('zh-CN', [
+      {
+        namespace: 'demo',
+        messages: [{ id: 'demo/a', defaultMessage: 'A' }],
+        locales: { 'zh-CN': () => Promise.resolve({ default: { 'demo/a': '甲' } }) },
+      },
+      {
+        // a plugin without a catalog for this locale contributes nothing
+        namespace: 'other',
+        messages: [{ id: 'other/a', defaultMessage: 'B' }],
+        locales: {},
+      },
+    ])
+    expect(merged['demo/a']).toBe('甲')
+    expect(merged['other/a']).toBeUndefined()
+    expect(merged['common/action/retry']).toBe('重试')
   })
 })

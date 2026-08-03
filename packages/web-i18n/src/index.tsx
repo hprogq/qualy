@@ -55,14 +55,16 @@ export function useLocale(): [SupportedLocale, (locale: SupportedLocale) => void
 const isSupported = (value: string | null | undefined): value is SupportedLocale =>
   !!value && (supportedLocales as readonly string[]).includes(value)
 
-// stored preference, then the browser's ranked languages (exact match first,
-// then language subtag), then the deployment default. A signed-in user's
-// stored preference arrives here once user preferences exist.
-export function resolveInitialLocale(): SupportedLocale {
-  const stored = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY)
-  if (isSupported(stored)) return stored
-  const candidates = typeof navigator === 'undefined' ? [] : (navigator.languages ?? [])
-  for (const candidate of candidates) {
+// stored preference, then the caller's ranked languages (exact match first,
+// then language subtag), then the deployment default. Pure so the ordering
+// is testable; a signed-in user's stored preference feeds `stored` once
+// user preferences exist.
+export function resolveLocale(input: {
+  stored?: string | null
+  preferred?: readonly string[]
+}): SupportedLocale {
+  if (isSupported(input.stored)) return input.stored
+  for (const candidate of input.preferred ?? []) {
     if (isSupported(candidate)) return candidate
     const match = supportedLocales.find(
       (locale) => locale.split('-')[0] === candidate.split('-')[0],
@@ -72,6 +74,13 @@ export function resolveInitialLocale(): SupportedLocale {
   return defaultLocale
 }
 
+export function resolveInitialLocale(): SupportedLocale {
+  return resolveLocale({
+    stored: typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY),
+    preferred: typeof navigator === 'undefined' ? [] : (navigator.languages ?? []),
+  })
+}
+
 // the runtime's own catalogs (common/*), shipped with this package
 const commonCatalogs: Partial<
   Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>
@@ -79,7 +88,10 @@ const commonCatalogs: Partial<
   'zh-CN': () => import('./catalogs/zh-CN.ts'),
 }
 
-async function loadCatalogs(
+// namespaces never overlap (a test enforces that), so a flat merge is
+// enough; a missing catalog is normal because english lives in the
+// defaultMessage of each reference and a partial locale falls back per key
+export async function loadCatalogs(
   locale: SupportedLocale,
   plugins: readonly PluginCatalogs[],
 ): Promise<MessageCatalog> {
@@ -87,8 +99,6 @@ async function loadCatalogs(
   const loaded = await Promise.all(
     sources.map(async (locales) => {
       const load = locales[locale]
-      // a missing catalog is normal: english lives in the defaultMessage of
-      // each reference, and a partially translated locale falls back per key
       return load ? (await load()).default : {}
     }),
   )
