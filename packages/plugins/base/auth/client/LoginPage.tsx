@@ -1,7 +1,7 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Suspense, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
-import { useApiQuery, useComponent } from '@qualy/web-runtime'
+import { useSearchParams } from 'react-router'
+import { useApiQuery, useComponent, useSessionTransition } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
@@ -17,14 +17,13 @@ import { authMessages as m } from './i18n.ts'
 export default function LoginPage() {
   const orpc = useApiQuery()
   const { format } = useI18n()
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const startSession = useSessionTransition()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // soft transition: refetch everything the session changes (me, manifest)
-  // and stay inside the spa
+  // a new identity must not inherit the previous one's cache; the runtime
+  // drops it and refetches the manifest, which decides where home now is
   const onAuthenticated = () => {
-    void queryClient.invalidateQueries().then(() => navigate('/', { replace: true }))
+    void startSession()
   }
   const methodsQuery = useQuery(orpc.auth.methods.queryOptions())
 
