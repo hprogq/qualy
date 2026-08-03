@@ -1,0 +1,227 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { AsyncSection, CheckboxGroup, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { Button } from '@qualy/ui/button'
+import { Input } from '@qualy/ui/input'
+import type { UserTypeDto } from '../../src/iam/contract.ts'
+import { iamMessages as m } from '../i18n.ts'
+
+// Everything a user type owns: display, sign-in policy and the tenant-wide
+// permissions it carries. Disabling a type that people still hold is refused
+// by the api, so the control says so up front rather than after a round trip.
+export function UserTypeEditor({
+  userType,
+  canManage,
+}: {
+  userType: UserTypeDto
+  canManage: boolean
+}) {
+  const api = useApi()
+  const orpc = useApiQuery()
+  const queryClient = useQueryClient()
+  const { format, formatError } = useI18n()
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [name, setName] = useState(userType.name)
+  const [description, setDescription] = useState(userType.description ?? '')
+  const [channels, setChannels] = useState<string[]>([])
+  const [permissions, setPermissions] = useState<string[]>(userType.permissions)
+
+  useEffect(() => {
+    setName(userType.name)
+    setDescription(userType.description ?? '')
+    setChannels([
+      ...(userType.allowLocalLogin ? ['local'] : []),
+      ...(userType.allowSsoLogin ? ['sso'] : []),
+    ])
+    setPermissions(userType.permissions)
+    setFeedback(null)
+    setSaved(false)
+  }, [userType])
+
+  // only tenant-scope codes that declare the user-type channel can ever be
+  // granted here, so the picker asks for exactly those
+  const catalog = useQuery(
+    orpc.access.listPermissions.queryOptions({
+      input: { scope: 'tenant', grantChannel: 'user-type' },
+    }),
+  )
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
+  const run = <Variables,>(call: (input: Variables) => Promise<unknown>) => ({
+    mutationFn: call,
+    onMutate: () => {
+      setFeedback(null)
+      setSaved(false)
+    },
+    onSuccess: async () => {
+      setSaved(true)
+      await refresh()
+    },
+    onError: (error: unknown) => setFeedback(formatError(error)),
+  })
+
+  const saveProfile = useMutation(
+    run(() =>
+      api.identity.updateUserType({
+        userTypeId: userType.id,
+        name,
+        description: description.trim() === '' ? null : description,
+        allowLocalLogin: channels.includes('local'),
+        allowSsoLogin: channels.includes('sso'),
+      }),
+    ),
+  )
+  const savePermissions = useMutation(
+    run(() =>
+      api.identity.syncUserTypePermissions({ userTypeId: userType.id, codes: permissions }),
+    ),
+  )
+  const setStatus = useMutation(
+    run((status: 'active' | 'disabled') =>
+      api.identity.setUserTypeStatus({ userTypeId: userType.id, status }),
+    ),
+  )
+  const remove = useMutation({
+    ...run(() => api.identity.deleteUserType({ userTypeId: userType.id })),
+    onSuccess: async () => {
+      setConfirmingDelete(false)
+      await refresh()
+    },
+  })
+
+  const populated = userType.userCount > 0
+
+  return (
+    <Panel
+      title={`${format(m.editUserType)} · ${userType.name}`}
+      description={userType.isSystem ? format(m.systemTypeHint) : undefined}
+      actions={
+        canManage ? (
+          <div className="flex shrink-0 gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              // a populated type cannot be disabled at all: the api refuses
+              // it, so offering the button would only produce an error
+              disabled={setStatus.isPending || (userType.status === 'active' && populated)}
+              onClick={() =>
+                setStatus.mutate(userType.status === 'active' ? 'disabled' : 'active')
+              }
+            >
+              {format(userType.status === 'active' ? m.disable : m.enable)}
+            </Button>
+            {!userType.isSystem && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={populated}
+                onClick={() => setConfirmingDelete(true)}
+              >
+                {format(m.delete)}
+              </Button>
+            )}
+          </div>
+        ) : undefined
+      }
+    >
+      <Feedback message={feedback} />
+      {saved && !feedback && <Feedback message={format(m.saved)} tone="success" />}
+
+      <form
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault()
+          saveProfile.mutate(undefined as never)
+        }}
+      >
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label={format(m.nameLabel)}>
+            {(id) => (
+              <Input
+                id={id}
+                value={name}
+                disabled={!canManage}
+                onChange={(event) => setName(event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={format(m.descriptionLabel)}>
+            {(id) => (
+              <Input
+                id={id}
+                value={description}
+                disabled={!canManage}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+        <CheckboxGroup
+          legend={format(m.loginChannels)}
+          emptyLabel={format(m.noOptions)}
+          disabled={!canManage}
+          options={[
+            { value: 'local', label: format(m.allowLocalLogin) },
+            { value: 'sso', label: format(m.allowSsoLogin) },
+          ]}
+          selected={channels}
+          onChange={setChannels}
+        />
+        <Button
+          size="sm"
+          type="submit"
+          disabled={!canManage || saveProfile.isPending || name.trim() === ''}
+        >
+          {format(m.save)}
+        </Button>
+      </form>
+
+      <AsyncSection
+        pending={catalog.isPending}
+        error={catalog.isError ? formatError(catalog.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void catalog.refetch()}
+      >
+        <div className="space-y-2">
+          <CheckboxGroup
+            legend={format(m.permissionsLegend)}
+            emptyLabel={format(m.noOptions)}
+            disabled={!canManage}
+            options={(catalog.data?.permissions ?? []).map((permission) => ({
+              value: permission.code,
+              label: permission.name,
+              hint: permission.code,
+            }))}
+            selected={permissions}
+            onChange={setPermissions}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canManage || savePermissions.isPending}
+            onClick={() => savePermissions.mutate(undefined as never)}
+          >
+            {format(m.save)}
+          </Button>
+        </div>
+      </AsyncSection>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={format(m.confirmDeleteTitle)}
+        description={format(m.confirmDeleteBody)}
+        confirmLabel={format(m.delete)}
+        cancelLabel={format(m.cancel)}
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate(undefined as never)}
+        onCancel={() => setConfirmingDelete(false)}
+      />
+    </Panel>
+  )
+}

@@ -12,6 +12,11 @@ const userTypeInUseMessage = defineMessage<{ userCount: number }>()({
   defaultMessage:
     '{userCount, plural, one {# user still has} other {# users still have}} this type.',
 })
+const userTypeLastForRoleMessage = defineMessage<{ roleCount: number }>()({
+  id: 'auth/error/user-type-last-for-role',
+  defaultMessage:
+    '{roleCount, plural, one {# role allows} other {# roles allow}} this user type and no other.',
+})
 const permissionNotGrantableMessage = defineMessage<{ count: number }>()({
   id: 'auth/error/permission-not-grantable',
   defaultMessage:
@@ -20,7 +25,7 @@ const permissionNotGrantableMessage = defineMessage<{ count: number }>()({
 const assignmentIncompatibleMessage = defineMessage<{ assignmentCount: number }>()({
   id: 'auth/error/assignment-incompatible',
   defaultMessage:
-    '{assignmentCount, plural, one {# role assignment does} other {# role assignments do}} not allow this change.',
+    '{assignmentCount, plural, one {# role grant does} other {# role grants do}} not allow this change.',
 })
 
 const i18n = definePluginMessages({
@@ -48,35 +53,93 @@ const i18n = definePluginMessages({
     signOut: { id: 'auth/action/sign-out', defaultMessage: 'Sign out' },
     usersNav: navLabels.usersNav,
     userTypesNav: navLabels.userTypesNav,
+
     usersTitle: { id: 'auth/users/title', defaultMessage: 'Users' },
+    usersHint: {
+      id: 'auth/users/hint',
+      defaultMessage: 'Users are administered where they stand in the organization.',
+    },
     usersEmpty: { id: 'auth/users/empty', defaultMessage: 'No users here yet.' },
     userTypesTitle: { id: 'auth/user-types/title', defaultMessage: 'User types' },
+    userTypesHint: {
+      id: 'auth/user-types/hint',
+      defaultMessage:
+        'A user type decides how a class of people signs in and what they may do tenant-wide.',
+    },
+    userTypesEmpty: { id: 'auth/user-types/empty', defaultMessage: 'No user types yet.' },
+    userDetailTitle: { id: 'auth/users/detail-title', defaultMessage: 'User' },
+    backToUsers: { id: 'auth/users/back', defaultMessage: '← All users' },
+    profileSection: { id: 'auth/users/profile', defaultMessage: 'Profile' },
+    placementSection: { id: 'auth/users/placement', defaultMessage: 'Organization placement' },
+    grantsSection: { id: 'auth/users/grants', defaultMessage: 'Role grants' },
+    grantsEmpty: { id: 'auth/users/grants-empty', defaultMessage: 'No role grants.' },
+    grantsHint: {
+      id: 'auth/users/grants-hint',
+      defaultMessage: 'Only grants anchored where you administer are shown and editable.',
+    },
     newUser: { id: 'auth/users/new', defaultMessage: 'New user' },
     newUserHint: {
       id: 'auth/users/new-hint',
       defaultMessage: 'The user is placed on the selected organization node.',
     },
     newUserType: { id: 'auth/user-types/new', defaultMessage: 'New user type' },
+    newUserTypeHint: {
+      id: 'auth/user-types/new-hint',
+      defaultMessage:
+        'A type is created complete: without a sign-in channel nobody holding it can sign in.',
+    },
+    editUserType: { id: 'auth/user-types/edit', defaultMessage: 'User type configuration' },
+
     nameLabel: { id: 'auth/field/name', defaultMessage: 'Name' },
     codeLabel: { id: 'auth/field/code', defaultMessage: 'Code' },
+    descriptionLabel: { id: 'auth/field/description', defaultMessage: 'Description' },
+    businessNoLabel: { id: 'auth/field/business-no', defaultMessage: 'Business number' },
     userTypeLabel: { id: 'auth/field/user-type', defaultMessage: 'User type' },
     selectUserType: { id: 'auth/field/select-user-type', defaultMessage: 'Select a user type' },
+    identifierLabel: { id: 'auth/field/identifier', defaultMessage: 'Sign-in name' },
     anchorLabel: { id: 'auth/users/anchor', defaultMessage: 'Organization node' },
+    scopeLabel: { id: 'auth/users/scope', defaultMessage: 'Include the whole subtree' },
     searchPlaceholder: { id: 'auth/users/search', defaultMessage: 'Search' },
+    loginChannels: { id: 'auth/field/login-channels', defaultMessage: 'Sign-in channels' },
+    allowLocalLogin: { id: 'auth/field/allow-local-login', defaultMessage: 'Password sign-in' },
+    allowSsoLogin: { id: 'auth/field/allow-sso-login', defaultMessage: 'Single sign-on' },
+    permissionsLegend: { id: 'auth/field/permissions', defaultMessage: 'Tenant permissions' },
+    noOptions: { id: 'auth/field/no-options', defaultMessage: 'Nothing to choose from yet.' },
+    noAnchors: {
+      id: 'auth/users/no-anchors',
+      defaultMessage: 'You do not administer users anywhere yet.',
+    },
+
     create: { id: 'auth/action/create', defaultMessage: 'Create' },
+    save: { id: 'auth/action/save', defaultMessage: 'Save' },
+    cancel: { id: 'auth/action/cancel', defaultMessage: 'Cancel' },
     delete: { id: 'auth/action/delete', defaultMessage: 'Delete' },
     enable: { id: 'auth/action/enable', defaultMessage: 'Enable' },
     disable: { id: 'auth/action/disable', defaultMessage: 'Disable' },
+    loadMore: { id: 'auth/action/load-more', defaultMessage: 'Load more' },
+    transfer: { id: 'auth/action/transfer', defaultMessage: 'Transfer' },
+    saved: { id: 'auth/feedback/saved', defaultMessage: 'Saved.' },
     systemBadge: { id: 'auth/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'auth/badge/disabled', defaultMessage: 'disabled' },
-    confirmDelete: {
-      id: 'auth/confirm/delete',
-      defaultMessage: 'Delete this permanently?',
+    noLoginBadge: { id: 'auth/badge/no-login', defaultMessage: 'cannot sign in' },
+    confirmDeleteTitle: { id: 'auth/confirm/delete-title', defaultMessage: 'Delete permanently?' },
+    confirmDeleteBody: { id: 'auth/confirm/delete-body', defaultMessage: 'This cannot be undone.' },
+    confirmDisableTitle: { id: 'auth/confirm/disable-title', defaultMessage: 'Disable this user?' },
+    confirmDisableBody: {
+      id: 'auth/confirm/disable-body',
+      defaultMessage: 'Their sessions end immediately.',
+    },
+    systemTypeHint: {
+      id: 'auth/user-types/system-hint',
+      defaultMessage: 'A system user type cannot be deleted; its policy stays editable.',
     },
     userCount: userCountMessage,
   },
   errors: defineErrorTranslations(iamErrors, {
-    USER_TYPE_NOT_FOUND: { id: 'auth/error/user-type-not-found', defaultMessage: 'User type not found.' },
+    USER_TYPE_NOT_FOUND: {
+      id: 'auth/error/user-type-not-found',
+      defaultMessage: 'User type not found.',
+    },
     USER_TYPE_CONFLICT: {
       id: 'auth/error/user-type-conflict',
       defaultMessage: 'A user type with that code or name already exists.',
@@ -88,6 +151,10 @@ const i18n = definePluginMessages({
     USER_TYPE_IN_USE: {
       message: userTypeInUseMessage,
       values: (data) => ({ userCount: data.userCount }),
+    },
+    USER_TYPE_LAST_FOR_ROLE: {
+      message: userTypeLastForRoleMessage,
+      values: (data) => ({ roleCount: data.roleCount }),
     },
     USER_TYPE_DISABLED: {
       id: 'auth/error/user-type-disabled',
@@ -113,10 +180,6 @@ const i18n = definePluginMessages({
     ASSIGNMENT_INCOMPATIBLE: {
       message: assignmentIncompatibleMessage,
       values: (data) => ({ assignmentCount: data.assignmentCount }),
-    },
-    LAST_ADMINISTRATOR: {
-      id: 'auth/error/last-administrator',
-      defaultMessage: 'The last tenant administrator cannot be removed or disabled.',
     },
   }),
   locales: {

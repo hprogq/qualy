@@ -192,6 +192,26 @@ export function defineErrorTranslations<
   return { registry, descriptors }
 }
 
+// a plugin may translate errors from more than one declaration set — its own
+// and a shared invariant it can raise — and definePluginMessages takes one
+// set, so they are joined here rather than by hand at each call site
+export function mergeErrorTranslations(
+  ...sets: readonly ErrorTranslationSet[]
+): ErrorTranslationSet {
+  const registry: ErrorMessageMap = {}
+  const descriptors: Record<string, MessageDescriptor> = {}
+  for (const set of sets) {
+    for (const code of Object.keys(set.registry)) {
+      if (Object.hasOwn(registry, code)) {
+        throw new Error(`error code ${code} is translated twice`)
+      }
+      registry[code] = set.registry[code]!
+      descriptors[code] = set.descriptors[code]!
+    }
+  }
+  return { registry, descriptors }
+}
+
 // what a plugin's client declares in ONE call: its copy, its error
 // translations and its locale catalogs. Everything else — the runtime error
 // registry, the declared-descriptor table the catalogs are checked against

@@ -4,6 +4,7 @@ export const components = {
   'auth/LoginPage': () => import('./LoginPage.tsx'),
   'auth/UserMenu': () => import('./UserMenu.tsx'),
   'auth/UsersPage': () => import('./iam/UsersPage.tsx'),
+  'auth/UserDetailPage': () => import('./iam/UserDetailPage.tsx'),
   'auth/UserTypesPage': () => import('./iam/UserTypesPage.tsx'),
 }
 

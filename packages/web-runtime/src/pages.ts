@@ -4,9 +4,29 @@ import type { PageRef } from '@qualy/ui-contract'
 // can be unit tested and reused by non-hook call sites.
 
 export interface PageHrefOptions {
+  // values for the page's `:name` segments
+  params?: Record<string, string>
   // query string values; undefined entries are omitted, arrays repeat the key
   search?: Record<string, string | number | boolean | undefined | (string | number)[]>
   hash?: string
+}
+
+// a missing parameter is a bug in the caller, not a url with a literal
+// ":userId" in it, so it fails loudly rather than navigating somewhere wrong
+function fillPath(page: PageRef, params: Record<string, string> | undefined): string {
+  if (!page.path.includes(':')) return page.path
+  return page.path
+    .split('/')
+    .map((segment) => {
+      if (!segment.startsWith(':')) return segment
+      const name = segment.slice(1)
+      const value = params?.[name]
+      if (value === undefined || value === '') {
+        throw new Error(`page ${page.id} needs a value for :${name}`)
+      }
+      return encodeURIComponent(value)
+    })
+    .join('/')
 }
 
 export function buildPageHref(page: PageRef, options: PageHrefOptions = {}): string {
@@ -21,7 +41,7 @@ export function buildPageHref(page: PageRef, options: PageHrefOptions = {}): str
   }
   const query = params.toString()
   const hash = options.hash ? `#${options.hash}` : ''
-  return `${page.path}${query ? `?${query}` : ''}${hash}`
+  return `${fillPath(page, options.params)}${query ? `?${query}` : ''}${hash}`
 }
 
 // where the browser lands after an identity change. 'home' is the host's own
@@ -30,8 +50,10 @@ export function buildPageHref(page: PageRef, options: PageHrefOptions = {}): str
 // than in any plugin.
 export type SessionDestination =
   | { kind: 'home' }
-  | { kind: 'page'; page: PageRef }
+  | { kind: 'page'; page: PageRef; params?: Record<string, string> }
 
 export function sessionDestinationHref(destination: SessionDestination): string {
-  return destination.kind === 'home' ? '/' : buildPageHref(destination.page)
+  return destination.kind === 'home'
+    ? '/'
+    : buildPageHref(destination.page, { params: destination.params })
 }

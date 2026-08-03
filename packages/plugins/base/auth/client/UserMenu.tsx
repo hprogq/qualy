@@ -15,7 +15,7 @@ export default function UserMenu() {
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
   const [signOutError, setSignOutError] = useState<string | null>(null)
-  const me = useQuery({ ...orpc.auth.me.queryOptions(), retry: false })
+  const me = useQuery({ ...orpc.auth.getSession.queryOptions(), retry: false })
 
   if (me.isPending) return null
   if (me.isError) {
@@ -51,7 +51,7 @@ export default function UserMenu() {
           // a failed request leaves the identity intact and must say so
           // instead of pretending to have signed the user out
           void api.auth
-            .logout()
+            .endSession()
             .then(() =>
               endSession({ destination: { kind: 'page', page: loginPage } }),
             )

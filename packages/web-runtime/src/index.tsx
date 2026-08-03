@@ -15,8 +15,14 @@ import {
   type LazyExoticComponent,
   type ReactNode,
 } from 'react'
-import { useNavigate } from 'react-router'
-import type { PageRef, UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
+import type {
+  PageParams,
+  PageRef,
+  ParamsOption,
+  UiCollectionToken,
+  UiSlotToken,
+} from '@qualy/ui-contract'
 import { Button } from '@qualy/ui/button'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -49,7 +55,7 @@ export {
 } from './route-builder.tsx'
 export { PageLink } from './links.tsx'
 
-export type Manifest = Awaited<ReturnType<AppClient['ui']['getManifest']>>
+export type Manifest = Awaited<ReturnType<AppClient['app']['getManifest']>>
 // heterogeneous by design: each page or renderer declares its own props,
 // consumers pass whatever the target component expects
 export type ComponentRegistry = Record<string, LazyExoticComponent<ComponentType<any>>>
@@ -93,7 +99,7 @@ function RuntimeLoader({
   children,
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
   const { format } = useI18n()
-  const manifest = useQuery(orpc.ui.getManifest.queryOptions())
+  const manifest = useQuery(orpc.app.getManifest.queryOptions())
   if (manifest.isPending) return <LoadingScreen />
   if (manifest.isError) {
     return (
@@ -185,7 +191,11 @@ export function usePageNavigate() {
   const navigate = useNavigate()
   const manifest = useManifest()
   return useCallback(
-    (page: PageRef, options: PageHrefOptions & { replace?: boolean } = {}) => {
+    <const Ref extends PageRef>(
+      page: Ref,
+      options: Omit<PageHrefOptions, 'params'> &
+        ParamsOption<Ref> & { replace?: boolean } = {} as never,
+    ) => {
       const available = manifest.pages.some((candidate) => candidate.id === page.id)
       if (!available) {
         const message = `cannot navigate to ${page.id}: not visible in the current manifest`
@@ -197,6 +207,42 @@ export function usePageNavigate() {
     },
     [navigate, manifest],
   )
+}
+
+// One piece of screen state that belongs in the address bar: which record is
+// selected, what was searched for, which anchor is in view. Keeping it here
+// rather than in useState is what makes an administration screen linkable and
+// survivable across a reload.
+export function usePageQueryState(
+  key: string,
+  fallback = '',
+): [string, (next: string) => void] {
+  const [params, setParams] = useSearchParams()
+  const value = params.get(key) ?? fallback
+  const set = useCallback(
+    (next: string) => {
+      setParams(
+        (current) => {
+          const updated = new URLSearchParams(current)
+          if (next === '' || next === fallback) updated.delete(key)
+          else updated.set(key, next)
+          return updated
+        },
+        // navigating a filter is not a place in history to go back to
+        { replace: true },
+      )
+    },
+    [key, fallback, setParams],
+  )
+  return [value, set]
+}
+
+// the `:name` segments of the route this page is mounted at. Typed by the
+// page reference, so a screen reads the parameters its own declaration
+// promises rather than whatever the router happens to have matched.
+export function usePageRouteParams<const Ref extends PageRef>(page: Ref): PageParams<Ref> {
+  const params = useParams()
+  return params as PageParams<Ref>
 }
 
 // items of a collection surface, already authorized and path-resolved by

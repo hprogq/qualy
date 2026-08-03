@@ -25,7 +25,7 @@ export default function LoginPage() {
   const onAuthenticated = () => {
     void startSession({ destination: { kind: 'home' } })
   }
-  const methodsQuery = useQuery(orpc.auth.methods.queryOptions())
+  const methodsQuery = useQuery(orpc.auth.listLoginMethods.queryOptions())
 
   const body = () => {
     if (methodsQuery.isPending) {

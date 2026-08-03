@@ -18,6 +18,12 @@ export const commonMessages = {
   back: { id: 'common/action/back', defaultMessage: 'Back' },
   cancel: { id: 'common/action/cancel', defaultMessage: 'Cancel' },
   loading: { id: 'common/state/loading', defaultMessage: 'Loading' },
+  // a paginated list that is not showing everything says so; the alternative
+  // is a silent truncation that reads as "this is all of it"
+  moreResults: {
+    id: 'common/state/more-results',
+    defaultMessage: 'More results are available. Narrow the search to see them.',
+  },
   manifestLoadFailed: {
     id: 'common/manifest/load-failed',
     defaultMessage: 'Could not load the interface manifest. Check your connection.',

@@ -31,6 +31,7 @@ export default {
   'common/error/network': '无法连接服务器，请检查网络后重试。',
   'common/error/unexpected': '操作失败，请重试。',
   'common/state/loading': '加载中',
+  'common/state/more-results': '还有更多结果，缩小搜索范围可以看到。',
   'common/manifest/load-failed': '界面清单加载失败，请检查网络。',
   'common/component/missing': '渲染器缺失：{component}',
   'common/layout/missing': '布局渲染器缺失：{component}',

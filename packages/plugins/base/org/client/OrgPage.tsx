@@ -311,7 +311,7 @@ function NodePanel({
                     disabled={moveTargetId === ''}
                     onClick={() =>
                       void onAction(
-                        api.org.moveNode({ nodeId: node.id, newParentId: moveTargetId }),
+                        api.org.setNodePlacement({ nodeId: node.id, parentId: moveTargetId }),
                       )
                     }
                   >
@@ -471,7 +471,7 @@ function TypeRuleAdmin({
               disabled={ruleParent === '' || ruleChild === ''}
               onClick={() =>
                 void onAction(
-                  api.org.createRule({ parentTypeId: ruleParent, childTypeId: ruleChild }),
+                  api.org.putRule({ parentTypeId: ruleParent, childTypeId: ruleChild }),
                 )
               }
             >

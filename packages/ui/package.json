@@ -15,7 +15,8 @@
     "./card": "./src/components/card.tsx",
     "./alert": "./src/components/alert.tsx",
     "./theme.css": "./src/styles/theme.css",
-    "./spinner": "./src/components/spinner.tsx"
+    "./spinner": "./src/components/spinner.tsx",
+    "./admin": "./src/components/admin.tsx"
   },
   "peerDependencies": {
     "react": "catalog:"
