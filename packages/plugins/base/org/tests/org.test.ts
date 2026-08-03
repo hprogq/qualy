@@ -8,8 +8,8 @@ import Database from '@qualy/plugin-database'
 import Server, { type AuthPrincipal } from '@qualy/plugin-server'
 import UiRegistry from '@qualy/plugin-ui-registry'
 import Rbac from '@qualy/plugin-rbac'
+import { AccessDeniedError, DomainError } from '@qualy/api-contract'
 import Org from '../src/index.ts'
-import { OrgError } from '../src/errors.ts'
 
 const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
 const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
@@ -78,7 +78,12 @@ describe.runIf(available)('org tree domain', () => {
   const orgCode = (promise: Promise<unknown>) =>
     promise.then(
       () => 'ok',
-      (error) => (error instanceof OrgError ? error.code : ((error as Error).message ?? 'error')),
+      (error) =>
+        error instanceof DomainError
+          ? error.code
+          : error instanceof AccessDeniedError
+            ? 'ACCESS_DENIED'
+            : ((error as Error).message ?? 'error'),
     )
 
   // every node must agree with its parent chain: path is parent path plus
@@ -395,7 +400,7 @@ describe.runIf(available)('org tree domain', () => {
     ])
     expect(rules.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     const lost = rules.find((result) => result.status === 'rejected') as PromiseRejectedResult
-    expect((lost.reason as OrgError).code).toBe('ORG_RULE_CYCLE')
+    expect((lost.reason as DomainError).code).toBe('ORG_RULE_CYCLE')
 
     // concurrent create-under vs delete-parent: the lock admits either
     // order, but never both succeeding (an orphan under a deleted parent)
@@ -719,12 +724,12 @@ describe.runIf(available)('org tree domain', () => {
       await orgCode(
         tree().createType(f.tenant, { code: 'nope', name: '不行' }, principal(f.manager)),
       ),
-    ).toBe('ORG_FORBIDDEN')
+    ).toBe('ACCESS_DENIED')
     expect(
       await orgCode(
         tree().deleteRule(f.tenant, f.collegeType, f.classType, principal(f.manager)),
       ),
-    ).toBe('ORG_FORBIDDEN')
+    ).toBe('ACCESS_DENIED')
     // the admin passes the same in-lock check
     const spare = await tree().createType(
       f.tenant,
@@ -743,7 +748,7 @@ describe.runIf(available)('org tree domain', () => {
       await orgCode(
         tree().updateNode(f.tenant, f.collegeB, { name: '越权' }, principal(f.manager)),
       ),
-    ).toBe('ORG_FORBIDDEN')
+    ).toBe('ACCESS_DENIED')
     // inside the granted subtree the same call passes
     const renamed = await tree().updateNode(
       f.tenant,

@@ -6,7 +6,8 @@ import {
 } from 'node:http'
 import { COMMON_ERROR_STATUS_MAP } from '@orpc/client'
 import { OpenAPIHandler } from '@orpc/openapi/node'
-import { onError, ORPCError, type Router } from '@orpc/server'
+import { onError, ORPCError, os, type Router } from '@orpc/server'
+import { AccessDeniedError, DomainError } from '@qualy/api-contract'
 import { CORSHandlerPlugin } from '@orpc/server/plugins'
 import type { StandardHandlerPlugin } from '@orpc/server/standard'
 import { Context, Service } from 'cordis'
@@ -50,6 +51,46 @@ export type OpenApiHandlerPluginFactory = (options: {
   router: ApiRouter
   prefix: `/${string}`
 }) => StandardHandlerPlugin<ApiContext>
+
+// implementer middlewares shared by every plugin router, composed as
+// `implement(contract).$context<ApiContext>().use(apiErrorBoundary)
+// .use(requireAuth)` (probed against beta.21: standalone middlewares built
+// through os.$context().middleware() attach to any contract implementer,
+// receive the procedure's typed error factories and refine the context
+// type for every handler downstream).
+
+// outermost boundary: a DomainError thrown anywhere below maps onto the
+// procedure's typed contract errors (message and data ride along), an
+// in-service AccessDeniedError becomes the transport's common FORBIDDEN,
+// and anything else stays an internal fault on purpose.
+export const apiErrorBoundary = os.$context<ApiContext>().middleware(async ({ next, errors }) => {
+  try {
+    return await next()
+  } catch (error) {
+    if (error instanceof AccessDeniedError) throw new ORPCError('FORBIDDEN')
+    if (error instanceof DomainError) {
+      const factory = (
+        errors as Record<
+          string,
+          ((options?: { message?: string; data?: unknown }) => Error) | undefined
+        >
+      )[error.code]
+      if (factory) {
+        throw error.data === undefined
+          ? factory({ message: error.message })
+          : factory({ message: error.message, data: error.data })
+      }
+    }
+    throw error
+  }
+})
+
+// rejects anonymous requests and narrows context.principal to non-optional
+// for every handler downstream
+export const requireAuth = os.$context<ApiContext>().middleware(async ({ context, next }) => {
+  if (!context.principal) throw new ORPCError('AUTH_REQUIRED')
+  return next({ context: { principal: context.principal } })
+})
 
 // connect-style middleware, the natural shape of vite middlewares and sirv:
 // call next() to fall through to the 404, next(error) for a logged 500
@@ -287,6 +328,10 @@ export default class Server extends Service {
   ) {
     const statusMap: Record<string, number> = {
       ...COMMON_ERROR_STATUS_MAP,
+      // the anonymous-request rejection is a server-level concept (the
+      // principal lives on ApiContext), so its status ships here instead of
+      // depending on any single plugin being active
+      AUTH_REQUIRED: 401,
       ...deriveErrorStatuses(fragments),
     }
     const router = Object.fromEntries(

@@ -1,36 +1,25 @@
-import { defineErrorMessages, type PluginCatalogs } from '@qualy/i18n-contract'
-import type { ApiErrorCode, CommonErrorCode, MessageDescriptor } from '@qualy/i18n-contract'
-import type { AuthLocalContractError } from '../src/contract.ts'
+import { defineErrorTranslations, definePluginMessages } from '@qualy/i18n-contract'
+import { authLocalErrors } from '../src/errors.ts'
 
-export const localMessages = {
-  identifier: { id: 'auth-local/field/identifier', defaultMessage: 'Username' },
-  password: { id: 'auth-local/field/password', defaultMessage: 'Password' },
-  submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },
-  submitting: { id: 'auth-local/action/submitting', defaultMessage: 'Signing in…' },
-} as const satisfies Record<string, MessageDescriptor>
-
-export const localErrorTexts = {
-  invalidCredentials: {
-    id: 'auth-local/error/invalid-credentials',
-    defaultMessage: 'Incorrect username or password.',
-  },
-} as const satisfies Record<string, MessageDescriptor>
-
-type OwnedErrorCode = Exclude<ApiErrorCode<AuthLocalContractError>, CommonErrorCode>
-
-export const errorMessages = defineErrorMessages<AuthLocalContractError, OwnedErrorCode>()({
-  INVALID_CREDENTIALS: { message: localErrorTexts.invalidCredentials },
-})
-
-export const localDeclaredMessages = {
-  ...localMessages,
-  ...localErrorTexts,
-} as const satisfies Record<string, MessageDescriptor>
-
-export const catalogs: PluginCatalogs = {
+const i18n = definePluginMessages({
   namespace: 'auth-local',
-  messages: Object.values(localDeclaredMessages),
+  messages: {
+    identifier: { id: 'auth-local/field/identifier', defaultMessage: 'Username' },
+    password: { id: 'auth-local/field/password', defaultMessage: 'Password' },
+    submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },
+    submitting: { id: 'auth-local/action/submitting', defaultMessage: 'Signing in…' },
+  },
+  errors: defineErrorTranslations(authLocalErrors, {
+    INVALID_CREDENTIALS: {
+      id: 'auth-local/error/invalid-credentials',
+      defaultMessage: 'Incorrect username or password.',
+    },
+  }),
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),
   },
-}
+})
+
+export const localMessages = i18n.messages
+export const catalogs = i18n.catalogs
+export const errorMessages = i18n.errorMessages

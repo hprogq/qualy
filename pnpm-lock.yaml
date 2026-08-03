@@ -272,6 +272,18 @@ importers:
         specifier: workspace:*
         version: link:../plugins/infra/ui-registry
 
+  packages/api-contract:
+    dependencies:
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
+      '@orpc/openapi':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+
   packages/app:
     dependencies:
       '@cordisjs/plugin-include':
@@ -332,6 +344,9 @@ importers:
 
   packages/i18n-contract:
     dependencies:
+      '@qualy/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -347,6 +362,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/api-contract':
+        specifier: workspace:*
+        version: link:../../../api-contract
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract
@@ -411,9 +429,6 @@ importers:
 
   packages/plugins/base/auth-local:
     dependencies:
-      '@orpc/client':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.21
       '@orpc/contract':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
@@ -423,6 +438,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/api-contract':
+        specifier: workspace:*
+        version: link:../../../api-contract
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract
@@ -512,9 +530,6 @@ importers:
 
   packages/plugins/base/org:
     dependencies:
-      '@orpc/client':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.21
       '@orpc/contract':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
@@ -524,6 +539,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/api-contract':
+        specifier: workspace:*
+        version: link:../../../api-contract
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract
@@ -625,6 +643,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/api-contract':
+        specifier: workspace:*
+        version: link:../../../api-contract
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract
@@ -706,6 +727,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/api-contract':
+        specifier: workspace:*
+        version: link:../../../api-contract
       cordis:
         specifier: 'catalog:'
         version: 4.0.0-rc.7(@cordisjs/plugin-include@1.0.4)(@cordisjs/plugin-loader@1.0.0-rc.5)
@@ -724,6 +748,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/api-contract':
+        specifier: workspace:*
+        version: link:../../../api-contract
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract

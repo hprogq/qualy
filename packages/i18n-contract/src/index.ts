@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { DomainErrors, ErrorDataOf, ErrorDefinitions } from '@qualy/api-contract'
 
 // the serializable text protocol between server-side plugins and the web
 // runtime: plugins never pick the display language. A MessageRef names a
@@ -115,24 +116,6 @@ export interface PluginCatalogs {
 
 // --- typed api error localization ---
 
-// the shape every api error union member has; the transport's own bare
-// Error members drop out of the helpers below
-export interface ApiErrorLike {
-  code: string
-  data?: unknown
-}
-
-// these are distributive on purpose: the checked type is a naked type
-// parameter, so a union like `Error | ORPCError<...>` filters member by
-// member instead of collapsing to never (probed against beta.21)
-export type DefinedApiError<Union> = Union extends { defined: boolean; code: string }
-  ? Union
-  : never
-export type ApiErrorCode<Union> = Union extends { code: infer Code } ? Code : never
-export type ApiErrorData<Union, Code> = Union extends { code: Code; data: infer Data }
-  ? Data
-  : never
-
 // values() receives the data of its own code, never `unknown`
 export interface ErrorMessageRegistration<Data = unknown> {
   message: MessageDescriptor
@@ -145,20 +128,89 @@ export interface ErrorMessageRegistration<Data = unknown> {
 // of every plugin casting its own data.
 export type ErrorMessageMap = Record<string, ErrorMessageRegistration<never>>
 
-// the exact registry shape a contract's error union allows: every code must
-// be present, no code outside the union is accepted, and each values()
-// receives that code's data type
-export type TypedErrorMessageMap<Union, Codes extends ApiErrorCode<Union> & string> = {
-  [Code in Codes]: ErrorMessageRegistration<ApiErrorData<Union, Code>>
+// a translation entry is either a plain descriptor (static sentence) or a
+// valued message plus the projection from the error's typed data to its icu
+// placeholders. A ValuedMessageDescriptor cannot take the plain form: its
+// required __values phantom collides with the never-typed exclusion, so a
+// message that interpolates cannot be registered without its values().
+type PlainDescriptor = MessageDescriptor & { __values?: never }
+
+export type ErrorTranslation<Data> =
+  | PlainDescriptor
+  | {
+      message: MessageDescriptor
+      values: (data: Data) => MessageValues
+    }
+
+export interface ErrorTranslationSet {
+  registry: ErrorMessageMap
+  descriptors: Record<string, MessageDescriptor>
 }
 
-// defineErrorMessages<ContractErrorUnion, OwnedCodes>()({ ... }). The map
-// parameter is the constrained type itself rather than an inferred subtype,
-// which is what gives each values(data) its contextual type.
-export const defineErrorMessages =
-  <Union, Codes extends ApiErrorCode<Union> & string = ApiErrorCode<Union> & string>() =>
-  (map: TypedErrorMessageMap<Union, Codes>): TypedErrorMessageMap<Union, Codes> =>
-    map
+// translations for a domain error set: every code must be translated, a
+// code outside the definitions is rejected by excess property checking, and
+// each values() receives exactly the data its definition's zod schema
+// declares — all inferred from the dsl value, no contract type inference.
+// The parameter is the mapped type itself (not an inferred subtype): that
+// is what gives values(data) its contextual type and makes extra keys fail.
+export function defineErrorTranslations<Defs extends ErrorDefinitions>(
+  errors: DomainErrors<Defs>,
+  translations: { [Code in keyof Defs & string]: ErrorTranslation<ErrorDataOf<Defs[Code]>> },
+): ErrorTranslationSet {
+  void errors
+  const registry: Record<string, ErrorMessageRegistration<never>> = {}
+  const descriptors: Record<string, MessageDescriptor> = {}
+  for (const [code, entry] of Object.entries(translations)) {
+    const registration =
+      'message' in entry && typeof entry.message === 'object'
+        ? (entry as { message: MessageDescriptor; values: (data: never) => MessageValues })
+        : { message: entry as MessageDescriptor }
+    registry[code] = registration as ErrorMessageRegistration<never>
+    descriptors[code] = registration.message
+  }
+  return { registry, descriptors }
+}
+
+// what a plugin's client declares in ONE call: its copy, its error
+// translations and its locale catalogs. Everything else — the runtime error
+// registry, the declared-descriptor table the catalogs are checked against
+// and the PluginCatalogs the host aggregates — is derived.
+export interface PluginMessages<Messages extends Record<string, MessageDescriptor>> {
+  messages: Messages
+  errorMessages: ErrorMessageMap
+  catalogs: PluginCatalogs
+}
+
+export function definePluginMessages<const Messages extends Record<string, MessageDescriptor>>(options: {
+  namespace: string
+  messages: Messages
+  errors?: ErrorTranslationSet
+  locales: PluginCatalogs['locales']
+}): PluginMessages<Messages> {
+  const declared: Record<string, MessageDescriptor> = {
+    ...options.messages,
+    ...(options.errors?.descriptors ?? {}),
+  }
+  const outside = Object.values(declared).filter(
+    (descriptor) => !(descriptor as MessageDescriptor).id.startsWith(`${options.namespace}/`),
+  )
+  if (outside.length > 0) {
+    throw new Error(
+      `plugin ${options.namespace} declares messages outside its namespace: ${outside
+        .map((descriptor) => (descriptor as MessageDescriptor).id)
+        .join(', ')}`,
+    )
+  }
+  return {
+    messages: options.messages,
+    errorMessages: options.errors?.registry ?? {},
+    catalogs: {
+      namespace: options.namespace,
+      messages: Object.values(declared),
+      locales: options.locales,
+    },
+  }
+}
 
 // codes owned by the runtime; a plugin may localize its own codes only
 export const commonErrorCodes = [

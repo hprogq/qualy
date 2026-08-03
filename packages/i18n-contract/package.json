@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@qualy/api-contract": "workspace:*",
     "zod": "catalog:"
   }
 }
