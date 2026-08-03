@@ -3,6 +3,8 @@
 export const components = {
   'auth/LoginPage': () => import('./LoginPage.tsx'),
   'auth/UserMenu': () => import('./UserMenu.tsx'),
+  'auth/UsersPage': () => import('./iam/UsersPage.tsx'),
+  'auth/UserTypesPage': () => import('./iam/UserTypesPage.tsx'),
 }
 
-export { catalogs } from './i18n.ts'
+export { catalogs, errorMessages } from './i18n.ts'

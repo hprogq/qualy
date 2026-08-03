@@ -15,6 +15,7 @@
     "@qualy/plugin-layout-default": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
