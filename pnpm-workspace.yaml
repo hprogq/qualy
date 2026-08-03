@@ -29,6 +29,7 @@ catalog:
   vitest: 4.1.10
   prettier: 3.9.6
   '@lingui/core': 6.6.0
+  '@standard-schema/spec': 1.1.0
   '@lingui/message-utils': 6.6.0
   react: 19.2.8
   react-dom: 19.2.8

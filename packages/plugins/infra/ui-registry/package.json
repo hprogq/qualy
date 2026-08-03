@@ -16,8 +16,12 @@
     "@orpc/contract": "catalog:",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
+    "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@standard-schema/spec": "catalog:"
   }
 }

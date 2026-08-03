@@ -8,6 +8,8 @@ import {
   type UiCollectionToken,
   type UiSlotToken,
 } from '@qualy/ui-contract'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { uiTextSchema, type UiText } from '@qualy/i18n-contract'
 import { primaryNavigation } from '@qualy/ui-contract'
 import type { ApiContext } from '@qualy/plugin-server'
 import { uiContract } from './contract.ts'
@@ -29,7 +31,7 @@ export interface PageDecl {
   public?: boolean
   permission?: string
   // sugar: most pages also register one primary navigation entry
-  navigation?: { label: string; icon?: string; order?: number }
+  navigation?: { label: UiText; icon?: string; order?: number }
 }
 
 // a concrete implementation of a layout contract, shipped by a layout plugin
@@ -57,6 +59,22 @@ const assertId = (id: string, what: string) => {
   }
 }
 
+// payloads that travel through the manifest are validated where they are
+// contributed: a plugin shipping a bare display string as a label fails at
+// load time instead of surfacing untranslatable text in the browser
+const assertShape = (schema: StandardSchemaV1, value: unknown, what: string) => {
+  const result = schema['~standard'].validate(value)
+  if (result instanceof Promise) throw new Error(`${what}: async validation is not supported`)
+  if (result.issues) {
+    const detail = result.issues.map((issue) => issue.message).join('; ')
+    throw new Error(`${what} is malformed: ${detail}`)
+  }
+}
+
+const assertUiText = (value: UiText, what: string) => {
+  assertShape(uiTextSchema, value, what)
+}
+
 export default class UiRegistry extends Service {
   static inject = ['server']
 
@@ -80,6 +98,7 @@ export default class UiRegistry extends Service {
   addPage(page: PageDecl) {
     assertId(page.id, 'page id')
     assertId(page.layout, 'layout contract')
+    if (page.navigation) assertUiText(page.navigation.label, `page ${page.id} navigation label`)
     return this.ctx.effect(() => {
       if (this.pages.has(page.id)) throw new Error(`page id conflict: ${page.id}`)
       if (this.pagePaths.has(page.path)) throw new Error(`page path conflict: ${page.path}`)
@@ -132,6 +151,13 @@ export default class UiRegistry extends Service {
     contribution: CollectionContribution<unknown> | SlotContribution,
   ) {
     assertId(contribution.id, 'contribution id')
+    if (token.kind === 'collection' && token.schema) {
+      assertShape(
+        token.schema,
+        (contribution as CollectionContribution<unknown>).value,
+        `contribution ${contribution.id}`,
+      )
+    }
     if (token.kind === 'collection') {
       return this.registerContribution(
         this.collections,

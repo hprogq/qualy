@@ -9,8 +9,10 @@ import {
   type ComponentRegistry,
   type Manifest,
 } from '@qualy/web-runtime'
+import { I18nProvider, useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
-import { components } from './plugins.gen.ts'
+import { catalogs, components } from './plugins.gen.ts'
 
 const client = createApiClient('/api')
 const registry: ComponentRegistry = Object.fromEntries(
@@ -21,10 +23,14 @@ const registry: ComponentRegistry = Object.fromEntries(
 )
 
 export default function App() {
+  // localization wraps everything: even the manifest loading and error
+  // states are localized, so the shell never renders untranslated copy
   return (
-    <RuntimeProvider client={client} registry={registry}>
-      <ManifestRouter />
-    </RuntimeProvider>
+    <I18nProvider catalogs={catalogs} fallback={<LoadingScreen />}>
+      <RuntimeProvider client={client} registry={registry}>
+        <ManifestRouter />
+      </RuntimeProvider>
+    </I18nProvider>
   )
 }
 
@@ -32,9 +38,12 @@ function resolve(component: string) {
   return registry[component]
 }
 
-function renderPage(page: Manifest['pages'][number]) {
+function RenderPage({ page }: { page: Manifest['pages'][number] }) {
+  const { format } = useI18n()
   const Component = resolve(page.component)
-  if (!Component) return <p>渲染器缺失:{page.component}</p>
+  if (!Component) {
+    return <p>{format(commonMessages.componentMissing, { component: page.component })}</p>
+  }
   return (
     <Suspense fallback={<PageLoading />}>
       <Component />
@@ -60,7 +69,7 @@ function ManifestRouter() {
             {manifest.pages
               .filter((page) => page.layout === layout.contract)
               .map((page) => (
-                <Route key={page.id} path={page.path} element={renderPage(page)} />
+                <Route key={page.id} path={page.path} element={<RenderPage page={page} />} />
               ))}
           </Route>
         ))}
@@ -70,8 +79,9 @@ function ManifestRouter() {
 }
 
 function LayoutBoundary({ component }: { component: string }) {
+  const { format } = useI18n()
   const Layout = resolve(component)
-  if (!Layout) return <p>布局渲染器缺失:{component}</p>
+  if (!Layout) return <p>{format(commonMessages.layoutMissing, { component })}</p>
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Layout />
@@ -80,16 +90,25 @@ function LayoutBoundary({ component }: { component: string }) {
 }
 
 function HomeRedirect() {
+  const { format } = useI18n()
   const first = useUiCollection<NavigationItem>(primaryNavigation).find((item) => item.path)
-  if (!first) return <p>暂无可用页面,请在装配清单中启用业务插件。</p>
+  if (!first) {
+    return (
+      <div className="space-y-2">
+        <h2 className="text-xl font-semibold">{format(commonMessages.emptyPagesTitle)}</h2>
+        <p className="text-sm text-muted-foreground">{format(commonMessages.emptyPagesHint)}</p>
+      </div>
+    )
+  }
   return <Navigate to={first.path!} replace />
 }
 
 function NotFound() {
+  const { format } = useI18n()
   return (
     <div className="space-y-2">
-      <h2 className="text-xl font-semibold">页面不存在</h2>
-      <p className="text-sm text-muted-foreground">请检查地址,或从左侧导航进入其他页面。</p>
+      <h2 className="text-xl font-semibold">{format(commonMessages.notFoundTitle)}</h2>
+      <p className="text-sm text-muted-foreground">{format(commonMessages.notFoundHint)}</p>
     </div>
   )
 }

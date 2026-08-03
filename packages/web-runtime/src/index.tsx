@@ -12,6 +12,8 @@ import {
 } from 'react'
 import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
 import { Button } from '@qualy/ui/button'
+import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import type { AppClient } from '@qualy/api-client'
 
@@ -58,6 +60,7 @@ function RuntimeLoader({
   registry,
   children,
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
+  const { format } = useI18n()
   const manifest = useQuery(orpc.ui.getManifest.queryOptions())
   if (manifest.isPending) return <LoadingScreen />
   if (manifest.isError) {

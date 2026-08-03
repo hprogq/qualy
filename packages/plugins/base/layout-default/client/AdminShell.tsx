@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router'
 import { headerActions, primaryNavigation } from '@qualy/ui-contract'
 import { UiSlot, useUiCollection } from '@qualy/web-runtime'
+import { LocalizedText } from '@qualy/web-i18n'
 import { cn } from '@qualy/ui/cn'
 
 // admin-shell/v1 provider: renders the primary navigation collection and the
@@ -23,7 +24,7 @@ export default function AdminShell() {
                 }
                 to={item.path!}
               >
-                {item.label}
+                <LocalizedText value={item.label} />
               </NavLink>
             </li>
           ))}

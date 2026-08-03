@@ -25,6 +25,8 @@ const webDeps = new Set(
 
 const imports: string[] = []
 const spreads: string[] = []
+const catalogEntries: string[] = []
+const errorSpreads: string[] = []
 for (const entry of readEntries({ all })) {
   if (!entry.name.startsWith('@qualy/')) continue
   const packageDir = resolvePackageDir(entry.name)
@@ -41,13 +43,39 @@ for (const entry of readEntries({ all })) {
   // so merged registries can never silently shadow one another
   const module = (await import(resolvePluginModuleUrl(`${entry.name}/client`))) as {
     components?: Record<string, unknown>
+    catalogs?: unknown
+    errorMessages?: unknown
   }
   validateComponentKeys(entry.name, Object.keys(module.components ?? {}))
   const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
   imports.push(`import { components as ${ns}Components } from '${entry.name}/client'`)
   spreads.push(`  ...${ns}Components,`)
+  // localization assets are optional per plugin: a plugin without user
+  // facing text ships neither, and the host aggregates whatever exists
+  if (module.catalogs) {
+    imports.push(`import { catalogs as ${ns}Catalogs } from '${entry.name}/client'`)
+    catalogEntries.push(`  ${ns}Catalogs,`)
+  }
+  if (module.errorMessages) {
+    imports.push(`import { errorMessages as ${ns}ErrorMessages } from '${entry.name}/client'`)
+    errorSpreads.push(`  ...${ns}ErrorMessages,`)
+  }
 }
 
-const body = [...imports, '', 'export const components = {', ...spreads, '}'].join('\n')
+const body = [
+  ...imports,
+  '',
+  'export const components = {',
+  ...spreads,
+  '}',
+  '',
+  'export const catalogs = [',
+  ...catalogEntries,
+  ']',
+  '',
+  'export const errorMessages = {',
+  ...errorSpreads,
+  '}',
+].join('\n')
 
 writeGenerated('apps/web/src/plugins.gen.ts', body)

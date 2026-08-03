@@ -1,4 +1,5 @@
 import { Context, Service } from 'cordis'
+import { message } from '@qualy/i18n-contract'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-database'
 import type {} from '@qualy/plugin-ui-registry'
@@ -37,7 +38,7 @@ export default class Org extends Service {
       component: 'org/OrgPage',
       layout: 'admin-shell/v1',
       permission: 'org.tree.read',
-      navigation: { label: '\u7ec4\u7ec7\u67b6\u6784', order: 20 },
+      navigation: { label: message('org/navigation/organization', 'Organization'), order: 20 },
     })
   }
 }

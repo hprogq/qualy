@@ -6,6 +6,7 @@
 @source './';
 @source '../../../packages/ui/src';
 @source '../../../packages/web-runtime/src';
+@source '../../../packages/web-i18n/src';
 /* whole plugin tree: glob patterns are unreliable here (probed), and the
    superset keeps css stable across plugin toggles like the schema set */
 @source '../../../packages/plugins';

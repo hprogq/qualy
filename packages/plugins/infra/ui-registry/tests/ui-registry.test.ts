@@ -1,5 +1,6 @@
 import { Context } from 'cordis'
 import { describe, expect, it } from 'vitest'
+import { literal, message } from '@qualy/i18n-contract'
 import { headerActions, primaryNavigation } from '@qualy/ui-contract'
 import Server from '@qualy/plugin-server'
 import UiRegistry, { type PageDecl } from '../src/index.ts'
@@ -31,7 +32,10 @@ describe('plugin-ui-registry', () => {
       name: 'orphan',
       inject: ['ui'],
       apply: (child: Context) => {
-        child.ui.addPage({ ...page, navigation: { label: 'Demo', order: 1 } })
+        child.ui.addPage({
+          ...page,
+          navigation: { label: message('demo/navigation/demo', 'Demo'), order: 1 },
+        })
       },
     })
     await orphan
@@ -56,7 +60,14 @@ describe('plugin-ui-registry', () => {
     expect(withLayout.pages.map((entry) => entry.id)).toEqual(['demo/page'])
     // the navigation sugar resolved the page id to its path
     expect(withLayout.collections[primaryNavigation.key]).toEqual([
-      { id: 'demo/page/nav', pageId: 'demo/page', label: 'Demo', order: 1, path: '/demo' },
+      {
+        id: 'demo/page/nav',
+        pageId: 'demo/page',
+        // manifests carry a message reference, never a display string
+        label: { kind: 'message', id: 'demo/navigation/demo', defaultMessage: 'Demo' },
+        order: 1,
+        path: '/demo',
+      },
     ])
 
     // internal declarations never leave the server
@@ -147,5 +158,51 @@ describe('plugin-ui-registry', () => {
     await expect(Promise.resolve(second)).rejects.toThrow('layout provider conflict')
 
     await serverFiber.dispose()
+  })
+
+  it('rejects malformed collection contributions at registration time', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Server, { port: 0 })
+    await ctx.plugin(UiRegistry)
+    // a bare display string as a navigation label never reaches the browser
+    const bareLabel = ctx.plugin({
+      name: 'bad-label',
+      inject: ['ui'],
+      apply: (child: Context) => {
+        child.ui.contribute(primaryNavigation, {
+          id: 'bad/nav',
+          value: { id: 'bad/nav', label: 'Plain text' as never, path: '/bad' },
+        })
+      },
+    })
+    await expect(Promise.resolve(bareLabel)).rejects.toThrow('malformed')
+    // an unnamespaced message id is refused the same way
+    const badId = ctx.plugin({
+      name: 'bad-id',
+      inject: ['ui'],
+      apply: (child: Context) => {
+        child.ui.contribute(primaryNavigation, {
+          id: 'bad2/nav',
+          value: {
+            id: 'bad2/nav',
+            label: { kind: 'message', id: 'nonamespace', defaultMessage: 'x' },
+            path: '/bad2',
+          },
+        })
+      },
+    })
+    await expect(Promise.resolve(badId)).rejects.toThrow('malformed')
+    // business data passes through as literal text
+    await ctx.plugin({
+      name: 'good-literal',
+      inject: ['ui'],
+      apply: (child: Context) => {
+        child.ui.contribute(primaryNavigation, {
+          id: 'good/nav',
+          value: { id: 'good/nav', label: literal('大连外国语大学'), path: '/good' },
+        })
+      },
+    })
+    await ctx.fiber.dispose()
   })
 })

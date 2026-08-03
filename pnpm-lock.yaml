@@ -54,6 +54,9 @@ catalogs:
     '@radix-ui/react-slot':
       specifier: 1.3.3
       version: 1.3.3
+    '@standard-schema/spec':
+      specifier: 1.1.0
+      version: 1.1.0
     '@tailwindcss/vite':
       specifier: 4.3.3
       version: 4.3.3
@@ -204,6 +207,9 @@ importers:
       '@qualy/ui-contract':
         specifier: workspace:*
         version: link:../../packages/ui-contract
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../packages/web-i18n
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../packages/web-runtime
@@ -466,6 +472,9 @@ importers:
       '@qualy/ui-contract':
         specifier: workspace:*
         version: link:../../../ui-contract
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../../web-i18n
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web-runtime
@@ -494,6 +503,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../i18n-contract
       '@qualy/plugin-server':
         specifier: workspace:*
         version: link:../../infra/server
@@ -589,6 +601,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../i18n-contract
       '@qualy/plugin-server':
         specifier: workspace:*
         version: link:../../infra/server
@@ -685,6 +700,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../i18n-contract
       '@qualy/plugin-server':
         specifier: workspace:*
         version: link:../server
@@ -697,6 +715,10 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+    devDependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
 
   packages/plugins/infra/web:
     dependencies:
@@ -748,7 +770,18 @@ importers:
         specifier: 'catalog:'
         version: 19.2.18
 
-  packages/ui-contract: {}
+  packages/ui-contract:
+    dependencies:
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../i18n-contract
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
 
   packages/web-i18n:
     dependencies:
@@ -780,6 +813,9 @@ importers:
       '@qualy/ui-contract':
         specifier: workspace:*
         version: link:../ui-contract
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../web-i18n
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)

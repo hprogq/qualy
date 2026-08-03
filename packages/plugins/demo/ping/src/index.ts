@@ -1,5 +1,6 @@
 import { implement } from '@orpc/server'
 import type { Context } from 'cordis'
+import { message } from '@qualy/i18n-contract'
 import { z } from 'zod'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
@@ -30,7 +31,7 @@ export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
     component: 'ping/PingPage',
     layout: 'admin-shell/v1',
     public: true,
-    navigation: { label: 'Ping', order: 10 },
+    navigation: { label: message('ping/navigation/ping', 'Ping'), order: 10 },
   })
 
   const impl = implement(pingContract).$context<ApiContext>()
