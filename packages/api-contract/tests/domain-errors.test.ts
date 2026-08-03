@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
-import { AccessDeniedError, defineDomainErrors, DomainError } from '../src/index.ts'
+import {
+  AccessDeniedError,
+  defineDomainErrors,
+  DomainError,
+  isAccessDeniedError,
+  isDomainError,
+} from '../src/index.ts'
 
 // the dsl is the single error source every plugin builds on; these tests pin
 // its runtime behavior and (via @ts-expect-error) its compile-time strictness
@@ -46,10 +52,45 @@ describe('defineDomainErrors', () => {
     errors.create('THING_NOT_FOUND', { blockerCount: 1 })
   })
 
-  it('recognizes only its own errors', () => {
+  it('recognizes only its own errors, and only own properties', () => {
     expect(errors.is(errors.create('THING_NOT_FOUND'))).toBe(true)
     expect(errors.is(new DomainError('OTHER_DOMAIN_CODE', 'x', undefined))).toBe(false)
     expect(errors.is(new AccessDeniedError())).toBe(false)
     expect(errors.is(new Error('plain'))).toBe(false)
+    // a prototype key is not a declared code
+    expect(errors.is(new DomainError('constructor', 'x', undefined))).toBe(false)
+    expect(errors.is(new DomainError('toString', 'x', undefined))).toBe(false)
+  })
+
+  it('recognizes errors from another copy of this package', () => {
+    // a plugin resolving its own instance of the dsl still produces errors
+    // the server boundary must map: recognition rides a global symbol, not
+    // instanceof against one module graph
+    const foreign = Object.assign(new Error('from elsewhere'), {
+      [Symbol.for('qualy.api.domain-error')]: true,
+      code: 'THING_NOT_FOUND',
+      data: undefined,
+    })
+    expect(isDomainError(foreign)).toBe(true)
+    expect(errors.is(foreign)).toBe(true)
+    const deniedElsewhere = Object.assign(new Error('nope'), {
+      [Symbol.for('qualy.api.access-denied')]: true,
+    })
+    expect(isAccessDeniedError(deniedElsewhere)).toBe(true)
+    // a plain object with the same shape is not an error
+    expect(isDomainError({ code: 'THING_NOT_FOUND' })).toBe(false)
+  })
+
+  it('rejects malformed declarations when the plugin loads', () => {
+    expect(() => defineDomainErrors({ badCode: { status: 404, message: 'x' } })).toThrow(
+      'SCREAMING_SNAKE_CASE',
+    )
+    expect(() => defineDomainErrors({ BAD: { status: 200, message: 'x' } })).toThrow('status')
+    expect(() => defineDomainErrors({ BAD: { status: 404.5, message: 'x' } })).toThrow('status')
+    expect(() => defineDomainErrors({ BAD: { status: 404, message: '  ' } })).toThrow('blank')
+    // the derived tables cannot be mutated after the fact
+    expect(() => {
+      ;(errors.statuses as Record<string, number>).THING_NOT_FOUND = 500
+    }).toThrow()
   })
 })

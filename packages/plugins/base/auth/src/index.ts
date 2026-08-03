@@ -6,7 +6,7 @@ import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
 import { headerActions } from '@qualy/ui-contract'
-import { authContract, authErrorStatuses, type LoginMethod, type UserDto } from './contract.ts'
+import { authContract, type LoginMethod, type UserDto } from './contract.ts'
 import { permissions as authPermissions } from './permissions.ts'
 import { authRelations } from './db/relations.ts'
 import {
@@ -134,7 +134,6 @@ export default class Auth extends Service {
           return { user: this.toUserDto(user) }
         }),
       }),
-      { errorStatuses: authErrorStatuses },
     )
 
     ctx.ui.addPage({

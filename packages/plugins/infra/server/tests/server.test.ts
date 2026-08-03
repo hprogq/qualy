@@ -1,5 +1,6 @@
 import { openapi } from '@orpc/openapi'
-import { ORPCError, os } from '@orpc/server'
+import { implement, ORPCError, os } from '@orpc/server'
+import { oc } from '@orpc/contract'
 import { Context } from 'cordis'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -53,29 +54,34 @@ describe('plugin-server', () => {
     await serverFiber
     const base = `http://127.0.0.1:${ctx.server.port}/api`
 
-    const throwing = (path: `/${string}`) => ({
-      boom: os
-        .meta(openapi({ method: 'GET', path }))
-        .handler(() => {
-          throw new ORPCError('SHARED_ERROR')
+    // statuses come from the contract the router implements, never from a
+    // second hand-supplied table
+    const throwing = (path: `/${string}`, status: number) => {
+      const contract = {
+        boom: oc
+          .meta(openapi({ method: 'GET', path }))
+          .errors({ SHARED_ERROR: { status, message: 'shared' } })
+          .output(z.object({ ok: z.boolean() })),
+      }
+      const impl = implement(contract)
+      return impl.router({
+        boom: impl.boom.handler(({ errors }) => {
+          throw errors.SHARED_ERROR()
         }),
-    })
+      })
+    }
     const first = ctx.plugin({
       name: 'shared-a',
       inject: ['server'],
       apply: (child: Context) => {
-        child.server.contribute('shared-a', throwing('/shared-a/boom'), {
-          errorStatuses: { SHARED_ERROR: 409 },
-        })
+        child.server.contribute('shared-a', throwing('/shared-a/boom', 409))
       },
     })
     const second = ctx.plugin({
       name: 'shared-b',
       inject: ['server'],
       apply: (child: Context) => {
-        child.server.contribute('shared-b', throwing('/shared-b/boom'), {
-          errorStatuses: { SHARED_ERROR: 409 },
-        })
+        child.server.contribute('shared-b', throwing('/shared-b/boom', 409))
       },
     })
     await first
@@ -88,9 +94,7 @@ describe('plugin-server', () => {
       name: 'shared-conflict',
       inject: ['server'],
       apply: (child: Context) => {
-        child.server.contribute('shared-c', throwing('/shared-c/boom'), {
-          errorStatuses: { SHARED_ERROR: 400 },
-        })
+        child.server.contribute('shared-c', throwing('/shared-c/boom', 400))
       },
     })
     await expect(Promise.resolve(disagreeing)).rejects.toThrow('error status conflict')

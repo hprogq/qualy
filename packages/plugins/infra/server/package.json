@@ -17,5 +17,8 @@
     "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@orpc/contract": "catalog:"
   }
 }

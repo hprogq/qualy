@@ -28,13 +28,26 @@ export type ErrorDataOf<Definition> = Definition extends { data: infer Schema ex
   ? z.output<Schema>
   : undefined
 
-type CreateArgs<Data> = Data extends undefined
-  ? [message?: string]
-  : [data: Data, message?: string]
+// keyed on whether the definition declares a schema, exactly like the
+// runtime branch below — deriving it from the output type instead would
+// disagree for a schema whose output includes undefined
+type CreateArgs<Definition> = Definition extends { data: infer Schema extends z.ZodType }
+  ? [data: z.output<Schema>, message?: string]
+  : [message?: string]
+
+// errors cross package boundaries, so recognition rides a global symbol
+// rather than instanceof: a plugin resolving its own copy of this package
+// (a different version, a bundled inline, a duplicated module graph) still
+// produces errors the server's boundary recognizes
+const DOMAIN_ERROR = Symbol.for('qualy.api.domain-error')
+const ACCESS_DENIED = Symbol.for('qualy.api.access-denied')
 
 // what a service throws; the server's error boundary maps it onto the
-// procedure's typed contract errors
+// procedure's typed contract errors. Construct these through
+// defineDomainErrors().create(), which is what enforces code and data.
 export class DomainError<Code extends string = string, Data = unknown> extends Error {
+  readonly [DOMAIN_ERROR] = true
+
   constructor(
     readonly code: Code,
     message: string,
@@ -45,14 +58,30 @@ export class DomainError<Code extends string = string, Data = unknown> extends E
   }
 }
 
+export function isDomainError(error: unknown): error is DomainError {
+  return (
+    error instanceof Error &&
+    (error as Partial<Record<typeof DOMAIN_ERROR, boolean>>)[DOMAIN_ERROR] === true
+  )
+}
+
 // an in-service authorization verdict (for example the in-lock re-check
 // after the router's fast-path requireAt); the error boundary turns it into
 // the transport's common FORBIDDEN
 export class AccessDeniedError extends Error {
+  readonly [ACCESS_DENIED] = true
+
   constructor(message = 'access denied') {
     super(message)
     this.name = 'AccessDeniedError'
   }
+}
+
+export function isAccessDeniedError(error: unknown): error is AccessDeniedError {
+  return (
+    error instanceof Error &&
+    (error as Partial<Record<typeof ACCESS_DENIED, boolean>>)[ACCESS_DENIED] === true
+  )
 }
 
 export interface DomainErrors<Defs extends ErrorDefinitions> {
@@ -66,17 +95,35 @@ export interface DomainErrors<Defs extends ErrorDefinitions> {
   // dataless code refuses it, and the message defaults to the definition's
   create<Code extends keyof Defs & string>(
     code: Code,
-    ...args: CreateArgs<ErrorDataOf<Defs[Code]>>
+    ...args: CreateArgs<Defs[Code]>
   ): DomainError<Code, ErrorDataOf<Defs[Code]>>
   is(error: unknown): error is DomainError<keyof Defs & string, unknown>
 }
 
+const ERROR_CODE = /^[A-Z][A-Z0-9_]*$/
+
 export function defineDomainErrors<const Defs extends ErrorDefinitions>(
   definitions: Defs,
 ): DomainErrors<Defs> {
-  const statuses = Object.fromEntries(
-    Object.entries(definitions).map(([code, definition]) => [code, definition.status]),
+  // a malformed declaration fails when the plugin loads, not when the error
+  // it describes is finally raised in production
+  for (const [code, definition] of Object.entries(definitions)) {
+    if (!ERROR_CODE.test(code)) {
+      throw new Error(`error code "${code}" must be SCREAMING_SNAKE_CASE`)
+    }
+    if (!Number.isInteger(definition.status) || definition.status < 400 || definition.status > 599) {
+      throw new Error(`error ${code}: status must be an integer http error status`)
+    }
+    if (definition.message.trim() === '') {
+      throw new Error(`error ${code}: message must not be blank`)
+    }
+  }
+  const statuses = Object.freeze(
+    Object.fromEntries(
+      Object.entries(definitions).map(([code, definition]) => [code, definition.status]),
+    ),
   ) as { [Code in keyof Defs]: Defs[Code]['status'] }
+  Object.freeze(definitions)
   return {
     definitions,
     statuses,
@@ -94,7 +141,8 @@ export function defineDomainErrors<const Defs extends ErrorDefinitions>(
         data,
       ) as never
     },
-    is: (error): error is never => error instanceof DomainError && error.code in definitions,
+    is: (error): error is never =>
+      isDomainError(error) && Object.hasOwn(definitions, error.code),
   }
 }
 
@@ -110,5 +158,6 @@ export const put = (path: HttpPath) => route('PUT', path)
 export const patch = (path: HttpPath) => route('PATCH', path)
 export const del = (path: HttpPath) => route('DELETE', path)
 
-// the ubiquitous "it worked" response
-export const okOutput = z.object({ ok: z.boolean() })
+// the ubiquitous "it worked" response: a handler that fails throws, so the
+// client never has to consider a false
+export const okOutput = z.object({ ok: z.literal(true) })

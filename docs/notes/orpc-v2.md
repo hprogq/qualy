@@ -60,3 +60,7 @@
   ```
   实测:未声明的 code 被拒、data 字段写错名被拒、无 data 的 code 推出 `undefined`。
 - **contract 侧的字面量必须活着**:用计算键构造 `.errors({...})` 的辅助函数如果参数不是泛型,返回类型会退化成 `{ [x: string]: ... }`,整条错误联合随之失效(codes 变成 `string`)。辅助函数要泛型化 `<Code extends ...>(code: Code, ...)` 并把返回类型写成 `{ [K in Code]: ... }`,才能保住字面量键。
+
+## 从已构建 router 反读契约错误状态(2026-08-03,beta.21 实测)
+
+`walkProcedureContractsSync(router, cb)`(`@orpc/server`)可遍历 `implement(contract).router({...})` 的产物,回调**第一参就是 procedure contract 本身**(不是 `{contract}` 解构对象,嵌套 router 自动递归)。procedure 的 `~orpc.errorMap` 保有契约声明的 `{status, message, data}`,因此 beta.21 「handler 忽略契约 status、只认 errorStatusMap」这一适配可以完全收进宿主:宿主自己走一遍 router 取状态,插件不必第二次交出同一张表。实测 `{ALPHA:409, BETA:422}` 精确提取,含嵌套。

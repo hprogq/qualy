@@ -736,6 +736,10 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+    devDependencies:
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
 
   packages/plugins/infra/ui-registry:
     dependencies:

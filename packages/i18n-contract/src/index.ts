@@ -135,12 +135,17 @@ export type ErrorMessageMap = Record<string, ErrorMessageRegistration<never>>
 // message that interpolates cannot be registered without its values().
 type PlainDescriptor = MessageDescriptor & { __values?: never }
 
+// a valued entry is generic over its message so ValuesOf pins what the
+// projection must return: naming a placeholder the icu message does not
+// declare fails typecheck, exactly like a direct format() call
+export interface ValuedErrorTranslation<Data, Message extends MessageDescriptor> {
+  message: Message
+  values: (data: Data) => ValuesOf<Message>
+}
+
 export type ErrorTranslation<Data> =
   | PlainDescriptor
-  | {
-      message: MessageDescriptor
-      values: (data: Data) => MessageValues
-    }
+  | ValuedErrorTranslation<Data, ValuedMessageDescriptor<MessageValues>>
 
 export interface ErrorTranslationSet {
   registry: ErrorMessageMap

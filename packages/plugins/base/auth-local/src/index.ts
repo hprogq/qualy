@@ -2,7 +2,6 @@ import { implement } from '@orpc/server'
 import type { Context } from 'cordis'
 import type { ApiContext } from '@qualy/plugin-server'
 import { authLocalContract } from './contract.ts'
-import { authLocalErrors } from './errors.ts'
 import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from './password.ts'
 
 export const name = 'auth-local'
@@ -53,6 +52,5 @@ export function apply(ctx: Context) {
         return { user }
       }),
     }),
-    { errorStatuses: authLocalErrors.statuses },
   )
 }

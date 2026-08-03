@@ -3,7 +3,6 @@ import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-database'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
-import { orgErrors } from './errors.ts'
 import { orgNavigationLabel } from './messages.ts'
 import { permissions as orgPermissions } from './permissions.ts'
 import { createOrgRouter } from './router.ts'
@@ -29,9 +28,7 @@ export default class Org extends Service {
     super(ctx, 'org')
     ctx.rbac.definePermissions('org', orgPermissions)
     this.tree = new OrgTreeService(ctx)
-    ctx.server.contribute('org', createOrgRouter(ctx, this.tree), {
-      errorStatuses: orgErrors.statuses,
-    })
+    ctx.server.contribute('org', createOrgRouter(ctx, this.tree))
     ctx.ui.addPage({
       id: 'org/page',
       path: '/admin/org',

@@ -6,8 +6,8 @@ import {
 } from 'node:http'
 import { COMMON_ERROR_STATUS_MAP } from '@orpc/client'
 import { OpenAPIHandler } from '@orpc/openapi/node'
-import { onError, ORPCError, os, type Router } from '@orpc/server'
-import { AccessDeniedError, DomainError } from '@qualy/api-contract'
+import { onError, ORPCError, os, walkProcedureContractsSync, type Router } from '@orpc/server'
+import { isAccessDeniedError, isDomainError } from '@qualy/api-contract'
 import { CORSHandlerPlugin } from '@orpc/server/plugins'
 import type { StandardHandlerPlugin } from '@orpc/server/standard'
 import { Context, Service } from 'cordis'
@@ -67,8 +67,8 @@ export const apiErrorBoundary = os.$context<ApiContext>().middleware(async ({ ne
   try {
     return await next()
   } catch (error) {
-    if (error instanceof AccessDeniedError) throw new ORPCError('FORBIDDEN')
-    if (error instanceof DomainError) {
+    if (isAccessDeniedError(error)) throw new ORPCError('FORBIDDEN')
+    if (isDomainError(error)) {
       const factory = (
         errors as Record<
           string,
@@ -120,12 +120,29 @@ const Config = z
   })
   .prefault({})
 
-// a route fragment carries its own error statuses: the status map is
-// re-derived from all active fragments on every rebuild, so shared codes
-// survive any single contributor's disposal
+// a route fragment carries the error statuses declared by the contract its
+// router implements; the status map is re-derived from all active fragments
+// on every rebuild, so shared codes survive any contributor's disposal
 interface RouteFragment {
   router: ApiRouter
   errorStatuses: Record<string, number>
+}
+
+// beta.21's openapi handler ignores the status on a contract error and maps
+// http status per code through errorStatusMap instead (probed). Rather than
+// asking every plugin to hand the same numbers over a second time, the
+// statuses are read straight out of the contract the router implements.
+function readContractStatuses(router: ApiRouter): Record<string, number> {
+  const statuses: Record<string, number> = {}
+  walkProcedureContractsSync(router as never, (procedure) => {
+    const errorMap = (procedure as { '~orpc'?: { errorMap?: Record<string, unknown> } })['~orpc']
+      ?.errorMap
+    for (const [code, definition] of Object.entries(errorMap ?? {})) {
+      const status = (definition as { status?: unknown } | undefined)?.status
+      if (typeof status === 'number') statuses[code] = status
+    }
+  })
+  return statuses
 }
 
 // same code from several fragments is fine as long as the statuses agree;
@@ -278,20 +295,16 @@ export default class Server extends Service {
       })
   }
 
-  // route fragments are contributed per plugin namespace and revoked with the
-  // contributor's fiber; every change atomically swaps the handler. Custom
-  // error codes ride along: the openapi handler maps http status per code
-  // (contract-level status declarations are ignored by beta.21, probed), so
-  // contributors register their codes here
-  contribute(
-    ns: string,
-    router: ApiRouter,
-    options: { errorStatuses?: Record<string, number> } = {},
-  ) {
+  // route fragments are contributed per plugin namespace and revoked with
+  // the contributor's fiber; every change atomically swaps the handler. A
+  // contributor declares its error codes and statuses in its contract and
+  // nothing else: the http status adaptation is read from there, so no
+  // plugin ever touches errorStatusMap or repeats a status table.
+  contribute(ns: string, router: ApiRouter) {
     return this.ctx.effect(() => {
       if (this.fragments.has(ns)) throw new Error(`route namespace conflict: ${ns}`)
       const next = new Map(this.fragments)
-      next.set(ns, { router, errorStatuses: options.errorStatuses ?? {} })
+      next.set(ns, { router, errorStatuses: readContractStatuses(router) })
       this.commit(next, this.openApiPluginFactories)
       return () => {
         const reverted = new Map(this.fragments)

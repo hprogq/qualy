@@ -12,8 +12,9 @@ import { orgNavigationLabel } from '../src/messages.ts'
 // registry, the declared-descriptor table and the aggregated catalogs are
 // all derived from this call.
 
-// the one message that interpolates declares its placeholders, so a call
-// or translation missing assignmentCount fails typecheck
+// the one message that interpolates declares its placeholders: both a
+// format() call and this translation's projection must produce exactly
+// assignmentCount, checked at compile time
 const assignmentIncompatible = defineMessage<{ assignmentCount: number }>()({
   id: 'org/error/assignment-incompatible',
   defaultMessage:

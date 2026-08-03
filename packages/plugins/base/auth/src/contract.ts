@@ -31,14 +31,6 @@ export interface LoginMethodRendererProps {
   onAuthenticated: () => void
 }
 
-// http statuses for these codes are registered through server.contribute
-// (beta.21 maps status per code via the handler's errorStatusMap; the
-// status field below documents intent and types the client). AUTH_REQUIRED
-// is server-owned and needs no entry here.
-export const authErrorStatuses = {
-  SESSION_EXPIRED: 401,
-} as const
-
 export const authContract = {
   methods: get('/auth/methods').output(z.object({ methods: z.array(loginMethod) })),
   logout: post('/auth/logout').output(z.object({ ok: z.boolean() })),
