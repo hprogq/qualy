@@ -161,3 +161,68 @@ export const del = (path: HttpPath) => route('DELETE', path)
 // the ubiquitous "it worked" response: a handler that fails throws, so the
 // client never has to consider a false
 export const okOutput = z.object({ ok: z.literal(true) })
+
+// --- pagination ---
+
+// Keyset pagination, in the foundation because the alternative is what every
+// list started as: a bare `limit 200` that drops the rest in silence. A page
+// either says where the next one starts or says there is no next one.
+export const DEFAULT_PAGE_SIZE = 50
+export const MAX_PAGE_SIZE = 200
+
+export const pageInput = {
+  cursor: z.string().max(512).optional(),
+  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).optional(),
+}
+
+// a page of T plus where to resume; absent nextCursor means the end
+export const pageOutput = <Item extends z.ZodType>(item: Item) =>
+  z.object({ items: z.array(item), nextCursor: z.string().nullable() })
+
+// the cursor is opaque to clients on purpose: it encodes the sort key of the
+// last row, which is an implementation detail of the query behind it. Encoded
+// through the web primitives rather than Buffer — this module is bundled into
+// the browser, and sort keys are display names, so utf-8 is not optional.
+const toBase64Url = (bytes: Uint8Array) => {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+}
+
+const fromBase64Url = (value: string) => {
+  const binary = atob(value.replaceAll('-', '+').replaceAll('_', '/'))
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0))
+}
+
+export function encodeCursor(key: readonly (string | number)[]): string {
+  return toBase64Url(new TextEncoder().encode(JSON.stringify(key)))
+}
+
+// a malformed or foreign cursor yields undefined rather than throwing: the
+// caller then serves the first page, which is what a stale bookmark deserves
+export function decodeCursor(cursor: string | undefined, arity: number): string[] | undefined {
+  if (!cursor) return undefined
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(fromBase64Url(cursor)))
+    if (!Array.isArray(parsed) || parsed.length !== arity) return undefined
+    if (!parsed.every((part) => typeof part === 'string')) return undefined
+    return parsed as string[]
+  } catch {
+    return undefined
+  }
+}
+
+// slices a limit+1 read back to the page and derives its cursor
+export function toPage<Row>(
+  rows: readonly Row[],
+  limit: number,
+  key: (row: Row) => readonly (string | number)[],
+): { items: Row[]; nextCursor: string | null } {
+  const items = rows.slice(0, limit)
+  const more = rows.length > limit
+  const last = items.at(-1)
+  return {
+    items,
+    nextCursor: more && last !== undefined ? encodeCursor(key(last)) : null,
+  }
+}
