@@ -1,6 +1,7 @@
 import { definePage } from '@qualy/ui-contract'
 import { describe, expect, it } from 'vitest'
-import { buildPageHref } from '../src/pages.ts'
+import { QueryClient } from '@tanstack/react-query'
+import { buildPageHref, sessionDestinationHref } from '../src/pages.ts'
 
 // url construction from a page reference: the one place a path becomes a
 // string, so its encoding rules are pinned here
@@ -34,5 +35,32 @@ describe('page hrefs', () => {
     expect(buildPageHref(page, { search: { a: 1 }, hash: 'section' })).toBe(
       '/admin/demo?a=1#section',
     )
+  })
+})
+
+// the regression this pins: signing in used to leave the browser on the
+// login page, because a transition without a destination navigated nowhere
+describe('session transitions', () => {
+  const loginPage = definePage({ id: 'auth/login', path: '/login' })
+
+  it('always resolves a destination to navigate to', () => {
+    // signing in goes to the host root, which picks the first page the new
+    // manifest actually authorizes
+    expect(sessionDestinationHref({ kind: 'home' })).toBe('/')
+    // signing out names the login page instead of spelling out its path
+    expect(sessionDestinationHref({ kind: 'page', page: loginPage })).toBe('/login')
+  })
+
+  it('drops the previous identity data instead of only invalidating it', async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(['org', 'tree'], { nodes: ['from the previous user'] })
+    expect(queryClient.getQueryData(['org', 'tree'])).toBeDefined()
+
+    queryClient.clear()
+    await queryClient.refetchQueries()
+
+    // gone entirely: an invalidate would leave it readable while stale
+    expect(queryClient.getQueryData(['org', 'tree'])).toBeUndefined()
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0)
   })
 })

@@ -7,21 +7,25 @@ import { PluginComponent } from './component-boundary.tsx'
 // the host app so the projection rules — layout nesting, the home target,
 // the catch-all, per-page isolation — are testable without a browser.
 
+// localized copy the host supplies for every route-level state; it changes
+// with the locale, so the builder rebuilds when it does
+export interface RouteSlots {
+  pageLoading: ReactNode
+  layoutLoading: ReactNode
+  pageError: (retry: () => void) => ReactNode
+  layoutError: (retry: () => void) => ReactNode
+  componentMissing: (componentId: string) => ReactNode
+  notFound: ReactNode
+  empty: ReactNode
+}
+
 export interface RouteBuilderOptions {
   manifest: Manifest
   registry: ComponentRegistry
   // the page the bare origin redirects to, resolved from the manifest by the
   // host (normally the first visible primary navigation entry)
   homePath?: string
-  slots: {
-    pageLoading: ReactNode
-    layoutLoading: ReactNode
-    pageError: (retry: () => void) => ReactNode
-    layoutError: (retry: () => void) => ReactNode
-    componentMissing: (componentId: string) => ReactNode
-    notFound: ReactNode
-    empty: ReactNode
-  }
+  slots: RouteSlots
 }
 
 export function buildManifestRoutes({
@@ -75,8 +79,9 @@ export function buildManifestRoutes({
 export function ManifestRoutes(options: RouteBuilderOptions) {
   const routes = useMemo(
     () => buildManifestRoutes(options),
-    // the manifest and registry identities are what actually change
-    [options.manifest, options.registry, options.homePath],
+    // slots carry localized copy, so a locale switch must rebuild them too;
+    // the host memoizes the slot object so this stays cheap
+    [options.manifest, options.registry, options.homePath, options.slots],
   )
   return useRoutes(routes)
 }

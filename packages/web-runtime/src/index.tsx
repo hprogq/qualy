@@ -22,16 +22,31 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import type { AppClient } from '@qualy/api-client'
-import { buildPageHref, type PageHrefOptions } from './pages.ts'
+import {
+  buildPageHref,
+  sessionDestinationHref,
+  type PageHrefOptions,
+  type SessionDestination,
+} from './pages.ts'
 import { PluginComponent } from './component-boundary.tsx'
 
-export { buildPageHref, type PageHrefOptions } from './pages.ts'
+export {
+  buildPageHref,
+  sessionDestinationHref,
+  type PageHrefOptions,
+  type SessionDestination,
+} from './pages.ts'
 export {
   PluginComponent,
   PluginComponentBoundary,
   type PluginComponentKind,
 } from './component-boundary.tsx'
-export { buildManifestRoutes, ManifestRoutes } from './route-builder.tsx'
+export {
+  buildManifestRoutes,
+  ManifestRoutes,
+  type RouteBuilderOptions,
+  type RouteSlots,
+} from './route-builder.tsx'
 export { PageLink } from './links.tsx'
 
 export type Manifest = Awaited<ReturnType<AppClient['ui']['getManifest']>>
@@ -107,13 +122,13 @@ export function useSessionTransition() {
   const navigate = useNavigate()
   const manifest = useManifest()
   return useCallback(
-    async (options: { to?: PageRef; replace?: boolean } = {}) => {
+    async (options: { destination: SessionDestination; replace?: boolean }) => {
+      // dropped, not invalidated: stale data of the previous identity must
+      // not stay readable while the next one loads
       queryClient.clear()
-      const target = options.to
-      if (target) {
-        // resolved from the shared reference, not from a copied path
-        void navigate(buildPageHref(target), { replace: options.replace ?? true })
-      }
+      void navigate(sessionDestinationHref(options.destination), {
+        replace: options.replace ?? true,
+      })
       // the new identity's manifest decides what is reachable next
       await queryClient.refetchQueries()
     },

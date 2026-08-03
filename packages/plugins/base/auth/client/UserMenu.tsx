@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { PageLink, useApi, useApiQuery, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -13,6 +14,7 @@ export default function UserMenu() {
   const orpc = useApiQuery()
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
+  const [signOutError, setSignOutError] = useState<string | null>(null)
   const me = useQuery({ ...orpc.auth.me.queryOptions(), retry: false })
 
   if (me.isPending) return null
@@ -35,20 +37,25 @@ export default function UserMenu() {
   return (
     <div className="flex items-center gap-3">
       <span className="text-sm text-muted-foreground">{me.data.user.displayName}</span>
+      {signOutError && (
+        <span className="text-sm text-destructive" role="alert">
+          {signOutError}
+        </span>
+      )}
       <Button
         variant="ghost"
         size="sm"
         onClick={() => {
-          // signing out must not leave the previous user's data reachable
+          setSignOutError(null)
+          // only the server can end the session: the cookie is HttpOnly, so
+          // a failed request leaves the identity intact and must say so
+          // instead of pretending to have signed the user out
           void api.auth
             .logout()
-            .then(() => endSession({ to: loginPage }))
-            .catch((error: unknown) => {
-              console.error('[qualy] sign-out failed', error)
-              // the local session is dropped either way: a failed request
-              // must not strand the browser in a half-signed-in state
-              void endSession({ to: loginPage })
-            })
+            .then(() =>
+              endSession({ destination: { kind: 'page', page: loginPage } }),
+            )
+            .catch((error: unknown) => setSignOutError(formatError(error)))
         }}
       >
         {format(m.signOut)}

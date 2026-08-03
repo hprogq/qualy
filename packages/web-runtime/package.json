@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@qualy/api-client": "workspace:*",
+    "@tanstack/react-query": "catalog:",
     "@types/react": "catalog:"
   },
   "dependencies": {

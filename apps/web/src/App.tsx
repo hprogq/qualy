@@ -1,4 +1,4 @@
-import { lazy, type ComponentType } from 'react'
+import { lazy, useMemo, type ComponentType } from 'react'
 import { BrowserRouter } from 'react-router'
 import { createApiClient } from '@qualy/api-client'
 import { primaryNavigation } from '@qualy/ui-contract'
@@ -8,6 +8,7 @@ import {
   useManifest,
   useUiCollection,
   type ComponentRegistry,
+  type RouteSlots,
 } from '@qualy/web-runtime'
 import { I18nProvider, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -45,34 +46,40 @@ function ManifestRouter() {
   const { format } = useI18n()
   const navigation = useUiCollection(primaryNavigation)
   const home = navigation.find((item) => item.target.kind === 'page')
+  // rebuilt when the locale changes, so route-level fallbacks never keep
+  // the previous language
+  const slots = useMemo<RouteSlots>(
+    () => ({
+      pageLoading: <PageLoading />,
+      layoutLoading: <LoadingScreen />,
+      pageError: (retry) => <Failure message={format(commonMessages.pageFailed)} onRetry={retry} />,
+      layoutError: (retry) => (
+        <Failure message={format(commonMessages.layoutFailed)} onRetry={retry} fullscreen />
+      ),
+      componentMissing: (component) => (
+        <Failure message={format(commonMessages.componentMissing, { component })} />
+      ),
+      notFound: (
+        <Notice
+          title={format(commonMessages.notFoundTitle)}
+          hint={format(commonMessages.notFoundHint)}
+        />
+      ),
+      empty: (
+        <Notice
+          title={format(commonMessages.emptyPagesTitle)}
+          hint={format(commonMessages.emptyPagesHint)}
+        />
+      ),
+    }),
+    [format],
+  )
   return (
     <ManifestRoutes
       manifest={manifest}
       registry={registry}
       homePath={home?.target.kind === 'page' ? home.target.path : undefined}
-      slots={{
-        pageLoading: <PageLoading />,
-        layoutLoading: <LoadingScreen />,
-        pageError: (retry) => <Failure message={format(commonMessages.pageFailed)} onRetry={retry} />,
-        layoutError: (retry) => (
-          <Failure message={format(commonMessages.layoutFailed)} onRetry={retry} fullscreen />
-        ),
-        componentMissing: (component) => (
-          <Failure message={format(commonMessages.componentMissing, { component })} />
-        ),
-        notFound: (
-          <Notice
-            title={format(commonMessages.notFoundTitle)}
-            hint={format(commonMessages.notFoundHint)}
-          />
-        ),
-        empty: (
-          <Notice
-            title={format(commonMessages.emptyPagesTitle)}
-            hint={format(commonMessages.emptyPagesHint)}
-          />
-        ),
-      }}
+      slots={slots}
     />
   )
 }

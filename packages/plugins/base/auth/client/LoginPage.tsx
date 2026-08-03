@@ -23,7 +23,7 @@ export default function LoginPage() {
   // a new identity must not inherit the previous one's cache; the runtime
   // drops it and refetches the manifest, which decides where home now is
   const onAuthenticated = () => {
-    void startSession()
+    void startSession({ destination: { kind: 'home' } })
   }
   const methodsQuery = useQuery(orpc.auth.methods.queryOptions())
 
