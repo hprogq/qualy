@@ -6,8 +6,8 @@ import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
 import { ADMIN_SHELL, BLANK_SHELL, headerActions, permissionOf, PUBLIC } from '@qualy/ui-contract'
-import { loginPage, userTypesPage, usersPage } from './ui.ts'
-import { createIamRouter } from './iam/router.ts'
+import { loginPage, userDetailPage, userTypesPage, usersPage } from './ui.ts'
+import { createIdentityRouter } from './iam/router.ts'
 import { IamService } from './iam/service.ts'
 import { iamMessages } from './iam/messages.ts'
 import { authContract, type LoginMethod, type UserDto } from './contract.ts'
@@ -124,13 +124,15 @@ export default class Auth extends Service {
     ctx.server.contribute(
       'auth',
       impl.router({
-        methods: impl.methods.handler(async () => ({ methods: await this.listLoginMethods() })),
-        logout: impl.logout.handler(async ({ context }) => {
+        listLoginMethods: impl.listLoginMethods.handler(async () => ({
+          methods: await this.listLoginMethods(),
+        })),
+        endSession: impl.endSession.handler(async ({ context }) => {
           if (context.principal) await revokeSession(this.db, context.principal)
           context.response.setHeader('Set-Cookie', clearSessionCookie(this.cookie))
-          return { ok: true }
+          return { ok: true as const }
         }),
-        me: impl.me.handler(async ({ context, errors }) => {
+        getSession: impl.getSession.handler(async ({ context, errors }) => {
           if (!context.principal) {
             throw context.sessionExpired ? errors.SESSION_EXPIRED() : errors.AUTH_REQUIRED()
           }
@@ -150,13 +152,21 @@ export default class Auth extends Service {
     // the menu shows a sign-in link to anonymous visitors, so it is public
     // identity administration rides the same session core
     this.iam = new IamService(ctx)
-    ctx.server.contribute('iam', createIamRouter(ctx, this.iam))
+    ctx.server.contribute('identity', createIdentityRouter(ctx, this.iam))
     ctx.ui.addPage({
       page: usersPage,
       component: 'auth/UsersPage',
       layout: ADMIN_SHELL,
       visibility: permissionOf('auth.user.read'),
       navigation: { label: iamMessages.usersNav, order: 30 },
+    })
+    // a detail screen is reachable from the list rather than from the
+    // navigation, so it registers without one
+    ctx.ui.addPage({
+      page: userDetailPage,
+      component: 'auth/UserDetailPage',
+      layout: ADMIN_SHELL,
+      visibility: permissionOf('auth.user.read'),
     })
     ctx.ui.addPage({
       page: userTypesPage,

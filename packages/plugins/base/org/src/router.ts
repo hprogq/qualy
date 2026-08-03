@@ -91,9 +91,9 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
         })),
       }
     }),
-    createRule: impl.createRule.handler(async ({ context, input }) => {
+    putRule: impl.putRule.handler(async ({ context, input }) => {
       await requireManageAtRoot(context.principal)
-      await service.createRule(
+      await service.putRule(
         context.principal.tenantId,
         input.parentTypeId,
         input.childTypeId,
@@ -110,6 +110,16 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
         context.principal,
       )
       return { ok: true }
+    }),
+    getNode: impl.getNode.handler(async ({ context, input }) => {
+      const node = await service.readNode(context.principal, input.nodeId)
+      return {
+        node: {
+          ...toNodeDto(node),
+          manageable: node.manageable,
+          subtreeManageable: node.subtreeManageable,
+        },
+      }
     }),
     createNode: impl.createNode.handler(async ({ context, input }) => {
       await ctx.rbac.requireAt(context.principal, 'org.tree.manage', input.parentId)
@@ -136,16 +146,16 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
       )
       return { node: toNodeDto(node) }
     }),
-    moveNode: impl.moveNode.handler(async ({ context, input }) => {
+    setNodePlacement: impl.setNodePlacement.handler(async ({ context, input }) => {
       // both ends: moving a managed node into an unmanaged region and
       // pulling an unmanaged node into a managed one are both forbidden
       await ctx.rbac.requireAt(context.principal, 'org.tree.manage', input.nodeId)
-      await ctx.rbac.requireAt(context.principal, 'org.tree.manage', input.newParentId)
+      await ctx.rbac.requireAt(context.principal, 'org.tree.manage', input.parentId)
       const node = await service.moveNode(
         context.principal.tenantId,
         input.nodeId,
-        input.newParentId,
-        input.newSortOrder,
+        input.parentId,
+        input.sortOrder,
         context.principal,
       )
       return { node: toNodeDto(node) }

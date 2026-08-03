@@ -255,6 +255,39 @@ export class OrgTreeService {
     )
   }
 
+  // one node with the caller's capability flags, for a detail view that
+  // holds an id and should not have to pull a whole subtree to render it
+  async readNode(
+    principal: Principal,
+    nodeId: string,
+  ): Promise<NodeRow & { manageable: boolean; subtreeManageable: boolean }> {
+    return this.db.transaction(
+      async (tx) => {
+        const readAnchors = await this.anchorPaths(
+          tx,
+          principal.tenantId,
+          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.read', tx),
+        )
+        const node = await getNode(tx, principal.tenantId, nodeId)
+        // not-found and not-covered are indistinguishable on purpose
+        if (!node || !coveredBy(readAnchors, node)) {
+          throw orgErrors.create('ORG_NODE_NOT_FOUND', 'node not found')
+        }
+        const manageAnchors = await this.anchorPaths(
+          tx,
+          principal.tenantId,
+          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.manage', tx),
+        )
+        return {
+          ...node,
+          manageable: coveredBy(manageAnchors, node),
+          subtreeManageable: subtreeCoveredBy(manageAnchors, node),
+        }
+      },
+      { isolationLevel: 'repeatable read', accessMode: 'read only' },
+    )
+  }
+
   // type/rule management targets the root; the root never moves, but the
   // caller's grants can be revoked between the router pre-check and the
   // lock, so re-validate on the locked connection like every node write
@@ -483,7 +516,9 @@ export class OrgTreeService {
     return listRules(this.db, tenantId)
   }
 
-  createRule(
+  // idempotent by design: the pair identifies the rule, so repeating the
+  // request converges on the same state instead of reporting a conflict
+  putRule(
     tenantId: string,
     parentTypeId: string,
     childTypeId: string,
@@ -495,6 +530,7 @@ export class OrgTreeService {
       if (parentTypeId === childTypeId) {
         throw orgErrors.create('ORG_RULE_INVALID', 'a type cannot parent itself')
       }
+      if (await ruleExists(tx, tenantId, parentTypeId, childTypeId)) return
       if ((await countTypes(tx, tenantId, [parentTypeId, childTypeId])) !== 2) {
         throw orgErrors.create('ORG_TYPE_NOT_FOUND', 'both rule types must exist in the tenant')
       }

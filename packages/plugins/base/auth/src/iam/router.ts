@@ -1,13 +1,16 @@
-import { implement } from '@orpc/server'
+import { implement, ORPCError } from '@orpc/server'
 import type { Context } from 'cordis'
+import { DEFAULT_PAGE_SIZE, encodeCursor } from '@qualy/api-contract'
 import { apiErrorBoundary, requireAuth, type ApiContext } from '@qualy/plugin-server'
 import type { Principal } from '@qualy/rbac-contract'
-import { iamContract, type IamUserDto, type UserTypeDto } from './contract.ts'
+import { identityContract, type IamUserDto, type UserTypeDto } from './contract.ts'
 import type { IamService, UserRow, UserTypeRow } from './service.ts'
 
-// user types are tenant-scope administration; users are org-scope, so every
-// user operation authorizes at the node the user is placed on. The shared
-// middlewares own the error mapping and the principal narrowing.
+// User types are tenant-scope administration. Users are org-scope, and their
+// authorization is decided inside the service transaction rather than here:
+// a check made at this layer is against a tree that can still move before
+// the write it guards lands. Reads carry their own filter, so what comes
+// back is already the caller's own slice.
 
 const toUserTypeDto = (row: UserTypeRow): UserTypeDto => ({
   id: row.id,
@@ -16,7 +19,7 @@ const toUserTypeDto = (row: UserTypeRow): UserTypeDto => ({
   description: row.description,
   allowLocalLogin: row.allow_local_login,
   allowSsoLogin: row.allow_sso_login,
-  enabled: row.enabled,
+  status: row.enabled ? 'active' : 'disabled',
   isSystem: row.is_system,
   sortOrder: row.sort_order,
   userCount: row.user_count,
@@ -27,44 +30,58 @@ const toUserDto = (row: UserRow): IamUserDto => ({
   id: row.id,
   businessNo: row.business_no,
   displayName: row.display_name,
-  enabled: row.enabled,
+  status: row.enabled ? 'active' : 'disabled',
   userType: { id: row.user_type_id, code: row.user_type_code, name: row.user_type_name },
   primaryOrgNode: { id: row.primary_org_node_id, name: row.primary_org_node_name },
   identifier: row.identifier,
+  manageable: row.manageable,
 })
 
-export function createIamRouter(ctx: Context, service: IamService) {
-  const impl = implement(iamContract).$context<ApiContext>().use(apiErrorBoundary).use(requireAuth)
+export function createIdentityRouter(ctx: Context, service: IamService) {
+  const impl = implement(identityContract)
+    .$context<ApiContext>()
+    .use(apiErrorBoundary)
+    .use(requireAuth)
 
   const requireTenant = (principal: Principal, code: string) => ctx.rbac.require(principal, code)
-  // a user is administered where they stand: the caller must hold the org
-  // permission at that user's primary node
-  const requireAtUser = async (principal: Principal, userId: string, code: string) => {
-    const node = await service.userOrgNode(principal.tenantId, userId)
-    await ctx.rbac.requireAt(principal, code, node)
+  // reading users is org-scope and held per anchor, so the gate here is
+  // "anywhere at all"; which users come back is the query's own decision
+  const requireUserRead = async (principal: Principal) => {
+    if (!(await ctx.rbac.hasPermission(principal, 'auth.user.read'))) {
+      throw new ORPCError('FORBIDDEN')
+    }
   }
 
   return impl.router({
     listUserTypes: impl.listUserTypes.handler(async ({ context }) => {
       await requireTenant(context.principal, 'auth.user-type.read')
-      const rows = await service.listUserTypes(context.principal.tenantId)
-      return { userTypes: rows.map(toUserTypeDto) }
+      return {
+        userTypes: (await service.listUserTypes(context.principal.tenantId)).map(toUserTypeDto),
+        capabilities: {
+          canManage: await ctx.rbac.hasPermission(context.principal, 'auth.user-type.manage'),
+        },
+      }
     }),
     createUserType: impl.createUserType.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
       return { id: await service.createUserType(context.principal.tenantId, input) }
+    }),
+    getUserType: impl.getUserType.handler(async ({ context, input }) => {
+      await requireTenant(context.principal, 'auth.user-type.read')
+      const row = await service.getUserType(context.principal.tenantId, input.userTypeId)
+      return { userType: toUserTypeDto(row) }
     }),
     updateUserType: impl.updateUserType.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
       await service.updateUserType(context.principal.tenantId, input.userTypeId, input)
       return { ok: true as const }
     }),
-    setUserTypeEnabled: impl.setUserTypeEnabled.handler(async ({ context, input }) => {
+    setUserTypeStatus: impl.setUserTypeStatus.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
       await service.setUserTypeEnabled(
         context.principal.tenantId,
         input.userTypeId,
-        input.enabled,
+        input.status === 'active',
       )
       return { ok: true as const }
     }),
@@ -83,28 +100,55 @@ export function createIamRouter(ctx: Context, service: IamService) {
       return { ok: true as const }
     }),
 
-    listUsers: impl.listUsers.handler(async ({ context, input }) => {
-      await ctx.rbac.requireAt(context.principal, 'auth.user.read', input.orgNodeId)
-      const rows = await service.listUsers(context.principal.tenantId, {
-        orgNodeId: input.orgNodeId,
-        subtree: input.subtree ?? true,
-        search: input.search,
-      })
-      return { users: rows.map(toUserDto) }
+    getUserOptions: impl.getUserOptions.handler(async ({ context }) => {
+      await requireUserRead(context.principal)
+      return service.userOptions(context.principal)
     }),
-    createUser: impl.createUser.handler(async ({ context, input }) => {
-      // authority is decided by where the user will stand
-      await ctx.rbac.requireAt(context.principal, 'auth.user.manage', input.primaryOrgNodeId)
-      return { id: await service.createUser(context.principal.tenantId, input) }
+
+    listUsers: impl.listUsers.handler(async ({ context, input }) => {
+      await requireUserRead(context.principal)
+      const limit = input.limit ?? DEFAULT_PAGE_SIZE
+      const rows = await service.listUsers(context.principal, {
+        orgNodeId: input.orgNodeId,
+        scope: input.scope ?? 'subtree',
+        search: input.search,
+        cursor: input.cursor,
+        limit: limit + 1,
+      })
+      const items = rows.slice(0, limit)
+      const last = items.at(-1)
+      return {
+        items: items.map(toUserDto),
+        nextCursor: rows.length > limit && last ? encodeCursor([last.display_name, last.id]) : null,
+      }
+    }),
+    createUser: impl.createUser.handler(async ({ context, input }) => ({
+      id: await service.createUser(context.principal.tenantId, input, context.principal),
+    })),
+    getUser: impl.getUser.handler(async ({ context, input }) => {
+      await requireUserRead(context.principal)
+      return { user: toUserDto(await service.getUser(context.principal, input.userId)) }
     }),
     updateUser: impl.updateUser.handler(async ({ context, input }) => {
-      await requireAtUser(context.principal, input.userId, 'auth.user.manage')
-      await service.updateUser(context.principal.tenantId, input.userId, input)
+      await service.updateUser(context.principal.tenantId, input.userId, input, context.principal)
       return { ok: true as const }
     }),
-    setUserEnabled: impl.setUserEnabled.handler(async ({ context, input }) => {
-      await requireAtUser(context.principal, input.userId, 'auth.user.manage')
-      await service.setUserEnabled(context.principal.tenantId, input.userId, input.enabled)
+    setUserPlacement: impl.setUserPlacement.handler(async ({ context, input }) => {
+      await service.setUserPlacement(
+        context.principal.tenantId,
+        input.userId,
+        input.primaryOrgNodeId,
+        context.principal,
+      )
+      return { ok: true as const }
+    }),
+    setUserStatus: impl.setUserStatus.handler(async ({ context, input }) => {
+      await service.setUserEnabled(
+        context.principal.tenantId,
+        input.userId,
+        input.status === 'active',
+        context.principal,
+      )
       return { ok: true as const }
     }),
   })

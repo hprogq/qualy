@@ -14,7 +14,8 @@ import { Authorization } from './authorization.ts'
 import { PermissionRegistry } from './permission-registry.ts'
 import { permissions as rbacCatalog } from './permissions.ts'
 import { Administration } from './administration.ts'
-import { createRbacAdminRouter } from './admin-router.ts'
+import { assertTenantKeepsAdministrator } from './invariants.ts'
+import { createAccessRouter } from './router.ts'
 import { rolesPage } from './ui.ts'
 import { rbacNavigation } from './messages.ts'
 import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
@@ -36,7 +37,7 @@ export default class Rbac extends Service implements RbacService {
     this.registry = new PermissionRegistry(ctx)
     this.authorization = new Authorization(ctx, this.registry)
     this.assignments = new Assignments(ctx)
-    this.administration = new Administration(ctx)
+    this.administration = new Administration(ctx, this.authorization)
     this.definePermissions('rbac', rbacCatalog)
     // the ui registry is optional: a headless deployment runs without it,
     // so the authorizer registers in a nested fiber that simply stays
@@ -44,7 +45,13 @@ export default class Rbac extends Service implements RbacService {
     // role administration needs the api surface; the ui registry is
     // optional, so the page registers in the same nested fiber
     ctx.inject(['server'], (serverCtx) => {
-      serverCtx.server.contribute('rbac', createRbacAdminRouter(serverCtx, this.administration))
+      serverCtx.server.contribute(
+        'access',
+        createAccessRouter(serverCtx, this.administration, this.registry),
+      )
+      // an instance whose permission catalogs did not sync would authorize
+      // against an incomplete registry, so it must not take traffic
+      serverCtx.server.readiness('permissions', () => this.whenSynced())
     })
     ctx.inject(['ui'], (uiCtx) => {
       uiCtx.ui.addPage({
@@ -83,16 +90,28 @@ export default class Rbac extends Service implements RbacService {
     return this.authorization.require(principal, code)
   }
 
-  canAt(principal: Principal, code: string, targetOrgNodeId: string): Promise<boolean> {
-    return this.authorization.canAt(principal, code, targetOrgNodeId)
+  canAt(
+    principal: Principal,
+    code: string,
+    targetOrgNodeId: string,
+    handle?: RbacDbHandle,
+  ): Promise<boolean> {
+    return this.authorization.canAt(principal, code, targetOrgNodeId, handle)
   }
 
   requireAt(
     principal: Principal | undefined,
     code: string,
     targetOrgNodeId: string,
+    handle?: RbacDbHandle,
   ): Promise<void> {
-    return this.authorization.requireAt(principal, code, targetOrgNodeId)
+    return this.authorization.requireAt(principal, code, targetOrgNodeId, handle)
+  }
+
+  // the cross-domain lockout invariant; auth calls it inside its own
+  // identity transactions, which take the same tenant lock
+  assertTenantKeepsAdministrator(tenantId: string, handle: RbacDbHandle): Promise<void> {
+    return assertTenantKeepsAdministrator(handle, tenantId)
   }
 
   getProfile(principal: Principal): Promise<AccessProfile> {

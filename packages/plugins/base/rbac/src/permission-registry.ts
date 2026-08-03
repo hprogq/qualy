@@ -43,6 +43,14 @@ export class PermissionRegistry {
     return this.active.get(code)
   }
 
+  // the catalog a permission picker may offer: verified, active definitions
+  // only. A row left in the table by a plugin that is no longer loaded is
+  // deliberately absent — offering it would let an administrator grant a
+  // code nothing can honour.
+  list(): ActiveDefinition[] {
+    return [...this.active.values()].sort((a, b) => a.code.localeCompare(b.code))
+  }
+
   validate(definitions: readonly PermissionDefinition[]) {
     const seen = new Set<string>()
     for (const def of definitions) {

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { get, post } from '@qualy/api-contract'
+import { del, get, okOutput } from '@qualy/api-contract'
 
 export const userDto = z.object({
   id: z.string(),
@@ -31,18 +31,24 @@ export interface LoginMethodRendererProps {
   onAuthenticated: () => void
 }
 
+// The session is a resource, not a pair of verbs: reading it says who is
+// signed in, deleting it signs them out. /auth/me and /auth/logout modelled
+// the same thing two different ways and left no room for the per-device
+// listing this will grow.
 export const authContract = {
-  methods: get('/auth/methods').output(z.object({ methods: z.array(loginMethod) })),
-  logout: post('/auth/logout').output(z.object({ ok: z.boolean() })),
-  me: get('/auth/me')
+  listLoginMethods: get('/auth/login-methods').output(
+    z.object({ methods: z.array(loginMethod) }),
+  ),
+  getSession: get('/auth/session')
     .errors({
       AUTH_REQUIRED: { status: 401, message: 'authentication required' },
       SESSION_EXPIRED: { status: 401, message: 'session expired' },
     })
     .output(z.object({ user: userDto })),
+  endSession: del('/auth/session').output(okOutput),
 }
 
 // identity administration is the same plugin's second api surface, so it
 // becomes its own client namespace rather than crowding the session core
-export { iamContract } from './iam/contract.ts'
+export { identityContract } from './iam/contract.ts'
 export type { IamUserDto, UserTypeDto } from './iam/contract.ts'

@@ -10,7 +10,7 @@
     "./schema": "./src/db/schema.ts",
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
-    "./contract": "./src/admin-contract.ts",
+    "./contract": "./src/contract.ts",
     "./client": "./client/index.ts"
   },
   "qualy": {

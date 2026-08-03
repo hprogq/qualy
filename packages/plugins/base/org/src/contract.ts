@@ -76,16 +76,20 @@ export const orgContract = {
     .errors(e.pick('ORG_TYPE_NOT_FOUND', 'ORG_TYPE_IN_USE'))
     .output(okOutput),
   listRules: get('/org/type-rules').output(z.object({ rules: z.array(orgRuleDto) })),
-  createRule: post('/org/type-rules')
+  // the pair identifies the rule, so it belongs in the path and the write is
+  // idempotent: repeating it converges instead of conflicting
+  putRule: put('/org/type-rules/{parentTypeId}/{childTypeId}')
     .input(z.object({ parentTypeId: z.uuid(), childTypeId: z.uuid() }))
-    .errors(
-      e.pick('ORG_TYPE_NOT_FOUND', 'ORG_RULE_CONFLICT', 'ORG_RULE_INVALID', 'ORG_RULE_CYCLE'),
-    )
+    .errors(e.pick('ORG_TYPE_NOT_FOUND', 'ORG_RULE_INVALID', 'ORG_RULE_CYCLE'))
     .output(okOutput),
   deleteRule: del('/org/type-rules/{parentTypeId}/{childTypeId}')
     .input(z.object({ parentTypeId: z.uuid(), childTypeId: z.uuid() }))
     .errors(e.pick('ORG_RULE_NOT_FOUND', 'ORG_RULE_IN_USE'))
     .output(okOutput),
+  getNode: get('/org/nodes/{nodeId}')
+    .input(z.object({ nodeId: z.uuid() }))
+    .errors(e.pick('ORG_NODE_NOT_FOUND'))
+    .output(z.object({ node: orgTreeNodeDto })),
   createNode: post('/org/nodes')
     .input(
       z.object({
@@ -126,12 +130,14 @@ export const orgContract = {
       ),
     )
     .output(z.object({ node: orgNodeDto })),
-  moveNode: post('/org/nodes/{nodeId}/move')
+  // where a node sits is a subresource that gets replaced, not an action:
+  // the same shape a user transfer uses
+  setNodePlacement: put('/org/nodes/{nodeId}/placement')
     .input(
       z.object({
         nodeId: z.uuid(),
-        newParentId: z.uuid(),
-        newSortOrder: sortOrderSchema.optional(),
+        parentId: z.uuid(),
+        sortOrder: sortOrderSchema.optional(),
       }),
     )
     .errors(
