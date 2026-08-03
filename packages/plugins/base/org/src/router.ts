@@ -27,7 +27,10 @@ function requirePrincipal(context: ApiContext): Principal {
   return context.principal
 }
 
-type ErrorFactories = Record<string, (options?: { message?: string }) => Error>
+type ErrorFactories = Record<
+  string,
+  (options?: { message?: string; data?: unknown }) => Error
+>
 
 // domain errors become the procedure's typed errors; anything the contract
 // does not declare stays an internal fault (500) on purpose. The service's
@@ -36,7 +39,13 @@ function mapDomain(errors: unknown, error: unknown): never {
   if (error instanceof OrgError) {
     if (error.code === 'ORG_FORBIDDEN') throw new ORPCError('FORBIDDEN')
     const factory = (errors as ErrorFactories)[error.code]
-    if (factory) throw factory({ message: error.message })
+    // the english message rides along for non-browser clients; the data is
+    // what the browser formats into a localized sentence
+    if (factory) {
+      throw error.data === undefined
+        ? factory({ message: error.message })
+        : factory({ message: error.message, data: error.data })
+    }
   }
   throw error
 }

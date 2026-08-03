@@ -1,13 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { authMessages as m } from './i18n.ts'
 
 // header-actions contribution: shows the signed-in user and a logout button,
 // or a login link for anonymous visitors
 export default function UserMenu() {
   const api = useApi()
   const orpc = useApiQuery()
+  const { format } = useI18n()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const me = useQuery({ ...orpc.auth.me.queryOptions(), retry: false })
@@ -16,7 +19,7 @@ export default function UserMenu() {
   if (me.isError) {
     return (
       <Button variant="outline" size="sm" asChild>
-        <Link to="/login">登录</Link>
+        <Link to="/login">{format(m.signIn)}</Link>
       </Button>
     )
   }
@@ -33,7 +36,7 @@ export default function UserMenu() {
             .then(() => navigate('/login'))
         }}
       >
-        退出登录
+        {format(m.signOut)}
       </Button>
     </div>
   )

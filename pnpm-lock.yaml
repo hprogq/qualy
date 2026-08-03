@@ -153,6 +153,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.5.4
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:packages/i18n-contract
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -344,6 +347,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../i18n-contract
       '@qualy/plugin-org':
         specifier: workspace:*
         version: link:../org
@@ -362,6 +368,9 @@ importers:
       '@qualy/ui-contract':
         specifier: workspace:*
         version: link:../../../ui-contract
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../../web-i18n
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web-runtime
@@ -411,6 +420,9 @@ importers:
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../i18n-contract
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../auth
@@ -420,6 +432,9 @@ importers:
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../ui
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../../web-i18n
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web-runtime
@@ -518,6 +533,9 @@ importers:
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../ui
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../../web-i18n
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web-runtime

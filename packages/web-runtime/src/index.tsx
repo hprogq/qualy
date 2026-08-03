@@ -66,9 +66,9 @@ function RuntimeLoader({
   if (manifest.isError) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p className="text-sm text-muted-foreground">界面清单加载失败，请检查网络。</p>
+        <p className="text-sm text-muted-foreground">{format(commonMessages.manifestLoadFailed)}</p>
         <Button variant="outline" onClick={() => void manifest.refetch()}>
-          重试
+          {format(commonMessages.retry)}
         </Button>
       </div>
     )

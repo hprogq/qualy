@@ -3,3 +3,5 @@
 export const components = {
   'auth-local/LoginMethod': () => import('./LoginMethod.tsx'),
 }
+
+export { catalogs, errorMessages } from './i18n.ts'

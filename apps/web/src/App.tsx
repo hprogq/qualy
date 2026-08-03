@@ -12,7 +12,7 @@ import {
 import { I18nProvider, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
-import { catalogs, components } from './plugins.gen.ts'
+import { catalogs, components, errorMessages } from './plugins.gen.ts'
 
 const client = createApiClient('/api')
 const registry: ComponentRegistry = Object.fromEntries(
@@ -26,7 +26,7 @@ export default function App() {
   // localization wraps everything: even the manifest loading and error
   // states are localized, so the shell never renders untranslated copy
   return (
-    <I18nProvider catalogs={catalogs} fallback={<LoadingScreen />}>
+    <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
       <RuntimeProvider client={client} registry={registry}>
         <ManifestRouter />
       </RuntimeProvider>

@@ -1,10 +1,10 @@
 import { Context, Service } from 'cordis'
-import { message } from '@qualy/i18n-contract'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-database'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
 import { orgErrorStatuses } from './contract.ts'
+import { orgNavigationLabel } from './messages.ts'
 import { permissions as orgPermissions } from './permissions.ts'
 import { createOrgRouter } from './router.ts'
 import { OrgTreeService } from './service.ts'
@@ -38,7 +38,7 @@ export default class Org extends Service {
       component: 'org/OrgPage',
       layout: 'admin-shell/v1',
       permission: 'org.tree.read',
-      navigation: { label: message('org/navigation/organization', 'Organization'), order: 20 },
+      navigation: { label: orgNavigationLabel, order: 20 },
     })
   }
 }

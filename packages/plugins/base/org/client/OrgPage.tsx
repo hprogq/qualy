@@ -1,13 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useI18n } from '@qualy/web-i18n'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
 import { Button } from '@qualy/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@qualy/ui/card'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { Spinner } from '@qualy/ui/spinner'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import type { OrgTreeNodeDto, OrgTypeDto } from '@qualy/plugin-org/contract'
+import { orgMessages as m } from './i18n.ts'
 
 // minimal org management: tree with selection, node crud, parent-selector
 // move and basic type/rule administration. Mutation controls only render on
@@ -15,6 +18,7 @@ import type { OrgTreeNodeDto, OrgTypeDto } from '@qualy/plugin-org/contract'
 export default function OrgPage() {
   const api = useApi()
   const orpc = useApiQuery()
+  const { format, formatError } = useI18n()
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -29,9 +33,11 @@ export default function OrgPage() {
     setFeedback(null)
     return queryClient.invalidateQueries({ queryKey: orpc.org.key() })
   }
+  // typed api errors localize from their code and data; the backend's
+  // english message is only the last resort
   const run = (work: Promise<unknown>) =>
     work.then(refresh).catch((error: unknown) => {
-      setFeedback(error instanceof Error ? error.message : '操作失败')
+      setFeedback(formatError(error))
     })
 
   const nodes = useMemo(() => treeQuery.data?.nodes ?? [], [treeQuery.data])
@@ -54,7 +60,7 @@ export default function OrgPage() {
     return map
   }, [nodes, byId, rootIds])
   const types = typesQuery.data?.types ?? []
-  const typeName = (id: string) => types.find((type) => type.id === id)?.name ?? '未知类型'
+  const typeName = (id: string) => types.find((type) => type.id === id)?.name ?? format(m.unknownType)
   const selected = selectedId ? byId.get(selectedId) : undefined
   const rootManageable = nodes.some((node) => !node.parentId && node.manageable)
 
@@ -68,11 +74,11 @@ export default function OrgPage() {
   if (treeQuery.isError || typesQuery.isError || rulesQuery.isError) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>组织数据加载失败</AlertTitle>
+        <AlertTitle>{format(m.loadFailedTitle)}</AlertTitle>
         <AlertDescription className="mt-2 space-y-3">
-          <p>请检查网络或权限后重试。</p>
+          <p>{format(m.loadFailedHint)}</p>
           <Button variant="outline" size="sm" onClick={() => void refresh()}>
-            重试
+            {format(commonMessages.retry)}
           </Button>
         </AlertDescription>
       </Alert>
@@ -111,11 +117,11 @@ export default function OrgPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>组织树</CardTitle>
+            <CardTitle>{format(m.treeTitle)}</CardTitle>
           </CardHeader>
           <CardContent>
             {roots.length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无可见的组织节点。</p>
+              <p className="text-sm text-muted-foreground">{format(m.treeEmpty)}</p>
             ) : (
               <ul className="space-y-1">{roots.map(renderNode)}</ul>
             )}
@@ -135,7 +141,7 @@ export default function OrgPage() {
           ) : (
             <Card>
               <CardContent className="pt-6 text-sm text-muted-foreground">
-                在左侧选择一个节点查看详情。
+                {format(m.selectHint)}
               </CardContent>
             </Card>
           )}
@@ -170,6 +176,7 @@ function NodePanel({
   onAction: (work: Promise<unknown>) => Promise<unknown>
   onDeleted: () => void
 }) {
+  const { format } = useI18n()
   const [name, setName] = useState(node.name)
   const [childName, setChildName] = useState('')
   const [childTypeId, setChildTypeId] = useState('')
@@ -199,12 +206,12 @@ function NodePanel({
       </CardHeader>
       <CardContent className="space-y-4">
         {!node.manageable && (
-          <p className="text-sm text-muted-foreground">你对该节点只有查看权限。</p>
+          <p className="text-sm text-muted-foreground">{format(m.readOnly)}</p>
         )}
         {node.manageable && (
           <>
             <div className="space-y-2">
-              <Label htmlFor="org-node-name">名称</Label>
+              <Label htmlFor="org-node-name">{format(m.nameLabel)}</Label>
               <div className="flex gap-2">
                 <Input
                   id="org-node-name"
@@ -216,12 +223,12 @@ function NodePanel({
                   disabled={name.trim() === '' || name === node.name}
                   onClick={() => void onAction(api.org.updateNode({ nodeId: node.id, name }))}
                 >
-                  重命名
+                  {format(m.rename)}
                 </Button>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>节点类型</Label>
+              <Label>{format(m.nodeType)}</Label>
               <div className="flex gap-2">
                 <select
                   className="h-9 flex-1 rounded-md border bg-transparent px-2 text-sm"
@@ -242,16 +249,16 @@ function NodePanel({
                     void onAction(api.org.changeNodeType({ nodeId: node.id, orgTypeId: newTypeId }))
                   }
                 >
-                  修改类型
+                  {format(m.changeType)}
                 </Button>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>新建子节点</Label>
+              <Label>{format(m.createChild)}</Label>
               <div className="flex flex-wrap gap-2">
                 <Input
                   className="flex-1"
-                  placeholder="名称"
+                  placeholder={format(m.namePlaceholder)}
                   value={childName}
                   onChange={(event) => setChildName(event.target.value)}
                 />
@@ -260,7 +267,7 @@ function NodePanel({
                   value={childTypeId}
                   onChange={(event) => setChildTypeId(event.target.value)}
                 >
-                  <option value="">选择类型</option>
+                  <option value="">{format(m.selectType)}</option>
                   {types.map((type) => (
                     <option key={type.id} value={type.id}>
                       {type.name}
@@ -278,20 +285,20 @@ function NodePanel({
                     )
                   }
                 >
-                  创建
+                  {format(m.create)}
                 </Button>
               </div>
             </div>
             {!isRoot && node.subtreeManageable && (
               <div className="space-y-2">
-                <Label>移动到</Label>
+                <Label>{format(m.moveTo)}</Label>
                 <div className="flex gap-2">
                   <select
                     className="h-9 flex-1 rounded-md border bg-transparent px-2 text-sm"
                     value={moveTargetId}
                     onChange={(event) => setMoveTargetId(event.target.value)}
                   >
-                    <option value="">选择新的父节点</option>
+                    <option value="">{format(m.selectParent)}</option>
                     {moveTargets.map((candidate) => (
                       <option key={candidate.id} value={candidate.id}>
                         {candidate.name}
@@ -308,7 +315,7 @@ function NodePanel({
                       )
                     }
                   >
-                    移动
+                    {format(m.move)}
                   </Button>
                 </div>
               </div>
@@ -321,7 +328,7 @@ function NodePanel({
                   void onAction(api.org.deleteNode({ nodeId: node.id }).then(onDeleted))
                 }
               >
-                删除节点
+                {format(m.deleteNode)}
               </Button>
             )}
           </>
@@ -342,6 +349,7 @@ function TypeRuleAdmin({
   api: Api
   onAction: (work: Promise<unknown>) => Promise<unknown>
 }) {
+  const { format } = useI18n()
   const [typeCode, setTypeCode] = useState('')
   const [typeName, setTypeName] = useState('')
   const [ruleParent, setRuleParent] = useState('')
@@ -352,7 +360,7 @@ function TypeRuleAdmin({
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">组织类型</CardTitle>
+          <CardTitle className="text-base">{format(m.typesTitle)}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <ul className="space-y-1 text-sm">
@@ -367,19 +375,19 @@ function TypeRuleAdmin({
                   variant="ghost"
                   onClick={() => void onAction(api.org.deleteType({ typeId: type.id }))}
                 >
-                  删除
+                  {format(m.delete)}
                 </Button>
               </li>
             ))}
           </ul>
           <div className="flex gap-2">
             <Input
-              placeholder="code(小写连字符)"
+              placeholder={format(m.codePlaceholder)}
               value={typeCode}
               onChange={(event) => setTypeCode(event.target.value)}
             />
             <Input
-              placeholder="名称"
+              placeholder={format(m.namePlaceholder)}
               value={typeName}
               onChange={(event) => setTypeName(event.target.value)}
             />
@@ -397,14 +405,14 @@ function TypeRuleAdmin({
                 )
               }
             >
-              新建
+              {format(m.create)}
             </Button>
           </div>
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">层级规则</CardTitle>
+          <CardTitle className="text-base">{format(m.rulesTitle)}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <ul className="space-y-1 text-sm">
@@ -428,7 +436,7 @@ function TypeRuleAdmin({
                     )
                   }
                 >
-                  删除
+                  {format(m.delete)}
                 </Button>
               </li>
             ))}
@@ -439,7 +447,7 @@ function TypeRuleAdmin({
               value={ruleParent}
               onChange={(event) => setRuleParent(event.target.value)}
             >
-              <option value="">父类型</option>
+              <option value="">{format(m.parentType)}</option>
               {types.map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.name}
@@ -451,7 +459,7 @@ function TypeRuleAdmin({
               value={ruleChild}
               onChange={(event) => setRuleChild(event.target.value)}
             >
-              <option value="">子类型</option>
+              <option value="">{format(m.childType)}</option>
               {types.map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.name}
@@ -467,7 +475,7 @@ function TypeRuleAdmin({
                 )
               }
             >
-              新建
+              {format(m.create)}
             </Button>
           </div>
         </CardContent>

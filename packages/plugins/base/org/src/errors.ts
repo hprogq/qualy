@@ -19,13 +19,22 @@ export type OrgErrorCode =
   | 'ORG_NODE_IN_USE'
   | 'ORG_NODE_ASSIGNMENT_INCOMPATIBLE'
 
-export class OrgError extends Error {
+// data is the safe, structured payload the frontend formats into a
+// localized sentence; the message is an english developer/protocol string
+// (openapi docs, logs, non-browser clients), never the display text. Never
+// put role codes, constraint names or raw sql detail into data.
+export class OrgError<Data = undefined> extends Error {
+  readonly data: Data
+
+  constructor(code: OrgErrorCode, developerMessage: string, data?: Data)
   constructor(
     readonly code: OrgErrorCode,
-    message: string,
+    developerMessage: string,
+    data?: Data,
   ) {
-    super(message)
+    super(developerMessage)
     this.name = 'OrgError'
+    this.data = data as Data
   }
 }
 

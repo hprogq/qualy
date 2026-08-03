@@ -68,8 +68,13 @@ export const orgErrorStatuses = {
   ORG_NODE_INVALID_MOVE: 422,
 } as const
 
-const err = (code: keyof typeof orgErrorStatuses, message: string) => ({
-  [code]: { status: orgErrorStatuses[code], message },
+const err = (code: keyof typeof orgErrorStatuses, message: string, data?: z.ZodType) => ({
+  [code]: { status: orgErrorStatuses[code], message, ...(data ? { data } : {}) },
+})
+
+// structured payloads the frontend turns into localized sentences
+export const assignmentIncompatibleData = z.object({
+  assignmentCount: z.number().int().nonnegative(),
 })
 
 const nodeNotFound = err('ORG_NODE_NOT_FOUND', 'node not found')
@@ -161,7 +166,11 @@ export const orgContract = {
       ...nodeNotFound,
       ...typeNotFound,
       ...ruleViolation,
-      ...err('ORG_NODE_ASSIGNMENT_INCOMPATIBLE', 'role assignments forbid the new type'),
+      ...err(
+        'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
+        'role assignments reject the requested organization type',
+        assignmentIncompatibleData,
+      ),
     })
     .output(z.object({ node: orgNodeDto })),
   moveNode: oc

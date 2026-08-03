@@ -72,6 +72,9 @@ export const defaultLocale: SupportedLocale = 'zh-CN'
 // defaultMessage in each reference is the english fallback)
 export interface PluginCatalogs {
   namespace: string
+  // every message the plugin declares, so completeness can be checked
+  // without guessing which exports hold descriptors
+  messages: readonly MessageDescriptor[]
   locales: Partial<Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>>
 }
 

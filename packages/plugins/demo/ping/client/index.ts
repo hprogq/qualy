@@ -3,3 +3,5 @@
 export const components = {
   'ping/PingPage': () => import('./PingPage.tsx'),
 }
+
+export { catalogs } from './i18n.ts'

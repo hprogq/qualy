@@ -1,11 +1,13 @@
 import type { ComponentProps } from 'react'
 import { cn } from '../lib/cn.ts'
 
-export function Spinner({ className, ...props }: ComponentProps<'div'>) {
+// the primitive library carries no localized copy: the accessible label
+// defaults to english and localized callers pass their own
+export function Spinner({ className, 'aria-label': label, ...props }: ComponentProps<'div'>) {
   return (
     <div
       role="status"
-      aria-label="加载中"
+      aria-label={label ?? 'Loading'}
       className={cn(
         'size-5 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-foreground',
         className,

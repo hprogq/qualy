@@ -328,10 +328,12 @@ export class OrgTreeService {
         tx,
       )
       if (blocking.length > 0) {
-        // role codes stay private to assignment readers; the count is enough
+        // role codes stay private to assignment readers; the count is the
+        // only thing the caller needs, and it localizes with an icu plural
         throw new OrgError(
           'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
-          `${blocking.length} role assignment(s) at this node do not allow the new type`,
+          'existing role assignments reject the requested organization type',
+          { assignmentCount: blocking.length },
         )
       }
       await setNodeType(tx, tenantId, nodeId, newTypeId)

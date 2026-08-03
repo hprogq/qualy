@@ -580,6 +580,39 @@ describe.runIf(available)('org tree domain', () => {
     )
     expect(invalid.status).toBe(422)
     expect(((await invalid.json()) as { code: string }).code).toBe('ORG_NODE_INVALID_MOVE')
+
+    // typed errors carry structured data, not a prebuilt sentence: the
+    // browser formats the count into its own locale. collegeB needs a legal
+    // target type (university -> class) so the check reaches the assignment
+    // rule instead of failing on the parent rule first.
+    await tree().createRule(f.tenant, f.universityType, f.classType)
+    const guarded = await pool.query(
+      `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+       values ($1, $2, $3, $4, 'self') returning id`,
+      [f.tenant, f.manager, f.managerRole, f.collegeB],
+    )
+    try {
+      const incompatible = await call(
+        'PUT',
+        `/org/nodes/${f.collegeB}/type`,
+        { orgTypeId: f.classType },
+        admin,
+      )
+      expect(incompatible.status).toBe(409)
+      const payload = (await incompatible.json()) as {
+        code: string
+        message: string
+        data?: { assignmentCount?: number }
+      }
+      expect(payload.code).toBe('ORG_NODE_ASSIGNMENT_INCOMPATIBLE')
+      expect(payload.data).toEqual({ assignmentCount: 1 })
+      // the english message stays a developer/protocol fallback and never
+      // interpolates the count
+      expect(payload.message).not.toMatch(/\d/)
+    } finally {
+      await pool.query(`delete from user_role_assignments where id = $1`, [guarded.rows[0].id])
+      await tree().deleteRule(f.tenant, f.universityType, f.classType)
+    }
     const missing = await call('DELETE', `/org/nodes/${randomUUID()}`, undefined, admin)
     expect(missing.status).toBe(403)
 

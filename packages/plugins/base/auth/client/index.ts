@@ -4,3 +4,5 @@ export const components = {
   'auth/LoginPage': () => import('./LoginPage.tsx'),
   'auth/UserMenu': () => import('./UserMenu.tsx'),
 }
+
+export { catalogs } from './i18n.ts'

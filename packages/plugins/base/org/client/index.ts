@@ -3,3 +3,7 @@
 export const components = {
   'org/OrgPage': () => import('./OrgPage.tsx'),
 }
+
+// localization assets the web host aggregates: the plugin owns the org/*
+// message namespace and the display text for its own typed api errors
+export { catalogs, errorMessages } from './i18n.ts'

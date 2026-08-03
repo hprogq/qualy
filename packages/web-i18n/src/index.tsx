@@ -98,13 +98,21 @@ async function loadCatalogs(
 export interface I18nProviderProps {
   // per-plugin catalogs, assembled by the web host from its plugin registry
   catalogs?: readonly PluginCatalogs[]
+  // merged plugin error registry; formatError falls back to it so a page
+  // never has to know which plugin owns the code it just received
+  errorMessages?: ErrorMessageMap
   children: ReactNode
   // rendered until the first catalog activation completes, so the ui never
   // flashes untranslated english
   fallback?: ReactNode
 }
 
-export function I18nProvider({ catalogs = [], children, fallback = null }: I18nProviderProps) {
+export function I18nProvider({
+  catalogs = [],
+  errorMessages = {},
+  children,
+  fallback = null,
+}: I18nProviderProps) {
   const i18n = useMemo<I18n>(() => {
     const instance = setupI18n()
     // raw icu strings are compiled lazily; no extraction or compile step
@@ -146,11 +154,11 @@ export function I18nProvider({ catalogs = [], children, fallback = null }: I18nP
           ? text.value
           : format({ id: text.id, defaultMessage: text.defaultMessage }),
       formatError: (error: unknown, registry?: ErrorMessageMap) =>
-        formatApiError(error, { format }, registry),
+        formatApiError(error, { format }, registry ? { ...errorMessages, ...registry } : errorMessages),
     }
     // `activated` is not read but ties the memo to the active catalog, so
     // every consumer re-renders after a locale switch
-  }, [i18n, locale, setLocale, activated])
+  }, [i18n, locale, setLocale, errorMessages, activated])
 
   if (activated === undefined) return <>{fallback}</>
   return <I18nContext value={runtime}>{children}</I18nContext>
@@ -159,4 +167,29 @@ export function I18nProvider({ catalogs = [], children, fallback = null }: I18nP
 // declarative rendering of a manifest-carried text reference
 export function LocalizedText({ value }: { value: UiText }) {
   return <>{useI18n().formatText(value)}</>
+}
+
+const localeNames: Record<SupportedLocale, string> = {
+  'zh-CN': '中文',
+  'en-US': 'English',
+}
+
+// shell chrome owned by the runtime: switching activates the catalogs and
+// re-renders, without refetching the manifest or any business data
+export function LocaleSwitcher({ className }: { className?: string }) {
+  const [locale, setLocale] = useLocale()
+  return (
+    <select
+      className={className}
+      aria-label="Language"
+      value={locale}
+      onChange={(event) => setLocale(event.target.value as SupportedLocale)}
+    >
+      {supportedLocales.map((candidate) => (
+        <option key={candidate} value={candidate}>
+          {localeNames[candidate]}
+        </option>
+      ))}
+    </select>
+  )
 }
