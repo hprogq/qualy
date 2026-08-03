@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./contract": "./src/contract.ts",
     "./schema": "./src/db/schema.ts",
-    "./client": "./client/index.ts"
+    "./client": "./client/index.ts",
+    "./ui": "./src/ui.ts"
   },
   "qualy": {
     "database": {
@@ -28,6 +29,7 @@
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"

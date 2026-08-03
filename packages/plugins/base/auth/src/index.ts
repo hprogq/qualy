@@ -5,7 +5,8 @@ import { z } from 'zod'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
-import { headerActions } from '@qualy/ui-contract'
+import { BLANK_SHELL, headerActions, PUBLIC } from '@qualy/ui-contract'
+import { loginPage } from './ui.ts'
 import { authContract, type LoginMethod, type UserDto } from './contract.ts'
 import { permissions as authPermissions } from './permissions.ts'
 import { authRelations } from './db/relations.ts'
@@ -137,15 +138,16 @@ export default class Auth extends Service {
     )
 
     ctx.ui.addPage({
-      id: 'auth/login',
-      path: '/login',
+      page: loginPage,
       component: 'auth/LoginPage',
-      layout: 'blank-shell/v1',
-      public: true,
+      layout: BLANK_SHELL,
+      visibility: PUBLIC,
     })
+    // the menu shows a sign-in link to anonymous visitors, so it is public
     ctx.ui.contribute(headerActions, {
       id: 'auth/user-menu',
       component: 'auth/UserMenu',
+      visibility: PUBLIC,
       order: 100,
     })
   }

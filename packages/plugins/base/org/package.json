@@ -10,7 +10,8 @@
     "./schema": "./src/db/schema.ts",
     "./permissions": "./src/permissions.ts",
     "./contract": "./src/contract.ts",
-    "./client": "./client/index.ts"
+    "./client": "./client/index.ts",
+    "./ui": "./src/ui.ts"
   },
   "qualy": {
     "database": {
@@ -41,6 +42,7 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@tanstack/react-query": "catalog:",

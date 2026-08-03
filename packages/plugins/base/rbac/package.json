@@ -26,6 +26,7 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"

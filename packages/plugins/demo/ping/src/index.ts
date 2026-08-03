@@ -3,7 +3,9 @@ import type { Context } from 'cordis'
 import { z } from 'zod'
 import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
+import { ADMIN_SHELL, PUBLIC } from '@qualy/ui-contract'
 import { pingNavigationLabel } from './messages.ts'
+import { pingPage } from './ui.ts'
 import { pingContract } from './contract.ts'
 import { pingLogs } from './db/schema.ts'
 
@@ -26,11 +28,11 @@ export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
   }, 'heartbeat-timer')
 
   ctx.ui.addPage({
-    id: 'ping/page',
-    path: '/ping',
+    page: pingPage,
     component: 'ping/PingPage',
-    layout: 'admin-shell/v1',
-    public: true,
+    layout: ADMIN_SHELL,
+    // the demo endpoint is deliberately open; a real plugin would gate this
+    visibility: PUBLIC,
     navigation: { label: pingNavigationLabel, order: 10 },
   })
 

@@ -1,4 +1,5 @@
 import { Context, Service } from 'cordis'
+import type {} from '@qualy/plugin-ui-registry'
 import type {
   AccessProfile,
   AssignmentInput,
@@ -30,6 +31,15 @@ export default class Rbac extends Service implements RbacService {
     this.authorization = new Authorization(ctx, this.registry)
     this.assignments = new Assignments(ctx)
     this.definePermissions('rbac', rbacCatalog)
+    // the ui registry is optional: a headless deployment runs without it,
+    // so the authorizer registers in a nested fiber that simply stays
+    // pending when no registry is assembled
+    ctx.inject(['ui'], (uiCtx) => {
+      uiCtx.ui.setAuthorizer(async (principal) => {
+        const profile = await this.getProfile(principal)
+        return [...profile.tenantPermissions, ...profile.orgPermissions]
+      })
+    })
   }
 
   definePermissions(plugin: string, definitions: readonly PermissionDefinition[]) {
