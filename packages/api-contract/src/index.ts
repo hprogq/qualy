@@ -43,9 +43,15 @@ const DOMAIN_ERROR = Symbol.for('qualy.api.domain-error')
 const ACCESS_DENIED = Symbol.for('qualy.api.access-denied')
 
 // what a service throws; the server's error boundary maps it onto the
-// procedure's typed contract errors. Construct these through
-// defineDomainErrors().create(), which is what enforces code and data.
-export class DomainError<Code extends string = string, Data = unknown> extends Error {
+// procedure's typed contract errors. Only the structural type is exported:
+// the sole way to build one is defineDomainErrors().create(), which is what
+// enforces that a code exists and carries the data its schema declares.
+export interface DomainError<Code extends string = string, Data = unknown> extends Error {
+  readonly code: Code
+  readonly data: Data
+}
+
+class DomainErrorImpl<Code extends string, Data> extends Error implements DomainError<Code, Data> {
   readonly [DOMAIN_ERROR] = true
 
   constructor(
@@ -86,9 +92,6 @@ export function isAccessDeniedError(error: unknown): error is AccessDeniedError 
 
 export interface DomainErrors<Defs extends ErrorDefinitions> {
   readonly definitions: Defs
-  // http status per code, for the beta.21 handler's errorStatusMap (the
-  // contract-level status is ignored by that version, probed)
-  readonly statuses: { [Code in keyof Defs]: Defs[Code]['status'] }
   // the subset a procedure declares: oc.errors(errors.pick('A', 'B'))
   pick<Codes extends keyof Defs & string>(...codes: Codes[]): Pick<Defs, Codes>
   // constructs the typed error; a code that declares data demands it, a
@@ -118,15 +121,12 @@ export function defineDomainErrors<const Defs extends ErrorDefinitions>(
       throw new Error(`error ${code}: message must not be blank`)
     }
   }
-  const statuses = Object.freeze(
-    Object.fromEntries(
-      Object.entries(definitions).map(([code, definition]) => [code, definition.status]),
-    ),
-  ) as { [Code in keyof Defs]: Defs[Code]['status'] }
+  // deep enough to protect what the dsl owns: the definition objects it
+  // hands to pick() and create(), not the zod schemas inside them
+  for (const definition of Object.values(definitions)) Object.freeze(definition)
   Object.freeze(definitions)
   return {
     definitions,
-    statuses,
     pick: (...codes) =>
       Object.fromEntries(codes.map((code) => [code, definitions[code]])) as never,
     create: (code, ...args) => {
@@ -135,7 +135,7 @@ export function defineDomainErrors<const Defs extends ErrorDefinitions>(
       // by the definition, never by guessing at the value's shape
       const rest = args as unknown[]
       const [data, message] = definition.data ? [rest[0], rest[1]] : [undefined, rest[0]]
-      return new DomainError(
+      return new DomainErrorImpl(
         code,
         (message as string | undefined) ?? definition.message,
         data,

@@ -3,13 +3,21 @@ import { describe, expect, it } from 'vitest'
 import {
   AccessDeniedError,
   defineDomainErrors,
-  DomainError,
   isAccessDeniedError,
   isDomainError,
 } from '../src/index.ts'
 
 // the dsl is the single error source every plugin builds on; these tests pin
 // its runtime behavior and (via @ts-expect-error) its compile-time strictness
+
+// what an error built by another copy of this package looks like: only the
+// brand and the shape, since the constructor is not exported
+const brandedError = (code: string, data?: unknown) =>
+  Object.assign(new Error('from elsewhere'), {
+    [Symbol.for('qualy.api.domain-error')]: true,
+    code,
+    data,
+  })
 
 const errors = defineDomainErrors({
   THING_NOT_FOUND: { status: 404, message: 'thing not found' },
@@ -21,8 +29,7 @@ const errors = defineDomainErrors({
 })
 
 describe('defineDomainErrors', () => {
-  it('derives statuses and picks literal contract subsets', () => {
-    expect(errors.statuses).toEqual({ THING_NOT_FOUND: 404, THING_BLOCKED: 409 })
+  it('picks literal contract subsets', () => {
     const picked = errors.pick('THING_NOT_FOUND')
     expect(Object.keys(picked)).toEqual(['THING_NOT_FOUND'])
     expect(picked.THING_NOT_FOUND.status).toBe(404)
@@ -32,7 +39,7 @@ describe('defineDomainErrors', () => {
 
   it('creates typed errors with definition-driven arguments', () => {
     const plain = errors.create('THING_NOT_FOUND')
-    expect(plain).toBeInstanceOf(DomainError)
+    expect(isDomainError(plain)).toBe(true)
     expect(plain.code).toBe('THING_NOT_FOUND')
     expect(plain.message).toBe('thing not found')
     expect(plain.data).toBeUndefined()
@@ -54,23 +61,19 @@ describe('defineDomainErrors', () => {
 
   it('recognizes only its own errors, and only own properties', () => {
     expect(errors.is(errors.create('THING_NOT_FOUND'))).toBe(true)
-    expect(errors.is(new DomainError('OTHER_DOMAIN_CODE', 'x', undefined))).toBe(false)
+    expect(errors.is(brandedError('OTHER_DOMAIN_CODE'))).toBe(false)
     expect(errors.is(new AccessDeniedError())).toBe(false)
     expect(errors.is(new Error('plain'))).toBe(false)
     // a prototype key is not a declared code
-    expect(errors.is(new DomainError('constructor', 'x', undefined))).toBe(false)
-    expect(errors.is(new DomainError('toString', 'x', undefined))).toBe(false)
+    expect(errors.is(brandedError('constructor'))).toBe(false)
+    expect(errors.is(brandedError('toString'))).toBe(false)
   })
 
   it('recognizes errors from another copy of this package', () => {
     // a plugin resolving its own instance of the dsl still produces errors
     // the server boundary must map: recognition rides a global symbol, not
     // instanceof against one module graph
-    const foreign = Object.assign(new Error('from elsewhere'), {
-      [Symbol.for('qualy.api.domain-error')]: true,
-      code: 'THING_NOT_FOUND',
-      data: undefined,
-    })
+    const foreign = brandedError('THING_NOT_FOUND')
     expect(isDomainError(foreign)).toBe(true)
     expect(errors.is(foreign)).toBe(true)
     const deniedElsewhere = Object.assign(new Error('nope'), {
@@ -88,9 +91,12 @@ describe('defineDomainErrors', () => {
     expect(() => defineDomainErrors({ BAD: { status: 200, message: 'x' } })).toThrow('status')
     expect(() => defineDomainErrors({ BAD: { status: 404.5, message: 'x' } })).toThrow('status')
     expect(() => defineDomainErrors({ BAD: { status: 404, message: '  ' } })).toThrow('blank')
-    // the derived tables cannot be mutated after the fact
+    // neither the table nor an individual definition can be mutated
     expect(() => {
-      ;(errors.statuses as Record<string, number>).THING_NOT_FOUND = 500
+      ;(errors.definitions as Record<string, unknown>).EXTRA = {}
+    }).toThrow()
+    expect(() => {
+      ;(errors.definitions.THING_NOT_FOUND as { status: number }).status = 500
     }).toThrow()
   })
 })

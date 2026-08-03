@@ -128,34 +128,63 @@ interface RouteFragment {
   errorStatuses: Record<string, number>
 }
 
+// the transport-level codes the server owns: a contributed contract may
+// repeat one of these with the same status, but never redefine what a
+// common failure means for the whole api
+const RESERVED_STATUSES: Record<string, number> = {
+  ...COMMON_ERROR_STATUS_MAP,
+  // the anonymous-request rejection is a server-level concept (the
+  // principal lives on ApiContext), so its status ships here instead of
+  // depending on any single plugin being active
+  AUTH_REQUIRED: 401,
+}
+
+// one code means one status across the whole api: a second declaration may
+// agree, never differ, and a reserved code can never be redefined
+function claimStatus(
+  target: Record<string, number>,
+  code: string,
+  status: number,
+  owner: string,
+) {
+  if (!Number.isInteger(status) || status < 400 || status > 599) {
+    throw new Error(`${owner}: ${code} declares an invalid http error status ${status}`)
+  }
+  const existing = target[code]
+  if (existing !== undefined && existing !== status) {
+    const reserved = Object.hasOwn(RESERVED_STATUSES, code) ? ' (a reserved code)' : ''
+    throw new Error(`error status conflict for ${code}${reserved}: ${existing} vs ${status}`)
+  }
+  target[code] = status
+}
+
 // beta.21's openapi handler ignores the status on a contract error and maps
 // http status per code through errorStatusMap instead (probed). Rather than
 // asking every plugin to hand the same numbers over a second time, the
-// statuses are read straight out of the contract the router implements.
-function readContractStatuses(router: ApiRouter): Record<string, number> {
+// statuses are read straight out of the contract the router implements —
+// including procedures nested inside sub-routers.
+function readContractStatuses(router: ApiRouter, owner: string): Record<string, number> {
   const statuses: Record<string, number> = {}
   walkProcedureContractsSync(router as never, (procedure) => {
     const errorMap = (procedure as { '~orpc'?: { errorMap?: Record<string, unknown> } })['~orpc']
       ?.errorMap
     for (const [code, definition] of Object.entries(errorMap ?? {})) {
       const status = (definition as { status?: unknown } | undefined)?.status
-      if (typeof status === 'number') statuses[code] = status
+      // two procedures of the same router disagreeing on a code is just as
+      // wrong as two plugins disagreeing
+      if (typeof status === 'number') claimStatus(statuses, code, status, owner)
     }
   })
   return statuses
 }
 
-// same code from several fragments is fine as long as the statuses agree;
-// disagreement is a contributor error surfaced at contribution time
+// reserved codes are claimed first, so a contributed contract can agree
+// with them but never override them
 function deriveErrorStatuses(fragments: ReadonlyMap<string, RouteFragment>) {
-  const contributed: Record<string, number> = {}
-  for (const fragment of fragments.values()) {
+  const contributed: Record<string, number> = { ...RESERVED_STATUSES }
+  for (const [ns, fragment] of fragments) {
     for (const [code, status] of Object.entries(fragment.errorStatuses)) {
-      const existing = contributed[code]
-      if (existing !== undefined && existing !== status) {
-        throw new Error(`error status conflict for ${code}: ${existing} vs ${status}`)
-      }
-      contributed[code] = status
+      claimStatus(contributed, code, status, `route ${ns}`)
     }
   }
   return contributed
@@ -304,7 +333,7 @@ export default class Server extends Service {
     return this.ctx.effect(() => {
       if (this.fragments.has(ns)) throw new Error(`route namespace conflict: ${ns}`)
       const next = new Map(this.fragments)
-      next.set(ns, { router, errorStatuses: readContractStatuses(router) })
+      next.set(ns, { router, errorStatuses: readContractStatuses(router, `route ${ns}`) })
       this.commit(next, this.openApiPluginFactories)
       return () => {
         const reverted = new Map(this.fragments)
@@ -339,14 +368,7 @@ export default class Server extends Service {
     fragments: Map<string, RouteFragment>,
     factories: Map<string, OpenApiHandlerPluginFactory>,
   ) {
-    const statusMap: Record<string, number> = {
-      ...COMMON_ERROR_STATUS_MAP,
-      // the anonymous-request rejection is a server-level concept (the
-      // principal lives on ApiContext), so its status ships here instead of
-      // depending on any single plugin being active
-      AUTH_REQUIRED: 401,
-      ...deriveErrorStatuses(fragments),
-    }
+    const statusMap: Record<string, number> = deriveErrorStatuses(fragments)
     const router = Object.fromEntries(
       [...fragments].map(([ns, fragment]) => [ns, fragment.router]),
     ) as ApiRouter

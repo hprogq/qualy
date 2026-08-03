@@ -107,6 +107,80 @@ describe('plugin-server', () => {
     await serverFiber.dispose()
   })
 
+  it('refuses contradictory or reserved error statuses, and honors nesting', async () => {
+    const ctx = new Context()
+    const serverFiber = ctx.plugin(Server, { port: 0 })
+    await serverFiber
+    const base = `http://127.0.0.1:${ctx.server.port}/api`
+
+    const procedure = (path: `/${string}`, code: string, status: number) =>
+      oc
+        .meta(openapi({ method: 'GET', path }))
+        .errors({ [code]: { status, message: code } })
+        .output(z.object({ ok: z.boolean() }))
+
+    // one router whose two procedures disagree about the same code
+    const contradictory = {
+      first: procedure('/self/a', 'SELF_CONFLICT', 409),
+      second: procedure('/self/b', 'SELF_CONFLICT', 422),
+    }
+    const selfConflict = ctx.plugin({
+      name: 'self-conflict',
+      inject: ['server'],
+      apply: (child: Context) => {
+        const impl = implement(contradictory)
+        child.server.contribute(
+          'self-conflict',
+          impl.router({
+            first: impl.first.handler(() => ({ ok: true })),
+            second: impl.second.handler(() => ({ ok: true })),
+          }),
+        )
+      },
+    })
+    await expect(Promise.resolve(selfConflict)).rejects.toThrow('error status conflict')
+
+    // a contract cannot redefine what a transport-level failure means
+    const reserved = { boom: procedure('/reserved/boom', 'FORBIDDEN', 418) }
+    const overriding = ctx.plugin({
+      name: 'reserved-override',
+      inject: ['server'],
+      apply: (child: Context) => {
+        const impl = implement(reserved)
+        child.server.contribute(
+          'reserved-override',
+          impl.router({ boom: impl.boom.handler(() => ({ ok: true })) }),
+        )
+      },
+    })
+    await expect(Promise.resolve(overriding)).rejects.toThrow('reserved code')
+
+    // statuses declared inside a nested sub-router still reach the handler
+    const nested = {
+      deep: { boom: procedure('/nested/boom', 'NESTED_ERROR', 451) },
+    }
+    await ctx.plugin({
+      name: 'nested',
+      inject: ['server'],
+      apply: (child: Context) => {
+        const impl = implement(nested)
+        child.server.contribute(
+          'nested',
+          impl.router({
+            deep: {
+              boom: impl.deep.boom.handler(({ errors }) => {
+                throw errors.NESTED_ERROR!()
+              }),
+            },
+          }),
+        )
+      },
+    })
+    expect((await fetch(`${base}/nested/boom`)).status).toBe(451)
+
+    await serverFiber.dispose()
+  })
+
   it('rolls back a failing openapi plugin factory without poisoning the handler', async () => {
     const ctx = new Context()
     const serverFiber = ctx.plugin(Server, { port: 0 })

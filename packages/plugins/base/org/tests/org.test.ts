@@ -8,7 +8,7 @@ import Database from '@qualy/plugin-database'
 import Server, { type AuthPrincipal } from '@qualy/plugin-server'
 import UiRegistry from '@qualy/plugin-ui-registry'
 import Rbac from '@qualy/plugin-rbac'
-import { AccessDeniedError, DomainError } from '@qualy/api-contract'
+import { isAccessDeniedError, isDomainError, type DomainError } from '@qualy/api-contract'
 import Org from '../src/index.ts'
 
 const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
@@ -79,9 +79,9 @@ describe.runIf(available)('org tree domain', () => {
     promise.then(
       () => 'ok',
       (error) =>
-        error instanceof DomainError
+        isDomainError(error)
           ? error.code
-          : error instanceof AccessDeniedError
+          : isAccessDeniedError(error)
             ? 'ACCESS_DENIED'
             : ((error as Error).message ?? 'error'),
     )

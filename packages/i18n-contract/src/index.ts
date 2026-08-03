@@ -135,9 +135,8 @@ export type ErrorMessageMap = Record<string, ErrorMessageRegistration<never>>
 // message that interpolates cannot be registered without its values().
 type PlainDescriptor = MessageDescriptor & { __values?: never }
 
-// a valued entry is generic over its message so ValuesOf pins what the
-// projection must return: naming a placeholder the icu message does not
-// declare fails typecheck, exactly like a direct format() call
+// a valued entry pairs a message with the projection from the error's data
+// to that message's placeholders
 export interface ValuedErrorTranslation<Data, Message extends MessageDescriptor> {
   message: Message
   values: (data: Data) => ValuesOf<Message>
@@ -145,7 +144,21 @@ export interface ValuedErrorTranslation<Data, Message extends MessageDescriptor>
 
 export type ErrorTranslation<Data> =
   | PlainDescriptor
-  | ValuedErrorTranslation<Data, ValuedMessageDescriptor<MessageValues>>
+  | { message: ValuedMessageDescriptor<MessageValues>; values: (data: Data) => MessageValues }
+
+// second pass over the table the compiler already inferred: now that each
+// entry's message type is concrete, the projection's return type can be
+// pinned to that message's declared placeholders. A single-pass parameter
+// cannot express this — an object literal has no way to say "my values
+// returns whatever my sibling message declares".
+type CheckedTranslations<Table, Defs extends ErrorDefinitions> = {
+  [Code in keyof Table]: Code extends keyof Defs & string
+    ? Table[Code] extends { message: infer Message extends MessageDescriptor }
+      ? ValuedErrorTranslation<ErrorDataOf<Defs[Code]>, Message>
+      : Table[Code]
+    : // a code the definitions never declare has no valid translation
+      never
+}
 
 export interface ErrorTranslationSet {
   registry: ErrorMessageMap
@@ -158,9 +171,12 @@ export interface ErrorTranslationSet {
 // declares — all inferred from the dsl value, no contract type inference.
 // The parameter is the mapped type itself (not an inferred subtype): that
 // is what gives values(data) its contextual type and makes extra keys fail.
-export function defineErrorTranslations<Defs extends ErrorDefinitions>(
+export function defineErrorTranslations<
+  Defs extends ErrorDefinitions,
+  const Table extends { [Code in keyof Defs & string]: ErrorTranslation<ErrorDataOf<Defs[Code]>> },
+>(
   errors: DomainErrors<Defs>,
-  translations: { [Code in keyof Defs & string]: ErrorTranslation<ErrorDataOf<Defs[Code]>> },
+  translations: Table & CheckedTranslations<Table, Defs>,
 ): ErrorTranslationSet {
   void errors
   const registry: Record<string, ErrorMessageRegistration<never>> = {}
