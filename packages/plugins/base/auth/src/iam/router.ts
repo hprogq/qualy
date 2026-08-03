@@ -27,11 +27,15 @@ const toUserTypeDto = (row: UserTypeRow): UserTypeDto => ({
   placementPolicy: toPolicy(row),
 })
 
-// the stored shape, read back as the union the contract speaks
-const toPolicy = (row: Pick<UserTypeRow, 'placement_mode' | 'allowed_org_types'>) =>
-  row.placement_mode === 'allow-list'
+// What is enforced, not what is stored. A system identity is pinned to the
+// tenant root whatever the row happens to say, so reporting the row would
+// describe a rule nobody applies.
+const toPolicy = (row: Pick<UserTypeRow, 'placement_mode' | 'allowed_org_types' | 'is_system'>) => {
+  if (row.is_system) return { mode: 'tenant-root' } as const
+  return row.placement_mode === 'allow-list'
     ? ({ mode: 'allow-list', orgTypeIds: row.allowed_org_types } as const)
     : ({ mode: 'unrestricted' } as const)
+}
 
 const toUserDto = (row: UserRow): IamUserDto => ({
   id: row.id,
@@ -80,8 +84,14 @@ export function createIdentityRouter(ctx: Context, service: IamService) {
     }),
     updateUserType: impl.updateUserType.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
-      await service.updateUserType(context.principal.tenantId, input.userTypeId, input)
-      return { ok: true as const }
+      return {
+        version: await service.updateUserType(
+          context.principal.tenantId,
+          input.userTypeId,
+          input,
+          input.expectedVersion,
+        ),
+      }
     }),
     getPlacementPolicy: impl.getPlacementPolicy.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.read')
@@ -105,16 +115,22 @@ export function createIdentityRouter(ctx: Context, service: IamService) {
     }),
     setUserTypeStatus: impl.setUserTypeStatus.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
-      await service.setUserTypeEnabled(
-        context.principal.tenantId,
-        input.userTypeId,
-        input.status === 'active',
-      )
-      return { ok: true as const }
+      return {
+        version: await service.setUserTypeEnabled(
+          context.principal.tenantId,
+          input.userTypeId,
+          input.status === 'active',
+          input.expectedVersion,
+        ),
+      }
     }),
     deleteUserType: impl.deleteUserType.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
-      await service.deleteUserType(context.principal.tenantId, input.userTypeId)
+      await service.deleteUserType(
+        context.principal.tenantId,
+        input.userTypeId,
+        input.expectedVersion,
+      )
       return { ok: true as const }
     }),
 

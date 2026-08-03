@@ -164,18 +164,18 @@ describe.runIf(available)('rbac', () => {
       [f.tenant, f.classType, f.college],
     )
     f.typeAdmin = await row(
-      `insert into user_types (tenant_id, code, name, allow_local_login)
-       values ($1, 'administrator', 'Admin', true) returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+       values ($1, 'administrator', 'Admin', true, 'unrestricted') returning id`,
       [f.tenant],
     )
     f.typeFaculty = await row(
-      `insert into user_types (tenant_id, code, name, allow_local_login)
-       values ($1, 'faculty', 'Faculty', true) returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+       values ($1, 'faculty', 'Faculty', true, 'unrestricted') returning id`,
       [f.tenant],
     )
     f.typeStudent = await row(
-      `insert into user_types (tenant_id, code, name, allow_local_login)
-       values ($1, 'student', 'Student', true) returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+       values ($1, 'student', 'Student', true, 'unrestricted') returning id`,
       [f.tenant],
     )
     const user = (name: string, typeId: string, node: string, tenant = f.tenant) =>
@@ -199,8 +199,8 @@ describe.runIf(available)('rbac', () => {
       [f.tenantB, uniTypeB],
     )
     const typeAdminB = await row(
-      `insert into user_types (tenant_id, code, name, allow_local_login)
-       values ($1, 'administrator', 'Admin', true) returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+       values ($1, 'administrator', 'Admin', true, 'unrestricted') returning id`,
       [f.tenantB],
     )
     f.adminB = await user('Admin B', typeAdminB, rootB, f.tenantB)

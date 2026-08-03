@@ -6,6 +6,12 @@ import type {} from 'cordis'
 
 export { accessInvariantErrors } from './errors.ts'
 export { scopeCoverage } from './scope.ts'
+export {
+  CANONICAL_ADMIN_ROLE,
+  canonicalTenantAdmin,
+  isCanonicalTenantAdmin,
+  type CanonicalAdminShape,
+} from './canonical.ts'
 
 // What a permission protects, and therefore how it is checked. This is the
 // permission's calling convention, not a policy knob: a tenant-target code

@@ -125,13 +125,13 @@ describe.runIf(available)('identity administration', () => {
     // both types open a sign-in channel: a type that opens none holds nobody
     // who can actually sign in, and the lockout invariant counts exactly that
     f.adminType = await row(
-      `insert into user_types (tenant_id, code, name, is_system, allow_local_login)
-       values ($1, 'administrator', 'Admin', true, true) returning id`,
+      `insert into user_types (tenant_id, code, name, is_system, allow_local_login, placement_mode)
+       values ($1, 'administrator', 'Admin', true, true, 'unrestricted') returning id`,
       [f.tenant],
     )
     f.facultyType = await row(
-      `insert into user_types (tenant_id, code, name, allow_local_login)
-       values ($1, 'faculty', 'Faculty', true) returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+       values ($1, 'faculty', 'Faculty', true, 'unrestricted') returning id`,
       [f.tenant],
     )
     f.admin = await row(

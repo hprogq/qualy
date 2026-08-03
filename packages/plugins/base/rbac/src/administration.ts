@@ -4,6 +4,7 @@ import { AccessDeniedError, isAccessDeniedError, isDomainError } from '@qualy/ap
 import type {} from '@qualy/plugin-database'
 import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
 import {
+  isCanonicalTenantAdmin,
   scopeCoverage,
   type AuthorizationScope,
   type GrantTarget,
@@ -353,7 +354,7 @@ export class Administration {
       const role = await this.requireRole(tx, tenantId, roleId, expectedVersion)
       // the canonical administrator is grantable to whoever the tenant
       // designates; everything else declares who may hold it
-      if (role.system_key !== null) throw accessErrors.create('ROLE_IS_SYSTEM')
+      if (isCanonicalTenantAdmin(role)) throw accessErrors.create('ROLE_IS_SYSTEM')
       const userTypeIds = [...new Set(sets.userTypeIds)]
       // A tenant role reaches the whole tenant, so it anchors to nothing and
       // admits no org types: the field is simply not part of its policy, and

@@ -68,7 +68,7 @@ describe.runIf(available)('auth schema tenant boundary', () => {
       [ids.tenant, orgType],
     )
     ids.memberType = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'member', 'M') returning id`,
+      `insert into user_types (tenant_id, code, name, placement_mode) values ($1, 'member', 'M', 'unrestricted') returning id`,
       [ids.tenant],
     )
     ids.provider = await row(

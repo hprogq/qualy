@@ -188,23 +188,10 @@ async function provisionRbac(
   // a tenant role reaches the whole tenant, so the grant carries no node:
   // pinning it to the root with subtree coverage was a fiction every
   // downstream query had to keep up
-  // where each kind of person may stand. The system account belongs at the
-  // root; the tenant configures the rest for its own types.
-  const rootType = (
-    await ctx.client.query(
-      `select org_type_id from org_nodes where tenant_id = $1 and parent_id is null`,
-      [ctx.tenantId],
-    )
-  ).rows[0]
-  await ctx.client.query(
-    `insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
-     values ($1, $2, $3) on conflict do nothing`,
-    [ctx.tenantId, adminTypeId, rootType.org_type_id],
-  )
-  await ctx.client.query(
-    `update user_types set placement_mode = 'allow-list' where tenant_id = $1 and id = $2`,
-    [ctx.tenantId, adminTypeId],
-  )
+  // The system account stands at the tenant root and nowhere else, which is
+  // a platform rule rather than a configured allow-list: writing one here
+  // would only invite the reading that some other university-typed node
+  // would do just as well.
 
   const grant = await ctx.client.query(
     `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
@@ -306,16 +293,21 @@ async function provisionTenant(client: PoolClient, report: SeedReport): Promise<
   return { client, tenantId, typeIds }
 }
 
+// The placement policy is written at insert time, never after: the column
+// carries no database default, so every writer states it, and a type that
+// already exists keeps whatever the tenant configured. Re-adding the demo
+// org types on every run would silently undo an administrator's narrowing.
 async function ensureUserType(
   ctx: Ctx,
-  type: { code: string; name: string; sortOrder?: number },
+  type: { code: string; name: string; sortOrder?: number; orgTypes?: readonly string[] },
   flags: { allowLocalLogin: boolean; isSystem: boolean },
   report: SeedReport,
-): Promise<string> {
+): Promise<{ id: string; created: boolean }> {
+  const placementMode = type.orgTypes && type.orgTypes.length > 0 ? 'allow-list' : 'unrestricted'
   const inserted = await ctx.client.query(
     `insert into user_types (tenant_id, code, name, sort_order, allow_local_login, is_system,
-       enabled)
-     values ($1, $2, $3, $4, $5, $6, true)
+       enabled, placement_mode)
+     values ($1, $2, $3, $4, $5, $6, true, $7)
      on conflict (tenant_id, code) do nothing`,
     [
       ctx.tenantId,
@@ -324,6 +316,7 @@ async function ensureUserType(
       type.sortOrder ?? 0,
       flags.allowLocalLogin,
       flags.isSystem,
+      placementMode,
     ],
   )
   report.created.userTypes += inserted.rowCount ?? 0
@@ -347,7 +340,7 @@ async function ensureUserType(
       )
     }
   }
-  return row.id
+  return { id: row.id, created: (inserted.rowCount ?? 0) > 0 }
 }
 
 async function ensureLocalProvider(ctx: Ctx, report: SeedReport): Promise<string> {
@@ -498,21 +491,24 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
 
   const demoTypeIds = new Map<string, string>()
   for (const type of DEMO_USER_TYPES) {
-    const id = await ensureUserType(ctx, type, { allowLocalLogin: true, isSystem: false }, report)
-    demoTypeIds.set(type.code, id)
-    for (const orgTypeCode of type.orgTypes) {
-      await ctx.client.query(
-        `insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
-         select $1, $2, ot.id from org_types ot where ot.tenant_id = $1 and ot.code = $3
-         on conflict do nothing`,
-        [ctx.tenantId, id, orgTypeCode],
-      )
-    }
-    // stated, not inferred from the list being non-empty
-    await ctx.client.query(
-      `update user_types set placement_mode = 'allow-list' where tenant_id = $1 and id = $2`,
-      [ctx.tenantId, id],
+    const { id, created } = await ensureUserType(
+      ctx,
+      type,
+      { allowLocalLogin: true, isSystem: false },
+      report,
     )
+    demoTypeIds.set(type.code, id)
+    // only on creation: where a kind of person may stand is the tenant's to
+    // narrow, and a seed that re-adds its own list would undo that silently
+    if (created) {
+      for (const orgTypeCode of type.orgTypes) {
+        await ctx.client.query(
+          `insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
+           select $1, $2, ot.id from org_types ot where ot.tenant_id = $1 and ot.code = $3`,
+          [ctx.tenantId, id, orgTypeCode],
+        )
+      }
+    }
   }
 
   const provider = (
@@ -623,7 +619,7 @@ export async function seed(client: PoolClient, options: SeedOptions = {}): Promi
     demo: 'skipped',
   }
   const ctx = await provisionTenant(client, report)
-  const adminTypeId = await ensureUserType(
+  const { id: adminTypeId } = await ensureUserType(
     ctx,
     ADMIN_USER_TYPE,
     { allowLocalLogin: true, isSystem: true },

@@ -77,6 +77,7 @@ export function UserTypeEditor({
     run(() =>
       api.identity.updateUserType({
         userTypeId: userType.id,
+        expectedVersion: userType.version,
         name,
         description: description.trim() === '' ? null : description,
         allowLocalLogin: channels.includes('local'),
@@ -95,11 +96,20 @@ export function UserTypeEditor({
   )
   const setStatus = useMutation(
     run((status: 'active' | 'disabled') =>
-      api.identity.setUserTypeStatus({ userTypeId: userType.id, status }),
+      api.identity.setUserTypeStatus({
+        userTypeId: userType.id,
+        status,
+        expectedVersion: userType.version,
+      }),
     ),
   )
   const remove = useMutation({
-    ...run(() => api.identity.deleteUserType({ userTypeId: userType.id })),
+    ...run(() =>
+      api.identity.deleteUserType({
+        userTypeId: userType.id,
+        expectedVersion: userType.version,
+      }),
+    ),
     onSuccess: async () => {
       setConfirmingDelete(false)
       await refresh()
@@ -202,6 +212,10 @@ export function UserTypeEditor({
       >
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">{format(m.placementHint)}</p>
+          {userType.placementPolicy.mode === 'tenant-root' ? (
+            <p className="text-sm">{format(m.placementTenantRoot)}</p>
+          ) : (
+            <>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -240,6 +254,8 @@ export function UserTypeEditor({
           >
             {format(m.save)}
           </Button>
+            </>
+          )}
         </div>
       </AsyncSection>
 

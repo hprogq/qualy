@@ -198,11 +198,11 @@ describe.runIf(available)('org tree domain', () => {
     // principals: admin (tenant-admin at root), manager (org role on
     // collegeA subtree with read+manage), student (no org grants)
     const typeAdmin = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'administrator', 'Admin') returning id`,
+      `insert into user_types (tenant_id, code, name, placement_mode) values ($1, 'administrator', 'Admin', 'unrestricted') returning id`,
       [f.tenant],
     )
     const typeFaculty = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'faculty', 'Faculty') returning id`,
+      `insert into user_types (tenant_id, code, name, placement_mode) values ($1, 'faculty', 'Faculty', 'unrestricted') returning id`,
       [f.tenant],
     )
     const user = (name: string, typeId: string, node: string, tenant = f.tenant) =>
@@ -258,7 +258,7 @@ describe.runIf(available)('org tree domain', () => {
     )
     f.rootB = await insertRoot(f.tenantB, typeB, 'B 大学')
     const typeAdminB = await row(
-      `insert into user_types (tenant_id, code, name) values ($1, 'administrator', 'Admin') returning id`,
+      `insert into user_types (tenant_id, code, name, placement_mode) values ($1, 'administrator', 'Admin', 'unrestricted') returning id`,
       [f.tenantB],
     )
     f.adminB = await user('Admin B', typeAdminB, f.rootB, f.tenantB)

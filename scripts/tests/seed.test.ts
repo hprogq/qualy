@@ -182,7 +182,9 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     expect(modes.rows.map((row) => [row.code, row.placement_mode])).toEqual([
       ['faculty', 'allow-list'],
       ['student', 'allow-list'],
-      ['system-account', 'allow-list'],
+      // the system identity is pinned to the root by rule, not by a stored
+      // allow-list that nothing consults
+      ['system-account', 'unrestricted'],
     ])
 
     const again = await inTransaction((client) =>

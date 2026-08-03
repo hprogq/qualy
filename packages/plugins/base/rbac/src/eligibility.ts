@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import type { GrantTarget, RbacDbHandle } from '@qualy/rbac-contract'
+import { isCanonicalTenantAdmin, type GrantTarget, type RbacDbHandle } from '@qualy/rbac-contract'
 import { accessErrors } from './errors.ts'
 
 // Whether one grant is permitted at all — before any question of who is
@@ -53,8 +53,10 @@ export async function assertGrantEligible(
   //
   // The canonical administrator is the exception, and the only one: it is
   // how a tenant is recovered, so it is grantable to whoever the tenant
-  // designates rather than to a list configured in advance.
-  if (role.system_key === null) {
+  // designates rather than to a list configured in advance. Asked by shape
+  // rather than by "has a system key", which would hand the same exemption
+  // to every system role introduced later.
+  if (!isCanonicalTenantAdmin(role)) {
     const allowsUserType = await one(
       handle,
       sql`select 1 from role_allowed_user_types

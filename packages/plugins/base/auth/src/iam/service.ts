@@ -3,7 +3,12 @@ import type { Context } from 'cordis'
 import { AccessDeniedError, decodeQueryCursor } from '@qualy/api-contract'
 import type {} from '@qualy/plugin-database'
 import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
-import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
+import {
+  canonicalTenantAdmin,
+  scopeCoverage,
+  type AuthorizationScope,
+  type Principal,
+} from '@qualy/rbac-contract'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { iamErrors } from './errors.ts'
 
@@ -195,10 +200,11 @@ export class IamService {
       allowSsoLogin?: boolean
       sortOrder?: number
     },
-  ) {
+    expectedVersion: number,
+  ): Promise<number> {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
-      const type = await this.requireUserType(tx, tenantId, userTypeId)
+      const type = await this.requireUserType(tx, tenantId, userTypeId, expectedVersion)
       // The system account keeps password sign-in. It is what a tenant
       // recovers itself with, and the generic survivor invariant cannot
       // protect it: that check is satisfied by any open channel, so closing
@@ -224,6 +230,7 @@ export class IamService {
       if (fields.allowLocalLogin === false || fields.allowSsoLogin === false) {
         await this.ctx.rbac.assertTenantKeepsAdministrator(tenantId, tx)
       }
+      return type.version + 1
     })
   }
 
@@ -233,10 +240,18 @@ export class IamService {
   // those sessions straight back. A mass suspension is a different operation
   // with a different shape (an expected count, a reason, session
   // termination) and should be built as one when it is actually needed.
-  setUserTypeEnabled(tenantId: string, userTypeId: string, enabled: boolean) {
+  setUserTypeEnabled(
+    tenantId: string,
+    userTypeId: string,
+    enabled: boolean,
+    expectedVersion: number,
+  ): Promise<number> {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
-      const type = await this.requireUserType(tx, tenantId, userTypeId)
+      const type = await this.requireUserType(tx, tenantId, userTypeId, expectedVersion)
+      // asking for the state it is already in is not an edit, so it neither
+      // spends a version nor invalidates whatever else is being edited here
+      if (type.enabled === enabled) return type.version
       if (!enabled) {
         const inUse = await this.countUsersOfType(tx, tenantId, type.id)
         if (inUse > 0) throw iamErrors.create('USER_TYPE_IN_USE', { userCount: inUse })
@@ -244,13 +259,14 @@ export class IamService {
       await tx.execute(sql`
         update user_types set enabled = ${enabled}, version = version + 1, updated_at = now()
         where tenant_id = ${tenantId} and id = ${type.id}`)
+      return type.version + 1
     })
   }
 
-  deleteUserType(tenantId: string, userTypeId: string) {
+  deleteUserType(tenantId: string, userTypeId: string, expectedVersion: number) {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
-      const type = await this.requireUserType(tx, tenantId, userTypeId)
+      const type = await this.requireUserType(tx, tenantId, userTypeId, expectedVersion)
       if (type.is_system || type.code === SYSTEM_ACCOUNT_USER_TYPE) {
         throw iamErrors.create('USER_TYPE_IS_SYSTEM')
       }
@@ -677,6 +693,7 @@ export class IamService {
       const changingType =
         fields.userTypeId !== undefined && fields.userTypeId !== user.user_type_id
       if (changingType) {
+        this.assertNotSystemIdentity(user)
         const type = await this.requireUserType(tx, tenantId, fields.userTypeId!)
         if (!type.enabled) throw iamErrors.create('USER_TYPE_DISABLED')
         await this.assertMayAssignType(tx, actor, type)
@@ -698,10 +715,10 @@ export class IamService {
               and exists (
                 select 1 from roles r
                 where r.tenant_id = g.tenant_id and r.id = g.role_id
-                  and r.system_key is null)`)
+                  and not ${canonicalTenantAdmin('r')})`)
         ).rows[0]!.count
         if (blocking > 0) {
-          throw iamErrors.create('ASSIGNMENT_INCOMPATIBLE', { assignmentCount: blocking })
+          throw iamErrors.create('GRANT_INCOMPATIBLE', { grantCount: blocking })
         }
       }
       await tx.execute(sql`
@@ -723,6 +740,7 @@ export class IamService {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const user = await this.requireUser(tx, tenantId, userId)
+      this.assertNotSystemIdentity(user)
       await this.assertManagesNode(tx, actor, user.primary_org_node_id)
       await this.assertManagesNode(tx, actor, primaryOrgNodeId)
       await this.requireOrgNode(tx, tenantId, primaryOrgNodeId)
@@ -738,6 +756,7 @@ export class IamService {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const user = await this.requireUser(tx, tenantId, userId)
+      if (!enabled) this.assertNotSystemIdentity(user)
       await this.assertManagesNode(tx, actor, user.primary_org_node_id)
       await tx.execute(sql`
         update users set enabled = ${enabled}, updated_at = now()
@@ -762,24 +781,57 @@ export class IamService {
     ).rows[0]!.count
   }
 
-  private async requireUserType(tx: Tx, tenantId: string, userTypeId: string) {
+  private async requireUserType(
+    tx: Tx,
+    tenantId: string,
+    userTypeId: string,
+    expectedVersion?: number,
+  ) {
     const row = (
-      await tx.execute<{ id: string; code: string; enabled: boolean; is_system: boolean }>(sql`
-        select id, code, enabled, is_system from user_types
+      await tx.execute<{
+        id: string
+        code: string
+        enabled: boolean
+        is_system: boolean
+        version: number
+      }>(sql`
+        select id, code, enabled, is_system, version from user_types
         where tenant_id = ${tenantId} and id = ${userTypeId}`)
     ).rows[0]
     if (!row) throw iamErrors.create('USER_TYPE_NOT_FOUND')
+    if (expectedVersion !== undefined && row.version !== expectedVersion) {
+      throw iamErrors.create('USER_TYPE_VERSION_CONFLICT', { currentVersion: row.version })
+    }
     return row
   }
 
   private async requireUser(tx: Tx, tenantId: string, userId: string) {
     const row = (
-      await tx.execute<{ id: string; user_type_id: string; primary_org_node_id: string }>(sql`
-        select id, user_type_id, primary_org_node_id from users
-        where tenant_id = ${tenantId} and id = ${userId}`)
+      await tx.execute<{
+        id: string
+        user_type_id: string
+        primary_org_node_id: string
+        is_system: boolean
+      }>(sql`
+        select u.id, u.user_type_id, u.primary_org_node_id, t.is_system
+        from users u
+        join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
+        where u.tenant_id = ${tenantId} and u.id = ${userId}`)
     ).rows[0]
     if (!row) throw iamErrors.create('USER_NOT_FOUND')
     return row
+  }
+
+  // The recovery account is frozen against the ordinary identity api. Only
+  // the type it holds was protected before, which stopped an ordinary person
+  // being promoted into it but not the reverse: retyping the recovery
+  // account to something ordinary kept its administrator grant, because that
+  // role is exempt from eligibility, while dropping the root-only placement
+  // rule and the guarantee that password sign-in stays open. Disabling it was
+  // likewise allowed as long as some other administrator survived, which is
+  // not the same thing as the tenant still being able to recover itself.
+  private assertNotSystemIdentity(user: { is_system: boolean }) {
+    if (user.is_system) throw iamErrors.create('SYSTEM_ACCOUNT_PROTECTED')
   }
 
   private async requireOrgNode(tx: Tx, tenantId: string, orgNodeId: string) {

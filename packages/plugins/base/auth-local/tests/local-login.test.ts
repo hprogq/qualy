@@ -97,11 +97,11 @@ describe.runIf(available)('local login through the auth core', () => {
       [ids.tenant, orgType],
     )
     ids.memberType = await row(
-      `insert into user_types (tenant_id, code, name, allow_local_login) values ($1, 'member', '成员', true) returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login, placement_mode) values ($1, 'member', '成员', true, 'unrestricted') returning id`,
       [ids.tenant],
     )
     ids.noLoginType = await row(
-      `insert into user_types (tenant_id, code, name, allow_local_login) values ($1, 'nologin', '禁登录', false) returning id`,
+      `insert into user_types (tenant_id, code, name, allow_local_login, placement_mode) values ($1, 'nologin', '禁登录', false, 'unrestricted') returning id`,
       [ids.tenant],
     )
     // two local provider instances plus a driverless cas row

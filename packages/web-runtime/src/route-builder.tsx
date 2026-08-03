@@ -44,9 +44,14 @@ export function buildManifestRoutes({
   // back. The shell chosen is the one the viewer's own home page lives in.
   // The host names no layout contract of its own, and a viewer with nothing
   // to see keeps the standalone rendering at the end.
+  // Only pages that reach the tree can be a destination. A page whose layout
+  // has no provider never becomes a route, so redirecting the origin to one
+  // would land on the not-found screen by way of a page that looked fine in
+  // the manifest.
   const provided = new Set(manifest.layouts.map((layout) => layout.contract))
-  const home = manifest.pages.find((page) => page.path === homePath) ?? manifest.pages[0]
-  const shell = home && provided.has(home.layout) ? home.layout : undefined
+  const routable = manifest.pages.filter((page) => provided.has(page.layout))
+  const home = routable.find((page) => page.path === homePath) ?? routable[0]
+  const shell = home?.layout
 
   // host-level policy: the origin goes to the home page when there is one,
   // and anything unmatched, including a route that vanished when the

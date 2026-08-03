@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "9a933161-4de0-46b4-83ab-32df3b4a3c0d",
+  "id": "46b9de96-c067-4abb-81ed-528376091005",
   "prevIds": [
     "963c89d0-be73-4869-a628-7edf69be968c"
   ],
@@ -1218,7 +1218,7 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
-      "default": "'unrestricted'",
+      "default": null,
       "generated": null,
       "identity": null,
       "name": "placement_mode",

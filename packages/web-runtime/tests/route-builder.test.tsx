@@ -112,6 +112,20 @@ describe('manifest route projection', () => {
     expect(detail?.at(-1)?.params).toEqual({ userId: 'abc' })
   })
 
+  it('never sends the origin to a page whose layout has no provider', () => {
+    // the manifest lists it, but it never becomes a route, so redirecting
+    // there would land on the not-found screen by way of a page that read
+    // as perfectly available
+    const routes = buildManifestRoutes({
+      manifest: manifest([page('ghost/page', '/ghost', 'ghost-shell/v1'), ...pages], [ADMIN, BLANK]),
+      registry: {},
+      homePath: '/ghost',
+      slots,
+    })
+    const landing = matchRoutes(routes, '/')?.at(-1)?.route.element as { props: { to: string } }
+    expect(landing.props.to).toBe('/ping')
+  })
+
   it('keeps a catch-all when no layout provider serves the visible pages', () => {
     // the registry drops such pages, so the viewer would otherwise reach a
     // tree with no terminal route at all

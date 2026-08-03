@@ -13,6 +13,14 @@ const description = z.string().max(500)
 
 export const resourceStatus = z.enum(['active', 'disabled'])
 
+// The row is versioned as a whole, so every mutation of it states which
+// version it was written against and answers with the one it produced.
+// Versioning only the placement policy meant an ordinary rename could
+// overwrite a concurrent edit, and left the caller unable to continue
+// without re-reading.
+const expectedVersion = z.number().int().min(1)
+const versioned = z.object({ version: z.number().int() })
+
 // Where a kind of person may stand, stated rather than inferred. The list
 // used to carry the whole meaning, with "empty" reading as "anywhere", so
 // unchecking the last entry widened the rule instead of narrowing it and
@@ -24,6 +32,16 @@ export const placementPolicy = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('allow-list'), orgTypeIds: z.array(z.uuid()).min(1).max(50) }),
 ])
 export type PlacementPolicyInput = z.infer<typeof placementPolicy>
+
+// What a reader is told, which for a system identity is not what the row
+// stores: the rule enforced there is "the tenant root, and only that node",
+// and presenting it as an ordinary allow-list of university-typed nodes
+// would be a different and weaker claim. Not accepted on the way in, since
+// it is a platform fact rather than a configuration.
+export const placementPolicyView = z.union([
+  placementPolicy,
+  z.object({ mode: z.literal('tenant-root') }),
+])
 
 export const userTypeDto = z.object({
   id: z.string(),
@@ -40,7 +58,7 @@ export const userTypeDto = z.object({
   userCount: z.number().int(),
   // Where this kind of person may stand. A user type confers no authority
   // (that is what roles are for), so this is the whole of what it decides.
-  placementPolicy,
+  placementPolicy: placementPolicyView,
 })
 
 export const userDto = z.object({
@@ -108,27 +126,29 @@ export const identityContract = {
           allowLocalLogin: z.boolean().optional(),
           allowSsoLogin: z.boolean().optional(),
           sortOrder: z.number().int().min(0).max(32767).optional(),
+          expectedVersion,
         },
         ['name', 'description', 'allowLocalLogin', 'allowSsoLogin', 'sortOrder'],
       ),
     )
     .errors({
-      ...e.pick('USER_TYPE_NOT_FOUND', 'USER_TYPE_CONFLICT', 'RECOVERY_CHANNEL_REQUIRED'),
+      ...e.pick(
+        'USER_TYPE_NOT_FOUND',
+        'USER_TYPE_CONFLICT',
+        'USER_TYPE_VERSION_CONFLICT',
+        'RECOVERY_CHANNEL_REQUIRED',
+      ),
       ...accessInvariantErrors.pick('LAST_ADMINISTRATOR'),
     })
-    .output(okOutput),
+    .output(versioned),
   // where this kind of person may stand, replaced whole
   getPlacementPolicy: get('/iam/user-types/{userTypeId}/placement-policy')
     .input(z.object({ userTypeId: z.uuid() }))
     .errors(e.pick('USER_TYPE_NOT_FOUND'))
-    .output(z.object({ policy: placementPolicy, version: z.number().int() })),
+    .output(z.object({ policy: placementPolicyView, version: z.number().int() })),
   setPlacementPolicy: put('/iam/user-types/{userTypeId}/placement-policy')
     .input(
-      z.object({
-        userTypeId: z.uuid(),
-        policy: placementPolicy,
-        expectedVersion: z.number().int().min(1),
-      }),
+      z.object({ userTypeId: z.uuid(), policy: placementPolicy, expectedVersion }),
     )
     .errors(
       e.pick(
@@ -139,7 +159,7 @@ export const identityContract = {
         'USER_TYPE_VERSION_CONFLICT',
       ),
     )
-    .output(z.object({ version: z.number().int() })),
+    .output(versioned),
   // The org types a user type screen needs to state its placement policy,
   // behind that screen's own permission. Borrowing the role screen's options
   // endpoint meant a user type administrator had to also hold role read, and
@@ -150,17 +170,18 @@ export const identityContract = {
     }),
   ),
   setUserTypeStatus: put('/iam/user-types/{userTypeId}/status')
-    .input(z.object({ userTypeId: z.uuid(), status: resourceStatus }))
-    .errors(e.pick('USER_TYPE_NOT_FOUND', 'USER_TYPE_IN_USE'))
-    .output(okOutput),
+    .input(z.object({ userTypeId: z.uuid(), status: resourceStatus, expectedVersion }))
+    .errors(e.pick('USER_TYPE_NOT_FOUND', 'USER_TYPE_IN_USE', 'USER_TYPE_VERSION_CONFLICT'))
+    .output(versioned),
   deleteUserType: del('/iam/user-types/{userTypeId}')
-    .input(z.object({ userTypeId: z.uuid() }))
+    .input(z.object({ userTypeId: z.uuid(), expectedVersion }))
     .errors(
       e.pick(
         'USER_TYPE_NOT_FOUND',
         'USER_TYPE_IS_SYSTEM',
         'USER_TYPE_IN_USE',
         'USER_TYPE_LAST_FOR_ROLE',
+        'USER_TYPE_VERSION_CONFLICT',
       ),
     )
     .output(okOutput),
@@ -258,7 +279,8 @@ export const identityContract = {
         'USER_TYPE_DISABLED',
         'USER_TYPE_PLACEMENT_NOT_ALLOWED',
         'USER_CONFLICT',
-        'ASSIGNMENT_INCOMPATIBLE',
+        'GRANT_INCOMPATIBLE',
+        'SYSTEM_ACCOUNT_PROTECTED',
       ),
       ...accessInvariantErrors.pick('LAST_ADMINISTRATOR'),
     })
@@ -267,13 +289,18 @@ export const identityContract = {
   setUserPlacement: put('/iam/users/{userId}/placement')
     .input(z.object({ userId: z.uuid(), primaryOrgNodeId: z.uuid() }))
     .errors(
-      e.pick('USER_NOT_FOUND', 'USER_PLACEMENT_NOT_FOUND', 'USER_TYPE_PLACEMENT_NOT_ALLOWED'),
+      e.pick(
+        'USER_NOT_FOUND',
+        'USER_PLACEMENT_NOT_FOUND',
+        'USER_TYPE_PLACEMENT_NOT_ALLOWED',
+        'SYSTEM_ACCOUNT_PROTECTED',
+      ),
     )
     .output(okOutput),
   setUserStatus: put('/iam/users/{userId}/status')
     .input(z.object({ userId: z.uuid(), status: resourceStatus }))
     .errors({
-      ...e.pick('USER_NOT_FOUND'),
+      ...e.pick('USER_NOT_FOUND', 'SYSTEM_ACCOUNT_PROTECTED'),
       ...accessInvariantErrors.pick('LAST_ADMINISTRATOR'),
     })
     .output(okOutput),

@@ -1,3 +1,8 @@
+-- Added with a default so the backfill below has something to write over,
+-- then stripped of it: from here every writer names its policy, including
+-- seeds and import scripts that never pass through the http contract. A
+-- column default would let them create an unconstrained type by omission,
+-- which is the reading this migration exists to remove.
 ALTER TABLE "user_types" ADD COLUMN "placement_mode" varchar(16) DEFAULT 'unrestricted' NOT NULL;--> statement-breakpoint
 ALTER TABLE "user_types" ADD CONSTRAINT "chk_user_types_placement_mode" CHECK ("placement_mode" in ('unrestricted', 'allow-list'));--> statement-breakpoint
 
@@ -31,20 +36,42 @@ DELETE FROM "role_permissions" rp USING "permissions" p
 WHERE p."id" = rp."permission_id" AND p."code" = 'auth.portal.access';--> statement-breakpoint
 DELETE FROM "permissions" WHERE "code" = 'auth.portal.access';--> statement-breakpoint
 
--- A compatibility role that is now empty grants nothing, and an active role
--- that grants nothing is exactly what the lifecycle exists to prevent.
+-- A role authored by an administrator whose only capability was portal
+-- access is now active and empty, which the lifecycle exists to prevent.
+-- Deleting it would destroy their work and disabling it would change who can
+-- do what, so the migration stops and names them: which of the three it
+-- should be is their decision, not this file's.
+DO $$
+DECLARE stranded text;
+BEGIN
+  SELECT string_agg(DISTINCT r."code", ', ') INTO stranded FROM "roles" r
+  WHERE r."permission_mode" = 'explicit' AND r."status" = 'active'
+    AND r."code" !~ '^migrated-[0-9a-f]{32}$'
+    AND NOT EXISTS (SELECT 1 FROM "role_permissions" rp WHERE rp."role_id" = r."id");
+  IF stranded IS NOT NULL THEN
+    RAISE EXCEPTION 'active roles left with no permissions: %; delete, disable or give them capabilities before migrating', stranded;
+  END IF;
+END $$;--> statement-breakpoint
+
+-- The compatibility roles this migration's predecessor generated, named
+-- exactly rather than by prefix: 'migrated-' is a perfectly ordinary start
+-- to a code an administrator may have chosen, and only the generated ones
+-- carry the source type's id.
 DELETE FROM "role_grants" g USING "roles" r
-WHERE r."id" = g."role_id" AND r."code" LIKE 'migrated-%'
+WHERE r."id" = g."role_id" AND r."code" ~ '^migrated-[0-9a-f]{32}$'
   AND NOT EXISTS (SELECT 1 FROM "role_permissions" rp WHERE rp."role_id" = r."id");--> statement-breakpoint
 DELETE FROM "roles" r
-WHERE r."code" LIKE 'migrated-%'
+WHERE r."code" ~ '^migrated-[0-9a-f]{32}$'
   AND NOT EXISTS (SELECT 1 FROM "role_permissions" rp WHERE rp."role_id" = r."id");--> statement-breakpoint
 
 -- These exist to preserve what their members already had, not to become new
 -- business roles: leaving them offerable would have moved a technical
--- artefact into the catalogue administrators pick from.
-UPDATE "roles" SET "assignable" = false, "description" = 'migrated compatibility role'
-WHERE "code" LIKE 'migrated-%';--> statement-breakpoint
+-- artefact into the catalogue administrators pick from. Matched by joining
+-- the user type they came from, so nothing else can be caught by the name.
+UPDATE "roles" r SET "assignable" = false, "description" = 'migrated compatibility role'
+FROM "user_types" ut
+WHERE ut."tenant_id" = r."tenant_id"
+  AND r."code" = 'migrated-' || replace(ut."id"::text, '-', '');--> statement-breakpoint
 
 -- Every role now declares who may hold it, tenant-kind included. A migrated
 -- role came from exactly one user type, so that type is its eligible set and
@@ -70,4 +97,6 @@ BEGIN
   IF misplaced > 0 THEN
     RAISE EXCEPTION 'system-type users stand below the tenant root; move them to the root before migrating';
   END IF;
-END $$;
+END $$;--> statement-breakpoint
+
+ALTER TABLE "user_types" ALTER COLUMN "placement_mode" DROP DEFAULT;

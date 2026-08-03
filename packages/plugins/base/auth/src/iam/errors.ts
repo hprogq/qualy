@@ -51,15 +51,22 @@ export const iamErrors = defineDomainErrors({
     message: 'the administrator user type must keep password sign-in',
   },
   USER_NOT_FOUND: { status: 404, message: 'user not found' },
+  // the tenant's way back in, frozen against the ordinary identity api:
+  // its type, its status and where it stands are platform facts, not
+  // administration decisions
+  SYSTEM_ACCOUNT_PROTECTED: {
+    status: 409,
+    message: 'the system account cannot be changed this way',
+  },
   USER_CONFLICT: { status: 409, message: 'a user with that business number already exists' },
   IDENTITY_CONFLICT: { status: 409, message: 'that sign-in name is already taken' },
   USER_PLACEMENT_NOT_FOUND: {
     status: 404,
     message: 'the organization node a user would be placed on does not exist',
   },
-  ASSIGNMENT_INCOMPATIBLE: {
+  GRANT_INCOMPATIBLE: {
     status: 409,
     message: 'existing role grants do not allow this change',
-    data: z.object({ assignmentCount: z.number().int().nonnegative() }),
+    data: z.object({ grantCount: z.number().int().nonnegative() }),
   },
 })

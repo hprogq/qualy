@@ -13,7 +13,8 @@ import type { RbacDbHandle } from '@qualy/rbac-contract'
 
 // The administrator role is identified by its system key rather than by its
 // code, so renaming it for display cannot detach the protection from it.
-export const CANONICAL_ADMIN_ROLE = 'tenant-admin'
+export { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
+import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 
 // An administrator who could actually sign in today. The sign-in channel
 // flags are part of the check because a type that opens neither is exactly

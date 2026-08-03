@@ -26,10 +26,10 @@ const placementInUseMessage = defineMessage<{ userCount: number }>()({
   defaultMessage:
     '{userCount, plural, one {# user stands} other {# users stand}} where this change would no longer allow.',
 })
-const assignmentIncompatibleMessage = defineMessage<{ assignmentCount: number }>()({
-  id: 'auth/error/assignment-incompatible',
+const grantIncompatibleMessage = defineMessage<{ grantCount: number }>()({
+  id: 'auth/error/grant-incompatible',
   defaultMessage:
-    '{assignmentCount, plural, one {# role grant does} other {# role grants do}} not allow this change.',
+    '{grantCount, plural, one {# role grant does} other {# role grants do}} not allow this change.',
 })
 
 const i18n = definePluginMessages({
@@ -118,6 +118,10 @@ const i18n = definePluginMessages({
     placementUnrestricted: {
       id: 'auth/field/placement-unrestricted',
       defaultMessage: 'May be placed anywhere',
+    },
+    placementTenantRoot: {
+      id: 'auth/field/placement-tenant-root',
+      defaultMessage: 'Fixed at the tenant root',
     },
     placementHint: {
       id: 'auth/field/placement-hint',
@@ -214,9 +218,14 @@ const i18n = definePluginMessages({
       id: 'auth/error/user-placement-not-found',
       defaultMessage: 'That organization node does not exist in this tenant.',
     },
-    ASSIGNMENT_INCOMPATIBLE: {
-      message: assignmentIncompatibleMessage,
-      values: (data) => ({ assignmentCount: data.assignmentCount }),
+    GRANT_INCOMPATIBLE: {
+      message: grantIncompatibleMessage,
+      values: (data) => ({ grantCount: data.grantCount }),
+    },
+    SYSTEM_ACCOUNT_PROTECTED: {
+      id: 'auth/error/system-account-protected',
+      defaultMessage:
+        'The system account is how this tenant recovers itself, so its type, status and placement are fixed.',
     },
   }),
   locales: {

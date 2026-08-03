@@ -36,7 +36,7 @@ export const userTypes = snakeCase.table(
     // than "an empty list means anywhere" because that reading made
     // unchecking the last box widen the rule instead of narrowing it, with
     // no warning and no stranded-user check.
-    placementMode: varchar({ length: 16 }).default('unrestricted').notNull(),
+    placementMode: varchar({ length: 16 }).notNull(),
     // the whole row is versioned, not one part of it: every mutation bumps
     // it, so a set replacement based on a stale read is refused
     version: integer().default(1).notNull(),
