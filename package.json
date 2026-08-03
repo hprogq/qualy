@@ -13,6 +13,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "catalog:",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
     "@vitejs/plugin-react": "catalog:",

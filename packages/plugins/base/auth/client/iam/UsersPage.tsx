@@ -24,8 +24,8 @@ export default function UsersPage() {
 
   // one call gives both the anchors this caller may use and the types they
   // may hand out, so the screen needs no permission beyond its own
-  const options = useQuery(orpc.identity.getUserOptions.queryOptions())
-  const anchors = options.data?.anchors ?? []
+  const options = useQuery(orpc.identity.getUserOptions.queryOptions({ input: {} }))
+  const anchors = options.data?.nodes ?? []
   const active = anchors.find((entry) => entry.orgNodeId === anchor) ?? anchors[0]
 
   // typing should not fire a request per keystroke

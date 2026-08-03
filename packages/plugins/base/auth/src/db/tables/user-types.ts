@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   boolean,
   check,
+  integer,
   smallint,
   snakeCase,
   timestamp,
@@ -30,6 +31,9 @@ export const userTypes = snakeCase.table(
     allowSsoLogin: boolean().default(false).notNull(),
     enabled: boolean().default(true).notNull(),
     isSystem: boolean().default(false).notNull(),
+    // the allowed org types are replaced as a set, and replacing a set read
+    // a moment ago must not silently undo what happened in between
+    version: integer().default(1).notNull(),
     sortOrder: smallint().default(0).notNull(),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),

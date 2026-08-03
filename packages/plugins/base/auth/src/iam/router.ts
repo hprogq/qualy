@@ -1,6 +1,6 @@
 import { implement, ORPCError } from '@orpc/server'
 import type { Context } from 'cordis'
-import { DEFAULT_PAGE_SIZE, encodeCursor } from '@qualy/api-contract'
+import { DEFAULT_PAGE_SIZE, encodeQueryCursor } from '@qualy/api-contract'
 import { apiErrorBoundary, requireAuth, type ApiContext } from '@qualy/plugin-server'
 import type { Principal } from '@qualy/rbac-contract'
 import { identityContract, type IamUserDto, type UserTypeDto } from './contract.ts'
@@ -22,8 +22,9 @@ const toUserTypeDto = (row: UserTypeRow): UserTypeDto => ({
   status: row.enabled ? 'active' : 'disabled',
   isSystem: row.is_system,
   sortOrder: row.sort_order,
+  version: row.version,
   userCount: row.user_count,
-  permissions: row.permissions,
+  allowedOrgTypeIds: row.allowed_org_types,
 })
 
 const toUserDto = (row: UserRow): IamUserDto => ({
@@ -33,7 +34,7 @@ const toUserDto = (row: UserRow): IamUserDto => ({
   status: row.enabled ? 'active' : 'disabled',
   userType: { id: row.user_type_id, code: row.user_type_code, name: row.user_type_name },
   primaryOrgNode: { id: row.primary_org_node_id, name: row.primary_org_node_name },
-  identifier: row.identifier,
+  identityCount: row.identity_count,
   manageable: row.manageable,
 })
 
@@ -76,6 +77,22 @@ export function createIdentityRouter(ctx: Context, service: IamService) {
       await service.updateUserType(context.principal.tenantId, input.userTypeId, input)
       return { ok: true as const }
     }),
+    getUserTypeOrgTypes: impl.getUserTypeOrgTypes.handler(async ({ context, input }) => {
+      await requireTenant(context.principal, 'auth.user-type.read')
+      const row = await service.getUserType(context.principal.tenantId, input.userTypeId)
+      return { orgTypeIds: row.allowed_org_types, version: row.version }
+    }),
+    syncUserTypeOrgTypes: impl.syncUserTypeOrgTypes.handler(async ({ context, input }) => {
+      await requireTenant(context.principal, 'auth.user-type.manage')
+      return {
+        version: await service.syncUserTypeOrgTypes(
+          context.principal.tenantId,
+          input.userTypeId,
+          input.orgTypeIds,
+          input.expectedVersion,
+        ),
+      }
+    }),
     setUserTypeStatus: impl.setUserTypeStatus.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
       await service.setUserTypeEnabled(
@@ -85,41 +102,39 @@ export function createIdentityRouter(ctx: Context, service: IamService) {
       )
       return { ok: true as const }
     }),
-    syncUserTypePermissions: impl.syncUserTypePermissions.handler(async ({ context, input }) => {
-      await requireTenant(context.principal, 'auth.user-type.manage')
-      await service.syncUserTypePermissions(
-        context.principal.tenantId,
-        input.userTypeId,
-        input.codes,
-      )
-      return { ok: true as const }
-    }),
     deleteUserType: impl.deleteUserType.handler(async ({ context, input }) => {
       await requireTenant(context.principal, 'auth.user-type.manage')
       await service.deleteUserType(context.principal.tenantId, input.userTypeId)
       return { ok: true as const }
     }),
 
-    getUserOptions: impl.getUserOptions.handler(async ({ context }) => {
+    getUserOptions: impl.getUserOptions.handler(async ({ context, input }) => {
       await requireUserRead(context.principal)
-      return service.userOptions(context.principal)
+      return service.userOptions(context.principal, input.search, input.limit ?? 200)
     }),
 
     listUsers: impl.listUsers.handler(async ({ context, input }) => {
       await requireUserRead(context.principal)
       const limit = input.limit ?? DEFAULT_PAGE_SIZE
+      const scope = input.scope ?? 'subtree'
+      // the cursor belongs to this anchor, scope and search and no other
+      const fingerprint = `users:${input.orgNodeId}:${scope}:${input.search ?? ''}`
       const rows = await service.listUsers(context.principal, {
         orgNodeId: input.orgNodeId,
-        scope: input.scope ?? 'subtree',
+        scope,
         search: input.search,
         cursor: input.cursor,
+        fingerprint,
         limit: limit + 1,
       })
       const items = rows.slice(0, limit)
       const last = items.at(-1)
       return {
         items: items.map(toUserDto),
-        nextCursor: rows.length > limit && last ? encodeCursor([last.display_name, last.id]) : null,
+        nextCursor:
+          rows.length > limit && last
+            ? encodeQueryCursor(fingerprint, [last.display_name, last.id])
+            : null,
       }
     }),
     createUser: impl.createUser.handler(async ({ context, input }) => ({

@@ -21,21 +21,13 @@ export function UserGrants({ userId }: { userId: string }) {
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
 
-  const grants = useQuery(orpc.access.getUserRoleAssignments.queryOptions({ input: { userId } }))
-  const items = grants.data?.assignments ?? []
+  const grants = useQuery(orpc.access.getUserRoleGrants.queryOptions({ input: { userId } }))
+  const items = grants.data?.grants ?? []
 
+  // one grant at a time: replacing the whole set meant proposing to delete
+  // every grant this caller could not see
   const revoke = useMutation({
-    mutationFn: (assignmentId: string) =>
-      api.access.syncUserRoleAssignments({
-        userId,
-        assignments: items
-          .filter((grant) => grant.id !== assignmentId)
-          .map((grant) => ({
-            roleId: grant.roleId,
-            orgNodeId: grant.orgNodeId,
-            scope: grant.scope,
-          })),
-      }),
+    mutationFn: (grantId: string) => api.access.deleteRoleGrant({ grantId }),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: orpc.access.key() })
@@ -62,7 +54,9 @@ export function UserGrants({ userId }: { userId: string }) {
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{grant.roleName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {grant.orgNodeName} · {grant.scope}
+                    {grant.target.kind === 'tenant'
+                      ? format(m.tenantWideGrant)
+                      : `${grant.target.orgNodeName} · ${grant.target.coverage}`}
                   </p>
                 </div>
                 {grant.manageable && (

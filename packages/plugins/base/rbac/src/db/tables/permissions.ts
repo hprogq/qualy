@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm'
 import {
-  boolean,
   check,
   snakeCase,
   timestamp,
@@ -9,9 +8,18 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core'
 
-// platform-level permission catalog: rows are reference data owned by the
+// Platform-level capability catalog: rows are reference data owned by the
 // permission registry (plugins upsert their definitions), never deleted at
 // runtime. Codes are dotted stable apis: "org.tree.manage".
+//
+// What a row does NOT carry is as deliberate as what it does. There is no
+// grant-channel flag, because a permission reaches a person through a role
+// and through nothing else. There is no default-administrator flag, because
+// "the tenant administrator holds everything" is one fact about one role,
+// not a boolean every plugin author has to remember. And there is no enabled
+// switch, because whether a capability exists is decided by whether its
+// plugin is loaded — an administrator who could switch one off could lock
+// every caller, including themselves, out of the api that requires it.
 export const permissions = snakeCase.table(
   'permissions',
   {
@@ -23,28 +31,15 @@ export const permissions = snakeCase.table(
     name: varchar({ length: 100 }).notNull(),
     description: varchar({ length: 500 }),
     groupKey: varchar({ length: 63 }),
-    // tenant permissions ignore org nodes, org permissions require a target
-    scope: varchar({ length: 16 }).notNull(),
-    grantToUserType: boolean().notNull(),
-    grantToRole: boolean().notNull(),
-    defaultTenantAdmin: boolean().notNull(),
-    enabled: boolean().default(true).notNull(),
+    // what the capability protects, and therefore how it is checked: a
+    // tenant target needs no node, an org-node target requires one
+    targetKind: varchar({ length: 16 }).notNull(),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('uq_permissions_code').on(table.code),
     check('chk_permissions_code_format', sql`${table.code} ~ '^[a-z0-9-]+(\\.[a-z0-9-]+)+$'`),
-    check('chk_permissions_scope', sql`${table.scope} IN ('tenant', 'org')`),
-    // org-scope permissions can never flow through user types
-    check(
-      'chk_permissions_user_type_scope',
-      sql`NOT ${table.grantToUserType} OR ${table.scope} = 'tenant'`,
-    ),
-    // tenant-admin default injection goes through role permissions
-    check(
-      'chk_permissions_default_admin_channel',
-      sql`NOT ${table.defaultTenantAdmin} OR ${table.grantToRole}`,
-    ),
+    check('chk_permissions_target_kind', sql`${table.targetKind} IN ('tenant', 'org-node')`),
   ],
 )

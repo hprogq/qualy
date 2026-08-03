@@ -40,7 +40,7 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
 
   const catalog = useQuery(
     orpc.access.listPermissions.queryOptions({
-      input: { scope: role.kind === 'org' ? 'org' : 'tenant', grantChannel: 'role' },
+      input: { target: role.kind === 'org' ? 'org-node' : 'tenant' },
     }),
   )
   const options = useQuery(orpc.access.getRoleOptions.queryOptions())
@@ -61,27 +61,39 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
 
   const saveProfile = useMutation(
     run(() =>
+      // the version this editor read: a save that cannot say what it saw is
+      // a save that silently overwrites whoever went second
       api.access.updateRole({
         roleId: role.id,
+        expectedVersion: role.version,
         name,
         description: description.trim() === '' ? null : description,
       }),
     ),
   )
   const savePermissions = useMutation(
-    run(() => api.access.syncRolePermissions({ roleId: role.id, codes: permissions })),
+    run(() => api.access.syncRolePermissions({
+      roleId: role.id,
+      expectedVersion: role.version,
+      codes: permissions,
+    })),
   )
   const saveEligibility = useMutation(
-    run(() => api.access.syncRoleEligibility({ roleId: role.id, userTypeIds, orgTypeIds })),
+    run(() => api.access.syncRoleEligibility({
+      roleId: role.id,
+      expectedVersion: role.version,
+      userTypeIds,
+      orgTypeIds,
+    })),
   )
   const setAssignable = useMutation(
-    run((assignable: boolean) => api.access.updateRole({ roleId: role.id, assignable })),
+    run((assignable: boolean) => api.access.updateRole({ roleId: role.id, expectedVersion: role.version, assignable })),
   )
   const setStatus = useMutation(
-    run((status: 'active' | 'disabled') => api.access.setRoleStatus({ roleId: role.id, status })),
+    run((status: 'active' | 'disabled') => api.access.setRoleStatus({ roleId: role.id, expectedVersion: role.version, status })),
   )
   const remove = useMutation({
-    ...run(() => api.access.deleteRole({ roleId: role.id })),
+    ...run(() => api.access.deleteRole({ roleId: role.id, expectedVersion: role.version })),
     onSuccess: async () => {
       setConfirmingDelete(false)
       await refresh()
@@ -90,7 +102,7 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
 
   // the canonical administrator role is fixed wherever changing it would
   // lock a tenant out of its own administration
-  const locked = role.isSystem
+  const locked = role.systemKey !== null
   const editable = canManage && !locked
 
   return (

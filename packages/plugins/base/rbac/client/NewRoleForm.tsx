@@ -25,22 +25,18 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
 
   const catalog = useQuery(
     orpc.access.listPermissions.queryOptions({
-      input: { scope: 'org', grantChannel: 'role' },
+      input: { target: 'org-node' },
     }),
   )
   const options = useQuery(orpc.access.getRoleOptions.queryOptions())
 
   const create = useMutation({
     mutationFn: () =>
-      api.access.createOrgRole({
-        code,
-        name,
-        permissionCodes,
-        allowedUserTypeIds,
-        allowedOrgTypeIds,
-      }),
+      // a role is created as a draft and configured before activation, so
+      // creation carries identity only
+      api.access.createRole({ code, name, kind: 'org' }),
     onMutate: () => setFeedback(null),
-    onSuccess: async (result) => {
+    onSuccess: async (result: { id: string }) => {
       setCode('')
       setName('')
       setPermissionCodes([])

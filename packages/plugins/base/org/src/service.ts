@@ -1,7 +1,7 @@
 import type { Context } from 'cordis'
 import { AccessDeniedError } from '@qualy/api-contract'
 import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
-import type { AuthorizationAnchor, Principal } from '@qualy/rbac-contract'
+import type { AuthorizationScope, Principal } from '@qualy/rbac-contract'
 import { orgErrors } from './errors.ts'
 import {
   deleteNode,
@@ -36,23 +36,29 @@ import {
   type OrgTx,
 } from './repo.ts'
 
-// a resolved authorization anchor: the anchor node's id/path plus scope
-export type AnchorPath = { id: string; path: string; scope: 'self' | 'subtree' }
+// a resolved authorization anchor: the anchor node's id/path plus coverage
+export type AnchorPath = { id: string; path: string; coverage: 'self' | 'subtree' }
 
-const coveredBy = (anchors: readonly AnchorPath[], node: { id: string; path: string }) =>
-  anchors.some((anchor) =>
-    anchor.scope === 'self'
+// how far the caller's grants for one permission reach, with anchor paths
+// resolved. A tenant role reaches everything, which no anchor list can say.
+export type ResolvedScope = { tenantWide: boolean; anchors: AnchorPath[] }
+
+const coveredBy = (scope: ResolvedScope, node: { id: string; path: string }) =>
+  scope.tenantWide ||
+  scope.anchors.some((anchor) =>
+    anchor.coverage === 'self'
       ? anchor.id === node.id
       : node.path === anchor.path || node.path.startsWith(`${anchor.path}.`),
   )
 
 // the whole subtree of the node is inside the caller's authority: only a
-// subtree-scoped anchor above it can guarantee that (a self anchor covers
-// one node, never its descendants)
-const subtreeCoveredBy = (anchors: readonly AnchorPath[], node: { path: string }) =>
-  anchors.some(
+// subtree-coverage anchor above it, or tenant-wide authority, can guarantee
+// that (a self anchor covers one node, never its descendants)
+const subtreeCoveredBy = (scope: ResolvedScope, node: { path: string }) =>
+  scope.tenantWide ||
+  scope.anchors.some(
     (anchor) =>
-      anchor.scope === 'subtree' &&
+      anchor.coverage === 'subtree' &&
       (node.path === anchor.path || node.path.startsWith(`${anchor.path}.`)),
   )
 
@@ -127,19 +133,26 @@ export class OrgTreeService {
   private async projectForest(
     db: OrgDb,
     tenantId: string,
-    anchors: readonly AnchorPath[],
+    scope: ResolvedScope,
   ): Promise<OrgForest> {
+    // tenant-wide authority sees the whole tree from its root
+    if (scope.tenantWide) {
+      const root = await getRoot(db, tenantId)
+      if (!root) return { roots: [], nodes: [] }
+      return { roots: [root.id], nodes: await listSubtree(db, tenantId, root.path) }
+    }
+    const anchors = scope.anchors
     if (anchors.length === 0) return { roots: [], nodes: [] }
     const covered = (path: string, keep: AnchorPath[]) =>
       keep.some((kept) => path === kept.path || path.startsWith(`${kept.path}.`))
     const keptSubtrees: AnchorPath[] = []
     for (const anchor of [...anchors]
-      .filter((anchor) => anchor.scope === 'subtree')
+      .filter((anchor) => anchor.coverage === 'subtree')
       .sort((a, b) => a.path.length - b.path.length)) {
       if (!covered(anchor.path, keptSubtrees)) keptSubtrees.push(anchor)
     }
     const selfAnchors = anchors.filter(
-      (anchor) => anchor.scope === 'self' && !covered(anchor.path, keptSubtrees),
+      (anchor) => anchor.coverage === 'self' && !covered(anchor.path, keptSubtrees),
     )
     const nodes = new Map<string, NodeRow>()
     for (const anchor of keptSubtrees) {
@@ -169,36 +182,43 @@ export class OrgTreeService {
     nodes: readonly { node: NodeRow; wholeSubtree?: boolean }[],
   ): Promise<void> {
     if (!principal) return
-    const anchors = await this.anchorPaths(
-      tx,
-      tenantId,
-      await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.manage', tx),
-    )
+    const scope = await this.resolveScope(tx, tenantId, principal, 'org.tree.manage')
     for (const { node, wholeSubtree } of nodes) {
-      const allowed = wholeSubtree ? subtreeCoveredBy(anchors, node) : coveredBy(anchors, node)
+      const allowed = wholeSubtree ? subtreeCoveredBy(scope, node) : coveredBy(scope, node)
       if (!allowed) {
         throw new AccessDeniedError('not allowed to manage this node')
       }
     }
   }
 
-  // resolves anchors to their node paths for coverage projection; anchors
-  // pointing at vanished nodes drop out (fail closed)
-  private async anchorPaths(
+  // resolves the caller's scope for one permission, with anchor paths looked
+  // up on the given connection; anchors pointing at vanished nodes drop out
+  // (fail closed)
+  private async resolveScope(
     db: OrgDb,
     tenantId: string,
-    anchors: readonly AuthorizationAnchor[],
-  ): Promise<AnchorPath[]> {
+    principal: Principal,
+    code: string,
+  ): Promise<ResolvedScope> {
+    const scope: AuthorizationScope = await this.ctx.rbac.listAuthorizedScope(
+      principal,
+      code,
+      db as never,
+    )
+    if (scope.tenantWide) return { tenantWide: true, anchors: [] }
     const nodes = await getNodes(
       db,
       tenantId,
-      anchors.map((anchor) => anchor.orgNodeId),
+      scope.anchors.map((anchor) => anchor.orgNodeId),
     )
     const byId = new Map(nodes.map((node) => [node.id, node]))
-    return anchors.flatMap((anchor) => {
-      const node = byId.get(anchor.orgNodeId)
-      return node ? [{ id: node.id, path: node.path, scope: anchor.scope }] : []
-    })
+    return {
+      tenantWide: false,
+      anchors: scope.anchors.flatMap((anchor) => {
+        const node = byId.get(anchor.orgNodeId)
+        return node ? [{ id: node.id, path: node.path, coverage: anchor.coverage }] : []
+      }),
+    }
   }
 
   // the authorized projection of the tree. Anchors (rbac assignments and
@@ -217,37 +237,29 @@ export class OrgTreeService {
     const tenantId = principal.tenantId
     return this.db.transaction(
       async (tx) => {
-        const readAnchors = await this.anchorPaths(
-          tx,
-          tenantId,
-          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.read', tx),
-        )
-        const manageAnchors = await this.anchorPaths(
-          tx,
-          tenantId,
-          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.manage', tx),
-        )
+        const readScope = await this.resolveScope(tx, tenantId, principal, 'org.tree.read')
+        const manageScope = await this.resolveScope(tx, tenantId, principal, 'org.tree.manage')
         let forest: OrgForest
         if (nodeId) {
           const node = await getNode(tx, tenantId, nodeId)
-          if (!node || !coveredBy(readAnchors, node)) {
+          if (!node || !coveredBy(readScope, node)) {
             // not-found and not-covered are indistinguishable on purpose
             throw new AccessDeniedError('not allowed to read this node')
           }
-          forest = subtreeCoveredBy(readAnchors, node)
+          forest = subtreeCoveredBy(readScope, node)
             ? { roots: [node.id], nodes: await listSubtree(tx, tenantId, node.path) }
             : { roots: [node.id], nodes: [node] }
         } else {
-          forest = await this.projectForest(tx, tenantId, readAnchors)
+          forest = await this.projectForest(tx, tenantId, readScope)
         }
         return {
           roots: forest.roots,
           nodes: forest.nodes.map((node) => ({
             ...node,
             // manageable covers single-node mutations; a move relocates the
-            // whole subtree and needs subtree-scoped coverage
-            manageable: coveredBy(manageAnchors, node),
-            subtreeManageable: subtreeCoveredBy(manageAnchors, node),
+            // whole subtree and needs subtree coverage
+            manageable: coveredBy(manageScope, node),
+            subtreeManageable: subtreeCoveredBy(manageScope, node),
           })),
         }
       },
@@ -263,25 +275,22 @@ export class OrgTreeService {
   ): Promise<NodeRow & { manageable: boolean; subtreeManageable: boolean }> {
     return this.db.transaction(
       async (tx) => {
-        const readAnchors = await this.anchorPaths(
-          tx,
-          principal.tenantId,
-          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.read', tx),
-        )
+        const readScope = await this.resolveScope(tx, principal.tenantId, principal, 'org.tree.read')
         const node = await getNode(tx, principal.tenantId, nodeId)
         // not-found and not-covered are indistinguishable on purpose
-        if (!node || !coveredBy(readAnchors, node)) {
+        if (!node || !coveredBy(readScope, node)) {
           throw orgErrors.create('ORG_NODE_NOT_FOUND', 'node not found')
         }
-        const manageAnchors = await this.anchorPaths(
+        const manageScope = await this.resolveScope(
           tx,
           principal.tenantId,
-          await this.ctx.rbac.listAuthorizedAnchors(principal, 'org.tree.manage', tx),
+          principal,
+          'org.tree.manage',
         )
         return {
           ...node,
-          manageable: coveredBy(manageAnchors, node),
-          subtreeManageable: subtreeCoveredBy(manageAnchors, node),
+          manageable: coveredBy(manageScope, node),
+          subtreeManageable: subtreeCoveredBy(manageScope, node),
         }
       },
       { isolationLevel: 'repeatable read', accessMode: 'read only' },
@@ -372,7 +381,7 @@ export class OrgTreeService {
       }
       // the check runs on this transaction's own connection: a second pool
       // connection while holding the tenant lock could deadlock the pool
-      const blocking = await this.ctx.rbac.assignmentsBlockingOrgType(
+      const blocking = await this.ctx.rbac.grantsBlockingOrgType(
         tenantId,
         nodeId,
         newTypeId,

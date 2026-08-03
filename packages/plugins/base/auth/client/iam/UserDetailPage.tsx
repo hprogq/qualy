@@ -33,7 +33,7 @@ export default function UserDetailPage() {
   const [placement, setPlacement] = useState('')
 
   const user = useQuery(orpc.identity.getUser.queryOptions({ input: { userId } }))
-  const options = useQuery(orpc.identity.getUserOptions.queryOptions())
+  const options = useQuery(orpc.identity.getUserOptions.queryOptions({ input: {} }))
   const record = user.data?.user
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export default function UserDetailPage() {
   })
 
   const manageable = record?.manageable ?? false
-  const anchors = options.data?.anchors ?? []
+  const nodes = options.data?.nodes ?? []
   const userTypes = options.data?.userTypes ?? []
 
   return (
@@ -102,7 +102,7 @@ export default function UserDetailPage() {
           <div className="space-y-4">
             <Panel
               title={`${format(m.userDetailTitle)} · ${record.displayName}`}
-              description={record.identifier ?? undefined}
+
               actions={
                 manageable ? (
                   <Button
@@ -197,7 +197,7 @@ export default function UserDetailPage() {
                       <option value={record.primaryOrgNode.id}>
                         {record.primaryOrgNode.name}
                       </option>
-                      {anchors
+                      {nodes
                         .filter(
                           (entry) =>
                             entry.manageable && entry.orgNodeId !== record.primaryOrgNode.id,

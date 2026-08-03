@@ -17,22 +17,39 @@ const roleInUseMessage = defineMessage<{ assignmentCount: number }>()({
   defaultMessage:
     '{assignmentCount, plural, one {# grant still uses} other {# grants still use}} this role.',
 })
-const permissionNotGrantableMessage = defineMessage<{ count: number }>()({
-  id: 'rbac/error/role-permission-not-grantable',
+const incompleteMessage = defineMessage<{ missing: string }>()({
+  id: 'rbac/error/role-incomplete',
+  defaultMessage: 'The role still needs: {missing}.',
+})
+const targetMismatchMessage = defineMessage<{ count: number }>()({
+  id: 'rbac/error/role-target-mismatch',
   defaultMessage:
-    '{count, plural, one {# permission cannot} other {# permissions cannot}} be granted to this role.',
+    '{count, plural, one {# permission does} other {# permissions do}} not fit this kind of role.',
+})
+const unknownPermissionMessage = defineMessage<{ count: number }>()({
+  id: 'rbac/error/permission-not-found',
+  defaultMessage: '{count, plural, one {# permission is} other {# permissions are}} not available.',
+})
+const escalationMessage = defineMessage<{ count: number }>()({
+  id: 'rbac/error/role-escalation-refused',
+  defaultMessage:
+    'A role cannot be given {count, plural, one {# permission} other {# permissions}} you do not hold yourself.',
+})
+const bindMessage = defineMessage<{ count: number }>()({
+  id: 'rbac/error/grant-escalation-refused',
+  defaultMessage: 'That role carries authority beyond your own, so you cannot grant it.',
 })
 const strandedMessage = defineMessage<{ assignmentCount: number }>()({
-  id: 'rbac/error/assignment-stranded',
+  id: 'rbac/error/grant-stranded',
   defaultMessage:
     '{assignmentCount, plural, one {# existing grant would} other {# existing grants would}} no longer qualify.',
 })
 // the refusal says which rule was broken, so the screen can point at the
 // thing an administrator actually has to change
 const notEligibleMessage = defineMessage<{ reason: string }>()({
-  id: 'rbac/error/assignment-not-eligible',
+  id: 'rbac/error/grant-not-eligible',
   defaultMessage:
-    '{reason, select, role-unassignable {That role cannot be granted right now.} user-disabled {A disabled user cannot be granted a role.} user-type {That role is not available to this user type.} org-type {That role cannot be anchored at this kind of node.} tenant-role-anchor {A tenant-wide role can only be granted across the whole organization.} other {That grant is not allowed.}}',
+    '{reason, select, role-unassignable {That role cannot be granted right now.} user-disabled {A disabled user cannot be granted a role.} user-type {That role is not available to this user type.} org-type {That role cannot be anchored at this kind of node.} tenant-role-anchored {A tenant-wide role can only be granted across the whole organization.} org-role-unanchored {An organization role must be granted at a node.} other {That grant is not allowed.}}',
 })
 
 const i18n = definePluginMessages({
@@ -77,6 +94,7 @@ const i18n = definePluginMessages({
     systemBadge: { id: 'rbac/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'rbac/badge/disabled', defaultMessage: 'disabled' },
     unassignableBadge: { id: 'rbac/badge/unassignable', defaultMessage: 'cannot be granted' },
+    draftBadge: { id: 'rbac/badge/draft', defaultMessage: 'draft' },
     tenantKind: { id: 'rbac/kind/tenant', defaultMessage: 'tenant-wide' },
     orgKind: { id: 'rbac/kind/org', defaultMessage: 'organization' },
     confirmDeleteTitle: { id: 'rbac/confirm/delete-title', defaultMessage: 'Delete this role?' },
@@ -101,35 +119,65 @@ const i18n = definePluginMessages({
       },
       ROLE_IN_USE: {
         message: roleInUseMessage,
-        values: (data) => ({ assignmentCount: data.assignmentCount }),
+        values: (data) => ({ assignmentCount: data.grantCount }),
       },
       ROLE_NEEDS_ELIGIBILITY: {
         id: 'rbac/error/role-needs-eligibility',
         defaultMessage: 'An organization role needs at least one user type and one node type.',
       },
-      ROLE_PERMISSION_NOT_GRANTABLE: {
-        message: permissionNotGrantableMessage,
-        values: (data) => ({ count: data.rejected.length }),
-      },
-      ASSIGNMENT_STRANDED: {
+      GRANT_STRANDED: {
         message: strandedMessage,
-        values: (data) => ({ assignmentCount: data.assignmentCount }),
+        values: (data) => ({ assignmentCount: data.grantCount }),
       },
-      ASSIGNMENT_NOT_ELIGIBLE: {
+      GRANT_NOT_ELIGIBLE: {
         message: notEligibleMessage,
         values: (data) => ({ reason: data.reason }),
       },
-      ASSIGNMENT_NOT_FOUND: {
-        id: 'rbac/error/assignment-not-found',
-        defaultMessage: 'Grant not found.',
+      GRANT_NOT_FOUND: { id: 'rbac/error/grant-not-found', defaultMessage: 'Grant not found.' },
+      TENANT_ADMIN_REQUIRED: {
+        id: 'rbac/error/tenant-admin-required',
+        defaultMessage: 'Only a tenant administrator may grant or revoke that role.',
       },
-      ASSIGNMENT_USER_NOT_FOUND: {
-        id: 'rbac/error/assignment-user-not-found',
+      ACCESS_TARGET_REQUIRED: {
+        id: 'rbac/error/access-target-required',
+        defaultMessage: 'That permission is checked against an organization node.',
+      },
+      GRANT_EXISTS: { id: 'rbac/error/grant-exists', defaultMessage: 'That grant already exists.' },
+      GRANT_USER_NOT_FOUND: {
+        id: 'rbac/error/grant-user-not-found',
         defaultMessage: 'That user is not in this tenant.',
       },
-      ASSIGNMENT_NODE_NOT_FOUND: {
-        id: 'rbac/error/assignment-node-not-found',
+      GRANT_NODE_NOT_FOUND: {
+        id: 'rbac/error/grant-node-not-found',
         defaultMessage: 'That organization node is not in this tenant.',
+      },
+      ROLE_VERSION_CONFLICT: {
+        id: 'rbac/error/role-version-conflict',
+        defaultMessage: 'Someone else changed this role. Reload and try again.',
+      },
+      ROLE_NOT_DRAFT: {
+        id: 'rbac/error/role-not-draft',
+        defaultMessage: 'Only a draft role can be activated.',
+      },
+      ROLE_INCOMPLETE: {
+        message: incompleteMessage,
+        values: (data) => ({ missing: data.missing.join(', ') }),
+      },
+      ROLE_TARGET_MISMATCH: {
+        message: targetMismatchMessage,
+        values: (data) => ({ count: data.permissions.length }),
+      },
+      PERMISSION_NOT_FOUND: {
+        message: unknownPermissionMessage,
+        values: (data) => ({ count: data.permissions.length }),
+      },
+      ROLE_ESCALATION_REFUSED: {
+        message: escalationMessage,
+        values: (data) => ({ count: data.permissions.length }),
+      },
+      GRANT_ESCALATION_REFUSED: {
+        message: bindMessage,
+        values: (data) => ({ count: data.permissions.length }),
       },
       ROLE_USER_TYPE_NOT_FOUND: {
         id: 'rbac/error/role-user-type-not-found',
@@ -138,10 +186,6 @@ const i18n = definePluginMessages({
       ROLE_ORG_TYPE_NOT_FOUND: {
         id: 'rbac/error/role-org-type-not-found',
         defaultMessage: 'Organization type not found.',
-      },
-      TENANT_ADMIN_REQUIRED: {
-        id: 'rbac/error/tenant-admin-required',
-        defaultMessage: 'Only a tenant administrator may grant or revoke that role.',
       },
     }),
     // the shared lockout invariant: auth raises it too, and one code carries

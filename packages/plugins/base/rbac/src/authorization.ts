@@ -3,52 +3,139 @@ import { sql, type SQL } from 'drizzle-orm'
 import type { Context } from 'cordis'
 import type {
   AccessProfile,
-  AuthorizationAnchor,
+  ActivePermission,
+  AuthorizationScope,
   Principal,
   RbacDbHandle,
 } from '@qualy/rbac-contract'
 import type { PermissionRegistry } from './permission-registry.ts'
 
-type ActivePermission = NonNullable<ReturnType<PermissionRegistry['get']>>
+// how far one grant carries, weakest first; a bind may never hand out more
+// than the actor holds
+export type Reach = 'self' | 'subtree' | 'tenant'
+export const REACH_RANK: Record<Reach, number> = { self: 0, subtree: 1, tenant: 2 }
 
-// authorization checks. Every query pins the permission row to the complete
-// stable semantics verified at activation (owner, scope, both grant
-// channels, defaultTenantAdmin), and a channel the active definition
-// declares closed never opens a query branch: flipping a database flag out
-// of band therefore only ever narrows authorization, never widens it.
+// The one role that reaches every node of its tenant. Exported because
+// authorization, the profile projection and the diagnostics all have to
+// answer this identically: three copies of "which roles reach everywhere" is
+// how an explanation ends up disagreeing with the decision it explains.
+// An ordinary tenant role does not qualify — it may only hold tenant-target
+// capabilities, which have no node to reach.
+export const REACHES_EVERY_NODE = sql`r.permission_mode = 'all-active'`
+
+// Authorization.
+//
+// A person holds roles one way and permissions one way: a grant gives them a
+// role, a role carries permissions, and nothing else does either. User types
+// classify who someone is and where they may stand; they confer no
+// authority, so they appear nowhere below.
+//
+// Two earlier shapes are gone from this file, and both were the same mistake
+// at different depths: user types holding permissions directly, then user
+// types holding roles. Each made "why does this person have this" a union of
+// sources, and each needed its own rules about which capabilities were
+// allowed to travel that way.
+//
+// Reach follows the role's kind, strictly. A tenant role holds tenant-target
+// capabilities and applies across the tenant; an org role holds org-target
+// ones and reaches exactly what its grant covers. Exactly one role escapes
+// that split: the canonical administrator, whose all-active mode holds every
+// capability and reaches every node.
+//
+// The split is not tidiness. An org role is anchored by its grant, so a
+// tenant-wide capability inside it would have nowhere to apply; a tenant
+// role is not anchored at all, so an org capability inside it would silently
+// mean "at every node" without anyone having said so. A tenant-wide
+// organization administrator is expressed as an org role granted at the root
+// with subtree coverage, which says exactly that and can be read off the
+// grant.
+//
+// Every query still pins the permission row to what the registry verified
+// (code, owning plugin, target), so a row edited out of band stops
+// authorizing rather than starting to.
+
 export class Authorization {
   constructor(
     private ctx: Context,
     private registry: PermissionRegistry,
   ) {}
 
-  // the row must still match everything verification saw; any out-of-band
-  // change kills the code's grants at read time
-  private pinned(def: ActivePermission): SQL {
-    return sql`p.enabled and p.code = ${def.code} and p.plugin = ${def.plugin}
-      and p.scope = ${def.scope}
-      and p.grant_to_user_type = ${def.grantToUserType}
-      and p.grant_to_role = ${def.grantToRole}
-      and p.default_tenant_admin = ${def.defaultTenantAdmin}`
+  private db(handle?: RbacDbHandle) {
+    return (handle ?? this.ctx.db.drizzle) as Context['db']['drizzle']
+  }
+
+  // the roles a principal holds, with where each one reaches. The user type
+  // still gates this — a disabled type means a person who cannot act — but
+  // it contributes no roles of its own.
+  private heldRoles(principal: Principal): SQL {
+    return sql`
+      select g.role_id, g.org_node_id, g.coverage
+      from role_grants g
+      join users u on u.tenant_id = g.tenant_id and u.id = g.user_id and u.enabled
+      join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id and t.enabled
+      where g.tenant_id = ${principal.tenantId} and g.user_id = ${principal.userId}`
+  }
+
+  // whether an active role carries this exact permission: either it holds
+  // every active capability, or it names this one
+  private carries(def: ActivePermission): SQL {
+    return sql`(
+      r.permission_mode = 'all-active'
+      or exists (
+        select 1 from role_permissions rp
+        join permissions p on p.id = rp.permission_id
+          and p.code = ${def.code} and p.plugin = ${def.plugin}
+          and p.target_kind = ${def.target}
+        where rp.tenant_id = r.tenant_id and rp.role_id = r.id
+      )
+    )`
+  }
+
+
+
+  // every code the registry currently serves; the escalation guard needs it
+  // to reason about a role that holds all of them
+  activeCodes(): string[] {
+    return this.registry.list().map((definition) => definition.code)
+  }
+
+  definitionOf(code: string): ActivePermission | undefined {
+    return this.registry.get(code)
   }
 
   async hasPermission(principal: Principal, code: string): Promise<boolean> {
     const def = this.registry.get(code)
     if (!def) return false
-    return def.scope === 'tenant'
-      ? this.hasTenantPermission(principal, def)
-      : this.hasAnyOrgPermission(principal, def)
+    if (def.target === 'tenant') return this.hasTenantPermission(principal, def)
+    const scope = await this.authorizedScope(principal, def)
+    return scope.tenantWide || scope.anchors.length > 0
   }
 
-  // tenant-scope gate: user-type grants and tenant-role grants, unioned
   async require(principal: Principal | undefined, code: string): Promise<void> {
     if (!principal) throw new ORPCError('AUTH_REQUIRED')
     const def = this.registry.get(code)
     if (!def) throw new ORPCError('FORBIDDEN')
-    if (def.scope !== 'tenant') {
-      throw new Error(`require() got org-scope permission ${code}, use requireAt()`)
+    if (def.target !== 'tenant') {
+      throw new Error(`require() got an org-node permission ${code}, use requireAt()`)
     }
     if (!(await this.hasTenantPermission(principal, def))) throw new ORPCError('FORBIDDEN')
+  }
+
+  private async hasTenantPermission(
+    principal: Principal,
+    def: ActivePermission,
+    handle?: RbacDbHandle,
+  ): Promise<boolean> {
+    // a tenant capability comes only from a tenant role: an org role is
+    // anchored somewhere, and tenant-wide authority has nowhere to anchor
+    const result = await this.db(handle).execute<{ allowed: boolean }>(sql`
+      select exists (
+        select 1 from (${this.heldRoles(principal)}) held
+        join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
+          and r.status = 'active' and r.kind = 'tenant'
+        where ${this.carries(def)}
+      ) as allowed`)
+    return result.rows[0]?.allowed ?? false
   }
 
   // the handle lets a caller holding the tenant lock re-decide authorization
@@ -62,25 +149,25 @@ export class Authorization {
   ): Promise<boolean> {
     const def = this.registry.get(code)
     if (!def) return false
-    if (def.scope !== 'org') {
-      throw new Error(`canAt() got tenant-scope permission ${code}, use require()`)
+    if (def.target !== 'org-node') {
+      throw new Error(`canAt() got a tenant permission ${code}, use require()`)
     }
-    if (!def.grantToRole) return false
-    const db = (handle ?? this.ctx.db.drizzle) as Context['db']['drizzle']
-    const result = await db.execute<{ allowed: boolean }>(sql`
-      select exists(
-        select 1
-        from user_role_assignments a
-        join users u on u.tenant_id = a.tenant_id and u.id = a.user_id and u.enabled
-        join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.enabled
-        join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
-        join permissions p on p.id = rp.permission_id and ${this.pinned(def)}
-        join org_nodes target on target.tenant_id = a.tenant_id and target.id = ${targetOrgNodeId}
-        join org_nodes anchor on anchor.tenant_id = a.tenant_id and anchor.id = a.org_node_id
-        where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}
+    const result = await this.db(handle).execute<{ allowed: boolean }>(sql`
+      select exists (
+        select 1 from (${this.heldRoles(principal)}) held
+        join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
+          and r.status = 'active'
+        -- inner, not left: a node that does not exist is never authorized,
+        -- and the administrator branch would otherwise answer yes for one
+        join org_nodes target on target.tenant_id = ${principal.tenantId}
+          and target.id = ${targetOrgNodeId}
+        left join org_nodes anchor on anchor.tenant_id = ${principal.tenantId}
+          and anchor.id = held.org_node_id
+        where ${this.carries(def)}
           and (
-            (a.scope = 'self' and a.org_node_id = ${targetOrgNodeId})
-            or (a.scope = 'subtree' and target.path <@ anchor.path)
+            ${REACHES_EVERY_NODE}
+            or (held.coverage = 'self' and held.org_node_id = ${targetOrgNodeId})
+            or (held.coverage = 'subtree' and target.path <@ anchor.path)
           )
       ) as allowed`)
     return result.rows[0]?.allowed ?? false
@@ -99,135 +186,167 @@ export class Authorization {
     }
   }
 
-  // for the manifest: which active codes does the user hold from any source.
-  // The sql reports raw reachability per channel plus the stored stable
-  // fields; the decision (stable semantics match and the channel is open in
-  // the active definition) happens against the registry
-  async getProfile(principal: Principal): Promise<AccessProfile> {
-    const result = await this.ctx.db.drizzle.execute<{
-      code: string
-      plugin: string
-      scope: string
-      grant_to_user_type: boolean
-      grant_to_role: boolean
-      default_tenant_admin: boolean
-      via_user_type: boolean
-      via_role: boolean
-    }>(sql`
-      select * from (
-        select p.code, p.plugin, p.scope, p.grant_to_user_type, p.grant_to_role,
-          p.default_tenant_admin,
-          exists(
-            select 1 from users u
-            join user_types ut on ut.tenant_id = u.tenant_id and ut.id = u.user_type_id and ut.enabled
-            join user_type_permissions utp on utp.tenant_id = u.tenant_id
-              and utp.user_type_id = u.user_type_id and utp.permission_id = p.id
-            where u.id = ${principal.userId} and u.tenant_id = ${principal.tenantId} and u.enabled
-          ) as via_user_type,
-          exists(
-            select 1 from user_role_assignments a
-            join users u on u.tenant_id = a.tenant_id and u.id = a.user_id and u.enabled
-            join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.enabled
-            join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
-              and rp.permission_id = p.id
-            where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}
-              and (p.scope = 'org' or r.kind = 'tenant')
-          ) as via_role
-        from permissions p
-        where p.enabled
-      ) candidates
-      where via_user_type or via_role`)
-    const tenantPermissions: string[] = []
-    const orgPermissions: string[] = []
-    for (const row of result.rows) {
-      const def = this.registry.get(row.code)
-      if (
-        !def ||
-        row.plugin !== def.plugin ||
-        row.scope !== def.scope ||
-        row.grant_to_user_type !== def.grantToUserType ||
-        row.grant_to_role !== def.grantToRole ||
-        row.default_tenant_admin !== def.defaultTenantAdmin
-      ) {
-        continue
-      }
-      const reachable =
-        (row.via_user_type && def.grantToUserType) || (row.via_role && def.grantToRole)
-      if (!reachable) continue
-      if (def.scope === 'tenant') tenantPermissions.push(def.code)
-      else orgPermissions.push(def.code)
-    }
-    return { tenantPermissions: tenantPermissions.sort(), orgPermissions: orgPermissions.sort() }
-  }
-
-  // assignment anchors granting one org-scope code, pinned like every
-  // other read; consumers use them to project subtree coverage. The handle
-  // lets a caller that holds a lock run the read on its own connection.
-  async listAuthorizedAnchors(
+  // how far one org-node permission reaches for this principal
+  async listAuthorizedScope(
     principal: Principal,
     code: string,
     handle?: RbacDbHandle,
-  ): Promise<AuthorizationAnchor[]> {
+  ): Promise<AuthorizationScope> {
     const def = this.registry.get(code)
-    if (!def || def.scope !== 'org' || !def.grantToRole) return []
-    const db = (handle ?? this.ctx.db.drizzle) as Context['db']['drizzle']
-    const result = await db.execute<{
-      org_node_id: string
-      scope: 'self' | 'subtree'
+    if (!def || def.target !== 'org-node') return { tenantWide: false, anchors: [] }
+    return this.authorizedScope(principal, def, handle)
+  }
+
+  private async authorizedScope(
+    principal: Principal,
+    def: ActivePermission,
+    handle?: RbacDbHandle,
+  ): Promise<AuthorizationScope> {
+    const result = await this.db(handle).execute<{
+      every_node: boolean
+      org_node_id: string | null
+      coverage: 'self' | 'subtree' | null
     }>(sql`
-      select distinct a.org_node_id, a.scope
-      from user_role_assignments a
-      join users u on u.tenant_id = a.tenant_id and u.id = a.user_id and u.enabled
-      join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.enabled
-      join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
-      join permissions p on p.id = rp.permission_id and ${this.pinned(def)}
-      where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}`)
-    return result.rows.map((row) => ({ orgNodeId: row.org_node_id, scope: row.scope }))
+      select distinct (${REACHES_EVERY_NODE}) as every_node,
+        held.org_node_id, held.coverage
+      from (${this.heldRoles(principal)}) held
+      join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
+        and r.status = 'active'
+      where ${this.carries(def)}`)
+    const tenantWide = result.rows.some((row) => row.every_node)
+    const anchors = result.rows
+      .filter((row) => row.org_node_id !== null && row.coverage !== null)
+      .map((row) => ({ orgNodeId: row.org_node_id!, coverage: row.coverage! }))
+    return { tenantWide, anchors }
   }
 
-  private async hasTenantPermission(
-    principal: Principal,
-    def: ActivePermission,
-  ): Promise<boolean> {
-    // each branch opens only when the active definition allows the channel;
-    // the database flags alone can never open one
-    const result = await this.ctx.db.drizzle.execute<{ allowed: boolean }>(sql`
-      select (
-        (${def.grantToUserType} and exists(
-          select 1 from users u
-          join user_types ut on ut.tenant_id = u.tenant_id and ut.id = u.user_type_id and ut.enabled
-          join user_type_permissions utp on utp.tenant_id = u.tenant_id
-            and utp.user_type_id = u.user_type_id
-          join permissions p on p.id = utp.permission_id and ${this.pinned(def)}
-          where u.id = ${principal.userId} and u.tenant_id = ${principal.tenantId} and u.enabled
-        ))
-        or (${def.grantToRole} and exists(
-          select 1 from user_role_assignments a
-          join users u on u.tenant_id = a.tenant_id and u.id = a.user_id and u.enabled
-          join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id
-            and r.enabled and r.kind = 'tenant'
-          join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
-          join permissions p on p.id = rp.permission_id and ${this.pinned(def)}
-          where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}
-        ))
-      ) as allowed`)
-    return result.rows[0]?.allowed ?? false
+  // for the manifest: which active codes this viewer holds from any source.
+  // The decision is made against the registry, so a stored row that no
+  // longer matches its definition contributes nothing.
+  async getProfile(principal: Principal): Promise<AccessProfile> {
+    // "anywhere at all", not "here": the manifest asks what this viewer may
+    // discover, and an org capability held at one college is discoverable
+    // even though it applies at no other node
+    const rows = await this.effectiveRows(principal, 'anywhere')
+    const tenantPermissions: string[] = []
+    const orgPermissions: string[] = []
+    for (const { def, roleKind } of rows) {
+      if (def.target === 'tenant') {
+        if (roleKind === 'tenant') tenantPermissions.push(def.code)
+      } else {
+        orgPermissions.push(def.code)
+      }
+    }
+    return {
+      tenantPermissions: [...new Set(tenantPermissions)].sort(),
+      orgPermissions: [...new Set(orgPermissions)].sort(),
+    }
   }
 
-  private async hasAnyOrgPermission(
+  // Every permission this principal effectively holds. With a node, the
+  // answer is what they hold AT that node; without one, only what they hold
+  // tenant-wide. The escalation guard asks this to decide whether a role
+  // being defined or granted stays inside the actor's own authority.
+  async effectiveCodes(
     principal: Principal,
-    def: ActivePermission,
-  ): Promise<boolean> {
-    if (!def.grantToRole) return false
-    const result = await this.ctx.db.drizzle.execute<{ allowed: boolean }>(sql`
-      select exists(
-        select 1 from user_role_assignments a
-        join users u on u.tenant_id = a.tenant_id and u.id = a.user_id and u.enabled
-        join roles r on r.tenant_id = a.tenant_id and r.id = a.role_id and r.enabled
-        join role_permissions rp on rp.tenant_id = a.tenant_id and rp.role_id = a.role_id
-        join permissions p on p.id = rp.permission_id and ${this.pinned(def)}
-        where a.tenant_id = ${principal.tenantId} and a.user_id = ${principal.userId}
-      ) as allowed`)
-    return result.rows[0]?.allowed ?? false
+    target?: { orgNodeId: string },
+    handle?: RbacDbHandle,
+  ): Promise<Set<string>> {
+    const rows = await this.effectiveRows(principal, target, handle)
+    return new Set(rows.map(({ def }) => def.code))
+  }
+
+  // The strongest reach the actor has for each permission at one node.
+  // A bind guard needs more than "do they hold it here": granting subtree
+  // coverage from a self anchor would hand out more than the actor has.
+  async reachAt(
+    principal: Principal,
+    orgNodeId: string,
+    handle?: RbacDbHandle,
+  ): Promise<Map<string, Reach>> {
+    const result = await this.db(handle).execute<{
+      code: string
+      plugin: string
+      target_kind: string
+      kind: 'tenant' | 'org'
+      every_node: boolean
+      coverage: 'self' | 'subtree' | null
+    }>(sql`
+      select distinct p.code, p.plugin, p.target_kind, r.kind,
+        (${REACHES_EVERY_NODE}) as every_node, held.coverage
+      from (${this.heldRoles(principal)}) held
+      join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
+        and r.status = 'active'
+      join org_nodes node on node.tenant_id = ${principal.tenantId}
+        and node.id = ${orgNodeId}
+      left join org_nodes anchor on anchor.tenant_id = ${principal.tenantId}
+        and anchor.id = held.org_node_id
+      join permissions p on r.permission_mode = 'all-active'
+        or exists (
+          select 1 from role_permissions rp
+          where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
+        )
+      where ${REACHES_EVERY_NODE}
+        or (held.coverage = 'self' and held.org_node_id = ${orgNodeId})
+        or (held.coverage = 'subtree' and node.path <@ anchor.path)`)
+    const reach = new Map<string, Reach>()
+    for (const row of result.rows) {
+      const def = this.registry.get(row.code)
+      if (!def || row.plugin !== def.plugin || row.target_kind !== def.target) continue
+      const here: Reach = row.every_node ? 'tenant' : (row.coverage ?? 'self')
+      const known = reach.get(def.code)
+      if (known === undefined || REACH_RANK[here] > REACH_RANK[known]) reach.set(def.code, here)
+    }
+    return reach
+  }
+
+  private async effectiveRows(
+    principal: Principal,
+    target: { orgNodeId: string } | 'anywhere' | undefined,
+    handle?: RbacDbHandle,
+  ): Promise<{ def: ActivePermission; roleKind: 'tenant' | 'org' }[]> {
+    // Three questions, deliberately distinct. With a node: what does this
+    // person hold AT it. Without one: what do they hold tenant-wide, which
+    // is what an escalation guard must compare against. 'anywhere': what do
+    // they hold at all, which is what surface discovery asks — a capability
+    // held at one college is discoverable even though it applies nowhere
+    // else.
+    const at = typeof target === 'object' ? target : undefined
+    const reach = at
+      ? sql`(
+          ${REACHES_EVERY_NODE}
+          or (held.coverage = 'self' and held.org_node_id = ${at.orgNodeId})
+          or (held.coverage = 'subtree' and node.path <@ anchor.path)
+        )`
+      : target === 'anywhere'
+        ? sql`true`
+        : sql`r.kind = 'tenant'`
+    const result = await this.db(handle).execute<{
+      code: string
+      plugin: string
+      target_kind: string
+      kind: 'tenant' | 'org'
+    }>(sql`
+      select distinct p.code, p.plugin, p.target_kind, r.kind
+      from (${this.heldRoles(principal)}) held
+      join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
+        and r.status = 'active'
+      left join org_nodes anchor on anchor.tenant_id = ${principal.tenantId}
+        and anchor.id = held.org_node_id
+      left join org_nodes node on node.tenant_id = ${principal.tenantId}
+        and node.id = ${at?.orgNodeId ?? null}
+      join permissions p on r.permission_mode = 'all-active'
+        or exists (
+          select 1 from role_permissions rp
+          where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
+        )
+      where ${reach}`)
+    const rows: { def: ActivePermission; roleKind: 'tenant' | 'org' }[] = []
+    for (const row of result.rows) {
+      const def = this.registry.get(row.code)
+      if (!def || row.plugin !== def.plugin || row.target_kind !== def.target) continue
+      rows.push({ def, roleKind: row.kind })
+    }
+    return rows
   }
 }

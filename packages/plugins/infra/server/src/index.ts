@@ -126,6 +126,20 @@ export const mountPath = (label: string) =>
 export const LIVENESS_PATH = '/health/live'
 export const READINESS_PATH = '/health/ready'
 
+// long enough for a healthy dependency, short enough that an unhealthy one
+// answers "not ready" instead of hanging
+const PROBE_TIMEOUT_MS = 2000
+
+const withTimeout = <T>(work: Promise<T> | T, ms: number, label: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    Promise.resolve(work),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} did not answer within ${ms}ms`)), ms)
+    }),
+  ]).finally(() => clearTimeout(timer)) as Promise<T>
+}
+
 const Config = z
   .object({
     // port 0 binds an ephemeral port, used by tests
@@ -210,6 +224,9 @@ export default class Server extends Service {
   private fragments = new Map<string, RouteFragment>()
   private enrichers = new Map<string, ContextEnricher>()
   private probes = new Map<string, ReadinessProbe>()
+  // stable box: assembly completion is set from the host after the service
+  // is constructed (traceable-proxy discipline)
+  private assembly = { complete: false }
   private openApiPluginFactories = new Map<string, OpenApiHandlerPluginFactory>()
   // stable box, mutated in place (traceable-proxy discipline)
   private handlerBox: { handler?: OpenAPIHandler<ApiContext> } = {}
@@ -244,16 +261,21 @@ export default class Server extends Service {
     }, 'server-fallback')
   }
 
+  // Assembly is complete: the host calls this once every plugin in the
+  // manifest has loaded. Until then readiness answers 503 no matter how many
+  // probes pass, because "every probe that registered is healthy" is
+  // trivially true when none have registered yet — which is exactly the
+  // window between binding the port and finishing assembly.
+  markAssemblyComplete() {
+    this.assembly.complete = true
+  }
+
   // Readiness probes, keyed per registrant and revoked with its fiber. A
   // probe answers "can this instance take traffic on my behalf" — the
   // database checks it can query, the permission registry checks its
   // catalogs synced. Liveness deliberately consults none of them: a
   // database outage must not make an orchestrator kill an otherwise healthy
   // process.
-  //
-  // What this cannot claim is that assembly is COMPLETE, because a plugin
-  // that has not loaded has not registered a probe either. It reports that
-  // everything which did load is healthy, which is the honest bound.
   readiness(key: string, probe: ReadinessProbe) {
     return this.ctx.effect(() => {
       if (this.probes.has(key)) throw new Error(`readiness probe conflict: ${key}`)
@@ -265,21 +287,30 @@ export default class Server extends Service {
   }
 
   private async checkReadiness(): Promise<{ ready: boolean; checks: Record<string, string> }> {
-    const checks: Record<string, string> = {}
-    let ready = true
-    for (const [key, probe] of this.probes) {
-      try {
-        await probe()
-        checks[key] = 'ok'
-      } catch (error) {
-        ready = false
-        // the reason goes to the operator's log, never to the probe body:
-        // these endpoints are unauthenticated
-        this.ctx.logger.warn('readiness probe %s failed: %s', key, (error as Error).message)
-        checks[key] = 'failed'
-      }
+    if (!this.assembly.complete) {
+      return { ready: false, checks: { assembly: 'pending' } }
     }
-    return { ready, checks }
+    // probes run together and each is bounded: a hung database query would
+    // otherwise hold the readiness request open until the orchestrator's own
+    // timeout, which reads as a hang rather than as "not ready"
+    const entries = [...this.probes]
+    const results = await Promise.all(
+      entries.map(async ([key, probe]) => {
+        try {
+          await withTimeout(probe(), PROBE_TIMEOUT_MS, key)
+          return [key, 'ok'] as const
+        } catch (error) {
+          // the reason goes to the operator's log, never to the probe body:
+          // these endpoints are unauthenticated
+          this.ctx.logger.warn('readiness probe %s failed: %s', key, (error as Error).message)
+          return [key, 'failed'] as const
+        }
+      }),
+    )
+    return {
+      ready: results.every(([, status]) => status === 'ok'),
+      checks: Object.fromEntries(results),
+    }
   }
 
   // context enrichers run serially for every api request before the handler,

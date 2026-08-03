@@ -11,7 +11,8 @@
     "./schema": "./src/db/schema.ts",
     "./client": "./client/index.ts",
     "./permissions": "./src/permissions.ts",
-    "./ui": "./src/ui.ts"
+    "./ui": "./src/ui.ts",
+    "./constants": "./src/constants.ts"
   },
   "qualy": {
     "database": {

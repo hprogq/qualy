@@ -1,9 +1,10 @@
 import { sql, type SQL } from 'drizzle-orm'
 import type { Context } from 'cordis'
-import { AccessDeniedError, decodeCursor } from '@qualy/api-contract'
+import { AccessDeniedError, decodeQueryCursor } from '@qualy/api-contract'
 import type {} from '@qualy/plugin-database'
 import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
-import { anchorCoverage, type Principal } from '@qualy/rbac-contract'
+import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
+import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { iamErrors } from './errors.ts'
 
 // Identity administration: user types and users.
@@ -43,8 +44,9 @@ export type UserTypeRow = {
   enabled: boolean
   is_system: boolean
   sort_order: number
+  version: number
   user_count: number
-  permissions: string[]
+  allowed_org_types: string[]
 }
 
 export type UserRow = {
@@ -57,7 +59,7 @@ export type UserRow = {
   user_type_name: string
   primary_org_node_id: string
   primary_org_node_name: string
-  identifier: string | null
+  identity_count: number
   manageable: boolean
 }
 
@@ -68,10 +70,8 @@ export interface UserTypeInput {
   allowLocalLogin?: boolean
   allowSsoLogin?: boolean
   sortOrder?: number
-  // a type is created complete: one that opens no sign-in channel and holds
-  // no permissions exists, is enabled, and cannot be used for anything
-  permissionCodes?: readonly string[]
 }
+
 
 export class IamService {
   constructor(private ctx: Context) {}
@@ -110,15 +110,16 @@ export class IamService {
   private userTypeProjection(where: SQL) {
     return sql`
       select t.id, t.code, t.name, t.description, t.allow_local_login, t.allow_sso_login,
-        t.enabled, t.is_system, t.sort_order,
+        t.enabled, t.is_system, t.sort_order, t.version,
         (select count(*)::int from users u where u.tenant_id = t.tenant_id and u.user_type_id = t.id)
           as user_count,
+        -- where this kind of person may stand. A type confers no authority,
+        -- so this is the whole of what it decides.
         coalesce(
-          (select array_agg(p.code order by p.code)
-           from user_type_permissions utp
-           join permissions p on p.id = utp.permission_id
-           where utp.tenant_id = t.tenant_id and utp.user_type_id = t.id),
-          '{}') as permissions
+          (select array_agg(a.org_type_id::text)
+           from user_type_allowed_org_types a
+           where a.tenant_id = t.tenant_id and a.user_type_id = t.id),
+          '{}') as allowed_org_types
       from user_types t
       where ${where}
       order by t.sort_order, t.code`
@@ -150,9 +151,7 @@ export class IamService {
           ${input.allowLocalLogin ?? false}, ${input.allowSsoLogin ?? false},
           ${input.sortOrder ?? 0})
         returning id`)
-      const id = created.rows[0]!.id
-      await this.replaceTypePermissions(tx, tenantId, id, input.permissionCodes ?? [])
-      return id
+      return created.rows[0]!.id
     })
   }
 
@@ -170,6 +169,14 @@ export class IamService {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const type = await this.requireUserType(tx, tenantId, userTypeId)
+      // The system account keeps password sign-in. It is what a tenant
+      // recovers itself with, and the generic survivor invariant cannot
+      // protect it: that check is satisfied by any open channel, so closing
+      // local login while sso is nominally allowed would pass even with no
+      // sso provider configured anywhere.
+      if (fields.allowLocalLogin === false && type.code === SYSTEM_ACCOUNT_USER_TYPE) {
+        throw iamErrors.create('RECOVERY_CHANNEL_REQUIRED')
+      }
       // a system type's code and system flag are immutable; its display
       // fields and sign-in policy stay editable
       await tx.execute(sql`
@@ -209,55 +216,13 @@ export class IamService {
     })
   }
 
-  syncUserTypePermissions(tenantId: string, userTypeId: string, codes: readonly string[]) {
-    return this.write(async (tx) => {
-      await this.lockTenant(tx, tenantId)
-      const type = await this.requireUserType(tx, tenantId, userTypeId)
-      await this.replaceTypePermissions(tx, tenantId, type.id, codes)
-    })
-  }
-
-  // replaces the whole grant set: only tenant-scope permissions that declare
-  // the user-type channel may be granted, and the database trigger is the
-  // final backstop
-  private async replaceTypePermissions(
-    tx: Tx,
-    tenantId: string,
-    userTypeId: string,
-    codes: readonly string[],
-  ) {
-    const wanted = [...new Set(codes)]
-    if (wanted.length > 0) {
-      const grantable = (
-        await tx.execute<{ code: string }>(sql`
-          select code from permissions
-          where code = any(string_to_array(${wanted.join(',')}, ','))
-            and enabled and grant_to_user_type and scope = 'tenant'`)
-      ).rows.map((row) => row.code)
-      const rejected = wanted.filter((code) => !grantable.includes(code))
-      if (rejected.length > 0) throw iamErrors.create('PERMISSION_NOT_GRANTABLE', { rejected })
-    }
-    await tx.execute(sql`
-      delete from user_type_permissions
-      where tenant_id = ${tenantId} and user_type_id = ${userTypeId}
-        and permission_id not in (
-          select id from permissions
-          where code = any(string_to_array(${wanted.join(',')}, ','))
-        )`)
-    if (wanted.length > 0) {
-      await tx.execute(sql`
-        insert into user_type_permissions (tenant_id, user_type_id, permission_id)
-        select ${tenantId}, ${userTypeId}, p.id from permissions p
-        where p.code = any(string_to_array(${wanted.join(',')}, ','))
-        on conflict do nothing`)
-    }
-  }
-
   deleteUserType(tenantId: string, userTypeId: string) {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const type = await this.requireUserType(tx, tenantId, userTypeId)
-      if (type.is_system) throw iamErrors.create('USER_TYPE_IS_SYSTEM')
+      if (type.is_system || type.code === SYSTEM_ACCOUNT_USER_TYPE) {
+        throw iamErrors.create('USER_TYPE_IS_SYSTEM')
+      }
       const inUse = await this.countUsersOfType(tx, tenantId, type.id)
       if (inUse > 0) throw iamErrors.create('USER_TYPE_IN_USE', { userCount: inUse })
       // eligibility rows cascade with the type, which would silently empty a
@@ -293,25 +258,22 @@ export class IamService {
       scope: 'self' | 'subtree'
       search?: string
       cursor?: string
+      fingerprint: string
       limit: number
     },
   ): Promise<UserRow[]> {
-    const [readAnchors, manageAnchors] = await Promise.all([
-      this.ctx.rbac.listAuthorizedAnchors(principal, 'auth.user.read'),
-      this.ctx.rbac.listAuthorizedAnchors(principal, 'auth.user.manage'),
-    ])
-    if (readAnchors.length === 0) return []
-    const after = decodeCursor(input.cursor, 2)
+    const [readScope, manageScope] = await this.scopes(principal)
+    if (!readScope.tenantWide && readScope.anchors.length === 0) return []
+    const after = decodeQueryCursor(input.cursor, input.fingerprint, 2)
     const requested =
       input.scope === 'subtree' ? sql`n.path <@ requested.path` : sql`n.id = requested.id`
     const result = await this.db.execute<UserRow>(sql`
       select u.id, u.business_no, u.display_name, u.enabled,
         u.user_type_id, t.code as user_type_code, t.name as user_type_name,
         u.primary_org_node_id, n.name as primary_org_node_name,
-        (select i.identifier from user_identities i
-         where i.tenant_id = u.tenant_id and i.user_id = u.id
-         order by i.bound_at limit 1) as identifier,
-        ${anchorCoverage(manageAnchors, 'n')} as manageable
+        (select count(*)::int from user_identities i
+         where i.tenant_id = u.tenant_id and i.user_id = u.id) as identity_count,
+        ${scopeCoverage(manageScope, 'n')} as manageable
       from users u
       join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
       join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
@@ -319,7 +281,7 @@ export class IamService {
         and requested.id = ${input.orgNodeId}
       where u.tenant_id = ${principal.tenantId}
         and ${requested}
-        and ${anchorCoverage(readAnchors, 'n')}
+        and ${scopeCoverage(readScope, 'n')}
         and (${input.search ?? null}::text is null
              or u.display_name ilike '%' || ${input.search ?? ''} || '%'
              or coalesce(u.business_no, '') ilike '%' || ${input.search ?? ''} || '%')
@@ -331,74 +293,217 @@ export class IamService {
   }
 
   async getUser(principal: Principal, userId: string): Promise<UserRow> {
-    const [readAnchors, manageAnchors] = await Promise.all([
-      this.ctx.rbac.listAuthorizedAnchors(principal, 'auth.user.read'),
-      this.ctx.rbac.listAuthorizedAnchors(principal, 'auth.user.manage'),
-    ])
+    const [readScope, manageScope] = await this.scopes(principal)
     const row = (
       await this.db.execute<UserRow>(sql`
         select u.id, u.business_no, u.display_name, u.enabled,
           u.user_type_id, t.code as user_type_code, t.name as user_type_name,
           u.primary_org_node_id, n.name as primary_org_node_name,
-          (select i.identifier from user_identities i
-           where i.tenant_id = u.tenant_id and i.user_id = u.id
-           order by i.bound_at limit 1) as identifier,
-          ${anchorCoverage(manageAnchors, 'n')} as manageable
+          (select count(*)::int from user_identities i
+           where i.tenant_id = u.tenant_id and i.user_id = u.id) as identity_count,
+          ${scopeCoverage(manageScope, 'n')} as manageable
         from users u
         join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
         join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
         where u.tenant_id = ${principal.tenantId} and u.id = ${userId}
-          and ${anchorCoverage(readAnchors, 'n')}`)
+          and ${scopeCoverage(readScope, 'n')}`)
     ).rows[0]
     // not-found and not-readable are indistinguishable on purpose
     if (!row) throw iamErrors.create('USER_NOT_FOUND')
     return row
   }
 
-  // where the caller may administer users at all, and which types they may
-  // give someone. The users screen needs both and holds only auth.user.read,
-  // so making it also carry org.tree.read and auth.user-type.read would sit a
-  // legitimate org administrator in front of an empty picker.
-  async userOptions(principal: Principal): Promise<{
-    anchors: { orgNodeId: string; name: string; scope: 'self' | 'subtree'; manageable: boolean }[]
-    userTypes: { id: string; code: string; name: string }[]
-  }> {
-    const [readAnchors, manageAnchors] = await Promise.all([
-      this.ctx.rbac.listAuthorizedAnchors(principal, 'auth.user.read'),
-      this.ctx.rbac.listAuthorizedAnchors(principal, 'auth.user.manage'),
+  private scopes(principal: Principal): Promise<[AuthorizationScope, AuthorizationScope]> {
+    return Promise.all([
+      this.ctx.rbac.listAuthorizedScope(principal, 'auth.user.read'),
+      this.ctx.rbac.listAuthorizedScope(principal, 'auth.user.manage'),
     ])
-    if (readAnchors.length === 0) return { anchors: [], userTypes: [] }
-    const manageable = new Set(manageAnchors.map((anchor) => anchor.orgNodeId))
-    const ids = [...new Set(readAnchors.map((anchor) => anchor.orgNodeId))]
-    const names = new Map(
-      (
-        await this.db.execute<{ id: string; name: string }>(sql`
-          select id, name from org_nodes
-          where tenant_id = ${principal.tenantId}
-            and id = any(string_to_array(${ids.join(',')}, ',')::uuid[])`)
-      ).rows.map((row) => [row.id, row.name]),
-    )
-    // an anchor pointing at a vanished node simply drops out (fail closed)
-    const anchors = readAnchors.flatMap((anchor) => {
-      const name = names.get(anchor.orgNodeId)
-      return name === undefined
-        ? []
-        : [
-            {
-              orgNodeId: anchor.orgNodeId,
-              name,
-              scope: anchor.scope,
-              manageable: manageable.has(anchor.orgNodeId),
-            },
-          ]
-    })
-    const userTypes = (
-      await this.db.execute<{ id: string; code: string; name: string }>(sql`
-        select id, code, name from user_types
-        where tenant_id = ${principal.tenantId} and enabled
-        order by sort_order, code`)
+  }
+
+  // Where the caller may administer users, and which types they may hand
+  // out. The users screen holds only auth.user.read, so making it also carry
+  // org.tree.read and auth.user-type.read would sit a legitimate org
+  // administrator in front of an empty picker.
+  //
+  // The nodes are the ones actually inside the caller's coverage, not the
+  // anchors those grants happen to sit on: a subtree grant at a college
+  // means every department under it is a place a user may stand, and
+  // returning only the anchor made those unreachable.
+  async userOptions(
+    principal: Principal,
+    search: string | undefined,
+    limit: number,
+  ): Promise<{
+    nodes: {
+      orgNodeId: string
+      name: string
+      depth: number
+      orgTypeId: string
+      manageable: boolean
+    }[]
+    // a picker that quietly showed the first five hundred of a large tree
+    // looked complete; saying so lets the screen ask for a search instead
+    truncated: boolean
+    userTypes: { id: string; code: string; name: string; allowedOrgTypeIds: string[] }[]
+  }> {
+    const [readScope, manageScope] = await this.scopes(principal)
+    if (!readScope.tenantWide && readScope.anchors.length === 0) {
+      return { nodes: [], truncated: false, userTypes: [] }
+    }
+    const nodes = (
+      await this.db.execute<{
+        id: string
+        name: string
+        depth: number
+        org_type_id: string
+        manageable: boolean
+      }>(sql`
+        select n.id, n.name, n.depth, n.org_type_id,
+          ${scopeCoverage(manageScope, 'n')} as manageable
+        from org_nodes n
+        where n.tenant_id = ${principal.tenantId}
+          and ${scopeCoverage(readScope, 'n')}
+          and (${search ?? null}::text is null or n.name ilike '%' || ${search ?? ''} || '%')
+        order by n.path
+        limit ${limit + 1}`)
     ).rows
-    return { anchors, userTypes }
+    // Assignable types, with the org types each may stand at, so the screen
+    // can pair a type with a node without a second round trip. A system type
+    // is provisioned rather than assigned and never appears.
+    const userTypes = (
+      await this.db.execute<{
+        id: string
+        code: string
+        name: string
+        allowed_org_type_ids: string[]
+      }>(sql`
+        select t.id, t.code, t.name,
+          coalesce((select array_agg(a.org_type_id::text)
+            from user_type_allowed_org_types a
+            where a.tenant_id = t.tenant_id and a.user_type_id = t.id), '{}')
+            as allowed_org_type_ids
+        from user_types t
+        where t.tenant_id = ${principal.tenantId} and t.enabled and not t.is_system
+        order by t.sort_order, t.code`)
+    ).rows
+    return {
+      nodes: nodes.slice(0, limit).map((row) => ({
+        orgNodeId: row.id,
+        name: row.name,
+        depth: row.depth,
+        orgTypeId: row.org_type_id,
+        manageable: row.manageable,
+      })),
+      truncated: nodes.length > limit,
+      userTypes: userTypes.map((row) => ({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        allowedOrgTypeIds: row.allowed_org_type_ids,
+      })),
+    }
+  }
+
+  // A user type confers no authority, so handing one out is not a grant and
+  // needs no escalation check — that was only ever true while types carried
+  // roles. What it does decide is where the person may stand, and the
+  // platform's own account type is not something an ordinary administrator
+  // hands to anyone.
+  private async assertMayAssignType(
+    tx: Tx,
+    actor: Principal | undefined,
+    type: { id: string; code: string; is_system: boolean },
+  ) {
+    if (!actor) return
+    if (type.is_system) {
+      throw new AccessDeniedError('a system user type is provisioned, not assigned')
+    }
+  }
+
+  // Where a kind of person may stand. A type with no declared org types is
+  // unconstrained, which is what an existing tenant has before it configures
+  // any — silently refusing every placement would be a worse answer than
+  // leaving the rule unstated.
+  private async assertPlacementAllowed(
+    tx: Tx,
+    tenantId: string,
+    userTypeId: string,
+    orgNodeId: string,
+  ) {
+    const row = (
+      await tx.execute<{ allowed: boolean; declared: number }>(sql`
+        select
+          exists (
+            select 1 from user_type_allowed_org_types a
+            join org_nodes n on n.tenant_id = a.tenant_id and n.org_type_id = a.org_type_id
+            where a.tenant_id = ${tenantId} and a.user_type_id = ${userTypeId}
+              and n.id = ${orgNodeId}
+          ) as allowed,
+          (select count(*)::int from user_type_allowed_org_types a
+           where a.tenant_id = ${tenantId} and a.user_type_id = ${userTypeId}) as declared`)
+    ).rows[0]!
+    if (row.declared === 0 || row.allowed) return
+    throw iamErrors.create('USER_TYPE_PLACEMENT_NOT_ALLOWED')
+  }
+
+  // which org types this kind of person may stand at, replaced as a set
+  syncUserTypeOrgTypes(
+    tenantId: string,
+    userTypeId: string,
+    orgTypeIds: readonly string[],
+    expectedVersion: number,
+  ): Promise<number> {
+    return this.write(async (tx) => {
+      await this.lockTenant(tx, tenantId)
+      const type = (
+        await tx.execute<{ id: string; version: number }>(sql`
+          select id, version from user_types
+          where tenant_id = ${tenantId} and id = ${userTypeId} for update`)
+      ).rows[0]
+      if (!type) throw iamErrors.create('USER_TYPE_NOT_FOUND')
+      if (type.version !== expectedVersion) {
+        throw iamErrors.create('USER_TYPE_VERSION_CONFLICT', { currentVersion: type.version })
+      }
+      const wanted = [...new Set(orgTypeIds)]
+      const list = sql.raw(uuidArray(wanted))
+      await tx.execute(sql`
+        delete from user_type_allowed_org_types
+        where tenant_id = ${tenantId} and user_type_id = ${type.id}
+          and org_type_id <> all(${list})`)
+      if (wanted.length > 0) {
+        const found = (
+          await tx.execute<{ count: number }>(sql`
+            select count(*)::int as count from org_types
+            where tenant_id = ${tenantId} and id = any(${list})`)
+        ).rows[0]!.count
+        if (found !== wanted.length) throw iamErrors.create('USER_TYPE_ORG_TYPE_NOT_FOUND')
+        await tx.execute(sql`
+          insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
+          select ${tenantId}, ${type.id}, id from unnest(${list}) as id
+          on conflict do nothing`)
+      }
+      // narrowing must not leave people standing where their type no longer
+      // permits; the count says how many would have to move first
+      if (wanted.length > 0) {
+        const stranded = (
+          await tx.execute<{ count: number }>(sql`
+            select count(*)::int as count from users u
+            join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+            where u.tenant_id = ${tenantId} and u.user_type_id = ${type.id}
+              and not exists (
+                select 1 from user_type_allowed_org_types a
+                where a.tenant_id = u.tenant_id and a.user_type_id = u.user_type_id
+                  and a.org_type_id = n.org_type_id)`)
+        ).rows[0]!.count
+        if (stranded > 0) {
+          throw iamErrors.create('USER_TYPE_PLACEMENT_IN_USE', { userCount: stranded })
+        }
+      }
+      await tx.execute(sql`
+        update user_types set version = version + 1, updated_at = now()
+        where tenant_id = ${tenantId} and id = ${type.id}`)
+      return type.version + 1
+    })
   }
 
   createUser(
@@ -417,7 +522,9 @@ export class IamService {
       await this.assertManagesNode(tx, actor, input.primaryOrgNodeId)
       const type = await this.requireUserType(tx, tenantId, input.userTypeId)
       if (!type.enabled) throw iamErrors.create('USER_TYPE_DISABLED')
+      await this.assertMayAssignType(tx, actor, type)
       await this.requireOrgNode(tx, tenantId, input.primaryOrgNodeId)
+      await this.assertPlacementAllowed(tx, tenantId, type.id, input.primaryOrgNodeId)
       const created = await tx.execute<{ id: string }>(sql`
         insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
         values (${tenantId}, ${input.displayName}, ${type.id}, ${input.primaryOrgNodeId},
@@ -445,6 +552,9 @@ export class IamService {
       if (changingType) {
         const type = await this.requireUserType(tx, tenantId, fields.userTypeId!)
         if (!type.enabled) throw iamErrors.create('USER_TYPE_DISABLED')
+        await this.assertMayAssignType(tx, actor, type)
+        // the new type must also permit where this person already stands
+        await this.assertPlacementAllowed(tx, tenantId, type.id, user.primary_org_node_id)
         const blocking = (
           await tx.execute<{ count: number }>(sql`
             select count(*)::int as count
@@ -482,6 +592,8 @@ export class IamService {
       await this.assertManagesNode(tx, actor, user.primary_org_node_id)
       await this.assertManagesNode(tx, actor, primaryOrgNodeId)
       await this.requireOrgNode(tx, tenantId, primaryOrgNodeId)
+      // a transfer may not put someone where their kind of person may not be
+      await this.assertPlacementAllowed(tx, tenantId, user.user_type_id, primaryOrgNodeId)
       await tx.execute(sql`
         update users set primary_org_node_id = ${primaryOrgNodeId}, updated_at = now()
         where tenant_id = ${tenantId} and id = ${user.id}`)
@@ -518,8 +630,8 @@ export class IamService {
 
   private async requireUserType(tx: Tx, tenantId: string, userTypeId: string) {
     const row = (
-      await tx.execute<{ id: string; enabled: boolean; is_system: boolean }>(sql`
-        select id, enabled, is_system from user_types
+      await tx.execute<{ id: string; code: string; enabled: boolean; is_system: boolean }>(sql`
+        select id, code, enabled, is_system from user_types
         where tenant_id = ${tenantId} and id = ${userTypeId}`)
     ).rows[0]
     if (!row) throw iamErrors.create('USER_TYPE_NOT_FOUND')
@@ -543,6 +655,19 @@ export class IamService {
     ).rows[0]
     if (!row) throw iamErrors.create('USER_PLACEMENT_NOT_FOUND')
   }
+}
+
+// uuid lists reach postgres as an array literal rather than a joined string,
+// so an empty set stays an empty array. Every id is re-validated: these come
+// from request input, and sql.raw does not parameterize.
+function uuidArray(ids: readonly string[]): string {
+  const unique = [...new Set(ids)]
+  for (const id of unique) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw iamErrors.create('USER_TYPE_ORG_TYPE_NOT_FOUND', `malformed identifier ${id}`)
+    }
+  }
+  return unique.length === 0 ? `'{}'::uuid[]` : `array['${unique.join("','")}']::uuid[]`
 }
 
 export { AccessDeniedError }

@@ -22,6 +22,15 @@ await ctx.loader.create({
   config: { path: configPath },
 })
 
+// Assembly is finished here, and readiness may only pass from here on. The
+// server binds its port during assembly, so without this the window between
+// "listening" and "every plugin loaded" answers ready with an empty probe
+// set — a load balancer would send traffic to an instance whose database
+// plugin had not started yet.
+ctx.inject(['server'], (host) => {
+  host.server.markAssemblyComplete()
+})
+
 let closing = false
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

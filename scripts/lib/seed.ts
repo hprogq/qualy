@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg'
 import { resolvePermissionCatalogs } from './permission-entries.ts'
 import { resolvePluginModuleUrl } from './schema-entries.ts'
+import { SYSTEM_ACCOUNT_USER_TYPE } from '@qualy/plugin-auth/constants'
 
 // tenant bootstrap in layers with different convergence semantics:
 //
@@ -63,12 +64,16 @@ const ORG_TYPE_RULES: [string, string][] = [
   ['specialization', 'class'],
 ]
 
-const ADMIN_USER_TYPE = { code: 'administrator', name: '管理员' }
+const ADMIN_USER_TYPE = { code: SYSTEM_ACCOUNT_USER_TYPE, name: '系统账户' }
 const LOCAL_PROVIDER = { code: 'local', name: '本地账号' }
 
+// Where each kind of person may stand. This is the whole of what a user type
+// decides: a student belongs to a class, a teacher to a grade, a
+// teaching-research office or a class. What either of them may DO is a role
+// they are granted, not something their type carries.
 const DEMO_USER_TYPES = [
-  { code: 'student', name: '学生', sortOrder: 10 },
-  { code: 'faculty', name: '教职工', sortOrder: 20 },
+  { code: 'student', name: '学生', sortOrder: 10, orgTypes: ['class'] },
+  { code: 'faculty', name: '教职工', sortOrder: 20, orgTypes: ['grade', 'department', 'class'] },
 ]
 
 const DEMO_ORG_NODES = [
@@ -81,15 +86,18 @@ const DEMO_ORG_NODES = [
 const DEMO_ORG_MANAGER = {
   code: 'org-manager',
   name: '组织管理员',
-  allowedUserTypes: ['administrator', 'faculty'],
+  // who may hold the duty, and where the duty applies — both independent of
+  // where the person themselves is placed. A teacher belonging to a grade
+  // can be the counsellor for a whole college.
+  allowedUserTypes: ['faculty'],
   allowedOrgTypes: ['college', 'major'],
   permissions: [
     'org.tree.read',
     'org.tree.manage',
     'auth.user.read',
     'auth.user.manage',
-    'rbac.assignment.read',
-    'rbac.assignment.manage',
+    'iam.grant.read',
+    'iam.grant.manage',
   ],
 }
 
@@ -98,7 +106,7 @@ const DEMO_USERS = [
     identifier: 'manager',
     displayName: '示例辅导员',
     userType: 'faculty',
-    org: 'software-college',
+    org: 'grade-2023',
   },
   { identifier: 'student', displayName: '示例学生', userType: 'student', org: 'class-2023-1' },
 ]
@@ -120,98 +128,87 @@ async function provisionRbac(
   for (const { plugin, rows } of await permissionCatalog()) {
     for (const row of rows) {
       const inserted = await ctx.client.query(
-        `insert into permissions (code, plugin, name, description, group_key, scope,
-           grant_to_user_type, grant_to_role, default_tenant_admin)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `insert into permissions (code, plugin, name, description, group_key, target_kind)
+         values ($1, $2, $3, $4, $5, $6)
          on conflict (code) do nothing`,
-        [
-          row.code,
-          plugin,
-          row.name,
-          row.description ?? null,
-          row.groupKey ?? null,
-          row.scope,
-          row.grantToUserType,
-          row.grantToRole,
-          row.defaultTenantAdmin,
-        ],
+        [row.code, plugin, row.name, row.description ?? null, row.groupKey ?? null, row.target],
       )
       report.created.permissions += inserted.rowCount ?? 0
       if ((inserted.rowCount ?? 0) === 0) {
         // stable platform semantics on existing rows, same rule as the
-        // runtime registry (changed meaning or ownership needs a new code)
+        // runtime registry: changed ownership or calling convention needs a
+        // new code, because live grants already assume the old one
         const existing = (
           await ctx.client.query(
-            `select plugin, scope, grant_to_user_type, grant_to_role, default_tenant_admin
-             from permissions where code = $1`,
+            `select plugin, target_kind from permissions where code = $1`,
             [row.code],
           )
         ).rows[0]
-        if (existing.plugin !== plugin) drift(`permission ${row.code}`, 'plugin', plugin, existing.plugin)
-        if (existing.scope !== row.scope) drift(`permission ${row.code}`, 'scope', row.scope, existing.scope)
-        if (existing.grant_to_user_type !== row.grantToUserType) {
-          drift(`permission ${row.code}`, 'grant_to_user_type', row.grantToUserType, existing.grant_to_user_type)
+        if (existing.plugin !== plugin) {
+          drift(`permission ${row.code}`, 'plugin', plugin, existing.plugin)
         }
-        if (existing.grant_to_role !== row.grantToRole) {
-          drift(`permission ${row.code}`, 'grant_to_role', row.grantToRole, existing.grant_to_role)
-        }
-        if (existing.default_tenant_admin !== row.defaultTenantAdmin) {
-          drift(`permission ${row.code}`, 'default_tenant_admin', row.defaultTenantAdmin, existing.default_tenant_admin)
+        if (existing.target_kind !== row.target) {
+          drift(`permission ${row.code}`, 'target_kind', row.target, existing.target_kind)
         }
       }
     }
   }
 
+  // The administrator role holds every capability that currently exists,
+  // expressed once here instead of as a flag every plugin author has to
+  // remember on every permission they declare. A plugin added tomorrow is
+  // covered without touching this row.
   const roleInsert = await ctx.client.query(
-    `insert into roles (tenant_id, code, name, kind, is_system, assignable, enabled)
-     values ($1, $2, $3, 'tenant', true, true, true)
+    `insert into roles (tenant_id, code, name, kind, system_key, permission_mode,
+       status, assignable)
+     values ($1, $2, $3, 'tenant', 'tenant-admin', 'all-active', 'active', true)
      on conflict (tenant_id, code) do nothing`,
     [ctx.tenantId, TENANT_ADMIN_ROLE.code, TENANT_ADMIN_ROLE.name],
   )
   report.created.roles += roleInsert.rowCount ?? 0
   const role = (
     await ctx.client.query(
-      `select id, kind, is_system from roles where tenant_id = $1 and code = $2`,
+      `select id, kind, system_key, permission_mode, status from roles
+       where tenant_id = $1 and code = $2`,
       [ctx.tenantId, TENANT_ADMIN_ROLE.code],
     )
   ).rows[0]
   if (roleInsert.rowCount === 0) {
     if (role.kind !== 'tenant') drift('role tenant-admin', 'kind', 'tenant', role.kind)
-    if (role.is_system !== true) drift('role tenant-admin', 'is_system', true, role.is_system)
+    if (role.system_key !== 'tenant-admin') {
+      drift('role tenant-admin', 'system_key', 'tenant-admin', role.system_key)
+    }
+    if (role.permission_mode !== 'all-active') {
+      drift('role tenant-admin', 'permission_mode', 'all-active', role.permission_mode)
+    }
+    if (role.status !== 'active') drift('role tenant-admin', 'status', 'active', role.status)
   }
 
-  // every defaultTenantAdmin permission joins the system role (the runtime
-  // registry keeps doing this idempotently for future plugins)
-  const mapped = await ctx.client.query(
-    `insert into role_permissions (tenant_id, role_id, permission_id)
-     select $1, $2, p.id from permissions p where p.default_tenant_admin
-     on conflict do nothing`,
-    [ctx.tenantId, role.id],
-  )
-  report.created.rolePermissions += mapped.rowCount ?? 0
 
-  // administrators keep portal access even without any role assignment
-  const typeGrants = await ctx.client.query(
-    `insert into user_type_permissions (tenant_id, user_type_id, permission_id)
-     select $1, $2, p.id from permissions p
-     where p.grant_to_user_type and p.code = 'auth.portal.access'
-     on conflict do nothing`,
-    [ctx.tenantId, adminTypeId],
-  )
-  report.created.userTypeGrants += typeGrants.rowCount ?? 0
-
-  const root = (
-    await ctx.client.query(`select id from org_nodes where tenant_id = $1 and parent_id is null`, [
-      ctx.tenantId,
-    ])
+  // a tenant role reaches the whole tenant, so the grant carries no node:
+  // pinning it to the root with subtree coverage was a fiction every
+  // downstream query had to keep up
+  // where each kind of person may stand. The system account belongs at the
+  // root; the tenant configures the rest for its own types.
+  const rootType = (
+    await ctx.client.query(
+      `select org_type_id from org_nodes where tenant_id = $1 and parent_id is null`,
+      [ctx.tenantId],
+    )
   ).rows[0]
-  const assignment = await ctx.client.query(
-    `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
-     values ($1, $2, $3, $4, 'subtree')
-     on conflict do nothing`,
-    [ctx.tenantId, adminUserId, role.id, root.id],
+  await ctx.client.query(
+    `insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
+     values ($1, $2, $3) on conflict do nothing`,
+    [ctx.tenantId, adminTypeId, rootType.org_type_id],
   )
-  report.created.assignments += assignment.rowCount ?? 0
+
+  const grant = await ctx.client.query(
+    `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+     values ($1, $2, $3, null, null)
+     on conflict do nothing`,
+    [ctx.tenantId, adminUserId, role.id],
+  )
+  report.created.assignments += grant.rowCount ?? 0
 }
 
 export interface SeedOptions {
@@ -312,7 +309,8 @@ async function ensureUserType(
   report: SeedReport,
 ): Promise<string> {
   const inserted = await ctx.client.query(
-    `insert into user_types (tenant_id, code, name, sort_order, allow_local_login, is_system, enabled)
+    `insert into user_types (tenant_id, code, name, sort_order, allow_local_login, is_system,
+       enabled)
      values ($1, $2, $3, $4, $5, $6, true)
      on conflict (tenant_id, code) do nothing`,
     [
@@ -496,10 +494,16 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
 
   const demoTypeIds = new Map<string, string>()
   for (const type of DEMO_USER_TYPES) {
-    demoTypeIds.set(
-      type.code,
-      await ensureUserType(ctx, type, { allowLocalLogin: true, isSystem: false }, report),
-    )
+    const id = await ensureUserType(ctx, type, { allowLocalLogin: true, isSystem: false }, report)
+    demoTypeIds.set(type.code, id)
+    for (const orgTypeCode of type.orgTypes) {
+      await ctx.client.query(
+        `insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
+         select $1, $2, ot.id from org_types ot where ot.tenant_id = $1 and ot.code = $3
+         on conflict do nothing`,
+        [ctx.tenantId, id, orgTypeCode],
+      )
+    }
   }
 
   const provider = (
@@ -530,22 +534,11 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
     report.created.demoUsers += 1
   }
 
-  // demo user types may enter the portal
-  for (const typeId of demoTypeIds.values()) {
-    const granted = await ctx.client.query(
-      `insert into user_type_permissions (tenant_id, user_type_id, permission_id)
-       select $1, $2, p.id from permissions p
-       where p.grant_to_user_type and p.code = 'auth.portal.access'
-       on conflict do nothing`,
-      [ctx.tenantId, typeId],
-    )
-    report.created.userTypeGrants += granted.rowCount ?? 0
-  }
 
   // sample org role: applicability-constrained, permission-mapped, and the
   // demo manager holds it over the college subtree
   const roleInsert = await ctx.client.query(
-    `insert into roles (tenant_id, code, name, kind) values ($1, $2, $3, 'org')
+    `insert into roles (tenant_id, code, name, kind, status) values ($1, $2, $3, 'org', 'active')
      on conflict (tenant_id, code) do nothing`,
     [ctx.tenantId, DEMO_ORG_MANAGER.code, DEMO_ORG_MANAGER.name],
   )
@@ -592,7 +585,7 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
   ).rows[0]
   const college = nodes.get('software-college')!
   const assignment = await ctx.client.query(
-    `insert into user_role_assignments (tenant_id, user_id, role_id, org_node_id, scope)
+    `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
      values ($1, $2, $3, $4, 'subtree')
      on conflict do nothing`,
     [ctx.tenantId, manager.id, role.id, college.id],

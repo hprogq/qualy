@@ -6,17 +6,11 @@ export const permissions = [
   {
     code: 'org.tree.read',
     name: '查看组织架构',
-    scope: 'org',
-    grantToUserType: false,
-    grantToRole: true,
-    defaultTenantAdmin: true,
+    target: 'org-node',
   },
   {
     code: 'org.tree.manage',
     name: '管理组织架构',
-    scope: 'org',
-    grantToUserType: false,
-    grantToRole: true,
-    defaultTenantAdmin: true,
+    target: 'org-node',
   },
 ] as const satisfies readonly PermissionDefinition[]

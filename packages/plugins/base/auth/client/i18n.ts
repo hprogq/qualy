@@ -17,10 +17,14 @@ const userTypeLastForRoleMessage = defineMessage<{ roleCount: number }>()({
   defaultMessage:
     '{roleCount, plural, one {# role allows} other {# roles allow}} this user type and no other.',
 })
-const permissionNotGrantableMessage = defineMessage<{ count: number }>()({
-  id: 'auth/error/permission-not-grantable',
+const placementCountMessage = defineMessage<{ count: number }>()({
+  id: 'auth/user-types/placement-count',
+  defaultMessage: '{count, plural, one {# node type} other {# node types}}',
+})
+const placementInUseMessage = defineMessage<{ userCount: number }>()({
+  id: 'auth/error/user-type-placement-in-use',
   defaultMessage:
-    '{count, plural, one {# permission cannot} other {# permissions cannot}} be granted this way.',
+    '{userCount, plural, one {# user stands} other {# users stand}} where this change would no longer allow.',
 })
 const assignmentIncompatibleMessage = defineMessage<{ assignmentCount: number }>()({
   id: 'auth/error/assignment-incompatible',
@@ -73,6 +77,10 @@ const i18n = definePluginMessages({
     placementSection: { id: 'auth/users/placement', defaultMessage: 'Organization placement' },
     grantsSection: { id: 'auth/users/grants', defaultMessage: 'Role grants' },
     grantsEmpty: { id: 'auth/users/grants-empty', defaultMessage: 'No role grants.' },
+    tenantWideGrant: {
+      id: 'auth/users/grant-tenant-wide',
+      defaultMessage: 'across the whole tenant',
+    },
     grantsHint: {
       id: 'auth/users/grants-hint',
       defaultMessage: 'Only grants anchored where you administer are shown and editable.',
@@ -103,7 +111,11 @@ const i18n = definePluginMessages({
     loginChannels: { id: 'auth/field/login-channels', defaultMessage: 'Sign-in channels' },
     allowLocalLogin: { id: 'auth/field/allow-local-login', defaultMessage: 'Password sign-in' },
     allowSsoLogin: { id: 'auth/field/allow-sso-login', defaultMessage: 'Single sign-on' },
-    permissionsLegend: { id: 'auth/field/permissions', defaultMessage: 'Tenant permissions' },
+    allowedOrgTypesLegend: {
+      id: 'auth/field/allowed-org-types',
+      defaultMessage: 'May be placed on these kinds of organization node',
+    },
+    placementCount: placementCountMessage,
     noOptions: { id: 'auth/field/no-options', defaultMessage: 'Nothing to choose from yet.' },
     noAnchors: {
       id: 'auth/users/no-anchors',
@@ -156,6 +168,26 @@ const i18n = definePluginMessages({
       message: userTypeLastForRoleMessage,
       values: (data) => ({ roleCount: data.roleCount }),
     },
+    RECOVERY_CHANNEL_REQUIRED: {
+      id: 'auth/error/recovery-channel-required',
+      defaultMessage: 'The administrator user type must keep password sign-in.',
+    },
+    USER_TYPE_PLACEMENT_NOT_ALLOWED: {
+      id: 'auth/error/user-type-placement-not-allowed',
+      defaultMessage: 'That kind of person may not be placed on this kind of node.',
+    },
+    USER_TYPE_PLACEMENT_IN_USE: {
+      message: placementInUseMessage,
+      values: (data) => ({ userCount: data.userCount }),
+    },
+    USER_TYPE_VERSION_CONFLICT: {
+      id: 'auth/error/user-type-version-conflict',
+      defaultMessage: 'The user type changed since you opened it. Reload and try again.',
+    },
+    USER_TYPE_ORG_TYPE_NOT_FOUND: {
+      id: 'auth/error/user-type-org-type-not-found',
+      defaultMessage: 'Organization type not found.',
+    },
     USER_TYPE_DISABLED: {
       id: 'auth/error/user-type-disabled',
       defaultMessage: 'That user type is disabled.',
@@ -172,10 +204,6 @@ const i18n = definePluginMessages({
     USER_PLACEMENT_NOT_FOUND: {
       id: 'auth/error/user-placement-not-found',
       defaultMessage: 'That organization node does not exist in this tenant.',
-    },
-    PERMISSION_NOT_GRANTABLE: {
-      message: permissionNotGrantableMessage,
-      values: (data) => ({ count: data.rejected.length }),
     },
     ASSIGNMENT_INCOMPATIBLE: {
       message: assignmentIncompatibleMessage,

@@ -1,13 +1,8 @@
 import { sql } from 'drizzle-orm'
 import type { Context } from 'cordis'
-import type { PermissionDefinition } from '@qualy/rbac-contract'
+import type { ActivePermission, PermissionDefinition, PermissionTarget } from '@qualy/rbac-contract'
 
 const PERMISSION_CODE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/
-
-interface ActiveDefinition extends PermissionDefinition {
-  plugin: string
-  registration: symbol
-}
 
 interface Registration {
   plugin: string
@@ -18,17 +13,27 @@ interface Registration {
   error?: Error
 }
 
-// the active in-memory permission catalog plus its database mirror. A
-// registration starts pending and its codes become visible to authorization
-// only after the database row is inserted-or-verified (owner, scope, both
-// grant channels, defaultTenantAdmin): there is no window where an
-// unverified definition can authorize anything, and two instances racing on
-// the same code converge on the stored row (insert, then unconditionally
-// re-read). Drift disables the affected code (fail closed, per code to keep
-// the blast radius small) and surfaces through whenSynced() — changed
-// meaning or changed ownership requires a new code or an explicit migration.
+interface RegisteredPermission extends ActivePermission {
+  registration: symbol
+}
+
+// The active catalog and its database mirror.
+//
+// A registration starts pending and its codes become visible to
+// authorization only after the stored row is inserted-or-verified: there is
+// no window where an unverified definition authorizes anything, and two
+// instances racing on the same code converge on the stored row (insert,
+// then unconditionally re-read). Drift disables the affected code — fail
+// closed, per code, to keep the blast radius small — and surfaces through
+// whenSynced(). Changed meaning or changed ownership needs a new code or an
+// explicit migration.
+//
+// Being in this map is the only thing that makes a capability real. There is
+// no enabled column an administrator could switch off: a permission whose
+// plugin is not loaded simply is not here, and a code that is not here
+// authorizes nothing and is never offered as something to grant.
 export class PermissionRegistry {
-  private active = new Map<string, ActiveDefinition>()
+  private active = new Map<string, RegisteredPermission>()
   private registrations = new Map<symbol, Registration>()
   // serial database queue in a stable box (traceable-proxy discipline)
   private queue: { tail: Promise<void> } = { tail: Promise.resolve() }
@@ -39,16 +44,15 @@ export class PermissionRegistry {
     return this.active.has(code)
   }
 
-  get(code: string): ActiveDefinition | undefined {
+  get(code: string): RegisteredPermission | undefined {
     return this.active.get(code)
   }
 
-  // the catalog a permission picker may offer: verified, active definitions
-  // only. A row left in the table by a plugin that is no longer loaded is
-  // deliberately absent — offering it would let an administrator grant a
-  // code nothing can honour.
-  list(): ActiveDefinition[] {
-    return [...this.active.values()].sort((a, b) => a.code.localeCompare(b.code))
+  list(filter?: { target?: PermissionTarget; plugin?: string }): ActivePermission[] {
+    return [...this.active.values()]
+      .filter((entry) => !filter?.target || entry.target === filter.target)
+      .filter((entry) => !filter?.plugin || entry.plugin === filter.plugin)
+      .sort((a, b) => a.code.localeCompare(b.code))
   }
 
   validate(definitions: readonly PermissionDefinition[]) {
@@ -57,15 +61,10 @@ export class PermissionRegistry {
       if (!PERMISSION_CODE.test(def.code)) {
         throw new Error(`permission code "${def.code}" must be dotted lower-case`)
       }
-      if (def.grantToUserType && def.scope !== 'tenant') {
-        throw new Error(`permission ${def.code}: only tenant scope may grant to user types`)
+      if (def.target !== 'tenant' && def.target !== 'org-node') {
+        throw new Error(`permission ${def.code}: target must be 'tenant' or 'org-node'`)
       }
-      if (def.defaultTenantAdmin && !def.grantToRole) {
-        throw new Error(`permission ${def.code}: defaultTenantAdmin requires grantToRole`)
-      }
-      if (seen.has(def.code)) {
-        throw new Error(`permission catalog declares ${def.code} twice`)
-      }
+      if (seen.has(def.code)) throw new Error(`permission catalog declares ${def.code} twice`)
       seen.add(def.code)
     }
   }
@@ -73,7 +72,7 @@ export class PermissionRegistry {
   activate(plugin: string, definitions: readonly PermissionDefinition[]): symbol {
     for (const def of definitions) {
       for (const existing of this.registrations.values()) {
-        if (existing.definitions.some((d) => d.code === def.code)) {
+        if (existing.definitions.some((other) => other.code === def.code)) {
           throw new Error(
             `permission code conflict: ${def.code} (already registered via ${existing.plugin})`,
           )
@@ -127,32 +126,20 @@ export class PermissionRegistry {
     const rejected: string[] = []
     for (const def of entry.definitions) {
       await db.execute(sql`
-        insert into permissions (code, plugin, name, description, group_key, scope,
-          grant_to_user_type, grant_to_role, default_tenant_admin)
+        insert into permissions (code, plugin, name, description, group_key, target_kind)
         values (${def.code}, ${entry.plugin}, ${def.name},
-          ${def.description ?? null}, ${def.groupKey ?? null}, ${def.scope},
-          ${def.grantToUserType}, ${def.grantToRole}, ${def.defaultTenantAdmin})
+          ${def.description ?? null}, ${def.groupKey ?? null}, ${def.target})
         on conflict (code) do nothing`)
       // unconditional re-read: whether this instance inserted the row or
       // lost the race to another one, the stored row is the single truth
       const row = (
-        await db.execute<{
-          plugin: string
-          scope: string
-          grant_to_user_type: boolean
-          grant_to_role: boolean
-          default_tenant_admin: boolean
-        }>(sql`select plugin, scope, grant_to_user_type, grant_to_role, default_tenant_admin
-               from permissions where code = ${def.code}`)
+        await db.execute<{ plugin: string; target_kind: string }>(
+          sql`select plugin, target_kind from permissions where code = ${def.code}`,
+        )
       ).rows[0]
-      if (
-        !row ||
-        row.plugin !== entry.plugin ||
-        row.scope !== def.scope ||
-        row.grant_to_user_type !== def.grantToUserType ||
-        row.grant_to_role !== def.grantToRole ||
-        row.default_tenant_admin !== def.defaultTenantAdmin
-      ) {
+      // ownership and calling convention are the stable semantics; a change
+      // in either needs a new code, because live grants already assume them
+      if (!row || row.plugin !== entry.plugin || row.target_kind !== def.target) {
         this.ctx.logger.error(
           'permission %s definition conflicts with its database row, disabling it ' +
             '(changed semantics or ownership need a new code)',
@@ -161,26 +148,11 @@ export class PermissionRegistry {
         rejected.push(def.code)
         continue
       }
+      // display text follows the plugin freely: it decides nothing
       await db.execute(sql`
         update permissions set name = ${def.name}, description = ${def.description ?? null},
           group_key = ${def.groupKey ?? null}, updated_at = now()
         where code = ${def.code}`)
-      if (def.defaultTenantAdmin) {
-        // every tenant's system tenant-admin role picks the code up
-        // idempotently; the row is re-pinned to the verified semantics so a
-        // change between verification and this write maps nothing
-        await db.execute(sql`
-          insert into role_permissions (tenant_id, role_id, permission_id)
-          select r.tenant_id, r.id, p.id
-          from roles r, permissions p
-          where r.code = 'tenant-admin' and r.is_system
-            and p.code = ${def.code} and p.plugin = ${entry.plugin}
-            and p.scope = ${def.scope}
-            and p.grant_to_user_type = ${def.grantToUserType}
-            and p.grant_to_role = ${def.grantToRole}
-            and p.default_tenant_admin
-          on conflict do nothing`)
-      }
       // activation only after full verification, and only while the
       // registration is still alive (a reload may have disposed it mid-sync)
       if (this.registrations.get(registration) === entry) {

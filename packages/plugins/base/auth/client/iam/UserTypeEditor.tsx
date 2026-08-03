@@ -29,7 +29,7 @@ export function UserTypeEditor({
   const [name, setName] = useState(userType.name)
   const [description, setDescription] = useState(userType.description ?? '')
   const [channels, setChannels] = useState<string[]>([])
-  const [permissions, setPermissions] = useState<string[]>(userType.permissions)
+  const [orgTypeIds, setOrgTypeIds] = useState<string[]>(userType.allowedOrgTypeIds)
 
   useEffect(() => {
     setName(userType.name)
@@ -38,18 +38,18 @@ export function UserTypeEditor({
       ...(userType.allowLocalLogin ? ['local'] : []),
       ...(userType.allowSsoLogin ? ['sso'] : []),
     ])
-    setPermissions(userType.permissions)
+
     setFeedback(null)
     setSaved(false)
   }, [userType])
 
-  // only tenant-scope codes that declare the user-type channel can ever be
-  // granted here, so the picker asks for exactly those
-  const catalog = useQuery(
-    orpc.access.listPermissions.queryOptions({
-      input: { scope: 'tenant', grantChannel: 'user-type' },
-    }),
-  )
+  // A user type decides where its people may stand, and nothing about what
+  // they may do — that is what roles are for. So the only set it edits is
+  // the org types it admits.
+  const catalog = useQuery(orpc.access.getRoleOptions.queryOptions())
+  useEffect(() => {
+    setOrgTypeIds(userType.allowedOrgTypeIds)
+  }, [userType])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
   const run = <Variables,>(call: (input: Variables) => Promise<unknown>) => ({
@@ -76,9 +76,13 @@ export function UserTypeEditor({
       }),
     ),
   )
-  const savePermissions = useMutation(
+  const saveOrgTypes = useMutation(
     run(() =>
-      api.identity.syncUserTypePermissions({ userTypeId: userType.id, codes: permissions }),
+      api.identity.syncUserTypeOrgTypes({
+        userTypeId: userType.id,
+        expectedVersion: userType.version,
+        orgTypeIds,
+      }),
     ),
   )
   const setStatus = useMutation(
@@ -190,22 +194,22 @@ export function UserTypeEditor({
       >
         <div className="space-y-2">
           <CheckboxGroup
-            legend={format(m.permissionsLegend)}
+            legend={format(m.allowedOrgTypesLegend)}
             emptyLabel={format(m.noOptions)}
             disabled={!canManage}
-            options={(catalog.data?.permissions ?? []).map((permission) => ({
-              value: permission.code,
-              label: permission.name,
-              hint: permission.code,
+            options={(catalog.data?.orgTypes ?? []).map((type) => ({
+              value: type.id,
+              label: type.name,
+              hint: type.code,
             }))}
-            selected={permissions}
-            onChange={setPermissions}
+            selected={orgTypeIds}
+            onChange={setOrgTypeIds}
           />
           <Button
             size="sm"
             variant="outline"
-            disabled={!canManage || savePermissions.isPending}
-            onClick={() => savePermissions.mutate(undefined as never)}
+            disabled={!canManage || saveOrgTypes.isPending}
+            onClick={() => saveOrgTypes.mutate(undefined as never)}
           >
             {format(m.save)}
           </Button>

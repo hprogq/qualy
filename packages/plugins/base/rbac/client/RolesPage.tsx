@@ -16,7 +16,7 @@ export default function RolesPage() {
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('role')
 
-  const roles = useQuery(orpc.access.listRoles.queryOptions())
+  const roles = useQuery(orpc.access.listRoles.queryOptions({ input: {} }))
   const canManage = roles.data?.capabilities.canManage ?? false
   const current = roles.data?.roles.find((role) => role.id === selected)
 
@@ -48,9 +48,14 @@ export default function RolesPage() {
                       <span className="ml-2 text-xs text-muted-foreground">
                         {format(role.kind === 'tenant' ? m.tenantKind : m.orgKind)}
                       </span>
-                      {role.isSystem && (
+                      {role.systemKey !== null && (
                         <span className="ml-2 text-xs text-muted-foreground">
                           {format(m.systemBadge)}
+                        </span>
+                      )}
+                      {role.status === 'draft' && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {format(m.draftBadge)}
                         </span>
                       )}
                       {role.status === 'disabled' && (
@@ -65,7 +70,7 @@ export default function RolesPage() {
                       )}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {format(m.assignmentCount, { count: role.assignmentCount })}
+                      {format(m.assignmentCount, { count: role.grantCount })}
                       {role.permissions.length > 0 && ` · ${role.permissions.join(', ')}`}
                     </span>
                   </button>

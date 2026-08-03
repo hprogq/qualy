@@ -3,7 +3,7 @@ import { del, get, okOutput, pageInput, pageOutput, patch, post, put } from '@qu
 import { accessInvariantErrors } from '@qualy/rbac-contract'
 import { accessErrors as e } from './errors.ts'
 
-// Roles, the permission catalog and the grants that connect them to people.
+// Roles, the capability catalog, and the grants that connect them to people.
 // The paths live under /iam because that is the product domain a tenant
 // administers; rbac is how it happens to be implemented, and an
 // implementation choice does not belong in a url.
@@ -11,21 +11,26 @@ import { accessErrors as e } from './errors.ts'
 const code = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase kebab-case').max(63)
 const roleName = z.string().trim().min(1).max(100)
 const description = z.string().max(500)
+// required on every set replacement: an optional concurrency token is one a
+// client simply omits, which is last-write-wins with extra steps
+const expectedVersion = z.number().int().min(1)
+const versionOutput = z.object({ version: z.number().int() })
 
-// two states today, but a url that says `status` can grow a third without a
-// second endpoint, which `enabled=false` never could
-export const resourceStatus = z.enum(['active', 'disabled'])
-export type ResourceStatus = z.infer<typeof resourceStatus>
+export const permissionTarget = z.enum(['tenant', 'org-node'])
+export const roleKind = z.enum(['tenant', 'org'])
+export const roleStatus = z.enum(['draft', 'active', 'disabled'])
+export const coverage = z.enum(['self', 'subtree'])
 
+// what the capability protects, and therefore how it is checked. Read-only:
+// it is the calling convention of the code that declares it, and an
+// administrator changing it would only break the check, never redirect it.
 export const permissionDto = z.object({
   code: z.string(),
+  plugin: z.string(),
   name: z.string(),
   description: z.string().nullable(),
   groupKey: z.string().nullable(),
-  plugin: z.string(),
-  scope: z.enum(['tenant', 'org']),
-  grantToUserType: z.boolean(),
-  grantToRole: z.boolean(),
+  target: permissionTarget,
 })
 
 export const roleDto = z.object({
@@ -33,43 +38,71 @@ export const roleDto = z.object({
   code: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  kind: z.enum(['tenant', 'org']),
-  isSystem: z.boolean(),
+  kind: roleKind,
+  status: roleStatus,
+  // 'all-active' is the canonical administrator: it holds every capability
+  // that currently exists, which is why no plugin declares a default-admin
+  // flag and why nothing may edit its permissions
+  holdsEveryPermission: z.boolean(),
+  systemKey: z.string().nullable(),
   assignable: z.boolean(),
-  status: resourceStatus,
-  assignmentCount: z.number().int(),
+  version: z.number().int(),
+  grantCount: z.number().int(),
+  // configured is what the role names; active is what the registry currently
+  // serves. A code left behind by an unloaded plugin is still configured and
+  // authorizes nothing, and presenting it as effective would say the role
+  // grants something it does not.
   permissions: z.array(z.string()),
+  unavailablePermissions: z.array(z.string()),
   allowedUserTypeIds: z.array(z.string()),
   allowedOrgTypeIds: z.array(z.string()),
 })
 
-export const roleAssignmentDto = z.object({
+// a tenant role reaches the whole tenant and carries no node; an org role is
+// anchored and carries both
+export const grantTargetDto = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('tenant') }),
+  z.object({
+    kind: z.literal('org-node'),
+    orgNodeId: z.string(),
+    orgNodeName: z.string(),
+    coverage,
+  }),
+])
+
+export const grantInput = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('tenant') }),
+  z.object({ kind: z.literal('org-node'), orgNodeId: z.uuid(), coverage }),
+])
+
+export const roleGrantDto = z.object({
   id: z.string(),
   userId: z.string(),
   userDisplayName: z.string(),
   roleId: z.string(),
   roleCode: z.string(),
   roleName: z.string(),
-  orgNodeId: z.string(),
-  orgNodeName: z.string(),
-  scope: z.enum(['self', 'subtree']),
-  // whether this caller may change this particular grant; the page hides
-  // controls it could only ever be refused for
+  roleKind,
+  target: grantTargetDto,
+  // whether this caller may revoke this particular grant
   manageable: z.boolean(),
+})
+
+// why someone holds a capability. Naming roles and grants is more than an
+// ordinary administrator needs, so the endpoint that returns it has its own
+// permission.
+export const permissionSourceDto = z.object({
+  roleId: z.string(),
+  roleCode: z.string(),
+  grantId: z.string(),
+  target: grantTargetDto,
 })
 
 export type PermissionDto = z.infer<typeof permissionDto>
 export type RoleDto = z.infer<typeof roleDto>
-export type RoleAssignmentDto = z.infer<typeof roleAssignmentDto>
+export type RoleGrantDto = z.infer<typeof roleGrantDto>
+export type PermissionSourceDto = z.infer<typeof permissionSourceDto>
 
-const grantInput = z.object({
-  roleId: z.uuid(),
-  orgNodeId: z.uuid(),
-  scope: z.enum(['self', 'subtree']),
-})
-
-// a patch that changes nothing is a mistake, not a no-op that bumps a
-// timestamp; the shape says so instead of the handler discovering it
 const changed = <Shape extends z.ZodRawShape>(shape: Shape, keys: readonly (keyof Shape)[]) =>
   z.object(shape).refine(
     (value) => keys.some((key) => (value as Record<string, unknown>)[key as string] !== undefined),
@@ -77,11 +110,13 @@ const changed = <Shape extends z.ZodRawShape>(shape: Shape, keys: readonly (keyo
   )
 
 export const accessContract = {
+  // --- capability catalog (read only: plugins own it) ---
   listPermissions: get('/iam/permissions')
     .input(
       z.object({
-        scope: z.enum(['tenant', 'org']).optional(),
-        grantChannel: z.enum(['user-type', 'role']).optional(),
+        target: permissionTarget.optional(),
+        plugin: z.string().max(127).optional(),
+        search: z.string().max(100).optional(),
       }),
     )
     .output(z.object({ permissions: z.array(permissionDto) })),
@@ -97,27 +132,24 @@ export const accessContract = {
     }),
   ),
 
-  listRoles: get('/iam/roles').output(
-    z.object({
-      roles: z.array(roleDto),
-      capabilities: z.object({ canManage: z.boolean() }),
-    }),
-  ),
-  createOrgRole: post('/iam/roles')
-    .input(
+  // --- roles ---
+  listRoles: get('/iam/roles')
+    .input(z.object({ kind: roleKind.optional(), status: roleStatus.optional() }))
+    .output(
       z.object({
-        code,
-        name: roleName,
-        description: description.optional(),
-        // a role is created complete: an org role with no permissions and no
-        // eligibility is enabled, assignable and unable to do anything
-        permissionCodes: z.array(z.string()).max(200).optional(),
-        allowedUserTypeIds: z.array(z.uuid()).max(50).optional(),
-        allowedOrgTypeIds: z.array(z.uuid()).max(50).optional(),
+        roles: z.array(roleDto),
+        capabilities: z.object({ canManage: z.boolean(), canEscalate: z.boolean() }),
       }),
+    ),
+  // creates a draft. A role becomes usable through activation, which is
+  // where completeness is checked — demanding every decision here instead
+  // would make a partly-decided role impossible to save.
+  createRole: post('/iam/roles')
+    .input(
+      z.object({ code, name: roleName, description: description.optional(), kind: roleKind }),
     )
-    .errors(e.pick('ROLE_CONFLICT', 'ROLE_PERMISSION_NOT_GRANTABLE', 'ROLE_USER_TYPE_NOT_FOUND', 'ROLE_ORG_TYPE_NOT_FOUND'))
-    .output(z.object({ id: z.string() })),
+    .errors(e.pick('ROLE_CONFLICT'))
+    .output(z.object({ id: z.string(), status: roleStatus, version: z.number().int() })),
   getRole: get('/iam/roles/{roleId}')
     .input(z.object({ roleId: z.uuid() }))
     .errors(e.pick('ROLE_NOT_FOUND'))
@@ -127,6 +159,7 @@ export const accessContract = {
       changed(
         {
           roleId: z.uuid(),
+          expectedVersion,
           name: roleName.optional(),
           description: description.nullable().optional(),
           assignable: z.boolean().optional(),
@@ -134,24 +167,74 @@ export const accessContract = {
         ['name', 'description', 'assignable'],
       ),
     )
-    .errors(e.pick('ROLE_NOT_FOUND', 'ROLE_CONFLICT', 'ROLE_IS_SYSTEM'))
-    .output(okOutput),
+    .errors(e.pick('ROLE_NOT_FOUND', 'ROLE_CONFLICT', 'ROLE_IS_SYSTEM', 'ROLE_VERSION_CONFLICT'))
+    .output(versionOutput),
   setRoleStatus: put('/iam/roles/{roleId}/status')
-    .input(z.object({ roleId: z.uuid(), status: resourceStatus }))
-    .errors(e.pick('ROLE_NOT_FOUND', 'ROLE_IS_SYSTEM'))
-    .output(okOutput),
+    .input(
+      z.object({
+        roleId: z.uuid(),
+        status: z.enum(['active', 'disabled']),
+        expectedVersion,
+      }),
+    )
+    .errors({
+      ...e.pick(
+        'ROLE_NOT_FOUND',
+        'ROLE_IS_SYSTEM',
+        'ROLE_NOT_DRAFT',
+        'ROLE_INCOMPLETE',
+        'ROLE_ESCALATION_REFUSED',
+        'ROLE_VERSION_CONFLICT',
+      ),
+      ...accessInvariantErrors.pick('LAST_ADMINISTRATOR'),
+    })
+    .output(versionOutput),
+  getRolePermissions: get('/iam/roles/{roleId}/permissions')
+    .input(z.object({ roleId: z.uuid() }))
+    .errors(e.pick('ROLE_NOT_FOUND'))
+    .output(z.object({ codes: z.array(z.string()), version: z.number().int() })),
   syncRolePermissions: put('/iam/roles/{roleId}/permissions')
-    .input(z.object({ roleId: z.uuid(), codes: z.array(z.string()).max(200) }))
-    .errors(e.pick('ROLE_NOT_FOUND', 'ROLE_IS_SYSTEM', 'ROLE_PERMISSION_NOT_GRANTABLE'))
-    .output(okOutput),
+    .input(
+      z.object({
+        roleId: z.uuid(),
+        codes: z.array(z.string()).max(500),
+        expectedVersion,
+      }),
+    )
+    .errors({
+      ...e.pick(
+        'ROLE_NOT_FOUND',
+        'ROLE_IS_SYSTEM',
+        'ROLE_INCOMPLETE',
+        'ROLE_TARGET_MISMATCH',
+        'ROLE_ESCALATION_REFUSED',
+        'ROLE_VERSION_CONFLICT',
+        'PERMISSION_NOT_FOUND',
+      ),
+      ...accessInvariantErrors.pick('LAST_ADMINISTRATOR'),
+    })
+    .output(versionOutput),
+  getRoleEligibility: get('/iam/roles/{roleId}/eligibility')
+    .input(z.object({ roleId: z.uuid() }))
+    .errors(e.pick('ROLE_NOT_FOUND'))
+    .output(
+      z.object({
+        userTypeIds: z.array(z.string()),
+        orgTypeIds: z.array(z.string()),
+        version: z.number().int(),
+      }),
+    ),
   // which user types may hold the role, and at which org node types it may
   // be anchored — "allowed" said neither
   syncRoleEligibility: put('/iam/roles/{roleId}/eligibility')
     .input(
       z.object({
         roleId: z.uuid(),
-        userTypeIds: z.array(z.uuid()).max(50).optional(),
-        orgTypeIds: z.array(z.uuid()).max(50).optional(),
+        // a full replacement names both sets: omitting one and having it
+        // silently survive is how a "replace" quietly becomes a "merge"
+        userTypeIds: z.array(z.uuid()).max(50),
+        orgTypeIds: z.array(z.uuid()).max(50),
+        expectedVersion,
       }),
     )
     .errors(
@@ -161,35 +244,107 @@ export const accessContract = {
         'ROLE_NEEDS_ELIGIBILITY',
         'ROLE_USER_TYPE_NOT_FOUND',
         'ROLE_ORG_TYPE_NOT_FOUND',
-        'ASSIGNMENT_STRANDED',
+        'ROLE_VERSION_CONFLICT',
+        'GRANT_STRANDED',
+      ),
+    )
+    .output(versionOutput),
+  deleteRole: del('/iam/roles/{roleId}')
+    .input(z.object({ roleId: z.uuid(), expectedVersion }))
+    .errors(
+      e.pick(
+        'ROLE_NOT_FOUND',
+        'ROLE_IS_SYSTEM',
+        'ROLE_IN_USE',
+        'ROLE_VERSION_CONFLICT',
       ),
     )
     .output(okOutput),
-  deleteRole: del('/iam/roles/{roleId}')
-    .input(z.object({ roleId: z.uuid() }))
-    .errors(e.pick('ROLE_NOT_FOUND', 'ROLE_IS_SYSTEM', 'ROLE_IN_USE'))
-    .output(okOutput),
 
-  listRoleAssignments: get('/iam/role-assignments')
+  // --- grants ---
+  // Which roles this caller may actually grant to this person at this place.
+  // Every rule is re-checked on write; this exists so a screen does not have
+  // to reimplement eligibility and then disagree with the server about it.
+  getRoleGrantOptions: get('/iam/role-grant-options')
+    .input(
+      z.object({
+        userId: z.uuid(),
+        orgNodeId: z.uuid().optional(),
+        coverage: coverage.optional(),
+      }),
+    )
+    .errors(e.pick('GRANT_USER_NOT_FOUND', 'GRANT_NODE_NOT_FOUND'))
+    .output(
+      z.object({
+        roles: z.array(
+          z.object({
+            id: z.string(),
+            code: z.string(),
+            name: z.string(),
+            kind: roleKind,
+          }),
+        ),
+      }),
+    ),
+  listRoleGrants: get('/iam/role-grants')
     .input(z.object({ orgNodeId: z.uuid().optional(), ...pageInput }))
-    .output(pageOutput(roleAssignmentDto)),
-  getUserRoleAssignments: get('/iam/users/{userId}/role-assignments')
+    .output(pageOutput(roleGrantDto)),
+  getUserRoleGrants: get('/iam/users/{userId}/role-grants')
     .input(z.object({ userId: z.uuid() }))
-    .output(z.object({ assignments: z.array(roleAssignmentDto) })),
-  // the whole set, replaced: partial grant apis need their own copy of every
-  // eligibility and lockout rule, and copies drift
-  syncUserRoleAssignments: put('/iam/users/{userId}/role-assignments')
-    .input(z.object({ userId: z.uuid(), assignments: z.array(grantInput).max(50) }))
+    .output(z.object({ grants: z.array(roleGrantDto) })),
+  // One grant at a time. Replacing a whole set looked tidier until the set a
+  // caller could see was smaller than the set that existed: "replace with
+  // what I see" then silently proposed deleting what they could not.
+  createRoleGrant: post('/iam/role-grants')
+    .input(z.object({ userId: z.uuid(), roleId: z.uuid(), target: grantInput }))
     .errors({
       ...e.pick(
         'ROLE_NOT_FOUND',
-        'ASSIGNMENT_USER_NOT_FOUND',
-        'ASSIGNMENT_NODE_NOT_FOUND',
-        'ASSIGNMENT_NOT_ELIGIBLE',
+        'GRANT_EXISTS',
+        'GRANT_USER_NOT_FOUND',
+        'GRANT_NODE_NOT_FOUND',
+        'GRANT_NOT_ELIGIBLE',
+        'GRANT_ESCALATION_REFUSED',
         'TENANT_ADMIN_REQUIRED',
       ),
-      // raised by the shared invariant, which auth can trip too
+    })
+    .output(z.object({ id: z.string() })),
+  deleteRoleGrant: del('/iam/role-grants/{grantId}')
+    .input(z.object({ grantId: z.uuid() }))
+    .errors({
+      ...e.pick('GRANT_NOT_FOUND', 'TENANT_ADMIN_REQUIRED'),
       ...accessInvariantErrors.pick('LAST_ADMINISTRATOR'),
     })
     .output(okOutput),
+
+  // --- diagnostics ---
+  // why someone holds what they hold. Answering "allowed?" is easy; the
+  // reason is what makes a wrong answer fixable, and what an audit needs.
+  getUserEffectivePermissions: get('/iam/users/{userId}/effective-permissions')
+    .input(z.object({ userId: z.uuid(), orgNodeId: z.uuid().optional() }))
+    .errors(e.pick('GRANT_USER_NOT_FOUND'))
+    .output(
+      z.object({
+        permissions: z.array(
+          z.object({
+            code: z.string(),
+            name: z.string(),
+            target: permissionTarget,
+            sources: z.array(permissionSourceDto),
+          }),
+        ),
+      }),
+    ),
+  evaluateAccess: post('/iam/access-evaluations')
+    .input(
+      z.object({ userId: z.uuid(), permissionCode: z.string().max(127), orgNodeId: z.uuid().optional() }),
+    )
+    .errors(e.pick('GRANT_USER_NOT_FOUND', 'PERMISSION_NOT_FOUND', 'ACCESS_TARGET_REQUIRED'))
+    .output(
+      z.object({
+        allowed: z.boolean(),
+        target: permissionTarget,
+        sources: z.array(permissionSourceDto),
+      }),
+    ),
 }

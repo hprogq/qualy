@@ -1,4 +1,5 @@
 import { oc } from '@orpc/contract'
+import { ORPCError } from '@orpc/client'
 import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
 
@@ -194,35 +195,41 @@ const fromBase64Url = (value: string) => {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0))
 }
 
-export function encodeCursor(key: readonly (string | number)[]): string {
-  return toBase64Url(new TextEncoder().encode(JSON.stringify(key)))
+// The cursor carries a fingerprint of the query it came from, because a
+// cursor is only meaningful against the filter that produced it: resuming a
+// search for A with a cursor from a search for B silently skips or repeats
+// rows, and looks like data loss rather than misuse.
+export function encodeQueryCursor(
+  queryFingerprint: string,
+  key: readonly (string | number)[],
+): string {
+  return toBase64Url(
+    new TextEncoder().encode(JSON.stringify({ v: 1, q: queryFingerprint, k: key })),
+  )
 }
 
-// a malformed or foreign cursor yields undefined rather than throwing: the
-// caller then serves the first page, which is what a stale bookmark deserves
-export function decodeCursor(cursor: string | undefined, arity: number): string[] | undefined {
-  if (!cursor) return undefined
+// A cursor that cannot be read is the caller's error, answered as one. It
+// used to fall back to the first page, which turns "load more" into an
+// endless loop of the same rows and reports nothing wrong.
+export function decodeQueryCursor(
+  cursor: string | undefined,
+  queryFingerprint: string,
+  arity: number,
+): string[] | undefined {
+  if (cursor === undefined) return undefined
+  const reject = () => {
+    throw new ORPCError('BAD_REQUEST', { message: 'the pagination cursor is not usable here' })
+  }
+  let parsed: unknown
   try {
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(fromBase64Url(cursor)))
-    if (!Array.isArray(parsed) || parsed.length !== arity) return undefined
-    if (!parsed.every((part) => typeof part === 'string')) return undefined
-    return parsed as string[]
+    parsed = JSON.parse(new TextDecoder().decode(fromBase64Url(cursor)))
   } catch {
-    return undefined
+    return reject()
   }
+  const payload = parsed as { v?: unknown; q?: unknown; k?: unknown } | null
+  if (!payload || payload.v !== 1 || payload.q !== queryFingerprint) return reject()
+  if (!Array.isArray(payload.k) || payload.k.length !== arity) return reject()
+  if (!payload.k.every((part) => typeof part === 'string')) return reject()
+  return payload.k as string[]
 }
 
-// slices a limit+1 read back to the page and derives its cursor
-export function toPage<Row>(
-  rows: readonly Row[],
-  limit: number,
-  key: (row: Row) => readonly (string | number)[],
-): { items: Row[]; nextCursor: string | null } {
-  const items = rows.slice(0, limit)
-  const more = rows.length > limit
-  const last = items.at(-1)
-  return {
-    items,
-    nextCursor: more && last !== undefined ? encodeCursor(key(last)) : null,
-  }
-}
