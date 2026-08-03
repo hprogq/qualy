@@ -335,4 +335,130 @@ describe('plugin-server', () => {
 
     await serverFiber.dispose()
   })
+
+  it('coerces query and path parameters to the types the contract declares', async () => {
+    const ctx = new Context()
+    const serverFiber = ctx.plugin(Server, { port: 0 })
+    await serverFiber
+    const base = `http://127.0.0.1:${ctx.server.port}/api`
+
+    // a query string carries text and nothing else, so a contract that says
+    // boolean or number has to be met halfway or it rejects its own urls
+    const contract = {
+      probe: oc
+        .meta(openapi({ method: 'GET', path: '/probe/{count}' }))
+        .input(
+          z.object({
+            count: z.number().int(),
+            flag: z.boolean().optional(),
+            ratio: z.number().optional(),
+            mode: z.enum(['self', 'subtree']).optional(),
+          }),
+        )
+        .output(
+          z.object({
+            count: z.number(),
+            flag: z.boolean().nullable(),
+            ratio: z.number().nullable(),
+            mode: z.string().nullable(),
+          }),
+        ),
+    }
+    const impl = implement(contract).$context<ApiContext>()
+    const contributor = ctx.plugin({
+      name: 'probe',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.contribute(
+          'probe',
+          impl.router({
+            probe: impl.probe.handler(({ input }) => ({
+              count: input.count,
+              flag: input.flag ?? null,
+              ratio: input.ratio ?? null,
+              mode: input.mode ?? null,
+            })),
+          }),
+        )
+      },
+    })
+    await contributor
+
+    const call = async (query: string) => {
+      const response = await fetch(`${base}/probe/7${query}`)
+      return { status: response.status, body: await response.json() }
+    }
+
+    expect(await call('?flag=true')).toEqual({
+      status: 200,
+      body: { count: 7, flag: true, ratio: null, mode: null },
+    })
+    expect((await call('?flag=false')).body).toMatchObject({ flag: false })
+    expect((await call('?ratio=1.5')).body).toMatchObject({ ratio: 1.5 })
+    expect((await call('?mode=subtree')).body).toMatchObject({ mode: 'subtree' })
+    // an omitted optional stays omitted rather than becoming a false
+    expect((await call('')).body).toMatchObject({ flag: null })
+    // and a value the declared type cannot hold is still a validation error
+    expect((await call('?flag=perhaps')).status).toBe(400)
+    expect((await call('?ratio=abc')).status).toBe(400)
+    expect((await call('?mode=sideways')).status).toBe(400)
+
+    await serverFiber.dispose()
+  })
+
+  it('answers liveness always and readiness only while every probe passes', async () => {
+    const ctx = new Context()
+    const serverFiber = ctx.plugin(Server, { port: 0 })
+    await serverFiber
+    const origin = `http://127.0.0.1:${ctx.server.port}`
+    const get = async (path: string) => {
+      const response = await fetch(`${origin}${path}`)
+      return { status: response.status, body: await response.json() }
+    }
+
+    // health lives outside the api prefix: it serves orchestrators, not api
+    // clients, and must stay out of the generated document
+    expect(await get('/health/live')).toEqual({ status: 200, body: { status: 'live' } })
+    expect(await get('/health/ready')).toEqual({
+      status: 200,
+      body: { status: 'ready', checks: {} },
+    })
+
+    const failing = { current: false }
+    const contributor = ctx.plugin({
+      name: 'flaky',
+      inject: ['server'],
+      apply: (child: Context) => {
+        child.server.readiness('flaky', () => {
+          if (failing.current) throw new Error('connection refused to 10.0.0.1')
+        })
+      },
+    })
+    await contributor
+    expect(await get('/health/ready')).toEqual({
+      status: 200,
+      body: { status: 'ready', checks: { flaky: 'ok' } },
+    })
+
+    failing.current = true
+    const unready = await get('/health/ready')
+    expect(unready.status).toBe(503)
+    expect(unready.body).toEqual({ status: 'not-ready', checks: { flaky: 'failed' } })
+    // the reason goes to the log, never to an unauthenticated response body
+    expect(JSON.stringify(unready.body)).not.toContain('10.0.0.1')
+
+    // liveness stays up: a dependency being down is not a reason to have the
+    // process killed and restarted
+    expect((await get('/health/live')).status).toBe(200)
+
+    // and a disposed contributor takes its probe with it
+    await contributor.dispose()
+    expect(await get('/health/ready')).toEqual({
+      status: 200,
+      body: { status: 'ready', checks: {} },
+    })
+
+    await serverFiber.dispose()
+  })
+
 })

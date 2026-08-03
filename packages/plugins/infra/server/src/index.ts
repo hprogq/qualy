@@ -44,6 +44,10 @@ export interface ApiContext {
 // later enricher can read what an earlier one attached
 export type ContextEnricher = (context: ApiContext) => void | Promise<void>
 
+// a readiness check: resolve when this contributor can serve traffic, throw
+// (or reject) with the reason when it cannot
+export type ReadinessProbe = () => void | Promise<void>
+
 export type ApiRouter = Router<ApiContext>
 
 // handler plugins are contributed as factories, not instances: the handler
@@ -115,6 +119,12 @@ export const mountPath = (label: string) =>
       /^\/[a-zA-Z0-9._~-]+(?:\/[a-zA-Z0-9._~-]+)*$/,
       `${label} must be an origin-relative path without a trailing slash`,
     )
+
+// liveness says the process is up; readiness says it can take traffic. Two
+// endpoints because an orchestrator does two different things with them:
+// restart the container, or take it out of rotation.
+export const LIVENESS_PATH = '/health/live'
+export const READINESS_PATH = '/health/ready'
 
 const Config = z
   .object({
@@ -199,6 +209,7 @@ export default class Server extends Service {
 
   private fragments = new Map<string, RouteFragment>()
   private enrichers = new Map<string, ContextEnricher>()
+  private probes = new Map<string, ReadinessProbe>()
   private openApiPluginFactories = new Map<string, OpenApiHandlerPluginFactory>()
   // stable box, mutated in place (traceable-proxy discipline)
   private handlerBox: { handler?: OpenAPIHandler<ApiContext> } = {}
@@ -233,6 +244,44 @@ export default class Server extends Service {
     }, 'server-fallback')
   }
 
+  // Readiness probes, keyed per registrant and revoked with its fiber. A
+  // probe answers "can this instance take traffic on my behalf" — the
+  // database checks it can query, the permission registry checks its
+  // catalogs synced. Liveness deliberately consults none of them: a
+  // database outage must not make an orchestrator kill an otherwise healthy
+  // process.
+  //
+  // What this cannot claim is that assembly is COMPLETE, because a plugin
+  // that has not loaded has not registered a probe either. It reports that
+  // everything which did load is healthy, which is the honest bound.
+  readiness(key: string, probe: ReadinessProbe) {
+    return this.ctx.effect(() => {
+      if (this.probes.has(key)) throw new Error(`readiness probe conflict: ${key}`)
+      this.probes.set(key, probe)
+      return () => {
+        this.probes.delete(key)
+      }
+    }, `readiness:${key}`)
+  }
+
+  private async checkReadiness(): Promise<{ ready: boolean; checks: Record<string, string> }> {
+    const checks: Record<string, string> = {}
+    let ready = true
+    for (const [key, probe] of this.probes) {
+      try {
+        await probe()
+        checks[key] = 'ok'
+      } catch (error) {
+        ready = false
+        // the reason goes to the operator's log, never to the probe body:
+        // these endpoints are unauthenticated
+        this.ctx.logger.warn('readiness probe %s failed: %s', key, (error as Error).message)
+        checks[key] = 'failed'
+      }
+    }
+    return { ready, checks }
+  }
+
   // context enrichers run serially for every api request before the handler,
   // keyed per registrant so conflicts fail loudly and a fiber reload replaces
   // only its own entry; revoked with the registrant's fiber
@@ -262,6 +311,24 @@ export default class Server extends Service {
       // last-resort guard: a single failing request must never kill the process
       try {
         const url = req.url ?? ''
+        // health endpoints live outside the api prefix on purpose: they
+        // serve orchestrators and load balancers, not api clients, and they
+        // must stay out of the generated openapi document
+        if (url === LIVENESS_PATH) {
+          res.statusCode = 200
+          res.setHeader('content-type', 'application/json')
+          res.setHeader('cache-control', 'no-store')
+          res.end('{"status":"live"}')
+          return
+        }
+        if (url === READINESS_PATH) {
+          const { ready, checks } = await this.checkReadiness()
+          res.statusCode = ready ? 200 : 503
+          res.setHeader('content-type', 'application/json')
+          res.setHeader('cache-control', 'no-store')
+          res.end(JSON.stringify({ status: ready ? 'ready' : 'not-ready', checks }))
+          return
+        }
         const insideApi =
           url === this.config.prefix ||
           url.startsWith(`${this.config.prefix}/`) ||
@@ -391,6 +458,13 @@ export default class Server extends Service {
           // client-status orpc errors (401/403/...) are ordinary business
           // flow; only genuine server faults belong in the log
           if (error instanceof ORPCError && (statusMap[error.code] ?? 500) < 500) return
+          // a body the client sent that is not parseable is the client's
+          // fault too, and it answers 400. Logging it as a server fault made
+          // "no errors in the log" mean nothing.
+          if (error instanceof SyntaxError) {
+            this.ctx.logger.warn('malformed request body: %s', error.message)
+            return
+          }
           this.ctx.logger.error(error)
         }),
       ],

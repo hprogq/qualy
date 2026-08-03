@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context, Service } from 'cordis'
+import type {} from '@qualy/plugin-server'
 import type { AnyRelations } from 'drizzle-orm'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
@@ -108,6 +109,14 @@ export default class Database extends Service {
     this.pool = pool
     this.drizzle = drizzle({ client: pool, ...this.options })
     this.ctx.logger.info('connected to %s (%dms)', target, Math.round(performance.now() - started))
+    // an instance that cannot reach its database should leave the rotation
+    // rather than serve failures; the server is optional so a headless
+    // assembly simply has no probe to register
+    this.ctx.inject(['server'], (serverCtx) => {
+      serverCtx.server.readiness('database', async () => {
+        await pool.query('select 1')
+      })
+    })
     yield async () => {
       // cached views wrap the old pool, drop them together with it
       this.views = new WeakMap()
