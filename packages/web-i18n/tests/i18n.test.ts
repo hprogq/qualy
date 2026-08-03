@@ -21,8 +21,12 @@ const formatterFor = (catalog: MessageCatalog, locale = 'zh-CN'): MessageFormatt
   i18n.load(locale, catalog)
   i18n.activate(locale)
   return {
-    format: (descriptor, values) =>
-      i18n._({ id: descriptor.id, message: descriptor.defaultMessage, values }),
+    format: (descriptor, ...args) =>
+      i18n._({
+        id: descriptor.id,
+        message: descriptor.defaultMessage,
+        values: args[0] as Record<string, unknown> | undefined,
+      }),
   }
 }
 
@@ -84,16 +88,32 @@ describe('web i18n runtime', () => {
     )
   })
 
-  it('keeps the zh-CN catalog complete and free of orphans', () => {
-    const declared = new Set([
+  it('keeps every runtime message translated and compilable', () => {
+    // key completeness is enforced by CatalogFor at typecheck time; what a
+    // test adds is that each translation is valid icu the engine accepts
+    const declared = new Set<string>([
       ...Object.values(commonMessages).map((descriptor) => descriptor.id),
       ...Object.values(commonErrorMessages).map((entry) => entry.message.id),
       networkErrorMessage.id,
       unexpectedErrorMessage.id,
     ])
-    const translated = new Set(Object.keys(zhCN))
-    expect([...declared].filter((id) => !translated.has(id))).toEqual([])
-    expect([...translated].filter((id) => !declared.has(id))).toEqual([])
+    expect(new Set(Object.keys(zhCN))).toEqual(declared)
+    for (const [id, source] of Object.entries(zhCN)) {
+      expect(() => compileMessage(source), id).not.toThrow()
+    }
+  })
+
+  it('demands the values an interpolating message declares', () => {
+    const formatter = formatterFor(zhCN)
+    // @ts-expect-error componentMissing declares {component}
+    formatter.format(commonMessages.componentMissing)
+    // @ts-expect-error the placeholder is named component, not name
+    formatter.format(commonMessages.componentMissing, { name: 'x' })
+    expect(formatter.format(commonMessages.componentMissing, { component: 'org/OrgPage' })).toBe(
+      '渲染器缺失：org/OrgPage',
+    )
+    // a message without declared placeholders needs no values
+    expect(formatter.format(commonMessages.retry)).toBe('重试')
   })
 
   it('validates ui text references at the contract boundary', () => {
@@ -126,6 +146,20 @@ describe('web i18n runtime', () => {
     // nothing usable falls back to the deployment default
     expect(resolveLocale({ preferred: ['fr-FR', 'de-DE'] })).toBe('zh-CN')
     expect(resolveLocale({})).toBe('zh-CN')
+  })
+
+  it('surfaces a failing catalog chunk instead of swallowing it', async () => {
+    // the provider catches this and activates an empty catalog so the
+    // english defaults render; the loader itself must not hide the failure
+    await expect(
+      loadCatalogs('zh-CN', [
+        {
+          namespace: 'broken',
+          messages: [],
+          locales: { 'zh-CN': () => Promise.reject(new Error('chunk gone')) },
+        },
+      ]),
+    ).rejects.toThrow('chunk gone')
   })
 
   it('merges the common catalog with every plugin catalog for a locale', async () => {

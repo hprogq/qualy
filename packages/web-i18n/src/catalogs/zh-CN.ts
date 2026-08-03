@@ -1,4 +1,20 @@
-import type { MessageCatalog } from '@qualy/i18n-contract'
+import type { CatalogFor } from '@qualy/i18n-contract'
+import { commonMessages } from '../messages.ts'
+import { commonErrorMessages, networkErrorMessage, unexpectedErrorMessage } from '../format.ts'
+
+// the exact key set the runtime declares: a missing translation, an orphan
+// key or a typo fails typecheck instead of waiting for the catalog test
+const runtimeMessages = {
+  ...commonMessages,
+  network: networkErrorMessage,
+  unexpected: unexpectedErrorMessage,
+  authRequired: commonErrorMessages.AUTH_REQUIRED.message,
+  sessionExpired: commonErrorMessages.SESSION_EXPIRED.message,
+  forbidden: commonErrorMessages.FORBIDDEN.message,
+  notFound: commonErrorMessages.NOT_FOUND.message,
+  invalidInput: commonErrorMessages.INPUT_VALIDATION_FAILED.message,
+  internal: commonErrorMessages.INTERNAL_SERVER_ERROR.message,
+} as const
 
 // common/* messages: shared shell copy and transport-level api errors.
 // Raw icu strings, compiled by the runtime on demand.
@@ -22,4 +38,4 @@ export default {
   'common/page/empty-hint': '请在装配清单中启用业务插件。',
   'common/page/not-found-title': '页面不存在',
   'common/page/not-found-hint': '请检查地址，或从导航进入其他页面。',
-} satisfies MessageCatalog
+} satisfies CatalogFor<typeof runtimeMessages>

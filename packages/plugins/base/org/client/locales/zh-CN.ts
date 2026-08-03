@@ -1,4 +1,5 @@
-import type { MessageCatalog } from '@qualy/i18n-contract'
+import type { CatalogFor } from '@qualy/i18n-contract'
+import type { orgDeclaredMessages } from '../i18n.ts'
 
 export default {
   'org/navigation/organization': '组织架构',
@@ -43,4 +44,4 @@ export default {
   'org/error/rule-cycle': '该规则会让类型层级成环。',
   'org/error/rule-violation': '层级规则不允许这样的父子类型组合。',
   'org/error/invalid-move': '节点不能移动到自身或其子树内。',
-} satisfies MessageCatalog
+} satisfies CatalogFor<typeof orgDeclaredMessages>

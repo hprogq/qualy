@@ -1,6 +1,9 @@
-import { oc } from '@orpc/contract'
+import { oc, type RouterContractClient } from '@orpc/contract'
+import type { InferClientError } from '@orpc/client'
+import type { DefinedApiError } from '@qualy/i18n-contract'
 import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
+import type { OrgErrorDataMap } from './errors.ts'
 
 const codeSchema = z
   .string()
@@ -68,14 +71,32 @@ export const orgErrorStatuses = {
   ORG_NODE_INVALID_MOVE: 422,
 } as const
 
-const err = (code: keyof typeof orgErrorStatuses, message: string, data?: z.ZodType) => ({
-  [code]: { status: orgErrorStatuses[code], message, ...(data ? { data } : {}) },
-})
+// generic over the code so the literal key survives: a computed key from a
+// non-generic parameter widens to string and erases the whole error union
+const err = <Code extends keyof typeof orgErrorStatuses, Data extends z.ZodType | undefined>(
+  code: Code,
+  message: string,
+  data?: Data,
+) =>
+  ({ [code]: { status: orgErrorStatuses[code], message, ...(data ? { data } : {}) } }) as unknown as {
+    [K in Code]: { status: number; message: string } & (Data extends z.ZodType
+      ? { data: Data }
+      : Record<never, never>)
+  }
 
-// structured payloads the frontend turns into localized sentences
+// structured payloads the frontend turns into localized sentences. The
+// domain declares the same shape in OrgErrorDataMap; the assertion below
+// fails typecheck if the two ever drift apart.
 export const assignmentIncompatibleData = z.object({
   assignmentCount: z.number().int().nonnegative(),
 })
+
+type AssertSameData<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
+const _dataMatchesDomain: AssertSameData<
+  z.infer<typeof assignmentIncompatibleData>,
+  OrgErrorDataMap['ORG_NODE_ASSIGNMENT_INCOMPATIBLE']
+> = true
+void _dataMatchesDomain
 
 const nodeNotFound = err('ORG_NODE_NOT_FOUND', 'node not found')
 const typeNotFound = err('ORG_TYPE_NOT_FOUND', 'org type not found')
@@ -201,3 +222,11 @@ export const orgContract = {
     })
     .output(z.object({ ok: z.boolean() })),
 }
+
+// the defined-error union of this contract, the single source the client's
+// message registry is checked against (probed: beta.21 exposes the union
+// through RouterContractClient + InferClientError, mixed with a bare Error
+// that the distributive helpers filter out)
+export type OrgContractError = DefinedApiError<
+  InferClientError<RouterContractClient<typeof orgContract>>
+>

@@ -22,12 +22,41 @@ export interface LiteralText {
 
 export type UiText = MessageRef | LiteralText
 
+export type MessageValues = Record<string, unknown>
+
 // a translatable message reference used by frontend code directly (error
 // registries, page copy); MessageRef is its serialized form for manifests
-export interface MessageDescriptor {
-  id: MessageId
+export interface MessageDescriptor<Id extends MessageId = MessageId> {
+  id: Id
   defaultMessage: string
 }
+
+// a message whose icu source interpolates: __values is a phantom carrying
+// the placeholders it needs. It is required (never assigned at runtime) so
+// "declares placeholders" stays decidable at the type level — an optional
+// property cannot be told apart from an absent one.
+export interface ValuedMessageDescriptor<
+  Values extends MessageValues,
+  Id extends MessageId = MessageId,
+> extends MessageDescriptor<Id> {
+  readonly __values: Values
+}
+
+// the placeholders a descriptor demands, or none
+export type ValuesOf<Descriptor> = Descriptor extends { __values: infer Values }
+  ? Values extends MessageValues
+    ? Values
+    : Record<never, never>
+  : Record<never, never>
+
+// declares a message and the values it expects:
+// defineMessage<{ count: number }>()({ id, defaultMessage }). Typescript
+// cannot parse the icu source, so the declaration is the contract and a
+// formatting test proves the string agrees with it.
+export const defineMessage =
+  <Values extends MessageValues>() =>
+  <Id extends MessageId>(descriptor: { id: Id; defaultMessage: string }) =>
+    descriptor as ValuedMessageDescriptor<Values, Id>
 
 export const message = (id: MessageId, defaultMessage: string): MessageRef => ({
   kind: 'message',
@@ -63,6 +92,12 @@ export const uiTextSchema = z.discriminatedUnion('kind', [
 // po interchange can be layered on later without changing this contract)
 export type MessageCatalog = Record<MessageId, string>
 
+// the exact key set a message table requires of its catalogs: a missing key,
+// an orphan key or a typo fails typecheck instead of waiting for the runtime
+export type CatalogFor<Messages extends Record<string, MessageDescriptor>> = {
+  [Id in Messages[keyof Messages]['id']]: string
+}
+
 export type SupportedLocale = 'zh-CN' | 'en-US'
 export const supportedLocales: readonly SupportedLocale[] = ['zh-CN', 'en-US']
 export const defaultLocale: SupportedLocale = 'zh-CN'
@@ -78,12 +113,61 @@ export interface PluginCatalogs {
   locales: Partial<Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>>
 }
 
-// what a plugin's client module may export as `errorMessages`: typed api
-// error codes mapped to translatable descriptors; values() projects the
-// typed error data into icu placeholder values
-export interface ErrorMessageRegistration {
-  message: MessageDescriptor
-  values?: (data: unknown) => Record<string, unknown>
+// --- typed api error localization ---
+
+// the shape every api error union member has; the transport's own bare
+// Error members drop out of the helpers below
+export interface ApiErrorLike {
+  code: string
+  data?: unknown
 }
 
-export type ErrorMessageMap = Record<string, ErrorMessageRegistration>
+// these are distributive on purpose: the checked type is a naked type
+// parameter, so a union like `Error | ORPCError<...>` filters member by
+// member instead of collapsing to never (probed against beta.21)
+export type DefinedApiError<Union> = Union extends { defined: boolean; code: string }
+  ? Union
+  : never
+export type ApiErrorCode<Union> = Union extends { code: infer Code } ? Code : never
+export type ApiErrorData<Union, Code> = Union extends { code: Code; data: infer Data }
+  ? Data
+  : never
+
+// values() receives the data of its own code, never `unknown`
+export interface ErrorMessageRegistration<Data = unknown> {
+  message: MessageDescriptor
+  values?: (data: Data) => MessageValues
+}
+
+// the erased aggregate the runtime holds: values() is contravariant in its
+// data, so `never` is the supertype every typed registration fits into. The
+// runtime pays one documented cast for this at the point of call, instead
+// of every plugin casting its own data.
+export type ErrorMessageMap = Record<string, ErrorMessageRegistration<never>>
+
+// the exact registry shape a contract's error union allows: every code must
+// be present, no code outside the union is accepted, and each values()
+// receives that code's data type
+export type TypedErrorMessageMap<Union, Codes extends ApiErrorCode<Union> & string> = {
+  [Code in Codes]: ErrorMessageRegistration<ApiErrorData<Union, Code>>
+}
+
+// defineErrorMessages<ContractErrorUnion, OwnedCodes>()({ ... }). The map
+// parameter is the constrained type itself rather than an inferred subtype,
+// which is what gives each values(data) its contextual type.
+export const defineErrorMessages =
+  <Union, Codes extends ApiErrorCode<Union> & string = ApiErrorCode<Union> & string>() =>
+  (map: TypedErrorMessageMap<Union, Codes>): TypedErrorMessageMap<Union, Codes> =>
+    map
+
+// codes owned by the runtime; a plugin may localize its own codes only
+export const commonErrorCodes = [
+  'AUTH_REQUIRED',
+  'SESSION_EXPIRED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'INPUT_VALIDATION_FAILED',
+  'INTERNAL_SERVER_ERROR',
+] as const
+
+export type CommonErrorCode = (typeof commonErrorCodes)[number]

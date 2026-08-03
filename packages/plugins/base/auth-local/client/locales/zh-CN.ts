@@ -1,4 +1,5 @@
-import type { MessageCatalog } from '@qualy/i18n-contract'
+import type { CatalogFor } from '@qualy/i18n-contract'
+import type { localDeclaredMessages } from '../i18n.ts'
 
 export default {
   'auth-local/field/identifier': '用户名',
@@ -6,4 +7,4 @@ export default {
   'auth-local/action/submit': '登录',
   'auth-local/action/submitting': '登录中…',
   'auth-local/error/invalid-credentials': '用户名或密码错误。',
-} satisfies MessageCatalog
+} satisfies CatalogFor<typeof localDeclaredMessages>

@@ -1,5 +1,8 @@
-import type { MessageCatalog } from '@qualy/i18n-contract'
+import type { CatalogFor } from '@qualy/i18n-contract'
+import { pingNavigationLabel } from '../../src/messages.ts'
+
+const declared = { navigation: pingNavigationLabel } as const
 
 export default {
   'ping/navigation/ping': 'Ping',
-} satisfies MessageCatalog
+} satisfies CatalogFor<typeof declared>

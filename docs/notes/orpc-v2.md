@@ -48,3 +48,15 @@
 - Scalar 页把生成的 spec **内联**进 HTML(`content: stringifyJSON(spec)`),不引用 specPath URL;断言文档页应查 `Scalar.createApiReference` 标记。脚本默认走 jsdelivr CDN(dev-only 可接受,离线需 `providerScriptUrl` 自托管)。
 - 生成器对 handler prefix **零感知**:paths 恒为前缀相对,Try-it 会按页面 origin 打根路径 404。修法是文档级 `servers: [{ url: prefix }]`(经 `base` 注入,Scalar 与一切 spec 消费者按相对 server URL 解析到 origin+prefix)——**不要**把前缀写进 contract path(handler 匹配前先剥 prefix,会变双前缀;契约必须部署无关)。prefix 真源在 server 插件 config,由扩展点 factory 参数带出。
 - orpc handler plugin 是单 init 实例,handler 每次路由变更整体重建——扩展点必须注册 **factory** 而非实例(server.contributeOpenApiPlugin 每次 rebuild 以当前 router 快照造新实例,spec 缓存随实例自然失效)。
+
+## 从 contract 推导 typed error(2026-08-03,beta.21 实测)
+
+- contract → client 类型是 `RouterContractClient<C>`(`@orpc/contract`)。**没有** `ContractRouterClient`(外部资料所称的名字在 beta.21 不存在)。
+- `InferClientError<Client>`(`@orpc/client`)返回 `Error | ORPCErrorFromErrorMap<TErrorMap>`。那个裸 `Error` 成员是陷阱:`AllErrors extends { code: infer C } ? C : never` 这类**非分布式**写法(被检查类型不是裸类型参数)会因为 Error 不含 code 而整体塌成 `never`。必须写成裸类型参数的分布式 helper,逐成员过滤:
+  ```ts
+  type Defined<E> = E extends { defined: boolean; code: string } ? E : never
+  type CodesOf<E> = E extends { code: infer C } ? C : never
+  type DataOf<E, Code> = E extends { code: Code; data: infer D } ? D : never
+  ```
+  实测:未声明的 code 被拒、data 字段写错名被拒、无 data 的 code 推出 `undefined`。
+- **contract 侧的字面量必须活着**:用计算键构造 `.errors({...})` 的辅助函数如果参数不是泛型,返回类型会退化成 `{ [x: string]: ... }`,整条错误联合随之失效(codes 变成 `string`)。辅助函数要泛型化 `<Code extends ...>(code: Code, ...)` 并把返回类型写成 `{ [K in Code]: ... }`,才能保住字面量键。

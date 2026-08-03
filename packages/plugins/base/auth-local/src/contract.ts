@@ -1,4 +1,6 @@
-import { oc } from '@orpc/contract'
+import { oc, type RouterContractClient } from '@orpc/contract'
+import type { InferClientError } from '@orpc/client'
+import type { DefinedApiError } from '@qualy/i18n-contract'
 import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
 import { userDto } from '@qualy/plugin-auth/contract'
@@ -22,3 +24,9 @@ export const authLocalContract = {
     )
     .output(z.object({ user: userDto })),
 }
+
+// the defined-error union of this contract, the source its client message
+// registry is checked against
+export type AuthLocalContractError = DefinedApiError<
+  InferClientError<RouterContractClient<typeof authLocalContract>>
+>

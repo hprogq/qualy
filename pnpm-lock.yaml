@@ -411,6 +411,9 @@ importers:
 
   packages/plugins/base/auth-local:
     dependencies:
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
       '@orpc/contract':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
@@ -509,6 +512,9 @@ importers:
 
   packages/plugins/base/org:
     dependencies:
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21
       '@orpc/contract':
         specifier: 'catalog:'
         version: 2.0.0-beta.21

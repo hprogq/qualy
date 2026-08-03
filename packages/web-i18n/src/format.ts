@@ -1,12 +1,27 @@
-import type { ErrorMessageMap, MessageDescriptor } from '@qualy/i18n-contract'
+import type {
+  ErrorMessageMap,
+  MessageDescriptor,
+  MessageValues,
+  ValuesOf,
+} from '@qualy/i18n-contract'
 
 // framework-free error localization: turns a thrown api error into a
 // localized sentence from its stable code and typed data. The backend's
 // english message is a protocol fallback (openapi docs, non-browser
 // clients, missing translations), never the primary display text.
 
+// a message that declares placeholders demands them; one that declares
+// none accepts an optional bag (an icu string can still interpolate without
+// declaring it, which a formatting test catches)
+export type FormatArgs<Values> = [keyof Values] extends [never]
+  ? [values?: MessageValues]
+  : [values: Values]
+
 export interface MessageFormatter {
-  format(descriptor: MessageDescriptor, values?: Record<string, unknown>): string
+  format<Descriptor extends MessageDescriptor>(
+    descriptor: Descriptor,
+    ...args: FormatArgs<ValuesOf<Descriptor>>
+  ): string
 }
 
 // orpc brands its errors on `name`, which survives module duplication in a
@@ -30,7 +45,9 @@ function isNetworkError(error: unknown): boolean {
   return error instanceof TypeError || (error instanceof Error && error.name === 'AbortError')
 }
 
-export const commonErrorMessages: ErrorMessageMap = {
+// as const keeps the message ids literal, which is what lets CatalogFor
+// derive the exact key set the catalogs must cover
+export const commonErrorMessages = {
   AUTH_REQUIRED: {
     message: { id: 'common/error/auth-required', defaultMessage: 'Please sign in to continue.' },
   },
@@ -55,17 +72,17 @@ export const commonErrorMessages: ErrorMessageMap = {
   INTERNAL_SERVER_ERROR: {
     message: { id: 'common/error/internal', defaultMessage: 'Something went wrong on the server.' },
   },
-}
+} as const satisfies ErrorMessageMap
 
-export const networkErrorMessage: MessageDescriptor = {
+export const networkErrorMessage = {
   id: 'common/error/network',
   defaultMessage: 'Cannot reach the server. Check your connection and try again.',
-}
+} as const satisfies MessageDescriptor
 
-export const unexpectedErrorMessage: MessageDescriptor = {
+export const unexpectedErrorMessage = {
   id: 'common/error/unexpected',
   defaultMessage: 'Something went wrong. Please try again.',
-}
+} as const satisfies MessageDescriptor
 
 // resolution order: transport failure, plugin-owned code, common code,
 // backend english message, generic fallback
@@ -77,10 +94,14 @@ export function formatApiError(
   if (isNetworkError(error)) return formatter.format(networkErrorMessage)
   const apiError = asApiError(error)
   if (apiError) {
-    const registration = registry[apiError.code] ?? commonErrorMessages[apiError.code]
+    const common: ErrorMessageMap = commonErrorMessages
+    const registration = registry[apiError.code] ?? common[apiError.code]
     if (registration) {
-      const values = registration.values?.(apiError.data)
-      return formatter.format(registration.message, values)
+      // the aggregate erased which code owns which data shape; the registry
+      // itself was type-checked against its contract, so the projection is
+      // safe here even though the static link is gone
+      const values = registration.values?.(apiError.data as never)
+      return formatter.format(registration.message, values ?? {})
     }
     if (apiError.message) return apiError.message
   }

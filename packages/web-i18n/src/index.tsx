@@ -6,7 +6,9 @@ import {
   type ErrorMessageMap,
   type MessageCatalog,
   type MessageDescriptor,
+  type MessageValues,
   type PluginCatalogs,
+  type ValuesOf,
   type SupportedLocale,
   type UiText,
 } from '@qualy/i18n-contract'
@@ -19,7 +21,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { formatApiError, type MessageFormatter } from './format.ts'
+import { formatApiError, type FormatArgs, type MessageFormatter } from './format.ts'
 
 export { commonErrorMessages, formatApiError } from './format.ts'
 export type { MessageFormatter } from './format.ts'
@@ -134,13 +136,21 @@ export function I18nProvider({
 
   useEffect(() => {
     let cancelled = false
-    void loadCatalogs(locale, catalogs).then((messages) => {
+    const activate = (messages: MessageCatalog) => {
       if (cancelled) return
       i18n.load(locale, messages)
       i18n.activate(locale)
       document.documentElement.lang = locale
       setActivated(locale)
-    })
+    }
+    void loadCatalogs(locale, catalogs)
+      .then(activate)
+      .catch((error: unknown) => {
+        // a chunk can go missing after a deploy; activating an empty catalog
+        // renders the english defaults instead of hanging on the fallback
+        console.error(`failed to load catalogs for ${locale}`, error)
+        activate({})
+      })
     return () => {
       cancelled = true
     }
@@ -152,8 +162,15 @@ export function I18nProvider({
   }, [])
 
   const runtime = useMemo<I18nRuntime>(() => {
-    const format = (descriptor: MessageDescriptor, values?: Record<string, unknown>) =>
-      i18n._({ id: descriptor.id, message: descriptor.defaultMessage, values })
+    const format = <Descriptor extends MessageDescriptor>(
+      descriptor: Descriptor,
+      ...args: FormatArgs<ValuesOf<Descriptor>>
+    ) =>
+      i18n._({
+        id: descriptor.id,
+        message: descriptor.defaultMessage,
+        values: args[0] as MessageValues | undefined,
+      })
     return {
       locale,
       setLocale,

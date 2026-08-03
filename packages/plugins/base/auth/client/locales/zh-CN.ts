@@ -1,4 +1,5 @@
-import type { MessageCatalog } from '@qualy/i18n-contract'
+import type { CatalogFor } from '@qualy/i18n-contract'
+import type { authMessages } from '../i18n.ts'
 
 export default {
   'auth/login/title': 'Qualy 登录',
@@ -9,4 +10,4 @@ export default {
   'auth/login/renderer-missing': '该登录方式暂不可用',
   'auth/action/sign-in': '登录',
   'auth/action/sign-out': '退出登录',
-} satisfies MessageCatalog
+} satisfies CatalogFor<typeof authMessages>

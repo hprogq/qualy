@@ -1,9 +1,7 @@
 import type { MessageDescriptor, PluginCatalogs } from '@qualy/i18n-contract'
 
 // the auth plugin owns the auth/* message namespace
-const define = <T extends Record<string, MessageDescriptor>>(messages: T) => messages
-
-export const authMessages = define({
+export const authMessages = {
   title: { id: 'auth/login/title', defaultMessage: 'Sign in to Qualy' },
   methodsFailedTitle: {
     id: 'auth/login/methods-failed',
@@ -24,7 +22,7 @@ export const authMessages = define({
   },
   signIn: { id: 'auth/action/sign-in', defaultMessage: 'Sign in' },
   signOut: { id: 'auth/action/sign-out', defaultMessage: 'Sign out' },
-})
+} as const satisfies Record<string, MessageDescriptor>
 
 export const catalogs: PluginCatalogs = {
   namespace: 'auth',

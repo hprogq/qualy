@@ -1,40 +1,57 @@
 // org domain errors: the service layer throws these, the router maps them
 // onto typed contract errors. Never an ORPCError below the router.
-export type OrgErrorCode =
-  | 'ORG_FORBIDDEN'
-  | 'ORG_TYPE_NOT_FOUND'
-  | 'ORG_TYPE_CONFLICT'
-  | 'ORG_TYPE_IN_USE'
-  | 'ORG_RULE_NOT_FOUND'
-  | 'ORG_RULE_CONFLICT'
-  | 'ORG_RULE_INVALID'
-  | 'ORG_RULE_CYCLE'
-  | 'ORG_RULE_IN_USE'
-  | 'ORG_NODE_NOT_FOUND'
-  | 'ORG_NODE_CONFLICT'
-  | 'ORG_NODE_RULE_VIOLATION'
-  | 'ORG_NODE_INVALID_MOVE'
-  | 'ORG_NODE_IS_ROOT'
-  | 'ORG_NODE_HAS_CHILDREN'
-  | 'ORG_NODE_IN_USE'
-  | 'ORG_NODE_ASSIGNMENT_INCOMPATIBLE'
+//
+// The data a code carries is declared once here and reused by the contract,
+// so a code and its payload can never drift apart. ORG_FORBIDDEN is domain
+// internal: the router turns it into the transport's FORBIDDEN.
+export interface OrgErrorDataMap {
+  ORG_FORBIDDEN: undefined
+  ORG_TYPE_NOT_FOUND: undefined
+  ORG_TYPE_CONFLICT: undefined
+  ORG_TYPE_IN_USE: undefined
+  ORG_RULE_NOT_FOUND: undefined
+  ORG_RULE_CONFLICT: undefined
+  ORG_RULE_INVALID: undefined
+  ORG_RULE_CYCLE: undefined
+  ORG_RULE_IN_USE: undefined
+  ORG_NODE_NOT_FOUND: undefined
+  ORG_NODE_CONFLICT: undefined
+  ORG_NODE_RULE_VIOLATION: undefined
+  ORG_NODE_INVALID_MOVE: undefined
+  ORG_NODE_IS_ROOT: undefined
+  ORG_NODE_HAS_CHILDREN: undefined
+  ORG_NODE_IN_USE: undefined
+  ORG_NODE_ASSIGNMENT_INCOMPATIBLE: { assignmentCount: number }
+}
+
+export type OrgErrorCode = keyof OrgErrorDataMap
+
+// codes that carry no payload: the only ones a generic thrower (the
+// constraint translator) may raise without supplying data
+export type DatalessOrgErrorCode = {
+  [Code in OrgErrorCode]: OrgErrorDataMap[Code] extends undefined ? Code : never
+}[OrgErrorCode]
+
+type DataArgs<Code extends OrgErrorCode> = OrgErrorDataMap[Code] extends undefined
+  ? []
+  : [data: OrgErrorDataMap[Code]]
 
 // data is the safe, structured payload the frontend formats into a
 // localized sentence; the message is an english developer/protocol string
 // (openapi docs, logs, non-browser clients), never the display text. Never
-// put role codes, constraint names or raw sql detail into data.
-export class OrgError<Data = undefined> extends Error {
-  readonly data: Data
+// put role codes, constraint names or raw sql detail into data. The
+// constructor demands exactly the data its code declares.
+export class OrgError<Code extends OrgErrorCode = OrgErrorCode> extends Error {
+  readonly data: OrgErrorDataMap[Code]
 
-  constructor(code: OrgErrorCode, developerMessage: string, data?: Data)
   constructor(
-    readonly code: OrgErrorCode,
+    readonly code: Code,
     developerMessage: string,
-    data?: Data,
+    ...args: DataArgs<Code>
   ) {
     super(developerMessage)
     this.name = 'OrgError'
-    this.data = data as Data
+    this.data = args[0] as OrgErrorDataMap[Code]
   }
 }
 
@@ -49,7 +66,7 @@ export function pgError(error: unknown): { code?: string; constraint?: string } 
 // unique violations and restrict-fk violations carry the constraint name;
 // translating by name keeps the database as an honest backstop instead of a
 // source of opaque 500s (the legacy system leaked 23503 as 500)
-const constraintErrors: Record<string, [OrgErrorCode, string]> = {
+const constraintErrors: Record<string, [DatalessOrgErrorCode, string]> = {
   uq_org_nodes_tenant_parent_name: ['ORG_NODE_CONFLICT', 'sibling name already exists'],
   uq_org_nodes_tenant_root_name: ['ORG_NODE_CONFLICT', 'root name already exists'],
   uq_org_nodes_tenant_code: ['ORG_NODE_CONFLICT', 'node code already exists'],
