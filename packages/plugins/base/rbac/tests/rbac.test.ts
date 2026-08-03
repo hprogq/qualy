@@ -7,6 +7,8 @@ import { runMigrations } from '@qualy/plugin-database/migrator'
 import Database from '@qualy/plugin-database'
 import type { RbacService } from '@qualy/rbac-contract'
 import Rbac from '../src/index.ts'
+import { isDomainError } from '@qualy/api-contract'
+import { Administration, type RoleRow } from '../src/administration.ts'
 
 const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
 const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
@@ -261,6 +263,13 @@ describe.runIf(available)('rbac', () => {
     await adminPool.query(`drop database if exists "${dbName}" with (force)`)
     await adminPool.end()
   })
+
+  // domain errors surface their code; anything else its message
+  const domainCode = (promise: Promise<unknown>) =>
+    promise.then(
+      () => 'ok',
+      (error) => (isDomainError(error) ? error.code : ((error as Error).message ?? 'error')),
+    )
 
   const orpcCode = (promise: Promise<unknown>) =>
     promise.then(
@@ -773,5 +782,101 @@ describe.runIf(available)('rbac', () => {
     )
     expect(Number(mapped.rows[0].count)).toBe(0)
     await scoped.dispose()
+  })
+
+  it('administers roles without letting the tenant lock itself out', async () => {
+    const admin = new Administration(ctx)
+    const roles = await admin.listRoles(f.tenant)
+    const canonical = roles.find((role: RoleRow) => role.code === 'tenant-admin')!
+    const manager = roles.find((role: RoleRow) => role.code === 'org-manager')!
+
+    // the canonical administrator role is immutable where it matters
+    expect(await domainCode(admin.setRoleEnabled(f.tenant, canonical.id, false))).toBe(
+      'ROLE_IS_SYSTEM',
+    )
+    expect(await domainCode(admin.deleteRole(f.tenant, canonical.id))).toBe('ROLE_IS_SYSTEM')
+    expect(
+      await domainCode(admin.updateRole(f.tenant, canonical.id, { assignable: false })),
+    ).toBe('ROLE_IS_SYSTEM')
+    expect(await domainCode(admin.syncRolePermissions(f.tenant, canonical.id, []))).toBe(
+      'ROLE_IS_SYSTEM',
+    )
+    // its display name stays editable
+    await admin.updateRole(f.tenant, canonical.id, { name: 'Tenant administrator' })
+
+    // an org role may only hold org-scope permissions
+    expect(
+      await domainCode(admin.syncRolePermissions(f.tenant, manager.id, ['test.role.manage'])),
+    ).toBe('ROLE_PERMISSION_NOT_GRANTABLE')
+    await admin.syncRolePermissions(f.tenant, manager.id, ['test.tree.manage'])
+    expect(
+      (await admin.listRoles(f.tenant)).find((role: RoleRow) => role.id === manager.id)?.permissions,
+    ).toEqual(['test.tree.manage'])
+
+    // a role that is still assigned cannot be deleted
+    expect(await domainCode(admin.deleteRole(f.tenant, manager.id))).toBe('ROLE_IN_USE')
+
+    // narrowing the allowed sets must not strand the manager's assignment
+    const otherType = (
+      await pool.query(
+        `insert into org_types (tenant_id, code, name) values ($1, 'other', 'Other') returning id`,
+        [f.tenant],
+      )
+    ).rows[0].id as string
+    expect(
+      await domainCode(admin.syncRoleAllowedSets(f.tenant, manager.id, { orgTypeIds: [otherType] })),
+    ).toBe('ASSIGNMENT_NOT_ELIGIBLE')
+    // an empty set is refused outright
+    expect(
+      await domainCode(admin.syncRoleAllowedSets(f.tenant, manager.id, { orgTypeIds: [] })),
+    ).toBe('ROLE_NEEDS_ALLOWED_SETS')
+    // widening is fine
+    await admin.syncRoleAllowedSets(f.tenant, manager.id, {
+      orgTypeIds: [f.collegeType, otherType],
+    })
+  })
+
+  it('reserves the canonical administrator role for its own holders', async () => {
+    const admin = new Administration(ctx)
+    const roles = await admin.listRoles(f.tenant)
+    const canonical = roles.find((role: RoleRow) => role.code === 'tenant-admin')!
+    const manager = roles.find((role: RoleRow) => role.code === 'org-manager')!
+
+    // the manager holds no tenant-admin assignment, so they may not grant it
+    expect(
+      await domainCode(admin.assertMayAdministerRole(f.tenant, canonical.id, f.manager)),
+    ).toBe('TENANT_ADMIN_REQUIRED')
+    // an administrator may
+    expect(await domainCode(admin.assertMayAdministerRole(f.tenant, canonical.id, f.admin))).toBe('ok')
+    // an ordinary role needs no such holder
+    expect(await domainCode(admin.assertMayAdministerRole(f.tenant, manager.id, f.manager))).toBe('ok')
+  })
+
+  it('replaces a user assignment set without dropping the last administrator', async () => {
+    const admin = new Administration(ctx)
+    // the admin is the only holder: clearing their set must fail as a whole
+    // the invariant is shared with removeAssignment, which raises a plain
+    // error rather than a domain code (it predates the dsl)
+    expect(await domainCode(admin.syncUserAssignments(f.tenant, f.admin, []))).toMatch(
+      /last tenant administrator/,
+    )
+    const kept = await admin.listAssignments(f.tenant, { userId: f.admin })
+    expect(kept.length).toBeGreaterThan(0)
+
+    // a set that adds an eligible org assignment applies
+    await admin.syncUserAssignments(f.tenant, f.manager, [
+      { roleId: f.managerRole, orgNodeId: f.college, scope: 'subtree' },
+    ])
+    const managerAssignments = await admin.listAssignments(f.tenant, { userId: f.manager })
+    expect(managerAssignments.map((row) => row.scope)).toEqual(['subtree'])
+
+    // an ineligible node type is refused
+    expect(
+      await domainCode(
+        admin.syncUserAssignments(f.tenant, f.manager, [
+          { roleId: f.managerRole, orgNodeId: f.class1, scope: 'self' },
+        ]),
+      ),
+    ).toBe('ASSIGNMENT_NOT_ELIGIBLE')
   })
 })

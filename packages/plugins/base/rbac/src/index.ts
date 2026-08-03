@@ -13,6 +13,11 @@ import { Assignments } from './assignments.ts'
 import { Authorization } from './authorization.ts'
 import { PermissionRegistry } from './permission-registry.ts'
 import { permissions as rbacCatalog } from './permissions.ts'
+import { Administration } from './administration.ts'
+import { createRbacAdminRouter } from './admin-router.ts'
+import { rolesPage } from './ui.ts'
+import { rbacNavigation } from './messages.ts'
+import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
 
 // composition root only: the registry owns the active catalog and its
 // database mirror, authorization owns the checks, assignments own the
@@ -24,17 +29,31 @@ export default class Rbac extends Service implements RbacService {
   private registry: PermissionRegistry
   private authorization: Authorization
   private assignments: Assignments
+  readonly administration: Administration
 
   constructor(ctx: Context) {
     super(ctx, 'rbac')
     this.registry = new PermissionRegistry(ctx)
     this.authorization = new Authorization(ctx, this.registry)
     this.assignments = new Assignments(ctx)
+    this.administration = new Administration(ctx)
     this.definePermissions('rbac', rbacCatalog)
     // the ui registry is optional: a headless deployment runs without it,
     // so the authorizer registers in a nested fiber that simply stays
     // pending when no registry is assembled
+    // role administration needs the api surface; the ui registry is
+    // optional, so the page registers in the same nested fiber
+    ctx.inject(['server'], (serverCtx) => {
+      serverCtx.server.contribute('rbac', createRbacAdminRouter(serverCtx, this.administration))
+    })
     ctx.inject(['ui'], (uiCtx) => {
+      uiCtx.ui.addPage({
+        page: rolesPage,
+        component: 'rbac/RolesPage',
+        layout: ADMIN_SHELL,
+        visibility: permissionOf('rbac.role.read'),
+        navigation: { label: rbacNavigation.rolesNav, order: 32 },
+      })
       uiCtx.ui.setAuthorizer(async (principal) => {
         const profile = await this.getProfile(principal)
         return [...profile.tenantPermissions, ...profile.orgPermissions]
