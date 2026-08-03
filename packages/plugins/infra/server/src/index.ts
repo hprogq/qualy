@@ -9,6 +9,10 @@ import { OpenAPIHandler } from '@orpc/openapi/node'
 import { onError, ORPCError, os, walkProcedureContractsSync, type Router } from '@orpc/server'
 import { isAccessDeniedError, isDomainError } from '@qualy/api-contract'
 import { CORSHandlerPlugin } from '@orpc/server/plugins'
+import {
+  SmartCoercionHandlerPlugin,
+  StandardJsonSchemaConverter,
+} from '@orpc/json-schema'
 import type { StandardHandlerPlugin } from '@orpc/server/standard'
 import { Context, Service } from 'cordis'
 import { z } from 'zod'
@@ -376,6 +380,10 @@ export default class Server extends Service {
     const handler = new OpenAPIHandler<ApiContext>(router, {
       plugins: [
         new CORSHandlerPlugin(),
+        // query and path parameters arrive as strings; without this a
+        // contract that declares a boolean or a number rejects its own
+        // valid urls with a validation error
+        new SmartCoercionHandlerPlugin({ converters: [new StandardJsonSchemaConverter()] }),
         ...[...factories.values()].map((factory) => factory({ router, prefix })),
       ],
       interceptors: [

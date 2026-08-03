@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@orpc/client": "catalog:",
+    "@orpc/json-schema": "catalog:",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",

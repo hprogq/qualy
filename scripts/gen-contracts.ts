@@ -42,16 +42,22 @@ for (const entry of readEntries({ all })) {
     string,
     unknown
   >
-  const exportNames = Object.keys(module).filter((name) => name.endsWith('Contract'))
-  if (exportNames.length !== 1) {
-    throw new Error(`${entry.name}: contract module must have exactly one <ns>Contract export`)
+  // a plugin may expose several contracts, each becoming its own client
+  // namespace: one surface for the session core, another for the
+  // administration api it also owns
+  const exportNames = Object.keys(module)
+    .filter((name) => name.endsWith('Contract'))
+    .sort()
+  if (exportNames.length === 0) {
+    throw new Error(`${entry.name}: contract module must export at least one <ns>Contract`)
   }
-  const exportName = exportNames[0]!
-  const ns = exportName.slice(0, -'Contract'.length)
-  if (seen.has(ns)) throw new Error(`duplicate contract namespace: ${ns}`)
-  seen.add(ns)
-  imports.push(`import { ${exportName} } from '${entry.name}/contract'`)
-  fields.push(`  ${ns}: ${exportName},`)
+  for (const exportName of exportNames) {
+    const ns = exportName.slice(0, -'Contract'.length)
+    if (seen.has(ns)) throw new Error(`duplicate contract namespace: ${ns}`)
+    seen.add(ns)
+    imports.push(`import { ${exportName} } from '${entry.name}/contract'`)
+    fields.push(`  ${ns}: ${exportName},`)
+  }
 }
 
 const body = [
