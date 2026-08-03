@@ -31,7 +31,19 @@ const projects = [
   'apps/web',
   ...findClientProjects('packages'),
 ]
+// every program runs even after one fails: aborting on the first meant the
+// web-side programs went unchecked whenever the root had an error, so a
+// green run of the earlier projects was never evidence about the later ones
+const failed: string[] = []
 for (const project of projects) {
   console.log(`typecheck ${project}`)
-  execSync(`./node_modules/.bin/tsc -p ${project} --noEmit`, { stdio: 'inherit' })
+  try {
+    execSync(`./node_modules/.bin/tsc -p ${project} --noEmit`, { stdio: 'inherit' })
+  } catch {
+    failed.push(project)
+  }
+}
+if (failed.length > 0) {
+  console.error(`\ntypecheck failed: ${failed.join(', ')}`)
+  process.exit(1)
 }

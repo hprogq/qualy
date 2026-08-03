@@ -1,5 +1,5 @@
 import { lazy, useMemo, type ComponentType } from 'react'
-import { BrowserRouter } from 'react-router'
+import { BrowserRouter, Link } from 'react-router'
 import { createApiClient } from '@qualy/api-client'
 import { primaryNavigation } from '@qualy/ui-contract'
 import {
@@ -63,6 +63,11 @@ function ManifestRouter() {
         <Notice
           title={format(commonMessages.notFoundTitle)}
           hint={format(commonMessages.notFoundHint)}
+          // the way out of a mistyped address; a viewer with no home page
+          // has nowhere to be sent, and the shell's own header still offers
+          // whatever the session allows
+          action={home?.target.kind === 'page' ? home.target.path : undefined}
+          actionLabel={format(commonMessages.goHome)}
         />
       ),
       empty: (
@@ -72,7 +77,7 @@ function ManifestRouter() {
         />
       ),
     }),
-    [format],
+    [format, home],
   )
   return (
     <ManifestRoutes
@@ -84,11 +89,29 @@ function ManifestRouter() {
   )
 }
 
-function Notice({ title, hint }: { title: string; hint: string }) {
+// a whole-screen state rather than a paragraph in the corner: it renders
+// inside the viewer's shell when there is one and on its own when there is
+// not, so it centres itself either way
+function Notice({
+  title,
+  hint,
+  action,
+  actionLabel,
+}: {
+  title: string
+  hint: string
+  action?: string
+  actionLabel?: string
+}) {
   return (
-    <div className="space-y-2">
-      <h2 className="text-xl font-semibold">{title}</h2>
-      <p className="text-sm text-muted-foreground">{hint}</p>
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+      <h2 className="text-2xl font-semibold">{title}</h2>
+      <p className="max-w-md text-sm text-muted-foreground">{hint}</p>
+      {action && (
+        <Button asChild variant="outline" size="sm" className="mt-2">
+          <Link to={action}>{actionLabel}</Link>
+        </Button>
+      )}
     </div>
   )
 }

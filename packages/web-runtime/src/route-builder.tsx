@@ -39,6 +39,24 @@ export function buildManifestRoutes({
     byLayout.set(page.layout, [...(byLayout.get(page.layout) ?? []), page])
   }
 
+  // host-level policy: the origin goes to the home page when there is one,
+  // and anything unmatched, including a route that vanished when the
+  // viewer's permissions changed, lands on one not-found screen
+  const index: RouteObject = {
+    index: true,
+    element: homePath ? <Navigate to={homePath} replace /> : slots.empty,
+  }
+  const catchAll: RouteObject = { path: '*', element: slots.notFound }
+
+  // Both of those are screens, so they belong inside a shell: mistyping an
+  // address used to drop the viewer onto a bare page with no navigation and
+  // no way back. The shell chosen is the one the viewer's own home page
+  // lives in. The host names no layout contract of its own, and a viewer
+  // with nothing to see keeps the standalone rendering below.
+  const provided = new Set(manifest.layouts.map((layout) => layout.contract))
+  const home = manifest.pages.find((page) => page.path === homePath) ?? manifest.pages[0]
+  const shell = home && provided.has(home.layout) ? home.layout : undefined
+
   const routes: RouteObject[] = manifest.layouts.map((layout) => ({
     element: (
       <PluginComponent
@@ -50,30 +68,26 @@ export function buildManifestRoutes({
         missing={slots.componentMissing(layout.component)}
       />
     ),
-    children: (byLayout.get(layout.contract) ?? []).map((page) => ({
-      path: page.path,
-      element: (
-        <PluginComponent
-          componentId={page.component}
-          kind="page"
-          component={registry[page.component] as ComponentType | undefined}
-          loading={slots.pageLoading}
-          fallback={slots.pageError}
-          missing={slots.componentMissing(page.component)}
-        />
-      ),
-    })),
+    children: [
+      ...(byLayout.get(layout.contract) ?? []).map((page) => ({
+        path: page.path,
+        element: (
+          <PluginComponent
+            componentId={page.component}
+            kind="page"
+            component={registry[page.component] as ComponentType | undefined}
+            loading={slots.pageLoading}
+            fallback={slots.pageError}
+            missing={slots.componentMissing(page.component)}
+          />
+        ),
+      })),
+      // exactly one layout carries them, or the tree would be ambiguous
+      ...(layout.contract === shell ? [index, catchAll] : []),
+    ],
   }))
 
-  // host-level policy lives at the top of the tree rather than inside one
-  // privileged layout contract: the origin goes to the home page when there
-  // is one, and anything unmatched — including a route that vanished when
-  // the viewer's permissions changed — lands on one not-found screen
-  return [
-    ...routes,
-    { index: true, element: homePath ? <Navigate to={homePath} replace /> : slots.empty },
-    { path: '*', element: slots.notFound },
-  ]
+  return shell === undefined ? [...routes, index, catchAll] : routes
 }
 
 export function ManifestRoutes(options: RouteBuilderOptions) {

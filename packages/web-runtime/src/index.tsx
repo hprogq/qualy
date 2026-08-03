@@ -129,14 +129,21 @@ export function useSessionTransition() {
   const manifest = useManifest()
   return useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
-      // dropped, not invalidated: stale data of the previous identity must
-      // not stay readable while the next one loads
-      queryClient.clear()
       void navigate(sessionDestinationHref(options.destination), {
         replace: options.replace ?? true,
       })
-      // the new identity's manifest decides what is reachable next
-      await queryClient.refetchQueries()
+      // resetQueries, not clear: clear evicts the cache entries but leaves
+      // every mounted useQuery bound to the query it already resolved, so
+      // the manifest kept answering with the previous identity's pages and
+      // the following refetch had nothing left to refetch. Reset drops the
+      // data through the observers, which go pending rather than serving a
+      // stale row, and refetches the active ones under the new identity.
+      await queryClient.resetQueries()
+      // reset also clears each entry's collection timer and only re-arms it
+      // on the next fetch, so entries nobody is watching would outlive the
+      // tab. Removing them once the active ones have refetched restores what
+      // clear did without giving up the notification that reset provides.
+      queryClient.removeQueries({ type: 'inactive' })
     },
     // manifest identity ties the callback to the active session
     [queryClient, navigate, manifest],

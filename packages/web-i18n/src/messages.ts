@@ -31,10 +31,15 @@ export const commonMessages = {
   componentMissing: componentMissingMessage,
   layoutMissing: layoutMissingMessage,
   emptyPagesTitle: { id: 'common/page/empty-title', defaultMessage: 'No pages available' },
+  // said to whoever is looking, which may be an operator with an empty
+  // assembly manifest or a person whose account has not been granted
+  // anything yet; both are told the same true thing and neither is told to
+  // go edit a configuration file
   emptyPagesHint: {
     id: 'common/page/empty-hint',
-    defaultMessage: 'Enable a business plugin in the assembly manifest.',
+    defaultMessage: 'No page in this deployment is available to your account.',
   },
+  goHome: { id: 'common/action/go-home', defaultMessage: 'Go to the home page' },
   notFoundTitle: { id: 'common/page/not-found-title', defaultMessage: 'Page not found' },
   pageFailed: {
     id: 'common/component/page-failed',
@@ -44,8 +49,11 @@ export const commonMessages = {
     id: 'common/component/layout-failed',
     defaultMessage: 'The application shell could not be displayed.',
   },
+  // the manifest is an authorization projection, so the shell cannot tell
+  // "no such page" from "not yours to see", and must not, since answering
+  // differently would leak which pages exist
   notFoundHint: {
     id: 'common/page/not-found-hint',
-    defaultMessage: 'Check the address, or pick another page from the navigation.',
+    defaultMessage: 'This address does not match any page available to you.',
   },
 } as const satisfies Record<string, MessageDescriptor>

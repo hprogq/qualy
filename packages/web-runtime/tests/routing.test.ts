@@ -1,6 +1,6 @@
 import { definePage } from '@qualy/ui-contract'
 import { describe, expect, it } from 'vitest'
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { buildPageHref, sessionDestinationHref } from '../src/pages.ts'
 
 // url construction from a page reference: the one place a path becomes a
@@ -51,16 +51,44 @@ describe('session transitions', () => {
     expect(sessionDestinationHref({ kind: 'page', page: loginPage })).toBe('/login')
   })
 
-  it('drops the previous identity data instead of only invalidating it', async () => {
-    const queryClient = new QueryClient()
+  // This used to assert only that the cache was emptied, which the previous
+  // implementation did, while the mounted manifest query went on answering
+  // with the signed-out projection, so a fresh administrator saw one page.
+  // Emptying is half the job; the other half is that the observers notice.
+  it('drops the previous identity data and refetches under the new one', async () => {
+    let identity = 'anonymous'
+    let fetches = 0
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // what a mounted useQuery is: an observer subscribed to the cache
+    const manifest = new QueryObserver(queryClient, {
+      queryKey: ['app', 'manifest'],
+      queryFn: async () => {
+        fetches += 1
+        return identity
+      },
+    })
+    manifest.subscribe(() => {})
     queryClient.setQueryData(['org', 'tree'], { nodes: ['from the previous user'] })
-    expect(queryClient.getQueryData(['org', 'tree'])).toBeDefined()
+    await settle()
+    expect(manifest.getCurrentResult().data).toBe('anonymous')
 
-    queryClient.clear()
-    await queryClient.refetchQueries()
+    identity = 'administrator'
+    await queryClient.resetQueries()
+    queryClient.removeQueries({ type: 'inactive' })
+    await settle()
 
-    // gone entirely: an invalidate would leave it readable while stale
-    expect(queryClient.getQueryData(['org', 'tree'])).toBeUndefined()
-    expect(queryClient.getQueryCache().getAll()).toHaveLength(0)
+    // the signed-out page set is gone from the screen, not merely from a map
+    expect(manifest.getCurrentResult().data).toBe('administrator')
+    expect(fetches).toBe(2)
+    // nothing of the previous identity is left behind: asserting only that
+    // the data reads undefined cannot tell an emptied entry from a removed
+    // one, and reset alone leaves the emptied entries there for the life of
+    // the tab because it clears their collection timers
+    expect(queryClient.getQueryCache().getAll().map((query) => query.queryKey)).toEqual([
+      ['app', 'manifest'],
+    ])
+    manifest.destroy()
   })
 })
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
