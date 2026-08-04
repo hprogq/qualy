@@ -242,6 +242,38 @@
 - 验收:`pnpm typecheck` exit 0;`pnpm test` **32 文件 244 例全过**(vitest 全局 testTimeout 提到 30s:碰 postgres 的套件在第一条断言前要建库并跑完整条 lineage,5s 默认在装配套件加入后已经不够);`pnpm test:browser` 10 例;`pnpm build` 通过;空库 `pnpm qualy deploy` 15 条迁移 + seed + 首个 ready `503 {"assembly":"pending"}`、约 200ms 后 200 + 登录 200 + 零 `[E]`/`[W]`。**无 database 装配实测**(这条才是本阶段的证明):server + ui-registry + api-reference 经 `QUALY_CONFIG` 启动,`capabilities []`,`/health/live` 200、`/health/ready` 200 且 checks 为空、openapi 200。
 - **仍留在根的 db 相关物**:`scripts/seed.ts` 与 `scripts/lib/seed.ts` 写 auth/org/rbac 的行,属 provisioning,本设计尚无归属阶段(阶段 4),根因此保留 `pg`/`@types/pg`;`qualy.permissions` 是 rbac 的插件间元数据、不在 resolve 期消费,未提升为能力(触发条件:出现需要 resolve 期校验的权限约束);`db:reset` 做的是 docker compose 的事,留在根。
 
+## Effect 迁移(分支 refactor/effect-platform,进行中)
+
+设计与实测全记在 **docs/effect-migration.md**,决策在 docs/adr/0001-0003。这里只记进度与交接。
+
+| 里程碑 | 内容 | 状态 |
+| --- | --- | --- |
+| M0 / M0.5 | 依赖栈落地、effect/drizzle 源码 vendoring 与 agent 指令剥离 | e4ca3d5 |
+| M1a | 数据库切片实测(事务/回滚/中断/savepoint/约束名/ltree/uuidv7) | 3f2fac8 + 076bfea |
+| M1b | HTTP 切片实测(HttpApi、类型化 client、TanStack Query 桥接) | 13c8016 |
+| — | Effect LSP 接入 tsc,并用会失败的 fixture 守住 patch 是否还在 | 3d3f7a1 |
+| M2 | 应用外壳(健康探针、配置、组合根、优雅关闭) | b989041 |
+| — | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足** | 603f7ad |
+| M3 | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client | 本次 |
+| M4 | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | 待办 |
+| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | 待办 |
+| M6 | 前端切到 HttpApiClient | 待办 |
+| M7 | 原子切换,删掉 cordis 与 oRPC | 待办 |
+
+**M3 交接要点**:插件**不依赖**聚合体——用只装自己一个 group 的本地 `HttpApi` 实现,靠共享的
+`QUALY_API_ID` 让类型也对上(源码依据与实跑验证见迁移文档「M3 包边界」)。生成三份产物:
+`packages/api/src/api.gen.ts`(只有定义,浏览器读)、`packages/app/api-handlers.gen.ts`(handler,宿主读)、
+`packages/app/runtime.gen.ts`(非 API 贡献)。插件声明 `qualy.runtime.api` 指向 group 模块,生成器按
+`<ns>ApiGroup` 发现并配对 `<ns>ApiHandlers`,**没人实现的 group 是构建期失败**。
+
+**验收(逐条实跑)**:`pnpm typecheck` exit 0;`pnpm test` **41 文件 281 例全过**;真进程实跑
+`/ping/hello?name=ada` → `{"msg":"hi, ada"}`、无参 → `{"msg":"hi, world"}`、openapi 三条路径
+(`/ping/hello` `/health/live` `/health/ready`)、`/health/live` 与 `/health/ready` 均 200、
+SIGTERM 后端口释放。冻结路径 `GET /ping/hello` 未变,`api-surface.test.ts` 仍绿。
+
+**下一步是 M4**,阻塞点已知:静态 Layer 图组合不了互相 require 的插件,org↔rbac 现有的环必须先拆。
+另有一项在 M6 前必须确认:`@effect/vitest` 在 Vitest browser mode 下能否用(上游无证据)。
+
 ## 下一会话(P1 会话 7)
 
 - 会话 7 做 manifest 权限过滤的收尾与 dict 插件。**注意:manifest 授权投影已在前端收口轮提前完成**(ui-registry 单槽 authorizer + 三态投影),§7.1 的 Authorizer 已落地,会话 7 只剩页面权限声明复核与 dict。**会话 6 已沿用的硬约束**:①canonical tenant-admin 五不可变(不可删/禁/改 code/kind/isSystem);②所有跨领域写(用户类型变更、角色 allowed 集合变更、org node 类型变更、org type 删除)对现有 assignment 的一致性必须在同一串行化事务内校验(org 已建 assignmentsBlockingOrgType 与租户行锁范式,会话 6 的用户/角色写复用同锁);③禁用用户/类型即 Session 失效;④tenantId 只来自 principal。**会话 5 遗留的会话 5 原始约束(已在会话 5 落实,存档)**:①org 插件从 scaffold 起即按 errors/repo/service/contract/router/permissions/index 分层(repo 只做租户限定数据访问不抛 ORPCError 不判权限;service 管事务与树不变量不碰 HTTP;router 管校验+requireAt+领域错误映射;contract 纯净;index 组合根);②**组织结构写操作一律先 `select ... from tenants where id=$1 for update` 锁租户行**(create/move/delete/改类型/改规则全串行化,防「A 移入 B 下 ∥ B 移入 A 下」双事务旧快照互过;P1 规模代价可忽略,细粒度锁不做);③move 授权查两端 requireAt(source + destination parent),create→parent、rename/改类型/delete→node、读子树→请求根;④path/depth 是 service 维护的派生投影(parent_id 才是结构关系),move 必须同事务更新整个子树 path/depth/updatedAt,评估 (tenant_id, path) 唯一索引,测试验证 parent 链与 path/depth 恒一致;⑤类型规则多节点环 DB 只拦自环,完整环检测由 service 在串行化事务内做

@@ -1,0 +1,16 @@
+{
+  "name": "@qualy/api",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-ping": "workspace:*",
+    "effect": "catalog:"
+  }
+}

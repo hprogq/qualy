@@ -10,13 +10,19 @@
     "./contract": "./src/contract.ts",
     "./schema": "./src/db/schema.ts",
     "./client": "./client/index.ts",
-    "./ui": "./src/ui.ts"
+    "./ui": "./src/ui.ts",
+    "./api": "./src/api.ts",
+    "./effect": "./src/effect/index.ts"
   },
   "qualy": {
     "contributions": {
       "database": {
         "schemaEntry": "src/db/schema.ts"
       }
+    },
+    "runtime": {
+      "entry": "./effect",
+      "api": "./api"
     }
   },
   "peerDependencies": {
@@ -34,7 +40,9 @@
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "drizzle-orm": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@qualy/api-kit": "workspace:*",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:"

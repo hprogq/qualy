@@ -25,7 +25,9 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/plugin-web": "workspace:*",
     "cordis": "catalog:",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "@qualy/api": "workspace:*",
+    "@qualy/api-kit": "workspace:*"
   },
   "devDependencies": {
     "@cordisjs/plugin-hmr": "catalog:"

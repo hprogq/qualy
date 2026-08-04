@@ -1,5 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { QUALY_API_ID } from '@qualy/api-kit'
 import { ping } from '@qualy/plugin-database/effect'
 
 // Liveness says the process is up. Readiness says it can take traffic.
@@ -19,20 +20,22 @@ export class NotReady extends Schema.TaggedErrorClass<NotReady>()(
   { httpApiStatus: 503 },
 ) {}
 
-export const healthApi = HttpApi.make('health').add(
-  HttpApiGroup.make('health')
-    .add(
-      HttpApiEndpoint.get('live', '/health/live', {
-        success: Schema.Struct({ status: Schema.Literal('live') }),
-      }),
-    )
-    .add(
-      HttpApiEndpoint.get('ready', '/health/ready', {
-        success: Schema.Struct({ status: Schema.Literal('ready') }),
-        error: NotReady,
-      }),
-    ),
-)
+export const healthApiGroup = HttpApiGroup.make('health')
+  .add(
+    HttpApiEndpoint.get('live', '/health/live', {
+      success: Schema.Struct({ status: Schema.Literal('live') }),
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get('ready', '/health/ready', {
+      success: Schema.Struct({ status: Schema.Literal('ready') }),
+      error: NotReady,
+    }),
+  )
+
+// built under the shared api id like any plugin's group, so it satisfies the
+// aggregate that serves it; see QUALY_API_ID
+export const healthApi = HttpApi.make(QUALY_API_ID).add(healthApiGroup)
 
 export const healthHandlers = HttpApiBuilder.group(healthApi, 'health', (handlers) =>
   handlers

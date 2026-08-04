@@ -1,10 +1,10 @@
 import { queryOptions, type QueryKey } from '@tanstack/react-query'
 import { Effect } from 'effect'
 
-// M1b, the frontend half. `Effect<A, E>` has an error type; `Promise<A>` does
-// not, so the moment a page calls `Effect.runPromise` the failure type is
-// gone and TanStack Query infers `TError = Error`. Everything HttpApi bought
-// on the client is thrown away at that line.
+// `Effect<A, E>` has an error type; `Promise<A>` does not, so the moment a
+// page calls `Effect.runPromise` the failure type is gone and TanStack Query
+// infers `TError = Error`. Everything HttpApi bought on the client is thrown
+// away at that line.
 //
 // So pages never run effects. They call this, which carries `E` across into
 // the query's `TError` and hands the query's AbortSignal to the fiber, so

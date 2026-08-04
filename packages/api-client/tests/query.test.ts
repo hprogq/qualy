@@ -1,7 +1,7 @@
 import { QueryClient, type UseQueryOptions } from '@tanstack/react-query'
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { effectQueryOptions } from '../src/query.ts'
+import { effectQueryOptions } from '../src/effect/query.ts'
 
 // M1b: does the error type survive the trip into TanStack Query, and does
 // leaving a page actually cancel the request?

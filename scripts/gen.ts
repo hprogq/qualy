@@ -29,6 +29,7 @@ console.log(
 )
 
 await import('./gen-contracts.ts')
+await import('./gen-api.ts')
 await import('./gen-plugins.ts')
 
 export {}

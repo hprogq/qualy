@@ -3,6 +3,10 @@ import { Effect, Layer } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
+import { HttpApi } from 'effect/unstable/httpapi'
+import { QUALY_API_ID } from '@qualy/api-kit'
+import { qualyApi } from '@qualy/api'
+import { apiHandlers } from '../../api-handlers.gen.ts'
 import { pluginLayers } from '../../runtime.gen.ts'
 import { ServerConfig, databaseConfigLayer } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
@@ -15,11 +19,15 @@ import { healthApi, healthHandlers } from './health.ts'
 // on, so an instance either serves a working assembly or never listens at all:
 // there is no partially assembled state to observe.
 
+// health is declared here rather than by a plugin because it must answer for
+// an assembly that contains no plugins at all
+const servedApi = HttpApi.make(QUALY_API_ID).addHttpApi(qualyApi).addHttpApi(healthApi)
+
 const routes = Layer.mergeAll(
-  HttpApiBuilder.layer(healthApi, { openapiPath: '/openapi.json' }).pipe(
-    Layer.provide(healthHandlers),
+  HttpApiBuilder.layer(servedApi, { openapiPath: '/openapi.json' }).pipe(
+    Layer.provide(Layer.mergeAll(healthHandlers, apiHandlers)),
   ),
-  HttpApiScalar.layer(healthApi, { path: '/docs' }),
+  HttpApiScalar.layer(servedApi, { path: '/docs' }),
 )
 
 const server = Layer.unwrap(

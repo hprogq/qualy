@@ -40,7 +40,7 @@ Agent 检索纪律在 [agents/effect-source-policy.md](agents/effect-source-poli
 | M1a | 技术验证 spike:**数据库**(真实 schema + 事务 + 关闭) | **完成** |
 | M1b | 技术验证 spike:**HttpApi**(endpoint + client + Scalar + Query 适配) | **完成** |
 | M2 | Effect 应用外壳(config/database/readiness/根 Scope/优雅关闭/runtime.gen.ts) | **完成** |
-| M3 | HttpApi 基础 + 类型化 client + TanStack Query 适配,先迁 ping | 待办 |
+| M3 | HttpApi 基础 + 类型化 client + TanStack Query 适配,先迁 ping | **已完成** |
 | M4 | 最难的业务集群:auth/IAM + rbac + org | 待办 |
 | M5 | 其余插件,按依赖簇而不是按目录 | 待办 |
 | M6 | 前端切换到 HttpApiClient | 待办 |
@@ -187,6 +187,57 @@ layer 之后才建,所以编排器看到的是「拒绝连接 → 可用实例�
 新的等价验收是:**依赖没建好之前端口不存在**(已实测)。readiness 端点保留,但它回答的是
 「现在还连得上数据库吗」,而不是「装配完了吗」。
 
+## M3 实测结果(2026-08-05)
+
+### 包边界:插件不认识聚合体
+
+难点是**循环**:`HttpApiBuilder.group(api, id, build)` 要整个 api,而 api 是从每个插件生成的,
+于是每个插件都要依赖那个从它自己生成出来的包。
+
+读源码解决:`HttpApiGroup.key` 只由 **group 标识符**构成(不含 api id),所以聚合体在运行时按标识符
+找 handler;而 `HttpApiBuilder.group` 的返回类型是 `Service<ApiId, Identifier>`,**类型上带 api
+id**。两件事合起来意味着:插件可以拿一个只装自己这一个 group 的**本地 api**去实现,只要 api id 相同,
+运行时对得上,类型也对得上。
+
+```ts
+const local = HttpApi.make(QUALY_API_ID).add(pingApiGroup)
+export const pingApiHandlers = HttpApiBuilder.group(local, 'ping', ...)
+```
+
+**先跑过再采信**:类型过了不等于聚合体真的找得到 handler,专门起了真 server 验证 —— 两个在不同
+`HttpApi` 实例上实现的 group,被第三个聚合体一起服务,两条路径都通。
+
+于是 `@qualy/api-kit` 只剩一个共享常量。原本想给它一个 `implementGroup` 帮手把这个技巧包起来,
+但 `HttpApiGroup.Identifier<G>` 是延迟条件类型,泛型没绑定时解不出来,帮手必须 `as any` 才写得出来;
+插件里显式写两行反而是全类型检查的。**需要 `as any` 才能存在的抽象,不如两行显式代码**。
+
+### 三份产物,各自的读者不同
+
+| 文件 | 内容 | 谁读 |
+| --- | --- | --- |
+| `packages/api/src/api.gen.ts` | 只有 group 定义 | 浏览器(纯 Schema,不牵进任何服务端依赖) |
+| `packages/app/api-handlers.gen.ts` | handler 层合并 | 宿主(只有它跑得动) |
+| `packages/app/runtime.gen.ts` | 插件的非 API 贡献 | 宿主 |
+
+插件用 `qualy.runtime.api` 声明 group 模块,生成器按 `<ns>ApiGroup` 发现导出,并去 `qualy.runtime.entry`
+配对同名的 `<ns>ApiHandlers` —— **没人实现的 group 是构建期的 import 失败,而不是生产环境的 404**。
+group 标识符全局唯一(重名硬失败),因为运行时就是靠它找 handler,重名会让后合并的那份悄悄顶掉前一份。
+
+### 实测
+
+- `packages/app/tests/effect-api.test.ts`(2 例):冻结路径 `GET /ping/hello` 由聚合体服务、handler
+  经宿主提供的层写进 `ping_logs`、可选参数真可选、health 仍在同一聚合体上;以及只用 `qualyApi`
+  (无 handler、无服务端依赖)建出的 client 调通,且响应**是真类型不是 `any`**(用 `@ts-expect-error`
+  读一个不存在的字段反证)。
+- 真进程实跑:`/ping/hello?name=ada` → `{"msg":"hi, ada"}`,openapi 里三条路径
+  (`/ping/hello` `/health/live` `/health/ready`),SIGTERM 后端口释放。
+
+### 留给后面的
+
+ping 的 `greeting` 现在读 `Config.string('PING_GREETING')`(**在层构建期读一次**,配错了应该拦住装配
+而不是拖到每个请求)。清单 config → layer config 的贯通仍留在 M5,理由不变:现在只有一个带 config 的
+插件,样本不够。
+
 ## 已知的硬骨头
 
 ### 1. 跨插件环必须真的拆开
@@ -269,5 +320,5 @@ OpenAPI 语义审查、前端 chunk/tree-shaking 审查,以及三条零容忍:
 - **manifest config 怎么进 layer**:M2 里 `DatabaseConfig` 由宿主提供、读环境变量,`qualy.yml` 的
   `migrationsFolder` 暂时没接进去。等 M5 有第二个带 config 的插件再定,现在定就是照着一个样本设计
 - 运行时依赖声明落在 descriptor 还是 package.json(见「硬骨头 2」)
-- `@qualy/api` / `@qualy/api-client` 包边界(M3 定)
+- ~~`@qualy/api` / `@qualy/api-client` 包边界~~(M3 已定,见「M3 包边界」)
 - Zod → Effect Schema 的迁移顺序与共存期(M3 定)
