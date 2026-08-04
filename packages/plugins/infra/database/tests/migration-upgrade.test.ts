@@ -567,6 +567,46 @@ describe.runIf(available)('access model upgrade', () => {
     expect(await tableExists(pool, 'user_role_assignments')).toBe(true)
   })
 
+  // The generated name once carried only the first six hex digits of the
+  // source type's id. Under uuidv7 those are the top bits of a millisecond
+  // timestamp, so every id minted within the same few hours shares them, and
+  // the remaining discriminator was the first 80 characters of a name that
+  // may be 100 long. Two such types generated one name between them and the
+  // upgrade died on a raw unique violation, which the preflight could not
+  // catch because the clash is between two rows it was about to create.
+  it('generates a distinct role name for types minted in the same instant', async () => {
+    const db = await openDatabase('names')
+    const { pool } = db
+    await db.before(ACCESS_MODEL)
+
+    const tenant = await legacyTenant(pool, 'names')
+    const read = await legacyPermission(pool, 'app.self.read')
+    // agreeing for their first 80 characters and differing only after
+    const shared = 'A'.repeat(80)
+    const first = await legacyUserType(pool, tenant.tenantId, 'type-a', `${shared}-one`)
+    const second = await legacyUserType(pool, tenant.tenantId, 'type-b', `${shared}-two`)
+    await typePermission(pool, tenant.tenantId, first, read)
+    await typePermission(pool, tenant.tenantId, second, read)
+
+    // the ids really do share their leading digits, so the test is exercising
+    // the collision rather than getting lucky
+    const prefixes = await pool.query(
+      `select left(replace(id::text, '-', ''), 6) as head from user_types
+       where tenant_id = $1 order by code`,
+      [tenant.tenantId],
+    )
+    expect(prefixes.rows[0].head).toBe(prefixes.rows[1].head)
+
+    await db.rest()
+
+    const names = await pool.query(
+      `select name from roles where code ~ '^migrated-[0-9a-f]{32}$' order by name`,
+    )
+    expect(names.rows).toHaveLength(2)
+    expect(names.rows[0].name).not.toBe(names.rows[1].name)
+    for (const row of names.rows) expect(row.name.length).toBeLessThanOrEqual(100)
+  })
+
   it('leaves roles an administrator named after the compatibility prefix alone', async () => {
     const db = await openDatabase('prefix')
     const { pool } = db

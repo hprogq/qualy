@@ -30,6 +30,15 @@ DROP FUNCTION IF EXISTS check_role_permission_channel();--> statement-breakpoint
 -- permissions dropped and nothing holding them. The identifiers derive from
 -- the user type's id, not its code: a code may be 63 characters and a role
 -- code may not be longer.
+--
+-- The name carries the whole id rather than a prefix of it. Under uuidv7 the
+-- leading hex digits are the top bits of a millisecond timestamp, so every id
+-- minted in the same few hours shares them, and two types whose names agree
+-- for their first 80 characters would then generate one name between them.
+-- The preflight below compares generated names against existing ones and
+-- would not catch that, because the clash is between two rows this migration
+-- is about to create. 61 + 7 + 32 is exactly the 100 characters a role name
+-- may have.
 DO $$
 DECLARE clash text;
 BEGIN
@@ -41,7 +50,7 @@ BEGIN
   END IF;
   SELECT string_agg(r.name, ', ') INTO clash
   FROM roles r JOIN user_types ut ON ut.tenant_id = r.tenant_id
-  WHERE r.name = left(ut.name, 80) || ' 原有权限 #' || left(replace(ut.id::text, '-', ''), 6);
+  WHERE r.name = left(ut.name, 61) || ' 原有权限 #' || replace(ut.id::text, '-', '');
   IF clash IS NOT NULL THEN
     RAISE EXCEPTION 'role names % would collide with the roles this migration generates', clash;
   END IF;
@@ -120,7 +129,7 @@ UPDATE "roles" SET "system_key" = 'tenant-admin', "permission_mode" = 'all-activ
 INSERT INTO "roles" ("tenant_id", "code", "name", "kind", "status", "permission_mode")
 SELECT DISTINCT ut."tenant_id",
   'migrated-' || replace(ut."id"::text, '-', ''),
-  left(ut."name", 80) || ' 原有权限 #' || left(replace(ut."id"::text, '-', ''), 6),
+  left(ut."name", 61) || ' 原有权限 #' || replace(ut."id"::text, '-', ''),
   'tenant', 'active', 'explicit'
 FROM "user_types" ut
 WHERE EXISTS (SELECT 1 FROM "user_type_permissions" utp

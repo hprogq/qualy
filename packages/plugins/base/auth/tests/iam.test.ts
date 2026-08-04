@@ -870,6 +870,35 @@ describe.runIf(available)('identity administration', () => {
       [f.tenant, f.viewerRole, f.staffType],
     )
     await iam.deleteUserType(f.tenant, lonely, 1)
+
+    // The same guard for a tenant role, which declares who may hold it just
+    // as an org role does. Looking only at org roles left an active tenant
+    // role behind with nobody eligible for it, which is the inert state the
+    // lifecycle exists to prevent.
+    const orphan = (
+      await pool.query(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'orphan', 'Orphan', 'unrestricted') returning id`,
+        [f.tenant],
+      )
+    ).rows[0].id as string
+    const wide = (
+      await pool.query(
+        `insert into roles (tenant_id, code, name, kind, status)
+         values ($1, 'tenant-reviewer', 'Tenant reviewer', 'tenant', 'active') returning id`,
+        [f.tenant],
+      )
+    ).rows[0].id as string
+    await pool.query(
+      `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
+      [f.tenant, wide, orphan],
+    )
+    expect(await fault(iam.deleteUserType(f.tenant, orphan, 1))).toEqual({
+      code: 'USER_TYPE_LAST_FOR_ROLE',
+      data: { roleCount: 1 },
+    })
+    await pool.query(`delete from roles where id = $1`, [wide])
+    await iam.deleteUserType(f.tenant, orphan, 1)
   })
 
   it('pages instead of truncating in silence', async () => {

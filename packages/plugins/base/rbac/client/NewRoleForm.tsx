@@ -1,16 +1,20 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, CheckboxGroup, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { Feedback, Field, Panel, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { rbacMessages as m } from './i18n.ts'
 
-// A role is created complete. Creating a bare one and configuring it later
-// leaves a window where it is enabled, assignable and grants nothing, which
-// is indistinguishable from a misconfiguration.
+// Creation carries identity only: a role starts as a draft and is configured
+// in the editor, where completeness is checked when it is activated. The form
+// used to collect permissions and eligibility as well and then send none of
+// it, which is worse than not offering the fields at all.
+//
+// The kind is chosen here because it cannot be changed afterwards: it decides
+// whether the duty applies tenant-wide or is anchored to a node, and with it
+// which capabilities the role may hold.
 export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void }) {
   const api = useApi()
   const orpc = useApiQuery()
@@ -19,40 +23,19 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
   const [feedback, setFeedback] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [permissionCodes, setPermissionCodes] = useState<string[]>([])
-  const [eligibleUserTypeIds, setEligibleUserTypeIds] = useState<string[]>([])
-  const [anchorOrgTypeIds, setAnchorOrgTypeIds] = useState<string[]>([])
-
-  const catalog = useQuery(
-    orpc.access.listPermissions.queryOptions({
-      input: { target: 'org-node' },
-    }),
-  )
-  const options = useQuery(orpc.access.getRoleOptions.queryOptions())
+  const [kind, setKind] = useState<'tenant' | 'org'>('org')
 
   const create = useMutation({
-    mutationFn: () =>
-      // a role is created as a draft and configured before activation, so
-      // creation carries identity only
-      api.access.createRole({ code, name, kind: 'org' }),
+    mutationFn: () => api.access.createRole({ code, name, kind }),
     onMutate: () => setFeedback(null),
     onSuccess: async (result: { id: string }) => {
       setCode('')
       setName('')
-      setPermissionCodes([])
-      setEligibleUserTypeIds([])
-      setAnchorOrgTypeIds([])
       await queryClient.invalidateQueries({ queryKey: orpc.access.key() })
       onCreated(result.id)
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
-
-  const incomplete =
-    code.trim() === '' ||
-    name.trim() === '' ||
-    eligibleUserTypeIds.length === 0 ||
-    anchorOrgTypeIds.length === 0
 
   return (
     <Panel title={format(m.newRole)} description={format(m.newRoleHint)}>
@@ -76,60 +59,21 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
             )}
           </Field>
         </div>
-        {/* a picker whose source failed to load must say so: an empty
-            checkbox list is indistinguishable from "there is nothing here" */}
-        <AsyncSection
-          pending={catalog.isPending}
-          error={catalog.isError ? formatError(catalog.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
-          onRetry={() => void catalog.refetch()}
+        <RadioGroup
+          legend={format(m.kindLegend)}
+          name="role-kind"
+          options={[
+            { value: 'org', label: format(m.kindOrg), hint: format(m.kindOrgHint) },
+            { value: 'tenant', label: format(m.kindTenant), hint: format(m.kindTenantHint) },
+          ]}
+          selected={kind}
+          onChange={(value) => setKind(value as 'tenant' | 'org')}
+        />
+        <Button
+          size="sm"
+          type="submit"
+          disabled={create.isPending || code.trim() === '' || name.trim() === ''}
         >
-          <CheckboxGroup
-            legend={format(m.permissionsLegend)}
-            emptyLabel={format(m.noOptions)}
-            options={(catalog.data?.permissions ?? []).map((permission) => ({
-              value: permission.code,
-              label: permission.name,
-              hint: permission.code,
-            }))}
-            selected={permissionCodes}
-            onChange={setPermissionCodes}
-          />
-        </AsyncSection>
-        <AsyncSection
-          pending={options.isPending}
-          error={options.isError ? formatError(options.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
-          onRetry={() => void options.refetch()}
-        >
-          <div className="space-y-3">
-            <CheckboxGroup
-              legend={format(m.userTypesLegend)}
-              emptyLabel={format(m.noOptions)}
-              options={(options.data?.userTypes ?? []).map((type) => ({
-                value: type.id,
-                label: type.name,
-                hint: type.code,
-              }))}
-              selected={eligibleUserTypeIds}
-              onChange={setEligibleUserTypeIds}
-            />
-            <CheckboxGroup
-              legend={format(m.orgTypesLegend)}
-              emptyLabel={format(m.noOptions)}
-              options={(options.data?.orgTypes ?? []).map((type) => ({
-                value: type.id,
-                label: type.name,
-                hint: type.code,
-              }))}
-              selected={anchorOrgTypeIds}
-              onChange={setAnchorOrgTypeIds}
-            />
-          </div>
-        </AsyncSection>
-        <Button size="sm" type="submit" disabled={create.isPending || incomplete}>
           {format(m.create)}
         </Button>
       </form>

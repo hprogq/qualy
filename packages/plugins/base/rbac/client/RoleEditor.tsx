@@ -205,27 +205,29 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
         </div>
       </AsyncSection>
 
-      {role.kind === 'org' && (
-        <AsyncSection
+      {/* every role says who may hold it; only an anchored one says where
+          the duty applies */}
+      <AsyncSection
           pending={options.isPending}
           error={options.isError ? formatError(options.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void options.refetch()}
         >
-          <div className="space-y-2">
-            <CheckboxGroup
-              legend={format(m.userTypesLegend)}
-              emptyLabel={format(m.noOptions)}
-              disabled={!editable}
-              options={(options.data?.userTypes ?? []).map((type) => ({
-                value: type.id,
-                label: type.name,
-                hint: type.code,
-              }))}
-              selected={userTypeIds}
-              onChange={setUserTypeIds}
-            />
+        <div className="space-y-2">
+          <CheckboxGroup
+            legend={format(m.userTypesLegend)}
+            emptyLabel={format(m.noOptions)}
+            disabled={!editable}
+            options={(options.data?.userTypes ?? []).map((type) => ({
+              value: type.id,
+              label: type.name,
+              hint: type.code,
+            }))}
+            selected={userTypeIds}
+            onChange={setUserTypeIds}
+          />
+          {role.kind === 'org' && (
             <CheckboxGroup
               legend={format(m.orgTypesLegend)}
               emptyLabel={format(m.noOptions)}
@@ -238,17 +240,17 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
               selected={orgTypeIds}
               onChange={setOrgTypeIds}
             />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!editable || saveEligibility.isPending}
-              onClick={() => saveEligibility.mutate(undefined as never)}
-            >
-              {format(m.save)}
-            </Button>
-          </div>
-        </AsyncSection>
-      )}
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!editable || saveEligibility.isPending}
+            onClick={() => saveEligibility.mutate(undefined as never)}
+          >
+            {format(m.save)}
+          </Button>
+        </div>
+      </AsyncSection>
 
       <ConfirmDialog
         open={confirmingDelete}

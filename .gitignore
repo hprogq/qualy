@@ -52,3 +52,7 @@ Thumbs.db
 # misc
 *.local
 .vitest-attachments/
+
+# vitest browser writes these when a test fails; they are diagnostics,
+# not baselines, and nothing compares against them
+apps/web/tests/__screenshots__/

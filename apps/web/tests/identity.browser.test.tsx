@@ -382,15 +382,56 @@ describe('roles screen', () => {
     await expect.element(page.getByText('院系管理员').first()).toBeInTheDocument()
     // the section reports the failure and offers a retry rather than
     // rendering an empty, apparently-complete checkbox list
-    // both the editor and the create form draw from that catalog, and both
-    // report the failure rather than showing an empty list
     await expect.element(page.getByRole('button', { name: '重试' }).first()).toBeInTheDocument()
-    expect(await page.getByRole('button', { name: '重试' }).elements()).toHaveLength(2)
+    expect(await page.getByRole('button', { name: '重试' }).elements()).toHaveLength(1)
     expect(await page.getByRole('group', { name: '权限' }).elements()).toHaveLength(0)
-    // the sections whose data did load are unaffected
+    // the section whose data did load is unaffected. Only the editor draws
+    // from the catalog: creation takes identity and kind, and everything a
+    // role needs before it can be activated is configured afterwards.
     expect(await page.getByRole('group', { name: '可以授予这些用户类型' }).elements()).toHaveLength(
-      2,
+      1,
     )
+    expect(
+      await page.getByRole('group', { name: '这个角色在哪里生效' }).elements(),
+    ).toHaveLength(1)
+  })
+
+  // The form used to collect permissions and eligibility and then send only
+  // the identity fields, so a careful administrator filled in three pickers
+  // that were discarded on submit. It now asks for what it actually sends.
+  it('creates a role from what the form asks for, including its kind', async () => {
+    const create = vi.fn(() => Promise.resolve({ id: 'created-role' }))
+    renderScreen({
+      client: fakeClient(
+        stubs({
+          access: {
+            listRoles: () =>
+              Promise.resolve({
+                roles: [],
+                capabilities: { canManage: true, canEscalate: false },
+              }),
+            createRole: create,
+          },
+        }),
+      ),
+      route: '/admin/roles',
+      children: <RolesPage />,
+    })
+
+    await expect.element(page.getByRole('group', { name: '这个角色在哪里生效' })).toBeInTheDocument()
+    // nothing is asked for that creation cannot carry
+    expect(await page.getByRole('group', { name: '权限' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('group', { name: '可以授予这些用户类型' }).elements()).toHaveLength(
+      0,
+    )
+
+    await page.getByRole('textbox', { name: 'code' }).fill('reviewer')
+    await page.getByRole('textbox', { name: '名称' }).fill('审核员')
+    await page.getByRole('radio', { name: /在整个租户范围/ }).click()
+    await page.getByRole('button', { name: '创建' }).click()
+
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create).toHaveBeenCalledWith({ code: 'reviewer', name: '审核员', kind: 'tenant' })
   })
 
   it('asks before deleting, in a dialog that can be read and cancelled', async () => {

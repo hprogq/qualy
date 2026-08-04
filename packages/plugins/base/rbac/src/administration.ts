@@ -319,9 +319,18 @@ export class Administration {
         throw accessErrors.create('ROLE_TARGET_MISMATCH', { permissions: mismatched.sort() })
       }
       await assertMayDefineRole(this.authorization, actor, wanted, tx)
+      // Replace only within what the registry currently serves. A row whose
+      // plugin is unloaded was never on offer, so the caller did not decline
+      // it by omitting it, and deleting it would quietly discard authority
+      // that unloading a plugin is meant to suspend rather than destroy.
+      // Removing one is a separate decision that needs its own operation.
+      const offered = [...active.keys()]
       await tx.execute(sql`
         delete from role_permissions
         where tenant_id = ${tenantId} and role_id = ${role.id}
+          and permission_id in (
+            select id from permissions
+            where code = any(string_to_array(${offered.join(',')}, ',')))
           and permission_id not in (
             select id from permissions
             where code = any(string_to_array(${wanted.join(',')}, ',')))`)

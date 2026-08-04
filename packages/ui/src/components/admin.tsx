@@ -174,6 +174,58 @@ export function CheckboxGroup({
   )
 }
 
+// One-of-several as real radios, for the same reasons as the checkboxes
+// above: a fieldset with a legend is what a screen reader announces and what
+// a test drives by role and name.
+export function RadioGroup({
+  legend,
+  name,
+  options,
+  selected,
+  onChange,
+  disabled,
+}: {
+  legend: string
+  name: string
+  options: readonly CheckboxOption[]
+  selected: string
+  onChange: (next: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <fieldset className="space-y-2" disabled={disabled}>
+      <legend className="text-sm font-medium">{legend}</legend>
+      <div className="grid gap-1 sm:grid-cols-2">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className={cn(
+              'flex items-start gap-2 rounded-md px-2 py-1 text-sm',
+              option.disabled ? 'opacity-50' : 'hover:bg-muted/50',
+            )}
+          >
+            <input
+              type="radio"
+              className="mt-1"
+              name={name}
+              value={option.value}
+              checked={selected === option.value}
+              disabled={option.disabled}
+              onChange={() => onChange(option.value)}
+            />
+            <span className="min-w-0">
+              <span className="block truncate">{option.label}</span>
+              {option.hint && (
+                <span className="block text-xs text-muted-foreground">{option.hint}</span>
+              )}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
 // A real modal instead of window.confirm: it can say how much damage the
 // action does, it localizes, and a browser test can read and drive it.
 // Native <dialog> gives focus trapping and escape handling without a

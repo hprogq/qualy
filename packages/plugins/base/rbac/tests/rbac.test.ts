@@ -437,6 +437,83 @@ describe.runIf(available)('rbac', () => {
     expect(Number(rows.rows[0].count)).toBe(1)
   })
 
+  // Disabling a plugin suspends what it contributes; it does not destroy
+  // configuration that mentions it. An administrator editing an unrelated
+  // part of a role sees only the codes the registry currently serves, so
+  // omitting a suspended one is not a decision to remove it, and treating it
+  // as one silently discarded authority that reinstating the plugin was
+  // supposed to bring back.
+  it('keeps a permission whose plugin is unloaded while the role is edited', async () => {
+    const scoped = ctx.plugin({
+      name: 'suspendable',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('suspendable', [
+          { code: 'suspendable.thing.read', name: 'suspendable', target: 'tenant' },
+        ])
+      },
+    })
+    await scoped
+    await rbac.whenSynced()
+
+    const admin = administration()
+    const role = await admin.createRole(f.tenant, {
+      code: 'suspendable-holder',
+      name: 'Suspendable holder',
+      kind: 'tenant',
+    })
+    let version = await admin.syncRolePermissions(
+      f.tenant,
+      role,
+      ['suspendable.thing.read', 'test.report.read'],
+      1,
+    )
+
+    await scoped.dispose()
+    // the code is no longer served, so the editor cannot offer it and the
+    // role reports it as configured but unavailable
+    expect(rbac.getPermission('suspendable.thing.read')).toBeUndefined()
+    const suspended = await admin.getRole(f.tenant, role)
+    expect(admin.permissionsOfRole(suspended)).toEqual({
+      active: ['test.report.read'],
+      unavailable: ['suspendable.thing.read'],
+    })
+
+    // an ordinary save of what the editor could see must not take the rest
+    version = await admin.syncRolePermissions(f.tenant, role, ['test.role.manage'], version)
+    const kept = await pool.query(
+      `select p.code from role_permissions rp
+       join permissions p on p.id = rp.permission_id
+       where rp.role_id = $1 order by p.code`,
+      [role],
+    )
+    expect(kept.rows.map((row) => row.code)).toEqual([
+      'suspendable.thing.read',
+      'test.role.manage',
+    ])
+
+    // and reinstating the plugin brings the capability back to the holder
+    const again = ctx.plugin({
+      name: 'suspendable',
+      inject: ['rbac'],
+      apply: (child: Context) => {
+        child.rbac.definePermissions('suspendable', [
+          { code: 'suspendable.thing.read', name: 'suspendable', target: 'tenant' },
+        ])
+      },
+    })
+    await again
+    await rbac.whenSynced()
+    expect(admin.permissionsOfRole(await admin.getRole(f.tenant, role)).active).toEqual([
+      'suspendable.thing.read',
+      'test.role.manage',
+    ])
+    await again.dispose()
+    await pool.query(`delete from role_permissions where role_id = $1`, [role])
+    await pool.query(`delete from roles where id = $1`, [role])
+    void version
+  })
+
   it('keeps tenants fully isolated', async () => {
     // B's administrator holds everything in B and nothing in A
     expect(await orpcCode(rbac.require(principal(f.adminB, f.tenantB), 'test.role.manage'))).toBe(

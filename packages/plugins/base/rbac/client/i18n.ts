@@ -66,13 +66,26 @@ const i18n = definePluginMessages({
     newRoleHint: {
       id: 'rbac/roles/new-hint',
       defaultMessage:
-        'A role is created complete: without permissions and eligibility it can be granted to nobody.',
+        'A role starts as a draft. Give it permissions and say who may hold it, then activate it.',
     },
     editRole: { id: 'rbac/roles/edit', defaultMessage: 'Role configuration' },
     nameLabel: { id: 'rbac/field/name', defaultMessage: 'Name' },
     codeLabel: { id: 'rbac/field/code', defaultMessage: 'Code' },
     descriptionLabel: { id: 'rbac/field/description', defaultMessage: 'Description' },
     permissionsLegend: { id: 'rbac/field/permissions', defaultMessage: 'Permissions' },
+    // chosen at creation because it cannot be changed afterwards: it decides
+    // whether the duty is anchored, and with it what the role may hold
+    kindLegend: { id: 'rbac/field/kind', defaultMessage: 'Where this role applies' },
+    kindOrg: { id: 'rbac/field/kind-org', defaultMessage: 'At an organization node' },
+    kindOrgHint: {
+      id: 'rbac/field/kind-org-hint',
+      defaultMessage: 'Granted at a node, and applies there or across its subtree.',
+    },
+    kindTenant: { id: 'rbac/field/kind-tenant', defaultMessage: 'Across the whole tenant' },
+    kindTenantHint: {
+      id: 'rbac/field/kind-tenant-hint',
+      defaultMessage: 'Granted once, with no node to anchor it to.',
+    },
     // named for the question each answers: a role is granted TO people and
     // applies AT places, and neither is the same as where those people
     // personally belong

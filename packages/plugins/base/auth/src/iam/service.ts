@@ -272,13 +272,16 @@ export class IamService {
       }
       const inUse = await this.countUsersOfType(tx, tenantId, type.id)
       if (inUse > 0) throw iamErrors.create('USER_TYPE_IN_USE', { userCount: inUse })
-      // eligibility rows cascade with the type, which would silently empty a
+      // Eligibility rows cascade with the type, which would silently empty a
       // role's allowed set and leave that role assignable to nobody; the
-      // count says how many roles must be fixed first
+      // count says how many roles must be fixed first. Asked of every kind
+      // of role, because a tenant role declares who may hold it too: looking
+      // only at org roles left a live tenant role behind with nobody
+      // eligible for it, which is the inert state the lifecycle prevents.
       const stranded = (
         await tx.execute<{ count: number }>(sql`
           select count(*)::int as count from roles r
-          where r.tenant_id = ${tenantId} and r.kind = 'org'
+          where r.tenant_id = ${tenantId}
             and exists (select 1 from role_allowed_user_types t
                         where t.tenant_id = r.tenant_id and t.role_id = r.id
                           and t.user_type_id = ${type.id})
