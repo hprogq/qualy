@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { OpenApi } from 'effect/unstable/httpapi'
-import { qualyApi } from '@qualy/api'
+import { HttpApi, OpenApi } from 'effect/unstable/httpapi'
+import { QUALY_API_ID } from '@qualy/api-kit'
+import { orgApiGroup } from '@qualy/plugin-org/api'
 
 // Two different names, each with its own rule.
 //
@@ -16,8 +17,13 @@ import { qualyApi } from '@qualy/api'
 // (repos/effect/.../OpenApiRepresentation.test.ts). Naming the identifier does
 // not remove the suffix, it just stops the code being shouted.
 
+// built from the plugin groups rather than the generated aggregate: the
+// generator suites rewrite that file with other manifests, and reading it here
+// made this race them
+const api = HttpApi.make(QUALY_API_ID).add(orgApiGroup)
+
 const document = () =>
-  OpenApi.fromApi(qualyApi) as {
+  OpenApi.fromApi(api) as {
     components: { schemas: Record<string, { properties?: { _tag?: { enum?: string[] } } }> }
   }
 
