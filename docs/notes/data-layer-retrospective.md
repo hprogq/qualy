@@ -29,7 +29,7 @@
 | 机制                          | 触发条件                                         |
 | ----------------------------- | ------------------------------------------------ |
 | installed.lock(三集合模型)    | 出现在线安装或多实例装配需求                     |
-| behavior 片段编译器           | 多插件大量 trigger 且手工 custom 迁移频繁出错    |
+| ~~behavior 片段编译器~~        | ~~多插件大量 trigger 且手工 custom 迁移频繁出错~~ **已于 2026-08-04 触发并落地**(见下) |
 | advisory lock(迁移互斥)       | 真实多副本部署                                   |
 | checksum 拒启                 | 实际发生历史迁移被篡改且 CI 未拦                 |
 | 对象 registry 与 PURGE 自动化 | 决定实现自动卸载                                 |
@@ -42,3 +42,13 @@
 **数据层新增任何机制,必须由触发表中实际发生的事故或需求触发,禁止预防性建设。**
 
 元规则:**复杂度必须由已发生的问题证明其存在,外部评审意见按此过滤。**
+
+## 2026-08-04:baseline 片段编译器已触发
+
+原触发条件写的是「多插件大量 trigger 且手工 custom 迁移频繁出错」,**条件写窄了**。实际触发它的是另一件事,而且已经在仓库里坏着:
+
+clean-room 测试(挑一组插件、清空迁移目录、从零生成 lineage、部署到空库)对**每一种组合都失败**,包括当前默认组合,报 `type "ltree" does not exist`。原因是 `drizzle-kit generate` 只复现表,而 `CREATE EXTENSION ltree` 只存在于宿主手写迁移 `20260801222248_org-ltree` 里——那条迁移的注释已经写着 `-- owner: @qualy/plugin-org`,归属早就声明了,只是没有承载入口。也就是说:**org 插件不自包含,它依赖一段只活在宿主历史里的 SQL**,任何人换一组插件从零装配都装不起来。
+
+所以正确的触发条件应表述为:**插件需要携带 Drizzle 表达不了的 SQL,且安装者不应手改宿主迁移**。这条与 trigger 数量无关,零个 trigger 时它就已经成立。
+
+落地范围刻意保持窄:`baselineDir` 片段编译 + `dependsOn` 解析期校验 + clean-room 回归测试。**未恢复** installed/assembly/behavior 三 lock、对象 registry、自动 PURGE、运行时 DDL 注册、每插件独立 ledger。

@@ -14,6 +14,7 @@
     "@electric-sql/pglite": "catalog:",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
     "@vitejs/plugin-react": "catalog:",
@@ -30,7 +31,7 @@
   },
   "scripts": {
     "build": "tsx scripts/gen.ts --all && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",
-    "db:generate": "drizzle-kit generate && tsx scripts/drop-guard.ts",
+    "db:generate": "tsx scripts/db-generate.ts",
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:reset": "docker compose down -v && docker compose up -d && pnpm db:migrate",

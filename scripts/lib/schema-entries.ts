@@ -38,7 +38,7 @@ export function resolvePackageDir(id: string): string {
 
 interface PackageManifest {
   exports?: Record<string, unknown>
-  qualy?: { database?: { schemaEntry?: string } }
+  qualy?: { database?: { schemaEntry?: string; dependsOn?: string[] } }
 }
 
 function exportTarget(value: unknown): string | undefined {
@@ -51,6 +51,10 @@ function exportTarget(value: unknown): string | undefined {
 }
 
 export function resolveSchemaEntries(options: { ymlPath?: string } = {}): string[] {
+  const present = new Set(
+    readEntries({ all: true, ymlPath: options.ymlPath }).map((entry) => entry.name),
+  )
+  const missing: string[] = []
   const entries: string[] = []
   for (const entry of readEntries({ all: true, ymlPath: options.ymlPath })) {
     if (!entry.name.startsWith('@qualy/')) continue
@@ -59,6 +63,16 @@ export function resolveSchemaEntries(options: { ymlPath?: string } = {}): string
       fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'),
     ) as PackageManifest
     const schemaEntry = pkg.qualy?.database?.schemaEntry
+    for (const required of pkg.qualy?.database?.dependsOn ?? []) {
+      // A schema that imports another plugin's tables is unusable without
+      // them: postgres refuses the foreign key, halfway through applying a
+      // migration, naming a relation the reader has no reason to connect to
+      // a missing plugin. Said here, the assembly is rejected before anything
+      // is generated, by the name of what is missing.
+      if (!present.has(required)) {
+        missing.push(`${entry.name} needs ${required}, which this assembly does not include`)
+      }
+    }
     if (!schemaEntry) continue
     const file = path.resolve(packageDir, schemaEntry)
     if (!fs.existsSync(file)) {
@@ -74,6 +88,9 @@ export function resolveSchemaEntries(options: { ymlPath?: string } = {}): string
       )
     }
     entries.push(file)
+  }
+  if (missing.length > 0) {
+    throw new Error(`incomplete assembly:\n  ${missing.join('\n  ')}`)
   }
   return entries
 }

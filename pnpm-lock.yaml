@@ -168,6 +168,9 @@ importers:
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:packages/plugins/base/auth
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/database
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
