@@ -29,8 +29,12 @@ const spec = `${QUALY_API_PREFIX}/openapi.json` as const
 const routes = Layer.mergeAll(
   HttpApiBuilder.layer(qualyApi, { openapiPath: spec }).pipe(Layer.provide(apiHandlers)),
   HttpApiScalar.layer(qualyApi, { path: docs }),
-  // health is declared by the host rather than a plugin because it must answer
-  // for an assembly that contains no plugins at all
+  // Health is declared by the host rather than by a plugin, but it is not
+  // plugin-free: readiness asks the database, so this assembly does not build
+  // without one. That is a real constraint rather than an oversight, and it is
+  // stated here because the alternative reading, that an assembly with no
+  // plugins can serve, is not true of this composition. Making the probes a
+  // contribution is deferred until a second one exists to contribute.
   HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
 )
 

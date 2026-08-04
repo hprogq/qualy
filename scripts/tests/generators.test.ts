@@ -205,4 +205,20 @@ describe('generator determinism', () => {
     expect(owners.length).toBeGreaterThan(0)
     expect(new Set(owners).size).toBe(owners.length)
   })
+
+  it('gives --all no say over what the server assembles', () => {
+    // --all means "the superset" for a client contract and a web bundle, where
+    // a disabled plugin costs unreachable bytes. Every server-side artifact is
+    // the running assembly itself: routes, handlers, layers and the permission
+    // catalog. `pnpm build` passes --all, so these four have to come out the
+    // same either way or a release would serve and authorize things the
+    // manifest switched off.
+    gen()
+    const serverSide = [apiPath, apiHandlersPath, catalogPath, 'packages/app/runtime.gen.ts']
+    const active = serverSide.map((file) => fs.readFileSync(file, 'utf8'))
+    gen('--all')
+    for (const [index, file] of serverSide.entries()) {
+      expect(fs.readFileSync(file, 'utf8'), `${file} changed under --all`).toBe(active[index])
+    }
+  })
 })

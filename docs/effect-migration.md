@@ -290,6 +290,31 @@ ping 的 `ctx.db`、auth-local 的 `ctx.auth` 同样。已补 `import type {}` �
   但它意味着授权是为了测试省事才可跳过的。M4 重写时 actor 必须**必填**,可信路径传一个显式的
   System principal,而不是靠「不传参数」。
 
+## 审计后的裁决(2026-08-05,外部评审 + 实查)
+
+### database 是必需核心还是可选能力 —— 维持**可选**,但当下的 Effect 组合确实要求它
+
+评审指出 `health.ts` 的注释声称健康探针要服务「零插件装配」,而 readiness 直接 import 了 database 插件的
+`ping()`,所以整个 health handler 永久要求 `Database`。**实查属实**,注释在说一件代码不支持的事。
+
+裁决:**能力保持可选**(cordis 侧已有无 database 装配的实测),但**不预先建** `ReadinessChecks` /
+`AssemblyInputs` 这类通用宿主端口——现在只有一个探针可贡献,建了就是凭空的注册表。
+改的是注释:如实写明「这个组合根要求 database」,而不是继续声称一件假话。
+**触发条件**:出现第二个要贡献 readiness 探针的插件,或出现确实要跑无 database 的 Effect 部署。
+
+### 运行时依赖声明:维持写具体插件 id
+
+评审建议把 `qualy.runtime.dependsOn: ["@qualy/plugin-database"]` 改成能力名 `requires: ["database"]`。
+**暂不改**:装配核心已经有一套能力注册表(`capabilityProvider`),再让运行时层复用它,等于让 layer 图
+去解析能力——而 `Rbac` / `Placement` 的 tag 已经放进契约包解耦了实现,metadata 指向实现插件只影响
+**拓扑排序**,不影响谁依赖谁的类型。**触发条件**:出现同一能力的第二个提供方。
+
+### 最小装配编译门禁:记录但不建
+
+评审希望对每个插件按 `dependsOn` 传递闭包生成最小组合根、单独 typecheck,防止「大装配里碰巧存在」的
+隐式依赖。方向正确,但当前只有 database + ping 两个有 runtime entry 的插件,闭包等于全集,门禁测不出东西。
+**触发条件**:M4 三个插件的 layer 落地后(那时 rbac/auth/org 有真实的层级差),立即补。
+
 ## 已知的硬骨头
 
 ### 1. 跨插件环必须真的拆开(2026-08-05 实读修正)

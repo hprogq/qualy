@@ -1,9 +1,11 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import {
   frozenLockfile,
   lockDrift,
   lockPathFor,
   readLock,
+  renderRuntimeModule,
   renderRuntimePlan,
   resolveAssembly,
   runtimePlanPathFor,
@@ -38,6 +40,15 @@ export async function verifyAssembly(
   const problems = lockDrift(previousLock, resolution)
   if (fs.readFileSync(runtimePlanPath, 'utf8') !== renderRuntimePlan(resolution)) {
     problems.push(`${runtimePlanPath} is not what this manifest generates`)
+  }
+  // the Effect runtime reads a module rather than an entry list, and it is
+  // just as derived: an instance whose layers do not match the reviewed lock
+  // is running an assembly nobody approved
+  const runtimeModulePath = path.join(path.dirname(runtimePlanPath), 'runtime.gen.ts')
+  if (!fs.existsSync(runtimeModulePath)) {
+    problems.push(`${runtimeModulePath} is missing; run \`pnpm gen\``)
+  } else if (fs.readFileSync(runtimeModulePath, 'utf8') !== renderRuntimeModule(resolution)) {
+    problems.push(`${runtimeModulePath} is not what this manifest generates`)
   }
   if (problems.length === 0) return runtimePlanPath
 
