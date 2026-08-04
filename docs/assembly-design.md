@@ -1737,27 +1737,65 @@ packages/
 
 `scripts/seed.ts` 与 `scripts/lib/seed.ts` 写的是 auth/org/rbac 的行，属 provisioning，本设计尚无归属阶段（阶段 4）；根因此保留 `pg` / `@types/pg`。`qualy.permissions` 是 rbac 的插件间元数据，不在 resolve 期消费，未提升为能力（触发条件：出现需要 resolve 期校验的权限约束）。`db:reset` 保留在根，它做的是 docker compose 的事。
 
-## 阶段 2：Assembly Loader 与 Gate
+## 阶段 2：Static Effect Runtime & Gate
 
-目标：运行时只加载已锁定并已部署的 assembly。
+> **本节在 2026-08-05 重写。** 原标题是「Assembly Loader 与 Gate」，实现方式是在 Cordis 上做一个
+> 自定义 loader。[ADR 0001](adr/0001-no-online-plugin-install.md) 取消了在线热安装与进程内插件自重启，
+> [ADR 0002](adr/0002-effect-as-the-backend-runtime.md) 据此把后端运行时换成 Effect，动态 loader
+> 因而不再需要。目标不变，实现方式变了。迁移计划见 [effect-migration.md](effect-migration.md)。
+
+目标：运行时只加载已锁定并已部署的 assembly——**不变**。
+
+实现方式改为静态代码生成，而不是运行时解释 YAML 再动态激活 fiber：
+
+```text
+qualy.yml
+  ↓ resolve
+qualy.lock.json
+  ↓ generate
+runtime.gen.ts          （取代 cordis.gen.yml）
+  ↓ TypeScript build
+静态 Effect Layer 组合
+```
 
 实现：
 
-- 自定义 loader；
-- 固定 bootstrap；
-- 显式装配完成 Promise；
-- database gate；
-- assembly artifact hash；
+- `runtime.gen.ts`：只 import lock 中 active 的插件；包缺失即构建失败，可 tree-shake，可做物料清单；
+- 固定 bootstrap（logger / database / server / health 不由用户清单随意删除）；
+- 单一根 Scope：数据库池、HTTP server、调度器、后台 fiber 全挂在上面；
+- database gate：migration head 与 artifact hash 校验统一在业务 Layer 构建之前；
 - readiness；
 - `qualy start`。
 
-验收：
+`qualy start` 的顺序：
 
-- 业务插件不会在 DB 未就绪时激活；
+```text
+读 manifest 与 lock → 验 frozen lock → 验 artifact hash → 验 migration head
+→ 构建根 Layer → 获取全部 scoped resource → 构建最终 HttpApi handler
+→ 监听端口 → 标记 ready
+```
+
+验收（前四条与原方案一致，最后一条是新增的语义）：
+
 - migration 落后拒绝启动；
 - lock 漂移拒绝启动；
 - 首个 readiness 必为 pending；
-- 装配完成后才 ready。
+- 装配完成后才 ready；
+- **启动全有或全无**：数据库、业务 service、handler 任一构建失败，整个实例启动失败。不再有
+  「某个插件 pending，其余插件继续提供不完整服务」。
+
+### 阶段 1 的「没有运行时图」裁决必须重开
+
+阶段 1 的结论是「只有能力图，没有运行时图」，两条理由：cordis 并发创建条目并靠 `inject` 门控，
+条目顺序不决定任何事；workspace 包之间允许成环，org ↔ rbac 已经是。
+
+第一条理由随 Cordis 一起消失——静态 Layer 图**必须**可构造，顺序有意义。第二条理由反而变成阻塞项：
+Layer 不能把两个互相要求对方完整 service 的插件直接组合。因此阶段 2 必须同时解决：
+
+1. 运行时依赖声明在哪（插件 descriptor 还是 package.json；resolver 必须能在不执行插件代码的情况下工作）；
+2. org ↔ rbac 的环怎么拆（抽 port、跨域不变量归 coordinator、或整簇一次迁完）。
+
+这是整个迁移里最需要设计的部分，细节与进度在 effect-migration.md。
 
 ## 阶段 3：数据库版本演进
 

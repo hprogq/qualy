@@ -1,6 +1,17 @@
 # CLAUDE.md
 
-毕设项目「Qualy · 插件化综合素质测评系统」。当前阶段:P1 基座迁移(P0 已收官,基线 tag p1-base)。
+毕设项目「Qualy · 插件化综合素质测评系统」。当前阶段:**Effect 迁移**(分支 refactor/effect-platform,基线 tag p1-capability-boundary)。
+
+## 迁移中(先读这三条)
+
+后端正在从 Cordis + oRPC 迁到 **Effect 作为唯一运行时**。裁决见 docs/adr/0001-0003,主计划与进度见
+docs/effect-migration.md,**写任何 Effect 代码之前先读 @docs/agents/effect-source-policy.md**。
+
+- 本文件下面关于 cordis 生命周期、`ctx.effect`、oRPC 契约与 `apiErrorBoundary` 的纪律,在对应模块
+  被切换掉之前**仍然有效**,不得提前拆掉;切换完成时随 ADR 0003 一并作废。
+- 主线 main 冻结业务开发。新功能进迁移分支。
+- Effect v4 是 beta,用到的模块在 `effect/unstable/**`。**不凭记忆猜 API**,依据是 `repos/` 里与
+  catalog 同版本的上游源码;结论要给出实际读过的路径。
 文档职责:docs/PLAN.md 管决策与纪律,docs/p1-tutorial.md 管 P1 逐会话操作(p0-tutorial 已归档),docs/notes/p1-migration-audit.md 管旧代码迁移台账,STATUS.md 管进度交接。
 旧代码只读参考在 legacy/(gitignored):qualy_old 为旧 Qualy,algryth 为 RBAC 参考。
 

@@ -1,0 +1,14 @@
+{
+  "sources": {
+    "drizzle-orm": {
+      "packageVersion": "1.0.0-rc.4",
+      "tag": "v1.0.0-rc.4",
+      "commit": "748058e837d9c4247330e3d45580cbdae52bffda"
+    },
+    "effect": {
+      "packageVersion": "4.0.0-beta.103",
+      "tag": "effect@4.0.0-beta.103",
+      "commit": "dff25449dfc927f2cce912c329f343cfb5365f88"
+    }
+  }
+}

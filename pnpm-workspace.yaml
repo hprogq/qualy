@@ -23,6 +23,15 @@ catalog:
   tsx: 4.23.1
   drizzle-orm: 1.0.0-rc.4
   drizzle-kit: 1.0.0-rc.4
+  # Effect v4 beta. Every effect package must sit on the SAME version: the
+  # ecosystem peers on an exact beta, and drizzle-orm's effect-postgres
+  # requires >= 4.0.0-beta.83. The modules this project needs (httpapi, sql,
+  # schema) are exported from effect/unstable/*, where a beta release is
+  # allowed to break them, so upgrades go through scripts/vendor-sync.ts and
+  # a full gate run rather than a version bump on its own.
+  effect: 4.0.0-beta.103
+  '@effect/sql-pg': 4.0.0-beta.103
+  '@effect/vitest': 4.0.0-beta.103
   pg: 8.22.0
   '@types/pg': 8.20.0
   yaml: 2.9.0
