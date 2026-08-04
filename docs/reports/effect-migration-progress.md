@@ -1,7 +1,7 @@
 # Effect 迁移阶段性总结(截至 2026-08-05)
 
-> 分支 `refactor/effect-platform`(已推 origin),基线 tag `p1-capability-boundary`,23 个 commit。
-> 验收状态:`pnpm typecheck` 零错误,`pnpm test` **47 文件 324 例全过**,`pnpm build` 通过,真进程实跑正常。
+> 分支 `refactor/effect-platform`(已推 origin),基线 tag `p1-capability-boundary`(已推),29 个 commit。
+> 验收状态:`pnpm typecheck` 零错误,`pnpm test` **52 文件 345 例全过**,`pnpm build` 通过,真进程实跑正常。
 >
 > 本文只讲**已完成什么、要点是什么**。设计与实测细节在 docs/effect-migration.md,裁决在 docs/adr/0001-0003,
 > 逐会话进度在 STATUS.md。
@@ -188,9 +188,40 @@ cordis 入口一直会拒绝清单/lock/条目表漂移的启动,Effect 入口**
 见 docs/effect-migration.md「审计后的裁决」:database 保持可选能力(但如实写明当前组合根要求它)、
 运行时依赖维持写具体插件 id、最小装配编译门禁等 M4 三个 layer 落地后再补(现在闭包等于全集,测不出东西)。
 
-## 9. 仓库状态
+## 10. M4 已落地部分的要点
 
-- `refactor/effect-platform` 已推 origin 并设好 upstream。
-- **本地 `main` 比 `origin/main` 领先 5 个 commit**(装配阶段的工作),迁移分支包含全部这 5 个,内容没丢,
-  但 `origin/main` 停在能力边界重构之前。
-- **tag `p1-capability-boundary` 只在本地**,而 CLAUDE.md 把它写作本次迁移的基线 —— 换机器或重新 clone 找不到。
+### 10.1 三次都是同一手法:SQL 归一,执行分开
+
+cordis await promise、Effect yield effect,执行器共不了;**判定必须共**。三个插件各抽出一个
+`queries.ts`(rbac 的授权、auth 的 placement 与 session、org 的 retype 六条),两边执行同一批语句。
+**验收标准统一**:旧实现改用抽出来的语句后,原有测试**一字未改**全过(rbac 28、auth 20、org 17)。
+
+### 10.2 端口只装 peer 需要的
+
+`grant` / `revoke` 从 `RbacShape` 拿掉 —— auth 与 org 都不管授权发放。
+`@qualy/auth-contract` 只有 `Placement` 一个方法,**不带任何数据库类型**。
+
+### 10.3 `changeNodeType` 保住了原有形状
+
+租户锁第一条 → **锁内重判授权**(不信 router 前置检查,并发移动可能已改锚点)→ 依次问两个 peer。
+两个 peer 都不收 handle。事务级 `SqlError` 判为 defect(池不可达不是调用方要在其中做选择的东西)。
+
+### 10.4 session 从 enricher 改成 middleware
+
+旧 enricher **从不拒绝**(它不知道当前 endpoint 需不需要 principal),所以忘了 `requireAuth` 的
+endpoint 会静默看到 undefined —— 与可选 actor 同一种形状。改成声明 `provides` 的 middleware 后,
+endpoint 要么声明、拿到**非可选**的 principal,要么不声明、根本读不到。
+
+三种状态各自可辨:过期是**独立错误**且会清 cookie(客户端能说"你被登出了"而不是"请登录");
+未知 token 与没有 token **同一个回答**(调用方无法探知某个 token 曾存在);用户/类型/租户被停用则根本不算会话。
+
+### 10.5 路径冻结表改为两套测试共读
+
+oRPC 那侧断言**完整**,Effect 这侧断言**没发明新路径**(当前 2/55,包含而非相等;改名会红并报出路由)。
+两份路径表就是让一次改名通过两轮评审。
+
+## 11. 仓库状态
+
+- `refactor/effect-platform`、`main`、tag `p1-capability-boundary` **均已推 origin**。
+- 迁移分支本来就基于 main(`merge-base --is-ancestor` 验过),**不需要 rebase**;推完 main 后
+  PR 范围从 29 降到只剩纯 Effect 的那些 commit,装配基础已在主线。
