@@ -262,4 +262,62 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
       await db.dispose()
     }
   })
+
+  it('stops a subtree anchor at a label boundary, not a string prefix', async () => {
+    // org projects coverage in TypeScript with a path-prefix test while rbac
+    // decides it in SQL with ltree containment. They agree only because the
+    // TypeScript one compares against `anchor.path + "."`; drop that separator
+    // and an anchor at `r.a` starts covering a sibling at `r.ab`. This pins the
+    // case that tells the two implementations apart.
+    const db = await createTestContext('effect-rbac-label')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} limit 1`,
+            ),
+          ).id
+          // r.a is the anchor; r.ab is a sibling sharing its string prefix
+          const anchor = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.root}, ${orgType}, 'A', 'r.a', 1) returning id`),
+          ).id
+          const sibling = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.root}, ${orgType}, 'AB', 'r.ab', 1) returning id`),
+          ).id
+          const below = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${anchor}, ${orgType}, 'Deep', 'r.a.x', 2) returning id`),
+          ).id
+          // move the plain role's grant to a subtree anchor at r.a
+          yield* database.execute(sql`
+            update role_grants set org_node_id = ${anchor}, coverage = 'subtree'
+            where user_id = ${f.anchored.userId}`)
+
+          const rbac = yield* Rbac
+          return {
+            atAnchor: yield* rbac.canAt(f.anchored, 'org.tree.manage', anchor),
+            below: yield* rbac.canAt(f.anchored, 'org.tree.manage', below),
+            sibling: yield* rbac.canAt(f.anchored, 'org.tree.manage', sibling),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.atAnchor).toBe(true)
+      expect(answer.below).toBe(true)
+      // the one that matters: r.ab is not inside r.a
+      expect(answer.sibling).toBe(false)
+    } finally {
+      await db.dispose()
+    }
+  })
 })
