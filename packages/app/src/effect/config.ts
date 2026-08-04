@@ -1,6 +1,8 @@
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { DatabaseConfig } from '@qualy/plugin-database/effect'
+import { PermissionCatalog } from '@qualy/rbac-contract/effect'
+import { permissionCatalog } from '../../permissions.gen.ts'
 
 // Everything the assembly needs from its environment, in one place.
 //
@@ -57,3 +59,13 @@ export const databaseConfigLayer = Layer.effect(
     })
   }),
 )
+
+/**
+ * The permission catalog this assembly serves.
+ *
+ * Generated from the manifest, so what a deployment can authorize is decided
+ * by resolution rather than by which plugins happened to finish constructing.
+ * The host supplies it the same way it supplies the database's config: the
+ * plugin that consumes it does not go looking for it.
+ */
+export const permissionCatalogLayer = Layer.succeed(PermissionCatalog, permissionCatalog)

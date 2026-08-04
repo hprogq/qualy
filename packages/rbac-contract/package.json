@@ -6,10 +6,12 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./effect": "./src/effect.ts"
   },
   "peerDependencies": {
-    "cordis": "catalog:"
+    "cordis": "catalog:",
+    "effect": "catalog:"
   },
   "dependencies": {
     "@qualy/api-contract": "workspace:*",

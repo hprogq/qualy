@@ -7,6 +7,7 @@ const contractsPath = 'packages/api-client/src/contracts.gen.ts'
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
 const apiPath = 'packages/api/src/api.gen.ts'
 const apiHandlersPath = 'packages/app/api-handlers.gen.ts'
+const catalogPath = 'packages/app/permissions.gen.ts'
 
 const gen = (flags = '') => execSync(`pnpm exec tsx scripts/gen.ts ${flags}`, { encoding: 'utf8' })
 
@@ -19,12 +20,11 @@ describe('generator determinism', () => {
 
   it('produces byte-identical output on repeated runs', () => {
     gen()
-    const before = [contractsPath, pluginsPath, apiPath, apiHandlersPath].map((file) =>
-      fs.readFileSync(file, 'utf8'),
-    )
+    const generated = [contractsPath, pluginsPath, apiPath, apiHandlersPath, catalogPath]
+    const before = generated.map((file) => fs.readFileSync(file, 'utf8'))
     const second = gen()
     expect(second).toContain('unchanged, skipped')
-    for (const [index, file] of [contractsPath, pluginsPath, apiPath, apiHandlersPath].entries()) {
+    for (const [index, file] of generated.entries()) {
       expect(fs.readFileSync(file, 'utf8')).toBe(before[index])
     }
   })
@@ -123,5 +123,82 @@ describe('generator determinism', () => {
     // and no two plugins claim one identifier, which is how the aggregate
     // finds handlers at runtime
     expect(new Set(groups).size).toBe(groups.length)
+  })
+
+  // The catalog decides what an assembly can authorize, so which plugins it
+  // counts is a security property rather than a packaging detail.
+  //
+  // Two of these replace runtime-registry tests whose enforcement point moved
+  // here. rbac used to drop a contributor's codes when that plugin's fiber
+  // unloaded, and used to reject a code claimed twice. Nothing unloads under a
+  // static assembly, so "currently served" becomes "in the lock" and "rejected
+  // at registration" becomes "refused during generation". The invariants
+  // survive; deleting their assertions instead of relocating them is how a
+  // static assembly quietly loses a guarantee.
+  it('serves the codes of the plugins in the manifest', () => {
+    gen()
+    const catalog = fs.readFileSync(catalogPath, 'utf8')
+    expect(catalog).toContain("from '@qualy/plugin-org/permissions'")
+    expect(catalog).toContain("from '@qualy/plugin-rbac/permissions'")
+    expect(catalog).toContain("plugin: 'org'")
+  })
+
+  it('drops a disabled plugin, because its codes must stop authorizing', () => {
+    // the seed aggregation deliberately keeps disabled plugins so their rows
+    // survive being switched off. This one must not: a disabled plugin that
+    // kept its codes would keep authorizing against a surface nobody serves.
+    const workspace = createWorkspace(
+      [
+        '@qualy/plugin-database',
+        '@qualy/plugin-server',
+        '@qualy/plugin-ui-registry',
+        '@qualy/plugin-org',
+        '@qualy/plugin-auth',
+        '@qualy/plugin-rbac',
+      ],
+      { disabled: ['@qualy/plugin-org'] },
+    )
+    try {
+      gen(`--yml ${workspace.manifestPath}`)
+      const catalog = fs.readFileSync(catalogPath, 'utf8')
+      expect(catalog).not.toContain('@qualy/plugin-org/permissions')
+      expect(catalog).not.toContain("plugin: 'org'")
+      // rbac is still selected, so this is a real difference rather than an
+      // empty file that would pass the assertion above for the wrong reason
+      expect(catalog).toContain('@qualy/plugin-rbac/permissions')
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  it('keeps counting a disabled plugin under --all, because that flag is the seed', () => {
+    // --all reaches every generator from one argv. This one has to ignore it,
+    // or `pnpm build` would quietly widen what the release can authorize.
+    const workspace = createWorkspace(
+      [
+        '@qualy/plugin-database',
+        '@qualy/plugin-server',
+        '@qualy/plugin-ui-registry',
+        '@qualy/plugin-org',
+        '@qualy/plugin-auth',
+        '@qualy/plugin-rbac',
+      ],
+      { disabled: ['@qualy/plugin-org'] },
+    )
+    try {
+      gen(`--yml ${workspace.manifestPath} --all`)
+      const catalog = fs.readFileSync(catalogPath, 'utf8')
+      expect(catalog).not.toContain("plugin: 'org'")
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  it('gives every code exactly one owner', () => {
+    gen()
+    const catalog = fs.readFileSync(catalogPath, 'utf8')
+    const owners = [...catalog.matchAll(/plugin: '(\w+)'/g)].map((match) => match[1])
+    expect(owners.length).toBeGreaterThan(0)
+    expect(new Set(owners).size).toBe(owners.length)
   })
 })

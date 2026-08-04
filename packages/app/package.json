@@ -27,7 +27,8 @@
     "cordis": "catalog:",
     "effect": "catalog:",
     "@qualy/api": "workspace:*",
-    "@qualy/api-kit": "workspace:*"
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*"
   },
   "devDependencies": {
     "@cordisjs/plugin-hmr": "catalog:"
