@@ -12,7 +12,7 @@ import { currentResolution } from './lib/read-entries.ts'
 // reason the other artifacts are: it is derived, so nobody should be editing
 // it, and the loader gets deterministic entry ids instead of writing its own
 // back into a file people maintain by hand.
-const resolution = currentResolution()
+const resolution = await currentResolution()
 const planPath = path.relative(process.cwd(), runtimePlanPathFor(resolution.manifest.source))
 console.log(
   writeRuntimePlan(planPath, resolution) ? `${planPath} written` : `${planPath} unchanged, skipped`,

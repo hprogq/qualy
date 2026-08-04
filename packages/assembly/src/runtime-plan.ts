@@ -1,7 +1,7 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import YAML from 'yaml'
 import { shortId } from './hash.ts'
+import { writeAtomic } from './lock.ts'
 import type { Resolution } from './resolve.ts'
 
 // The cordis loader reads a flat list of entries; the manifest is a keyed map
@@ -19,7 +19,7 @@ export interface RuntimeEntry {
 }
 
 export function runtimeEntries(resolution: Resolution): RuntimeEntry[] {
-  return resolution.runtimeOrder.map((id) => {
+  return resolution.runtimePlugins.map((id) => {
     const config = resolution.manifest.plugins.get(id)?.config
     return config === undefined
       ? { id: shortId(id), name: id }
@@ -36,10 +36,5 @@ export function renderRuntimePlan(resolution: Resolution): string {
   return banner + YAML.stringify(runtimeEntries(resolution), { lineWidth: 0 })
 }
 
-export function writeRuntimePlan(file: string, resolution: Resolution): boolean {
-  const content = renderRuntimePlan(resolution)
-  if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) return false
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content)
-  return true
-}
+export const writeRuntimePlan = (file: string, resolution: Resolution): boolean =>
+  writeAtomic(file, renderRuntimePlan(resolution))

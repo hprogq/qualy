@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { writeGenerated } from './lib/codegen.ts'
 import { readEntries } from './lib/read-entries.ts'
-import { resolvePackageDir, resolvePluginModuleUrl } from './lib/schema-entries.ts'
+import { resolvePackageDir, resolvePluginModuleUrl } from './lib/packages.ts'
 
 // contract aggregation follows the ACTIVE set: a disabled plugin loses its
 // routes at runtime, so its contract disappears from the client and the web
@@ -26,7 +26,7 @@ const apiClientDeps = new Set(
 const imports: string[] = []
 const fields: string[] = []
 const seen = new Map<string, string>()
-for (const entry of readEntries({ all })) {
+for (const entry of await readEntries({ all })) {
   if (!entry.name.startsWith('@qualy/')) continue
   const packageDir = resolvePackageDir(entry.name)
   const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {

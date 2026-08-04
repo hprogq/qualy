@@ -4,7 +4,7 @@ import { validateComponentKeys } from './lib/component-keys.ts'
 import { commonErrorCodes } from '@qualy/i18n-contract'
 import { writeGenerated } from './lib/codegen.ts'
 import { readEntries } from './lib/read-entries.ts'
-import { resolvePackageDir, resolvePluginModuleUrl } from './lib/schema-entries.ts'
+import { resolvePackageDir, resolvePluginModuleUrl } from './lib/packages.ts'
 
 // frontend component registry follows the ACTIVE set: a disabled plugin's
 // thunks never enter the module graph, so its chunks tree-shake away;
@@ -39,7 +39,7 @@ const claim = (registry: Map<string, string>, key: string, owner: string, what: 
   if (existing) throw new Error(`${what} conflict: ${key} claimed by ${existing} and ${owner}`)
   registry.set(key, owner)
 }
-for (const entry of readEntries({ all })) {
+for (const entry of await readEntries({ all })) {
   if (!entry.name.startsWith('@qualy/')) continue
   const packageDir = resolvePackageDir(entry.name)
   const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {

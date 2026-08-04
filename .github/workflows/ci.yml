@@ -37,19 +37,24 @@ jobs:
           node-version: 24.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # the loader entry list is generated and gitignored, so it has to exist
+      # before the frozen check can compare against it
+      - run: pnpm gen
+      - name: assembly lock must describe this tree
+        run: pnpm qualy resolve --frozen-lockfile
       - run: pnpm typecheck
-      - name: migration conflict check
-        run: pnpm exec drizzle-kit check
-      - name: no-op generate must leave migrations clean
+      - name: capability artifacts must be conflict free
+        run: pnpm qualy database check
+      - name: no-op generate must leave artifacts clean
         run: |
-          pnpm exec drizzle-kit generate
-          status="$(git status --porcelain -- db/migrations)"
+          pnpm qualy generate
+          status="$(git status --porcelain)"
           if [ -n "$status" ]; then
             printf '%s\n' "$status"
             exit 1
           fi
       - name: drop guard
-        run: pnpm exec tsx scripts/drop-guard.ts --all
+        run: pnpm qualy database drop-guard
       - run: pnpm test
       - name: build web superset and stage assets
         run: pnpm build

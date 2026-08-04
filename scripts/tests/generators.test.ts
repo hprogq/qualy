@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
-import { createWorkspace } from './support/workspace.ts'
+import { createWorkspace } from '@qualy/assembly/testkit'
 
 const contractsPath = 'packages/api-client/src/contracts.gen.ts'
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
@@ -26,8 +26,15 @@ describe('generator determinism', () => {
   })
 
   it('drops disabled plugins from the active set but keeps them under --all', () => {
+    // ping owns tables, so the selection has to include the capability that
+    // accepts them or resolution refuses the manifest
     const workspace = createWorkspace(
-      ['@qualy/plugin-server', '@qualy/plugin-ui-registry', '@qualy/plugin-ping'],
+      [
+        '@qualy/plugin-database',
+        '@qualy/plugin-server',
+        '@qualy/plugin-ui-registry',
+        '@qualy/plugin-ping',
+      ],
       { disabled: ['@qualy/plugin-ping'] },
     )
     try {

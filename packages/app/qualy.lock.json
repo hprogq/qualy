@@ -1,7 +1,7 @@
 {
-  "lockfileVersion": 1,
+  "lockfileVersion": 2,
   "manifestHash": "sha256:48031c0559474db79b2f5858850fb759fc7a9f73e57d53f1b5fc249771f884dd",
-  "resolutionHash": "sha256:3ce10079f4f08661350f6cb66f96109dba7b427e7dd7eccafc095f0220ba1a5d",
+  "resolutionHash": "sha256:7514bb0b525aea1e01173cd6b9d260508cb045aab4388c89d76b8e8d9d692527",
   "plugins": {
     "@cordisjs/plugin-hmr": {
       "version": "1.0.15",
@@ -22,9 +22,11 @@
     "@qualy/plugin-auth": {
       "version": "0.0.0",
       "state": "active",
-      "databaseDependsOn": ["@qualy/plugin-org"],
-      "database": {
-        "schemaEntry": "src/db/schema.ts"
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "dependsOn": ["@qualy/plugin-org"]
+        }
       }
     },
     "@qualy/plugin-auth-local": {
@@ -38,8 +40,11 @@
     "@qualy/plugin-dict": {
       "version": "0.0.0",
       "state": "active",
-      "database": {
-        "schemaEntry": "src/db/schema.ts"
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "dependsOn": []
+        }
       }
     },
     "@qualy/plugin-layout-default": {
@@ -49,24 +54,32 @@
     "@qualy/plugin-org": {
       "version": "0.0.0",
       "state": "active",
-      "database": {
-        "schemaEntry": "src/db/schema.ts",
-        "baselineDir": "db/baseline"
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "baselineDir": "db/baseline",
+          "dependsOn": []
+        }
       }
     },
     "@qualy/plugin-ping": {
       "version": "0.0.0",
       "state": "active",
-      "database": {
-        "schemaEntry": "src/db/schema.ts"
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "dependsOn": []
+        }
       }
     },
     "@qualy/plugin-rbac": {
       "version": "0.0.0",
       "state": "active",
-      "databaseDependsOn": ["@qualy/plugin-auth", "@qualy/plugin-org"],
-      "database": {
-        "schemaEntry": "src/db/schema.ts"
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "dependsOn": ["@qualy/plugin-auth", "@qualy/plugin-org"]
+        }
       }
     },
     "@qualy/plugin-server": {
@@ -82,8 +95,22 @@
       "state": "active"
     }
   },
-  "plans": {
-    "runtimeOrder": [
+  "capabilities": {
+    "database": {
+      "provider": "@qualy/plugin-database",
+      "state": {
+        "order": [
+          "@qualy/plugin-org",
+          "@qualy/plugin-auth",
+          "@qualy/plugin-dict",
+          "@qualy/plugin-ping",
+          "@qualy/plugin-rbac"
+        ]
+      }
+    }
+  },
+  "runtime": {
+    "plugins": [
       "@cordisjs/plugin-hmr",
       "@cordisjs/plugin-logger-console",
       "@cordisjs/plugin-timer",
@@ -99,13 +126,6 @@
       "@qualy/plugin-server",
       "@qualy/plugin-ui-registry",
       "@qualy/plugin-web"
-    ],
-    "databaseOrder": [
-      "@qualy/plugin-org",
-      "@qualy/plugin-auth",
-      "@qualy/plugin-dict",
-      "@qualy/plugin-ping",
-      "@qualy/plugin-rbac"
     ]
   }
 }

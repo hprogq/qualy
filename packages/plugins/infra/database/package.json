@@ -4,9 +4,12 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/testkit.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
+    "./assembly": "./src/assembly/index.ts",
     "./migrator": "./src/migrator.ts",
     "./pg-errors": "./src/pg-errors.ts",
     "./testkit": "./src/testkit.ts"
@@ -15,12 +18,22 @@
     "cordis": "catalog:"
   },
   "dependencies": {
+    "@qualy/assembly-contract": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/pg": "catalog:"
+    "@electric-sql/pglite": "catalog:",
+    "@qualy/assembly": "workspace:*",
+    "@types/pg": "catalog:",
+    "drizzle-kit": "catalog:"
+  },
+  "qualy": {
+    "capabilityProvider": {
+      "key": "database",
+      "entry": "./assembly"
+    }
   }
 }

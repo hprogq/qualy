@@ -18,7 +18,7 @@ ctx.baseUrl = pathToFileURL(appRoot).href
 // list resolved from it, which lives beside it
 // console, not ctx.logger: this runs before the loader, so no logging
 // transport has been configured yet
-const runtimePlanPath = verifyAssembly(configPath, (message) => console.warn(message))
+const runtimePlanPath = await verifyAssembly(configPath, (message) => console.warn(message))
 
 await ctx.plugin(Loader)
 // the assembly lives with the host: include re-anchors ctx.baseUrl to the

@@ -10,8 +10,10 @@
     "./schema": "./src/db/schema.ts"
   },
   "qualy": {
-    "database": {
-      "schemaEntry": "src/db/schema.ts"
+    "contributions": {
+      "database": {
+        "schemaEntry": "src/db/schema.ts"
+      }
     }
   },
   "peerDependencies": {

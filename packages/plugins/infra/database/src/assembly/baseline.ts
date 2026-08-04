@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { currentResolution, retainedEntries } from './read-entries.ts'
+import type { CapabilityResolveContext } from '@qualy/assembly-contract'
+import type { DatabaseContribution } from './contribution.ts'
+import type { DatabaseState } from './state.ts'
 
 // SQL a plugin owns that drizzle cannot express: extensions, functions,
 // triggers, views, and the rows a schema is unusable without.
@@ -42,31 +44,30 @@ export const markerFor = (fragment: Pick<BaselineFragment, 'plugin' | 'file' | '
 /**
  * Every fragment the current assembly declares, in a stable order.
  *
- * The order comes from the resolved database graph, with ties broken by name,
- * so reordering qualy.yml cannot silently reorder SQL. Within a plugin the
+ * The order is the resolved database order, with ties broken by name, so
+ * reordering the manifest cannot silently reorder SQL. Within a plugin the
  * numeric prefix decides. Disabled and detached plugins contribute too:
  * neither switching a plugin off nor taking it out of the manifest removes
  * its tables, so the objects those tables depend on have to stay as well.
  */
-export function collectBaseline(options: { ymlPath?: string } = {}): BaselineFragment[] {
+export function collectBaseline(
+  context: Pick<
+    CapabilityResolveContext<DatabaseContribution, DatabaseState>,
+    'contributions' | 'resolvePackageDir'
+  >,
+  state: DatabaseState,
+): BaselineFragment[] {
   const fragments: BaselineFragment[] = []
-  const resolution = currentResolution(options)
-  for (const entry of retainedEntries(options)) {
-    if (!entry.name.startsWith('@qualy/')) continue
-    const declared = resolution.plugins.get(entry.name)?.database?.baselineDir
+  for (const pluginId of state.order) {
+    const declared = context.contributions.get(pluginId)?.baselineDir
     if (!declared) continue
-    const packageDir = resolution.resolver.resolvePackageDir(entry.name)
-    const dir = path.resolve(packageDir, declared)
-    // declared but missing is a broken package, not an empty contribution
-    if (!fs.existsSync(dir)) {
-      throw new Error(`${entry.name}: declared baselineDir ${declared} does not exist`)
-    }
+    const dir = path.resolve(context.resolvePackageDir(pluginId), declared)
     for (const name of fs.readdirSync(dir).sort()) {
       if (!name.endsWith('.sql')) continue
       const sql = fs.readFileSync(path.join(dir, name), 'utf8')
       const phase = (PHASE.exec(sql)?.[1] ?? 'post-structure') as BaselinePhase
       fragments.push({
-        plugin: entry.name,
+        plugin: pluginId,
         file: `${declared}/${name}`,
         phase,
         sha: createHash('sha256').update(sql).digest('hex').slice(0, 16),

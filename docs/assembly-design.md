@@ -1668,6 +1668,75 @@ packages/
 - lock 的自校验是测试逼出来的。只比对「当前解析结果的哈希」抓不到手改 lock：改内容而不改 `resolutionHash` 时，存储值仍等于解析值。因此先验 lock 内容与自身哈希一致（`lockSelfHash`），再验是否等于当前解析结果。
 - §13.1 说「现有 Include loader 没有可靠的 settled 信号」，这不成立。`EntryTree.await()` 循环等每个条目的 `_initTask || fiber.inertia` 直到全空，每轮重取，就是 settled 信号；实测在本清单上 1008ms resolve，而 `inject(['server'])` 在 693ms。readiness 已改用它（首个应答实测 `503 {"assembly":"pending"}`，169ms 后转 200）。阶段 2 若仍要自定义 loader，需要另找理由。
 
+## 阶段 1.5：Capability Boundary（2026-08-04，已完成）
+
+阶段 1 交付后暴露的问题：`@qualy/assembly` 名义上是通用装配核心，实际上把 Database 当成内建子系统——`LockedPlugin.database`、`plans.databaseOrder`、`hasDatabase()` 决定 detached、`database.dependsOn` 校验全在核心里；仓库根还持有 `drizzle.config.ts`、`drizzle-kit`/`drizzle-orm`/`pg` 依赖与五个 `db:*` 脚本。**Database 是可选插件**这个前提因此不成立。本阶段把边界补上。
+
+### 结构
+
+```text
+@qualy/assembly-contract   AssemblyCapabilityProvider 接口，零依赖
+@qualy/assembly            清单、插件状态、不透明 contributions、provider 注册表、lock
+@qualy/plugin-database
+  ./assembly               database 能力的全部语义（图、schema 聚合、baseline、generate、deploy、命令）
+  .                        cordis 运行时插件
+```
+
+核心固定生命周期（`resolve` / `plan` / `generate` / `deploy` / `<capability> <command>`），能力插件填内容。核心不知道什么是表、迁移、Drizzle、PostgreSQL。
+
+### 契约范围（每一项都有当下的消费者）
+
+| 成员                | 消费者                                                        |
+| ------------------- | ------------------------------------------------------------- |
+| `key`               | 注册表的一键一主检查；contributions 的键                      |
+| `parseContribution` | resolve 期校验，取代原先散在根脚本里的检查                    |
+| `resolve`           | 产出 capability lock state                                    |
+| `retainsPlugin`     | detached 判定，取代核心的 `hasDatabase()`                     |
+| `plan`              | `qualy plan` 的每能力段落                                     |
+| `generate`          | 吸收 `scripts/db-generate.ts`                                 |
+| `deploy`            | 吸收 `scripts/db-migrate.ts`                                  |
+| `commands`          | 吸收 `drizzle-kit check` / `--custom` / `studio` / drop-guard |
+
+**砍掉的**（附触发条件）：provider 间依赖排序 `requires`（第二个 provider 出现时）；`verify()`（database 插件已在 `Service.init` 自门控并经 `server.readiness()` 注册探针）；`contractVersion`（**capability state 是派生的**——resolve 每次从 contributions 重算，`previousState` 只是建议值，所以没有需要迁移的旧状态；触发条件：某能力的 state 出现只有 lock 记得的事实，例如 purge 的 installEpoch）；旧 `qualy.database` 元数据兼容层（声明方全在本仓，同批迁完；旧键改为**硬拒**并指向新位置，否则一个插件会静默贡献为空、表悄悄离开聚合集）。
+
+### lock 分区（lockfileVersion 2）
+
+```json
+{
+  "plugins": { "@qualy/plugin-auth": { "version": "0.0.0", "state": "active",
+    "contributions": { "database": { "schemaEntry": "src/db/schema.ts", "dependsOn": ["@qualy/plugin-org"] } } } },
+  "capabilities": { "database": { "provider": "@qualy/plugin-database", "state": { "order": [...] } } },
+  "runtime": { "plugins": [...] }
+}
+```
+
+`state` 对核心不透明：序列化、进哈希、frozen 比对，但不解释。`plans.runtimeOrder` 更名 `runtime.plugins`，文档明确「排序只保证生成文件字节稳定，不表达初始化依赖」。
+
+### 对抗审阅发现并修掉的四个真缺陷
+
+1. **provider 只从清单发现 → 静默丢光 detached**。若 database 插件与全部贡献方同批离开清单，retention 循环找不到 provider，`claims` 为空，每个拥有表的插件都无声离开 lock。改为从**清单 ∪ 上一份 lock 中仍安装的插件**发现 provider；并区分「没人能回答」（硬失败）与「没什么要保留」（正常离开）。
+2. **retained 插件的 contribution 从活的 package.json 重建**。detached 插件的包若删掉声明，下次 resolve 保留判定翻转，schema 先离开聚合集、条目再消失。改为硬失败：「X 由能力 K 保留，但它的包不再向 K 贡献」。
+3. **connection string 会进入被提交的 lock**。`providerConfig`（database 插件的 cordis config，含 `url`）此前传给 `resolve()`，返回值进 `capabilities[key].state` 并被哈希提交。改为只在 `generate`/`deploy`/命令的 context 上提供。
+4. **memo 缓存把 rejection 永久化**。`currentResolution` 改存 Promise 后，第一次失败会被整个进程继承。改为 `.catch` 时删除缓存键。
+
+### 第二轮对抗审阅修掉的六个
+
+①CI 的 frozen 检查排在生成 `cordis.gen.yml`(gitignored)之前,全新 checkout 必挂;②`qualy deploy` 与 `qualy database *` 不读 `.env`,DATABASE_URL 失效后静默打到 localhost 兜底(被删的 drizzle.config.ts 与 db-migrate.ts 都读);③provider 插件离开清单后只多活一次 resolve——它不贡献任何东西,下一次 resolve 把它扔出 lock,再下一次没人能回答保留问题:发现范围补 `previous.capabilities[key].provider`,并让仍在保留别人的能力把自己的 provider 也保留住;④`resolve` 读上一份 lock 的 contributions 却不校验 `lockSelfHash`,手改的 lock 一条命令被洗成正统:改为 `readLock` 拒读;⑤`stdio: 'pipe'` 吞掉 drizzle-kit 的 stderr,失败只剩 "Command failed" 加一个已被删的临时配置路径;⑥drop-guard 的 `--base-ref` 用 shell 字符串拼绝对路径,全量扫描在目录不存在时报「ok, 0 files」。
+
+同批还证伪了本阶段自己写的门禁:`CORE_MAY_SAY` 按文件豁免,覆盖 resolve.ts / lock.ts / metadata.ts,它注释里自称要防的 `databaseOrder` 回归照样通过(注入验证)。改为剥整块注释后零豁免;provider 入口扫描改为从 package.json 声明发现(此前写死数据库插件目录)。
+
+### lock 版本升级的处理
+
+`readLock` 遇到**更旧**的版本不再抛错（抛错会让 `qualy resolve` 自己也跑不起来，而它正是补救手段）：先扫 `plugins[*].state`，全是 active/disabled 就当作没有 lock 并告警重写；一旦有非这两种状态（即某插件正被保留），硬失败并列出插件名。遇到**更新**的版本一律硬失败。
+
+### 验收
+
+`pnpm typecheck` exit 0；`pnpm test` 32 文件 244 例(全局 testTimeout 30s)；`pnpm test:browser` 10 例；`pnpm build` 通过。空库 `qualy deploy` 15 条迁移 + seed + 首个 ready 为 `503 {"assembly":"pending"}`、约 200ms 后 200 + 登录 200 + 零 `[E]`/`[W]`。**无 database 装配实测**：server + ui-registry + api-reference，`capabilities []`，`/health/live` 200、`/health/ready` 200 且 checks 为空、openapi 200。
+
+### 仍留在根的 db 相关物（附触发条件）
+
+`scripts/seed.ts` 与 `scripts/lib/seed.ts` 写的是 auth/org/rbac 的行，属 provisioning，本设计尚无归属阶段（阶段 4）；根因此保留 `pg` / `@types/pg`。`qualy.permissions` 是 rbac 的插件间元数据，不在 resolve 期消费，未提升为能力（触发条件：出现需要 resolve 期校验的权限约束）。`db:reset` 保留在根，它做的是 docker compose 的事。
+
 ## 阶段 2：Assembly Loader 与 Gate
 
 目标：运行时只加载已锁定并已部署的 assembly。

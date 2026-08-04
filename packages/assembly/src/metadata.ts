@@ -2,24 +2,31 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import type { CapabilityProviderDeclaration } from '@qualy/assembly-contract'
 
 // Plugin metadata is read the way the loader will resolve it: from the host
 // that owns the manifest. Resolving from the repository root instead would
 // find packages the host never declared, and pnpm's isolation means those are
 // exactly the ones that fail at runtime.
-
-export interface PluginDatabaseMetadata {
-  schemaEntry?: string
-  baselineDir?: string
-  dependsOn: string[]
-}
+//
+// Two `qualy` fields are read here and nothing else. `contributions` is a map
+// from capability key to a declaration only that capability's provider
+// understands, and `capabilityProvider` is how a plugin says it owns one.
+// Every other `qualy` field is metadata one plugin reads from another at
+// runtime, which is none of the assembly's business; the names are kept so
+// resolution can notice a contribution written outside `contributions`, which
+// it can only judge once it knows which capabilities exist.
 
 export interface PluginMetadata {
   id: string
   version: string
   /** absolute, real path to the package root */
   dir: string
-  database?: PluginDatabaseMetadata
+  /** capability key to raw declaration, uninterpreted */
+  contributions: Record<string, unknown>
+  provider?: CapabilityProviderDeclaration
+  /** every other qualy.* key, so a misplaced contribution can be spotted later */
+  otherKeys: string[]
   exports: Record<string, unknown>
 }
 
@@ -35,8 +42,22 @@ interface RawManifest {
   version?: string
   exports?: Record<string, unknown>
   qualy?: {
-    database?: { schemaEntry?: string; baselineDir?: string; dependsOn?: string[] }
+    contributions?: Record<string, unknown>
+    capabilityProvider?: CapabilityProviderDeclaration
   }
+}
+
+const readProvider = (id: string, raw: RawManifest): CapabilityProviderDeclaration | undefined => {
+  const declared = raw.qualy?.capabilityProvider
+  if (!declared) return undefined
+  const { key, entry } = declared
+  if (!key || typeof key !== 'string') {
+    throw new Error(`${id}: qualy.capabilityProvider.key must be a non-empty string`)
+  }
+  if (!entry || typeof entry !== 'string') {
+    throw new Error(`${id}: qualy.capabilityProvider.entry must name a subpath export`)
+  }
+  return { key, entry }
 }
 
 export function createPackageResolver(hostDir: string): PackageResolver {
@@ -67,19 +88,22 @@ export function createPackageResolver(hostDir: string): PackageResolver {
     if (cached) return cached
     const dir = resolvePackageDir(id)
     const raw = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as RawManifest
-    const database = raw.qualy?.database
+    const contributions = raw.qualy?.contributions ?? {}
+    if (typeof contributions !== 'object' || Array.isArray(contributions)) {
+      throw new Error(
+        `${id}: qualy.contributions must be a mapping of capability key to declaration`,
+      )
+    }
     const metadata: PluginMetadata = {
       id,
       version: raw.version ?? '0.0.0',
       dir,
+      contributions,
+      provider: readProvider(id, raw),
+      otherKeys: Object.keys((raw.qualy ?? {}) as Record<string, unknown>).filter(
+        (key) => key !== 'contributions' && key !== 'capabilityProvider',
+      ),
       exports: raw.exports ?? {},
-      database: database
-        ? {
-            schemaEntry: database.schemaEntry,
-            baselineDir: database.baselineDir,
-            dependsOn: [...(database.dependsOn ?? [])].sort(),
-          }
-        : undefined,
     }
     cache.set(id, metadata)
     return metadata

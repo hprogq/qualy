@@ -14,9 +14,11 @@
     "./ui": "./src/ui.ts"
   },
   "qualy": {
-    "database": {
-      "schemaEntry": "src/db/schema.ts",
-      "baselineDir": "db/baseline"
+    "contributions": {
+      "database": {
+        "schemaEntry": "src/db/schema.ts",
+        "baselineDir": "db/baseline"
+      }
     },
     "permissions": {
       "entry": "src/permissions.ts"

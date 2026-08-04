@@ -15,11 +15,13 @@
     "./constants": "./src/constants.ts"
   },
   "qualy": {
-    "database": {
-      "schemaEntry": "src/db/schema.ts",
-      "dependsOn": [
-        "@qualy/plugin-org"
-      ]
+    "contributions": {
+      "database": {
+        "schemaEntry": "src/db/schema.ts",
+        "dependsOn": [
+          "@qualy/plugin-org"
+        ]
+      }
     },
     "permissions": {
       "entry": "src/permissions.ts"

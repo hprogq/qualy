@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { seed } from '../lib/seed.ts'
-import { resolvePluginModuleUrl } from '../lib/schema-entries.ts'
+import { resolvePluginModuleUrl } from '../lib/packages.ts'
 
 const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
 
@@ -176,9 +176,7 @@ describe.runIf(available)('tenant bootstrap seed', () => {
 
     // and every type says which of the two it means, rather than leaving it
     // to be inferred from whether a list happens to be empty
-    const modes = await pool.query(
-      `select code, placement_mode from user_types order by code`,
-    )
+    const modes = await pool.query(`select code, placement_mode from user_types order by code`)
     expect(modes.rows.map((row) => [row.code, row.placement_mode])).toEqual([
       ['faculty', 'allow-list'],
       ['student', 'allow-list'],

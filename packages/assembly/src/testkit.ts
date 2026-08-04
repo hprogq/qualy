@@ -1,17 +1,15 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  createPackageResolver,
-  lockFromResolution,
-  lockPathFor,
-  readLock,
-  resolveAssembly,
-  writeLock,
-} from '@qualy/assembly'
+import { fileURLToPath } from 'node:url'
+import { createPackageResolver } from './metadata.ts'
+import { lockFromResolution, readLock, writeLock } from './lock.ts'
+import { resolveAssembly } from './resolve.ts'
+import { capabilityContext } from './work.ts'
+import { lockPathFor } from './manifest.ts'
 
-// A throwaway assembly: its own manifest, its own lock, its own migrations
-// directory and its own node_modules.
+// A throwaway assembly: its own manifest, its own lock and its own
+// node_modules.
 //
 // Pointing a generator at a temporary manifest while it still resolved
 // packages through this repository's host proved less than it looked like.
@@ -27,7 +25,6 @@ import {
 export interface Workspace {
   dir: string
   manifestPath: string
-  migrationsDir: string
   /** overwrite the manifest, e.g. to remove a plugin and resolve again */
   writeManifest(plugins: readonly string[], options?: ManifestOptions): void
   dispose(): void
@@ -43,8 +40,9 @@ export interface SyntheticPackage {
   qualy?: unknown
 }
 
-const REPO = process.cwd()
-const HOST = path.join(REPO, 'packages/app')
+// anchored at this module rather than at the cwd, so a suite run from
+// anywhere links the same packages
+const HOST = fileURLToPath(new URL('../../app/', import.meta.url))
 
 export const renderManifestText = (
   plugins: readonly string[],
@@ -97,13 +95,10 @@ export function createWorkspace(
   }
 
   const manifestPath = path.join(dir, 'qualy.yml')
-  const migrationsDir = path.join(dir, 'migrations')
-  fs.mkdirSync(migrationsDir, { recursive: true })
 
   const workspace: Workspace = {
     dir,
     manifestPath,
-    migrationsDir,
     writeManifest(selection, overrides) {
       fs.writeFileSync(manifestPath, renderManifestText(selection, overrides ?? options))
     },
@@ -115,33 +110,30 @@ export function createWorkspace(
   return workspace
 }
 
-/** the drizzle config a workspace generates its own lineage with */
-export function writeDrizzleConfig(workspace: Workspace): string {
-  const file = path.join(workspace.dir, 'drizzle.config.ts')
-  fs.writeFileSync(
-    file,
-    `import { defineConfig } from 'drizzle-kit'
-     import { resolveSchemaEntries } from '${REPO}/scripts/lib/schema-entries.ts'
-     export default defineConfig({
-       dialect: 'postgresql',
-       schema: resolveSchemaEntries({ ymlPath: '${workspace.manifestPath}' }),
-       out: '${workspace.migrationsDir}',
-       migrations: { schema: 'cordis_meta', table: 'schema_migrations' },
-       // generate is a diff between the schema and the snapshot, so it needs
-       // no server; the credentials stay where they belong
-       dbCredentials: { url: 'postgres://generate-only/unused' },
-     })`,
-  )
-  return file
-}
-
 /** resolve the workspace as it stands and record the result, as `qualy resolve` does */
-export function commitLock(workspace: Workspace): void {
+export async function commitLock(workspace: Workspace): Promise<void> {
   const lockPath = lockPathFor(workspace.manifestPath)
   writeLock(
     lockPath,
     lockFromResolution(
-      resolveAssembly({ manifestPath: workspace.manifestPath, previousLock: readLock(lockPath) }),
+      await resolveAssembly({
+        manifestPath: workspace.manifestPath,
+        previousLock: readLock(lockPath),
+      }),
     ),
   )
+}
+
+/** the resolution a workspace currently has, the way the CLI computes it */
+export function resolveWorkspace(workspace: Workspace) {
+  const lockPath = lockPathFor(workspace.manifestPath)
+  return resolveAssembly({
+    manifestPath: workspace.manifestPath,
+    previousLock: readLock(lockPath),
+  })
+}
+
+/** the context a capability provider is handed for the work phases */
+export async function capabilityWorkContext(workspace: Workspace, key: string) {
+  return capabilityContext(await resolveWorkspace(workspace), key)
 }

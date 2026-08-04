@@ -30,7 +30,7 @@ const Config = z
     url: z.string().default(() => process.env.DATABASE_URL ?? localFallback),
     logQueries: z.boolean().default(false),
     // 'apply' runs committed migrations during init (dev, single-instance
-    // deployments); 'off' leaves them to an external `pnpm db:migrate` job.
+    // deployments); 'off' leaves them to an external `pnpm qualy deploy` job.
     // Generation never happens here regardless of mode.
     migrations: z.enum(['apply', 'off']).default('apply'),
     // relative paths resolve against the assembly manifest's directory
@@ -107,7 +107,7 @@ export default class Database extends Service {
         if (pending > 0) {
           throw new Error(
             `database is ${pending} migration(s) behind and this process does not apply them; ` +
-              'run the migration job (pnpm db:migrate) before starting',
+              'run the migration job (pnpm qualy deploy) before starting',
           )
         }
         this.ctx.logger.info('migration execution disabled, schema is up to date')

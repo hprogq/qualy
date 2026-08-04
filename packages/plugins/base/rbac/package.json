@@ -14,12 +14,14 @@
     "./client": "./client/index.ts"
   },
   "qualy": {
-    "database": {
-      "schemaEntry": "src/db/schema.ts",
-      "dependsOn": [
-        "@qualy/plugin-org",
-        "@qualy/plugin-auth"
-      ]
+    "contributions": {
+      "database": {
+        "schemaEntry": "src/db/schema.ts",
+        "dependsOn": [
+          "@qualy/plugin-org",
+          "@qualy/plugin-auth"
+        ]
+      }
     },
     "permissions": {
       "entry": "src/permissions.ts"

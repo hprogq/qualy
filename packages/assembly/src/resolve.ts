@@ -1,32 +1,43 @@
-import { CycleError, topoSort } from './graph.ts'
+import type { AssemblyPlugin, PluginState } from '@qualy/assembly-contract'
 import { hostDirFor, manifestHash, readManifest, type AssemblyManifest } from './manifest.ts'
 import { createPackageResolver, type PackageResolver, type PluginMetadata } from './metadata.ts'
+import { loadProviders, type LoadedProvider } from './registry.ts'
 import type { AssemblyLock } from './lock.ts'
 
 // Resolution turns the manifest plus the previous lock into the full picture
-// of an assembly: which plugins run, which ones only keep their data, and in
-// what order the database has to build what they own.
+// of an assembly: which plugins run, which ones are only kept for what they
+// left behind, and what each capability makes of their declarations.
 //
-// It reads files and never touches a database. Everything it produces is a
-// function of the manifest, the installed packages and the previous lock, so
-// running it twice on an unchanged tree changes nothing.
+// It reads files and never touches an external system. Everything it produces
+// is a function of the manifest, the installed packages and the previous lock,
+// so running it twice on an unchanged tree changes nothing.
+//
+// The core decides two things and delegates everything else. It decides which
+// plugins the manifest selected, and it decides whether a plugin that left the
+// manifest is still accounted for, by asking every capability whether it wants
+// the plugin kept. What a contribution means, and what has to happen because
+// of it, belongs to the capability that owns the key.
 //
 // There is deliberately no runtime dependency graph. Cordis creates every
 // entry concurrently and gates activation on `inject`, so the order entries
 // appear in decides nothing; a graph over it would be a second, unenforced
-// declaration of what `inject` already states, and package dependencies
-// cannot stand in for one either, since workspace packages are allowed to
-// depend on each other in a cycle and two of these already do.
+// declaration of what `inject` already states, and package dependencies cannot
+// stand in for one either, since workspace packages are allowed to depend on
+// each other in a cycle and two of these already do.
 
-export type PluginState = 'active' | 'disabled' | 'detached'
+export type { PluginState }
 
-export interface ResolvedPlugin {
-  id: string
-  state: PluginState
-  version: string
-  /** hard requirement: a schema that references these is unusable without them */
-  databaseDependsOn: string[]
-  database?: { schemaEntry?: string; baselineDir?: string }
+export interface ResolvedPlugin extends AssemblyPlugin {
+  /** parsed contributions, keyed by capability; JSON serialisable, it goes in the lock */
+  contributions: Record<string, unknown>
+}
+
+export interface ResolvedCapability {
+  key: string
+  /** the plugin whose package provides this capability */
+  provider: string
+  /** opaque to everything except the provider that produced it */
+  state: unknown
 }
 
 export interface Resolution {
@@ -35,14 +46,19 @@ export interface Resolution {
   resolver: PackageResolver
   /** every plugin the assembly accounts for, keyed and iterated by id */
   plugins: Map<string, ResolvedPlugin>
-  /** what runs, by id, because nothing downstream gives the order meaning */
-  runtimeOrder: string[]
-  /** what owns database objects, dependencies first */
-  databaseOrder: string[]
+  /**
+   * What runs, by id.
+   *
+   * Sorted so the generated entry list has stable bytes. The order carries no
+   * initialisation meaning: cordis decides that from `inject`.
+   */
+  runtimePlugins: string[]
+  capabilities: Map<string, ResolvedCapability>
+  /** loaded providers, for the commands that do work after resolution */
+  providers: Map<string, LoadedProvider>
+  /** capability key to plugin id to parsed contribution */
+  contributions: Map<string, Map<string, unknown>>
 }
-
-const hasDatabase = (metadata: Pick<PluginMetadata, 'database'>) =>
-  Boolean(metadata.database?.schemaEntry ?? metadata.database?.baselineDir)
 
 export interface ResolveOptions {
   manifestPath: string
@@ -51,85 +67,195 @@ export interface ResolveOptions {
   previousLock?: AssemblyLock
 }
 
-export function resolveAssembly(options: ResolveOptions): Resolution {
+export async function resolveAssembly(options: ResolveOptions): Promise<Resolution> {
   const manifest = readManifest(options.manifestPath)
   const resolver = createPackageResolver(options.hostDir ?? hostDirFor(options.manifestPath))
+  const previous = options.previousLock
 
   const states = new Map<string, PluginState>()
+  const metadata = new Map<string, PluginMetadata>()
   for (const [id, entry] of manifest.plugins) {
     states.set(id, entry.enabled ? 'active' : 'disabled')
+    metadata.set(id, resolver.readMetadata(id))
   }
-  // A plugin dropped from the manifest keeps a place here only if it has
-  // database objects to keep. Detaching one that owns nothing would park a
-  // dead entry in the lock with no way to remove it, since taking it out of
-  // the manifest is the only removal there is until purge exists.
-  for (const [id, previous] of Object.entries(options.previousLock?.plugins ?? {})) {
-    if (states.has(id) || !previous.database) continue
+
+  // Providers come from the previous lock as well as the manifest. A plugin
+  // that leaves the manifest together with the capability it contributed to
+  // would otherwise find nobody left to ask whether it should be kept, and the
+  // answer would default to no: every table-owning plugin would leave the lock
+  // at once, silently, on the one edit this whole mechanism exists to survive.
+  //
+  // The capability sections are read as well as the plugin table, because a
+  // provider plugin that owns no contribution of its own leaves the lock on the
+  // resolve after its removal, and would then be undiscoverable on the one
+  // after that.
+  const candidates = new Map(metadata)
+  const recalled = [
+    ...Object.keys(previous?.plugins ?? {}),
+    ...Object.values(previous?.capabilities ?? {}).map((capability) => capability.provider),
+  ]
+  for (const id of recalled) {
+    if (candidates.has(id) || !resolver.isInstalled(id)) continue
+    candidates.set(id, resolver.readMetadata(id))
+  }
+  const providers = await loadProviders(candidates.values(), resolver)
+
+  const retainedBy = new Map<string, string[]>()
+  const unanswerable: string[] = []
+  for (const [id, locked] of Object.entries(previous?.plugins ?? {})) {
+    if (states.has(id)) continue
+    const claims: string[] = []
+    for (const [key, contribution] of Object.entries(locked.contributions ?? {})) {
+      const loaded = providers.get(key)
+      if (!loaded) {
+        // not "nothing was retained": nobody is left who could say
+        unanswerable.push(
+          `${id} contributed to capability ${key}, which nothing in this assembly provides`,
+        )
+        continue
+      }
+      if (loaded.provider.retainsPlugin?.({ pluginId: id, previousContribution: contribution })) {
+        claims.push(key)
+      }
+    }
+    // A plugin dropped from the manifest is kept only if some capability says
+    // it left something behind. Keeping one that left nothing would park a
+    // dead entry in the lock with no way to remove it, since taking it out of
+    // the manifest is the only removal there is.
+    if (claims.length === 0) continue
     states.set(id, 'detached')
+    retainedBy.set(id, claims.sort())
+  }
+  if (unanswerable.length > 0) {
+    throw new Error(
+      `this assembly cannot account for what previous ones left behind:\n  ${unanswerable.join('\n  ')}\n` +
+        'Put the plugin that provides that capability back in the manifest.',
+    )
+  }
+
+  // A capability that is still holding something needs the plugin that
+  // provides it, so that one is held too. Without this a provider taken out of
+  // the manifest leaves the lock on the next resolve, and the resolve after
+  // that has nobody left to ask: the same tree would succeed once and then
+  // fail, having written a lock that referred to a plugin it had dropped.
+  for (const claims of [...retainedBy.values()]) {
+    for (const key of claims) {
+      const owner = providers.get(key)!.pluginId
+      if (states.has(owner)) continue
+      states.set(owner, 'detached')
+      retainedBy.set(owner, [key])
+    }
   }
 
   const uninstalled: string[] = []
-  const metadata = new Map<string, PluginMetadata>()
-  for (const [id, state] of states) {
-    if (state === 'detached' && !resolver.isInstalled(id)) {
-      uninstalled.push(id)
+  for (const id of states.keys()) {
+    if (metadata.has(id)) continue
+    const known = candidates.get(id)
+    if (!known) {
+      uninstalled.push(`${id} (kept by ${retainedBy.get(id)?.join(', ')})`)
       continue
     }
-    metadata.set(id, resolver.readMetadata(id))
+    metadata.set(id, known)
   }
   if (uninstalled.length > 0) {
     throw new Error(
-      `these plugins are gone from ${manifest.source} but their database objects are still in place, and their packages are no longer installed:\n  ${uninstalled.join('\n  ')}\n` +
-        'Reinstall them to keep resolving. The data they own is untouched.',
+      `these plugins are gone from ${manifest.source} but something they left behind is still in place, and their packages are no longer installed:\n  ${uninstalled.join('\n  ')}\n` +
+        'Reinstall them to keep resolving. What they own is untouched.',
     )
   }
 
-  const retained = new Set(states.keys())
-  const missing: string[] = []
-  const databaseEdges = new Map<string, string[]>()
+  // Contributions are parsed by the capability that owns the key. A key nobody
+  // owns is a plugin asking for something this assembly cannot do, and the
+  // honest time to say so is now rather than halfway through a deployment.
+  const contributions = new Map<string, Map<string, unknown>>()
+  const orphaned: string[] = []
   for (const [id, entry] of metadata) {
-    const dependsOn = entry.database?.dependsOn ?? []
-    for (const required of dependsOn) {
-      // A schema that imports another plugin's tables is unusable without
-      // them: postgres refuses the foreign key halfway through applying a
-      // migration, naming a relation the reader has no reason to connect to
-      // a missing plugin. Said here, the assembly is rejected before
-      // anything is generated, by the name of what is missing.
-      if (!retained.has(required)) {
-        missing.push(`${id} needs ${required}, which this assembly does not include`)
-      }
+    // A top-level qualy key that names a capability is a contribution written
+    // where contributions used to live. Ignoring it would leave the plugin
+    // contributing nothing, and the first sign of that is whatever the
+    // capability generates once the plugin has dropped out of its set.
+    for (const key of entry.otherKeys) {
+      if (!providers.has(key)) continue
+      orphaned.push(`${id} declares qualy.${key}, which belongs under qualy.contributions.${key}`)
     }
-    databaseEdges.set(
-      id,
-      dependsOn.filter((dep) => dep !== id && retained.has(dep)),
-    )
+    for (const [key, raw] of Object.entries(entry.contributions)) {
+      const loaded = providers.get(key)
+      if (!loaded) {
+        orphaned.push(
+          `${id} contributes to capability ${key}, which no plugin in this assembly provides`,
+        )
+        continue
+      }
+      const parsed = loaded.provider.parseContribution({
+        pluginId: id,
+        packageRoot: entry.dir,
+        raw,
+      })
+      const perKey = contributions.get(key) ?? new Map<string, unknown>()
+      perKey.set(id, parsed)
+      contributions.set(key, perKey)
+    }
   }
-  if (missing.length > 0) {
-    throw new Error(`incomplete assembly:\n  ${missing.join('\n  ')}`)
+  if (orphaned.length > 0) {
+    throw new Error(`incomplete assembly:\n  ${orphaned.join('\n  ')}`)
   }
 
-  const databaseIds = [...metadata].filter(([, entry]) => hasDatabase(entry)).map(([id]) => id)
-  let databaseOrder: string[]
-  try {
-    databaseOrder = topoSort(databaseIds, databaseEdges).order
-  } catch (error) {
-    if (!(error instanceof CycleError)) throw error
-    // unlike runtime order, this one has to exist: tables are created in it
-    throw new Error(`database dependency cycle: ${error.cycle.join(' -> ')}`)
+  // A plugin kept because of what it contributed has to still contribute it. A
+  // package that stops declaring the key that is retaining it would be
+  // forgotten on the next resolve, after its objects had already dropped out of
+  // the capability's set. The plugin that PROVIDES the key is kept for a
+  // different reason and contributes nothing of its own.
+  const abandoned: string[] = []
+  for (const [id, claims] of retainedBy) {
+    for (const key of claims) {
+      if (providers.get(key)?.pluginId === id) continue
+      if (contributions.get(key)?.has(id)) continue
+      abandoned.push(
+        `${id} is kept by capability ${key} but its package no longer contributes to it`,
+      )
+    }
+  }
+  if (abandoned.length > 0) {
+    throw new Error(
+      `${abandoned.join('\n  ')}\nRestore the declaration, or put the plugin back in the manifest and remove what it owns first.`,
+    )
   }
 
   const plugins = new Map<string, ResolvedPlugin>()
   for (const id of [...states.keys()].sort()) {
-    const entry = metadata.get(id)!
+    const own: Record<string, unknown> = {}
+    for (const key of [...contributions.keys()].sort()) {
+      const contribution = contributions.get(key)!
+      if (contribution.has(id)) own[key] = contribution.get(id)
+    }
     plugins.set(id, {
       id,
       state: states.get(id)!,
-      version: entry.version,
-      databaseDependsOn: databaseEdges.get(id) ?? [],
-      database: hasDatabase(entry)
-        ? { schemaEntry: entry.database?.schemaEntry, baselineDir: entry.database?.baselineDir }
-        : undefined,
+      version: metadata.get(id)!.version,
+      retainedBy: retainedBy.get(id),
+      contributions: own,
     })
+  }
+
+  const capabilities = new Map<string, ResolvedCapability>()
+  for (const key of [...providers.keys()].sort()) {
+    const loaded = providers.get(key)!
+    const owner = previous?.capabilities?.[key]?.provider
+    if (owner && owner !== loaded.pluginId) {
+      // the lock's state was written by a different package, and only the
+      // package that wrote it knows what it means
+      throw new Error(
+        `capability ${key} was provided by ${owner} when the lock was written and is now provided by ${loaded.pluginId}`,
+      )
+    }
+    const state = await loaded.provider.resolve({
+      manifestPath: options.manifestPath,
+      plugins,
+      contributions: contributions.get(key) ?? new Map(),
+      resolvePackageDir: resolver.resolvePackageDir,
+      previousState: previous?.capabilities?.[key]?.state,
+    })
+    capabilities.set(key, { key, provider: loaded.pluginId, state })
   }
 
   return {
@@ -137,22 +263,23 @@ export function resolveAssembly(options: ResolveOptions): Resolution {
     manifestHash: manifestHash(manifest),
     resolver,
     plugins,
-    runtimeOrder: [...states]
+    runtimePlugins: [...states]
       .filter(([, state]) => state === 'active')
       .map(([id]) => id)
       .sort(),
-    databaseOrder,
+    capabilities,
+    providers,
+    contributions,
   }
 }
 
 /** what runs */
 export const activePlugins = (resolution: Resolution) =>
-  resolution.runtimeOrder.map((id) => resolution.plugins.get(id)!)
+  resolution.runtimePlugins.map((id) => resolution.plugins.get(id)!)
 
 /**
- * Everything whose database objects the assembly keeps: active, disabled and
- * detached alike. Switching a plugin off or taking it out of the manifest
- * never makes its tables disappear, so schema aggregation reads this set and
- * not the runtime one.
+ * Everything the assembly still accounts for: active, disabled and detached
+ * alike. Switching a plugin off or taking it out of the manifest never makes
+ * what it owns disappear.
  */
 export const retainedPlugins = (resolution: Resolution) => [...resolution.plugins.values()]

@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg'
 import { resolvePermissionCatalogs } from './permission-entries.ts'
-import { resolvePluginModuleUrl } from './schema-entries.ts'
+import { resolvePluginModuleUrl } from './packages.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '@qualy/plugin-auth/constants'
 
 // tenant bootstrap in layers with different convergence semantics:
@@ -15,10 +15,10 @@ import { SYSTEM_ACCOUNT_USER_TYPE } from '@qualy/plugin-auth/constants'
 // - admin credential: operational input, never silently reset — an explicit
 //   reset flag is required once the identity exists.
 
-const passwordModule = () =>
-  import(resolvePluginModuleUrl('@qualy/plugin-auth-local/password')) as Promise<
-    typeof import('../../packages/plugins/base/auth-local/src/password.ts')
-  >
+const passwordModule = async () =>
+  (await import(
+    resolvePluginModuleUrl('@qualy/plugin-auth-local/password')
+  )) as typeof import('../../packages/plugins/base/auth-local/src/password.ts')
 
 type PermissionRow = import('../../packages/rbac-contract/src/index.ts').PermissionDefinition
 
@@ -27,7 +27,7 @@ type PermissionRow = import('../../packages/rbac-contract/src/index.ts').Permiss
 // same modules feed the runtime registry
 async function permissionCatalog(): Promise<{ plugin: string; rows: readonly PermissionRow[] }[]> {
   return Promise.all(
-    resolvePermissionCatalogs().map(async (ref) => {
+    (await resolvePermissionCatalogs()).map(async (ref) => {
       const module = (await import(ref.moduleUrl)) as { permissions?: readonly PermissionRow[] }
       if (!module.permissions) {
         throw new Error(`${ref.plugin}: the permissions module must export "permissions"`)
@@ -139,10 +139,9 @@ async function provisionRbac(
         // runtime registry: changed ownership or calling convention needs a
         // new code, because live grants already assume the old one
         const existing = (
-          await ctx.client.query(
-            `select plugin, target_kind from permissions where code = $1`,
-            [row.code],
-          )
+          await ctx.client.query(`select plugin, target_kind from permissions where code = $1`, [
+            row.code,
+          ])
         ).rows[0]
         if (existing.plugin !== plugin) {
           drift(`permission ${row.code}`, 'plugin', plugin, existing.plugin)
@@ -183,7 +182,6 @@ async function provisionRbac(
     }
     if (role.status !== 'active') drift('role tenant-admin', 'status', 'active', role.status)
   }
-
 
   // a tenant role reaches the whole tenant, so the grant carries no node:
   // pinning it to the root with subtree coverage was a fiction every
@@ -538,7 +536,6 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
     })
     report.created.demoUsers += 1
   }
-
 
   // sample org role: applicability-constrained, permission-mapped, and the
   // demo manager holds it over the college subtree

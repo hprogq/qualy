@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { MessageCatalog, MessageDescriptor } from '@qualy/i18n-contract'
 import { supportedLocales } from '@qualy/i18n-contract'
 import { readEntries } from '../lib/read-entries.ts'
-import { resolvePackageDir, resolvePluginModuleUrl } from '../lib/schema-entries.ts'
+import { resolvePackageDir, resolvePluginModuleUrl } from '../lib/packages.ts'
 
 // every message a plugin declares must exist in each locale it ships, and a
 // catalog must not carry keys nobody declares. Without this, a missing
@@ -19,7 +19,7 @@ interface ClientModule {
   errorMessages?: Record<string, { message: MessageDescriptor }>
 }
 
-const clientPlugins = readEntries({ all: true }).flatMap((entry) => {
+const clientPlugins = (await readEntries({ all: true })).flatMap((entry) => {
   if (!entry.name.startsWith('@qualy/')) return []
   const pkg = JSON.parse(
     fs.readFileSync(path.join(resolvePackageDir(entry.name), 'package.json'), 'utf8'),

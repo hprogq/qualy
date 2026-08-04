@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { readEntries } from './read-entries.ts'
-import { resolvePackageDir, resolvePluginModuleUrl } from './schema-entries.ts'
+import { resolvePackageDir, resolvePluginModuleUrl } from './packages.ts'
 
 // permission catalogs are declared capability (qualy.permissions.entry),
 // mirroring the schemaEntry discipline: undeclared = no catalog, declared
@@ -13,9 +13,9 @@ export interface PermissionCatalogRef {
   moduleUrl: string
 }
 
-export function resolvePermissionCatalogs(): PermissionCatalogRef[] {
+export async function resolvePermissionCatalogs(): Promise<PermissionCatalogRef[]> {
   const catalogs = new Map<string, PermissionCatalogRef>()
-  for (const entry of readEntries({ all: true })) {
+  for (const entry of await readEntries({ all: true })) {
     if (!entry.name.startsWith('@qualy/') || catalogs.has(entry.name)) continue
     const packageDir = resolvePackageDir(entry.name)
     const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
@@ -31,7 +31,10 @@ export function resolvePermissionCatalogs(): PermissionCatalogRef[] {
       )
     }
     catalogs.set(entry.name, {
-      plugin: entry.name.split('/').pop()!.replace(/^plugin-/, ''),
+      plugin: entry.name
+        .split('/')
+        .pop()!
+        .replace(/^plugin-/, ''),
       moduleUrl: resolvePluginModuleUrl(`${entry.name}/permissions`),
     })
   }

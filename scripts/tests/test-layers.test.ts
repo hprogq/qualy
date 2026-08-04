@@ -40,8 +40,7 @@ const walkManifests = (dir: string): string[] =>
 // Found by shape rather than by one directory name, so moving a suite into
 // src/, __tests__/ or spec/ does not walk it out of the rule.
 const isTestFile = (file: string) =>
-  /(?:^|\/)(?:tests|__tests__|spec)\//.test(posix(file)) ||
-  /\.(?:test|spec)\.[cm]?tsx?$/.test(file)
+  /(?:^|\/)(?:tests|__tests__|spec)\//.test(posix(file)) || /\.(?:test|spec)\.[cm]?tsx?$/.test(file)
 
 const OWNS_CONNECTIONS = 'packages/plugins/infra/database'
 
@@ -50,7 +49,6 @@ const OWNS_CONNECTIONS = 'packages/plugins/infra/database'
 // them.
 const SCRIPTS_MAY_CONNECT = new Set([
   'scripts/seed.ts',
-  'scripts/db-migrate.ts',
   'scripts/lib/seed.ts',
   'scripts/tests/seed.test.ts',
   // this file states the patterns, so it contains all of them
@@ -88,6 +86,101 @@ const breaches = (files: readonly string[], rules: readonly { pattern: RegExp; w
           .map((rule) => `${posix(file)}:${index + 1} ${rule.why}`),
       ),
   )
+
+// What the assembly core is allowed to know.
+//
+// The core resolves a manifest into a lock and calls capability providers at
+// fixed points; a database is one capability among the ones there could be,
+// owned by an optional plugin. Nothing about it may leak back: not an
+// identifier, not a dependency, not a filename convention. A regex is a blunt
+// gate, but the failure it prevents is subtle, and the last time this boundary
+// existed only as prose the core grew a databaseOrder field.
+const CORE = ['packages/assembly/src', 'packages/assembly-contract/src']
+const DATABASE_WORDS =
+  /\bdrizzle|\bpostgres|\bmigration|\bschemaEntry|\bbaselineDir|\bdatabaseOrder|qualy\.database\b/i
+// Comments explain the boundary and have to be free to name what is on the
+// other side of it; code may not depend on it. There is no allowlist: an
+// exempt file is an exempt file, and the regression this exists to catch would
+// be written inside one.
+const codeOnly = (source: string) =>
+  source.split('\n').map((line) =>
+    line
+      .replace(/\/\*.*?\*\//g, '')
+      .replace(/\/\/.*$/, '')
+      .replace(/^\s*\*.*$/, ''),
+  )
+
+describe('assembly core', () => {
+  it('does not name a capability it is supposed to know nothing about', () => {
+    const offenders = CORE.flatMap(walk).flatMap((file) =>
+      codeOnly(fs.readFileSync(file, 'utf8')).flatMap((line, index) =>
+        DATABASE_WORDS.test(line) ? [`${posix(file)}:${index + 1} ${line.trim()}`] : [],
+      ),
+    )
+    expect(offenders).toEqual([])
+  })
+
+  it('does not depend on a database package', () => {
+    const forbidden = ['drizzle-orm', 'drizzle-kit', 'pg', '@types/pg']
+    const offenders = ['packages/assembly', 'packages/assembly-contract'].flatMap((dir) => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+        dependencies?: Record<string, string>
+        devDependencies?: Record<string, string>
+      }
+      const all = { ...pkg.dependencies, ...pkg.devDependencies }
+      return forbidden.filter((name) => name in all).map((name) => `${dir} declares ${name}`)
+    })
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the repository root out of the database toolchain', () => {
+    // The root used to carry drizzle-kit, drizzle-orm and the drizzle config
+    // itself, which made every assembly a database assembly. What is left is
+    // pinned rather than forbidden: the seed still writes rows through pg and
+    // has no owning capability yet, so it keeps the driver, and a NEW database
+    // dependency at the root has to change this list to land.
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')) as {
+      devDependencies?: Record<string, string>
+    }
+    const remaining = ['drizzle-kit', 'drizzle-orm', 'pg', '@types/pg', '@electric-sql/pglite']
+      .filter((name) => name in (pkg.devDependencies ?? {}))
+      .sort()
+    expect(remaining).toEqual(['@types/pg', 'pg'])
+    expect(fs.existsSync('drizzle.config.ts')).toBe(false)
+  })
+})
+
+/** every package that declares itself a capability provider, and where its entry lives */
+const providerEntries = () =>
+  walkManifests('packages').flatMap((file) => {
+    const pkg = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+      qualy?: { capabilityProvider?: { entry?: string } }
+      exports?: Record<string, string>
+    }
+    const entry = pkg.qualy?.capabilityProvider?.entry
+    if (!entry) return []
+    const target = pkg.exports?.[entry]
+    if (!target) throw new Error(`${file}: capabilityProvider.entry ${entry} is not an export`)
+    return [path.dirname(path.join(path.dirname(file), target))]
+  })
+
+describe('capability provider entry', () => {
+  it('reaches nothing that would run on import', () => {
+    // The entry is imported by a CLI with no cordis context and nothing that
+    // has agreed to open a connection; one careless static import turns
+    // `qualy resolve` into a service start. Found by declaration rather than by
+    // directory name, so the second provider is covered the day it lands.
+    const forbidden = [
+      { pattern: /from ['"](?:cordis|@cordisjs\/[^'"]+)['"]/, why: 'imports cordis' },
+      { pattern: /from ['"]\.\.\/index\.ts['"]/, why: 'imports the runtime plugin' },
+      { pattern: /testkit/, why: 'reaches a testkit' },
+      { pattern: /^import .*['"]drizzle-kit['"]/, why: 'statically imports a dev dependency' },
+    ]
+    const directories = providerEntries()
+    expect(directories.length).toBeGreaterThan(0)
+    expect(breaches(directories.flatMap(walk), forbidden)).toEqual([])
+  })
+})
 
 describe('test layering', () => {
   it('still watches the suites the rule was written for', () => {
@@ -140,7 +233,7 @@ describe('test layering', () => {
       .concat(walk('apps'))
       .filter((file) => !isTestFile(file))
     const offenders = breaches(production, [
-      { pattern: /\/testkit['"]/, why: 'imports a testkit from production code' },
+      { pattern: /\/testkit(?:\.ts)?['"]/, why: 'imports a testkit from production code' },
     ])
     expect(offenders).toEqual([])
   })
