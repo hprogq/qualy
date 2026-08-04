@@ -7,7 +7,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./contract": "./src/contract.ts"
+    "./contract": "./src/contract.ts",
+    "./effect": "./src/effect/authorizer.ts"
   },
   "peerDependencies": {
     "cordis": "catalog:"
@@ -20,7 +21,9 @@
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@qualy/rbac-contract": "workspace:*",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@standard-schema/spec": "catalog:"
