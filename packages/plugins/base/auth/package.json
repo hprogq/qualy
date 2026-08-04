@@ -64,6 +64,8 @@
   "devDependencies": {
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
-    "@types/react": "catalog:"
+    "@types/react": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@qualy/api-kit": "workspace:*"
   }
 }

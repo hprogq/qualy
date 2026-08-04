@@ -315,6 +315,13 @@ ping 的 `ctx.db`、auth-local 的 `ctx.auth` 同样。已补 `import type {}` �
 隐式依赖。方向正确,但当前只有 database + ping 两个有 runtime entry 的插件,闭包等于全集,门禁测不出东西。
 **触发条件**:M4 三个插件的 layer 落地后(那时 rbac/auth/org 有真实的层级差),立即补。
 
+### middleware 的 `error` 必须传数组,不能传 `Schema.Union`
+
+`HttpApiMiddleware.Service` 的 `ErrorConstraint = Schema.Top | ReadonlyArray<Schema.Top>`
+(`HttpApiMiddleware.ts:46`)。传 `Schema.Union([A, B])` **类型是过的**,但 union 把成员合成一个
+schema,各自的 `httpApiStatus` 注解再也读不到 —— **每个已声明的失败都静默变成 500**。
+实测:改成 `error: [AuthRequired, SessionExpired]` 之后四个 401 用例立刻由红转绿。
+
 ## 已知的硬骨头
 
 ### 1. 跨插件环必须真的拆开(2026-08-05 实读修正)
