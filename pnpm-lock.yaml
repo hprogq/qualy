@@ -505,6 +505,9 @@ importers:
       '@qualy/api-contract':
         specifier: workspace:*
         version: link:../../../api-contract
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../../auth-contract
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract
@@ -547,6 +550,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 1.0.0-rc.4(@effect/sql-pg@4.0.0-beta.103(effect@4.0.0-beta.103))(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(effect@4.0.0-beta.103)(pg@8.22.0)(zod@4.4.3)
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
       react:
         specifier: 'catalog:'
         version: 19.2.8

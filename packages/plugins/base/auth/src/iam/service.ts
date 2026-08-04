@@ -21,6 +21,7 @@ import {
  */
 type Actor = Principal | SystemActor
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
+import { placementLegal, strandedByQuery } from './queries.ts'
 import { iamErrors } from './errors.ts'
 
 // Identity administration: user types and users.
@@ -497,40 +498,13 @@ export class IamService {
     }
   }
 
-  // Where a kind of person may stand, as one predicate. Both plugins can
-  // break this invariant (auth by placing or retyping a person, org by
-  // retyping the node they stand at) and both diagnose it, so there is one
-  // definition of legal rather than four that drift.
-  //
-  // The type states its policy instead of it being inferred from an empty
-  // list. Reading "no rows" as "anywhere" meant unchecking the last box
-  // widened the rule rather than narrowing it, silently and with no
-  // stranded-user check, which is how a school could end up with students
-  // standing under colleges.
-  private static placementLegal(type: string, orgTypeId: SQL, atRoot: SQL): SQL {
-    const t = sql.raw(type)
-    return sql`
-      case
-        -- a system identity is the tenant's way back in, so it stands at the
-        -- root and nowhere else: authority over a person is authority over
-        -- the node they stand at, and every node below the root has managers
-        -- who are not the tenant's own administrators
-        when ${t}.is_system then ${atRoot}
-        when ${t}.placement_mode = 'unrestricted' then true
-        else exists (
-          select 1 from user_type_allowed_org_types a
-          where a.tenant_id = ${t}.tenant_id and a.user_type_id = ${t}.id
-            and a.org_type_id = ${orgTypeId})
-      end`
-  }
-
   private async assertPlacementAllowed(
     tx: Tx,
     tenantId: string,
     userTypeId: string,
     orgNodeId: string,
   ) {
-    const legal = IamService.placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)
+    const legal = placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)
     const row = (
       await tx.execute<{ legal: boolean }>(sql`
         select ${legal} as legal
@@ -547,15 +521,7 @@ export class IamService {
   // A count, not a list: which people they are is not the caller's business,
   // only that the change would strand them.
   private async strandedBy(tx: Tx, scope: SQL, orgTypeId: SQL): Promise<number> {
-    const legal = IamService.placementLegal('t', orgTypeId, sql`n.parent_id is null`)
-    return (
-      await tx.execute<{ count: number }>(sql`
-        select count(*)::int as count
-        from users u
-        join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
-        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-        where ${scope} and not ${legal}`)
-    ).rows[0]!.count
+    return (await tx.execute<{ count: number }>(strandedByQuery(scope, orgTypeId))).rows[0]!.count
   }
 
   // org asks before it retypes a node: the people standing there do not move,
