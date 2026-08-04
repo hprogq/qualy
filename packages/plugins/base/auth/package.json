@@ -13,7 +13,8 @@
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
     "./constants": "./src/constants.ts",
-    "./effect": "./src/effect/index.ts"
+    "./effect": "./src/effect/index.ts",
+    "./effect/session": "./src/effect/session.ts"
   },
   "qualy": {
     "contributions": {

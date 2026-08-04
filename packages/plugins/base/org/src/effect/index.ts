@@ -1,7 +1,19 @@
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Layer } from 'effect'
+import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
+import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { CurrentUser } from './session-port.ts'
+import { orgApiGroup } from '../api.ts'
 import { Placement } from '@qualy/auth-contract'
 import { Database } from '@qualy/plugin-database/effect'
-import { Rbac, type AccessDenied } from '@qualy/rbac-contract/effect'
+import { Rbac } from '@qualy/rbac-contract/effect'
+import {
+  AssignmentIncompatible,
+  NodeNotFound,
+  PlacementBlocked,
+  RuleViolation,
+  TypeNotFound,
+  type ChangeNodeTypeError,
+} from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import {
   incompatibleChildTypesQuery,
@@ -28,45 +40,6 @@ import {
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
-
-export class NodeNotFound extends Schema.TaggedErrorClass<NodeNotFound>()(
-  'ORG_NODE_NOT_FOUND',
-  {},
-  { httpApiStatus: 404 },
-) {}
-
-export class TypeNotFound extends Schema.TaggedErrorClass<TypeNotFound>()(
-  'ORG_TYPE_NOT_FOUND',
-  {},
-  { httpApiStatus: 404 },
-) {}
-
-export class RuleViolation extends Schema.TaggedErrorClass<RuleViolation>()(
-  'ORG_NODE_RULE_VIOLATION',
-  { reason: Schema.String },
-  { httpApiStatus: 409 },
-) {}
-
-/** role codes stay private: the count is all the caller needs, and it localizes */
-export class AssignmentIncompatible extends Schema.TaggedErrorClass<AssignmentIncompatible>()(
-  'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
-  { assignmentCount: Schema.Number },
-  { httpApiStatus: 409 },
-) {}
-
-export class PlacementBlocked extends Schema.TaggedErrorClass<PlacementBlocked>()(
-  'ORG_NODE_PLACEMENT_BLOCKED',
-  { userCount: Schema.Number },
-  { httpApiStatus: 409 },
-) {}
-
-export type ChangeNodeTypeError =
-  | NodeNotFound
-  | TypeNotFound
-  | RuleViolation
-  | AssignmentIncompatible
-  | PlacementBlocked
-  | AccessDenied
 
 interface NodeRow extends Record<string, unknown> {
   id: string
@@ -178,4 +151,26 @@ export const make = Effect.fn('Org.make')(function* () {
 export const layer: Layer.Layer<Org, never, Database | Rbac | Placement> = Layer.effect(
   Org,
   make(),
+)
+
+// --- api ---
+
+// The local API exists so this plugin implements its group without importing
+// the aggregate that contains it; see QUALY_API_ID. It carries the same prefix
+// as the aggregate, because routes are built from this one and the document
+// from that one.
+const local = HttpApi.make(QUALY_API_ID).add(orgApiGroup).prefix(QUALY_API_PREFIX)
+
+export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
+  handlers.handle(
+    'changeNodeType',
+    Effect.fn('org.changeNodeType.handler')(function* ({ params, payload }) {
+      const org = yield* Org
+      // the tenant comes from the session, never from the request: a caller
+      // must not be able to name the tenant they are acting on
+      const principal = yield* CurrentUser
+      yield* org.changeNodeType(principal.tenantId, params.nodeId, payload.orgTypeId, principal)
+      return { ok: true as const }
+    }),
+  ),
 )

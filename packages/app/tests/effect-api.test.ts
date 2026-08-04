@@ -6,7 +6,10 @@ import { FetchHttpClient } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { DatabaseConfig } from '@qualy/plugin-database/effect'
+import { PermissionCatalog } from '@qualy/rbac-contract/effect'
+import { pluginLayers } from '../runtime.gen.ts'
+import { permissionCatalog } from '../permissions.gen.ts'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { apiHandlers } from '../api-handlers.gen.ts'
@@ -33,15 +36,21 @@ const shell = (url: string) =>
     ),
   ).pipe(
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
-    Layer.provide(databaseLayer),
+    // the same shape as the composition root: handlers get their services from
+    // the generated plugin layers rather than from a hand-built subset, so a
+    // plugin that starts requiring something is caught here too
+    Layer.provide(pluginLayers),
     Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../db/migrations', import.meta.url).pathname,
-        }),
+      Layer.mergeAll(
+        Layer.succeed(
+          DatabaseConfig,
+          DatabaseConfig.of({
+            url: Redacted.make(url),
+            migrations: 'apply',
+            migrationsFolder: new URL('../../../db/migrations', import.meta.url).pathname,
+          }),
+        ),
+        Layer.succeed(PermissionCatalog, permissionCatalog),
       ),
     ),
   )
@@ -120,13 +129,21 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       const document = (await (await fetch(`${base}${spec}`)).json()) as {
         paths: Record<string, Record<string, unknown>>
       }
-      const advertised = Object.keys(document.paths)
+      const advertised = Object.entries(document.paths)
       expect(advertised.length).toBeGreaterThan(0)
-      for (const path of advertised) {
+      for (const [path, methods] of advertised) {
         expect(path.startsWith(QUALY_API_PREFIX), `${path} is outside the prefix`).toBe(true)
-        // a GET the document promises must not 404
-        const status = (await fetch(`${base}${path}`)).status
-        expect(status, `${path} is documented but not served`).not.toBe(404)
+        for (const method of Object.keys(methods)) {
+          // path templates get a plausible id: what is being checked is that
+          // the route exists, so anything but 404 counts. An endpoint behind
+          // the session middleware answers 401, which is still a route.
+          const url = path.replace(/\{[^}]+\}/g, '00000000-0000-7000-8000-000000000000')
+          const status = (await fetch(`${base}${url}`, { method: method.toUpperCase() })).status
+          expect(
+            status,
+            `${method.toUpperCase()} ${path} is documented but not served`,
+          ).not.toBe(404)
+        }
       }
       // and the probes are absent from it, as the old server guaranteed
       expect(advertised.some((path) => path.includes('/health/'))).toBe(false)

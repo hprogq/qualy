@@ -5,6 +5,7 @@ import { accessContract } from '../../packages/plugins/base/rbac/src/contract.ts
 import { orgContract } from '../../packages/plugins/base/org/src/contract.ts'
 import { appContract as manifestContract } from '../../packages/plugins/infra/ui-registry/src/contract.ts'
 import { pingContract } from '../../packages/plugins/demo/ping/src/contract.ts'
+import { FROZEN_ROUTES } from './support/frozen-routes.ts'
 
 // read from the plugins rather than from the generated client: that file
 // tracks whichever plugins are enabled, and another test disables one
@@ -48,76 +49,13 @@ const surface = (): string[] => {
   return routes.sort()
 }
 
-// every route the assembled api serves, under the server's /api prefix
-const EXPECTED = [
-  'DELETE /auth/session',
-  'GET /auth/login-methods',
-  'GET /auth/session',
-  'POST /auth/local/{providerCode}/login',
 
-  'GET /app/manifest',
-
-  'GET /iam/permissions',
-  'POST /iam/access-evaluations',
-  'GET /iam/role-options',
-  'GET /iam/roles',
-  'POST /iam/roles',
-  'GET /iam/roles/{roleId}',
-  'PATCH /iam/roles/{roleId}',
-  'DELETE /iam/roles/{roleId}',
-  'GET /iam/roles/{roleId}/eligibility',
-  'PUT /iam/roles/{roleId}/eligibility',
-  'GET /iam/roles/{roleId}/permissions',
-  'PUT /iam/roles/{roleId}/permissions',
-  'PUT /iam/roles/{roleId}/status',
-  'GET /iam/role-grants',
-  'POST /iam/role-grants',
-  'DELETE /iam/role-grants/{grantId}',
-  'GET /iam/role-grant-options',
-
-  'GET /iam/user-options',
-  'GET /iam/user-type-options',
-  'GET /iam/user-types',
-  'POST /iam/user-types',
-  'GET /iam/user-types/{userTypeId}',
-  'PATCH /iam/user-types/{userTypeId}',
-  'DELETE /iam/user-types/{userTypeId}',
-  'GET /iam/user-types/{userTypeId}/placement-policy',
-  'PUT /iam/user-types/{userTypeId}/placement-policy',
-  'PUT /iam/user-types/{userTypeId}/status',
-
-  'GET /iam/users',
-  'POST /iam/users',
-  'GET /iam/users/{userId}',
-  'PATCH /iam/users/{userId}',
-  'PUT /iam/users/{userId}/placement',
-  'PUT /iam/users/{userId}/status',
-  'GET /iam/users/{userId}/effective-permissions',
-  'GET /iam/users/{userId}/role-grants',
-
-  'GET /org/tree',
-  'GET /org/types',
-  'POST /org/types',
-  'PATCH /org/types/{typeId}',
-  'DELETE /org/types/{typeId}',
-  'GET /org/type-rules',
-  'PUT /org/type-rules/{parentTypeId}/{childTypeId}',
-  'DELETE /org/type-rules/{parentTypeId}/{childTypeId}',
-  'GET /org/nodes/{nodeId}',
-  'POST /org/nodes',
-  'PATCH /org/nodes/{nodeId}',
-  'DELETE /org/nodes/{nodeId}',
-  'PUT /org/nodes/{nodeId}/placement',
-  'PUT /org/nodes/{nodeId}/type',
-
-  'GET /ping/hello',
-].sort()
 
 describe('http surface', () => {
   it('serves exactly the frozen set of routes', () => {
     // adding or moving a route is a deliberate act: update this list in the
     // same commit, and the reviewer sees the api change
-    expect(surface()).toEqual(EXPECTED)
+    expect(surface()).toEqual([...FROZEN_ROUTES].sort())
   })
 
   it('names product domains rather than implementations', () => {

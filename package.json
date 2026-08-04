@@ -27,7 +27,10 @@
     "typescript": "catalog:",
     "vitest": "catalog:",
     "vitest-browser-react": "catalog:",
-    "yaml": "catalog:"
+    "yaml": "catalog:",
+    "@qualy/api": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
+    "effect": "catalog:"
   },
   "scripts": {
     "build": "tsx scripts/gen.ts --all && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",

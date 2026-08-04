@@ -11,6 +11,7 @@
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "@qualy/plugin-org": "workspace:*"
   }
 }

@@ -12,7 +12,8 @@
     "./contract": "./src/contract.ts",
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
-    "./effect": "./src/effect/index.ts"
+    "./effect": "./src/effect/index.ts",
+    "./api": "./src/api.ts"
   },
   "qualy": {
     "contributions": {
@@ -30,7 +31,8 @@
         "@qualy/plugin-database",
         "@qualy/plugin-rbac",
         "@qualy/plugin-auth"
-      ]
+      ],
+      "api": "./api"
     }
   },
   "peerDependencies": {
@@ -60,6 +62,8 @@
     "drizzle-orm": "catalog:",
     "zod": "catalog:",
     "effect": "catalog:",
-    "@qualy/auth-contract": "workspace:*"
+    "@qualy/auth-contract": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*"
   }
 }

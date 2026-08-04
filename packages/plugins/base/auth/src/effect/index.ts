@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import { Database } from '@qualy/plugin-database/effect'
 import { strandedByQuery, usersBlockingOrgTypeQuery } from '../iam/queries.ts'
+import { Authenticated, layer as sessionLayer } from './session.ts'
 
 // auth as an Effect layer.
 //
@@ -66,9 +67,21 @@ export const make = Effect.fn('Auth.make')(function* () {
  * One construction provides both tags, so the port org holds and the surface
  * auth's own handlers use come from the same state rather than two.
  */
-export const layer: Layer.Layer<Placement | Iam, never, Database> = Layer.effectContext(
+const tags: Layer.Layer<Placement | Iam, never, Database> = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, iam } = yield* make()
     return Context.empty().pipe(Context.add(Placement, placement), Context.add(Iam, iam))
   }),
 )
+
+/**
+ * What this plugin contributes.
+ *
+ * The session middleware ships with it because auth owns sessions, and any
+ * plugin's endpoint may declare it. Merging it alongside is safe here for the
+ * reason the ui authorizer is: it is a required service, so an endpoint that
+ * declares the middleware cannot be composed into an assembly that does not
+ * provide it. The requirement reaches the entry point and fails the build.
+ */
+export const layer: Layer.Layer<Placement | Iam | Authenticated, never, Database> =
+  Layer.merge(tags, sessionLayer)
