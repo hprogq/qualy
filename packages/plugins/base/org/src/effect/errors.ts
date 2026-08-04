@@ -47,3 +47,19 @@ export type ChangeNodeTypeError =
   | AssignmentIncompatible
   | PlacementBlocked
   | AccessDenied
+
+export class NodeIsRoot extends Schema.TaggedErrorClass<NodeIsRoot>()(
+  'ORG_NODE_IS_ROOT',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgNodeIsRoot' },
+) {}
+
+/** users and assignments hold a node through restrict foreign keys */
+export class NodeHasChildren extends Schema.TaggedErrorClass<NodeHasChildren>()(
+  'ORG_NODE_HAS_CHILDREN',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgNodeHasChildren' },
+) {}
+
+export type UpdateNodeError = NodeNotFound | AccessDenied
+export type DeleteNodeError = NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied

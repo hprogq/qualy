@@ -54,3 +54,21 @@ export const incompatibleChildTypesQuery = (
 export const setNodeTypeQuery = (tenantId: string, nodeId: string, typeId: string): SQL => sql`
   update org_nodes set org_type_id = ${typeId}, updated_at = now()
   where tenant_id = ${tenantId} and id = ${nodeId}`
+
+export const hasChildrenQuery = (tenantId: string, nodeId: string): SQL => sql`
+  select 1 from org_nodes
+  where tenant_id = ${tenantId} and parent_id = ${nodeId} limit 1`
+
+export const updateNodeFieldsQuery = (
+  tenantId: string,
+  nodeId: string,
+  fields: { name?: string; sortOrder?: number },
+): SQL => sql`
+  update org_nodes set
+    name = coalesce(${fields.name ?? null}, name),
+    sort_order = coalesce(${fields.sortOrder ?? null}, sort_order),
+    updated_at = now()
+  where tenant_id = ${tenantId} and id = ${nodeId}`
+
+export const deleteNodeQuery = (tenantId: string, nodeId: string): SQL =>
+  sql`delete from org_nodes where tenant_id = ${tenantId} and id = ${nodeId}`

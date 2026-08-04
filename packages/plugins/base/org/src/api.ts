@@ -4,6 +4,8 @@ import { Authenticated } from '@qualy/plugin-auth/effect/session'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   AssignmentIncompatible,
+  NodeHasChildren,
+  NodeIsRoot,
   NodeNotFound,
   PlacementBlocked,
   RuleViolation,
@@ -34,5 +36,21 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
       PlacementBlocked,
       AccessDenied,
     ],
+  }).middleware(Authenticated),
+).add(
+  HttpApiEndpoint.patch('updateNode', '/org/nodes/:nodeId', {
+    params: Schema.Struct({ nodeId: Schema.String }),
+    payload: Schema.Struct({
+      name: Schema.optional(Schema.String),
+      sortOrder: Schema.optional(Schema.Number),
+    }),
+    success: Schema.Struct({ ok: Schema.Literal(true) }),
+    error: [NodeNotFound, AccessDenied],
+  }).middleware(Authenticated),
+).add(
+  HttpApiEndpoint.delete('deleteNode', '/org/nodes/:nodeId', {
+    params: Schema.Struct({ nodeId: Schema.String }),
+    success: Schema.Struct({ ok: Schema.Literal(true) }),
+    error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied],
   }).middleware(Authenticated),
 )

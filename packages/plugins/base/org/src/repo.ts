@@ -41,8 +41,11 @@ import {
   incompatibleChildTypesQuery,
   lockTenantQuery,
   nodeQuery,
+  deleteNodeQuery,
+  hasChildrenQuery,
   ruleExistsQuery,
   setNodeTypeQuery,
+  updateNodeFieldsQuery,
 } from './queries.ts'
 
 // serializes all structural writes of one tenant (and, through the same
@@ -83,9 +86,7 @@ export async function listSubtree(db: OrgDb, tenantId: string, rootPath: string)
 }
 
 export async function hasChildren(db: OrgDb, tenantId: string, nodeId: string) {
-  const result = await db.execute(sql`
-    select 1 from org_nodes
-    where tenant_id = ${tenantId} and parent_id = ${nodeId} limit 1`)
+  const result = await db.execute(hasChildrenQuery(tenantId, nodeId))
   return result.rows.length > 0
 }
 
@@ -133,12 +134,7 @@ export async function updateNodeFields(
   nodeId: string,
   fields: { name?: string; sortOrder?: number },
 ) {
-  await tx.execute(sql`
-    update org_nodes set
-      name = coalesce(${fields.name ?? null}, name),
-      sort_order = coalesce(${fields.sortOrder ?? null}, sort_order),
-      updated_at = now()
-    where tenant_id = ${tenantId} and id = ${nodeId}`)
+  await tx.execute(updateNodeFieldsQuery(tenantId, nodeId, fields))
 }
 
 export async function setNodeType(tx: OrgTx, tenantId: string, nodeId: string, typeId: string) {
@@ -173,8 +169,7 @@ export async function moveSubtree(
 }
 
 export async function deleteNode(tx: OrgTx, tenantId: string, nodeId: string) {
-  const result = await tx.execute(sql`
-    delete from org_nodes where tenant_id = ${tenantId} and id = ${nodeId}`)
+  const result = await tx.execute(deleteNodeQuery(tenantId, nodeId))
   return (result.rowCount ?? 0) > 0
 }
 

@@ -12,16 +12,23 @@ import {
   PlacementBlocked,
   RuleViolation,
   TypeNotFound,
+  NodeHasChildren,
+  NodeIsRoot,
   type ChangeNodeTypeError,
+  type DeleteNodeError,
+  type UpdateNodeError,
 } from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import {
+  deleteNodeQuery,
+  hasChildrenQuery,
   incompatibleChildTypesQuery,
   lockTenantQuery,
   nodeQuery,
   ruleExistsQuery,
   setNodeTypeQuery,
   typeQuery,
+  updateNodeFieldsQuery,
 } from '../queries.ts'
 
 // org as an Effect layer, starting with the retype path.
@@ -56,6 +63,17 @@ export class Org extends Context.Service<
       newTypeId: string,
       as: Principal,
     ) => Effect.Effect<void, ChangeNodeTypeError>
+    readonly updateNode: (
+      tenantId: string,
+      nodeId: string,
+      fields: { name?: string; sortOrder?: number },
+      as: Principal,
+    ) => Effect.Effect<void, UpdateNodeError>
+    readonly deleteNode: (
+      tenantId: string,
+      nodeId: string,
+      as: Principal,
+    ) => Effect.Effect<void, DeleteNodeError>
   }
 >()('@qualy/plugin-org/Org') {}
 
@@ -139,7 +157,62 @@ export const make = Effect.fn('Org.make')(function* () {
     ).pipe(Effect.catchTag('SqlError', (error) => Effect.die(error)))
   })
 
-  return { changeNodeType }
+  // the shape every structural write shares: lock the tenant, find the node,
+  // re-decide authorization on the locked connection, then write
+  const write = <A, E>(
+    tenantId: string,
+    nodeId: string,
+    as: Principal,
+    body: (
+      tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
+      node: NodeRow,
+    ) => Effect.Effect<A, E>,
+  ) =>
+    database
+      .transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.execute(lockTenantQuery(tenantId)).pipe(Effect.orDie)
+          const node = rows<NodeRow>(
+            yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
+          )[0]
+          if (!node) return yield* new NodeNotFound()
+          yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
+          return yield* body(tx, node)
+        }),
+      )
+      .pipe(Effect.catchTag('SqlError', (error) => Effect.die(error)))
+
+  const updateNode = Effect.fn('Org.updateNode')(function* (
+    tenantId: string,
+    nodeId: string,
+    fields: { name?: string; sortOrder?: number },
+    as: Principal,
+  ) {
+    yield* write(tenantId, nodeId, as, (tx) =>
+      tx.execute(updateNodeFieldsQuery(tenantId, nodeId, fields)).pipe(Effect.orDie),
+    )
+  })
+
+  const deleteNode = Effect.fn('Org.deleteNode')(function* (
+    tenantId: string,
+    nodeId: string,
+    as: Principal,
+  ) {
+    yield* write(tenantId, nodeId, as, (tx, node) =>
+      Effect.gen(function* () {
+        if (!node.parent_id) return yield* new NodeIsRoot()
+        const children = rows(
+          yield* tx.execute(hasChildrenQuery(tenantId, nodeId)).pipe(Effect.orDie),
+        )
+        if (children.length > 0) return yield* new NodeHasChildren()
+        // users and assignments still block through their restrict foreign
+        // keys, which surface as ORG_NODE_IN_USE by constraint name
+        yield* tx.execute(deleteNodeQuery(tenantId, nodeId)).pipe(Effect.orDie)
+      }),
+    )
+  })
+
+  return { changeNodeType, updateNode, deleteNode }
 })
 
 /**
@@ -172,5 +245,23 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       yield* org.changeNodeType(principal.tenantId, params.nodeId, payload.orgTypeId, principal)
       return { ok: true as const }
     }),
-  ),
+  )
+    .handle(
+      'updateNode',
+      Effect.fn('org.updateNode.handler')(function* ({ params, payload }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.updateNode(principal.tenantId, params.nodeId, payload, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'deleteNode',
+      Effect.fn('org.deleteNode.handler')(function* ({ params }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.deleteNode(principal.tenantId, params.nodeId, principal)
+        return { ok: true as const }
+      }),
+    ),
 )
