@@ -240,14 +240,50 @@ ping 的 `greeting` 现在读 `Config.string('PING_GREETING')`(**在层构建期
 
 ## 已知的硬骨头
 
-### 1. 跨插件环必须真的拆开
+### 1. 跨插件环必须真的拆开(2026-08-05 实读修正)
 
-Cordis 靠运行时延迟激活容忍环,静态 Layer 图不能。当前 `@qualy/plugin-org` 需要 db/server/ui/rbac/auth,
-`@qualy/plugin-rbac` 又承载跨域管理员不变量并向 org 贡献。装配阶段 1 明确写过「只有能力图,没有
-运行时图」,理由之一就是 workspace 包之间允许成环、org ↔ rbac 已经是。**这条裁决在 ADR 0002 下必须重开。**
+上面这条原本写的是「org ↔ rbac 已经成环」。**逐文件读完之后,这个说法在运行时层面是错的**,
+必须改口,否则 M4 会照着一个不存在的问题去设计。
 
-拆法(按优先级):抽小 port 包,而不是互相持有对方完整 service;跨域不变量放 application coordinator;
-实在拆不开就把 auth/rbac/org 当成一个依赖簇一次迁完。**禁止**用全局 service locator 绕过 Layer 图。
+**服务调用图是无环的**:
+
+| 边 | 实际是什么 |
+| --- | --- |
+| rbac → org | **只有表**:`@qualy/plugin-org/schema` 的 FK + 裸 SQL 读 `org_nodes` / `tenants`。rbac 从不 inject org,也从不调 `ctx.org` |
+| rbac → auth | 同上,只有表 |
+| org → rbac | `definePermissions`(构造期)+ 大量 request 期(`requireAt` / `listAuthorizedScope` / `grantsBlockingOrgType`) |
+| auth → rbac | 同型 |
+| org → auth | **全代码库仅一处**:`iam.usersBlockingOrgType`(request 期,在 org 自己的锁事务内) |
+| auth → org | 只有表 |
+
+rbac 的静态 inject 只有 `db`(`server` 与 `ui` 都走可选的 `ctx.inject(...)` 嵌套 fiber)。
+**rbac 是这张图的根**。于是运行时服务图就是 `db, server → rbac → auth → org`,拓扑序天然存在。
+
+看起来成环的是另外三样东西,各有各的解法:
+
+1. **package.json 的 devDependencies**(org 声明 rbac、auth 声明 rbac)——只为类型,不影响运行时。
+2. **schema 的表引用**(rbac/auth 的 FK 指向 org 的表)——模块加载期的值引用,不是 layer 构建期依赖,
+   已经由 `qualy.contributions.database.dependsOn` 表达。
+3. **真正需要反转的只有一处**:rbac 往 ui-registry 的**单槽 authorizer** 里注册
+   (`uiCtx.ui.setAuthorizer`),而 ui-registry 要靠它回答 manifest 授权投影。
+
+所以 M4 的架构工作是第 3 条,不是拆一个深度纠缠的三方环。方向:ui-registry **要求**一个
+`UiAuthorizer` 服务、rbac **提供**它(缺席时 fail closed,与现有语义一致);而 rbac 反过来往 ui 注册的
+`addPage` 属于**静态描述符**(硬骨头 #3 已裁定 page/permission/route 不是 Effect resource),
+应当像 api group 一样由生成器聚合,那条边直接消失。
+
+**禁止**用全局 service locator 绕过 Layer 图(这条不变)。
+
+其余实读发现,留给 M4 处理:
+
+- **`this.ctx` 在 cordis traceable 下是调用方的 context**:rbac 的 `definePermissions` 把清理登记在
+  **调用方**的 fiber 上,所以 auth 卸载时注销的是 auth 的权限目录。Effect 版必须保住这个语义
+  (权限目录的生命周期跟贡献方走,不跟 rbac 走)。
+- **跨插件约束名是字符串耦合且无人校验**:org 的 constraint translator 写死了 auth 与 rbac 拥有的
+  FK 名(`fk_users_primary_org_node` / `fk_role_grants_node` / `fk_role_allowed_org_types_type`)。
+  实查**当前三个都对得上**,但没有任何东西保证它们继续对得上——改名只会让翻译静默失效、裸 pg 错误漏出去。
+- **前端有一条不走插件图的跨插件依赖**:`auth/client/UserGrants.tsx` 直接调 `api.access.*`,
+  rbac 未装配时用户详情页会**静默**少掉授权面板。
 
 ### 2. 运行时依赖声明在哪
 
