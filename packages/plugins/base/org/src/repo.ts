@@ -36,21 +36,24 @@ export type RuleRow = {
 // without hyphens, so paths are derived purely from ids
 export const pathLabel = (id: string) => id.replaceAll('-', '')
 
-const NODE_COLUMNS = sql`id, parent_id, org_type_id, code, name, path::text as path, depth, sort_order`
+import {
+  NODE_COLUMNS,
+  incompatibleChildTypesQuery,
+  lockTenantQuery,
+  nodeQuery,
+  ruleExistsQuery,
+  setNodeTypeQuery,
+} from './queries.ts'
 
 // serializes all structural writes of one tenant (and, through the same
 // lock in rbac's assignment writes, the topology readers that matter)
 export async function lockTenant(tx: OrgTx, tenantId: string): Promise<void> {
-  const row = (
-    await tx.execute(sql`select 1 from tenants where id = ${tenantId} for update`)
-  ).rows[0]
+  const row = (await tx.execute(lockTenantQuery(tenantId))).rows[0]
   if (!row) throw new Error(`tenant ${tenantId} does not exist`)
 }
 
 export async function getNode(db: OrgDb, tenantId: string, nodeId: string) {
-  const result = await db.execute<NodeRow>(sql`
-    select ${NODE_COLUMNS} from org_nodes
-    where tenant_id = ${tenantId} and id = ${nodeId}`)
+  const result = await db.execute<NodeRow>(nodeQuery(tenantId, nodeId))
   return result.rows[0]
 }
 
@@ -93,16 +96,9 @@ export async function incompatibleChildTypes(
   nodeId: string,
   newTypeId: string,
 ) {
-  const result = await db.execute<{ org_type_id: string }>(sql`
-    select distinct child.org_type_id
-    from org_nodes child
-    where child.tenant_id = ${tenantId} and child.parent_id = ${nodeId}
-      and not exists (
-        select 1 from org_type_rules r
-        where r.tenant_id = ${tenantId}
-          and r.parent_type_id = ${newTypeId}
-          and r.child_type_id = child.org_type_id
-      )`)
+  const result = await db.execute<{ org_type_id: string }>(
+    incompatibleChildTypesQuery(tenantId, nodeId, newTypeId),
+  )
   return result.rows.map((row) => row.org_type_id)
 }
 
@@ -146,9 +142,7 @@ export async function updateNodeFields(
 }
 
 export async function setNodeType(tx: OrgTx, tenantId: string, nodeId: string, typeId: string) {
-  await tx.execute(sql`
-    update org_nodes set org_type_id = ${typeId}, updated_at = now()
-    where tenant_id = ${tenantId} and id = ${nodeId}`)
+  await tx.execute(setNodeTypeQuery(tenantId, nodeId, typeId))
 }
 
 // one statement rewrites the whole subtree: the moved node gets the exact
@@ -270,10 +264,7 @@ export async function ruleExists(
   parentTypeId: string,
   childTypeId: string,
 ) {
-  const result = await db.execute(sql`
-    select 1 from org_type_rules
-    where tenant_id = ${tenantId}
-      and parent_type_id = ${parentTypeId} and child_type_id = ${childTypeId}`)
+  const result = await db.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId))
   return result.rows.length > 0
 }
 

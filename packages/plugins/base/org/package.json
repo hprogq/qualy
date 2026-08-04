@@ -11,7 +11,8 @@
     "./permissions": "./src/permissions.ts",
     "./contract": "./src/contract.ts",
     "./client": "./client/index.ts",
-    "./ui": "./src/ui.ts"
+    "./ui": "./src/ui.ts",
+    "./effect": "./src/effect/index.ts"
   },
   "qualy": {
     "contributions": {
@@ -22,6 +23,14 @@
     },
     "permissions": {
       "entry": "src/permissions.ts"
+    },
+    "runtime": {
+      "entry": "./effect",
+      "dependsOn": [
+        "@qualy/plugin-database",
+        "@qualy/plugin-rbac",
+        "@qualy/plugin-auth"
+      ]
     }
   },
   "peerDependencies": {
@@ -49,6 +58,8 @@
     "@qualy/web-runtime": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "effect": "catalog:",
+    "@qualy/auth-contract": "workspace:*"
   }
 }

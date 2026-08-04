@@ -1,0 +1,250 @@
+import { sql } from 'drizzle-orm'
+import { Effect, Exit, Layer, Redacted } from 'effect'
+import { describe, expect, it } from 'vitest'
+import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { PermissionCatalog } from '@qualy/rbac-contract/effect'
+import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import { layer as rbacLayer } from '@qualy/plugin-rbac/effect'
+import { layer as authLayer } from '@qualy/plugin-auth/effect'
+import { Org, layer as orgLayer } from '../src/effect/index.ts'
+
+// The slice the whole milestone rests on.
+//
+// changeNodeType is the only method that touches org, rbac and auth inside one
+// locked transaction, so this is where the three layers are shown to compose
+// and each peer's refusal is shown to stop the retype.
+//
+// What it does NOT prove, and the comment here said otherwise before: that the
+// peers join the caller's transaction. Every peer check in this method runs
+// before anything is written, so it would give the same answer on a separate
+// connection, and each refusal returns before the update rather than rolling
+// one back. That property is proved where a write precedes the question, in
+// auth's placement suite and packages/effect-spike/tests/ambient-transaction.
+
+const catalog: readonly ActivePermission[] = [
+  { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
+]
+
+const stack = (url: string) =>
+  orgLayer.pipe(
+    Layer.provideMerge(Layer.mergeAll(rbacLayer, authLayer)),
+    Layer.provideMerge(
+      Layer.mergeAll(databaseLayer, Layer.succeed(PermissionCatalog, catalog)),
+    ),
+    Layer.provide(
+      Layer.succeed(
+        DatabaseConfig,
+        DatabaseConfig.of({
+          url: Redacted.make(url),
+          migrations: 'apply',
+          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
+        }),
+      ),
+    ),
+  )
+
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Org | Database>) =>
+  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+
+const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
+  if (Exit.isSuccess(exit)) return exit.value
+  throw new Error(`expected success, got ${JSON.stringify(exit.cause)}`)
+}
+
+const tagOf = (result: { _tag: string; failure?: unknown }) =>
+  result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
+
+/** a college holding one staff member, an administrator, and a club type to retype into */
+const seed = Effect.fn('seed')(function* () {
+  const db = yield* Database
+  const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+  const tenant = one<{ id: string }>(
+    yield* db.execute(sql`insert into tenants (slug, name) values ('t', 'T') returning id`),
+  ).id
+  const collegeType = one<{ id: string }>(
+    yield* db.execute(
+      sql`insert into org_types (tenant_id, code, name) values (${tenant}, 'college', 'C') returning id`,
+    ),
+  ).id
+  const clubType = one<{ id: string }>(
+    yield* db.execute(
+      sql`insert into org_types (tenant_id, code, name) values (${tenant}, 'club', 'K') returning id`,
+    ),
+  ).id
+  const node = one<{ id: string }>(
+    yield* db.execute(sql`
+      insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+      values (${tenant}, ${collegeType}, 'Root', 'r', 0) returning id`),
+  ).id
+  const adminType = one<{ id: string }>(
+    yield* db.execute(sql`
+      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+      values (${tenant}, 'admin', 'Admin', true, 'unrestricted') returning id`),
+  ).id
+  const admin = one<{ id: string }>(
+    yield* db.execute(sql`
+      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+      values (${tenant}, 'Ada', ${adminType}, ${node}) returning id`),
+  ).id
+  const adminRole = one<{ id: string }>(
+    yield* db.execute(sql`
+      insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+      values (${tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+      returning id`),
+  ).id
+  yield* db.execute(sql`
+    insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${adminRole})`)
+  const principal: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
+  return { tenant, node, collegeType, clubType, adminType, principal }
+})
+
+/** a staff type that may only stand at a college, with one person standing there */
+const addStrandableStaff = Effect.fn('addStaff')(function* (f: {
+  tenant: string
+  node: string
+  collegeType: string
+}) {
+  const db = yield* Database
+  const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+  const staffType = one<{ id: string }>(
+    yield* db.execute(sql`
+      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+      values (${f.tenant}, 'staff', 'Staff', true, 'allow-list') returning id`),
+  ).id
+  yield* db.execute(sql`
+    insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
+    values (${f.tenant}, ${staffType}, ${f.collegeType})`)
+  yield* db.execute(sql`
+    insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+    values (${f.tenant}, 'Grace', ${staffType}, ${f.node})`)
+})
+
+const typeOf = Effect.fn('typeOf')(function* (nodeId: string) {
+  const db = yield* Database
+  const result = (yield* db.execute(
+    sql`select org_type_id from org_nodes where id = ${nodeId}`,
+  )) as unknown as { rows: { org_type_id: string }[] }
+  return result.rows[0]!.org_type_id
+})
+
+describe.runIf(postgresAvailable)('changing a node type across three plugins', () => {
+  it('retypes when no peer objects', async () => {
+    const db = await createTestContext('effect-retype-ok')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          yield* org.changeNodeType(f.tenant, f.node, f.clubType, f.principal)
+          return { now: yield* typeOf(f.node), expected: f.clubType }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.now).toBe(answer.expected)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it("refuses when auth's placement rule would strand someone, and leaves the type alone", async () => {
+    const db = await createTestContext('effect-retype-strand')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          yield* addStrandableStaff(f)
+          const org = yield* Org
+          const result = yield* Effect.result(
+            org.changeNodeType(f.tenant, f.node, f.clubType, f.principal),
+          )
+          return {
+            tag: tagOf(result),
+            // the refusal stopped the retype; it happens before the update, so
+            // this is "never written" rather than "written and rolled back"
+            stillCollege: (yield* typeOf(f.node)) === f.collegeType,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.tag).toBe('ORG_NODE_PLACEMENT_BLOCKED')
+      expect(answer.stillCollege).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it("refuses when rbac's grants would no longer allow the type", async () => {
+    const db = await createTestContext('effect-retype-grants')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // an org role anchored here that is allowed on colleges only
+          const role = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant}, 'dean', 'Dean', 'org', 'active', 'explicit') returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+            values (${f.tenant}, ${role}, ${f.collegeType})`)
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.principal.userId}, ${role}, ${f.node}, 'self')`)
+
+          const org = yield* Org
+          const result = yield* Effect.result(
+            org.changeNodeType(f.tenant, f.node, f.clubType, f.principal),
+          )
+          return { tag: tagOf(result), stillCollege: (yield* typeOf(f.node)) === f.collegeType }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.tag).toBe('ORG_NODE_ASSIGNMENT_INCOMPATIBLE')
+      expect(answer.stillCollege).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('re-decides authorization under the lock rather than trusting the caller', async () => {
+    const db = await createTestContext('effect-retype-authz')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          // a principal with no grants at all: the router would have stopped
+          // them, and the in-lock check has to stop them too
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const stranger = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Nobody', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          const org = yield* Org
+          const result = yield* Effect.result(
+            org.changeNodeType(f.tenant, f.node, f.clubType, {
+              tenantId: f.tenant,
+              userId: stranger,
+              sessionId: 's',
+            }),
+          )
+          return { tag: tagOf(result), stillCollege: (yield* typeOf(f.node)) === f.collegeType }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.tag).toBe('AccessDenied')
+      expect(answer.stillCollege).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
