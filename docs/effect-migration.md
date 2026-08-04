@@ -20,12 +20,12 @@ Agent 检索纪律在 [agents/effect-source-policy.md](agents/effect-source-poli
 
 | 包 | 版本 | 事实 |
 | --- | --- | --- |
-| `effect` | `4.0.0-beta.103` | 导出 `./unstable/httpapi`、`/http`、`/rpc`、`/sql`、`/schema` |
+| `effect` | `4.0.0-beta.103` | 导出 `./unstable/httpapi`、`/http`、`/rpc`、`/sql`。**`Schema` 是顶层模块**(`effect` 根导出),`unstable/schema` 里只有 `Model` 与 `VariantSchema` |
 | `@effect/sql-pg` | `4.0.0-beta.103` | peer `effect ^4.0.0-beta.103`,**必须完全同版本** |
 | `@effect/vitest` | `4.0.0-beta.103` | 同上 |
 | `drizzle-orm` | `1.0.0-rc.4`(已安装) | 已带 `effect-postgres`,peer `effect >= 4.0.0-beta.83` |
 
-**这是 v4 beta,不是 v3。** 要用的模块住在 `effect/unstable/**`,beta 允许破坏它们。
+**这是 v4 beta,不是 v3。** HttpApi / SQL / RPC 住在 `effect/unstable/**`,beta 允许破坏它们(Schema 不在其中,它是顶层稳定模块)。
 选择不是自由的:drizzle 的 Effect 通路要求 v4,所以「用稳定的 v3」不是一个选项。
 
 风险敞口比现状大——现在是 oRPC beta + drizzle rc + cordis rc,迁移后**整个后端运行时**都在 beta 上。
@@ -38,7 +38,7 @@ Agent 检索纪律在 [agents/effect-source-policy.md](agents/effect-source-poli
 | M0 | 冻结与决策:tag、分支、三份 ADR、阶段 2 重写、版本锁定 | **完成** |
 | M0.5 | vendored 上游源码 + Agent 检索纪律 + 对齐门禁 | **完成** |
 | M1a | 技术验证 spike:**数据库**(真实 schema + 事务 + 关闭) | **完成** |
-| M1b | 技术验证 spike:**HttpApi**(endpoint + client + Scalar + Query 适配) | 待办 |
+| M1b | 技术验证 spike:**HttpApi**(endpoint + client + Scalar + Query 适配) | **完成** |
 | M2 | Effect 应用外壳(config/logger/database/readiness/根 Scope/优雅关闭) | 待办 |
 | M3 | HttpApi 基础 + 类型化 client + TanStack Query 适配,先迁 ping | 待办 |
 | M4 | 最难的业务集群:auth/IAM + rbac + org | 待办 |
@@ -122,13 +122,31 @@ EffectDrizzleQueryError { query, params }
 pgvector 不在验收范围内:全仓 schema 没有任何 vector 列,lineage 里只有 `CREATE EXTENSION ltree`。
 镜像带 pgvector 不等于本项目在用。
 
-### M1b 还没验的
+### M1b 实测结果(2026-08-05,`packages/effect-spike/tests/{httpapi,runtime,query}.test.ts`,11 例全过)
 
-- HttpApi 的 cookie session / header / query / path / body
-- 客户端能否推导成功与公开错误类型;Scalar / OpenAPI
-- TanStack Query 适配层保留 `E` 类型并支持取消
-- SIGTERM 同时关掉 HTTP server 与数据库池(数据库那半已验)
-- 数百 endpoint 规模下的 typecheck 性能
+| 问题 | 结果 |
+| --- | --- |
+| path param / query / header / JSON body | **都可以**。注意:全部字段可选的 `Schema.Struct` 仍是**必填对象**,客户端要传 `query: {}, headers: {}` |
+| 业务错误的状态码 | **是 schema 注解** `{ httpApiStatus: 404 }`,写在错误类上一次。**没有**运行期 boundary 去查表 |
+| 客户端能否推导公开错误类型 | **能,而且是窄的**。端点声明 `TenantNotFound` 时,把 `SlugTaken` 赋给它的失败通道**不编译**(用 `@ts-expect-error` 双向验过:去掉就报 unused directive) |
+| 两个错误能否按 `_tag` 分辨 | 能,客户端把错误体解码回声明的那个类 |
+| OpenAPI / Scalar | 同一份定义产出 `/openapi.json` 与 `/docs`,真实 server 上都是 200 |
+| cookie session | `HttpApiSecurity.apiKey({ in: 'cookie' })` + `HttpApiBuilder.securitySetCookie`,方案存在(本次只声明,未跑通完整登录流) |
+| 一个 Scope 同时关 server 与池 | **是**。真 Node server + 真池,`Scope.close` 之后端口不可达且连接回到基线 |
+| TanStack Query 保留 `E` | **保留**。适配层把 `E` 带进 `TError`,赋给别的错误类型不编译 |
+| 取消 → interruption | **是**。`runPromise` 原生收 `AbortSignal`;拆掉这座桥,取消测试立刻失败(实测) |
+| typecheck 规模 | **线性,不爆炸**。全仓根程序:3 endpoint 2.6s、200 endpoint 3.9s、500 endpoint 5.4s(约 6ms/endpoint)。本项目当前 55 条路径 |
+
+**一个类型系统当场抓到的东西**:`system/count` 端点没声明错误,于是读数据库的 handler
+**不编译**——`EffectDrizzleQueryError` 不可赋给 `never`。必须显式决定这个失败去哪:
+它是基础设施而不是业务结果,所以 `Effect.orDie` 变成 defect 与 500。同一个失败在 oRPC 下是一个
+未声明的 throw,类型里没有任何痕迹。
+
+### M1 未覆盖(留给后续里程碑)
+
+- 完整 cookie 登录流(设置 + 读取 + 失效),M3 做
+- HttpApi middleware 与认证 principal 注入,M3 做
+- 浏览器里跑 `@effect/vitest`(上游没有 browser mode 的证据),M6 前要确认
 
 ## 已知的硬骨头
 

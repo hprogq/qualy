@@ -9,12 +9,15 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@effect/platform-node": "catalog:",
     "@effect/sql-pg": "catalog:",
+    "@qualy/plugin-org": "workspace:*",
+    "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@qualy/plugin-database": "workspace:*",
-    "@qualy/plugin-org": "workspace:*"
+    "@effect/vitest": "catalog:",
+    "@qualy/plugin-database": "workspace:*"
   }
 }

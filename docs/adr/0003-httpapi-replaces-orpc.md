@@ -1,6 +1,6 @@
 # ADR 0003:Effect HttpApi 替换 oRPC
 
-- 状态:**已接受,但以 M3 切片为放行条件**(2026-08-05)
+- 状态:**已接受;M1b 已验证核心属性,完整放行仍看 M3 切片**(2026-08-05)
 - 前提:[ADR 0002](0002-effect-as-the-backend-runtime.md)
 - 相关:docs/effect-migration.md
 
@@ -44,9 +44,11 @@ scripts/tests/api-surface.test.ts),并且要考虑企业集成与第三方调用
 
 ## 放行条件(M3 切片)
 
-先把 ping 迁过去,证明整条传输闭环;再验证:cookie session、header、query、path、body 都支持;
-客户端能推导成功与公开错误类型;Scalar/OpenAPI 正常;TanStack Query 适配层保留 `E` 类型并支持取消。
-通过之后才继续迁业务 API;不通过则保留 oRPC 作为传输边界,Effect 只负责 service 与数据库层。
+**M1b 已经验掉大部分**:path/query/header/body、错误状态注解、客户端错误类型推导(且是窄的)、
+OpenAPI + Scalar、TanStack Query 保留 `E` 并支持取消——全部实测通过,详见 effect-migration.md。
+
+M3 仍要验的是 M1b 没覆盖的:完整 cookie 登录流(设置/读取/失效)、HttpApi middleware 与 principal
+注入。先把 ping 迁过去证明整条闭环,通过之后才继续迁业务 API;不通过则保留 oRPC 作为传输边界。
 
 ## 后果
 

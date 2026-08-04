@@ -1,6 +1,6 @@
 # ADR 0002:Effect 作为唯一后端运行时,替换 Cordis
 
-- 状态:**已接受,但以 M1 spike 为放行条件**(2026-08-05)
+- 状态:**已接受,M1 spike 已通过**(2026-08-05)
 - 前提:[ADR 0001](0001-no-online-plugin-install.md)
 - 相关:docs/effect-migration.md、docs/assembly-design.md 阶段 2
 
@@ -39,7 +39,8 @@ ADR 在下面这个垂直切片通过之前**不得开始全量迁移**:
 - Node 24 下 SIGTERM 能关闭 HTTP server 与数据库池,连接零泄漏
 - 数百 endpoint 规模下 typecheck 性能可接受
 
-spike 失败则关闭迁移分支,主线不受影响。这正是必须建分支的理由。
+**结果:全部通过**(实测记录见 docs/effect-migration.md 的 M1a / M1b 两节)。放行。
+唯一未覆盖的是完整 cookie 登录流与 HttpApi middleware,推到 M3 一并验。
 
 ## 后果
 
