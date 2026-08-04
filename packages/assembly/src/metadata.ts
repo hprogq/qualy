@@ -26,7 +26,7 @@ export interface PluginMetadata {
   contributions: Record<string, unknown>
   provider?: CapabilityProviderDeclaration
   /** the subpath export whose `layer` this plugin contributes to the runtime */
-  runtime?: { entry: string }
+  runtime?: { entry: string; api?: string; dependsOn: readonly string[] }
   /** every other qualy.* key, so a misplaced contribution can be spotted later */
   otherKeys: string[]
   exports: Record<string, unknown>
@@ -46,7 +46,7 @@ interface RawManifest {
   qualy?: {
     contributions?: Record<string, unknown>
     capabilityProvider?: CapabilityProviderDeclaration
-    runtime?: { entry?: string }
+    runtime?: { entry?: string; api?: string; dependsOn?: readonly string[] }
   }
 }
 
@@ -106,7 +106,13 @@ export function createPackageResolver(hostDir: string): PackageResolver {
       dir,
       contributions,
       provider: readProvider(id, raw),
-      runtime: raw.qualy?.runtime?.entry ? { entry: raw.qualy.runtime.entry } : undefined,
+      runtime: raw.qualy?.runtime?.entry
+        ? {
+            entry: raw.qualy.runtime.entry,
+            api: raw.qualy.runtime.api,
+            dependsOn: [...(raw.qualy.runtime.dependsOn ?? [])],
+          }
+        : undefined,
       otherKeys: Object.keys((raw.qualy ?? {}) as Record<string, unknown>).filter(
         (key) => !ASSEMBLY_KEYS.has(key),
       ),

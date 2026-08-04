@@ -1,5 +1,6 @@
 import path from 'node:path'
 import YAML from 'yaml'
+import { CycleError, topoSort } from './graph.ts'
 import { shortId } from './hash.ts'
 import { writeAtomic } from './lock.ts'
 import type { Resolution } from './resolve.ts'
@@ -43,37 +44,127 @@ export function renderRuntimePlan(resolution: Resolution): string {
 export const writeRuntimePlan = (file: string, resolution: Resolution): boolean =>
   writeAtomic(file, renderRuntimePlan(resolution))
 
+export interface RuntimeLayer {
+  id: string
+  specifier: string
+  dependsOn: readonly string[]
+}
+
 /**
- * The plugins that ship an Effect runtime, in the order the module imports them.
+ * The plugins that ship an Effect runtime.
  *
  * A plugin says so with `qualy.runtime.entry` in its package.json, naming one
  * of its own subpath exports. Declaring it there rather than in code is what
  * lets resolution stay a file-reading operation: the assembly decides what an
  * application contains without importing any of it.
+ *
+ * `qualy.runtime.dependsOn` names the plugins whose services this one's layer
+ * needs while it is being built. It is separate from the database graph
+ * because it answers a different question, and it exists because merging
+ * layers does not wire them together.
  */
-export const runtimeLayers = (resolution: Resolution) =>
+export const runtimeLayers = (resolution: Resolution): RuntimeLayer[] =>
   resolution.runtimePlugins.flatMap((id) => {
-    const entry = resolution.resolver.readMetadata(id).runtime?.entry
-    return entry ? [{ id, specifier: `${id}/${entry.replace(/^\.\//, '')}` }] : []
+    const runtime = resolution.resolver.readMetadata(id).runtime
+    if (!runtime?.entry) return []
+    return [
+      {
+        id,
+        specifier: `${id}/${runtime.entry.replace(/^\.\//, '')}`,
+        dependsOn: runtime.dependsOn,
+      },
+    ]
   })
+
+/**
+ * The layers grouped so that every group depends only on earlier ones.
+ *
+ * `Layer.mergeAll` builds its members in parallel and does not satisfy
+ * dependencies between them, so a flat merge of plugins that need each other
+ * leaves those needs unsatisfied. Grouping by depth lets the module provide
+ * each group to the ones above it.
+ */
+export function runtimeLevels(layers: readonly RuntimeLayer[]): RuntimeLayer[][] {
+  const byId = new Map(layers.map((layer) => [layer.id, layer]))
+  const edges = new Map(layers.map((layer) => [layer.id, layer.dependsOn]))
+
+  for (const layer of layers) {
+    for (const dependency of layer.dependsOn) {
+      if (byId.has(dependency)) continue
+      // the alternative is an unsatisfied requirement surfacing as a type
+      // error in generated code, which says nothing about which plugin is
+      // missing from the manifest
+      throw new Error(
+        `${layer.id} declares a runtime dependency on ${dependency}, which this assembly does not contain or which ships no runtime entry`,
+      )
+    }
+  }
+
+  let ordered: string[]
+  try {
+    ordered = topoSort(
+      layers.map((layer) => layer.id),
+      edges,
+    ).order
+  } catch (error) {
+    if (!(error instanceof CycleError)) throw error
+    throw new Error(
+      `runtime dependency cycle: ${error.cycle.join(' -> ')}. Static layers cannot express a cycle, so one of these has to stop needing the other at construction time`,
+    )
+  }
+
+  const depth = new Map<string, number>()
+  for (const id of ordered) {
+    const own = byId.get(id)!.dependsOn.filter((dependency) => byId.has(dependency))
+    depth.set(id, own.length === 0 ? 0 : Math.max(...own.map((d) => depth.get(d)! + 1)))
+  }
+
+  const levels: RuntimeLayer[][] = []
+  for (const id of ordered) {
+    const level = depth.get(id)!
+    ;(levels[level] ??= []).push(byId.get(id)!)
+  }
+  return levels.map((level) => [...level].sort((a, b) => a.id.localeCompare(b.id)))
+}
 
 const identifier = (id: string) =>
   id
     .replace(/^@[^/]+\//, '')
     .replace(/[^a-zA-Z0-9]+(.)/g, (_match, next: string) => next.toUpperCase())
 
+const mergeExpression = (level: readonly RuntimeLayer[]): string =>
+  level.length === 1
+    ? identifier(level[0]!.id)
+    : `Layer.mergeAll(${level.map((layer) => identifier(layer.id)).join(', ')})`
+
 /**
  * The generated composition root.
  *
- * A list of imports and one merged layer, deliberately nothing else: anything
- * conditional belongs in resolution, which has already run by the time this
- * file exists.
+ * A list of imports and one composed layer, deliberately nothing else:
+ * anything conditional belongs in resolution, which has already run by the
+ * time this file exists.
+ *
+ * Levels are provided rather than merged because merging does not wire.
+ * Each level is given to the ones above it with `provideMerge`, which both
+ * satisfies their needs and keeps the service available to the application.
  */
 export function renderRuntimeModule(resolution: Resolution): string {
   const layers = runtimeLayers(resolution)
   const imports = layers.map(
     (layer) => `import { layer as ${identifier(layer.id)} } from '${layer.specifier}'`,
   )
+  const levels = runtimeLevels(layers)
+  const composed = () => {
+    // written top down: the most dependent level first, then everything it
+    // stands on, in the order it needs them
+    const [top, ...rest] = [...levels].reverse()
+    if (rest.length === 0) return mergeExpression(top!)
+    return [
+      `${mergeExpression(top!)}.pipe(`,
+      ...rest.map((level) => `  Layer.provideMerge(${mergeExpression(level)}),`),
+      ')',
+    ].join('\n')
+  }
   return [
     `// Generated by Qualy from ${path.basename(resolution.manifest.source)}. Run 'pnpm gen' to regenerate.`,
     '// Do not edit this file by hand, it will be overwritten.',
@@ -82,9 +173,7 @@ export function renderRuntimeModule(resolution: Resolution): string {
     '',
     '/** every plugin in this assembly that ships an Effect runtime */',
     layers.length > 0
-      ? `export const pluginLayers = Layer.mergeAll(\n${layers
-          .map((layer) => `  ${identifier(layer.id)},`)
-          .join('\n')}\n)`
+      ? `export const pluginLayers = ${composed()}`
       : 'export const pluginLayers = Layer.empty',
     '',
   ].join('\n')

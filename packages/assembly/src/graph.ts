@@ -1,3 +1,9 @@
+// A generic topological sort, with no idea what the edges mean.
+//
+// Two capabilities need one: the database provider orders schema by declared
+// dependencies, and the runtime module orders layers by declared runtime
+// dependencies. Neither meaning lives here, only the ordering.
+//
 // Ordering has to be a property of the declared dependencies, never of the
 // order somebody happened to type entries in. Two people whose manifests say
 // the same thing must get the same lock, byte for byte.

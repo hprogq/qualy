@@ -22,7 +22,10 @@
     },
     "runtime": {
       "entry": "./effect",
-      "api": "./api"
+      "api": "./api",
+      "dependsOn": [
+        "@qualy/plugin-database"
+      ]
     }
   },
   "peerDependencies": {
