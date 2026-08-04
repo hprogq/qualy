@@ -9,6 +9,7 @@
     "@cordisjs/plugin-loader": "catalog:",
     "@cordisjs/plugin-logger-console": "catalog:",
     "@cordisjs/plugin-timer": "catalog:",
+    "@effect/platform-node": "catalog:",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/plugin-api-reference": "workspace:*",
@@ -23,7 +24,8 @@
     "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/plugin-web": "workspace:*",
-    "cordis": "catalog:"
+    "cordis": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@cordisjs/plugin-hmr": "catalog:"

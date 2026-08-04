@@ -77,6 +77,10 @@ it.layer(TestServices)('http api', (it) => {
   )
 })
 
+// @effect-diagnostics effect/missingEffectError:off
+// The negative assertions below deliberately name a narrower error type than
+// the effect can produce. That mismatch IS the assertion, and the expected
+// type error beside it is what proves the channel is narrow.
 describe('http api, statically', () => {
   it('gives each declared error its status through a schema annotation', () => {
     // the code lives on the error, once. Nothing walks a built router to

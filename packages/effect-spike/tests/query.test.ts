@@ -18,6 +18,10 @@ class OtherFailure extends Schema.TaggedErrorClass<OtherFailure>()('OtherFailure
   detail: Schema.String,
 }) {}
 
+// @effect-diagnostics effect/missingEffectError:off
+// The negative assertions below deliberately name a narrower error type than
+// the effect can produce. That mismatch IS the assertion, and the expected
+// type error beside it is what proves the channel is narrow.
 describe('effect to tanstack query', () => {
   it('carries the effect error type into TError', () => {
     const options = effectQueryOptions(['tenant', 'a'] as const, () =>

@@ -38,8 +38,11 @@ export {
   type LockedPlugin,
 } from './lock.ts'
 export {
+  renderRuntimeModule,
   renderRuntimePlan,
   runtimeEntries,
+  runtimeLayers,
+  writeRuntimeModule,
   writeRuntimePlan,
   type RuntimeEntry,
 } from './runtime-plan.ts'

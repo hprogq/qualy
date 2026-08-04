@@ -34,6 +34,7 @@ catalog:
   '@effect/sql-pg': 4.0.0-beta.103
   '@effect/vitest': 4.0.0-beta.103
   '@effect/platform-node': 4.0.0-beta.103
+  '@effect/language-service': 0.87.1
   pg: 8.22.0
   '@types/pg': 8.20.0
   yaml: 2.9.0

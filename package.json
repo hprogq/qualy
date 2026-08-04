@@ -11,6 +11,7 @@
     "tsx": "catalog:"
   },
   "devDependencies": {
+    "@effect/language-service": "catalog:",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
@@ -35,6 +36,7 @@
     "format": "prettier --write .",
     "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
+    "prepare": "effect-language-service patch",
     "qualy": "tsx scripts/qualy.ts",
     "seed": "tsx scripts/seed.ts",
     "test": "tsx scripts/gen.ts && vitest run",

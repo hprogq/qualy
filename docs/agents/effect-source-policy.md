@@ -47,6 +47,21 @@ vendored 树里可能带着**写给别的仓库的 agent 配置**——drizzle-o
 - 生产源码里的 `Effect.run*` 只允许出现在:应用入口、CLI 边界、前端统一 API runtime、测试边界。
   service、repo、handler 内部不得自行运行 Effect
 
+## Effect LSP 也在 tsc 里跑
+
+`@effect/language-service` 装在根上,`tsconfig.base.json` 挂了插件,并且**打过 `patch`**——
+所以 floating effect、layer requirement 泄漏、scope 违规这些诊断在 `pnpm typecheck` 里就会失败,
+不只是编辑器里的波浪线。实测能抓到 `Effect.succeed(1)` 这种既不 yield 也不赋值的悬空 Effect。
+
+patch 改的是 `node_modules/typescript`,靠 `prepare` 脚本重放,而**部分安装可能跳过 `prepare`**。
+一个会悄悄失效的门禁比没有门禁更糟,所以 `scripts/tests/effect-diagnostics.test.ts` 会编译一个
+故意写错的 fixture,诊断没出现就失败并告诉你跑 `pnpm exec effect-language-service patch`
+(已实测:把 tsc 换回未打补丁的版本,该测试立刻红)。
+
+需要**故意**违反某条诊断时(例如负面类型断言),用 `// @effect-diagnostics effect/<rule>:off`
+就近关掉并写清楚为什么,不要整体关。注意别在散文注释里写出 `@ts-expect-error` 字样——
+TypeScript 会把它当成真指令(踩过)。
+
 ## 升级
 
 升级不是改一个版本号。`effect` 与全部 `@effect/*` 必须同版本,`repos/` 必须同步到对应 tag,

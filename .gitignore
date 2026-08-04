@@ -59,3 +59,6 @@ apps/web/tests/__screenshots__/
 
 # resolved runtime entry list, generated from qualy.yml
 cordis.gen.yml
+
+# scratch fixtures written by the effect diagnostics gate
+.effect-diagnostics-*/

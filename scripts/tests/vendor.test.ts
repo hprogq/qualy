@@ -47,13 +47,17 @@ describe('vendored upstream sources', () => {
     }
   })
 
-  it('keeps every effect package on one version', () => {
-    // the ecosystem peers on an exact beta, so a partial bump resolves to two
-    // copies of the runtime rather than to an error
+  it('keeps every effect RUNTIME package on one version', () => {
+    // The runtime ecosystem peers on an exact beta, so a partial bump resolves
+    // to two copies of the runtime rather than to an error. Tooling is not
+    // part of that lockstep: the language service has its own version line and
+    // peers on nothing, so holding it to the runtime's version would only
+    // block upgrading either one.
+    const TOOLING = new Set(['@effect/language-service'])
     const workspace = fs.readFileSync('pnpm-workspace.yaml', 'utf8')
-    const versions = [...workspace.matchAll(/^\s*'?(@effect\/[\w-]+|effect)'?:\s*(\S+)\s*$/gm)].map(
-      (match) => [match[1]!, match[2]!.replace(/^['"]|['"]$/g, '')] as const,
-    )
+    const versions = [...workspace.matchAll(/^\s*'?(@effect\/[\w-]+|effect)'?:\s*(\S+)\s*$/gm)]
+      .map((match) => [match[1]!, match[2]!.replace(/^['"]|['"]$/g, '')] as const)
+      .filter(([name]) => !TOOLING.has(name))
     expect(versions.length).toBeGreaterThan(1)
     expect(new Set(versions.map(([, version]) => version)).size).toBe(1)
   })
