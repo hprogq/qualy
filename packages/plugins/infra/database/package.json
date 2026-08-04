@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./migrator": "./src/migrator.ts",
-    "./pg-errors": "./src/pg-errors.ts"
+    "./pg-errors": "./src/pg-errors.ts",
+    "./testkit": "./src/testkit.ts"
   },
   "peerDependencies": {
     "cordis": "catalog:"

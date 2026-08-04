@@ -1,10 +1,6 @@
-import { randomUUID } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
-import { Context } from 'cordis'
-import { Pool } from 'pg'
+import type { Context } from 'cordis'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runMigrations } from '@qualy/plugin-database/migrator'
-import Database from '@qualy/plugin-database'
+import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import Server from '@qualy/plugin-server'
 import UiRegistry from '@qualy/plugin-ui-registry'
 import Rbac from '@qualy/plugin-rbac'
@@ -12,43 +8,11 @@ import Auth from '@qualy/plugin-auth'
 import { hashPassword } from '../src/password.ts'
 import * as authLocal from '../src/index.ts'
 
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
-const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
-
-const available = await (async () => {
-  const probe = new Pool({ connectionString: baseUrl, connectionTimeoutMillis: 1500 })
-  try {
-    await probe.query('select 1')
-    return true
-  } catch {
-    return false
-  } finally {
-    await probe.end().catch(() => {})
-  }
-})()
-
-if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
-  throw new Error('postgres-backed tests are required but the server is unreachable')
-}
-if (!available) console.warn('postgres unreachable, local login tests skipped')
-
-// drop database ... with (force) races graceful client teardown: a killed
-// backend's fatal 57P01 lands on a closing socket and would surface as an
-// unhandled error without a listener
-const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
-  const pool = new Pool(config)
-  pool.on('error', () => {})
-  return pool
-}
-
 const PRIMARY_PASSWORD = 'alice-primary-pass-1'
 const SECONDARY_PASSWORD = 'alice-secondary-pass-1'
 
-describe.runIf(available)('local login through the auth core', () => {
-  const admin = quietPool({ connectionString: baseUrl })
-  const dbName = `qualy_authflow_${randomUUID().slice(0, 8)}`
-  let pool: Pool
-  let ctx: Context
+describe.runIf(postgresAvailable)('local login through the auth core', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
   let base: string
   const ids = {
     tenant: '',
@@ -75,14 +39,10 @@ describe.runIf(available)('local login through the auth core', () => {
   }
 
   beforeAll(async () => {
-    await admin.query(`create database "${dbName}"`)
-    const url = new URL(baseUrl)
-    url.pathname = `/${dbName}`
-    pool = quietPool({ connectionString: url.href })
-    await runMigrations(pool, { folder: migrationsFolder })
+    db = await createTestContext('auth-local')
 
     const row = async (text: string, params: unknown[]) =>
-      (await pool.query(text, params)).rows[0].id as string
+      (await db.query(text, params)).rows[0]!.id as string
     ids.tenant = await row(
       `insert into tenants (slug, name) values ('flow', 'Flow') returning id`,
       [],
@@ -115,7 +75,7 @@ describe.runIf(available)('local login through the auth core', () => {
        values ($1, 'local-secondary', 'local', '备用账号', 20) returning id`,
       [ids.tenant],
     )
-    await pool.query(
+    await db.query(
       `insert into auth_providers (tenant_id, code, type, name, sort_order)
        values ($1, 'campus-cas', 'cas', '校园统一认证', 30)`,
       [ids.tenant],
@@ -126,12 +86,12 @@ describe.runIf(available)('local login through the auth core', () => {
       [ids.tenant, ids.memberType, ids.root],
     )
     // the same identifier bound to both instances with different passwords
-    await pool.query(
+    await db.query(
       `insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
        values ($1, $2, $3, 'alice', $4)`,
       [ids.tenant, ids.alice, ids.primary, await hashPassword(PRIMARY_PASSWORD)],
     )
-    await pool.query(
+    await db.query(
       `insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
        values ($1, $2, $3, 'alice', $4)`,
       [ids.tenant, ids.alice, ids.secondary, await hashPassword(SECONDARY_PASSWORD)],
@@ -141,20 +101,18 @@ describe.runIf(available)('local login through the auth core', () => {
        values ($1, 'Bob', $2, $3) returning id`,
       [ids.tenant, bobTypeId(), ids.root],
     )
-    await pool.query(
+    await db.query(
       `insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
        values ($1, $2, $3, 'bob', $4)`,
       [ids.tenant, bob, ids.primary, await hashPassword(PRIMARY_PASSWORD)],
     )
 
-    ctx = new Context()
-    await ctx.plugin(Database, { url: url.href, migrations: 'off' })
-    await ctx.plugin(Server, { port: 0 })
-    await ctx.plugin(UiRegistry)
-    await ctx.plugin(Rbac)
-    await ctx.plugin(Auth, { defaultTenantSlug: 'flow' })
-    await ctx.plugin(authLocal)
-    base = `http://127.0.0.1:${ctx.server.port}/api`
+    await db.ctx.plugin(Server, { port: 0 })
+    await db.ctx.plugin(UiRegistry)
+    await db.ctx.plugin(Rbac)
+    await db.ctx.plugin(Auth, { defaultTenantSlug: 'flow' })
+    await db.ctx.plugin(authLocal)
+    base = `http://127.0.0.1:${db.ctx.server.port}/api`
   })
 
   function bobTypeId() {
@@ -162,10 +120,7 @@ describe.runIf(available)('local login through the auth core', () => {
   }
 
   afterAll(async () => {
-    await ctx?.fiber.dispose()
-    await pool?.end()
-    await admin.query(`drop database if exists "${dbName}" with (force)`)
-    await admin.end()
+    await db?.dispose()
   })
 
   it('lists only methods whose driver plugin is active, sorted', async () => {
@@ -205,11 +160,11 @@ describe.runIf(available)('local login through the auth core', () => {
     expect(body.user.tenant.slug).toBe('flow')
 
     const raw = sessionCookieOf(res).split('=')[1]!
-    const stored = await pool.query(
+    const stored = await db.query(
       `select token_hash from sessions order by created_at desc limit 1`,
     )
-    expect(stored.rows[0].token_hash).toMatch(/^[0-9a-f]{64}$/)
-    expect(stored.rows[0].token_hash).not.toBe(raw)
+    expect(stored.rows[0]!.token_hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(stored.rows[0]!.token_hash).not.toBe(raw)
   })
 
   it('answers one uniform 401 for every login failure', async () => {
@@ -225,41 +180,41 @@ describe.runIf(available)('local login through the auth core', () => {
   })
 
   it('serves the current session and expires stale ones with cleanup', async () => {
-    await pool.query(`delete from sessions`)
+    await db.query(`delete from sessions`)
     const cookie = sessionCookieOf(await login('local-primary', 'alice', PRIMARY_PASSWORD))
     expect((await me(cookie)).status).toBe(200)
     expect((await me()).status).toBe(401)
 
-    await pool.query(`update sessions set expires_at = now() - interval '1 minute'`)
+    await db.query(`update sessions set expires_at = now() - interval '1 minute'`)
     const expired = await me(cookie)
     expect(expired.status).toBe(401)
     expect(((await expired.json()) as { code: string }).code).toBe('SESSION_EXPIRED')
     expect(expired.headers.get('set-cookie')).toContain('qualy_session=;')
-    expect(Number((await pool.query(`select count(*) from sessions`)).rows[0].count)).toBe(0)
+    expect(Number((await db.query(`select count(*) from sessions`)).rows[0]!.count)).toBe(0)
   })
 
   it('revokes sessions when user, user type, tenant or provider state changes', async () => {
     const cookie = sessionCookieOf(await login('local-primary', 'alice', PRIMARY_PASSWORD))
     const expect401 = async () => expect((await me(cookie)).status).toBe(401)
 
-    await pool.query(`update users set enabled = false where id = $1`, [ids.alice])
+    await db.query(`update users set enabled = false where id = $1`, [ids.alice])
     await expect401()
-    await pool.query(`update users set enabled = true where id = $1`, [ids.alice])
+    await db.query(`update users set enabled = true where id = $1`, [ids.alice])
 
-    await pool.query(`update user_types set enabled = false where id = $1`, [ids.memberType])
+    await db.query(`update user_types set enabled = false where id = $1`, [ids.memberType])
     await expect401()
-    await pool.query(`update user_types set enabled = true where id = $1`, [ids.memberType])
+    await db.query(`update user_types set enabled = true where id = $1`, [ids.memberType])
 
-    await pool.query(`update tenants set enabled = false where id = $1`, [ids.tenant])
+    await db.query(`update tenants set enabled = false where id = $1`, [ids.tenant])
     await expect401()
     expect((await login('local-primary', 'alice', PRIMARY_PASSWORD)).status).toBe(401)
-    await pool.query(`update tenants set enabled = true where id = $1`, [ids.tenant])
+    await db.query(`update tenants set enabled = true where id = $1`, [ids.tenant])
 
     // a disabled provider blocks new logins but existing sessions live on
-    await pool.query(`update auth_providers set enabled = false where id = $1`, [ids.primary])
+    await db.query(`update auth_providers set enabled = false where id = $1`, [ids.primary])
     expect((await login('local-primary', 'alice', PRIMARY_PASSWORD)).status).toBe(401)
     expect((await me(cookie)).status).toBe(200)
-    await pool.query(`update auth_providers set enabled = true where id = $1`, [ids.primary])
+    await db.query(`update auth_providers set enabled = true where id = $1`, [ids.primary])
   })
 
   it('logs out idempotently and clears the cookie', async () => {
@@ -273,7 +228,7 @@ describe.runIf(available)('local login through the auth core', () => {
   })
 
   it('drops login methods when a driver deactivates, keeping the rows', async () => {
-    const scoped = ctx.plugin({
+    const scoped = db.ctx.plugin({
       name: 'driver-probe',
       inject: ['auth'],
       apply: (child: Context) => {
@@ -287,7 +242,7 @@ describe.runIf(available)('local login through the auth core', () => {
       },
     })
     await scoped
-    await pool.query(
+    await db.query(
       `insert into auth_providers (tenant_id, code, type, name) values ($1, 'probe-x', 'probe', 'P')`,
       [ids.tenant],
     )
@@ -298,7 +253,7 @@ describe.runIf(available)('local login through the auth core', () => {
     await scoped.dispose()
     res = (await (await fetch(`${base}/auth/login-methods`)).json()) as { methods: { code: string }[] }
     expect(res.methods.map((method) => method.code)).not.toContain('probe-x')
-    await pool.query(`delete from auth_providers where code = 'probe-x'`)
+    await db.query(`delete from auth_providers where code = 'probe-x'`)
   })
 
   it('accepts only same-origin redirect targets, surviving backslash tricks', async () => {
@@ -309,7 +264,7 @@ describe.runIf(available)('local login through the auth core', () => {
       'evil-backslash': '/\\evil.example/phish',
       'probe-good': '/api/auth/probe2/probe-good/start?q=1',
     }
-    const scoped = ctx.plugin({
+    const scoped = db.ctx.plugin({
       name: 'redirect-driver-probe',
       inject: ['auth'],
       apply: (child: Context) => {
@@ -321,7 +276,7 @@ describe.runIf(available)('local login through the auth core', () => {
     })
     await scoped
     for (const code of Object.keys(hrefs)) {
-      await pool.query(
+      await db.query(
         `insert into auth_providers (tenant_id, code, type, name) values ($1, $2, 'probe2', 'P')`,
         [ids.tenant, code],
       )
@@ -336,6 +291,6 @@ describe.runIf(available)('local login through the auth core', () => {
     const good = res.methods.find((method) => method.code === 'probe-good')
     expect(good?.href).toBe('/api/auth/probe2/probe-good/start?q=1')
     await scoped.dispose()
-    await pool.query(`delete from auth_providers where type = 'probe2'`)
+    await db.query(`delete from auth_providers where type = 'probe2'`)
   })
 })

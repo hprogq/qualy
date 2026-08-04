@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
-import { Context } from 'cordis'
-import { Pool } from 'pg'
+import type { Context } from 'cordis'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runMigrations } from '@qualy/plugin-database/migrator'
-import Database from '@qualy/plugin-database'
+import { createTestContext, pgCode, postgresAvailable } from '@qualy/plugin-database/testkit'
 import Server, { type AuthPrincipal } from '@qualy/plugin-server'
 import UiRegistry from '@qualy/plugin-ui-registry'
 import Rbac from '@qualy/plugin-rbac'
@@ -12,40 +9,11 @@ import Auth from '@qualy/plugin-auth'
 import { isAccessDeniedError, isDomainError, type DomainError } from '@qualy/api-contract'
 import Org from '../src/index.ts'
 
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
-const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
+// The database belongs to the database plugin here: this suite decides what
+// sql to run and which plugins to assemble, not who owns the pool.
 
-const available = await (async () => {
-  const probe = new Pool({ connectionString: baseUrl, connectionTimeoutMillis: 1500 })
-  try {
-    await probe.query('select 1')
-    return true
-  } catch {
-    return false
-  } finally {
-    await probe.end().catch(() => {})
-  }
-})()
-
-if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
-  throw new Error('postgres-backed tests are required but the server is unreachable')
-}
-if (!available) console.warn('postgres unreachable, org tests skipped')
-
-// drop database ... with (force) races graceful client teardown: a killed
-// backend's fatal 57P01 lands on a closing socket and would surface as an
-// unhandled error without a listener
-const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
-  const pool = new Pool(config)
-  pool.on('error', () => {})
-  return pool
-}
-
-describe.runIf(available)('org tree domain', () => {
-  const adminPool = quietPool({ connectionString: baseUrl })
-  const dbName = `qualy_org_domain_${randomUUID().slice(0, 8)}`
-  let pool: Pool
-  let ctx: Context
+describe.runIf(postgresAvailable)('org tree domain', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
   let httpBase: string
   // the test enricher reads this box: set before a request, clear for anon
   const principalBox: { current?: AuthPrincipal } = {}
@@ -69,7 +37,7 @@ describe.runIf(available)('org tree domain', () => {
     managerRole: '',
   }
 
-  const tree = () => ctx.org.tree
+  const tree = () => db.ctx.org.tree
   const principal = (userId: string, tenantId = f.tenant): AuthPrincipal => ({
     tenantId,
     userId,
@@ -87,10 +55,18 @@ describe.runIf(available)('org tree domain', () => {
             : ((error as Error).message ?? 'error'),
     )
 
+  // A returning clause that produced no row means the fixture is broken, so
+  // say so here rather than binding undefined into the next statement.
+  const idOf = (result: { rows: Record<string, unknown>[] }): string => {
+    const [row] = result.rows
+    if (typeof row?.id !== 'string') throw new Error('statement returned no id')
+    return row.id
+  }
+
   // every node must agree with its parent chain: path is parent path plus
   // the node's own uuid label, depth is parent depth + 1
   const assertTreeConsistent = async () => {
-    const broken = await pool.query(`
+    const broken = await db.query(`
       select count(*)::int as count
       from org_nodes n
       left join org_nodes p on p.tenant_id = n.tenant_id and p.id = n.parent_id
@@ -100,7 +76,7 @@ describe.runIf(available)('org tree domain', () => {
               and (p.id is null
                 or n.depth <> p.depth + 1
                 or n.path::text <> p.path::text || '.' || replace(n.id::text, '-', '')))`)
-    expect(broken.rows[0].count).toBe(0)
+    expect(broken.rows[0]?.count).toBe(0)
   }
 
   const call = async (
@@ -122,14 +98,9 @@ describe.runIf(available)('org tree domain', () => {
   }
 
   beforeAll(async () => {
-    await adminPool.query(`create database "${dbName}"`)
-    const url = new URL(baseUrl)
-    url.pathname = `/${dbName}`
-    pool = quietPool({ connectionString: url.href })
-    await runMigrations(pool, { folder: migrationsFolder })
+    db = await createTestContext('org-domain')
 
-    const row = async (text: string, params: unknown[] = []) =>
-      (await pool.query(text, params)).rows[0].id as string
+    const row = async (text: string, params: unknown[] = []) => idOf(await db.query(text, params))
     // roots are provisioned by the seed in production; tests create them the
     // same way (label = uuid without hyphens, written atomically)
     const insertRoot = (tenantId: string, typeId: string, name: string) =>
@@ -143,16 +114,14 @@ describe.runIf(available)('org tree domain', () => {
     f.tenant = await row(`insert into tenants (slug, name) values ('a', 'A') returning id`)
     f.tenantB = await row(`insert into tenants (slug, name) values ('b', 'B') returning id`)
 
-    ctx = new Context()
-    await ctx.plugin(Database, { url: url.href, migrations: 'off' })
-    await ctx.plugin(Server, { port: 0 })
-    await ctx.plugin(UiRegistry)
-    await ctx.plugin(Rbac)
+    await db.ctx.plugin(Server, { port: 0 })
+    await db.ctx.plugin(UiRegistry)
+    await db.ctx.plugin(Rbac)
     // org asks auth whether retyping a node would strand the people standing
     // on it, so the two are assembled together here as they are in the host
-    await ctx.plugin(Auth)
-    await ctx.plugin(Org)
-    await ctx.plugin({
+    await db.ctx.plugin(Auth)
+    await db.ctx.plugin(Org)
+    await db.ctx.plugin({
       name: 'test-principal',
       inject: ['server'],
       apply: (child: Context) => {
@@ -161,8 +130,8 @@ describe.runIf(available)('org tree domain', () => {
         })
       },
     })
-    await ctx.rbac.whenSynced()
-    httpBase = `http://127.0.0.1:${ctx.server.port}/api`
+    await db.ctx.rbac.whenSynced()
+    httpBase = `http://127.0.0.1:${db.ctx.server.port}/api`
 
     // types and rules through the real service (university -> college -> class)
     f.universityType = (await tree().createType(f.tenant, { code: 'university', name: '大学' })).id
@@ -226,26 +195,26 @@ describe.runIf(available)('org tree domain', () => {
        values ($1, 'org-manager', 'OM', 'org', 'active') returning id`,
       [f.tenant],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, typeFaculty],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_org_types (tenant_id, role_id, org_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, f.collegeType],
     )
-    await pool.query(
+    await db.query(
       `insert into role_permissions (tenant_id, role_id, permission_id)
        select $1, r.id, p.id from roles r, permissions p
        where r.id = any($2::uuid[]) and p.code in ('org.tree.read', 'org.tree.manage')`,
       [f.tenant, [f.tenantAdminRole, f.managerRole]],
     )
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, null, null)`,
       [f.tenant, f.admin, f.tenantAdminRole],
     )
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'subtree')`,
       [f.tenant, f.manager, f.managerRole, f.collegeA],
@@ -265,10 +234,7 @@ describe.runIf(available)('org tree domain', () => {
   })
 
   afterAll(async () => {
-    await ctx?.fiber.dispose()
-    await pool?.end()
-    await adminPool.query(`drop database if exists "${dbName}" with (force)`)
-    await adminPool.end()
+    await db?.dispose()
   })
 
   it('enforces type rules and sibling names on creation', async () => {
@@ -304,17 +270,14 @@ describe.runIf(available)('org tree domain', () => {
     ).toBe('ORG_NODE_NOT_FOUND')
     // a second root cannot even be expressed through the api (parentId is
     // required); the bare-sql path dies on the partial unique index
-    const secondRoot = pool
-      .query(
+    const secondRoot = pgCode(
+      db.query(
         `insert into org_nodes (id, tenant_id, org_type_id, name, path, depth)
          select v.id, $1, $2, 'Root 2', replace(v.id::text, '-', '')::ltree, 0
          from (select uuidv7() as id) v`,
         [f.tenant, f.universityType],
-      )
-      .then(
-        () => 'ok',
-        (error) => (error as { code?: string }).code,
-      )
+      ),
+    )
     expect(await secondRoot).toBe('23505')
     await assertTreeConsistent()
   })
@@ -377,10 +340,10 @@ describe.runIf(available)('org tree domain', () => {
     expect(moved.depth).toBe(2)
     expect(moved.path).toBe(`${campus1.path}.${f.collegeA.replaceAll('-', '')}`)
     const class1 = (
-      await pool.query(`select depth, path::text as path from org_nodes where id = $1`, [f.class1])
+      await db.query(`select depth, path::text as path from org_nodes where id = $1`, [f.class1])
     ).rows[0]
-    expect(class1.depth).toBe(3)
-    expect(class1.path).toBe(`${moved.path}.${f.class1.replaceAll('-', '')}`)
+    expect(class1?.depth).toBe(3)
+    expect(class1?.path).toBe(`${moved.path}.${f.class1.replaceAll('-', '')}`)
     await assertTreeConsistent()
     // move back and verify the projection again
     const back = await tree().moveNode(f.tenant, f.collegeA, f.root)
@@ -426,7 +389,7 @@ describe.runIf(available)('org tree domain', () => {
     // invariant is that create-child and delete-parent never both succeed
     expect(outcome.every((result) => result.status === 'fulfilled')).toBe(false)
     await assertTreeConsistent()
-    await pool.query(`delete from org_nodes where name in ('孤儿候选', '并发目标')`)
+    await db.query(`delete from org_nodes where name in ('孤儿候选', '并发目标')`)
     const cleanup =
       rules[0].status === 'fulfilled'
         ? tree().deleteRule(f.tenant, x.id, y.id)
@@ -449,7 +412,7 @@ describe.runIf(available)('org tree domain', () => {
     )
     // assignment rule: collegeB has no children, but give it an org-manager
     // assignment (allowed org types: college only) and the change is blocked
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.managerRole, f.collegeB],
@@ -457,7 +420,7 @@ describe.runIf(available)('org tree domain', () => {
     expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeB, f.classType))).toBe(
       'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
     )
-    await pool.query(`delete from role_grants where org_node_id = $1`, [f.collegeB])
+    await db.query(`delete from role_grants where org_node_id = $1`, [f.collegeB])
     // now the change works both ways
     await tree().changeNodeType(f.tenant, f.collegeB, f.classType)
     await tree().changeNodeType(f.tenant, f.collegeB, f.collegeType)
@@ -474,13 +437,13 @@ describe.runIf(available)('org tree domain', () => {
       orgTypeId: f.classType,
       name: '空班级',
     })
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.managerRole, empty.id],
     )
     expect(await orgCode(tree().deleteNode(f.tenant, empty.id))).toBe('ORG_NODE_IN_USE')
-    await pool.query(`delete from role_grants where org_node_id = $1`, [empty.id])
+    await db.query(`delete from role_grants where org_node_id = $1`, [empty.id])
     await tree().deleteNode(f.tenant, empty.id)
 
     // types: in use by nodes, then by rules, then by role allowed lists
@@ -489,12 +452,12 @@ describe.runIf(available)('org tree domain', () => {
     await tree().putRule(f.tenant, f.universityType, spare.id)
     expect(await orgCode(tree().deleteType(f.tenant, spare.id))).toBe('ORG_TYPE_IN_USE')
     await tree().deleteRule(f.tenant, f.universityType, spare.id)
-    await pool.query(
+    await db.query(
       `insert into role_allowed_org_types (tenant_id, role_id, org_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, spare.id],
     )
     expect(await orgCode(tree().deleteType(f.tenant, spare.id))).toBe('ORG_TYPE_IN_USE')
-    await pool.query(`delete from role_allowed_org_types where org_type_id = $1`, [spare.id])
+    await db.query(`delete from role_allowed_org_types where org_type_id = $1`, [spare.id])
     await tree().deleteType(f.tenant, spare.id)
 
     // rules: an existing parent-child node pair blocks the rule delete
@@ -596,7 +559,7 @@ describe.runIf(available)('org tree domain', () => {
     // target type (university -> class) so the check reaches the assignment
     // rule instead of failing on the parent rule first.
     await tree().putRule(f.tenant, f.universityType, f.classType)
-    const guarded = await pool.query(
+    const guarded = await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.manager, f.managerRole, f.collegeB],
@@ -620,7 +583,7 @@ describe.runIf(available)('org tree domain', () => {
       // interpolates the count
       expect(payload.message).not.toMatch(/\d/)
     } finally {
-      await pool.query(`delete from role_grants where id = $1`, [guarded.rows[0].id])
+      await db.query(`delete from role_grants where id = $1`, [idOf(guarded)])
       await tree().deleteRule(f.tenant, f.universityType, f.classType)
     }
     const missing = await call('DELETE', `/org/nodes/${randomUUID()}`, undefined, admin)
@@ -641,7 +604,7 @@ describe.runIf(available)('org tree domain', () => {
   it('projects self anchors as bare nodes even for explicit node requests', async () => {
     // a self-scope read grant must never widen into the subtree through the
     // nodeId branch of getTree
-    const selfGrant = await pool.query(
+    const selfGrant = await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeA],
@@ -669,18 +632,18 @@ describe.runIf(available)('org tree domain', () => {
       principal(f.manager),
     )
     expect(((await managed.json()) as { nodes: unknown[] }).nodes.length).toBeGreaterThan(1)
-    await pool.query(`delete from role_grants where id = $1`, [selfGrant.rows[0].id])
+    await db.query(`delete from role_grants where id = $1`, [idOf(selfGrant)])
   })
 
   it('refuses to move a subtree the caller only holds a self anchor on', async () => {
     // escalation attempt: self anchor on collegeA (whose subtree is not
     // granted) plus a managed destination must not relocate the descendants
-    const selfGrant = await pool.query(
+    const selfGrant = await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeA],
     )
-    const destGrant = await pool.query(
+    const destGrant = await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'subtree') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeB],
@@ -693,17 +656,17 @@ describe.runIf(available)('org tree domain', () => {
     )
     expect(response.status).toBe(403)
     // the tree is untouched
-    const row = await pool.query(`select parent_id from org_nodes where id = $1`, [f.collegeA])
-    expect(row.rows[0].parent_id).toBe(f.root)
-    await pool.query(`delete from role_grants where id = any($1::uuid[])`, [
-      [selfGrant.rows[0].id, destGrant.rows[0].id],
+    const row = await db.query(`select parent_id from org_nodes where id = $1`, [f.collegeA])
+    expect(row.rows[0]?.parent_id).toBe(f.root)
+    await db.query(`delete from role_grants where id = any($1::uuid[])`, [
+      [idOf(selfGrant), idOf(destGrant)],
     ])
   })
 
   it('reports subtree capability separately from single-node capability', async () => {
     // a self manage grant can rename but never move: the ui must see the
     // difference instead of offering a move the server will refuse
-    const selfGrant = await pool.query(
+    const selfGrant = await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.student, f.managerRole, f.collegeA],
@@ -719,7 +682,7 @@ describe.runIf(available)('org tree domain', () => {
       nodes: { id: string; manageable: boolean; subtreeManageable: boolean }[]
     }).nodes.find((node) => node.id === f.collegeA)
     expect(managerNode).toMatchObject({ manageable: true, subtreeManageable: true })
-    await pool.query(`delete from role_grants where id = $1`, [selfGrant.rows[0].id])
+    await db.query(`delete from role_grants where id = $1`, [idOf(selfGrant)])
   })
 
   it('re-validates type and rule management at the root inside the lock', async () => {
@@ -767,12 +730,12 @@ describe.runIf(available)('org tree domain', () => {
   it('reduces overlapping anchors and keeps self anchors bare', async () => {
     // a second, nested subtree grant collapses into the root grant; a self
     // grant on an uncovered node surfaces as a bare node
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, null, null)`,
       [f.tenant, f.admin, f.tenantAdminRole],
     ).catch(() => {})
-    const managerSelf = await pool.query(
+    const managerSelf = await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
       [f.tenant, f.manager, f.managerRole, f.collegeB],
@@ -787,8 +750,6 @@ describe.runIf(available)('org tree domain', () => {
     const ids = new Set(body.nodes.map((node) => node.id))
     expect(ids.has(f.collegeB)).toBe(true)
     expect(ids.has(f.class1)).toBe(true)
-    await pool.query(`delete from role_grants where id = $1`, [
-      managerSelf.rows[0].id,
-    ])
+    await db.query(`delete from role_grants where id = $1`, [idOf(managerSelf)])
   })
 })

@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
 import { Context } from 'cordis'
-import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runMigrations } from '@qualy/plugin-database/migrator'
-import Database from '@qualy/plugin-database'
+import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import Server, { type AuthPrincipal } from '@qualy/plugin-server'
 import UiRegistry from '@qualy/plugin-ui-registry'
 import Rbac from '@qualy/plugin-rbac'
@@ -15,36 +12,8 @@ import { placementPolicy } from '../src/iam/contract.ts'
 import { IamService } from '../src/iam/service.ts'
 import { createIdentityRouter } from '../src/iam/router.ts'
 
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
-const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
-
-const available = await (async () => {
-  const probe = new Pool({ connectionString: baseUrl, connectionTimeoutMillis: 1500 })
-  try {
-    await probe.query('select 1')
-    return true
-  } catch {
-    return false
-  } finally {
-    await probe.end().catch(() => {})
-  }
-})()
-
-if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
-  throw new Error('postgres-backed tests are required but the server is unreachable')
-}
-if (!available) console.warn('postgres unreachable, iam tests skipped')
-
-const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
-  const pool = new Pool(config)
-  pool.on('error', () => {})
-  return pool
-}
-
-describe.runIf(available)('identity administration', () => {
-  const adminPool = quietPool({ connectionString: baseUrl })
-  const dbName = `qualy_iam_${randomUUID().slice(0, 8)}`
-  let pool: Pool
+describe.runIf(postgresAvailable)('identity administration', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
   let ctx: Context
   let iam: IamService
 
@@ -104,20 +73,19 @@ describe.runIf(available)('identity administration', () => {
           : { code: (error as Error).message ?? 'error', data: undefined },
     )
   const code = (promise: Promise<unknown>) => fault(promise).then((failure) => failure.code)
+  const deleteUsers = (userIds: string[]) =>
+    db.query(`delete from users where id = any($1::uuid[])`, [userIds])
   const versionOf = async (userTypeId: string) =>
     (await iam.getUserType(f.tenant, userTypeId)).version
   const typeNamed = async (typeCode: string) =>
     (await iam.listUserTypes(f.tenant)).find((type) => type.code === typeCode)
 
   beforeAll(async () => {
-    await adminPool.query(`create database "${dbName}"`)
-    const url = new URL(baseUrl)
-    url.pathname = `/${dbName}`
-    pool = quietPool({ connectionString: url.href })
-    await runMigrations(pool, { folder: migrationsFolder })
+    db = await createTestContext('iam')
+    ctx = db.ctx
 
     const row = async (text: string, params: unknown[] = []) =>
-      (await pool.query(text, params)).rows[0].id as string
+      (await db.query(text, params)).rows[0]!.id as string
 
     f.tenant = await row(`insert into tenants (slug, name) values ('a', 'A') returning id`)
     f.universityType = await row(
@@ -198,17 +166,17 @@ describe.runIf(available)('identity administration', () => {
        values ($1, 'org-manager', 'OM', 'org', 'active') returning id`,
       [f.tenant],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, f.staffType],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_org_types (tenant_id, role_id, org_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, f.collegeType],
     )
     // a tenant role carries no anchor: it applies across the tenant, so
     // there is no node for the grant to name
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, null, null)`,
       [f.tenant, f.admin, f.tenantAdminRole],
@@ -220,22 +188,20 @@ describe.runIf(available)('identity administration', () => {
        values ($1, 'user-viewer', 'UV', 'org', 'active') returning id`,
       [f.tenant],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, f.viewerRole, f.staffType],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_org_types (tenant_id, role_id, org_type_id) values ($1, $2, $3)`,
       [f.tenant, f.viewerRole, f.collegeType],
     )
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.viewerRole, f.college],
     )
 
-    ctx = new Context()
-    await ctx.plugin(Database, { url: url.href, migrations: 'off' })
     await ctx.plugin(Server, { port: 0 })
     await ctx.plugin(UiRegistry)
     await ctx.plugin(Rbac)
@@ -249,7 +215,7 @@ describe.runIf(available)('identity administration', () => {
       },
     })
     await ctx.rbac.whenSynced()
-    await pool.query(
+    await db.query(
       `insert into role_permissions (tenant_id, role_id, permission_id)
        select $1, $2, id from permissions where code = 'auth.user.read'`,
       [f.tenant, f.viewerRole],
@@ -258,10 +224,7 @@ describe.runIf(available)('identity administration', () => {
   })
 
   afterAll(async () => {
-    await ctx?.fiber.dispose()
-    await pool?.end()
-    await adminPool.query(`drop database if exists "${dbName}" with (force)`)
-    await adminPool.end()
+    await db?.dispose()
   })
 
   it('creates user types with the policy that says where their people may stand', async () => {
@@ -336,7 +299,7 @@ describe.runIf(available)('identity administration', () => {
 
     // the same person, after a role grant, holds exactly what the role
     // carries: authority arrives through grants and through nothing else
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, auditor, f.viewerRole, f.college],
@@ -349,7 +312,7 @@ describe.runIf(available)('identity administration', () => {
       (await list(asAuditor, { orgNodeId: f.college, scope: 'self' })).map((user) => user.id),
     ).toContain(f.manager)
 
-    await pool.query(`delete from users where id = $1`, [auditor])
+    await db.query(`delete from users where id = $1`, [auditor])
     await iam.deleteUserType(f.tenant, auditorType, await versionOf(auditorType))
   })
 
@@ -429,7 +392,7 @@ describe.runIf(available)('identity administration', () => {
     const collegeOnly = await list(asAdmin(), { orgNodeId: f.college, scope: 'self' })
     expect(collegeOnly.map((user) => user.display_name)).not.toContain('Admin')
 
-    await pool.query(`delete from users where id = $1`, [id])
+    await db.query(`delete from users where id = $1`, [id])
   })
 
   it('checks placement wherever it can be decided: creation, retype and transfer', async () => {
@@ -481,7 +444,7 @@ describe.runIf(available)('identity administration', () => {
     await iam.updateUser(f.tenant, atClass, { userTypeId: internType })
     expect((await iam.getUser(asAdmin(), atClass)).user_type_code).toBe('intern')
 
-    await pool.query(`delete from users where id = any($1::uuid[])`, [[intern, atCollege, atClass]])
+    await deleteUsers([intern, atCollege, atClass])
     await iam.deleteUserType(f.tenant, internType, await versionOf(internType))
   })
 
@@ -550,7 +513,7 @@ describe.runIf(available)('identity administration', () => {
     })
     expect(atRoot).toBeTruthy()
 
-    await pool.query(`delete from users where id = any($1::uuid[])`, [[atCollege, atClass, atRoot]])
+    await deleteUsers([atCollege, atClass, atRoot])
     await iam.deleteUserType(f.tenant, contractorType, 3)
   })
 
@@ -612,7 +575,7 @@ describe.runIf(available)('identity administration', () => {
       primaryOrgNodeId: f.root,
     })
     expect(atRoot).toBeTruthy()
-    await pool.query(`delete from users where id = $1`, [atRoot])
+    await db.query(`delete from users where id = $1`, [atRoot])
 
     // the whole of a system type is frozen, its placement policy included:
     // authority over where a person stands is authority over the person
@@ -718,7 +681,7 @@ describe.runIf(available)('identity administration', () => {
   })
 
   it('refuses a user type change that would strand role grants', async () => {
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.managerRole, f.college],
@@ -740,7 +703,7 @@ describe.runIf(available)('identity administration', () => {
     const users = await list(asAdmin(), { orgNodeId: f.college, scope: 'self' })
     expect(users.find((user) => user.id === f.manager)?.display_name).toBe('Manager Renamed')
 
-    await pool.query(`delete from role_grants where user_id = $1 and role_id = $2`, [
+    await db.query(`delete from role_grants where user_id = $1 and role_id = $2`, [
       f.manager,
       f.managerRole,
     ])
@@ -748,14 +711,14 @@ describe.runIf(available)('identity administration', () => {
   })
 
   it('ends the sessions of a user it disables', async () => {
-    await pool.query(
+    await db.query(
       `insert into sessions (tenant_id, user_id, token_hash, expires_at)
        values ($1, $2, repeat('a', 64), now() + interval '1 day')`,
       [f.tenant, f.manager],
     )
     expect(
       Number(
-        (await pool.query(`select count(*) from sessions where user_id = $1`, [f.manager])).rows[0]
+        (await db.query(`select count(*) from sessions where user_id = $1`, [f.manager])).rows[0]!
           .count,
       ),
     ).toBe(1)
@@ -763,7 +726,7 @@ describe.runIf(available)('identity administration', () => {
     // access ends now, not when the session happens to expire
     expect(
       Number(
-        (await pool.query(`select count(*) from sessions where user_id = $1`, [f.manager])).rows[0]
+        (await db.query(`select count(*) from sessions where user_id = $1`, [f.manager])).rows[0]!
           .count,
       ),
     ).toBe(0)
@@ -799,7 +762,7 @@ describe.runIf(available)('identity administration', () => {
     expect(await code(iam.getUser(asManager(), below))).toBe('USER_NOT_FOUND')
     expect((await iam.getUser(asAdmin(), below)).id).toBe(below)
 
-    await pool.query(`delete from users where id = $1`, [below])
+    await db.query(`delete from users where id = $1`, [below])
   })
 
   it('re-decides authority inside the write transaction', async () => {
@@ -839,7 +802,7 @@ describe.runIf(available)('identity administration', () => {
       asAdmin(),
     )
     expect(created).toBeTruthy()
-    await pool.query(`delete from users where id = $1`, [created])
+    await db.query(`delete from users where id = $1`, [created])
   })
 
   it('refuses to delete a user type a role has no alternative to', async () => {
@@ -852,20 +815,20 @@ describe.runIf(available)('identity administration', () => {
       name: 'Lonely',
       placementPolicy: { mode: 'unrestricted' },
     })
-    await pool.query(
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, f.viewerRole, lonely],
     )
-    await pool.query(
-      `delete from role_allowed_user_types where role_id = $1 and user_type_id = $2`,
-      [f.viewerRole, f.staffType],
-    )
+    await db.query(`delete from role_allowed_user_types where role_id = $1 and user_type_id = $2`, [
+      f.viewerRole,
+      f.staffType,
+    ])
     expect(await fault(iam.deleteUserType(f.tenant, lonely, 1))).toEqual({
       code: 'USER_TYPE_LAST_FOR_ROLE',
       data: { roleCount: 1 },
     })
     // restoring the alternative makes the deletion legal again
-    await pool.query(
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, f.viewerRole, f.staffType],
     )
@@ -876,20 +839,20 @@ describe.runIf(available)('identity administration', () => {
     // role behind with nobody eligible for it, which is the inert state the
     // lifecycle exists to prevent.
     const orphan = (
-      await pool.query(
+      await db.query(
         `insert into user_types (tenant_id, code, name, placement_mode)
          values ($1, 'orphan', 'Orphan', 'unrestricted') returning id`,
         [f.tenant],
       )
-    ).rows[0].id as string
+    ).rows[0]!.id as string
     const wide = (
-      await pool.query(
+      await db.query(
         `insert into roles (tenant_id, code, name, kind, status)
          values ($1, 'tenant-reviewer', 'Tenant reviewer', 'tenant', 'active') returning id`,
         [f.tenant],
       )
-    ).rows[0].id as string
-    await pool.query(
+    ).rows[0]!.id as string
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, wide, orphan],
     )
@@ -897,7 +860,7 @@ describe.runIf(available)('identity administration', () => {
       code: 'USER_TYPE_LAST_FOR_ROLE',
       data: { roleCount: 1 },
     })
-    await pool.query(`delete from roles where id = $1`, [wide])
+    await db.query(`delete from roles where id = $1`, [wide])
     await iam.deleteUserType(f.tenant, orphan, 1)
   })
 
@@ -932,7 +895,7 @@ describe.runIf(available)('identity administration', () => {
         limit: 2,
       }),
     ).rejects.toThrow(/cursor is not usable here/)
-    await pool.query(`delete from users where id = any($1::uuid[])`, [made])
+    await deleteUsers(made)
   })
 
   it('answers the placement questions org and a tenant scan ask', async () => {
@@ -959,11 +922,11 @@ describe.runIf(available)('identity administration', () => {
     expect(await iam.placementViolations(f.tenant)).toBe(0)
     // a row written around the service (an import, a hand-run statement) is
     // exactly what the scan exists to find
-    await pool.query(`update users set primary_org_node_id = $1 where id = $2`, [f.college, member])
+    await db.query(`update users set primary_org_node_id = $1 where id = $2`, [f.college, member])
     expect(await iam.placementViolations(f.tenant)).toBe(1)
     expect(await iam.usersBlockingOrgType(f.tenant, f.college, f.collegeType)).toBe(1)
 
-    await pool.query(`delete from users where id = $1`, [member])
+    await db.query(`delete from users where id = $1`, [member])
     expect(await iam.placementViolations(f.tenant)).toBe(0)
     await iam.deleteUserType(f.tenant, labType, await versionOf(labType))
   })
@@ -1090,7 +1053,7 @@ describe.runIf(available)('identity administration', () => {
       userTypeId: f.staffType,
       primaryOrgNodeId: f.root,
     })
-    await pool.query(
+    await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, null, null)`,
       [f.tenant, second, f.tenantAdminRole],
@@ -1103,7 +1066,7 @@ describe.runIf(available)('identity administration', () => {
 
   it('serializes concurrent attempts to disable the last administrators', async () => {
     const holders = (
-      await pool.query(
+      await db.query(
         `select distinct g.user_id from role_grants g
          join users u on u.id = g.user_id and u.enabled
          where g.tenant_id = $1 and g.role_id = $2`,
@@ -1118,13 +1081,13 @@ describe.runIf(available)('identity administration', () => {
     )
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     const left = (
-      await pool.query(
+      await db.query(
         `select count(distinct g.user_id) from role_grants g
          join users u on u.id = g.user_id and u.enabled
          where g.tenant_id = $1 and g.role_id = $2`,
         [f.tenant, f.tenantAdminRole],
       )
-    ).rows[0].count
+    ).rows[0]!.count
     expect(Number(left)).toBe(1)
   })
 })

@@ -44,8 +44,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/pg": "catalog:",
-    "@types/react": "catalog:",
-    "pg": "catalog:"
+    "@types/react": "catalog:"
   }
 }

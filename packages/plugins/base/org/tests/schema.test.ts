@@ -1,65 +1,32 @@
-import { randomUUID } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
-import { runMigrations } from '@qualy/plugin-database/migrator'
-import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { createTestContext, pgCode, postgresAvailable } from '@qualy/plugin-database/testkit'
 
-// the tenant boundary lives in the database itself (composite foreign keys,
-// partial unique indexes, ltree): these assertions need a real postgres —
-// PGlite has ltree but the point is the committed migration lineage plus
-// constraint semantics under the production server.
+// The tenant boundary lives in the database itself (composite foreign keys,
+// partial unique indexes, ltree), so these assertions build illegal rows on
+// purpose and expect postgres to refuse them. Going through the service
+// instead would only prove the service is careful, which says nothing about
+// what psql, an import script or a future migration can write.
+//
+// The connection belongs to the database plugin: this file decides what sql
+// to run, not who owns the pool.
 
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
-const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
+describe.runIf(postgresAvailable)('org schema tenant boundary', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
 
-const available = await (async () => {
-  const probe = new Pool({ connectionString: baseUrl, connectionTimeoutMillis: 1500 })
-  try {
-    await probe.query('select 1')
-    return true
-  } catch {
-    return false
-  } finally {
-    await probe.end().catch(() => {})
-  }
-})()
-
-if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
-  throw new Error('postgres-backed tests are required but the server is unreachable')
-}
-if (!available) console.warn('postgres unreachable, org schema tests skipped')
-
-// drop database ... with (force) races graceful client teardown: a killed
-// backend's fatal 57P01 lands on a closing socket and would surface as an
-// unhandled error without a listener
-const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
-  const pool = new Pool(config)
-  pool.on('error', () => {})
-  return pool
-}
-
-describe.runIf(available)('org schema tenant boundary', () => {
-  const admin = quietPool({ connectionString: baseUrl })
-  const dbName = `qualy_org_${randomUUID().slice(0, 8)}`
-  let pool: Pool
-
-  const pgCode = (promise: Promise<unknown>) =>
-    promise.then(
-      () => 'no error',
-      (error) => (error as { code?: string }).code,
-    )
-
+  // row() rather than rows[0]!: an insert that returned nothing is a fault
+  // worth naming where it happens, not a null dereference three lines later
   const createTenant = async (slug: string) =>
-    (await pool.query(`insert into tenants (slug, name) values ($1, $1) returning id`, [slug]))
-      .rows[0].id as string
+    (await db.row<{ id: string }>(`insert into tenants (slug, name) values ($1, $1) returning id`, [
+      slug,
+    ])).id
 
   const createType = async (tenantId: string, code: string) =>
     (
-      await pool.query(
+      await db.row<{ id: string }>(
         `insert into org_types (tenant_id, code, name) values ($1, $2, $2) returning id`,
         [tenantId, code],
       )
-    ).rows[0].id as string
+    ).id
 
   const createNode = async (
     tenantId: string,
@@ -69,25 +36,19 @@ describe.runIf(available)('org schema tenant boundary', () => {
     path: string,
   ) =>
     (
-      await pool.query(
+      await db.row<{ id: string }>(
         `insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
          values ($1, $2, $3, $4, $5, nlevel($5::ltree) - 1) returning id`,
         [tenantId, typeId, parentId, name, path],
       )
-    ).rows[0].id as string
+    ).id
 
   beforeAll(async () => {
-    await admin.query(`create database "${dbName}"`)
-    const url = new URL(baseUrl)
-    url.pathname = `/${dbName}`
-    pool = quietPool({ connectionString: url.href })
-    await runMigrations(pool, { folder: migrationsFolder })
+    db = await createTestContext('org-schema')
   })
 
   afterAll(async () => {
-    await pool?.end()
-    await admin.query(`drop database if exists "${dbName}" with (force)`)
-    await admin.end()
+    await db?.dispose()
   })
 
   it('rejects cross-tenant parents and types at the database level', async () => {
@@ -134,15 +95,18 @@ describe.runIf(available)('org schema tenant boundary', () => {
     // other tenants keep their own root
     await createNode(tenantB, typeB, null, 'Root B', 'rb')
 
-    await pool.query(
+    await db.query(
       `update tenants set enabled = false, expires_at = now() - interval '1 day' where id = $1`,
       [tenantA],
     )
-    const state = await pool.query(`select enabled, expires_at from tenants where id = $1`, [
-      tenantA,
-    ])
-    expect(state.rows[0].enabled).toBe(false)
-    expect(state.rows[0].expires_at).toBeInstanceOf(Date)
+    const state = await db.row<{ enabled: boolean; expires_at: unknown }>(
+      `select enabled, expires_at from tenants where id = $1`,
+      [tenantA],
+    )
+    expect(state.enabled).toBe(false)
+    // the moment it lapsed, asserted as a value rather than as whatever js
+    // type the driver happens to hand back for a timestamptz
+    expect(new Date(String(state.expires_at)).getTime()).toBeLessThan(Date.now())
   })
 
   it('rejects self-loop type rules', async () => {
@@ -150,7 +114,7 @@ describe.runIf(available)('org schema tenant boundary', () => {
     const type = await createType(tenant, 'college')
     expect(
       await pgCode(
-        pool.query(
+        db.query(
           `insert into org_type_rules (tenant_id, parent_type_id, child_type_id) values ($1, $2, $2)`,
           [tenant, type],
         ),
@@ -162,7 +126,7 @@ describe.runIf(available)('org schema tenant boundary', () => {
     const tenant = await createTenant('del-a')
     const type = await createType(tenant, 'unit')
     const childType = await createType(tenant, 'unit-child')
-    await pool.query(
+    await db.query(
       `insert into org_type_rules (tenant_id, parent_type_id, child_type_id) values ($1, $2, $3)`,
       [tenant, type, childType],
     )
@@ -170,27 +134,27 @@ describe.runIf(available)('org schema tenant boundary', () => {
     await createNode(tenant, childType, root, 'Child', 'da.c')
 
     // row-level protection: a referenced type or parent cannot go away alone
-    expect(await pgCode(pool.query(`delete from org_types where id = $1`, [type]))).toBe('23001')
-    expect(await pgCode(pool.query(`delete from org_nodes where id = $1`, [root]))).toBe('23001')
+    expect(await pgCode(db.query(`delete from org_types where id = $1`, [type]))).toBe('23001')
+    expect(await pgCode(db.query(`delete from org_nodes where id = $1`, [root]))).toBe('23001')
 
     // restrict checks the statement's final state, so one statement may
     // remove a whole tree, and the tenant cascade is real (probed on pg18)
-    await pool.query(`delete from org_nodes where tenant_id = $1`, [tenant])
+    await db.query(`delete from org_nodes where tenant_id = $1`, [tenant])
     const root2 = await createNode(tenant, type, null, 'Root', 'da')
     await createNode(tenant, childType, root2, 'Child', 'da.c')
-    await pool.query(`delete from tenants where id = $1`, [tenant])
-    const left = await pool.query(
+    await db.query(`delete from tenants where id = $1`, [tenant])
+    const left = await db.row<{ count: number }>(
       `select (select count(*) from org_nodes where tenant_id = $1)::int
             + (select count(*) from org_types where tenant_id = $1)::int
             + (select count(*) from org_type_rules where tenant_id = $1)::int
             + (select count(*) from tenants where id = $1)::int as count`,
       [tenant],
     )
-    expect(left.rows[0].count).toBe(0)
+    expect(left.count).toBe(0)
   })
 
   it('serves subtree queries through the gist-indexed ltree path', async () => {
-    const indexes = await pool.query(
+    const indexes = await db.query(
       `select indexdef from pg_indexes where tablename = 'org_nodes' and indexdef ilike '%using gist%'`,
     )
     expect(indexes.rows).toHaveLength(1)
@@ -201,11 +165,11 @@ describe.runIf(available)('org schema tenant boundary', () => {
     const mid = await createNode(tenant, type, root, 'Mid', 'tr.m')
     await createNode(tenant, type, mid, 'Leaf', 'tr.m.l')
 
-    const subtree = await pool.query(
+    const subtree = await db.row<{ count: string }>(
       `select count(*) from org_nodes where tenant_id = $1 and path <@ 'tr.m'::ltree`,
       [tenant],
     )
-    expect(Number(subtree.rows[0].count)).toBe(2)
+    expect(Number(subtree.count)).toBe(2)
     // ids come from postgres 18's native uuidv7()
     expect(root).toMatch(/^[0-9a-f-]{14}7/)
   })

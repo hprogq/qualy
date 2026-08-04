@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
 import { Context } from 'cordis'
-import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runMigrations } from '@qualy/plugin-database/migrator'
 import Database from '@qualy/plugin-database'
+import { createTestContext, pgCode, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { isAccessDeniedError, isDomainError } from '@qualy/api-contract'
 import {
   isCanonicalTenantAdmin,
@@ -13,36 +11,6 @@ import {
   type RbacService,
 } from '@qualy/rbac-contract'
 import Rbac from '../src/index.ts'
-import type { Administration } from '../src/administration.ts'
-
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
-const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
-
-const available = await (async () => {
-  const probe = new Pool({ connectionString: baseUrl, connectionTimeoutMillis: 1500 })
-  try {
-    await probe.query('select 1')
-    return true
-  } catch {
-    return false
-  } finally {
-    await probe.end().catch(() => {})
-  }
-})()
-
-if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
-  throw new Error('postgres-backed tests are required but the server is unreachable')
-}
-if (!available) console.warn('postgres unreachable, rbac tests skipped')
-
-// drop database ... with (force) races graceful client teardown: a killed
-// backend's fatal 57P01 lands on a closing socket and would surface as an
-// unhandled error without a listener
-const quietPool = (config: ConstructorParameters<typeof Pool>[0]) => {
-  const pool = new Pool(config)
-  pool.on('error', () => {})
-  return pool
-}
 
 // A capability declares what it protects and therefore how it is checked,
 // and nothing else. There is no channel flag and no default-administrator
@@ -56,11 +24,8 @@ const CATALOG = [
   { code: 'test.audit.read', name: 'read audits', target: 'org-node' },
 ] as const satisfies readonly PermissionDefinition[]
 
-describe.runIf(available)('rbac', () => {
-  const adminPool = quietPool({ connectionString: baseUrl })
-  const dbName = `qualy_rbac_${randomUUID().slice(0, 8)}`
-  let pool: Pool
-  let ctx: Context
+describe.runIf(postgresAvailable)('rbac', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
   let rbac: RbacService
   // fixture ids
   const f = {
@@ -95,19 +60,17 @@ describe.runIf(available)('rbac', () => {
     userId,
     sessionId: 'test-session',
   })
-  // the service owns the wired instance: administration decides authorization
-  // itself, so it needs the same authorization the api uses
-  const administration = () => (rbac as unknown as { administration: Administration }).administration
+  // The service owns the wired instance: administration decides authorization
+  // itself, so it needs the same authorization the api uses. The declared
+  // service contract does not carry the field, so this narrows to the plugin
+  // class the suite belongs to, and a rename there fails to compile here.
+  const administration = () => (rbac as InstanceType<typeof Rbac>).administration
 
   const insertId = async (text: string, params: unknown[] = []) =>
-    (await pool.query(text, params)).rows[0].id as string
+    (await db.query(text, params)).rows[0]!.id as string
 
   beforeAll(async () => {
-    await adminPool.query(`create database "${dbName}"`)
-    const url = new URL(baseUrl)
-    url.pathname = `/${dbName}`
-    pool = quietPool({ connectionString: url.href })
-    await runMigrations(pool, { folder: migrationsFolder })
+    db = await createTestContext('rbac')
 
     // two tenants with a small org tree, three user types, four users
     f.tenant = await insertId(`insert into tenants (slug, name) values ('a', 'A') returning id`)
@@ -193,22 +156,20 @@ describe.runIf(available)('rbac', () => {
        values ($1, 'org-manager', 'OM', 'org', 'active') returning id`,
       [f.tenant],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, f.typeFaculty],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_org_types (tenant_id, role_id, org_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, f.collegeType],
     )
 
-    ctx = new Context()
-    await ctx.plugin(Database, { url: url.href, migrations: 'off' })
-    await ctx.plugin(Rbac)
-    rbac = ctx.rbac
+    await db.ctx.plugin(Rbac)
+    rbac = db.ctx.rbac
     // register the test catalog through a scoped plugin and wait for the
     // database mirror
-    await ctx.plugin({
+    await db.ctx.plugin({
       name: 'catalog',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -217,7 +178,7 @@ describe.runIf(available)('rbac', () => {
     })
     await rbac.whenSynced()
 
-    await pool.query(
+    await db.query(
       `insert into role_permissions (tenant_id, role_id, permission_id)
        select $1, $2, p.id from permissions p
        where p.code in ('test.tree.manage', 'test.user.manage')`,
@@ -228,7 +189,7 @@ describe.runIf(available)('rbac', () => {
       `insert into role_grants (tenant_id, user_id, role_id) values ($1, $2, $3) returning id`,
       [f.tenant, f.admin, f.tenantAdminRole],
     )
-    await pool.query(`insert into role_grants (tenant_id, user_id, role_id) values ($1, $2, $3)`, [
+    await db.query(`insert into role_grants (tenant_id, user_id, role_id) values ($1, $2, $3)`, [
       f.tenantB,
       f.adminB,
       tenantAdminRoleB,
@@ -241,10 +202,7 @@ describe.runIf(available)('rbac', () => {
   })
 
   afterAll(async () => {
-    await ctx?.fiber.dispose()
-    await pool?.end()
-    await adminPool.query(`drop database if exists "${dbName}" with (force)`)
-    await adminPool.end()
+    await db?.dispose()
   })
 
   // domain errors surface their code and their structured data; an
@@ -266,12 +224,6 @@ describe.runIf(available)('rbac', () => {
     promise.then(
       () => 'ok',
       (error) => (error as { code?: string }).code ?? (error as Error).message,
-    )
-
-  const pgCode = (promise: Promise<unknown>) =>
-    promise.then(
-      () => 'no error',
-      (error) => (error as { code?: string }).code ?? 'error',
     )
 
   const versionOf = async (roleId: string) =>
@@ -390,32 +342,32 @@ describe.runIf(available)('rbac', () => {
       tenantWide: false,
       anchors: [{ orgNodeId: f.college, coverage: 'self' }],
     })
-    await pool.query(`delete from role_grants where id = $1`, [self])
+    await db.query(`delete from role_grants where id = $1`, [self])
 
     // subtree includes its own anchor and never reaches upward
     const subtree = await grantAt(f.class1, 'subtree')
     expect(await rbac.canAt(principal(f.student), 'test.tree.manage', f.class1)).toBe(true)
     expect(await rbac.canAt(principal(f.student), 'test.tree.manage', f.college)).toBe(false)
     expect(await rbac.canAt(principal(f.student), 'test.tree.manage', f.root)).toBe(false)
-    await pool.query(`delete from role_grants where id = $1`, [subtree])
+    await db.query(`delete from role_grants where id = $1`, [subtree])
     expect(await rbac.canAt(principal(f.student), 'test.tree.manage', f.class1)).toBe(false)
   })
 
   it('fails closed on a role that is not active', async () => {
     for (const status of ['draft', 'disabled']) {
-      await pool.query(`update roles set status = $2 where id = $1`, [f.managerRole, status])
+      await db.query(`update roles set status = $2 where id = $1`, [f.managerRole, status])
       expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(false)
       expect(await rbac.getProfile(principal(f.manager))).toEqual({
         tenantPermissions: [],
         orgPermissions: [],
       })
     }
-    await pool.query(`update roles set status = 'active' where id = $1`, [f.managerRole])
+    await db.query(`update roles set status = 'active' where id = $1`, [f.managerRole])
     expect(await rbac.canAt(principal(f.manager), 'test.tree.manage', f.college)).toBe(true)
   })
 
   it('drops a capability when its plugin unloads and keeps the row', async () => {
-    const scoped = ctx.plugin({
+    const scoped = db.ctx.plugin({
       name: 'transient',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -433,8 +385,8 @@ describe.runIf(available)('rbac', () => {
     // no enabled column decides this: the code is simply not served any more
     expect(await orpcCode(rbac.require(principal(f.admin), 'transient.thing.use'))).toBe('FORBIDDEN')
     expect(rbac.getPermission('transient.thing.use')).toBeUndefined()
-    const rows = await pool.query(`select count(*) from permissions where code like 'transient.%'`)
-    expect(Number(rows.rows[0].count)).toBe(1)
+    const rows = await db.query(`select count(*) from permissions where code like 'transient.%'`)
+    expect(Number(rows.rows[0]!.count)).toBe(1)
   })
 
   // Disabling a plugin suspends what it contributes; it does not destroy
@@ -444,7 +396,7 @@ describe.runIf(available)('rbac', () => {
   // as one silently discarded authority that reinstating the plugin was
   // supposed to bring back.
   it('keeps a permission whose plugin is unloaded while the role is edited', async () => {
-    const scoped = ctx.plugin({
+    const scoped = db.ctx.plugin({
       name: 'suspendable',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -481,7 +433,7 @@ describe.runIf(available)('rbac', () => {
 
     // an ordinary save of what the editor could see must not take the rest
     version = await admin.syncRolePermissions(f.tenant, role, ['test.role.manage'], version)
-    const kept = await pool.query(
+    const kept = await db.query(
       `select p.code from role_permissions rp
        join permissions p on p.id = rp.permission_id
        where rp.role_id = $1 order by p.code`,
@@ -493,7 +445,7 @@ describe.runIf(available)('rbac', () => {
     ])
 
     // and reinstating the plugin brings the capability back to the holder
-    const again = ctx.plugin({
+    const again = db.ctx.plugin({
       name: 'suspendable',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -509,8 +461,8 @@ describe.runIf(available)('rbac', () => {
       'test.role.manage',
     ])
     await again.dispose()
-    await pool.query(`delete from role_permissions where role_id = $1`, [role])
-    await pool.query(`delete from roles where id = $1`, [role])
+    await db.query(`delete from role_permissions where role_id = $1`, [role])
+    await db.query(`delete from roles where id = $1`, [role])
     void version
   })
 
@@ -544,14 +496,14 @@ describe.runIf(available)('rbac', () => {
     // A tenant capability inside an org role would apply with no grant
     // having said where. The row is refused by the management api, so it is
     // written directly here to prove the read path refuses it as well.
-    await pool.query(
+    await db.query(
       `insert into role_permissions (tenant_id, role_id, permission_id)
        select $1, $2, p.id from permissions p where p.code = 'test.report.read'`,
       [f.tenant, f.managerRole],
     )
     expect(await rbac.hasPermission(principal(f.manager), 'test.report.read')).toBe(false)
     expect((await rbac.getProfile(principal(f.manager))).tenantPermissions).toEqual([])
-    await pool.query(
+    await db.query(
       `delete from role_permissions where role_id = $1 and permission_id in
         (select id from permissions where code = 'test.report.read')`,
       [f.managerRole],
@@ -565,7 +517,7 @@ describe.runIf(available)('rbac', () => {
        values ($1, 'leaky', 'Leaky', 'tenant', 'active') returning id`,
       [f.tenant],
     )
-    await pool.query(
+    await db.query(
       `insert into role_permissions (tenant_id, role_id, permission_id)
        select $1, $2, p.id from permissions p where p.code = 'test.tree.manage'`,
       [f.tenant, leaky],
@@ -577,12 +529,12 @@ describe.runIf(available)('rbac', () => {
     for (const node of [f.root, f.college, f.class1]) {
       expect(await rbac.canAt(principal(f.student), 'test.tree.manage', node)).toBe(false)
     }
-    await pool.query(`delete from role_grants where id = $1`, [leakyGrant])
-    await pool.query(`delete from roles where id = $1`, [leaky])
+    await db.query(`delete from role_grants where id = $1`, [leakyGrant])
+    await db.query(`delete from roles where id = $1`, [leaky])
   })
 
   it('refuses a second catalog claiming a live code', async () => {
-    const scoped = ctx.plugin({
+    const scoped = db.ctx.plugin({
       name: 'drift',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -624,21 +576,21 @@ describe.runIf(available)('rbac', () => {
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('ok')
 
     // hijacking the row's owner kills the grant at read time
-    await pool.query(`update permissions set plugin = 'hijacker' where code = 'test.role.manage'`)
+    await db.query(`update permissions set plugin = 'hijacker' where code = 'test.role.manage'`)
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('FORBIDDEN')
     expect((await rbac.getProfile(principal(f.binder))).tenantPermissions).not.toContain(
       'test.role.manage',
     )
-    await pool.query(`update permissions set plugin = 'test' where code = 'test.role.manage'`)
+    await db.query(`update permissions set plugin = 'test' where code = 'test.role.manage'`)
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('ok')
 
     // so does changing what the capability protects: live grants already
     // assume the calling convention, so it is stable semantics
-    await pool.query(
+    await db.query(
       `update permissions set target_kind = 'org-node' where code = 'test.role.manage'`,
     )
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('FORBIDDEN')
-    await pool.query(`update permissions set target_kind = 'tenant' where code = 'test.role.manage'`)
+    await db.query(`update permissions set target_kind = 'tenant' where code = 'test.role.manage'`)
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('ok')
 
     await administration().revoke(f.tenant, grant)
@@ -646,11 +598,11 @@ describe.runIf(available)('rbac', () => {
   })
 
   it('fails closed when a declaration conflicts with the stored owner', async () => {
-    await pool.query(
+    await db.query(
       `insert into permissions (code, plugin, name, target_kind)
        values ('ghost.thing.use', 'ghost', 'G', 'tenant')`,
     )
-    const scoped = ctx.plugin({
+    const scoped = db.ctx.plugin({
       name: 'intruder',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -666,11 +618,11 @@ describe.runIf(available)('rbac', () => {
     expect(await orpcCode(rbac.require(principal(f.admin), 'ghost.thing.use'))).toBe('FORBIDDEN')
     await expect(rbac.whenSynced()).rejects.toThrow(/rejected: ghost\.thing\.use/)
     expect(await orpcCode(rbac.require(principal(f.admin), 'ghost.thing.use'))).toBe('FORBIDDEN')
-    const row = await pool.query(`select plugin from permissions where code = 'ghost.thing.use'`)
-    expect(row.rows[0].plugin).toBe('ghost')
+    const row = await db.query(`select plugin from permissions where code = 'ghost.thing.use'`)
+    expect(row.rows[0]!.plugin).toBe('ghost')
 
     // a later successful catalog must not mask the standing failure
-    const clean = ctx.plugin({
+    const clean = db.ctx.plugin({
       name: 'clean-after',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -691,17 +643,18 @@ describe.runIf(available)('rbac', () => {
   it('lets concurrent instances converge on a single owner', async () => {
     // two application instances race to claim the same fresh code with
     // different owners: insert-then-reread converges both on the stored row
-    const url = new URL(baseUrl)
-    url.pathname = `/${dbName}`
+    // a genuinely separate application instance on the same database, which
+    // is what the race is about; the lineage is already applied, so this one
+    // only connects
     const other = new Context()
-    await other.plugin(Database, { url: url.href, migrations: 'off' })
+    await other.plugin(Database, { url: db.url, migrations: 'off' })
     await other.plugin(Rbac)
     const definition = {
       code: 'contested.thing.use',
       name: 'contested',
       target: 'tenant' as const,
     }
-    const alpha = ctx.plugin({
+    const alpha = db.ctx.plugin({
       name: 'alpha',
       inject: ['rbac'],
       apply: (child: Context) => {
@@ -718,8 +671,8 @@ describe.runIf(available)('rbac', () => {
     await Promise.all([alpha, beta])
     const settled = await Promise.allSettled([rbac.whenSynced(), other.rbac.whenSynced()])
     expect(settled.filter((result) => result.status === 'rejected')).toHaveLength(1)
-    const row = await pool.query(`select plugin from permissions where code = 'contested.thing.use'`)
-    expect(row.rows[0].plugin).toBe(settled[0]!.status === 'fulfilled' ? 'alpha' : 'beta')
+    const row = await db.query(`select plugin from permissions where code = 'contested.thing.use'`)
+    expect(row.rows[0]!.plugin).toBe(settled[0]!.status === 'fulfilled' ? 'alpha' : 'beta')
     await alpha.dispose()
     await other.fiber.dispose()
   })
@@ -729,7 +682,7 @@ describe.runIf(available)('rbac', () => {
     // platform provisions, so no other system role may claim the mode
     expect(
       await pgCode(
-        pool.query(
+        db.query(
           `insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
            values ($1, 'usurper', 'Usurper', 'tenant', 'active', 'all-active', 'second-admin')`,
           [f.tenant],
@@ -743,7 +696,7 @@ describe.runIf(available)('rbac', () => {
     // alone reaches every node with every capability.
     expect(
       await pgCode(
-        pool.query(
+        db.query(
           `insert into roles (tenant_id, code, name, kind, status, permission_mode)
            values ($1, 'keyless', 'Keyless', 'tenant', 'active', 'all-active')`,
           [f.tenant],
@@ -754,7 +707,7 @@ describe.runIf(available)('rbac', () => {
     // administrator row cannot be re-kinded, disabled or neutered
     expect(
       await pgCode(
-        pool.query(
+        db.query(
           `insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
            values ($1, 'shadow', 'Shadow', 'org', 'active', 'all-active', 'tenant-admin')`,
           [f.tenant],
@@ -767,13 +720,13 @@ describe.runIf(available)('rbac', () => {
       `update roles set kind = 'org' where id = $1`,
       `update roles set permission_mode = 'explicit' where id = $1`,
     ]) {
-      expect(await pgCode(pool.query(update, [f.tenantAdminRole]))).toBe('23514')
+      expect(await pgCode(db.query(update, [f.tenantAdminRole]))).toBe('23514')
     }
 
     // a grant is anchored or tenant-wide, never half of each
     expect(
       await pgCode(
-        pool.query(
+        db.query(
           `insert into role_grants (tenant_id, user_id, role_id, org_node_id)
            values ($1, $2, $3, $4)`,
           [f.tenant, f.student, f.managerRole, f.college],
@@ -782,7 +735,7 @@ describe.runIf(available)('rbac', () => {
     ).toBe('23514')
     expect(
       await pgCode(
-        pool.query(
+        db.query(
           `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
            values ($1, $2, $3, $4, 'everything')`,
           [f.tenant, f.student, f.managerRole, f.college],
@@ -793,7 +746,7 @@ describe.runIf(available)('rbac', () => {
     // partial index because a null node defeats a plain unique index
     expect(
       await pgCode(
-        pool.query(`insert into role_grants (tenant_id, user_id, role_id) values ($1, $2, $3)`, [
+        db.query(`insert into role_grants (tenant_id, user_id, role_id) values ($1, $2, $3)`, [
           f.tenant,
           f.admin,
           f.tenantAdminRole,
@@ -804,7 +757,7 @@ describe.runIf(available)('rbac', () => {
     // a permission protects a tenant or a node, and nothing else
     expect(
       await pgCode(
-        pool.query(
+        db.query(
           `insert into permissions (code, plugin, name, target_kind)
            values ('bad.thing.use', 'test', 'B', 'weird')`,
         ),
@@ -854,12 +807,12 @@ describe.runIf(available)('rbac', () => {
       code: 'GRANT_NOT_ELIGIBLE',
       data: { reason: 'role-unassignable' },
     })
-    await pool.query(`update users set enabled = false where id = $1`, [f.manager])
+    await db.query(`update users set enabled = false where id = $1`, [f.manager])
     expect(await outcome(grant(f.manager, f.managerRole, f.college))).toEqual({
       code: 'GRANT_NOT_ELIGIBLE',
       data: { reason: 'user-disabled' },
     })
-    await pool.query(`update users set enabled = true where id = $1`, [f.manager])
+    await db.query(`update users set enabled = true where id = $1`, [f.manager])
 
     // a request naming something that does not exist gets told so, rather
     // than being flattened into a refusal
@@ -905,12 +858,12 @@ describe.runIf(available)('rbac', () => {
          'recovery-desk') returning id`,
       [f.tenant],
     )
-    await pool.query(
+    await db.query(
       `insert into role_permissions (tenant_id, role_id, permission_id)
        select $1, $2, p.id from permissions p where p.code = 'test.report.read'`,
       [f.tenant, pretender],
     )
-    await pool.query(
+    await db.query(
       `insert into role_allowed_user_types (tenant_id, role_id, user_type_id) values ($1, $2, $3)`,
       [f.tenant, pretender, f.typeAdmin],
     )
@@ -943,7 +896,7 @@ describe.runIf(available)('rbac', () => {
       await versionOf(pretender),
     )
     expect(await domainCode(tenantWide(f.manager, pretender))).toBe('ok')
-    await pool.query(`delete from role_grants where role_id = $1`, [pretender])
+    await db.query(`delete from role_grants where role_id = $1`, [pretender])
   })
 
   it('requires a complete role before it can be activated', async () => {
@@ -1611,7 +1564,7 @@ describe.runIf(available)('rbac', () => {
   })
 
   it('counts an administrator who could still sign in, not merely a holder', async () => {
-    const handle = ctx.db.drizzle as unknown as RbacDbHandle
+    const handle = db.ctx.db.drizzle as unknown as RbacDbHandle
     const survives = () => domainCode(rbac.assertTenantKeepsAdministrator(f.tenant, handle))
     expect(await survives()).toBe('ok')
 
@@ -1627,10 +1580,10 @@ describe.runIf(available)('rbac', () => {
       ],
     ]
     for (const [statement, params] of cases) {
-      await pool.query(statement, params)
+      await db.query(statement, params)
       expect(await survives()).toBe('LAST_ADMINISTRATOR')
-      await pool.query(`update users set enabled = true where id = $1`, [f.admin])
-      await pool.query(
+      await db.query(`update users set enabled = true where id = $1`, [f.admin])
+      await db.query(
         `update user_types set enabled = true, allow_local_login = true where id = $1`,
         [f.typeAdmin],
       )
@@ -1644,9 +1597,9 @@ describe.runIf(available)('rbac', () => {
       roleId: built.reviewer,
       target: { kind: 'tenant' },
     })
-    await pool.query(`update user_types set allow_local_login = false where id = $1`, [f.typeAdmin])
+    await db.query(`update user_types set allow_local_login = false where id = $1`, [f.typeAdmin])
     expect(await domainCode(administration().revoke(f.tenant, spare))).toBe('LAST_ADMINISTRATOR')
-    await pool.query(`update user_types set allow_local_login = true where id = $1`, [f.typeAdmin])
+    await db.query(`update user_types set allow_local_login = true where id = $1`, [f.typeAdmin])
     await administration().revoke(f.tenant, spare)
   })
 
@@ -1665,10 +1618,10 @@ describe.runIf(available)('rbac', () => {
     )
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
-    const left = await pool.query(
+    const left = await db.query(
       `select count(distinct user_id) from role_grants where tenant_id = $1 and role_id = $2`,
       [f.tenant, f.tenantAdminRole],
     )
-    expect(Number(left.rows[0].count)).toBe(1)
+    expect(Number(left.rows[0]!.count)).toBe(1)
   })
 })

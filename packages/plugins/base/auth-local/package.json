@@ -33,8 +33,6 @@
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
-    "@types/pg": "catalog:",
-    "@types/react": "catalog:",
-    "pg": "catalog:"
+    "@types/react": "catalog:"
   }
 }
