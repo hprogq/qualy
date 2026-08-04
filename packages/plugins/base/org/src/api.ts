@@ -3,6 +3,9 @@ import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { Authenticated } from '@qualy/plugin-auth/effect/session'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
+  NodeConflict,
+  NodeInUse,
+  TypeConflict,
   RuleCycle,
   RuleInUse,
   RuleInvalid,
@@ -53,6 +56,8 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
       AssignmentIncompatible,
       PlacementBlocked,
       AccessDenied,
+      NodeConflict,
+      NodeInUse,
     ],
   }).middleware(Authenticated),
 ).add(
@@ -63,13 +68,13 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
       sortOrder: Schema.optional(Schema.Number),
     }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [NodeNotFound, AccessDenied],
+    error: [NodeNotFound, AccessDenied, NodeConflict, NodeInUse],
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.delete('deleteNode', '/org/nodes/:nodeId', {
     params: Schema.Struct({ nodeId: Schema.String }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied],
+    error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied, NodeConflict, NodeInUse],
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.get('listTypes', '/org/types', {
@@ -84,7 +89,7 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
       sortOrder: Schema.optional(Schema.Number),
     }),
     success: Schema.Struct({ type: orgType }),
-    error: [AccessDenied],
+    error: [AccessDenied, TypeConflict, TypeInUse],
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.patch('updateType', '/org/types/:typeId', {
@@ -94,13 +99,13 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
       sortOrder: Schema.optional(Schema.Number),
     }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [TypeNotFound, AccessDenied],
+    error: [TypeNotFound, AccessDenied, TypeConflict, TypeInUse],
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.delete('deleteType', '/org/types/:typeId', {
     params: Schema.Struct({ typeId: Schema.String }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [TypeNotFound, TypeInUse, AccessDenied],
+    error: [TypeNotFound, TypeInUse, AccessDenied, TypeConflict],
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.get('listRules', '/org/type-rules', {
@@ -113,12 +118,12 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
   HttpApiEndpoint.put('putRule', '/org/type-rules/:parentTypeId/:childTypeId', {
     params: Schema.Struct({ parentTypeId: Schema.String, childTypeId: Schema.String }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [RuleInvalid, TypeNotFound, RuleCycle, AccessDenied],
+    error: [RuleInvalid, TypeNotFound, RuleCycle, AccessDenied, TypeConflict, TypeInUse],
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.delete('deleteRule', '/org/type-rules/:parentTypeId/:childTypeId', {
     params: Schema.Struct({ parentTypeId: Schema.String, childTypeId: Schema.String }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [RuleNotFound, RuleInUse, AccessDenied],
+    error: [RuleNotFound, RuleInUse, AccessDenied, TypeConflict, TypeInUse],
   }).middleware(Authenticated),
 )

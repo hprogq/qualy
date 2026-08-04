@@ -338,6 +338,22 @@ Scalar 的 Models 里看到 `ORG_NODE_NOT_FOUNDEncoded` 这种名字。**后缀�
 与 CLAUDE.md「错误码大写蛇形」相悖,改为 `ACCESS_DENIED`。
 `scripts/tests/effect-error-shape.test.ts` 守这两条(各自反向验过会红)。
 
+### `Effect.orDie` 放早了会让约束翻译永远够不着
+
+约束违规必须变回领域错误(`ORG_NODE_IN_USE` 而不是 500),但**翻译器是失败处理器,看不见 defect**。
+每条语句上挂 `.pipe(Effect.orDie)` 就把 SqlError 当场变成 defect,外层的
+`translateConstraints` 再也拿不到 —— 测试里能看到 constraint 名字明明在 cause 链里,却是 `Die`。
+
+正确顺序:**事务内的写语句不 orDie**,让错误流到外层,先翻译、剩下的再 die。事务外的纯读照旧 orDie
+(那里没有约束会响,收窄调用方的错误类型)。
+
+另外事务内语句的错误**包成了 `EffectDrizzleQueryError`**,不是 `SqlError`(后者只来自 begin/commit),
+所以外层要 `Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], ...)` 两个都接。
+
+**错误链实测**(走过一遍,不是猜的):
+`EffectDrizzleQueryError → cause.reasons[0].error (SqlError) → reason (UniqueViolation,带 constraint)
+→ cause (DatabaseError,带 code + constraint)`。只看顶层什么都找不到。
+
 ## 已知的硬骨头
 
 ### 1. 跨插件环必须真的拆开(2026-08-05 实读修正)

@@ -170,7 +170,7 @@ describe.runIf(postgresAvailable)('changing a node type across three plugins', (
         }),
       )
       const answer = ok(exit)
-      expect(answer.tag).toBe('ORG_NODE_PLACEMENT_BLOCKED')
+      expect(answer.tag).toBe('ORG_NODE_PLACEMENT_INCOMPATIBLE')
       expect(answer.stillCollege).toBe(true)
     } finally {
       await db.dispose()
@@ -334,6 +334,58 @@ describe.runIf(postgresAvailable)('changing a node type across three plugins', (
       // the repeat added nothing
       expect(answer.ruleCount).toBe(1)
       expect(answer.missing).toBe('ORG_RULE_NOT_FOUND')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('answers a restrict foreign key with the domain error, not a defect', async () => {
+    // the delete is blocked by a user standing on the node, which no service
+    // check prevents without a race: the constraint is what actually decides,
+    // so its violation has to arrive as ORG_NODE_IN_USE rather than a 500
+    const db = await createTestContext('effect-org-in-use')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const child = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Leaf', 'r.leaf', 1) returning id`),
+          ).id
+          // someone stands on the leaf, so the restrict fk holds it
+          yield* database.execute(sql`
+            update users set primary_org_node_id = ${child} where tenant_id = ${f.tenant}`)
+          const org = yield* Org
+          const blocked = yield* Effect.result(org.deleteNode(f.tenant, child, f.principal))
+          return { tag: tagOf(blocked) }
+        }),
+      )
+      expect(ok(exit).tag).toBe('ORG_NODE_IN_USE')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('answers a duplicate type code with the conflict the contract declares', async () => {
+    const db = await createTestContext('effect-org-type-conflict')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          // 'college' already exists from the fixture
+          const clash = yield* Effect.result(
+            org.createType(f.tenant, { code: 'college', name: 'Another' }, f.principal),
+          )
+          return { tag: tagOf(clash) }
+        }),
+      )
+      expect(ok(exit).tag).toBe('ORG_TYPE_CONFLICT')
     } finally {
       await db.dispose()
     }

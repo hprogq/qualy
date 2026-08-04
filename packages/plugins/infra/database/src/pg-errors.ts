@@ -14,7 +14,7 @@ export function unwrapPgError(
 // violations (23505), no-action fk violations (23503) and row-level
 // restrict violations (23001 — what restrict fks actually raise on pg18,
 // probed; 23503 only comes from no-action keys)
-const TRANSLATABLE = new Set(['23505', '23503', '23001'])
+export const TRANSLATABLE = new Set(['23505', '23503', '23001'])
 
 // turns constraint violations into domain errors by constraint name and
 // rethrows everything else untouched, keeping the database an honest

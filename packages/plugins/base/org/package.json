@@ -13,7 +13,8 @@
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
     "./effect": "./src/effect/index.ts",
-    "./api": "./src/api.ts"
+    "./api": "./src/api.ts",
+    "./errors": "./src/errors.ts"
   },
   "qualy": {
     "contributions": {

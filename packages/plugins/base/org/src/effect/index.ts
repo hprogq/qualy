@@ -14,6 +14,8 @@ import {
   TypeNotFound,
   NodeHasChildren,
   NodeIsRoot,
+  nodeConstraints,
+  typeConstraints,
   RuleCycle,
   RuleInUse,
   RuleInvalid,
@@ -29,6 +31,7 @@ import {
   type UpdateNodeError,
 } from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
+import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
 import {
   countTypesQuery,
   deleteNodeQuery,
@@ -168,10 +171,10 @@ export const make = Effect.fn('Org.make')(function* () {
       Effect.gen(function* () {
         // first statement, always: it serializes this tenant's structural
         // writes against rbac's and auth's
-        yield* tx.execute(lockTenantQuery(tenantId)).pipe(Effect.orDie)
+        yield* tx.execute(lockTenantQuery(tenantId))
 
         const node = rows<NodeRow>(
-          yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
+          yield* tx.execute(nodeQuery(tenantId, nodeId)),
         )[0]
         if (!node) return yield* new NodeNotFound()
 
@@ -181,18 +184,18 @@ export const make = Effect.fn('Org.make')(function* () {
 
         if (node.org_type_id === newTypeId) return
         const type = rows<{ id: string }>(
-          yield* tx.execute(typeQuery(tenantId, newTypeId)).pipe(Effect.orDie),
+          yield* tx.execute(typeQuery(tenantId, newTypeId)),
         )[0]
         if (!type) return yield* new TypeNotFound()
 
         if (node.parent_id) {
           const parent = rows<NodeRow>(
-            yield* tx.execute(nodeQuery(tenantId, node.parent_id)).pipe(Effect.orDie),
+            yield* tx.execute(nodeQuery(tenantId, node.parent_id)),
           )[0]!
           const allowed = rows(
             yield* tx
               .execute(ruleExistsQuery(tenantId, parent.org_type_id, newTypeId))
-              .pipe(Effect.orDie),
+              ,
           )
           if (allowed.length === 0) {
             return yield* new RuleViolation({
@@ -204,7 +207,7 @@ export const make = Effect.fn('Org.make')(function* () {
         const incompatible = rows(
           yield* tx
             .execute(incompatibleChildTypesQuery(tenantId, nodeId, newTypeId))
-            .pipe(Effect.orDie),
+            ,
         )
         if (incompatible.length > 0) {
           return yield* new RuleViolation({
@@ -225,9 +228,12 @@ export const make = Effect.fn('Org.make')(function* () {
         const stranded = yield* placement.usersBlockingOrgType(tenantId, nodeId, newTypeId)
         if (stranded > 0) return yield* new PlacementBlocked({ userCount: stranded })
 
-        yield* tx.execute(setNodeTypeQuery(tenantId, nodeId, newTypeId)).pipe(Effect.orDie)
+        yield* tx.execute(setNodeTypeQuery(tenantId, nodeId, newTypeId))
       }),
-    ).pipe(Effect.catchTag('SqlError', (error) => Effect.die(error)))
+    ).pipe(
+      translateConstraints(nodeConstraints),
+      Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+    )
   })
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
@@ -243,16 +249,23 @@ export const make = Effect.fn('Org.make')(function* () {
     database
       .transaction((tx) =>
         Effect.gen(function* () {
-          yield* tx.execute(lockTenantQuery(tenantId)).pipe(Effect.orDie)
+          yield* tx.execute(lockTenantQuery(tenantId))
           const node = rows<NodeRow>(
-            yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
+            yield* tx.execute(nodeQuery(tenantId, nodeId)),
           )[0]
           if (!node) return yield* new NodeNotFound()
           yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
           return yield* body(tx, node)
         }),
       )
-      .pipe(Effect.catchTag('SqlError', (error) => Effect.die(error)))
+      .pipe(
+        translateConstraints(nodeConstraints),
+        // both tags: the transaction itself raises SqlError on begin/commit,
+        // while a statement inside it arrives wrapped as
+        // EffectDrizzleQueryError. Catching only the first leaves the second
+        // in the error channel, where nothing declares it.
+        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+      )
 
   const updateNode = Effect.fn('Org.updateNode')(function* (
     tenantId: string,
@@ -261,7 +274,7 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
   ) {
     yield* write(tenantId, nodeId, as, (tx) =>
-      tx.execute(updateNodeFieldsQuery(tenantId, nodeId, fields)).pipe(Effect.orDie),
+      tx.execute(updateNodeFieldsQuery(tenantId, nodeId, fields)),
     )
   })
 
@@ -274,12 +287,14 @@ export const make = Effect.fn('Org.make')(function* () {
       Effect.gen(function* () {
         if (!node.parent_id) return yield* new NodeIsRoot()
         const children = rows(
-          yield* tx.execute(hasChildrenQuery(tenantId, nodeId)).pipe(Effect.orDie),
+          yield* tx.execute(hasChildrenQuery(tenantId, nodeId)),
         )
         if (children.length > 0) return yield* new NodeHasChildren()
         // users and assignments still block through their restrict foreign
-        // keys, which surface as ORG_NODE_IN_USE by constraint name
-        yield* tx.execute(deleteNodeQuery(tenantId, nodeId)).pipe(Effect.orDie)
+        // keys. That is not a comment about intent: the write runs under
+        // translateConstraints, which turns those constraint names into
+        // ORG_NODE_IN_USE rather than letting them become a 500.
+        yield* tx.execute(deleteNodeQuery(tenantId, nodeId))
       }),
     )
   })
@@ -302,13 +317,22 @@ export const make = Effect.fn('Org.make')(function* () {
     database
       .transaction((tx) =>
         Effect.gen(function* () {
-          yield* tx.execute(lockTenantQuery(tenantId)).pipe(Effect.orDie)
+          yield* tx.execute(lockTenantQuery(tenantId))
           yield* atRoot(tenantId, as)
           return yield* body(tx)
         }),
       )
-      .pipe(Effect.catchTag('SqlError', (error) => Effect.die(error)))
+      .pipe(
+        translateConstraints(typeConstraints),
+        // both tags: the transaction itself raises SqlError on begin/commit,
+        // while a statement inside it arrives wrapped as
+        // EffectDrizzleQueryError. Catching only the first leaves the second
+        // in the error channel, where nothing declares it.
+        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+      )
 
+  // a read: no constraint can fire, so dying here keeps the caller's error
+  // type narrow without hiding anything translatable
   const typeOf = (tx: Tx, tenantId: string, typeId: string) =>
     tx.execute(typeQuery(tenantId, typeId)).pipe(
       Effect.orDie,
@@ -345,7 +369,7 @@ export const make = Effect.fn('Org.make')(function* () {
               sortOrder: input.sortOrder ?? 0,
             }),
           )
-          .pipe(Effect.orDie, Effect.map((result) => rows<TypeRow>(result)[0]!)),
+          .pipe(Effect.map((result) => rows<TypeRow>(result)[0]!)),
       )
     }),
     updateType: Effect.fn('Org.updateType')(function* (
@@ -357,7 +381,7 @@ export const make = Effect.fn('Org.make')(function* () {
       yield* writeAtRoot(tenantId, as, (tx) =>
         Effect.gen(function* () {
           if (!(yield* typeOf(tx, tenantId, typeId))) return yield* new TypeNotFound()
-          yield* tx.execute(updateTypeQuery(tenantId, typeId, fields)).pipe(Effect.orDie)
+          yield* tx.execute(updateTypeQuery(tenantId, typeId, fields))
         }),
       )
     }),
@@ -369,13 +393,13 @@ export const make = Effect.fn('Org.make')(function* () {
       yield* writeAtRoot(tenantId, as, (tx) =>
         Effect.gen(function* () {
           if (!(yield* typeOf(tx, tenantId, typeId))) return yield* new TypeNotFound()
-          const used = rows(yield* tx.execute(typeHasNodesQuery(tenantId, typeId)).pipe(Effect.orDie))
+          const used = rows(yield* tx.execute(typeHasNodesQuery(tenantId, typeId)))
           if (used.length > 0) return yield* new TypeInUse({ reason: 'nodes still use this org type' })
-          const ruled = rows(yield* tx.execute(typeHasRulesQuery(tenantId, typeId)).pipe(Effect.orDie))
+          const ruled = rows(yield* tx.execute(typeHasRulesQuery(tenantId, typeId)))
           if (ruled.length > 0) {
             return yield* new TypeInUse({ reason: 'rules still reference this org type' })
           }
-          yield* tx.execute(deleteTypeQuery(tenantId, typeId)).pipe(Effect.orDie)
+          yield* tx.execute(deleteTypeQuery(tenantId, typeId))
         }),
       )
     }),
@@ -400,18 +424,18 @@ export const make = Effect.fn('Org.make')(function* () {
         Effect.gen(function* () {
           if (parentTypeId === childTypeId) return yield* new RuleInvalid()
           const existing = rows(
-            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)),
           )
           if (existing.length > 0) return
           const counted = rows<{ count: string }>(
-            yield* tx.execute(countTypesQuery(tenantId, [parentTypeId, childTypeId])).pipe(Effect.orDie),
+            yield* tx.execute(countTypesQuery(tenantId, [parentTypeId, childTypeId])),
           )
           if (Number(counted[0]?.count ?? 0) !== 2) return yield* new TypeNotFound()
           const cycles = rows(
-            yield* tx.execute(ruleWouldCycleQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+            yield* tx.execute(ruleWouldCycleQuery(tenantId, parentTypeId, childTypeId)),
           )
           if (cycles.length > 0) return yield* new RuleCycle()
-          yield* tx.execute(insertRuleQuery({ tenantId, parentTypeId, childTypeId })).pipe(Effect.orDie)
+          yield* tx.execute(insertRuleQuery({ tenantId, parentTypeId, childTypeId }))
         }),
       )
     }),
@@ -424,14 +448,14 @@ export const make = Effect.fn('Org.make')(function* () {
       yield* writeAtRoot(tenantId, as, (tx) =>
         Effect.gen(function* () {
           const existing = rows(
-            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)),
           )
           if (existing.length === 0) return yield* new RuleNotFound()
           const used = rows(
-            yield* tx.execute(ruleInUseQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+            yield* tx.execute(ruleInUseQuery(tenantId, parentTypeId, childTypeId)),
           )
           if (used.length > 0) return yield* new RuleInUse()
-          yield* tx.execute(deleteRuleQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie)
+          yield* tx.execute(deleteRuleQuery(tenantId, parentTypeId, childTypeId))
         }),
       )
     }),

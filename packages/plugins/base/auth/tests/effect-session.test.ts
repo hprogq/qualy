@@ -150,6 +150,20 @@ afterAll(async () => {
   await db.dispose()
 })
 
+const probeInfra = () =>
+  databaseLayer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        DatabaseConfig,
+        DatabaseConfig.of({
+          url: Redacted.make(db.url),
+          migrations: 'off',
+          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
+        }),
+      ),
+    ),
+  )
+
 const withCookie = (token: string) =>
   fetch(`${base}/probe/me`, { headers: { cookie: `${sessionCookieName}=${token}` } })
 
@@ -214,6 +228,28 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
     const response = await withCookie(disabledToken)
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'AUTH_REQUIRED' })
+  })
+
+  it('stops accepting sessions once the tenant itself is disabled', async () => {
+    // every other check is about the person; this one is about whether the
+    // tenant may be used at all. It was missed once, because the user-type
+    // alias and the tenant alias both look like a plausible `enabled`.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const database = yield* Database
+        yield* database.execute(sql`update tenants set enabled = false`)
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    const response = await withCookie(validToken)
+    expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ _tag: 'AUTH_REQUIRED' })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const database = yield* Database
+        yield* database.execute(sql`update tenants set enabled = true`)
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    expect((await withCookie(validToken)).status).toBe(200)
   })
 
   it('leaves an endpoint that declares no middleware open', async () => {

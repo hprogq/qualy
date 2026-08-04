@@ -73,7 +73,15 @@ export const sessionByTokenQuery = (tokenHash: string): SQL => sql`
   select
     s.id, s.tenant_id, s.user_id, s.expires_at, s.last_used_at,
     (s.expires_at <= now()) as expired,
-    (u.enabled and t.enabled and (n.expires_at is null or n.expires_at > now())) as usable
+    -- the aliases are worth reading slowly: t is the USER TYPE and n is the
+    -- TENANT. Checking t.enabled and forgetting n.enabled leaves a disabled
+    -- tenant's sessions working, which is what this expression got wrong once
+    (
+      u.enabled
+      and t.enabled
+      and n.enabled
+      and (n.expires_at is null or n.expires_at > now())
+    ) as usable
   from sessions s
   join users u on u.tenant_id = s.tenant_id and u.id = s.user_id
   join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id

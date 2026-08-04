@@ -13,7 +13,8 @@
     "./effect": "./src/effect/index.ts",
     "./migrator": "./src/migrator.ts",
     "./pg-errors": "./src/pg-errors.ts",
-    "./testkit": "./src/testkit.ts"
+    "./testkit": "./src/testkit.ts",
+    "./effect/constraints": "./src/effect/constraints.ts"
   },
   "peerDependencies": {
     "cordis": "catalog:"

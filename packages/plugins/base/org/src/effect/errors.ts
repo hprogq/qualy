@@ -24,7 +24,7 @@ export class TypeNotFound extends Schema.TaggedErrorClass<TypeNotFound>()(
 export class RuleViolation extends Schema.TaggedErrorClass<RuleViolation>()(
   'ORG_NODE_RULE_VIOLATION',
   { reason: Schema.String },
-  { httpApiStatus: 409, identifier: 'OrgNodeRuleViolation' },
+  { httpApiStatus: 422, identifier: 'OrgNodeRuleViolation' },
 ) {}
 
 /** role codes stay private: the count is all the caller needs, and it localizes */
@@ -35,9 +35,12 @@ export class AssignmentIncompatible extends Schema.TaggedErrorClass<AssignmentIn
 ) {}
 
 export class PlacementBlocked extends Schema.TaggedErrorClass<PlacementBlocked>()(
-  'ORG_NODE_PLACEMENT_BLOCKED',
+  // the code the oRPC side already raises, and the only one the client can
+  // translate. Inventing a clearer name here would have meant the same failure
+  // is localized on one path and shown in English on the other.
+  'ORG_NODE_PLACEMENT_INCOMPATIBLE',
   { userCount: Schema.Number },
-  { httpApiStatus: 409, identifier: 'OrgNodePlacementBlocked' },
+  { httpApiStatus: 409, identifier: 'OrgNodePlacementIncompatible' },
 ) {}
 
 export type ChangeNodeTypeError =
@@ -47,6 +50,7 @@ export type ChangeNodeTypeError =
   | AssignmentIncompatible
   | PlacementBlocked
   | AccessDenied
+  | NodeConstraintError
 
 export class NodeIsRoot extends Schema.TaggedErrorClass<NodeIsRoot>()(
   'ORG_NODE_IS_ROOT',
@@ -62,7 +66,9 @@ export class NodeHasChildren extends Schema.TaggedErrorClass<NodeHasChildren>()(
 ) {}
 
 export type UpdateNodeError = NodeNotFound | AccessDenied
+  | NodeConstraintError
 export type DeleteNodeError = NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied
+  | NodeConstraintError
 
 export class TypeInUse extends Schema.TaggedErrorClass<TypeInUse>()(
   'ORG_TYPE_IN_USE',
@@ -73,13 +79,13 @@ export class TypeInUse extends Schema.TaggedErrorClass<TypeInUse>()(
 export class RuleInvalid extends Schema.TaggedErrorClass<RuleInvalid>()(
   'ORG_RULE_INVALID',
   {},
-  { httpApiStatus: 409, identifier: 'OrgRuleInvalid' },
+  { httpApiStatus: 422, identifier: 'OrgRuleInvalid' },
 ) {}
 
 export class RuleCycle extends Schema.TaggedErrorClass<RuleCycle>()(
   'ORG_RULE_CYCLE',
   {},
-  { httpApiStatus: 409, identifier: 'OrgRuleCycle' },
+  { httpApiStatus: 422, identifier: 'OrgRuleCycle' },
 ) {}
 
 export class RuleNotFound extends Schema.TaggedErrorClass<RuleNotFound>()(
@@ -94,8 +100,61 @@ export class RuleInUse extends Schema.TaggedErrorClass<RuleInUse>()(
   { httpApiStatus: 409, identifier: 'OrgRuleInUse' },
 ) {}
 
-export type CreateTypeError = AccessDenied
+export type CreateTypeError = AccessDenied | TypeConstraintError
 export type UpdateTypeError = TypeNotFound | AccessDenied
+  | TypeConstraintError
 export type DeleteTypeError = TypeNotFound | TypeInUse | AccessDenied
+  | TypeConstraintError
 export type PutRuleError = RuleInvalid | TypeNotFound | RuleCycle | AccessDenied
+  | TypeConstraintError
 export type DeleteRuleError = RuleNotFound | RuleInUse | AccessDenied
+  | TypeConstraintError
+
+export class NodeConflict extends Schema.TaggedErrorClass<NodeConflict>()(
+  'ORG_NODE_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgNodeConflict' },
+) {}
+
+export class NodeInUse extends Schema.TaggedErrorClass<NodeInUse>()(
+  'ORG_NODE_IN_USE',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgNodeInUse' },
+) {}
+
+export class TypeConflict extends Schema.TaggedErrorClass<TypeConflict>()(
+  'ORG_TYPE_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgTypeConflict' },
+) {}
+
+/**
+ * The database as a backstop, by constraint name.
+ *
+ * These are the violations a service check cannot prevent without a race: a
+ * concurrent insert takes the same sibling name, or a user is placed on a node
+ * between the has-children check and the delete. The constraint is what
+ * actually decides, so its violation has to arrive as the same domain error a
+ * pre-check would have raised, not as a 500.
+ */
+export type NodeConstraintError = NodeConflict | NodeInUse
+export type TypeConstraintError = TypeConflict | TypeInUse
+
+/** what a node write can be refused by, once the statement reaches the database */
+export const nodeConstraints: Record<string, () => NodeConstraintError> = {
+  uq_org_nodes_tenant_parent_name: () => new NodeConflict(),
+  uq_org_nodes_tenant_root_name: () => new NodeConflict(),
+  uq_org_nodes_tenant_code: () => new NodeConflict(),
+  uq_org_nodes_tenant_single_root: () => new NodeConflict(),
+  // restrict foreign keys owned by auth and rbac; the constraint-name gate
+  // checks these still exist in the deployed lineage
+  fk_users_primary_org_node: () => new NodeInUse(),
+  fk_role_grants_node: () => new NodeInUse(),
+}
+
+/** and what a type or rule write can be refused by */
+export const typeConstraints: Record<string, () => TypeConstraintError> = {
+  uq_org_types_tenant_code: () => new TypeConflict(),
+  uq_org_types_tenant_name: () => new TypeConflict(),
+  fk_role_allowed_org_types_type: () => new TypeInUse({ reason: 'roles still allow this org type' }),
+}
