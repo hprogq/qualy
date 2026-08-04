@@ -1,6 +1,7 @@
 import { implement } from '@orpc/server'
 import type { Context } from 'cordis'
 import type { ApiContext } from '@qualy/plugin-server'
+import type {} from '@qualy/plugin-auth'
 import { authLocalContract } from './contract.ts'
 import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from './password.ts'
 

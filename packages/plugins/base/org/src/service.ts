@@ -1,6 +1,10 @@
 import type { Context } from 'cordis'
 import { AccessDeniedError } from '@qualy/api-contract'
 import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
+// ctx.auth is typed by auth's own module augmentation, which reaches this file
+// only while both packages compile in one program. Compiled alone, the call to
+// iam.usersBlockingOrgType below loses its type entirely.
+import type {} from '@qualy/plugin-auth'
 import type { AuthorizationScope, Principal } from '@qualy/rbac-contract'
 import { orgErrors } from './errors.ts'
 import {
