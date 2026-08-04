@@ -322,6 +322,22 @@ ping 的 `ctx.db`、auth-local 的 `ctx.auth` 同样。已补 `import type {}` �
 schema,各自的 `httpApiStatus` 注解再也读不到 —— **每个已声明的失败都静默变成 500**。
 实测:改成 `error: [AuthRequired, SessionExpired]` 之后四个 401 用例立刻由红转绿。
 
+### 生成文档里的 `...Encoded` 是上游行为,但模型名归我们
+
+Scalar 的 Models 里看到 `ORG_NODE_NOT_FOUNDEncoded` 这种名字。**后缀不是我们的 bug**:
+文档描述的是**编码后**的形态,而 `resolveReferenceIdentifier`
+(`internal/schema/toRepresentation.ts:42-53`)在 encoded 侧没有自己的 identifier 时,
+用类型侧的名字加 `Encoded`。上游自己的测试就断言这个形状
+(`test/unstable/httpapi/OpenApiRepresentation.test.ts:11-12`)。
+
+**被喊出来的那半是我们的**:`TaggedErrorClass` 的第一个参数既是 wire `_tag` 又充当 identifier,
+所以错误码直接变成了模型名。两者可分:注解里加 `identifier` 只改模型名,
+**`_tag` 不动**(实测 `WITH_ID_CODE` 保持不变)。现在 `identifier` 走 PascalCase、`_tag` 保持大写蛇形。
+
+顺带发现并修掉一处不一致:`AccessDenied` 的 wire code 原本是 PascalCase,
+与 CLAUDE.md「错误码大写蛇形」相悖,改为 `ACCESS_DENIED`。
+`scripts/tests/effect-error-shape.test.ts` 守这两条(各自反向验过会红)。
+
 ## 已知的硬骨头
 
 ### 1. 跨插件环必须真的拆开(2026-08-05 实读修正)

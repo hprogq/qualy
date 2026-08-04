@@ -35,9 +35,11 @@ export class PermissionCatalog extends Context.Service<
 
 /** the principal is not allowed to do this, wherever the check was made */
 export class AccessDenied extends Schema.TaggedErrorClass<AccessDenied>()(
-  'AccessDenied',
+  // the wire code is upper snake like every other domain error; the readable
+  // name is the schema identifier, which is what the document shows
+  'ACCESS_DENIED',
   { reason: Schema.String },
-  { httpApiStatus: 403 },
+  { httpApiStatus: 403, identifier: 'AccessDenied' },
 ) {}
 
 /**
@@ -51,7 +53,7 @@ export class AccessDenied extends Schema.TaggedErrorClass<AccessDenied>()(
 export class LastAdministrator extends Schema.TaggedErrorClass<LastAdministrator>()(
   'LAST_ADMINISTRATOR',
   {},
-  { httpApiStatus: 409 },
+  { httpApiStatus: 409, identifier: 'LastAdministrator' },
 ) {}
 
 /**

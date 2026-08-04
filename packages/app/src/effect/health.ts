@@ -17,7 +17,7 @@ import { ping } from '@qualy/plugin-database/effect'
 export class NotReady extends Schema.TaggedErrorClass<NotReady>()(
   'NotReady',
   { check: Schema.String },
-  { httpApiStatus: 503 },
+  { httpApiStatus: 503, identifier: 'NotReady' },
 ) {}
 
 export const healthApiGroup = HttpApiGroup.make('health')

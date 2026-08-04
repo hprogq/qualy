@@ -241,7 +241,7 @@ describe.runIf(postgresAvailable)('changing a node type across three plugins', (
         }),
       )
       const answer = ok(exit)
-      expect(answer.tag).toBe('AccessDenied')
+      expect(answer.tag).toBe('ACCESS_DENIED')
       expect(answer.stillCollege).toBe(true)
     } finally {
       await db.dispose()

@@ -27,7 +27,7 @@ export class CurrentUser extends Context.Service<CurrentUser, Principal>()(
 export class AuthRequired extends Schema.TaggedErrorClass<AuthRequired>()(
   'AUTH_REQUIRED',
   {},
-  { httpApiStatus: 401 },
+  { httpApiStatus: 401, identifier: 'AuthRequired' },
 ) {}
 
 /**
@@ -41,7 +41,7 @@ export class AuthRequired extends Schema.TaggedErrorClass<AuthRequired>()(
 export class SessionExpired extends Schema.TaggedErrorClass<SessionExpired>()(
   'SESSION_EXPIRED',
   {},
-  { httpApiStatus: 401 },
+  { httpApiStatus: 401, identifier: 'SessionExpired' },
 ) {}
 
 export const sessionCookieName = 'qualy_session'

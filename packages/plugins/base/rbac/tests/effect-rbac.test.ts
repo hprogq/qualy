@@ -189,7 +189,7 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
       expect(answer.scope.anchors).toHaveLength(1)
       // and a denial is a declared failure the caller must handle, not a defect
       expect(answer.denied).toBe(true)
-      expect(answer.reason).toBe('AccessDenied')
+      expect(answer.reason).toBe('ACCESS_DENIED')
     } finally {
       await db.dispose()
     }

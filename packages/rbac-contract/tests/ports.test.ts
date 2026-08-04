@@ -58,7 +58,7 @@ describe('the port packages', () => {
     // and it arrives as the declared failure rather than a defect, which is
     // what makes a handler that ignores it fail to compile
     const reason = (exit as Extract<typeof exit, { _tag: 'Failure' }>).cause.reasons[0]
-    expect((reason as { error?: { _tag?: string } }).error?._tag).toBe('AccessDenied')
+    expect((reason as { error?: { _tag?: string } }).error?._tag).toBe('ACCESS_DENIED')
   })
 
   it('keeps the catalog a value the host supplies, not something rbac collects', async () => {

@@ -12,32 +12,32 @@ import type { AccessDenied } from '@qualy/rbac-contract/effect'
 export class NodeNotFound extends Schema.TaggedErrorClass<NodeNotFound>()(
   'ORG_NODE_NOT_FOUND',
   {},
-  { httpApiStatus: 404 },
+  { httpApiStatus: 404, identifier: 'OrgNodeNotFound' },
 ) {}
 
 export class TypeNotFound extends Schema.TaggedErrorClass<TypeNotFound>()(
   'ORG_TYPE_NOT_FOUND',
   {},
-  { httpApiStatus: 404 },
+  { httpApiStatus: 404, identifier: 'OrgTypeNotFound' },
 ) {}
 
 export class RuleViolation extends Schema.TaggedErrorClass<RuleViolation>()(
   'ORG_NODE_RULE_VIOLATION',
   { reason: Schema.String },
-  { httpApiStatus: 409 },
+  { httpApiStatus: 409, identifier: 'OrgNodeRuleViolation' },
 ) {}
 
 /** role codes stay private: the count is all the caller needs, and it localizes */
 export class AssignmentIncompatible extends Schema.TaggedErrorClass<AssignmentIncompatible>()(
   'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
   { assignmentCount: Schema.Number },
-  { httpApiStatus: 409 },
+  { httpApiStatus: 409, identifier: 'OrgNodeAssignmentIncompatible' },
 ) {}
 
 export class PlacementBlocked extends Schema.TaggedErrorClass<PlacementBlocked>()(
   'ORG_NODE_PLACEMENT_BLOCKED',
   { userCount: Schema.Number },
-  { httpApiStatus: 409 },
+  { httpApiStatus: 409, identifier: 'OrgNodePlacementBlocked' },
 ) {}
 
 export type ChangeNodeTypeError =
