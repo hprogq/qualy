@@ -22,14 +22,53 @@ await ctx.loader.create({
   config: { path: configPath },
 })
 
-// Assembly is finished here, and readiness may only pass from here on. The
-// server binds its port during assembly, so without this the window between
-// "listening" and "every plugin loaded" answers ready with an empty probe
-// set — a load balancer would send traffic to an instance whose database
-// plugin had not started yet.
-ctx.inject(['server'], (host) => {
-  host.server.markAssemblyComplete()
+// Readiness may only pass once the manifest has actually been applied.
+//
+// The server binds its port early in assembly, so the window between
+// "listening" and "every plugin loaded" would otherwise answer ready with an
+// empty probe set, and a load balancer would send traffic to an instance
+// whose database had not started. Marking completion from inject(['server'])
+// did not close that window: it fires the moment the server service appears,
+// which is during assembly, not after it. Measured on this manifest, the
+// first answer was ready with no checks at all while four more plugins were
+// still loading.
+//
+// The loader offers no settled promise, so completion is observed from fiber
+// state instead: cordis reports every transition, and assembly is done when
+// nothing is pending or loading and stays that way. A manifest that never
+// settles leaves readiness closed, which is the truthful answer for an
+// instance that never finished starting; liveness still responds, so an
+// orchestrator can tell the difference.
+const FIBER_PENDING = 0
+const FIBER_LOADING = 1
+const SETTLE_QUIET_MS = 50
+const SETTLE_TIMEOUT_MS = 60_000
+
+const loading = new Set<unknown>()
+ctx.on('internal/status', (fiber) => {
+  if (fiber.state === FIBER_PENDING || fiber.state === FIBER_LOADING) loading.add(fiber)
+  else loading.delete(fiber)
 })
+
+void (async () => {
+  const deadline = Date.now() + SETTLE_TIMEOUT_MS
+  let quiet = 0
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_QUIET_MS))
+    // two consecutive quiet observations, so a fiber that is between states
+    // when the first one lands does not read as settled
+    quiet = loading.size === 0 ? quiet + 1 : 0
+    if (quiet < 2) continue
+    ctx.inject(['server'], (host) => {
+      host.server.markAssemblyComplete()
+    })
+    return
+  }
+  ctx.logger.error(
+    'assembly did not settle within %ds; readiness stays closed',
+    SETTLE_TIMEOUT_MS / 1000,
+  )
+})()
 
 let closing = false
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

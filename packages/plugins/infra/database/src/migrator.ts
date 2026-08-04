@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import type { Pool } from 'pg'
@@ -26,6 +29,26 @@ async function appliedCount(pool: Pool, schema: string, table: string, allowMiss
     if (allowMissing && (code === '3F000' || code === '42P01')) return 0
     throw error
   }
+}
+
+/**
+ * How many committed migrations the database has not run yet.
+ *
+ * The ledger records what was applied and the folder holds the whole
+ * lineage, so the difference is the gap. It is only a count: identifying
+ * which ones would mean reimplementing the migrator's own hashing, and the
+ * count is what a caller needs in order to refuse to start.
+ */
+export async function pendingMigrations(
+  pool: Pool,
+  options: Partial<typeof migrationDefaults> = {},
+): Promise<number> {
+  const { folder, schema, table } = { ...migrationDefaults, ...options }
+  const applied = await appliedCount(pool, schema, table, true)
+  const committed = (await readdir(folder, { withFileTypes: true })).filter(
+    (entry) => entry.isDirectory() && existsSync(join(folder, entry.name, 'migration.sql')),
+  ).length
+  return Math.max(0, committed - applied)
 }
 
 export interface MigrationResult {

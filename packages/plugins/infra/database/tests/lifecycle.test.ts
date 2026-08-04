@@ -89,7 +89,11 @@ describe.runIf(available)('database plugin lifecycle on real postgres', () => {
     await again.dispose()
   })
 
-  it('leaves the schema untouched with migrations off', async () => {
+  // Off mode says an external job owns migration, not that the schema does
+  // not matter. Coming up on a database the job has not reached yet means
+  // serving a version-behind schema and failing later as missing relations,
+  // a long way from the cause.
+  it('refuses to start when an external job has not migrated yet', async () => {
     const db = await createScratch()
     const ctx = new Context()
     const fiber = ctx.plugin(Database, {
@@ -97,8 +101,29 @@ describe.runIf(available)('database plugin lifecycle on real postgres', () => {
       migrations: 'off',
       migrationsFolder,
     })
-    await fiber
+    await expect(fiber).rejects.toThrow(/migration\(s\) behind/)
+    // and it created nothing on the way to refusing
     expect(await tableCount(db)).toBe(0)
+    await fiber.dispose().catch(() => {})
+  })
+
+  it('starts in off mode once the schema is up to date', async () => {
+    const db = await createScratch()
+    // the job ran: same lineage, applied by something other than this process
+    const applied = new Context()
+    const primer = applied.plugin(Database, { url: scratchUrl(db), migrationsFolder })
+    await primer
+    const before = await tableCount(db)
+    await primer.dispose()
+
+    const ctx = new Context()
+    const fiber = ctx.plugin(Database, {
+      url: scratchUrl(db),
+      migrations: 'off',
+      migrationsFolder,
+    })
+    await fiber
+    expect(await tableCount(db)).toBe(before)
     await fiber.dispose()
   })
 

@@ -6,7 +6,7 @@ import type { AnyRelations } from 'drizzle-orm'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { z } from 'zod'
-import { runMigrations } from './migrator.ts'
+import { pendingMigrations, runMigrations } from './migrator.ts'
 
 declare module 'cordis' {
   interface Context {
@@ -98,7 +98,19 @@ export default class Database extends Service {
           this.ctx.logger.info('migrations up to date (%dms)', elapsed)
         }
       } else {
-        this.ctx.logger.info('migration execution disabled, expecting an external migration job')
+        // Refuse to start against a database the deployment job has not
+        // brought up to date. Without this the process comes up on a stale
+        // schema and fails later as missing columns and relations, far from
+        // the cause, and an orchestrator sees a healthy-looking instance
+        // serving a database that is a version behind.
+        const pending = await pendingMigrations(pool, { folder: this.resolveMigrationsFolder() })
+        if (pending > 0) {
+          throw new Error(
+            `database is ${pending} migration(s) behind and this process does not apply them; ` +
+              'run the migration job (pnpm db:migrate) before starting',
+          )
+        }
+        this.ctx.logger.info('migration execution disabled, schema is up to date')
       }
       await pool.query('select 1')
     } catch (error) {
