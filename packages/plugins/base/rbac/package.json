@@ -11,7 +11,8 @@
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
     "./contract": "./src/contract.ts",
-    "./client": "./client/index.ts"
+    "./client": "./client/index.ts",
+    "./effect": "./src/effect/index.ts"
   },
   "qualy": {
     "contributions": {
@@ -25,6 +26,12 @@
     },
     "permissions": {
       "entry": "src/permissions.ts"
+    },
+    "runtime": {
+      "entry": "./effect",
+      "dependsOn": [
+        "@qualy/plugin-database"
+      ]
     }
   },
   "peerDependencies": {
@@ -47,7 +54,8 @@
     "@qualy/web-runtime": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:"

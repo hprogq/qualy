@@ -1,5 +1,5 @@
-import { sql } from 'drizzle-orm'
 import { accessInvariantErrors } from '@qualy/rbac-contract'
+import { administratorSurvivorsQuery, lockAdministratorRoleQuery } from './queries.ts'
 import type { RbacDbHandle } from '@qualy/rbac-contract'
 
 // The one place that answers "can this tenant still administer itself?".
@@ -23,11 +23,6 @@ import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 // driver may provision on arrival), so requiring one here would state
 // something the core cannot know. This is therefore a necessary condition,
 // and the strongest one that stays true for drivers not written yet.
-const LOGIN_CAPABLE = sql`
-  u.enabled
-  and t.enabled
-  and (t.allow_local_login or t.allow_sso_login)`
-
 export async function assertTenantKeepsAdministrator(
   handle: RbacDbHandle,
   tenantId: string,
@@ -40,11 +35,7 @@ export async function assertTenantKeepsAdministrator(
   // role any more, and counting its holders as survivors would let the last
   // real administrator be removed.
   const role = (
-    await handle.execute(sql`
-      select id from roles
-      where tenant_id = ${tenantId} and system_key = ${CANONICAL_ADMIN_ROLE}
-        and permission_mode = 'all-active' and kind = 'tenant' and status = 'active'
-      for update`)
+    await handle.execute(lockAdministratorRoleQuery(tenantId, CANONICAL_ADMIN_ROLE))
   ).rows[0] as { id: string } | undefined
   // fail closed: returning here would let every admin-reducing write through
   // on exactly the tenants least able to survive one
@@ -54,13 +45,7 @@ export async function assertTenantKeepsAdministrator(
     )
   }
   const survivors = (
-    await handle.execute(sql`
-      select count(distinct g.user_id) as count
-      from role_grants g
-      join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id and r.status = 'active'
-      join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
-      join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
-      where g.tenant_id = ${tenantId} and g.role_id = ${role.id} and ${LOGIN_CAPABLE}`)
+    await handle.execute(administratorSurvivorsQuery(tenantId, role.id))
   ).rows[0] as { count: string } | undefined
   if (Number(survivors?.count ?? 0) === 0) {
     throw accessInvariantErrors.create('LAST_ADMINISTRATOR')

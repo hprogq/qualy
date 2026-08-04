@@ -7,7 +7,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { apiHandlers } from '../../api-handlers.gen.ts'
 import { pluginLayers } from '../../runtime.gen.ts'
-import { ServerConfig, databaseConfigLayer } from './config.ts'
+import { ServerConfig, databaseConfigLayer, permissionCatalogLayer } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
 
 // The composition root.
@@ -56,5 +56,5 @@ const server = Layer.unwrap(
  */
 export const application = server.pipe(
   Layer.provide(pluginLayers),
-  Layer.provide(databaseConfigLayer),
+  Layer.provide(Layer.mergeAll(databaseConfigLayer, permissionCatalogLayer)),
 )

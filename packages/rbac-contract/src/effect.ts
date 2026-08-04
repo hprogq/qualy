@@ -3,7 +3,6 @@ import type {
   AccessProfile,
   ActivePermission,
   AuthorizationScope,
-  GrantInput,
   PermissionTarget,
   Principal,
 } from './index.ts'
@@ -75,6 +74,10 @@ export type RbacFailure = AccessDenied
  *
  * No definePermissions either: the catalog is resolved from the manifest and
  * handed to rbac rather than pushed into it by whoever happens to load.
+ *
+ * And no grant or revoke. A port carries what peers need, not everything the
+ * plugin does: neither auth nor org administers grants, so those stay rbac's
+ * own API and never become a surface anyone else can reach through a tag.
  */
 export interface RbacShape {
   /** the active catalog: a code outside this set authorizes nothing */
@@ -115,13 +118,6 @@ export interface RbacShape {
   readonly assertTenantKeepsAdministrator: (
     tenantId: string,
   ) => Effect.Effect<void, LastAdministrator>
-
-  readonly grant: (actor: Principal, input: GrantInput) => Effect.Effect<string, AccessDenied>
-  readonly revoke: (
-    actor: Principal,
-    tenantId: string,
-    grantId: string,
-  ) => Effect.Effect<void, AccessDenied>
 
   /** role codes of org-kind grants at the node whose role forbids the given org type */
   readonly grantsBlockingOrgType: (

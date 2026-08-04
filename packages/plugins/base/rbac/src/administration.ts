@@ -19,6 +19,7 @@ type Actor = Principal | SystemActor
 import { REACH_RANK, REACHES_EVERY_NODE, type Authorization } from './authorization.ts'
 import { assertGrantEligible } from './eligibility.ts'
 import { assertMayDefineRole, assertMayGrantRole } from './escalation.ts'
+import { grantsBlockingOrgTypeQuery } from './queries.ts'
 import { accessErrors } from './errors.ts'
 
 // The refusals that mean "this role is not offerable here", as distinct
@@ -820,17 +821,9 @@ export class Administration {
     handle?: RbacDbHandle,
   ): Promise<string[]> {
     const db = (handle ?? this.db) as Drizzle
-    const result = await db.execute<{ code: string }>(sql`
-      select distinct r.code
-      from role_grants g
-      join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id and r.kind = 'org'
-      where g.tenant_id = ${tenantId} and g.org_node_id = ${orgNodeId}
-        and not exists (
-          select 1 from role_allowed_org_types t
-          where t.tenant_id = g.tenant_id and t.role_id = g.role_id
-            and t.org_type_id = ${orgTypeId}
-        )
-      order by r.code`)
+    const result = await db.execute<{ code: string }>(
+      grantsBlockingOrgTypeQuery(tenantId, orgNodeId, orgTypeId),
+    )
     return result.rows.map((row) => row.code)
   }
 

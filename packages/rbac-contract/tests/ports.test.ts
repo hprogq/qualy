@@ -35,8 +35,6 @@ const rbacStub = (allowed: boolean) =>
     getProfile: () => Effect.succeed({ tenantPermissions: [], orgPermissions: [] }),
     listAuthorizedScope: () => Effect.succeed({ tenantWide: false, anchors: [] }),
     assertTenantKeepsAdministrator: () => Effect.void,
-    grant: () => Effect.succeed('grant-id'),
-    revoke: () => Effect.void,
     grantsBlockingOrgType: () => Effect.succeed([]),
   } satisfies typeof Rbac.Service)
 
