@@ -1,2 +1,7 @@
 pnpm-lock.yaml
 db/migrations/
+
+# generated artifacts: the generator owns their bytes, and the assembly
+# start-up check compares them against what the manifest produces
+*.gen.ts
+cordis.gen.yml

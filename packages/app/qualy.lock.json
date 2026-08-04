@@ -1,0 +1,111 @@
+{
+  "lockfileVersion": 1,
+  "manifestHash": "sha256:48031c0559474db79b2f5858850fb759fc7a9f73e57d53f1b5fc249771f884dd",
+  "resolutionHash": "sha256:3ce10079f4f08661350f6cb66f96109dba7b427e7dd7eccafc095f0220ba1a5d",
+  "plugins": {
+    "@cordisjs/plugin-hmr": {
+      "version": "1.0.15",
+      "state": "active"
+    },
+    "@cordisjs/plugin-logger-console": {
+      "version": "1.0.0",
+      "state": "active"
+    },
+    "@cordisjs/plugin-timer": {
+      "version": "1.1.2",
+      "state": "active"
+    },
+    "@qualy/plugin-api-reference": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-auth": {
+      "version": "0.0.0",
+      "state": "active",
+      "databaseDependsOn": ["@qualy/plugin-org"],
+      "database": {
+        "schemaEntry": "src/db/schema.ts"
+      }
+    },
+    "@qualy/plugin-auth-local": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-database": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-dict": {
+      "version": "0.0.0",
+      "state": "active",
+      "database": {
+        "schemaEntry": "src/db/schema.ts"
+      }
+    },
+    "@qualy/plugin-layout-default": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-org": {
+      "version": "0.0.0",
+      "state": "active",
+      "database": {
+        "schemaEntry": "src/db/schema.ts",
+        "baselineDir": "db/baseline"
+      }
+    },
+    "@qualy/plugin-ping": {
+      "version": "0.0.0",
+      "state": "active",
+      "database": {
+        "schemaEntry": "src/db/schema.ts"
+      }
+    },
+    "@qualy/plugin-rbac": {
+      "version": "0.0.0",
+      "state": "active",
+      "databaseDependsOn": ["@qualy/plugin-auth", "@qualy/plugin-org"],
+      "database": {
+        "schemaEntry": "src/db/schema.ts"
+      }
+    },
+    "@qualy/plugin-server": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-ui-registry": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-web": {
+      "version": "0.0.0",
+      "state": "active"
+    }
+  },
+  "plans": {
+    "runtimeOrder": [
+      "@cordisjs/plugin-hmr",
+      "@cordisjs/plugin-logger-console",
+      "@cordisjs/plugin-timer",
+      "@qualy/plugin-api-reference",
+      "@qualy/plugin-auth",
+      "@qualy/plugin-auth-local",
+      "@qualy/plugin-database",
+      "@qualy/plugin-dict",
+      "@qualy/plugin-layout-default",
+      "@qualy/plugin-org",
+      "@qualy/plugin-ping",
+      "@qualy/plugin-rbac",
+      "@qualy/plugin-server",
+      "@qualy/plugin-ui-registry",
+      "@qualy/plugin-web"
+    ],
+    "databaseOrder": [
+      "@qualy/plugin-org",
+      "@qualy/plugin-auth",
+      "@qualy/plugin-dict",
+      "@qualy/plugin-ping",
+      "@qualy/plugin-rbac"
+    ]
+  }
+}

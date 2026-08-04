@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:",
+    "@qualy/assembly": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
@@ -40,10 +41,11 @@
     "format": "prettier --write .",
     "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
+    "qualy": "tsx scripts/qualy.ts",
     "seed": "tsx scripts/seed.ts",
     "test": "tsx scripts/gen.ts && vitest run",
-    "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts",
+    "test:all": "pnpm test && pnpm test:browser",
     "test:browser": "tsx scripts/gen.ts && vitest run --config vitest.browser.config.ts",
-    "test:all": "pnpm test && pnpm test:browser"
+    "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts"
   }
 }

@@ -56,3 +56,6 @@ Thumbs.db
 # vitest browser writes these when a test fails; they are diagnostics,
 # not baselines, and nothing compares against them
 apps/web/tests/__screenshots__/
+
+# resolved runtime entry list, generated from qualy.yml
+cordis.gen.yml

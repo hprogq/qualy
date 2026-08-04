@@ -29,8 +29,18 @@
 ## loader / include(1.0.0-rc.5 / 1.0.4)
 
 - 插件模块解包:`unwrapExports = exports.default ?? exports`(两层)。**无 default 导出时模块命名空间整体就是对象插件**——具名导出 `name/inject/Config` + `apply` 即合法插件形态,这是本仓库的统一约定(已实测:装载、hmr 重载、yml 热应用均正常)。default 导出函数则只拿到裸函数,元属性需属性赋值挂回,弃用该形态。Service 类插件维持 `export default class`(静态属性随类走)。
-- qualy.yml 是**双向**的:loader 运行期写回并规范化(补 `id:` 字段、单引号)。id 是条目稳定标识,提交进 git,勿手删。
-- 修改 yml 中的 config 保存 → 运行中进程热应用(fiber restart),无需重启。
+- include 文件是**双向**的:`EntryTree.ensureId` 用 `Math.random()` 给缺 id 的条目补 id,并触发 `tree.write()` 写回。装配层因此改成生成 `cordis.gen.yml`(id 由插件名派生),loader 无 id 可补,不再写回人手维护的文件。
+- 修改 include 文件中的 config 保存 → 运行中进程热应用(fiber restart),无需重启。
+- **条目导入失败只记日志不失败**:`Entry._init()` 里 `await import(name)` 抛错时 `ctx.logger.error(error); return`,`EntryGroup.update` 对每个条目 `.catch` 后同样只记录。装配清单里写错的插件不会让启动失败,只是静默不装载——这是启动前先解析全部包的理由。
+
+## 装配 settled 信号:`ctx.loader.await()`(实测,2026-08-04)
+
+`EntryTree.getTasks()` 收集每个条目的 `_initTask || fiber.inertia`,`await()` 循环 `Promise.allSettled` 直到没有未决任务(每轮重新取,所以先前条目创建出的新条目也会被等到)。这是官方的装配完成信号,readiness 门禁用它。
+
+两个实测细节:
+
+- **必须在 include 条目已创建之后 await**。空树的 `getTasks()` 为 0,此时 `await()` 立即返回。`ctx.loader.create()` 返回时 tasks=1(include 的 fiber inertia),之后 await 才有意义。
+- `Loader[Service.check]` 里的 `config.await` 拦截(`ctx.intercept('loader', { await: true }).inject(['loader'], ...)`)**不可用于此**:装配前注册会在 1ms 立即触发,装配后注册则再也不触发(`notify(['loader'])` 只在 `Entry.init()` 的 finally 里发一次)。实测本清单:`await()` 在 1008ms resolve,`inject(['server'])` 在 693ms,拦截版两种注册时机都不对。
 
 ## 函数插件的返回值会被当作 effect 清理函数
 

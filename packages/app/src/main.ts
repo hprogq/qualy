@@ -2,6 +2,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from 'cordis'
 import Loader from '@cordisjs/plugin-loader'
+import { verifyAssembly } from './verify-assembly.ts'
 
 // anchor at the host package instead of cwd, so the entry works no matter
 // where the process is launched from
@@ -13,13 +14,19 @@ const configPath = path.resolve(process.env.QUALY_CONFIG ?? path.join(appRoot, '
 const ctx = new Context()
 ctx.baseUrl = pathToFileURL(appRoot).href
 
+// the manifest is a product selection; what the loader consumes is the entry
+// list resolved from it, which lives beside it
+// console, not ctx.logger: this runs before the loader, so no logging
+// transport has been configured yet
+const runtimePlanPath = verifyAssembly(configPath, (message) => console.warn(message))
+
 await ctx.plugin(Loader)
-// the assembly manifest lives with the host: include re-anchors ctx.baseUrl
-// to the manifest's directory, so plugin packages resolve from the host's
-// own dependencies rather than the repo root
+// the assembly lives with the host: include re-anchors ctx.baseUrl to the
+// plan's directory, so plugin packages resolve from the host's own
+// dependencies rather than the repo root
 await ctx.loader.create({
   name: '@cordisjs/plugin-include',
-  config: { path: configPath },
+  config: { path: runtimePlanPath },
 })
 
 // Readiness may only pass once the manifest has actually been applied.
@@ -33,42 +40,30 @@ await ctx.loader.create({
 // first answer was ready with no checks at all while four more plugins were
 // still loading.
 //
-// The loader offers no settled promise, so completion is observed from fiber
-// state instead: cordis reports every transition, and assembly is done when
-// nothing is pending or loading and stays that way. A manifest that never
-// settles leaves readiness closed, which is the truthful answer for an
-// instance that never finished starting; liveness still responds, so an
-// orchestrator can tell the difference.
-const FIBER_PENDING = 0
-const FIBER_LOADING = 1
-const SETTLE_QUIET_MS = 50
-const SETTLE_TIMEOUT_MS = 60_000
-
-const loading = new Set<unknown>()
-ctx.on('internal/status', (fiber) => {
-  if (fiber.state === FIBER_PENDING || fiber.state === FIBER_LOADING) loading.add(fiber)
-  else loading.delete(fiber)
-})
-
-void (async () => {
-  const deadline = Date.now() + SETTLE_TIMEOUT_MS
-  let quiet = 0
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_QUIET_MS))
-    // two consecutive quiet observations, so a fiber that is between states
-    // when the first one lands does not read as settled
-    quiet = loading.size === 0 ? quiet + 1 : 0
-    if (quiet < 2) continue
-    ctx.inject(['server'], (host) => {
-      host.server.markAssemblyComplete()
-    })
-    return
-  }
+// The loader answers the question directly: it tracks every entry's init task
+// and fiber inertia, and `await()` returns once none are outstanding, having
+// rechecked after each batch so entries created by earlier ones are caught
+// too. Measured here, it resolves 300ms after the server service appears.
+//
+// It has to be awaited after the include entry exists; with an empty tree
+// there is nothing outstanding and it returns at once. A manifest that never
+// settles never resolves it, which leaves readiness closed, the truthful
+// answer for an instance that never finished starting. Liveness still
+// responds, so an orchestrator can tell the difference.
+const SETTLE_WARN_MS = 60_000
+const slow = setTimeout(() => {
   ctx.logger.error(
-    'assembly did not settle within %ds; readiness stays closed',
-    SETTLE_TIMEOUT_MS / 1000,
+    'assembly has not settled after %ds; readiness stays closed',
+    SETTLE_WARN_MS / 1000,
   )
-})()
+}, SETTLE_WARN_MS).unref()
+
+void ctx.loader.await().then(() => {
+  clearTimeout(slow)
+  ctx.inject(['server'], (host) => {
+    host.server.markAssemblyComplete()
+  })
+})
 
 let closing = false
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

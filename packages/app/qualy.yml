@@ -1,33 +1,35 @@
-- id: 0df0526e
-  name: '@cordisjs/plugin-logger-console'
-- id: a01434b6
-  name: '@cordisjs/plugin-timer'
-- id: fa0fc2af
-  name: '@cordisjs/plugin-hmr'
-  config:
-    base: '../..'
-    root:
-      - packages
-- id: '83873047'
-  name: '@qualy/plugin-database'
-  config:
-    migrationsFolder: ../../db/migrations
-- id: 5c1c1e85
-  name: '@qualy/plugin-server'
-  config:
-    port: 3000
-    prefix: /api
-- id: d24f3cdb
-  name: '@qualy/plugin-ui-registry'
-- id: a8f253e5
-  name: '@qualy/plugin-ping'
-  config:
-    greeting: hello
-- name: '@qualy/plugin-web'
-- name: '@qualy/plugin-rbac'
-- name: '@qualy/plugin-auth'
-- name: '@qualy/plugin-org'
-- name: '@qualy/plugin-dict'
-- name: '@qualy/plugin-auth-local'
-- name: '@qualy/plugin-layout-default'
-- name: '@qualy/plugin-api-reference'
+version: 1
+
+plugins:
+  '@cordisjs/plugin-logger-console': {}
+  '@cordisjs/plugin-timer': {}
+
+  '@cordisjs/plugin-hmr':
+    config:
+      base: '../..'
+      root:
+        - packages
+
+  '@qualy/plugin-database':
+    config:
+      migrationsFolder: ../../db/migrations
+
+  '@qualy/plugin-server':
+    config:
+      port: 3000
+      prefix: /api
+
+  '@qualy/plugin-ui-registry': {}
+  '@qualy/plugin-web': {}
+  '@qualy/plugin-layout-default': {}
+  '@qualy/plugin-api-reference': {}
+
+  '@qualy/plugin-org': {}
+  '@qualy/plugin-auth': {}
+  '@qualy/plugin-auth-local': {}
+  '@qualy/plugin-rbac': {}
+  '@qualy/plugin-dict': {}
+
+  '@qualy/plugin-ping':
+    config:
+      greeting: hello

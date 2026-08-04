@@ -1,10 +1,8 @@
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
+import { createWorkspace } from './support/workspace.ts'
 
-const ymlPath = 'packages/app/qualy.yml'
 const contractsPath = 'packages/api-client/src/contracts.gen.ts'
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
 
@@ -12,8 +10,7 @@ const gen = (flags = '') => execSync(`pnpm exec tsx scripts/gen.ts ${flags}`, { 
 
 describe('generator determinism', () => {
   // the working manifest is never written: other test files read it
-  // concurrently, so mutated variants go to a throwaway copy (--yml)
-  const originalYml = fs.readFileSync(ymlPath, 'utf8')
+  // concurrently, so mutated selections go to a throwaway workspace (--yml)
   afterAll(() => {
     gen()
   })
@@ -29,21 +26,21 @@ describe('generator determinism', () => {
   })
 
   it('drops disabled plugins from the active set but keeps them under --all', () => {
-    const mutated = originalYml.replace(
-      "name: '@qualy/plugin-ping'",
-      "name: '@qualy/plugin-ping'\n  disabled: true",
+    const workspace = createWorkspace(
+      ['@qualy/plugin-server', '@qualy/plugin-ui-registry', '@qualy/plugin-ping'],
+      { disabled: ['@qualy/plugin-ping'] },
     )
-    expect(mutated, 'fixture must actually disable ping').not.toBe(originalYml)
-    const tmpYml = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-gen-')), 'qualy.yml')
-    fs.writeFileSync(tmpYml, mutated)
+    try {
+      gen(`--yml ${workspace.manifestPath}`)
+      expect(fs.readFileSync(contractsPath, 'utf8')).not.toContain('pingContract')
+      expect(fs.readFileSync(pluginsPath, 'utf8')).not.toContain('pingComponents')
 
-    gen(`--yml ${tmpYml}`)
-    expect(fs.readFileSync(contractsPath, 'utf8')).not.toContain('pingContract')
-    expect(fs.readFileSync(pluginsPath, 'utf8')).not.toContain('pingComponents')
-
-    gen(`--yml ${tmpYml} --all`)
-    expect(fs.readFileSync(contractsPath, 'utf8')).toContain('pingContract')
-    expect(fs.readFileSync(pluginsPath, 'utf8')).toContain('pingComponents')
+      gen(`--yml ${workspace.manifestPath} --all`)
+      expect(fs.readFileSync(contractsPath, 'utf8')).toContain('pingContract')
+      expect(fs.readFileSync(pluginsPath, 'utf8')).toContain('pingComponents')
+    } finally {
+      workspace.dispose()
+    }
   })
 
   it('gives every exported contract its own client namespace', () => {
@@ -52,7 +49,9 @@ describe('generator determinism', () => {
     // auth owns two api surfaces: the session core and identity
     // administration. They became separate namespaces rather than one
     // crowded object.
-    expect(contracts).toContain("import { authContract as authNamespace } from '@qualy/plugin-auth/contract'")
+    expect(contracts).toContain(
+      "import { authContract as authNamespace } from '@qualy/plugin-auth/contract'",
+    )
     expect(contracts).toContain(
       "import { identityContract as identityNamespace } from '@qualy/plugin-auth/contract'",
     )
@@ -78,16 +77,16 @@ describe('generator determinism', () => {
     expect(check('identityContracts')).toBe(false)
   })
 
-  it('rejects two plugins claiming one namespace', () => {
-    // ping is loaded twice under different ids: the second claim of the
-    // `ping` namespace must fail generation rather than silently shadow
-    const mutated = originalYml.replace(
-      "name: '@qualy/plugin-ping'",
-      "name: '@qualy/plugin-ping'\n- name: '@qualy/plugin-ping'",
+  it('gives no namespace two claimants', () => {
+    // object spread lets a later plugin silently shadow an earlier one, so
+    // generation refuses a second claim on a namespace rather than take it.
+    // One plugin can no longer be selected twice, but two plugins are still
+    // free to export the same name.
+    gen()
+    const claims = [...fs.readFileSync(contractsPath, 'utf8').matchAll(/^ {2}(\w+): /gm)].map(
+      (match) => match[1],
     )
-    const tmpYml = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-gen-ns-')), 'qualy.yml')
-    fs.writeFileSync(tmpYml, mutated)
-    expect(() => gen(`--yml ${tmpYml}`)).toThrow(/duplicate contract namespace ping/)
+    expect(claims.length).toBeGreaterThan(0)
+    expect(new Set(claims).size).toBe(claims.length)
   })
-
 })

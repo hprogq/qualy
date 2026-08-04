@@ -162,6 +162,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.5.4
+      '@qualy/assembly':
+        specifier: workspace:*
+        version: link:packages/assembly
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:packages/i18n-contract
@@ -334,6 +337,9 @@ importers:
       '@cordisjs/plugin-timer':
         specifier: 'catalog:'
         version: 1.1.2(cordis@4.0.0-rc.7)
+      '@qualy/assembly':
+        specifier: workspace:*
+        version: link:../assembly
       '@qualy/plugin-api-reference':
         specifier: workspace:*
         version: link:../plugins/infra/api-reference
@@ -377,6 +383,12 @@ importers:
       '@cordisjs/plugin-hmr':
         specifier: 'catalog:'
         version: 1.0.15(@cordisjs/plugin-timer@1.1.2(cordis@4.0.0-rc.7))(cordis@4.0.0-rc.7)
+
+  packages/assembly:
+    dependencies:
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   packages/i18n-contract:
     dependencies:

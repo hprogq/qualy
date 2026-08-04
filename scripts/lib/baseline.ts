@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { readEntries } from './read-entries.ts'
-import { resolvePackageDir } from './schema-entries.ts'
+import { currentResolution, retainedEntries } from './read-entries.ts'
 
 // SQL a plugin owns that drizzle cannot express: extensions, functions,
 // triggers, views, and the rows a schema is unusable without.
@@ -43,28 +42,20 @@ export const markerFor = (fragment: Pick<BaselineFragment, 'plugin' | 'file' | '
 /**
  * Every fragment the current assembly declares, in a stable order.
  *
- * Plugins are sorted by name rather than by manifest position, so reordering
- * qualy.yml cannot silently reorder SQL. Within a plugin the numeric prefix
- * decides. Ordering ACROSS plugins only matters once one plugin's fragment
- * depends on another's, which nothing does yet; when it does, the fix is a
- * declared database dependency, not a rule about filenames.
+ * The order comes from the resolved database graph, with ties broken by name,
+ * so reordering qualy.yml cannot silently reorder SQL. Within a plugin the
+ * numeric prefix decides. Disabled and detached plugins contribute too:
+ * neither switching a plugin off nor taking it out of the manifest removes
+ * its tables, so the objects those tables depend on have to stay as well.
  */
 export function collectBaseline(options: { ymlPath?: string } = {}): BaselineFragment[] {
   const fragments: BaselineFragment[] = []
-  // disabled entries contribute too: turning a plugin off leaves its tables
-  // in place, so the objects those tables depend on have to stay as well
-  const entries = readEntries({ all: true, ymlPath: options.ymlPath })
-    .filter((entry) => entry.name.startsWith('@qualy/'))
-    .sort((a, b) => a.name.localeCompare(b.name))
-  for (const entry of entries) {
-    const packageDir = resolvePackageDir(entry.name)
-    const manifest = path.join(packageDir, 'package.json')
-    if (!fs.existsSync(manifest)) continue
-    const pkg = JSON.parse(fs.readFileSync(manifest, 'utf8')) as {
-      qualy?: { database?: { baselineDir?: string } }
-    }
-    const declared = pkg.qualy?.database?.baselineDir
+  const resolution = currentResolution(options)
+  for (const entry of retainedEntries(options)) {
+    if (!entry.name.startsWith('@qualy/')) continue
+    const declared = resolution.plugins.get(entry.name)?.database?.baselineDir
     if (!declared) continue
+    const packageDir = resolution.resolver.resolvePackageDir(entry.name)
     const dir = path.resolve(packageDir, declared)
     // declared but missing is a broken package, not an empty contribution
     if (!fs.existsSync(dir)) {
@@ -141,9 +132,7 @@ export function pendingBaseline(
       `baseline fragments compiled into the lineage no longer exist: ${vanished.join(', ')}`,
     )
   }
-  return fragments.filter(
-    (fragment) => !compiled.has(`${fragment.plugin} ${fragment.file}`),
-  )
+  return fragments.filter((fragment) => !compiled.has(`${fragment.plugin} ${fragment.file}`))
 }
 
 /** the fragment as it appears in a migration, marker first so it can be found again */
