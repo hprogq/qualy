@@ -238,6 +238,55 @@ ping 的 `greeting` 现在读 `Config.string('PING_GREETING')`(**在层构建期
 而不是拖到每个请求)。清单 config → layer config 的贯通仍留在 M5,理由不变:现在只有一个带 config 的
 插件,样本不够。
 
+## M4 预备实测(2026-08-05,做设计之前先把机制钉死)
+
+### 1. `Layer.mergeAll` 不接线,生成的运行时装配必须分层
+
+见 commit `cb11091`。`mergeAll` 并行构建成员、**不满足成员之间的依赖**;需求留在 R 通道冒到根部,
+所以现在的写法在 M4 一定编译不过。已改为按 `qualy.runtime.dependsOn` 拓扑分层 + `provideMerge`。
+**纠正一个猜错**:根部再 provide 一次不会把资源建两遍(Effect 按 layer 引用 memoize,实测 `builds = 1`)。
+
+### 2. 事务是**环境**,不是参数 —— `RbacDbHandle` 可以删
+
+见 commit `85b6f9b` / `9fd2d03`,`packages/effect-spike/tests/ambient-transaction.test.ts` 6 例。
+
+上游把连接放进 fiber context(`SqlClient.ts:139-146` 从 `Effect.serviceOption(transactionService)`
+取,没有才回落到 acquirer;`:243-261` 用 `provideContext` 装入并在已有事务时改取 savepoint),
+drizzle 直接委派过去。**实测**:一个照 rbac 写法写的 peer(不收 handle、只要 Database 服务)——
+
+- 看得见调用方**未提交**的写入
+- 跑在**同一个 backend pid** 上
+- 调用方失败时它的写入一起回滚
+- 它自己开事务拿到的是 savepoint,失败不会带走调用方的工作
+- **调用方写入之后被 peer 的不变量拒绝时,调用方那条写入不留下**(这条才是 handle 参数存在的理由)
+
+**防空转**:pid 相等在「池里只有一条连接」时是白给的,所以另有一例断言池确实发得出多条。
+
+**载重前提**:`TransactionConnection` 的运行时 key 按 client 实例生成(`SqlClient.ts:139, :326-329`),
+所以**一个进程只能有一个 PgClient**;读副本或按租户分池会静默把「持锁时另开连接」的死锁放回来。
+**并且**:类型上的 Identifier 是稳定的 `TransactionConnection` 接口,client 身份编译器看不见——
+所以**禁止**把 `R` 标成 `TransactionConnection` 来假装「必须在调用方事务里」:那个类型任何 client 的
+事务都满足,而运行时查错 client 会回落到新连接,比现在的显式 handle 更糟,因为它看起来被证明过。
+
+### 3. 一批插件此前只在「有同伴」时才类型正确
+
+见 commit `ab95aa1`。org 调 `ctx.auth.iam.usersBlockingOrgType` 却在 org/src 里**没有任何**
+`@qualy/plugin-auth` 的导入,单独编译直接报 `Property 'auth' does not exist on type 'Context'`;
+ping 的 `ctx.db`、auth-local 的 `ctx.auth` 同样。已补 `import type {}` 并加 `plugin-isolation.test.ts`
+逐插件单独编译守住(反向验过:去掉导入即红)。**这条对 M4 是前提**:service tag 是**值**不是环境类型,
+一个类型全靠巧合存在的调用没法忠实迁移。
+
+### 4. 留给 M4 的两个坑(现在不是 bug,照抄就会变成 bug)
+
+- `resolvePermissionCatalogs` 用的是 `readEntries({ all: true })`(含 disabled)。**现在是对的**:
+  它服务于 seed,行要留着,授权判定走 registry 活跃集。但 M4 把权限目录做成静态产物、并让它**成为**
+  授权来源时,必须改用**活跃集**,否则停用的插件继续授权。
+- `assertManagesNode(tx, actor, node)` 在 `!actor` 时**直接 return**(跳过检查,不是拒绝),
+  `actor?` / `as?` 在 auth 与 org 共 14 个方法上是可选的。**实查:生产调用点无一遗漏**,
+  66 处省略全在测试里,seed 走自己的裸 SQL 路径。所以这是**潜在**而非现行的 fail-open——
+  但它意味着授权是为了测试省事才可跳过的。M4 重写时 actor 必须**必填**,可信路径传一个显式的
+  System principal,而不是靠「不传参数」。
+
 ## 已知的硬骨头
 
 ### 1. 跨插件环必须真的拆开(2026-08-05 实读修正)
