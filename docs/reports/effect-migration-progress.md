@@ -124,14 +124,8 @@ layer 只要 `Database`。真出现反向边时改一个包的签名即可。
 **M4 剩余**:rbac(图的根)、auth、org 三个 Effect layer 与 API group。`changeNodeType` **先行** ——
 它是唯一在同一把锁里同时用到三个插件的方法,回归会表现为**连接池死锁**而不是错误答案,是最响的失败方式。
 
-**照抄就会变成 bug 的两处**:
-
-- `assertManagesNode` 在 `!actor` 时**直接 return**(跳过检查,不是拒绝),`actor?` / `as?` 在 auth 与 org
-  共 14 个方法上可选。**实查:生产调用点无一遗漏**,66 处省略全在测试里 —— 所以是**潜在**而非现行的 fail-open,
-  但它意味着授权是为了测试省事才可跳过的。M4 重写时 actor 必须必填,可信路径传显式 System principal。
-  (`@qualy/rbac-contract` 的 `grant`/`revoke` 早就写明了这条规则,只是没推广到 auth 与 org。)
-- 跨插件**约束名是无人校验的字符串耦合**:org 写死了 auth 与 rbac 拥有的三个 FK 名。实查当前都对得上,
-  但改名只会让错误翻译静默失效、裸 pg 错误漏出去。
+**原先列在这里的两处已在审计整改中修掉**(见第 8 节):可选 actor 的 fail-open 形状、
+跨插件约束名的无人校验耦合。两者都补了会红的门禁,不再是待办。
 
 **其他已知**:
 
