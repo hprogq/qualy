@@ -63,3 +63,39 @@ export class NodeHasChildren extends Schema.TaggedErrorClass<NodeHasChildren>()(
 
 export type UpdateNodeError = NodeNotFound | AccessDenied
 export type DeleteNodeError = NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied
+
+export class TypeInUse extends Schema.TaggedErrorClass<TypeInUse>()(
+  'ORG_TYPE_IN_USE',
+  { reason: Schema.String },
+  { httpApiStatus: 409, identifier: 'OrgTypeInUse' },
+) {}
+
+export class RuleInvalid extends Schema.TaggedErrorClass<RuleInvalid>()(
+  'ORG_RULE_INVALID',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgRuleInvalid' },
+) {}
+
+export class RuleCycle extends Schema.TaggedErrorClass<RuleCycle>()(
+  'ORG_RULE_CYCLE',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgRuleCycle' },
+) {}
+
+export class RuleNotFound extends Schema.TaggedErrorClass<RuleNotFound>()(
+  'ORG_RULE_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'OrgRuleNotFound' },
+) {}
+
+export class RuleInUse extends Schema.TaggedErrorClass<RuleInUse>()(
+  'ORG_RULE_IN_USE',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgRuleInUse' },
+) {}
+
+export type CreateTypeError = AccessDenied
+export type UpdateTypeError = TypeNotFound | AccessDenied
+export type DeleteTypeError = TypeNotFound | TypeInUse | AccessDenied
+export type PutRuleError = RuleInvalid | TypeNotFound | RuleCycle | AccessDenied
+export type DeleteRuleError = RuleNotFound | RuleInUse | AccessDenied

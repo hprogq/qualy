@@ -23,6 +23,7 @@ import { Org, layer as orgLayer } from '../src/effect/index.ts'
 // auth's placement suite and packages/effect-spike/tests/ambient-transaction.
 
 const catalog: readonly ActivePermission[] = [
+  { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
 ]
 
@@ -243,6 +244,96 @@ describe.runIf(postgresAvailable)('changing a node type across three plugins', (
       const answer = ok(exit)
       expect(answer.tag).toBe('ACCESS_DENIED')
       expect(answer.stillCollege).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('manages org types at the root, and refuses to delete one still in use', async () => {
+    const db = await createTestContext('effect-org-types')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          const created = yield* org.createType(
+            f.tenant,
+            { code: 'dept', name: 'Department' },
+            f.principal,
+          )
+          const listed = yield* org.listTypes(f.tenant, f.principal)
+          yield* org.updateType(f.tenant, created.id, { name: 'Dept' }, f.principal)
+          const renamed = (yield* org.listTypes(f.tenant, f.principal)).find(
+            (type) => type.id === created.id,
+          )
+          // the seeded college type has a node standing on it
+          const inUse = yield* Effect.result(
+            org.deleteType(f.tenant, f.collegeType, f.principal),
+          )
+          const removable = yield* Effect.result(
+            org.deleteType(f.tenant, created.id, f.principal),
+          )
+          return {
+            createdCode: created.code,
+            listedCount: listed.length,
+            renamed: renamed?.name,
+            inUse: tagOf(inUse),
+            removable: removable._tag,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.createdCode).toBe('dept')
+      // college, club and the new one
+      expect(answer.listedCount).toBe(3)
+      expect(answer.renamed).toBe('Dept')
+      expect(answer.inUse).toBe('ORG_TYPE_IN_USE')
+      expect(answer.removable).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('keeps the type-rule graph acyclic and idempotent', async () => {
+    const db = await createTestContext('effect-org-rules')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          yield* org.putRule(f.tenant, f.collegeType, f.clubType, f.principal)
+          // repeating converges rather than conflicting, which is why it is a PUT
+          const again = yield* Effect.result(
+            org.putRule(f.tenant, f.collegeType, f.clubType, f.principal),
+          )
+          const cycle = yield* Effect.result(
+            org.putRule(f.tenant, f.clubType, f.collegeType, f.principal),
+          )
+          const selfParent = yield* Effect.result(
+            org.putRule(f.tenant, f.clubType, f.clubType, f.principal),
+          )
+          const rules = yield* org.listRules(f.tenant, f.principal)
+          const missing = yield* Effect.result(
+            org.deleteRule(f.tenant, f.clubType, f.collegeType, f.principal),
+          )
+          return {
+            again: again._tag,
+            cycle: tagOf(cycle),
+            selfParent: tagOf(selfParent),
+            ruleCount: rules.length,
+            missing: tagOf(missing),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.again).toBe('Success')
+      expect(answer.cycle).toBe('ORG_RULE_CYCLE')
+      expect(answer.selfParent).toBe('ORG_RULE_INVALID')
+      // the repeat added nothing
+      expect(answer.ruleCount).toBe(1)
+      expect(answer.missing).toBe('ORG_RULE_NOT_FOUND')
     } finally {
       await db.dispose()
     }

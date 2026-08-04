@@ -41,8 +41,21 @@ import {
   incompatibleChildTypesQuery,
   lockTenantQuery,
   nodeQuery,
+  countTypesQuery,
   deleteNodeQuery,
+  deleteRuleQuery,
+  deleteTypeQuery,
   hasChildrenQuery,
+  insertRuleQuery,
+  insertTypeQuery,
+  listRulesQuery,
+  listTypesQuery,
+  rootQuery,
+  ruleInUseQuery,
+  ruleWouldCycleQuery,
+  typeHasNodesQuery,
+  typeHasRulesQuery,
+  updateTypeQuery,
   ruleExistsQuery,
   setNodeTypeQuery,
   updateNodeFieldsQuery,
@@ -61,9 +74,7 @@ export async function getNode(db: OrgDb, tenantId: string, nodeId: string) {
 }
 
 export async function getRoot(db: OrgDb, tenantId: string) {
-  const result = await db.execute<NodeRow>(sql`
-    select ${NODE_COLUMNS} from org_nodes
-    where tenant_id = ${tenantId} and parent_id is null`)
+  const result = await db.execute<NodeRow>(rootQuery(tenantId))
   return result.rows[0]
 }
 
@@ -174,10 +185,7 @@ export async function deleteNode(tx: OrgTx, tenantId: string, nodeId: string) {
 }
 
 export async function listTypes(db: OrgDb, tenantId: string) {
-  const result = await db.execute<TypeRow>(sql`
-    select id, code, name, sort_order from org_types
-    where tenant_id = ${tenantId}
-    order by sort_order, name`)
+  const result = await db.execute<TypeRow>(listTypesQuery(tenantId))
   return result.rows
 }
 
@@ -189,10 +197,7 @@ export async function getType(db: OrgDb, tenantId: string, typeId: string) {
 }
 
 export async function countTypes(db: OrgDb, tenantId: string, typeIds: readonly string[]) {
-  const result = await db.execute<{ count: string }>(sql`
-    select count(*) as count from org_types
-    where tenant_id = ${tenantId}
-      and id = any(string_to_array(${typeIds.join(',')}, ',')::uuid[])`)
+  const result = await db.execute<{ count: string }>(countTypesQuery(tenantId, typeIds))
   return Number(result.rows[0]?.count ?? 0)
 }
 
@@ -200,10 +205,7 @@ export async function insertType(
   tx: OrgTx,
   input: { tenantId: string; code: string; name: string; sortOrder: number },
 ) {
-  const result = await tx.execute<TypeRow>(sql`
-    insert into org_types (tenant_id, code, name, sort_order)
-    values (${input.tenantId}, ${input.code}, ${input.name}, ${input.sortOrder})
-    returning id, code, name, sort_order`)
+  const result = await tx.execute<TypeRow>(insertTypeQuery(input))
   return result.rows[0]!
 }
 
@@ -213,43 +215,26 @@ export async function updateType(
   typeId: string,
   fields: { name?: string; sortOrder?: number },
 ) {
-  await tx.execute(sql`
-    update org_types set
-      name = coalesce(${fields.name ?? null}, name),
-      sort_order = coalesce(${fields.sortOrder ?? null}, sort_order),
-      updated_at = now()
-    where tenant_id = ${tenantId} and id = ${typeId}`)
+  await tx.execute(updateTypeQuery(tenantId, typeId, fields))
 }
 
 export async function typeHasNodes(db: OrgDb, tenantId: string, typeId: string) {
-  const result = await db.execute(sql`
-    select 1 from org_nodes
-    where tenant_id = ${tenantId} and org_type_id = ${typeId} limit 1`)
+  const result = await db.execute(typeHasNodesQuery(tenantId, typeId))
   return result.rows.length > 0
 }
 
 export async function typeHasRules(db: OrgDb, tenantId: string, typeId: string) {
-  const result = await db.execute(sql`
-    select 1 from org_type_rules
-    where tenant_id = ${tenantId}
-      and (parent_type_id = ${typeId} or child_type_id = ${typeId}) limit 1`)
+  const result = await db.execute(typeHasRulesQuery(tenantId, typeId))
   return result.rows.length > 0
 }
 
 export async function deleteType(tx: OrgTx, tenantId: string, typeId: string) {
-  const result = await tx.execute(sql`
-    delete from org_types where tenant_id = ${tenantId} and id = ${typeId}`)
+  const result = await tx.execute(deleteTypeQuery(tenantId, typeId))
   return (result.rowCount ?? 0) > 0
 }
 
 export async function listRules(db: OrgDb, tenantId: string) {
-  const result = await db.execute<RuleRow>(sql`
-    select r.parent_type_id, r.child_type_id
-    from org_type_rules r
-    join org_types p on p.tenant_id = r.tenant_id and p.id = r.parent_type_id
-    join org_types c on c.tenant_id = r.tenant_id and c.id = r.child_type_id
-    where r.tenant_id = ${tenantId}
-    order by p.sort_order, p.name, c.sort_order, c.name`)
+  const result = await db.execute<RuleRow>(listRulesQuery(tenantId))
   return result.rows
 }
 
@@ -271,16 +256,7 @@ export async function ruleWouldCycle(
   parentTypeId: string,
   childTypeId: string,
 ) {
-  const result = await db.execute(sql`
-    with recursive reach as (
-      select child_type_id from org_type_rules
-      where tenant_id = ${tenantId} and parent_type_id = ${childTypeId}
-      union
-      select r.child_type_id from org_type_rules r
-      join reach on r.parent_type_id = reach.child_type_id
-      where r.tenant_id = ${tenantId}
-    )
-    select 1 from reach where child_type_id = ${parentTypeId} limit 1`)
+  const result = await db.execute(ruleWouldCycleQuery(tenantId, parentTypeId, childTypeId))
   return result.rows.length > 0
 }
 
@@ -288,9 +264,7 @@ export async function insertRule(
   tx: OrgTx,
   input: { tenantId: string; parentTypeId: string; childTypeId: string },
 ) {
-  await tx.execute(sql`
-    insert into org_type_rules (tenant_id, parent_type_id, child_type_id)
-    values (${input.tenantId}, ${input.parentTypeId}, ${input.childTypeId})`)
+  await tx.execute(insertRuleQuery(input))
 }
 
 // a rule is in use when an actual parent-child node pair depends on it
@@ -300,14 +274,7 @@ export async function ruleInUse(
   parentTypeId: string,
   childTypeId: string,
 ) {
-  const result = await db.execute(sql`
-    select 1
-    from org_nodes child
-    join org_nodes parent on parent.tenant_id = child.tenant_id and parent.id = child.parent_id
-    where child.tenant_id = ${tenantId}
-      and parent.org_type_id = ${parentTypeId}
-      and child.org_type_id = ${childTypeId}
-    limit 1`)
+  const result = await db.execute(ruleInUseQuery(tenantId, parentTypeId, childTypeId))
   return result.rows.length > 0
 }
 
@@ -317,9 +284,6 @@ export async function deleteRule(
   parentTypeId: string,
   childTypeId: string,
 ) {
-  const result = await tx.execute(sql`
-    delete from org_type_rules
-    where tenant_id = ${tenantId}
-      and parent_type_id = ${parentTypeId} and child_type_id = ${childTypeId}`)
+  const result = await tx.execute(deleteRuleQuery(tenantId, parentTypeId, childTypeId))
   return (result.rowCount ?? 0) > 0
 }

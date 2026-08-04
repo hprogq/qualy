@@ -5,7 +5,7 @@ import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'
 import { Placement } from '@qualy/auth-contract'
 import { Database } from '@qualy/plugin-database/effect'
-import { Rbac } from '@qualy/rbac-contract/effect'
+import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import {
   AssignmentIncompatible,
   NodeNotFound,
@@ -14,14 +14,37 @@ import {
   TypeNotFound,
   NodeHasChildren,
   NodeIsRoot,
+  RuleCycle,
+  RuleInUse,
+  RuleInvalid,
+  RuleNotFound,
+  TypeInUse,
   type ChangeNodeTypeError,
+  type CreateTypeError,
+  type DeleteRuleError,
+  type DeleteTypeError,
+  type PutRuleError,
+  type UpdateTypeError,
   type DeleteNodeError,
   type UpdateNodeError,
 } from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import {
+  countTypesQuery,
   deleteNodeQuery,
+  deleteRuleQuery,
+  deleteTypeQuery,
   hasChildrenQuery,
+  insertRuleQuery,
+  insertTypeQuery,
+  listRulesQuery,
+  listTypesQuery,
+  rootQuery,
+  ruleInUseQuery,
+  ruleWouldCycleQuery,
+  typeHasNodesQuery,
+  typeHasRulesQuery,
+  updateTypeQuery,
   incompatibleChildTypesQuery,
   lockTenantQuery,
   nodeQuery,
@@ -54,6 +77,18 @@ interface NodeRow extends Record<string, unknown> {
   org_type_id: string
 }
 
+export interface TypeRow extends Record<string, unknown> {
+  id: string
+  code: string
+  name: string
+  sort_order: number
+}
+
+export interface RuleRow extends Record<string, unknown> {
+  parent_type_id: string
+  child_type_id: string
+}
+
 export class Org extends Context.Service<
   Org,
   {
@@ -74,6 +109,44 @@ export class Org extends Context.Service<
       nodeId: string,
       as: Principal,
     ) => Effect.Effect<void, DeleteNodeError>
+
+    readonly listTypes: (
+      tenantId: string,
+      as: Principal,
+    ) => Effect.Effect<readonly TypeRow[], AccessDenied>
+    readonly createType: (
+      tenantId: string,
+      input: { code: string; name: string; sortOrder?: number },
+      as: Principal,
+    ) => Effect.Effect<TypeRow, CreateTypeError>
+    readonly updateType: (
+      tenantId: string,
+      typeId: string,
+      fields: { name?: string; sortOrder?: number },
+      as: Principal,
+    ) => Effect.Effect<void, UpdateTypeError>
+    readonly deleteType: (
+      tenantId: string,
+      typeId: string,
+      as: Principal,
+    ) => Effect.Effect<void, DeleteTypeError>
+
+    readonly listRules: (
+      tenantId: string,
+      as: Principal,
+    ) => Effect.Effect<readonly RuleRow[], AccessDenied>
+    readonly putRule: (
+      tenantId: string,
+      parentTypeId: string,
+      childTypeId: string,
+      as: Principal,
+    ) => Effect.Effect<void, PutRuleError>
+    readonly deleteRule: (
+      tenantId: string,
+      parentTypeId: string,
+      childTypeId: string,
+      as: Principal,
+    ) => Effect.Effect<void, DeleteRuleError>
   }
 >()('@qualy/plugin-org/Org') {}
 
@@ -157,16 +230,15 @@ export const make = Effect.fn('Org.make')(function* () {
     ).pipe(Effect.catchTag('SqlError', (error) => Effect.die(error)))
   })
 
+  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
+
   // the shape every structural write shares: lock the tenant, find the node,
   // re-decide authorization on the locked connection, then write
   const write = <A, E>(
     tenantId: string,
     nodeId: string,
     as: Principal,
-    body: (
-      tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
-      node: NodeRow,
-    ) => Effect.Effect<A, E>,
+    body: (tx: Tx, node: NodeRow) => Effect.Effect<A, E>,
   ) =>
     database
       .transaction((tx) =>
@@ -212,7 +284,158 @@ export const make = Effect.fn('Org.make')(function* () {
     )
   })
 
-  return { changeNodeType, updateNode, deleteNode }
+  // types and rules are tenant-wide, so authority is proved at the root rather
+  // than at a node: there is no node for a type to be managed at
+  const atRoot = Effect.fn('Org.atRoot')(function* (tenantId: string, as: Principal) {
+    const root = rows<NodeRow>(
+      yield* database.execute(rootQuery(tenantId)).pipe(Effect.orDie),
+    )[0]
+    if (!root) return yield* Effect.die(new Error(`tenant ${tenantId} has no root node`))
+    yield* rbac.requireAt(as, 'org.tree.manage', root.id)
+  })
+
+  const writeAtRoot = <A, E>(
+    tenantId: string,
+    as: Principal,
+    body: (tx: Tx) => Effect.Effect<A, E>,
+  ) =>
+    database
+      .transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.execute(lockTenantQuery(tenantId)).pipe(Effect.orDie)
+          yield* atRoot(tenantId, as)
+          return yield* body(tx)
+        }),
+      )
+      .pipe(Effect.catchTag('SqlError', (error) => Effect.die(error)))
+
+  const typeOf = (tx: Tx, tenantId: string, typeId: string) =>
+    tx.execute(typeQuery(tenantId, typeId)).pipe(
+      Effect.orDie,
+      Effect.map((result) => rows<TypeRow>(result)[0]),
+    )
+
+  return {
+    changeNodeType,
+    updateNode,
+    deleteNode,
+
+    // type and rule metadata is tenant-global, so reading it needs the
+    // permission held anywhere in the tenant rather than at a specific node
+    listTypes: Effect.fn('Org.listTypes')(function* (tenantId: string, as: Principal) {
+      if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
+        return yield* new AccessDenied({ reason: 'cannot read the organization' })
+      }
+      return rows<TypeRow>(
+        yield* database.execute(listTypesQuery(tenantId)).pipe(Effect.orDie),
+      )
+    }),
+    createType: Effect.fn('Org.createType')(function* (
+      tenantId: string,
+      input: { code: string; name: string; sortOrder?: number },
+      as: Principal,
+    ) {
+      return yield* writeAtRoot(tenantId, as, (tx) =>
+        tx
+          .execute(
+            insertTypeQuery({
+              tenantId,
+              code: input.code,
+              name: input.name,
+              sortOrder: input.sortOrder ?? 0,
+            }),
+          )
+          .pipe(Effect.orDie, Effect.map((result) => rows<TypeRow>(result)[0]!)),
+      )
+    }),
+    updateType: Effect.fn('Org.updateType')(function* (
+      tenantId: string,
+      typeId: string,
+      fields: { name?: string; sortOrder?: number },
+      as: Principal,
+    ) {
+      yield* writeAtRoot(tenantId, as, (tx) =>
+        Effect.gen(function* () {
+          if (!(yield* typeOf(tx, tenantId, typeId))) return yield* new TypeNotFound()
+          yield* tx.execute(updateTypeQuery(tenantId, typeId, fields)).pipe(Effect.orDie)
+        }),
+      )
+    }),
+    deleteType: Effect.fn('Org.deleteType')(function* (
+      tenantId: string,
+      typeId: string,
+      as: Principal,
+    ) {
+      yield* writeAtRoot(tenantId, as, (tx) =>
+        Effect.gen(function* () {
+          if (!(yield* typeOf(tx, tenantId, typeId))) return yield* new TypeNotFound()
+          const used = rows(yield* tx.execute(typeHasNodesQuery(tenantId, typeId)).pipe(Effect.orDie))
+          if (used.length > 0) return yield* new TypeInUse({ reason: 'nodes still use this org type' })
+          const ruled = rows(yield* tx.execute(typeHasRulesQuery(tenantId, typeId)).pipe(Effect.orDie))
+          if (ruled.length > 0) {
+            return yield* new TypeInUse({ reason: 'rules still reference this org type' })
+          }
+          yield* tx.execute(deleteTypeQuery(tenantId, typeId)).pipe(Effect.orDie)
+        }),
+      )
+    }),
+
+    listRules: Effect.fn('Org.listRules')(function* (tenantId: string, as: Principal) {
+      if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
+        return yield* new AccessDenied({ reason: 'cannot read the organization' })
+      }
+      return rows<RuleRow>(
+        yield* database.execute(listRulesQuery(tenantId)).pipe(Effect.orDie),
+      )
+    }),
+    // idempotent by design: the pair identifies the rule, so repeating the
+    // request converges on the same state instead of reporting a conflict
+    putRule: Effect.fn('Org.putRule')(function* (
+      tenantId: string,
+      parentTypeId: string,
+      childTypeId: string,
+      as: Principal,
+    ) {
+      yield* writeAtRoot(tenantId, as, (tx) =>
+        Effect.gen(function* () {
+          if (parentTypeId === childTypeId) return yield* new RuleInvalid()
+          const existing = rows(
+            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+          )
+          if (existing.length > 0) return
+          const counted = rows<{ count: string }>(
+            yield* tx.execute(countTypesQuery(tenantId, [parentTypeId, childTypeId])).pipe(Effect.orDie),
+          )
+          if (Number(counted[0]?.count ?? 0) !== 2) return yield* new TypeNotFound()
+          const cycles = rows(
+            yield* tx.execute(ruleWouldCycleQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+          )
+          if (cycles.length > 0) return yield* new RuleCycle()
+          yield* tx.execute(insertRuleQuery({ tenantId, parentTypeId, childTypeId })).pipe(Effect.orDie)
+        }),
+      )
+    }),
+    deleteRule: Effect.fn('Org.deleteRule')(function* (
+      tenantId: string,
+      parentTypeId: string,
+      childTypeId: string,
+      as: Principal,
+    ) {
+      yield* writeAtRoot(tenantId, as, (tx) =>
+        Effect.gen(function* () {
+          const existing = rows(
+            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+          )
+          if (existing.length === 0) return yield* new RuleNotFound()
+          const used = rows(
+            yield* tx.execute(ruleInUseQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie),
+          )
+          if (used.length > 0) return yield* new RuleInUse()
+          yield* tx.execute(deleteRuleQuery(tenantId, parentTypeId, childTypeId)).pipe(Effect.orDie)
+        }),
+      )
+    }),
+  }
 })
 
 /**
@@ -261,6 +484,76 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const org = yield* Org
         const principal = yield* CurrentUser
         yield* org.deleteNode(principal.tenantId, params.nodeId, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'listTypes',
+      Effect.fn('org.listTypes.handler')(function* () {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        return { types: yield* org.listTypes(principal.tenantId, principal) }
+      }),
+    )
+    .handle(
+      'createType',
+      Effect.fn('org.createType.handler')(function* ({ payload }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        return { type: yield* org.createType(principal.tenantId, payload, principal) }
+      }),
+    )
+    .handle(
+      'updateType',
+      Effect.fn('org.updateType.handler')(function* ({ params, payload }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.updateType(principal.tenantId, params.typeId, payload, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'deleteType',
+      Effect.fn('org.deleteType.handler')(function* ({ params }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.deleteType(principal.tenantId, params.typeId, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'listRules',
+      Effect.fn('org.listRules.handler')(function* () {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        return { rules: yield* org.listRules(principal.tenantId, principal) }
+      }),
+    )
+    .handle(
+      'putRule',
+      Effect.fn('org.putRule.handler')(function* ({ params }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.putRule(
+          principal.tenantId,
+          params.parentTypeId,
+          params.childTypeId,
+          principal,
+        )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'deleteRule',
+      Effect.fn('org.deleteRule.handler')(function* ({ params }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.deleteRule(
+          principal.tenantId,
+          params.parentTypeId,
+          params.childTypeId,
+          principal,
+        )
         return { ok: true as const }
       }),
     ),
