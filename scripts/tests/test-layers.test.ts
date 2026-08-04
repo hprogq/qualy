@@ -249,6 +249,54 @@ describe('test layering', () => {
     expect(offenders).toEqual([])
   })
 
+  it('lets one place in the process build a database client', () => {
+    // The ambient transaction rests on this and nothing else says so. A call
+    // made inside a transaction joins it because the connection travels in the
+    // fiber, but the key that carries it is minted per client instance
+    // (SqlClient.ts:139, :326-329), so a second client silently reintroduces
+    // exactly the second-connection-under-a-held-lock deadlock that deleting
+    // the handle parameter was supposed to make impossible. The type system
+    // cannot see client identity in either direction.
+    const production = walk('packages')
+      .concat(walk('apps'))
+      .filter((file) => !isTestFile(file))
+      // the spike is scratch work with its own throwaway client, and goes when
+      // the milestone that created it does
+      .filter((file) => !posix(file).startsWith('packages/effect-spike/'))
+      .filter((file) => !posix(file).startsWith(`${OWNS_CONNECTIONS}/`))
+    const offenders = breaches(production, [
+      { pattern: /PgClient\.(?:layer|make|makeWithDefaults)/, why: 'builds its own database client' },
+      { pattern: /from ['"]@effect\/sql-pg['"]/, why: 'reaches the postgres driver directly' },
+    ])
+    expect(offenders).toEqual([])
+  })
+
+  it('runs effects only at the edges', () => {
+    // An Effect is a description until something runs it. A service, repo or
+    // handler that runs its own loses the caller's fiber, and with it the
+    // ambient transaction, the interruption and the error channel the caller
+    // was relying on. Running belongs at the boundaries: the process entry,
+    // the CLI, the browser's one runtime, and tests.
+    const RUNS_EFFECTS = [
+      'packages/app/src/effect/main.ts',
+      // the browser's single runtime: pages hand it effects rather than
+      // running them, which is what carries E across into the query's TError
+      'packages/api-client/src/effect/query.ts',
+    ]
+    const production = walk('packages')
+      .concat(walk('apps'))
+      .filter((file) => !isTestFile(file))
+      .filter((file) => !posix(file).startsWith('packages/effect-spike/'))
+      .filter((file) => !RUNS_EFFECTS.includes(posix(file)))
+    const offenders = breaches(production, [
+      {
+        pattern: /Effect\.run(?:Promise|Sync|Fork|PromiseExit|SyncExit)\b/,
+        why: 'runs an effect outside an entry point',
+      },
+    ])
+    expect(offenders).toEqual([])
+  })
+
   it('keeps the testkit out of production code', () => {
     // a testkit is a plugin's own test surface, not a back door into it: no
     // production entry point, assembly or service may reach for one
