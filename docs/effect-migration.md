@@ -37,7 +37,8 @@ Agent 检索纪律在 [agents/effect-source-policy.md](agents/effect-source-poli
 | --- | --- | --- |
 | M0 | 冻结与决策:tag、分支、三份 ADR、阶段 2 重写、版本锁定 | **完成** |
 | M0.5 | vendored 上游源码 + Agent 检索纪律 + 对齐门禁 | **完成** |
-| M1 | 技术验证 spike(数据库 + 事务回滚 + 关闭) | 待办 |
+| M1a | 技术验证 spike:**数据库**(真实 schema + 事务 + 关闭) | **完成** |
+| M1b | 技术验证 spike:**HttpApi**(endpoint + client + Scalar + Query 适配) | 待办 |
 | M2 | Effect 应用外壳(config/logger/database/readiness/根 Scope/优雅关闭) | 待办 |
 | M3 | HttpApi 基础 + 类型化 client + TanStack Query 适配,先迁 ping | 待办 |
 | M4 | 最难的业务集群:auth/IAM + rbac + org | 待办 |
@@ -73,7 +74,7 @@ M1 只需在本项目的真实 schema 上复验,不必再从零摸索:
 - `tx.rollback()` **返回一个错误值**(要 `yield*`),对调用方表现为 typed failure
   `EffectTransactionRollbackError`,**不是** defect。
 - **嵌套事务是 savepoint**(`effect_sql_<depth>`),但**成功退出时不 RELEASE**,savepoint 会在外层
-  事务生命周期内累积(`SqlClient.ts:270`)。
+  事务生命周期内累积(`SqlClient.ts:272`)。
 - 事务连接放在 **fiber context**,不在 `tx` 对象上——事务体内用外层 `db` 句柄发的查询也走事务连接。
 
 ### 这些事实会推翻现有 CLAUDE.md 的三条纪律
@@ -81,18 +82,52 @@ M1 只需在本项目的真实 schema 上复验,不必再从零摸索:
 | 现在的纪律 | effect-postgres 下的事实 | 证据 |
 | --- | --- | --- |
 | 「需要 db.query 关系 API 用 `ctx.db.withRelations(defineRelations(...))`」 | **没有 `withRelations`**。relations 是 `make({ relations })` 的**构造期参数** | `src/effect-postgres/driver.ts:61-66` |
-| 「timestamptz 经 drizzle 回来是字符串而非 Date,断言要断值不断 JS 类型」 | effect-postgres 的 `effectPgCodecs` 把它变回**真 JS `Date`** | `src/effect-postgres/codecs.ts:89-95` + 集成测试 |
+| 「timestamptz 经 drizzle 回来是字符串而非 Date,断言要断值不断 JS 类型」 | effect-postgres 的 `effectPgCodecs` 把它变回**真 JS `Date`** | `src/effect-postgres/codecs.ts:87-93` + 集成测试 |
 | 「SQLSTATE 在 `error.cause` 上,`pgCode` 因此走 cause 链」 | `EffectDrizzleQueryError.cause` 是 **Effect `Cause`** 包着 `SqlError`,不是驱动错误;而且 `@effect/sql-pg` 已经预分类:23505 → `UniqueViolation` 带 `constraint`,**其余 23xxx → `ConstraintError` 会丢掉约束名**,要拿约束名必须再挖 `reason.cause` | `PgClient.ts:909-948`、`effect-core/errors.ts:11-28` |
 
 第三条影响最大:`createConstraintTranslator`(约束名 → 领域错误)是本项目授权与不变量的一条主干,
 M1 必须验证在 effect-postgres 下还能按约束名翻译。
 
-### M1 还必须自己验的(上游没有证据)
+### M1a 实测结果(2026-08-05,`packages/effect-spike/tests/database.test.ts`,8 例全过)
 
-- `snakeCase.table` 定义的 schema 跑 effect-postgres——**上游全部集成测试用的是普通 `pgTable`**,
-  兼容性目前只是「共用同一条 `PgTable`/`PgDialect` 通路」的推断
-- PG18、UUIDv7、ltree、pgvector 与现有 baseline SQL
-- interruption 触发回滚(代码可证,但 `repos/` 里没有对应测试)
+跑在**真实 schema 与真实 lineage** 上(scratch 库经 database 插件的生产路径跑完 15 条迁移),
+不是自造的测试表:
+
+| 问题 | 结果 |
+| --- | --- |
+| `snakeCase.table` 兼容 effect-postgres | **可以**。上游集成测试全用普通 `pgTable`,这条此前只是推断,现已实测 |
+| PG18 `uuidv7()` 列默认值 | **可以**,读回是标准 UUID |
+| ltree 列 | **可以**(`::text` 投影读回) |
+| 事务内 typed failure 回滚 | **回滚**。并断言了写入在失败前**确实执行过**(事务内先 select 到 1 行),否则这条断言在「insert 根本没跑」时也会通过 |
+| 成功即提交 | 是 |
+| interruption 回滚 | **回滚**。上游无对应测试,这条是自己验的 |
+| 嵌套事务 | 是 savepoint,内层失败只回滚内层,外层照常提交 |
+| 未识别 SQL 错误(42P01) | 停在普通 `SqlError`,`reason._tag` **不是** `UniqueViolation`/`ConstraintError`,不会被误当成业务冲突 |
+| 约束名是否还拿得到 | **拿得到**,但在四层之下(见下) |
+| Scope 关闭是否真的关池 | **是**。断言了连接数在使用期**升高**、关闭后**回到基线**,只断后半句的话对一个从未连接的 layer 也会通过 |
+| timestamptz | **回来是 `Date` 不是字符串**——与现有纪律相反,已确认 |
+
+**约束名的实际路径**(重写 `createConstraintTranslator` 要走的就是这条):
+
+```
+EffectDrizzleQueryError { query, params }
+  .cause                      -> Effect Cause,不是驱动错误
+    .reasons[0].error         -> SqlError
+      .reason._tag            -> 'UniqueViolation'(@effect/sql-pg 预分类)
+      .reason.cause           -> 原始 pg 错误:{ code: '23505', constraint: 'tenants_slug_key' }
+```
+
+注意 23505 之外的 23xxx 会落到 `ConstraintError`,而它**故意丢掉约束名**,只能再挖 `reason.cause`。
+
+pgvector 不在验收范围内:全仓 schema 没有任何 vector 列,lineage 里只有 `CREATE EXTENSION ltree`。
+镜像带 pgvector 不等于本项目在用。
+
+### M1b 还没验的
+
+- HttpApi 的 cookie session / header / query / path / body
+- 客户端能否推导成功与公开错误类型;Scalar / OpenAPI
+- TanStack Query 适配层保留 `E` 类型并支持取消
+- SIGTERM 同时关掉 HTTP server 与数据库池(数据库那半已验)
 - 数百 endpoint 规模下的 typecheck 性能
 
 ## 已知的硬骨头
