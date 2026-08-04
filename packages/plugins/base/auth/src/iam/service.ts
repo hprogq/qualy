@@ -5,10 +5,21 @@ import type {} from '@qualy/plugin-database'
 import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
 import {
   canonicalTenantAdmin,
+  isSystemActor,
   scopeCoverage,
   type AuthorizationScope,
   type Principal,
+  type SystemActor,
 } from '@qualy/rbac-contract'
+
+/**
+ * Who is asking.
+ *
+ * A real principal, whose authority is checked, or the trusted caller, which
+ * only a testkit can produce. There is no third case: an omitted argument used
+ * to mean trusted, which made forgetting indistinguishable from being allowed.
+ */
+type Actor = Principal | SystemActor
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { iamErrors } from './errors.ts'
 
@@ -113,10 +124,11 @@ export class IamService {
   }
 
   // authority over a user is authority over where they stand, re-decided on
-  // the locked connection. A system-level caller (seed, cross-plugin service
-  // use) passes no actor and is trusted.
-  private async assertManagesNode(tx: Tx, actor: Principal | undefined, orgNodeId: string) {
-    if (!actor) return
+  // the locked connection. A trusted caller says so by passing the system
+  // actor, which only a testkit can produce; omitting the argument is not a
+  // way to be trusted, because it is not possible.
+  private async assertManagesNode(tx: Tx, actor: Actor, orgNodeId: string) {
+    if (isSystemActor(actor)) return
     const allowed = await this.ctx.rbac.canAt(actor, 'auth.user.manage', orgNodeId, tx)
     if (!allowed) throw new AccessDeniedError('not allowed to administer users at this node')
   }
@@ -476,10 +488,10 @@ export class IamService {
   // hands to anyone.
   private async assertMayAssignType(
     tx: Tx,
-    actor: Principal | undefined,
+    actor: Actor,
     type: { id: string; code: string; is_system: boolean },
   ) {
-    if (!actor) return
+    if (isSystemActor(actor)) return
     if (type.is_system) {
       throw new AccessDeniedError('a system user type is provisioned, not assigned')
     }
@@ -660,7 +672,7 @@ export class IamService {
       primaryOrgNodeId: string
       businessNo?: string
     },
-    actor?: Principal,
+    actor: Actor,
   ) {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
@@ -687,7 +699,7 @@ export class IamService {
     tenantId: string,
     userId: string,
     fields: { displayName?: string; userTypeId?: string; businessNo?: string },
-    actor?: Principal,
+    actor: Actor,
   ) {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
@@ -739,7 +751,12 @@ export class IamService {
 
   // moving someone is not an ordinary field edit: it changes who administers
   // them, so both ends must be inside the caller's own authority
-  setUserPlacement(tenantId: string, userId: string, primaryOrgNodeId: string, actor?: Principal) {
+  setUserPlacement(
+    tenantId: string,
+    userId: string,
+    primaryOrgNodeId: string,
+    actor: Actor,
+  ) {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const user = await this.requireUser(tx, tenantId, userId)
@@ -755,7 +772,7 @@ export class IamService {
     })
   }
 
-  setUserEnabled(tenantId: string, userId: string, enabled: boolean, actor?: Principal) {
+  setUserEnabled(tenantId: string, userId: string, enabled: boolean, actor: Actor) {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const user = await this.requireUser(tx, tenantId, userId)

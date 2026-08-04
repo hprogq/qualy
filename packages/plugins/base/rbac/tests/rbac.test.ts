@@ -11,6 +11,7 @@ import {
   type RbacService,
 } from '@qualy/rbac-contract'
 import Rbac from '../src/index.ts'
+import { systemActor } from '@qualy/rbac-contract/testkit'
 
 // A capability declares what it protects and therefore how it is checked,
 // and nothing else. There is no channel flag and no default-administrator
@@ -245,14 +246,14 @@ describe.runIf(postgresAvailable)('rbac', () => {
       name: input.name,
       kind: input.kind,
     })
-    await admin.syncRolePermissions(f.tenant, id, input.codes, await versionOf(id))
+    await admin.syncRolePermissions(f.tenant, id, input.codes, await versionOf(id), systemActor)
     await admin.syncRoleEligibility(
       f.tenant,
       id,
       { userTypeIds: input.userTypeIds, orgTypeIds: input.orgTypeIds ?? [] },
       await versionOf(id),
     )
-    await admin.setRoleStatus(f.tenant, id, 'active', await versionOf(id))
+    await admin.setRoleStatus(f.tenant, id, 'active', await versionOf(id), systemActor)
     return id
   }
 
@@ -263,8 +264,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       f.tenant,
       roleId,
       [...role.permissions, ...codes],
-      role.version,
-    )
+      role.version, systemActor,)
   }
 
   it('answers every check from grants alone', async () => {
@@ -418,8 +418,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       f.tenant,
       role,
       ['suspendable.thing.read', 'test.report.read'],
-      1,
-    )
+      1, systemActor,)
 
     await scoped.dispose()
     // the code is no longer served, so the editor cannot offer it and the
@@ -432,7 +431,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
     })
 
     // an ordinary save of what the editor could see must not take the rest
-    version = await admin.syncRolePermissions(f.tenant, role, ['test.role.manage'], version)
+    version = await admin.syncRolePermissions(f.tenant, role, ['test.role.manage'], version, systemActor)
     const kept = await db.query(
       `select p.code from role_permissions rp
        join permissions p on p.id = rp.permission_id
@@ -572,7 +571,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.binder,
       roleId: inspector,
       target: { kind: 'tenant' },
-    })
+    }, systemActor)
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('ok')
 
     // hijacking the row's owner kills the grant at read time
@@ -593,7 +592,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
     await db.query(`update permissions set target_kind = 'tenant' where code = 'test.role.manage'`)
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('ok')
 
-    await administration().revoke(f.tenant, grant)
+    await administration().revoke(f.tenant, grant, systemActor)
     expect(await orpcCode(rbac.require(principal(f.binder), 'test.role.manage'))).toBe('FORBIDDEN')
   })
 
@@ -775,7 +774,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
           node === undefined
             ? { kind: 'tenant' }
             : { kind: 'org-node', orgNodeId: node, coverage: 'self' },
-      })
+      }, systemActor)
 
     // who may hold the duty is a fact about the role
     expect(await outcome(grant(f.student, f.managerRole, f.college))).toEqual({
@@ -828,9 +827,9 @@ describe.runIf(postgresAvailable)('rbac', () => {
     const id = await grant(f.manager, f.managerRole, f.college)
     expect(await domainCode(grant(f.manager, f.managerRole, f.college))).toBe('GRANT_EXISTS')
     expect((await admin.getGrant(f.tenant, id)).coverage).toBe('self')
-    await admin.revoke(f.tenant, id)
+    await admin.revoke(f.tenant, id, systemActor)
     expect(await domainCode(admin.getGrant(f.tenant, id))).toBe('GRANT_NOT_FOUND')
-    expect(await domainCode(admin.revoke(f.tenant, id))).toBe('GRANT_NOT_FOUND')
+    expect(await domainCode(admin.revoke(f.tenant, id, systemActor))).toBe('GRANT_NOT_FOUND')
   })
 
   it('exempts only the canonical administrator from the eligibility check', async () => {
@@ -868,7 +867,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       [f.tenant, pretender, f.typeAdmin],
     )
     const tenantWide = (userId: string, roleId: string) =>
-      admin.grant(f.tenant, { userId, roleId, target: { kind: 'tenant' } })
+      admin.grant(f.tenant, { userId, roleId, target: { kind: 'tenant' } }, systemActor)
 
     // a system key alone buys nothing: the role admits administrators only
     expect(await outcome(tenantWide(f.student, pretender))).toEqual({
@@ -878,14 +877,14 @@ describe.runIf(postgresAvailable)('rbac', () => {
     // and the same role to a user type it does admit goes through, which is
     // what proves the refusal was about eligibility
     const allowed = await tenantWide(f.admin, pretender)
-    await admin.revoke(f.tenant, allowed)
+    await admin.revoke(f.tenant, allowed, systemActor)
 
     // the canonical administrator declares no eligible user types at all and
     // is still grantable: it is how a tenant is recovered
     expect((await admin.getRole(f.tenant, f.tenantAdminRole)).allowed_user_types).toEqual([])
     const recovery = await tenantWide(f.student, f.tenantAdminRole)
     expect(await orpcCode(rbac.require(principal(f.student), 'test.role.manage'))).toBe('ok')
-    await admin.revoke(f.tenant, recovery)
+    await admin.revoke(f.tenant, recovery, systemActor)
 
     // the exemption is from eligibility and nothing else: a non-canonical
     // system role still has to declare who may hold it
@@ -902,7 +901,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
   it('requires a complete role before it can be activated', async () => {
     const admin = administration()
     const activate = (id: string) =>
-      versionOf(id).then((version) => admin.setRoleStatus(f.tenant, id, 'active', version))
+      versionOf(id).then((version) => admin.setRoleStatus(f.tenant, id, 'active', version, systemActor))
 
     // a role that grants nothing and a role nobody qualifies for are both
     // indistinguishable from a misconfiguration
@@ -919,8 +918,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       f.tenant,
       built.reviewer,
       ['test.report.read'],
-      await versionOf(built.reviewer),
-    )
+      await versionOf(built.reviewer), systemActor,)
     // a tenant role needs eligible user types too: leaving that set empty is
     // what let the grant check skip it entirely
     expect(await outcome(activate(built.reviewer))).toEqual({
@@ -946,8 +944,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       f.tenant,
       built.auditor,
       ['test.audit.read'],
-      await versionOf(built.auditor),
-    )
+      await versionOf(built.auditor), systemActor,)
     expect(await outcome(activate(built.auditor))).toEqual({
       code: 'ROLE_INCOMPLETE',
       data: { missing: ['user-types', 'org-types'] },
@@ -974,10 +971,10 @@ describe.runIf(postgresAvailable)('rbac', () => {
     // a stale editor must not silently undo a change made after it read, and
     // asking for the state a row is already in spends nothing
     const settled = await versionOf(built.auditor)
-    expect(await outcome(admin.setRoleStatus(f.tenant, built.auditor, 'active', settled - 1))).toEqual(
+    expect(await outcome(admin.setRoleStatus(f.tenant, built.auditor, 'active', settled - 1, systemActor))).toEqual(
       { code: 'ROLE_VERSION_CONFLICT', data: { currentVersion: settled } },
     )
-    expect(await admin.setRoleStatus(f.tenant, built.auditor, 'active', settled)).toBe(settled)
+    expect(await admin.setRoleStatus(f.tenant, built.auditor, 'active', settled, systemActor)).toBe(settled)
   })
 
   it('refuses to strand the holders of a role whose eligibility narrows', async () => {
@@ -991,7 +988,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.manager,
       roleId: built.reviewer,
       target: { kind: 'tenant' },
-    })
+    }, systemActor)
     expect(
       await outcome(
         admin.syncRoleEligibility(
@@ -1039,7 +1036,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       { userTypeIds: [f.typeFaculty], orgTypeIds: [f.collegeType, f.otherType] },
       await versionOf(f.managerRole),
     )
-    await admin.revoke(f.tenant, held)
+    await admin.revoke(f.tenant, held, systemActor)
   })
 
   it('offers only the roles the write would accept', async () => {
@@ -1052,7 +1049,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
             node === undefined
               ? { kind: 'tenant' }
               : { kind: 'org-node', orgNodeId: node, coverage: 'self' },
-        })
+        }, systemActor)
       ).map((role) => role.code)
 
     // the student qualifies for the auditor role at a college and for
@@ -1076,11 +1073,11 @@ describe.runIf(postgresAvailable)('rbac', () => {
     expect(await domainCode(admin.grantOptions(f.tenant, {
       userId: randomUUID(),
       target: { kind: 'tenant' },
-    }))).toBe('GRANT_USER_NOT_FOUND')
+    }, systemActor))).toBe('GRANT_USER_NOT_FOUND')
     expect(await domainCode(admin.grantOptions(f.tenant, {
       userId: f.manager,
       target: { kind: 'org-node', orgNodeId: randomUUID(), coverage: 'self' },
-    }))).toBe('GRANT_NODE_NOT_FOUND')
+    }, systemActor))).toBe('GRANT_NODE_NOT_FOUND')
   })
 
   it('administers roles without letting the tenant lock itself out', async () => {
@@ -1090,7 +1087,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
     // the administrator role is immutable where it matters
     expect(
       await domainCode(
-        admin.setRoleStatus(f.tenant, canonical.id, 'disabled', canonical.version),
+        admin.setRoleStatus(f.tenant, canonical.id, 'disabled', canonical.version, systemActor),
       ),
     ).toBe('ROLE_IS_SYSTEM')
     expect(await domainCode(admin.deleteRole(f.tenant, canonical.id, canonical.version))).toBe(
@@ -1102,7 +1099,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       ),
     ).toBe('ROLE_IS_SYSTEM')
     expect(
-      await domainCode(admin.syncRolePermissions(f.tenant, canonical.id, [], canonical.version)),
+      await domainCode(admin.syncRolePermissions(f.tenant, canonical.id, [], canonical.version, systemActor)),
     ).toBe('ROLE_IS_SYSTEM')
     expect(
       await domainCode(
@@ -1134,8 +1131,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
           f.tenant,
           f.managerRole,
           ['test.role.manage'],
-          await versionOf(f.managerRole),
-        ),
+          await versionOf(f.managerRole), systemActor,),
       ),
     ).toEqual({ code: 'ROLE_TARGET_MISMATCH', data: { permissions: ['test.role.manage'] } })
     expect(
@@ -1144,8 +1140,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
           f.tenant,
           f.managerRole,
           ['nobody.declared.this'],
-          await versionOf(f.managerRole),
-        ),
+          await versionOf(f.managerRole), systemActor,),
       ),
     ).toEqual({ code: 'PERMISSION_NOT_FOUND', data: { permissions: ['nobody.declared.this'] } })
 
@@ -1155,8 +1150,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       f.tenant,
       f.managerRole,
       ['test.tree.manage'],
-      before,
-    )
+      before, systemActor,)
     expect(after).toBeGreaterThan(before)
     expect((await admin.getRole(f.tenant, f.managerRole)).permissions).toEqual(['test.tree.manage'])
     expect(await rbac.canAt(principal(f.manager), 'test.user.manage', f.college)).toBe(false)
@@ -1164,14 +1158,13 @@ describe.runIf(postgresAvailable)('rbac', () => {
       f.tenant,
       f.managerRole,
       ['test.tree.manage', 'test.user.manage'],
-      await versionOf(f.managerRole),
-    )
+      await versionOf(f.managerRole), systemActor,)
     expect(await rbac.canAt(principal(f.manager), 'test.user.manage', f.college)).toBe(true)
 
     // an active role may not be emptied: it would be live and grant nothing
     expect(
       await outcome(
-        admin.syncRolePermissions(f.tenant, f.managerRole, [], await versionOf(f.managerRole)),
+        admin.syncRolePermissions(f.tenant, f.managerRole, [], await versionOf(f.managerRole), systemActor),
       ),
     ).toEqual({ code: 'ROLE_INCOMPLETE', data: { missing: ['permissions'] } })
 
@@ -1243,7 +1236,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.binder,
       roleId: f.managerRole,
       target: { kind: 'org-node', orgNodeId: f.otherCollege, coverage: 'self' },
-    })
+    }, systemActor)
     // and one below the college, so a self anchor and a subtree anchor give
     // visibly different answers
     const classRole = await activeRole({
@@ -1258,7 +1251,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.student,
       roleId: classRole,
       target: { kind: 'org-node', orgNodeId: f.class1, coverage: 'self' },
-    })
+    }, systemActor)
     const anchored = (coverage: 'self' | 'subtree') => ({
       read: { tenantWide: false, anchors: [{ orgNodeId: f.college, coverage }] },
       manage: { tenantWide: false, anchors: [] },
@@ -1317,8 +1310,8 @@ describe.runIf(postgresAvailable)('rbac', () => {
         (row) => row.id,
       ),
     ).toEqual([])
-    await admin.revoke(f.tenant, elsewhere)
-    await admin.revoke(f.tenant, below)
+    await admin.revoke(f.tenant, elsewhere, systemActor)
+    await admin.revoke(f.tenant, below, systemActor)
   })
 
   it("keeps a role definition inside the author's own permissions", async () => {
@@ -1335,7 +1328,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.binder,
       roleId: built.authorKit,
       target: { kind: 'tenant' },
-    })
+    }, systemActor)
     const author = principal(f.binder)
 
     built.delegate = await admin.createRole(f.tenant, {
@@ -1376,8 +1369,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       f.tenant,
       built.delegate,
       ['test.report.read', 'test.role.manage'],
-      await versionOf(built.delegate),
-    )
+      await versionOf(built.delegate), systemActor,)
     expect(
       await domainCode(
         admin.setRoleStatus(
@@ -1419,7 +1411,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.binder,
       roleId: grantDesk,
       target: { kind: 'org-node', orgNodeId: f.college, coverage: 'subtree' },
-    })
+    }, systemActor)
     // and one capability held at the college itself and nowhere below it
     const narrow = await activeRole({
       code: 'narrow-tree',
@@ -1433,7 +1425,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.binder,
       roleId: narrow,
       target: { kind: 'org-node', orgNodeId: f.college, coverage: 'self' },
-    })
+    }, systemActor)
     const tutor = await activeRole({
       code: 'tutor',
       name: 'Tutor',
@@ -1476,7 +1468,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
     // being allowed to edit someone's grants says nothing about how much
     // power you may put in them, and the reverse holds as well: the reach of
     // the grant itself is checked before the role it carries
-    await admin.revoke(f.tenant, narrowGrant)
+    await admin.revoke(f.tenant, narrowGrant, systemActor)
     expect(
       await domainCode(
         admin.grant(
@@ -1508,7 +1500,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       granter,
     )
 
-    for (const id of [same, audited, wide, delegated]) await admin.revoke(f.tenant, id)
+    for (const id of [same, audited, wide, delegated]) await admin.revoke(f.tenant, id, systemActor)
   })
 
   it('reserves the canonical administrator role for its own holders', async () => {
@@ -1527,7 +1519,7 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.manager,
       roleId: desk,
       target: { kind: 'tenant' },
-    })
+    }, systemActor)
     const promote = (actor: string) =>
       admin.grant(
         f.tenant,
@@ -1544,22 +1536,22 @@ describe.runIf(postgresAvailable)('rbac', () => {
     await admin.revoke(f.tenant, promoted, principal(f.manager))
     // and having given it up they cannot take it back
     expect(await domainCode(promote(f.manager))).toBe('TENANT_ADMIN_REQUIRED')
-    await admin.revoke(f.tenant, deskGrant)
+    await admin.revoke(f.tenant, deskGrant, systemActor)
   })
 
   it('protects the last tenant administrator', async () => {
     const admin = administration()
     const promote = (userId: string) =>
-      admin.grant(f.tenant, { userId, roleId: f.tenantAdminRole, target: { kind: 'tenant' } })
+      admin.grant(f.tenant, { userId, roleId: f.tenantAdminRole, target: { kind: 'tenant' } }, systemActor)
 
-    expect(await domainCode(admin.revoke(f.tenant, f.adminGrant))).toBe('LAST_ADMINISTRATOR')
+    expect(await domainCode(admin.revoke(f.tenant, f.adminGrant, systemActor))).toBe('LAST_ADMINISTRATOR')
     // a second administrator makes removal legal again
     const second = await promote(f.manager)
-    await admin.revoke(f.tenant, f.adminGrant)
+    await admin.revoke(f.tenant, f.adminGrant, systemActor)
     // and the survivor is protected in turn
-    expect(await domainCode(admin.revoke(f.tenant, second))).toBe('LAST_ADMINISTRATOR')
+    expect(await domainCode(admin.revoke(f.tenant, second, systemActor))).toBe('LAST_ADMINISTRATOR')
     f.adminGrant = await promote(f.admin)
-    await admin.revoke(f.tenant, second)
+    await admin.revoke(f.tenant, second, systemActor)
     expect(await orpcCode(rbac.require(principal(f.manager), 'test.role.manage'))).toBe('FORBIDDEN')
   })
 
@@ -1596,11 +1588,11 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.manager,
       roleId: built.reviewer,
       target: { kind: 'tenant' },
-    })
+    }, systemActor)
     await db.query(`update user_types set allow_local_login = false where id = $1`, [f.typeAdmin])
-    expect(await domainCode(administration().revoke(f.tenant, spare))).toBe('LAST_ADMINISTRATOR')
+    expect(await domainCode(administration().revoke(f.tenant, spare, systemActor))).toBe('LAST_ADMINISTRATOR')
     await db.query(`update user_types set allow_local_login = true where id = $1`, [f.typeAdmin])
-    await administration().revoke(f.tenant, spare)
+    await administration().revoke(f.tenant, spare, systemActor)
   })
 
   it('serializes concurrent administrator revocations', async () => {
@@ -1612,9 +1604,9 @@ describe.runIf(postgresAvailable)('rbac', () => {
       userId: f.manager,
       roleId: f.tenantAdminRole,
       target: { kind: 'tenant' },
-    })
+    }, systemActor)
     const results = await Promise.allSettled(
-      [f.adminGrant, second].map((id) => admin.revoke(f.tenant, id)),
+      [f.adminGrant, second].map((id) => admin.revoke(f.tenant, id, systemActor)),
     )
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)

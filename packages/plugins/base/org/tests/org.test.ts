@@ -8,6 +8,7 @@ import Rbac from '@qualy/plugin-rbac'
 import Auth from '@qualy/plugin-auth'
 import { isAccessDeniedError, isDomainError, type DomainError } from '@qualy/api-contract'
 import Org from '../src/index.ts'
+import { systemActor } from '@qualy/rbac-contract/testkit'
 
 // The database belongs to the database plugin here: this suite decides what
 // sql to run and which plugins to assemble, not who owns the pool.
@@ -134,11 +135,11 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
     httpBase = `http://127.0.0.1:${db.ctx.server.port}/api`
 
     // types and rules through the real service (university -> college -> class)
-    f.universityType = (await tree().createType(f.tenant, { code: 'university', name: '大学' })).id
-    f.collegeType = (await tree().createType(f.tenant, { code: 'college', name: '学院' })).id
-    f.classType = (await tree().createType(f.tenant, { code: 'class', name: '班级' })).id
-    await tree().putRule(f.tenant, f.universityType, f.collegeType)
-    await tree().putRule(f.tenant, f.collegeType, f.classType)
+    f.universityType = (await tree().createType(f.tenant, { code: 'university', name: '大学' }, systemActor)).id
+    f.collegeType = (await tree().createType(f.tenant, { code: 'college', name: '学院' }, systemActor)).id
+    f.classType = (await tree().createType(f.tenant, { code: 'class', name: '班级' }, systemActor)).id
+    await tree().putRule(f.tenant, f.universityType, f.collegeType, systemActor)
+    await tree().putRule(f.tenant, f.collegeType, f.classType, systemActor)
 
     f.root = await insertRoot(f.tenant, f.universityType, 'A 大学')
     f.collegeA = (
@@ -147,21 +148,21 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
         orgTypeId: f.collegeType,
         name: '软件学院',
         code: 'software',
-      })
+      }, systemActor)
     ).id
     f.collegeB = (
       await tree().createNode(f.tenant, {
         parentId: f.root,
         orgTypeId: f.collegeType,
         name: '理学院',
-      })
+      }, systemActor)
     ).id
     f.class1 = (
       await tree().createNode(f.tenant, {
         parentId: f.collegeA,
         orgTypeId: f.classType,
         name: '软件2301',
-      })
+      }, systemActor)
     ).id
 
     // principals: admin (tenant-admin at root), manager (org role on
@@ -245,7 +246,7 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
           parentId: f.root,
           orgTypeId: f.classType,
           name: '违规班级',
-        }),
+        }, systemActor),
       ),
     ).toBe('ORG_NODE_RULE_VIOLATION')
     // duplicate sibling name
@@ -255,7 +256,7 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
           parentId: f.root,
           orgTypeId: f.collegeType,
           name: '软件学院',
-        }),
+        }, systemActor),
       ),
     ).toBe('ORG_NODE_CONFLICT')
     // unknown parent / unknown type
@@ -265,7 +266,7 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
           parentId: randomUUID(),
           orgTypeId: f.collegeType,
           name: 'X',
-        }),
+        }, systemActor),
       ),
     ).toBe('ORG_NODE_NOT_FOUND')
     // a second root cannot even be expressed through the api (parentId is
@@ -283,43 +284,43 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
   })
 
   it('keeps the type rule graph acyclic', async () => {
-    expect(await orgCode(tree().putRule(f.tenant, f.collegeType, f.collegeType))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.collegeType, f.collegeType, systemActor))).toBe(
       'ORG_RULE_INVALID',
     )
     // direct back edge: college -> university while university -> college exists
-    expect(await orgCode(tree().putRule(f.tenant, f.collegeType, f.universityType))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.collegeType, f.universityType, systemActor))).toBe(
       'ORG_RULE_CYCLE',
     )
     // transitive back edge: class -> university closes a 3-cycle
-    expect(await orgCode(tree().putRule(f.tenant, f.classType, f.universityType))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.classType, f.universityType, systemActor))).toBe(
       'ORG_RULE_CYCLE',
     )
     // the pair identifies the rule, so putting it again converges instead of
     // reporting a conflict
-    expect(await orgCode(tree().putRule(f.tenant, f.universityType, f.collegeType))).toBe('ok')
+    expect(await orgCode(tree().putRule(f.tenant, f.universityType, f.collegeType, systemActor))).toBe('ok')
     // unknown type
-    expect(await orgCode(tree().putRule(f.tenant, f.universityType, randomUUID()))).toBe(
+    expect(await orgCode(tree().putRule(f.tenant, f.universityType, randomUUID(), systemActor))).toBe(
       'ORG_TYPE_NOT_FOUND',
     )
   })
 
   it('protects the root from move and delete', async () => {
-    expect(await orgCode(tree().moveNode(f.tenant, f.root, f.collegeA))).toBe('ORG_NODE_IS_ROOT')
-    expect(await orgCode(tree().deleteNode(f.tenant, f.root))).toBe('ORG_NODE_IS_ROOT')
+    expect(await orgCode(tree().moveNode(f.tenant, f.root, f.collegeA, systemActor))).toBe('ORG_NODE_IS_ROOT')
+    expect(await orgCode(tree().deleteNode(f.tenant, f.root, systemActor))).toBe('ORG_NODE_IS_ROOT')
     // renaming the root is business as usual
-    const renamed = await tree().updateNode(f.tenant, f.root, { name: 'A 大学(改)' })
+    const renamed = await tree().updateNode(f.tenant, f.root, { name: 'A 大学(改)' }, systemActor)
     expect(renamed.name).toBe('A 大学(改)')
   })
 
   it('rejects self moves and moves into the own subtree', async () => {
-    expect(await orgCode(tree().moveNode(f.tenant, f.collegeA, f.collegeA))).toBe(
+    expect(await orgCode(tree().moveNode(f.tenant, f.collegeA, f.collegeA, systemActor))).toBe(
       'ORG_NODE_INVALID_MOVE',
     )
-    expect(await orgCode(tree().moveNode(f.tenant, f.collegeA, f.class1))).toBe(
+    expect(await orgCode(tree().moveNode(f.tenant, f.collegeA, f.class1, systemActor))).toBe(
       'ORG_NODE_INVALID_MOVE',
     )
     // move without a matching rule: class under university root
-    expect(await orgCode(tree().moveNode(f.tenant, f.class1, f.root))).toBe(
+    expect(await orgCode(tree().moveNode(f.tenant, f.class1, f.root, systemActor))).toBe(
       'ORG_NODE_RULE_VIOLATION',
     )
   })
@@ -327,15 +328,15 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
   it('rewrites path and depth for the whole subtree on move', async () => {
     // a campus level between root and college gives the move real depth:
     // moving collegeA (with class1 inside) from the root under campus1
-    const campus = await tree().createType(f.tenant, { code: 'campus', name: '校区' })
-    await tree().putRule(f.tenant, f.universityType, campus.id)
-    await tree().putRule(f.tenant, campus.id, f.collegeType)
+    const campus = await tree().createType(f.tenant, { code: 'campus', name: '校区' }, systemActor)
+    await tree().putRule(f.tenant, f.universityType, campus.id, systemActor)
+    await tree().putRule(f.tenant, campus.id, f.collegeType, systemActor)
     const campus1 = await tree().createNode(f.tenant, {
       parentId: f.root,
       orgTypeId: campus.id,
       name: '东校区',
-    })
-    const moved = await tree().moveNode(f.tenant, f.collegeA, campus1.id)
+    }, systemActor)
+    const moved = await tree().moveNode(f.tenant, f.collegeA, campus1.id, systemActor)
     expect(moved.parent_id).toBe(campus1.id)
     expect(moved.depth).toBe(2)
     expect(moved.path).toBe(`${campus1.path}.${f.collegeA.replaceAll('-', '')}`)
@@ -346,13 +347,13 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
     expect(class1?.path).toBe(`${moved.path}.${f.class1.replaceAll('-', '')}`)
     await assertTreeConsistent()
     // move back and verify the projection again
-    const back = await tree().moveNode(f.tenant, f.collegeA, f.root)
+    const back = await tree().moveNode(f.tenant, f.collegeA, f.root, systemActor)
     expect(back.depth).toBe(1)
     await assertTreeConsistent()
-    await tree().deleteNode(f.tenant, campus1.id)
-    await tree().deleteRule(f.tenant, f.universityType, campus.id)
-    await tree().deleteRule(f.tenant, campus.id, f.collegeType)
-    await tree().deleteType(f.tenant, campus.id)
+    await tree().deleteNode(f.tenant, campus1.id, systemActor)
+    await tree().deleteRule(f.tenant, f.universityType, campus.id, systemActor)
+    await tree().deleteRule(f.tenant, campus.id, f.collegeType, systemActor)
+    await tree().deleteType(f.tenant, campus.id, systemActor)
   })
 
   it('serializes concurrent writes that would corrupt the tree together', async () => {
@@ -360,11 +361,11 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
     // the door a cross move would need is concurrent rule creation: two
     // reverse rules whose cycle checks each miss the other. The tenant lock
     // serializes them and exactly one survives.
-    const x = await tree().createType(f.tenant, { code: 'cycle-x', name: '环X' })
-    const y = await tree().createType(f.tenant, { code: 'cycle-y', name: '环Y' })
+    const x = await tree().createType(f.tenant, { code: 'cycle-x', name: '环X' }, systemActor)
+    const y = await tree().createType(f.tenant, { code: 'cycle-y', name: '环Y' }, systemActor)
     const rules = await Promise.allSettled([
-      tree().putRule(f.tenant, x.id, y.id),
-      tree().putRule(f.tenant, y.id, x.id),
+      tree().putRule(f.tenant, x.id, y.id, systemActor),
+      tree().putRule(f.tenant, y.id, x.id, systemActor),
     ])
     expect(rules.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     const lost = rules.find((result) => result.status === 'rejected') as PromiseRejectedResult
@@ -376,14 +377,14 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
       parentId: f.collegeA,
       orgTypeId: f.classType,
       name: '并发目标',
-    })
+    }, systemActor)
     const outcome = await Promise.allSettled([
       tree().createNode(f.tenant, {
         parentId: doomed.id,
         orgTypeId: f.classType,
         name: '孤儿候选',
-      }),
-      tree().deleteNode(f.tenant, doomed.id),
+      }, systemActor),
+      tree().deleteNode(f.tenant, doomed.id, systemActor),
     ])
     // the create can fail on rule or parent, the delete on children; the
     // invariant is that create-child and delete-parent never both succeed
@@ -392,22 +393,22 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
     await db.query(`delete from org_nodes where name in ('孤儿候选', '并发目标')`)
     const cleanup =
       rules[0].status === 'fulfilled'
-        ? tree().deleteRule(f.tenant, x.id, y.id)
-        : tree().deleteRule(f.tenant, y.id, x.id)
+        ? tree().deleteRule(f.tenant, x.id, y.id, systemActor)
+        : tree().deleteRule(f.tenant, y.id, x.id, systemActor)
     await cleanup
-    await tree().deleteType(f.tenant, x.id)
-    await tree().deleteType(f.tenant, y.id)
+    await tree().deleteType(f.tenant, x.id, systemActor)
+    await tree().deleteType(f.tenant, y.id, systemActor)
   })
 
   it('validates parent, children and assignments on type change', async () => {
     // parent rule: collegeA under root cannot become a class
-    expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeA, f.classType))).toBe(
+    expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeA, f.classType, systemActor))).toBe(
       'ORG_NODE_RULE_VIOLATION',
     )
     // children rule: allow university -> class, then collegeA (with class1
     // child) still fails because class -> class is not allowed
-    await tree().putRule(f.tenant, f.universityType, f.classType)
-    expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeA, f.classType))).toBe(
+    await tree().putRule(f.tenant, f.universityType, f.classType, systemActor)
+    expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeA, f.classType, systemActor))).toBe(
       'ORG_NODE_RULE_VIOLATION',
     )
     // assignment rule: collegeB has no children, but give it an org-manager
@@ -417,61 +418,61 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.managerRole, f.collegeB],
     )
-    expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeB, f.classType))).toBe(
+    expect(await orgCode(tree().changeNodeType(f.tenant, f.collegeB, f.classType, systemActor))).toBe(
       'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
     )
     await db.query(`delete from role_grants where org_node_id = $1`, [f.collegeB])
     // now the change works both ways
-    await tree().changeNodeType(f.tenant, f.collegeB, f.classType)
-    await tree().changeNodeType(f.tenant, f.collegeB, f.collegeType)
-    await tree().deleteRule(f.tenant, f.universityType, f.classType)
+    await tree().changeNodeType(f.tenant, f.collegeB, f.classType, systemActor)
+    await tree().changeNodeType(f.tenant, f.collegeB, f.collegeType, systemActor)
+    await tree().deleteRule(f.tenant, f.universityType, f.classType, systemActor)
   })
 
   it('protects nodes and types that are still in use on delete', async () => {
-    expect(await orgCode(tree().deleteNode(f.tenant, f.collegeA))).toBe('ORG_NODE_HAS_CHILDREN')
+    expect(await orgCode(tree().deleteNode(f.tenant, f.collegeA, systemActor))).toBe('ORG_NODE_HAS_CHILDREN')
     // class1 carries the student user through the restrict fk
-    expect(await orgCode(tree().deleteNode(f.tenant, f.class1))).toBe('ORG_NODE_IN_USE')
+    expect(await orgCode(tree().deleteNode(f.tenant, f.class1, systemActor))).toBe('ORG_NODE_IN_USE')
     // assignments anchor collegeA even without users
     const empty = await tree().createNode(f.tenant, {
       parentId: f.collegeA,
       orgTypeId: f.classType,
       name: '空班级',
-    })
+    }, systemActor)
     await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self')`,
       [f.tenant, f.manager, f.managerRole, empty.id],
     )
-    expect(await orgCode(tree().deleteNode(f.tenant, empty.id))).toBe('ORG_NODE_IN_USE')
+    expect(await orgCode(tree().deleteNode(f.tenant, empty.id, systemActor))).toBe('ORG_NODE_IN_USE')
     await db.query(`delete from role_grants where org_node_id = $1`, [empty.id])
-    await tree().deleteNode(f.tenant, empty.id)
+    await tree().deleteNode(f.tenant, empty.id, systemActor)
 
     // types: in use by nodes, then by rules, then by role allowed lists
-    expect(await orgCode(tree().deleteType(f.tenant, f.collegeType))).toBe('ORG_TYPE_IN_USE')
-    const spare = await tree().createType(f.tenant, { code: 'spare', name: '备用类型' })
-    await tree().putRule(f.tenant, f.universityType, spare.id)
-    expect(await orgCode(tree().deleteType(f.tenant, spare.id))).toBe('ORG_TYPE_IN_USE')
-    await tree().deleteRule(f.tenant, f.universityType, spare.id)
+    expect(await orgCode(tree().deleteType(f.tenant, f.collegeType, systemActor))).toBe('ORG_TYPE_IN_USE')
+    const spare = await tree().createType(f.tenant, { code: 'spare', name: '备用类型' }, systemActor)
+    await tree().putRule(f.tenant, f.universityType, spare.id, systemActor)
+    expect(await orgCode(tree().deleteType(f.tenant, spare.id, systemActor))).toBe('ORG_TYPE_IN_USE')
+    await tree().deleteRule(f.tenant, f.universityType, spare.id, systemActor)
     await db.query(
       `insert into role_allowed_org_types (tenant_id, role_id, org_type_id) values ($1, $2, $3)`,
       [f.tenant, f.managerRole, spare.id],
     )
-    expect(await orgCode(tree().deleteType(f.tenant, spare.id))).toBe('ORG_TYPE_IN_USE')
+    expect(await orgCode(tree().deleteType(f.tenant, spare.id, systemActor))).toBe('ORG_TYPE_IN_USE')
     await db.query(`delete from role_allowed_org_types where org_type_id = $1`, [spare.id])
-    await tree().deleteType(f.tenant, spare.id)
+    await tree().deleteType(f.tenant, spare.id, systemActor)
 
     // rules: an existing parent-child node pair blocks the rule delete
-    expect(await orgCode(tree().deleteRule(f.tenant, f.collegeType, f.classType))).toBe(
+    expect(await orgCode(tree().deleteRule(f.tenant, f.collegeType, f.classType, systemActor))).toBe(
       'ORG_RULE_IN_USE',
     )
-    expect(await orgCode(tree().deleteRule(f.tenant, f.classType, f.collegeType))).toBe(
+    expect(await orgCode(tree().deleteRule(f.tenant, f.classType, f.collegeType, systemActor))).toBe(
       'ORG_RULE_NOT_FOUND',
     )
   })
 
   it('keeps tenants isolated at the service level', async () => {
     expect(await orgCode(tree().getSubtree(f.tenantB, f.collegeA))).toBe('ORG_NODE_NOT_FOUND')
-    expect(await orgCode(tree().moveNode(f.tenantB, f.collegeA, f.rootB))).toBe(
+    expect(await orgCode(tree().moveNode(f.tenantB, f.collegeA, f.rootB, systemActor))).toBe(
       'ORG_NODE_NOT_FOUND',
     )
   })
@@ -558,7 +559,7 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
     // browser formats the count into its own locale. collegeB needs a legal
     // target type (university -> class) so the check reaches the assignment
     // rule instead of failing on the parent rule first.
-    await tree().putRule(f.tenant, f.universityType, f.classType)
+    await tree().putRule(f.tenant, f.universityType, f.classType, systemActor)
     const guarded = await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, $4, 'self') returning id`,
@@ -584,7 +585,7 @@ describe.runIf(postgresAvailable)('org tree domain', () => {
       expect(payload.message).not.toMatch(/\d/)
     } finally {
       await db.query(`delete from role_grants where id = $1`, [idOf(guarded)])
-      await tree().deleteRule(f.tenant, f.universityType, f.classType)
+      await tree().deleteRule(f.tenant, f.universityType, f.classType, systemActor)
     }
     const missing = await call('DELETE', `/org/nodes/${randomUUID()}`, undefined, admin)
     expect(missing.status).toBe(403)

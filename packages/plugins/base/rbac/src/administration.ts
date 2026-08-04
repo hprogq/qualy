@@ -4,13 +4,18 @@ import { AccessDeniedError, isAccessDeniedError, isDomainError } from '@qualy/ap
 import type {} from '@qualy/plugin-database'
 import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
 import {
+  isSystemActor,
   isCanonicalTenantAdmin,
   scopeCoverage,
   type AuthorizationScope,
   type GrantTarget,
   type Principal,
   type RbacDbHandle,
+  type SystemActor,
 } from '@qualy/rbac-contract'
+
+/** a real principal whose authority is checked, or the trusted caller */
+type Actor = Principal | SystemActor
 import { REACH_RANK, REACHES_EVERY_NODE, type Authorization } from './authorization.ts'
 import { assertGrantEligible } from './eligibility.ts'
 import { assertMayDefineRole, assertMayGrantRole } from './escalation.ts'
@@ -209,7 +214,7 @@ export class Administration {
     roleId: string,
     status: 'active' | 'disabled',
     expectedVersion: number,
-    actor?: Principal,
+    actor: Actor,
   ): Promise<number> {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
@@ -295,7 +300,7 @@ export class Administration {
     roleId: string,
     codes: readonly string[],
     expectedVersion: number,
-    actor?: Principal,
+    actor: Actor,
   ): Promise<number> {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
@@ -642,7 +647,7 @@ export class Administration {
   async grantOptions(
     tenantId: string,
     request: { userId: string; target: GrantTarget },
-    actor?: Principal,
+    actor: Actor,
   ): Promise<{ id: string; code: string; name: string; kind: 'tenant' | 'org' }[]> {
     // Asked once, up front, so a request naming somebody who is not there
     // gets told so. Per-candidate probing treats every refusal alike, and a
@@ -703,7 +708,7 @@ export class Administration {
   grant(
     tenantId: string,
     input: { userId: string; roleId: string; target: GrantTarget },
-    actor?: Principal,
+    actor: Actor,
   ): Promise<string> {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
@@ -723,7 +728,7 @@ export class Administration {
     })
   }
 
-  revoke(tenantId: string, grantId: string, actor?: Principal): Promise<void> {
+  revoke(tenantId: string, grantId: string, actor: Actor): Promise<void> {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const grant = (
@@ -755,10 +760,10 @@ export class Administration {
   // strong a role you may put in them.
   private async assertMayAdministerGrantsAt(
     tx: Tx,
-    actor: Principal | undefined,
+    actor: Actor,
     target: GrantTarget,
   ) {
-    if (!actor) return
+    if (isSystemActor(actor)) return
     if (target.kind === 'tenant') {
       const codes = await this.authorization.effectiveCodes(actor, undefined, tx)
       if (!codes.has('iam.tenant-grant.manage')) {
@@ -783,11 +788,11 @@ export class Administration {
   // permission, and it must not be a route to becoming superuser.
   private async assertMayAdministerRole(
     tx: Tx,
-    actor: Principal | undefined,
+    actor: Actor,
     tenantId: string,
     roleId: string,
   ) {
-    if (!actor) return
+    if (isSystemActor(actor)) return
     const role = (
       await tx.execute<{ system_key: string | null }>(sql`
         select system_key from roles where tenant_id = ${tenantId} and id = ${roleId}`)

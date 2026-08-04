@@ -226,6 +226,29 @@ describe('test layering', () => {
     expect(offenders).toEqual([])
   })
 
+  it('leaves no way to be trusted by omission', () => {
+    // authorization used to be skippable by forgetting an argument: the actor
+    // was optional and the in-lock checks opened with an early return when it
+    // was absent. No production call site forgot, but the type allowed it and
+    // the tests depended on it, so authorization was skippable for test
+    // convenience. A caller that forgets and a caller that is trusted must not
+    // look the same.
+    const services = walk('packages/plugins').filter((file) => !isTestFile(file))
+    const offenders = breaches(services, [
+      { pattern: /\bactor\?:\s*Principal/, why: 'declares an optional actor' },
+      { pattern: /\bas\?:\s*Principal/, why: 'declares an optional actor' },
+      // a BARE return is the dangerous one: it skips the check. Returning a
+      // value is a decision, and `if (!principal) return { permissions: none }`
+      // denies an anonymous viewer rather than waving them through
+      { pattern: /if \(!actor\)\s*return\s*$/m, why: 'skips the check when the actor is absent' },
+      {
+        pattern: /if \(!principal\)\s*return\s*$/m,
+        why: 'skips the check when the principal is absent',
+      },
+    ])
+    expect(offenders).toEqual([])
+  })
+
   it('keeps the testkit out of production code', () => {
     // a testkit is a plugin's own test surface, not a back door into it: no
     // production entry point, assembly or service may reach for one

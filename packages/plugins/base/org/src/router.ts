@@ -155,8 +155,8 @@ export function createOrgRouter(ctx: Context, service: OrgTreeService) {
         context.principal.tenantId,
         input.nodeId,
         input.parentId,
-        input.sortOrder,
         context.principal,
+        input.sortOrder,
       )
       return { node: toNodeDto(node) }
     }),

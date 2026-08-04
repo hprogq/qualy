@@ -11,6 +11,7 @@ import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { placementPolicy } from '../src/iam/contract.ts'
 import { IamService } from '../src/iam/service.ts'
 import { createIdentityRouter } from '../src/iam/router.ts'
+import { systemActor } from '@qualy/rbac-contract/testkit'
 
 describe.runIf(postgresAvailable)('identity administration', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
@@ -288,7 +289,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Auditor One',
       userTypeId: auditorType,
       primaryOrgNodeId: f.college,
-    })
+    }, systemActor)
     const asAuditor = { tenantId: f.tenant, userId: auditor, sessionId: 'auditor' }
     expect(await ctx.rbac.getProfile(asAuditor)).toEqual({
       tenantPermissions: [],
@@ -338,7 +339,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       userTypeId: f.staffType,
       primaryOrgNodeId: f.college,
       businessNo: 'B-1001',
-    })
+    }, systemActor)
     expect(id).toBeTruthy()
     expect(
       await code(
@@ -347,7 +348,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           userTypeId: f.staffType,
           primaryOrgNodeId: f.college,
           businessNo: 'B-1001',
-        }),
+        }, systemActor),
       ),
     ).toBe('USER_CONFLICT')
     // a node of another tenant simply does not exist here
@@ -357,7 +358,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           displayName: 'Nowhere',
           userTypeId: f.staffType,
           primaryOrgNodeId: randomUUID(),
-        }),
+        }, systemActor),
       ),
     ).toBe('USER_PLACEMENT_NOT_FOUND')
     // a disabled type cannot receive new people. The type has to be an empty
@@ -375,7 +376,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           displayName: 'Too late',
           userTypeId: retired,
           primaryOrgNodeId: f.college,
-        }),
+        }, systemActor),
       ),
     ).toBe('USER_TYPE_DISABLED')
     // and a populated one cannot be disabled at all
@@ -406,7 +407,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Intern One',
       userTypeId: internType,
       primaryOrgNodeId: f.classNode,
-    })
+    }, systemActor)
     expect(intern).toBeTruthy()
     // and one it does not
     expect(
@@ -415,13 +416,13 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           displayName: 'Intern Two',
           userTypeId: internType,
           primaryOrgNodeId: f.college,
-        }),
+        }, systemActor),
       ),
     ).toBe('USER_TYPE_PLACEMENT_NOT_ALLOWED')
 
     // a transfer re-decides it: the person would land where their kind may
     // not stand
-    expect(await code(iam.setUserPlacement(f.tenant, intern, f.college))).toBe(
+    expect(await code(iam.setUserPlacement(f.tenant, intern, f.college, systemActor))).toBe(
       'USER_TYPE_PLACEMENT_NOT_ALLOWED',
     )
     expect((await iam.getUser(asAdmin(), intern)).primary_org_node_id).toBe(f.classNode)
@@ -432,16 +433,16 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Staff At College',
       userTypeId: f.staffType,
       primaryOrgNodeId: f.college,
-    })
-    expect(await code(iam.updateUser(f.tenant, atCollege, { userTypeId: internType }))).toBe(
+    }, systemActor)
+    expect(await code(iam.updateUser(f.tenant, atCollege, { userTypeId: internType }, systemActor))).toBe(
       'USER_TYPE_PLACEMENT_NOT_ALLOWED',
     )
     const atClass = await iam.createUser(f.tenant, {
       displayName: 'Staff At Class',
       userTypeId: f.staffType,
       primaryOrgNodeId: f.classNode,
-    })
-    await iam.updateUser(f.tenant, atClass, { userTypeId: internType })
+    }, systemActor)
+    await iam.updateUser(f.tenant, atClass, { userTypeId: internType }, systemActor)
     expect((await iam.getUser(asAdmin(), atClass)).user_type_code).toBe('intern')
 
     await deleteUsers([intern, atCollege, atClass])
@@ -458,12 +459,12 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Contractor College',
       userTypeId: contractorType,
       primaryOrgNodeId: f.college,
-    })
+    }, systemActor)
     const atClass = await iam.createUser(f.tenant, {
       displayName: 'Contractor Class',
       userTypeId: contractorType,
       primaryOrgNodeId: f.classNode,
-    })
+    }, systemActor)
 
     // one of the two stands outside the proposed list, and the count says so
     // without naming who
@@ -497,7 +498,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           displayName: 'Contractor Root',
           userTypeId: contractorType,
           primaryOrgNodeId: f.root,
-        }),
+        }, systemActor),
       ),
     ).toBe('USER_TYPE_PLACEMENT_NOT_ALLOWED')
 
@@ -510,7 +511,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Contractor Root',
       userTypeId: contractorType,
       primaryOrgNodeId: f.root,
-    })
+    }, systemActor)
     expect(atRoot).toBeTruthy()
 
     await deleteUsers([atCollege, atClass, atRoot])
@@ -548,7 +549,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
             displayName: 'Hermit One',
             userTypeId: hermitType,
             primaryOrgNodeId: node,
-          }),
+          }, systemActor),
         ),
       ).toBe('USER_TYPE_PLACEMENT_NOT_ALLOWED')
     }
@@ -566,14 +567,14 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           displayName: 'Second Recovery',
           userTypeId: f.systemType,
           primaryOrgNodeId: f.college,
-        }),
+        }, systemActor),
       ),
     ).toBe('USER_TYPE_PLACEMENT_NOT_ALLOWED')
     const atRoot = await iam.createUser(f.tenant, {
       displayName: 'Second Recovery',
       userTypeId: f.systemType,
       primaryOrgNodeId: f.root,
-    })
+    }, systemActor)
     expect(atRoot).toBeTruthy()
     await db.query(`delete from users where id = $1`, [atRoot])
 
@@ -606,25 +607,25 @@ describe.runIf(postgresAvailable)('identity administration', () => {
   it('freezes the recovery account against ordinary administration', async () => {
     // retyping it to something ordinary would drop the root-only placement
     // and the guaranteed sign-in channel while keeping every grant it holds
-    expect(await code(iam.updateUser(f.tenant, f.recovery, { userTypeId: f.staffType }))).toBe(
+    expect(await code(iam.updateUser(f.tenant, f.recovery, { userTypeId: f.staffType }, systemActor))).toBe(
       'SYSTEM_ACCOUNT_PROTECTED',
     )
     // "another administrator survives" is not the same as "the tenant can
     // still recover itself"
-    expect(await code(iam.setUserEnabled(f.tenant, f.recovery, false))).toBe(
+    expect(await code(iam.setUserEnabled(f.tenant, f.recovery, false, systemActor))).toBe(
       'SYSTEM_ACCOUNT_PROTECTED',
     )
-    expect(await code(iam.setUserPlacement(f.tenant, f.recovery, f.college))).toBe(
+    expect(await code(iam.setUserPlacement(f.tenant, f.recovery, f.college, systemActor))).toBe(
       'SYSTEM_ACCOUNT_PROTECTED',
     )
     // its display fields are not frozen: only its type, status and placement
-    await iam.updateUser(f.tenant, f.recovery, { displayName: 'Recovery Renamed' })
+    await iam.updateUser(f.tenant, f.recovery, { displayName: 'Recovery Renamed' }, systemActor)
     const stored = await iam.getUser(asAdmin(), f.recovery)
     expect(stored.display_name).toBe('Recovery Renamed')
     expect(stored.user_type_id).toBe(f.systemType)
     expect(stored.enabled).toBe(true)
     expect(stored.primary_org_node_id).toBe(f.root)
-    await iam.updateUser(f.tenant, f.recovery, { displayName: 'Recovery' })
+    await iam.updateUser(f.tenant, f.recovery, { displayName: 'Recovery' }, systemActor)
   })
 
   it('versions the user type row as a whole', async () => {
@@ -694,12 +695,12 @@ describe.runIf(postgresAvailable)('identity administration', () => {
     // org-manager and user-viewer both allow staff only, so moving the
     // manager to another type would leave those grants held by somebody the
     // roles do not admit
-    expect(await fault(iam.updateUser(f.tenant, f.manager, { userTypeId: guestType }))).toEqual({
+    expect(await fault(iam.updateUser(f.tenant, f.manager, { userTypeId: guestType }, systemActor))).toEqual({
       code: 'GRANT_INCOMPATIBLE',
       data: { grantCount: 2 },
     })
     // an unrelated field still updates
-    await iam.updateUser(f.tenant, f.manager, { displayName: 'Manager Renamed' })
+    await iam.updateUser(f.tenant, f.manager, { displayName: 'Manager Renamed' }, systemActor)
     const users = await list(asAdmin(), { orgNodeId: f.college, scope: 'self' })
     expect(users.find((user) => user.id === f.manager)?.display_name).toBe('Manager Renamed')
 
@@ -722,7 +723,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           .count,
       ),
     ).toBe(1)
-    await iam.setUserEnabled(f.tenant, f.manager, false)
+    await iam.setUserEnabled(f.tenant, f.manager, false, systemActor)
     // access ends now, not when the session happens to expire
     expect(
       Number(
@@ -730,7 +731,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           .count,
       ),
     ).toBe(0)
-    await iam.setUserEnabled(f.tenant, f.manager, true)
+    await iam.setUserEnabled(f.tenant, f.manager, true, systemActor)
   })
 
   it('intersects a subtree request with the reader’s own coverage', async () => {
@@ -740,7 +741,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Class Member',
       userTypeId: f.staffType,
       primaryOrgNodeId: f.classNode,
-    })
+    }, systemActor)
     // the admin holds the canonical role, which reaches every node
     const wide = await list(asAdmin(), { orgNodeId: f.college, scope: 'subtree' })
     expect(wide.map((user) => user.id)).toContain(below)
@@ -872,7 +873,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
           displayName: `Paged ${index}`,
           userTypeId: f.staffType,
           primaryOrgNodeId: f.college,
-        }),
+        }, systemActor),
       )
     }
     const query = { orgNodeId: f.college, scope: 'self' as const, search: 'Paged' }
@@ -908,7 +909,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Lab One',
       userTypeId: labType,
       primaryOrgNodeId: f.classNode,
-    })
+    }, systemActor)
     // org asks before it retypes a node: the people standing there do not
     // move, so the ground changing under them strands them
     expect(await iam.usersBlockingOrgType(f.tenant, f.classNode, f.classType)).toBe(0)
@@ -1023,7 +1024,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
   it('never lets the tenant lose its last administrator', async () => {
     // the admin is the only holder of the canonical role; the recovery
     // account is an identity, not an authority, and holds nothing
-    expect(await code(iam.setUserEnabled(f.tenant, f.admin, false))).toBe('LAST_ADMINISTRATOR')
+    expect(await code(iam.setUserEnabled(f.tenant, f.admin, false, systemActor))).toBe('LAST_ADMINISTRATOR')
     // and the type they sign in through cannot be disabled while anyone
     // holds it: that revokes sign-in for every holder without ending a
     // single session
@@ -1052,16 +1053,16 @@ describe.runIf(postgresAvailable)('identity administration', () => {
       displayName: 'Second Admin',
       userTypeId: f.staffType,
       primaryOrgNodeId: f.root,
-    })
+    }, systemActor)
     await db.query(
       `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
        values ($1, $2, $3, null, null)`,
       [f.tenant, second, f.tenantAdminRole],
     )
-    await iam.setUserEnabled(f.tenant, f.admin, false)
+    await iam.setUserEnabled(f.tenant, f.admin, false, systemActor)
     // and the survivor becomes the one protected
-    expect(await code(iam.setUserEnabled(f.tenant, second, false))).toBe('LAST_ADMINISTRATOR')
-    await iam.setUserEnabled(f.tenant, f.admin, true)
+    expect(await code(iam.setUserEnabled(f.tenant, second, false, systemActor))).toBe('LAST_ADMINISTRATOR')
+    await iam.setUserEnabled(f.tenant, f.admin, true, systemActor)
   })
 
   it('serializes concurrent attempts to disable the last administrators', async () => {
@@ -1077,7 +1078,7 @@ describe.runIf(postgresAvailable)('identity administration', () => {
     // both disabled at once: the tenant row lock serializes them, so exactly
     // one succeeds and an administrator always survives
     const results = await Promise.allSettled(
-      holders.map((userId) => iam.setUserEnabled(f.tenant, userId, false)),
+      holders.map((userId) => iam.setUserEnabled(f.tenant, userId, false, systemActor)),
     )
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     const left = (

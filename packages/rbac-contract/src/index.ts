@@ -5,6 +5,7 @@
 import type {} from 'cordis'
 
 export { accessInvariantErrors } from './errors.ts'
+export { isSystemActor, type SystemActor } from './system-actor.ts'
 export { scopeCoverage } from './scope.ts'
 export {
   CANONICAL_ADMIN_ROLE,

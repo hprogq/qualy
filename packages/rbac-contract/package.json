@@ -7,7 +7,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./effect": "./src/effect.ts"
+    "./effect": "./src/effect.ts",
+    "./testkit": "./src/testkit.ts"
   },
   "peerDependencies": {
     "cordis": "catalog:",

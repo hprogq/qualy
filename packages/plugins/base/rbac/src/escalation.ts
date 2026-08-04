@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm'
-import type { GrantTarget, Principal, RbacDbHandle } from '@qualy/rbac-contract'
+import {
+  isSystemActor,
+  type GrantTarget,
+  type Principal,
+  type RbacDbHandle,
+  type SystemActor,
+} from '@qualy/rbac-contract'
+
+/** a real principal whose authority is checked, or the trusted caller */
+type Actor = Principal | SystemActor
 import { REACH_RANK, type Authorization, type Reach } from './authorization.ts'
 import { accessErrors } from './errors.ts'
 
@@ -52,11 +61,11 @@ export async function rolePermissionCodes(
 // authority at one college would not justify a role usable across the tenant.
 export async function assertMayDefineRole(
   authorization: Authorization,
-  actor: Principal | undefined,
+  actor: Actor,
   codes: readonly string[],
   handle: RbacDbHandle,
 ): Promise<void> {
-  if (!actor || codes.length === 0) return
+  if (isSystemActor(actor) || codes.length === 0) return
   const held = await authorization.effectiveCodes(actor, undefined, handle)
   const beyond = [...new Set(codes)].filter((code) => !held.has(code))
   if (beyond.length === 0) return
@@ -71,13 +80,13 @@ export async function assertMayDefineRole(
 // put in them.
 export async function assertMayGrantRole(
   authorization: Authorization,
-  actor: Principal | undefined,
+  actor: Actor,
   tenantId: string,
   roleId: string,
   target: GrantTarget,
   handle: RbacDbHandle,
 ): Promise<void> {
-  if (!actor) return
+  if (isSystemActor(actor)) return
   const { codes, allActive } = await rolePermissionCodes(handle, tenantId, roleId)
   const escape = target.kind === 'tenant' ? TENANT_BIND : ORG_BIND
 

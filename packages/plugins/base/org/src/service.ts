@@ -5,7 +5,21 @@ import { createConstraintTranslator } from '@qualy/plugin-database/pg-errors'
 // only while both packages compile in one program. Compiled alone, the call to
 // iam.usersBlockingOrgType below loses its type entirely.
 import type {} from '@qualy/plugin-auth'
-import type { AuthorizationScope, Principal } from '@qualy/rbac-contract'
+import {
+  isSystemActor,
+  type AuthorizationScope,
+  type Principal,
+  type SystemActor,
+} from '@qualy/rbac-contract'
+
+/**
+ * Who is asking.
+ *
+ * A real principal, whose authority is checked, or the trusted caller, which
+ * only a testkit can produce. There is no third case: an omitted argument used
+ * to mean trusted, which made forgetting indistinguishable from being allowed.
+ */
+type Actor = Principal | SystemActor
 import { orgErrors } from './errors.ts'
 import {
   deleteNode,
@@ -181,11 +195,11 @@ export class OrgTreeService {
   // system-level call (seed, cross-plugin service use).
   private async assertManages(
     tx: OrgTx,
-    principal: Principal | undefined,
+    principal: Actor,
     tenantId: string,
     nodes: readonly { node: NodeRow; wholeSubtree?: boolean }[],
   ): Promise<void> {
-    if (!principal) return
+    if (isSystemActor(principal)) return
     const scope = await this.resolveScope(tx, tenantId, principal, 'org.tree.manage')
     for (const { node, wholeSubtree } of nodes) {
       const allowed = wholeSubtree ? subtreeCoveredBy(scope, node) : coveredBy(scope, node)
@@ -306,10 +320,10 @@ export class OrgTreeService {
   // lock, so re-validate on the locked connection like every node write
   private async assertManagesRoot(
     tx: OrgTx,
-    principal: Principal | undefined,
+    principal: Actor,
     tenantId: string,
   ): Promise<void> {
-    if (!principal) return
+    if (isSystemActor(principal)) return
     const root = await getRoot(tx, tenantId)
     if (!root) throw orgErrors.create('ORG_NODE_NOT_FOUND', 'tenant has no root node')
     await this.assertManages(tx, principal, tenantId, [{ node: root }])
@@ -318,7 +332,7 @@ export class OrgTreeService {
   createNode(
     tenantId: string,
     input: { parentId: string; orgTypeId: string; name: string; code?: string; sortOrder?: number },
-    as?: Principal,
+    as: Actor,
   ): Promise<NodeRow> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
@@ -347,7 +361,7 @@ export class OrgTreeService {
     tenantId: string,
     nodeId: string,
     fields: { name?: string; sortOrder?: number },
-    as?: Principal,
+    as: Actor,
   ): Promise<NodeRow> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
@@ -363,7 +377,7 @@ export class OrgTreeService {
     tenantId: string,
     nodeId: string,
     newTypeId: string,
-    as?: Principal,
+    as: Actor,
   ): Promise<NodeRow> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
@@ -413,12 +427,14 @@ export class OrgTreeService {
     })
   }
 
+  // the actor sits ahead of the optional ordering hint: who is asking is not
+  // a trailing detail, and a required parameter cannot follow an optional one
   moveNode(
     tenantId: string,
     nodeId: string,
     newParentId: string,
+    as: Actor,
     newSortOrder?: number,
-    as?: Principal,
   ): Promise<NodeRow> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
@@ -466,7 +482,7 @@ export class OrgTreeService {
     })
   }
 
-  deleteNode(tenantId: string, nodeId: string, as?: Principal): Promise<void> {
+  deleteNode(tenantId: string, nodeId: string, as: Actor): Promise<void> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
       const node = await getNode(tx, tenantId, nodeId)
@@ -489,7 +505,7 @@ export class OrgTreeService {
   createType(
     tenantId: string,
     input: { code: string; name: string; sortOrder?: number },
-    as?: Principal,
+    as: Actor,
   ) {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
@@ -507,7 +523,7 @@ export class OrgTreeService {
     tenantId: string,
     typeId: string,
     fields: { name?: string; sortOrder?: number },
-    as?: Principal,
+    as: Actor,
   ) {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
@@ -519,7 +535,7 @@ export class OrgTreeService {
     })
   }
 
-  deleteType(tenantId: string, typeId: string, as?: Principal): Promise<void> {
+  deleteType(tenantId: string, typeId: string, as: Actor): Promise<void> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
       await this.assertManagesRoot(tx, as, tenantId)
@@ -545,7 +561,7 @@ export class OrgTreeService {
     tenantId: string,
     parentTypeId: string,
     childTypeId: string,
-    as?: Principal,
+    as: Actor,
   ): Promise<void> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
@@ -570,7 +586,7 @@ export class OrgTreeService {
     tenantId: string,
     parentTypeId: string,
     childTypeId: string,
-    as?: Principal,
+    as: Actor,
   ): Promise<void> {
     return this.write(async (tx) => {
       await lockTenant(tx, tenantId)
