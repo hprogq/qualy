@@ -10,6 +10,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./assembly": "./src/assembly/index.ts",
+    "./effect": "./src/effect/index.ts",
     "./migrator": "./src/migrator.ts",
     "./pg-errors": "./src/pg-errors.ts",
     "./testkit": "./src/testkit.ts"
@@ -18,9 +19,11 @@
     "cordis": "catalog:"
   },
   "dependencies": {
+    "@effect/sql-pg": "catalog:",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "pg": "catalog:",
     "zod": "catalog:"
   },
@@ -34,6 +37,9 @@
     "capabilityProvider": {
       "key": "database",
       "entry": "./assembly"
+    },
+    "runtime": {
+      "entry": "./effect"
     }
   }
 }

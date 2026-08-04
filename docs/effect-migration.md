@@ -39,7 +39,7 @@ Agent 检索纪律在 [agents/effect-source-policy.md](agents/effect-source-poli
 | M0.5 | vendored 上游源码 + Agent 检索纪律 + 对齐门禁 | **完成** |
 | M1a | 技术验证 spike:**数据库**(真实 schema + 事务 + 关闭) | **完成** |
 | M1b | 技术验证 spike:**HttpApi**(endpoint + client + Scalar + Query 适配) | **完成** |
-| M2 | Effect 应用外壳(config/logger/database/readiness/根 Scope/优雅关闭) | 待办 |
+| M2 | Effect 应用外壳(config/database/readiness/根 Scope/优雅关闭/runtime.gen.ts) | **完成** |
 | M3 | HttpApi 基础 + 类型化 client + TanStack Query 适配,先迁 ping | 待办 |
 | M4 | 最难的业务集群:auth/IAM + rbac + org | 待办 |
 | M5 | 其余插件,按依赖簇而不是按目录 | 待办 |
@@ -148,6 +148,28 @@ pgvector 不在验收范围内:全仓 schema 没有任何 vector 列,lineage 里
 - HttpApi middleware 与认证 principal 注入,M3 做
 - 浏览器里跑 `@effect/vitest`(上游没有 browser mode 的证据),M6 前要确认
 
+## M2 实测结果(2026-08-05,`packages/app/tests/effect-shell.test.ts`)
+
+跑起来了:`pnpm dev:effect` 与 `pnpm dev` **并存**,前者服务 `/health/live`、`/health/ready`、
+`/openapi.json`、`/docs`,后者不受影响(实跑,零 `[E]`)。
+
+| 属性 | 结果 |
+| --- | --- |
+| 端口是否等依赖建完才绑 | **是**。layer 建成之前 `/health/live` 连不上(不是 503,是拒绝连接) |
+| 一次 close 是否同时释放 server 与池 | **是**,端口不可达且连接回到基线 |
+| 数据库落后于 lineage | **拒绝装配**。`migrations: 'off'` + 空台账 → layer 构建失败为 `MigrationsBehind`,**server layer 根本没建**,端口不存在 |
+| SIGTERM | 进程退出、端口释放、无残留 listener(实测) |
+| `runtime.gen.ts` | 从 lock 生成,静态 import 各插件 `layer` 再 `Layer.mergeAll` |
+
+### 「首个 readiness 必为 pending」这条验收要改写
+
+assembly-design 阶段 2 写的是「首个 readiness 必为 pending」。那是 cordis 的形状:server 早早绑端口,
+装配还在继续,所以需要一个门去挡。静态 Layer 图里**这个窗口不存在**——绑端口的 layer 在它依赖的
+layer 之后才建,所以编排器看到的是「拒绝连接 → 可用实例」,而不是「503 → 200」。
+
+新的等价验收是:**依赖没建好之前端口不存在**(已实测)。readiness 端点保留,但它回答的是
+「现在还连得上数据库吗」,而不是「装配完了吗」。
+
 ## 已知的硬骨头
 
 ### 1. 跨插件环必须真的拆开
@@ -225,7 +247,10 @@ OpenAPI 语义审查、前端 chunk/tree-shaking 审查,以及三条零容忍:
 
 ## 决定了但还没做的
 
-- `runtime.gen.ts` 的确切形状(M2 定,替换 `cordis.gen.yml`)
+- ~~`runtime.gen.ts` 的确切形状~~ M2 已定:静态 import + `Layer.mergeAll`,插件用
+  `qualy.runtime.entry` 声明入口
+- **manifest config 怎么进 layer**:M2 里 `DatabaseConfig` 由宿主提供、读环境变量,`qualy.yml` 的
+  `migrationsFolder` 暂时没接进去。等 M5 有第二个带 config 的插件再定,现在定就是照着一个样本设计
 - 运行时依赖声明落在 descriptor 还是 package.json(见「硬骨头 2」)
 - `@qualy/api` / `@qualy/api-client` 包边界(M3 定)
 - Zod → Effect Schema 的迁移顺序与共存期(M3 定)

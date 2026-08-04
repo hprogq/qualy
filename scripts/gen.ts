@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { runtimePlanPathFor, writeRuntimePlan } from '@qualy/assembly'
+import { runtimePlanPathFor, writeRuntimeModule, writeRuntimePlan } from '@qualy/assembly'
 import { currentResolution } from './lib/read-entries.ts'
 
 // single generator entry: every generator runs in this process and reads the
@@ -16,6 +16,16 @@ const resolution = await currentResolution()
 const planPath = path.relative(process.cwd(), runtimePlanPathFor(resolution.manifest.source))
 console.log(
   writeRuntimePlan(planPath, resolution) ? `${planPath} written` : `${planPath} unchanged, skipped`,
+)
+
+// the same selection as a TypeScript module, for the Effect runtime. Both
+// exist while the runtime is being replaced; the cordis entry list goes when
+// cordis does.
+const modulePath = path.join(path.dirname(planPath), 'runtime.gen.ts')
+console.log(
+  writeRuntimeModule(modulePath, resolution)
+    ? `${modulePath} written`
+    : `${modulePath} unchanged, skipped`,
 )
 
 await import('./gen-contracts.ts')
