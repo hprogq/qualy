@@ -448,6 +448,12 @@ importers:
 
   packages/assembly-contract: {}
 
+  packages/auth-contract:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
+
   packages/effect-spike:
     dependencies:
       '@effect/platform-node':
@@ -990,6 +996,10 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+    devDependencies:
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../auth-contract
 
   packages/ui:
     dependencies:

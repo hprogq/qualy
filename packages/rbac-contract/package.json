@@ -16,5 +16,8 @@
   "dependencies": {
     "@qualy/api-contract": "workspace:*",
     "drizzle-orm": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/auth-contract": "workspace:*"
   }
 }
