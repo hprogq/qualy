@@ -1,7 +1,7 @@
 # Effect 迁移阶段性总结(截至 2026-08-05)
 
-> 分支 `refactor/effect-platform`(已推 origin),基线 tag `p1-capability-boundary`,17 个 commit。
-> 验收状态:`pnpm typecheck` 零错误,`pnpm test` **46 文件 317 例全过**,`pnpm build` 通过,真进程实跑正常。
+> 分支 `refactor/effect-platform`(已推 origin),基线 tag `p1-capability-boundary`,23 个 commit。
+> 验收状态:`pnpm typecheck` 零错误,`pnpm test` **47 文件 324 例全过**,`pnpm build` 通过,真进程实跑正常。
 >
 > 本文只讲**已完成什么、要点是什么**。设计与实测细节在 docs/effect-migration.md,裁决在 docs/adr/0001-0003,
 > 逐会话进度在 STATUS.md。
@@ -21,7 +21,8 @@
 | M4 CUT 1 | 权限目录改为装配期聚合 | `90e66e0` |
 | M4 CUT 2/3 | 端口包:`rbac-contract/effect` + 新建 `@qualy/auth-contract` | `6fb2217` |
 | M4 CUT 5 | UiAuthorizer 改必需服务 | `3755442` |
-| **M4 剩余** | rbac / auth / org 三个 Effect layer、API group、门禁 | **未开始** |
+| M4 审计整改 | 见第 8 节:4 个 P0 + 架构门禁 | `13a1b93` `08217f0` `7d7152b` `1d788aa` |
+| **M4 剩余** | rbac / auth / org 三个 Effect layer、API group | **未开始** |
 | M5 / M6 / M7 | 其余插件、前端切换、原子切换删 cordis 与 oRPC | 未开始 |
 
 **M4 的定位**:只**增加** Effect 路径,不删 cordis 任何东西。PermissionRegistry、oRPC router、
@@ -139,7 +140,61 @@ layer 只要 `Database`。真出现反向边时改一个包的签名即可。
 - `@effect/vitest` 在 Vitest browser mode 下能否用,**M6 之前必须确认**(上游无证据)。
 - 租户行锁有三份手写副本(auth / org / rbac),尚未漂移,是最可能的下一个漂移点。
 
-## 7. 仓库状态
+## 8. 外部审计整改(2026-08-05)
+
+一轮外部评审提了 4 个 P0 和若干 P1。**逐条实查后 4 个 P0 全部属实**,已修;P1 部分改为记录触发条件。
+
+### 8.1 `--all` 会把停用插件放进服务端路由图(P0,已修)
+
+`pnpm build` 跑 `gen.ts --all`,而 `gen-api.ts` 跟随该 flag —— 停用插件的 handler 照样生成,它的依赖
+(Database)还在,**它的接口会被真的服务**。我自己的测试还断言了这个行为,比没有测试更糟。
+
+根因是我在 M3 抄了 gen-contracts 的语义没想清楚:`--all` 对**客户端契约与 web 包**是「超集」,代价是几 KB
+不可达代码;对服务端它就是**路由图本身**。现在 gen-api 与 gen-permissions 都固定用活跃集并**忽略 `--all`**,
+另有一例断言四个服务端产物在 `--all` 前后**逐字节相同**。
+
+### 8.2 Effect 侧丢了 `/api` 外部前缀,且把 health 塞进了 openapi(P0,已修)
+
+冻结路径的真实外部地址是 `/api/ping/hello`(cordis server 的 `prefix` 默认 `/api`),而我把聚合体挂在了根上;
+同时 health 被并进 servedApi,于是探针进了生成文档——CLAUDE.md 明确要求它**在前缀之外、不进 openapi**。
+
+**这里有个坑值得记住**:`HttpApiBuilder.layer` 的路由来自 **group layer**(用插件的本地 api 建的),
+而文档来自**聚合体**。所以只给一边加前缀,会让**文档移了、路由没移**,类型系统完全看不见。
+现在两边都加,并有一例遍历文档里每条路径去 fetch,404 即失败——把插件的前缀去掉会立刻红。
+
+### 8.3 授权 actor 可选是 fail-open 形状(P0,已修)
+
+`actor?` / `as?` 在 auth、org、rbac 共 14 个方法上可选,锁内检查以 `if (!actor) return` 开头 ——
+**漏传参数 = 跳过授权**。生产调用点无一遗漏,但 66 处测试依赖它,等于「授权为了测试省事才可跳过」。
+
+改法不是导出一个谁都能构造的 SystemPrincipal:**可信是一个值,且生产拿不到它** ——
+唯一构造点在 `@qualy/rbac-contract/testkit`,而「生产代码禁止 import testkit」早有门禁。
+识别用全局 symbol(跨包实例),判定函数正常导出(**检查不是构造**)。
+另加门禁扫可选 actor 与裸 `return` 跳过;它第一次跑就误报了一处——ui-registry 给匿名访客
+`return { permissions: none }` 是**拒绝**不是跳过,于是把规则收窄到裸 return。
+
+### 8.4 Effect 启动路径没有装配校验(P0,已修)
+
+cordis 入口一直会拒绝清单/lock/条目表漂移的启动,Effect 入口**什么都不查**。现在走同一个
+`verifyAssembly`,并扩展到 Effect 读的那个生成模块。手改生成文件后 frozen 启动会拒绝(实测)。
+
+### 8.5 顺带补的三条架构门禁
+
+- **一个进程只能有一个 PgClient**:ambient transaction 全靠它,而事务 key 按 client 实例生成,
+  第二个 client 会静默把死锁放回来,**编译器两个方向都看不见**。
+- **`Effect.run*` 只许在边界**:service/repo/handler 自己跑 effect 会丢掉调用方的 fiber,
+  连带丢掉 ambient transaction、中断与错误通道。
+- **翻译的约束名必须是 lineage 真造出来的**:org 写死了 auth 与 rbac 拥有的三个 FK 名,
+  改名只会让领域错误静默退化成裸 500。以**迁移 SQL** 为准而非 schema 源码(没迁移的名字生产上照样不存在)。
+
+三条都用「故意破坏」验过会红。
+
+### 8.6 记录触发条件、暂不建的三项
+
+见 docs/effect-migration.md「审计后的裁决」:database 保持可选能力(但如实写明当前组合根要求它)、
+运行时依赖维持写具体插件 id、最小装配编译门禁等 M4 三个 layer 落地后再补(现在闭包等于全集,测不出东西)。
+
+## 9. 仓库状态
 
 - `refactor/effect-platform` 已推 origin 并设好 upstream。
 - **本地 `main` 比 `origin/main` 领先 5 个 commit**(装配阶段的工作),迁移分支包含全部这 5 个,内容没丢,
