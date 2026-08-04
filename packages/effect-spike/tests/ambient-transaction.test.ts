@@ -171,6 +171,55 @@ describe.runIf(postgresAvailable)('the transaction is ambient, not a parameter',
     }
   })
 
+  it("rolls back the caller's own write when a peer's invariant refuses it", async () => {
+    // this is the shape that actually matters: the caller writes, then a
+    // cross-plugin invariant check run by a peer rejects what it now sees, and
+    // the caller's write must not survive. On a separate connection the peer
+    // would read committed state, never see the write, and let it through.
+    const db = await createTestContext('ambient-tx-invariant')
+    try {
+      const peerRefusesIfTooMany = Effect.fn('peer.invariant')(function* () {
+        const database = yield* Database
+        const result = yield* database.execute(
+          sql`select count(*)::int as count from tenants where slug like 'invariant-%'`,
+        )
+        const count = Number((result as unknown as { rows: Array<{ count: number }> }).rows[0]!.count)
+        // the peer sees the caller's uncommitted row, which is the point
+        if (count > 0) return yield* new Abandoned()
+      })
+
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const database = yield* Database
+          const attempt = yield* Effect.result(
+            database.transaction((tx) =>
+              Effect.gen(function* () {
+                yield* tx.insert(tenants).values({ slug: 'invariant-x', name: 'invariant x' })
+                yield* peerRefusesIfTooMany()
+              }),
+            ),
+          )
+          const result = yield* database.execute(
+            sql`select count(*)::int as count from tenants where slug = 'invariant-x'`,
+          )
+          return {
+            refused: attempt._tag === 'Failure',
+            survivors: Number(
+              (result as unknown as { rows: Array<{ count: number }> }).rows[0]!.count,
+            ),
+          }
+        }),
+      )
+      const { refused, survivors } = expectSuccess(exit)
+      // the peer saw it, so it refused; and the refusal took the write with it
+      expect(refused).toBe(true)
+      expect(survivors).toBe(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('nests as a savepoint, so a peer can fail without losing the caller', async () => {
     const db = await createTestContext('ambient-tx-savepoint')
     try {
