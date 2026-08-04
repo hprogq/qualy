@@ -325,7 +325,15 @@ describe.runIf(postgresAvailable)('effect-postgres against the real schema', () 
       // really did take it away. Asserting only the second half would pass
       // against a layer that never connected.
       expect(during).toBeGreaterThan(before)
-      expect(await connections()).toBe(before)
+      // postgres reaps a backend a moment after the client goes away, so the
+      // count is polled rather than sampled once. It still has to reach the
+      // baseline: a pool that never closed would keep failing this.
+      let settled = await connections()
+      for (let attempt = 0; attempt < 50 && settled > before; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        settled = await connections()
+      }
+      expect(settled).toBe(before)
     } finally {
       await db.dispose()
     }
