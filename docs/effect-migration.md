@@ -131,7 +131,7 @@ pgvector 不在验收范围内:全仓 schema 没有任何 vector 列,lineage 里
 | 客户端能否推导公开错误类型 | **能,而且是窄的**。端点声明 `TenantNotFound` 时,把 `SlugTaken` 赋给它的失败通道**不编译**(用 `@ts-expect-error` 双向验过:去掉就报 unused directive) |
 | 两个错误能否按 `_tag` 分辨 | 能,客户端把错误体解码回声明的那个类 |
 | OpenAPI / Scalar | 同一份定义产出 `/openapi.json` 与 `/docs`,真实 server 上都是 200 |
-| cookie session | `HttpApiSecurity.apiKey({ in: 'cookie' })` + `HttpApiBuilder.securitySetCookie`,方案存在(本次只声明,未跑通完整登录流) |
+| cookie session | **跑通了**,见下面「cookie 会话与 middleware」一节 |
 | 一个 Scope 同时关 server 与池 | **是**。真 Node server + 真池,`Scope.close` 之后端口不可达且连接回到基线 |
 | TanStack Query 保留 `E` | **保留**。适配层把 `E` 带进 `TError`,赋给别的错误类型不编译 |
 | 取消 → interruption | **是**。`runPromise` 原生收 `AbortSignal`;拆掉这座桥,取消测试立刻失败(实测) |
@@ -142,10 +142,27 @@ pgvector 不在验收范围内:全仓 schema 没有任何 vector 列,lineage 里
 它是基础设施而不是业务结果,所以 `Effect.orDie` 变成 defect 与 500。同一个失败在 oRPC 下是一个
 未声明的 throw,类型里没有任何痕迹。
 
+### cookie 会话与 middleware(2026-08-05 补验,`packages/effect-spike/tests/session.test.ts`,4 例)
+
+M1b 当时只声明没跑通,现在跑通了,**真 server 而不是内存 client**(要测的是 `Set-Cookie` 与浏览器
+自己的 cookie 处理,内存传输测不到):
+
+- `POST /session` 用 `HttpApiBuilder.securitySetCookie` 下发 cookie,实测带 `HttpOnly` 与 `Secure`,
+  **token 不出现在响应体里**
+- `GET /session/me` 挂 `.middleware(Authenticate)`,middleware 解出 cookie 后
+  `Effect.provideService(httpEffect, Principal, ...)`,**handler 既不读 cookie 也不重复查一次**
+- 无 cookie → 401 且响应体是 `{_tag: 'Unauthorized'}`;伪造 cookie → 401
+- OpenAPI 里 `securitySchemes.session = {type: apiKey, in: cookie, name: qualy_session}`,
+  且只挂在需要它的 endpoint 上(不需要的那个是 `security: []`,不是没有这个键)
+
+**形状上要记住的一条**:middleware 的 handler **包住下游 effect**(`(httpEffect, { credential })`),
+不是返回一个值——它决定要不要继续,并把 principal 提供进接下来运行的东西。而且 **middleware layer
+由用它的 group 提供**(`group.pipe(Layer.provide(authLayer))`),不是并列提供,否则 group 可以在
+没有认证的情况下被接上。
+
 ### M1 未覆盖(留给后续里程碑)
 
-- 完整 cookie 登录流(设置 + 读取 + 失效),M3 做
-- HttpApi middleware 与认证 principal 注入,M3 做
+- 会话失效(登出 / 过期清 cookie),随 auth 迁移一起做
 - 浏览器里跑 `@effect/vitest`(上游没有 browser mode 的证据),M6 前要确认
 
 ## M2 实测结果(2026-08-05,`packages/app/tests/effect-shell.test.ts`)
