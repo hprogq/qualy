@@ -1,13 +1,13 @@
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
-import { HttpApi, HttpApiBuilder, HttpApiClient } from 'effect/unstable/httpapi'
+import { HttpApiBuilder, HttpApiClient, HttpApiScalar, OpenApi } from 'effect/unstable/httpapi'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
-import { QUALY_API_ID } from '@qualy/api-kit'
+import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { apiHandlers } from '../api-handlers.gen.ts'
 import { healthApi, healthHandlers } from '../src/effect/health.ts'
@@ -22,12 +22,14 @@ import { healthApi, healthHandlers } from '../src/effect/health.ts'
 const port = 3198
 const base = `http://127.0.0.1:${port}`
 
-const servedApi = HttpApi.make(QUALY_API_ID).addHttpApi(qualyApi).addHttpApi(healthApi)
+const spec = `${QUALY_API_PREFIX}/openapi.json` as const
 
 const shell = (url: string) =>
   HttpRouter.serve(
-    HttpApiBuilder.layer(servedApi, { openapiPath: '/openapi.json' }).pipe(
-      Layer.provide(Layer.mergeAll(healthHandlers, apiHandlers)),
+    Layer.mergeAll(
+      HttpApiBuilder.layer(qualyApi, { openapiPath: spec }).pipe(Layer.provide(apiHandlers)),
+      HttpApiScalar.layer(qualyApi, { path: `${QUALY_API_PREFIX}/docs` }),
+      HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
     ),
   ).pipe(
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
@@ -51,7 +53,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
     try {
       await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
 
-      const response = await fetch(`${base}/ping/hello?name=ada`)
+      const response = await fetch(`${base}${QUALY_API_PREFIX}/ping/hello?name=ada`)
       expect(response.status).toBe(200)
       expect(await response.json()).toEqual({ msg: 'hi, ada' })
 
@@ -63,10 +65,14 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       expect(logged.name).toBe('ada')
 
       // the optional parameter is genuinely optional
-      expect(await (await fetch(`${base}/ping/hello`)).json()).toEqual({ msg: 'hi, world' })
+      expect(await (await fetch(`${base}${QUALY_API_PREFIX}/ping/hello`)).json()).toEqual({
+        msg: 'hi, world',
+      })
 
-      // and health still answers from the same aggregate
+      // health answers at the root, unmoved by the business prefix, because an
+      // orchestrator probes a fixed path
       expect((await fetch(`${base}/health/live`)).status).toBe(200)
+      expect((await fetch(`${base}${QUALY_API_PREFIX}/health/live`)).status).toBe(404)
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
@@ -95,6 +101,35 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       expect(msg).toBe('hi, grace')
       // @ts-expect-error the success schema declares msg and nothing else
       expect(result.nope).toBeUndefined()
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await db.dispose()
+    }
+  })
+
+  it('serves exactly the paths its document advertises', async () => {
+    // the prefix has to be applied to the plugin's local api and to the
+    // aggregate, because routes come from the first and the document from the
+    // second. Nothing in the type system relates them, so a plugin that forgot
+    // would serve a path the document does not mention and the client would
+    // 404 against a route that looks correct.
+    const db = await createTestContext('effect-api-parity')
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
+      const document = (await (await fetch(`${base}${spec}`)).json()) as {
+        paths: Record<string, Record<string, unknown>>
+      }
+      const advertised = Object.keys(document.paths)
+      expect(advertised.length).toBeGreaterThan(0)
+      for (const path of advertised) {
+        expect(path.startsWith(QUALY_API_PREFIX), `${path} is outside the prefix`).toBe(true)
+        // a GET the document promises must not 404
+        const status = (await fetch(`${base}${path}`)).status
+        expect(status, `${path} is documented but not served`).not.toBe(404)
+      }
+      // and the probes are absent from it, as the old server guaranteed
+      expect(advertised.some((path) => path.includes('/health/'))).toBe(false)
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()

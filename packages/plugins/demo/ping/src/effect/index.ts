@@ -1,13 +1,14 @@
 import { Config, Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
-import { QUALY_API_ID } from '@qualy/api-kit'
+import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Database } from '@qualy/plugin-database/effect'
 import { pingApiGroup } from '../api.ts'
 import { pingLogs } from '../db/schema.ts'
 
 // The local API exists so this plugin can implement its group without
-// importing the aggregate that contains it; see QUALY_API_ID.
-const local = HttpApi.make(QUALY_API_ID).add(pingApiGroup)
+// importing the aggregate that contains it; see QUALY_API_ID. It carries the
+// same prefix as the aggregate because routes are built from this one.
+const local = HttpApi.make(QUALY_API_ID).add(pingApiGroup).prefix(QUALY_API_PREFIX)
 
 export const pingApiHandlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
   Effect.gen(function* () {

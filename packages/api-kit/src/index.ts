@@ -22,3 +22,19 @@
  * other silently.
  */
 export const QUALY_API_ID = 'qualy'
+
+/**
+ * Where the business API is mounted.
+ *
+ * The prefix has to be applied in two places: the local API a plugin
+ * implements against, and the aggregate that serves it. `HttpApiBuilder.layer`
+ * takes its routes from the group layer and uses the aggregate only to
+ * generate the document, so prefixing one and not the other moves the document
+ * without moving the routes. Nothing in the type system catches that, which is
+ * why there is a test asserting the served paths and the generated document
+ * agree.
+ *
+ * Health probes deliberately live outside it: they answer orchestrators, not
+ * API clients, and they stay out of the generated document.
+ */
+export const QUALY_API_PREFIX = '/api'

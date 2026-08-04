@@ -33,8 +33,9 @@ export const healthApiGroup = HttpApiGroup.make('health')
     }),
   )
 
-// built under the shared api id like any plugin's group, so it satisfies the
-// aggregate that serves it; see QUALY_API_ID
+// built under the shared api id like any plugin's group, but deliberately not
+// prefixed: an orchestrator probes a fixed path that does not move with the
+// business API, and these stay out of the generated document
 export const healthApi = HttpApi.make(QUALY_API_ID).add(healthApiGroup)
 
 export const healthHandlers = HttpApiBuilder.group(healthApi, 'health', (handlers) =>

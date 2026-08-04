@@ -53,8 +53,12 @@ describe('generator determinism', () => {
       gen(`--yml ${workspace.manifestPath} --all`)
       expect(fs.readFileSync(contractsPath, 'utf8')).toContain('pingContract')
       expect(fs.readFileSync(pluginsPath, 'utf8')).toContain('pingComponents')
-      expect(fs.readFileSync(apiPath, 'utf8')).toContain('pingApiGroup')
-      expect(fs.readFileSync(apiHandlersPath, 'utf8')).toContain('pingApiHandlers')
+      // but NOT the server's route graph. --all means "the superset" for a
+      // client contract and a web bundle, where an unreachable component costs
+      // bytes. Here it would mean a disabled plugin's endpoints are served,
+      // because its dependencies are still present and its handler still works
+      expect(fs.readFileSync(apiPath, 'utf8')).not.toContain('pingApiGroup')
+      expect(fs.readFileSync(apiHandlersPath, 'utf8')).not.toContain('pingApiHandlers')
     } finally {
       workspace.dispose()
     }
@@ -112,11 +116,11 @@ describe('generator determinism', () => {
     // handler half can be wrong on its own: a group nobody implements is a
     // route the aggregate advertises and then cannot serve
     gen()
-    const groups = [...fs.readFileSync(apiPath, 'utf8').matchAll(/^ {2}(\w+)ApiGroup,$/gm)].map(
+    const groups = [...fs.readFileSync(apiPath, 'utf8').matchAll(/^\s+(\w+)ApiGroup,$/gm)].map(
       (match) => match[1],
     )
     const handlers = [
-      ...fs.readFileSync(apiHandlersPath, 'utf8').matchAll(/^ {2}(\w+)ApiHandlers,$/gm),
+      ...fs.readFileSync(apiHandlersPath, 'utf8').matchAll(/^\s+(\w+)ApiHandlers,$/gm),
     ].map((match) => match[1])
     expect(groups.length).toBeGreaterThan(0)
     expect(handlers).toEqual(groups)

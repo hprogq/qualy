@@ -14,8 +14,14 @@ import { resolvePackageDir, resolvePluginModuleUrl } from './lib/packages.ts'
 // groups. Each `<ns>ApiGroup` export there is paired with a `<ns>ApiHandlers`
 // export from the plugin's runtime entry, so a group that nothing implements
 // is a missing import at build time rather than a 404 in production.
-
-const all = process.argv.includes('--all')
+//
+// The active set, and this generator ignores --all on purpose. That flag means
+// "the superset" for the client contract and the web bundle, where carrying a
+// disabled plugin's code costs a few unreachable bytes. Here the output IS the
+// server's route graph: a disabled plugin whose dependencies are still present
+// would have its endpoints genuinely served. Since --all reaches every
+// generator through one argv, and `pnpm build` passes it, ignoring it has to
+// be deliberate rather than inherited.
 
 const apiDeps = new Set(
   Object.keys(
@@ -33,7 +39,7 @@ const handlerImports: string[] = []
 const handlerNames: string[] = []
 const seen = new Map<string, string>()
 
-for (const entry of await readEntries({ all })) {
+for (const entry of await readEntries({ all: false })) {
   if (!entry.name.startsWith('@qualy/')) continue
   const packageDir = resolvePackageDir(entry.name)
   const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
@@ -84,14 +90,14 @@ writeGenerated(
   'packages/api/src/api.gen.ts',
   [
     "import { HttpApi } from 'effect/unstable/httpapi'",
-    "import { QUALY_API_ID } from '@qualy/api-kit'",
+    "import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'",
     ...groupImports,
     '',
     '/** every endpoint this assembly serves, as a definition a client can be built from */',
     groupNames.length > 0
-      ? `export const qualyApi = HttpApi.make(QUALY_API_ID).add(\n${groupNames
-          .map((name) => `  ${name},`)
-          .join('\n')}\n)`
+      ? `export const qualyApi = HttpApi.make(QUALY_API_ID)\n  .add(\n${groupNames
+          .map((name) => `    ${name},`)
+          .join('\n')}\n  )\n  .prefix(QUALY_API_PREFIX)`
       : 'export const qualyApi = HttpApi.make(QUALY_API_ID)',
   ].join('\n'),
 )
