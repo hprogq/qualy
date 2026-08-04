@@ -244,7 +244,8 @@
 
 ## Effect 迁移(分支 refactor/effect-platform,进行中)
 
-设计与实测全记在 **docs/effect-migration.md**,决策在 docs/adr/0001-0003。这里只记进度与交接。
+阶段性总结与要点在 **docs/reports/effect-migration-progress.md**(已完成什么、机制结论、被否掉的方案、
+待办与风险);设计与实测细节在 **docs/effect-migration.md**;决策在 docs/adr/0001-0003。这里只记进度与交接。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |

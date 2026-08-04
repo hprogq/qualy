@@ -8,6 +8,9 @@ Agent 检索纪律在 [agents/effect-source-policy.md](agents/effect-source-poli
 原始讨论存档:`docs/effect-refactor-chat.txt`。本文件与它冲突时以本文件为准(下面「与存档讨论的
 偏离」一节列出所有偏离及理由)。
 
+> 阶段性总结(已完成什么、要点、被否掉的方案、待办)见
+> **docs/reports/effect-migration-progress.md**。本文管设计与实测细节。
+
 ## 分支与基线
 
 - 基线 tag:`p1-capability-boundary`(commit `5edcd26`,装配阶段 1 + 1.5 收官)
