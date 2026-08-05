@@ -22,7 +22,7 @@ import { Org, layer as orgLayer } from '../src/server/index.ts'
 // before anything is written, so it would give the same answer on a separate
 // connection, and each refusal returns before the update rather than rolling
 // one back. That property is proved where a write precedes the question, in
-// auth's placement suite and packages/effect-spike/tests/ambient-transaction.
+// auth's placement suite.
 
 const catalog: readonly ActivePermission[] = [
   { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },

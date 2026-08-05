@@ -71,7 +71,8 @@ export type RbacFailure = AccessDenied
  * transaction so the check would land on the locked connection; the connection
  * now travels in the fiber, so a call made inside a transaction joins it by
  * construction rather than by remembering to pass an argument. Verified in
- * packages/effect-spike/tests/ambient-transaction.test.ts.
+ * packages/plugins/base/auth/tests/effect-placement.test.ts, where a peer's
+ * refusal rolls back the caller's uncommitted write.
  *
  * No definePermissions either: the catalog is resolved from the manifest and
  * handed to rbac rather than pushed into it by whoever happens to load.

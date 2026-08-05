@@ -263,9 +263,6 @@ describe('test layering', () => {
     const production = walk('packages')
       .concat(walk('apps'))
       .filter((file) => !isTestFile(file))
-      // the spike is scratch work with its own throwaway client, and goes when
-      // the milestone that created it does
-      .filter((file) => !posix(file).startsWith('packages/effect-spike/'))
       .filter((file) => !posix(file).startsWith(`${OWNS_CONNECTIONS}/`))
     const offenders = breaches(production, [
       { pattern: /PgClient\.(?:layer|make|makeWithDefaults)/, why: 'builds its own database client' },
@@ -297,7 +294,6 @@ describe('test layering', () => {
     const production = walk('packages')
       .concat(walk('apps'))
       .filter((file) => !isTestFile(file))
-      .filter((file) => !posix(file).startsWith('packages/effect-spike/'))
       // A testkit is a test boundary that happens to live in src/, and the
       // next test is what keeps it out of production: no production module is
       // allowed to import one, so running effects here reaches no shipped path.
