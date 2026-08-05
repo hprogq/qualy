@@ -257,7 +257,7 @@
 | — | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足** | 603f7ad |
 | M3 | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client | 本次 |
 | M4 | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | **55/55 路由已迁完** |
-| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | 待办(dict / web / api-reference) |
+| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | api-reference / dict 完成,**web 待办** |
 | M6 | 前端切到 HttpApiClient | 待办 |
 | M7 | 原子切换,删掉 cordis 与 oRPC | 待办 |
 
@@ -292,7 +292,20 @@ SIGTERM 后端口释放。冻结路径 `GET /ping/hello` 未变,`api-surface.tes
 - **已知 flake(与本次改动无关)**:`packages/plugins/infra/database/tests/lifecycle.test.ts` 在 init
   失败后立刻断言 `pg_stat_activity` 为空,postgres 不保证那么快更新该视图。
 
-**下一步是 M5**(dict / plugin-web / api-reference),以及 M6 前必须确认的:`@effect/vitest` 在
+**M5 进展**:判据是「描述符还是资源」,不是「cordis 里有没有 Service」。
+- **api-reference 不需要插件层**:上游自带 `HttpApiScalar.layer`(inline source,不走 CDN),文档本来就由宿主
+  提供;它缺的是 exposure 那个决定,而那是**宿主的 setup 声明**——没有任何东西依赖这个答案。已修:
+  Effect 侧原先**无条件**同时提供 Scalar 与 openapi.json,生产环境等于把 API 参考公开出去。
+  现在 `QUALY_API_DOCS` = auto(默认,非生产才开)/ off / public,且 spec 与 docs 一起开关
+  ——只藏文档却照发它渲染用的 spec 等于什么都没藏。三种设置都在真进程上验过。
+- **dict 不需要 Effect entry**:它今天贡献的全部是装配期读取、不需要构造的描述符(一个 schemaEntry)。
+  理由写在文件里,免得下一个人「因为原来有个 Service」给它补一个。
+- **plugin-web 还没迁**,它是真资源(拥有 Vite dev server 的生命周期 + 一个 Connect 风格 fallback)。
+  阻塞点已知:dev 模式要把 Vite 的 `middlewareMode: { server }` 挂到宿主那个 `http.Server` 实例上
+  (HMR websocket 共端口),而 Effect 侧那个实例归 `NodeHttpServer.layer` 所有——**先去上游确认怎么取到它**,
+  不要凭记忆猜。
+
+**下一步是 plugin-web**,以及 M6 前必须确认的:`@effect/vitest` 在
 Vitest browser mode 下能否用(上游无证据)。**建议在 M5 之前先跑一轮逐方法审计**:第一轮审计在 11 条
 路由上查出 12 个确认缺陷(含 1 个安全缺陷),现在是 55 条。
 
