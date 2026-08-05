@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     "./schema": "./src/db/schema.ts",
+    "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
@@ -19,7 +20,8 @@
     "contributions": {
       "database": {
         "schemaEntry": "src/db/schema.ts",
-        "baselineDir": "db/baseline"
+        "baselineDir": "db/baseline",
+        "entitiesEntry": "src/db/entities.ts"
       }
     },
     "permissions": {
@@ -45,6 +47,7 @@
     "@types/react": "catalog:"
   },
   "dependencies": {
+    "@mikro-orm/core": "catalog:",
     "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",

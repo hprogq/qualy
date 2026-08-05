@@ -7,6 +7,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { Pool } from 'pg'
 import type * as SqlError from 'effect/unstable/sql/SqlError'
 import type { EntitySchema } from '@mikro-orm/core'
+import { schemaParity as compareSchemas, type SchemaParityOptions } from './parity.ts'
 import {
   Database,
   DatabaseConfig,
@@ -433,3 +434,16 @@ export function pgCode(work: Promise<unknown>): Promise<string> {
     (error: unknown) => find(error, 0, new Set()) ?? String(error),
   )
 }
+
+/**
+ * The lineage's schema and the entities' schema, ready to be compared.
+ *
+ * Here rather than in each plugin because it needs two scratch databases, and
+ * creating those is this plugin's job in tests exactly as owning connections
+ * is in production. Returns the readings instead of asserting on them, so the
+ * failure a suite reports is a diff of catalog rows rather than a boolean.
+ */
+export const schemaParity = (options: SchemaParityOptions) =>
+  compareSchemas((label) => createTestContext(label), options)
+
+export type { SchemaParity, SchemaParityOptions } from './parity.ts'
