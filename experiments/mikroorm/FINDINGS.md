@@ -3,13 +3,13 @@
 分支 `spike/mikroorm-kysely`,连真实 PostgreSQL(不是 PGlite,不是内存桩)。
 上游依据:`repos/mikro-orm` @ v7.1.10,commit `3066827`。
 
-**目前结论:三类查询全部通过,但迁移系统四问尚未验证,因此还不能给 Go/No-Go。**
+**结论:23 个用例全绿,四问全部有答案。建议 Go,但附三个必须先接受的条件。**
 
 ---
 
 ## 一、跑了什么
 
-17 个用例全绿:7 个连库的纵向切片、7 个编译期否定实验、3 个双库对照。
+23 个用例全绿:7 个连库的纵向切片、7 个编译期否定实验、3 个双库对照、6 个 schema 生成。
 schema 用的是**产品committed lineage**(经 `@qualy/plugin-database/testkit` 应用),
 不是为 MikroORM 另建的表——所以复合租户外键、`ltree` 路径、部分唯一索引都是真的。
 
@@ -139,17 +139,72 @@ Error: Your "typeName" field references a column "org_types"."name",
 
 ---
 
-## 四、尚未验证(不能据此下结论的部分)
+## 四、迁移系统四问:全部实测
 
-裁决要求的迁移系统四问,**一个都还没做**:
+裁决要求的四问,答案都来自生成的 DDL,不是文档。
 
-1. 多插件聚合 `defineEntity`;
-2. disabled/detached 实体仍进 migration metadata(`safe: true` 只兜住「不 DROP」,
-   不解决「按 retained order 聚合」);
-3. 从当前 schema 生成的 DDL 与现有目标 schema 是否等价;
-4. `ltree` extension 能否作为 pre-schema fragment 参与 clean-room migration。
+### 1. 多插件聚合 `defineEntity` —— 成立
 
-另外未测:typecheck 耗时、冷启动耗时、迁移 diff 等价性、全量测试通过率对比。
+实体集合就是数组拼接,metadata 忠实反映传入的集合。没有隐藏的发现机制。
 
-**第 3 条是最可能否决整条路线的**——现有 lineage 有 195 条约束、57 个索引、
-复合租户外键与部分唯一索引,MikroORM 的 schema generator 能否原样表达,是没验证过的。
+### 2. disabled/detached 仍进 metadata —— **控制权留在 Qualy**
+
+MikroORM 不理解「插件被停用」,**也不需要理解**:它 diff 的 schema 就是被交给它的那个集合。
+所以现有规则原封不动地活下来——database capability 交出的是 **retained order**
+(active + disabled + detached)而不是 active 集。实测:传 retained 集,detached 插件的表在 DDL 里;
+传 active 集,那张表直接消失——在 diff 型生成器下,那就是数据被 DROP 的路径。
+
+这与现在 `schemaEntries()` 按 `state.order` 读 retained 集是同构的,不是新机制。
+
+### 3. DDL 等价 —— **全部可表达**,包括最担心的那条
+
+| 结构 | 现有数量 | MikroORM 能否生成 |
+| --- | ---: | --- |
+| check 约束 | 30 | 可,表达式原样保留 |
+| 部分唯一索引 | 8 | 可(`where code is not null`) |
+| **租户作用域复合外键** | 19 | **可**,且**约束名可指定** |
+| 数据库侧默认值 | 11 | 可(`default uuidv7()`) |
+| ltree 列 / GiST 索引 | — | 可 |
+
+约束名可指定这一条是决定性的:pg 错误按**约束名**翻译成域错误,而
+`scripts/tests/constraint-names.test.ts` 拿翻译表里的名字去比对 lineage。名字若由 ORM 自动生成
+(`org_nodes_tenant_id_org_type_id_foreign`),那 30 处翻译与这道门禁一起报废。实测
+`.foreignKeyName('fk_org_nodes_org_type')` 生成的正是原名。
+
+### 4. ltree extension —— **仍然需要 baselineDir,而且它原样可用**
+
+生成的 DDL 有 `"path" ltree not null`,**没有** `create extension ltree`。换 ORM 不改变这一点。
+好消息是 `baselineDir` 机制与 ORM 无关:它把纯 SQL 片段编进 lineage,从来不关心结构 SQL 是谁生成的。
+
+---
+
+## 五、必须记下的两个陷阱
+
+**一、`persist(false)` 会静默删掉外键。** 把一个 FK 关系标成「这列由别处管理」——对一个列已经
+以普通属性存在的外键来说,这是最自然的建模方式——生成的 DDL 里**一条 foreign key 都没有**。
+租户隔离就这么没了,没有任何警告。已固化为测试。
+
+**二、实体类型不会自己传到 Kysely,断了也不报错**(见第二节)。
+
+两个都是同一类问题:**失败是静默的,而且看起来像正确的写法**。
+
+---
+
+## 六、建议:Go,附三个条件
+
+三类查询全部通过,四问全部可表达,没有发现否决项。建议切换,但以下三条必须同时接受:
+
+1. **实体与 Kysely 的 wiring 由装配层生成,不手写。** 类型链断掉不报错、外键静默消失,
+   这两个陷阱都不该靠人记得避开。现在 `schemaEntries()` 生成 drizzle 聚合的位置,
+   改成生成 entities 元组 + 每插件的本地类型视图。
+2. **约束名全部显式指定。** 30 处约束翻译和 constraint-names 门禁依赖它们。
+3. **clean-room parity 测试先于迁移改造。** 现在那份(`clean-room-parity.test.ts`)比较的是
+   「从插件重建的 lineage」与「committed lineage」的 129 列/195 约束/57 索引/80 函数触发器。
+   迁移期间它必须一直绿,否则等于在没有对照的情况下换数据层。
+
+**行数会变多**(实测这批查询 33 → 55 行)。换来的是那 4 条查询从「TypeScript 完全不检查」
+变成「拼错任何一处都编译失败」,以及 9 份重复的 `rows<Row>()` 断言函数整类消失。
+
+### 仍未测(不影响 Go/No-Go,但迁移前该补)
+
+typecheck 耗时、冷启动耗时、全量迁移 diff 等价性(本次只验证了 org 三张表,不是全部 16 张)。
