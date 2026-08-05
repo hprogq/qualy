@@ -26,6 +26,15 @@ import {
   deleteUserTypeQuery,
   lockTenantQuery,
   rolesStrandedByUserTypeQuery,
+  deleteUserSessionsQuery,
+  grantsBlockingUserTypeQuery,
+  insertUserQuery,
+  orgNodeExistsQuery,
+  placementAllowedQuery,
+  setUserEnabledQuery,
+  setUserPlacementQuery,
+  updateUserQuery,
+  userGuardQuery,
   uuidArrayLiteral,
   placementLegal,
   setUserTypeEnabledQuery,
@@ -480,13 +489,10 @@ export class IamService {
     userTypeId: string,
     orgNodeId: string,
   ) {
-    const legal = placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)
     const row = (
-      await tx.execute<{ legal: boolean }>(sql`
-        select ${legal} as legal
-        from user_types t
-        join org_nodes n on n.tenant_id = t.tenant_id and n.id = ${orgNodeId}
-        where t.tenant_id = ${tenantId} and t.id = ${userTypeId}`)
+      await tx.execute<{ legal: boolean }>(
+        placementAllowedQuery(tenantId, userTypeId, orgNodeId),
+      )
     ).rows[0]
     if (!row) throw iamErrors.create('USER_TYPE_NOT_FOUND')
     if (row.legal) return
@@ -625,11 +631,15 @@ export class IamService {
       await this.assertMayAssignType(tx, actor, type)
       await this.requireOrgNode(tx, tenantId, input.primaryOrgNodeId)
       await this.assertPlacementAllowed(tx, tenantId, type.id, input.primaryOrgNodeId)
-      const created = await tx.execute<{ id: string }>(sql`
-        insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
-        values (${tenantId}, ${input.displayName}, ${type.id}, ${input.primaryOrgNodeId},
-          ${input.businessNo ?? null})
-        returning id`)
+      const created = await tx.execute<{ id: string }>(
+        insertUserQuery({
+          tenantId,
+          displayName: input.displayName,
+          userTypeId: type.id,
+          primaryOrgNodeId: input.primaryOrgNodeId,
+          businessNo: input.businessNo ?? null,
+        }),
+      )
       return created.rows[0]!.id
     })
   }
@@ -661,30 +671,15 @@ export class IamService {
         // on roles only narrowed this to org roles, which would have let a
         // retype strand a tenant grant instead of refusing.
         const blocking = (
-          await tx.execute<{ count: number }>(sql`
-            select count(*)::int as count
-            from role_grants g
-            where g.tenant_id = ${tenantId} and g.user_id = ${user.id}
-              and not exists (
-                select 1 from role_allowed_user_types t
-                where t.tenant_id = g.tenant_id and t.role_id = g.role_id
-                  and t.user_type_id = ${type.id})
-              and exists (
-                select 1 from roles r
-                where r.tenant_id = g.tenant_id and r.id = g.role_id
-                  and not ${canonicalTenantAdmin('r')})`)
+          await tx.execute<{ count: number }>(
+            grantsBlockingUserTypeQuery(tenantId, user.id, type.id, canonicalTenantAdmin('r')),
+          )
         ).rows[0]!.count
         if (blocking > 0) {
           throw iamErrors.create('GRANT_INCOMPATIBLE', { grantCount: blocking })
         }
       }
-      await tx.execute(sql`
-        update users set
-          display_name = coalesce(${fields.displayName ?? null}, display_name),
-          user_type_id = coalesce(${fields.userTypeId ?? null}, user_type_id),
-          business_no = coalesce(${fields.businessNo ?? null}, business_no),
-          updated_at = now()
-        where tenant_id = ${tenantId} and id = ${user.id}`)
+      await tx.execute(updateUserQuery(tenantId, user.id, fields))
       // a type change can move the last administrator onto a type that
       // cannot sign in at all
       if (changingType) await this.ctx.rbac.assertTenantKeepsAdministrator(tenantId, tx)
@@ -708,9 +703,7 @@ export class IamService {
       await this.requireOrgNode(tx, tenantId, primaryOrgNodeId)
       // a transfer may not put someone where their kind of person may not be
       await this.assertPlacementAllowed(tx, tenantId, user.user_type_id, primaryOrgNodeId)
-      await tx.execute(sql`
-        update users set primary_org_node_id = ${primaryOrgNodeId}, updated_at = now()
-        where tenant_id = ${tenantId} and id = ${user.id}`)
+      await tx.execute(setUserPlacementQuery(tenantId, user.id, primaryOrgNodeId))
     })
   }
 
@@ -720,14 +713,11 @@ export class IamService {
       const user = await this.requireUser(tx, tenantId, userId)
       if (!enabled) this.assertNotSystemIdentity(user)
       await this.assertManagesNode(tx, actor, user.primary_org_node_id)
-      await tx.execute(sql`
-        update users set enabled = ${enabled}, updated_at = now()
-        where tenant_id = ${tenantId} and id = ${user.id}`)
+      await tx.execute(setUserEnabledQuery(tenantId, user.id, enabled))
       if (!enabled) {
         // a disabled user must lose access now, not when their session
         // happens to expire
-        await tx.execute(sql`
-          delete from sessions where tenant_id = ${tenantId} and user_id = ${user.id}`)
+        await tx.execute(deleteUserSessionsQuery(tenantId, user.id))
         await this.ctx.rbac.assertTenantKeepsAdministrator(tenantId, tx)
       }
     })
@@ -770,11 +760,7 @@ export class IamService {
         user_type_id: string
         primary_org_node_id: string
         is_system: boolean
-      }>(sql`
-        select u.id, u.user_type_id, u.primary_org_node_id, t.is_system
-        from users u
-        join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
-        where u.tenant_id = ${tenantId} and u.id = ${userId}`)
+      }>(userGuardQuery(tenantId, userId))
     ).rows[0]
     if (!row) throw iamErrors.create('USER_NOT_FOUND')
     return row
@@ -794,8 +780,7 @@ export class IamService {
 
   private async requireOrgNode(tx: Tx, tenantId: string, orgNodeId: string) {
     const row = (
-      await tx.execute(sql`
-        select 1 from org_nodes where tenant_id = ${tenantId} and id = ${orgNodeId}`)
+      await tx.execute(orgNodeExistsQuery(tenantId, orgNodeId))
     ).rows[0]
     if (!row) throw iamErrors.create('USER_PLACEMENT_NOT_FOUND')
   }

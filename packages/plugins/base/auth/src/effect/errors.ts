@@ -81,3 +81,51 @@ export class UserTypePlacementInUse extends Schema.TaggedErrorClass<UserTypePlac
   { userCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'UserTypePlacementInUse' },
 ) {}
+
+export class UserNotFound extends Schema.TaggedErrorClass<UserNotFound>()(
+  'USER_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'UserNotFound' },
+) {}
+
+export class UserTypeDisabled extends Schema.TaggedErrorClass<UserTypeDisabled>()(
+  'USER_TYPE_DISABLED',
+  {},
+  { httpApiStatus: 409, identifier: 'UserTypeDisabled' },
+) {}
+
+export class UserPlacementNotFound extends Schema.TaggedErrorClass<UserPlacementNotFound>()(
+  'USER_PLACEMENT_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'UserPlacementNotFound' },
+) {}
+
+export class PlacementNotAllowed extends Schema.TaggedErrorClass<PlacementNotAllowed>()(
+  'USER_TYPE_PLACEMENT_NOT_ALLOWED',
+  {},
+  { httpApiStatus: 409, identifier: 'UserTypePlacementNotAllowed' },
+) {}
+
+/**
+ * The recovery account is frozen against the ordinary identity api.
+ *
+ * Protecting only the type it holds stopped an ordinary person being promoted
+ * into it, but not the reverse: retyping the recovery account out of its own
+ * type would have been allowed.
+ */
+export class SystemAccountProtected extends Schema.TaggedErrorClass<SystemAccountProtected>()(
+  'SYSTEM_ACCOUNT_PROTECTED',
+  {},
+  { httpApiStatus: 409, identifier: 'SystemAccountProtected' },
+) {}
+
+/** grants the person holds that their new type would not be eligible for */
+export class GrantIncompatible extends Schema.TaggedErrorClass<GrantIncompatible>()(
+  'GRANT_INCOMPATIBLE',
+  { grantCount: Schema.Number },
+  { httpApiStatus: 409, identifier: 'GrantIncompatible' },
+) {}
+
+export const userConstraints: Record<string, () => UserPlacementNotFound> = {
+  fk_users_primary_org_node: () => new UserPlacementNotFound(),
+}

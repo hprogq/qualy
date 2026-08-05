@@ -253,3 +253,92 @@ export const strandedByPolicyQuery = (tenantId: string, userTypeId: string): SQL
     sql`u.tenant_id = ${tenantId} and u.user_type_id = ${userTypeId}`,
     sql`n.org_type_id`,
   )
+
+// --- users ---
+
+/** the user with the system flag their type carries, which several guards read */
+export const userGuardQuery = (tenantId: string, userId: string): SQL => sql`
+  select u.id, u.user_type_id, u.primary_org_node_id, t.is_system
+  from users u
+  join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
+  where u.tenant_id = ${tenantId} and u.id = ${userId}`
+
+export const orgNodeExistsQuery = (tenantId: string, orgNodeId: string): SQL =>
+  sql`select 1 from org_nodes where tenant_id = ${tenantId} and id = ${orgNodeId}`
+
+/** whether this kind of person may stand at this node, by the one predicate */
+export const placementAllowedQuery = (
+  tenantId: string,
+  userTypeId: string,
+  orgNodeId: string,
+): SQL => sql`
+  select ${placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)} as legal
+  from user_types t
+  join org_nodes n on n.tenant_id = t.tenant_id and n.id = ${orgNodeId}
+  where t.tenant_id = ${tenantId} and t.id = ${userTypeId}`
+
+export const insertUserQuery = (input: {
+  tenantId: string
+  displayName: string
+  userTypeId: string
+  primaryOrgNodeId: string
+  businessNo: string | null
+}): SQL => sql`
+  insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+  values (${input.tenantId}, ${input.displayName}, ${input.userTypeId},
+    ${input.primaryOrgNodeId}, ${input.businessNo})
+  returning id`
+
+export const updateUserQuery = (
+  tenantId: string,
+  userId: string,
+  fields: { displayName?: string; userTypeId?: string; businessNo?: string },
+): SQL => sql`
+  update users set
+    display_name = coalesce(${fields.displayName ?? null}, display_name),
+    user_type_id = coalesce(${fields.userTypeId ?? null}, user_type_id),
+    business_no = coalesce(${fields.businessNo ?? null}, business_no),
+    updated_at = now()
+  where tenant_id = ${tenantId} and id = ${userId}`
+
+export const setUserPlacementQuery = (
+  tenantId: string,
+  userId: string,
+  primaryOrgNodeId: string,
+): SQL => sql`
+  update users set primary_org_node_id = ${primaryOrgNodeId}, updated_at = now()
+  where tenant_id = ${tenantId} and id = ${userId}`
+
+export const setUserEnabledQuery = (tenantId: string, userId: string, enabled: boolean): SQL =>
+  sql`update users set enabled = ${enabled}, updated_at = now()
+      where tenant_id = ${tenantId} and id = ${userId}`
+
+/** a disabled user loses access now, not when their session happens to expire */
+export const deleteUserSessionsQuery = (tenantId: string, userId: string): SQL =>
+  sql`delete from sessions where tenant_id = ${tenantId} and user_id = ${userId}`
+
+/**
+ * Grants the new type would not be eligible for.
+ *
+ * Asked of every kind of role, because a tenant role declares who may hold it
+ * too: narrowing this to org roles would let a retype strand a tenant grant
+ * instead of refusing. The canonical administrator is exempt, since its
+ * authority does not come from eligibility.
+ */
+export const grantsBlockingUserTypeQuery = (
+  tenantId: string,
+  userId: string,
+  userTypeId: string,
+  canonicalAdmin: SQL,
+): SQL => sql`
+  select count(*)::int as count
+  from role_grants g
+  where g.tenant_id = ${tenantId} and g.user_id = ${userId}
+    and not exists (
+      select 1 from role_allowed_user_types t
+      where t.tenant_id = g.tenant_id and t.role_id = g.role_id
+        and t.user_type_id = ${userTypeId})
+    and exists (
+      select 1 from roles r
+      where r.tenant_id = g.tenant_id and r.id = g.role_id
+        and not ${canonicalAdmin})`

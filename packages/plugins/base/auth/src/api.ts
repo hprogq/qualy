@@ -1,9 +1,16 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
+
 import { Authenticated } from './effect/session.ts'
 import {
+  GrantIncompatible,
+  PlacementNotAllowed,
   RecoveryChannelRequired,
+  SystemAccountProtected,
+  UserNotFound,
+  UserPlacementNotFound,
+  UserTypeDisabled,
   UserTypeConflict,
   UserTypeInUse,
   UserTypeIsSystem,
@@ -136,6 +143,76 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         UserTypeOrgTypeNotFound,
         UserTypePlacementInUse,
         UserTypeConflict,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('createUser', '/iam/users', {
+      payload: Schema.Struct({
+        displayName: Schema.String,
+        userTypeId: id,
+        primaryOrgNodeId: id,
+        businessNo: Schema.optional(Schema.String),
+      }),
+      success: Schema.Struct({ id: Schema.String }),
+      error: [
+        UserTypeNotFound,
+        UserTypeDisabled,
+        UserPlacementNotFound,
+        PlacementNotAllowed,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.patch('updateUser', '/iam/users/:userId', {
+      params: Schema.Struct({ userId: id }),
+      payload: Schema.Struct({
+        displayName: Schema.optional(Schema.String),
+        userTypeId: Schema.optional(id),
+        businessNo: Schema.optional(Schema.String),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        UserNotFound,
+        UserTypeNotFound,
+        UserTypeDisabled,
+        SystemAccountProtected,
+        UserPlacementNotFound,
+        PlacementNotAllowed,
+        GrantIncompatible,
+        LastAdministrator,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // where someone stands, replaced rather than acted on
+    HttpApiEndpoint.put('setUserPlacement', '/iam/users/:userId/placement', {
+      params: Schema.Struct({ userId: id }),
+      payload: Schema.Struct({ primaryOrgNodeId: id }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        UserNotFound,
+        UserTypeNotFound,
+        SystemAccountProtected,
+        UserPlacementNotFound,
+        PlacementNotAllowed,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('setUserStatus', '/iam/users/:userId/status', {
+      params: Schema.Struct({ userId: id }),
+      payload: Schema.Struct({ status: Schema.Literals(['active', 'disabled']) }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        UserNotFound,
+        SystemAccountProtected,
+        UserPlacementNotFound,
+        LastAdministrator,
         AccessDenied,
       ],
     }).middleware(Authenticated),

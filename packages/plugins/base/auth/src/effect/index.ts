@@ -9,6 +9,7 @@ import { strandedByQuery, usersBlockingOrgTypeQuery } from '../iam/queries.ts'
 import { identityApiGroup } from '../api.ts'
 import { CurrentUser } from './session.ts'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
+import { make as makeUsers } from './users.ts'
 import { Authenticated, layer as sessionLayer } from './session.ts'
 
 // auth as an Effect layer.
@@ -29,12 +30,14 @@ export class Iam extends Context.Service<
   {
     readonly placementViolations: (tenantId: string) => Effect.Effect<number>
     readonly userTypes: Effect.Success<ReturnType<typeof makeUserTypes>>
+    readonly users: Effect.Success<ReturnType<typeof makeUsers>>
   }
 >()('@qualy/plugin-auth/Iam') {}
 
 export const make = Effect.fn('Auth.make')(function* () {
   const database = yield* Database
   const userTypes = yield* makeUserTypes()
+  const users = yield* makeUsers()
 
   const countStranded = (query: SQL) =>
     database.execute(query).pipe(
@@ -59,6 +62,7 @@ export const make = Effect.fn('Auth.make')(function* () {
       placementViolations: (tenantId: string) =>
         countStranded(strandedByQuery(sql`u.tenant_id = ${tenantId}`, sql`n.org_type_id`)),
       userTypes,
+      users,
     },
   }
 })
@@ -171,6 +175,53 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             payload.version,
           ),
         }
+      }),
+    )
+    .handle(
+      'createUser',
+      Effect.fn('iam.createUser.handler')(function* ({ payload }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        // authorization is per node and decided in the service, on the locked
+        // connection, so there is no tenant-wide pre-check to make here
+        return { id: yield* iam.users.create(principal.tenantId, payload, principal) }
+      }),
+    )
+    .handle(
+      'updateUser',
+      Effect.fn('iam.updateUser.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        yield* iam.users.update(principal.tenantId, params.userId, payload, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'setUserPlacement',
+      Effect.fn('iam.setUserPlacement.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        yield* iam.users.setPlacement(
+          principal.tenantId,
+          params.userId,
+          payload.primaryOrgNodeId,
+          principal,
+        )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'setUserStatus',
+      Effect.fn('iam.setUserStatus.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        yield* iam.users.setEnabled(
+          principal.tenantId,
+          params.userId,
+          payload.status === 'active',
+          principal,
+        )
+        return { ok: true as const }
       }),
     )
     .handle(
