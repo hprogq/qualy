@@ -435,6 +435,22 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
     code: string,
   ) {
+    // Every method here takes a tenant and a principal, and the rows come from
+    // the argument while the authority comes from the principal. Those must be
+    // the same tenant or the two halves of one decision are about different
+    // places: a tenant-wide administrator of A passed B's id read B's tree.
+    //
+    // The api never gets this wrong - the handlers pass principal.tenantId -
+    // so this is a defect rather than a refusal: nothing a caller can send
+    // produces it, and answering "not found" would hide a wiring mistake.
+    if (tenantId !== as.tenantId) {
+      return yield* Effect.die(
+        new Error(
+          `org was asked about tenant ${tenantId} by a principal of ${as.tenantId}; ` +
+            'the tenant must come from the principal',
+        ),
+      )
+    }
     const scope = yield* rbac.listAuthorizedScope(as, code)
     if (scope.tenantWide) return { tenantWide: true, anchors: [] } satisfies ResolvedScope
     if (scope.anchors.length === 0) {
