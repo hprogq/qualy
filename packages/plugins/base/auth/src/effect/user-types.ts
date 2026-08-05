@@ -4,7 +4,15 @@ import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import {
+  addAllowedOrgTypesQuery,
+  countOrgTypesQuery,
   countUsersOfTypeQuery,
+  currentAllowedOrgTypesQuery,
+  lockUserTypeQuery,
+  pruneAllowedOrgTypesQuery,
+  setPlacementModeQuery,
+  strandedByPolicyQuery,
+  uuidArrayLiteral,
   lockTenantQuery,
   oneUserType,
   setUserTypeEnabledQuery,
@@ -20,6 +28,8 @@ import {
   UserTypeIsSystem,
   UserTypeNotFound,
   UserTypeLastForRole,
+  UserTypeOrgTypeNotFound,
+  UserTypePlacementInUse,
   UserTypeVersionConflict,
   userTypeConstraints,
 } from './errors.ts'
@@ -101,6 +111,11 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       .execute(countUsersOfTypeQuery(tenantId, userTypeId))
       .pipe(Effect.orDie, Effect.map((r) => rows<{ count: number }>(r)[0]!.count))
 
+  const stranded = (tx: Tx, tenantId: string, userTypeId: string) =>
+    tx
+      .execute(strandedByPolicyQuery(tenantId, userTypeId))
+      .pipe(Effect.orDie, Effect.map((r) => rows<{ count: number }>(r)[0]!.count))
+
   return {
     list: Effect.fn('Iam.userTypes.list')(function* (tenantId: string) {
       return rows<UserTypeRow>(
@@ -171,6 +186,76 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
             if (inUse > 0) return yield* new UserTypeInUse({ userCount: inUse })
           }
           yield* tx.execute(setUserTypeEnabledQuery(tenantId, type.id, enabled))
+          return type.version + 1
+        }),
+      )
+    }),
+
+    /**
+     * Where this kind of person may stand, replaced whole.
+     *
+     * The policy is stated rather than inferred from an empty list. Reading
+     * "no rows" as "anywhere" meant unchecking the last box widened the rule
+     * instead of narrowing it, silently and with no stranded-user check, which
+     * is how a school could end up with students standing under colleges.
+     */
+    setPlacementPolicy: Effect.fn('Iam.userTypes.setPlacementPolicy')(function* (
+      tenantId: string,
+      userTypeId: string,
+      policy: { mode: 'unrestricted' | 'allow-list'; orgTypeIds: readonly string[] },
+      expectedVersion: number,
+    ) {
+      const wanted = policy.mode === 'allow-list' ? [...new Set(policy.orgTypeIds)] : []
+      // a malformed id names no org type, which is the same answer as one
+      // that does not exist
+      const literal = uuidArrayLiteral(wanted)
+      if (!literal) return yield* new UserTypeOrgTypeNotFound()
+      const list = literal.sql
+
+      return yield* write(tenantId, (tx) =>
+        Effect.gen(function* () {
+          const type = rows<{
+            id: string
+            version: number
+            is_system: boolean
+            placement_mode: string
+          }>(yield* tx.execute(lockUserTypeQuery(tenantId, userTypeId)))[0]
+          if (!type) return yield* new UserTypeNotFound()
+          // every other part of a system type is frozen; this one was the way in
+          if (type.is_system) return yield* new UserTypeIsSystem()
+          if (type.version !== expectedVersion) {
+            return yield* new UserTypeVersionConflict({ currentVersion: type.version })
+          }
+
+          if (wanted.length > 0) {
+            const found = rows<{ count: number }>(
+              yield* tx.execute(countOrgTypesQuery(tenantId, list)),
+            )[0]!.count
+            if (found !== wanted.length) return yield* new UserTypeOrgTypeNotFound()
+          }
+
+          const current = rows<{ org_type_id: string }>(
+            yield* tx.execute(currentAllowedOrgTypesQuery(tenantId, type.id)),
+          ).map((row) => row.org_type_id)
+          // an unchanged policy is not an edit, so it spends no version and
+          // does not invalidate another edit against this row
+          const unchanged =
+            type.placement_mode === policy.mode &&
+            current.length === wanted.length &&
+            wanted.every((id) => current.includes(id))
+          if (unchanged) return type.version
+
+          yield* tx.execute(pruneAllowedOrgTypesQuery(tenantId, type.id, list))
+          if (wanted.length > 0) {
+            yield* tx.execute(addAllowedOrgTypesQuery(tenantId, type.id, list))
+          }
+          yield* tx.execute(setPlacementModeQuery(tenantId, type.id, policy.mode))
+
+          // After the write, against the state that would result, and
+          // UNCONDITIONALLY. The old code only looked when the new list was
+          // non-empty, so clearing it entirely skipped the check outright.
+          const left = yield* stranded(tx, tenantId, type.id)
+          if (left > 0) return yield* new UserTypePlacementInUse({ userCount: left })
           return type.version + 1
         }),
       )

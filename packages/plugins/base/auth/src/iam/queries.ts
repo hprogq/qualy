@@ -185,3 +185,71 @@ export const rolesStrandedByUserTypeQuery = (tenantId: string, userTypeId: strin
 
 export const deleteUserTypeQuery = (tenantId: string, userTypeId: string): SQL =>
   sql`delete from user_types where tenant_id = ${tenantId} and id = ${userTypeId}`
+
+// --- placement policy ---
+
+/**
+ * A validated literal uuid array.
+ *
+ * The ids are interpolated rather than parameterised because `= any(...)` and
+ * `unnest(...)` need an array literal, so each one is checked against the uuid
+ * shape first. A malformed id is refused as a missing org type rather than
+ * reaching the database.
+ */
+export const uuidArrayLiteral = (
+  ids: readonly string[],
+): { sql: string; ids: string[] } | undefined => {
+  const unique = [...new Set(ids)]
+  const shaped = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (unique.some((id) => !shaped.test(id))) return undefined
+  return {
+    sql: unique.length === 0 ? `'{}'::uuid[]` : `array['${unique.join("','")}']::uuid[]`,
+    ids: unique,
+  }
+}
+
+/** the type's own row, locked, with what a policy edit needs to decide */
+export const lockUserTypeQuery = (tenantId: string, userTypeId: string): SQL => sql`
+  select id, version, is_system, placement_mode from user_types
+  where tenant_id = ${tenantId} and id = ${userTypeId} for update`
+
+export const countOrgTypesQuery = (tenantId: string, list: string): SQL => sql`
+  select count(*)::int as count from org_types
+  where tenant_id = ${tenantId} and id = any(${sql.raw(list)})`
+
+export const currentAllowedOrgTypesQuery = (tenantId: string, userTypeId: string): SQL => sql`
+  select org_type_id from user_type_allowed_org_types
+  where tenant_id = ${tenantId} and user_type_id = ${userTypeId}`
+
+export const pruneAllowedOrgTypesQuery = (
+  tenantId: string,
+  userTypeId: string,
+  list: string,
+): SQL => sql`
+  delete from user_type_allowed_org_types
+  where tenant_id = ${tenantId} and user_type_id = ${userTypeId}
+    and org_type_id <> all(${sql.raw(list)})`
+
+export const addAllowedOrgTypesQuery = (
+  tenantId: string,
+  userTypeId: string,
+  list: string,
+): SQL => sql`
+  insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
+  select ${tenantId}, ${userTypeId}, id from unnest(${sql.raw(list)}) as id
+  on conflict do nothing`
+
+export const setPlacementModeQuery = (
+  tenantId: string,
+  userTypeId: string,
+  mode: string,
+): SQL => sql`
+  update user_types set placement_mode = ${mode}, version = version + 1, updated_at = now()
+  where tenant_id = ${tenantId} and id = ${userTypeId}`
+
+/** the people this type would leave standing illegally, under the policy as written */
+export const strandedByPolicyQuery = (tenantId: string, userTypeId: string): SQL =>
+  strandedByQuery(
+    sql`u.tenant_id = ${tenantId} and u.user_type_id = ${userTypeId}`,
+    sql`n.org_type_id`,
+  )

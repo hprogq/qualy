@@ -244,4 +244,127 @@ describe.runIf(postgresAvailable)('user types', () => {
       await db.dispose()
     }
   })
+
+  it('refuses a policy that would strand the people already standing', async () => {
+    const db = await createTestContext('effect-ut-policy')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const other = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_types (tenant_id, code, name) values (${f.tenant},'club','Club')
+              returning id`),
+          ).id
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select org_type_id as id from org_nodes where id = ${f.node}`,
+            ),
+          ).id
+          yield* database.execute(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Grace', ${f.staff}, ${f.node})`)
+
+          const iam = yield* Iam
+          // allowing only the type they stand on is fine
+          const ok1 = yield* iam.userTypes.setPlacementPolicy(
+            f.tenant,
+            f.staff,
+            { mode: 'allow-list', orgTypeIds: [orgType] },
+            1,
+          )
+          // narrowing to a type they do NOT stand on strands them
+          const strands = yield* Effect.result(
+            iam.userTypes.setPlacementPolicy(
+              f.tenant,
+              f.staff,
+              { mode: 'allow-list', orgTypeIds: [other] },
+              ok1,
+            ),
+          )
+          // and so does clearing the list entirely, which is the case the old
+          // code skipped: it only checked when the new list was non-empty
+          const cleared = yield* Effect.result(
+            iam.userTypes.setPlacementPolicy(
+              f.tenant,
+              f.staff,
+              { mode: 'allow-list', orgTypeIds: [] },
+              ok1,
+            ),
+          )
+          return {
+            allowed: ok1,
+            strands: tagOf(strands),
+            cleared: tagOf(cleared),
+            count:
+              cleared._tag === 'Failure'
+                ? (cleared.failure as { userCount?: number }).userCount
+                : undefined,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.allowed).toBe(2)
+      expect(answer.strands).toBe('USER_TYPE_PLACEMENT_IN_USE')
+      // an empty allow-list means nowhere, not anywhere
+      expect(answer.cleared).toBe('USER_TYPE_PLACEMENT_IN_USE')
+      expect(answer.count).toBe(1)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('treats an unchanged policy as not an edit', async () => {
+    const db = await createTestContext('effect-ut-policy-noop')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          // already unrestricted with an empty list
+          return yield* iam.userTypes.setPlacementPolicy(
+            f.tenant,
+            f.staff,
+            { mode: 'unrestricted', orgTypeIds: [] },
+            1,
+          )
+        }),
+      )
+      expect(ok(exit)).toBe(1)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses to change a system type\'s placement policy', async () => {
+    const db = await createTestContext('effect-ut-policy-system')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          yield* database.execute(sql`
+            update user_types set is_system = true where id = ${f.system}`)
+          const iam = yield* Iam
+          const blocked = yield* Effect.result(
+            iam.userTypes.setPlacementPolicy(
+              f.tenant,
+              f.system,
+              { mode: 'allow-list', orgTypeIds: [] },
+              1,
+            ),
+          )
+          return tagOf(blocked)
+        }),
+      )
+      expect(ok(exit)).toBe('USER_TYPE_IS_SYSTEM')
+    } finally {
+      await db.dispose()
+    }
+  })
 })

@@ -174,6 +174,38 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       }),
     )
     .handle(
+      'getPlacementPolicy',
+      Effect.fn('iam.getPlacementPolicy.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.user-type.read')
+        const type = yield* iam.userTypes.get(principal.tenantId, params.userTypeId)
+        return {
+          mode: type.placement_mode as 'unrestricted' | 'allow-list',
+          orgTypeIds: type.allowed_org_types,
+          version: type.version,
+        }
+      }),
+    )
+    .handle(
+      'setPlacementPolicy',
+      Effect.fn('iam.setPlacementPolicy.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.user-type.manage')
+        return {
+          version: yield* iam.userTypes.setPlacementPolicy(
+            principal.tenantId,
+            params.userTypeId,
+            { mode: payload.mode, orgTypeIds: payload.orgTypeIds },
+            payload.version,
+          ),
+        }
+      }),
+    )
+    .handle(
       'deleteUserType',
       Effect.fn('iam.deleteUserType.handler')(function* ({ params, query }) {
         const iam = yield* Iam

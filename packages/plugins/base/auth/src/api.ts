@@ -9,6 +9,8 @@ import {
   UserTypeIsSystem,
   UserTypeLastForRole,
   UserTypeNotFound,
+  UserTypeOrgTypeNotFound,
+  UserTypePlacementInUse,
   UserTypeVersionConflict,
 } from './effect/errors.ts'
 
@@ -100,6 +102,39 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         UserTypeIsSystem,
         UserTypeInUse,
         UserTypeLastForRole,
+        UserTypeConflict,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getPlacementPolicy', '/iam/user-types/:userTypeId/placement-policy', {
+      params: Schema.Struct({ userTypeId: id }),
+      success: Schema.Struct({
+        mode: Schema.Literals(['unrestricted', 'allow-list']),
+        orgTypeIds: Schema.Array(Schema.String),
+        version: Schema.Number,
+      }),
+      error: [UserTypeNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // replaced whole, and the mode is stated rather than inferred: an empty
+    // allow-list means "nowhere", not "anywhere"
+    HttpApiEndpoint.put('setPlacementPolicy', '/iam/user-types/:userTypeId/placement-policy', {
+      params: Schema.Struct({ userTypeId: id }),
+      payload: Schema.Struct({
+        version: Schema.Number,
+        mode: Schema.Literals(['unrestricted', 'allow-list']),
+        orgTypeIds: Schema.Array(id),
+      }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        UserTypeNotFound,
+        UserTypeIsSystem,
+        UserTypeVersionConflict,
+        UserTypeOrgTypeNotFound,
+        UserTypePlacementInUse,
         UserTypeConflict,
         AccessDenied,
       ],

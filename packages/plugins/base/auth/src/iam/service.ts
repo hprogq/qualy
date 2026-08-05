@@ -26,6 +26,7 @@ import {
   deleteUserTypeQuery,
   lockTenantQuery,
   rolesStrandedByUserTypeQuery,
+  uuidArrayLiteral,
   placementLegal,
   setUserTypeEnabledQuery,
   strandedByQuery,
@@ -803,14 +804,12 @@ export class IamService {
 // uuid lists reach postgres as an array literal rather than a joined string,
 // so an empty set stays an empty array. Every id is re-validated: these come
 // from request input, and sql.raw does not parameterize.
+// the shared helper reports rather than throws, because the Effect side needs
+// to answer with a domain failure instead of an exception
 function uuidArray(ids: readonly string[]): string {
-  const unique = [...new Set(ids)]
-  for (const id of unique) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-      throw iamErrors.create('USER_TYPE_ORG_TYPE_NOT_FOUND', `malformed identifier ${id}`)
-    }
-  }
-  return unique.length === 0 ? `'{}'::uuid[]` : `array['${unique.join("','")}']::uuid[]`
+  const literal = uuidArrayLiteral(ids)
+  if (!literal) throw iamErrors.create('USER_TYPE_ORG_TYPE_NOT_FOUND', 'malformed identifier')
+  return literal.sql
 }
 
 export { AccessDeniedError }

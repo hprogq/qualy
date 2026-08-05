@@ -68,3 +68,16 @@ export class UserTypeLastForRole extends Schema.TaggedErrorClass<UserTypeLastFor
   { roleCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'UserTypeLastForRole' },
 ) {}
+
+export class UserTypeOrgTypeNotFound extends Schema.TaggedErrorClass<UserTypeOrgTypeNotFound>()(
+  'USER_TYPE_ORG_TYPE_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'UserTypeOrgTypeNotFound' },
+) {}
+
+/** the policy as written would leave these people standing illegally */
+export class UserTypePlacementInUse extends Schema.TaggedErrorClass<UserTypePlacementInUse>()(
+  'USER_TYPE_PLACEMENT_IN_USE',
+  { userCount: Schema.Number },
+  { httpApiStatus: 409, identifier: 'UserTypePlacementInUse' },
+) {}
