@@ -53,3 +53,34 @@ export class Authenticated extends HttpApiMiddleware.Service<Authenticated, {
   error: [AuthRequired, SessionExpired],
 }) {}
 
+
+/**
+ * Who the request is, when it is allowed not to be anyone.
+ *
+ * `Authenticated` refuses an endpoint to an anonymous caller, which is right
+ * for almost everything. The manifest is the exception: it is served to
+ * anonymous visitors on purpose, since the login page is discovered through it.
+ *
+ * That endpoint therefore declares no middleware and read `CurrentUser`
+ * optionally, which looked equivalent and is not: nothing provides that tag
+ * unless a middleware does, so a signed-in administrator was served the
+ * anonymous manifest and saw no administration pages at all. The cordis
+ * enricher ran on every request and had no such hole.
+ */
+export class CurrentViewer extends Context.Service<
+  CurrentViewer,
+  { readonly principal: Principal | undefined }
+>()('@qualy/plugin-auth/CurrentViewer') {}
+
+/**
+ * Resolves a session if one is presented, and never refuses.
+ *
+ * No cookie, an unknown token and an expired one are the same answer here -
+ * an anonymous viewer - because this middleware's job is to say who is asking,
+ * not whether they may. What they may see is the projection's decision.
+ */
+export class Viewer extends HttpApiMiddleware.Service<Viewer, {
+  provides: CurrentViewer
+}>()('@qualy/plugin-auth/Viewer', {
+  security: { session: sessionSecurity },
+}) {}

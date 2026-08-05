@@ -17,6 +17,9 @@ import {
 } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
+import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { CurrentViewer, Viewer } from '@qualy/plugin-auth/effect/session-contract'
+import { appApiHandlers } from '../src/effect/index.ts'
 import { UiAuthorizer } from '../src/effect/authorizer.ts'
 import { UiCatalog, UiManifest, layer as manifestLayer } from '../src/effect/manifest.ts'
 import { appApiGroup } from '../src/api.ts'
@@ -117,17 +120,12 @@ const build = (principal: Principal | undefined, held: readonly string[]) =>
 // value, and the running process answered 400 while every test stayed green.
 
 const port = 3193
-const api = HttpApi.make('test').add(appApiGroup).prefix('/api')
-
-const handlers = HttpApiBuilder.group(api, 'app', (h) =>
-  h.handle(
-    'getManifest',
-    Effect.fn('test.getManifest')(function* () {
-      const manifest = yield* UiManifest
-      return yield* manifest.build(viewer)
-    }),
-  ),
-)
+// the plugin's own api and the plugin's own handler. A handler written here
+// would prove that the projection works, which the tests below already do,
+// and would say nothing about how the endpoint gets a principal - which is
+// exactly what was wrong.
+const api = HttpApi.make(QUALY_API_ID).add(appApiGroup).prefix(QUALY_API_PREFIX)
+const handlers = appApiHandlers
 
 let scope: Scope.Scope
 
@@ -138,9 +136,20 @@ beforeAll(async () => {
   const application = HttpRouter.serve(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers))).pipe(
     Layer.provide(manifestLayer.pipe(Layer.provide(Layer.succeed(UiCatalog, surfaces)))),
     Layer.provide(
-      Layer.succeed(UiAuthorizer, {
-        permissionsFor: () => Effect.succeed(new Set(['test.thing.read'])),
-      }),
+      Layer.mergeAll(
+        Layer.succeed(UiAuthorizer, {
+          permissionsFor: () => Effect.succeed(new Set(['test.thing.read'])),
+        }),
+        // the endpoint says who is asking through this middleware; a stub that
+        // always reports the same viewer is enough to prove the wiring
+        Layer.succeed(
+          Viewer,
+          Viewer.of({
+            session: (httpEffect) =>
+              Effect.provideService(httpEffect, CurrentViewer, { principal: viewer }),
+          }),
+        ),
+      ),
     ),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
   )
@@ -153,6 +162,18 @@ afterAll(async () => {
 })
 
 describe('the manifest over the wire', () => {
+  it('sees who is asking, not just that someone asked', async () => {
+    // The endpoint is served to anonymous visitors on purpose, and declaring
+    // no middleware to allow that looked equivalent to declaring an optional
+    // one. It is not: nothing provides a principal unless a middleware does,
+    // so a signed-in administrator was handed the anonymous manifest and saw
+    // no administration pages at all. Only a request can show this - the
+    // projection is given a principal directly in every other test here.
+    const response = await fetch(`http://127.0.0.1:${port}/api/app/manifest`)
+    const body = (await response.json()) as { pages: { id: string }[] }
+    expect(body.pages.map((page) => page.id)).toContain('test/gated')
+  })
+
   it('encodes as the response schema it declares', async () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/app/manifest`)
     expect(response.status).toBe(200)

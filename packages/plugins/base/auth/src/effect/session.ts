@@ -1,5 +1,6 @@
 import { Duration, Effect, Layer, Redacted } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import type { HttpServerRequest } from 'effect/unstable/http'
 import { Database } from '@qualy/plugin-database/effect'
 import { deleteSessionQuery, sessionByTokenQuery, touchSessionQuery } from '../iam/queries.ts'
 import { AuthConfig } from './auth-config.ts'
@@ -7,7 +8,9 @@ import {
   AuthRequired,
   Authenticated,
   CurrentUser,
+  CurrentViewer,
   SessionExpired,
+  Viewer,
   sessionCookieName,
   sessionSecurity,
 } from './session-contract.ts'
@@ -17,7 +20,9 @@ export {
   AuthRequired,
   Authenticated,
   CurrentUser,
+  CurrentViewer,
   SessionExpired,
+  Viewer,
   sessionCookieName,
   sessionSecurity,
 }
@@ -71,6 +76,71 @@ export const clearSessionCookie = (secure: boolean) =>
     secure,
     maxAge: Duration.zero,
   })
+
+/**
+ * The session behind a presented token, if there is one.
+ *
+ * One lookup for both middlewares, so "what makes a session usable" is decided
+ * in one place. What each does with the answer differs: one refuses, the other
+ * reports an anonymous viewer.
+ */
+const resolve = Effect.fn('Auth.resolveSession')(function* (
+  database: typeof Database.Service,
+  clear: () => Effect.Effect<void, never, HttpServerRequest.HttpServerRequest>,
+  token: string,
+) {
+  const rows = (yield* database
+    .execute(sessionByTokenQuery(hashSessionToken(token)))
+    .pipe(Effect.orDie)) as unknown as { rows: SessionRow[] }
+  const session = rows.rows[0]
+  if (!session) return { state: 'absent' as const }
+  if (session.expired) {
+    yield* database.execute(deleteSessionQuery(session.id)).pipe(Effect.orDie)
+    yield* clear()
+    return { state: 'expired' as const }
+  }
+  // a disabled user, a disabled type or a lapsed tenant is not a
+  // distinguishable state either: it is simply not a session
+  if (!session.usable) {
+    yield* clear()
+    return { state: 'absent' as const }
+  }
+  if (staleness(session.last_used_at) > TOUCH_INTERVAL_MS) {
+    yield* database.execute(touchSessionQuery(session.id)).pipe(Effect.orDie)
+  }
+  return {
+    state: 'valid' as const,
+    principal: {
+      tenantId: session.tenant_id,
+      userId: session.user_id,
+      sessionId: session.id,
+    },
+  }
+})
+
+/**
+ * Says who is asking, and never refuses.
+ *
+ * Its own layer rather than a flag on the one above, because the two answer
+ * different questions and only one of them has a failure to declare.
+ */
+export const viewerLayer = Layer.effect(
+  Viewer,
+  Effect.gen(function* () {
+    const database = yield* Database
+    const config = yield* AuthConfig
+    const clear = () => clearSessionCookie(config.secureCookies)
+    return Viewer.of({
+      session: Effect.fn('Viewer.session')(function* (httpEffect, { credential }) {
+        const token = Redacted.value(credential)
+        const found = token === '' ? { state: 'absent' as const } : yield* resolve(database, clear, token)
+        return yield* Effect.provideService(httpEffect, CurrentViewer, {
+          principal: found.state === 'valid' ? found.principal : undefined,
+        })
+      }),
+    })
+  }),
+)
 
 export const layer = Layer.effect(
   Authenticated,

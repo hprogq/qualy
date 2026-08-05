@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { Viewer } from '@qualy/plugin-auth/effect/session-contract'
 
 // The authorized projection of the application shell for one viewer.
 //
@@ -32,6 +33,10 @@ const slotItem = Schema.Struct({
 export const appApiGroup = HttpApiGroup.make('app').add(
   // anonymous callers are served on purpose: the login page and every other
   // public surface is discovered through this same manifest
+  // Viewer, not Authenticated: this is served to anonymous visitors on
+  // purpose, since the login page is discovered through it. Declaring nothing
+  // is not the same thing - nothing provides a principal unless a middleware
+  // does, so a signed-in administrator was served the anonymous manifest.
   HttpApiEndpoint.get('getManifest', '/app/manifest', {
     success: Schema.Struct({
       layouts: Schema.Array(layout),
@@ -39,5 +44,5 @@ export const appApiGroup = HttpApiGroup.make('app').add(
       collections: Schema.Record(Schema.String, Schema.Array(Schema.Unknown)),
       slots: Schema.Record(Schema.String, Schema.Array(slotItem)),
     }),
-  }),
+  }).middleware(Viewer),
 )

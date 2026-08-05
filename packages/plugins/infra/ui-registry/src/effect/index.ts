@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
-import { CurrentUser } from '@qualy/plugin-auth/effect/session'
+import { CurrentViewer } from '@qualy/plugin-auth/effect/session-contract'
 import { appApiGroup } from '../api.ts'
 import { UiCatalog, UiManifest, layer as manifestLayer } from './manifest.ts'
 
@@ -23,13 +23,10 @@ export const appApiHandlers = HttpApiBuilder.group(local, 'app', (handlers) =>
     'getManifest',
     Effect.fn('app.getManifest.handler')(function* () {
       const manifest = yield* UiManifest
-      // Anonymous callers are served: an absent principal is a viewer who sees
-      // the public surfaces, not a caller to refuse. The tag is read
-      // optionally rather than through the middleware, so this endpoint has no
-      // layer dependency on auth at all: an assembly without it serves a
-      // manifest in which everyone is anonymous.
-      const principal = yield* Effect.serviceOption(CurrentUser)
-      return yield* manifest.build(principal._tag === 'Some' ? principal.value : undefined)
+      // an absent principal is a viewer who sees the public surfaces, not a
+      // caller to refuse
+      const viewer = yield* CurrentViewer
+      return yield* manifest.build(viewer.principal)
     }),
   ),
 )

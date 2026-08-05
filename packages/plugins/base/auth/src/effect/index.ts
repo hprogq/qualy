@@ -24,7 +24,7 @@ import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, CurrentUser } from './session.ts'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers } from './users.ts'
-import { Authenticated, layer as sessionLayer } from './session.ts'
+import { Authenticated, Viewer, layer as sessionLayer, viewerLayer } from './session.ts'
 
 // auth as an Effect layer.
 //
@@ -104,10 +104,10 @@ const tags: Layer.Layer<Placement | Iam, never, Database | Rbac> = Layer.effectC
  * provide it. The requirement reaches the entry point and fails the build.
  */
 export const layer: Layer.Layer<
-  Placement | Iam | Authenticated | SignIn | LoginSessions,
+  Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
   Database | Rbac | AuthConfig | LoginDrivers
-> = Layer.mergeAll(tags, sessionLayer, signInLayer)
+> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
 
 // --- api ---
 
