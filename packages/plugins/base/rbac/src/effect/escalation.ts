@@ -42,6 +42,8 @@ export interface Authority {
   readonly reachAt: (orgNodeId: string) => Effect.Effect<ReadonlyMap<string, Reach>>
   /** every code the catalog currently serves */
   readonly activeCodes: () => readonly string[]
+  /** and their declarations, for the checks that need a code's target */
+  readonly catalog: () => ReadonlyMap<string, { target: 'tenant' | 'org-node' }>
 }
 
 /**

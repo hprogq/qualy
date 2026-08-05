@@ -211,6 +211,7 @@ export const make = Effect.fn('Rbac.make')(function* () {
       ),
     reachAt: (orgNodeId: string) => reachAt(actor, orgNodeId),
     activeCodes: () => [...catalog.keys()],
+    catalog: () => catalog,
   })
 
   const keepsAdministrator = (tenantId: string) =>
@@ -401,6 +402,34 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
             principal.tenantId,
             params.roleId,
             payload.status,
+            payload.version,
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'getRolePermissions',
+      Effect.fn('access.getRolePermissions.handler')(function* ({ params }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.read')
+        return yield* access.roles.getPermissions(principal.tenantId, params.roleId, principal)
+      }),
+    )
+    .handle(
+      'setRolePermissions',
+      Effect.fn('access.setRolePermissions.handler')(function* ({ params, payload }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.manage')
+        return {
+          version: yield* access.roles.setPermissions(
+            principal.tenantId,
+            params.roleId,
+            payload.codes,
             payload.version,
             principal,
           ),

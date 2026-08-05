@@ -11,7 +11,9 @@ import {
 } from './effect/grants.ts'
 import { GrantEscalationRefused, RoleEscalationRefused } from './effect/escalation.ts'
 import {
+  PermissionNotFound,
   RoleConflict,
+  RoleTargetMismatch,
   RoleInUse,
   RoleIncomplete,
   RoleIsSystem,
@@ -79,6 +81,42 @@ export const accessApiGroup = HttpApiGroup.make('access')
         RoleNotDraft,
         RoleIncomplete,
         RoleEscalationRefused,
+        LastAdministrator,
+        RoleConflict,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getRolePermissions', '/iam/roles/:roleId/permissions', {
+      params: Schema.Struct({ roleId: id }),
+      success: Schema.Struct({
+        // what the role carries and can still use, apart from what it carries
+        // and cannot: a code whose plugin is unloaded grants nothing but has
+        // not been taken away either
+        active: Schema.Array(Schema.String),
+        unavailable: Schema.Array(Schema.String),
+        version: Schema.Number,
+      }),
+      error: [RoleNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('setRolePermissions', '/iam/roles/:roleId/permissions', {
+      params: Schema.Struct({ roleId: id }),
+      payload: Schema.Struct({
+        version: Schema.Number,
+        codes: Schema.Array(Schema.String),
+      }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        RoleNotFound,
+        RoleVersionConflict,
+        RoleIsSystem,
+        PermissionNotFound,
+        RoleTargetMismatch,
+        RoleEscalationRefused,
+        RoleIncomplete,
         LastAdministrator,
         RoleConflict,
         AccessDenied,

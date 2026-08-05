@@ -622,4 +622,91 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
       await db.dispose()
     }
   })
+
+  it('replaces permissions only within what the catalog currently offers', async () => {
+    // The case that would quietly destroy authority: a row whose plugin is
+    // unloaded was never on offer, so omitting it is not declining it.
+    // Unloading a plugin suspends its capabilities; it must not delete them.
+    const db = await createTestContext('effect-role-permissions')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const roleId = yield* access.roles.create(f.tenant, {
+            code: 'reviewer',
+            name: 'Reviewer',
+            kind: 'org',
+          })
+          // one code the catalog serves, and one from a plugin nobody loaded
+          const ghost = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('ghost.code','ghost','Ghost','org-node') returning id`),
+          ).id
+          const known = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from permissions where code = 'org.tree.read'`,
+            ),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${roleId}, ${ghost}), (${f.tenant}, ${roleId}, ${known})`)
+
+          // replace with a different served code, omitting both
+          yield* access.roles.setPermissions(
+            f.tenant,
+            roleId,
+            ['org.tree.manage'],
+            1,
+            f.principal,
+          )
+          const after = yield* access.roles.getPermissions(f.tenant, roleId, f.principal)
+          return { active: after.active, unavailable: after.unavailable }
+        }),
+      )
+      const answer = ok(exit)
+      // the served code the caller omitted is gone, as they asked
+      expect(answer.active).toEqual(['org.tree.manage'])
+      // the unloaded plugin's row survives, because it was never on offer
+      expect(answer.unavailable).toEqual(['ghost.code'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses a capability whose calling convention the role cannot use', async () => {
+    const db = await createTestContext('effect-role-target')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const tenantRole = yield* access.roles.create(f.tenant, {
+            code: 'wide',
+            name: 'Wide',
+            kind: 'tenant',
+          })
+          // an org capability in a tenant role would apply at every node
+          // without any grant having said so
+          const mismatched = yield* Effect.result(
+            access.roles.setPermissions(f.tenant, tenantRole, ['org.tree.manage'], 1, f.principal),
+          )
+          const unknown = yield* Effect.result(
+            access.roles.setPermissions(f.tenant, tenantRole, ['nope.code'], 1, f.principal),
+          )
+          return { mismatched: tagOf(mismatched), unknown: tagOf(unknown) }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.mismatched).toBe('ROLE_TARGET_MISMATCH')
+      expect(answer.unknown).toBe('PERMISSION_NOT_FOUND')
+    } finally {
+      await db.dispose()
+    }
+  })
 })

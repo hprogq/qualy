@@ -25,6 +25,7 @@ const authority = (
   tenantWide: () => Effect.succeed(new Set(held)),
   reachAt: () => Effect.succeed(new Map(Object.entries(reach))),
   activeCodes: () => active,
+  catalog: () => new Map(active.map((code) => [code, { target: 'tenant' as const }])),
 })
 
 const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSyncExit(effect)

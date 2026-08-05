@@ -24,8 +24,11 @@ import {
   countGrantsOfRoleQuery,
   deleteGrantQuery,
   deleteRoleQuery,
+  addPermissionsQuery,
+  bumpRoleQuery,
   insertRoleQuery,
   lockRoleQuery,
+  prunePermissionsQuery,
   rolePermissionCodesQuery,
   roleSetSizesQuery,
   setRoleStatusQuery,
@@ -335,21 +338,9 @@ export class Administration {
       // that unloading a plugin is meant to suspend rather than destroy.
       // Removing one is a separate decision that needs its own operation.
       const offered = [...active.keys()]
-      await tx.execute(sql`
-        delete from role_permissions
-        where tenant_id = ${tenantId} and role_id = ${role.id}
-          and permission_id in (
-            select id from permissions
-            where code = any(string_to_array(${offered.join(',')}, ',')))
-          and permission_id not in (
-            select id from permissions
-            where code = any(string_to_array(${wanted.join(',')}, ',')))`)
+      await tx.execute(prunePermissionsQuery(tenantId, role.id, offered, wanted))
       if (wanted.length > 0) {
-        await tx.execute(sql`
-          insert into role_permissions (tenant_id, role_id, permission_id)
-          select ${tenantId}, ${role.id}, p.id from permissions p
-          where p.code = any(string_to_array(${wanted.join(',')}, ','))
-          on conflict do nothing`)
+        await tx.execute(addPermissionsQuery(tenantId, role.id, wanted))
       }
       await this.bump(tx, tenantId, role.id)
       // an active role that just lost everything would be a live role that
@@ -855,9 +846,7 @@ export class Administration {
   }
 
   private async bump(tx: Tx, tenantId: string, roleId: string) {
-    await tx.execute(sql`
-      update roles set version = version + 1, updated_at = now()
-      where tenant_id = ${tenantId} and id = ${roleId}`)
+    await tx.execute(bumpRoleQuery(tenantId, roleId))
   }
 
   private async requireAll(

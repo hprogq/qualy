@@ -3,12 +3,16 @@ import { Database } from '@qualy/plugin-database/effect'
 import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
 import type { Principal } from '@qualy/rbac-contract'
 import {
+  addPermissionsQuery,
+  bumpRoleQuery,
   countGrantsOfRoleQuery,
   deleteRoleQuery,
   insertRoleQuery,
   lockRoleQuery,
   lockTenantQuery,
   rolePermissionCodesQuery,
+  prunePermissionsQuery,
+  roleQuery,
   roleSetSizesQuery,
   setRoleStatusQuery,
   updateRoleQuery,
@@ -79,6 +83,25 @@ interface RoleRow extends Record<string, unknown> {
   assignable: boolean
   version: number
 }
+
+export class PermissionNotFound extends Schema.TaggedErrorClass<PermissionNotFound>()(
+  'PERMISSION_NOT_FOUND',
+  { permissions: Schema.Array(Schema.String) },
+  { httpApiStatus: 404, identifier: 'PermissionNotFound' },
+) {}
+
+/**
+ * A capability whose calling convention does not match the role's kind.
+ *
+ * An org capability inside a tenant role would apply at every node without any
+ * grant having said so, and reaching every node belongs to the canonical
+ * administrator alone.
+ */
+export class RoleTargetMismatch extends Schema.TaggedErrorClass<RoleTargetMismatch>()(
+  'ROLE_TARGET_MISMATCH',
+  { permissions: Schema.Array(Schema.String) },
+  { httpApiStatus: 422, identifier: 'RoleTargetMismatch' },
+) {}
 
 export const make = Effect.fn('Rbac.roles.make')(function* (
   authorityFor: (actor: Principal) => Authority,
@@ -214,6 +237,79 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           yield* tx.execute(setRoleStatusQuery(tenantId, role.id, status))
           // a role losing its permissions can remove the last administrator
           if (status === 'disabled') yield* keepsAdministrator(tenantId)
+          return role.version + 1
+        }),
+      )
+    }),
+
+    /**
+     * What the role carries, split by whether it can still be used.
+     *
+     * A code whose plugin is unloaded grants nothing, but it has not been
+     * taken away either, so it is reported rather than hidden.
+     */
+    getPermissions: Effect.fn('Rbac.roles.getPermissions')(function* (
+      tenantId: string,
+      roleId: string,
+      actor: Principal,
+    ) {
+      const active = authorityFor(actor).catalog()
+      const role = rows<RoleRow>(
+        yield* database.execute(roleQuery(tenantId, roleId)).pipe(Effect.orDie),
+      )[0]
+      if (!role) return yield* new RoleNotFound()
+      const codes = yield* database
+        .execute(rolePermissionCodesQuery(tenantId, roleId))
+        .pipe(Effect.orDie, Effect.map((r) => rows<{ code: string }>(r).map((row) => row.code)))
+      return {
+        active: codes.filter((code) => active.has(code)).sort(),
+        unavailable: codes.filter((code) => !active.has(code)).sort(),
+        version: role.version,
+      }
+    }),
+
+    /** which capabilities the role carries, replaced whole */
+    setPermissions: Effect.fn('Rbac.roles.setPermissions')(function* (
+      tenantId: string,
+      roleId: string,
+      codes: readonly string[],
+      expectedVersion: number,
+      actor: Principal,
+    ) {
+      const authority = authorityFor(actor)
+      return yield* write(tenantId, (tx) =>
+        Effect.gen(function* () {
+          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          if (role.permission_mode === 'all-active') return yield* new RoleIsSystem()
+          const wanted = [...new Set(codes)]
+
+          // only codes the catalog currently serves: a row left behind by an
+          // unloaded plugin is not something anyone may grant
+          const active = authority.catalog()
+          const unknown = wanted.filter((code) => !active.has(code))
+          if (unknown.length > 0) {
+            return yield* new PermissionNotFound({ permissions: unknown.sort() })
+          }
+          const wantedTarget = role.kind === 'org' ? 'org-node' : 'tenant'
+          const mismatched = wanted.filter((code) => active.get(code)!.target !== wantedTarget)
+          if (mismatched.length > 0) {
+            return yield* new RoleTargetMismatch({ permissions: mismatched.sort() })
+          }
+          yield* assertMayDefineRole(authority, wanted)
+
+          yield* tx.execute(
+            prunePermissionsQuery(tenantId, role.id, [...active.keys()], wanted),
+          )
+          if (wanted.length > 0) {
+            yield* tx.execute(addPermissionsQuery(tenantId, role.id, wanted))
+          }
+          yield* tx.execute(bumpRoleQuery(tenantId, role.id))
+          // an active role that just lost everything would be live and grant
+          // nothing, so activation's completeness rule applies here too
+          if (role.status === 'active') {
+            yield* assertComplete(tx, tenantId, role, new Set(active.keys()))
+          }
+          yield* keepsAdministrator(tenantId)
           return role.version + 1
         }),
       )

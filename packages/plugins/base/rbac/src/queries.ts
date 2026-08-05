@@ -367,3 +367,45 @@ export const roleSetSizesQuery = (tenantId: string, roleId: string): SQL => sql`
 export const lockRoleQuery = (tenantId: string, roleId: string): SQL => sql`
   select id, code, kind, status, permission_mode, system_key, assignable, version
   from roles where tenant_id = ${tenantId} and id = ${roleId} for update`
+
+/**
+ * Replace a role's permissions, but only within what is currently on offer.
+ *
+ * A row whose plugin is unloaded was never offered, so the caller did not
+ * decline it by omitting it, and deleting it would quietly discard authority
+ * that unloading a plugin is meant to suspend rather than destroy. Removing
+ * one is a separate decision needing its own operation.
+ */
+export const prunePermissionsQuery = (
+  tenantId: string,
+  roleId: string,
+  offered: readonly string[],
+  wanted: readonly string[],
+): SQL => sql`
+  delete from role_permissions
+  where tenant_id = ${tenantId} and role_id = ${roleId}
+    and permission_id in (
+      select id from permissions
+      where code = any(string_to_array(${offered.join(',')}, ',')))
+    and permission_id not in (
+      select id from permissions
+      where code = any(string_to_array(${wanted.join(',')}, ',')))`
+
+export const addPermissionsQuery = (
+  tenantId: string,
+  roleId: string,
+  wanted: readonly string[],
+): SQL => sql`
+  insert into role_permissions (tenant_id, role_id, permission_id)
+  select ${tenantId}, ${roleId}, p.id from permissions p
+  where p.code = any(string_to_array(${wanted.join(',')}, ','))
+  on conflict do nothing`
+
+export const bumpRoleQuery = (tenantId: string, roleId: string): SQL => sql`
+  update roles set version = version + 1, updated_at = now()
+  where tenant_id = ${tenantId} and id = ${roleId}`
+
+export const roleQuery = (tenantId: string, roleId: string): SQL => sql`
+  select id, code, name, description, kind, status, permission_mode, system_key,
+    assignable, version
+  from roles where tenant_id = ${tenantId} and id = ${roleId}`
