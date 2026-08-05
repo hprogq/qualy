@@ -21,7 +21,15 @@ import { assertGrantEligible } from './eligibility.ts'
 import { assertMayDefineRole, assertMayGrantRole } from './escalation.ts'
 import { type Reach } from './queries.ts'
 import {
+  countGrantsOfRoleQuery,
   deleteGrantQuery,
+  deleteRoleQuery,
+  insertRoleQuery,
+  lockRoleQuery,
+  rolePermissionCodesQuery,
+  roleSetSizesQuery,
+  setRoleStatusQuery,
+  updateRoleQuery,
   grantQuery,
   grantsBlockingOrgTypeQuery,
   holdsCanonicalAdminQuery,
@@ -182,11 +190,15 @@ export class Administration {
   ): Promise<string> {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
-      const created = await tx.execute<{ id: string }>(sql`
-        insert into roles (tenant_id, code, name, description, kind, status, permission_mode)
-        values (${tenantId}, ${input.code}, ${input.name}, ${input.description ?? null},
-          ${input.kind}, 'draft', 'explicit')
-        returning id`)
+      const created = await tx.execute<{ id: string }>(
+        insertRoleQuery({
+          tenantId,
+          code: input.code,
+          name: input.name,
+          description: input.description ?? null,
+          kind: input.kind,
+        }),
+      )
       return created.rows[0]!.id
     })
   }
@@ -205,14 +217,7 @@ export class Administration {
       if (role.system_key !== null && fields.assignable === false) {
         throw accessErrors.create('ROLE_IS_SYSTEM')
       }
-      await tx.execute(sql`
-        update roles set
-          name = coalesce(${fields.name ?? null}, name),
-          description = ${fields.description === undefined ? sql`description` : fields.description},
-          assignable = coalesce(${fields.assignable ?? null}, assignable),
-          version = version + 1,
-          updated_at = now()
-        where tenant_id = ${tenantId} and id = ${role.id}`)
+      await tx.execute(updateRoleQuery(tenantId, role.id, fields))
       return role.version + 1
     })
   }
@@ -242,9 +247,7 @@ export class Administration {
       }
       // a request that changes nothing must not invalidate every open editor
       if (role.status === status) return role.version
-      await tx.execute(sql`
-        update roles set status = ${status}, version = version + 1, updated_at = now()
-        where tenant_id = ${tenantId} and id = ${role.id}`)
+      await tx.execute(setRoleStatusQuery(tenantId, role.id, status))
       // a role losing its permissions can remove the last administrator
       if (status === 'disabled') await assertTenantKeepsAdministrator(tx, tenantId)
       return role.version + 1
@@ -259,12 +262,9 @@ export class Administration {
     const active = new Set(this.authorization.activeCodes())
     if (codes.filter((code) => active.has(code)).length === 0) missing.push('permissions')
     const counts = (
-      await tx.execute<{ user_types: number; org_types: number }>(sql`
-        select
-          (select count(*)::int from role_allowed_user_types
-           where tenant_id = ${tenantId} and role_id = ${role.id}) as user_types,
-          (select count(*)::int from role_allowed_org_types
-           where tenant_id = ${tenantId} and role_id = ${role.id}) as org_types`)
+      await tx.execute<{ user_types: number; org_types: number }>(
+        roleSetSizesQuery(tenantId, role.id),
+      )
     ).rows[0]!
     // every role says who may hold it, whatever its kind: a role nobody is
     // eligible for is as inert as one with no permissions, and leaving the
@@ -277,10 +277,7 @@ export class Administration {
 
   private async permissionCodesOf(tx: Tx, tenantId: string, roleId: string) {
     const rows = (
-      await tx.execute<{ code: string }>(sql`
-        select p.code from role_permissions rp
-        join permissions p on p.id = rp.permission_id
-        where rp.tenant_id = ${tenantId} and rp.role_id = ${roleId}`)
+      await tx.execute<{ code: string }>(rolePermissionCodesQuery(tenantId, roleId))
     ).rows
     return { codes: rows.map((row) => row.code) }
   }
@@ -291,12 +288,10 @@ export class Administration {
       const role = await this.requireRole(tx, tenantId, roleId, expectedVersion)
       if (role.system_key !== null) throw accessErrors.create('ROLE_IS_SYSTEM')
       const grants = (
-        await tx.execute<{ count: number }>(sql`
-          select count(*)::int as count from role_grants
-          where tenant_id = ${tenantId} and role_id = ${role.id}`)
+        await tx.execute<{ count: number }>(countGrantsOfRoleQuery(tenantId, role.id))
       ).rows[0]!.count
       if (grants > 0) throw accessErrors.create('ROLE_IN_USE', { grantCount: grants })
-      await tx.execute(sql`delete from roles where tenant_id = ${tenantId} and id = ${role.id}`)
+      await tx.execute(deleteRoleQuery(tenantId, role.id))
     })
   }
 
@@ -850,9 +845,7 @@ export class Administration {
         system_key: string | null
         assignable: boolean
         version: number
-      }>(sql`
-        select id, code, kind, status, permission_mode, system_key, assignable, version
-        from roles where tenant_id = ${tenantId} and id = ${roleId} for update`)
+      }>(lockRoleQuery(tenantId, roleId))
     ).rows[0]
     if (!row) throw accessErrors.create('ROLE_NOT_FOUND')
     if (expectedVersion !== undefined && row.version !== expectedVersion) {

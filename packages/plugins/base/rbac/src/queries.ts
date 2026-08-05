@@ -317,3 +317,53 @@ export const rolePermissionCodesQuery = (tenantId: string, roleId: string): SQL 
 /** the same row org and auth lock, so the three cannot interleave */
 export const lockTenantQuery = (tenantId: string): SQL =>
   sql`select 1 from tenants where id = ${tenantId} for update`
+
+// --- roles ---
+
+export const insertRoleQuery = (input: {
+  tenantId: string
+  code: string
+  name: string
+  description: string | null
+  kind: 'tenant' | 'org'
+}): SQL => sql`
+  insert into roles (tenant_id, code, name, description, kind, status, permission_mode)
+  values (${input.tenantId}, ${input.code}, ${input.name}, ${input.description},
+    ${input.kind}, 'draft', 'explicit')
+  returning id`
+
+export const updateRoleQuery = (
+  tenantId: string,
+  roleId: string,
+  fields: { name?: string; description?: string | null; assignable?: boolean },
+): SQL => sql`
+  update roles set
+    name = coalesce(${fields.name ?? null}, name),
+    description = ${fields.description === undefined ? sql`description` : fields.description},
+    assignable = coalesce(${fields.assignable ?? null}, assignable),
+    version = version + 1,
+    updated_at = now()
+  where tenant_id = ${tenantId} and id = ${roleId}`
+
+export const setRoleStatusQuery = (tenantId: string, roleId: string, status: string): SQL => sql`
+  update roles set status = ${status}, version = version + 1, updated_at = now()
+  where tenant_id = ${tenantId} and id = ${roleId}`
+
+export const deleteRoleQuery = (tenantId: string, roleId: string): SQL =>
+  sql`delete from roles where tenant_id = ${tenantId} and id = ${roleId}`
+
+export const countGrantsOfRoleQuery = (tenantId: string, roleId: string): SQL => sql`
+  select count(*)::int as count from role_grants
+  where tenant_id = ${tenantId} and role_id = ${roleId}`
+
+/** what a completeness check counts: who may hold it, and what it may anchor to */
+export const roleSetSizesQuery = (tenantId: string, roleId: string): SQL => sql`
+  select
+    (select count(*)::int from role_allowed_user_types
+     where tenant_id = ${tenantId} and role_id = ${roleId}) as user_types,
+    (select count(*)::int from role_allowed_org_types
+     where tenant_id = ${tenantId} and role_id = ${roleId}) as org_types`
+
+export const lockRoleQuery = (tenantId: string, roleId: string): SQL => sql`
+  select id, code, kind, status, permission_mode, system_key, assignable, version
+  from roles where tenant_id = ${tenantId} and id = ${roleId} for update`

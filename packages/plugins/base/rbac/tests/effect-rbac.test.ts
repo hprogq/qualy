@@ -498,4 +498,128 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
       await db.dispose()
     }
   })
+
+  it('checks completeness only when a role becomes usable', async () => {
+    // A draft is allowed to be half-filled: the gate is activation, so a role
+    // is never enabled and unable to do anything, and nobody is nagged field
+    // by field while they are still filling it in.
+    const db = await createTestContext('effect-role-activation')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const access = yield* Access
+          const roleId = yield* access.roles.create(f.tenant, {
+            code: 'reviewer',
+            name: 'Reviewer',
+            kind: 'org',
+          })
+          // empty draft: activation names everything it still needs
+          const empty = yield* Effect.result(
+            access.roles.setStatus(f.tenant, roleId, 'active', 1, f.principal),
+          )
+
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const permission = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from permissions where code = 'org.tree.manage'`,
+            ),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${roleId}, ${permission})`)
+          const stillMissing = yield* Effect.result(
+            access.roles.setStatus(f.tenant, roleId, 'active', 1, f.principal),
+          )
+
+          const userType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from user_types where tenant_id = ${f.tenant} limit 1`,
+            ),
+          ).id
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} limit 1`,
+            ),
+          ).id
+          yield* database.execute(sql`
+            insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+            values (${f.tenant}, ${roleId}, ${userType})`)
+          yield* database.execute(sql`
+            insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+            values (${f.tenant}, ${roleId}, ${orgType})`)
+          const complete = yield* Effect.result(
+            access.roles.setStatus(f.tenant, roleId, 'active', 1, f.principal),
+          )
+
+          return {
+            empty: (empty as { failure?: { missing?: string[] } }).failure?.missing,
+            emptyTag: tagOf(empty),
+            stillMissing: (stillMissing as { failure?: { missing?: string[] } }).failure?.missing,
+            complete: complete._tag,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.emptyTag).toBe('ROLE_INCOMPLETE')
+      // the refusal names everything at once rather than one field at a time
+      expect(answer.empty).toEqual(['permissions', 'user-types', 'org-types'])
+      expect(answer.stillMissing).toEqual(['user-types', 'org-types'])
+      expect(answer.complete).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('will not let an author activate a role beyond their own authority', async () => {
+    const db = await createTestContext('effect-role-escalation')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const roleId = yield* access.roles.create(f.tenant, {
+            code: 'wide',
+            name: 'Wide',
+            kind: 'tenant',
+          })
+          const permission = one<{ id: string }>(
+            yield* database.execute(sql`select id from permissions where code = 'iam.user.read'`),
+          ).id
+          const userType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from user_types where tenant_id = ${f.tenant} limit 1`,
+            ),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${roleId}, ${permission})`)
+          yield* database.execute(sql`
+            insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+            values (${f.tenant}, ${roleId}, ${userType})`)
+
+          // the anchored user holds org.tree.manage at one node and nothing
+          // tenant-wide, so this definition is beyond them
+          const beyond = yield* Effect.result(
+            access.roles.setStatus(f.tenant, roleId, 'active', 1, f.anchored),
+          )
+          // the administrator holds everything, so it is not beyond them
+          const allowed = yield* Effect.result(
+            access.roles.setStatus(f.tenant, roleId, 'active', 1, f.principal),
+          )
+          return { beyond: tagOf(beyond), allowed: allowed._tag }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.beyond).toBe('ROLE_ESCALATION_REFUSED')
+      expect(answer.allowed).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
 })

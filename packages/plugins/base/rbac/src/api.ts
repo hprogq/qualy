@@ -9,7 +9,15 @@ import {
   GrantUserNotFound,
   RoleNotFound,
 } from './effect/grants.ts'
-import { GrantEscalationRefused } from './effect/escalation.ts'
+import { GrantEscalationRefused, RoleEscalationRefused } from './effect/escalation.ts'
+import {
+  RoleConflict,
+  RoleInUse,
+  RoleIncomplete,
+  RoleIsSystem,
+  RoleNotDraft,
+  RoleVersionConflict,
+} from './effect/roles.ts'
 
 // The access api, as definitions only. Paths are frozen.
 //
@@ -29,6 +37,62 @@ const grantTarget = Schema.Union([
 ])
 
 export const accessApiGroup = HttpApiGroup.make('access')
+  .add(
+    // the management api creates drafts only; a role becomes usable through
+    // activation, which is where completeness is checked
+    HttpApiEndpoint.post('createRole', '/iam/roles', {
+      payload: Schema.Struct({
+        code: Schema.String,
+        name: Schema.String,
+        description: Schema.optional(Schema.String),
+        kind: Schema.Literals(['tenant', 'org']),
+      }),
+      success: Schema.Struct({ id: Schema.String }),
+      error: [RoleConflict, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.patch('updateRole', '/iam/roles/:roleId', {
+      params: Schema.Struct({ roleId: id }),
+      payload: Schema.Struct({
+        version: Schema.Number,
+        name: Schema.optional(Schema.String),
+        description: Schema.optional(Schema.NullOr(Schema.String)),
+        assignable: Schema.optional(Schema.Boolean),
+      }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [RoleNotFound, RoleVersionConflict, RoleIsSystem, RoleConflict, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('setRoleStatus', '/iam/roles/:roleId/status', {
+      params: Schema.Struct({ roleId: id }),
+      payload: Schema.Struct({
+        version: Schema.Number,
+        status: Schema.Literals(['active', 'disabled']),
+      }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        RoleNotFound,
+        RoleVersionConflict,
+        RoleIsSystem,
+        RoleNotDraft,
+        RoleIncomplete,
+        RoleEscalationRefused,
+        LastAdministrator,
+        RoleConflict,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteRole', '/iam/roles/:roleId', {
+      params: Schema.Struct({ roleId: id }),
+      query: Schema.Struct({ version: Schema.String }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [RoleNotFound, RoleVersionConflict, RoleIsSystem, RoleInUse, RoleConflict, AccessDenied],
+    }).middleware(Authenticated),
+  )
   .add(
     HttpApiEndpoint.post('createRoleGrant', '/iam/role-grants', {
       payload: Schema.Struct({ userId: id, roleId: id, target: grantTarget }),

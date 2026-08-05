@@ -14,6 +14,7 @@ import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentUser } from '@qualy/plugin-auth/effect/session'
 import { accessApiGroup } from '../api.ts'
 import { make as makeGrants } from './grants.ts'
+import { make as makeRoles } from './roles.ts'
 import type { Authority } from './escalation.ts'
 import {
   REACH_RANK,
@@ -212,7 +213,15 @@ export const make = Effect.fn('Rbac.make')(function* () {
     activeCodes: () => [...catalog.keys()],
   })
 
+  const keepsAdministrator = (tenantId: string) =>
+    shapeRef.assertTenantKeepsAdministrator(tenantId).pipe(Effect.orDie)
+
   const grants = yield* makeGrants(authorityFor)
+  const roles = yield* makeRoles(authorityFor, keepsAdministrator)
+
+  // eslint-disable-next-line prefer-const -- assigned below, read lazily by
+  // the role lifecycle, which needs the invariant this shape exposes
+  let shapeRef: RbacShape
 
   const shape: RbacShape = {
     listPermissions: (filter) =>
@@ -306,7 +315,8 @@ export const make = Effect.fn('Rbac.make')(function* () {
       }
     }),
   }
-  return { ...shape, grants }
+  shapeRef = shape
+  return { ...shape, grants, roles }
 })
 
 /**
@@ -319,7 +329,10 @@ export const make = Effect.fn('Rbac.make')(function* () {
  */
 export class Access extends Context.Service<
   Access,
-  { readonly grants: Effect.Success<ReturnType<typeof makeGrants>> }
+  {
+    readonly grants: Effect.Success<ReturnType<typeof makeGrants>>
+    readonly roles: Effect.Success<ReturnType<typeof makeRoles>>
+  }
 >()('@qualy/plugin-rbac/Access') {}
 
 /**
@@ -331,10 +344,10 @@ export class Access extends Context.Service<
 export const layer: Layer.Layer<Rbac | Access, never, Database | PermissionCatalog> =
   Layer.effectContext(
     Effect.gen(function* () {
-      const { grants, ...shape } = yield* make()
+      const { grants, roles, ...shape } = yield* make()
       return Context.empty().pipe(
         Context.add(Rbac, shape),
-        Context.add(Access, { grants }),
+        Context.add(Access, { grants, roles }),
       )
     }),
   )
@@ -348,6 +361,63 @@ const local = HttpApi.make(QUALY_API_ID).add(accessApiGroup).prefix(QUALY_API_PR
 
 export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers) =>
   handlers
+    .handle(
+      'createRole',
+      Effect.fn('access.createRole.handler')(function* ({ payload }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.manage')
+        return { id: yield* access.roles.create(principal.tenantId, payload) }
+      }),
+    )
+    .handle(
+      'updateRole',
+      Effect.fn('access.updateRole.handler')(function* ({ params, payload }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.manage')
+        const { version, ...fields } = payload
+        return {
+          version: yield* access.roles.update(
+            principal.tenantId,
+            params.roleId,
+            fields,
+            version,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'setRoleStatus',
+      Effect.fn('access.setRoleStatus.handler')(function* ({ params, payload }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.manage')
+        return {
+          version: yield* access.roles.setStatus(
+            principal.tenantId,
+            params.roleId,
+            payload.status,
+            payload.version,
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'deleteRole',
+      Effect.fn('access.deleteRole.handler')(function* ({ params, query }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.manage')
+        yield* access.roles.remove(principal.tenantId, params.roleId, Number(query.version))
+        return { ok: true as const }
+      }),
+    )
     .handle(
       'createRoleGrant',
       Effect.fn('access.createRoleGrant.handler')(function* ({ payload }) {
