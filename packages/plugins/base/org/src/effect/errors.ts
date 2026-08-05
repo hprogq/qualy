@@ -158,3 +158,23 @@ export const typeConstraints: Record<string, () => TypeConstraintError> = {
   uq_org_types_tenant_name: () => new TypeConflict(),
   fk_role_allowed_org_types_type: () => new TypeInUse({ reason: 'roles still allow this org type' }),
 }
+
+export class InvalidMove extends Schema.TaggedErrorClass<InvalidMove>()(
+  'ORG_NODE_INVALID_MOVE',
+  { reason: Schema.String },
+  { httpApiStatus: 422, identifier: 'OrgNodeInvalidMove' },
+) {}
+
+export type CreateNodeError =
+  | NodeNotFound
+  | TypeNotFound
+  | RuleViolation
+  | AccessDenied
+  | NodeConstraintError
+export type MoveNodeError =
+  | NodeNotFound
+  | NodeIsRoot
+  | InvalidMove
+  | RuleViolation
+  | AccessDenied
+  | NodeConstraintError

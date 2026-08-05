@@ -12,6 +12,7 @@ import {
   PlacementBlocked,
   RuleViolation,
   TypeNotFound,
+  InvalidMove,
   NodeHasChildren,
   NodeIsRoot,
   nodeConstraints,
@@ -22,6 +23,8 @@ import {
   RuleNotFound,
   TypeInUse,
   type ChangeNodeTypeError,
+  type CreateNodeError,
+  type MoveNodeError,
   type CreateTypeError,
   type DeleteRuleError,
   type DeleteTypeError,
@@ -50,6 +53,8 @@ import {
   insertTypeQuery,
   listRulesQuery,
   listTypesQuery,
+  insertNodeQuery,
+  moveSubtreeQuery,
   nodesByIdQuery,
   readSnapshotQuery,
   rootQuery,
@@ -98,6 +103,17 @@ interface NodeRow extends Record<string, unknown> {
 }
 
 /** a node as a caller sees it, with what they may do to it */
+export type NodeRowPublic = {
+  id: string
+  parent_id: string | null
+  org_type_id: string
+  code: string | null
+  name: string
+  path: string
+  depth: number
+  sort_order: number
+}
+
 export interface NodeView {
   id: string
   parent_id: string | null
@@ -143,6 +159,25 @@ export class Org extends Context.Service<
       nodeId: string,
       as: Principal,
     ) => Effect.Effect<void, DeleteNodeError>
+
+    readonly createNode: (
+      tenantId: string,
+      input: {
+        parentId: string
+        orgTypeId: string
+        name: string
+        code?: string
+        sortOrder?: number
+      },
+      as: Principal,
+    ) => Effect.Effect<NodeRowPublic, CreateNodeError>
+    readonly moveNode: (
+      tenantId: string,
+      nodeId: string,
+      newParentId: string,
+      as: Principal,
+      newSortOrder?: number,
+    ) => Effect.Effect<void, MoveNodeError>
 
     readonly readNode: (
       tenantId: string,
@@ -441,10 +476,141 @@ export const make = Effect.fn('Org.make')(function* () {
     subtreeManageable: subtreeCoveredBy(manageScope, node),
   })
 
+  const createNode = Effect.fn('Org.createNode')(function* (
+    tenantId: string,
+    input: {
+      parentId: string
+      orgTypeId: string
+      name: string
+      code?: string
+      sortOrder?: number
+    },
+    as: Principal,
+  ) {
+    // authority over the parent, because creating a child mutates the parent
+    return yield* write(tenantId, input.parentId, as, (tx, parent) =>
+      Effect.gen(function* () {
+        const type = rows<TypeRow>(
+          yield* tx.execute(typeQuery(tenantId, input.orgTypeId)).pipe(Effect.orDie),
+        )[0]
+        if (!type) return yield* new TypeNotFound()
+        const allowed = rows(
+          yield* tx
+            .execute(ruleExistsQuery(tenantId, parent.org_type_id, input.orgTypeId))
+            .pipe(Effect.orDie),
+        )
+        if (allowed.length === 0) {
+          return yield* new RuleViolation({
+            reason: 'parent-child type combination is not allowed by the rules',
+          })
+        }
+        return rows<NodeRow>(
+          yield* tx.execute(
+            insertNodeQuery({
+              tenantId,
+              parentId: parent.id,
+              parentPath: parent.path,
+              parentDepth: parent.depth,
+              orgTypeId: input.orgTypeId,
+              code: input.code ?? null,
+              name: input.name,
+              sortOrder: input.sortOrder ?? 0,
+            }),
+          ),
+        )[0]!
+      }),
+    )
+  })
+
+  /**
+   * Relocating a node relocates everything beneath it.
+   *
+   * So this does not use the shared single-node check. The caller's authority
+   * has to cover the WHOLE moved subtree, or a bare self anchor would let them
+   * drag unmanaged descendants into a region they do manage and silently gain
+   * authority over them. Both ends are checked: the subtree being moved, and
+   * the parent receiving it.
+   */
+  const moveNode = Effect.fn('Org.moveNode')(function* (
+    tenantId: string,
+    nodeId: string,
+    newParentId: string,
+    as: Principal,
+    newSortOrder?: number,
+  ) {
+    return yield* database
+      .transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.execute(lockTenantQuery(tenantId))
+          if (nodeId === newParentId) {
+            return yield* new InvalidMove({ reason: 'a node cannot become its own parent' })
+          }
+          const node = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, nodeId)))[0]
+          if (!node) return yield* new NodeNotFound()
+          if (!node.parent_id) return yield* new NodeIsRoot()
+          const newParent = rows<NodeRow>(
+            yield* tx.execute(nodeQuery(tenantId, newParentId)),
+          )[0]
+          if (!newParent) return yield* new NodeNotFound()
+
+          const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
+          if (!subtreeCoveredBy(manageScope, node) || !coveredBy(manageScope, newParent)) {
+            return yield* new AccessDenied({ reason: 'not allowed to move this subtree' })
+          }
+
+          if (newParent.id === node.parent_id) {
+            // same parent: a reorder, with no structural change to validate
+            if (newSortOrder !== undefined) {
+              yield* tx.execute(
+                updateNodeFieldsQuery(tenantId, nodeId, { sortOrder: newSortOrder }),
+              )
+            }
+            return
+          }
+          if (
+            newParent.path === node.path ||
+            newParent.path.startsWith(`${node.path}.`)
+          ) {
+            return yield* new InvalidMove({ reason: 'a node cannot move into its own subtree' })
+          }
+          const allowed = rows(
+            yield* tx.execute(
+              ruleExistsQuery(tenantId, newParent.org_type_id, node.org_type_id),
+            ),
+          )
+          if (allowed.length === 0) {
+            return yield* new RuleViolation({
+              reason: 'parent-child type combination is not allowed by the rules',
+            })
+          }
+          const newPath = `${newParent.path}.${node.path.split('.').at(-1)}`
+          yield* tx.execute(
+            moveSubtreeQuery({
+              tenantId,
+              nodeId,
+              newParentId,
+              oldPath: node.path,
+              newPath,
+              depthDelta: newParent.depth + 1 - node.depth,
+            }),
+          )
+          if (newSortOrder !== undefined) {
+            yield* tx.execute(updateNodeFieldsQuery(tenantId, nodeId, { sortOrder: newSortOrder }))
+          }
+        }),
+      )
+      .pipe(
+        translateConstraints(nodeConstraints),
+        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+      )
+  })
+
   return {
     changeNodeType,
     updateNode,
     deleteNode,
+    createNode,
+    moveNode,
 
     readNode: Effect.fn('Org.readNode')(function* (
       tenantId: string,
@@ -717,6 +883,31 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const org = yield* Org
         const principal = yield* CurrentUser
         yield* org.deleteNode(principal.tenantId, params.nodeId, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'createNode',
+      Effect.fn('org.createNode.handler')(function* ({ payload }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        const node = yield* org.createNode(principal.tenantId, payload, principal)
+        // a freshly created node is manageable by whoever could create it
+        return { node: toNodeDto({ ...node, manageable: true, subtreeManageable: true }) }
+      }),
+    )
+    .handle(
+      'setNodePlacement',
+      Effect.fn('org.setNodePlacement.handler')(function* ({ params, payload }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.moveNode(
+          principal.tenantId,
+          params.nodeId,
+          payload.parentId,
+          principal,
+          payload.sortOrder,
+        )
         return { ok: true as const }
       }),
     )

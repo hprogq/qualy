@@ -495,4 +495,133 @@ describe.runIf(postgresAvailable)('changing a node type across three plugins', (
       await db.dispose()
     }
   })
+
+  it('refuses a move whose subtree the caller does not wholly manage', async () => {
+    // The escalation this guards: with a bare self anchor on the node, moving
+    // it would drag descendants the caller does not manage into a region they
+    // do, and they would gain authority over them. Authority has to cover the
+    // whole moved subtree, not just its top.
+    const db = await createTestContext('effect-move-escalation')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const src = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Src', 'r.src', 1) returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+            values (${f.tenant}, ${src}, ${f.collegeType}, 'Deep', 'r.src.deep', 2)`)
+          // the destination is a club, because a type cannot parent itself
+          const dest = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.clubType}, 'Dest', 'r.dest', 1) returning id`),
+          ).id
+          // a college may sit under a club, so the rules do not block the move
+          // and the only thing deciding it is coverage
+          yield* database.execute(sql`
+            insert into org_type_rules (tenant_id, parent_type_id, child_type_id)
+            values (${f.tenant}, ${f.clubType}, ${f.collegeType})`)
+
+          const role = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant}, 'mover', 'Mover', 'org', 'active', 'explicit') returning id`),
+          ).id
+          const permission = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('org.tree.manage', 'org', 'manage', 'org-node')
+              on conflict (code) do update set plugin = excluded.plugin returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${role}, ${permission})`)
+          const mover = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Mover', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          // self on the node being moved, subtree on the destination
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${mover}, ${role}, ${src}, 'self')`)
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${mover}, ${role}, ${dest}, 'subtree')`)
+
+          const org = yield* Org
+          const asMover = { tenantId: f.tenant, userId: mover, sessionId: 's' }
+          const selfAnchored = yield* Effect.result(
+            org.moveNode(f.tenant, src, dest, asMover),
+          )
+
+          // widen the same grant to subtree and it becomes allowed
+          yield* database.execute(sql`
+            update role_grants set coverage = 'subtree'
+            where user_id = ${mover} and org_node_id = ${src}`)
+          const subtreeAnchored = yield* Effect.result(
+            org.moveNode(f.tenant, src, dest, asMover),
+          )
+          const moved = one<{ path: string }>(
+            yield* database.execute(sql`select path::text as path from org_nodes where id = ${src}`),
+          ).path
+          return {
+            refused: tagOf(selfAnchored),
+            allowed: subtreeAnchored._tag,
+            moved,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.refused).toBe('ACCESS_DENIED')
+      // the only thing that changed is how far the anchor reaches
+      expect(answer.allowed).toBe('Success')
+      expect(answer.moved.startsWith('r.dest.')).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses a node moving into its own subtree', async () => {
+    const db = await createTestContext('effect-move-cycle')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const mid = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.mid', 1) returning id`),
+          ).id
+          const deep = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.mid.deep', 2) returning id`),
+          ).id
+          const org = yield* Org
+          return {
+            intoDescendant: tagOf(yield* Effect.result(org.moveNode(f.tenant, mid, deep, f.principal))),
+            intoItself: tagOf(yield* Effect.result(org.moveNode(f.tenant, mid, mid, f.principal))),
+            root: tagOf(yield* Effect.result(org.moveNode(f.tenant, f.node, mid, f.principal))),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.intoDescendant).toBe('ORG_NODE_INVALID_MOVE')
+      expect(answer.intoItself).toBe('ORG_NODE_INVALID_MOVE')
+      expect(answer.root).toBe('ORG_NODE_IS_ROOT')
+    } finally {
+      await db.dispose()
+    }
+  })
 })

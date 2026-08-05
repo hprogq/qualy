@@ -43,6 +43,8 @@ import {
   nodeQuery,
   countTypesQuery,
   deleteNodeQuery,
+  insertNodeQuery,
+  moveSubtreeQuery,
   nodesByIdQuery,
   subtreeQuery,
   deleteRuleQuery,
@@ -125,13 +127,7 @@ export async function insertNode(
     sortOrder: number
   },
 ) {
-  const result = await tx.execute<NodeRow>(sql`
-    insert into org_nodes (id, tenant_id, parent_id, org_type_id, code, name, path, depth, sort_order)
-    select v.id, ${input.tenantId}, ${input.parentId}, ${input.orgTypeId}, ${input.code},
-      ${input.name}, (${input.parentPath} || '.' || replace(v.id::text, '-', ''))::ltree,
-      ${input.parentDepth + 1}, ${input.sortOrder}
-    from (select uuidv7() as id) v
-    returning ${NODE_COLUMNS}`)
+  const result = await tx.execute<NodeRow>(insertNodeQuery(input))
   return result.rows[0]!
 }
 
@@ -163,16 +159,7 @@ export async function moveSubtree(
     depthDelta: number
   },
 ) {
-  await tx.execute(sql`
-    update org_nodes set
-      parent_id = case when id = ${input.nodeId}::uuid then ${input.newParentId}::uuid else parent_id end,
-      path = case
-        when id = ${input.nodeId}::uuid then ${input.newPath}::ltree
-        else ${input.newPath}::ltree || subpath(path, nlevel(${input.oldPath}::ltree))
-      end,
-      depth = depth + ${input.depthDelta},
-      updated_at = now()
-    where tenant_id = ${input.tenantId} and path <@ ${input.oldPath}::ltree`)
+  await tx.execute(moveSubtreeQuery(input))
 }
 
 export async function deleteNode(tx: OrgTx, tenantId: string, nodeId: string) {

@@ -3,6 +3,7 @@ import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { Authenticated } from '@qualy/plugin-auth/effect/session'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
+  InvalidMove,
   NodeConflict,
   NodeInUse,
   TypeConflict,
@@ -168,5 +169,37 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
     success: Schema.Struct({ node: orgNode }),
     // a node the caller cannot see answers exactly as a missing one
     error: [NodeNotFound, AccessDenied],
+  }).middleware(Authenticated),
+).add(
+  HttpApiEndpoint.post('createNode', '/org/nodes', {
+    payload: Schema.Struct({
+      parentId: id,
+      orgTypeId: id,
+      name: Schema.String,
+      code: Schema.optional(Schema.String),
+      sortOrder: Schema.optional(Schema.Number),
+    }),
+    success: Schema.Struct({ node: orgNode }),
+    error: [NodeNotFound, TypeNotFound, RuleViolation, AccessDenied, NodeConflict, NodeInUse],
+  }).middleware(Authenticated),
+).add(
+  // a relocation is an idempotent replacement of where the node sits, not an
+  // action, which is why it is a PUT on /placement
+  HttpApiEndpoint.put('setNodePlacement', '/org/nodes/:nodeId/placement', {
+    params: Schema.Struct({ nodeId: id }),
+    payload: Schema.Struct({
+      parentId: id,
+      sortOrder: Schema.optional(Schema.Number),
+    }),
+    success: Schema.Struct({ ok: Schema.Literal(true) }),
+    error: [
+      NodeNotFound,
+      NodeIsRoot,
+      InvalidMove,
+      RuleViolation,
+      AccessDenied,
+      NodeConflict,
+      NodeInUse,
+    ],
   }).middleware(Authenticated),
 )
