@@ -1,7 +1,8 @@
 # Effect 迁移阶段性总结(截至 2026-08-05)
 
-> 分支 `refactor/effect-platform`(已推 origin),基线 tag `p1-capability-boundary`(已推),29 个 commit。
-> 验收状态:`pnpm typecheck` 零错误,`pnpm test` **52 文件 345 例全过**,`pnpm build` 通过,真进程实跑正常。
+> 分支 `refactor/effect-platform`(已推 origin),基线 tag `p1-capability-boundary`(已推)。
+> 验收状态:`pnpm typecheck` 零错误,`pnpm test` **55 文件 373 例全过**,`pnpm build` 通过,真进程实跑正常。
+> **已迁路由 15/55**(org 插件 13 条已全部迁完;auth iam 与 rbac access 共约 40 条未迁)。
 >
 > 本文只讲**已完成什么、要点是什么**。设计与实测细节在 docs/effect-migration.md,裁决在 docs/adr/0001-0003,
 > 逐会话进度在 STATUS.md。
@@ -219,6 +220,52 @@ endpoint 要么声明、拿到**非可选**的 principal,要么不声明、根�
 
 oRPC 那侧断言**完整**,Effect 这侧断言**没发明新路径**(当前 2/55,包含而非相等;改名会红并报出路由)。
 两份路径表就是让一次改名通过两轮评审。
+
+## 12. M4 迁移进行中的状态(2026-08-05)
+
+### 12.1 已迁完:org 插件全部 13 条路由
+
+```
+GET               /api/org/tree
+GET,PATCH,DELETE  /api/org/nodes/{nodeId}
+POST              /api/org/nodes
+PUT               /api/org/nodes/{nodeId}/type
+PUT               /api/org/nodes/{nodeId}/placement
+GET,POST          /api/org/types
+PATCH,DELETE      /api/org/types/{typeId}
+GET               /api/org/type-rules
+PUT,DELETE        /api/org/type-rules/{parentTypeId}/{childTypeId}
+```
+
+### 12.2 稳定下来的迁移套路(四次都一样)
+
+1. **SQL 抽进共享模块**(`<plugin>/src/queries.ts`),cordis 侧改用它;
+   **验收标准:原有测试一字未改全过**(rbac 28、auth 20、org 17)。
+2. 非 SQL 的共享判定同样处理 —— `org/src/coverage.ts` 是唯一一处(覆盖规则的 TS 投影)。
+3. Effect 侧执行同一批语句;写路径统一形状:**锁前拒绝 → 租户锁 → 锁内重判授权 → 写**。
+4. endpoint 声明它能答的每一种失败;**LSP 会逼你把话说全**。
+5. 每条不变量补一个会红的测试,并**重新注入错误验证它真的红**。
+
+### 12.3 外部审计查出并已修的(见第 8 节 + 后续)
+
+除第 8 节四个 P0 外,逐方法对照 cordis 又查出 12 条确认缺陷,全部已修:
+**停用租户的会话仍有效**(安全)、自造错误码 `ORG_NODE_PLACEMENT_BLOCKED`(前端无法翻译)、
+三个状态码 422→409 漂移、**约束翻译整个丢失**(409 全变 500,而注释还在声称它工作)、
+uuid 校验丢失、DTO 裸 snake_case、未授权调用方先拿租户锁。
+
+### 12.4 未迁:约 40 条,且风险不均匀
+
+**auth iam(约 22 条)**、**rbac access(约 18 条)**。其中真正需要小心的是带不变量的那几处:
+
+- 用户类型的**站位策略**(`allow-list` 空集合**不等于**不限制 —— CLAUDE.md 记过这个事故)
+- **关闭登录通道**后必须 `assertTenantKeepsAdministrator`;系统账号类型另有 `RECOVERY_CHANNEL_REQUIRED`
+- 角色的 **eligibility** 与**提权守卫**(`assertMayDefineRole` / `assertMayGrantRole`)
+- 所有集合替换带 `version` 乐观并发
+
+其余是机械 CRUD,照 12.2 的套路即可。
+
+**建议**:这批迁完之后**再跑一次逐方法审计**。第一次审计在 11 条路由上查出 12 条确认缺陷,
+其中一条是安全级别的;规模翻三倍时没有理由认为人工比对会更可靠。
 
 ## 11. 仓库状态
 
