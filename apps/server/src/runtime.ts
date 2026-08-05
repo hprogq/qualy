@@ -6,7 +6,9 @@ import { createServer } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer } from '@qualy/api-kit/node'
 import { qualyApi } from '@qualy/api'
+import { Entities } from '@qualy/plugin-database/server'
 import { apiHandlers } from '../api-handlers.gen.ts'
+import { entities } from '../entities.gen.ts'
 import { pluginLayers } from '../runtime.gen.ts'
 import {
   ServerConfig,
@@ -48,12 +50,12 @@ const routes = Layer.unwrap(
         Layer.provide(apiHandlers),
       ),
       documented ? HttpApiScalar.layer(qualyApi, { path: docs }) : Layer.empty,
-  // Health is declared by the host rather than by a plugin, but it is not
-  // plugin-free: readiness asks the database, so this assembly does not build
-  // without one. That is a real constraint rather than an oversight, and it is
-  // stated here because the alternative reading, that an assembly with no
-  // plugins can serve, is not true of this composition. Making the probes a
-  // contribution is deferred until a second one exists to contribute.
+      // Health is declared by the host rather than by a plugin, but it is not
+      // plugin-free: readiness asks the database, so this assembly does not build
+      // without one. That is a real constraint rather than an oversight, and it is
+      // stated here because the alternative reading, that an assembly with no
+      // plugins can serve, is not true of this composition. Making the probes a
+      // contribution is deferred until a second one exists to contribute.
       HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
       // Routes that are not api endpoints, and cannot be: the browser shell is
       // a raw handler on the router's wildcard. Every declared path still wins,
@@ -94,6 +96,11 @@ export const application = server.pipe(
   Layer.provide(pluginLayers),
   Layer.provide(
     Layer.mergeAll(
+      // The entity set is handed to the plugin that owns the connection, not
+      // discovered by it. Discovery would glob for files the manifest already
+      // decides, and would find the tables of plugins this assembly leaves
+      // out; this way what the ORM knows is what the lock says.
+      Layer.succeed(Entities, entities),
       databaseConfigLayer,
       permissionCatalogLayer,
       loginDriversLayer,

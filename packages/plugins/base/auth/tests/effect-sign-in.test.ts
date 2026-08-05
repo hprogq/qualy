@@ -1,12 +1,12 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
+import { Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
@@ -106,15 +106,7 @@ let userId: string
 beforeAll(async () => {
   if (!postgresAvailable) return
   db = await createTestContext('effect-sign-in')
-  const config = Layer.succeed(
-    DatabaseConfig,
-    DatabaseConfig.of({
-      url: Redacted.make(db.url),
-      migrations: 'apply',
-      migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-    }),
-  )
-  const infra = databaseLayer.pipe(Layer.provide(config))
+  const infra = databaseFor(db.url)
   const authConfig = Layer.succeed(
     AuthConfig,
     AuthConfig.of({
@@ -155,19 +147,7 @@ afterAll(async () => {
   await db.dispose()
 })
 
-const probeInfra = () =>
-  databaseLayer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(db.url),
-          migrations: 'off',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
-  )
+const probeInfra = () => databaseFor(db.url, { migrations: 'off' })
 
 const login = (body: { identifier: string; password: string }, code = 'password') =>
   fetch(`${base}/auth/local/${code}/login`, {

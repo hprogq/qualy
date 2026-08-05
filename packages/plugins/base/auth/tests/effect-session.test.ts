@@ -1,6 +1,6 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted, Schema, Scope } from 'effect'
+import { Effect, Exit, Layer, Schema, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import {
   HttpApi,
@@ -11,8 +11,8 @@ import {
 } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
 import {
@@ -121,22 +121,18 @@ beforeAll(async () => {
   expiredToken = 'token-expired'
   disabledToken = 'token-disabled'
 
-  const config = Layer.succeed(
-    DatabaseConfig,
-    DatabaseConfig.of({
-      url: Redacted.make(db.url),
-      migrations: 'apply',
-      migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-    }),
-  )
-  const infra = databaseLayer.pipe(Layer.provide(config))
+  const infra = databaseFor(db.url)
   const authConfig = Layer.succeed(
     AuthConfig,
     AuthConfig.of({ defaultTenantSlug: 'default', sessionTtlSeconds: 3600, secureCookies: false }),
   )
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(api).pipe(
-      Layer.provide(handlers.pipe(Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))))),
+      Layer.provide(
+        handlers.pipe(
+          Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
+        ),
+      ),
     ),
   ).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })), Layer.provide(infra))
 
@@ -155,19 +151,7 @@ afterAll(async () => {
   await db.dispose()
 })
 
-const probeInfra = () =>
-  databaseLayer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(db.url),
-          migrations: 'off',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
-  )
+const probeInfra = () => databaseFor(db.url, { migrations: 'off' })
 
 const withCookie = (token: string) =>
   fetch(`${base}/probe/me`, { headers: { cookie: `${sessionCookieName}=${token}` } })
@@ -205,25 +189,7 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
           sql`select count(*)::int as count from sessions where token_hash = ${hashSessionToken(expiredToken)}`,
         )) as unknown as { rows: { count: number }[] }
         return result.rows[0]!.count
-      }).pipe(
-        Effect.provide(
-          databaseLayer.pipe(
-            Layer.provide(
-              Layer.succeed(
-                DatabaseConfig,
-                DatabaseConfig.of({
-                  url: Redacted.make(db.url),
-                  migrations: 'off',
-                  migrationsFolder: new URL(
-                    '../../../../../db/migrations',
-                    import.meta.url,
-                  ).pathname,
-                }),
-              ),
-            ),
-          ),
-        ),
-      ),
+      }).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off' }))),
     )
     expect(gone).toBe(0)
   })

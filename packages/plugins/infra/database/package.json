@@ -18,9 +18,12 @@
   },
   "dependencies": {
     "@effect/sql-pg": "catalog:",
+    "@mikro-orm/core": "catalog:",
+    "@mikro-orm/postgresql": "catalog:",
     "@qualy/assembly-contract": "workspace:*",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
+    "kysely": "catalog:",
     "pg": "catalog:",
     "zod": "catalog:"
   },

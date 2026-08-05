@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '../src/server/index.ts'
@@ -22,17 +22,7 @@ const catalog = (target: 'tenant' | 'org-node'): readonly ActivePermission[] => 
 const stack = (url: string, permissions: readonly ActivePermission[]) =>
   rbacLayer.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(databaseLayer, Layer.succeed(PermissionCatalog, permissions)),
-    ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
+      Layer.mergeAll(databaseFor(url), Layer.succeed(PermissionCatalog, permissions)),
     ),
   )
 

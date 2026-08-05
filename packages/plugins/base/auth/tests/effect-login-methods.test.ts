@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
+import { Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database } from '@qualy/plugin-database/server'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
@@ -35,7 +35,7 @@ const stack = (url: string) =>
   signInLayer.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url),
         Layer.succeed(LoginDrivers, drivers),
         Layer.succeed(
           AuthConfig,
@@ -45,16 +45,6 @@ const stack = (url: string) =>
             secureCookies: false,
           }),
         ),
-      ),
-    ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
       ),
     ),
   )
@@ -85,7 +75,10 @@ describe.runIf(postgresAvailable).concurrent('the ways in a deployment offers', 
       // than rewritten, because a driver that names another origin has said
       // something this application cannot honour
       expect(methods.map((method) => method.code)).toEqual(['good'])
-      expect(methods[0]).toMatchObject({ mode: 'redirect', href: '/auth/redirecting/good/start?q=1' })
+      expect(methods[0]).toMatchObject({
+        mode: 'redirect',
+        href: '/auth/redirecting/good/start?q=1',
+      })
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()

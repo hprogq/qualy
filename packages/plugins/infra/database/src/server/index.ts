@@ -4,6 +4,8 @@ import { Context, Effect, Layer, Redacted } from 'effect'
 import type { SqlError } from 'effect/unstable/sql'
 import { sql as rawSql } from 'drizzle-orm'
 import { Pool } from 'pg'
+import { DatabaseConfig } from './config.ts'
+import { Entities, Orm, layer as ormLayer } from './orm.ts'
 import { pendingMigrations, runMigrations } from '../migrator.ts'
 
 // The database as an Effect resource.
@@ -20,28 +22,10 @@ import { pendingMigrations, runMigrations } from '../migrator.ts'
 
 export type Db = Effect.Success<ReturnType<typeof PgDrizzle.makeWithDefaults>>
 
-export class Database extends Context.Service<Database, Db>()(
-  '@qualy/plugin-database/Database',
-) {}
+export class Database extends Context.Service<Database, Db>()('@qualy/plugin-database/Database') {}
 
-/**
- * What the database needs to know, provided by whoever assembles the
- * application rather than read from the environment here.
- *
- * The plugin does not know where the assembly keeps its migrations, and
- * guessing from the working directory is how a process behaves differently
- * depending on where it was started.
- */
-export class DatabaseConfig extends Context.Service<
-  DatabaseConfig,
-  {
-    readonly url: Redacted.Redacted
-    /** 'apply' runs the committed lineage during startup; 'off' refuses to start behind it */
-    readonly migrations: 'apply' | 'off'
-    /** absolute path to the lineage this assembly deploys */
-    readonly migrationsFolder: string
-  }
->()('@qualy/plugin-database/DatabaseConfig') {}
+export { DatabaseConfig } from './config.ts'
+export { Entities, Orm, entityManager, kyselyOf, type ClosureEntityManager } from './orm.ts'
 
 /**
  * Does the database still answer?
@@ -81,9 +65,7 @@ const prepare = Effect.fn('Database.prepare')(function* () {
     (pool) =>
       Effect.gen(function* () {
         if (config.migrations === 'apply') {
-          const { applied, elapsed } = yield* Effect.promise(() =>
-            runMigrations(pool, { folder }),
-          )
+          const { applied, elapsed } = yield* Effect.promise(() => runMigrations(pool, { folder }))
           yield* Effect.logInfo(
             applied > 0
               ? `applied ${applied} migration(s) (${elapsed}ms)`
@@ -103,28 +85,40 @@ const prepare = Effect.fn('Database.prepare')(function* () {
 })
 
 /**
- * The database, ready to be used.
+ * The connection, ready to be used.
  *
  * `Layer.effect` supplies and then strips the Scope, so the pool's finalizer is
  * tied to this layer's lifetime and nothing leaks into its type.
  */
-export const layer: Layer.Layer<
-  Database,
-  SqlError.SqlError | MigrationsBehind,
-  DatabaseConfig
-> = Layer.effect(
-  Database,
-  Effect.gen(function* () {
-    yield* prepare()
-    return yield* PgDrizzle.makeWithDefaults()
-  }),
-).pipe(
-  Layer.provide(
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const config = yield* DatabaseConfig
-        return PgClient.layer({ url: config.url })
-      }),
+const connection: Layer.Layer<Database, SqlError.SqlError | MigrationsBehind, DatabaseConfig> =
+  Layer.effect(
+    Database,
+    Effect.gen(function* () {
+      yield* prepare()
+      return yield* PgDrizzle.makeWithDefaults()
+    }),
+  ).pipe(
+    Layer.provide(
+      Layer.unwrap(
+        Effect.gen(function* () {
+          const config = yield* DatabaseConfig
+          return PgClient.layer({ url: config.url })
+        }),
+      ),
     ),
-  ),
-)
+  )
+
+/**
+ * Everything this plugin owns.
+ *
+ * Two access paths to one database while the tables move from one to the
+ * other, and the order between them is not incidental: `provideMerge` builds
+ * its argument first, so the lineage has been applied by the time the ORM
+ * exists. Building them side by side would let queries run against a schema
+ * that is still being brought up to date.
+ */
+export const layer: Layer.Layer<
+  Database | Orm,
+  SqlError.SqlError | MigrationsBehind,
+  DatabaseConfig | Entities
+> = ormLayer.pipe(Layer.provideMerge(connection))

@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -28,7 +28,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -39,16 +39,6 @@ const stack = (url: string) =>
             secureCookies: false,
           }),
         ),
-      ),
-    ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
       ),
     ),
   )
@@ -142,11 +132,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
           const org = yield* Org
           const create = (name: string, orgTypeId: string) =>
             Effect.result(
-              org.createNode(
-                f.tenant,
-                { parentId: f.root, orgTypeId, name },
-                f.principal,
-              ),
+              org.createNode(f.tenant, { parentId: f.root, orgTypeId, name }, f.principal),
             )
           return {
             allowed: yield* create('Arts', f.college),
@@ -187,9 +173,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
             f.principal,
           )
           return {
-            move: yield* Effect.result(
-              org.moveNode(f.tenant, f.root, college.id, f.principal),
-            ),
+            move: yield* Effect.result(org.moveNode(f.tenant, f.root, college.id, f.principal)),
             remove: yield* Effect.result(org.deleteNode(f.tenant, f.root, f.principal)),
             // and a node that still has children is not deletable either
             occupied: yield* Effect.result(org.deleteNode(f.tenant, college.id, f.principal)),
@@ -276,9 +260,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
             { parentId: f.root, orgTypeId: f.college, name: 'Arts' },
             f.principal,
           )
-          return yield* Effect.result(
-            org.moveNode(f.tenant, child.id, child.id, f.principal),
-          )
+          return yield* Effect.result(org.moveNode(f.tenant, child.id, child.id, f.principal))
         }),
       )
       expect(tagOf(ok(exit))).toBe('ORG_NODE_INVALID_MOVE')
@@ -287,7 +269,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
     }
   })
 
-  it('keeps one tenant out of another tenant\'s tree', async () => {
+  it("keeps one tenant out of another tenant's tree", async () => {
     // from org.test.ts 'keeps tenants isolated at the service level'. Every
     // statement is tenant scoped, so a node of another tenant has to answer as
     // absent rather than as forbidden or, worse, as found.

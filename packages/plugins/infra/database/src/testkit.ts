@@ -6,9 +6,12 @@ import { Context, Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { sql, type SQL } from 'drizzle-orm'
 import { Pool } from 'pg'
 import type * as SqlError from 'effect/unstable/sql/SqlError'
+import type { EntitySchema } from '@mikro-orm/core'
 import {
   Database,
   DatabaseConfig,
+  Entities,
+  Orm,
   layer as databaseLayer,
   type MigrationsBehind,
 } from './server/index.ts'
@@ -66,7 +69,7 @@ export interface TestContext {
    * lineage applies and the server answers, which is the same claim a
    * deployment makes.
    */
-  services: Layer.Layer<Database, SqlError.SqlError | MigrationsBehind>
+  services: Layer.Layer<Database | Orm, SqlError.SqlError | MigrationsBehind>
   /** the scratch database this context is bound to */
   url: string
   /**
@@ -130,9 +133,9 @@ function parameterize(text: string, params: readonly unknown[]): SQL {
 const templateName = (folder: string) => {
   const hash = createHash('sha256')
   const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name < b.name ? -1 : 1,
-    )) {
+    for (const entry of fs
+      .readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) walk(full)
       else if (entry.name.endsWith('.sql')) hash.update(entry.name).update(fs.readFileSync(full))
@@ -152,7 +155,10 @@ const templateName = (folder: string) => {
  */
 const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
   const name = templateName(folder)
-  const lock = BigInt.asIntN(64, BigInt(`0x${createHash('sha256').update(name).digest('hex').slice(0, 15)}`))
+  const lock = BigInt.asIntN(
+    64,
+    BigInt(`0x${createHash('sha256').update(name).digest('hex').slice(0, 15)}`),
+  )
   const client = await admin.connect()
   try {
     await client.query('select pg_advisory_lock($1)', [lock.toString()])
@@ -164,7 +170,11 @@ const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
       url.pathname = `/${building}`
       // the plugin's own migrator, so the template is built the way a
       // deployment is rather than by a second implementation
-      await build(url.href, { migrations: 'apply', migrationsFolder: folder }, async () => {})
+      await build(
+        url.href,
+        { migrations: 'apply', migrationsFolder: folder, entities: [] },
+        async () => {},
+      )
       // renamed only once it is complete, so a crashed build never becomes a
       // template that other tests copy
       await client.query(`alter database "${building}" rename to "${name}"`)
@@ -189,6 +199,8 @@ export interface TestContextOptions {
   migrations?: 'apply' | 'off'
   /** the committed lineage unless a test is deliberately pointing elsewhere */
   migrationsFolder?: string
+  /** the entity set the assembly under test has, empty unless a suite queries through the orm */
+  entities?: readonly EntitySchema[]
 }
 
 /**
@@ -272,6 +284,7 @@ export async function createTestContext(
     // starts; the layer's own check still has to agree, which is the point
     migrations: options.migrations ?? 'apply',
     migrationsFolder: folder,
+    entities: options.entities ?? [],
   })
   const scope = await Effect.runPromise(Scope.make())
   let database: typeof Database.Service
@@ -314,17 +327,52 @@ export async function createTestContext(
   }
 }
 
+/**
+ * The database plugin, configured for one database the way an assembly
+ * configures it.
+ *
+ * Every suite that needs a database used to spell this out again, and the
+ * copies had begun to drift in the field that decides whether the lineage is
+ * applied. It is one function so that adding something the plugin needs is one
+ * edit, not fifteen - which is how it came to be extracted.
+ */
+export const databaseFor = (
+  url: string,
+  options: { migrations?: 'apply' | 'off'; entities?: readonly EntitySchema[] } = {},
+): Layer.Layer<Database | Orm, SqlError.SqlError | MigrationsBehind> =>
+  databaseLayer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(
+          DatabaseConfig,
+          DatabaseConfig.of({
+            url: Redacted.make(url),
+            migrations: options.migrations ?? 'apply',
+            migrationsFolder,
+          }),
+        ),
+        // A suite asserting one plugin's queries hands in that plugin's own
+        // tuple; the rest have no entities, which during the migration is the
+        // truth rather than a placeholder.
+        Layer.succeed(Entities, options.entities ?? []),
+      ),
+    ),
+  )
+
 /** the database layer, configured for one scratch database */
 const servicesFor = (url: string, options: Required<TestContextOptions>) =>
   databaseLayer.pipe(
     Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: options.migrations,
-          migrationsFolder: options.migrationsFolder,
-        }),
+      Layer.mergeAll(
+        Layer.succeed(
+          DatabaseConfig,
+          DatabaseConfig.of({
+            url: Redacted.make(url),
+            migrations: options.migrations,
+            migrationsFolder: options.migrationsFolder,
+          }),
+        ),
+        Layer.succeed(Entities, options.entities),
       ),
     ),
   )

@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -37,7 +37,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -48,16 +48,6 @@ const stack = (url: string) =>
             secureCookies: false,
           }),
         ),
-      ),
-    ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
       ),
     ),
   )
@@ -285,12 +275,8 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
             (type) => type.id === created.id,
           )
           // the seeded college type has a node standing on it
-          const inUse = yield* Effect.result(
-            org.deleteType(f.tenant, f.collegeType, f.principal),
-          )
-          const removable = yield* Effect.result(
-            org.deleteType(f.tenant, created.id, f.principal),
-          )
+          const inUse = yield* Effect.result(org.deleteType(f.tenant, f.collegeType, f.principal))
+          const removable = yield* Effect.result(org.deleteType(f.tenant, created.id, f.principal))
           return {
             createdCode: created.code,
             listedCount: listed.length,
@@ -479,7 +465,7 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
-  it("answers a node the caller cannot see exactly as a missing one", async () => {
+  it('answers a node the caller cannot see exactly as a missing one', async () => {
     const db = await createTestContext('effect-read-hidden')
     try {
       const exit = await run(
@@ -575,19 +561,17 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
 
           const org = yield* Org
           const asMover = { tenantId: f.tenant, userId: mover, sessionId: 's' }
-          const selfAnchored = yield* Effect.result(
-            org.moveNode(f.tenant, src, dest, asMover),
-          )
+          const selfAnchored = yield* Effect.result(org.moveNode(f.tenant, src, dest, asMover))
 
           // widen the same grant to subtree and it becomes allowed
           yield* database.execute(sql`
             update role_grants set coverage = 'subtree'
             where user_id = ${mover} and org_node_id = ${src}`)
-          const subtreeAnchored = yield* Effect.result(
-            org.moveNode(f.tenant, src, dest, asMover),
-          )
+          const subtreeAnchored = yield* Effect.result(org.moveNode(f.tenant, src, dest, asMover))
           const moved = one<{ path: string }>(
-            yield* database.execute(sql`select path::text as path from org_nodes where id = ${src}`),
+            yield* database.execute(
+              sql`select path::text as path from org_nodes where id = ${src}`,
+            ),
           ).path
           return {
             refused: tagOf(selfAnchored),
@@ -627,7 +611,9 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           ).id
           const org = yield* Org
           return {
-            intoDescendant: tagOf(yield* Effect.result(org.moveNode(f.tenant, mid, deep, f.principal))),
+            intoDescendant: tagOf(
+              yield* Effect.result(org.moveNode(f.tenant, mid, deep, f.principal)),
+            ),
             intoItself: tagOf(yield* Effect.result(org.moveNode(f.tenant, mid, mid, f.principal))),
             root: tagOf(yield* Effect.result(org.moveNode(f.tenant, f.node, mid, f.principal))),
           }

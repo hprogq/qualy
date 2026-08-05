@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -29,7 +29,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -40,16 +40,6 @@ const stack = (url: string) =>
             secureCookies: false,
           }),
         ),
-      ),
-    ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
       ),
     ),
   )
@@ -203,9 +193,7 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
             f.as,
           )
           // out of the managed branch: refused even though the source is managed
-          const out = yield* Effect.result(
-            iam.users.setPlacement(f.tenant, userId, f.right, f.as),
-          )
+          const out = yield* Effect.result(iam.users.setPlacement(f.tenant, userId, f.right, f.as))
           // within it: allowed
           const within = yield* Effect.result(
             iam.users.setPlacement(f.tenant, userId, f.left, f.as),

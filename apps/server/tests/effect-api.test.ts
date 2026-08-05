@@ -6,8 +6,9 @@ import { FetchHttpClient } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { DatabaseConfig } from '@qualy/plugin-database/server'
+import { DatabaseConfig, Entities } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
+import { entities } from '../entities.gen.ts'
 import { pluginLayers } from '../runtime.gen.ts'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
@@ -56,6 +57,10 @@ const shell = (url: string) =>
             migrationsFolder: new URL('../../../db/migrations', import.meta.url).pathname,
           }),
         ),
+        // the aggregate the host provides, for the same reason the plugin
+        // layers are the generated ones: a hand-built subset would not notice
+        // a plugin that started shipping entities
+        Layer.succeed(Entities, entities),
         Layer.succeed(PermissionCatalog, permissionCatalog),
         Layer.succeed(LoginDrivers, loginDrivers),
         Layer.succeed(UiCatalog, uiSurfaces),
@@ -162,10 +167,9 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
           // the session middleware answers 401, which is still a route.
           const url = path.replace(/\{[^}]+\}/g, '00000000-0000-7000-8000-000000000000')
           const status = (await fetch(`${base}${url}`, { method: method.toUpperCase() })).status
-          expect(
-            status,
-            `${method.toUpperCase()} ${path} is documented but not served`,
-          ).not.toBe(404)
+          expect(status, `${method.toUpperCase()} ${path} is documented but not served`).not.toBe(
+            404,
+          )
         }
       }
       // and the probes are absent from it, as the old server guaranteed
