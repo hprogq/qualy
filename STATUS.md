@@ -256,8 +256,8 @@
 | M2 | 应用外壳(健康探针、配置、组合根、优雅关闭) | b989041 |
 | — | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足** | 603f7ad |
 | M3 | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client | 本次 |
-| M4 | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | 待办 |
-| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | 待办 |
+| M4 | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | **55/55 路由已迁完** |
+| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | 待办(dict / web / api-reference) |
 | M6 | 前端切到 HttpApiClient | 待办 |
 | M7 | 原子切换,删掉 cordis 与 oRPC | 待办 |
 
@@ -272,8 +272,29 @@
 (`/ping/hello` `/health/live` `/health/ready`)、`/health/live` 与 `/health/ready` 均 200、
 SIGTERM 后端口释放。冻结路径 `GET /ping/hello` 未变,`api-surface.test.ts` 仍绿。
 
-**下一步是 M4**,阻塞点已知:静态 Layer 图组合不了互相 require 的插件,org↔rbac 现有的环必须先拆。
-另有一项在 M6 前必须确认:`@effect/vitest` 在 Vitest browser mode 下能否用(上游无证据)。
+**M4 交接要点**:冻结路由表 55 条**已全部由 Effect 侧提供**,
+`scripts/tests/effect-api-parity.test.ts` 从「包含」改成了「相等」——少一条即失败,不再是可以静静漂移的计数。
+
+- **两个运行时共用同一份 SQL**:每个插件一个 `queries.ts`(rbac / auth-iam / org),cordis 服务与
+  Effect layer 都执行它;验收方式是「旧测试一行不改仍然全过」。行类型跟着产出它的语句走。
+- **推改拉,已用三次**:权限目录、登录驱动、UI 表面。判据是「描述符还是活函数」——描述符(权限码、
+  页面、布局、slot)在装配期收齐,活函数(rbac 的 UI authorizer)仍是服务。三个生成器都在**生成期**
+  拒绝重复认领(权限码 / provider type / 页面 id、path、layout contract)。
+- **UI authorizer 按请求读,不在 layer 构造期读**:构造期读会让 ui-registry 需要 rbac 先构建,而
+  `Layer.mergeAll` 不做这种连线,写成 `dependsOn` 又等于让基础设施反向依赖业务插件。按请求读时它是
+  per-request requirement,冒泡到组合根被满足;缺失仍是编译错误,不是「悄悄只给公开页面」。
+- **游标编解码搬到 `@qualy/api-kit`**,不可用的游标返回 null 而不是抛 oRPC 错误,两侧共用一份格式。
+  `pageOf` 的入参约束成无服务需求的 schema:`Schema.Top` 在两个 service 通道里都是 `unknown`,
+  会把一个没有名字的 requirement 漏到根 layer。
+- **迁移中发现并修掉的真缺陷**:登出在没有 middleware 的端点上用 `serviceOption(CurrentUser)`,
+  静默什么都不撤销(答 200 而会话继续可用)——改成按 cookie 里的 token 定位;测试端口 3196 被两个套件
+  同时占用,表现为「登录测试连不上自己的服务器」,已加 `scripts/tests/ports.test.ts` 守。
+- **已知 flake(与本次改动无关)**:`packages/plugins/infra/database/tests/lifecycle.test.ts` 在 init
+  失败后立刻断言 `pg_stat_activity` 为空,postgres 不保证那么快更新该视图。
+
+**下一步是 M5**(dict / plugin-web / api-reference),以及 M6 前必须确认的:`@effect/vitest` 在
+Vitest browser mode 下能否用(上游无证据)。**建议在 M5 之前先跑一轮逐方法审计**:第一轮审计在 11 条
+路由上查出 12 个确认缺陷(含 1 个安全缺陷),现在是 55 条。
 
 ## 下一会话(P1 会话 7)
 
