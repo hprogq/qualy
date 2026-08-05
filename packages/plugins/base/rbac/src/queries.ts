@@ -242,3 +242,78 @@ export const refreshPermissionTextQuery = (permission: ActivePermission): SQL =>
   update permissions set name = ${permission.name}, description = ${permission.description ?? null},
     group_key = ${permission.groupKey ?? null}, updated_at = now()
   where code = ${permission.code}`
+
+// --- grants ---
+
+export const roleForGrantQuery = (tenantId: string, roleId: string): SQL => sql`
+  select id, code, kind, system_key, permission_mode, status, assignable from roles
+  where tenant_id = ${tenantId} and id = ${roleId}`
+
+export const roleSystemKeyQuery = (tenantId: string, roleId: string): SQL =>
+  sql`select system_key from roles where tenant_id = ${tenantId} and id = ${roleId}`
+
+export const userForGrantQuery = (tenantId: string, userId: string): SQL => sql`
+  select user_type_id, enabled from users
+  where tenant_id = ${tenantId} and id = ${userId}`
+
+export const roleAllowsUserTypeQuery = (
+  tenantId: string,
+  roleId: string,
+  userTypeId: string,
+): SQL => sql`
+  select 1 from role_allowed_user_types
+  where tenant_id = ${tenantId} and role_id = ${roleId} and user_type_id = ${userTypeId}`
+
+export const orgNodeTypeQuery = (tenantId: string, orgNodeId: string): SQL =>
+  sql`select org_type_id from org_nodes where tenant_id = ${tenantId} and id = ${orgNodeId}`
+
+export const roleAllowsOrgTypeQuery = (
+  tenantId: string,
+  roleId: string,
+  orgTypeId: string,
+): SQL => sql`
+  select 1 from role_allowed_org_types
+  where tenant_id = ${tenantId} and role_id = ${roleId} and org_type_id = ${orgTypeId}`
+
+/** whether the actor themselves holds the canonical administrator role */
+export const holdsCanonicalAdminQuery = (
+  tenantId: string,
+  userId: string,
+  canonicalKey: string,
+): SQL => sql`
+  select 1 from role_grants g
+  join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id
+    and r.system_key = ${canonicalKey} and r.status = 'active'
+  join users u on u.tenant_id = g.tenant_id and u.id = g.user_id and u.enabled
+  where g.tenant_id = ${tenantId} and g.user_id = ${userId}`
+
+export const grantQuery = (tenantId: string, grantId: string): SQL => sql`
+  select role_id, org_node_id, coverage from role_grants
+  where tenant_id = ${tenantId} and id = ${grantId}`
+
+export const insertGrantQuery = (input: {
+  tenantId: string
+  userId: string
+  roleId: string
+  orgNodeId: string | null
+  coverage: 'self' | 'subtree' | null
+}): SQL => sql`
+  insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+  values (${input.tenantId}, ${input.userId}, ${input.roleId}, ${input.orgNodeId},
+    ${input.coverage})
+  returning id`
+
+export const deleteGrantQuery = (tenantId: string, grantId: string): SQL =>
+  sql`delete from role_grants where tenant_id = ${tenantId} and id = ${grantId}`
+
+export const rolePermissionModeQuery = (tenantId: string, roleId: string): SQL =>
+  sql`select permission_mode from roles where tenant_id = ${tenantId} and id = ${roleId}`
+
+export const rolePermissionCodesQuery = (tenantId: string, roleId: string): SQL => sql`
+  select p.code from role_permissions rp
+  join permissions p on p.id = rp.permission_id
+  where rp.tenant_id = ${tenantId} and rp.role_id = ${roleId}`
+
+/** the same row org and auth lock, so the three cannot interleave */
+export const lockTenantQuery = (tenantId: string): SQL =>
+  sql`select 1 from tenants where id = ${tenantId} for update`

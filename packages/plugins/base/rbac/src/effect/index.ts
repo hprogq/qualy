@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 import {
   AccessDenied,
   LastAdministrator,
@@ -9,6 +9,12 @@ import {
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Database } from '@qualy/plugin-database/effect'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
+import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
+import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { CurrentUser } from '@qualy/plugin-auth/effect/session'
+import { accessApiGroup } from '../api.ts'
+import { make as makeGrants } from './grants.ts'
+import type { Authority } from './escalation.ts'
 import {
   REACH_RANK,
   type Reach,
@@ -196,6 +202,18 @@ export const make = Effect.fn('Rbac.make')(function* () {
     return scope.tenantWide || scope.anchors.length > 0
   })
 
+  /** what the guards ask about an actor, answered from this layer's own reads */
+  const authorityFor = (actor: Principal): Authority => ({
+    tenantWide: () =>
+      effectiveRows(actor, undefined).pipe(
+        Effect.map((held) => new Set(held.map(({ definition }) => definition.code))),
+      ),
+    reachAt: (orgNodeId: string) => reachAt(actor, orgNodeId),
+    activeCodes: () => [...catalog.keys()],
+  })
+
+  const grants = yield* makeGrants(authorityFor)
+
   const shape: RbacShape = {
     listPermissions: (filter) =>
       Effect.succeed(
@@ -288,7 +306,7 @@ export const make = Effect.fn('Rbac.make')(function* () {
       }
     }),
   }
-  return shape
+  return { ...shape, grants }
 })
 
 /**
@@ -299,7 +317,64 @@ export const make = Effect.fn('Rbac.make')(function* () {
  * rather than the other way round, which is what keeps rbac deployable with a
  * database alone.
  */
-export const layer: Layer.Layer<Rbac, never, Database | PermissionCatalog> = Layer.effect(
-  Rbac,
-  make(),
+export class Access extends Context.Service<
+  Access,
+  { readonly grants: Effect.Success<ReturnType<typeof makeGrants>> }
+>()('@qualy/plugin-rbac/Access') {}
+
+/**
+ * What this plugin contributes.
+ *
+ * Two tags from one construction: the port peers hold, and rbac's own
+ * administration surface, which no peer reaches through a tag.
+ */
+export const layer: Layer.Layer<Rbac | Access, never, Database | PermissionCatalog> =
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const { grants, ...shape } = yield* make()
+      return Context.empty().pipe(
+        Context.add(Rbac, shape),
+        Context.add(Access, { grants }),
+      )
+    }),
+  )
+
+
+// --- api ---
+
+// see QUALY_API_ID: implemented against a local api so this plugin does not
+// import the aggregate it is part of
+const local = HttpApi.make(QUALY_API_ID).add(accessApiGroup).prefix(QUALY_API_PREFIX)
+
+export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers) =>
+  handlers
+    .handle(
+      'createRoleGrant',
+      Effect.fn('access.createRoleGrant.handler')(function* ({ payload }) {
+        const access = yield* Access
+        const principal = yield* CurrentUser
+        // every check lives in the service, on the locked connection: which
+        // grants this caller may touch, which role, whether the person is
+        // eligible, and how much power the role carries
+        return {
+          id: yield* access.grants.grant(
+            principal.tenantId,
+            { userId: payload.userId, roleId: payload.roleId, target: payload.target },
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'deleteRoleGrant',
+      Effect.fn('access.deleteRoleGrant.handler')(function* ({ params }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* access.grants.revoke(principal.tenantId, params.grantId, principal, (tenantId) =>
+          rbac.assertTenantKeepsAdministrator(tenantId).pipe(Effect.orDie),
+        )
+        return { ok: true as const }
+      }),
+    ),
 )

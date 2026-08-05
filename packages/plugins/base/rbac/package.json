@@ -12,7 +12,8 @@
     "./ui": "./src/ui.ts",
     "./contract": "./src/contract.ts",
     "./client": "./client/index.ts",
-    "./effect": "./src/effect/index.ts"
+    "./effect": "./src/effect/index.ts",
+    "./api": "./src/api.ts"
   },
   "qualy": {
     "contributions": {
@@ -31,7 +32,8 @@
       "entry": "./effect",
       "dependsOn": [
         "@qualy/plugin-database"
-      ]
+      ],
+      "api": "./api"
     }
   },
   "peerDependencies": {
@@ -55,7 +57,8 @@
     "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
     "zod": "catalog:",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "@qualy/api-kit": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "catalog:"

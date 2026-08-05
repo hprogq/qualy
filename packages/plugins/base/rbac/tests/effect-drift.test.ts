@@ -42,18 +42,14 @@ describe.runIf(postgresAvailable)('the stored permission row', () => {
     try {
       // first assembly stores the code as an org-node permission
       const first = await Effect.runPromiseExit(
-        Effect.gen(function* () {
-          yield* Rbac
-        }).pipe(Effect.provide(stack(db.url, catalog('org-node')))),
+        Rbac.pipe(Effect.provide(stack(db.url, catalog('org-node')))),
       )
       expect(Exit.isSuccess(first)).toBe(true)
 
       // a later one declares the same code with a different calling
       // convention, which live grants would already have assumed
       const second = await Effect.runPromiseExit(
-        Effect.gen(function* () {
-          yield* Rbac
-        }).pipe(Effect.provide(stack(db.url, catalog('tenant')))),
+        Rbac.pipe(Effect.provide(stack(db.url, catalog('tenant')))),
       )
       expect(Exit.isFailure(second)).toBe(true)
     } finally {

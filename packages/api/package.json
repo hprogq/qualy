@@ -13,6 +13,7 @@
     "@qualy/plugin-ping": "workspace:*",
     "effect": "catalog:",
     "@qualy/plugin-org": "workspace:*",
-    "@qualy/plugin-auth": "workspace:*"
+    "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*"
   }
 }

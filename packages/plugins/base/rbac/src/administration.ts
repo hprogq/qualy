@@ -20,7 +20,15 @@ import { REACH_RANK, REACHES_EVERY_NODE, type Authorization } from './authorizat
 import { assertGrantEligible } from './eligibility.ts'
 import { assertMayDefineRole, assertMayGrantRole } from './escalation.ts'
 import { type Reach } from './queries.ts'
-import { grantsBlockingOrgTypeQuery } from './queries.ts'
+import {
+  deleteGrantQuery,
+  grantQuery,
+  grantsBlockingOrgTypeQuery,
+  holdsCanonicalAdminQuery,
+  insertGrantQuery,
+  lockTenantQuery,
+  roleSystemKeyQuery,
+} from './queries.ts'
 import { accessErrors } from './errors.ts'
 
 // The refusals that mean "this role is not offerable here", as distinct
@@ -109,7 +117,7 @@ export class Administration {
   }
 
   private async lockTenant(tx: Tx, tenantId: string) {
-    const row = (await tx.execute(sql`select 1 from tenants where id = ${tenantId} for update`))
+    const row = (await tx.execute(lockTenantQuery(tenantId)))
       .rows[0]
     if (!row) throw new Error(`tenant ${tenantId} does not exist`)
   }
@@ -722,10 +730,15 @@ export class Administration {
         input.target.kind === 'org-node'
           ? { nodeId: input.target.orgNodeId, coverage: input.target.coverage }
           : { nodeId: null, coverage: null }
-      const created = await tx.execute<{ id: string }>(sql`
-        insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
-        values (${tenantId}, ${input.userId}, ${input.roleId}, ${anchor.nodeId}, ${anchor.coverage})
-        returning id`)
+      const created = await tx.execute<{ id: string }>(
+        insertGrantQuery({
+          tenantId,
+          userId: input.userId,
+          roleId: input.roleId,
+          orgNodeId: anchor.nodeId,
+          coverage: anchor.coverage,
+        }),
+      )
       return created.rows[0]!.id
     })
   }
@@ -738,9 +751,7 @@ export class Administration {
           role_id: string
           org_node_id: string | null
           coverage: 'self' | 'subtree' | null
-        }>(sql`
-          select role_id, org_node_id, coverage from role_grants
-          where tenant_id = ${tenantId} and id = ${grantId}`)
+        }>(grantQuery(tenantId, grantId))
       ).rows[0]
       if (!grant) throw accessErrors.create('GRANT_NOT_FOUND')
       const target: GrantTarget =
@@ -749,8 +760,7 @@ export class Administration {
           : { kind: 'org-node', orgNodeId: grant.org_node_id, coverage: grant.coverage! }
       await this.assertMayAdministerGrantsAt(tx, actor, target)
       await this.assertMayAdministerRole(tx, actor, tenantId, grant.role_id)
-      await tx.execute(sql`
-        delete from role_grants where tenant_id = ${tenantId} and id = ${grantId}`)
+      await tx.execute(deleteGrantQuery(tenantId, grantId))
       // checked against the state the removal actually leaves behind
       await assertTenantKeepsAdministrator(tx, tenantId)
     })
@@ -796,18 +806,12 @@ export class Administration {
   ) {
     if (isSystemActor(actor)) return
     const role = (
-      await tx.execute<{ system_key: string | null }>(sql`
-        select system_key from roles where tenant_id = ${tenantId} and id = ${roleId}`)
+      await tx.execute<{ system_key: string | null }>(roleSystemKeyQuery(tenantId, roleId))
     ).rows[0]
     if (!role) throw accessErrors.create('ROLE_NOT_FOUND')
     if (role.system_key !== CANONICAL_ADMIN_ROLE) return
     const holder = (
-      await tx.execute(sql`
-        select 1 from role_grants g
-        join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id
-          and r.system_key = ${CANONICAL_ADMIN_ROLE} and r.status = 'active'
-        join users u on u.tenant_id = g.tenant_id and u.id = g.user_id and u.enabled
-        where g.tenant_id = ${tenantId} and g.user_id = ${actor.userId}`)
+      await tx.execute(holdsCanonicalAdminQuery(tenantId, actor.userId, CANONICAL_ADMIN_ROLE))
     ).rows[0]
     if (!holder) throw accessErrors.create('TENANT_ADMIN_REQUIRED')
   }

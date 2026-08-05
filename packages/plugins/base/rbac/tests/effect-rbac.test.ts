@@ -9,7 +9,7 @@ import {
 } from '@qualy/plugin-database/effect'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '../src/effect/index.ts'
+import { Access, layer as rbacLayer } from '../src/effect/index.ts'
 
 // rbac under Effect, answering against a real database.
 //
@@ -23,6 +23,10 @@ const catalog: readonly ActivePermission[] = [
   { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
   { code: 'iam.user.read', name: 'users', target: 'tenant', plugin: 'iam' },
+  // a code the catalog does not serve authorizes nothing, so the grant
+  // administration permission has to be declared for anyone to hold it
+  { code: 'iam.tenant-grant.manage', name: 'manage tenant grants', target: 'tenant', plugin: 'iam' },
+  { code: 'iam.grant.manage', name: 'manage grants', target: 'org-node', plugin: 'iam' },
 ]
 
 const stack = (url: string) =>
@@ -44,8 +48,11 @@ const stack = (url: string) =>
     ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Database>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+
+const tagOf = (result: { _tag: string; failure?: unknown }) =>
+  result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -124,7 +131,7 @@ const seed = Effect.fn('seed')(function* () {
 
   const principal: Principal = { tenantId: tenant, userId: user, sessionId: 's' }
   const anchored: Principal = { tenantId: tenant, userId: plainUser, sessionId: 's' }
-  return { tenant, root, child, user, role, principal, anchored }
+  return { tenant, root, child, user, role, plainRole, principal, anchored }
 })
 
 describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
@@ -316,6 +323,177 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
       expect(answer.below).toBe(true)
       // the one that matters: r.ab is not inside r.a
       expect(answer.sibling).toBe(false)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses a grant the caller has no authority to administer', async () => {
+    const db = await createTestContext('effect-grant-authority')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          // the anchored user administers nothing: they hold org.tree.manage
+          // at one node and no grant-management permission at all
+          const refused = yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              { userId: f.user, roleId: f.role, target: { kind: 'tenant' } },
+              f.anchored,
+            ),
+          )
+          return tagOf(refused)
+        }),
+      )
+      expect(ok(exit)).toBe('ACCESS_DENIED')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('reserves the administrator role for someone who already holds it', async () => {
+    const db = await createTestContext('effect-grant-admin')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // give the anchored user tenant-wide grant administration, which is
+          // authority over grants but not over the administrator role
+          const permission = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('iam.tenant-grant.manage','iam','manage tenant grants','tenant')
+              on conflict (code) do update set plugin = excluded.plugin returning id`),
+          ).id
+          const role = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant},'granter','Granter','tenant','active','explicit') returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${role}, ${permission})`)
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.anchored.userId}, ${role})`)
+
+          const access = yield* Access
+          // f.role is the canonical administrator
+          const refused = yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              { userId: f.anchored.userId, roleId: f.role, target: { kind: 'tenant' } },
+              f.anchored,
+            ),
+          )
+          // whereas the existing administrator may
+          const allowed = yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              { userId: f.anchored.userId, roleId: f.role, target: { kind: 'tenant' } },
+              f.principal,
+            ),
+          )
+          return { refused: tagOf(refused), allowed: allowed._tag }
+        }),
+      )
+      const answer = ok(exit)
+      // the bind escape hatch must not be a route to becoming superuser
+      expect(answer.refused).toBe('ACCESS_DENIED')
+      expect(answer.allowed).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('will not let a self-anchored grant administrator create a subtree grant', async () => {
+    // Authority over grants answers to coverage, not just to the node.
+    // Administering grants at one node alone must not be a way to create, or
+    // quietly revoke, a grant that reaches its whole subtree.
+    const db = await createTestContext('effect-grant-reach')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} limit 1`,
+            ),
+          ).id
+          // the role being handed out is an ordinary org role the granter holds
+          yield* database.execute(sql`
+            insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+            values (${f.tenant}, ${f.plainRole}, ${orgType})`)
+          yield* database.execute(sql`
+            insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+            select ${f.tenant}, ${f.plainRole}, id from user_types
+            where tenant_id = ${f.tenant} limit 1`)
+
+          // The granter holds the role's own capability at SUBTREE reach, so
+          // the escalation guard would allow a subtree grant. Only their
+          // authority over grants is narrower, which is what this isolates.
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${f.plainRole}, ${f.child}, 'subtree')`)
+
+          // the granter administers grants at the child node, self only
+          const manage = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('iam.grant.manage','iam','manage grants','org-node')
+              on conflict (code) do update set plugin = excluded.plugin returning id`),
+          ).id
+          const granterRole = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant},'granter','Granter','org','active','explicit') returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${granterRole}, ${manage})`)
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${granterRole}, ${f.child}, 'self')`)
+
+          const access = yield* Access
+          const wide = yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              {
+                userId: f.user,
+                roleId: f.plainRole,
+                target: { kind: 'org-node', orgNodeId: f.child, coverage: 'subtree' },
+              },
+              f.anchored,
+            ),
+          )
+          const narrow = yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              {
+                userId: f.user,
+                roleId: f.plainRole,
+                target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' },
+              },
+              f.anchored,
+            ),
+          )
+          return { wide: tagOf(wide), narrow: narrow._tag }
+        }),
+      )
+      const answer = ok(exit)
+      // a self-coverage grant administrator may not hand out subtree reach
+      expect(answer.wide).toBe('ACCESS_DENIED')
+      expect(answer.narrow).toBe('Success')
     } finally {
       await db.dispose()
     }

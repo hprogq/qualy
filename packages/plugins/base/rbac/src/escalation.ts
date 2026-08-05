@@ -11,6 +11,7 @@ import {
 type Actor = Principal | SystemActor
 import { REACH_RANK, type Authorization, type Reach } from './authorization.ts'
 import { accessErrors } from './errors.ts'
+import { rolePermissionCodesQuery, rolePermissionModeQuery } from './queries.ts'
 
 // Privilege escalation control.
 //
@@ -41,16 +42,12 @@ export async function rolePermissionCodes(
   roleId: string,
 ): Promise<{ codes: string[]; allActive: boolean }> {
   const role = (
-    await handle.execute(sql`
-      select permission_mode from roles where tenant_id = ${tenantId} and id = ${roleId}`)
+    await handle.execute(rolePermissionModeQuery(tenantId, roleId))
   ).rows[0] as { permission_mode: string } | undefined
   if (!role) throw accessErrors.create('ROLE_NOT_FOUND')
   if (role.permission_mode === 'all-active') return { codes: [], allActive: true }
   const rows = (
-    await handle.execute(sql`
-      select p.code from role_permissions rp
-      join permissions p on p.id = rp.permission_id
-      where rp.tenant_id = ${tenantId} and rp.role_id = ${roleId}`)
+    await handle.execute(rolePermissionCodesQuery(tenantId, roleId))
   ).rows as { code: string }[]
   return { codes: rows.map((row) => row.code), allActive: false }
 }

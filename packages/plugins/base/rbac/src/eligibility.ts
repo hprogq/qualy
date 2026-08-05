@@ -1,6 +1,13 @@
 import { sql } from 'drizzle-orm'
 import { isCanonicalTenantAdmin, type GrantTarget, type RbacDbHandle } from '@qualy/rbac-contract'
 import { accessErrors } from './errors.ts'
+import {
+  orgNodeTypeQuery,
+  roleAllowsOrgTypeQuery,
+  roleAllowsUserTypeQuery,
+  roleForGrantQuery,
+  userForGrantQuery,
+} from './queries.ts'
 
 // Whether one grant is permitted at all — before any question of who is
 // doing the granting. Creation and revocation both come through here, so the
@@ -29,8 +36,7 @@ export async function assertGrantEligible(
 ): Promise<EligibleRole> {
   const role = await one<EligibleRole & { status: string; assignable: boolean }>(
     handle,
-    sql`select id, code, kind, system_key, permission_mode, status, assignable from roles
-        where tenant_id = ${tenantId} and id = ${grant.roleId}`,
+    roleForGrantQuery(tenantId, grant.roleId),
   )
   if (!role) throw accessErrors.create('ROLE_NOT_FOUND')
   if (role.status !== 'active' || !role.assignable) {
@@ -39,8 +45,7 @@ export async function assertGrantEligible(
 
   const user = await one<{ user_type_id: string; enabled: boolean }>(
     handle,
-    sql`select user_type_id, enabled from users
-        where tenant_id = ${tenantId} and id = ${grant.userId}`,
+    userForGrantQuery(tenantId, grant.userId),
   )
   if (!user) throw accessErrors.create('GRANT_USER_NOT_FOUND')
   if (!user.enabled) throw accessErrors.create('GRANT_NOT_ELIGIBLE', { reason: 'user-disabled' })
@@ -59,9 +64,7 @@ export async function assertGrantEligible(
   if (!isCanonicalTenantAdmin(role)) {
     const allowsUserType = await one(
       handle,
-      sql`select 1 from role_allowed_user_types
-          where tenant_id = ${tenantId} and role_id = ${role.id}
-            and user_type_id = ${user.user_type_id}`,
+      roleAllowsUserTypeQuery(tenantId, role.id, user.user_type_id),
     )
     if (!allowsUserType) throw accessErrors.create('GRANT_NOT_ELIGIBLE', { reason: 'user-type' })
   }
@@ -80,16 +83,13 @@ export async function assertGrantEligible(
 
   const node = await one<{ org_type_id: string }>(
     handle,
-    sql`select org_type_id from org_nodes
-        where tenant_id = ${tenantId} and id = ${grant.target.orgNodeId}`,
+    orgNodeTypeQuery(tenantId, grant.target.orgNodeId),
   )
   if (!node) throw accessErrors.create('GRANT_NODE_NOT_FOUND')
 
   const allowsOrgType = await one(
     handle,
-    sql`select 1 from role_allowed_org_types
-        where tenant_id = ${tenantId} and role_id = ${role.id}
-          and org_type_id = ${node.org_type_id}`,
+    roleAllowsOrgTypeQuery(tenantId, role.id, node.org_type_id),
   )
   if (!allowsOrgType) throw accessErrors.create('GRANT_NOT_ELIGIBLE', { reason: 'org-type' })
   return role
