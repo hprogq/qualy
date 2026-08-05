@@ -1,4 +1,4 @@
-import { MikroORM } from '@mikro-orm/postgresql'
+import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-orm/postgresql'
 import { entities } from './entities.ts'
 
 // The connection this spike measures against, opened the way a host would.
@@ -32,12 +32,17 @@ export const open = async (clientUrl: string) =>
 /**
  * Kysely, told to speak entity and property names.
  *
+ * Generic over the manager rather than over one assembly's entity tuple. Bound
+ * to a concrete tuple it stops accepting any other, so every plugin would need
+ * a copy of this helper - and the copies would differ in exactly the option
+ * that decides whether a uuid compares as a uuid.
+ *
  * Without the plugin it is a bare query builder over raw table names, which
  * would answer the type-safety question with a different tool than the one an
  * assembly would ship. `convertValues` is what makes a uuid property compare
  * against a uuid column rather than against text.
  */
-export const kyselyOf = <T extends Em>(em: T) =>
+export const kyselyOf = <T extends PostgresEntityManager>(em: T) =>
   em.getKysely({
     tableNamingStrategy: 'entity',
     columnNamingStrategy: 'property',

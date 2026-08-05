@@ -129,18 +129,27 @@ describe.runIf(postgresAvailable)('the ddl entities can emit', () => {
     // The entity generator reads a live database and emits defineEntity source,
     // which would make the remaining tables a command rather than a week. It
     // very nearly does: run against the deployed lineage it recovers all 16
-    // tables, the foreign keys including the composite tenant-scoped ones, and
-    // all but one of the partial indexes.
+    // tables and the foreign keys, composite tenant-scoped ones included.
     //
-    // It recovers none of the 30 check constraints. Single-column ones it
-    // reinterprets as enums - same values enforced, different constraint name,
-    // which is the name error translation keys on. Multi-column ones
-    // (chk_roles_tenant_admin_shape, chk_roles_all_active_is_system) and the
-    // regex ones (chk_org_nodes_code_format) simply do not survive.
+    // Three things it does not recover, and each was checked rather than
+    // assumed:
+    //
+    // - None of the 30 check constraints. Single-column ones come back as
+    //   enums - same values, different constraint name, and the name is what
+    //   error translation keys on. Multi-column ones
+    //   (chk_roles_tenant_admin_shape) and regex ones do not come back at all.
+    // - uq_org_nodes_tenant_single_root, which is `(tenant_id) where parent_id
+    //   is null`: one root per tenant. A structural invariant, not an index for
+    //   speed - without it a tenant can have two roots and the tree stops
+    //   meaning anything.
+    // - Column order in at least two indexes (uq_role_grants_anchored,
+    //   uq_org_nodes_tenant_parent_name). Uniqueness is unchanged, prefix
+    //   selectivity is not, and the parity gate compares indexdef in full.
     //
     // So the generator is a starting point and not a migration: taking its
-    // output as-is builds a database missing thirty invariants, and nothing
-    // fails until data that should have been refused is already stored.
+    // output as-is builds a database missing thirty invariants and one
+    // structural rule, and nothing fails until data that should have been
+    // refused is already stored.
     const generatedDir = fileURLToPath(new URL('../generated', import.meta.url))
     if (!fs.existsSync(generatedDir)) return
 
@@ -154,12 +163,21 @@ describe.runIf(postgresAvailable)('the ddl entities can emit', () => {
     expect(withChecks, 'the generator started emitting checks; revisit the plan').toEqual([])
   }, 60_000)
 
-  it('drops the foreign key entirely when the relation does not persist', async () => {
-    // The trap, recorded because it cost an hour and fails silently: a
-    // relation marked persist(false) emits no constraint at all. Read as
-    // "this column is managed elsewhere", it is the natural way to model a
-    // foreign key whose column already exists as a plain property - and it
-    // deletes the tenant isolation the database was enforcing.
+  it('drops the foreign key when persist(false) is on the RELATION', async () => {
+    // Narrower than it first looked, and the distinction decides whether the
+    // generator's output is safe to start from.
+    //
+    // On the RELATION, persist(false) emits no constraint at all - read as
+    // "this column is managed elsewhere", a natural way to model a foreign key
+    // whose column already exists as a plain property, and it deletes the
+    // tenant isolation the database was enforcing.
+    //
+    // On the SCALAR beside an intact relation it does not, and that is what
+    // the entity generator emits: its `tenant` still carries fieldNames
+    // ['tenant_id'] and referencedColumnNames ['id'], and all three foreign
+    // keys come out. Checked against its real metadata and DDL, because the
+    // first version of this said the generator's spelling was the dangerous
+    // one - it is not.
     const OrgType = defineEntity({
       name: 'SilentOrgType',
       tableName: 'org_types',

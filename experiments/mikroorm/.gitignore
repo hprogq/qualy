@@ -1,3 +1,4 @@
 .probe-*/
 .compare-*/
 generated/
+.wiring-*/
