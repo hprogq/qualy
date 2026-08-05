@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/effect'
-import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
+import { Database } from '@qualy/plugin-database/server'
+import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import {

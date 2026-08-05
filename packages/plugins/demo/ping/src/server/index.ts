@@ -1,7 +1,7 @@
 import { Config, Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
-import { Database } from '@qualy/plugin-database/effect'
+import { Database } from '@qualy/plugin-database/server'
 import { pingApiGroup } from '../api.ts'
 import { pingLogs } from '../db/schema.ts'
 

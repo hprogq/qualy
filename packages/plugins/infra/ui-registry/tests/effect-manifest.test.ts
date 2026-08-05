@@ -18,10 +18,10 @@ import {
 import { message } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
-import { CurrentViewer, Viewer } from '@qualy/plugin-auth/effect/session-contract'
-import { appApiHandlers } from '../src/effect/index.ts'
-import { UiAuthorizer } from '../src/effect/authorizer.ts'
-import { UiCatalog, UiManifest, layer as manifestLayer } from '../src/effect/manifest.ts'
+import { CurrentViewer, Viewer } from '@qualy/plugin-auth/server/session-contract'
+import { appApiHandlers } from '../src/server/index.ts'
+import { UiAuthorizer } from '../src/server/authorizer.ts'
+import { UiCatalog, UiManifest, layer as manifestLayer } from '../src/server/manifest.ts'
 import { appApiGroup } from '../src/api.ts'
 
 // The manifest is an authorized projection, and this is where that is stated.

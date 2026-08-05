@@ -9,6 +9,7 @@ import {
   readLock,
   renderLock,
   renderRuntimeModule,
+  runtimeLayers,
   resolveAssembly,
   writeLock,
 } from '@qualy/assembly'
@@ -392,9 +393,15 @@ describe('runtime module', () => {
     // plugin the manifest selected and the process never runs
     const workspace = createWorkspace(INFRA)
     try {
-      const module = renderRuntimeModule(await resolve(workspace.manifestPath))
+      const resolution = await resolve(workspace.manifestPath)
+      const module = renderRuntimeModule(resolution)
       expect(module).toBe(renderRuntimeModule(await resolve(workspace.manifestPath)))
-      for (const id of INFRA) expect(module).toContain(`from '${id}/effect'`)
+      // asked of the plugin rather than spelled here: which subpath carries a
+      // layer is the plugin's declaration, and writing it into the assertion
+      // turned renaming that subpath into a failure of the generator
+      const specifiers = runtimeLayers(resolution).map((layer) => layer.specifier)
+      expect(specifiers.length).toBe(INFRA.length)
+      for (const specifier of specifiers) expect(module).toContain(`from '${specifier}'`)
     } finally {
       workspace.dispose()
     }

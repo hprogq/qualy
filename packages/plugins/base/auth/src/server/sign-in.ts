@@ -1,7 +1,7 @@
 import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { Database } from '@qualy/plugin-database/effect'
+import { Database } from '@qualy/plugin-database/server'
 import {
   LoginDrivers,
   LoginSessions,

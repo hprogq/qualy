@@ -12,7 +12,7 @@ import {
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
 import {
@@ -20,8 +20,8 @@ import {
   CurrentUser,
   sessionCookieName,
   layer as sessionLayer,
-} from '../src/effect/session.ts'
-import { AuthConfig } from '../src/effect/auth-config.ts'
+} from '../src/server/session.ts'
+import { AuthConfig } from '../src/server/auth-config.ts'
 
 // The session as a middleware, over a real server and a real database.
 //

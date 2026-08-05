@@ -13,7 +13,7 @@ import {
   trimmedName,
 } from '@qualy/api-kit/schema'
 
-import { Authenticated, AuthRequired } from './effect/session-contract.ts'
+import { Authenticated, AuthRequired } from './server/session-contract.ts'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
@@ -31,7 +31,7 @@ import {
   UserTypePlacementInUse,
   UserTypeVersionConflict,
   UserConflict,
-} from './effect/errors.ts'
+} from './server/errors.ts'
 
 // The identity api this plugin serves, as definitions only.
 //

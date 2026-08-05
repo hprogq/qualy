@@ -2,10 +2,10 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, pgCode, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
-import { Access, layer as rbacLayer } from '../src/effect/index.ts'
+import { Access, layer as rbacLayer } from '../src/server/index.ts'
 
 // The behaviours the cordis suite asserted and the Effect suite did not.
 //

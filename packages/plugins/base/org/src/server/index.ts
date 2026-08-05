@@ -4,7 +4,7 @@ import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'
 import { Placement } from '@qualy/auth-contract'
-import { Database } from '@qualy/plugin-database/effect'
+import { Database } from '@qualy/plugin-database/server'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import {
   AssignmentIncompatible,
@@ -34,7 +34,7 @@ import {
   type UpdateNodeError,
 } from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
-import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
+import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import {
   byPath,
   coveredBy,

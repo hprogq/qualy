@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/effect'
-import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
+import { Database } from '@qualy/plugin-database/server'
+import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import {
   CANONICAL_ADMIN_ROLE,

@@ -11,7 +11,7 @@ import {
   DatabaseConfig,
   layer as databaseLayer,
   type MigrationsBehind,
-} from './effect/index.ts'
+} from './server/index.ts'
 
 // The postgres lifecycle a database-backed test needs, owned by the plugin
 // that owns connections in production.

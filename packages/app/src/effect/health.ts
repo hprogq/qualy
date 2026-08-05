@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { QUALY_API_ID } from '@qualy/api-kit'
-import { ping } from '@qualy/plugin-database/effect'
+import { ping } from '@qualy/plugin-database/server'
 
 // Liveness says the process is up. Readiness says it can take traffic.
 //

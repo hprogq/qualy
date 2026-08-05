@@ -2,10 +2,10 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
-import { AuthConfig } from '../src/effect/auth-config.ts'
-import { SignIn, layer as signInLayer } from '../src/effect/sign-in.ts'
+import { AuthConfig } from '../src/server/auth-config.ts'
+import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
 
 // What a sign-in screen is offered.
 //

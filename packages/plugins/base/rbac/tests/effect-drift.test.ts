@@ -2,10 +2,10 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '../src/effect/index.ts'
+import { layer as rbacLayer } from '../src/server/index.ts'
 
 // A stored permission row is the single truth about what a code means.
 //

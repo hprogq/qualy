@@ -10,7 +10,7 @@
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
     "./api": "./src/api.ts",
-    "./effect": "./src/effect/index.ts",
+    "./server": "./src/server/index.ts",
     "./package.json": "./package.json"
   },
   "qualy": {
@@ -20,7 +20,7 @@
       }
     },
     "runtime": {
-      "entry": "./effect",
+      "entry": "./server",
       "api": "./api",
       "dependsOn": [
         "@qualy/plugin-database"

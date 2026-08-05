@@ -10,7 +10,7 @@
     "./client": "./client/index.ts",
     "./login-driver": "./src/login-driver.ts",
     "./api": "./src/api.ts",
-    "./effect": "./src/effect/index.ts",
+    "./server": "./src/server/index.ts",
     "./package.json": "./package.json"
   },
   "peerDependencies": {
@@ -39,7 +39,7 @@
       "entry": "./src/login-driver.ts"
     },
     "runtime": {
-      "entry": "./effect",
+      "entry": "./server",
       "api": "./api",
       "dependsOn": [
         "@qualy/plugin-auth"

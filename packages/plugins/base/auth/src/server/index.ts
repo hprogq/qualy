@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
-import { Database } from '@qualy/plugin-database/effect'
+import { Database } from '@qualy/plugin-database/server'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   DEFAULT_PAGE_SIZE,

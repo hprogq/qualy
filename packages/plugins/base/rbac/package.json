@@ -10,7 +10,7 @@
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
     "./client": "./client/index.ts",
-    "./effect": "./src/effect/index.ts",
+    "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
     "./package.json": "./package.json"
   },
@@ -28,7 +28,7 @@
       "entry": "src/permissions.ts"
     },
     "runtime": {
-      "entry": "./effect",
+      "entry": "./server",
       "dependsOn": [
         "@qualy/plugin-database"
       ],

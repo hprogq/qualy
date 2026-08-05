@@ -21,7 +21,7 @@ import {
   RoleUserTypeNotFound,
   RoleVersionConflict,
   TenantAdminRequired,
-} from './effect/errors.ts'
+} from './server/errors.ts'
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import {
@@ -35,7 +35,7 @@ import {
   trimmedName,
 } from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
-import { Authenticated } from '@qualy/plugin-auth/effect/session-contract'
+import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 
 // The access api, as definitions only. Paths are frozen.
 //

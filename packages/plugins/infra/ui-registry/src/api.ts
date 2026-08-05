@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { Viewer } from '@qualy/plugin-auth/effect/session-contract'
+import { Viewer } from '@qualy/plugin-auth/server/session-contract'
 
 // The authorized projection of the application shell for one viewer.
 //

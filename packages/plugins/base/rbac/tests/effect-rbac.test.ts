@@ -6,10 +6,10 @@ import {
   DatabaseConfig,
   Database,
   layer as databaseLayer,
-} from '@qualy/plugin-database/effect'
+} from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
-import { Access, layer as rbacLayer } from '../src/effect/index.ts'
+import { Access, layer as rbacLayer } from '../src/server/index.ts'
 
 // rbac under Effect, answering against a real database.
 //

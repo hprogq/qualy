@@ -6,9 +6,9 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./effect": "./src/effect/index.ts",
+    "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
-    "./effect/authorizer": "./src/effect/authorizer.ts",
+    "./server/authorizer": "./src/server/authorizer.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
@@ -27,7 +27,7 @@
   },
   "qualy": {
     "runtime": {
-      "entry": "./effect",
+      "entry": "./server",
       "api": "./api"
     }
   }

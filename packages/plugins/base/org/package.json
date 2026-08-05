@@ -10,7 +10,7 @@
     "./permissions": "./src/permissions.ts",
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
-    "./effect": "./src/effect/index.ts",
+    "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
     "./errors": "./src/errors.ts",
     "./package.json": "./package.json"
@@ -26,7 +26,7 @@
       "entry": "src/permissions.ts"
     },
     "runtime": {
-      "entry": "./effect",
+      "entry": "./server",
       "dependsOn": [
         "@qualy/plugin-database",
         "@qualy/plugin-rbac",

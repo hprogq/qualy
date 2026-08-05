@@ -2,14 +2,14 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '@qualy/plugin-rbac/effect'
+import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { LoginDrivers } from '@qualy/auth-contract/login'
-import { AuthConfig } from '../src/effect/sign-in.ts'
-import { Iam, layer as authLayer } from '../src/effect/index.ts'
+import { AuthConfig } from '../src/server/sign-in.ts'
+import { Iam, layer as authLayer } from '../src/server/index.ts'
 
 // User types under Effect.
 //

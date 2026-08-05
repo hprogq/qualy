@@ -5,7 +5,7 @@ import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { DatabaseConfig, MigrationsBehind, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { DatabaseConfig, MigrationsBehind, layer as databaseLayer } from '@qualy/plugin-database/server'
 import { healthApi, healthHandlers } from '../src/effect/health.ts'
 
 // M2: the application shell, assembled the way main.ts assembles it.

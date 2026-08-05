@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { boundedInt, changed, kebabCode, trimmedName } from '@qualy/api-kit/schema'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { Authenticated } from '@qualy/plugin-auth/effect/session-contract'
+import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   InvalidMove,
@@ -20,7 +20,7 @@ import {
   PlacementBlocked,
   RuleViolation,
   TypeNotFound,
-} from './effect/errors.ts'
+} from './server/errors.ts'
 
 // The endpoints this plugin serves, as definitions only.
 //

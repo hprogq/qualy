@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/effect'
+import { Database } from '@qualy/plugin-database/server'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { explainRowsQuery, orgNodeExistsQuery, userExistsQuery } from '../queries.ts'
 import { GrantNodeNotFound, GrantUserNotFound } from './grants.ts'

@@ -5,7 +5,7 @@ import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer } from '@qualy/api-kit/node'
-import { WebConfig, routes } from '../src/effect/index.ts'
+import { WebConfig, routes } from '../src/server/index.ts'
 
 // The boundary between the api and the browser shell.
 //

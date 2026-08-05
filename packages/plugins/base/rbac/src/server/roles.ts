@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
-import { Database } from '@qualy/plugin-database/effect'
-import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
+import { Database } from '@qualy/plugin-database/server'
+import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import type { LastAdministrator } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import {

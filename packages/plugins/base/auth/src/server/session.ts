@@ -1,7 +1,7 @@
 import { Duration, Effect, Layer, Redacted } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import type { HttpServerRequest } from 'effect/unstable/http'
-import { Database } from '@qualy/plugin-database/effect'
+import { Database } from '@qualy/plugin-database/server'
 import { deleteSessionQuery, sessionByTokenQuery, touchSessionQuery } from '../iam/queries.ts'
 import { AuthConfig } from './auth-config.ts'
 import {

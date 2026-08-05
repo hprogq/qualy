@@ -11,11 +11,11 @@
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
     "./constants": "./src/constants.ts",
-    "./effect": "./src/effect/index.ts",
-    "./effect/session": "./src/effect/session.ts",
+    "./server": "./src/server/index.ts",
+    "./server/session": "./src/server/session.ts",
     "./api": "./src/api.ts",
-    "./effect/sign-in": "./src/effect/sign-in.ts",
-    "./effect/session-contract": "./src/effect/session-contract.ts",
+    "./server/sign-in": "./src/server/sign-in.ts",
+    "./server/session-contract": "./src/server/session-contract.ts",
     "./package.json": "./package.json"
   },
   "qualy": {
@@ -31,7 +31,7 @@
       "entry": "src/permissions.ts"
     },
     "runtime": {
-      "entry": "./effect",
+      "entry": "./server",
       "dependsOn": [
         "@qualy/plugin-database",
         "@qualy/plugin-rbac"

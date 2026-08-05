@@ -9,11 +9,11 @@
   ],
   "exports": {
     "./assembly": "./src/assembly/index.ts",
-    "./effect": "./src/effect/index.ts",
+    "./server": "./src/server/index.ts",
     "./migrator": "./src/migrator.ts",
     "./pg-errors": "./src/pg-errors.ts",
     "./testkit": "./src/testkit.ts",
-    "./effect/constraints": "./src/effect/constraints.ts",
+    "./server/constraints": "./src/server/constraints.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
@@ -36,7 +36,7 @@
       "entry": "./assembly"
     },
     "runtime": {
-      "entry": "./effect"
+      "entry": "./server"
     }
   }
 }

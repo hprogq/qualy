@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { Context } from 'effect'
-import { UiAuthorizer, denyAll } from '../src/effect/authorizer.ts'
+import { UiAuthorizer, denyAll } from '../src/server/authorizer.ts'
 
 class ManifestProbe extends Context.Service<
   ManifestProbe,
