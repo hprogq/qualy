@@ -247,19 +247,19 @@
 阶段性总结与要点在 **docs/reports/effect-migration-progress.md**(已完成什么、机制结论、被否掉的方案、
 待办与风险);设计与实测细节在 **docs/effect-migration.md**;决策在 docs/adr/0001-0003。这里只记进度与交接。
 
-| 里程碑 | 内容 | 状态 |
-| --- | --- | --- |
-| M0 / M0.5 | 依赖栈落地、effect/drizzle 源码 vendoring 与 agent 指令剥离 | e4ca3d5 |
-| M1a | 数据库切片实测(事务/回滚/中断/savepoint/约束名/ltree/uuidv7) | 3f2fac8 + 076bfea |
-| M1b | HTTP 切片实测(HttpApi、类型化 client、TanStack Query 桥接) | 13c8016 |
-| — | Effect LSP 接入 tsc,并用会失败的 fixture 守住 patch 是否还在 | 3d3f7a1 |
-| M2 | 应用外壳(健康探针、配置、组合根、优雅关闭) | b989041 |
-| — | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足** | 603f7ad |
-| M3 | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client | 本次 |
-| M4 | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | **55/55 路由已迁完** |
-| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | **完成**(api-reference / dict / web) |
-| M6 | 前端切到 HttpApiClient | 待办 |
-| M7 | 原子切换,删掉 cordis 与 oRPC | 待办 |
+| 里程碑    | 内容                                                           | 状态                                 |
+| --------- | -------------------------------------------------------------- | ------------------------------------ |
+| M0 / M0.5 | 依赖栈落地、effect/drizzle 源码 vendoring 与 agent 指令剥离    | e4ca3d5                              |
+| M1a       | 数据库切片实测(事务/回滚/中断/savepoint/约束名/ltree/uuidv7)   | 3f2fac8 + 076bfea                    |
+| M1b       | HTTP 切片实测(HttpApi、类型化 client、TanStack Query 桥接)     | 13c8016                              |
+| —         | Effect LSP 接入 tsc,并用会失败的 fixture 守住 patch 是否还在   | 3d3f7a1                              |
+| M2        | 应用外壳(健康探针、配置、组合根、优雅关闭)                     | b989041                              |
+| —         | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足**    | 603f7ad                              |
+| M3        | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client          | 本次                                 |
+| M4        | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | **55/55 路由已迁完**                 |
+| M5        | 其余插件按依赖簇迁移(清单 config → layer config 也在这里)      | **完成**(api-reference / dict / web) |
+| M6        | 前端切到 HttpApiClient                                         | 待办                                 |
+| M7        | 原子切换,删掉 cordis 与 oRPC                                   | 待办                                 |
 
 **M3 交接要点**:插件**不依赖**聚合体——用只装自己一个 group 的本地 `HttpApi` 实现,靠共享的
 `QUALY_API_ID` 让类型也对上(源码依据与实跑验证见迁移文档「M3 包边界」)。生成三份产物:
@@ -293,6 +293,7 @@ SIGTERM 后端口释放。冻结路径 `GET /ping/hello` 未变,`api-surface.tes
   失败后立刻断言 `pg_stat_activity` 为空,postgres 不保证那么快更新该视图。
 
 **M5 进展**:判据是「描述符还是资源」,不是「cordis 里有没有 Service」。
+
 - **api-reference 不需要插件层**:上游自带 `HttpApiScalar.layer`(inline source,不走 CDN),文档本来就由宿主
   提供;它缺的是 exposure 那个决定,而那是**宿主的 setup 声明**——没有任何东西依赖这个答案。已修:
   Effect 侧原先**无条件**同时提供 Scalar 与 openapi.json,生产环境等于把 API 参考公开出去。
@@ -419,13 +420,13 @@ type "ltree" does not exist
 pre-structure 片段排在结构 SQL 之前。随后把 from-scratch 与 committed 两条 lineage 分别部署到两个
 空库,逐对象比较:
 
-| 对象 | 数量 | 结果 |
-| --- | --- | --- |
-| 列(名/类型/可空/默认) | 129 | 完全一致 |
-| 约束 | 195 | 完全一致 |
-| 索引 | 57 | 完全一致 |
-| 函数 + 触发器 | 80 | 完全一致 |
-| 扩展 | ltree, plpgsql | 完全一致 |
+| 对象                  | 数量           | 结果     |
+| --------------------- | -------------- | -------- |
+| 列(名/类型/可空/默认) | 129            | 完全一致 |
+| 约束                  | 195            | 完全一致 |
+| 索引                  | 57             | 完全一致 |
+| 函数 + 触发器         | 80             | 完全一致 |
+| 扩展                  | ltree, plpgsql | 完全一致 |
 
 唯一差异是**列的物理顺序**(committed 靠 ALTER TABLE ADD COLUMN 追加,from-scratch 按声明顺序建表)
 与 pg_dump 的 `\restrict` 随机串,均无语义。手工 SQL 只有 ltree 需要进插件,且已经进了;
@@ -533,13 +534,13 @@ clean-room parity                 → 129 列 / 195 约束 / 57 索引 / 80 函�
 或改动规模还不够大,不能证明手写类型断言没有维护成本。触发条件是**已经存在**的——查询层与 Schema 类型
 链断裂:
 
-| 事实 | 实测 |
-| --- | --- |
-| `sql\`\`` 用量 | 108 处 / 15 个文件 |
-| Drizzle typed builder 用量 | 5 处(1 insert、4 update) |
-| 手写查询层 | auth 591 + rbac 652 + org 252 = 1,495 行 |
-| 表 | 16 张,840 行 schema |
-| 结果类型 | 经手写 `rows<Row>()` 断言 |
+| 事实                       | 实测                                     |
+| -------------------------- | ---------------------------------------- |
+| `sql\`\`` 用量             | 108 处 / 15 个文件                       |
+| Drizzle typed builder 用量 | 5 处(1 insert、4 update)                 |
+| 手写查询层                 | auth 591 + rbac 652 + org 252 = 1,495 行 |
+| 表                         | 16 张,840 行 schema                      |
+| 结果类型                   | 经手写 `rows<Row>()` 断言                |
 
 ### vendored 上游
 
@@ -659,11 +660,11 @@ MODULE_NOT_FOUND——后者读起来像「插件没装」,而不是「清单指
 **commit 说不出磁盘上是什么**:树已经不在版本控制里,本地改一个字节不留痕迹,比对 package version
 也看不见(两边 package.json 是同一个)。
 
-| 命令 | 做什么 | 写 lock |
-| --- | --- | --- |
-| `vendor:update` | 读 catalog → clone tag → 剥离 → 算内容 hash | **写** |
-| `vendor:restore` | 读 **lock 的 commit** → fetch → 剥离 → 校验 hash | 不写 |
-| `vendor:check` | 只看本地树:版本、内容 hash、该剥的剥没剥 | 不写 |
+| 命令             | 做什么                                           | 写 lock |
+| ---------------- | ------------------------------------------------ | ------- |
+| `vendor:update`  | 读 catalog → clone tag → 剥离 → 算内容 hash      | **写**  |
+| `vendor:restore` | 读 **lock 的 commit** → fetch → 剥离 → 校验 hash | 不写    |
+| `vendor:check`   | 只看本地树:版本、内容 hash、该剥的剥没剥         | 不写    |
 
 `contentSha256` 对剥离后的树按「路径 + 文件字节」计算,忽略 mtime 与权限(否则每次恢复都报漂移)。
 
@@ -692,3 +693,72 @@ pnpm dev + curl             → ready/manifest/spa 200,SIGTERM shutdown complete
 
 **阶段 A 完成,可以 squash merge。** 下一步按裁决:合并 → 删旧分支 → 在新 main 上打
 `pre-mikroorm-spike` → 从 main 建 `spike/mikroorm-kysely`,连真实 PostgreSQL 做纵向切片。
+
+---
+
+## 迁移分支 refactor/mikroorm-migration(阶段 C:正式迁移)
+
+spike 的结论已落地为四个提交,每一步都可单独回退。
+
+### 一、能力可以拥有生成物(核心不知道它生成了什么)
+
+实体聚合必须和插件集合一样新,也就是说 `pnpm gen` 要写它、frozen 门禁要比它——这两件事都在核心,
+而**核心不知道什么是实体**。所以契约多了一条声明(不是一个阶段):`modules?(context)`,
+纯函数、不拿 `providerConfig`(生成物会进工作树,连接串不进)。核心写字节、比字节,从不读内容。
+
+由此:`apps/server/entities.gen.ts` 由 database 能力产出,`qualy resolve --frozen-lockfile`
+在它缺失或过期时拒绝。两个能力抢同一路径、路径逃出 workspace 都是硬失败。
+
+### 二、entity 聚合的校验(实测每条都能红)
+
+- 两个插件声明同名实体 / 同名表 → 拒绝(拼接里完全无声,最后注册的赢)
+- 声明的路径不在包 exports 里 → 拒绝(否则构建期才发现,且看起来像聚合文件坏了)
+- 集合取 **retained**(active + disabled + detached);实测改成 active-only 后
+  「停用/移出清单仍保留」用例立刻红——这条正是数据被 DROP 的路径
+- 产物落在**宿主 workspace**,不是清单目录(改成清单目录后用例红)
+- 产物里不得出现 `any` / `unknown`(元组一旦被宽化,表名全变 `never`,而运行时什么都不报)
+- 插件集合变化后 frozen 门禁必须红(实测:装了 plugin-b 而聚合还是旧的 → 报 not what this
+  manifest generates)
+
+### 三、ORM 接上聚合
+
+`@qualy/plugin-database` 的 layer 现在是 `ormLayer.pipe(Layer.provideMerge(connection))`——
+顺序不是随意的:`provideMerge` 先构建参数(实测见 repos/effect/packages/effect/src/Layer.ts:1337),
+所以 ORM 出现时迁移已经跑完。宿主把 `entities.gen.ts` 交给插件,插件不做 discovery。
+
+宽化的 manager 收窄成插件自己的闭包类型,收窄**只做一次**(`entityManager<T>()`),
+不是在十五个调用点各写一次 cast。
+
+顺带把十五个各自重建 database layer 的测试文件收进 `databaseFor(url)`——正是这次「插件多要一个
+服务」要改十五处,才证明它该被提出来。
+
+### 四、16 张表全部声明为实体,逐插件过 parity
+
+| 插件 | 表  | columns | constraints | indexes |
+| ---- | --- | ------- | ----------- | ------- |
+| org  | 4   | 30      | 23          | 18      |
+| auth | 6   | 34      | 23          | 15      |
+| rbac | 6   | —       | —           | —       |
+
+**parity gate 的一个洞已补**:spike 版本只比 `data_type`,而 schema 里每个 varchar 的
+`data_type` 都是 `character varying`,长度在 `character_maximum_length` 里——spike 把
+`org_types.name` 声明成 255(实际 100)一直是绿的。现在比宽度与精度,实测把 100 改回 255 立刻红。
+
+**约束命名从「例外表」改成「规则」**:一个 assembly 只有一个 naming strategy,且主键名没有
+per-entity 覆写(实测见 repos/mikro-orm/packages/sql/src/schema/DatabaseSchema.ts:343)。
+五个复合主键都叫 `pk_<表>`、单列主键都取 postgres 默认——这是整个 schema 的规律,所以规则写在
+database 插件里,它不需要认识任何一张业务表。曾经考虑改名迁移,不需要了。
+
+### 验收(实际执行)
+
+```
+pnpm typecheck                          → 0 errors
+npx vitest run                          → Tests 330 passed / 53 files
+npx tsx scripts/qualy.ts resolve --frozen-lockfile → qualy.lock.json is up to date
+npx tsx scripts/qualy.ts generate       → database: nothing to generate(drizzle 侧无漂移)
+```
+
+### 下一步
+
+查询层:把 repo 从 drizzle 逐个改写到 Kysely(`kyselyOf(em)`,entity 名 + property 名 +
+convertValues)。每个 repo 单独过它自己的既有测试,drizzle 侧最后整体撤下。
