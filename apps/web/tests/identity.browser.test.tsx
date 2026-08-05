@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import type { QualyClient } from '@qualy/api-client/effect'
-import type { UserTypeDto } from '@qualy/plugin-auth/contract'
-import type { RoleDto } from '@qualy/plugin-rbac/contract'
+import type { ApiResult } from '@qualy/api-client/effect'
+
+// the rows as the api answers them: a fixture typed from a hand-written copy
+// kept compiling after the api's own shape moved
+type UserTypeDto = ApiResult<'identity', 'listUserTypes'>['userTypes'][number]
+type RoleDto = ApiResult<'access', 'listRoles'>['roles'][number]
 import { components } from '../src/plugins.gen.ts'
 import { Effect } from 'effect'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'

@@ -39,10 +39,12 @@ const translated = () => {
   const found = new Map<string, string>()
   for (const file of sources) {
     const text = fs.readFileSync(file, 'utf8')
-    const start = text.indexOf('createConstraintTranslator(')
-    if (start < 0) continue
-    // the keys of the object literal handed to the translator
-    for (const match of text.slice(start).matchAll(/^\s{2}((?:uq|fk|chk|idx)_[a-z0-9_]+):/gm)) {
+    // A constraint map is a record keyed by constraint name, whatever it is
+    // named. Anchoring on one factory call is what let this gate go quiet:
+    // the maps outlived the helper that used to wrap them, and a scan for the
+    // helper reported zero translators rather than reporting that it had
+    // stopped looking at anything.
+    for (const match of text.matchAll(/^\s+((?:uq|fk|chk|idx)_[a-z0-9_]+):/gm)) {
       found.set(match[1]!, path.relative(repoRoot, file))
     }
   }

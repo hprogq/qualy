@@ -10,7 +10,11 @@ import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { Spinner } from '@qualy/ui/spinner'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import type { OrgTreeNodeDto, OrgTypeDto } from '@qualy/plugin-org/contract'
+import type { ApiResult } from '@qualy/api-client/effect'
+
+// the rows as the api answers them, not a copy that can drift from it
+type OrgTreeNodeDto = ApiResult<'org', 'getTree'>['nodes'][number]
+type OrgTypeDto = ApiResult<'org', 'listTypes'>['types'][number]
 import { orgMessages as m } from './i18n.ts'
 
 // minimal org management: tree with selection, node crud, parent-selector

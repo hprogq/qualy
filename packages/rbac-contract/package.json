@@ -11,7 +11,6 @@
     "./testkit": "./src/testkit.ts"
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "effect": "catalog:"
   },
   "dependencies": {

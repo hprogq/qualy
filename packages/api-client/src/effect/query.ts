@@ -46,7 +46,7 @@ export const effectQueryOptions = <
 // A derived client is a tree of functions returning effects; a page wants
 // query options with a stable key. Rather than have every page repeat the key
 // and the runtime, this walks the client once and pairs each endpoint with
-// both, so a call site reads the way the oRPC one did and still carries the
+// both, so a call site reads the way it always did and still carries the
 // endpoint's own error type into TanStack.
 
 // `any` in both positions on purpose: a method returning `Effect<A, E>` is not

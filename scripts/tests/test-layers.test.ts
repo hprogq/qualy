@@ -59,11 +59,11 @@ const SCRIPTS_MAY_CONNECT = new Set([
 // Deleting, moving or renaming one has to be a decision the diff shows.
 const MIGRATED_SUITES = [
   'packages/plugins/base/auth/tests/schema.test.ts',
-  'packages/plugins/base/auth/tests/iam.test.ts',
-  'packages/plugins/base/auth-local/tests/local-login.test.ts',
+  'packages/plugins/base/auth/tests/effect-parity.test.ts',
+  'packages/plugins/base/auth/tests/effect-sign-in.test.ts',
   'packages/plugins/base/org/tests/schema.test.ts',
-  'packages/plugins/base/org/tests/org.test.ts',
-  'packages/plugins/base/rbac/tests/rbac.test.ts',
+  'packages/plugins/base/org/tests/effect-parity.test.ts',
+  'packages/plugins/base/rbac/tests/effect-parity.test.ts',
 ]
 
 const OWNERSHIP: readonly { pattern: RegExp; why: string }[] = [
@@ -298,6 +298,10 @@ describe('test layering', () => {
       .concat(walk('apps'))
       .filter((file) => !isTestFile(file))
       .filter((file) => !posix(file).startsWith('packages/effect-spike/'))
+      // A testkit is a test boundary that happens to live in src/, and the
+      // next test is what keeps it out of production: no production module is
+      // allowed to import one, so running effects here reaches no shipped path.
+      .filter((file) => !posix(file).endsWith('/src/testkit.ts'))
       .filter((file) => !RUNS_EFFECTS.includes(posix(file)))
     const offenders = breaches(production, [
       {

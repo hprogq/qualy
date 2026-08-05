@@ -16,7 +16,7 @@ const configPath = process.env.QUALY_CONFIG
   : path.join(appRoot, 'qualy.yml')
 await verifyAssembly(configPath, (message) => console.warn(message))
 
-// The Effect entry point, running alongside the cordis one until the switch.
+// The entry point.
 //
 // `runMain` installs the signal handlers, interrupts the root fiber and runs
 // every finalizer, so graceful shutdown is not something this file implements.

@@ -3,7 +3,6 @@ import fs from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createWorkspace } from '@qualy/assembly/testkit'
 
-const contractsPath = 'packages/api-client/src/contracts.gen.ts'
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
 const apiPath = 'packages/api/src/api.gen.ts'
 const apiHandlersPath = 'packages/app/api-handlers.gen.ts'
@@ -20,7 +19,7 @@ describe('generator determinism', () => {
 
   it('produces byte-identical output on repeated runs', () => {
     gen()
-    const generated = [contractsPath, pluginsPath, apiPath, apiHandlersPath, catalogPath]
+    const generated = [pluginsPath, apiPath, apiHandlersPath, catalogPath]
     const before = generated.map((file) => fs.readFileSync(file, 'utf8'))
     const second = gen()
     expect(second).toContain('unchanged, skipped')
@@ -35,15 +34,13 @@ describe('generator determinism', () => {
     const workspace = createWorkspace(
       [
         '@qualy/plugin-database',
-        '@qualy/plugin-server',
-        '@qualy/plugin-ui-registry',
+                '@qualy/plugin-ui-registry',
         '@qualy/plugin-ping',
       ],
       { disabled: ['@qualy/plugin-ping'] },
     )
     try {
       gen(`--yml ${workspace.manifestPath}`)
-      expect(fs.readFileSync(contractsPath, 'utf8')).not.toContain('pingContract')
       expect(fs.readFileSync(pluginsPath, 'utf8')).not.toContain('pingComponents')
       // a disabled plugin loses its routes, so both halves of the aggregate
       // have to forget it together
@@ -51,7 +48,6 @@ describe('generator determinism', () => {
       expect(fs.readFileSync(apiHandlersPath, 'utf8')).not.toContain('pingApiHandlers')
 
       gen(`--yml ${workspace.manifestPath} --all`)
-      expect(fs.readFileSync(contractsPath, 'utf8')).toContain('pingContract')
       expect(fs.readFileSync(pluginsPath, 'utf8')).toContain('pingComponents')
       // but NOT the server's route graph. --all means "the superset" for a
       // client contract and a web bundle, where an unreachable component costs
@@ -64,47 +60,13 @@ describe('generator determinism', () => {
     }
   })
 
-  it('gives every exported contract its own client namespace', () => {
-    gen()
-    const contracts = fs.readFileSync(contractsPath, 'utf8')
-    // auth owns two api surfaces: the session core and identity
-    // administration. They became separate namespaces rather than one
-    // crowded object.
-    expect(contracts).toContain(
-      "import { authContract as authNamespace } from '@qualy/plugin-auth/contract'",
-    )
-    expect(contracts).toContain(
-      "import { identityContract as identityNamespace } from '@qualy/plugin-auth/contract'",
-    )
-    expect(contracts).toContain('  auth: authNamespace,')
-    expect(contracts).toContain('  identity: identityNamespace,')
-    // imports are aliased, so a plugin exporting `appContract` does not
-    // collide with the aggregate this file declares under the same name
-    expect(contracts).toContain(
-      "import { appContract as appNamespace } from '@qualy/plugin-ui-registry/contract'",
-    )
-    expect(contracts).toContain('export const appContract = {')
-    expect(contracts).toContain('  app: appNamespace,')
-  })
-
-  it('refuses a contract export that cannot become a namespace', () => {
-    // the export name IS the namespace, so it has to be able to be one
-    const check = (name: string) => /^[a-z][A-Za-z0-9]*Contract$/.test(name)
-    expect(check('identityContract')).toBe(true)
-    expect(check('authLocalContract')).toBe(true)
-    expect(check('Contract')).toBe(false)
-    expect(check('IdentityContract')).toBe(false)
-    expect(check('identity_contract')).toBe(false)
-    expect(check('identityContracts')).toBe(false)
-  })
-
-  it('gives no namespace two claimants', () => {
-    // object spread lets a later plugin silently shadow an earlier one, so
-    // generation refuses a second claim on a namespace rather than take it.
+  it('gives no group two claimants', () => {
+    // the aggregate is built by adding groups to one api, so a repeated group
+    // is a route table where a later plugin silently shadows an earlier one.
     // One plugin can no longer be selected twice, but two plugins are still
-    // free to export the same name.
+    // free to name a group the same thing.
     gen()
-    const claims = [...fs.readFileSync(contractsPath, 'utf8').matchAll(/^ {2}(\w+): /gm)].map(
+    const claims = [...fs.readFileSync(apiPath, 'utf8').matchAll(/^\s+(\w+ApiGroup),$/gm)].map(
       (match) => match[1],
     )
     expect(claims.length).toBeGreaterThan(0)
@@ -154,8 +116,7 @@ describe('generator determinism', () => {
     const workspace = createWorkspace(
       [
         '@qualy/plugin-database',
-        '@qualy/plugin-server',
-        '@qualy/plugin-ui-registry',
+                '@qualy/plugin-ui-registry',
         '@qualy/plugin-org',
         '@qualy/plugin-auth',
         '@qualy/plugin-rbac',
@@ -181,8 +142,7 @@ describe('generator determinism', () => {
     const workspace = createWorkspace(
       [
         '@qualy/plugin-database',
-        '@qualy/plugin-server',
-        '@qualy/plugin-ui-registry',
+                '@qualy/plugin-ui-registry',
         '@qualy/plugin-org',
         '@qualy/plugin-auth',
         '@qualy/plugin-rbac',

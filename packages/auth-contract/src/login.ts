@@ -16,6 +16,19 @@ export type LoginPresentation =
   /** a same-origin path; an absolute url is dropped rather than followed */
   | { readonly mode: 'redirect'; readonly href: string }
 
+/** props every embedded credential renderer receives from the login shell */
+export interface LoginMethodRendererProps {
+  method: LoginMethod & { mode: 'component' }
+  onAuthenticated: () => void
+}
+
+/** a provider row paired with how its driver asks to be presented */
+export type LoginMethod = {
+  readonly code: string
+  readonly type: string
+  readonly name: string
+} & LoginPresentation
+
 export interface LoginDriver {
   readonly type: string
   readonly describe: (provider: { readonly code: string }) => LoginPresentation

@@ -2,11 +2,24 @@
 // authorization depend on this package instead of the rbac implementation,
 // which keeps the package graph acyclic (the implementation itself depends
 // on auth/org schemas)
-import type {} from 'cordis'
 
 export { accessInvariantErrors } from './errors.ts'
 export { isSystemActor, type SystemActor } from './system-actor.ts'
 export { scopeCoverage } from './scope.ts'
+
+// one grant of one role to one user. A tenant role reaches the whole tenant
+// and carries no node; an org role is anchored and carries both.
+export type GrantTarget =
+  | { kind: 'tenant' }
+  | { kind: 'org-node'; orgNodeId: string; coverage: 'self' | 'subtree' }
+
+export interface GrantInput {
+  tenantId: string
+  userId: string
+  roleId: string
+  target: GrantTarget
+}
+
 export {
   CANONICAL_ADMIN_ROLE,
   canonicalTenantAdmin,
@@ -70,77 +83,4 @@ export interface AuthorizationScope {
 // caller's own transaction connection. Never omit it while holding a lock:
 // a second pool connection under a held lock can exhaust the pool and
 // deadlock the whole process.
-export interface RbacDbHandle {
-  execute(query: unknown): Promise<{ rows: unknown[] }>
-}
 
-// one grant of one role to one user. A tenant role reaches the whole tenant
-// and carries no node; an org role is anchored and carries both.
-export type GrantTarget =
-  | { kind: 'tenant' }
-  | { kind: 'org-node'; orgNodeId: string; coverage: 'self' | 'subtree' }
-
-export interface GrantInput {
-  tenantId: string
-  userId: string
-  roleId: string
-  target: GrantTarget
-}
-
-export interface RbacService {
-  definePermissions(plugin: string, definitions: readonly PermissionDefinition[]): void
-  whenSynced(): Promise<void>
-  // the active catalog: definitions whose plugin is loaded and whose stored
-  // row still agrees with it. A code outside this set authorizes nothing.
-  listPermissions(filter?: { target?: PermissionTarget; plugin?: string }): ActivePermission[]
-  getPermission(code: string): ActivePermission | undefined
-
-  hasPermission(principal: Principal, code: string): Promise<boolean>
-  require(principal: Principal | undefined, code: string): Promise<void>
-  canAt(
-    principal: Principal,
-    code: string,
-    targetOrgNodeId: string,
-    handle?: RbacDbHandle,
-  ): Promise<boolean>
-  requireAt(
-    principal: Principal | undefined,
-    code: string,
-    targetOrgNodeId: string,
-    handle?: RbacDbHandle,
-  ): Promise<void>
-  getProfile(principal: Principal): Promise<AccessProfile>
-  // how far one org-target permission reaches for this principal; consumers
-  // project it onto their own structures
-  listAuthorizedScope(
-    principal: Principal,
-    code: string,
-    handle?: RbacDbHandle,
-  ): Promise<AuthorizationScope>
-
-  // the cross-domain invariant: after the caller's own writes, the tenant
-  // must still have at least one administrator who can sign in. Always runs
-  // inside the caller's transaction — it takes row locks and must see the
-  // uncommitted final state, so the handle is required.
-  assertTenantKeepsAdministrator(tenantId: string, handle: RbacDbHandle): Promise<void>
-
-  // the actor is required, not optional: an entry point that silently skips
-  // authorization when a caller omits an argument is one every caller
-  // eventually omits
-  grant(actor: Principal, input: GrantInput): Promise<string>
-  revoke(actor: Principal, tenantId: string, grantId: string): Promise<void>
-  // role codes of org-kind grants at the node whose role does not allow the
-  // given org type; used by org before a node type change
-  grantsBlockingOrgType(
-    tenantId: string,
-    orgNodeId: string,
-    orgTypeId: string,
-    handle?: RbacDbHandle,
-  ): Promise<string[]>
-}
-
-declare module 'cordis' {
-  interface Context {
-    rbac: RbacService
-  }
-}

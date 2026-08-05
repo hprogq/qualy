@@ -72,12 +72,17 @@ export function createPackageResolver(hostDir: string): PackageResolver {
   const cache = new Map<string, PluginMetadata>()
 
   const resolvePackageDir = (id: string): string => {
+    // Resolved through its manifest, not through a main entry. A plugin is a
+    // package the assembly reads declarations from; whether it also has
+    // something to import at the root is its own business, and several have
+    // nothing to run at all. Requiring a "." export made "contributes a
+    // schema and no code" unexpressible.
     let entryPath: string
     try {
-      entryPath = hostRequire.resolve(id)
+      entryPath = hostRequire.resolve(`${id}/package.json`)
     } catch {
       throw new Error(
-        `${id} cannot be resolved from ${host}: add it to that package's dependencies, or check that its exports map declares a "." entry`,
+        `${id} cannot be resolved from ${host}: add it to that package's dependencies, and make sure its exports map declares "./package.json"`,
       )
     }
     let dir = path.dirname(entryPath)
@@ -127,9 +132,12 @@ export function createPackageResolver(hostDir: string): PackageResolver {
     resolvePackageDir,
     resolveModuleUrl: (specifier) => pathToFileURL(hostRequire.resolve(specifier)).href,
     readMetadata,
+    // Asked the same way the package is located, for the same reason: a
+    // plugin that exports no "." is still installed, and answering no here
+    // told people to reinstall a package that was sitting right there.
     isInstalled: (id) => {
       try {
-        hostRequire.resolve(id)
+        resolvePackageDir(id)
         return true
       } catch {
         return false

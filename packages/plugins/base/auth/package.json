@@ -6,8 +6,6 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./contract": "./src/contract.ts",
     "./schema": "./src/db/schema.ts",
     "./client": "./client/index.ts",
     "./permissions": "./src/permissions.ts",
@@ -17,7 +15,8 @@
     "./effect/session": "./src/effect/session.ts",
     "./api": "./src/api.ts",
     "./effect/sign-in": "./src/effect/sign-in.ts",
-    "./effect/session-contract": "./src/effect/session-contract.ts"
+    "./effect/session-contract": "./src/effect/session-contract.ts",
+    "./package.json": "./package.json"
   },
   "qualy": {
     "contributions": {
@@ -41,20 +40,15 @@
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "react": "catalog:"
   },
   "dependencies": {
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
     "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",

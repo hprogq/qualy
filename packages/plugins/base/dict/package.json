@@ -6,8 +6,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/db/schema.ts"
+    "./schema": "./src/db/schema.ts",
+    "./package.json": "./package.json"
   },
   "qualy": {
     "contributions": {
@@ -15,8 +15,5 @@
         "schemaEntry": "src/db/schema.ts"
       }
     }
-  },
-  "peerDependencies": {
-    "cordis": "catalog:"
   }
 }

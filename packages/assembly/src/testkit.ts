@@ -89,7 +89,7 @@ export function createWorkspace(
     fs.mkdirSync(at, { recursive: true })
     fs.writeFileSync(
       path.join(at, 'package.json'),
-      `${JSON.stringify({ name: entry.id, version: '0.0.0', type: 'module', exports: { '.': './index.js' }, qualy: entry.qualy }, null, 2)}\n`,
+      `${JSON.stringify({ name: entry.id, version: '0.0.0', type: 'module', exports: { '.': './index.js', './package.json': './package.json' }, qualy: entry.qualy }, null, 2)}\n`,
     )
     fs.writeFileSync(path.join(at, 'index.js'), 'export const name = "synthetic"\n')
   }

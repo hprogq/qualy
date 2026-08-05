@@ -6,13 +6,12 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./contract": "./src/contract.ts",
     "./schema": "./src/db/schema.ts",
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
     "./api": "./src/api.ts",
-    "./effect": "./src/effect/index.ts"
+    "./effect": "./src/effect/index.ts",
+    "./package.json": "./package.json"
   },
   "qualy": {
     "contributions": {
@@ -29,17 +28,12 @@
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "react": "catalog:"
   },
   "dependencies": {
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",

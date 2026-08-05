@@ -38,8 +38,7 @@
   "scripts": {
     "build": "tsx scripts/gen.ts --all && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",
     "db:reset": "docker compose down -v && docker compose up -d && tsx scripts/qualy.ts deploy",
-    "dev": "tsx scripts/gen.ts && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
-    "dev:effect": "tsx scripts/gen.ts && node --env-file-if-exists=.env --import tsx packages/app/src/effect/main.ts",
+    "dev": "tsx scripts/gen.ts && node --env-file-if-exists=.env --import tsx packages/app/src/effect/main.ts",
     "format": "prettier --write .",
     "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",

@@ -1,16 +1,16 @@
-import { oc } from '@orpc/contract'
-import { ORPCError } from '@orpc/client'
-import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
-import { MAX_PAGE_SIZE, readQueryCursor } from '@qualy/api-kit'
 
-// the api foundations every plugin builds on. A plugin declares its domain
-// errors ONCE — code, http status, english protocol message and an optional
-// zod data schema — and everything else is derived from that single source:
-// the contract's .errors() config, the http status map the beta.21 handler
-// needs, the typed error class the service throws and the data types the
-// client's translations receive. Plugin authors never write status tables,
-// data maps or conditional types.
+// How a plugin declares a domain failure, for the browser.
+//
+// The server declares its failures as tagged schema classes, which is what the
+// api document and the derived client are built from. This is the other half:
+// a client catalog is keyed by code and its values are typed by that failure's
+// data, so the translation for a code cannot take a field the failure does not
+// carry. The two agree because both are generated from the same codes, and the
+// error-shape gates check that they still do.
+//
+// Everything oRPC-shaped that used to live here - route builders, page inputs,
+// the cursor codec - went with oRPC itself.
 
 export interface ErrorDefinition {
   status: number
@@ -151,47 +151,3 @@ export function defineDomainErrors<const Defs extends ErrorDefinitions>(
 // --- contract route helpers ---
 
 type HttpPath = `/${string}`
-const route = (method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: HttpPath) =>
-  oc.meta(openapi({ method, path }))
-
-export const get = (path: HttpPath) => route('GET', path)
-export const post = (path: HttpPath) => route('POST', path)
-export const put = (path: HttpPath) => route('PUT', path)
-export const patch = (path: HttpPath) => route('PATCH', path)
-export const del = (path: HttpPath) => route('DELETE', path)
-
-// the ubiquitous "it worked" response: a handler that fails throws, so the
-// client never has to consider a false
-export const okOutput = z.object({ ok: z.literal(true) })
-
-// --- pagination ---
-
-// Keyset pagination, in the foundation because the alternative is what every
-// list started as: a bare `limit 200` that drops the rest in silence. A page
-// either says where the next one starts or says there is no next one.
-export { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, encodeQueryCursor } from '@qualy/api-kit'
-
-export const pageInput = {
-  cursor: z.string().max(512).optional(),
-  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).optional(),
-}
-
-// a page of T plus where to resume; absent nextCursor means the end
-export const pageOutput = <Item extends z.ZodType>(item: Item) =>
-  z.object({ items: z.array(item), nextCursor: z.string().nullable() })
-
-// A cursor that cannot be read is the caller's error, answered as one. It
-// used to fall back to the first page, which turns "load more" into an
-// endless loop of the same rows and reports nothing wrong.
-export function decodeQueryCursor(
-  cursor: string | undefined,
-  queryFingerprint: string,
-  arity: number,
-): string[] | undefined {
-  const key = readQueryCursor(cursor, queryFingerprint, arity)
-  if (key === null) {
-    throw new ORPCError('BAD_REQUEST', { message: 'the pagination cursor is not usable here' })
-  }
-  return key
-}
-

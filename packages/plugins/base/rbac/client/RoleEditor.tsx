@@ -8,7 +8,6 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import type { RoleDto } from '../src/contract.ts'
 import { rbacMessages as m } from './i18n.ts'
 
 // Everything one role owns, edited in place. Each section saves on its own

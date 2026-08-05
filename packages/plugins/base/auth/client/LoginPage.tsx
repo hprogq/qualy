@@ -8,7 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
 import { Button } from '@qualy/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@qualy/ui/card'
 import { Spinner } from '@qualy/ui/spinner'
-import type { LoginMethod } from '@qualy/plugin-auth/contract'
+import type { LoginMethod } from '@qualy/auth-contract/login'
 import { authMessages as m } from './i18n.ts'
 
 // single login page: the method list and the selected driver renderer are

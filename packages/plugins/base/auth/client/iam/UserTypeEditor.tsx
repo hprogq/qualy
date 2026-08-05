@@ -8,7 +8,6 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import type { UserTypeDto } from '../../src/iam/contract.ts'
 import { iamMessages as m } from '../i18n.ts'
 
 // Everything a user type owns: display, sign-in policy and the tenant-wide

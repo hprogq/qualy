@@ -5,17 +5,12 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "dependencies": {
-    "@cordisjs/plugin-include": "catalog:",
-    "@cordisjs/plugin-loader": "catalog:",
-    "@cordisjs/plugin-logger-console": "catalog:",
-    "@cordisjs/plugin-timer": "catalog:",
     "@effect/platform-node": "catalog:",
     "@qualy/api": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
-    "@qualy/plugin-api-reference": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
@@ -24,16 +19,13 @@
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/plugin-web": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
-    "cordis": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@cordisjs/plugin-hmr": "catalog:",
     "@qualy/api-client": "workspace:*"
   }
 }

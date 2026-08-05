@@ -2,10 +2,16 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Context } from 'cordis'
+import { Context, Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { sql, type SQL } from 'drizzle-orm'
 import { Pool } from 'pg'
-import Database from './index.ts'
+import type * as SqlError from 'effect/unstable/sql/SqlError'
+import {
+  Database,
+  DatabaseConfig,
+  layer as databaseLayer,
+  type MigrationsBehind,
+} from './effect/index.ts'
 
 // The postgres lifecycle a database-backed test needs, owned by the plugin
 // that owns connections in production.
@@ -53,7 +59,14 @@ if (!postgresAvailable && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
 }
 
 export interface TestContext {
-  ctx: Context
+  /**
+   * The database layer for this scratch database.
+   *
+   * Its failures are the layer's own: a test that provides it is asserting the
+   * lineage applies and the server answers, which is the same claim a
+   * deployment makes.
+   */
+  services: Layer.Layer<Database, SqlError.SqlError | MigrationsBehind>
   /** the scratch database this context is bound to */
   url: string
   /**
@@ -151,9 +164,7 @@ const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
       url.pathname = `/${building}`
       // the plugin's own migrator, so the template is built the way a
       // deployment is rather than by a second implementation
-      const ctx = new Context()
-      await ctx.plugin(Database, { url: url.href, migrations: 'apply', migrationsFolder: folder })
-      await ctx.fiber.dispose()
+      await build(url.href, { migrations: 'apply', migrationsFolder: folder }, async () => {})
       // renamed only once it is complete, so a crashed build never becomes a
       // template that other tests copy
       await client.query(`alter database "${building}" rename to "${name}"`)
@@ -190,14 +201,14 @@ export interface TestContextOptions {
  * failure into a pass, because every error collected here is still thrown.
  */
 async function teardown(options: {
-  ctx?: Context
+  scope?: Scope.Scope
   admin: Pool
   name: string
 }): Promise<void> {
   const errors: unknown[] = []
-  if (options.ctx) {
+  if (options.scope) {
     try {
-      await options.ctx.fiber.dispose()
+      await Effect.runPromise(Scope.close(options.scope, Exit.void))
     } catch (error) {
       errors.push(error)
     }
@@ -223,7 +234,7 @@ async function teardown(options: {
 }
 
 /**
- * A cordis context bound to a database of its own. The label only makes the
+ * A database of its own, with the layer that serves it. The label only makes the
  * scratch name readable while a test is running; uniqueness comes from the
  * uuid, so parallel suites never share one.
  */
@@ -256,41 +267,85 @@ export async function createTestContext(
   const url = new URL(baseUrl)
   url.pathname = `/${name}`
 
-  const ctx = new Context()
+  const services = servicesFor(url.href, {
+    // the copy already carries the lineage, so this run finds it applied and
+    // starts; the layer's own check still has to agree, which is the point
+    migrations: options.migrations ?? 'apply',
+    migrationsFolder: folder,
+  })
+  const scope = await Effect.runPromise(Scope.make())
+  let database: typeof Database.Service
   try {
-    await ctx.plugin(Database, {
-      url: url.href,
-      // the copy already carries the lineage, so this run finds it applied and
-      // starts; the plugin's own check still has to agree, which is the point
-      migrations: options.migrations ?? 'apply',
-      migrationsFolder: folder,
-    })
+    database = await Effect.runPromise(
+      Effect.gen(function* () {
+        const built = yield* Layer.buildWithScope(services, scope)
+        return Context.get(built, Database)
+      }),
+    )
   } catch (error) {
-    // init may already have registered effects, so the partial context is
-    // disposed like any other; the original failure is what the caller
-    // needs to see, with anything teardown adds attached to it
+    // building may already have acquired resources, so the partial scope is
+    // closed like any other; the original failure is what the caller needs to
+    // see, with anything teardown adds attached to it
     try {
-      await teardown({ ctx, admin, name })
+      await teardown({ scope, admin, name })
     } catch (cleanup) {
       throw new AggregateError([error, cleanup], `could not start a test database for ${label}`)
     }
     throw error
   }
 
+  const execute = (text: string, params: readonly unknown[]) =>
+    Effect.runPromise(database.execute(parameterize(text, params)).pipe(Effect.orDie))
+
   return {
-    ctx,
+    services,
     url: url.href,
-    query: (text, params = []) => ctx.db.drizzle.execute(parameterize(text, params)) as never,
+    query: (text, params = []) => execute(text, params) as never,
     async row(text, params = []) {
-      const { rows } = await ctx.db.drizzle.execute(parameterize(text, params))
+      const { rows } = (await execute(text, params)) as unknown as { rows: unknown[] }
       if (rows.length === 0) throw new Error(`expected a row from: ${text.trim()}`)
       return rows[0] as never
     },
-    // Order matters and is the point: disposing the fiber runs the database
-    // plugin's own disposer, so by the time the database goes there is
-    // nothing connected to it. A drop that has to force its way past live
-    // backends is a leak the suite should be reporting, not working around.
-    dispose: () => teardown({ ctx, admin, name }),
+    // Order matters and is the point: closing the scope runs the database
+    // layer's own finalizer, so by the time the database goes there is nothing
+    // connected to it. A drop that has to force its way past live backends is
+    // a leak the suite should be reporting, not working around.
+    dispose: () => teardown({ scope, admin, name }),
+  }
+}
+
+/** the database layer, configured for one scratch database */
+const servicesFor = (url: string, options: Required<TestContextOptions>) =>
+  databaseLayer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        DatabaseConfig,
+        DatabaseConfig.of({
+          url: Redacted.make(url),
+          migrations: options.migrations,
+          migrationsFolder: options.migrationsFolder,
+        }),
+      ),
+    ),
+  )
+
+/** builds the layer, runs the body, and closes the scope whatever happened */
+const build = async (
+  url: string,
+  options: Required<TestContextOptions>,
+  body: (database: typeof Database.Service) => Promise<void>,
+) => {
+  const scope = await Effect.runPromise(Scope.make())
+  try {
+    const database = await Effect.runPromise(
+      Effect.gen(function* () {
+        const built = yield* Layer.buildWithScope(servicesFor(url, options), scope)
+        return Context.get(built, Database)
+      }),
+    )
+    await body(database)
+  } finally {
+    await Effect.runPromise(Scope.close(scope, Exit.void))
   }
 }
 
@@ -302,14 +357,31 @@ export async function createTestContext(
  * an assertion about a constraint becomes an assertion about nothing.
  */
 export function pgCode(work: Promise<unknown>): Promise<string> {
+  // The chain is a tree, not a list. Drizzle wraps the driver failure, and
+  // under the effect driver the wrapper's cause is an Effect Cause holding an
+  // array of failures rather than a single `cause` link, so walking only
+  // `.cause` stopped at the wrapper and returned its message.
+  const find = (node: unknown, depth: number, seen: Set<unknown>): string | undefined => {
+    if (!node || typeof node !== 'object' || depth > 10 || seen.has(node)) return undefined
+    seen.add(node)
+    const value = node as Record<string, unknown>
+    if (typeof value.code === 'string') return value.code
+    for (const key of ['cause', 'error', 'reason']) {
+      const found = find(value[key], depth + 1, seen)
+      if (found) return found
+    }
+    for (const key of ['failures', 'reasons']) {
+      const list = value[key]
+      if (!Array.isArray(list)) continue
+      for (const entry of list) {
+        const found = find(entry, depth + 1, seen)
+        if (found) return found
+      }
+    }
+    return undefined
+  }
   return work.then(
     () => 'no error',
-    (error: unknown) => {
-      for (let current = error; current; current = (current as { cause?: unknown }).cause) {
-        const code = (current as { code?: unknown }).code
-        if (typeof code === 'string') return code
-      }
-      return String(error)
-    },
+    (error: unknown) => find(error, 0, new Set()) ?? String(error),
   )
 }

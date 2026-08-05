@@ -4,7 +4,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
-import type { LoginMethodRendererProps } from '@qualy/plugin-auth/contract'
+import type { LoginMethodRendererProps } from '@qualy/auth-contract/login'
 import { localMessages as m } from './i18n.ts'
 
 // embedded credential renderer: the auth core's login shell owns the page,

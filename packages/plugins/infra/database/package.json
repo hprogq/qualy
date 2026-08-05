@@ -8,21 +8,17 @@
     "./src/testkit.ts"
   ],
   "exports": {
-    ".": "./src/index.ts",
     "./assembly": "./src/assembly/index.ts",
     "./effect": "./src/effect/index.ts",
     "./migrator": "./src/migrator.ts",
     "./pg-errors": "./src/pg-errors.ts",
     "./testkit": "./src/testkit.ts",
-    "./effect/constraints": "./src/effect/constraints.ts"
-  },
-  "peerDependencies": {
-    "cordis": "catalog:"
+    "./effect/constraints": "./src/effect/constraints.ts",
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@effect/sql-pg": "catalog:",
     "@qualy/assembly-contract": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
     "pg": "catalog:",

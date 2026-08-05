@@ -6,28 +6,22 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./contract": "./src/contract.ts",
     "./password": "./src/password.ts",
     "./client": "./client/index.ts",
     "./login-driver": "./src/login-driver.ts",
     "./api": "./src/api.ts",
-    "./effect": "./src/effect/index.ts"
+    "./effect": "./src/effect/index.ts",
+    "./package.json": "./package.json"
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "react": "catalog:"
   },
   "dependencies": {
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",

@@ -1,28 +1,12 @@
 version: 1
 
 plugins:
-  '@cordisjs/plugin-logger-console': {}
-  '@cordisjs/plugin-timer': {}
 
-  '@cordisjs/plugin-hmr':
-    config:
-      base: '../..'
-      root:
-        - packages
-
-  '@qualy/plugin-database':
-    config:
-      migrationsFolder: ../../db/migrations
-
-  '@qualy/plugin-server':
-    config:
-      port: 3000
-      prefix: /api
+  '@qualy/plugin-database': {}
 
   '@qualy/plugin-ui-registry': {}
   '@qualy/plugin-web': {}
   '@qualy/plugin-layout-default': {}
-  '@qualy/plugin-api-reference': {}
 
   '@qualy/plugin-org': {}
   '@qualy/plugin-auth': {}
@@ -30,6 +14,4 @@ plugins:
   '@qualy/plugin-rbac': {}
   '@qualy/plugin-dict': {}
 
-  '@qualy/plugin-ping':
-    config:
-      greeting: hello
+  '@qualy/plugin-ping': {}

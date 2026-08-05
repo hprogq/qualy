@@ -6,24 +6,16 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./contract": "./src/contract.ts",
     "./effect": "./src/effect/index.ts",
     "./api": "./src/api.ts",
-    "./effect/authorizer": "./src/effect/authorizer.ts"
-  },
-  "peerDependencies": {
-    "cordis": "catalog:"
+    "./effect/authorizer": "./src/effect/authorizer.ts",
+    "./package.json": "./package.json"
   },
   "dependencies": {
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "effect": "catalog:",

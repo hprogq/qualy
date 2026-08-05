@@ -29,7 +29,7 @@ import { asState } from '../src/assembly/state.ts'
 // needed it already said so in a comment, `-- owner: @qualy/plugin-org`; it
 // just had no way to carry it.
 
-const INFRA = ['@qualy/plugin-database', '@qualy/plugin-server', '@qualy/plugin-ui-registry']
+const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
 
 // where a throwaway assembly keeps its lineage: the same declaration the
 // runtime reads, so generation and application cannot mean different folders
@@ -218,8 +218,7 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       '@qualy/plugin-dict',
       '@qualy/plugin-auth-local',
       '@qualy/plugin-layout-default',
-      '@qualy/plugin-api-reference',
-    ],
+          ],
   }
 
   for (const [name, plugins] of Object.entries(selections)) {

@@ -9,7 +9,6 @@ export {
   parseManifest,
   readManifest,
   renderManifest,
-  runtimePlanPathFor,
   type AssemblyManifest,
   type ManifestEntry,
 } from './manifest.ts'
@@ -41,11 +40,7 @@ export {
 } from './lock.ts'
 export {
   renderRuntimeModule,
-  renderRuntimePlan,
-  runtimeEntries,
   runtimeLayers,
   writeRuntimeModule,
-  writeRuntimePlan,
-  type RuntimeEntry,
 } from './runtime-plan.ts'
 export { capabilityContext, capabilityWork, type CapabilityWork } from './work.ts'

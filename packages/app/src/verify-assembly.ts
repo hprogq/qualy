@@ -6,9 +6,7 @@ import {
   lockPathFor,
   readLock,
   renderRuntimeModule,
-  renderRuntimePlan,
   resolveAssembly,
-  runtimePlanPathFor,
 } from '@qualy/assembly'
 
 // Start validates and starts; it never repairs.
@@ -28,29 +26,19 @@ export async function verifyAssembly(
   manifestPath: string,
   warn: (message: string) => void,
 ): Promise<string> {
-  const runtimePlanPath = runtimePlanPathFor(manifestPath)
-  if (!fs.existsSync(runtimePlanPath)) {
-    throw new Error(
-      `${runtimePlanPath} is missing: the runtime plan is generated from ${manifestPath}. Run \`pnpm qualy resolve\`.`,
-    )
-  }
-
   const previousLock = readLock(lockPathFor(manifestPath))
   const resolution = await resolveAssembly({ manifestPath, previousLock })
   const problems = lockDrift(previousLock, resolution)
-  if (fs.readFileSync(runtimePlanPath, 'utf8') !== renderRuntimePlan(resolution)) {
-    problems.push(`${runtimePlanPath} is not what this manifest generates`)
-  }
-  // the Effect runtime reads a module rather than an entry list, and it is
-  // just as derived: an instance whose layers do not match the reviewed lock
-  // is running an assembly nobody approved
-  const runtimeModulePath = path.join(path.dirname(runtimePlanPath), 'runtime.gen.ts')
+  // the runtime reads a generated module, and it is as derived as the lock:
+  // an instance whose layers do not match the reviewed lock is running an
+  // assembly nobody approved
+  const runtimeModulePath = path.join(path.dirname(path.resolve(manifestPath)), 'runtime.gen.ts')
   if (!fs.existsSync(runtimeModulePath)) {
     problems.push(`${runtimeModulePath} is missing; run \`pnpm gen\``)
   } else if (fs.readFileSync(runtimeModulePath, 'utf8') !== renderRuntimeModule(resolution)) {
     problems.push(`${runtimeModulePath} is not what this manifest generates`)
   }
-  if (problems.length === 0) return runtimePlanPath
+  if (problems.length === 0) return runtimeModulePath
 
   const summary = `assembly is out of date:\n  ${problems.join('\n  ')}`
   if (frozenLockfile()) {
@@ -59,5 +47,5 @@ export async function verifyAssembly(
     )
   }
   warn(`${summary}; starting anyway because this is not a frozen-lockfile environment`)
-  return runtimePlanPath
+  return runtimeModulePath
 }

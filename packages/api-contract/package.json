@@ -9,9 +9,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@orpc/client": "catalog:",
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "zod": "catalog:"
   }

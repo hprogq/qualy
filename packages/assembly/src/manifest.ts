@@ -119,17 +119,14 @@ export function renderManifest(manifest: AssemblyManifest): string {
   return YAML.stringify({ version: manifest.version, plugins }, { lineWidth: 0 })
 }
 
-/** the lock and the runtime plan live beside the manifest that produced them */
+/** the lock lives beside the manifest that produced it */
 export const lockPathFor = (manifestPath: string) =>
   path.join(path.dirname(manifestPath), 'qualy.lock.json')
-
-export const runtimePlanPathFor = (manifestPath: string) =>
-  path.join(path.dirname(manifestPath), 'cordis.gen.yml')
 
 /**
  * The directory plugin packages resolve from.
  *
- * Cordis anchors plugin resolution at the include file's directory, so the
+ * Resolution is anchored at the manifest's directory, so the
  * host that owns the manifest is also the host that owns the dependencies.
  * Everything reading plugin metadata has to resolve the same way the loader
  * will, or generation and runtime disagree about which package is meant.

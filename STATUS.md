@@ -325,3 +325,48 @@ Vitest browser mode 下能否用(上游无证据)。**建议在 M5 之前先跑�
 - 会话 7 做 manifest 权限过滤的收尾与 dict 插件。**注意:manifest 授权投影已在前端收口轮提前完成**(ui-registry 单槽 authorizer + 三态投影),§7.1 的 Authorizer 已落地,会话 7 只剩页面权限声明复核与 dict。**会话 6 已沿用的硬约束**:①canonical tenant-admin 五不可变(不可删/禁/改 code/kind/isSystem);②所有跨领域写(用户类型变更、角色 allowed 集合变更、org node 类型变更、org type 删除)对现有 assignment 的一致性必须在同一串行化事务内校验(org 已建 assignmentsBlockingOrgType 与租户行锁范式,会话 6 的用户/角色写复用同锁);③禁用用户/类型即 Session 失效;④tenantId 只来自 principal。**会话 5 遗留的会话 5 原始约束(已在会话 5 落实,存档)**:①org 插件从 scaffold 起即按 errors/repo/service/contract/router/permissions/index 分层(repo 只做租户限定数据访问不抛 ORPCError 不判权限;service 管事务与树不变量不碰 HTTP;router 管校验+requireAt+领域错误映射;contract 纯净;index 组合根);②**组织结构写操作一律先 `select ... from tenants where id=$1 for update` 锁租户行**(create/move/delete/改类型/改规则全串行化,防「A 移入 B 下 ∥ B 移入 A 下」双事务旧快照互过;P1 规模代价可忽略,细粒度锁不做);③move 授权查两端 requireAt(source + destination parent),create→parent、rename/改类型/delete→node、读子树→请求根;④path/depth 是 service 维护的派生投影(parent_id 才是结构关系),move 必须同事务更新整个子树 path/depth/updatedAt,评估 (tenant_id, path) 唯一索引,测试验证 parent 链与 path/depth 恒一致;⑤类型规则多节点环 DB 只拦自环,完整环检测由 service 在串行化事务内做
 - 按 docs/p1-tutorial.md 会话 5 执行:组织树领域搬迁(errors→tests→repo→service→contract/router→client 顺序,禁止整目录复制)。旧代码 legacy/qualy_old/apps/api/src/modules/org/;必须保留/新增规则见 5.2(单根/根保护/规则图无环/类型规则校验/自移动+移入后代拒绝/子树 path+depth 事务更新/改类型验 children+现有 assignments 的 allowed org types/删除保护)。org 声明权限接 definePermissions(常量已在 ./permissions);路由鉴权 requireAt(read/manage,目标节点语义见 5.3);OrgPage 最小管理界面(树/选中/CRUD/parent selector 移动,无拖拽)。demo 账号密码 QUALY_DEMO_PASSWORD(dev 库当前 demo 密码 qualy-dev-demo-123)
 - 浏览器人工走查(P0-REPORT 第 3 项)在 P1 第一个 commit 前人工补记:/ping 页面与导航、改 PingPage 文本验 HMR、停用 ping 后导航与路由消失、恢复、控制台无 React 双实例/Router/chunk 错误
+
+## M7 · 删除 Cordis 与 oRPC(2026-08-06)
+
+Effect 成为唯一运行时。仓库内 `cordis` / `@cordisjs/*` / `@orpc/*` 的 import、依赖与 lockfile 条目
+全部归零(prose 注释里的历史提及保留)。
+
+删除:65 个文件。包括 cordis 插件实现、oRPC 契约与 router、`packages/app/src/main.ts`(cordis bin
+复刻)、`contracts.gen.ts` 生成器、`cordis.gen.yml` 与其 `renderRuntimePlan` / `runtimeEntries`
+一族。装配层现在只派生一个运行时产物:`packages/app/runtime.gen.ts`。
+
+`pnpm dev` 与 `pnpm dev:effect` 合并为 `pnpm dev`(不再需要 `--expose-internals`,那是 cordis
+loader 的解析要求)。
+
+### 顺带修掉的真缺陷
+
+- `PackageResolver.isInstalled` 仍按裸包名解析,而多数插件**故意不导出 `"."`**。结果:一个装着的
+  包被判为「未安装」,resolve 让人去重装一个就在原地的包。改为与 `resolvePackageDir` 同一条路径。
+  由 assembly-resolve 的 detached 用例抓到。
+- `constraint-names` 门禁锚在 `createConstraintTranslator(` 这个调用上,而 Effect 端已改成普通
+  约束映射表。门禁静默报告「零个 translator」而不是报告自己已经什么都不看了。改为按约束名键扫描,
+  并已实测:把 `fk_role_grants_node` 改一个字母立刻变红。
+- `test-layers` 的 `MIGRATED_SUITES` 与 Effect 侧测试对齐;testkit 因是测试边界而豁免
+  `Effect.run*` 规则(相邻用例保证生产代码不得 import testkit)。
+
+### 遗留(需要单独决策,不在 M7 范围)
+
+- **qualy.yml 的 `config:` 现在没有消费方**。cordis loader 曾把它交给插件;Effect 侧配置一律走
+  `packages/app/src/effect/config.ts` 读环境变量。已从产品清单里删掉两条死配置
+  (`plugin-database.migrationsFolder`、`plugin-ping.greeting`),装配层仍支持 `config:`(lock
+  与 testkit 都还在用),要不要把它接进生成的 layer 是一个设计决定。
+- `scripts/tests/generators.test.ts` 会重写仓库里的生成物,而别的测试并发读同一批文件,偶发失败。
+
+### 验收(实际执行)
+
+```
+pnpm typecheck                → 0 errors(根 + apps/web)
+npx vitest run                → Test Files 46 passed | Tests 299 passed
+pnpm test:browser             → Test Files 1 passed | Tests 10 passed
+pnpm dev + curl               → /health/live 200  /health/ready 200
+                                /api/app/manifest 200  / 200  /api/api/app/manifest 404
+SIGTERM                       → "shutdown complete",端口释放
+grep imports of cordis/@orpc  → 0
+grep deps in any package.json → 0
+grep pnpm-lock.yaml           → 0
+```

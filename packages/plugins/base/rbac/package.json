@@ -6,14 +6,13 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
     "./schema": "./src/db/schema.ts",
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
-    "./contract": "./src/contract.ts",
     "./client": "./client/index.ts",
     "./effect": "./src/effect/index.ts",
-    "./api": "./src/api.ts"
+    "./api": "./src/api.ts",
+    "./package.json": "./package.json"
   },
   "qualy": {
     "contributions": {
@@ -37,11 +36,9 @@
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "react": "catalog:"
   },
   "dependencies": {
-    "@orpc/server": "catalog:",
     "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
@@ -49,7 +46,6 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",

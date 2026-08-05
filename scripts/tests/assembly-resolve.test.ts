@@ -8,7 +8,7 @@ import {
   parseManifest,
   readLock,
   renderLock,
-  renderRuntimePlan,
+  renderRuntimeModule,
   resolveAssembly,
   writeLock,
 } from '@qualy/assembly'
@@ -23,7 +23,7 @@ import { createWorkspace, renderManifestText } from '@qualy/assembly/testkit'
 // The core is asserted here; what a capability makes of a contribution is
 // asserted next to the plugin that owns the capability.
 
-const INFRA = ['@qualy/plugin-database', '@qualy/plugin-server', '@qualy/plugin-ui-registry']
+const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
 const WITH_TABLES = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-auth']
 
 const resolve = (manifestPath: string) =>
@@ -99,7 +99,7 @@ describe('resolution', () => {
       expect(lock.capabilities.database!.provider).toBe('@qualy/plugin-database')
       // the plugin's own declaration travels with the plugin, not the capability
       expect(lock.plugins['@qualy/plugin-auth']!.contributions).toHaveProperty('database')
-      expect(lock.plugins['@qualy/plugin-server']!.contributions).toBeUndefined()
+      expect(lock.plugins['@qualy/plugin-ui-registry']!.contributions).toBeUndefined()
     } finally {
       workspace.dispose()
     }
@@ -108,7 +108,7 @@ describe('resolution', () => {
   it('refuses a contribution no capability in the assembly can accept', async () => {
     // a plugin that owns tables in an assembly with no database plugin would
     // otherwise sit there never activating, since cordis gates it on inject
-    const workspace = createWorkspace(['@qualy/plugin-server', '@qualy/plugin-org'])
+    const workspace = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-org'])
     try {
       await expect(resolve(workspace.manifestPath)).rejects.toThrow(
         /@qualy\/plugin-org contributes to capability database, which no plugin in this assembly provides/,
@@ -121,7 +121,7 @@ describe('resolution', () => {
   it('resolves an assembly that needs no capability at all', async () => {
     // this is what "the database plugin is optional" means: a selection whose
     // plugins own nothing never loads a provider and never mentions one
-    const workspace = createWorkspace(['@qualy/plugin-server', '@qualy/plugin-ui-registry'])
+    const workspace = createWorkspace(['@qualy/plugin-web', '@qualy/plugin-layout-default'])
     try {
       const lock = lockFromResolution(await commit(workspace.manifestPath))
       expect(lock.capabilities).toEqual({})
@@ -209,12 +209,12 @@ describe('removal', () => {
   it('lets a removed plugin nothing is holding go', async () => {
     // keeping one that left nothing would park a dead entry in the lock with no
     // way to ever take it out
-    const workspace = createWorkspace([...INFRA, '@qualy/plugin-api-reference'])
+    const workspace = createWorkspace([...INFRA, '@qualy/plugin-layout-default'])
     try {
       await commit(workspace.manifestPath)
       workspace.writeManifest(INFRA)
       const after = await commit(workspace.manifestPath)
-      expect(after.plugins.has('@qualy/plugin-api-reference')).toBe(false)
+      expect(after.plugins.has('@qualy/plugin-layout-default')).toBe(false)
     } finally {
       workspace.dispose()
     }
@@ -226,7 +226,7 @@ describe('removal', () => {
     const workspace = createWorkspace(WITH_TABLES)
     try {
       await commit(workspace.manifestPath)
-      workspace.writeManifest(['@qualy/plugin-server', '@qualy/plugin-ui-registry'])
+      workspace.writeManifest(['@qualy/plugin-ui-registry', '@qualy/plugin-web'])
       fs.rmSync(path.join(workspace.dir, 'node_modules/@qualy/plugin-database'), {
         recursive: true,
       })
@@ -326,7 +326,7 @@ describe('frozen lockfile', () => {
     const workspace = createWorkspace(WITH_TABLES)
     try {
       await commit(workspace.manifestPath)
-      workspace.writeManifest(['@qualy/plugin-server', '@qualy/plugin-ui-registry'])
+      workspace.writeManifest(['@qualy/plugin-ui-registry', '@qualy/plugin-web'])
       const first = await commit(workspace.manifestPath)
       expect(first.plugins.get('@qualy/plugin-database')!.state).toBe('detached')
       expect(first.plugins.get('@qualy/plugin-database')!.retainedBy).toEqual(['database'])
@@ -386,35 +386,30 @@ describe('frozen lockfile', () => {
   })
 })
 
-describe('runtime plan', () => {
-  it('gives every entry an id derived from its name', async () => {
-    // the loader invents random ids for entries that lack them and writes them
-    // back into the file it read; a derived id leaves nothing to write
+describe('runtime module', () => {
+  it('imports a layer for every plugin that ships one', async () => {
+    // the module is what the host composes, so a plugin missing from it is a
+    // plugin the manifest selected and the process never runs
     const workspace = createWorkspace(INFRA)
     try {
-      const plan = renderRuntimePlan(await resolve(workspace.manifestPath))
-      expect(plan).toBe(renderRuntimePlan(await resolve(workspace.manifestPath)))
-      expect(plan.match(/^- id: /gm)).toHaveLength(INFRA.length)
-    } finally {
-      workspace.dispose()
-    }
-  })
-
-  it('carries plugin config through unchanged', async () => {
-    const workspace = createWorkspace(INFRA, {
-      configs: { '@qualy/plugin-server': { port: 4000 } },
-    })
-    try {
-      expect(renderRuntimePlan(await resolve(workspace.manifestPath))).toContain('port: 4000')
+      const module = renderRuntimeModule(await resolve(workspace.manifestPath))
+      expect(module).toBe(renderRuntimeModule(await resolve(workspace.manifestPath)))
+      for (const id of INFRA) expect(module).toContain(`from '${id}/effect'`)
     } finally {
       workspace.dispose()
     }
   })
 
   it('leaves out what is not running', async () => {
-    const workspace = createWorkspace(WITH_TABLES, { disabled: ['@qualy/plugin-auth'] })
+    // switched off with nothing depending on it: the module is the running
+    // assembly, and a disabled plugin's layer would still be composed
+    const workspace = createWorkspace([...INFRA, '@qualy/plugin-ping'], {
+      disabled: ['@qualy/plugin-ping'],
+    })
     try {
-      expect(renderRuntimePlan(await resolve(workspace.manifestPath))).not.toContain('plugin-auth')
+      expect(renderRuntimeModule(await resolve(workspace.manifestPath))).not.toContain(
+        'plugin-ping',
+      )
     } finally {
       workspace.dispose()
     }

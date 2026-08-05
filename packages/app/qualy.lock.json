@@ -1,31 +1,17 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:48031c0559474db79b2f5858850fb759fc7a9f73e57d53f1b5fc249771f884dd",
-  "resolutionHash": "sha256:7514bb0b525aea1e01173cd6b9d260508cb045aab4388c89d76b8e8d9d692527",
+  "manifestHash": "sha256:470720fa6daad0cf09e09cfbe80df6759b24103d8854a6592378fb15e2c38b11",
+  "resolutionHash": "sha256:73922e14fe109bf0316c750febc633f80b891941f79fd97568885603862c252e",
   "plugins": {
-    "@cordisjs/plugin-hmr": {
-      "version": "1.0.15",
-      "state": "active"
-    },
-    "@cordisjs/plugin-logger-console": {
-      "version": "1.0.0",
-      "state": "active"
-    },
-    "@cordisjs/plugin-timer": {
-      "version": "1.1.2",
-      "state": "active"
-    },
-    "@qualy/plugin-api-reference": {
-      "version": "0.0.0",
-      "state": "active"
-    },
     "@qualy/plugin-auth": {
       "version": "0.0.0",
       "state": "active",
       "contributions": {
         "database": {
           "schemaEntry": "src/db/schema.ts",
-          "dependsOn": ["@qualy/plugin-org"]
+          "dependsOn": [
+            "@qualy/plugin-org"
+          ]
         }
       }
     },
@@ -78,13 +64,12 @@
       "contributions": {
         "database": {
           "schemaEntry": "src/db/schema.ts",
-          "dependsOn": ["@qualy/plugin-auth", "@qualy/plugin-org"]
+          "dependsOn": [
+            "@qualy/plugin-auth",
+            "@qualy/plugin-org"
+          ]
         }
       }
-    },
-    "@qualy/plugin-server": {
-      "version": "0.0.0",
-      "state": "active"
     },
     "@qualy/plugin-ui-registry": {
       "version": "0.0.0",
@@ -111,10 +96,6 @@
   },
   "runtime": {
     "plugins": [
-      "@cordisjs/plugin-hmr",
-      "@cordisjs/plugin-logger-console",
-      "@cordisjs/plugin-timer",
-      "@qualy/plugin-api-reference",
       "@qualy/plugin-auth",
       "@qualy/plugin-auth-local",
       "@qualy/plugin-database",
@@ -123,7 +104,6 @@
       "@qualy/plugin-org",
       "@qualy/plugin-ping",
       "@qualy/plugin-rbac",
-      "@qualy/plugin-server",
       "@qualy/plugin-ui-registry",
       "@qualy/plugin-web"
     ]

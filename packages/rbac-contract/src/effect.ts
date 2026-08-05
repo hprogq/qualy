@@ -15,9 +15,8 @@ import type {
 // then value-import rbac. Declaring the tag here, in a package with no plugin
 // dependencies, keeps the implementation below its consumers.
 //
-// It is not on the package root because the root reaches the browser through
-// the oRPC contract chain while both runtimes coexist, and `effect` has no
-// business in that bundle.
+// It is not on the package root because the root reaches the browser, and
+// `effect` has no business in that bundle.
 
 /**
  * Every permission this assembly serves, assembled before rbac is built.

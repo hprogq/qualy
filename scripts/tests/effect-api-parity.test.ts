@@ -4,18 +4,12 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { FROZEN_ROUTES } from './support/frozen-routes.ts'
 
-// The old system as an executable specification.
+// The system this one replaced, as an executable specification.
 //
-// While both runtimes serve, the Effect side is a growing subset of the oRPC
-// side. What must never happen is a path that exists on one and not the other
-// after the switch, so every route the Effect aggregate serves has to be one
-// the frozen table already names. A rename during a port would otherwise be
-// invisible until a client hit it.
-//
-// Equality is the assertion now that every frozen route is served. It was a
-// containment check with a visible count while the port was in progress, and
-// turning it into equality was the last step of that port rather than
-// something discovered afterwards.
+// The frozen table is the route surface the previous runtime served, and it
+// outlives that runtime: a path is the one thing clients depend on across an
+// internal rewrite. Equality, not containment, so neither a route that was
+// dropped in the port nor one that was renamed can pass unnoticed.
 
 const effectRoutes = () => {
   const document = OpenApi.fromApi(qualyApi) as {

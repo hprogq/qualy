@@ -6,15 +6,11 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./effect": "./src/effect/index.ts"
-  },
-  "peerDependencies": {
-    "cordis": "catalog:"
+    "./effect": "./src/effect/index.ts",
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "effect": "catalog:",
     "sirv": "catalog:",
     "zod": "catalog:"
