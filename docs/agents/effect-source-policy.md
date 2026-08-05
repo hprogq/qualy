@@ -40,16 +40,31 @@ vendored 树里可能带着**写给别的仓库的 agent 配置**——drizzle-o
 - **进 .gitignore**,只有 `repos/vendor-lock.json` 例外
 
 原先的规则是「必须随仓库一起被审查和版本化」。可追溯性其实由 lock 承担:它记的是
-packageVersion + tag + **精确 commit**,`pnpm vendor:sync` 因此能还原逐字节相同的树。
+packageVersion + tag + **精确 commit + 内容 hash**,`pnpm vendor:restore` 因此能还原逐字节相同的树。
 把树本身提交进去只额外买到「离线可读」和「不同步就能 diff」,代价是 7,759 个外部文件压在
 376 个自己的文件上,`git log`、`grep`、`blame` 与 PR diff 全被淹没。
 
-因此门禁分两层:
+因此有三个动作,职责不重叠:
 
-- `pnpm test` 只校验 lock 与 pnpm catalog 一致、effect 生态同版本、repos 不进任何工具链、
-  没有人从中 import。**在从未跑过 vendor:sync 的新克隆上必须能通过。**
-- `pnpm vendor:check` 才要求树在磁盘上,并校验它就是 lock 指名的那一版。
-  树里的 `.git` 已被剥掉,所以对身份的校验读的是各源自己的 `versionFile`,不是 commit。
+| 命令 | 做什么 | 写 lock 吗 |
+| --- | --- | --- |
+| `pnpm vendor:update` | 按 catalog 版本找 tag、clone、剥离、算内容 hash | **写** |
+| `pnpm vendor:restore` | 按 **lock 里的 commit** fetch、剥离、校验内容 hash | 不写 |
+| `pnpm vendor:check` | 只看本地树:版本、内容 hash、该剥的有没有剥干净 | 不写 |
+
+`restore` 走 commit 而不是 tag:tag 可以被移动,经 tag 恢复会悄悄给回另一棵树。
+
+lock 里的 `contentSha256` 是对**剥离后**的树按「路径 + 文件内容」算的,忽略 mtime 与权限
+(否则每次恢复都报漂移)。它存在的理由是:**commit 说不出磁盘上是什么**。树已经不在版本控制里,
+本地改一个字节不留任何痕迹,而比对 package version 看不见——两边的 package.json 是同一个。
+没有它,「能还原逐字节相同的树」只是意图,不是有人校验的事实。(已实测:往 README 追加一行,
+`vendor:check` 立刻红。)
+
+门禁分层:
+
+- `pnpm test` 只校验 lock 与 pnpm catalog 一致、每个源都记了内容 hash、effect 生态同版本、
+  repos 不进任何工具链、没有人从中 import。**在从未恢复过树的新克隆上必须能通过。**
+- 树在磁盘上时,`pnpm test` 顺带校验它与 lock 一致;要求树必须在,是 `pnpm vendor:check` 的事。
 
 ## 写 Effect 代码时
 
@@ -77,5 +92,5 @@ TypeScript 会把它当成真指令(踩过)。
 ## 升级
 
 升级不是改一个版本号。`effect` 与全部 `@effect/*` 必须同版本,`repos/` 必须同步到对应 tag,
-patterns 必须重新校验,全部门禁必须重跑,并单独一个 commit。走 `pnpm vendor:sync`,
-由 `scripts/tests/vendor.test.ts` 守住对齐。
+patterns 必须重新校验,全部门禁必须重跑,并单独一个 commit。走 `pnpm vendor:update`(只有它写 lock),
+由 `scripts/tests/vendor.test.ts` 与 `pnpm vendor:check` 守住对齐。

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -79,9 +80,25 @@ export const VENDORED: readonly VendoredSource[] = [
 export const REPOS = 'repos'
 export const VENDOR_LOCK = path.join(REPOS, 'vendor-lock.json')
 
+export interface VendorSourceLock {
+  packageVersion: string
+  tag: string
+  commit: string
+  /**
+   * A hash of the stripped tree's contents.
+   *
+   * The commit alone does not say what is on disk: a tag can be moved, and a
+   * local edit to a tree that is no longer in version control leaves no trace
+   * at all. Comparing versions cannot see either, since both keep the same
+   * package.json. This is what makes "restores a byte-identical tree" a claim
+   * something checks rather than one the process merely intends.
+   */
+  contentSha256: string
+}
+
 export interface VendorLock {
-  /** package name to the version and upstream commit the tree was taken from */
-  sources: Record<string, { packageVersion: string; tag: string; commit: string }>
+  /** package name to the version, commit and content the tree was taken from */
+  sources: Record<string, VendorSourceLock>
 }
 
 export const readVendorLock = (): VendorLock =>
@@ -118,43 +135,151 @@ export const NOT_VENDORED = [
   '.github/copilot-instructions.md',
 ]
 
-function vendor(source: VendoredSource, version: string): string {
-  const tag = source.tagFor(version)
+/**
+ * A hash of what a vendored tree contains, and nothing else.
+ *
+ * Paths and bytes only: mtimes and permissions differ between a clone and a
+ * copy of the same commit, and hashing them would report drift on every
+ * restore. Paths are sorted and separators normalised so the digest is the
+ * same on every platform.
+ */
+export function treeContentHash(root: string): string {
+  const files: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.isFile()) files.push(full)
+    }
+  }
+  walk(root)
+  const digest = createHash('sha256')
+  for (const file of files.sort()) {
+    digest.update(path.relative(root, file).split(path.sep).join('/'))
+    digest.update('\0')
+    digest.update(createHash('sha256').update(fs.readFileSync(file)).digest())
+  }
+  return digest.digest('hex')
+}
+
+const strip = (tree: string, source: VendoredSource) => {
+  fs.rmSync(path.join(tree, '.git'), { recursive: true, force: true })
+  for (const unwanted of [...NOT_VENDORED, ...(source.supersededPaths ?? [])]) {
+    fs.rmSync(path.join(tree, unwanted), { recursive: true, force: true })
+  }
+}
+
+/**
+ * Put a tree on disk at a named commit, and say what landed.
+ *
+ * `update` clones the tag and reports whatever commit it points at; `restore`
+ * fetches the commit the lock names, so a moved tag cannot change what is
+ * checked out. Both strip the same paths, because the hash is taken after.
+ */
+function vendor(
+  source: VendoredSource,
+  ref: { tag: string } | { commit: string },
+): { commit: string; contentSha256: string } {
   const target = path.join(REPOS, source.name)
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), `qualy-vendor-${source.name}-`))
   try {
-    console.log(`vendor: cloning ${source.name} at ${tag}`)
-    git(['clone', '--depth', '1', '--branch', tag, source.repository, temp])
-    const commit = git(['rev-parse', 'HEAD'], temp)
-    fs.rmSync(path.join(temp, '.git'), { recursive: true, force: true })
-    for (const unwanted of [...NOT_VENDORED, ...(source.supersededPaths ?? [])]) {
-      fs.rmSync(path.join(temp, unwanted), { recursive: true, force: true })
+    if ('tag' in ref) {
+      console.log(`vendor: cloning ${source.name} at ${ref.tag}`)
+      git(['clone', '--depth', '1', '--branch', ref.tag, source.repository, temp])
+    } else {
+      console.log(`vendor: restoring ${source.name} at ${ref.commit}`)
+      git(['init', '--quiet', temp])
+      git(['remote', 'add', 'origin', source.repository], temp)
+      git(['fetch', '--depth', '1', '--quiet', 'origin', ref.commit], temp)
+      git(['checkout', '--quiet', 'FETCH_HEAD'], temp)
     }
+    const commit = git(['rev-parse', 'HEAD'], temp)
+    strip(temp, source)
     fs.rmSync(target, { recursive: true, force: true })
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.cpSync(temp, target, { recursive: true })
+    const contentSha256 = treeContentHash(target)
     console.log(`vendor: ${target} at ${commit}`)
-    return commit
+    return { commit, contentSha256 }
   } finally {
     fs.rmSync(temp, { recursive: true, force: true })
   }
 }
 
-if (import.meta.filename === process.argv[1]) {
-  const only = process.argv[2]
-  const lock = readVendorLock()
-  for (const source of VENDORED) {
-    if (only && only !== source.name) continue
-    const packageVersion = catalogVersion(source.packageName)
-    lock.sources[source.packageName] = {
-      packageVersion,
-      tag: source.tagFor(packageVersion),
-      commit: vendor(source, packageVersion),
+/** what is wrong with the tree on disk, as `vendor:check` reports it */
+export function checkVendored(source: VendoredSource, locked: VendorSourceLock): string[] {
+  const target = path.join(REPOS, source.name)
+  if (!fs.existsSync(target)) return [`${target} is missing; run \`pnpm vendor:restore\``]
+  const problems: string[] = []
+  const manifest = path.join(target, source.versionFile)
+  if (!fs.existsSync(manifest)) {
+    problems.push(`${manifest} is missing, so the tree cannot say which version it is`)
+  } else {
+    const { version } = JSON.parse(fs.readFileSync(manifest, 'utf8')) as { version: string }
+    if (version !== locked.packageVersion) {
+      problems.push(`${target} is version ${version}, the lock names ${locked.packageVersion}`)
     }
   }
-  lock.sources = Object.fromEntries(
-    Object.entries(lock.sources).sort(([a], [b]) => a.localeCompare(b)),
-  )
-  fs.writeFileSync(VENDOR_LOCK, `${JSON.stringify(lock, null, 2)}\n`)
-  console.log(`vendor: ${VENDOR_LOCK} written`)
+  for (const unwanted of [...NOT_VENDORED, ...(source.supersededPaths ?? [])]) {
+    if (fs.existsSync(path.join(target, unwanted))) {
+      problems.push(`${target}/${unwanted} should have been stripped`)
+    }
+  }
+  const actual = treeContentHash(target)
+  if (actual !== locked.contentSha256) {
+    problems.push(
+      `${target} does not match the content the lock names; it has been edited, or restored from a different commit`,
+    )
+  }
+  return problems
+}
+
+if (import.meta.filename === process.argv[1]) {
+  const [command, only] = process.argv.slice(2)
+  const lock = readVendorLock()
+  const selected = VENDORED.filter((source) => !only || only === source.name)
+
+  if (command === 'check') {
+    const problems = selected.flatMap((source) => {
+      const locked = lock.sources[source.packageName]
+      return locked
+        ? checkVendored(source, locked)
+        : [`${source.packageName} is not in ${VENDOR_LOCK}`]
+    })
+    if (problems.length > 0) {
+      console.error(`vendor: ${problems.join('\n        ')}`)
+      process.exit(1)
+    }
+    console.log(`vendor: ${selected.length} tree(s) match ${VENDOR_LOCK}`)
+  } else if (command === 'restore') {
+    // The lock decides, not the tag: a tag can be moved, and restoring through
+    // one would quietly hand back a different tree than the one recorded.
+    for (const source of selected) {
+      const locked = lock.sources[source.packageName]
+      if (!locked) throw new Error(`${source.packageName} is not in ${VENDOR_LOCK}`)
+      const { contentSha256 } = vendor(source, { commit: locked.commit })
+      if (contentSha256 !== locked.contentSha256) {
+        throw new Error(
+          `${source.name} restored from ${locked.commit} but its contents do not match the lock; the stripping rules have changed`,
+        )
+      }
+    }
+    console.log(`vendor: ${selected.length} tree(s) restored from ${VENDOR_LOCK}`)
+  } else {
+    // update: the catalog decides the version, and whatever the tag points at
+    // now becomes the new record
+    for (const source of selected) {
+      const packageVersion = catalogVersion(source.packageName)
+      const tag = source.tagFor(packageVersion)
+      const { commit, contentSha256 } = vendor(source, { tag })
+      lock.sources[source.packageName] = { packageVersion, tag, commit, contentSha256 }
+    }
+    lock.sources = Object.fromEntries(
+      Object.entries(lock.sources).sort(([a], [b]) => a.localeCompare(b)),
+    )
+    fs.writeFileSync(VENDOR_LOCK, `${JSON.stringify(lock, null, 2)}\n`)
+    console.log(`vendor: ${VENDOR_LOCK} written`)
+  }
 }

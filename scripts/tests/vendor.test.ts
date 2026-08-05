@@ -1,12 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { REPOS, VENDORED, catalogVersion, readVendorLock } from '../vendor-sync.ts'
+import { REPOS, VENDORED, catalogVersion, checkVendored, readVendorLock } from '../vendor-sync.ts'
 
 // The vendored sources exist so that anything reasoning about Effect reads the
 // code that actually runs. That only holds while they are the same version as
 // the one installed, so the alignment is a gate rather than a habit: a version
-// bump that forgets `pnpm vendor:sync` leaves the tree describing an API that
+// bump that forgets `pnpm vendor:update` leaves the tree describing an API that
 // is no longer there, which is worse than having no vendored source at all.
 
 const walk = (dir: string, depth = 0): string[] =>
@@ -30,17 +30,30 @@ describe('vendored upstream sources', () => {
   // The trees are no longer in version control: vendor-lock.json pins an exact
   // commit, which is what makes them reproducible, and committing 103MB of
   // upstream source bought only offline reads. So a plain `pnpm test` must
-  // pass on a fresh clone that has never run vendor:sync, and everything here
+  // pass on a fresh clone that has never run vendor:restore, and everything here
   // reads the lock and this repository rather than the trees.
   const present = VENDORED.filter((source) => fs.existsSync(path.join(REPOS, source.name)))
 
-  it.runIf(present.length > 0)('is the version the lock names, where it is checked out', () => {
-    for (const source of present) {
-      const manifest = path.join(REPOS, source.name, source.versionFile)
-      const { version } = JSON.parse(fs.readFileSync(manifest, 'utf8')) as { version: string }
-      expect(version, `${REPOS}/${source.name} is stale; run \`pnpm vendor:sync\``).toBe(
-        lock.sources[source.packageName]!.packageVersion,
+  it('records what each tree contains, not only which commit it came from', () => {
+    // A commit does not say what is on disk. Tags move, and a local edit to a
+    // tree that is no longer in version control leaves no trace whatsoever;
+    // comparing package versions sees neither, since both keep the same
+    // package.json. Without this the reproducibility claim is an intention.
+    for (const source of VENDORED) {
+      const recorded = lock.sources[source.packageName]
+      expect(recorded, `${source.packageName} is not in the vendor lock`).toBeDefined()
+      expect(recorded!.contentSha256, `${source.packageName} predates content hashing`).toMatch(
+        /^[0-9a-f]{64}$/,
       )
+    }
+  })
+
+  it.runIf(present.length > 0)('matches the lock, where it is checked out', () => {
+    for (const source of present) {
+      expect(
+        checkVendored(source, lock.sources[source.packageName]!),
+        `${REPOS}/${source.name}: run \`pnpm vendor:restore\``,
+      ).toEqual([])
     }
   })
 
