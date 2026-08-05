@@ -12,6 +12,8 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@qualy/plugin-database": "workspace:*"
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
+    "drizzle-orm": "catalog:"
   }
 }

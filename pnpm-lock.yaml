@@ -363,9 +363,15 @@ importers:
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/database
+      '@qualy/plugin-org':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/org
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 1.0.0-rc.4(@effect/sql-pg@4.0.0-beta.103(effect@4.0.0-beta.103))(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(effect@4.0.0-beta.103)(pg@8.22.0)(zod@4.4.3)
 
   packages/api:
     dependencies:
