@@ -17,6 +17,7 @@ import { loginDrivers } from '../login-drivers.gen.ts'
 import { uiSurfaces } from '../ui.gen.ts'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
+import { makeClient } from '@qualy/api-client/effect'
 import { apiHandlers } from '../api-handlers.gen.ts'
 import { healthApi, healthHandlers } from '../src/effect/health.ts'
 
@@ -109,12 +110,13 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
     try {
       await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
 
-      // what the browser will do: build from qualyApi, which carries no
-      // handler and no server dependency
+      // what the browser does, through the same builder it uses: baseUrl is an
+      // ORIGIN. The mount lives in the definition, so every declared path is
+      // already the full path.
       const call = Effect.gen(function* () {
-        const client = yield* HttpApiClient.make(qualyApi, { baseUrl: base })
+        const client = yield* makeClient(base)
         return yield* client.ping.hello({ query: { name: 'grace' } })
-      }).pipe(Effect.provide(FetchHttpClient.layer))
+      })
 
       const result = await Effect.runPromise(call)
       expect(result).toEqual({ msg: 'hi, grace' })
@@ -125,6 +127,12 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       expect(msg).toBe('hi, grace')
       // @ts-expect-error the success schema declares msg and nothing else
       expect(result.nope).toBeUndefined()
+
+      // The trap this encodes: passing the mount as the base asks for
+      // /api/api/..., and nothing type-checks that away. It surfaced as a
+      // blank page, four layers from the line that caused it.
+      const doubled = await fetch(`${base}${QUALY_API_PREFIX}${QUALY_API_PREFIX}/ping/hello`)
+      expect(doubled.status).toBe(404)
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()

@@ -7,8 +7,22 @@ import { qualyApi } from '@qualy/api'
 // route that changed shape is a compile error here rather than a runtime
 // surprise in a page.
 
-export const makeClient = (baseUrl: string) =>
-  HttpApiClient.make(qualyApi, { baseUrl }).pipe(Effect.provide(FetchHttpClient.layer))
+/**
+ * A client for this api.
+ *
+ * `baseUrl` is an ORIGIN, not a mount point. The mount lives in the definition
+ * already - `qualyApi` applies the prefix - so every declared path is the full
+ * path, and passing the prefix here asks for `/api/api/...`. Which is exactly
+ * what happened, and the failure surfaced as a 404 in a browser rather than
+ * anywhere near this line.
+ *
+ * Omitting it entirely is the browser case: the paths are absolute and
+ * same-origin, so fetch resolves them against the page.
+ */
+export const makeClient = (baseUrl?: string) =>
+  HttpApiClient.make(qualyApi, baseUrl === undefined ? {} : { baseUrl }).pipe(
+    Effect.provide(FetchHttpClient.layer),
+  )
 
 export type QualyClient = Effect.Success<ReturnType<typeof makeClient>>
 

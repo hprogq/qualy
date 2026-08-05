@@ -21,7 +21,7 @@ import { catalogs, components, errorMessages } from './plugins.gen.ts'
 // the client. Everything after this hands effects to TanStack through the query
 // utils, which is what keeps each endpoint's failure type alive instead of
 // flattening it into Error at the first runPromise.
-const client = Effect.runSync(makeClient('/api'))
+const client = Effect.runSync(makeClient())
 const registry: ComponentRegistry = Object.fromEntries(
   Object.entries(components).map(([name, thunk]) => [
     name,

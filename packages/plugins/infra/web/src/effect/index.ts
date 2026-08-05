@@ -2,8 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context, Data, Effect, Layer } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
+import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer, fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
 
 // The browser application, served by the same process that serves the api.
@@ -38,6 +39,12 @@ export class WebConfig extends Context.Service<
  * gate says so out loud rather than leaving it to review.
  */
 class WebUnservable extends Data.TaggedError('WebUnservable')<{ readonly message: string }> {}
+
+/** the api owns everything under its mount, matched or not */
+const insideApi = (url: string) =>
+  url === QUALY_API_PREFIX ||
+  url.startsWith(`${QUALY_API_PREFIX}/`) ||
+  url.startsWith(`${QUALY_API_PREFIX}?`)
 
 /** the staged build, with the caching rules a hashed-asset bundle needs */
 const assets = (assetRoot: string): ConnectMiddleware =>
@@ -131,7 +138,19 @@ export const routes: Layer.Layer<never, never, HttpRouter.HttpRouter | WebConfig
         config.mode === 'production'
           ? yield* production(config.assetRoot ?? defaultAssetRoot)
           : yield* development(config.sourceRoot ?? defaultSourceRoot)
-      yield* router.add('*', '/*', fromConnect(middleware))
+      yield* router.add(
+        '*',
+        '/*',
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest
+          // An unmatched path inside the api prefix is a 404, never the browser
+          // shell. Serving html there answers 200 to a mistyped endpoint, which
+          // is how a doubled prefix looked like a working request until the
+          // page tried to parse the shell as json.
+          if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
+          return yield* fromConnect(middleware)
+        }),
+      )
     }),
   )
 

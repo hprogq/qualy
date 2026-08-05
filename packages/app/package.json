@@ -33,6 +33,7 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@cordisjs/plugin-hmr": "catalog:"
+    "@cordisjs/plugin-hmr": "catalog:",
+    "@qualy/api-client": "workspace:*"
   }
 }
