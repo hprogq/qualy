@@ -27,6 +27,10 @@ const catalog: readonly ActivePermission[] = [
   // administration permission has to be declared for anyone to hold it
   { code: 'iam.tenant-grant.manage', name: 'manage tenant grants', target: 'tenant', plugin: 'iam' },
   { code: 'iam.grant.manage', name: 'manage grants', target: 'org-node', plugin: 'iam' },
+  // reading grants is its own permission: being unable to see what you may
+  // revoke is not a narrower permission, it is a broken screen
+  { code: 'iam.grant.read', name: 'read grants', target: 'org-node', plugin: 'iam' },
+  { code: 'iam.tenant-grant.read', name: 'read tenant grants', target: 'tenant', plugin: 'iam' },
 ]
 
 const stack = (url: string) =>
@@ -678,6 +682,218 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
     }
   })
 
+  it('pushes grant visibility into the query, so a page is never silently short', async () => {
+    // A page assembled and then filtered returns short pages and a cursor that
+    // skips: the limit applies before the caller's authority is considered, so
+    // rows they may not see consume their page. The filter therefore has to be
+    // part of the statement, and this is the assertion that says so.
+    const db = await createTestContext('effect-grant-reads')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          // a second org node beside the root's child, outside a self anchor
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+            ),
+          ).id
+          const far = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.root}, ${orgType}, 'Far', 'r.f', 1) returning id`),
+          ).id
+          // a role anyone may hold, granted at both places
+          const roleId = yield* access.roles.create(f.tenant, {
+            code: 'local2',
+            name: 'Local Two',
+            kind: 'org',
+          })
+          yield* database.execute(sql`
+            insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+            values (${f.tenant}, ${roleId}, ${staff})`)
+          yield* database.execute(sql`
+            insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+            values (${f.tenant}, ${roleId}, ${orgType})`)
+          for (const node of [f.child, far]) {
+            yield* database.execute(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.tenant}, ${f.user}, ${roleId}, ${node}, 'self')`)
+          }
+
+          // the administrator sees everything, including the tenant-wide grant
+          const wide = yield* access.grantScopeFor(f.principal)
+          const all = yield* access.grants.list(f.tenant, {}, wide)
+
+          // a caller who administers grants only under r.c sees only those
+          const narrow = {
+            read: { tenantWide: false, anchors: [{ orgNodeId: f.child, coverage: 'self' as const }] },
+            manage: { tenantWide: false, anchors: [] },
+            tenantGrants: { read: false, manage: false },
+          }
+          const scoped = yield* access.grants.list(f.tenant, {}, narrow)
+          // one row per page, to catch a filter applied after the limit
+          const firstPage = yield* access.grants.list(f.tenant, {}, narrow, { limit: 1 })
+          return { all: all.length, scoped, firstPage, child: f.child }
+        }),
+      )
+      const answer = ok(exit)
+      // both of this test's grants, the seed's anchored one, and the
+      // tenant-wide one an anchor could never have expressed
+      expect(answer.all).toBe(4)
+      // exactly the grant under the anchor: not the tenant-wide one, whose
+      // node is null and which no node anchor can reach, and not the one at
+      // the sibling node
+      expect(answer.scoped.map((row) => row.org_node_id)).toEqual([answer.child])
+      // may see it, may not change it: two permissions, two answers
+      expect(answer.scoped[0]!.manageable).toBe(false)
+      // the page is full, because the invisible rows never entered it
+      expect(answer.firstPage).toHaveLength(1)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('offers only roles the write would actually accept, and says when nobody is there', async () => {
+    const db = await createTestContext('effect-grant-options')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+            ),
+          ).id
+          // an active, assignable role nobody is eligible for: it must not be
+          // offered, because the write would refuse it
+          const ineligible = yield* access.roles.create(f.tenant, {
+            code: 'closed',
+            name: 'Closed',
+            kind: 'org',
+          })
+          yield* database.execute(sql`
+            insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+            values (${f.tenant}, ${ineligible}, ${orgType})`)
+          const known = one<{ id: string }>(
+            yield* database.execute(sql`select id from permissions where code = 'org.tree.read'`),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${ineligible}, ${known})`)
+          yield* database.execute(sql`
+            update roles set status = 'active' where id = ${ineligible}`)
+          // and the seed's org role, which staff may hold at this node type
+          yield* database.execute(sql`
+            insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+            values (${f.tenant}, ${f.plainRole}, ${staff})`)
+          yield* database.execute(sql`
+            insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+            values (${f.tenant}, ${f.plainRole}, ${orgType})`)
+
+          const offered = yield* access.grants.options(
+            f.tenant,
+            {
+              userId: f.user,
+              target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' },
+            },
+            f.principal,
+          )
+          // a request naming somebody who is not there is told so, rather than
+          // being handed an empty list that reads as a permission answer
+          const absent = yield* Effect.result(
+            access.grants.options(
+              f.tenant,
+              {
+                userId: '00000000-0000-7000-8000-000000000000',
+                target: { kind: 'tenant' },
+              },
+              f.principal,
+            ),
+          )
+          return { offered, absent }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.offered.map((role) => role.code)).toEqual(['local'])
+      expect(tagOf(answer.absent)).toBe('GRANT_USER_NOT_FOUND')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('explains a decision with the predicate that made it', async () => {
+    const db = await createTestContext('effect-explain')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          // the anchored holder: one org capability, at the root, self only
+          const here = yield* access.diagnostics.explain(f.tenant, f.anchored.userId, f.root)
+          const below = yield* access.diagnostics.explain(f.tenant, f.anchored.userId, f.child)
+          const decided = yield* rbac.canAt(f.anchored, 'org.tree.manage', f.child)
+          const evaluated = yield* access.diagnostics.evaluate(f.tenant, {
+            userId: f.anchored.userId,
+            permissionCode: 'org.tree.manage',
+            orgNodeId: f.root,
+          })
+          // an org capability asked about without saying where has no answer
+          const nowhere = yield* Effect.result(
+            access.diagnostics.evaluate(f.tenant, {
+              userId: f.anchored.userId,
+              permissionCode: 'org.tree.manage',
+            }),
+          )
+          const unknown = yield* Effect.result(
+            access.diagnostics.evaluate(f.tenant, {
+              userId: f.anchored.userId,
+              permissionCode: 'nope.code',
+              orgNodeId: f.root,
+            }),
+          )
+          return { here, below, decided, evaluated, nowhere, unknown }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.here.map((row) => row.code)).toEqual(['org.tree.manage'])
+      // the explanation names the grant, which is what makes it actionable
+      expect(answer.here[0]!.sources[0]!.target).toMatchObject({
+        kind: 'org-node',
+        coverage: 'self',
+      })
+      // and it stops exactly where the decision stops
+      expect(answer.below).toEqual([])
+      expect(answer.decided).toBe(false)
+      expect(answer.evaluated.allowed).toBe(true)
+      expect(answer.evaluated.sources).toHaveLength(1)
+      expect(tagOf(answer.nowhere)).toBe('ACCESS_TARGET_REQUIRED')
+      expect(tagOf(answer.unknown)).toBe('PERMISSION_NOT_FOUND')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('will not narrow eligibility past a grant that already exists', async () => {
     // The tenant-grant case is the one on record: a tenant grant has no node,
     // so the check joining the node inward dropped every one of them, and
@@ -787,16 +1003,15 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
             name: 'Draft',
             kind: 'org',
           })
-          const emptyDraft = yield* Effect.result(
-            access.roles.setEligibility(f.tenant, draft, { userTypeIds: [], orgTypeIds: [] }, 1),
-          )
+          yield* access.roles.setEligibility(f.tenant, draft, { userTypeIds: [], orgTypeIds: [] }, 1)
+          const emptyDraft = yield* access.roles.getEligibility(f.tenant, draft)
           return { emptied, admin, emptyDraft }
         }),
       )
       const answer = ok(exit)
       expect(tagOf(answer.emptied)).toBe('ROLE_NEEDS_ELIGIBILITY')
       expect(tagOf(answer.admin)).toBe('ROLE_IS_SYSTEM')
-      expect(Exit.isSuccess(answer.emptyDraft as Exit.Exit<unknown, unknown>)).toBe(true)
+      expect(answer.emptyDraft).toMatchObject({ userTypeIds: [], orgTypeIds: [], version: 2 })
     } finally {
       await db.dispose()
     }

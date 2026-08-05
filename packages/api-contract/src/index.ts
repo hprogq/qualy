@@ -2,6 +2,7 @@ import { oc } from '@orpc/contract'
 import { ORPCError } from '@orpc/client'
 import { openapi } from '@orpc/openapi'
 import { z } from 'zod'
+import { MAX_PAGE_SIZE, readQueryCursor } from '@qualy/api-kit'
 
 // the api foundations every plugin builds on. A plugin declares its domain
 // errors ONCE — code, http status, english protocol message and an optional
@@ -168,8 +169,7 @@ export const okOutput = z.object({ ok: z.literal(true) })
 // Keyset pagination, in the foundation because the alternative is what every
 // list started as: a bare `limit 200` that drops the rest in silence. A page
 // either says where the next one starts or says there is no next one.
-export const DEFAULT_PAGE_SIZE = 50
-export const MAX_PAGE_SIZE = 200
+export { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, encodeQueryCursor } from '@qualy/api-kit'
 
 export const pageInput = {
   cursor: z.string().max(512).optional(),
@@ -180,34 +180,6 @@ export const pageInput = {
 export const pageOutput = <Item extends z.ZodType>(item: Item) =>
   z.object({ items: z.array(item), nextCursor: z.string().nullable() })
 
-// the cursor is opaque to clients on purpose: it encodes the sort key of the
-// last row, which is an implementation detail of the query behind it. Encoded
-// through the web primitives rather than Buffer — this module is bundled into
-// the browser, and sort keys are display names, so utf-8 is not optional.
-const toBase64Url = (bytes: Uint8Array) => {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
-}
-
-const fromBase64Url = (value: string) => {
-  const binary = atob(value.replaceAll('-', '+').replaceAll('_', '/'))
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0))
-}
-
-// The cursor carries a fingerprint of the query it came from, because a
-// cursor is only meaningful against the filter that produced it: resuming a
-// search for A with a cursor from a search for B silently skips or repeats
-// rows, and looks like data loss rather than misuse.
-export function encodeQueryCursor(
-  queryFingerprint: string,
-  key: readonly (string | number)[],
-): string {
-  return toBase64Url(
-    new TextEncoder().encode(JSON.stringify({ v: 1, q: queryFingerprint, k: key })),
-  )
-}
-
 // A cursor that cannot be read is the caller's error, answered as one. It
 // used to fall back to the first page, which turns "load more" into an
 // endless loop of the same rows and reports nothing wrong.
@@ -216,20 +188,10 @@ export function decodeQueryCursor(
   queryFingerprint: string,
   arity: number,
 ): string[] | undefined {
-  if (cursor === undefined) return undefined
-  const reject = () => {
+  const key = readQueryCursor(cursor, queryFingerprint, arity)
+  if (key === null) {
     throw new ORPCError('BAD_REQUEST', { message: 'the pagination cursor is not usable here' })
   }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(new TextDecoder().decode(fromBase64Url(cursor)))
-  } catch {
-    return reject()
-  }
-  const payload = parsed as { v?: unknown; q?: unknown; k?: unknown } | null
-  if (!payload || payload.v !== 1 || payload.q !== queryFingerprint) return reject()
-  if (!Array.isArray(payload.k) || payload.k.length !== arity) return reject()
-  if (!payload.k.every((part) => typeof part === 'string')) return reject()
-  return payload.k as string[]
+  return key
 }
 

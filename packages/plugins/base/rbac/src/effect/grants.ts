@@ -12,6 +12,7 @@ import {
   type Reach,
   deleteGrantQuery,
   grantQuery,
+  grantsQuery,
   holdsCanonicalAdminQuery,
   insertGrantQuery,
   lockTenantQuery,
@@ -19,10 +20,16 @@ import {
   roleAllowsOrgTypeQuery,
   roleAllowsUserTypeQuery,
   roleForGrantQuery,
+  roleProjectionQuery,
   rolePermissionCodesQuery,
   rolePermissionModeQuery,
   roleSystemKeyQuery,
+  userExistsQuery,
   userForGrantQuery,
+  orgNodeExistsQuery,
+  type GrantRow,
+  type GrantScope,
+  type RoleRow as RoleProjection,
 } from '../queries.ts'
 import { assertMayGrantRole, type Authority } from './escalation.ts'
 
@@ -234,6 +241,99 @@ export const make = Effect.fn('Rbac.grants.make')(function* (authorityFor: (
   })
 
   return {
+    /** the grants the caller may see, with whether they may change each one */
+    list: (
+      tenantId: string,
+      filter: { userId?: string; orgNodeId?: string },
+      scope: GrantScope,
+      page?: { after?: string; limit: number },
+    ) =>
+      database
+        .execute(grantsQuery(tenantId, filter, scope, page))
+        .pipe(Effect.orDie, Effect.map((result) => rows<GrantRow>(result))),
+
+    /**
+     * The roles that could be granted to this person here, right now.
+     *
+     * Each candidate goes through the same checks the write performs, so the
+     * list cannot promise something the write refuses. Only a refusal removes
+     * a candidate: anything else is a fault, and swallowing it would render an
+     * empty list and call that an answer. The refusals are named here, so a
+     * failure this does not name propagates instead of silently shortening the
+     * list. A missing user or node is deliberately not among them: it says the
+     * request named something that does not exist, which is an answer of its
+     * own.
+     */
+    options: Effect.fn('Rbac.grants.options')(function* (
+      tenantId: string,
+      request: { userId: string; target: GrantTarget },
+      actor: Principal,
+    ) {
+      // Asked once, up front, so a request naming somebody who is not there
+      // gets told so. Per-candidate probing treats every refusal alike, and a
+      // mistyped id used to come back as "no role can be offered here", which
+      // reads as a permission answer rather than a missing record.
+      const user = rows(
+        yield* database.execute(userExistsQuery(tenantId, request.userId)).pipe(Effect.orDie),
+      )
+      if (user.length === 0) return yield* new GrantUserNotFound()
+      if (request.target.kind === 'org-node') {
+        const node = rows(
+          yield* database
+            .execute(orgNodeExistsQuery(tenantId, request.target.orgNodeId))
+            .pipe(Effect.orDie),
+        )
+        if (node.length === 0) return yield* new GrantNodeNotFound()
+      }
+      const wantedKind = request.target.kind === 'tenant' ? 'tenant' : 'org'
+      const candidates = rows<RoleProjection & Record<string, unknown>>(
+        yield* database.execute(roleProjectionQuery(tenantId)).pipe(Effect.orDie),
+      ).filter(
+        (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
+      )
+      const offered: { id: string; code: string; name: string; kind: 'tenant' | 'org' }[] = []
+      for (const role of candidates) {
+        const verdict = yield* database
+          .transaction((tx) =>
+            Effect.gen(function* () {
+              yield* eligible(tx, tenantId, {
+                userId: request.userId,
+                roleId: role.id,
+                target: request.target,
+              })
+              yield* mayAdministerRole(tx, actor, tenantId, role.id)
+              yield* assertMayGrantRole(
+                authorityFor(actor),
+                yield* carriedBy(tx, tenantId, role.id),
+                request.target,
+              )
+              return true
+            }),
+          )
+          .pipe(
+            Effect.catchTag(
+              [
+                'GRANT_NOT_ELIGIBLE',
+                'GRANT_ESCALATION_REFUSED',
+                'ACCESS_DENIED',
+                // the candidate came from the projection a moment ago, so this
+                // is a concurrent deletion: it is not offerable, which is an
+                // answer rather than a fault
+                'ROLE_NOT_FOUND',
+              ],
+              () => Effect.succeed(false),
+            ),
+            Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) =>
+              Effect.die(error),
+            ),
+          )
+        if (verdict) {
+          offered.push({ id: role.id, code: role.code, name: role.name, kind: role.kind })
+        }
+      }
+      return offered
+    }),
+
     grant: Effect.fn('Rbac.grants.grant')(function* (
       tenantId: string,
       input: { userId: string; roleId: string; target: GrantTarget },

@@ -12,10 +12,13 @@ import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentUser } from '@qualy/plugin-auth/effect/session'
+import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
+import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
 import { make as makeGrants } from './grants.ts'
 import { make as makeRoles } from './roles.ts'
-import type { Authority } from './escalation.ts'
+import { make as makeDiagnostics } from './diagnostics.ts'
+import { ESCALATE, type Authority } from './escalation.ts'
 import {
   REACH_RANK,
   type Reach,
@@ -31,6 +34,9 @@ import {
   grantsBlockingOrgTypeQuery,
   hasTenantPermissionQuery,
   lockAdministratorRoleQuery,
+  type GrantRow,
+  type GrantScope,
+  type RoleRow as RoleProjection,
   type ScopeRow,
 } from '../queries.ts'
 
@@ -219,6 +225,29 @@ export const make = Effect.fn('Rbac.make')(function* () {
 
   const grants = yield* makeGrants(authorityFor)
   const roles = yield* makeRoles(authorityFor, keepsAdministrator)
+  const diagnostics = yield* makeDiagnostics(() => catalog)
+
+  /**
+   * Which grants a caller may see and change.
+   *
+   * A tenant-wide grant has no node, so node coverage cannot decide it: those
+   * answer to their own tenant permissions. Read is implied by manage, because
+   * being unable to see what you may revoke is not a narrower permission, it
+   * is a broken screen.
+   */
+  const grantScopeFor = Effect.fn('Rbac.grantScope')(function* (actor: Principal) {
+    const held = new Set(
+      (yield* effectiveRows(actor, undefined)).map(({ definition }) => definition.code),
+    )
+    return {
+      read: yield* listAuthorizedScope(actor, 'iam.grant.read'),
+      manage: yield* listAuthorizedScope(actor, 'iam.grant.manage'),
+      tenantGrants: {
+        read: held.has('iam.tenant-grant.read') || held.has('iam.tenant-grant.manage'),
+        manage: held.has('iam.tenant-grant.manage'),
+      },
+    }
+  })
 
   // eslint-disable-next-line prefer-const -- assigned below, read lazily by
   // the role lifecycle, which needs the invariant this shape exposes
@@ -317,7 +346,7 @@ export const make = Effect.fn('Rbac.make')(function* () {
     }),
   }
   shapeRef = shape
-  return { ...shape, grants, roles }
+  return { ...shape, grants, roles, diagnostics, grantScopeFor }
 })
 
 /**
@@ -333,6 +362,8 @@ export class Access extends Context.Service<
   {
     readonly grants: Effect.Success<ReturnType<typeof makeGrants>>
     readonly roles: Effect.Success<ReturnType<typeof makeRoles>>
+    readonly diagnostics: Effect.Success<ReturnType<typeof makeDiagnostics>>
+    readonly grantScopeFor: (actor: Principal) => Effect.Effect<GrantScope>
   }
 >()('@qualy/plugin-rbac/Access') {}
 
@@ -345,10 +376,10 @@ export class Access extends Context.Service<
 export const layer: Layer.Layer<Rbac | Access, never, Database | PermissionCatalog> =
   Layer.effectContext(
     Effect.gen(function* () {
-      const { grants, roles, ...shape } = yield* make()
+      const { grants, roles, diagnostics, grantScopeFor, ...shape } = yield* make()
       return Context.empty().pipe(
         Context.add(Rbac, shape),
-        Context.add(Access, { grants, roles }),
+        Context.add(Access, { grants, roles, diagnostics, grantScopeFor }),
       )
     }),
   )
@@ -360,8 +391,204 @@ export const layer: Layer.Layer<Rbac | Access, never, Database | PermissionCatal
 // import the aggregate it is part of
 const local = HttpApi.make(QUALY_API_ID).add(accessApiGroup).prefix(QUALY_API_PREFIX)
 
+/** the projection a role screen reads, assembled from the row and the catalog */
+const toRoleShape = (
+  role: RoleProjection,
+  permissions: { active: readonly string[]; unavailable: readonly string[] },
+) => ({
+  id: role.id,
+  code: role.code,
+  name: role.name,
+  description: role.description,
+  kind: role.kind,
+  status: role.status,
+  holdsEveryPermission: role.permission_mode === 'all-active',
+  systemKey: role.system_key,
+  assignable: role.assignable,
+  version: role.version,
+  grantCount: role.grant_count,
+  permissions: permissions.active,
+  unavailablePermissions: permissions.unavailable,
+  eligibleUserTypeIds: role.allowed_user_types,
+  anchorOrgTypeIds: role.allowed_org_types,
+})
+
+const toGrantShape = (row: GrantRow) => ({
+  id: row.id,
+  userId: row.user_id,
+  userDisplayName: row.user_display_name,
+  roleId: row.role_id,
+  roleCode: row.role_code,
+  roleName: row.role_name,
+  roleKind: row.role_kind,
+  target:
+    row.org_node_id === null
+      ? ({ kind: 'tenant' } as const)
+      : ({
+          kind: 'org-node',
+          orgNodeId: row.org_node_id,
+          orgNodeName: row.org_node_name ?? '',
+          coverage: row.coverage ?? 'self',
+        } as const),
+  manageable: row.manageable,
+})
+
 export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers) =>
   handlers
+    .handle(
+      'listPermissions',
+      Effect.fn('access.listPermissions.handler')(function* ({ query }) {
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.read')
+        const search = query.search?.trim().toLowerCase()
+        const permissions = (yield* rbac.listPermissions({
+          target: query.target,
+          plugin: query.plugin,
+        })).filter(
+          (definition) =>
+            !search ||
+            definition.code.toLowerCase().includes(search) ||
+            definition.name.toLowerCase().includes(search),
+        )
+        return {
+          permissions: permissions.map((definition) => ({
+            code: definition.code,
+            plugin: definition.plugin,
+            name: definition.name,
+            target: definition.target,
+          })),
+        }
+      }),
+    )
+    .handle(
+      'getRoleOptions',
+      Effect.fn('access.getRoleOptions.handler')(function* () {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.read')
+        return yield* access.roles.options(principal.tenantId)
+      }),
+    )
+    .handle(
+      'listRoles',
+      Effect.fn('access.listRoles.handler')(function* ({ query }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.read')
+        const found = yield* access.roles.list(principal.tenantId, query, principal)
+        return {
+          roles: found.map(({ role, permissions }) => toRoleShape(role, permissions)),
+          capabilities: {
+            canManage: yield* rbac.hasPermission(principal, 'iam.role.manage'),
+            canEscalate: yield* rbac.hasPermission(principal, ESCALATE),
+          },
+        }
+      }),
+    )
+    .handle(
+      'getRole',
+      Effect.fn('access.getRole.handler')(function* ({ params }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.read')
+        const { role, permissions } = yield* access.roles.get(
+          principal.tenantId,
+          params.roleId,
+          principal,
+        )
+        return { role: toRoleShape(role, permissions) }
+      }),
+    )
+    .handle(
+      'getRoleGrantOptions',
+      Effect.fn('access.getRoleGrantOptions.handler')(function* ({ query }) {
+        const access = yield* Access
+        const principal = yield* CurrentUser
+        const target =
+          query.orgNodeId === undefined
+            ? ({ kind: 'tenant' } as const)
+            : ({
+                kind: 'org-node',
+                orgNodeId: query.orgNodeId,
+                coverage: query.coverage ?? 'self',
+              } as const)
+        return {
+          roles: yield* access.grants.options(
+            principal.tenantId,
+            { userId: query.userId, target },
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'listRoleGrants',
+      Effect.fn('access.listRoleGrants.handler')(function* ({ query }) {
+        const access = yield* Access
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        // the cursor belongs to this filter and no other
+        const fingerprint = `grants:${query.orgNodeId ?? ''}`
+        const key = readQueryCursor(query.cursor, fingerprint, 1)
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* access.grants.list(
+          principal.tenantId,
+          { orgNodeId: query.orgNodeId },
+          yield* access.grantScopeFor(principal),
+          { after: key?.[0], limit: limit + 1 },
+        )
+        const items = found.slice(0, limit)
+        const last = items.at(-1)
+        return {
+          items: items.map(toGrantShape),
+          nextCursor:
+            found.length > limit && last ? encodeQueryCursor(fingerprint, [last.id]) : null,
+        }
+      }),
+    )
+    .handle(
+      'getUserRoleGrants',
+      Effect.fn('access.getUserRoleGrants.handler')(function* ({ params }) {
+        const access = yield* Access
+        const principal = yield* CurrentUser
+        const found = yield* access.grants.list(
+          principal.tenantId,
+          { userId: params.userId },
+          yield* access.grantScopeFor(principal),
+        )
+        return { grants: found.map(toGrantShape) }
+      }),
+    )
+    .handle(
+      'getUserEffectivePermissions',
+      Effect.fn('access.getUserEffectivePermissions.handler')(function* ({ params, query }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.authorization.inspect')
+        return {
+          permissions: yield* access.diagnostics.explain(
+            principal.tenantId,
+            params.userId,
+            query.orgNodeId,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'evaluateAccess',
+      Effect.fn('access.evaluateAccess.handler')(function* ({ payload }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.authorization.inspect')
+        return yield* access.diagnostics.evaluate(principal.tenantId, payload)
+      }),
+    )
     .handle(
       'createRole',
       Effect.fn('access.createRole.handler')(function* ({ payload }) {

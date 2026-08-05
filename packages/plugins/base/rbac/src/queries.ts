@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm'
-import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import { scopeCoverage, type ActivePermission, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
 
 // The authorization SQL, owned in one place because two runtimes execute it.
 //
@@ -489,3 +489,164 @@ export const roleEligibilityQuery = (tenantId: string, roleId: string): SQL => s
               where tenant_id = ${tenantId} and role_id = ${roleId}), '{}') as user_type_ids,
     coalesce((select array_agg(org_type_id::text) from role_allowed_org_types
               where tenant_id = ${tenantId} and role_id = ${roleId}), '{}') as org_type_ids`
+
+// --- projections both runtimes read ---
+
+export type RoleRow = {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  kind: 'tenant' | 'org'
+  status: 'draft' | 'active' | 'disabled'
+  permission_mode: 'explicit' | 'all-active'
+  system_key: string | null
+  assignable: boolean
+  version: number
+  grant_count: number
+  permissions: string[]
+  allowed_user_types: string[]
+  allowed_org_types: string[]
+}
+
+export type GrantRow = {
+  id: string
+  user_id: string
+  user_display_name: string
+  role_id: string
+  role_code: string
+  role_name: string
+  role_kind: 'tenant' | 'org'
+  org_node_id: string | null
+  org_node_name: string | null
+  coverage: 'self' | 'subtree' | null
+  manageable: boolean
+}
+
+/** one role or all of a tenant's, with the sets a role screen needs */
+export const roleProjectionQuery = (tenantId: string, roleId?: string): SQL => sql`
+  select r.id, r.code, r.name, r.description, r.kind, r.status, r.permission_mode,
+    r.system_key, r.assignable, r.version,
+    (select count(*)::int from role_grants g
+     where g.tenant_id = r.tenant_id and g.role_id = r.id) as grant_count,
+    coalesce((select array_agg(p.code order by p.code)
+      from role_permissions rp join permissions p on p.id = rp.permission_id
+      where rp.tenant_id = r.tenant_id and rp.role_id = r.id), '{}') as permissions,
+    coalesce((select array_agg(t.user_type_id::text)
+      from role_allowed_user_types t
+      where t.tenant_id = r.tenant_id and t.role_id = r.id), '{}') as allowed_user_types,
+    coalesce((select array_agg(t.org_type_id::text)
+      from role_allowed_org_types t
+      where t.tenant_id = r.tenant_id and t.role_id = r.id), '{}') as allowed_org_types
+  from roles r
+  where r.tenant_id = ${tenantId}
+    and (${roleId ?? null}::uuid is null or r.id = ${roleId ?? null})
+  order by r.kind, r.code`
+
+export const userExistsQuery = (tenantId: string, userId: string): SQL =>
+  sql`select 1 from users where tenant_id = ${tenantId} and id = ${userId}`
+
+export const orgNodeExistsQuery = (tenantId: string, orgNodeId: string): SQL =>
+  sql`select 1 from org_nodes where tenant_id = ${tenantId} and id = ${orgNodeId}`
+
+/** the user types and node types a role's eligibility may name */
+export const eligibilityOptionsQuery = (
+  tenantId: string,
+  table: 'user_types' | 'org_types',
+): SQL =>
+  table === 'user_types'
+    ? sql`select id, code, name from user_types where tenant_id = ${tenantId}
+          order by sort_order, code`
+    : sql`select id, code, name from org_types where tenant_id = ${tenantId}
+          order by sort_order, code`
+
+/**
+ * Why someone holds what they hold, one row per (permission, grant).
+ *
+ * The reach predicate is the one the decision uses, not a second copy: an
+ * explanation that disagrees with the answer is worse than no explanation.
+ */
+export const explainRowsQuery = (
+  tenantId: string,
+  userId: string,
+  orgNodeId: string | undefined,
+): SQL => {
+  const reach = orgNodeId
+    ? sql`(
+        ${REACHES_EVERY_NODE}
+        or (held.coverage = 'self' and held.org_node_id = ${orgNodeId})
+        or (held.coverage = 'subtree' and node.path <@ anchor.path)
+      )`
+    : sql`r.kind = 'tenant'`
+  return sql`
+    with held as (
+      select g.role_id, g.org_node_id, g.coverage, g.id as grant_id
+      from role_grants g
+      join users u on u.tenant_id = g.tenant_id and u.id = g.user_id and u.enabled
+      join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id and t.enabled
+      where g.tenant_id = ${tenantId} and g.user_id = ${userId}
+    )
+    select p.code, p.plugin, p.target_kind, p.name, r.id as role_id,
+      r.code as role_code, held.grant_id,
+      held.org_node_id, anchor.name as org_node_name, held.coverage
+    from held
+    join roles r on r.tenant_id = ${tenantId} and r.id = held.role_id and r.status = 'active'
+    left join org_nodes anchor on anchor.tenant_id = ${tenantId}
+      and anchor.id = held.org_node_id
+    left join org_nodes node on node.tenant_id = ${tenantId}
+      and node.id = ${orgNodeId ?? null}
+    join permissions p on r.permission_mode = 'all-active'
+      or exists (
+        select 1 from role_permissions rp
+        where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
+      )
+    where ${reach}
+    order by p.code`
+}
+
+export interface GrantScope {
+  read: AuthorizationScope
+  manage: AuthorizationScope
+  /** a tenant-wide grant has no node, so node coverage cannot decide it */
+  tenantGrants: { read: boolean; manage: boolean }
+}
+
+/**
+ * The grants a caller may see, with whether they may change each one.
+ *
+ * The visibility filter is pushed into the statement rather than applied row
+ * by row afterwards, which is also what makes the keyset page correct: a page
+ * assembled and then filtered returns short pages and a cursor that skips.
+ */
+export const grantsQuery = (
+  tenantId: string,
+  filter: { userId?: string; orgNodeId?: string },
+  scope: GrantScope | undefined,
+  page: { after?: string; limit: number } | undefined,
+): SQL => {
+  const visible = scope
+    ? sql`case when g.org_node_id is null then ${scope.tenantGrants.read}
+               else ${scopeCoverage(scope.read, 'n')} end`
+    : sql`true`
+  const manageable = scope
+    ? sql`case when g.org_node_id is null then ${scope.tenantGrants.manage}
+               else ${scopeCoverage(scope.manage, 'n')} end`
+    : sql`true`
+  return sql`
+    select g.id, g.user_id, u.display_name as user_display_name,
+      g.role_id, r.code as role_code, r.name as role_name, r.kind as role_kind,
+      g.org_node_id, n.name as org_node_name, g.coverage,
+      ${manageable} as manageable
+    from role_grants g
+    join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
+    join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id
+    left join org_nodes n on n.tenant_id = g.tenant_id and n.id = g.org_node_id
+    where g.tenant_id = ${tenantId}
+      and (${filter.userId ?? null}::uuid is null or g.user_id = ${filter.userId ?? null})
+      and (${filter.orgNodeId ?? null}::uuid is null
+           or g.org_node_id = ${filter.orgNodeId ?? null})
+      and (${page?.after ?? null}::uuid is null or g.id > ${page?.after ?? null}::uuid)
+      and ${visible}
+    order by g.id
+    ${page ? sql`limit ${page.limit}` : sql``}`
+}

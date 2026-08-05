@@ -29,8 +29,16 @@ import {
   bumpRoleQuery,
   countIdsQuery,
   grantsStrandedByEligibilityQuery,
+  eligibilityOptionsQuery,
+  explainRowsQuery,
+  grantsQuery,
+  orgNodeExistsQuery,
   pruneEligibilityQuery,
+  roleProjectionQuery,
+  userExistsQuery,
   uuidArrayLiteral,
+  type GrantRow,
+  type RoleRow,
   insertRoleQuery,
   lockRoleQuery,
   prunePermissionsQuery,
@@ -83,36 +91,7 @@ const translateDbError: (error: unknown) => never = createConstraintTranslator({
   uq_role_grants_tenant_wide: () => accessErrors.create('GRANT_EXISTS'),
 })
 
-export type RoleRow = {
-  id: string
-  code: string
-  name: string
-  description: string | null
-  kind: 'tenant' | 'org'
-  status: 'draft' | 'active' | 'disabled'
-  permission_mode: 'explicit' | 'all-active'
-  system_key: string | null
-  assignable: boolean
-  version: number
-  grant_count: number
-  permissions: string[]
-  allowed_user_types: string[]
-  allowed_org_types: string[]
-}
-
-export type GrantRow = {
-  id: string
-  user_id: string
-  user_display_name: string
-  role_id: string
-  role_code: string
-  role_name: string
-  role_kind: 'tenant' | 'org'
-  org_node_id: string | null
-  org_node_name: string | null
-  coverage: 'self' | 'subtree' | null
-  manageable: boolean
-}
+export type { GrantRow, RoleRow } from './queries.ts'
 
 export class Administration {
   constructor(
@@ -140,37 +119,12 @@ export class Administration {
 
   // --- roles ---
 
-  private roleProjection(where: SQL) {
-    return sql`
-      select r.id, r.code, r.name, r.description, r.kind, r.status, r.permission_mode,
-        r.system_key, r.assignable, r.version,
-        (select count(*)::int from role_grants g
-         where g.tenant_id = r.tenant_id and g.role_id = r.id) as grant_count,
-        coalesce((select array_agg(p.code order by p.code)
-          from role_permissions rp join permissions p on p.id = rp.permission_id
-          where rp.tenant_id = r.tenant_id and rp.role_id = r.id), '{}') as permissions,
-        coalesce((select array_agg(t.user_type_id::text)
-          from role_allowed_user_types t
-          where t.tenant_id = r.tenant_id and t.role_id = r.id), '{}') as allowed_user_types,
-        coalesce((select array_agg(t.org_type_id::text)
-          from role_allowed_org_types t
-          where t.tenant_id = r.tenant_id and t.role_id = r.id), '{}') as allowed_org_types
-      from roles r
-      where ${where}
-      order by r.kind, r.code`
-  }
-
   async listRoles(tenantId: string): Promise<RoleRow[]> {
-    return (await this.db.execute<RoleRow>(this.roleProjection(sql`r.tenant_id = ${tenantId}`)))
-      .rows
+    return (await this.db.execute<RoleRow>(roleProjectionQuery(tenantId))).rows
   }
 
   async getRole(tenantId: string, roleId: string): Promise<RoleRow> {
-    const row = (
-      await this.db.execute<RoleRow>(
-        this.roleProjection(sql`r.tenant_id = ${tenantId} and r.id = ${roleId}`),
-      )
-    ).rows[0]
+    const row = (await this.db.execute<RoleRow>(roleProjectionQuery(tenantId, roleId))).rows[0]
     if (!row) throw accessErrors.create('ROLE_NOT_FOUND')
     return row
   }
@@ -432,12 +386,12 @@ export class Administration {
     orgTypes: { id: string; code: string; name: string }[]
   }> {
     const [userTypes, orgTypes] = await Promise.all([
-      this.db.execute<{ id: string; code: string; name: string }>(sql`
-        select id, code, name from user_types where tenant_id = ${tenantId}
-        order by sort_order, code`),
-      this.db.execute<{ id: string; code: string; name: string }>(sql`
-        select id, code, name from org_types where tenant_id = ${tenantId}
-        order by sort_order, code`),
+      this.db.execute<{ id: string; code: string; name: string }>(
+        eligibilityOptionsQuery(tenantId, 'user_types'),
+      ),
+      this.db.execute<{ id: string; code: string; name: string }>(
+        eligibilityOptionsQuery(tenantId, 'org_types'),
+      ),
     ])
     return { userTypes: userTypes.rows, orgTypes: orgTypes.rows }
   }
@@ -471,28 +425,14 @@ export class Administration {
       }[]
     }[]
   > {
-    const user = (
-      await this.db.execute(sql`
-        select 1 from users where tenant_id = ${tenantId} and id = ${userId}`)
-    ).rows[0]
+    const user = (await this.db.execute(userExistsQuery(tenantId, userId))).rows[0]
     if (!user) throw accessErrors.create('GRANT_USER_NOT_FOUND')
     if (orgNodeId !== undefined) {
-      const node = (
-        await this.db.execute(sql`
-          select 1 from org_nodes where tenant_id = ${tenantId} and id = ${orgNodeId}`)
-      ).rows[0]
+      const node = (await this.db.execute(orgNodeExistsQuery(tenantId, orgNodeId))).rows[0]
       // an unknown node has no authority to explain, and answering as though
       // it did would disagree with canAt, which refuses it
       if (!node) throw accessErrors.create('GRANT_NODE_NOT_FOUND')
     }
-    // the same predicate the decision uses, not a second copy of it
-    const reach = orgNodeId
-      ? sql`(
-          ${REACHES_EVERY_NODE}
-          or (held.coverage = 'self' and held.org_node_id = ${orgNodeId})
-          or (held.coverage = 'subtree' and node.path <@ anchor.path)
-        )`
-      : sql`r.kind = 'tenant'`
     const rows = (
       await this.db.execute<{
         code: string
@@ -505,30 +445,7 @@ export class Administration {
         org_node_id: string | null
         org_node_name: string | null
         coverage: 'self' | 'subtree' | null
-      }>(sql`
-        with held as (
-          select g.role_id, g.org_node_id, g.coverage, g.id as grant_id
-          from role_grants g
-          join users u on u.tenant_id = g.tenant_id and u.id = g.user_id and u.enabled
-          join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id and t.enabled
-          where g.tenant_id = ${tenantId} and g.user_id = ${userId}
-        )
-        select p.code, p.plugin, p.target_kind, p.name, r.id as role_id,
-          r.code as role_code, held.grant_id,
-          held.org_node_id, anchor.name as org_node_name, held.coverage
-        from held
-        join roles r on r.tenant_id = ${tenantId} and r.id = held.role_id and r.status = 'active'
-        left join org_nodes anchor on anchor.tenant_id = ${tenantId}
-          and anchor.id = held.org_node_id
-        left join org_nodes node on node.tenant_id = ${tenantId}
-          and node.id = ${orgNodeId ?? null}
-        join permissions p on r.permission_mode = 'all-active'
-          or exists (
-            select 1 from role_permissions rp
-            where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
-          )
-        where ${reach}
-        order by p.code`)
+      }>(explainRowsQuery(tenantId, userId, orgNodeId))
     ).rows
 
     const out = new Map<
@@ -588,33 +505,9 @@ export class Administration {
     },
     page?: { after?: string; limit: number },
   ): Promise<GrantRow[]> {
-    // a tenant-wide grant has no node, so node coverage cannot decide it:
-    // reading those is its own tenant permission
-    const visible = scope
-      ? sql`case when g.org_node_id is null then ${scope.tenantGrants.read}
-                 else ${scopeCoverage(scope.read, 'n')} end`
-      : sql`true`
-    const manageable = scope
-      ? sql`case when g.org_node_id is null then ${scope.tenantGrants.manage}
-                 else ${scopeCoverage(scope.manage, 'n')} end`
-      : sql`true`
-    const result = await this.db.execute<GrantRow>(sql`
-      select g.id, g.user_id, u.display_name as user_display_name,
-        g.role_id, r.code as role_code, r.name as role_name, r.kind as role_kind,
-        g.org_node_id, n.name as org_node_name, g.coverage,
-        ${manageable} as manageable
-      from role_grants g
-      join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
-      join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id
-      left join org_nodes n on n.tenant_id = g.tenant_id and n.id = g.org_node_id
-      where g.tenant_id = ${tenantId}
-        and (${filter.userId ?? null}::uuid is null or g.user_id = ${filter.userId ?? null})
-        and (${filter.orgNodeId ?? null}::uuid is null
-             or g.org_node_id = ${filter.orgNodeId ?? null})
-        and (${page?.after ?? null}::uuid is null or g.id > ${page?.after ?? null}::uuid)
-        and ${visible}
-      order by g.id
-      ${page ? sql`limit ${page.limit}` : sql``}`)
+    const result = await this.db.execute<GrantRow>(
+      grantsQuery(tenantId, filter, scope, page),
+    )
     return result.rows
   }
 
@@ -636,18 +529,11 @@ export class Administration {
     // gets told so. Per-candidate probing treats every refusal alike, and a
     // mistyped id used to come back as "no role can be offered here", which
     // reads as a permission answer rather than a missing record.
-    const user = (
-      await this.db.execute(
-        sql`select 1 from users where tenant_id = ${tenantId} and id = ${request.userId}`,
-      )
-    ).rows[0]
+    const user = (await this.db.execute(userExistsQuery(tenantId, request.userId))).rows[0]
     if (!user) throw accessErrors.create('GRANT_USER_NOT_FOUND')
     if (request.target.kind === 'org-node') {
       const node = (
-        await this.db.execute(
-          sql`select 1 from org_nodes
-              where tenant_id = ${tenantId} and id = ${request.target.orgNodeId}`,
-        )
+        await this.db.execute(orgNodeExistsQuery(tenantId, request.target.orgNodeId))
       ).rows[0]
       if (!node) throw accessErrors.create('GRANT_NODE_NOT_FOUND')
     }

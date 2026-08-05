@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { BadRequest, pageOf, pageQuery } from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/plugin-auth/effect/session'
 import {
@@ -10,6 +11,7 @@ import {
   RoleNotFound,
 } from './effect/grants.ts'
 import { GrantEscalationRefused, RoleEscalationRefused } from './effect/escalation.ts'
+import { AccessTargetRequired } from './effect/diagnostics.ts'
 import {
   GrantStranded,
   PermissionNotFound,
@@ -32,6 +34,69 @@ import {
 
 const id = Schema.String.check(Schema.isUUID())
 
+const roleKind = Schema.Literals(['tenant', 'org'])
+const permissionTarget = Schema.Literals(['tenant', 'org-node'])
+const coverage = Schema.Literals(['self', 'subtree'])
+
+/** what a role is and what it currently carries, as a role screen needs it */
+const roleShape = Schema.Struct({
+  id: Schema.String,
+  code: Schema.String,
+  name: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  kind: roleKind,
+  status: Schema.Literals(['draft', 'active', 'disabled']),
+  // an all-active role carries whatever the assembly serves, so listing its
+  // codes would describe this deployment rather than the role
+  holdsEveryPermission: Schema.Boolean,
+  systemKey: Schema.NullOr(Schema.String),
+  assignable: Schema.Boolean,
+  version: Schema.Number,
+  grantCount: Schema.Number,
+  permissions: Schema.Array(Schema.String),
+  unavailablePermissions: Schema.Array(Schema.String),
+  eligibleUserTypeIds: Schema.Array(Schema.String),
+  anchorOrgTypeIds: Schema.Array(Schema.String),
+})
+
+/** where authority applies, resolved for display */
+const grantTargetShape = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('tenant') }),
+  Schema.Struct({
+    kind: Schema.Literal('org-node'),
+    orgNodeId: Schema.String,
+    orgNodeName: Schema.String,
+    coverage,
+  }),
+])
+
+const grantShape = Schema.Struct({
+  id: Schema.String,
+  userId: Schema.String,
+  userDisplayName: Schema.String,
+  roleId: Schema.String,
+  roleCode: Schema.String,
+  roleName: Schema.String,
+  roleKind,
+  target: grantTargetShape,
+  // whether this caller may revoke this particular grant
+  manageable: Schema.Boolean,
+})
+
+/** why someone holds a capability */
+const permissionSourceShape = Schema.Struct({
+  roleId: Schema.String,
+  roleCode: Schema.String,
+  grantId: Schema.String,
+  target: grantTargetShape,
+})
+
+const typeOptionShape = Schema.Struct({
+  id: Schema.String,
+  code: Schema.String,
+  name: Schema.String,
+})
+
 /** tenant-wide authority has nowhere to anchor; org authority needs one */
 const grantTarget = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('tenant') }),
@@ -43,6 +108,62 @@ const grantTarget = Schema.Union([
 ])
 
 export const accessApiGroup = HttpApiGroup.make('access')
+  .add(
+    // the ACTIVE catalog, not the table: a row left behind by a plugin that is
+    // no longer loaded must never be offered as something to grant
+    HttpApiEndpoint.get('listPermissions', '/iam/permissions', {
+      query: Schema.Struct({
+        target: Schema.optional(permissionTarget),
+        plugin: Schema.optional(Schema.String.check(Schema.isMaxLength(127))),
+        search: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
+      }),
+      success: Schema.Struct({
+        permissions: Schema.Array(
+          Schema.Struct({
+            code: Schema.String,
+            plugin: Schema.String,
+            name: Schema.String,
+            target: permissionTarget,
+          }),
+        ),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getRoleOptions', '/iam/role-options', {
+      success: Schema.Struct({
+        userTypes: Schema.Array(typeOptionShape),
+        orgTypes: Schema.Array(typeOptionShape),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listRoles', '/iam/roles', {
+      query: Schema.Struct({
+        kind: Schema.optional(roleKind),
+        status: Schema.optional(Schema.Literals(['draft', 'active', 'disabled'])),
+      }),
+      success: Schema.Struct({
+        roles: Schema.Array(roleShape),
+        // read and manage are separate grants, so a read-only administrator
+        // gets a screen without buttons instead of buttons that answer 403
+        capabilities: Schema.Struct({
+          canManage: Schema.Boolean,
+          canEscalate: Schema.Boolean,
+        }),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getRole', '/iam/roles/:roleId', {
+      params: Schema.Struct({ roleId: id }),
+      success: Schema.Struct({ role: roleShape }),
+      error: [RoleNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
   .add(
     // the management api creates drafts only; a role becomes usable through
     // activation, which is where completeness is checked
@@ -173,6 +294,43 @@ export const accessApiGroup = HttpApiGroup.make('access')
     }).middleware(Authenticated),
   )
   .add(
+    // Which roles this caller may actually grant to this person at this place.
+    // Every rule is re-checked on write; this exists so a screen does not have
+    // to reimplement eligibility and then disagree with the server about it.
+    HttpApiEndpoint.get('getRoleGrantOptions', '/iam/role-grant-options', {
+      query: Schema.Struct({
+        userId: id,
+        orgNodeId: Schema.optional(id),
+        coverage: Schema.optional(coverage),
+      }),
+      success: Schema.Struct({
+        roles: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            code: Schema.String,
+            name: Schema.String,
+            kind: roleKind,
+          }),
+        ),
+      }),
+      error: [GrantUserNotFound, GrantNodeNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listRoleGrants', '/iam/role-grants', {
+      query: Schema.Struct({ orgNodeId: Schema.optional(id), ...pageQuery }),
+      success: pageOf(grantShape),
+      error: [BadRequest, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getUserRoleGrants', '/iam/users/:userId/role-grants', {
+      params: Schema.Struct({ userId: id }),
+      success: Schema.Struct({ grants: Schema.Array(grantShape) }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.post('createRoleGrant', '/iam/role-grants', {
       payload: Schema.Struct({ userId: id, roleId: id, target: grantTarget }),
       success: Schema.Struct({ id: Schema.String }),
@@ -191,5 +349,49 @@ export const accessApiGroup = HttpApiGroup.make('access')
       params: Schema.Struct({ grantId: id }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [GrantNotFound, RoleNotFound, LastAdministrator, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // why someone holds what they hold. Answering "allowed?" is easy; the
+    // reason is what makes a wrong answer fixable, and what an audit needs
+    HttpApiEndpoint.get(
+      'getUserEffectivePermissions',
+      '/iam/users/:userId/effective-permissions',
+      {
+        params: Schema.Struct({ userId: id }),
+        query: Schema.Struct({ orgNodeId: Schema.optional(id) }),
+        success: Schema.Struct({
+          permissions: Schema.Array(
+            Schema.Struct({
+              code: Schema.String,
+              name: Schema.String,
+              target: permissionTarget,
+              sources: Schema.Array(permissionSourceShape),
+            }),
+          ),
+        }),
+        error: [GrantUserNotFound, GrantNodeNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('evaluateAccess', '/iam/access-evaluations', {
+      payload: Schema.Struct({
+        userId: id,
+        permissionCode: Schema.String.check(Schema.isMaxLength(127)),
+        orgNodeId: Schema.optional(id),
+      }),
+      success: Schema.Struct({
+        allowed: Schema.Boolean,
+        target: permissionTarget,
+        sources: Schema.Array(permissionSourceShape),
+      }),
+      error: [
+        GrantUserNotFound,
+        GrantNodeNotFound,
+        PermissionNotFound,
+        AccessTargetRequired,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )

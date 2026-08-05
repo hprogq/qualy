@@ -9,6 +9,7 @@ import {
   countIdsQuery,
   countGrantsOfRoleQuery,
   deleteRoleQuery,
+  eligibilityOptionsQuery,
   insertRoleQuery,
   grantsStrandedByEligibilityQuery,
   lockRoleQuery,
@@ -17,11 +18,13 @@ import {
   rolePermissionCodesQuery,
   prunePermissionsQuery,
   roleEligibilityQuery,
+  roleProjectionQuery,
   roleQuery,
   roleSetSizesQuery,
   setRoleStatusQuery,
   updateRoleQuery,
   uuidArrayLiteral,
+  type RoleRow as RoleProjection,
 } from '../queries.ts'
 import { RoleNotFound } from './grants.ts'
 import { assertMayDefineRole, type Authority } from './escalation.ts'
@@ -200,7 +203,74 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     if (missing.length > 0) return yield* new RoleIncomplete({ missing })
   })
 
+  /**
+   * What a role actually grants, and what it merely names.
+   *
+   * A configured code whose plugin is no longer loaded authorizes nothing, so
+   * presenting it as effective would tell an administrator the role does
+   * something it does not; dropping it would tell them it was taken away.
+   */
+  const permissionsOf = (role: RoleProjection, active: ReadonlySet<string>) =>
+    role.permission_mode === 'all-active'
+      ? { active: [...active].sort(), unavailable: [] }
+      : {
+          active: role.permissions.filter((code) => active.has(code)),
+          unavailable: role.permissions.filter((code) => !active.has(code)),
+        }
+
+  const project = (tenantId: string, roleId?: string) =>
+    database
+      .execute(roleProjectionQuery(tenantId, roleId))
+      .pipe(
+        Effect.orDie,
+        Effect.map((result) => rows<RoleProjection & Record<string, unknown>>(result)),
+      )
+
   return {
+    /** the roles of a tenant, with what each one carries */
+    list: Effect.fn('Rbac.roles.list')(function* (
+      tenantId: string,
+      filter: { kind?: 'tenant' | 'org'; status?: 'draft' | 'active' | 'disabled' },
+      actor: Principal,
+    ) {
+      const active = new Set(authorityFor(actor).activeCodes())
+      return (yield* project(tenantId))
+        .filter((role) => filter.kind === undefined || role.kind === filter.kind)
+        .filter((role) => filter.status === undefined || role.status === filter.status)
+        .map((role) => ({ role, permissions: permissionsOf(role, active) }))
+    }),
+
+    get: Effect.fn('Rbac.roles.get')(function* (
+      tenantId: string,
+      roleId: string,
+      actor: Principal,
+    ) {
+      const role = (yield* project(tenantId, roleId))[0]
+      if (!role) return yield* new RoleNotFound()
+      return { role, permissions: permissionsOf(role, new Set(authorityFor(actor).activeCodes())) }
+    }),
+
+    /**
+     * The user types and node types a role's eligibility may name.
+     *
+     * Its own endpoint because a role administrator does not necessarily hold
+     * the user-type or org-tree read permissions, and an empty picker is a
+     * worse answer than a scoped one.
+     */
+    options: Effect.fn('Rbac.roles.options')(function* (tenantId: string) {
+      const read = (table: 'user_types' | 'org_types') =>
+        database
+          .execute(eligibilityOptionsQuery(tenantId, table))
+          .pipe(
+            Effect.orDie,
+            Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
+          )
+      return {
+        userTypes: yield* read('user_types'),
+        orgTypes: yield* read('org_types'),
+      }
+    }),
+
     create: Effect.fn('Rbac.roles.create')(function* (
       tenantId: string,
       input: { code: string; name: string; description?: string; kind: 'tenant' | 'org' },

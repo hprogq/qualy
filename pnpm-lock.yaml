@@ -373,11 +373,18 @@ importers:
       '@orpc/openapi':
         specifier: 'catalog:'
         version: 2.0.0-beta.21
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../api-kit
       zod:
         specifier: 'catalog:'
         version: 4.4.3
 
-  packages/api-kit: {}
+  packages/api-kit:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
 
   packages/app:
     dependencies:
