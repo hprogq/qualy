@@ -493,3 +493,77 @@ clean-room parity                 → 129 列 / 195 约束 / 57 索引 / 80 函�
   可能写出一条 API 本身会拒绝的站位。
 
 后两条要不要改,取决于「seed 是幂等保证态,还是只在空库跑」——这是产品决定,不是缺陷判定。
+
+## 迁移后收口 + ORM 决策阶段启动(2026-08-06)
+
+依据 docs/mikro.md 的审计,以及对其结论的一处修正。
+
+### 目录与包收口
+
+- **插件的 `src/effect/` → `src/server/`**(8 个插件),导出子路径 `./effect` → `./server` 同步改名。
+  `effect` 曾表示「新 Effect 实现,与旧 Cordis 并存」,Cordis 删掉后它命名的是一次迁移而不是一层;
+  更要紧的是它与 `client/`、`db/` 并列却不说明自己在网线哪一侧——而正是这个区分失效,让 pg 经
+  api.ts 进过浏览器 bundle。runtime.gen.ts 由 `qualy.runtime.entry` 派生,重新生成即可;唯一写死
+  `/effect` 的是装配测试自己的断言,已改为向 `runtimeLayers()` 询问插件声明。
+- **`packages/app` → `apps/server`**,`src/effect/` 一并扁平进 `src/`(整个包就是 server)。它是部署
+  根而非可复用库,与 apps/web 同级。两处按目录层数计算的锚点跟着改;根 tsconfig 补 `apps/server/tests`
+  (此前无任何工程覆盖它)。
+- **删除 plugin-dict**。它只有一个 `export {}` 和一条声明了 schemaEntry 却零表的 database 贡献。
+  直接从清单移除会让它变 detached(保留判据问的是「有没有声明 schemaEntry」而不是「有没有拥有东西」),
+  而 detached 插件的包被卸载即硬失败,purge 未实现。做法是**先在它仍被选中时撤销那条贡献**,再从清单
+  移除,于是它按常规路径离开 lock。无任何迁移创建过 dict 表。
+- 删除 `packages/api-client/packages/web-i18n/src/format.ts`:误嵌套、不在 workspace、不在任何
+  tsconfig、无人引用,且仍在翻译已经不存在的 `ORPCError`。
+- **未做**:api-contract 双轨错误体系清理(57 个错误码定义了两遍)。旧 zod 定义仍是四个
+  `client/i18n.ts` 错误目录的类型来源,不是死代码,需要把 `defineErrorTranslations` 改到 Effect
+  TaggedError 上才能删。按裁决它是独立一笔,不夹进 ORM 实验。
+
+### generators 并发 flake:结构性修复,不是重跑变绿
+
+根因是 `writeGenerated` 把相对路径解析到 cwd,于是这些测试**重新生成整个仓库**,而 vitest 并行跑文件
+——症状是另一个测试套件报「api 丢了路由」,且不可复现。现在 generator 走 `outputRoot()`,测试各自指向
+临时树。实测:套件前后仓库内生成物字节相同、工作树零改动,连跑三次全绿。
+
+### ORM 决策:接受「先做可删除的纵向验证」
+
+结论按裁决表述为:**现在不启动全量 MikroORM 迁移;先做隔离的、可删除的纵向切片,完成后立即 Go/No-Go,
+不长期维持 Drizzle + MikroORM + Kysely 三轨。**
+
+我此前的论证有一处过度:我搜索 226 个提交没找到列名事故,便据此说触发条件不足。那只能证明测试拦住了、
+或改动规模还不够大,不能证明手写类型断言没有维护成本。触发条件是**已经存在**的——查询层与 Schema 类型
+链断裂:
+
+| 事实 | 实测 |
+| --- | --- |
+| `sql\`\`` 用量 | 108 处 / 15 个文件 |
+| Drizzle typed builder 用量 | 5 处(1 insert、4 update) |
+| 手写查询层 | auth 591 + rbac 652 + org 252 = 1,495 行 |
+| 表 | 16 张,840 行 schema |
+| 结果类型 | 经手写 `rows<Row>()` 断言 |
+
+### vendored 上游
+
+`repos/mikro-orm` @ v7.1.10(commit 3066827),按 effect/drizzle 同一机制,catalog pin 版本但**无人安装**。
+上游 clone 带 176MB 的 v2–v6 文档快照,与 vendor 树「只描述所 pin 版本」的本意相反(搜索会把五个废弃
+大版本摆在正确答案旁边),已按新增的 `supersededPaths` 剥掉:206MB → 30MB。
+
+从源码(非文档)确认的三个前提:
+
+- `SqlEntityManager.getKysely()` 读 `getTransactionContext()`,事务内返回绑定该事务连接的实例,
+  `em.fork().getKysely()` 才跳出——这是跨插件同事务的基础(`packages/sql/src/SqlEntityManager.ts:106`)。
+- `IMigrator` 可程序化调用 `createMigration/up/down/getPending/getExecuted/rollup`
+  (`packages/core/src/typings.ts:2221`)。
+- `safe: true` / `dropTables: false` 可禁止 DROP(`packages/core/src/utils/Configuration.ts:696`)。
+  **但它只兜住「不 DROP」,不解决「实体集合按 retained order 聚合」**——disabled/detached 仍必须由
+  Qualy 自己决定,这是 spike 必须验证的部分。
+
+### 验收(实际执行)
+
+```
+pnpm typecheck            → 0 errors(根 + apps/web)
+npx vitest run            → Test Files 48 passed | Tests 306 passed
+pnpm test:browser         → 10 passed
+pnpm dev + curl           → live/ready/manifest/spa 200,/api/api/... 404
+管理员登录                 → 200,manifest 7 页
+SIGTERM                   → shutdown complete
+```
