@@ -9,6 +9,7 @@ import { apiHandlers } from '../../api-handlers.gen.ts'
 import { pluginLayers } from '../../runtime.gen.ts'
 import {
   ServerConfig,
+  apiReferenceEnabled,
   authConfigLayer,
   databaseConfigLayer,
   loginDriversLayer,
@@ -33,16 +34,26 @@ import { healthApi, healthHandlers } from './health.ts'
 const docs = `${QUALY_API_PREFIX}/docs` as const
 const spec = `${QUALY_API_PREFIX}/openapi.json` as const
 
-const routes = Layer.mergeAll(
-  HttpApiBuilder.layer(qualyApi, { openapiPath: spec }).pipe(Layer.provide(apiHandlers)),
-  HttpApiScalar.layer(qualyApi, { path: docs }),
+const routes = Layer.unwrap(
+  Effect.gen(function* () {
+    const documented = yield* apiReferenceEnabled
+    return Layer.mergeAll(
+      // the document is served only when the reference is: an instance that
+      // hides its docs but publishes the spec they render has not hidden
+      // anything
+      HttpApiBuilder.layer(qualyApi, documented ? { openapiPath: spec } : {}).pipe(
+        Layer.provide(apiHandlers),
+      ),
+      documented ? HttpApiScalar.layer(qualyApi, { path: docs }) : Layer.empty,
   // Health is declared by the host rather than by a plugin, but it is not
   // plugin-free: readiness asks the database, so this assembly does not build
   // without one. That is a real constraint rather than an oversight, and it is
   // stated here because the alternative reading, that an assembly with no
   // plugins can serve, is not true of this composition. Making the probes a
   // contribution is deferred until a second one exists to contribute.
-  HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
+      HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
+    )
+  }),
 )
 
 const server = Layer.unwrap(

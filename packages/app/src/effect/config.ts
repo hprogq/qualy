@@ -115,3 +115,24 @@ export const authConfigLayer = Layer.effect(
  * refuses a page id, a path or a layout contract claimed twice.
  */
 export const uiCatalogLayer = Layer.succeed(UiCatalog, uiSurfaces)
+
+/**
+ * Whether this instance serves its own API reference.
+ *
+ * `auto` serves it outside production, `public` serves it unconditionally (a
+ * deliberate choice for something like a sandbox), `off` never does. The same
+ * three-way setting the cordis plugin has always taken, and it belongs to the
+ * host rather than to a plugin: it is a setup declaration, not a resource, and
+ * nothing else needs to depend on the answer.
+ *
+ * The Effect port had been serving both the reference and the raw document
+ * unconditionally, which exposes them in production.
+ */
+export const apiReferenceEnabled = Effect.gen(function* () {
+  const exposure = yield* Config.literals(['auto', 'off', 'public'], 'QUALY_API_DOCS').pipe(
+    Config.withDefault('auto' as const),
+  )
+  if (exposure === 'off') return false
+  if (exposure === 'public') return true
+  return (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) !== 'production'
+})
