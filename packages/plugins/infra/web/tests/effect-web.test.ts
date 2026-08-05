@@ -107,15 +107,15 @@ describe('the shell against the api mount', () => {
   })
 
   it('refuses an unmatched path inside the api mount instead of serving html', async () => {
-    for (const path of [
+    for (const route of [
       `${QUALY_API_PREFIX}/nope`,
       // the doubled mount, which is what a client built with the prefix as its
       // base actually asks for
       `${QUALY_API_PREFIX}${QUALY_API_PREFIX}/app/manifest`,
       QUALY_API_PREFIX,
     ]) {
-      const response = await fetch(`${base}${path}`)
-      expect(response.status, `${path} should not be answered by the shell`).toBe(404)
+      const response = await fetch(`${base}${route}`)
+      expect(response.status, `${route} should not be answered by the shell`).toBe(404)
       expect(response.headers.get('content-type') ?? '').not.toContain('text/html')
     }
   })

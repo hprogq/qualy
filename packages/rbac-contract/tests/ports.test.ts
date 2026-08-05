@@ -26,6 +26,9 @@ const readSubtree = Effect.fn('org.readSubtree')(function* (nodeId: string) {
 const rbacStub = (allowed: boolean) =>
   Layer.succeed(Rbac, {
     listPermissions: () => Effect.succeed([]),
+    // undefined is this port's answer for "no such permission", not the
+    // absence of an answer, so Effect.void would say something else
+    // @effect-diagnostics effect/effectSucceedWithVoid:off
     getPermission: () => Effect.succeed(undefined),
     hasPermission: () => Effect.succeed(allowed),
     require: () => Effect.void,
