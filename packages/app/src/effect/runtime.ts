@@ -4,6 +4,7 @@ import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { NodeServer } from '@qualy/api-kit/node'
 import { qualyApi } from '@qualy/api'
 import { apiHandlers } from '../../api-handlers.gen.ts'
 import { pluginLayers } from '../../runtime.gen.ts'
@@ -15,8 +16,10 @@ import {
   loginDriversLayer,
   permissionCatalogLayer,
   uiCatalogLayer,
+  webConfigLayer,
 } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
+import { pluginRoutes } from '../../routes.gen.ts'
 
 // The composition root.
 //
@@ -52,18 +55,33 @@ const routes = Layer.unwrap(
   // plugins can serve, is not true of this composition. Making the probes a
   // contribution is deferred until a second one exists to contribute.
       HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
+      // Routes that are not api endpoints, and cannot be: the browser shell is
+      // a raw handler on the router's wildcard. Every declared path still wins,
+      // because the router matches by specificity rather than by order.
+      pluginRoutes,
     )
   }),
 )
 
+/**
+ * The Node server, created here rather than inside the platform layer.
+ *
+ * `NodeHttpServer.layer` takes a thunk and the `HttpServer` service it builds
+ * exposes an address and a serve function, not the instance. Owning the
+ * instance is what lets Vite attach to it in development, which is how its
+ * hot-reload websocket ends up on this process's port instead of a second one.
+ */
+const nodeServerLayer = Layer.sync(NodeServer, () => createServer())
+
 const server = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig
+    const instance = yield* NodeServer
     return HttpRouter.serve(routes).pipe(
-      Layer.provide(NodeHttpServer.layer(createServer, { port: config.port })),
+      Layer.provide(NodeHttpServer.layer(() => instance, { port: config.port })),
     )
   }),
-).pipe(Layer.provide(ServerConfig.layer))
+).pipe(Layer.provideMerge(nodeServerLayer), Layer.provide(ServerConfig.layer))
 
 /**
  * The whole application.
@@ -81,6 +99,7 @@ export const application = server.pipe(
       loginDriversLayer,
       authConfigLayer,
       uiCatalogLayer,
+      webConfigLayer,
     ),
   ),
 )

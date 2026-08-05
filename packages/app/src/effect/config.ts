@@ -7,6 +7,7 @@ import { AuthConfig } from '@qualy/plugin-auth/effect/sign-in'
 import { permissionCatalog } from '../../permissions.gen.ts'
 import { loginDrivers } from '../../login-drivers.gen.ts'
 import { UiCatalog } from '@qualy/plugin-ui-registry/effect'
+import { WebConfig } from '@qualy/plugin-web/effect'
 import { uiSurfaces } from '../../ui.gen.ts'
 
 // Everything the assembly needs from its environment, in one place.
@@ -136,3 +137,24 @@ export const apiReferenceEnabled = Effect.gen(function* () {
   if (exposure === 'public') return true
   return (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) !== 'production'
 })
+
+/**
+ * How the browser application is served.
+ *
+ * `auto` follows NODE_ENV, which is the same rule the cordis config expressed.
+ * Which mode this is decides whether the process owns a Vite server or a static
+ * file handler, so it is a deployment fact rather than anything a plugin can
+ * work out for itself.
+ */
+export const webConfigLayer = Layer.effect(
+  WebConfig,
+  Effect.gen(function* () {
+    const mode = yield* Config.literals(['auto', 'development', 'production'], 'QUALY_WEB_MODE').pipe(
+      Config.withDefault('auto' as const),
+    )
+    const environment = yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))
+    return WebConfig.of({
+      mode: mode === 'auto' ? (environment === 'production' ? 'production' : 'development') : mode,
+    })
+  }),
+)
