@@ -43,6 +43,8 @@ import {
   nodeQuery,
   countTypesQuery,
   deleteNodeQuery,
+  nodesByIdQuery,
+  subtreeQuery,
   deleteRuleQuery,
   deleteTypeQuery,
   hasChildrenQuery,
@@ -80,19 +82,13 @@ export async function getRoot(db: OrgDb, tenantId: string) {
 
 export async function getNodes(db: OrgDb, tenantId: string, nodeIds: readonly string[]) {
   if (nodeIds.length === 0) return []
-  const result = await db.execute<NodeRow>(sql`
-    select ${NODE_COLUMNS} from org_nodes
-    where tenant_id = ${tenantId}
-      and id = any(string_to_array(${nodeIds.join(',')}, ',')::uuid[])`)
+  const result = await db.execute<NodeRow>(nodesByIdQuery(tenantId, nodeIds))
   return result.rows
 }
 
 // whole subtree including the root of it, stable pre-order via path
 export async function listSubtree(db: OrgDb, tenantId: string, rootPath: string) {
-  const result = await db.execute<NodeRow>(sql`
-    select ${NODE_COLUMNS} from org_nodes
-    where tenant_id = ${tenantId} and path <@ ${rootPath}::ltree
-    order by path`)
+  const result = await db.execute<NodeRow>(subtreeQuery(tenantId, rootPath))
   return result.rows
 }
 

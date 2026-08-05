@@ -181,3 +181,24 @@ export const deleteRuleQuery = (
   delete from org_type_rules
   where tenant_id = ${tenantId}
     and parent_type_id = ${parentTypeId} and child_type_id = ${childTypeId}`
+
+/**
+ * The snapshot a read projection runs in.
+ *
+ * Anchors and the tree have to resolve against the same view of the database:
+ * without it a concurrent move can tear the response, and a grant revoked
+ * mid-read can still contribute nodes. Neither the client nor drizzle exposes
+ * an isolation option, so it is set as the transaction's first statement,
+ * which is where postgres requires it.
+ */
+export const readSnapshotQuery: SQL = sql`set transaction isolation level repeatable read, read only`
+
+export const nodesByIdQuery = (tenantId: string, nodeIds: readonly string[]): SQL => sql`
+  select ${NODE_COLUMNS} from org_nodes
+  where tenant_id = ${tenantId}
+    and id = any(string_to_array(${nodeIds.join(',')}, ',')::uuid[])`
+
+export const subtreeQuery = (tenantId: string, rootPath: string): SQL => sql`
+  select ${NODE_COLUMNS} from org_nodes
+  where tenant_id = ${tenantId} and path <@ ${rootPath}::ltree
+  order by path`

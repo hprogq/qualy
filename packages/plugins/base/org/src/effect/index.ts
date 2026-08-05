@@ -33,6 +33,14 @@ import {
 import type { Principal } from '@qualy/rbac-contract'
 import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
 import {
+  byPath,
+  coveredBy,
+  forestRoots,
+  forestShape,
+  subtreeCoveredBy,
+  type ResolvedScope,
+} from '../coverage.ts'
+import {
   countTypesQuery,
   deleteNodeQuery,
   deleteRuleQuery,
@@ -42,8 +50,11 @@ import {
   insertTypeQuery,
   listRulesQuery,
   listTypesQuery,
+  nodesByIdQuery,
+  readSnapshotQuery,
   rootQuery,
   ruleInUseQuery,
+  subtreeQuery,
   ruleWouldCycleQuery,
   typeHasNodesQuery,
   typeHasRulesQuery,
@@ -74,10 +85,30 @@ import {
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
+/** the columns NODE_COLUMNS selects, as they come out of the database */
 interface NodeRow extends Record<string, unknown> {
   id: string
   parent_id: string | null
   org_type_id: string
+  code: string | null
+  name: string
+  path: string
+  depth: number
+  sort_order: number
+}
+
+/** a node as a caller sees it, with what they may do to it */
+export interface NodeView {
+  id: string
+  parent_id: string | null
+  org_type_id: string
+  code: string | null
+  name: string
+  path: string
+  depth: number
+  sort_order: number
+  manageable: boolean
+  subtreeManageable: boolean
 }
 
 export interface TypeRow extends Record<string, unknown> {
@@ -112,6 +143,20 @@ export class Org extends Context.Service<
       nodeId: string,
       as: Principal,
     ) => Effect.Effect<void, DeleteNodeError>
+
+    readonly readNode: (
+      tenantId: string,
+      nodeId: string,
+      as: Principal,
+    ) => Effect.Effect<NodeView, NodeNotFound | AccessDenied>
+    readonly readForest: (
+      tenantId: string,
+      nodeId: string | undefined,
+      as: Principal,
+    ) => Effect.Effect<
+      { roots: readonly string[]; nodes: readonly NodeView[] },
+      NodeNotFound | AccessDenied
+    >
 
     readonly listTypes: (
       tenantId: string,
@@ -344,10 +389,141 @@ export const make = Effect.fn('Org.make')(function* () {
       Effect.map((result) => rows<TypeRow>(result)[0]),
     )
 
+  // Anchors resolved against node paths, on the caller's connection.
+  //
+  // An anchor whose node has vanished drops out rather than raising: a grant
+  // pointing at a deleted node grants nothing, and failing the whole read
+  // because of one stale grant would be worse than fail-closed.
+  const resolveScope = Effect.fn('Org.resolveScope')(function* (
+    tx: Tx,
+    tenantId: string,
+    as: Principal,
+    code: string,
+  ) {
+    const scope = yield* rbac.listAuthorizedScope(as, code)
+    if (scope.tenantWide) return { tenantWide: true, anchors: [] } satisfies ResolvedScope
+    if (scope.anchors.length === 0) {
+      return { tenantWide: false, anchors: [] } satisfies ResolvedScope
+    }
+    const found = rows<NodeRow>(
+      yield* tx
+        .execute(nodesByIdQuery(tenantId, scope.anchors.map((anchor) => anchor.orgNodeId)))
+        .pipe(Effect.orDie),
+    )
+    const byId = new Map(found.map((node) => [node.id, node]))
+    return {
+      tenantWide: false,
+      anchors: scope.anchors.flatMap((anchor) => {
+        const node = byId.get(anchor.orgNodeId)
+        return node ? [{ id: node.id, path: node.path, coverage: anchor.coverage }] : []
+      }),
+    } satisfies ResolvedScope
+  })
+
+  /** every read projection runs in one snapshot; see readSnapshotQuery */
+  const readInSnapshot = <A, E>(body: (tx: Tx) => Effect.Effect<A, E>) =>
+    database
+      .transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.execute(readSnapshotQuery)
+          return yield* body(tx)
+        }),
+      )
+      .pipe(
+        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+      )
+
+  const withFlags = (node: NodeRow, manageScope: ResolvedScope) => ({
+    ...node,
+    // manageable covers single-node mutations; a move relocates the whole
+    // subtree and needs subtree coverage, so they are separate answers
+    manageable: coveredBy(manageScope, node),
+    subtreeManageable: subtreeCoveredBy(manageScope, node),
+  })
+
   return {
     changeNodeType,
     updateNode,
     deleteNode,
+
+    readNode: Effect.fn('Org.readNode')(function* (
+      tenantId: string,
+      nodeId: string,
+      as: Principal,
+    ) {
+      return yield* readInSnapshot((tx) =>
+        Effect.gen(function* () {
+          const readScope = yield* resolveScope(tx, tenantId, as, 'org.tree.read')
+          const node = rows<NodeRow>(
+            yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
+          )[0]
+          // not-found and not-covered answer the same on purpose: a caller
+          // must not learn that a node they cannot see exists
+          if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
+          const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
+          return withFlags(node, manageScope)
+        }),
+      )
+    }),
+
+    readForest: Effect.fn('Org.readForest')(function* (
+      tenantId: string,
+      nodeId: string | undefined,
+      as: Principal,
+    ) {
+      return yield* readInSnapshot((tx) =>
+        Effect.gen(function* () {
+          const readScope = yield* resolveScope(tx, tenantId, as, 'org.tree.read')
+          const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
+          const subtree = (path: string) =>
+            tx
+              .execute(subtreeQuery(tenantId, path))
+              .pipe(Effect.orDie, Effect.map((r) => rows<NodeRow>(r)))
+
+          let roots: string[] = []
+          const nodes = new Map<string, NodeRow>()
+
+          if (nodeId !== undefined) {
+            const node = rows<NodeRow>(
+              yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
+            )[0]
+            if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
+            roots = [node.id]
+            // the incident this guards: only a subtree anchor yields the
+            // subtree. A self anchor yields the one node it names.
+            const slice = subtreeCoveredBy(readScope, node) ? yield* subtree(node.path) : [node]
+            for (const each of slice) nodes.set(each.id, each)
+          } else if (readScope.tenantWide) {
+            const root = rows<NodeRow>(
+              yield* tx.execute(rootQuery(tenantId)).pipe(Effect.orDie),
+            )[0]
+            if (root) {
+              roots = [root.id]
+              for (const each of yield* subtree(root.path)) nodes.set(each.id, each)
+            }
+          } else {
+            const shape = forestShape(readScope)
+            for (const anchor of shape.subtrees) {
+              for (const each of yield* subtree(anchor.path)) nodes.set(each.id, each)
+            }
+            for (const anchor of shape.selves) {
+              const node = rows<NodeRow>(
+                yield* tx.execute(nodeQuery(tenantId, anchor.id)).pipe(Effect.orDie),
+              )[0]
+              if (node) nodes.set(node.id, node)
+            }
+            roots = forestRoots(shape, (id) => nodes.has(id))
+          }
+
+          return {
+            roots,
+            nodes: [...nodes.values()]
+              .sort(byPath)
+              .map((node) => withFlags(node, manageScope)),
+          }
+        }),
+      )
+    }),
 
     // type and rule metadata is tenant-global, so reading it needs the
     // permission held anywhere in the tenant rather than at a specific node
@@ -490,6 +666,19 @@ const toTypeDto = (row: TypeRow) => ({
   sortOrder: row.sort_order,
 })
 
+const toNodeDto = (node: NodeView) => ({
+  id: node.id,
+  parentId: node.parent_id,
+  orgTypeId: node.org_type_id,
+  code: node.code,
+  name: node.name,
+  path: node.path,
+  depth: node.depth,
+  sortOrder: node.sort_order,
+  manageable: node.manageable,
+  subtreeManageable: node.subtreeManageable,
+})
+
 const toRuleDto = (row: RuleRow) => ({
   parentTypeId: row.parent_type_id,
   childTypeId: row.child_type_id,
@@ -529,6 +718,23 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const principal = yield* CurrentUser
         yield* org.deleteNode(principal.tenantId, params.nodeId, principal)
         return { ok: true as const }
+      }),
+    )
+    .handle(
+      'getTree',
+      Effect.fn('org.getTree.handler')(function* ({ query }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        const forest = yield* org.readForest(principal.tenantId, query.nodeId, principal)
+        return { roots: forest.roots, nodes: forest.nodes.map(toNodeDto) }
+      }),
+    )
+    .handle(
+      'getNode',
+      Effect.fn('org.getNode.handler')(function* ({ params }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        return { node: toNodeDto(yield* org.readNode(principal.tenantId, params.nodeId, principal)) }
       }),
     )
     .handle(

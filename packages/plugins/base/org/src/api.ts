@@ -46,6 +46,22 @@ const orgType = Schema.Struct({
   sortOrder: Schema.Number,
 })
 
+const orgNode = Schema.Struct({
+  id: Schema.String,
+  parentId: Schema.NullOr(Schema.String),
+  orgTypeId: Schema.String,
+  code: Schema.NullOr(Schema.String),
+  name: Schema.String,
+  path: Schema.String,
+  depth: Schema.Number,
+  sortOrder: Schema.Number,
+  // what this caller may do, so the client hides controls it cannot use. This
+  // does not replace the api's own authorization; it only stops the interface
+  // offering actions that would be refused.
+  manageable: Schema.Boolean,
+  subtreeManageable: Schema.Boolean,
+})
+
 const orgRule = Schema.Struct({
   parentTypeId: Schema.String,
   childTypeId: Schema.String,
@@ -134,5 +150,23 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
     params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
     error: [RuleNotFound, RuleInUse, AccessDenied, TypeConflict, TypeInUse],
+  }).middleware(Authenticated),
+).add(
+  // the whole authorized projection, or one node's subtree when asked. A self
+  // anchor yields the node alone; only a subtree anchor yields what is below.
+  HttpApiEndpoint.get('getTree', '/org/tree', {
+    query: Schema.Struct({ nodeId: Schema.optional(id) }),
+    success: Schema.Struct({
+      roots: Schema.Array(Schema.String),
+      nodes: Schema.Array(orgNode),
+    }),
+    error: [NodeNotFound, AccessDenied],
+  }).middleware(Authenticated),
+).add(
+  HttpApiEndpoint.get('getNode', '/org/nodes/:nodeId', {
+    params: Schema.Struct({ nodeId: id }),
+    success: Schema.Struct({ node: orgNode }),
+    // a node the caller cannot see answers exactly as a missing one
+    error: [NodeNotFound, AccessDenied],
   }).middleware(Authenticated),
 )

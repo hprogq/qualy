@@ -390,4 +390,109 @@ describe.runIf(postgresAvailable)('changing a node type across three plugins', (
       await db.dispose()
     }
   })
+
+  it('gives a self anchor its own node and not the subtree below it', async () => {
+    // The recorded incident, end to end. A self anchor once read the whole
+    // subtree; the failure is a caller quietly seeing more than they hold, so
+    // it is asserted against a real tree rather than only against the
+    // projection unit.
+    const db = await createTestContext('effect-read-self')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const mid = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.mid', 1) returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+            values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.mid.deep', 2)`)
+
+          // the plain user holds read at `mid` with self coverage only
+          const role = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant}, 'reader', 'Reader', 'org', 'active', 'explicit') returning id`),
+          ).id
+          const permission = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('org.tree.read', 'org', 'read', 'org-node')
+              on conflict (code) do update set plugin = excluded.plugin returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${role}, ${permission})`)
+          const reader = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Reader', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${reader}, ${role}, ${mid}, 'self')`)
+
+          const org = yield* Org
+          const principal = { tenantId: f.tenant, userId: reader, sessionId: 's' }
+          const whole = yield* org.readForest(f.tenant, undefined, principal)
+          const asked = yield* org.readForest(f.tenant, mid, principal)
+          const deep = yield* Effect.result(
+            org.readNode(f.tenant, whole.nodes[0]!.id === mid ? mid : mid, principal),
+          )
+          return {
+            wholeIds: whole.nodes.map((node) => node.id),
+            askedIds: asked.nodes.map((node) => node.id),
+            mid,
+            reachable: deep._tag,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      // the projection is the anchored node alone, in both shapes
+      expect(answer.wholeIds).toEqual([answer.mid])
+      expect(answer.askedIds).toEqual([answer.mid])
+      expect(answer.reachable).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it("answers a node the caller cannot see exactly as a missing one", async () => {
+    const db = await createTestContext('effect-read-hidden')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // a user holding nothing at all: every node is invisible to them
+          const stranger = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Nobody', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          const asNobody = { tenantId: f.tenant, userId: stranger, sessionId: 's' }
+          const org = yield* Org
+          const hidden = yield* Effect.result(org.readNode(f.tenant, f.node, asNobody))
+          const missing = yield* Effect.result(
+            org.readNode(f.tenant, '00000000-0000-7000-8000-000000000000', asNobody),
+          )
+          return { hidden: tagOf(hidden), missing: tagOf(missing) }
+        }),
+      )
+      const answer = ok(exit)
+      // indistinguishable on purpose: a caller must not learn that a node they
+      // cannot see exists
+      expect(answer.hidden).toBe('ORG_NODE_NOT_FOUND')
+      expect(answer.missing).toBe('ORG_NODE_NOT_FOUND')
+    } finally {
+      await db.dispose()
+    }
+  })
 })
