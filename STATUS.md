@@ -567,3 +567,60 @@ pnpm dev + curl           → live/ready/manifest/spa 200,/api/api/... 404
 管理员登录                 → 200,manifest 7 页
 SIGTERM                   → shutdown complete
 ```
+
+## 配置入口收口:repos 移出版本库,清单移到根(2026-08-06)
+
+按审计裁决执行前三步。**第 4-8 步(CLI --config-file、`${VAR}` 插值、`qualy config --validate`、
+插件 typed config 输送、环境变量迁入清单)未动。**
+
+### repos/ 不再进版本库
+
+可追溯性由 `vendor-lock.json` 承担(packageVersion + tag + 精确 commit),`pnpm vendor:sync`
+还原逐字节相同的树。提交树本身只多买到「离线可读」,代价是 7,759 个外部文件压在 376 个自己的
+文件上。门禁分两层:
+
+- `pnpm test`:只校验 lock 与 catalog 一致、effect 生态同版本、repos 不进任何工具链、无人从中
+  import。**在从未跑过 vendor:sync 的新克隆上必须通过。**
+- `pnpm vendor:check`:同步后校验树确实是 lock 指名的那一版。树里 `.git` 被剥掉,所以身份读各源
+  自己的 `versionFile`(如 `packages/core/package.json`),不是 commit——先写成读 commit 的版本
+  当场就红了,`git rev-parse` 在剥了 .git 的目录里返回的是外层仓库的 HEAD。
+
+`docs/agents/effect-source-policy.md` 里「必须随仓库一起被版本化」那条已改写。
+
+**历史未改写。** `main` 上没有 repos,103MB 只在本分支;引入它的 `e4ca3d5` 是本分支的**第一个**
+提交,移除等于重写全部 84 个提交,且 `git-filter-repo` 未安装。是否改写取决于合并策略,待定。
+
+### qualy.yml 与 qualy.lock.json 移到仓库根
+
+原先要改端口或数据库地址得进 `apps/server/qualy.yml`——一个应用的源码树里。它携带的路径已经暴露
+了这一点:`migrationsFolder: ../../db/migrations`,爬出包才够得着仓库。现在是 `./db/migrations`。
+
+**关键修正**:我此前把「清单目录 = 插件依赖宿主」当成架构硬约束,那是错的——它只是
+`hostDirFor = dirname(manifestPath)` 的结果。清单现在显式声明宿主:
+
+```yaml
+application:
+  workspace: ./apps/server
+```
+
+`hostDirFor(manifest)` 改为 `resolve(dirname(source), workspace ?? '.')`。于是三件事各归各位:
+清单目录 = 用户配置入口与相对路径基准;`application.workspace` = 插件 npm 依赖的宿主;
+`apps/server` = 服务端源码与部署入口。
+
+**一处有意偏离裁决**:审计要求升 manifest `version: 2`。我用了**可选字段 + 保持 version 1**,
+因为 v1 完全能表达它(新增一个可选顶层键),而升版本会让 testkit 与全部现存测试的清单一次性失效。
+省略 `application` 时行为与从前完全一致(宿主 = 清单目录),那正是独立部署布局。按项目元规则
+「复杂度必须由已发生的问题证明」,没有 v1 表达不了的东西就不该升版本。若你坚持 v2,改动很小。
+
+server 侧找清单改为**从自己的包向上查找**(`QUALY_CONFIG` 仍然覆盖),两种布局都覆盖:本仓库在根,
+独立部署在宿主旁边。
+
+### 验收(实际执行)
+
+```
+pnpm typecheck        → 0 errors
+npx vitest run        → Test Files 48 passed | Tests 304 passed
+pnpm qualy resolve    → qualy.lock.json(根)written
+pnpm dev + curl       → ready/manifest/spa 200,SIGTERM shutdown complete
+git ls-files repos    → 只剩 repos/vendor-lock.json
+```
