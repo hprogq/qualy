@@ -25,7 +25,14 @@ export type Db = Effect.Success<ReturnType<typeof PgDrizzle.makeWithDefaults>>
 export class Database extends Context.Service<Database, Db>()('@qualy/plugin-database/Database') {}
 
 export { DatabaseConfig } from './config.ts'
-export { Entities, Orm, entityManager, kyselyOf, type ClosureEntityManager } from './orm.ts'
+export {
+  Entities,
+  Orm,
+  QualyNamingStrategy,
+  entityManager,
+  kyselyOf,
+  type ClosureEntityManager,
+} from './orm.ts'
 
 /**
  * Does the database still answer?

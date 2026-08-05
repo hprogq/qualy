@@ -442,6 +442,9 @@ importers:
 
   packages/plugins/base/auth:
     dependencies:
+      '@mikro-orm/core':
+        specifier: 'catalog:'
+        version: 7.1.10
       '@qualy/api-client':
         specifier: workspace:*
         version: link:../../../api-client

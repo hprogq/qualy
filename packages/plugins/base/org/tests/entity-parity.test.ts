@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { postgresAvailable, schemaParity } from '@qualy/plugin-database/testkit'
-import { QualyNamingStrategy, entities, orgCompositeForeignKeys } from '../src/db/entities.ts'
+import { entities, orgCompositeForeignKeys } from '../src/db/entities.ts'
 
 // Is the schema these entities build the schema org runs on?
 //
@@ -22,7 +22,6 @@ describe.runIf(postgresAvailable)('a schema built from org entities', () => {
       label: 'org-parity',
       tables: TABLES,
       entities,
-      namingStrategy: QualyNamingStrategy,
       afterCreate: orgCompositeForeignKeys,
     })
 

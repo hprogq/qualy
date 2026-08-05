@@ -1,5 +1,6 @@
 import { MikroORM } from '@mikro-orm/postgresql'
-import type { EntitySchema, NamingStrategy } from '@mikro-orm/core'
+import type { EntitySchema } from '@mikro-orm/core'
+import { QualyNamingStrategy } from './server/orm.ts'
 
 // Is a database built from entities the database the product runs on?
 //
@@ -49,7 +50,15 @@ export interface SchemaParityOptions {
   /** the tables these entities own, dropped and rebuilt on the generated side */
   tables: readonly string[]
   entities: readonly EntitySchema[]
-  namingStrategy?: new () => NamingStrategy
+  /**
+   * Entities from the plugins this one depends on.
+   *
+   * Included so a reference into them resolves, and skipped by the generator
+   * so their tables are left as the lineage built them: they are not what this
+   * gate is asking about, and rebuilding them here would be a second, weaker
+   * copy of their own gate.
+   */
+  dependencies?: { entities: readonly EntitySchema[]; tables: readonly string[] }
   /**
    * Statements applied after the generator, for what it cannot express.
    *
@@ -83,9 +92,10 @@ export async function schemaParity(
   try {
     await generated.query(`drop table if exists ${options.tables.join(', ')} cascade`)
     const orm = await MikroORM.init({
-      entities: options.entities as EntitySchema[],
+      entities: [...options.entities, ...(options.dependencies?.entities ?? [])] as EntitySchema[],
       clientUrl: generated.url,
-      ...(options.namingStrategy ? { namingStrategy: options.namingStrategy } : {}),
+      namingStrategy: QualyNamingStrategy,
+      schemaGenerator: { skipTables: [...(options.dependencies?.tables ?? [])] },
       discovery: { warnWhenNoEntities: false },
     })
     try {

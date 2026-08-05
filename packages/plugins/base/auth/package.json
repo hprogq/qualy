@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     "./schema": "./src/db/schema.ts",
+    "./db": "./src/db/entities.ts",
     "./client": "./client/index.ts",
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
@@ -24,7 +25,8 @@
         "schemaEntry": "src/db/schema.ts",
         "dependsOn": [
           "@qualy/plugin-org"
-        ]
+        ],
+        "entitiesEntry": "src/db/entities.ts"
       }
     },
     "permissions": {
@@ -43,6 +45,7 @@
     "react": "catalog:"
   },
   "dependencies": {
+    "@mikro-orm/core": "catalog:",
     "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
     "@qualy/auth-contract": "workspace:*",

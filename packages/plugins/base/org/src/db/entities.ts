@@ -1,4 +1,4 @@
-import { defineEntity, UnderscoreNamingStrategy } from '@mikro-orm/core'
+import { defineEntity } from '@mikro-orm/core'
 import { codePattern } from './code-pattern.ts'
 
 // org's four tables.
@@ -209,33 +209,5 @@ export const orgCompositeForeignKeys = [
   `alter table org_type_rules add constraint fk_org_type_rules_child
      foreign key (tenant_id, child_type_id) references org_types (tenant_id, id) on delete cascade`,
 ]
-
-/**
- * The names the lineage already gave these constraints.
- *
- * MikroORM derives a primary key's name as `<table>_pkey`, which matches every
- * table here except the one whose key is composite: the lineage calls that one
- * `pk_org_type_rules`. Renaming it instead would be a migration that changes
- * nothing a query can see, and would break error translation for as long as
- * the two halves disagreed - so the strategy is taught the existing name
- * rather than the schema taught a new one.
- */
-export class QualyNamingStrategy extends UnderscoreNamingStrategy {
-  private static readonly EXISTING: Record<string, string> = {
-    org_type_rules: 'pk_org_type_rules',
-  }
-
-  override indexName(
-    tableName: string,
-    columns: string[],
-    type: 'primary' | 'foreign' | 'unique' | 'index' | 'sequence' | 'check' | 'default' | 'trigger',
-  ): string {
-    if (type === 'primary') {
-      const existing = QualyNamingStrategy.EXISTING[tableName]
-      if (existing) return existing
-    }
-    return super.indexName(tableName, columns, type)
-  }
-}
 
 export const entities = [Tenant, OrgType, OrgTypeRule, OrgNode] as const

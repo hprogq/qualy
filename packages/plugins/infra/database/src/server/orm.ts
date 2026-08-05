@@ -1,5 +1,5 @@
 import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-orm/postgresql'
-import type { EntitySchema } from '@mikro-orm/core'
+import { UnderscoreNamingStrategy, type EntitySchema } from '@mikro-orm/core'
 import { Context, Effect, Layer, Redacted } from 'effect'
 import { DatabaseConfig } from './config.ts'
 
@@ -26,6 +26,27 @@ export class Entities extends Context.Service<Entities, readonly EntitySchema[]>
 ) {}
 
 export class Orm extends Context.Service<Orm, MikroORM>()('@qualy/plugin-database/Orm') {}
+
+/**
+ * How this schema names its constraints.
+ *
+ * A composite primary key is `pk_<table>`; a single-column one takes the
+ * postgres default. That is what the deployed schema does throughout, and it
+ * has to be said here because the name comes from one assembly-wide strategy
+ * with no per-entity override - so the alternative was a table of exceptions
+ * naming tables from several plugins, which is knowledge this plugin has no
+ * business holding, or renaming five live constraints to suit the tool.
+ */
+export class QualyNamingStrategy extends UnderscoreNamingStrategy {
+  override indexName(
+    tableName: string,
+    columns: string[],
+    type: 'primary' | 'foreign' | 'unique' | 'index' | 'sequence' | 'check' | 'default' | 'trigger',
+  ): string {
+    if (type === 'primary' && columns.length > 1) return `pk_${tableName}`
+    return super.indexName(tableName, columns, type)
+  }
+}
 
 /**
  * The manager a plugin writes its queries against.
@@ -94,6 +115,7 @@ export const layer: Layer.Layer<Orm, never, DatabaseConfig | Entities> = Layer.e
         MikroORM.init({
           entities: entities as EntitySchema[],
           clientUrl: Redacted.value(config.url),
+          namingStrategy: QualyNamingStrategy,
           // an assembly part way through the migration has entities for some
           // of its tables and none for the rest, which is not a mistake
           discovery: { warnWhenNoEntities: false },
