@@ -15,6 +15,7 @@
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "effect": "catalog:"
   }
 }

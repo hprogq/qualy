@@ -8,7 +8,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./contract": "./src/contract.ts",
-    "./effect": "./src/effect/authorizer.ts"
+    "./effect": "./src/effect/index.ts",
+    "./api": "./src/api.ts",
+    "./effect/authorizer": "./src/effect/authorizer.ts"
   },
   "peerDependencies": {
     "cordis": "catalog:"
@@ -18,14 +20,22 @@
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
-    "@qualy/ui-contract": "workspace:*",
-    "zod": "catalog:",
     "@qualy/rbac-contract": "workspace:*",
-    "effect": "catalog:"
+    "@qualy/ui-contract": "workspace:*",
+    "effect": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@standard-schema/spec": "catalog:"
+  },
+  "qualy": {
+    "runtime": {
+      "entry": "./effect",
+      "api": "./api"
+    }
   }
 }

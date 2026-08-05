@@ -12,6 +12,7 @@ import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentUser } from '@qualy/plugin-auth/effect/session'
+import { UiAuthorizer } from '@qualy/plugin-ui-registry/effect/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
@@ -373,16 +374,35 @@ export class Access extends Context.Service<
  * Two tags from one construction: the port peers hold, and rbac's own
  * administration surface, which no peer reaches through a tag.
  */
-export const layer: Layer.Layer<Rbac | Access, never, Database | PermissionCatalog> =
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const { grants, roles, diagnostics, grantScopeFor, ...shape } = yield* make()
-      return Context.empty().pipe(
-        Context.add(Rbac, shape),
-        Context.add(Access, { grants, roles, diagnostics, grantScopeFor }),
-      )
-    }),
-  )
+export const layer: Layer.Layer<
+  Rbac | Access | UiAuthorizer,
+  never,
+  Database | PermissionCatalog
+> = Layer.effectContext(
+  Effect.gen(function* () {
+    const { grants, roles, diagnostics, grantScopeFor, ...shape } = yield* make()
+    return Context.empty().pipe(
+      Context.add(Rbac, shape),
+      Context.add(Access, { grants, roles, diagnostics, grantScopeFor }),
+      // The one live registration the shell needs: which codes a viewer holds
+      // anywhere in their tenant. It is published from here because rbac is
+      // the only thing that can answer it, and it is a required service, so an
+      // assembly that serves a manifest without one fails to build rather than
+      // quietly showing every signed-in viewer nothing but public pages.
+      Context.add(UiAuthorizer, {
+        permissionsFor: (principal) =>
+          shape
+            .getProfile(principal)
+            .pipe(
+              Effect.map(
+                (profile) =>
+                  new Set([...profile.tenantPermissions, ...profile.orgPermissions]),
+              ),
+            ),
+      }),
+    )
+  }),
+)
 
 
 // --- api ---

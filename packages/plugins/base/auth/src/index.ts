@@ -6,7 +6,7 @@ import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
 import { ADMIN_SHELL, BLANK_SHELL, headerActions, permissionOf, PUBLIC } from '@qualy/ui-contract'
-import { loginPage, userDetailPage, userTypesPage, usersPage } from './ui.ts'
+import { surfaces } from './ui.ts'
 import { createIdentityRouter } from './iam/router.ts'
 import { IamService } from './iam/service.ts'
 import { iamMessages } from './iam/messages.ts'
@@ -143,44 +143,10 @@ export default class Auth extends Service {
       }),
     )
 
-    ctx.ui.addPage({
-      page: loginPage,
-      component: 'auth/LoginPage',
-      layout: BLANK_SHELL,
-      visibility: PUBLIC,
-    })
-    // the menu shows a sign-in link to anonymous visitors, so it is public
     // identity administration rides the same session core
     this.iam = new IamService(ctx)
     ctx.server.contribute('identity', createIdentityRouter(ctx, this.iam))
-    ctx.ui.addPage({
-      page: usersPage,
-      component: 'auth/UsersPage',
-      layout: ADMIN_SHELL,
-      visibility: permissionOf('auth.user.read'),
-      navigation: { label: iamMessages.usersNav, order: 30 },
-    })
-    // a detail screen is reachable from the list rather than from the
-    // navigation, so it registers without one
-    ctx.ui.addPage({
-      page: userDetailPage,
-      component: 'auth/UserDetailPage',
-      layout: ADMIN_SHELL,
-      visibility: permissionOf('auth.user.read'),
-    })
-    ctx.ui.addPage({
-      page: userTypesPage,
-      component: 'auth/UserTypesPage',
-      layout: ADMIN_SHELL,
-      visibility: permissionOf('auth.user-type.read'),
-      navigation: { label: iamMessages.userTypesNav, order: 31 },
-    })
-    ctx.ui.contribute(headerActions, {
-      id: 'auth/user-menu',
-      component: 'auth/UserMenu',
-      visibility: PUBLIC,
-      order: 100,
-    })
+    ctx.ui.applySurfaces(surfaces)
   }
 
   // driver plugins register their protocol family; revoked with their fiber,

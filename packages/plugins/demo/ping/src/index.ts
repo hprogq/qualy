@@ -6,7 +6,7 @@ import type {} from '@qualy/plugin-database'
 import type {} from '@qualy/plugin-ui-registry'
 import { ADMIN_SHELL, PUBLIC } from '@qualy/ui-contract'
 import { pingNavigationLabel } from './messages.ts'
-import { pingPage } from './ui.ts'
+import { surfaces } from './ui.ts'
 import { pingContract } from './contract.ts'
 import { pingLogs } from './db/schema.ts'
 
@@ -28,14 +28,7 @@ export function apply(ctx: Context, rawConfig: z.input<typeof Config>) {
     return () => clearInterval(timer)
   }, 'heartbeat-timer')
 
-  ctx.ui.addPage({
-    page: pingPage,
-    component: 'ping/PingPage',
-    layout: ADMIN_SHELL,
-    // the demo endpoint is deliberately open; a real plugin would gate this
-    visibility: PUBLIC,
-    navigation: { label: pingNavigationLabel, order: 10 },
-  })
+  ctx.ui.applySurfaces(surfaces)
 
   const impl = implement(pingContract).$context<ApiContext>()
   ctx.server.contribute(

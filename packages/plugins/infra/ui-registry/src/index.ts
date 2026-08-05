@@ -11,6 +11,7 @@ import {
   type ResolvedNavigationItem,
   type UiCollectionToken,
   type UiSlotToken,
+  type UiSurfaces,
   type UiVisibility,
   type ViewerAccess,
 } from '@qualy/ui-contract'
@@ -108,6 +109,24 @@ export default class UiRegistry extends Service {
         getManifest: impl.getManifest.handler(({ context }) => this.build(context.principal)),
       }),
     )
+  }
+
+  /**
+   * Everything one plugin declares, registered in one call.
+   *
+   * The declarations are the same values the assembly reads to build the
+   * Effect manifest, so the two runtimes cannot disagree about which screens
+   * exist or who may see them.
+   */
+  applySurfaces(surfaces: UiSurfaces) {
+    for (const layout of surfaces.layouts ?? []) this.registerLayout(layout)
+    for (const page of surfaces.pages ?? []) this.addPage(page)
+    for (const item of surfaces.collections ?? []) {
+      this.registerContribution(this.collections, item.key, item)
+    }
+    for (const slot of surfaces.slots ?? []) {
+      this.contribute({ key: slot.key, cardinality: 'many' } as UiSlotToken, slot)
+    }
   }
 
   // single slot, revoked with the registrant's fiber: the authorization

@@ -12,7 +12,9 @@ import { pluginLayers } from '../runtime.gen.ts'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '@qualy/plugin-auth/effect/sign-in'
 import { permissionCatalog } from '../permissions.gen.ts'
+import { UiCatalog } from '@qualy/plugin-ui-registry/effect'
 import { loginDrivers } from '../login-drivers.gen.ts'
+import { uiSurfaces } from '../ui.gen.ts'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { apiHandlers } from '../api-handlers.gen.ts'
@@ -55,6 +57,7 @@ const shell = (url: string) =>
         ),
         Layer.succeed(PermissionCatalog, permissionCatalog),
         Layer.succeed(LoginDrivers, loginDrivers),
+        Layer.succeed(UiCatalog, uiSurfaces),
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({

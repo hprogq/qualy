@@ -3,9 +3,7 @@ import type { ApiContext } from '@qualy/plugin-server'
 import type {} from '@qualy/plugin-database'
 import type {} from '@qualy/plugin-ui-registry'
 import type {} from '@qualy/rbac-contract'
-import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
-import { orgNavigationLabel } from './messages.ts'
-import { orgPage } from './ui.ts'
+import { surfaces } from './ui.ts'
 import { permissions as orgPermissions } from './permissions.ts'
 import { createOrgRouter } from './router.ts'
 import { OrgTreeService } from './service.ts'
@@ -31,12 +29,6 @@ export default class Org extends Service {
     ctx.rbac.definePermissions('org', orgPermissions)
     this.tree = new OrgTreeService(ctx)
     ctx.server.contribute('org', createOrgRouter(ctx, this.tree))
-    ctx.ui.addPage({
-      page: orgPage,
-      component: 'org/OrgPage',
-      layout: ADMIN_SHELL,
-      visibility: permissionOf('org.tree.read'),
-      navigation: { label: orgNavigationLabel, order: 20 },
-    })
+    ctx.ui.applySurfaces(surfaces)
   }
 }

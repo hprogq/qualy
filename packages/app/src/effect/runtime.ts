@@ -13,6 +13,7 @@ import {
   databaseConfigLayer,
   loginDriversLayer,
   permissionCatalogLayer,
+  uiCatalogLayer,
 } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
 
@@ -68,6 +69,7 @@ export const application = server.pipe(
       permissionCatalogLayer,
       loginDriversLayer,
       authConfigLayer,
+      uiCatalogLayer,
     ),
   ),
 )

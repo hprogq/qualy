@@ -43,6 +43,7 @@
   "dependencies": {
     "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
@@ -56,9 +57,8 @@
     "@qualy/web-runtime": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
-    "zod": "catalog:",
     "effect": "catalog:",
-    "@qualy/api-kit": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:"

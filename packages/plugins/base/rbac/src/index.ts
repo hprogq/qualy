@@ -17,7 +17,7 @@ import { permissions as accessCatalog } from './permissions.ts'
 import { Administration } from './administration.ts'
 import { assertTenantKeepsAdministrator } from './invariants.ts'
 import { createAccessRouter } from './router.ts'
-import { rolesPage } from './ui.ts'
+import { surfaces } from './ui.ts'
 import { rbacNavigation } from './messages.ts'
 import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
 
@@ -51,13 +51,7 @@ export default class Rbac extends Service implements RbacService {
     // the page and the authorizer register in a nested fiber that simply
     // stays pending when no registry is assembled
     ctx.inject(['ui'], (uiCtx) => {
-      uiCtx.ui.addPage({
-        page: rolesPage,
-        component: 'rbac/RolesPage',
-        layout: ADMIN_SHELL,
-        visibility: permissionOf('iam.role.read'),
-        navigation: { label: rbacNavigation.rolesNav, order: 32 },
-      })
+      uiCtx.ui.applySurfaces(surfaces)
       uiCtx.ui.setAuthorizer(async (principal) => {
         const profile = await this.getProfile(principal)
         return [...profile.tenantPermissions, ...profile.orgPermissions]

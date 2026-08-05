@@ -6,6 +6,8 @@ import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '@qualy/plugin-auth/effect/sign-in'
 import { permissionCatalog } from '../../permissions.gen.ts'
 import { loginDrivers } from '../../login-drivers.gen.ts'
+import { UiCatalog } from '@qualy/plugin-ui-registry/effect'
+import { uiSurfaces } from '../../ui.gen.ts'
 
 // Everything the assembly needs from its environment, in one place.
 //
@@ -103,3 +105,13 @@ export const authConfigLayer = Layer.effect(
     })
   }),
 )
+
+/**
+ * The shell's surfaces, as this assembly resolved them.
+ *
+ * A page and a slot item are descriptors, so the manifest is a projection over
+ * declarations rather than over whatever plugins managed to register. Which
+ * screens exist is decided at resolution and checked by the generator, which
+ * refuses a page id, a path or a layout contract claimed twice.
+ */
+export const uiCatalogLayer = Layer.succeed(UiCatalog, uiSurfaces)

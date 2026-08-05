@@ -28,6 +28,7 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/plugin-web": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
     "cordis": "catalog:",
     "effect": "catalog:"
   },

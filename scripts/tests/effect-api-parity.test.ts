@@ -12,9 +12,10 @@ import { FROZEN_ROUTES } from './support/frozen-routes.ts'
 // the frozen table already names. A rename during a port would otherwise be
 // invisible until a client hit it.
 //
-// Equality is not the assertion yet, and saying so is the point: this is a
-// containment check with a visible count, so the milestone that finishes the
-// port can turn it into equality rather than discovering the gap then.
+// Equality is the assertion now that every frozen route is served. It was a
+// containment check with a visible count while the port was in progress, and
+// turning it into equality was the last step of that port rather than
+// something discovered afterwards.
 
 const effectRoutes = () => {
   const document = OpenApi.fromApi(qualyApi) as {
@@ -44,11 +45,12 @@ describe('the Effect api against the frozen surface', () => {
     ).toEqual([])
   })
 
-  it('reports how much of the surface has been ported', () => {
-    const ported = effectRoutes()
-    expect(ported.length).toBeGreaterThan(0)
-    // not an assertion about the number, only that the number is visible: a
-    // port that silently stopped adding routes should be noticeable
-    console.log(`effect api: ${ported.length}/${FROZEN_ROUTES.length} frozen routes ported`)
+  it('serves every route the frozen table names', () => {
+    const served = new Set(effectRoutes())
+    const missing = FROZEN_ROUTES.filter((route) => !served.has(route))
+    expect(
+      missing,
+      'the Effect api must serve the whole frozen surface; a route dropped here is a 404 after the switch',
+    ).toEqual([])
   })
 })
