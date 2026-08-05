@@ -624,3 +624,71 @@ pnpm qualy resolve    → qualy.lock.json(根)written
 pnpm dev + curl       → ready/manifest/spa 200,SIGTERM shutdown complete
 git ls-files repos    → 只剩 repos/vendor-lock.json
 ```
+
+## 阶段 A 收尾:manifest v2 与 vendor 三动作(2026-08-06)
+
+按裁决只做两笔,不碰 typed config、环境变量迁移与完整 CLI。
+
+### 一、Manifest version 2
+
+**接受版本号的论证**:v1 解析器遇到 `application` 会报 unknown top-level key,所以带着这个字段却
+标 `version: 1` 的文件从来就不是 v1。版本号表达的是消费者兼容性,不是 YAML 能不能容纳一个字段。
+我先前的判断错了。
+
+`application.workspace` **必填**,独立部署也要显式写 `.`——留成可选就等于保留它要替换掉的那个猜测
+(清单目录即宿主),而那个猜测一直是对的,直到有人把清单放到读它的人找得到的地方。
+
+**两处已解析却被忽略的字段**,审计指出后实测确认:
+
+- `manifestHash()` 不含 workspace。把宿主指向另一个包会选中同名插件 id 的不同安装版本,而这不算
+  「变更」,frozen 启动照过。已补,并做等价拼写规范化(`./apps/server`、`apps/server`、
+  `apps/./server`、`apps/server/` 同一个 hash;指向 `./apps/web` 则不同)。
+- `renderManifest()` 不输出 `application`。任何经它重写的清单会**静默从「有宿主」变成「独立布局」**。
+
+新增:workspace 指向没有 package.json 的目录时在**解析期**报错并点名,而不是让每个插件各自
+MODULE_NOT_FOUND——后者读起来像「插件没装」,而不是「清单指错了地方」。
+
+**顺带抓到清单移根引入的一个真 bug**:`scripts/qualy.ts` 的漂移检查仍从清单目录推导
+`runtime.gen.ts`,而清单已在仓库根、生成物钉死在 `apps/server/`。表现是 `--frozen-lockfile`
+报 `runtime.gen.ts is missing`。是我在验证「改 workspace 必须失败」时撞出来的。
+
+### 二、vendor 拆成 update / restore / check
+
+原先一个命令做三件事,哪件都不精确:它读 catalog、clone tag、重写 lock,**因此根本无法「恢复」**
+——tag 被移动过的话,同一个记录里的 commit 会悄悄给回另一份源码。而 lock 只记 commit,
+**commit 说不出磁盘上是什么**:树已经不在版本控制里,本地改一个字节不留痕迹,比对 package version
+也看不见(两边 package.json 是同一个)。
+
+| 命令 | 做什么 | 写 lock |
+| --- | --- | --- |
+| `vendor:update` | 读 catalog → clone tag → 剥离 → 算内容 hash | **写** |
+| `vendor:restore` | 读 **lock 的 commit** → fetch → 剥离 → 校验 hash | 不写 |
+| `vendor:check` | 只看本地树:版本、内容 hash、该剥的剥没剥 | 不写 |
+
+`contentSha256` 对剥离后的树按「路径 + 文件字节」计算,忽略 mtime 与权限(否则每次恢复都报漂移)。
+
+实测:往 `repos/mikro-orm/README.md` 追加一行 → `vendor:check` 立刻红;`vendor:restore drizzle-orm`
+从 lock 的 commit 恢复后内容 hash 与记录一致,且 lock 未被改写。
+
+### 三、又一个并发隔离缺陷(与 generators 同类)
+
+`apps/server/tests/effect-shell.test.ts` 标了 `.concurrent`,而它的两个用例共用固定端口 3197,
+其中一个恰恰断言**没有人在监听**。并发跑时它读到了另一个用例的服务器,拿到 200。
+**单文件跑永远复现不了**,只有全量跑才会踩——和 generators 那次一模一样。
+
+`ports.test.ts` 原先只守跨文件端口唯一,看不见同文件内并发共用。已补一条:声明了固定端口的套件
+不得标 `.concurrent`。
+
+### 验收(实际执行)
+
+```
+pnpm typecheck              → 0 errors(根 + apps/web)
+npx vitest run × 3          → Tests 310 passed(连续三次)
+pnpm test:browser           → 10 passed
+pnpm vendor:check           → 3 tree(s) match repos/vendor-lock.json
+pnpm qualy resolve --frozen → qualy.lock.json is up to date
+pnpm dev + curl             → ready/manifest/spa 200,SIGTERM shutdown complete
+```
+
+**阶段 A 完成,可以 squash merge。** 下一步按裁决:合并 → 删旧分支 → 在新 main 上打
+`pre-mikroorm-spike` → 从 main 建 `spike/mikroorm-kysely`,连真实 PostgreSQL 做纵向切片。

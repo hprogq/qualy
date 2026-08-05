@@ -35,4 +35,19 @@ describe('the ports test servers listen on', () => {
       .map(([port, files]) => `${port}: ${files.join(', ')}`)
     expect(shared).toEqual([])
   })
+
+  it('does not let one suite race itself for its own port', () => {
+    // A port is shared state across the cases in a file just as much as across
+    // files, and one of these suites asserts that nothing is listening on it.
+    // Marking such a suite concurrent had that case read another case's server
+    // and fail on a schedule a single-file run never reproduces.
+    const offenders = roots
+      .flatMap(walk)
+      .filter((file) => {
+        const source = fs.readFileSync(file, 'utf8')
+        return /\bconst port = \d{4}\b/.test(source) && /\.concurrent\b/.test(source)
+      })
+      .map((file) => `${file} claims a fixed port and runs concurrently`)
+    expect(offenders).toEqual([])
+  })
 })

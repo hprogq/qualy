@@ -50,7 +50,11 @@ const status = async (path: string) => {
   }
 }
 
-describe.runIf(postgresAvailable).concurrent('effect application shell', () => {
+// Not concurrent: both cases assert on one port, and one of them asserts that
+// nothing is listening on it. Running them together had the second read the
+// first one's server and see 200 where it required a closed port - which only
+// showed up in a full run, because a single-file run schedules them apart.
+describe.runIf(postgresAvailable)('effect application shell', () => {
   it('binds the port only after the database is ready, and releases both together', async () => {
     const db = await createTestContext('effect-shell')
     const connections = async () =>
