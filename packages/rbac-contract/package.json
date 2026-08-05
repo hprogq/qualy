@@ -6,13 +6,18 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./effect": "./src/effect.ts",
+    "./testkit": "./src/testkit.ts"
   },
   "peerDependencies": {
-    "cordis": "catalog:"
+    "effect": "catalog:"
   },
   "dependencies": {
     "@qualy/api-contract": "workspace:*",
     "drizzle-orm": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/auth-contract": "workspace:*"
   }
 }

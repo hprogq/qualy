@@ -1,3 +1,4 @@
+import { Effect, Exit, Scope } from 'effect'
 import { sql } from 'drizzle-orm'
 import { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
@@ -113,21 +114,24 @@ describe.runIf(postgresAvailable)('database testkit', () => {
     expect((failed as AggregateError).errors.length).toBeGreaterThan(0)
   })
 
-  // Worth knowing when reading the teardown above: cordis resolves
-  // fiber.dispose() even when a disposer throws, so a plugin that fails to
-  // release something says nothing here. The failures this harness can
-  // report are the ones postgres refuses.
-  it('cannot see a disposer that throws, but still clears the database', async () => {
-    const db = await createTestContext('testkit-quiet')
+  // Worth knowing when reading the teardown above, and an improvement on what
+  // came before: cordis resolved fiber.dispose() even when a disposer threw,
+  // so a plugin that failed to release something said nothing here and the
+  // only failures this harness could report were the ones postgres refused.
+  // Closing a scope propagates, so a finalizer that fails is a failing
+  // teardown - and it still clears the database, because every error is
+  // collected rather than the first one ending the run.
+  it('reports a finalizer that fails, and still clears the database', async () => {
+    const db = await createTestContext('testkit-loud')
     const name = new URL(db.url).pathname.slice(1)
-    await db.ctx.plugin({
-      name: 'awkward',
-      apply: (child: typeof db.ctx) => {
-        child.effect(() => () => {
-          throw new Error('disposer said no')
-        })
-      },
-    })
+    const scope = await Effect.runPromise(Scope.make())
+    await Effect.runPromise(
+      Scope.addFinalizer(scope, Effect.die(new Error('finalizer said no'))).pipe(
+        Scope.provide(scope),
+      ),
+    )
+    const closing = await Effect.runPromiseExit(Scope.close(scope, Exit.void))
+    expect(Exit.isFailure(closing)).toBe(true)
     await db.dispose()
     expect(await scratchDatabases()).not.toContain(name)
   })

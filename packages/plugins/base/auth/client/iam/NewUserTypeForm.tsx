@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup, Feedback, Field, Panel } from '@qualy/ui/admin'
@@ -14,6 +14,7 @@ import { iamMessages as m } from '../i18n.ts'
 // where that kind of person should never be.
 export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string) => void }) {
   const api = useApi()
+  const run = useRunApi()
   const orpc = useApiQuery()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
@@ -26,16 +27,9 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
   const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
 
   const create = useMutation({
-    mutationFn: () =>
-      api.identity.createUserType({
-        code,
-        name,
-        allowLocalLogin: channels.includes('local'),
-        allowSsoLogin: channels.includes('sso'),
-        placementPolicy: unrestricted
+    mutationFn: () => run(api.identity.createUserType({ payload: { code, name, allowLocalLogin: channels.includes('local'), allowSsoLogin: channels.includes('sso'), placementPolicy: unrestricted
           ? { mode: 'unrestricted' }
-          : { mode: 'allow-list', orgTypeIds },
-      }),
+          : { mode: 'allow-list', orgTypeIds } } })),
     onMutate: () => setFeedback(null),
     onSuccess: async (result) => {
       setCode('')

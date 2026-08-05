@@ -57,7 +57,7 @@ AI 只出建议与草案,人做决定。AI 生成计分函数必须通过类型�
 
 - **构建清单**:发行构建按 full-manifest(全部官方插件的超集)跑三生成器与迁移——所有表都建、所有契约聚合、所有前端 lazy chunk 都在产物里。schema 生成器**恒按超集聚合**(迁移语义:停用不删表,详见 notes/drizzle.md 迁移策略);contracts/plugins 生成器区分开发(按 yml 过滤)与发行(`--all` 超集)。
 - **运行清单**:用户的 qualy.yml 只负责启停与配置。停用零重建是 P0 已验收能力,启用同样零重建:后端代码在 node_modules 里等 loader 按名 import,前端 chunk 在产物里等 manifest 放行。
-- **一键部署三件套**:纯静态配置生成器页(零后端;勾选插件、填配置,各插件的 Zod Config 经动态表单引擎自举渲染成表单)产出 qualy.yml + docker-compose.yml + .env 模板;multi-stage 镜像(builder: pnpm install + gen --all + vite build + drizzle-kit generate;runtime: 源码 + tsx 直跑 packages/app/src/main.ts,entrypoint 先 db:migrate 再启动;docker stop 发 SIGTERM,main.ts 的优雅关闭在此兑现);用户 qualy.yml 以 volume 挂载,改配置 = 改文件 + restart。
+- **一键部署三件套**:纯静态配置生成器页(零后端;勾选插件、填配置,各插件的 Zod Config 经动态表单引擎自举渲染成表单)产出 qualy.yml + docker-compose.yml + .env 模板;multi-stage 镜像(builder: pnpm install + gen --all + vite build + drizzle-kit generate;runtime: 源码 + tsx 直跑 apps/server/src/main.ts,entrypoint 先 db:migrate 再启动;docker stop 发 SIGTERM,main.ts 的优雅关闭在此兑现);用户 qualy.yml 以 volume 挂载,改配置 = 改文件 + restart。
 - **延伸路线**:create-qualy 脚手架为次要路径;终局是管理页在线启停插件(loader.write() 双向写回,ui-registry + RBAC 已备),放 P5 后,现有架构无需返工。
 - **诚实边界**:第三方/自研插件不在超集镜像内,需自建镜像(构建期装配的固有代价,对应已否决的方案 2 语义),README 写明。整套内容即论文「系统部署与分发」一节素材。
 

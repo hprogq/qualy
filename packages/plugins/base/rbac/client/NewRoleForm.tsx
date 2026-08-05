@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Feedback, Field, Panel, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -17,6 +17,7 @@ import { rbacMessages as m } from './i18n.ts'
 // which capabilities the role may hold.
 export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void }) {
   const api = useApi()
+  const run = useRunApi()
   const orpc = useApiQuery()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
@@ -26,7 +27,7 @@ export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void
   const [kind, setKind] = useState<'tenant' | 'org'>('org')
 
   const create = useMutation({
-    mutationFn: () => api.access.createRole({ code, name, kind }),
+    mutationFn: () => run(api.access.createRole({ payload: { code, name, kind } })),
     onMutate: () => setFeedback(null),
     onSuccess: async (result: { id: string }) => {
       setCode('')

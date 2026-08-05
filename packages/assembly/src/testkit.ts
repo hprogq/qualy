@@ -33,6 +33,8 @@ export interface Workspace {
 export interface ManifestOptions {
   disabled?: readonly string[]
   configs?: Record<string, unknown>
+  /** where the plugins are installed, relative to the manifest; defaults to '.' */
+  workspace?: string
 }
 
 export interface SyntheticPackage {
@@ -48,7 +50,16 @@ export const renderManifestText = (
   plugins: readonly string[],
   options: ManifestOptions = {},
 ): string => {
-  const lines = ['version: 1', '', 'plugins:']
+  // '.' because a throwaway workspace IS the standalone layout: the manifest,
+  // the lock and node_modules all sit in the same temporary directory
+  const lines = [
+    'version: 2',
+    '',
+    'application:',
+    `  workspace: ${options.workspace ?? '.'}`,
+    '',
+    'plugins:',
+  ]
   for (const id of plugins) {
     const body: string[] = []
     if (options.disabled?.includes(id)) body.push('    enabled: false')
@@ -72,6 +83,12 @@ export function createWorkspace(
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-workspace-'))
   const modules = path.join(dir, 'node_modules')
   fs.mkdirSync(modules, { recursive: true })
+  // the host the manifest points at has to be a package: resolution reads its
+  // package.json to build the require that plugin ids resolve through
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    `${JSON.stringify({ name: 'qualy-test-workspace', version: '0.0.0', private: true }, null, 2)}\n`,
+  )
 
   const host = createPackageResolver(HOST)
   const link = (id: string, target: string) => {
@@ -89,7 +106,7 @@ export function createWorkspace(
     fs.mkdirSync(at, { recursive: true })
     fs.writeFileSync(
       path.join(at, 'package.json'),
-      `${JSON.stringify({ name: entry.id, version: '0.0.0', type: 'module', exports: { '.': './index.js' }, qualy: entry.qualy }, null, 2)}\n`,
+      `${JSON.stringify({ name: entry.id, version: '0.0.0', type: 'module', exports: { '.': './index.js', './package.json': './package.json' }, qualy: entry.qualy }, null, 2)}\n`,
     )
     fs.writeFileSync(path.join(at, 'index.js'), 'export const name = "synthetic"\n')
   }

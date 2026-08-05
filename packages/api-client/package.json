@@ -6,17 +6,18 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    "./effect": "./src/effect/index.ts",
+    "./effect/query": "./src/effect/query.ts"
   },
   "dependencies": {
-    "@orpc/client": "catalog:",
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
+    "@qualy/api": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*"
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "effect": "catalog:"
   }
 }

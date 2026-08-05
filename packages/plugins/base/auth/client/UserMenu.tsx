@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { PageLink, useApi, useApiQuery, useSessionTransition } from '@qualy/web-runtime'
+import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { loginPage } from '@qualy/plugin-auth/ui'
@@ -11,6 +11,7 @@ import { authMessages as m } from './i18n.ts'
 // the session state simply cannot be determined
 export default function UserMenu() {
   const api = useApi()
+  const run = useRunApi()
   const orpc = useApiQuery()
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
@@ -50,8 +51,7 @@ export default function UserMenu() {
           // only the server can end the session: the cookie is HttpOnly, so
           // a failed request leaves the identity intact and must say so
           // instead of pretending to have signed the user out
-          void api.auth
-            .endSession()
+          void run(api.auth.endSession())
             .then(() =>
               endSession({ destination: { kind: 'page', page: loginPage } }),
             )

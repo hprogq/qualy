@@ -1,6 +1,7 @@
+import type { Effect } from 'effect'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
 import { Button } from '@qualy/ui/button'
@@ -9,7 +10,11 @@ import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { Spinner } from '@qualy/ui/spinner'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import type { OrgTreeNodeDto, OrgTypeDto } from '@qualy/plugin-org/contract'
+import type { ApiResult } from '@qualy/api-client/effect'
+
+// the rows as the api answers them, not a copy that can drift from it
+type OrgTreeNodeDto = ApiResult<'org', 'getTree'>['nodes'][number]
+type OrgTypeDto = ApiResult<'org', 'listTypes'>['types'][number]
 import { orgMessages as m } from './i18n.ts'
 
 // minimal org management: tree with selection, node crud, parent-selector
@@ -17,13 +22,14 @@ import { orgMessages as m } from './i18n.ts'
 // nodes the server marked manageable; the server enforces regardless.
 export default function OrgPage() {
   const api = useApi()
+  const runApi = useRunApi()
   const orpc = useApiQuery()
   const { format, formatError } = useI18n()
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
 
-  const treeQuery = useQuery(orpc.org.getTree.queryOptions({ input: {} }))
+  const treeQuery = useQuery(orpc.org.getTree.queryOptions({ query: {} }))
   const typesQuery = useQuery(orpc.org.listTypes.queryOptions())
   const rulesQuery = useQuery(orpc.org.listRules.queryOptions())
 
@@ -35,10 +41,13 @@ export default function OrgPage() {
   }
   // typed api errors localize from their code and data; the backend's
   // english message is only the last resort
-  const run = (work: Promise<unknown>) =>
-    work.then(refresh).catch((error: unknown) => {
-      setFeedback(formatError(error))
-    })
+  // the one crossing from an effect to a promise on this screen
+  const run = (work: Effect.Effect<unknown, unknown>) =>
+    runApi(work)
+      .then(refresh)
+      .catch((error: unknown) => {
+        setFeedback(formatError(error))
+      })
 
   const nodes = useMemo(() => treeQuery.data?.nodes ?? [], [treeQuery.data])
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
@@ -170,10 +179,10 @@ function NodePanel({
   onDeleted,
 }: {
   node: OrgTreeNodeDto
-  nodes: OrgTreeNodeDto[]
-  types: OrgTypeDto[]
+  nodes: readonly OrgTreeNodeDto[]
+  types: readonly OrgTypeDto[]
   api: Api
-  onAction: (work: Promise<unknown>) => Promise<unknown>
+  onAction: (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
   onDeleted: () => void
 }) {
   const { format } = useI18n()
@@ -221,7 +230,7 @@ function NodePanel({
                 <Button
                   size="sm"
                   disabled={name.trim() === '' || name === node.name}
-                  onClick={() => void onAction(api.org.updateNode({ nodeId: node.id, name }))}
+                  onClick={() => void onAction(api.org.updateNode({ params: { nodeId: node.id }, payload: { name } }))}
                 >
                   {format(m.rename)}
                 </Button>
@@ -246,7 +255,7 @@ function NodePanel({
                   variant="outline"
                   disabled={newTypeId === node.orgTypeId}
                   onClick={() =>
-                    void onAction(api.org.changeNodeType({ nodeId: node.id, orgTypeId: newTypeId }))
+                    void onAction(api.org.changeNodeType({ params: { nodeId: node.id }, payload: { orgTypeId: newTypeId } }))
                   }
                 >
                   {format(m.changeType)}
@@ -279,9 +288,10 @@ function NodePanel({
                   disabled={childName.trim() === '' || childTypeId === ''}
                   onClick={() =>
                     void onAction(
-                      api.org
-                        .createNode({ parentId: node.id, orgTypeId: childTypeId, name: childName })
-                        .then(() => setChildName('')),
+                      api.org.createNode({
+                        payload: { parentId: node.id, orgTypeId: childTypeId, name: childName },
+                      }),
+                    ).then(() => setChildName(''),
                     )
                   }
                 >
@@ -311,7 +321,7 @@ function NodePanel({
                     disabled={moveTargetId === ''}
                     onClick={() =>
                       void onAction(
-                        api.org.setNodePlacement({ nodeId: node.id, parentId: moveTargetId }),
+                        api.org.setNodePlacement({ params: { nodeId: node.id }, payload: { parentId: moveTargetId } }),
                       )
                     }
                   >
@@ -325,7 +335,7 @@ function NodePanel({
                 size="sm"
                 variant="destructive"
                 onClick={() =>
-                  void onAction(api.org.deleteNode({ nodeId: node.id }).then(onDeleted))
+                  void onAction(api.org.deleteNode({ params: { nodeId: node.id } })).then(onDeleted)
                 }
               >
                 {format(m.deleteNode)}
@@ -344,10 +354,10 @@ function TypeRuleAdmin({
   api,
   onAction,
 }: {
-  types: OrgTypeDto[]
-  rules: { parentTypeId: string; childTypeId: string }[]
+  types: readonly OrgTypeDto[]
+  rules: readonly { readonly parentTypeId: string; readonly childTypeId: string }[]
   api: Api
-  onAction: (work: Promise<unknown>) => Promise<unknown>
+  onAction: (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
 }) {
   const { format } = useI18n()
   const [typeCode, setTypeCode] = useState('')
@@ -373,7 +383,7 @@ function TypeRuleAdmin({
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => void onAction(api.org.deleteType({ typeId: type.id }))}
+                  onClick={() => void onAction(api.org.deleteType({ params: { typeId: type.id } }))}
                 >
                   {format(m.delete)}
                 </Button>
@@ -396,13 +406,11 @@ function TypeRuleAdmin({
               disabled={typeCode.trim() === '' || typeName.trim() === ''}
               onClick={() =>
                 void onAction(
-                  api.org
-                    .createType({ code: typeCode, name: typeName })
-                    .then(() => {
-                      setTypeCode('')
-                      setTypeName('')
-                    }),
-                )
+                  api.org.createType({ payload: { code: typeCode, name: typeName } }),
+                ).then(() => {
+                  setTypeCode('')
+                  setTypeName('')
+                })
               }
             >
               {format(m.create)}
@@ -429,10 +437,7 @@ function TypeRuleAdmin({
                   variant="ghost"
                   onClick={() =>
                     void onAction(
-                      api.org.deleteRule({
-                        parentTypeId: rule.parentTypeId,
-                        childTypeId: rule.childTypeId,
-                      }),
+                      api.org.deleteRule({ params: { parentTypeId: rule.parentTypeId, childTypeId: rule.childTypeId } }),
                     )
                   }
                 >
@@ -471,7 +476,7 @@ function TypeRuleAdmin({
               disabled={ruleParent === '' || ruleChild === ''}
               onClick={() =>
                 void onAction(
-                  api.org.putRule({ parentTypeId: ruleParent, childTypeId: ruleChild }),
+                  api.org.putRule({ params: { parentTypeId: ruleParent, childTypeId: ruleChild } }),
                 )
               }
             >

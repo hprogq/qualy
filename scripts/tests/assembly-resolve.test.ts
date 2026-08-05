@@ -5,10 +5,13 @@ import {
   lockDrift,
   lockFromResolution,
   lockPathFor,
+  manifestHash,
   parseManifest,
+  renderManifest,
   readLock,
   renderLock,
-  renderRuntimePlan,
+  renderRuntimeModule,
+  runtimeLayers,
   resolveAssembly,
   writeLock,
 } from '@qualy/assembly'
@@ -23,7 +26,7 @@ import { createWorkspace, renderManifestText } from '@qualy/assembly/testkit'
 // The core is asserted here; what a capability makes of a contribution is
 // asserted next to the plugin that owns the capability.
 
-const INFRA = ['@qualy/plugin-database', '@qualy/plugin-server', '@qualy/plugin-ui-registry']
+const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
 const WITH_TABLES = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-auth']
 
 const resolve = (manifestPath: string) =>
@@ -37,6 +40,8 @@ const commit = async (manifestPath: string) => {
 
 describe('manifest', () => {
   const parse = (text: string) => () => parseManifest(text, 'qualy.yml')
+  /** a v2 body, so a case about one rule is not also a case about the header */
+  const v2 = (body: string) => `version: 2\napplication:\n  workspace: .\n${body}`
 
   it('refuses the entry-array form it replaced', () => {
     // the old file is valid yaml, so without this it would parse as a manifest
@@ -47,19 +52,70 @@ describe('manifest', () => {
   it('refuses one plugin declared twice', () => {
     // yaml's own answer is last-one-wins, which leaves no single answer for the
     // plugin's config
-    expect(parse("version: 1\nplugins:\n  '@a': {}\n  '@a': {}\n")).toThrow()
+    expect(parse(v2("plugins:\n  '@a': {}\n  '@a': {}\n"))).toThrow()
   })
 
   it('refuses keys it does not understand', () => {
-    expect(parse('version: 1\nplugins: {}\nsetup: {}\n')).toThrow(/unknown top-level key setup/)
-    expect(parse("version: 1\nplugins:\n  '@a':\n    enable: true\n")).toThrow(/unknown key enable/)
-    expect(parse('version: 2\nplugins: {}\n')).toThrow(/version must be 1/)
+    expect(parse(v2('plugins: {}\nsetup: {}\n'))).toThrow(/unknown top-level key setup/)
+    expect(parse(v2("plugins:\n  '@a':\n    enable: true\n"))).toThrow(/unknown key enable/)
+    expect(parse('version: 2\napplication:\n  root: .\nplugins: {}\n')).toThrow(
+      /application: unknown key root/,
+    )
+    expect(parse('version: 3\nplugins: {}\n')).toThrow(/version must be 2/)
+  })
+
+  it('refuses a manifest that will not say where its plugins are installed', () => {
+    // The version bump exists for this. A v1 parser refuses `application` as an
+    // unknown top-level key, so a file carrying one was never readable as v1 -
+    // and leaving the field optional would have kept the guess it replaces:
+    // that the manifest's own directory is the host, which is right until
+    // somebody puts the manifest where its readers can find it.
+    expect(parse('version: 2\nplugins: {}\n')).toThrow(/application.workspace is required/)
+    expect(parse('version: 2\napplication: {}\nplugins: {}\n')).toThrow(
+      /application.workspace is required/,
+    )
+    expect(parse('version: 2\napplication:\n  workspace: /srv\nplugins: {}\n')).toThrow(
+      /must be relative/,
+    )
+  })
+
+  it('reads the host it names', () => {
+    const manifest = parseManifest(v2('plugins: {}\n'), 'qualy.yml')
+    expect(manifest.version).toBe(2)
+    expect(manifest.workspace).toBe('.')
   })
 
   it('reads a plugin with nothing after the colon as selected', () => {
-    const manifest = parseManifest("version: 1\nplugins:\n  '@a':\n  '@b': {}\n", 'qualy.yml')
+    const manifest = parseManifest(v2("plugins:\n  '@a':\n  '@b': {}\n"), 'qualy.yml')
     expect([...manifest.plugins.keys()]).toEqual(['@a', '@b'])
     expect(manifest.plugins.get('@a')!.enabled).toBe(true)
+  })
+
+  it('hashes the host it names, and spells it one way', () => {
+    // Pointing the workspace at another package selects different installed
+    // versions of the same plugin ids, so a hash that ignored it would call
+    // that the same assembly and a frozen start would accept it. Equivalent
+    // spellings must NOT drift, or a whitespace-level edit reads as a change.
+    const hashOf = (workspace: string) =>
+      manifestHash(parseManifest(`version: 2\napplication:\n  workspace: ${workspace}\nplugins: {}\n`, 'qualy.yml'))
+    expect(hashOf('./apps/server')).toBe(hashOf('apps/server'))
+    expect(hashOf('./apps/server')).toBe(hashOf('./apps/./server'))
+    expect(hashOf('./apps/server')).toBe(hashOf('apps/server/'))
+    expect(hashOf('./apps/server')).not.toBe(hashOf('./apps/web'))
+    expect(hashOf('.')).toBe(hashOf('./'))
+  })
+
+  it('survives a round trip through the renderer', () => {
+    // renderManifest is what rewrites a manifest; dropping the application
+    // block would silently turn a hosted assembly into a standalone one
+    const original = parseManifest(
+      v2("plugins:\n  '@a': {}\n  '@b':\n    enabled: false\n"),
+      'qualy.yml',
+    )
+    const again = parseManifest(renderManifest(original), 'qualy.yml')
+    expect(again.workspace).toBe(original.workspace)
+    expect(again.version).toBe(2)
+    expect(manifestHash(again)).toBe(manifestHash(original))
   })
 
   it('is rendered the way the testkit renders manifests', () => {
@@ -99,7 +155,7 @@ describe('resolution', () => {
       expect(lock.capabilities.database!.provider).toBe('@qualy/plugin-database')
       // the plugin's own declaration travels with the plugin, not the capability
       expect(lock.plugins['@qualy/plugin-auth']!.contributions).toHaveProperty('database')
-      expect(lock.plugins['@qualy/plugin-server']!.contributions).toBeUndefined()
+      expect(lock.plugins['@qualy/plugin-ui-registry']!.contributions).toBeUndefined()
     } finally {
       workspace.dispose()
     }
@@ -108,7 +164,7 @@ describe('resolution', () => {
   it('refuses a contribution no capability in the assembly can accept', async () => {
     // a plugin that owns tables in an assembly with no database plugin would
     // otherwise sit there never activating, since cordis gates it on inject
-    const workspace = createWorkspace(['@qualy/plugin-server', '@qualy/plugin-org'])
+    const workspace = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-org'])
     try {
       await expect(resolve(workspace.manifestPath)).rejects.toThrow(
         /@qualy\/plugin-org contributes to capability database, which no plugin in this assembly provides/,
@@ -121,7 +177,7 @@ describe('resolution', () => {
   it('resolves an assembly that needs no capability at all', async () => {
     // this is what "the database plugin is optional" means: a selection whose
     // plugins own nothing never loads a provider and never mentions one
-    const workspace = createWorkspace(['@qualy/plugin-server', '@qualy/plugin-ui-registry'])
+    const workspace = createWorkspace(['@qualy/plugin-web', '@qualy/plugin-layout-default'])
     try {
       const lock = lockFromResolution(await commit(workspace.manifestPath))
       expect(lock.capabilities).toEqual({})
@@ -209,12 +265,12 @@ describe('removal', () => {
   it('lets a removed plugin nothing is holding go', async () => {
     // keeping one that left nothing would park a dead entry in the lock with no
     // way to ever take it out
-    const workspace = createWorkspace([...INFRA, '@qualy/plugin-api-reference'])
+    const workspace = createWorkspace([...INFRA, '@qualy/plugin-layout-default'])
     try {
       await commit(workspace.manifestPath)
       workspace.writeManifest(INFRA)
       const after = await commit(workspace.manifestPath)
-      expect(after.plugins.has('@qualy/plugin-api-reference')).toBe(false)
+      expect(after.plugins.has('@qualy/plugin-layout-default')).toBe(false)
     } finally {
       workspace.dispose()
     }
@@ -226,7 +282,7 @@ describe('removal', () => {
     const workspace = createWorkspace(WITH_TABLES)
     try {
       await commit(workspace.manifestPath)
-      workspace.writeManifest(['@qualy/plugin-server', '@qualy/plugin-ui-registry'])
+      workspace.writeManifest(['@qualy/plugin-ui-registry', '@qualy/plugin-web'])
       fs.rmSync(path.join(workspace.dir, 'node_modules/@qualy/plugin-database'), {
         recursive: true,
       })
@@ -326,7 +382,7 @@ describe('frozen lockfile', () => {
     const workspace = createWorkspace(WITH_TABLES)
     try {
       await commit(workspace.manifestPath)
-      workspace.writeManifest(['@qualy/plugin-server', '@qualy/plugin-ui-registry'])
+      workspace.writeManifest(['@qualy/plugin-ui-registry', '@qualy/plugin-web'])
       const first = await commit(workspace.manifestPath)
       expect(first.plugins.get('@qualy/plugin-database')!.state).toBe('detached')
       expect(first.plugins.get('@qualy/plugin-database')!.retainedBy).toEqual(['database'])
@@ -386,35 +442,36 @@ describe('frozen lockfile', () => {
   })
 })
 
-describe('runtime plan', () => {
-  it('gives every entry an id derived from its name', async () => {
-    // the loader invents random ids for entries that lack them and writes them
-    // back into the file it read; a derived id leaves nothing to write
+describe('runtime module', () => {
+  it('imports a layer for every plugin that ships one', async () => {
+    // the module is what the host composes, so a plugin missing from it is a
+    // plugin the manifest selected and the process never runs
     const workspace = createWorkspace(INFRA)
     try {
-      const plan = renderRuntimePlan(await resolve(workspace.manifestPath))
-      expect(plan).toBe(renderRuntimePlan(await resolve(workspace.manifestPath)))
-      expect(plan.match(/^- id: /gm)).toHaveLength(INFRA.length)
-    } finally {
-      workspace.dispose()
-    }
-  })
-
-  it('carries plugin config through unchanged', async () => {
-    const workspace = createWorkspace(INFRA, {
-      configs: { '@qualy/plugin-server': { port: 4000 } },
-    })
-    try {
-      expect(renderRuntimePlan(await resolve(workspace.manifestPath))).toContain('port: 4000')
+      const resolution = await resolve(workspace.manifestPath)
+      const module = renderRuntimeModule(resolution)
+      expect(module).toBe(renderRuntimeModule(await resolve(workspace.manifestPath)))
+      // asked of the plugin rather than spelled here: which subpath carries a
+      // layer is the plugin's declaration, and writing it into the assertion
+      // turned renaming that subpath into a failure of the generator
+      const specifiers = runtimeLayers(resolution).map((layer) => layer.specifier)
+      expect(specifiers.length).toBe(INFRA.length)
+      for (const specifier of specifiers) expect(module).toContain(`from '${specifier}'`)
     } finally {
       workspace.dispose()
     }
   })
 
   it('leaves out what is not running', async () => {
-    const workspace = createWorkspace(WITH_TABLES, { disabled: ['@qualy/plugin-auth'] })
+    // switched off with nothing depending on it: the module is the running
+    // assembly, and a disabled plugin's layer would still be composed
+    const workspace = createWorkspace([...INFRA, '@qualy/plugin-ping'], {
+      disabled: ['@qualy/plugin-ping'],
+    })
     try {
-      expect(renderRuntimePlan(await resolve(workspace.manifestPath))).not.toContain('plugin-auth')
+      expect(renderRuntimeModule(await resolve(workspace.manifestPath))).not.toContain(
+        'plugin-ping',
+      )
     } finally {
       workspace.dispose()
     }
@@ -425,7 +482,7 @@ describe('the manifest this repository ships', () => {
   it('has a lock that matches it', async () => {
     // the committed lock is what a deployment runs with; a stale one turns
     // every frozen start into a puzzle
-    const file = path.resolve('packages/app/qualy.yml')
+    const file = path.resolve('qualy.yml')
     expect(lockDrift(readLock(lockPathFor(file)), await resolve(file))).toEqual([])
   })
 })

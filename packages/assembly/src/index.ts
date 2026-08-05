@@ -1,3 +1,5 @@
+export { topoSort, CycleError, type TopoResult } from './graph.ts'
+export { runtimeLevels, type RuntimeLayer } from './runtime-plan.ts'
 export { canonicalHash, shortId } from './hash.ts'
 export {
   MANIFEST_VERSION,
@@ -7,7 +9,6 @@ export {
   parseManifest,
   readManifest,
   renderManifest,
-  runtimePlanPathFor,
   type AssemblyManifest,
   type ManifestEntry,
 } from './manifest.ts'
@@ -38,9 +39,8 @@ export {
   type LockedPlugin,
 } from './lock.ts'
 export {
-  renderRuntimePlan,
-  runtimeEntries,
-  writeRuntimePlan,
-  type RuntimeEntry,
+  renderRuntimeModule,
+  runtimeLayers,
+  writeRuntimeModule,
 } from './runtime-plan.ts'
 export { capabilityContext, capabilityWork, type CapabilityWork } from './work.ts'

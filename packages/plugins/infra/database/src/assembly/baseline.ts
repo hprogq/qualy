@@ -106,18 +106,22 @@ export function compiledBaseline(migrationsDir: string): Map<string, string> {
 export function pendingBaseline(
   fragments: readonly BaselineFragment[],
   compiled: ReadonlyMap<string, string>,
+  carried: Iterable<string>,
 ): BaselineFragment[] {
-  const declared = new Set(fragments.map((fragment) => `${fragment.plugin} ${fragment.file}`))
+  // Whether the plugin is still part of this assembly, which is what the
+  // retained order answers. Asking instead whether the plugin still has SOME
+  // fragment on disk let a plugin delete its LAST one unnoticed: org owns
+  // exactly one, the extension its own column type needs, and removing it
+  // generated a lineage that failed on any empty database with
+  // `type "ltree" does not exist` - the very failure baselines exist to stop.
+  const stillHere = new Set(carried)
   const drifted: string[] = []
   const vanished: string[] = []
   for (const [key, sha] of compiled) {
     const fragment = fragments.find((item) => `${item.plugin} ${item.file}` === key)
     if (!fragment) {
-      // a plugin the assembly no longer carries at all keeps its history;
-      // only a still-declared plugin losing a compiled file is a fault
-      if (declared.size > 0 && [...declared].some((id) => id.startsWith(`${key.split(' ')[0]} `))) {
-        vanished.push(key)
-      }
+      // a plugin the assembly no longer carries at all keeps its history
+      if (stillHere.has(key.split(' ')[0]!)) vanished.push(key)
       continue
     }
     if (fragment.sha !== sha) drifted.push(key)

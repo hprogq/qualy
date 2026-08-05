@@ -6,15 +6,14 @@ import {
   lockFromResolution,
   lockPathFor,
   readLock,
-  renderRuntimePlan,
+  renderRuntimeModule,
   resolveAssembly,
-  runtimePlanPathFor,
   writeLock,
-  writeRuntimePlan,
   type AssemblyLock,
   type Resolution,
 } from '@qualy/assembly'
 import { DEFAULT_MANIFEST } from './lib/read-entries.ts'
+import { RUNTIME_MODULE, generatedPath } from './lib/paths.ts'
 
 // deploy and the capability commands reach real systems, and the connection
 // details for them live in .env exactly as they do for `pnpm dev`
@@ -49,7 +48,6 @@ const option = (name: string) => {
 
 const manifestPath = path.resolve(option('yml') ?? DEFAULT_MANIFEST)
 const lockPath = lockPathFor(manifestPath)
-const planPath = runtimePlanPathFor(manifestPath)
 
 const die = (message: string): never => {
   console.error(message)
@@ -69,9 +67,10 @@ const resolve = async (): Promise<{
 /** every reason this tree is not the one the lock describes */
 const drift = (previous: AssemblyLock | undefined, resolution: Resolution): string[] => {
   const reasons = lockDrift(previous, resolution)
-  if (!fs.existsSync(planPath)) reasons.push(`${relative(planPath)} is missing`)
-  else if (fs.readFileSync(planPath, 'utf8') !== renderRuntimePlan(resolution)) {
-    reasons.push(`${relative(planPath)} is not what this manifest generates`)
+  const modulePath = generatedPath(RUNTIME_MODULE)
+  if (!fs.existsSync(modulePath)) reasons.push(`${relative(modulePath)} is missing`)
+  else if (fs.readFileSync(modulePath, 'utf8') !== renderRuntimeModule(resolution)) {
+    reasons.push(`${relative(modulePath)} is not what this manifest generates`)
   }
   return reasons
 }
@@ -104,11 +103,6 @@ async function main(): Promise<void> {
         writeLock(lockPath, lockFromResolution(resolution))
           ? `${relative(lockPath)} written`
           : `${relative(lockPath)} unchanged`,
-      )
-      console.log(
-        writeRuntimePlan(planPath, resolution)
-          ? `${relative(planPath)} written`
-          : `${relative(planPath)} unchanged`,
       )
     }
     for (const plugin of resolution.plugins.values()) {

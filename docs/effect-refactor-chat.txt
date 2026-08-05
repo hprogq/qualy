@@ -1,0 +1,2043 @@
+Effect可以做Cordis的事？你检查下
+
+
+
+
+
+
+
+能，但不是开箱即用地替代。
+更准确地说：
+Effect 提供了足够的底层原语，可以实现一个 Cordis 式插件运行时；但 Effect 本身不是 Cordis 这种“动态插件容器”。
+用 Effect 替换 Cordis，意味着你要决定是接受一个更静态的装配模型，还是自行重写 Cordis 已经提供的动态运行时能力。
+
+我重新检查 Cordis 源码后，上一轮“Effect 与 Cordis 有能力重叠”的说法没错，但把重叠程度说得过于简单了。
+1. Effect 确实可以覆盖的部分
+类型化依赖注入
+Cordis 通过 Context、动态 service property、inject 和 provide 管理服务。 
+Effect 对应的是：
+Context.Service / Context.Tag
+Layer
+Effect<A, E, R>
+其中 R 会把缺少的服务直接反映在函数类型中；Layer 则描述服务的构造和依赖。
+在纯类型层面，Effect 的依赖表达能力反而更强：
+Effect<User, UserNotFound, Database | Authorization>
+它同时表示：
+成功值；
+预期错误；
+所需服务。
+Cordis 的 inject 主要是运行时声明，TypeScript 不会把一个方法依赖哪些 Cordis 服务完整编码到返回类型中。
+资源生命周期
+Cordis 的 ctx.effect() 收集 disposer，并在插件 unload 时逆序清理。插件 Fiber 还维护 PENDING / LOADING / ACTIVE / FAILED / UNLOADING / DISPOSED 等状态。
+Effect 对应的是：
+Scope
+Effect.acquireRelease
+Layer.scoped
+Effect.addFinalizer
+forkScoped
+Scope 关闭时，无论成功、失败或中断，都会运行 finalizer；Layer 也可以持有受 Scope 管理的服务。
+单纯从资源安全角度看，Effect 比 Cordis 的 disposer 模型更系统，还原生考虑 interruption 和结构化并发。
+服务重建
+Effect 有 Reloadable，可以重新构造一个已知 Tag 对应的服务，并安全替换当前实例。
+Effect 还有 LayerMap，可以按 key 动态构建、缓存、失效和释放一组 Layer/Runtime。
+所以这些能力都可以实现：
+启动插件
+关闭插件 Scope
+重新构建插件
+按插件 ID 管理资源
+替换服务实现
+主程序运行和优雅关闭
+Effect 的 runMain 能响应 SIGINT/SIGTERM、中断根程序、执行 finalizer 并控制退出码。
+因此 HTTP server、数据库池、定时任务、后台 fiber 等，都可以完全由 Effect 管理。
+2. Effect 没有直接提供的 Cordis 能力
+真正的差异不在 DI 或资源释放，而在动态插件语义。
+依赖服务出现或消失时，自动激活和停用插件
+Cordis 的关键机制是：
+插件声明 inject
+→ 所需 service 全部存在
+→ Fiber 自动 reload 并进入 ACTIVE
+
+某个 service 被 dispose
+→ ReflectService 通知所有依赖 Fiber
+→ 相关插件自动 unload
+→ service 恢复后再自动 reload
+这不是普通 DI。
+ReflectService.provide() 在服务注册和注销时会查找所有依赖该 service 的 Fiber，调用 _checkImpl() 和 _refresh()，并等待相关 Fiber 稳定。
+Fiber 又根据依赖 service 所属实例形成 epoch；epoch 变化时会自动 unload/reload。
+Effect 的普通 Layer 是：
+构建完整依赖图
+→ 运行程序
+→ 程序结束或 Scope 关闭时释放
+如果某个提供服务的 Layer 在运行时消失，依赖它的其他 Effect 不会自动被发现、停用并在恢复后重启。Reloadable 只针对一个预先知道的 service；LayerMap 也只负责 keyed resource 的构建和失效，并不会自动计算 Cordis 那种动态反向依赖关系。
+要做到 Cordis 的行为，你需要自己实现：
+PluginManager
+ServiceRegistry
+dependency reverse index
+plugin state machine
+scope ownership
+dependency-change reconciliation
+restart scheduling
+failure recovery
+这基本就是在 Effect 上重新实现 Cordis Fiber + ReflectService。
+动态异构 service 注册
+Cordis 可以在运行时：
+ctx.provide('server', server)
+ctx.provide('database', database)
+ctx.provide('rbac', rbac)
+然后通过代理 Context 访问；isolate() 还能让不同子上下文看到同名 service 的不同实例，intercept() 可以为特定上下文叠加服务配置。
+Effect 的 Context 也可以组合和覆盖 Tag，但最自然的使用方式是在程序运行前构造类型已知的 Context。
+对于运行时加载的第三方插件，其提供的 service 类型在宿主编译时可能并不知道。最终通常只能引入：
+ServiceRegistry.get<unknown>(key)
+或者把全部插件变成对共享 registry 的贡献者。
+这样当然可以工作，但 Effect 的 R 类型参数就无法替你静态检查这些动态服务，核心优势会被部分擦除。
+插件 module loader 和 HMR
+Cordis HMR 不只是“重建一个 service”。
+它会：
+监听源文件；
+分析 ESM 模块依赖；
+区分 framework external 和可局部重载模块；
+清理 ESM/CJS module cache；
+重新 import 插件；
+dispose 旧 plugin runtime；
+按旧配置重新创建所有 Fiber；
+重载失败时恢复 module cache 和旧插件。
+Effect 没有模块发现、Node module cache 操作、配置树、插件 entry、HMR rollback 这一整套东西。
+这些仍然要自建，或者接受“插件变化后重启整个进程”。
+插件级上下文追踪和访问纪律
+Cordis 的 Context 是 Proxy。插件未声明 inject 却读取一个 service 时，会直接报错；它还会追踪 service 的提供者 Fiber、调用者上下文和隔离标签。
+Effect 的服务要求在类型上更严格，但只对保持具体 R 类型的程序成立。一旦动态插件装配处使用 any、Runtime<any> 或通用 registry，编译期纪律会下降；Effect 本身不会替你实现 Cordis 的插件归属追踪。
+3. 用 Effect 实现一个静态插件系统是可行的
+假设 Qualy 规定：
+插件只在进程启动前由 qualy.lock.json 确定；
+增删插件后必须重启进程；
+不支持生产运行时热安装；
+不要求 service 消失后自动停用依赖插件；
+开发期可以接受全进程重启；
+每个插件导出一个 Layer 或 scoped Effect。
+那么 Effect 完全可以承担 Cordis 的大部分工作。
+插件可以定义成：
+export interface QualyPlugin<R, E = never> {
+  readonly id: string
+  readonly layer: Layer.Layer<R, E>
+}
+或者：
+export interface QualyPlugin<R, E = never> {
+  readonly id: string
+  readonly run: Effect.Effect<void, E, R | Scope.Scope>
+}
+Assembly 根据 lock 动态 import 插件，然后：
+读取 lock
+→ 校验依赖
+→ import plugin modules
+→ 组合 Layer
+→ 构建根 Scope
+→ 启动 server
+→ 关闭时释放全部资源
+多插件贡献也可以通过 registry service 处理：
+class RouteRegistry extends Context.Service<...>() {}
+
+const authPlugin = Effect.acquireRelease(
+  routeRegistry.register(authRoutes),
+  dispose => Effect.sync(dispose),
+)
+这实际上是一个很干净的模型。
+但它是：
+静态装配、进程级生命周期的 Effect 应用。
+
+它不是 Cordis 当前提供的动态 service-reactive 插件运行时。
+4. 完整替代 Cordis需要做哪些东西
+若要求保持当前 Cordis 语义，至少需要自己实现：
+PluginDescriptor
+PluginLoader
+PluginInstance
+PluginScope
+PluginState
+ServiceRegistry
+ServiceOwnership
+dependency index
+activation reconciler
+configuration update
+plugin restart
+isolation/overrides
+contribution registries
+status inspection
+HMR or process restart policy
+其中核心循环大致是：
+while (assembly changes) {
+  const desired = resolvePlugins()
+
+  for (const plugin of desired) {
+    if (allDependenciesAvailable(plugin)) {
+      startPluginInFreshScope(plugin)
+    } else {
+      closePluginScope(plugin)
+    }
+  }
+
+  repeatUntilStable()
+}
+每个插件 Scope 可以由 Effect 管理，所以资源安全会很好；但插件状态机和依赖重协调仍然是你自己的代码。
+Effect 给你更好的砖，但不会直接给你 Cordis 这栋房子。
+5. 对 Qualy 的具体判断
+Qualy 当前有两个方向。
+方向 A：保持 Cordis，Effect 只进入领域和数据库层
+结构：
+Cordis
+  插件发现
+  service 注入
+  插件生命周期
+  contribution 注册和撤销
+  loader / HMR
+  readiness
+
+Effect
+  Service/use-case 计算
+  typed errors
+  Drizzle Effect transaction
+  retry / timeout / concurrency
+这是当前风险最低的方案。
+需要严格限制 Effect 使用范围：
+不使用 Effect Layer 重新装配所有业务插件
+不使用 Effect Context 替代 Cordis Context
+不让每个插件创建独立 ManagedRuntime
+
+Database 插件拥有一个运行环境
+Router 或统一边界执行 Effect
+业务 Service 返回 Effect<A, E, never>
+例如构造 Service 时捕获数据库能力：
+class IamService {
+  constructor(
+    private readonly db: EffectPgDatabase,
+    private readonly rbac: RbacService,
+  ) {}
+
+  updateUser(...): Effect.Effect<void, UpdateUserFailure> {
+    // dependencies have already been injected by Cordis
+  }
+}
+这样 Effect 的 R 可以保持为 never，它只负责错误、事务和异步控制，不形成第二套 DI 图。
+这不算“两套插件框架”。
+方向 B：用 Effect 替换 Cordis，但采用静态装配
+这个方向也合理，前提是你主动简化产品语义：
+qualy.lock 决定启动插件集合
+插件变更需要重启
+不做运行时 service 出现/消失自动重协调
+开发期全进程 reload
+所有贡献进入显式 registry
+你已经在做 assembly manifest、lock、dependency validation 和确定性生成。事实上，这套 Assembly Core 已经承担了一部分 Cordis loader 上层职责。
+如果最终产品确定不需要在线热安装，那么可以认真评估是否还需要 Cordis 的动态 Fiber/reload 模型。
+但这不是为了错误处理顺手替换。它是一次独立的运行时架构决策。
+方向 C：在 Effect 上重建完整动态 Cordis
+不推荐。
+最终很可能变成：
+Qualy 自研插件管理器
++ Effect Scope
++ Effect Context
++ 自研 loader
++ 自研动态依赖协调
++ 自研 HMR
+这会把毕业设计的主要风险从业务平台转移到框架开发。
+6. Cordis 和 Effect 的能力对应表
+能力	Effect	能否直接替代
+类型化服务依赖	Context/Layer/R	是，且更强
+资源申请释放	Scope/Layer.scoped	是
+后台任务生命周期	Fiber/forkScoped	是
+类型化错误	Effect<A,E,R>	是，明显更强
+事务失败自动回滚	Effect-native DB	是
+已知 service 重载	Reloadable	基本可以
+按 key 动态资源	LayerMap	基本可以
+动态插件发现	无通用实现	否
+插件配置树	无	否
+service 消失后自动停用依赖插件	无直接实现	否
+service 恢复后自动重启依赖插件	无直接实现	否
+插件 active/loading/failed 状态机	需自建	否
+service ownership/访问追踪	需自建	否
+Context isolate/intercept 语义	可组合实现，但非现成	否
+Node 模块 HMR 与回滚	无	否
+多插件 contribution 注册	需要 registry service	可实现
+进程级静态插件装配	Layer 组合	是
+
+
+结论
+Effect 能做 Cordis 的底层工作，也能很好地实现一个静态插件应用；但它不能直接替代 Cordis 当前的动态插件运行时。
+对 Qualy，当前更合理的决定是：
+暂时保留 Cordis 负责插件装配和生命周期；将 Effect 限定为 Service/Repo 的类型化计算与事务模型。
+
+与此同时，可以把“是否最终由 Effect 静态装配替代 Cordis”列为单独 ADR，判断标准不是错误处理，而是：
+生产环境是否需要运行时动态增删插件？
+是否需要 service 变化时自动重协调？
+是否需要插件级 HMR？
+是否接受插件变更后进程重启？
+Cordis 的动态能力是否真的被产品使用？
+若答案最终是“所有插件都由 lock 在启动前确定，任何变化都重启”，那么 Effect 替代 Cordis是可行且可能更简洁的；若要保留当前动态注入、自动激活/卸载和 HMR 语义，继续用 Cordis更合理。
+
+
+
+
+
+
+
+
+
+
+你觉得本项目是不是不需要在线热安装，因为本质上是一个企业级项目，企业级项目没法接受组件的自重启吧，你考虑下如果去除动态Cordis模型可否替换为Effect，是否值得？
+
+
+
+
+我的判断是：
+Qualy 不需要生产环境在线热安装，也不应把“插件在进程内自动卸载、重启、重新激活”作为产品能力。
+在明确这一点后，Cordis 的动态运行时价值会大幅下降；用 Effect 替换 Cordis 是可行的，而且从长期架构一致性看有价值。
+
+但需要纠正一句：
+企业级系统不是不能接受重启，而是不能接受不可控、不可观测、局部状态不一致的进程内组件自重启。
+
+企业系统普遍可以接受：
+生成新装配
+→ 执行迁移
+→ 启动新实例
+→ readiness 通过
+→ 流量切换
+→ 关闭旧实例
+也就是滚动发布、蓝绿发布或维护窗口内重启。相较之下，单个进程中的插件自行卸载和重载，反而更难保证一致性。
+一、Qualy 的插件不适合在线安装
+Qualy 插件不是单纯的“运行时代码模块”。一个业务插件通常同时携带：
+PostgreSQL schema；
+baseline SQL、函数和触发器；
+数据迁移；
+provision；
+后端 service；
+oRPC contract 和 router；
+RBAC permission catalog；
+Web 页面和前端组件；
+菜单、布局等 UI contribution。
+例如 Org 插件在一次初始化中同时注册权限、创建领域服务、贡献 router 和 UI 页面。
+因此所谓“在线安装 Org 插件”实际意味着同时完成：
+修改数据库结构
+加载后端代码
+更新权限目录
+重建 API router
+部署前端资产
+更新所有副本
+初始化租户数据
+开放流量
+这不是可靠的单进程热插拔问题，而是完整的软件发布问题。
+尤其在多副本环境中，不可能让：
+实例 A：已安装插件 X
+实例 B：尚未安装插件 X
+数据库：已经执行 X 的迁移
+前端 CDN：仍然是旧版本
+长期共存。数据库、API contract、前端 bundle 和权限目录必须按照一个 assembly artifact 协同发布。
+你现在引入的：
+qualy.yml
+qualy.lock.json
+独立 migration lineage
+frozen lock
+artifact hash
+deploy / start 分离
+本身就在把 Qualy 推向“不可变装配制品”的方向。此时继续保留动态运行时，反而产生两套互相冲突的语义：
+Assembly Core：
+  装配在部署前确定，精确锁定
+
+Cordis Runtime：
+  服务可以在进程内出现、消失并触发插件重启
+前一套语义更适合 Qualy。
+二、Qualy 实际使用的 Cordis 动态能力并不多
+当前宿主的运行方式是：
+创建一个 Context
+加载 Loader
+加载一次清单
+等待装配结束
+运行到进程退出
+根 Fiber 统一释放
+并没有实现运行中的在线插件商店或控制面安装。
+Database 使用 Cordis 的主要原因是：
+Service.init 申请数据库池；
+初始化完成后再暴露服务；
+注册 readiness；
+关闭时释放连接池。
+Server 使用 ctx.effect()，主要是让 route、probe、enricher、fallback 等 contribution 随注册者 Fiber 自动撤销。
+RBAC 也主要借助 Cordis 完成：
+可选 Server/UI 注入；
+权限贡献随插件 Fiber 注销；
+插件缺少可选服务时保持 pending。
+这些都是合理实现，但在静态运行时中可以大幅简化：
+Server 是否存在，在 assembly resolve 时已经知道；
+UI 是否存在，在 assembly resolve 时已经知道；
+插件依赖不满足应当启动失败，而不是无限 pending；
+权限、route 和页面在启动后不再变化；
+所有资源在整个进程关闭时统一释放。
+换言之，当前 Cordis 的动态能力主要被用于实现一种静态装配的便捷写法，而不是产品真正需要动态性。
+三、建议正式定义生产运行时语义
+建议写进 ADR：
+1. 插件拓扑对单个进程不可变
+一个 Qualy 进程启动后：
+active plugin set 不再变化
+service graph 不再变化
+route graph 不再变化
+permission catalog 不再变化
+UI contribution set 不再变化
+2. 插件变更属于部署操作
+以下操作都产生新 assembly artifact，并要求滚动重启：
+add
+enable
+disable
+remove
+purge
+upgrade
+修改需要重新初始化资源的插件配置
+3. 启动必须全有或全无
+不再采用：
+插件 A 缺少服务
+→ 保持 pending
+→ 等待服务未来出现
+而采用：
+resolve 阶段发现依赖缺失
+→ 拒绝生成 lock
+
+启动阶段发现 capability 构建失败
+→ 整个实例不 ready
+→ 进程启动失败
+这比部分插件 active、部分 pending 更符合企业系统的可诊断性。
+4. 运行时开关与插件安装分离
+需要在线调整的业务能力应使用：
+feature flag
+tenant setting
+policy
+workflow status
+provider enablement
+而不是动态卸载代码模块。
+例如某个租户禁用本地登录，应当修改认证策略，而不是卸载 Auth Local 插件。
+5. 开发期 HMR 改成进程重启
+开发环境可以使用：
+tsx watch
+node --watch
+Vite HMR
+容器自动重启
+后端进程重启通常比尝试保持旧 service、旧闭包、旧数据库池和新模块代码混合存在更可靠。
+Cordis HMR 会分析模块依赖、清除 ESM/CJS cache、卸载旧 Fiber、加载新插件，并在失败时尝试恢复旧模块。这个实现很完整，但也证明插件级 HMR 本身是一个复杂子系统。 Qualy 没有明显必要承担这部分运行时复杂度。
+四、去掉动态模型后，Effect 能不能替代 Cordis
+可以，而且这时替代会自然很多。
+Effect 可以直接承担 Qualy 真正需要的运行时能力：
+类型化依赖
+类型化业务错误
+资源生命周期
+数据库事务
+结构化并发
+后台任务
+超时与重试
+日志与追踪
+优雅关闭
+启动失败传播
+Drizzle 的 Effect PostgreSQL 驱动已经让查询和事务返回原生 Effect。事务回调的 error channel 会直接触发 rollback，而不是像普通 Result 那样被当作正常返回值提交。 
+Effect SQL 的事务实现也明确根据 Exit：
+成功时 commit；
+failure 或 interruption 时 rollback；
+嵌套事务使用 savepoint。
+所以替换后可以统一为：
+Effect Context / Layer
+  服务依赖
+
+Effect Scope
+  数据库池、HTTP server、后台任务的生命周期
+
+Effect<A, E, R>
+  成功值、业务失败、服务依赖
+
+Drizzle effect-postgres
+  查询和事务
+
+oRPC router
+  transport boundary
+这比：
+Cordis DI/lifecycle
++ Promise
++ 自定义 DomainError
++ oRPC Error
++ Result adapter
++ transaction abort exception
+更统一。
+五、推荐的 Effect 运行时架构
+Assembly 层保持独立
+@qualy/assembly 继续保持纯装配能力：
+解析 qualy.yml
+解析插件 metadata
+验证依赖
+生成 lock
+生成 migration
+生成 runtime entry
+计算 artifact hash
+它不需要依赖 Effect。
+生成静态运行时入口
+目前生成的是：
+cordis.gen.yml
+替换后建议生成：
+runtime.gen.ts
+例如：
+import database from '@qualy/plugin-database/runtime'
+import server from '@qualy/plugin-server/runtime'
+import auth from '@qualy/plugin-auth/runtime'
+import rbac from '@qualy/plugin-rbac/runtime'
+import org from '@qualy/plugin-org/runtime'
+
+export const plugins = [
+  database,
+  server,
+  auth,
+  rbac,
+  org,
+] as const
+这样启动制品只包含精确 lock 中的 active 插件。
+也可以保留动态 import()，但静态生成入口更有利于：
+bundling；
+tree shaking；
+package 缺失时构建失败；
+类型检查；
+前后端插件资产一致；
+软件物料清单和供应链审计。
+插件不应全部简单导出 Layer
+建议区分两类内容。
+插件的声明式 contribution：
+interface PluginDescriptor {
+  id: string
+  permissions?: readonly PermissionDefinition[]
+  routes?: readonly RouteContribution[]
+  pages?: readonly PageContribution[]
+  authProviders?: readonly AuthProviderDefinition[]
+}
+插件的运行时服务：
+interface PluginRuntime<RIn, E, ROut> {
+  layer: Layer.Layer<ROut, E, RIn>
+}
+宿主启动过程：
+加载全部 descriptor
+→ 聚合并验证 permissions/routes/pages
+→ 构建基础设施 Layer
+→ 构建领域 Service Layer
+→ 构建 HTTP Server
+→ 完成 readiness
+这样 route、permission 和 page 不必再使用动态 Map 加 scoped disposer。它们是 assembly artifact 的不可变组成部分。
+单一根 Scope
+整个应用只创建一个 Effect runtime 和一个根 Scope：
+Database Pool
+HTTP Server
+Schedulers
+Background Consumers
+Caches
+全部挂在根 Scope 上。
+收到 SIGTERM：
+停止接收新请求
+等待在途请求
+关闭根 Scope
+释放所有 Layer
+退出
+不要让每个插件各自创建 ManagedRuntime，否则仍然会产生多个不协调的生命周期域。
+六、需要正视的替换成本
+这不是把几个 import 换掉。
+1. Service 依赖需要重新表达
+当前插件通过 Cordis Context 访问：
+ctx.db
+ctx.rbac
+ctx.auth
+ctx.server
+ctx.ui
+Org 明确要求 db/server/ui/rbac/auth。
+替换后需要变成：
+Effect service requirements
+或
+构造器注入后的 Effect<A, E, never>
+需要统一决定究竟采用哪一种，不能两种风格随意混用。
+2. 跨插件循环必须拆开
+Cordis 可以通过运行时 service availability 延迟激活插件，因此包依赖或服务依赖中的环有时不会立即暴露为启动图错误。
+静态 Layer 图要求依赖关系最终可构造。存在的 Org/RBAC 等跨域关系需要拆成：
+domain contract / port package
+application coordinator
+cross-domain invariant service
+而不是两个插件互相直接持有对方的完整 service。
+这会带来工作量，但通常也是更健康的架构结果。
+3. Server contribution 模型要改
+当前 Server 支持 contribution 动态注册和注销。
+静态模式应改成：
+先聚合所有 router
+→ 校验 error code 冲突
+→ 构建一次最终 handler
+→ 启动监听
+这会简化 Server，但需要重写其初始化顺序。
+4. 测试基础设施要调整
+当前很多测试可能通过创建 Cordis Context、加载插件、等待 Fiber 来验证生命周期。
+Effect 版本应使用：
+Test Layer
+Scope
+Effect.runPromiseExit
+测试数据库 Layer
+替代 service Layer
+这部分是机械迁移，但数量不会少。
+5. Effect 与 Drizzle 集成仍有版本风险
+Drizzle 官方的 Effect PostgreSQL 接入当前位于 RC 路径，并依赖 Effect SQL。
+你的项目本来就在使用 Drizzle v1 预发布版本，因此不是完全新增风险，但需要锁定版本并设置升级门禁。
+七、是否“值得”
+我会分两个时间尺度判断。
+只为解决 Service 错误：不值得替换 Cordis
+单纯为了：
+Service 不抛 ORPCError
+typed domain error
+事务自动 rollback
+就移除 Cordis，范围过大。
+作为最终运行时架构：值得认真替换
+在已经确定以下原则后：
+没有在线热安装
+没有生产插件 HMR
+插件拓扑在进程生命周期内不可变
+插件变化通过滚动发布
+Assembly lock 是运行时权威
+启动全有或全无
+继续保留 Cordis 会造成：
+Assembly Core 管静态插件拓扑；
+Cordis 再管理一遍动态插件拓扑；
+Cordis 管生命周期；
+Effect 再管业务执行和数据库事务；
+Cordis service graph 与 Effect requirement graph 并存。
+这时 Cordis 很可能成为额外的一层间接性。
+而 Qualy 目前规模仍然较小，迁移窗口还在。再增加更多：
+scheduler
+AI scoring
+object storage
+notification
+workflow engine
+plugin setup
+provision
+之后再替换，成本会迅速增长。
+因此我的最终倾向是：
+去掉生产动态 Cordis 模型，并把“是否用 Effect 作为唯一后端运行时”提升为当前阶段的架构决策。经过一个高难度垂直切片验证后，验证通过就值得现在替换。
+
+八、不要直接全仓迁移，先做一个判定性实验
+实验必须同时覆盖 Cordis 和 Effect 最关键的能力，而不是简单的 CRUD：
+Database
+Server
+RBAC
+Auth/IAM
+一个跨域事务
+一个 router
+readiness
+优雅关闭
+推荐选择“修改用户状态并保证租户至少保留一个管理员”：
+用 Effect Layer 构建数据库和业务 service；
+使用 Drizzle Effect transaction；
+LastAdministrator 是 typed failure；
+写入后失败必须回滚；
+Router 穷尽映射到 oRPC contract error；
+聚合 permission 和 router 后再启动 Server；
+缺少必要插件时启动失败；
+SIGTERM 关闭 HTTP server 和数据库池；
+不创建 Cordis Context；
+测试代码可读性可接受。
+然后用明确指标判断：
+类型错误是否比现在更早暴露
+事务代码是否更简单
+启动顺序是否更确定
+测试是否更容易构造
+插件声明是否更清晰
+Effect 样板代码是否可控
+最终裁决
+我认为 Qualy 的合理生产模型是：
+插件可组合
+≠ 插件可在线热插拔
+
+插件选装
+= 构建/部署时选择装配
+
+插件启停
+= 生成新 lock 并滚动发布
+
+业务功能开关
+= 运行时配置或 feature flag
+在这个模型下：
+Cordis 最独特的动态激活、卸载、服务恢复重启和 HMR 能力基本不再需要；
+Effect 可以覆盖剩余的 DI、资源、并发、错误和事务需求；
+使用 Effect 能减少后端同时存在的控制流和生命周期模型；
+最大迁移风险是跨插件依赖拆分与 contribution 聚合，而不是数据库池或 HTTP server 生命周期。
+所以我的建议是：
+产品上正式取消在线热安装和进程内插件自重启；技术上做一次 Effect 全链路垂直切片。切片通过后，现在就是移除 Cordis 的最佳窗口。
+
+
+
+
+
+
+
+
+
+
+
+使用Effect后还要用orpc吗？我记得Effect有一个类似的类型严格的API系统
+
+
+
+
+
+
+不一定继续用。Effect 里确实有两套可替代 oRPC 的 API 系统：
+Effect HttpApi：面向 HTTP/REST、OpenAPI 和浏览器客户端；
+Effect RPC：面向双方都受控的类型安全 RPC、流式调用和多种传输协议。
+对 Qualy 而言，真正对应当前 oRPC 的是 HttpApi，不是 RPC。
+我的结论是：
+仅在 Service/数据库层采用 Effect：继续保留 oRPC。
+后端运行时、Service、数据库全部迁移到 Effect：最终应考虑用 Effect HttpApi 替换 oRPC，避免长期维护两套错误、Schema 和执行模型。
+
+Effect HttpApi 能做什么
+Effect HttpApi 的 endpoint 原生包含：
+HTTP method 和 path；
+path、query、header、body Schema；
+成功响应 Schema 和状态码；
+多个错误响应 Schema 和状态码；
+middleware 和认证；
+handler；
+类型化客户端；
+OpenAPI 文档。
+HttpApiEndpoint.addError() 会把错误 Schema 加入 endpoint 的错误类型，handler 本身返回的是：
+Effect<Success, EndpointError | OtherError, Requirements>
+而不是 Promise<Success> 加一个无法声明的 throws。Effect TS
+多个插件 API 可以通过 HttpApi.add(group) 和 addHttpApi(api) 组合；全局 middleware 的错误也会自动进入 API 错误类型。Effect TS
+同一个 HttpApi 可以派生类型化客户端，客户端方法继续返回携带服务端业务错误类型的 Effect。Effect TS
+它还可以直接挂载 OpenAPI JSON endpoint，并提供 Swagger/Scalar 文档组件。Effect TS
+因此它基本覆盖 Qualy 当前使用 oRPC 的核心能力：
+contract
+input/output validation
+typed errors
+HTTP routing
+middleware/auth
+typed frontend client
+OpenAPI
+Effect RPC 是另一种东西
+Effect RPC 通过 Rpc 和 RpcGroup 声明 payload、success、error 和 middleware，然后从同一个 group 派生服务端 handler 与客户端方法。它还原生支持流式结果、序列化协议和多种 transport。Effect TS
+它更像：
+client.iam.updateUser({ ... })
+client.org.moveNode({ ... })
+而不是重点表达：
+PATCH /tenants/{tenantId}/users/{userId}
+401 / 403 / 404 / 409
+OpenAPI security scheme
+REST request body
+所以我的判断是：
+浏览器前后端都由 Qualy 控制、完全不考虑外部 API：可以用 Effect RPC；
+企业集成、第三方调用、OpenAPI、REST 语义有价值：应使用 Effect HttpApi；
+内部 worker、AI 执行器、后台任务节点之间的调用：Effect RPC 很合适。
+Qualy 的主业务 API 应优先考虑 HttpApi。
+它能直接解决最初的错误分层问题
+当前 Qualy 的错误路径是：
+Service DomainError
+→ apiErrorBoundary 捕获
+→ 查找 procedure 的 oRPC error factory
+→ 抛 ORPCError
+→ 序列化给客户端
+当前 Server 确实在做这层动态转换。
+使用 Effect HttpApi 后，可以变成：
+Domain Service
+  Effect<A, DomainFailure>
+
+HTTP handler
+  catchTags / mapError
+  DomainFailure → PublicApiError
+
+HttpApi endpoint
+  声明 PublicApiError Schema 和 status
+
+HttpApi runtime
+  直接编码错误响应
+例如业务内部仍可精确区分：
+type LoginFailure =
+  | UserNotFound
+  | IdentityNotFound
+  | PasswordMismatch
+  | UserDisabled
+HTTP handler 将它们收口：
+const handler = auth.login(input).pipe(
+  Effect.mapError(() => new InvalidCredentials())
+)
+Endpoint 只声明：
+InvalidCredentials → 401
+这里没有 try...catch，没有 ORPCError，也不需要一个不知道 service 会抛出什么异常的全局 boundary。业务错误与公开 API 错误仍然是两套类型，但映射过程本身是类型化的。
+这比“让领域错误直接等同于 API 错误”更符合你一开始提出的需求。
+使用 Effect 后继续保留 oRPC 的问题
+继续使用也完全可行：
+Effect Service
+→ oRPC handler
+→ Effect.runPromise / runPromiseExit
+→ 映射为 oRPC errors
+但会保留一条适配边界：
+Effect Schema 或领域类型
+→ Zod / oRPC contract
+→ Effect failure
+→ ORPCError
+→ Promise client
+短期这是低风险方案；长期则会出现两套机制：
+事项	Effect	oRPC
+错误类型	Effect<A, E, R>	contract error map
+Schema	Effect Schema	当前主要是 Zod/Standard Schema
+middleware 错误	Effect error channel	oRPC middleware errors
+客户端	返回 Effect	返回 Promise
+HTTP server	Effect HttpApi 可提供	oRPC OpenAPIHandler
+OpenAPI	Effect HttpApi 可生成	oRPC 可生成
+
+
+当前 oRPC 支持 contract-first、Zod 等 Schema 和 OpenAPI 3.1.1，这些能力本身没有问题。oRPC
+问题只是：一旦整个应用都以 Effect 为主，oRPC 会从“核心 API 系统”变成“Effect 和 HTTP 之间额外的一层”。
+Effect HttpApi 的代价
+1. Contract Schema 要迁移
+Effect HttpApi 使用 Effect Schema。当前 Qualy 的 oRPC contract、配置和许多 DTO 使用 Zod，不能只更换 handler 而不处理 Schema 所有权。
+需要逐步把：
+z.object(...)
+迁到：
+Schema.Struct(...)
+这会影响：
+contract；
+DTO；
+前端共享类型；
+OpenAPI annotation；
+错误 Schema；
+cursor/date/UUID 等编码转换。
+迁移后的好处是领域、数据库边界、API 和客户端都能共享 Effect Schema；但这是实质工作量。
+2. 前端客户端返回 Effect
+HttpApiClient 生成的方法不是普通 Promise，而是 Effect。Effect TS
+TanStack Query 仍可使用：
+queryFn: () =>
+  Effect.runPromise(
+    client.iam.getUser({ path: { userId } })
+  )
+但需要统一封装，避免每个组件都直接调用 Effect.runPromise。建议提供：
+api runtime
+query adapter
+mutation adapter
+错误格式化
+取消信号桥接
+如果你不希望前端采用任何 Effect 概念，oRPC 的 Promise client 会更直接。
+3. 当前版本稳定性需要注意
+Effect v3 的官方 API 中已有 @effect/platform/HttpApi* 和 @effect/rpc。Effect TS
+但你前面考虑的 Drizzle Effect 原生路径更接近正在演进的 Effect v4；当前 v4 源码中的 HTTP API 和 RPC 位于 effect/unstable/httpapi 与 effect/unstable/rpc 路径。 
+因此若同时采用：
+Effect v4
+Drizzle effect-postgres
+Effect HttpApi
+Effect RPC
+必须锁定精确版本，并预期 minor 升级可能需要迁移。
+不过 Qualy 当前 oRPC 代码本身也明确围绕 beta API 编写，所以继续使用 oRPC也不等于完全避开预发布风险。
+对插件架构的适配
+去掉 Cordis 动态模型后，每个插件可以导出静态 API 描述和 handler Layer：
+// @qualy/plugin-org/api
+export const OrgApi = HttpApiGroup.make('org')
+  // .add(endpoint...)
+// @qualy/plugin-org/runtime
+export const OrgHandlers = HttpApiBuilder.group(
+  QualyApi,
+  'org',
+  handlers => handlers
+    // .handle(...)
+)
+Assembly 根据 qualy.lock.json 生成：
+export const QualyApi = HttpApi.make('qualy')
+  .add(AuthApi)
+  .add(IamApi)
+  .add(RbacApi)
+  .add(OrgApi)
+以及：
+export const ApiHandlers = Layer.mergeAll(
+  AuthHandlers,
+  IamHandlers,
+  RbacHandlers,
+  OrgHandlers,
+)
+最终从 QualyApi 同时产生：
+HTTP server
+OpenAPI
+类型化前端 client
+测试 client
+HttpApi 原生支持 group 和 API 组合，这与静态装配后的插件模型是匹配的。Effect TS
+推荐决策
+情况一：暂时只改业务错误和事务
+保留：
+oRPC
+Zod contracts
+现有前端 client
+引入：
+Effect Service
+Drizzle Effect transaction
+router boundary adapter
+这适合做第一轮验证，范围最小。
+情况二：决定 Effect 替换 Cordis，成为唯一后端运行时
+建议目标架构为：
+@qualy/assembly
+  静态装配和代码生成
+
+Effect Layer / Scope
+  后端服务和生命周期
+
+Drizzle effect-postgres
+  查询和事务
+
+Effect HttpApi
+  主 HTTP API、OpenAPI、认证和浏览器客户端
+
+Effect RPC
+  仅用于内部 worker、流式任务或进程间通信
+此时 oRPC 可以且应该移除。否则会保留两个功能高度重叠的 API contract 系统。
+最终判断
+你记得的没错，Effect 不只是错误处理库，它已经有完整的类型安全 API 栈。
+针对 Qualy：
+全面采用 Effect 后，不再有必须保留 oRPC 的技术理由。主 API 更适合替换为 Effect HttpApi，而不是 Effect RPC。
+
+但建议按两个判定性切片推进：
+先让一个 IAM 事务变成 Effect，暂时由现有 oRPC handler 暴露；
+再将同一功能迁到 Effect HttpApi，验证 OpenAPI、认证 cookie、错误响应、TanStack Query、文件上传和类型检查性能。
+若第二个切片通过，应在项目规模继续扩大前删除 oRPC；否则保留 oRPC作为 transport boundary，Effect只负责 Service 和数据库层。
+
+
+
+
+来源
+
+
+
+
+
+Effect HttpApi可以提供前端类型严格吗，可以接入Tanstack Router吗，可以接入Scalar/Swagger吗？
+
+
+
+
+
+可以，三项都能满足，但需要区分“原生支持”和“通过很薄的适配层接入”。
+1. 前端可以获得端到端类型严格
+HttpApi 的同一份定义可以用于：
+服务端 handler 类型检查；
+请求和响应的运行时 Schema 校验；
+生成 OpenAPI；
+派生前端 HttpApiClient。
+当前 Effect 文档明确说明：一份 API 定义可以同时启动服务端、生成 Scalar/Swagger 文档，并派生每个 endpoint 对应的类型化客户端。GitHub
+客户端会推导：
+路径参数 params
+查询参数 query
+请求头 headers
+请求体 payload
+成功响应 success
+公开业务错误 error
+middleware 错误
+而且不仅有编译期类型，还会按照同一份 Schema 编码请求、解码成功响应和错误响应。GitHub
+客户端方法返回的不是普通 Promise，而是：
+Effect.Effect<
+  Success,
+  DeclaredApiError
+    | MiddlewareError
+    | HttpClientError
+    | SchemaError,
+  Requirements
+>
+当前源码中，生成客户端的错误通道明确包含 endpoint 声明错误、middleware 错误、HTTP 客户端错误和 Schema 解码错误。GitHub
+例如：
+const effect = client.Iam.getUser({
+  params: {
+    userId: "019...",
+  },
+})
+其类型类似：
+Effect.Effect<
+  UserDto,
+  UserNotFound | Forbidden | HttpClientError | SchemaError
+>
+这比多数“只共享 TypeScript 类型”的 API client 更严格，因为服务端和客户端版本不一致时，响应解码也会失败，而不是把错误形状强行断言成预期类型。
+应共享什么
+前端只需要依赖纯 contract 包：
+@qualy/api
+  Effect Schema
+  HttpApiEndpoint
+  HttpApiGroup
+  顶层 HttpApi
+  公开错误 Schema
+不能让它依赖：
+数据库实现
+Service Layer
+Node HTTP server
+环境变量
+后端 handler
+推荐结构：
+packages/api
+  src/models/
+  src/errors/
+  src/groups/
+  src/api.ts
+
+apps/api
+  src/handlers/
+  src/main.ts
+
+apps/web
+  src/lib/api-client.ts
+2. 可以接入 TanStack Router
+可以，而且两者没有架构冲突：
+TanStack Router
+  管理前端 URL、页面、路由参数、loader、跳转
+
+Effect HttpApiClient
+  管理前后端 HTTP 调用及其类型
+
+TanStack Query
+  管理服务端状态缓存、失效、重试和请求去重
+TanStack Router 本身明确支持将外部数据获取方案放进 loader、beforeLoad 和 router context，也专门支持与 TanStack Query 配合。TanStack
+推荐不要让页面直接到处写：
+Effect.runPromise(...)
+而是建立一个统一适配层。
+HttpApiClient
+import { ManagedRuntime } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
+import { HttpApiClient } from "effect/unstable/httpapi"
+import { QualyApi } from "@qualy/api"
+
+export const apiRuntime = ManagedRuntime.make(
+  FetchHttpClient.layer,
+)
+
+const clientEffect = HttpApiClient.make(QualyApi, {
+  baseUrl: "/api",
+})
+
+export const apiClientPromise =
+  apiRuntime.runPromise(clientEffect)
+实际项目中还应在 transformClient 或 HTTP client layer 中统一处理：
+Cookie
+CSRF
+请求 ID
+trace headers
+401 行为
+base URL
+TanStack Query 适配
+关键问题是：Effect<A, E> 有错误类型，而 JavaScript 的 Promise<A> 没有 rejection 泛型。
+因此不要依赖 TanStack Query自动推断 TError，而应建立泛型 helper：
+import type { Effect } from "effect"
+import { queryOptions, type QueryKey } from "@tanstack/react-query"
+
+type EffectSuccess<T> =
+  T extends Effect.Effect<infer A, any, any> ? A : never
+
+type EffectError<T> =
+  T extends Effect.Effect<any, infer E, any> ? E : never
+
+export function effectQueryOptions<
+  const TKey extends QueryKey,
+  TEffect extends Effect.Effect<any, any, never>,
+>(
+  queryKey: TKey,
+  makeEffect: () => TEffect,
+) {
+  return queryOptions<
+    EffectSuccess<TEffect>,
+    EffectError<TEffect>,
+    EffectSuccess<TEffect>,
+    TKey
+  >({
+    queryKey,
+    queryFn: () => apiRuntime.runPromise(makeEffect()),
+  })
+}
+然后：
+export const userQuery = (userId: string) =>
+  effectQueryOptions(
+    ["iam", "user", userId] as const,
+    asyncEffectClient =>
+      asyncEffectClient.Iam.getUser({
+        params: { userId },
+      }),
+  )
+上面需要根据最终 client 初始化形式稍作调整，但目标签名应保持：
+UseQueryResult<
+  UserDto,
+  UserNotFound | Forbidden | HttpClientError | SchemaError
+>
+还应在该适配层把 TanStack Query 的 AbortSignal 桥接到 Effect interruption，确保页面跳转或 query 取消时，底层 HTTP 请求也被中断。
+TanStack Router loader
+export const Route = createFileRoute("/users/$userId")({
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(
+      userQuery(params.userId),
+    ),
+
+  component: UserPage,
+})
+TanStack Router 官方推荐的外部数据加载方式正是让 loader 调用 queryClient.ensureQueryData()，组件再通过 useSuspenseQuery() 读取同一缓存。TanStack
+function UserPage() {
+  const { userId } = Route.useParams()
+
+  const { data: user } = useSuspenseQuery(
+    userQuery(userId),
+  )
+
+  return <UserView user={user} />
+}
+类型安全的边界
+两边各自负责：
+TanStack Router：
+  /users/$userId 的 params.userId 类型
+
+HttpApiClient：
+  getUser.params.userId 的类型
+
+TypeScript：
+  检查你从前者传给后者是否合法
+但它们不会自动把一个前端页面路由绑定到一个后端 endpoint。也就是说，以下两个路径可以完全不同：
+前端：/admin/users/$userId
+后端：/api/iam/users/:userId
+这是正常且合理的分离。
+3. Scalar 和 Swagger 都是原生支持
+当前 Effect HttpApi 直接提供：
+HttpApiScalar.layer(Api)
+HttpApiSwagger.layer(Api)
+两者都从同一个 HttpApi 定义生成 OpenAPI 和交互式文档，默认示例路径是 /docs。GitHub
+Scalar：
+const ApiLive = HttpApiBuilder.layer(QualyApi).pipe(
+  Layer.provide(ApiHandlers),
+  Layer.provide(HttpApiScalar.layer(QualyApi)),
+  HttpRouter.serve,
+  Layer.provide(
+    NodeHttpServer.layer(createServer, {
+      port: 3000,
+    }),
+  ),
+)
+Swagger：
+const ApiLive = HttpApiBuilder.layer(QualyApi).pipe(
+  Layer.provide(ApiHandlers),
+  Layer.provide(HttpApiSwagger.layer(QualyApi)),
+  HttpRouter.serve,
+  Layer.provide(
+    NodeHttpServer.layer(createServer, {
+      port: 3000,
+    }),
+  ),
+)
+Effect 官方文档明确将两者视为可替换的文档 UI。GitHub
+Schema annotation 还能进入 OpenAPI：
+const User = Schema.Struct({
+  id: Schema.UUID,
+  name: Schema.String,
+}).annotate({
+  identifier: "User",
+  description: "Qualy 用户",
+})
+这些 annotation 会丰富 Scalar/Swagger 中的模型和说明，不改变运行时业务行为。GitHub
+对 Qualy，我更推荐 Scalar，Swagger 可以保留为兼容选项：
+/docs       Scalar
+/openapi.json  OpenAPI document
+生产环境应根据部署策略决定：
+内网开放；
+仅管理员可访问；
+由网关认证；
+或只在非生产环境启用。
+对 Qualy 的推荐前端链路
+@qualy/api
+  HttpApi + Effect Schema
+          │
+          ├── apps/api
+          │     HttpApiBuilder handlers
+          │     Scalar/OpenAPI
+          │
+          └── apps/web
+                HttpApiClient
+                     │
+                Effect → Query adapter
+                     │
+                TanStack Query
+                     │
+                TanStack Router loader
+                     │
+                React components
+最终可得到：
+能力	支持情况
+前端请求参数类型	完整支持
+成功响应类型	完整支持
+公开业务错误类型	完整支持
+网络和解码错误类型	完整支持
+运行时响应校验	支持
+TanStack Router	可直接接入
+TanStack Query	需要薄适配层
+SSR loader	可接入
+请求取消	需要统一桥接 interruption
+OpenAPI	自动生成
+Scalar	原生 layer
+Swagger UI	原生 layer
+
+
+唯一需要特别注意的是：
+HttpApiClient 本身的错误类型是严格的，但一旦直接转成 Promise，TypeScript 就没有 rejection 类型。
+
+因此 Qualy 不应在页面中随意 runPromise；应该建立一个统一的 Effect–TanStack Query adapter，显式把 Effect 的 E 推导成 Query 的 TError。这样才能把 HttpApi 的错误类型严格性一直保留到 React 页面。
+
+
+
+
+来源
+
+
+
+
+
+如果要据此全量迁移到Effect（数据库用drizzle effect适配层），你推荐怎么做？目前刚做到刚才所说的@qualy/assembly的阶段1结束，正在准备做阶段2。如果现在要迁移，你推荐建一个新的分支吗，然后是否应该从头开始迁移代码（将现有代码迁移到legacy文件夹），而不是在现有代码上改？你思考下。
+
+
+
+
+
+
+
+
+
+我的建议是：
+现在就暂停原计划的 Assembly 阶段 2，在阶段 1 完成点创建独立迁移分支。
+重写运行时外壳，但不要从头重写整个项目，也不要把当前代码整体搬进 legacy/。
+
+最合适的模式是：
+新 Effect composition root 并行落地 + 复用现有数据库与领域实现 + 按垂直切片迁移 + 最后一次性切换入口并删除 Cordis/oRPC。
+
+这不是传统的“原地逐行改造”，也不是推倒重来，而是 new shell, migrated core。
+一、现在是迁移的最佳节点
+阶段 1 主要建立了：
+qualy.yml；
+qualy.lock.json；
+resolver/planner；
+active、disabled、detached；
+数据库依赖图；
+frozen lock；
+装配 workspace 测试。
+这些大部分与 Cordis 无关，可以直接保留。
+但阶段 1 当前还生成 cordis.gen.yml，并明确作出了“只有数据库图、没有运行时图，因为 Cordis 依靠 inject 动态门控”的决策。原阶段 2 又准备实现自定义 loader、固定 bootstrap、装配完成 Promise、数据库 gate、readiness 和 qualy start。change6.txtTXT
+这意味着：
+阶段 1 是可保留的装配基础；
+阶段 2 是第一个真正深度绑定 Cordis 运行时的阶段。
+如果先完成原 Cordis 阶段 2，再迁移 Effect，loader、bootstrap、服务门控、readiness 协调和运行时生成物很可能都要重写。
+所以迁移应当发生在 阶段 1 与阶段 2 之间，不是阶段 2 之后。
+二、必须建立独立分支
+建议先把阶段 1 作为不可变恢复点，然后建立长期集成分支。
+git tag -a p1-assembly-foundation d69da1e \
+  -m "Assembly foundation before Effect migration"
+
+git switch -c refactor/effect-platform d69da1e
+
+git push origin p1-assembly-foundation
+git push -u origin refactor/effect-platform
+然后立即创建 Draft PR，让所有 CI 门禁持续运行。
+主分支建议暂时冻结业务开发，只接受必须的缺陷修复。修复后同时 cherry-pick 到迁移分支，避免两个分支长期独立演进。
+为了随时查看旧实现，使用 worktree，而不是复制到 legacy/：
+git worktree add ../qualy-cordis p1-assembly-foundation
+这样你会有：
+qualy/          Effect 迁移分支
+qualy-cordis/   阶段 1 冻结版本，只读参考
+这比 legacy/current-project/ 更可靠。
+三、不要把现有项目整体移到 legacy
+不建议这样做：
+legacy/
+  packages/
+  apps/
+  scripts/
+  db/
+
+packages/
+  全新 Effect 项目
+主要有六个问题。
+第一，Git 本身已经是完整的 legacy 系统。Tag 和 worktree 可以精确恢复任意文件，没有必要复制。
+第二，复制后旧代码通常会被排除在 typecheck、test 和 build 之外。它看起来存在，实际很快就会腐化，无法再作为可信参照。
+第三，数据库 schema、迁移、SQL 函数和测试夹具会出现两个副本。对当前项目而言，这是高风险的，因为现有 14 条迁移、约束和跨插件不变量已经经过大量真实缺陷修复。
+第四，会产生极大的删除加新增 diff，降低 Git rename/blame 可读性，也让后续代码审查难以判断哪些逻辑是迁移、哪些逻辑是重写。
+第五，AI Agent 很容易在两个近似目录之间引用错误实现。
+第六，迁移完成后还要再删除一次 legacy 副本，产生第二轮无价值的大变更。
+现有 legacy/ 可以继续保存旧项目 qualy_old、algryth 作为历史参考，但不要把当前 Qualy 再复制进去。
+四、应该“从头写”的只有运行时外壳
+需要从头设计和实现的是：
+应用 composition root
+Effect Layer 图
+根 Scope 和优雅关闭
+数据库 Effect Layer
+HttpApi contract 与 handlers
+认证 middleware
+readiness/liveness
+静态插件装配入口
+前端 HttpApiClient 适配
+不应该从头重写的是：
+Drizzle schema
+现有 SQL migrations
+baseline SQL
+repository 查询语义
+权限算法
+租户锁
+跨插件不变量
+登录时序均衡
+分页规则
+DTO 业务含义
+前端页面和组件
+现有黑盒测试场景
+当前 Database 插件中的连接、迁移、探活、连接池关闭逻辑，应当迁移为 Effect resource，而不是重新发明数据库生命周期。
+Org、RBAC 等插件的 composition root 要重写，但其中的领域服务、SQL、权限定义和不变量应尽可能抽离后复用。Org 当前同时完成权限、service、router 和 UI contribution；RBAC 又利用 Cordis 动态注册可选 Server/UI contribution。 
+因此准确说法是：
+重写插件装配方式，不重写插件业务事实。
+
+五、临时并行结构，而不是 legacy 结构
+建议在迁移分支中暂时保留双入口。
+packages/app/
+  src/
+    main.ts                 # 当前 Cordis 入口，临时保留
+    main.effect.ts          # 新 Effect 入口
+    runtime.gen.ts          # 从 qualy.lock 生成
+脚本暂时并存：
+{
+  "scripts": {
+    "dev": "...旧 Cordis...",
+    "dev:effect": "...新 Effect...",
+    "test:effect": "...",
+    "start:effect": "..."
+  }
+}
+当前 main.ts 是 Cordis Context、Loader、Include、根 Fiber disposal 的总入口。 新入口不应在这个文件内部逐步塞 Effect，而应建立独立 composition root，以免形成 Cordis 管 Effect、Effect 又管理部分资源的混合生命周期。
+插件内部也不需要复制整包。可以暂时采用：
+packages/plugins/base/org/src/
+  db/
+  repo.ts
+  domain/
+  service.ts               # 尽量提炼为 transport-neutral
+  api.ts                   # 新 Effect HttpApi group
+  live.ts                  # 新 handlers / Layer
+  index.ts                 # 旧 Cordis composition，临时保留
+  router.ts                # 旧 oRPC router，临时保留
+不要创建：
+org/
+org-effect/
+org-legacy/
+因为那会让 schema、repo 和业务逻辑出现三份。
+六、先做一个有退出条件的技术验证
+这次不是只引入 Effect 核心，而是同时依赖：
+Effect runtime；
+Effect Layer/Scope；
+Drizzle effect-postgres；
+Effect HttpApi；
+Effect Schema；
+浏览器 HttpApiClient；
+TanStack Query 适配。
+Drizzle Effect transaction 确实把 typed error channel 纳入事务失败类型，底层 session 使用 Effect SQL transaction。 
+但当前采用的 HttpApi 和相关 v4 API 仍处于 unstable/httpapi 路径。 因此不能先删除旧系统，再验证最关键能力。
+建议先在迁移分支建立一个可删除的 spike，必须验证：
+PG18、UUIDv7、ltree、pgvector 和现有自定义 SQL可正常使用；
+Effect.fail(DomainError) 在写入后确实回滚；
+未识别 SQL 错误保持 defect 或 infrastructure error；
+嵌套事务/savepoint 行为符合预期；
+HttpApi 支持 cookie session、header、query、path 和 body；
+客户端能推导成功和公开错误类型；
+Scalar/OpenAPI 正常；
+TanStack Query adapter 保留 E 类型，并支持取消；
+Node 24 下 SIGTERM 能关闭 HTTP server 和数据库池；
+数百 endpoint 规模下 typecheck 性能可接受。
+只有全部通过，才进入全量迁移。
+如果这一验证失败，迁移分支可以直接关闭，阶段 1 主线完全不受影响。这正是必须建立分支的原因。
+七、把 Assembly 阶段 2 改成 Static Effect Runtime & Gate
+原阶段 2 不应继续叫 “Assembly Loader”，因为已经不再需要动态 loader。
+建议改为：
+阶段 2：Static Effect Runtime & Gate
+目标仍然保持不变：
+只加载 lock 中的 active assembly；
+固定 bootstrap；
+数据库 gate；
+artifact hash；
+readiness；
+qualy start；
+lock 漂移拒启；
+migration 落后拒启。
+但实现方式改为：
+qualy.yml
+  ↓ resolve
+qualy.lock.json
+  ↓ generate
+runtime.gen.ts
+  ↓ TypeScript build
+静态 Effect Layer composition
+例如：
+// generated
+import { DatabaseLive } from "@qualy/plugin-database/live"
+import { ServerLive } from "@qualy/plugin-server/live"
+import { AuthLive } from "@qualy/plugin-auth/live"
+import { RbacLive } from "@qualy/plugin-rbac/live"
+import { OrgLive } from "@qualy/plugin-org/live"
+
+export const ApplicationLive = Layer.mergeAll(
+  DatabaseLive,
+  ServerLive,
+  AuthLive,
+  RbacLive,
+  OrgLive,
+)
+实际 Layer 需要按依赖组合，不一定是简单 mergeAll，但核心是生成静态代码，不是运行时解释 YAML 并动态激活 Fiber。
+qualy start 的顺序应是：
+读取 manifest 和 lock
+→ 验证 frozen lock
+→ 验证 package / artifact hash
+→ 验证数据库 migration head
+→ 构建根 Effect Layer
+→ 获取所有 scoped resources
+→ 构建最终 HttpApi handler
+→ 监听端口
+→ 标记 assembly ready
+数据库、业务 service 和 handler 任一构建失败，整个实例启动失败，不存在“某个插件 pending，其他插件继续提供不完整服务”。
+八、阶段 1 的“无运行时图”决策必须重新打开
+阶段 1 当前明确不建立 runtime graph，因为 Cordis 的 inject 是运行时权威，而且当前存在 Org/RBAC 一类循环。change6.txtTXT
+改用静态 Effect runtime 后，这个决定不能原样保留。
+至少需要解决两个问题：
+运行时依赖如何声明
+可以让插件导出单一 descriptor：
+export const plugin = definePlugin({
+  id: "@qualy/plugin-org",
+
+  runtime: {
+    requires: [Database, Authorization, Identity],
+    provides: [OrgTree],
+  },
+
+  layer: OrgLive,
+  api: OrgApi,
+  permissions: orgPermissions,
+  pages: orgPages,
+})
+Assembly、代码生成和运行时都读取同一 descriptor，避免：
+package.json 写一份依赖
+Effect Layer 又写一份依赖
+两边逐渐漂移
+若 resolver 必须在不执行插件代码的情况下工作，则需要把 JSON-compatible metadata 放入 package metadata，并增加编译期一致性测试。
+当前跨插件环如何拆
+Cordis 能通过延迟激活容忍某些运行时环；静态 Effect Layer 不能把两个互相要求完整 service 的 Layer直接组合。
+当前 Org 要求 rbac 和 auth，RBAC 自身又承载跨域管理员不变量和权限贡献。 
+迁移时应：
+抽出小型 port，而不是互相依赖完整插件；
+把跨域不变量放入 application coordinator；
+或把 Auth/RBAC/Org 作为一个核心 dependency cluster 一次迁移；
+禁止通过全局 service locator 绕过 Layer 图。
+这是迁移中最需要设计的部分。
+九、推荐的迁移顺序
+M0：冻结与决策
+阶段 1 tag；
+建迁移分支和 Draft PR；
+ADR：取消在线热安装；
+ADR：Effect 为唯一后端 runtime；
+ADR：HttpApi 替代 oRPC；
+修改 Assembly 阶段 2 文档；
+锁定依赖版本。
+这一阶段不改业务行为。
+M1：Effect 技术验证
+建立最小闭环：
+Effect runtime
+→ PG Effect driver
+→ 一张测试表
+→ typed failure rollback
+→ HttpApi endpoint
+→ HttpApiClient
+→ Scalar
+→ TanStack Query adapter
+→ shutdown
+验证完成后删除纯实验代码，保留测试和基础封装。
+M2：新的应用外壳
+实现：
+Config Layer；
+Logger Layer；
+Database Layer；
+migration-head verifier；
+readiness state；
+liveness/readiness endpoint；
+Node HTTP server；
+根 Scope；
+SIGTERM graceful shutdown；
+main.effect.ts；
+runtime.gen.ts；
+qualy start --effect。
+这一阶段只要求服务器和数据库闭环，不迁业务插件。
+M3：Effect HttpApi 基础
+新增最终目标包：
+@qualy/api
+  models
+  errors
+  groups
+  QualyApi
+
+@qualy/api-client
+  HttpApiClient factory
+  Effect runtime
+  TanStack Query adapter
+接入：
+OpenAPI JSON；
+Scalar；
+auth middleware 骨架；
+typed client；
+browser query cancellation。
+先迁 Ping，证明整个传输闭环。
+M4：迁移最难的业务集群
+不要先把所有简单 CRUD 迁完，最后才发现核心环无法解决。
+建议第二个切片直接覆盖：
+Auth/IAM
+RBAC
+Org
+修改用户状态或角色
+tenant lock
+last-administrator invariant
+写入后 typed failure rollback
+认证 principal
+HttpApi public error
+前端 mutation
+验收点包括：
+Service 无 Cordis/oRPC import；
+领域错误完整进入 Effect<A,E,R>；
+Router/handler 对公开错误穷尽映射；
+事务回滚测试；
+权限判断一致；
+HTTP 和浏览器测试通过。
+这个切片通过，才说明架构真正可行。
+M5：其余插件
+按 dependency cluster，而不是机械按目录迁移：
+database/server/api-reference；
+auth-local/session；
+auth/RBAC/org 核心集群；
+dict；
+UI/web/layout；
+demo 和剩余插件。
+其中 route、permission、page 等静态 contribution 不应全部变成 Effect service。它们应尽量成为 assembly descriptor：
+静态事实：
+  API group
+  permission definitions
+  UI pages
+  setup declarations
+
+Effect resources：
+  DB pool
+  HTTP server
+  cache
+  scheduler
+  worker
+  external client
+不要把 Cordis 的每个 Service 机械翻译成 Context.Service。
+M6：前端切换
+TanStack Router 保持；
+TanStack Query 保持；
+oRPC client 替换为 HttpApiClient adapter；
+逐页替换 query/mutation options；
+公开错误改为 tagged union 匹配；
+保持现有页面路由和 UI manifest 语义。
+M7：原子切换
+在所有门禁通过后：
+main.effect.ts → main.ts
+runtime.gen.ts 成为唯一运行时装配入口
+dev:effect → dev 
+start:effect → start
+随后在同一迁移分支删除：
+Cordis composition roots；
+Cordis loader/HMR；
+cordis.gen.yml；
+oRPC contracts/routers/client；
+apiErrorBoundary；
+Cordis 和 oRPC dependencies；
+过渡脚本。
+不要把这些文件挪进 legacy；直接删除，Git tag 已经保存它们。
+十、测试迁移策略
+当前测试资产价值很高。不要先重写测试，再重写生产代码。
+建议把测试分为两类。
+保留并复用黑盒测试
+以下测试应尽量不关心后端框架：
+HTTP URL、状态码、响应体
+数据库约束
+登录行为
+权限结果
+浏览器页面
+表单提交
+readiness
+migration clean-room
+迁移期间可以让同一批测试分别指向：
+Cordis server
+Effect server
+这样旧系统成为 executable specification。
+逐步替换框架白盒测试
+以下测试需要重写：
+Cordis Fiber 状态
+ctx.effect disposer
+ctx.inject pending
+动态 contribution 注销
+oRPC middleware internals
+对应替换为：
+Effect Scope finalizer
+Layer acquisition failure
+Effect interruption
+HttpApi test client
+typed failure
+generated static assembly
+同时建议保留 OpenAPI snapshot 或语义 diff，以防迁移后无意改变：
+path；
+method；
+status；
+required fields；
+error shape；
+security scheme。
+十一、切换前必须满足的门禁
+至少包括：
+pnpm typecheck
+pnpm test
+pnpm test:browser
+pnpm build
+空库迁移重放
+seed / provision
+无刷新登录
+全部 HTTP 黑盒测试
+Effect.fail 写后回滚
+数据库连接零泄漏
+SIGTERM 优雅关闭
+首个 readiness 必为 pending
+lock 漂移拒绝启动
+migration 落后拒绝启动
+OpenAPI 语义审查
+前端 chunk/tree-shaking 审查
+代码库零 cordis import
+代码库零 @orpc import
+生产源码零 Effect.run*
+Effect.run* 应只允许在：
+应用主入口；
+浏览器统一 API runtime；
+CLI boundary；
+测试 boundary。
+业务 service、repo 和 handler 内不能自行运行 Effect。
+最终裁决
+具体决策如下：
+问题	建议
+新建迁移分支	是
+阶段 1 打 tag	是
+主分支继续阶段 2	否，先冻结
+整体搬入 legacy	否
+从头重写整个项目	否
+从头建立 Effect runtime shell	是
+并行保留旧入口	暂时保留
+复用 schema/migrations/domain SQL	必须
+同时维护两套业务实现	禁止
+迁移方式	垂直切片 + 最后原子切换
+原阶段 2	改写为 Static Effect Runtime & Gate
+
+
+一句话概括：
+以阶段 1 提交为稳定基线，在独立分支中新建 Effect 应用外壳；不要复制旧仓库，而是让旧入口暂时作为行为基准，逐步把现有领域和数据库实现接入新外壳，最终删除 Cordis/oRPC 并原子切换。
+
+
+
+
+
+
+
+
+
+
+
+根据Effect文档，以及https://www.effect.website/blog/the-one-weird-git-trick-that-makes-coding-agents-more-effect-ive，我应该怎么将Effect文档搭配Claude Code一起使用？你帮我规划下。
+
+
+
+
+
+
+
+建议采用一套“固定版本源码 + 精简常驻规则 + 按任务检索 + 项目模式沉淀”的工作流，而不是简单把 Effect 文档塞进 CLAUDE.md。
+Effect 官方文章的核心并不是“让 Agent 多读文档”，而是：
+把与实际依赖版本对应的 Effect 源码放进仓库，让 Agent 能沿着文档、测试、实现和调用链自行检索。
+
+文章推荐用 git subtree --squash 将源码放入 repos/，并明确要求 Agent 只把它当作只读参考，禁止从中 import；还建议逐步生成项目本地 pattern 文件。Effect
+一、先把上游源码放进迁移分支
+应在此前建议的：
+refactor/effect-platform
+分支执行，不先污染当前稳定主线。
+目录建议：
+repos/
+├── README.md
+├── vendor-lock.json
+├── effect/
+└── drizzle-orm/
+Effect 必须加入。Drizzle 也建议加入，因为你要依赖的 drizzle-orm/effect-postgres 是整个迁移最关键、最不常见的集成点。Drizzle 官方仓库中包含 ORM、Kit、集成测试等完整源码结构。GitHub
+不要直接跟踪 main
+文章为了演示使用了 main，但 Qualy 不应照搬。Effect v4 当前仍是 beta，main 是 v4 开发分支；effect/unstable/* 中的 HttpApi、SQL、RPC 等模块允许在 beta/minor 更新中发生破坏性变化。Effect v4 的生态包还要求使用相同版本号。GitHub
+因此要让源码与实际安装版本一致：
+git subtree add \
+  --prefix=repos/effect \
+  https://github.com/Effect-TS/effect.git \
+  <与 package.json 中 effect 版本对应的 tag 或 commit> \
+  --squash
+
+git subtree add \
+  --prefix=repos/drizzle-orm \
+  https://github.com/drizzle-team/drizzle-orm.git \
+  <与 drizzle-orm 版本对应的 tag 或 commit> \
+  --squash
+可以先查询 npm 元数据：
+pnpm view effect@<version> gitHead
+pnpm view @effect/sql-pg@<version> gitHead
+pnpm view drizzle-orm@<version> gitHead
+若某个包没有提供 gitHead，再根据 release tag 或对应发布提交确定。
+repos/vendor-lock.json 建议记录：
+{
+  "effect": {
+    "packageVersion": "4.0.0-beta.x",
+    "upstreamCommit": "<sha>"
+  },
+  "effectSqlPg": {
+    "packageVersion": "4.0.0-beta.x"
+  },
+  "drizzleOrm": {
+    "packageVersion": "<exact-version>",
+    "upstreamCommit": "<sha>"
+  }
+}
+Effect 与 @effect/sql-pg 必须使用相同的 v4 beta 版本。GitHub
+二、不要把 Effect 的 LLMS.md 直接导入根 CLAUDE.md
+Effect 的 LLMS.md 是专门给编码 Agent 使用的入口，它要求优先使用仓库内文档和 packages/ 源码，不依赖 node_modules 或外部过时资料；其中还明确规定了 Effect.gen、Effect.fn、Context.Service、Schema、资源管理、HttpApi 和测试等推荐模式。GitHub
+但不推荐这样写：
+@repos/effect/LLMS.md
+因为 Claude Code 的 CLAUDE.md import 会自动加载，被导入内容会长期占据每个任务的上下文，而很多任务与 Effect 无关。Claude Code 支持 @path 导入，也支持根据当前工作目录和读取的子目录递归加载嵌套 CLAUDE.md。Claude Platform Docs
+正确做法是：根 CLAUDE.md 只导入一个很短的路由规则文件。
+# Effect 开发规则
+
+@docs/agents/effect-source-policy.md
+然后在 docs/agents/effect-source-policy.md 写：
+# Effect Source Policy
+
+- 修改、设计或评审任何 Effect 代码前，先读取 `repos/effect/LLMS.md`。
+- 根据任务继续检索 `repos/effect/ai-docs/`、相关测试和 `packages/` 源码。
+- 涉及 Drizzle Effect PostgreSQL 时，同时在 `repos/drizzle-orm/` 中搜索 `effect-postgres`、事务实现和相关测试。
+- `repos/**` 只作为只读上游参考：
+  - 禁止编辑；
+  - 禁止从中 import；
+  - 禁止纳入应用编译、测试或 workspace。
+- 优先采用 `docs/agent-patterns/effect/` 中已经裁决的 Qualy 项目模式。
+- 若项目 pattern 与 vendored 上游源码冲突，停止实现并报告版本或规则漂移。
+- 在实施计划和最终总结中列出实际参考的上游文件路径。
+- 不凭记忆猜测 Effect API，尤其是 `effect/unstable/**` API。
+- 生产源码中的 `Effect.run*` 只允许出现在应用入口、CLI、测试和前端统一 runtime boundary。
+这会告诉 Claude“何时去读”，而不是把整本 Effect 文档永久塞进上下文。
+三、给 repos/** 加只读保护
+除了文字约束，还应从 Claude Code 权限层禁止修改：
+// .claude/settings.json
+{
+  "permissions": {
+    "deny": [
+      "Edit(repos/**)"
+    ]
+  }
+}
+Claude Code 的 deny 规则优先于 allow，Edit(...) 路径规则可用于阻止内置编辑工具修改匹配文件。添加后用 /permissions 检查规则是否生效。Claude Platform Docs
+同时增加以下排除项：
+// .vscode/settings.json
+{
+  "typescript.preferences.autoImportFileExcludePatterns": [
+    "repos/**"
+  ],
+  "javascript.preferences.autoImportFileExcludePatterns": [
+    "repos/**"
+  ],
+  "files.watcherExclude": {
+    "repos/**": true
+  },
+  "search.exclude": {
+    "repos/**": true
+  }
+}
+这是文章推荐的处理方式，目的是避免编辑器把 vendored 源码加入自动 import、搜索和文件监听。Effect
+还要确保：
+pnpm-workspace.yaml 不包含 repos/**
+tsconfig exclude repos/**
+Vitest exclude repos/**
+构建工具 exclude repos/**
+格式化和 lint 不扫描 repos/**
+但不要把 repos/ 加进 .gitignore，否则 subtree 就失去意义。
+四、建立 Qualy 自己的 Effect pattern 层
+Effect 官方文章建议让 Agent 阅读源码后生成小型 pattern 文件，以免以后重复发现同一套用法。Pattern 不应是 Effect 文档的复制品，而应记录：
+上游推荐模式 + Qualy 已作出的架构裁决 + 本项目可直接复用的代码形状。
+
+建议目录：
+docs/agent-patterns/effect/
+├── INDEX.md
+├── core-style.md
+├── services-layers.md
+├── errors.md
+├── resources-runtime.md
+├── schema.md
+├── drizzle-effect.md
+├── httpapi.md
+├── testing.md
+└── frontend-client.md
+每个文件使用同一模板：
+# Effect Pattern: <主题>
+
+## Version
+
+- Effect:
+- @effect/sql-pg:
+- Drizzle:
+- Last verified:
+
+## Upstream evidence
+
+- `repos/effect/...`
+- `repos/effect/...`
+- `repos/drizzle-orm/...`
+
+## Qualy decision
+
+本项目采用的模式及理由。
+
+## Canonical example
+
+最小但真实的 Qualy 示例。
+
+## Forbidden patterns
+
+- 禁止……
+- 不要……
+
+## Verification
+
+- 类型测试：
+- 运行时测试：
+- 事务测试：
+
+## Open questions
+
+仍未裁决的问题。
+Pattern 文件必须带上具体上游路径，不能只写“根据 Effect 最佳实践”。
+Effect 自己的 AI 文档也是由 ai-docs/src 生成 LLMS.md；其编写规范要求示例代表真实使用、优先采用 service 风格，并在写新示例前先检查已有示例和 LLMS.md。GitHub
+五、不要一次性生成全部 pattern
+在还没有实际迁移代码时一次性生成九份文档，很容易产出理论正确但不适合 Qualy 的规则。
+应跟迁移阶段逐步建立：
+迁移准备阶段
+先创建：
+core-style.md
+services-layers.md
+覆盖：
+Effect.gen；
+Effect.fn("name")；
+Context.Service；
+Layer 组合；
+Effect.run* 边界；
+defect 与 typed failure 的区分。
+Effect 的 LLMS.md 当前明确推荐使用 Effect.gen 和命名的 Effect.fn，并推荐用 Context.Service 封装行为。GitHub
+数据库 spike 前
+创建：
+drizzle-effect.md
+errors.md
+覆盖：
+effect-postgres 数据库构建；
+transaction callback 形状；
+typed failure rollback；
+SQL 错误分类；
+constraint → domain error；
+未识别 SQL error；
+transaction 内禁止提前 Effect.either/恢复成功。
+Runtime shell 前
+创建：
+resources-runtime.md
+覆盖：
+Layer.scoped；
+Effect.acquireRelease；
+NodeRuntime.runMain；
+HTTP server 和 pool finalizer；
+background fiber；
+SIGTERM；
+readiness。
+HttpApi 切片前
+创建：
+schema.md
+httpapi.md
+覆盖：
+Schema DTO；
+API error Schema；
+endpoint/group；
+middleware；
+cookie/session；
+OpenAPI；
+Scalar；
+client。
+前端切换前
+创建：
+frontend-client.md
+覆盖：
+HttpApiClient；
+单一 browser runtime；
+TanStack Query adapter；
+Effect error → TError；
+AbortSignal 与 interruption；
+TanStack Router loader。
+测试迁移前
+创建：
+testing.md
+覆盖：
+@effect/vitest；
+test Layer；
+scoped resource test；
+typed failure assertion；
+TestClock；
+HTTP test client。
+六、Claude Code 使用“两遍式”流程
+不要直接给 Claude 一句“用 Effect 重写数据库插件”。
+第一遍：只研究，不修改
+使用 Plan 模式：
+claude --permission-mode plan
+Claude Code 官方 CLI 支持以 plan 权限模式启动，只允许分析而不直接执行修改。Claude Platform Docs
+研究提示词模板：
+本轮只做研究和设计，不修改任何文件。
+
+任务：为 Qualy 的数据库 Layer 设计 Drizzle Effect PostgreSQL 接入。
+
+执行顺序：
+1. 读取根 CLAUDE.md 和 docs/agents/effect-source-policy.md。
+2. 读取 repos/effect/LLMS.md。
+3. 在 repos/effect/ai-docs、测试和源码中查找：
+   - Context.Service
+   - Layer.scoped
+   - acquireRelease
+   - SQL PostgreSQL
+   - transaction
+4. 在 repos/drizzle-orm 中搜索：
+   - effect-postgres
+   - transaction
+   - session
+   - SqlError
+5. 阅读 Qualy 当前数据库插件、迁移器和生命周期测试。
+
+输出：
+- 实际读取的文件路径；
+- 上游推荐模式；
+- API 是否处于 unstable；
+- 建议的 Qualy 服务和 Layer 结构；
+- typed failure 与 defect 的边界；
+- 迁移步骤；
+- 需要新增的测试；
+- 当前不确定项。
+
+禁止：
+- 凭记忆猜 API；
+- 修改 repos/**；
+- 直接实现代码。
+这一步应先由你审阅。
+第二遍：实施
+批准方案后开启正常会话：
+根据已批准的计划实施数据库 Effect spike。
+
+开始前重新读取：
+- repos/effect/LLMS.md
+- docs/agent-patterns/effect/core-style.md
+- docs/agent-patterns/effect/services-layers.md
+- docs/agent-patterns/effect/drizzle-effect.md
+- docs/agent-patterns/effect/errors.md
+
+约束：
+- 不修改或 import repos/**；
+- 不保留 Cordis 生命周期依赖；
+- Service/Repo 内不得调用 Effect.run*；
+- 写入后 typed failure 必须回滚；
+- 未知 SQL 错误不得伪装成业务冲突；
+- 使用现有迁移与 schema，不新建平行数据模型；
+- 完成后运行指定 typecheck 和测试。
+
+最终报告列出：
+- 修改文件；
+- 参考的上游路径；
+- 新增错误类型；
+- Layer 依赖图；
+- 测试结果；
+- 未解决风险。
+第三遍：独立复核
+最好开新 Claude Code 会话，不沿用实现上下文：
+以严格代码审查者身份检查当前 Effect 数据库 spike。
+
+读取 vendored Effect 和 Drizzle 源码，不接受实现者总结作为事实。
+检查：
+- Effect API 是否符合当前 vendored 版本；
+- Layer 是否存在循环或重复 acquisition；
+- 是否有 Effect.run* 泄漏；
+- transaction failure 是否真实 rollback；
+- 是否误吞 defect；
+- Scope 和 finalizer 是否正确；
+- 测试是否验证了行为而非实现细节。
+
+只报告有证据的问题，附文件和行号。
+独立上下文可以降低实现者自我确认偏差。
+七、让 Claude 的检索顺序固定下来
+推荐的证据优先级是：
+1. Qualy ADR 和已批准的 agent-patterns
+2. repos/effect/LLMS.md
+3. repos/effect/ai-docs
+4. repos/effect 的测试
+5. repos/effect 的类型测试
+6. repos/effect/packages 实现
+7. repos/drizzle-orm 的相关实现和测试
+8. 官方网站或 GitHub issue，仅用于解释尚未进入 vendored 版本的变化
+9. node_modules，只用于核对真实安装产物，不作为设计范例
+这和 Effect 官方 LLMS.md 的原则一致：优先使用 monorepo 中的文档和源码，避免依赖可能过时的外部资料。GitHub
+其中：
+ai-docs 适合先理解推荐用法；
+tests 适合确认边界行为；
+typetest 适合确认推导类型；
+source 适合解释文档没有覆盖的语义；
+migration 文档适合核对 v4 beta 重命名与结构变化。
+八、升级 Effect 时建立原子流程
+不要日常执行：
+git subtree pull ... main
+升级必须与依赖版本绑定：
+1. 选择目标 Effect beta 版本
+2. 同步 effect 与所有 @effect/* 包到完全相同版本
+3. 更新 repos/effect 到对应 tag/commit
+4. 更新 repos/drizzle-orm 到对应版本源码
+5. 检查 MIGRATION.md / changelog
+6. 重新验证 agent-patterns
+7. 运行全量门禁
+8. 单独提交 vendor/update commit
+Effect v4 的生态包采用统一版本号，而 unstable 模块可能在 beta/minor 中变更，因此“依赖升级但源码参考没升级”或反过来都不允许。GitHub
+建议增加：
+scripts/check-vendor-alignment.ts
+检查：
+effect 和 @effect/sql-pg 版本一致；
+vendor-lock.json 与 package catalog 一致；
+应用源码没有 repos/ import；
+repos/** 不在 TypeScript program；
+pattern 文件记录的版本没有落后。
+九、与当前 Effect 全量迁移计划的结合
+建议把这套 Agent 基建作为迁移分支的 M0.5，先于任何 Effect spike：
+M0   ADR、迁移分支、阶段 1 冻结
+M0.5 Vendored sources + Claude Code policy
+M1   Effect/Drizzle/HttpApi 技术 spike
+M2   Effect runtime shell
+M3   HttpApi 与客户端
+M4   Auth/RBAC/Org 高难度集群
+M5   其余插件
+M6   前端迁移
+M7   删除 Cordis/oRPC
+M0.5 的完成标准：
+repos/effect 存在且版本匹配
+repos/drizzle-orm 存在且版本匹配
+CLAUDE.md 已路由到 Effect source policy
+Claude 无法编辑 repos/**
+编辑器和构建系统不扫描 repos/**
+已生成 core-style 与 services-layers 两份 pattern
+一轮 research-only Claude 会话能给出带源码路径的答案
+CI 能检查版本和 import 边界
+最终方案
+对 Qualy，最合理的组合是：
+Git subtree
+  提供精确版本的真实上游源码
+
+repos/effect/LLMS.md
+  提供 Agent 的总入口和 Effect 官方风格
+
+ai-docs + tests + source
+  提供真实用法、边界和实现依据
+
+CLAUDE.md
+  只保存简短检索纪律，不塞入完整文档
+
+docs/agent-patterns/effect
+  保存 Qualy 已裁决的 Effect 实践
+
+Claude Code Plan → Implement → Fresh Review
+  把研究、编码和审查拆成不同上下文
+最重要的两条纪律是：
+vendored 源码必须与实际安装版本一致。
+
+Claude 每次写 Effect 代码前必须给出其阅读过的上游证据路径，而不是只声称“遵循 Effect 最佳实践”。

@@ -11,35 +11,46 @@
     "tsx": "catalog:"
   },
   "devDependencies": {
+    "@effect/language-service": "catalog:",
+    "@qualy/api": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@vitest/browser-playwright": "catalog:",
+    "effect": "catalog:",
     "pg": "catalog:",
     "playwright": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:",
     "vitest-browser-react": "catalog:",
-    "yaml": "catalog:"
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "scripts": {
     "build": "tsx scripts/gen.ts --all && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",
-    "db:reset": "docker compose down -v && docker compose up -d && tsx scripts/qualy.ts deploy",
-    "dev": "tsx scripts/gen.ts && node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
+    "db:reset": "docker compose down -v && docker compose up -d --wait && tsx scripts/qualy.ts deploy",
+    "dev": "tsx scripts/gen.ts && node --env-file-if-exists=.env --import tsx apps/server/src/main.ts",
     "format": "prettier --write .",
     "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
+    "prepare": "effect-language-service patch",
     "qualy": "tsx scripts/qualy.ts",
     "seed": "tsx scripts/seed.ts",
     "test": "tsx scripts/gen.ts && vitest run",
     "test:all": "pnpm test && pnpm test:browser",
     "test:browser": "tsx scripts/gen.ts && vitest run --config vitest.browser.config.ts",
-    "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts"
+    "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts",
+    "vendor:update": "tsx scripts/vendor-sync.ts update",
+    "vendor:restore": "tsx scripts/vendor-sync.ts restore",
+    "vendor:check": "tsx scripts/vendor-sync.ts check"
   }
 }

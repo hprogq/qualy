@@ -1,6 +1,7 @@
 import { lazy, useMemo, type ComponentType } from 'react'
 import { BrowserRouter, Link } from 'react-router'
-import { createApiClient } from '@qualy/api-client'
+import { Effect } from 'effect'
+import { makeClient } from '@qualy/api-client/effect'
 import { primaryNavigation } from '@qualy/ui-contract'
 import {
   ManifestRoutes,
@@ -16,7 +17,11 @@ import { Button } from '@qualy/ui/button'
 import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { catalogs, components, errorMessages } from './plugins.gen.ts'
 
-const client = createApiClient('/api')
+// The one place the browser runs an effect, and it runs exactly one: building
+// the client. Everything after this hands effects to TanStack through the query
+// utils, which is what keeps each endpoint's failure type alive instead of
+// flattening it into Error at the first runPromise.
+const client = Effect.runSync(makeClient())
 const registry: ComponentRegistry = Object.fromEntries(
   Object.entries(components).map(([name, thunk]) => [
     name,

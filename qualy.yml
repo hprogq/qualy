@@ -1,0 +1,26 @@
+version: 2
+
+# The package whose dependencies these plugin ids resolve against. It is the
+# deployment root, not this file's directory: configuration belongs where
+# somebody changing a port would look for it, and which package declares the
+# plugins is a different question. Omit it and the two are the same directory,
+# which is the standalone layout.
+application:
+  workspace: ./apps/server
+
+plugins:
+
+  '@qualy/plugin-database':
+    config:
+      migrationsFolder: ./db/migrations
+
+  '@qualy/plugin-ui-registry': {}
+  '@qualy/plugin-web': {}
+  '@qualy/plugin-layout-default': {}
+
+  '@qualy/plugin-org': {}
+  '@qualy/plugin-auth': {}
+  '@qualy/plugin-auth-local': {}
+  '@qualy/plugin-rbac': {}
+
+  '@qualy/plugin-ping': {}

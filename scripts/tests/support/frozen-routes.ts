@@ -1,0 +1,70 @@
+// Every route the assembled api serves, under the server's /api prefix.
+//
+// A path is the only thing that lives longer than the code behind it, so this
+// table is the contract: a rename has to be made here in the same change, and
+// two suites read it rather than each keeping a copy. The oRPC surface checks
+// it is complete; the Effect port checks it invents nothing.
+
+export const FROZEN_ROUTES = [
+  'DELETE /auth/session',
+  'GET /auth/login-methods',
+  'GET /auth/session',
+  'POST /auth/local/{providerCode}/login',
+
+  'GET /app/manifest',
+
+  'GET /iam/permissions',
+  'POST /iam/access-evaluations',
+  'GET /iam/role-options',
+  'GET /iam/roles',
+  'POST /iam/roles',
+  'GET /iam/roles/{roleId}',
+  'PATCH /iam/roles/{roleId}',
+  'DELETE /iam/roles/{roleId}',
+  'GET /iam/roles/{roleId}/eligibility',
+  'PUT /iam/roles/{roleId}/eligibility',
+  'GET /iam/roles/{roleId}/permissions',
+  'PUT /iam/roles/{roleId}/permissions',
+  'PUT /iam/roles/{roleId}/status',
+  'GET /iam/role-grants',
+  'POST /iam/role-grants',
+  'DELETE /iam/role-grants/{grantId}',
+  'GET /iam/role-grant-options',
+
+  'GET /iam/user-options',
+  'GET /iam/user-type-options',
+  'GET /iam/user-types',
+  'POST /iam/user-types',
+  'GET /iam/user-types/{userTypeId}',
+  'PATCH /iam/user-types/{userTypeId}',
+  'DELETE /iam/user-types/{userTypeId}',
+  'GET /iam/user-types/{userTypeId}/placement-policy',
+  'PUT /iam/user-types/{userTypeId}/placement-policy',
+  'PUT /iam/user-types/{userTypeId}/status',
+
+  'GET /iam/users',
+  'POST /iam/users',
+  'GET /iam/users/{userId}',
+  'PATCH /iam/users/{userId}',
+  'PUT /iam/users/{userId}/placement',
+  'PUT /iam/users/{userId}/status',
+  'GET /iam/users/{userId}/effective-permissions',
+  'GET /iam/users/{userId}/role-grants',
+
+  'GET /org/tree',
+  'GET /org/types',
+  'POST /org/types',
+  'PATCH /org/types/{typeId}',
+  'DELETE /org/types/{typeId}',
+  'GET /org/type-rules',
+  'PUT /org/type-rules/{parentTypeId}/{childTypeId}',
+  'DELETE /org/type-rules/{parentTypeId}/{childTypeId}',
+  'GET /org/nodes/{nodeId}',
+  'POST /org/nodes',
+  'PATCH /org/nodes/{nodeId}',
+  'DELETE /org/nodes/{nodeId}',
+  'PUT /org/nodes/{nodeId}/placement',
+  'PUT /org/nodes/{nodeId}/type',
+
+  'GET /ping/hello',
+]

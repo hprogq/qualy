@@ -1,16 +1,17 @@
 import { useState, type FormEvent } from 'react'
-import { useApi } from '@qualy/web-runtime'
+import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
-import type { LoginMethodRendererProps } from '@qualy/plugin-auth/contract'
+import type { LoginMethodRendererProps } from '@qualy/auth-contract/login'
 import { localMessages as m } from './i18n.ts'
 
 // embedded credential renderer: the auth core's login shell owns the page,
 // this form only proves the user against one local provider instance
 export default function LocalLoginMethod({ method, onAuthenticated }: LoginMethodRendererProps) {
   const api = useApi()
+  const run = useRunApi()
   const { format, formatError } = useI18n()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
@@ -23,7 +24,12 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
     setBusy(true)
     setError(null)
     try {
-      await api.authLocal.login({ providerCode: method.code, identifier, password })
+      await run(
+        api.authLocal.login({
+          params: { providerCode: method.code },
+          payload: { identifier, password },
+        }),
+      )
       onAuthenticated()
     } catch (failure: unknown) {
       setError(formatError(failure))

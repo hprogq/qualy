@@ -1,0 +1,99 @@
+{
+  "lockfileVersion": 2,
+  "manifestHash": "sha256:9a81c728fab3b6f92537b47b30ad6f9fc5e73ae55b1a7dc8e9a7e2f85a19e332",
+  "resolutionHash": "sha256:4a7609a561a05d5304b85a2eb912256ffd2e1e0b546376535e8636b034c668e3",
+  "plugins": {
+    "@qualy/plugin-auth": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "dependsOn": [
+            "@qualy/plugin-org"
+          ]
+        }
+      }
+    },
+    "@qualy/plugin-auth-local": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-database": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-layout-default": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-org": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "baselineDir": "db/baseline",
+          "dependsOn": []
+        }
+      }
+    },
+    "@qualy/plugin-ping": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "dependsOn": []
+        }
+      }
+    },
+    "@qualy/plugin-rbac": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "schemaEntry": "src/db/schema.ts",
+          "dependsOn": [
+            "@qualy/plugin-auth",
+            "@qualy/plugin-org"
+          ]
+        }
+      }
+    },
+    "@qualy/plugin-ui-registry": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-web": {
+      "version": "0.0.0",
+      "state": "active"
+    }
+  },
+  "capabilities": {
+    "database": {
+      "provider": "@qualy/plugin-database",
+      "state": {
+        "order": [
+          "@qualy/plugin-org",
+          "@qualy/plugin-auth",
+          "@qualy/plugin-ping",
+          "@qualy/plugin-rbac"
+        ]
+      }
+    }
+  },
+  "runtime": {
+    "plugins": [
+      "@qualy/plugin-auth",
+      "@qualy/plugin-auth-local",
+      "@qualy/plugin-database",
+      "@qualy/plugin-layout-default",
+      "@qualy/plugin-org",
+      "@qualy/plugin-ping",
+      "@qualy/plugin-rbac",
+      "@qualy/plugin-ui-registry",
+      "@qualy/plugin-web"
+    ]
+  }
+}

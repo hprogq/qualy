@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Panel } from '@qualy/ui/admin'
@@ -16,18 +16,19 @@ import { iamMessages as m } from '../i18n.ts'
 // crosses no boundary the plugin graph cares about.
 export function UserGrants({ userId }: { userId: string }) {
   const api = useApi()
+  const run = useRunApi()
   const orpc = useApiQuery()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
 
-  const grants = useQuery(orpc.access.getUserRoleGrants.queryOptions({ input: { userId } }))
+  const grants = useQuery(orpc.access.getUserRoleGrants.queryOptions({ params: { userId } }))
   const items = grants.data?.grants ?? []
 
   // one grant at a time: replacing the whole set meant proposing to delete
   // every grant this caller could not see
   const revoke = useMutation({
-    mutationFn: (grantId: string) => api.access.deleteRoleGrant({ grantId }),
+    mutationFn: (grantId: string) => run(api.access.deleteRoleGrant({ params: { grantId } })),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: orpc.access.key() })

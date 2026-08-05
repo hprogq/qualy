@@ -1,5 +1,5 @@
 import type { CapabilityResolveContext } from '@qualy/assembly-contract'
-import { CycleError, topoSort } from './graph.ts'
+import { CycleError, topoSort } from '@qualy/assembly'
 import { ownsObjects, type DatabaseContribution } from './contribution.ts'
 
 // What this capability records in the lock: the order its objects have to be

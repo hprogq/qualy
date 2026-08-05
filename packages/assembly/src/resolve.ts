@@ -69,7 +69,7 @@ export interface ResolveOptions {
 
 export async function resolveAssembly(options: ResolveOptions): Promise<Resolution> {
   const manifest = readManifest(options.manifestPath)
-  const resolver = createPackageResolver(options.hostDir ?? hostDirFor(options.manifestPath))
+  const resolver = createPackageResolver(options.hostDir ?? hostDirFor(manifest))
   const previous = options.previousLock
 
   const states = new Map<string, PluginState>()
@@ -177,6 +177,16 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     for (const key of entry.otherKeys) {
       if (!providers.has(key)) continue
       orphaned.push(`${id} declares qualy.${key}, which belongs under qualy.contributions.${key}`)
+    }
+    // A config block only reaches a capability provider, as providerConfig
+    // during generate, deploy and capability commands. On any other plugin it
+    // is read by nothing at all, and the manifest hash still changes, so
+    // resolve reports success and a frozen start passes: the setting looks
+    // applied and is not. Plugins that want configuring read the environment.
+    if (manifest.plugins.get(id)?.config !== undefined && !entry.provider) {
+      orphaned.push(
+        `${id} is given config in ${manifest.source}, but only a capability provider is given its config, so nothing would read this. Configure this plugin through the environment instead.`,
+      )
     }
     for (const [key, raw] of Object.entries(entry.contributions)) {
       const loaded = providers.get(key)

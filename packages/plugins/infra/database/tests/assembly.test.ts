@@ -29,7 +29,7 @@ import { asState } from '../src/assembly/state.ts'
 // needed it already said so in a comment, `-- owner: @qualy/plugin-org`; it
 // just had no way to carry it.
 
-const INFRA = ['@qualy/plugin-database', '@qualy/plugin-server', '@qualy/plugin-ui-registry']
+const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
 
 // where a throwaway assembly keeps its lineage: the same declaration the
 // runtime reads, so generation and application cannot mean different folders
@@ -84,9 +84,34 @@ describe('database contributions', () => {
       )
       // editing a fragment databases have already run would leave the lineage
       // and the package disagreeing about what was applied
-      expect(() => pendingBaseline(fragments, compiled)).toThrow(/changed after they were compiled/)
+      const carried = asState(work.state).order
+      expect(() => pendingBaseline(fragments, compiled, carried)).toThrow(
+        /changed after they were compiled/,
+      )
       expect(
-        pendingBaseline(fragments, new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha]))),
+        pendingBaseline(
+          fragments,
+          new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha])),
+          carried,
+        ),
+      ).toEqual([])
+
+      // and losing one is the same fault as editing one, including when it was
+      // the plugin's only fragment. The check used to ask whether the plugin
+      // still had SOME fragment on disk, so deleting the last one - the shape
+      // org actually has, one file holding the extension its column type needs
+      // - produced a lineage that failed on every empty database
+      expect(() =>
+        pendingBaseline(
+          [],
+          new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha])),
+          carried,
+        ),
+      ).toThrow(/no longer exist/)
+
+      // a plugin that has left the assembly keeps its history instead
+      expect(
+        pendingBaseline([], new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha])), []),
       ).toEqual([])
     } finally {
       workspace.dispose()
@@ -203,7 +228,7 @@ describe('drop guard', () => {
   })
 })
 
-describe.runIf(postgresAvailable)('assembly deployment', () => {
+describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
   const selections: Record<string, string[]> = {
     // no auth, no rbac: the smallest thing that still owns tables
     minimal: [...INFRA, '@qualy/plugin-org'],
@@ -215,11 +240,9 @@ describe.runIf(postgresAvailable)('assembly deployment', () => {
       '@qualy/plugin-rbac',
       '@qualy/plugin-auth',
       '@qualy/plugin-org',
-      '@qualy/plugin-dict',
       '@qualy/plugin-auth-local',
       '@qualy/plugin-layout-default',
-      '@qualy/plugin-api-reference',
-    ],
+          ],
   }
 
   for (const [name, plugins] of Object.entries(selections)) {

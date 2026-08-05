@@ -1,0 +1,30 @@
+{
+  "name": "@qualy/app",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@qualy/api": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/assembly": "workspace:*",
+    "@qualy/assembly-contract": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-auth-local": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-layout-default": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
+    "@qualy/plugin-ping": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/plugin-web": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/api-client": "workspace:*"
+  }
+}

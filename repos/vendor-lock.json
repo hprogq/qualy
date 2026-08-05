@@ -1,0 +1,22 @@
+{
+  "sources": {
+    "@mikro-orm/core": {
+      "packageVersion": "7.1.10",
+      "tag": "v7.1.10",
+      "commit": "30668271b7c30ccd5cc684e543979cce673292d6",
+      "contentSha256": "1e1b6f955a9034564edbe814bc758116033eab7f549d74fa0bcc097f8071b8e9"
+    },
+    "drizzle-orm": {
+      "packageVersion": "1.0.0-rc.4",
+      "tag": "v1.0.0-rc.4",
+      "commit": "748058e837d9c4247330e3d45580cbdae52bffda",
+      "contentSha256": "bc3ddec2344c2af5d49bb56faebd4f2d4dcc28d5908315731dbfd9ef87f61e78"
+    },
+    "effect": {
+      "packageVersion": "4.0.0-beta.103",
+      "tag": "effect@4.0.0-beta.103",
+      "commit": "dff25449dfc927f2cce912c329f343cfb5365f88",
+      "contentSha256": "823b64796e481cd9fc31c141cd4f0f9ce6c4617e80100d694c96d472c315d6e8"
+    }
+  }
+}

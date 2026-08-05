@@ -1,19 +1,24 @@
+import type { ApiResult } from '@qualy/api-client/effect'
+import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import type { RoleDto } from '../src/contract.ts'
 import { rbacMessages as m } from './i18n.ts'
 
 // Everything one role owns, edited in place. Each section saves on its own
 // because the api treats them as separate subresources; one "save
 // everything" button would have to guess which of them actually changed.
-export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: boolean }) {
+/** the row as the api answers it, not a copy that can drift from it */
+export type RoleRow = ApiResult<'access', 'listRoles'>['roles'][number]
+
+export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: boolean }) {
   const api = useApi()
+  const runApi = useRunApi()
   const orpc = useApiQuery()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
@@ -22,32 +27,32 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [name, setName] = useState(role.name)
   const [description, setDescription] = useState(role.description ?? '')
-  const [permissions, setPermissions] = useState<string[]>(role.permissions)
-  const [userTypeIds, setUserTypeIds] = useState<string[]>(role.eligibleUserTypeIds)
-  const [orgTypeIds, setOrgTypeIds] = useState<string[]>(role.anchorOrgTypeIds)
+  const [permissions, setPermissions] = useState<string[]>([...role.permissions])
+  const [userTypeIds, setUserTypeIds] = useState<string[]>([...role.eligibleUserTypeIds])
+  const [orgTypeIds, setOrgTypeIds] = useState<string[]>([...role.anchorOrgTypeIds])
 
   // a different record is a different form, so the draft re-seeds when the
   // selection changes or when a save brings back new server state
   useEffect(() => {
     setName(role.name)
     setDescription(role.description ?? '')
-    setPermissions(role.permissions)
-    setUserTypeIds(role.eligibleUserTypeIds)
-    setOrgTypeIds(role.anchorOrgTypeIds)
+    setPermissions([...role.permissions])
+    setUserTypeIds([...role.eligibleUserTypeIds])
+    setOrgTypeIds([...role.anchorOrgTypeIds])
     setFeedback(null)
     setSaved(false)
   }, [role])
 
   const catalog = useQuery(
-    orpc.access.listPermissions.queryOptions({
-      input: { target: role.kind === 'org' ? 'org-node' : 'tenant' },
-    }),
+    orpc.access.listPermissions.queryOptions({ query: { target: role.kind === 'org' ? 'org-node' : 'tenant' } }),
   )
   const options = useQuery(orpc.access.getRoleOptions.queryOptions())
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.access.key() })
-  const run = <Variables,>(call: (input: Variables) => Promise<unknown>) => ({
-    mutationFn: call,
+  // the one crossing from an effect to a promise on this screen: TanStack
+  // needs a promise, and doing it here keeps every call site an effect
+  const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({
+    mutationFn: (input: Variables) => runApi(call(input)),
     onMutate: () => {
       setFeedback(null)
       setSaved(false)
@@ -64,36 +69,54 @@ export function RoleEditor({ role, canManage }: { role: RoleDto; canManage: bool
       // the version this editor read: a save that cannot say what it saw is
       // a save that silently overwrites whoever went second
       api.access.updateRole({
-        roleId: role.id,
-        expectedVersion: role.version,
-        name,
-        description: description.trim() === '' ? null : description,
+        params: { roleId: role.id },
+        payload: {
+          version: role.version,
+          name,
+          description: description.trim() === '' ? null : description,
+        },
       }),
     ),
   )
   const savePermissions = useMutation(
-    run(() => api.access.syncRolePermissions({
-      roleId: role.id,
-      expectedVersion: role.version,
-      codes: permissions,
-    })),
+    run(() =>
+      api.access.setRolePermissions({
+        params: { roleId: role.id },
+        payload: { version: role.version, codes: permissions },
+      }),
+    ),
   )
   const saveEligibility = useMutation(
-    run(() => api.access.syncRoleEligibility({
-      roleId: role.id,
-      expectedVersion: role.version,
-      userTypeIds,
-      orgTypeIds,
-    })),
+    run(() =>
+      api.access.setRoleEligibility({
+        params: { roleId: role.id },
+        payload: { version: role.version, userTypeIds, orgTypeIds },
+      }),
+    ),
   )
   const setAssignable = useMutation(
-    run((assignable: boolean) => api.access.updateRole({ roleId: role.id, expectedVersion: role.version, assignable })),
+    run((assignable: boolean) =>
+      api.access.updateRole({
+        params: { roleId: role.id },
+        payload: { version: role.version, assignable },
+      }),
+    ),
   )
   const setStatus = useMutation(
-    run((status: 'active' | 'disabled') => api.access.setRoleStatus({ roleId: role.id, expectedVersion: role.version, status })),
+    run((status: 'active' | 'disabled') =>
+      api.access.setRoleStatus({
+        params: { roleId: role.id },
+        payload: { version: role.version, status },
+      }),
+    ),
   )
   const remove = useMutation({
-    ...run(() => api.access.deleteRole({ roleId: role.id, expectedVersion: role.version })),
+    ...run(() =>
+      api.access.deleteRole({
+        params: { roleId: role.id },
+        query: { version: String(role.version) },
+      }),
+    ),
     onSuccess: async () => {
       setConfirmingDelete(false)
       await refresh()

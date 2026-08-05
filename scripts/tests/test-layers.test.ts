@@ -59,11 +59,11 @@ const SCRIPTS_MAY_CONNECT = new Set([
 // Deleting, moving or renaming one has to be a decision the diff shows.
 const MIGRATED_SUITES = [
   'packages/plugins/base/auth/tests/schema.test.ts',
-  'packages/plugins/base/auth/tests/iam.test.ts',
-  'packages/plugins/base/auth-local/tests/local-login.test.ts',
+  'packages/plugins/base/auth/tests/effect-parity.test.ts',
+  'packages/plugins/base/auth/tests/effect-sign-in.test.ts',
   'packages/plugins/base/org/tests/schema.test.ts',
-  'packages/plugins/base/org/tests/org.test.ts',
-  'packages/plugins/base/rbac/tests/rbac.test.ts',
+  'packages/plugins/base/org/tests/effect-parity.test.ts',
+  'packages/plugins/base/rbac/tests/effect-parity.test.ts',
 ]
 
 const OWNERSHIP: readonly { pattern: RegExp; why: string }[] = [
@@ -75,14 +75,17 @@ const OWNERSHIP: readonly { pattern: RegExp; why: string }[] = [
   { pattern: /create database|drop database/i, why: 'manages database lifetime' },
 ]
 
-const breaches = (files: readonly string[], rules: readonly { pattern: RegExp; why: string }[]) =>
+const breaches = (
+  files: readonly string[],
+  rules: readonly { pattern: RegExp; why: string; skipLine?: (line: string) => boolean }[],
+) =>
   files.flatMap((file) =>
     fs
       .readFileSync(file, 'utf8')
       .split('\n')
       .flatMap((line, index) =>
         rules
-          .filter((rule) => rule.pattern.test(line))
+          .filter((rule) => rule.pattern.test(line) && !rule.skipLine?.(line))
           .map((rule) => `${posix(file)}:${index + 1} ${rule.why}`),
       ),
   )
@@ -223,6 +226,86 @@ describe('test layering', () => {
         .filter((name) => name in all)
         .map((name) => `${posix(file)} declares ${name}`)
     })
+    expect(offenders).toEqual([])
+  })
+
+  it('leaves no way to be trusted by omission', () => {
+    // authorization used to be skippable by forgetting an argument: the actor
+    // was optional and the in-lock checks opened with an early return when it
+    // was absent. No production call site forgot, but the type allowed it and
+    // the tests depended on it, so authorization was skippable for test
+    // convenience. A caller that forgets and a caller that is trusted must not
+    // look the same.
+    const services = walk('packages/plugins').filter((file) => !isTestFile(file))
+    const offenders = breaches(services, [
+      { pattern: /\bactor\?:\s*Principal/, why: 'declares an optional actor' },
+      { pattern: /\bas\?:\s*Principal/, why: 'declares an optional actor' },
+      // a BARE return is the dangerous one: it skips the check. Returning a
+      // value is a decision, and `if (!principal) return { permissions: none }`
+      // denies an anonymous viewer rather than waving them through
+      { pattern: /if \(!actor\)\s*return\s*$/m, why: 'skips the check when the actor is absent' },
+      {
+        pattern: /if \(!principal\)\s*return\s*$/m,
+        why: 'skips the check when the principal is absent',
+      },
+    ])
+    expect(offenders).toEqual([])
+  })
+
+  it('lets one place in the process build a database client', () => {
+    // The ambient transaction rests on this and nothing else says so. A call
+    // made inside a transaction joins it because the connection travels in the
+    // fiber, but the key that carries it is minted per client instance
+    // (SqlClient.ts:139, :326-329), so a second client silently reintroduces
+    // exactly the second-connection-under-a-held-lock deadlock that deleting
+    // the handle parameter was supposed to make impossible. The type system
+    // cannot see client identity in either direction.
+    const production = walk('packages')
+      .concat(walk('apps'))
+      .filter((file) => !isTestFile(file))
+      .filter((file) => !posix(file).startsWith(`${OWNS_CONNECTIONS}/`))
+    const offenders = breaches(production, [
+      { pattern: /PgClient\.(?:layer|make|makeWithDefaults)/, why: 'builds its own database client' },
+      { pattern: /from ['"]@effect\/sql-pg['"]/, why: 'reaches the postgres driver directly' },
+    ])
+    expect(offenders).toEqual([])
+  })
+
+  it('runs effects only at the edges', () => {
+    // An Effect is a description until something runs it. A service, repo or
+    // handler that runs its own loses the caller's fiber, and with it the
+    // ambient transaction, the interruption and the error channel the caller
+    // was relying on. Running belongs at the boundaries: the process entry,
+    // the CLI, the browser's one runtime, and tests.
+    const RUNS_EFFECTS = [
+      'apps/server/src/effect/main.ts',
+      // the browser's single runtime: pages hand it effects rather than
+      // running them, which is what carries E across into the query's TError
+      'packages/api-client/src/effect/query.ts',
+      // the browser's composition root, and it runs exactly one effect:
+      // building the client. Everything after that is handed to the runtime
+      // above rather than run in a component.
+      'apps/web/src/App.tsx',
+    ]
+    // A comment is not a call. The pattern matches the name anywhere in the
+    // file, so prose explaining why a boundary is where it is would otherwise
+    // read as a breach of it.
+    const commented = (line: string) => /^\s*(?:\/\/|\*|\/\*)/.test(line)
+    const production = walk('packages')
+      .concat(walk('apps'))
+      .filter((file) => !isTestFile(file))
+      // A testkit is a test boundary that happens to live in src/, and the
+      // next test is what keeps it out of production: no production module is
+      // allowed to import one, so running effects here reaches no shipped path.
+      .filter((file) => !posix(file).endsWith('/src/testkit.ts'))
+      .filter((file) => !RUNS_EFFECTS.includes(posix(file)))
+    const offenders = breaches(production, [
+      {
+        pattern: /Effect\.run(?:Promise|Sync|Fork|PromiseExit|SyncExit)\b/,
+        why: 'runs an effect outside an entry point',
+        skipLine: commented,
+      },
+    ])
     expect(offenders).toEqual([])
   })
 

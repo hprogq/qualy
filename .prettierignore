@@ -5,3 +5,6 @@ db/migrations/
 # start-up check compares them against what the manifest produces
 *.gen.ts
 cordis.gen.yml
+
+# vendored upstream sources: read-only reference, never formatted or linted
+repos/

@@ -1,9 +1,17 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Context } from 'cordis'
+import { Context, Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { sql, type SQL } from 'drizzle-orm'
 import { Pool } from 'pg'
-import Database from './index.ts'
+import type * as SqlError from 'effect/unstable/sql/SqlError'
+import {
+  Database,
+  DatabaseConfig,
+  layer as databaseLayer,
+  type MigrationsBehind,
+} from './server/index.ts'
 
 // The postgres lifecycle a database-backed test needs, owned by the plugin
 // that owns connections in production.
@@ -51,7 +59,14 @@ if (!postgresAvailable && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
 }
 
 export interface TestContext {
-  ctx: Context
+  /**
+   * The database layer for this scratch database.
+   *
+   * Its failures are the layer's own: a test that provides it is asserting the
+   * lineage applies and the server answers, which is the same claim a
+   * deployment makes.
+   */
+  services: Layer.Layer<Database, SqlError.SqlError | MigrationsBehind>
   /** the scratch database this context is bound to */
   url: string
   /**
@@ -99,6 +114,71 @@ function parameterize(text: string, params: readonly unknown[]): SQL {
   )
 }
 
+/**
+ * A migrated database, built once and copied per test.
+ *
+ * Every suite used to create an empty database and replay the whole lineage
+ * into it, which is most of what a database-backed test costs: the assertions
+ * are milliseconds and the lineage is not. `CREATE DATABASE ... TEMPLATE`
+ * copies the files instead, so the lineage runs once per distinct lineage
+ * rather than once per test.
+ *
+ * The name carries a hash of the migration files, so editing one produces a
+ * different template rather than reusing a stale one. It survives the run on
+ * purpose: a second run skips the lineage entirely.
+ */
+const templateName = (folder: string) => {
+  const hash = createHash('sha256')
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : 1,
+    )) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.name.endsWith('.sql')) hash.update(entry.name).update(fs.readFileSync(full))
+    }
+  }
+  walk(folder)
+  return `qualy_tpl_${hash.digest('hex').slice(0, 16)}`
+}
+
+/**
+ * Builds the template if nobody has, and waits if somebody is.
+ *
+ * Test files run in parallel workers, so several arrive here at once. The
+ * advisory lock makes exactly one of them do the work; the rest block on the
+ * lock and then find it already there. Without it they would race on CREATE
+ * DATABASE and all but one would fail.
+ */
+const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
+  const name = templateName(folder)
+  const lock = BigInt.asIntN(64, BigInt(`0x${createHash('sha256').update(name).digest('hex').slice(0, 15)}`))
+  const client = await admin.connect()
+  try {
+    await client.query('select pg_advisory_lock($1)', [lock.toString()])
+    const { rows } = await client.query('select 1 from pg_database where datname = $1', [name])
+    if (rows.length === 0) {
+      const building = `${name}_building_${randomUUID().slice(0, 8)}`
+      await client.query(`create database "${building}"`)
+      const url = new URL(baseUrl)
+      url.pathname = `/${building}`
+      // the plugin's own migrator, so the template is built the way a
+      // deployment is rather than by a second implementation
+      await build(url.href, { migrations: 'apply', migrationsFolder: folder }, async () => {})
+      // renamed only once it is complete, so a crashed build never becomes a
+      // template that other tests copy
+      await client.query(`alter database "${building}" rename to "${name}"`)
+      // a template must not be written to, and postgres refuses to copy one
+      // that has connections, so it is marked and left alone
+      await client.query(`update pg_database set datallowconn = true where datname = $1`, [name])
+    }
+    return name
+  } finally {
+    await client.query('select pg_advisory_unlock($1)', [lock.toString()])
+    client.release()
+  }
+}
+
 export interface TestContextOptions {
   /**
    * 'apply' is the production path and the default: the plugin runs the
@@ -121,14 +201,14 @@ export interface TestContextOptions {
  * failure into a pass, because every error collected here is still thrown.
  */
 async function teardown(options: {
-  ctx?: Context
+  scope?: Scope.Scope
   admin: Pool
   name: string
 }): Promise<void> {
   const errors: unknown[] = []
-  if (options.ctx) {
+  if (options.scope) {
     try {
-      await options.ctx.fiber.dispose()
+      await Effect.runPromise(Scope.close(options.scope, Exit.void))
     } catch (error) {
       errors.push(error)
     }
@@ -154,7 +234,7 @@ async function teardown(options: {
 }
 
 /**
- * A cordis context bound to a database of its own. The label only makes the
+ * A database of its own, with the layer that serves it. The label only makes the
  * scratch name readable while a test is running; uniqueness comes from the
  * uuid, so parallel suites never share one.
  */
@@ -164,8 +244,20 @@ export async function createTestContext(
 ): Promise<TestContext> {
   const name = `qualy_${label.replaceAll(/[^a-z0-9]+/gi, '_')}_${randomUUID().slice(0, 8)}`
   const admin = new Pool({ connectionString: baseUrl })
+  const folder = options.migrationsFolder ?? migrationsFolder
+  // The template is for the committed lineage and nothing else. A test that
+  // names its own folder is asserting something about deploying it - assembly
+  // does exactly this - and handing it a database that already has those
+  // tables is not an empty database, whatever the journal says. 'off' means
+  // the test drives the lineage itself and wants an empty one too.
+  const template =
+    (options.migrations ?? 'apply') === 'apply' && options.migrationsFolder === undefined
+      ? await ensureTemplate(admin, folder)
+      : undefined
   try {
-    await admin.query(`create database "${name}"`)
+    await admin.query(
+      template ? `create database "${name}" template "${template}"` : `create database "${name}"`,
+    )
   } catch (error) {
     // nothing was created, so there is nothing to drop; the pool still has
     // to go, which the old shape skipped by starting its try one line later
@@ -175,39 +267,85 @@ export async function createTestContext(
   const url = new URL(baseUrl)
   url.pathname = `/${name}`
 
-  const ctx = new Context()
+  const services = servicesFor(url.href, {
+    // the copy already carries the lineage, so this run finds it applied and
+    // starts; the layer's own check still has to agree, which is the point
+    migrations: options.migrations ?? 'apply',
+    migrationsFolder: folder,
+  })
+  const scope = await Effect.runPromise(Scope.make())
+  let database: typeof Database.Service
   try {
-    await ctx.plugin(Database, {
-      url: url.href,
-      migrations: options.migrations ?? 'apply',
-      migrationsFolder: options.migrationsFolder ?? migrationsFolder,
-    })
+    database = await Effect.runPromise(
+      Effect.gen(function* () {
+        const built = yield* Layer.buildWithScope(services, scope)
+        return Context.get(built, Database)
+      }),
+    )
   } catch (error) {
-    // init may already have registered effects, so the partial context is
-    // disposed like any other; the original failure is what the caller
-    // needs to see, with anything teardown adds attached to it
+    // building may already have acquired resources, so the partial scope is
+    // closed like any other; the original failure is what the caller needs to
+    // see, with anything teardown adds attached to it
     try {
-      await teardown({ ctx, admin, name })
+      await teardown({ scope, admin, name })
     } catch (cleanup) {
       throw new AggregateError([error, cleanup], `could not start a test database for ${label}`)
     }
     throw error
   }
 
+  const execute = (text: string, params: readonly unknown[]) =>
+    Effect.runPromise(database.execute(parameterize(text, params)).pipe(Effect.orDie))
+
   return {
-    ctx,
+    services,
     url: url.href,
-    query: (text, params = []) => ctx.db.drizzle.execute(parameterize(text, params)) as never,
+    query: (text, params = []) => execute(text, params) as never,
     async row(text, params = []) {
-      const { rows } = await ctx.db.drizzle.execute(parameterize(text, params))
+      const { rows } = (await execute(text, params)) as unknown as { rows: unknown[] }
       if (rows.length === 0) throw new Error(`expected a row from: ${text.trim()}`)
       return rows[0] as never
     },
-    // Order matters and is the point: disposing the fiber runs the database
-    // plugin's own disposer, so by the time the database goes there is
-    // nothing connected to it. A drop that has to force its way past live
-    // backends is a leak the suite should be reporting, not working around.
-    dispose: () => teardown({ ctx, admin, name }),
+    // Order matters and is the point: closing the scope runs the database
+    // layer's own finalizer, so by the time the database goes there is nothing
+    // connected to it. A drop that has to force its way past live backends is
+    // a leak the suite should be reporting, not working around.
+    dispose: () => teardown({ scope, admin, name }),
+  }
+}
+
+/** the database layer, configured for one scratch database */
+const servicesFor = (url: string, options: Required<TestContextOptions>) =>
+  databaseLayer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        DatabaseConfig,
+        DatabaseConfig.of({
+          url: Redacted.make(url),
+          migrations: options.migrations,
+          migrationsFolder: options.migrationsFolder,
+        }),
+      ),
+    ),
+  )
+
+/** builds the layer, runs the body, and closes the scope whatever happened */
+const build = async (
+  url: string,
+  options: Required<TestContextOptions>,
+  body: (database: typeof Database.Service) => Promise<void>,
+) => {
+  const scope = await Effect.runPromise(Scope.make())
+  try {
+    const database = await Effect.runPromise(
+      Effect.gen(function* () {
+        const built = yield* Layer.buildWithScope(servicesFor(url, options), scope)
+        return Context.get(built, Database)
+      }),
+    )
+    await body(database)
+  } finally {
+    await Effect.runPromise(Scope.close(scope, Exit.void))
   }
 }
 
@@ -219,14 +357,31 @@ export async function createTestContext(
  * an assertion about a constraint becomes an assertion about nothing.
  */
 export function pgCode(work: Promise<unknown>): Promise<string> {
+  // The chain is a tree, not a list. Drizzle wraps the driver failure, and
+  // under the effect driver the wrapper's cause is an Effect Cause holding an
+  // array of failures rather than a single `cause` link, so walking only
+  // `.cause` stopped at the wrapper and returned its message.
+  const find = (node: unknown, depth: number, seen: Set<unknown>): string | undefined => {
+    if (!node || typeof node !== 'object' || depth > 10 || seen.has(node)) return undefined
+    seen.add(node)
+    const value = node as Record<string, unknown>
+    if (typeof value.code === 'string') return value.code
+    for (const key of ['cause', 'error', 'reason']) {
+      const found = find(value[key], depth + 1, seen)
+      if (found) return found
+    }
+    for (const key of ['failures', 'reasons']) {
+      const list = value[key]
+      if (!Array.isArray(list)) continue
+      for (const entry of list) {
+        const found = find(entry, depth + 1, seen)
+        if (found) return found
+      }
+    }
+    return undefined
+  }
   return work.then(
     () => 'no error',
-    (error: unknown) => {
-      for (let current = error; current; current = (current as { cause?: unknown }).cause) {
-        const code = (current as { code?: unknown }).code
-        if (typeof code === 'string') return code
-      }
-      return String(error)
-    },
+    (error: unknown) => find(error, 0, new Set()) ?? String(error),
   )
 }

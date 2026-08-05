@@ -6,17 +6,24 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
-  },
-  "peerDependencies": {
-    "cordis": "catalog:"
+    "./server": "./src/server/index.ts",
+    "./package.json": "./package.json"
   },
   "dependencies": {
-    "@qualy/plugin-server": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
+    "effect": "catalog:",
     "sirv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@effect/platform-node": "catalog:",
     "vite": "catalog:"
+  },
+  "qualy": {
+    "runtime": {
+      "entry": "./server",
+      "routes": true,
+      "dependsOn": []
+    }
   }
 }

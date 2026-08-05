@@ -6,34 +6,40 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./contract": "./src/contract.ts",
     "./schema": "./src/db/schema.ts",
     "./client": "./client/index.ts",
-    "./ui": "./src/ui.ts"
+    "./ui": "./src/ui.ts",
+    "./api": "./src/api.ts",
+    "./server": "./src/server/index.ts",
+    "./package.json": "./package.json"
   },
   "qualy": {
     "contributions": {
       "database": {
         "schemaEntry": "src/db/schema.ts"
       }
+    },
+    "runtime": {
+      "entry": "./server",
+      "api": "./api",
+      "dependsOn": [
+        "@qualy/plugin-database"
+      ]
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "react": "catalog:"
   },
   "dependencies": {
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
+    "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

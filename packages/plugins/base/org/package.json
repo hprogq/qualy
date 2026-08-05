@@ -6,12 +6,14 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
     "./schema": "./src/db/schema.ts",
     "./permissions": "./src/permissions.ts",
-    "./contract": "./src/contract.ts",
     "./client": "./client/index.ts",
-    "./ui": "./src/ui.ts"
+    "./ui": "./src/ui.ts",
+    "./server": "./src/server/index.ts",
+    "./api": "./src/api.ts",
+    "./errors": "./src/errors.ts",
+    "./package.json": "./package.json"
   },
   "qualy": {
     "contributions": {
@@ -22,10 +24,18 @@
     },
     "permissions": {
       "entry": "src/permissions.ts"
+    },
+    "runtime": {
+      "entry": "./server",
+      "dependsOn": [
+        "@qualy/plugin-database",
+        "@qualy/plugin-rbac",
+        "@qualy/plugin-auth"
+      ],
+      "api": "./api"
     }
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "react": "catalog:"
   },
   "devDependencies": {
@@ -35,12 +45,12 @@
     "@types/react": "catalog:"
   },
   "dependencies": {
-    "@orpc/contract": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
+    "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
-    "@qualy/plugin-server": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
@@ -49,6 +59,7 @@
     "@qualy/web-runtime": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "zod": "catalog:"
   }
 }

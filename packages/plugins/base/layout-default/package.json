@@ -6,11 +6,11 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./client/index.ts"
+    "./client": "./client/index.ts",
+    "./ui": "./src/ui.ts",
+    "./package.json": "./package.json"
   },
   "peerDependencies": {
-    "cordis": "catalog:",
     "react": "catalog:"
   },
   "dependencies": {

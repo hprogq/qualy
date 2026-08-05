@@ -24,8 +24,14 @@ export interface MessageFormatter {
   ): string
 }
 
-// orpc brands its errors on `name`, which survives module duplication in a
-// way instanceof does not
+/**
+ * A failure the api declared, whichever client produced it.
+ *
+ * The derived client decodes a declared failure into its tagged class, so the
+ * code is `_tag` and the payload is the instance's own fields rather than a
+ * `data` envelope. Reading the tag is what survives module duplication, the
+ * same property that made oRPC brand `name` instead of relying on instanceof.
+ */
 interface ApiErrorShape {
   code: string
   status?: number
@@ -58,9 +64,17 @@ export function isTransportError(error: unknown): boolean {
   return isNetworkError(error)
 }
 
+// codes are upper snake case by declaration, which is what tells a declared
+// failure apart from Effect's own tagged internals (SchemaError and friends)
+const DECLARED_CODE = /^[A-Z][A-Z0-9_]*$/
+
 function asApiError(error: unknown): ApiErrorShape | undefined {
   if (!error || typeof error !== 'object') return undefined
-  const candidate = error as { name?: unknown; code?: unknown }
+  const candidate = error as { name?: unknown; code?: unknown; _tag?: unknown }
+  if (typeof candidate._tag === 'string' && DECLARED_CODE.test(candidate._tag)) {
+    // the fields are on the instance, so the instance is its own data
+    return { code: candidate._tag, data: error } as ApiErrorShape
+  }
   if (candidate.name !== 'ORPCError' || typeof candidate.code !== 'string') return undefined
   return error as unknown as ApiErrorShape
 }

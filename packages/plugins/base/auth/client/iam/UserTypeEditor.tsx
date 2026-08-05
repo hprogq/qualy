@@ -1,25 +1,30 @@
+import type { ApiResult } from '@qualy/api-client/effect'
+import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import type { UserTypeDto } from '../../src/iam/contract.ts'
 import { iamMessages as m } from '../i18n.ts'
 
 // Everything a user type owns: display, sign-in policy and the tenant-wide
 // permissions it carries. Disabling a type that people still hold is refused
 // by the api, so the control says so up front rather than after a round trip.
+/** the row as the api answers it, not a copy that can drift from it */
+export type UserTypeRow = ApiResult<'identity', 'listUserTypes'>['userTypes'][number]
+
 export function UserTypeEditor({
   userType,
   canManage,
 }: {
-  userType: UserTypeDto
+  userType: UserTypeRow
   canManage: boolean
 }) {
   const api = useApi()
+  const runApi = useRunApi()
   const orpc = useApiQuery()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
@@ -33,7 +38,7 @@ export function UserTypeEditor({
     userType.placementPolicy.mode === 'unrestricted',
   )
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>(
-    userType.placementPolicy.mode === 'allow-list' ? userType.placementPolicy.orgTypeIds : [],
+    userType.placementPolicy.mode === 'allow-list' ? [...userType.placementPolicy.orgTypeIds] : [],
   )
 
   useEffect(() => {
@@ -55,13 +60,15 @@ export function UserTypeEditor({
   useEffect(() => {
     setUnrestricted(userType.placementPolicy.mode === 'unrestricted')
     setOrgTypeIds(
-      userType.placementPolicy.mode === 'allow-list' ? userType.placementPolicy.orgTypeIds : [],
+      userType.placementPolicy.mode === 'allow-list' ? [...userType.placementPolicy.orgTypeIds] : [],
     )
   }, [userType])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
-  const run = <Variables,>(call: (input: Variables) => Promise<unknown>) => ({
-    mutationFn: call,
+  // the one crossing from an effect to a promise on this screen: TanStack
+  // needs a promise, and doing it here keeps every call site an effect
+  const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({
+    mutationFn: (input: Variables) => runApi(call(input)),
     onMutate: () => {
       setFeedback(null)
       setSaved(false)
@@ -76,38 +83,41 @@ export function UserTypeEditor({
   const saveProfile = useMutation(
     run(() =>
       api.identity.updateUserType({
-        userTypeId: userType.id,
-        expectedVersion: userType.version,
-        name,
-        description: description.trim() === '' ? null : description,
-        allowLocalLogin: channels.includes('local'),
-        allowSsoLogin: channels.includes('sso'),
+        params: { userTypeId: userType.id },
+        payload: {
+          version: userType.version,
+          name,
+          description: description.trim() === '' ? null : description,
+          allowLocalLogin: channels.includes('local'),
+          allowSsoLogin: channels.includes('sso'),
+        },
       }),
     ),
   )
   const savePlacement = useMutation(
     run(() =>
       api.identity.setPlacementPolicy({
-        userTypeId: userType.id,
-        expectedVersion: userType.version,
-        policy: unrestricted ? { mode: 'unrestricted' } : { mode: 'allow-list', orgTypeIds },
+        params: { userTypeId: userType.id },
+        payload: {
+          version: userType.version,
+          policy: unrestricted ? { mode: 'unrestricted' } : { mode: 'allow-list', orgTypeIds },
+        },
       }),
     ),
   )
   const setStatus = useMutation(
     run((status: 'active' | 'disabled') =>
       api.identity.setUserTypeStatus({
-        userTypeId: userType.id,
-        status,
-        expectedVersion: userType.version,
+        params: { userTypeId: userType.id },
+        payload: { status, version: userType.version },
       }),
     ),
   )
   const remove = useMutation({
     ...run(() =>
       api.identity.deleteUserType({
-        userTypeId: userType.id,
-        expectedVersion: userType.version,
+        params: { userTypeId: userType.id },
+        query: { version: String(userType.version) },
       }),
     ),
     onSuccess: async () => {

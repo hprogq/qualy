@@ -12,6 +12,9 @@ export default defineConfig({
       ...defaultExclude,
       // legacy/ holds read-only clones of the old codebases
       'legacy/**',
+      // repos/ holds upstream sources vendored at the exact installed version,
+      // for reading. Their own suites are not this repository's to run.
+      'repos/**',
       // browser-mode tests run under vitest.browser.config.ts: they need a
       // real browser, and a database test should not pay for starting one
       '**/*.browser.test.tsx',

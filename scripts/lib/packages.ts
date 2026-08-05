@@ -1,10 +1,10 @@
-import { createPackageResolver, hostDirFor, type PackageResolver } from '@qualy/assembly'
+import { createPackageResolver, hostDirFor, readManifest, type PackageResolver } from '@qualy/assembly'
 import { manifestPath } from './read-entries.ts'
 
-// Plugin packages resolve from the host that owns the manifest, mirroring how
-// the loader resolves entries at runtime. Resolving from the repository root
-// instead would find packages the host never declared, and pnpm's isolation
-// means those are exactly the ones that fail to load.
+// Plugin packages resolve from the host the manifest names, which is the
+// package that declares them. Resolving from the repository root instead would
+// find packages that host never declared, and pnpm's isolation means those are
+// exactly the ones that fail to load.
 //
 // This needs the host directory and nothing else, so it stays synchronous.
 // Routing it through a full resolution would make every caller await a
@@ -13,7 +13,7 @@ import { manifestPath } from './read-entries.ts'
 const resolvers = new Map<string, PackageResolver>()
 
 export function hostResolver(ymlPath?: string): PackageResolver {
-  const host = hostDirFor(manifestPath(ymlPath))
+  const host = hostDirFor(readManifest(manifestPath(ymlPath)))
   const cached = resolvers.get(host)
   if (cached) return cached
   const resolver = createPackageResolver(host)
