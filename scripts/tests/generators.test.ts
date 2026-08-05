@@ -1,6 +1,8 @@
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
-import { afterAll, describe, expect, it } from 'vitest'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createWorkspace } from '@qualy/assembly/testkit'
 
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
@@ -8,23 +10,47 @@ const apiPath = 'packages/api/src/api.gen.ts'
 const apiHandlersPath = 'packages/app/api-handlers.gen.ts'
 const catalogPath = 'packages/app/permissions.gen.ts'
 
-const gen = (flags = '') => execSync(`pnpm exec tsx scripts/gen.ts ${flags}`, { encoding: 'utf8' })
+// Every run in this file generates into its own tree.
+//
+// Generating into the repository meant these tests rewrote the artifacts other
+// suites were reading, and vitest runs files in parallel: the symptom was an
+// unrelated suite reporting that the api had lost its routes, on a schedule
+// nobody could reproduce. QUALY_GEN_OUT is what makes the runs independent
+// rather than merely unlikely to collide.
+const trees: string[] = []
+const freshTree = () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-gen-'))
+  trees.push(dir)
+  return dir
+}
+
+afterEach(() => {
+  for (const dir of trees.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
+})
+
+let out = ''
+const gen = (flags = '') =>
+  execSync(`pnpm exec tsx scripts/gen.ts ${flags}`, {
+    encoding: 'utf8',
+    env: { ...process.env, QUALY_GEN_OUT: out },
+  })
+
+/** the generated artifact, read from the tree the run wrote it into */
+const read = (relative: string) => fs.readFileSync(path.join(out, relative), 'utf8')
 
 describe('generator determinism', () => {
-  // the working manifest is never written: other test files read it
-  // concurrently, so mutated selections go to a throwaway workspace (--yml)
-  afterAll(() => {
-    gen()
+  beforeEach(() => {
+    out = freshTree()
   })
 
   it('produces byte-identical output on repeated runs', () => {
     gen()
     const generated = [pluginsPath, apiPath, apiHandlersPath, catalogPath]
-    const before = generated.map((file) => fs.readFileSync(file, 'utf8'))
+    const before = generated.map((file) => read(file))
     const second = gen()
     expect(second).toContain('unchanged, skipped')
     for (const [index, file] of generated.entries()) {
-      expect(fs.readFileSync(file, 'utf8')).toBe(before[index])
+      expect(read(file)).toBe(before[index])
     }
   })
 
@@ -41,20 +67,20 @@ describe('generator determinism', () => {
     )
     try {
       gen(`--yml ${workspace.manifestPath}`)
-      expect(fs.readFileSync(pluginsPath, 'utf8')).not.toContain('pingComponents')
+      expect(read(pluginsPath)).not.toContain('pingComponents')
       // a disabled plugin loses its routes, so both halves of the aggregate
       // have to forget it together
-      expect(fs.readFileSync(apiPath, 'utf8')).not.toContain('pingApiGroup')
-      expect(fs.readFileSync(apiHandlersPath, 'utf8')).not.toContain('pingApiHandlers')
+      expect(read(apiPath)).not.toContain('pingApiGroup')
+      expect(read(apiHandlersPath)).not.toContain('pingApiHandlers')
 
       gen(`--yml ${workspace.manifestPath} --all`)
-      expect(fs.readFileSync(pluginsPath, 'utf8')).toContain('pingComponents')
+      expect(read(pluginsPath)).toContain('pingComponents')
       // but NOT the server's route graph. --all means "the superset" for a
       // client contract and a web bundle, where an unreachable component costs
       // bytes. Here it would mean a disabled plugin's endpoints are served,
       // because its dependencies are still present and its handler still works
-      expect(fs.readFileSync(apiPath, 'utf8')).not.toContain('pingApiGroup')
-      expect(fs.readFileSync(apiHandlersPath, 'utf8')).not.toContain('pingApiHandlers')
+      expect(read(apiPath)).not.toContain('pingApiGroup')
+      expect(read(apiHandlersPath)).not.toContain('pingApiHandlers')
     } finally {
       workspace.dispose()
     }
@@ -66,7 +92,7 @@ describe('generator determinism', () => {
     // One plugin can no longer be selected twice, but two plugins are still
     // free to name a group the same thing.
     gen()
-    const claims = [...fs.readFileSync(apiPath, 'utf8').matchAll(/^\s+(\w+ApiGroup),$/gm)].map(
+    const claims = [...read(apiPath).matchAll(/^\s+(\w+ApiGroup),$/gm)].map(
       (match) => match[1],
     )
     expect(claims.length).toBeGreaterThan(0)
@@ -78,11 +104,11 @@ describe('generator determinism', () => {
     // handler half can be wrong on its own: a group nobody implements is a
     // route the aggregate advertises and then cannot serve
     gen()
-    const groups = [...fs.readFileSync(apiPath, 'utf8').matchAll(/^\s+(\w+)ApiGroup,$/gm)].map(
+    const groups = [...read(apiPath).matchAll(/^\s+(\w+)ApiGroup,$/gm)].map(
       (match) => match[1],
     )
     const handlers = [
-      ...fs.readFileSync(apiHandlersPath, 'utf8').matchAll(/^\s+(\w+)ApiHandlers,$/gm),
+      ...read(apiHandlersPath).matchAll(/^\s+(\w+)ApiHandlers,$/gm),
     ].map((match) => match[1])
     expect(groups.length).toBeGreaterThan(0)
     expect(handlers).toEqual(groups)
@@ -103,7 +129,7 @@ describe('generator determinism', () => {
   // static assembly quietly loses a guarantee.
   it('serves the codes of the plugins in the manifest', () => {
     gen()
-    const catalog = fs.readFileSync(catalogPath, 'utf8')
+    const catalog = read(catalogPath)
     expect(catalog).toContain("from '@qualy/plugin-org/permissions'")
     expect(catalog).toContain("from '@qualy/plugin-rbac/permissions'")
     expect(catalog).toContain("plugin: 'org'")
@@ -125,7 +151,7 @@ describe('generator determinism', () => {
     )
     try {
       gen(`--yml ${workspace.manifestPath}`)
-      const catalog = fs.readFileSync(catalogPath, 'utf8')
+      const catalog = read(catalogPath)
       expect(catalog).not.toContain('@qualy/plugin-org/permissions')
       expect(catalog).not.toContain("plugin: 'org'")
       // rbac is still selected, so this is a real difference rather than an
@@ -151,7 +177,7 @@ describe('generator determinism', () => {
     )
     try {
       gen(`--yml ${workspace.manifestPath} --all`)
-      const catalog = fs.readFileSync(catalogPath, 'utf8')
+      const catalog = read(catalogPath)
       expect(catalog).not.toContain("plugin: 'org'")
     } finally {
       workspace.dispose()
@@ -160,7 +186,7 @@ describe('generator determinism', () => {
 
   it('gives every code exactly one owner', () => {
     gen()
-    const catalog = fs.readFileSync(catalogPath, 'utf8')
+    const catalog = read(catalogPath)
     const owners = [...catalog.matchAll(/plugin: '(\w+)'/g)].map((match) => match[1])
     expect(owners.length).toBeGreaterThan(0)
     expect(new Set(owners).size).toBe(owners.length)
@@ -175,10 +201,10 @@ describe('generator determinism', () => {
     // manifest switched off.
     gen()
     const serverSide = [apiPath, apiHandlersPath, catalogPath, 'packages/app/runtime.gen.ts']
-    const active = serverSide.map((file) => fs.readFileSync(file, 'utf8'))
+    const active = serverSide.map((file) => read(file))
     gen('--all')
     for (const [index, file] of serverSide.entries()) {
-      expect(fs.readFileSync(file, 'utf8'), `${file} changed under --all`).toBe(active[index])
+      expect(read(file), `${file} changed under --all`).toBe(active[index])
     }
   })
 })

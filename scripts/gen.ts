@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { writeRuntimeModule } from '@qualy/assembly'
 import { currentResolution } from './lib/read-entries.ts'
-import { RUNTIME_MODULE } from './lib/paths.ts'
+import { RUNTIME_MODULE, generatedPath } from './lib/paths.ts'
 
 // single generator entry: every generator runs in this process and reads the
 // same argv, so `--all` reaches all of them. Chaining them in a package.json
@@ -19,11 +19,11 @@ import { RUNTIME_MODULE } from './lib/paths.ts'
 // bundle were still rewritten here, and the assembly that shipped was half of
 // each.
 const resolution = await currentResolution()
-const modulePath = path.relative(process.cwd(), RUNTIME_MODULE)
+const modulePath = generatedPath(RUNTIME_MODULE)
 console.log(
   writeRuntimeModule(modulePath, resolution)
-    ? `${modulePath} written`
-    : `${modulePath} unchanged, skipped`,
+    ? `${RUNTIME_MODULE} written`
+    : `${RUNTIME_MODULE} unchanged, skipped`,
 )
 
 await import('./gen-api.ts')
