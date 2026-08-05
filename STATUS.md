@@ -370,3 +370,99 @@ grep imports of cordis/@orpc  → 0
 grep deps in any package.json → 0
 grep pnpm-lock.yaml           → 0
 ```
+
+## 装配层核查与 clean-room 验证(2026-08-06)
+
+起因是 M7 里我删掉了 `qualy.yml` 中 database 的 `config.migrationsFolder`,理由写的是「没有消费方」。
+**那个判断是错的**,下面第一条即由此暴露。
+
+### qualy.yml 的消费关系(先把话说准)
+
+`qualy.yml` 一直、且现在仍然决定装配:选哪些插件、谁 enabled、lock 与全部生成物都由它派生。
+没有消费方的只是**插件级 `config:` 块**,而且分两种情况:
+
+- **能力 provider 的 config 是活的**,经 `providerConfig` 在 CLI 期(generate/deploy/命令)消费。
+  database 的 `migrationsFolder` 正属此类,删掉它会让 generate 写到 `packages/app/db/migrations`
+  ——一条全新的空 lineage,drizzle 会把所有表重新生成一遍。已恢复。
+- **非 provider 插件的 config 确实到不了任何地方**(Cordis loader 曾负责投递,Effect 侧没有对应
+  机制)。ping 的 `greeting` 就是这种,它的 Effect layer 读 `PING_GREETING` 环境变量,所以那条删
+  除是对的。这类键写了不报错、不生效,仍是开放问题。
+
+### 三处「同一事实有两个所有者」
+
+1. **lineage 目录**:qualy.yml 声明一份,`packages/app/src/effect/config.ts` 又硬编码一份,两边注释
+   都声称「和对方读的是同一处声明」。进程改为读清单(`manifestMigrationsFolder()`);实测把清单指向
+   `db/nonexistent-lineage` 后进程按该路径报 ENOENT,而此前会静默用硬编码值。
+2. **lock 路径**:`lockPathFor` 只取清单**目录**、文件名写死,于是 `packages/app` 下任何第二份清单
+   resolve 一次就把产品 lock 覆盖成别的文件的哈希(本次亲历)。改为按清单basename 命名,
+   `qualy.yml → qualy.lock.json` 不变。
+3. **连接串**:CLI 读 `config.url`,运行时完全不读。按「qualy.yml 不写连接串」这条既有纪律,改为
+   **显式拒绝**并指向 DATABASE_URL——清单是要提交的,连接串写进去就是把凭据提交进版本库。
+
+三条都由 `packages/app/tests/assembly-config.test.ts` 守,已逐条注入 bug 验证会红。
+
+### baseline 片段丢失:真缺陷
+
+`pendingBaseline` 判断「片段消失」的条件是**该插件在磁盘上是否还有别的片段**。org 恰好只有一个
+(`0001_ltree.sql`,承载它自己列类型所需的扩展),删掉这唯一一个就绕过检查,generate 报
+`nothing to generate` 并退出 0。据此生成的 lineage 部署到空库必然失败:
+
+```
+type "ltree" does not exist
+```
+
+——正是 baseline 机制当初被引入要解决的那次事故。判据改为「该插件是否仍在装配的 retained order 里」。
+
+### clean-room 实测(回答「没有 db/migrations 能否重建」)
+
+把 `db/migrations` 整个移走,用真实产品清单 `pnpm qualy generate` 一次成功,ltree 作为
+pre-structure 片段排在结构 SQL 之前。随后把 from-scratch 与 committed 两条 lineage 分别部署到两个
+空库,逐对象比较:
+
+| 对象 | 数量 | 结果 |
+| --- | --- | --- |
+| 列(名/类型/可空/默认) | 129 | 完全一致 |
+| 约束 | 195 | 完全一致 |
+| 索引 | 57 | 完全一致 |
+| 函数 + 触发器 | 80 | 完全一致 |
+| 扩展 | ltree, plpgsql | 完全一致 |
+
+唯一差异是**列的物理顺序**(committed 靠 ALTER TABLE ADD COLUMN 追加,from-scratch 按声明顺序建表)
+与 pg_dump 的 `\restrict` 随机串,均无语义。手工 SQL 只有 ltree 需要进插件,且已经进了;
+`rbac-grant-channel-triggers` 的两个触发器与函数在 `access-model` 里被同批 DROP,终态本就没有它们,
+不是遗漏。
+
+此结论已固化为 `packages/plugins/infra/database/tests/clean-room-parity.test.ts`(删掉 ltree 片段即以
+生产同款报错变红)。旧的 clean-room 测试只数表数量,漏掉任何函数/触发器/约束都看不见。
+
+### 数据库重置与 demo seed
+
+`docker compose down -v` → up → `qualy deploy`(15 个迁移)→ `QUALY_SEED_DEMO=1 pnpm seed`。
+顺带清掉了 17 个测试残留库。seed 需要 `QUALY_DEMO_PASSWORD`(不会自己编凭据),本次用
+`QualyDemo!2026`,未写入 .env。
+
+实测结果:租户 1、组织类型 8、节点 5、用户类型 3、用户 3、角色 2、权限 16、授权 2;站位不变量违规
+数 0;`tenant-admin` 是唯一 `permission_mode=all-active` 且带 `system_key` 的角色;`system-account`
+站在租户根节点。登录与授权投影端到端实测:管理员登录 200,manifest 下发 7 个页面;demo 学生登录
+200,manifest 只有 2 个(login 与 ping)。
+
+### 路线图对照(docs/assembly-design.md §23)
+
+- 阶段 1 / 1.5:文档已标完成。
+- **阶段 2 已完成**:该节 2026-08-05 重写为「静态 Effect 运行时」,`cordis.gen.yml → runtime.gen.ts`
+  正是 M7 收尾做掉的那件事,不是还停在 M1。
+- 阶段 3 约六成:baselineDir、pre/post phase、片段哈希、中央 generate、drop guard 均在,clean-room
+  验收本次实测通过;**缺** database revision、upgradesDir、install epoch、migration bundle hash。
+- 阶段 4(provision / setup)未开始,seed 仍是 633 行的中央脚本。
+- 阶段 5(purge)未开始。
+
+### 验收(实际执行)
+
+```
+pnpm typecheck                    → 0 errors
+npx vitest run                    → Test Files 48 passed | Tests 306 passed
+clean-room parity                 → 129 列 / 195 约束 / 57 索引 / 80 函数触发器 全等
+删 ltree 片段后 generate           → 硬失败,点名 @qualy/plugin-org db/baseline/0001_ltree.sql
+清单指向不存在的 lineage 后启动     → 按清单路径 ENOENT(证明运行时确实读清单)
+管理员 / 学生 manifest             → 7 页 / 2 页
+```
