@@ -257,7 +257,7 @@
 | — | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足** | 603f7ad |
 | M3 | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client | 本次 |
 | M4 | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | **55/55 路由已迁完** |
-| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | api-reference / dict 完成,**web 待办** |
+| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | **完成**(api-reference / dict / web) |
 | M6 | 前端切到 HttpApiClient | 待办 |
 | M7 | 原子切换,删掉 cordis 与 oRPC | 待办 |
 
@@ -300,12 +300,23 @@ SIGTERM 后端口释放。冻结路径 `GET /ping/hello` 未变,`api-surface.tes
   ——只藏文档却照发它渲染用的 spec 等于什么都没藏。三种设置都在真进程上验过。
 - **dict 不需要 Effect entry**:它今天贡献的全部是装配期读取、不需要构造的描述符(一个 schemaEntry)。
   理由写在文件里,免得下一个人「因为原来有个 Service」给它补一个。
-- **plugin-web 还没迁**,它是真资源(拥有 Vite dev server 的生命周期 + 一个 Connect 风格 fallback)。
-  阻塞点已知:dev 模式要把 Vite 的 `middlewareMode: { server }` 挂到宿主那个 `http.Server` 实例上
-  (HMR websocket 共端口),而 Effect 侧那个实例归 `NodeHttpServer.layer` 所有——**先去上游确认怎么取到它**,
-  不要凭记忆猜。
+- **plugin-web 已迁**,它是这批里唯一的真资源。三条上游事实让它不用硬来(路径都实际读过):
+  ①`NodeHttpServer.layer` 收的是 `LazyArg<Http.Server>`,而 `HttpServer` 服务只暴露 address 与 serve、
+  不暴露实例(`repos/effect/packages/platform-node/src/NodeHttpServer.ts:93-176,445`)——所以**宿主自己建**
+  这个实例、发布为 `NodeServer`,同一个对象同时交给平台层和 Vite;
+  ②平台写响应的第一行是 `if (nodeResponse.writableEnded) return`(同文件 :508-515),这正是「把请求交给
+  Connect 中间件、handler 的返回值被忽略」之所以是**受支持的交接**而不是取巧;
+  ③`HttpRouter` 按**特异性**匹配(`HttpRouter.ts:130-200`,find-my-way 风格),所以 `/*` 兜底不会遮住已声明
+  路径,注册顺序不构成优先级问题。因此 shell 是 **router 路由**而不是 catch-all endpoint——后者会把浏览器
+  外壳写进 openapi 文档。
+  **中间件在 layer 构造期建一次,不在 handler 里**:handler 是 Effect 的路由会**每个请求**执行一次,
+  那样每次导航都会起一个 Vite server。
+  路由贡献像 api handler 一样**生成**(`qualy.runtime.routes` → `routes.gen.ts`),因为装配含哪些插件由清单
+  决定,宿主不得点名可选插件。plugin-web **不导出任何服务**,dev server 活在路由层自己的 scope 里。
+  **没搬过来的一件事**:cordis 版把 Vite 的 logger 接进运行时 logger 求格式统一;要在 layer 里做需要
+  `Effect.run*`,而 source policy 把它限定在进程边界,理由写在调用点上。
 
-**下一步是 plugin-web**,以及 M6 前必须确认的:`@effect/vitest` 在
+**下一步是 M6**(前端切到 HttpApiClient),以及必须先确认的:`@effect/vitest` 在
 Vitest browser mode 下能否用(上游无证据)。**建议在 M5 之前先跑一轮逐方法审计**:第一轮审计在 11 条
 路由上查出 12 个确认缺陷(含 1 个安全缺陷),现在是 55 条。
 
