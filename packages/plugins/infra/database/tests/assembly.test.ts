@@ -242,7 +242,7 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       '@qualy/plugin-org',
       '@qualy/plugin-auth-local',
       '@qualy/plugin-layout-default',
-          ],
+    ],
   }
 
   for (const [name, plugins] of Object.entries(selections)) {

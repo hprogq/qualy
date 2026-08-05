@@ -1,6 +1,6 @@
 import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-orm/postgresql'
 import { UnderscoreNamingStrategy, type EntitySchema } from '@mikro-orm/core'
-import { Context, Effect, Layer, Redacted } from 'effect'
+import { Context, Effect, Exit, Layer, Option, Redacted } from 'effect'
 import { DatabaseConfig } from './config.ts'
 
 // The ORM as an Effect resource, built from an entity set the host hands in.
@@ -61,17 +61,32 @@ export type ClosureEntityManager<T extends readonly unknown[]> = PostgresEntityM
 }
 
 /**
- * A fresh manager, typed for the caller's own tables.
+ * The manager an open transaction is running on.
+ *
+ * Present only inside `transaction`, and the reason `entityManager` is an
+ * effect rather than a value: a service called from inside a transaction has
+ * to run on that transaction's connection, and it must not have to be handed
+ * anything to do so. Passing the handle down was the previous arrangement, and
+ * forgetting it read committed state instead of what the transaction was about
+ * to commit - silently, and only under concurrency.
+ */
+class TransactionManager extends Context.Service<TransactionManager, PostgresEntityManager>()(
+  '@qualy/plugin-database/TransactionManager',
+) {}
+
+/**
+ * A manager typed for the caller's own tables.
+ *
+ * Inside a transaction this is that transaction's manager, so a peer reached
+ * across a service boundary joins it by being called there. Outside one it is
+ * a fresh fork, because the manager carries an identity map and one shared
+ * across requests is one request seeing another's rows.
  *
  * The ORM was built from the whole assembly, so its manager is wider than any
  * one plugin's closure and has to be narrowed. Narrowing is the safe
  * direction - a plugin that names fewer tables reaches fewer tables - but it
  * is still an assertion, so it is made once here instead of at every call
- * site, where fifteen copies would eventually disagree about which one is a
- * lie.
- *
- * Forked rather than shared: the manager carries an identity map, and one
- * shared across requests is one request seeing another's rows.
+ * site, where fifteen copies would eventually disagree about which one lies.
  */
 export const entityManager = <const T extends readonly unknown[]>(): Effect.Effect<
   ClosureEntityManager<T>,
@@ -79,8 +94,40 @@ export const entityManager = <const T extends readonly unknown[]>(): Effect.Effe
   Orm
 > =>
   Effect.gen(function* () {
+    const open = yield* Effect.serviceOption(TransactionManager)
+    if (Option.isSome(open)) return open.value as unknown as ClosureEntityManager<T>
     const orm = yield* Orm
     return orm.em.fork() as unknown as ClosureEntityManager<T>
+  })
+
+/**
+ * Runs a body inside one database transaction.
+ *
+ * Committed when the body succeeds, rolled back when it fails or is
+ * interrupted. Both of those are done through `Effect.promise`, so a pool that
+ * cannot commit dies rather than joining the failures a caller chooses
+ * between: it is not a decision anyone made.
+ *
+ * Called from inside an open transaction it joins that one instead of opening
+ * a second. Two transactions would be two connections, and the inner one would
+ * not see what the outer has not committed - which is the entire reason a
+ * structural write takes a tenant lock first.
+ */
+export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | Orm> =>
+  Effect.gen(function* () {
+    const open = yield* Effect.serviceOption(TransactionManager)
+    if (Option.isSome(open)) return yield* body
+
+    const orm = yield* Orm
+    const em = orm.em.fork()
+    return yield* Effect.acquireUseRelease(
+      Effect.promise(() => em.begin()),
+      () => body.pipe(Effect.provideService(TransactionManager, em)),
+      (_, exit) =>
+        Exit.isSuccess(exit)
+          ? Effect.promise(() => em.commit())
+          : Effect.promise(() => em.rollback()),
+    )
   })
 
 /**

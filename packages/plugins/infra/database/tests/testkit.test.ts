@@ -71,9 +71,7 @@ describe.runIf(postgresAvailable)('database testkit', () => {
   it('refuses a statement that returned no row instead of handing back nothing', async () => {
     const db = await createTestContext('testkit-row')
     try {
-      await expect(
-        db.row(`select 1 where false`),
-      ).rejects.toThrow(/expected a row/)
+      await expect(db.row(`select 1 where false`)).rejects.toThrow(/expected a row/)
       // and still returns the row when there is one
       expect(await db.row<{ n: number }>(`select 1::int as n`)).toEqual({ n: 1 })
     } finally {

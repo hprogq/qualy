@@ -56,59 +56,57 @@ const CATALOG = {
 }
 
 describe.runIf(postgresAvailable)('a lineage rebuilt from the plugins alone', () => {
-  it(
-    'produces the same database as the committed lineage',
-    async () => {
-      const workspace = createWorkspace(productSelection(), {
-        configs: { '@qualy/plugin-database': { migrationsFolder: 'migrations' } },
+  it('produces the same database as the committed lineage', async () => {
+    const workspace = createWorkspace(productSelection(), {
+      configs: { '@qualy/plugin-database': { migrationsFolder: 'migrations' } },
+    })
+    try {
+      await commitLock(workspace)
+      const work = (await capabilityWorkContext(workspace, 'database')) as CapabilityWorkContext<
+        DatabaseContribution,
+        DatabaseState
+      >
+      await provider.generate!(work)
+
+      // both applied the way production applies them, so this compares
+      // deployments rather than a replay written for the test
+      const fresh = await createTestContext('parity-fresh', {
+        migrationsFolder: path.join(workspace.dir, 'migrations'),
+      })
+      const committed = await createTestContext('parity-committed', {
+        migrationsFolder: committedLineage,
       })
       try {
-        await commitLock(workspace)
-        const work = (await capabilityWorkContext(workspace, 'database')) as CapabilityWorkContext<
-          DatabaseContribution,
-          DatabaseState
-        >
-        await provider.generate!(work)
-
-        // both applied the way production applies them, so this compares
-        // deployments rather than a replay written for the test
-        const fresh = await createTestContext('parity-fresh', {
-          migrationsFolder: path.join(workspace.dir, 'migrations'),
-        })
-        const committed = await createTestContext('parity-committed', {
-          migrationsFolder: committedLineage,
-        })
-        try {
-          const seen: Record<string, string[]> = {}
-          for (const [what, query] of Object.entries(CATALOG)) {
-            const left = (await committed.query<Record<string, string>>(query)).rows.map(
-              (row) => Object.values(row)[0]!,
-            )
-            const right = (await fresh.query<Record<string, string>>(query)).rows.map(
-              (row) => Object.values(row)[0]!,
-            )
-            expect(right, `${what} differ; something in db/migrations is not carried by any plugin`)
-              .toEqual(left)
-            seen[what] = left
-          }
-
-          // Anchors, so two empty databases cannot agree their way to green.
-          // Not "every category is non-empty": this schema has no triggers,
-          // the two the lineage created having been dropped by the migration
-          // that removed the columns they read.
-          expect(seen.extensions).toContain('ltree')
-          expect(seen.columns).toContain('org_nodes.path USER-DEFINED null=NO default=-')
-          expect(seen.columns!.length).toBeGreaterThan(100)
-          expect(seen.constraints!.length).toBeGreaterThan(100)
-          expect(seen.indexes!.length).toBeGreaterThan(40)
-        } finally {
-          await fresh.dispose()
-          await committed.dispose()
+        const seen: Record<string, string[]> = {}
+        for (const [what, query] of Object.entries(CATALOG)) {
+          const left = (await committed.query<Record<string, string>>(query)).rows.map(
+            (row) => Object.values(row)[0]!,
+          )
+          const right = (await fresh.query<Record<string, string>>(query)).rows.map(
+            (row) => Object.values(row)[0]!,
+          )
+          expect(
+            right,
+            `${what} differ; something in db/migrations is not carried by any plugin`,
+          ).toEqual(left)
+          seen[what] = left
         }
+
+        // Anchors, so two empty databases cannot agree their way to green.
+        // Not "every category is non-empty": this schema has no triggers,
+        // the two the lineage created having been dropped by the migration
+        // that removed the columns they read.
+        expect(seen.extensions).toContain('ltree')
+        expect(seen.columns).toContain('org_nodes.path USER-DEFINED null=NO default=-')
+        expect(seen.columns!.length).toBeGreaterThan(100)
+        expect(seen.constraints!.length).toBeGreaterThan(100)
+        expect(seen.indexes!.length).toBeGreaterThan(40)
       } finally {
-        workspace.dispose()
+        await fresh.dispose()
+        await committed.dispose()
       }
-    },
-    180_000,
-  )
+    } finally {
+      workspace.dispose()
+    }
+  }, 180_000)
 })

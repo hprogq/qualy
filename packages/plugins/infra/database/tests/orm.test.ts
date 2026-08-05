@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { defineEntity } from '@mikro-orm/core'
 import { Context, Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { Orm, entityManager, kyselyOf } from '../src/server/index.ts'
+import { unwrapPgError } from '../src/pg-errors.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '../src/testkit.ts'
 
 // Does an entity tuple handed to this plugin come out the other end as a query
@@ -24,7 +26,7 @@ const Tenant = defineEntity({
   name: 'Tenant',
   tableName: 'tenants',
   properties: {
-    id: p.uuid().primary(),
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
     slug: p.string().length(63),
     name: p.string().length(255),
     enabled: p.boolean(),
@@ -61,6 +63,43 @@ describe.runIf(postgresAvailable)('the orm this plugin builds', () => {
         }).pipe(Effect.provide(databaseFor(db.url, { entities }))),
       )
       expect(found).toEqual([{ slug: 'acme', enabled: true }])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('lets a constraint violation through with its sqlstate and name intact', async () => {
+    // Drizzle wraps the driver's error and hangs the original on `cause`, so
+    // the shared unwrapper looks there first. This stack does not wrap at all,
+    // which the unwrapper already handles - but nothing said so, and the whole
+    // translation of postgres errors into domain errors reads `code` and
+    // `constraint` off whatever comes out. If a version starts wrapping,
+    // every translated constraint quietly becomes an opaque 500.
+    const db = await createTestContext('orm-constraint')
+    try {
+      // the driver's error is caught where it is raised rather than after
+      // Effect has wrapped it in a fiber failure: what is asserted is the
+      // shape the translator will be handed
+      const refused = await Effect.runPromise(
+        Effect.gen(function* () {
+          const em = yield* entityManager<typeof entities>()
+          const insert = () =>
+            kyselyOf(em)
+              .insertInto('Tenant')
+              .values({ id: randomUUID(), slug: 'twice', name: 'Twice', enabled: true })
+              .execute()
+          return yield* Effect.promise(async () => {
+            await insert()
+            try {
+              await insert()
+              return undefined
+            } catch (error) {
+              return unwrapPgError(error)
+            }
+          })
+        }).pipe(Effect.provide(databaseFor(db.url, { entities }))),
+      )
+      expect(refused).toMatchObject({ code: '23505', constraint: 'tenants_slug_key' })
     } finally {
       await db.dispose()
     }

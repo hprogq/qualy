@@ -29,7 +29,11 @@ describe('the generated entity aggregate', () => {
   it('imports each plugin tuple and spreads it, as a tuple', () => {
     const module = renderEntityModule([
       { pluginId: '@qualy/plugin-org', specifier: '@qualy/plugin-org/db', file: '/x' },
-      { pluginId: '@qualy/plugin-auth-local', specifier: '@qualy/plugin-auth-local/db', file: '/y' },
+      {
+        pluginId: '@qualy/plugin-auth-local',
+        specifier: '@qualy/plugin-auth-local/db',
+        file: '/y',
+      },
     ])
     expect(module).toContain("import { entities as pluginOrgEntities } from '@qualy/plugin-org/db'")
     // the hyphen becomes a capital rather than a syntax error, and the plugin

@@ -1,9 +1,7 @@
 // cordis-free postgres error helpers shared by every plugin's data layer.
 
 // drizzle wraps the pg DatabaseError as .cause; unwrap either shape
-export function unwrapPgError(
-  error: unknown,
-): { code?: string; constraint?: string } | undefined {
+export function unwrapPgError(error: unknown): { code?: string; constraint?: string } | undefined {
   if (!error || typeof error !== 'object') return undefined
   const candidate = 'cause' in error && error.cause ? error.cause : error
   if (typeof candidate !== 'object' || !('code' in candidate)) return undefined

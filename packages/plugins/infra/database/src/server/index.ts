@@ -30,6 +30,7 @@ export {
   Orm,
   QualyNamingStrategy,
   entityManager,
+  transaction,
   kyselyOf,
   type ClosureEntityManager,
 } from './orm.ts'

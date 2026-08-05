@@ -56,11 +56,8 @@ export const constraintOf = (error: unknown): string | undefined => {
 export const translateConstraints =
   <Domain>(map: Record<string, () => Domain>) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E | Domain, R> =>
-    Effect.catch(
-      effect,
-      (error): Effect.Effect<never, E | Domain> => {
-        const constraint = constraintOf(error)
-        const translate = constraint ? map[constraint] : undefined
-        return Effect.fail(translate ? translate() : error)
-      },
-    )
+    Effect.catch(effect, (error): Effect.Effect<never, E | Domain> => {
+      const constraint = constraintOf(error)
+      const translate = constraint ? map[constraint] : undefined
+      return Effect.fail(translate ? translate() : error)
+    })
