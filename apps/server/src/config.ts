@@ -6,11 +6,11 @@ import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
-import { permissionCatalog } from '../../permissions.gen.ts'
-import { loginDrivers } from '../../login-drivers.gen.ts'
+import { permissionCatalog } from '../permissions.gen.ts'
+import { loginDrivers } from '../login-drivers.gen.ts'
 import { UiCatalog } from '@qualy/plugin-ui-registry/server'
 import { WebConfig } from '@qualy/plugin-web/server'
-import { uiSurfaces } from '../../ui.gen.ts'
+import { uiSurfaces } from '../ui.gen.ts'
 
 // Everything the assembly needs from its environment, in one place.
 //
@@ -18,7 +18,7 @@ import { uiSurfaces } from '../../ui.gen.ts'
 // the process behaves the same wherever it was started from. That was already
 // true of the cordis entry point and is worth keeping.
 
-const appRoot = fileURLToPath(new URL('../../', import.meta.url))
+const appRoot = fileURLToPath(new URL('../', import.meta.url))
 
 export const localFallback = 'postgres://qualy:qualy@localhost:5432/qualy'
 

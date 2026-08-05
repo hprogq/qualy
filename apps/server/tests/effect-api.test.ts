@@ -19,7 +19,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { makeClient } from '@qualy/api-client/effect'
 import { apiHandlers } from '../api-handlers.gen.ts'
-import { healthApi, healthHandlers } from '../src/effect/health.ts'
+import { healthApi, healthHandlers } from '../src/health.ts'
 
 // M3: a plugin's endpoints reaching the aggregate.
 //

@@ -61,7 +61,7 @@ for (const entry of (await readEntries({ all: false })).filter((e) =>
 }
 
 writeGenerated(
-  'packages/app/permissions.gen.ts',
+  'apps/server/permissions.gen.ts',
   [
     "import type { ActivePermission } from '@qualy/rbac-contract'",
     ...imports,

@@ -103,7 +103,7 @@ writeGenerated(
 )
 
 writeGenerated(
-  'packages/app/api-handlers.gen.ts',
+  'apps/server/api-handlers.gen.ts',
   [
     "import { Layer } from 'effect'",
     ...handlerImports,

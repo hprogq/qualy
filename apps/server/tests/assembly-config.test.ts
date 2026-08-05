@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { lockPathFor } from '@qualy/assembly'
 import { LOCAL_FALLBACK } from '@qualy/plugin-database/assembly'
-import { localFallback, manifestMigrationsFolder, manifestPath } from '../src/effect/config.ts'
+import { localFallback, manifestMigrationsFolder, manifestPath } from '../src/config.ts'
 
 // Two facts the assembly owns that this process must not decide for itself.
 //

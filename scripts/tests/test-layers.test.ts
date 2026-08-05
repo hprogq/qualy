@@ -281,7 +281,7 @@ describe('test layering', () => {
     // was relying on. Running belongs at the boundaries: the process entry,
     // the CLI, the browser's one runtime, and tests.
     const RUNS_EFFECTS = [
-      'packages/app/src/effect/main.ts',
+      'apps/server/src/effect/main.ts',
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
       'packages/api-client/src/effect/query.ts',

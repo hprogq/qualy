@@ -7,8 +7,8 @@ import { createWorkspace } from '@qualy/assembly/testkit'
 
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
 const apiPath = 'packages/api/src/api.gen.ts'
-const apiHandlersPath = 'packages/app/api-handlers.gen.ts'
-const catalogPath = 'packages/app/permissions.gen.ts'
+const apiHandlersPath = 'apps/server/api-handlers.gen.ts'
+const catalogPath = 'apps/server/permissions.gen.ts'
 
 // Every run in this file generates into its own tree.
 //
@@ -200,7 +200,7 @@ describe('generator determinism', () => {
     // same either way or a release would serve and authorize things the
     // manifest switched off.
     gen()
-    const serverSide = [apiPath, apiHandlersPath, catalogPath, 'packages/app/runtime.gen.ts']
+    const serverSide = [apiPath, apiHandlersPath, catalogPath, 'apps/server/runtime.gen.ts']
     const active = serverSide.map((file) => read(file))
     gen('--all')
     for (const [index, file] of serverSide.entries()) {

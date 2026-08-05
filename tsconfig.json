@@ -3,10 +3,17 @@
   "include": [
     "*.config.ts",
     "scripts",
+    "apps/server/src",
+    "apps/server/tests",
     "packages/*/src",
     "packages/*/tests",
     "packages/plugins/*/*/src",
     "packages/plugins/*/*/tests"
   ],
-  "exclude": ["packages/web-runtime", "packages/web-i18n", "packages/ui", "repos"]
+  "exclude": [
+    "packages/web-runtime",
+    "packages/web-i18n",
+    "packages/ui",
+    "repos"
+  ]
 }

@@ -20,7 +20,7 @@
 
 - [plugin-web 定案] 前端交付插件化(2026-08-02):server 增单槽 Connect 风格 fallback(effect 托管,/api 前缀内永不触发,next()→404、next(err)→日志+500)+ httpServer/port 暴露;新建 @qualy/plugin-web(mode auto 按 NODE_ENV 分流:development 挂 Vite middlewareMode 到宿主 server 共端口,production 用 sirv 服务 staged 产物;启用即必须可服务,缺产物/缺 vite 启动硬失败);apps/web 改名 @qualy/web-app 留守组合根,产物经 stage-web-assets 归插件 client-dist/(gitignored);独立 dev:web 与 /api 代理删除,dev 单进程。修复两坑:traceable 代理下服务可变槽重赋值不粘(fallback 撤销失效,改稳定容器盒,入 notes/cordis.md);sirv setHeaders 收请求路径致 html 壳误带 immutable(改无扩展名判定)
 
-- [P1 入场收口] 基线冻结与三修复(2026-08-02):①装配清单更名 `packages/app/qualy.yml`(审计确认文件名在 cordis 库中零特殊化,仅弃用的 bin.js 有默认值;代码引用 main.ts/read-entries/plugin-add/codegen banner/两测试全量切换,归档文档与上游手册不动);②终端日志归一——db:migrate 换自研静音脚本(drizzle-orm migrate() 程序化调用,与 kit 台账实测兼容;注意 v1 必须 `drizzle({client})`,裸 `drizzle(pool)` 会被当 config 自建无凭据连接),vite 日志经 customLogger 走 `ctx.logger('vite')`;③web 壳补 index 重定向(首个 nav 项)与 404 页,根路径不再空白;④CI 增 `pnpm build` + staged assets 存在检查 + check-chunks 树摇门禁;⑤p1-tutorial.md 与 p1-migration-audit.md 入库(审计表已按真实旧仓校对路径),CLAUDE 切到 P1;⑥旧代码克隆 legacy/(gitignored,vitest 排除):qualy_old + algryth(RBAC 参考);⑦当前 HEAD 全量验收重跑并补记 P0-REPORT,打不可变基线 tag `p1-base`
+- [P1 入场收口] 基线冻结与三修复(2026-08-02):①装配清单更名 `apps/server/qualy.yml`(审计确认文件名在 cordis 库中零特殊化,仅弃用的 bin.js 有默认值;代码引用 main.ts/read-entries/plugin-add/codegen banner/两测试全量切换,归档文档与上游手册不动);②终端日志归一——db:migrate 换自研静音脚本(drizzle-orm migrate() 程序化调用,与 kit 台账实测兼容;注意 v1 必须 `drizzle({client})`,裸 `drizzle(pool)` 会被当 config 自建无凭据连接),vite 日志经 customLogger 走 `ctx.logger('vite')`;③web 壳补 index 重定向(首个 nav 项)与 404 页,根路径不再空白;④CI 增 `pnpm build` + staged assets 存在检查 + check-chunks 树摇门禁;⑤p1-tutorial.md 与 p1-migration-audit.md 入库(审计表已按真实旧仓校对路径),CLAUDE 切到 P1;⑥旧代码克隆 legacy/(gitignored,vitest 排除):qualy_old + algryth(RBAC 参考);⑦当前 HEAD 全量验收重跑并补记 P0-REPORT,打不可变基线 tag `p1-base`
 
 - [P1 入场评审修复] 三项基线问题(2026-08-02,评审后、p1-ready):①CI no-op generate 改 `git status --porcelain`(git diff 漏 untracked 迁移目录);drop-guard 增 `--all` 全史扫描并入 CI(main push 上 `--base-ref origin/main` 差异为空、实际扫 0 文件;已批准的 destructive 迁移永远带 `-- destructive: approved` 标记,全扫恒干净);②packages/app 依赖自持:include/logger-console/timer 入 dependencies、hmr 入 devDependencies,根包剪掉全部 cordis 运行时依赖(根 dependencies 仅剩 tsx);③main.ts 清单路径 import.meta.url 锚定 + QUALY_CONFIG 外部清单覆盖(异 cwd 启动实证)。**重要实查**(loader rc.5 解析矩阵,见 notes/cordis.md):internal 路径按清单目录解析宿主依赖(monorepo 内启动必须 --expose-internals);无 internal 回退从 loader 包位置 plain import,pnpm 隔离下宿主直属依赖不可见——剪枝后静默零装载、退出码 0(实锤);外部清单路径只在独立部署扁平布局可用,生产清单不含 hmr
 
@@ -116,7 +116,7 @@
 - plugin-timer 在 dependencies(运行时基础设施);hmr 保持 devDependencies——已知不一致:提交的 cordis.yml 引用了 dev-only 的 hmr,生产装配拆分(cordis.dev.yml include)推迟到 P0 尾声处理
 - 复核修入教程的未来地雷:s3 需 @types/pg/drizzle 依赖声明与 database Config 默认值;s3 占位 gen 脚本不落盘;s4 server 关停返回 Promise 防 EADDRINUSE;s7 前置根 tsconfig solution 化 + client 依赖自声明 + 先 create vite 再 gen
 - 插件形态定案(s2 尾声,与 Chat 四组对照实测共同确认):统一具名导出 `name/inject/Config/apply`,模块命名空间即对象插件,禁用 default 函数 + 属性赋值;对象型 Config 顶层 `.prefault({})`,禁止 `.default({})` 替代(Zod 4 短路语义,缺失时字段默认静默失效);函数插件体勿隐式返回值(返回值会被当作 effect 清理函数,非函数抛 Invalid effect)。教程 s2/s3/s5/s8 示例已统一,坑速查表补三行
-- 启动入口定案(s2 尾声):packages/app/src/main.ts 接管 cordis bin(SIGINT/SIGTERM 优雅关闭,根 fiber dispose 级联清理,实测 Ctrl+C 退出码 0 无 ELIFECYCLE;根 fiber dispose 后状态仍 ACTIVE 属特例勿断言);hmr root 收窄为 packages;代码注释与日志一律英文
+- 启动入口定案(s2 尾声):apps/server/src/main.ts 接管 cordis bin(SIGINT/SIGTERM 优雅关闭,根 fiber dispose 级联清理,实测 Ctrl+C 退出码 0 无 ELIFECYCLE;根 fiber dispose 后状态仍 ACTIVE 属特例勿断言);hmr root 收窄为 packages;代码注释与日志一律英文
 - 发行愿景定案入 PLAN §2.7:构建/运行双清单分离,生成器需 --all 模式(s3 落地),超集镜像 + 静态配置生成器 + volume 挂载 yml 三件套;--expose-internals 为 dev-only,Dockerfile 必查项
 
 - hmr watch 集合定则(s2 尾声):root = loader 装载的代码目录 + 全部装配清单,当前 `["packages", "cordis.yml"]`;include 零自监听,yml 热更完全依赖 hmr watcher(曾因收窄 root 丢过配置热更)。已知上游怪癖:源码重载会把插件配置回退到启动值,真改 yml 值或重启 dev 恢复(notes/hmr.md)
@@ -203,7 +203,7 @@
 - **未采纳评审的一处建议并说明**:评审建议把 `unavailablePermissions` 在编辑器里显示为「所属插件当前未加载,权限已保留」的只读提示。后端语义已按建议改(保存不再删除),但只读提示属于会话 7 dict 生命周期的展示需求,留到会话 7 与「停用插件后页面/权限如何呈现」一并设计,避免现在先造一个届时要重做的 UI。
 - [P1 会话 6.5] 测试分层收口(2026-08-04):六个业务插件套件各自持有一份 PostgreSQL 生命周期——探测服务、造库名、admin Pool 建库、定位迁移目录、手工 `runMigrations`、再以 `migrations: 'off'` 起 Database 插件、维护两个 Pool、`drop database ... with (force)`,还都靠 `pool.on('error', () => {})` 吞掉强杀连接的后果。**同一个库两个所有者,插件自身的 init/dispose 路径从来没被测过**。收口为 `createTestContext()`:按**生产路径**注册 Database(`migrations: 'apply'`,于是每个套件顺带证明迁移 lineage 仍可从空库应用),dispose 时先 `ctx.fiber.dispose()` 再 drop:**正常路径永不 force**(实测六个套件全部不再需要,`pg_database` 零残留,原先那句吞错误的 handler 掩盖的只是它自己制造的竞态);force 只在普通 drop 已失败之后用于清除残留,且每一步的错误都收进 `AggregateError` 抛出——**强制清理成功不得把一次失败的 teardown 变绿**。三条泄漏路径一并堵掉:建库失败不再漏掉 `admin.end()`、init 失败先 dispose 已注册的 effect 再清理且保留原始错误、`fiber.dispose()` 抛错不再跳过后面的 drop 与 `end()`。**放在哪里换了一次判断**:先建了平级的 `@qualy/test-support`,评审提出这只是把越层从六个文件搬进一个包——核对后同意,`pg`、连接串、迁移目录都是 database 插件的领域,于是整体移进 `@qualy/plugin-database/testkit`(四个业务插件本来就都依赖该包,零新增依赖边),`@qualy/test-support` 删除。**约束测试照旧直接写非法 SQL**(约束的价值就在于挡住 service 永远不会发的东西),只是经 `db.query()` 而不是自己的 Pool。
 - [收口期发现的三处实情] ①**drizzle 包裹驱动错误**:SQLSTATE 在 `error.cause` 上,顶层 `.code` 是 undefined——旧的 `pgCode` 一旦走 drizzle 就会静默返回 undefined,`expect(...).toBe('23505')` 这类断言会**从此不再断言任何东西**。共享 `pgCode` 走 cause 链。②**drizzle 把顶层数组展开成 `(a, b)` 内联列表**而不是绑成一个数组参数,`= any($1::uuid[])` 因此变成 postgres 拒绝的 record cast;改用 `sql.param()` 绑定后恢复原样(三个 agent 各自独立撞上同一条,已在 harness 修掉并把被绕开的语句改回)。③**cordis 的 `fiber.dispose()` 吞掉抛错的 disposer**(resolve 而非 reject,已实查),所以 harness 报不出插件的释放失败,能报的只有 postgres 拒绝的那些——这条写进 CLAUDE 与 testkit 测试的注释,免得后人以为 teardown 覆盖了插件泄漏。④`noUncheckedIndexedAccess` 下 `rows[0].x` 一律报错——旧代码只是因为 `@types/pg` 把 rows 标成 `any[]` 才没暴露;harness 补 `row()` 访问器,"insert ... returning id 没返回行"当场报错而不是三行之后空指针。
-- [硬门禁] scripts/tests/test-layers.test.ts。初版只扫 `**/tests/**` 且"豁免清单"其实只断言路径还在、没参与判定,评审指出这两点后重写为四条:①扫**整个 `packages/`**,除 `plugins/infra/database/**` 外一律禁 `from 'pg'`、`new Pool(`、`plugin-database/migrator`、`process.env.DATABASE_URL`、`QUALY_REQUIRE_POSTGRES_TESTS`、`create/drop database`(不再依赖测试目录命名,挪进 `src/` 也跑不掉);②`scripts/` 用**文件级**白名单(seed 的公开入参就是 PoolClient),不是整目录豁免;③扫全仓 package.json,除 database 外不得声明 `pg`/`@types/pg`;④**生产源码不得 import 任何 `/testkit`**。另把本轮迁移的六个套件按**精确路径**钉住,删/挪/改名当场红。四条都做了破坏性验证:把套件挪进 `src/`、改掉六个之一的文件名、在 `packages/app/src/main.ts` 里 import testkit、给 rbac 加回 `pg` devDep,分别被对应的那条抓到。
+- [硬门禁] scripts/tests/test-layers.test.ts。初版只扫 `**/tests/**` 且"豁免清单"其实只断言路径还在、没参与判定,评审指出这两点后重写为四条:①扫**整个 `packages/`**,除 `plugins/infra/database/**` 外一律禁 `from 'pg'`、`new Pool(`、`plugin-database/migrator`、`process.env.DATABASE_URL`、`QUALY_REQUIRE_POSTGRES_TESTS`、`create/drop database`(不再依赖测试目录命名,挪进 `src/` 也跑不掉);②`scripts/` 用**文件级**白名单(seed 的公开入参就是 PoolClient),不是整目录豁免;③扫全仓 package.json,除 database 外不得声明 `pg`/`@types/pg`;④**生产源码不得 import 任何 `/testkit`**。另把本轮迁移的六个套件按**精确路径**钉住,删/挪/改名当场红。四条都做了破坏性验证:把套件挪进 `src/`、改掉六个之一的文件名、在 `apps/server/src/main.ts` 里 import testkit、给 rbac 加回 `pg` devDep,分别被对应的那条抓到。
 - [6.5 评审补强] 两份审计一致裁定不做 vitest 插件、不做跨插件 fixture、不搬测试,但指出四处收尾问题,已在同一提交内补齐:①testkit 的三条失败清理路径(建库失败漏 `admin.end()`、init 失败 force drop 且掩盖原始错误、`fiber.dispose()` 抛错跳过全部后续清理)统一收进 `teardown()`,收集全部错误抛 `AggregateError`;②分层门禁的"豁免清单"原先只断言路径存在、没参与任何判定,且发现规则只认 `**/tests/**`——挪进 `src/` 或 `__tests__/` 即可绕过,已按上一条重写;③CLAUDE 里"禁止为测试给生产包开 test-only 导出"与新增的 `./testkit` 子导出字面冲突,规则改精确为"禁止暴露内部实现;资源所有者可提供显式 `<包>/testkit`,不进包根、生产源码不得 import";④testkit 自己没有回归测试,新增 `database/tests/testkit.test.ts` 七例(cause 链取 SQLSTATE、数组绑成单参、`row()` 拒绝空结果、正常 dispose 后库消失、init 失败零残留、teardown 失败必须报出、以及"cordis 吞 disposer 错误因此 harness 看不见"这一条的成文记录)。顺带删掉 iam.test 里手工拼 `{a,b}` 数组字面量的绕法——testkit 修好后两种参数约定不该并存。
 - 会话 6.5 验收:`pnpm typecheck` exit 0、11 工程;`pnpm test` **30 文件 194 例全过**;`pnpm test:browser` 10 例全过;`pnpm build` 通过;空库 14 条迁移 + seed;`pg_database` 中 `qualy\_%` 残留 **0**。
 - **未采纳评审的更大方案并说明理由**:评审进一步建议做 `@qualy/vitest-plugin`(按装配清单探测 database 能力、动态生成 unit/postgres 两个 vitest project、`*.db.test.ts` 命名分流、`dbTest` fixture 取代 `beforeAll`)。**采纳了其中的结构判断**(testkit 归 database 插件),**未采纳其余**:①按冻结元规则,已发生的问题是「六份重复 + 双所有者 + 吞错误 + pg 越层」,这些已经全部消除,而 project 分流解决的是「第三方无数据库仓库跑 vitest」与「装配里停用 database 时不加载 db 测试」——都还没发生;②(此处原先写的理由是错的,评审指正:vitest 4.1.10 的 fixture 支持 `scope: 'file' | 'worker'`,实查 `@vitest/runner` 的 `FixtureOptions` 确有该字段,所以「改 fixture 就必须每个用例重建库」不成立,性能不是阻碍)——真实理由是改过去会同时引入 project 拆分、文件命名协议、fixture 作用域、worker 生命周期、装配能力探测与 CI 调度六件事,而它们对应的收益都还没出现;③`*.db.test.ts` 改名 + 第二层 vitest 配置是一次覆盖六个文件的返工,而门禁已经能拦住第七次复制。**重评触发条件**:出现不带 database 的独立插件仓库、或装配清单里真的需要停用 database 还要跑测试、或 db 测试多到需要与 unit 分开调度。
@@ -222,7 +222,7 @@
 - **图的裁剪(与设计文档不一致处,已实证)**:①**不建运行时图**——读 cordis loader 源码确认 `EntryGroup.update` 用 `Promise.all` 并发创建全部条目、激活由 `inject` 门控,条目顺序不决定任何事;而 `pnpm install` 当场警告 org↔rbac 已是 workspace 循环依赖(org 的 devDependencies),用包依赖当运行时图会把一个合法状态变成硬失败。runtimeOrder 因此就是按 id 排序。②数据库图保留为硬约束:缺依赖、成环在 resolve 期失败并打印环路径。
 - **lock 只记装配语义**:插件版本/状态/database 声明/两条拓扑序 + `manifestHash` + `resolutionHash`;原子写(tmp + fsync + rename)。**测试发现的真洞**:只比对「解析结果的哈希」抓不到手改 lock——改内容不改哈希时两边都等于原值。补 `lockSelfHash`,先验 lock 内容与自身哈希一致,再验是否等于当前解析结果。
 - **cordis.gen.yml**:清单是产品选择,loader 要的是条目数组,派生文件做翻译(gitignored,`pnpm gen` 产出)。条目 id 由插件名派生——loader 的 `ensureId` 用 `Math.random()` 补 id 并写回读到的文件,派生 id 让它无事可做,人手维护的清单不再被机器改写。
-- **start 只校验不修复**:`packages/app/src/verify-assembly.ts` 在 loader 之前解析全部包(loader 对导入失败只记日志,写错的插件本来会静默不装载),清单/lock/条目表任一漂移在 `QUALY_FROZEN_LOCKFILE=1` 下拒绝启动,否则告警继续。
+- **start 只校验不修复**:`apps/server/src/verify-assembly.ts` 在 loader 之前解析全部包(loader 对导入失败只记日志,写错的插件本来会静默不装载),清单/lock/条目表任一漂移在 `QUALY_FROZEN_LOCKFILE=1` 下拒绝启动,否则告警继续。
 - **readiness 改用官方信号**(读 loader 源码后的更正):上一轮写的「loader 没有 settled promise」是错的,`ctx.loader.await()` 就是——它循环等每个条目的 `_initTask || fiber.inertia` 直到全空,每轮重取所以后建的条目也等得到。50ms×2 静默轮询与 `internal/status` 监听全部删除。**实测**:`await()` 1008ms resolve,`inject(['server'])` 693ms;`intercept('loader',{await:true})` 装配前注册 1ms 就触发、装配后注册再也不触发,不可用(细节入 notes/cordis.md)。
 - **CLI**:`pnpm qualy resolve [--frozen-lockfile] [--yml <path>]` 与 `pnpm qualy plan`;frozen 零写入(包括派生条目表)。`plugin:add` 收尾自动 resolve。
 - **测试**:新 `scripts/tests/support/workspace.ts` 造真临时 assembly workspace(自带 qualy.yml / lock / migrations / node_modules,node_modules 是指向真实包目录的符号链接目录,包各自的依赖照常从 pnpm 放的位置解析)。`assembly-resolve.test.ts` 21 例(清单格式、两次 resolve 同字节、键序无关、缺依赖、成环、detached 三态、frozen 三种漂移、派生条表确定性、仓库自身 lock 与清单一致);`assembly.test.ts` 6 例改跑真 workspace,新增「detached 插件的表留在 lineage 里且不生成 DROP」;`invariants.test.ts` 补移除等价于停用一例;`generators.test.ts` 的「同一插件装两次」用例失去意义(键控映射不可能表达),改为断言生成的契约聚合里没有命名空间被两次认领。
@@ -263,8 +263,8 @@
 
 **M3 交接要点**:插件**不依赖**聚合体——用只装自己一个 group 的本地 `HttpApi` 实现,靠共享的
 `QUALY_API_ID` 让类型也对上(源码依据与实跑验证见迁移文档「M3 包边界」)。生成三份产物:
-`packages/api/src/api.gen.ts`(只有定义,浏览器读)、`packages/app/api-handlers.gen.ts`(handler,宿主读)、
-`packages/app/runtime.gen.ts`(非 API 贡献)。插件声明 `qualy.runtime.api` 指向 group 模块,生成器按
+`packages/api/src/api.gen.ts`(只有定义,浏览器读)、`apps/server/api-handlers.gen.ts`(handler,宿主读)、
+`apps/server/runtime.gen.ts`(非 API 贡献)。插件声明 `qualy.runtime.api` 指向 group 模块,生成器按
 `<ns>ApiGroup` 发现并配对 `<ns>ApiHandlers`,**没人实现的 group 是构建期失败**。
 
 **验收(逐条实跑)**:`pnpm typecheck` exit 0;`pnpm test` **41 文件 281 例全过**;真进程实跑
@@ -331,9 +331,9 @@ Vitest browser mode 下能否用(上游无证据)。**建议在 M5 之前先跑�
 Effect 成为唯一运行时。仓库内 `cordis` / `@cordisjs/*` / `@orpc/*` 的 import、依赖与 lockfile 条目
 全部归零(prose 注释里的历史提及保留)。
 
-删除:65 个文件。包括 cordis 插件实现、oRPC 契约与 router、`packages/app/src/main.ts`(cordis bin
+删除:65 个文件。包括 cordis 插件实现、oRPC 契约与 router、`apps/server/src/main.ts`(cordis bin
 复刻)、`contracts.gen.ts` 生成器、`cordis.gen.yml` 与其 `renderRuntimePlan` / `runtimeEntries`
-一族。装配层现在只派生一个运行时产物:`packages/app/runtime.gen.ts`。
+一族。装配层现在只派生一个运行时产物:`apps/server/runtime.gen.ts`。
 
 `pnpm dev` 与 `pnpm dev:effect` 合并为 `pnpm dev`(不再需要 `--expose-internals`,那是 cordis
 loader 的解析要求)。
@@ -352,7 +352,7 @@ loader 的解析要求)。
 ### 遗留(需要单独决策,不在 M7 范围)
 
 - **qualy.yml 的 `config:` 现在没有消费方**。cordis loader 曾把它交给插件;Effect 侧配置一律走
-  `packages/app/src/effect/config.ts` 读环境变量。已从产品清单里删掉两条死配置
+  `apps/server/src/effect/config.ts` 读环境变量。已从产品清单里删掉两条死配置
   (`plugin-database.migrationsFolder`、`plugin-ping.greeting`),装配层仍支持 `config:`(lock
   与 testkit 都还在用),要不要把它接进生成的 layer 是一个设计决定。
 - `scripts/tests/generators.test.ts` 会重写仓库里的生成物,而别的测试并发读同一批文件,偶发失败。
@@ -382,7 +382,7 @@ grep pnpm-lock.yaml           → 0
 没有消费方的只是**插件级 `config:` 块**,而且分两种情况:
 
 - **能力 provider 的 config 是活的**,经 `providerConfig` 在 CLI 期(generate/deploy/命令)消费。
-  database 的 `migrationsFolder` 正属此类,删掉它会让 generate 写到 `packages/app/db/migrations`
+  database 的 `migrationsFolder` 正属此类,删掉它会让 generate 写到 `apps/server/db/migrations`
   ——一条全新的空 lineage,drizzle 会把所有表重新生成一遍。已恢复。
 - **非 provider 插件的 config 确实到不了任何地方**(Cordis loader 曾负责投递,Effect 侧没有对应
   机制)。ping 的 `greeting` 就是这种,它的 Effect layer 读 `PING_GREETING` 环境变量,所以那条删
@@ -390,7 +390,7 @@ grep pnpm-lock.yaml           → 0
 
 ### 三处「同一事实有两个所有者」
 
-1. **lineage 目录**:qualy.yml 声明一份,`packages/app/src/effect/config.ts` 又硬编码一份,两边注释
+1. **lineage 目录**:qualy.yml 声明一份,`apps/server/src/effect/config.ts` 又硬编码一份,两边注释
    都声称「和对方读的是同一处声明」。进程改为读清单(`manifestMigrationsFolder()`);实测把清单指向
    `db/nonexistent-lineage` 后进程按该路径报 ENOENT,而此前会静默用硬编码值。
 2. **lock 路径**:`lockPathFor` 只取清单**目录**、文件名写死,于是 `packages/app` 下任何第二份清单
@@ -399,7 +399,7 @@ grep pnpm-lock.yaml           → 0
 3. **连接串**:CLI 读 `config.url`,运行时完全不读。按「qualy.yml 不写连接串」这条既有纪律,改为
    **显式拒绝**并指向 DATABASE_URL——清单是要提交的,连接串写进去就是把凭据提交进版本库。
 
-三条都由 `packages/app/tests/assembly-config.test.ts` 守,已逐条注入 bug 验证会红。
+三条都由 `apps/server/tests/assembly-config.test.ts` 守,已逐条注入 bug 验证会红。
 
 ### baseline 片段丢失:真缺陷
 

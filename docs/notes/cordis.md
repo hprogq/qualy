@@ -58,7 +58,7 @@
 - rc.7 的 Context 代理对服务访问做**声明检查**:经某插件的 ctx 取它未声明 inject 的服务,直接抛 `cannot get property "db" without inject`——不是 undefined,是硬错误。
 - 由此定案 API handler 的服务访问约定:**handler 闭包使用所属插件自己的 ctx**(它的 inject 声明过);`ApiContext.cordis`(server 插件的 ctx)只作请求管道用途(日志溯源/事件),不作服务访问入口。教程早期的 `context.cordis.db` 写法已被此实测推翻。
 
-## 信号处理与优雅关闭(定案:自建入口 packages/app/src/main.ts)
+## 信号处理与优雅关闭(定案:自建入口 apps/server/src/main.ts)
 
 - cordis 核心与 bin.js **零信号处理**:Ctrl+C 走 Node 默认行为,退出码 130(pnpm 报 ELIFECYCLE "Command failed"),所有 effect 清理不会执行(HTTP close、pg 池 end 等全部跳过)。
 - 根上下文 `ctx.fiber.dispose()` **级联释放所有插件(含嵌套子插件)的 effect**(实测)。注意特例:根 fiber dispose 后状态仍显示 ACTIVE,不进 DISPOSED;判断关闭是否干净看各插件清理行为与退出码,勿断言根 fiber 状态值。

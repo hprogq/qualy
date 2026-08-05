@@ -168,7 +168,7 @@ M1b 当时只声明没跑通,现在跑通了,**真 server 而不是内存 client
 - 会话失效(登出 / 过期清 cookie),随 auth 迁移一起做
 - 浏览器里跑 `@effect/vitest`(上游没有 browser mode 的证据),M6 前要确认
 
-## M2 实测结果(2026-08-05,`packages/app/tests/effect-shell.test.ts`)
+## M2 实测结果(2026-08-05,`apps/server/tests/effect-shell.test.ts`)
 
 跑起来了:`pnpm dev:effect` 与 `pnpm dev` **并存**,前者服务 `/health/live`、`/health/ready`、
 `/openapi.json`、`/docs`,后者不受影响(实跑,零 `[E]`)。
@@ -219,8 +219,8 @@ export const pingApiHandlers = HttpApiBuilder.group(local, 'ping', ...)
 | 文件 | 内容 | 谁读 |
 | --- | --- | --- |
 | `packages/api/src/api.gen.ts` | 只有 group 定义 | 浏览器(纯 Schema,不牵进任何服务端依赖) |
-| `packages/app/api-handlers.gen.ts` | handler 层合并 | 宿主(只有它跑得动) |
-| `packages/app/runtime.gen.ts` | 插件的非 API 贡献 | 宿主 |
+| `apps/server/api-handlers.gen.ts` | handler 层合并 | 宿主(只有它跑得动) |
+| `apps/server/runtime.gen.ts` | 插件的非 API 贡献 | 宿主 |
 
 插件用 `qualy.runtime.api` 声明 group 模块,生成器按 `<ns>ApiGroup` 发现导出,并去 `qualy.runtime.entry`
 配对同名的 `<ns>ApiHandlers` —— **没人实现的 group 是构建期的 import 失败,而不是生产环境的 404**。
@@ -228,7 +228,7 @@ group 标识符全局唯一(重名硬失败),因为运行时就是靠它找 hand
 
 ### 实测
 
-- `packages/app/tests/effect-api.test.ts`(2 例):冻结路径 `GET /ping/hello` 由聚合体服务、handler
+- `apps/server/tests/effect-api.test.ts`(2 例):冻结路径 `GET /ping/hello` 由聚合体服务、handler
   经宿主提供的层写进 `ping_logs`、可选参数真可选、health 仍在同一聚合体上;以及只用 `qualyApi`
   (无 handler、无服务端依赖)建出的 client 调通,且响应**是真类型不是 `any`**(用 `@ts-expect-error`
   读一个不存在的字段反证)。

@@ -2,7 +2,7 @@
 
 当前分支已经完成了**运行时层面的 Effect 迁移**：
 
-- 根启动脚本直接运行 `packages/app/src/effect/main.ts`；
+- 根启动脚本直接运行 `apps/server/src/effect/main.ts`；
 - 后端由 Effect Layer、HttpApi、NodeRuntime 组成；
 - HTTP server、OpenAPI/Scalar、数据库、插件 Layer 都在同一个组合根中；
 - 根依赖已经没有 Cordis 和 oRPC。

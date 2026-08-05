@@ -1,6 +1,6 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
-import { verifyAssembly } from '../verify-assembly.ts'
+import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './config.ts'
 import { application } from './runtime.ts'
 

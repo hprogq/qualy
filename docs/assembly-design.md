@@ -1661,7 +1661,7 @@ packages/
 
 **二、detached 只收拥有数据库对象的插件。** §5.3 让所有被移除的插件转 detached。但 purge 属于阶段 5，在它落地前 detached 是终态，于是一个从未拥有过任何数据库对象的插件（如 `@cordisjs/plugin-timer`）被移除后会永远留在 lock 里且无从清除。现在的规则是：有 `database` 声明才转 detached，否则直接离开 lock。语义不变（保留数据），只是不保留无数据可保留的条目。
 
-**三、`qualy.yml` 保留在 `packages/app/`，并额外生成 `cordis.gen.yml`。** §22 把 manifest 放仓库根，但装配清单归宿主是既有纪律（include 会把 baseUrl 锚到清单目录，插件按宿主依赖解析）。阶段 2 的自定义 loader 尚未存在，所以清单改成产品格式后，由 `pnpm gen` 派生一份 loader 能吃的条目数组 `cordis.gen.yml`（gitignored）。条目 id 从插件名派生，`EntryTree.ensureId` 因此无 id 可补，也就不再把随机 id 写回人手维护的文件——这个写回本身是旧格式的一个缺陷。
+**三、`qualy.yml` 保留在 `apps/server/`，并额外生成 `cordis.gen.yml`。** §22 把 manifest 放仓库根，但装配清单归宿主是既有纪律（include 会把 baseUrl 锚到清单目录，插件按宿主依赖解析）。阶段 2 的自定义 loader 尚未存在，所以清单改成产品格式后，由 `pnpm gen` 派生一份 loader 能吃的条目数组 `cordis.gen.yml`（gitignored）。条目 id 从插件名派生，`EntryTree.ensureId` 因此无 id 可补，也就不再把随机 id 写回人手维护的文件——这个写回本身是旧格式的一个缺陷。
 
 另外两点值得记下：
 

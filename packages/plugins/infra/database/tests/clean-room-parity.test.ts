@@ -32,7 +32,7 @@ const committedLineage = path.join(repoRoot, 'db/migrations')
 
 /** the product's own selection, read rather than restated so it cannot drift */
 const productSelection = (): string[] => {
-  const manifest = readManifest(path.join(repoRoot, 'packages/app/qualy.yml'))
+  const manifest = readManifest(path.join(repoRoot, 'apps/server/qualy.yml'))
   return [...manifest.plugins.keys()]
 }
 

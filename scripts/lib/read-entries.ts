@@ -18,7 +18,7 @@ export interface Entry {
   disabled?: boolean
 }
 
-export const DEFAULT_MANIFEST = 'packages/app/qualy.yml'
+export const DEFAULT_MANIFEST = 'apps/server/qualy.yml'
 
 // --yml <path> points the generators at an alternate manifest; tests use
 // throwaway workspaces so they never mutate the working one

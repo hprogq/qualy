@@ -63,7 +63,7 @@ for (const entry of (await readEntries({ all: false })).filter((e) =>
 }
 
 writeGenerated(
-  'packages/app/ui.gen.ts',
+  'apps/server/ui.gen.ts',
   [
     "import type { UiSurfaces } from '@qualy/ui-contract'",
     ...imports,

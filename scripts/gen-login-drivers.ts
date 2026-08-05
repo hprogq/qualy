@@ -56,7 +56,7 @@ for (const entry of (await readEntries({ all: false })).filter((e) =>
 }
 
 writeGenerated(
-  'packages/app/login-drivers.gen.ts',
+  'apps/server/login-drivers.gen.ts',
   [
     "import type { LoginDriver } from '@qualy/auth-contract/login'",
     ...imports,

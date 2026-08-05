@@ -205,6 +205,67 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
 
+  apps/server:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1)
+      '@qualy/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../packages/api-kit
+      '@qualy/assembly':
+        specifier: workspace:*
+        version: link:../../packages/assembly
+      '@qualy/assembly-contract':
+        specifier: workspace:*
+        version: link:../../packages/assembly-contract
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../packages/auth-contract
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/auth
+      '@qualy/plugin-auth-local':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/auth-local
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/database
+      '@qualy/plugin-layout-default':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/layout-default
+      '@qualy/plugin-org':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/org
+      '@qualy/plugin-ping':
+        specifier: workspace:*
+        version: link:../../packages/plugins/demo/ping
+      '@qualy/plugin-rbac':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/rbac
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/ui-registry
+      '@qualy/plugin-web':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/web
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:../../packages/rbac-contract
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../packages/ui-contract
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
+    devDependencies:
+      '@qualy/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
+
   apps/web:
     dependencies:
       '@qualy/api-client':
@@ -343,67 +404,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
-
-  packages/app:
-    dependencies:
-      '@effect/platform-node':
-        specifier: 'catalog:'
-        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1)
-      '@qualy/api':
-        specifier: workspace:*
-        version: link:../api
-      '@qualy/api-kit':
-        specifier: workspace:*
-        version: link:../api-kit
-      '@qualy/assembly':
-        specifier: workspace:*
-        version: link:../assembly
-      '@qualy/assembly-contract':
-        specifier: workspace:*
-        version: link:../assembly-contract
-      '@qualy/auth-contract':
-        specifier: workspace:*
-        version: link:../auth-contract
-      '@qualy/plugin-auth':
-        specifier: workspace:*
-        version: link:../plugins/base/auth
-      '@qualy/plugin-auth-local':
-        specifier: workspace:*
-        version: link:../plugins/base/auth-local
-      '@qualy/plugin-database':
-        specifier: workspace:*
-        version: link:../plugins/infra/database
-      '@qualy/plugin-layout-default':
-        specifier: workspace:*
-        version: link:../plugins/base/layout-default
-      '@qualy/plugin-org':
-        specifier: workspace:*
-        version: link:../plugins/base/org
-      '@qualy/plugin-ping':
-        specifier: workspace:*
-        version: link:../plugins/demo/ping
-      '@qualy/plugin-rbac':
-        specifier: workspace:*
-        version: link:../plugins/base/rbac
-      '@qualy/plugin-ui-registry':
-        specifier: workspace:*
-        version: link:../plugins/infra/ui-registry
-      '@qualy/plugin-web':
-        specifier: workspace:*
-        version: link:../plugins/infra/web
-      '@qualy/rbac-contract':
-        specifier: workspace:*
-        version: link:../rbac-contract
-      '@qualy/ui-contract':
-        specifier: workspace:*
-        version: link:../ui-contract
-      effect:
-        specifier: 'catalog:'
-        version: 4.0.0-beta.103
-    devDependencies:
-      '@qualy/api-client':
-        specifier: workspace:*
-        version: link:../api-client
 
   packages/assembly:
     dependencies:

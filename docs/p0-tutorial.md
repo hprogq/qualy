@@ -181,7 +181,7 @@ volumes: { pgdata: {} }
 ```jsonc
 {
   "scripts": {
-    "dev": "node --expose-internals --env-file-if-exists=.env --import tsx packages/app/src/main.ts",
+    "dev": "node --expose-internals --env-file-if-exists=.env --import tsx apps/server/src/main.ts",
     "dev:web": "pnpm --filter web dev",
     "gen": "tsx scripts/gen-schema.ts && tsx scripts/gen-contracts.ts && tsx scripts/gen-plugins.ts",
     "db:generate": "tsx scripts/gen-schema.ts && drizzle-kit generate",

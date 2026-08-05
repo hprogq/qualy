@@ -40,7 +40,7 @@ async function permissionCatalog(): Promise<{ plugin: string; rows: readonly Per
 const TENANT_ADMIN_ROLE = { code: 'tenant-admin', name: '租户管理员' }
 
 // The tenant the application will look for, which is QUALY_DEFAULT_TENANT to
-// the running process (packages/app/src/effect/config.ts). Hardcoding 'default'
+// the running process (apps/server/src/effect/config.ts). Hardcoding 'default'
 // here meant that setting it seeded one tenant and served another, and the only
 // symptom was every sign-in failing to resolve a provider.
 const TENANT = { slug: process.env.QUALY_DEFAULT_TENANT || 'default', name: 'Qualy' }

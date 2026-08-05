@@ -24,4 +24,4 @@ export const outputRoot = (): string => process.env.QUALY_GEN_OUT ?? repoRoot
 /** a generated artifact's absolute path, given its repository-relative one */
 export const generatedPath = (relative: string): string => path.resolve(outputRoot(), relative)
 
-export const RUNTIME_MODULE = 'packages/app/runtime.gen.ts'
+export const RUNTIME_MODULE = 'apps/server/runtime.gen.ts'

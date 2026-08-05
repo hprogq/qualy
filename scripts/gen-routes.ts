@@ -38,7 +38,7 @@ for (const entry of (await readEntries({ all: false })).filter((e) =>
 }
 
 writeGenerated(
-  'packages/app/routes.gen.ts',
+  'apps/server/routes.gen.ts',
   [
     "import { Layer } from 'effect'",
     ...imports,

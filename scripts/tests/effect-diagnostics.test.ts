@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest'
 
 // inside a package that depends on effect, so node resolution finds it by
 // walking up the way any real source file does
-const HOST = 'packages/app'
+const HOST = 'apps/server'
 
 const fixture = (body: string) => {
   const dir = fs.mkdtempSync(path.join(process.cwd(), HOST, '.effect-diagnostics-'))

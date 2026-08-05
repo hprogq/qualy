@@ -6,8 +6,8 @@ import { createServer } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer } from '@qualy/api-kit/node'
 import { qualyApi } from '@qualy/api'
-import { apiHandlers } from '../../api-handlers.gen.ts'
-import { pluginLayers } from '../../runtime.gen.ts'
+import { apiHandlers } from '../api-handlers.gen.ts'
+import { pluginLayers } from '../runtime.gen.ts'
 import {
   ServerConfig,
   apiReferenceEnabled,
@@ -19,7 +19,7 @@ import {
   webConfigLayer,
 } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
-import { pluginRoutes } from '../../routes.gen.ts'
+import { pluginRoutes } from '../routes.gen.ts'
 
 // The composition root.
 //

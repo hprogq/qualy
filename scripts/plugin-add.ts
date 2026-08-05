@@ -29,7 +29,7 @@ function workspacePackageExists(id: string): boolean {
 
 if (!workspacePackageExists(name)) throw new Error(`${name} not found under packages/`)
 
-const rootManifestPath = 'packages/app/package.json'
+const rootManifestPath = 'apps/server/package.json'
 const rootManifest = JSON.parse(fs.readFileSync(rootManifestPath, 'utf8'))
 rootManifest.dependencies = Object.fromEntries(
   Object.entries({ ...rootManifest.dependencies, [name]: 'workspace:*' }).sort(([a], [b]) =>
@@ -40,7 +40,7 @@ fs.writeFileSync(rootManifestPath, JSON.stringify(rootManifest, null, 2) + '\n')
 
 // appended rather than rewritten through the parser, so a hand-maintained
 // manifest keeps its comments, blank lines and grouping
-const manifestPath = 'packages/app/qualy.yml'
+const manifestPath = 'apps/server/qualy.yml'
 const manifest = fs.readFileSync(manifestPath, 'utf8')
 if (!new RegExp(`^\\s*'?${name}'?:`, 'm').test(manifest)) {
   fs.writeFileSync(manifestPath, `${manifest.trimEnd()}\n  '${name}': {}\n`)
