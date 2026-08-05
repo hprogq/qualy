@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm'
+import { scopeCoverage, type AuthorizationScope } from '@qualy/rbac-contract'
 
 // The placement rule, owned in one place because four callers decide by it and
 // two runtimes execute it.
@@ -342,3 +343,155 @@ export const grantsBlockingUserTypeQuery = (
       select 1 from roles r
       where r.tenant_id = g.tenant_id and r.id = g.role_id
         and not ${canonicalAdmin})`
+
+// --- reads both runtimes serve ---
+
+export type UserRow = {
+  id: string
+  business_no: string | null
+  display_name: string
+  enabled: boolean
+  user_type_id: string
+  user_type_code: string
+  user_type_name: string
+  primary_org_node_id: string
+  primary_org_node_name: string
+  identity_count: number
+  manageable: boolean
+}
+
+/** what a user row carries, and whether this caller may change it */
+const USER_COLUMNS = (manageScope: AuthorizationScope): SQL => sql`
+  u.id, u.business_no, u.display_name, u.enabled,
+  u.user_type_id, t.code as user_type_code, t.name as user_type_name,
+  u.primary_org_node_id, n.name as primary_org_node_name,
+  (select count(*)::int from user_identities i
+   where i.tenant_id = u.tenant_id and i.user_id = u.id) as identity_count,
+  ${scopeCoverage(manageScope, 'n')} as manageable`
+
+/**
+ * Users of one node or of its subtree, intersected with what the caller reaches.
+ *
+ * The requested scope alone decided this once, which meant a bare self grant at
+ * a node returned every user below it. A partial subtree is the correct answer
+ * here, not an error.
+ */
+export const listUsersQuery = (
+  tenantId: string,
+  scopes: { read: AuthorizationScope; manage: AuthorizationScope },
+  input: {
+    orgNodeId: string
+    scope: 'self' | 'subtree'
+    search?: string
+    after?: readonly string[]
+    limit: number
+  },
+): SQL => {
+  const requested =
+    input.scope === 'subtree' ? sql`n.path <@ requested.path` : sql`n.id = requested.id`
+  return sql`
+    select ${USER_COLUMNS(scopes.manage)}
+    from users u
+    join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
+    join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+    join org_nodes requested on requested.tenant_id = u.tenant_id
+      and requested.id = ${input.orgNodeId}
+    where u.tenant_id = ${tenantId}
+      and ${requested}
+      and ${scopeCoverage(scopes.read, 'n')}
+      and (${input.search ?? null}::text is null
+           or u.display_name ilike '%' || ${input.search ?? ''} || '%'
+           or coalesce(u.business_no, '') ilike '%' || ${input.search ?? ''} || '%')
+      and (${input.after?.[0] ?? null}::text is null
+           or (u.display_name, u.id::text) > (${input.after?.[0] ?? ''}, ${input.after?.[1] ?? ''}))
+    order by u.display_name, u.id
+    limit ${input.limit}`
+}
+
+/** one user, visible only through the caller's read scope */
+export const userQuery = (
+  tenantId: string,
+  userId: string,
+  scopes: { read: AuthorizationScope; manage: AuthorizationScope },
+): SQL => sql`
+  select ${USER_COLUMNS(scopes.manage)}
+  from users u
+  join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
+  join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+  where u.tenant_id = ${tenantId} and u.id = ${userId}
+    and ${scopeCoverage(scopes.read, 'n')}`
+
+/**
+ * The nodes a caller may place people at.
+ *
+ * These are the nodes actually inside the caller's coverage, not the anchors
+ * their grants happen to sit on: a subtree grant at a college means every
+ * department under it is a place a user may stand, and returning only the
+ * anchor made those unreachable.
+ */
+export const placeableNodesQuery = (
+  tenantId: string,
+  scopes: { read: AuthorizationScope; manage: AuthorizationScope },
+  search: string | undefined,
+  limit: number,
+): SQL => sql`
+  select n.id, n.name, n.depth, n.org_type_id,
+    ${scopeCoverage(scopes.manage, 'n')} as manageable
+  from org_nodes n
+  where n.tenant_id = ${tenantId}
+    and ${scopeCoverage(scopes.read, 'n')}
+    and (${search ?? null}::text is null or n.name ilike '%' || ${search ?? ''} || '%')
+  order by n.path
+  limit ${limit + 1}`
+
+/**
+ * Assignable types with the org types each may stand at.
+ *
+ * One statement so the screen can pair a person with a place without a second
+ * round trip. A system type is provisioned rather than assigned, so it never
+ * appears.
+ */
+export const assignableUserTypesQuery = (tenantId: string): SQL => sql`
+  select t.id, t.code, t.name, t.placement_mode,
+    coalesce((select array_agg(a.org_type_id::text)
+      from user_type_allowed_org_types a
+      where a.tenant_id = t.tenant_id and a.user_type_id = t.id), '{}')
+      as allowed_org_type_ids
+  from user_types t
+  where t.tenant_id = ${tenantId} and t.enabled and not t.is_system
+  order by t.sort_order, t.code`
+
+/**
+ * The org types a user type screen picks from.
+ *
+ * Its own endpoint rather than the role screen's, so stating where a kind of
+ * person may stand needs no permission over roles.
+ */
+export const orgTypeOptionsQuery = (tenantId: string): SQL => sql`
+  select id, code, name from org_types
+  where tenant_id = ${tenantId} order by name`
+
+export const insertUserTypeQuery = (input: {
+  tenantId: string
+  code: string
+  name: string
+  description: string | null
+  allowLocalLogin: boolean
+  allowSsoLogin: boolean
+  sortOrder: number
+  placementMode: 'unrestricted' | 'allow-list'
+}): SQL => sql`
+  insert into user_types (tenant_id, code, name, description, allow_local_login,
+    allow_sso_login, sort_order, placement_mode)
+  values (${input.tenantId}, ${input.code}, ${input.name}, ${input.description},
+    ${input.allowLocalLogin}, ${input.allowSsoLogin},
+    ${input.sortOrder}, ${input.placementMode})
+  returning id`
+
+export const seedAllowedOrgTypesQuery = (
+  tenantId: string,
+  userTypeId: string,
+  list: string,
+): SQL => sql`
+  insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
+  select ${tenantId}, ${userTypeId}, id from unnest(${sql.raw(list)}) as id`

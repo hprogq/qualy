@@ -4,17 +4,22 @@ import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { canonicalTenantAdmin, type Principal } from '@qualy/rbac-contract'
 import {
+  assignableUserTypesQuery,
   deleteUserSessionsQuery,
   grantsBlockingUserTypeQuery,
   insertUserQuery,
+  listUsersQuery,
   lockTenantQuery,
   orgNodeExistsQuery,
+  placeableNodesQuery,
   placementAllowedQuery,
   setUserEnabledQuery,
   setUserPlacementQuery,
   updateUserQuery,
   userGuardQuery,
+  userQuery,
   userTypeGuardQuery,
+  type UserRow as UserProjection,
 } from '../iam/queries.ts'
 import {
   GrantIncompatible,
@@ -127,7 +132,115 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     if (found.length === 0) return yield* new UserPlacementNotFound()
   })
 
+  /**
+   * Which users the caller may see, and which they may change.
+   *
+   * Two permissions, two answers: a read-only administrator gets a screen
+   * without buttons rather than buttons that answer 403. Both are resolved
+   * once and pushed into the statement, so the page is never assembled and
+   * then filtered.
+   */
+  const scopes = Effect.fn('Iam.users.scopes')(function* (principal: Principal) {
+    return {
+      read: yield* rbac.listAuthorizedScope(principal, 'auth.user.read'),
+      manage: yield* rbac.listAuthorizedScope(principal, 'auth.user.manage'),
+    }
+  })
+
+  const readable = (scope: { read: { tenantWide: boolean; anchors: readonly unknown[] } }) =>
+    scope.read.tenantWide || scope.read.anchors.length > 0
+
   return {
+    list: Effect.fn('Iam.users.list')(function* (
+      principal: Principal,
+      input: {
+        orgNodeId: string
+        scope: 'self' | 'subtree'
+        search?: string
+        after?: readonly string[]
+        limit: number
+      },
+    ) {
+      const held = yield* scopes(principal)
+      if (!readable(held)) return []
+      return rows<UserProjection & Record<string, unknown>>(
+        yield* database
+          .execute(listUsersQuery(principal.tenantId, held, input))
+          .pipe(Effect.orDie),
+      )
+    }),
+
+    get: Effect.fn('Iam.users.get')(function* (principal: Principal, userId: string) {
+      const held = yield* scopes(principal)
+      const row = rows<UserProjection & Record<string, unknown>>(
+        yield* database
+          .execute(userQuery(principal.tenantId, userId, held))
+          .pipe(Effect.orDie),
+      )[0]
+      // not-found and not-readable are indistinguishable on purpose
+      if (!row) return yield* new UserNotFound()
+      return row
+    }),
+
+    /**
+     * Where the caller may administer users, and which types they may hand out.
+     *
+     * One call, so the screen needs no permission but its own: making it also
+     * carry the org-tree and user-type read permissions would sit a legitimate
+     * org administrator in front of an empty picker.
+     */
+    options: Effect.fn('Iam.users.options')(function* (
+      principal: Principal,
+      search: string | undefined,
+      limit: number,
+    ) {
+      const held = yield* scopes(principal)
+      if (!readable(held)) return { nodes: [], truncated: false, userTypes: [] }
+      const nodes = rows<{
+        id: string
+        name: string
+        depth: number
+        org_type_id: string
+        manageable: boolean
+      }>(
+        yield* database
+          .execute(placeableNodesQuery(principal.tenantId, held, search, limit))
+          .pipe(Effect.orDie),
+      )
+      const userTypes = rows<{
+        id: string
+        code: string
+        name: string
+        placement_mode: 'unrestricted' | 'allow-list'
+        allowed_org_type_ids: string[]
+      }>(
+        yield* database
+          .execute(assignableUserTypesQuery(principal.tenantId))
+          .pipe(Effect.orDie),
+      )
+      return {
+        nodes: nodes.slice(0, limit).map((row) => ({
+          orgNodeId: row.id,
+          name: row.name,
+          depth: row.depth,
+          orgTypeId: row.org_type_id,
+          manageable: row.manageable,
+        })),
+        // a picker that quietly showed the first five hundred of a large tree
+        // looked complete; saying so lets the screen ask for a search instead
+        truncated: nodes.length > limit,
+        userTypes: userTypes.map((row) => ({
+          id: row.id,
+          code: row.code,
+          name: row.name,
+          placementPolicy:
+            row.placement_mode === 'allow-list'
+              ? ({ mode: 'allow-list' as const, orgTypeIds: row.allowed_org_type_ids })
+              : ({ mode: 'unrestricted' as const }),
+        })),
+      }
+    }),
+
     create: Effect.fn('Iam.users.create')(function* (
       tenantId: string,
       input: {

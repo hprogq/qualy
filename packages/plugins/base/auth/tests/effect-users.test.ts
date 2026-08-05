@@ -17,6 +17,9 @@ import { Iam, layer as authLayer } from '../src/effect/index.ts'
 
 const catalog: readonly ActivePermission[] = [
   { code: 'auth.user.manage', name: 'manage users', target: 'org-node', plugin: 'auth' },
+  // reading is its own permission: a read-only administrator gets a screen
+  // without buttons rather than buttons that answer 403
+  { code: 'auth.user.read', name: 'read users', target: 'org-node', plugin: 'auth' },
 ]
 
 const stack = (url: string) =>
@@ -44,6 +47,8 @@ const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
   throw new Error(`expected success, got ${JSON.stringify(exit.cause)}`)
 }
+
+const one_ = <T>(result: unknown) => (result as { rows: T[] }).rows[0]! as T & { id: string }
 
 const tagOf = (result: { _tag: string; failure?: unknown }) =>
   result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
@@ -100,8 +105,38 @@ const seed = Effect.fn('seed')(function* () {
     insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
     values (${tenant}, ${manager}, ${role}, ${left}, 'subtree')`)
 
+  // Reading is granted separately and deliberately unevenly: one node at the
+  // root, and the whole right branch. The left branch, which the manager may
+  // change, is not readable through it, which is what makes the intersection
+  // visible rather than incidental.
+  const readRole = one<{ id: string }>(
+    yield* db.execute(sql`
+      insert into roles (tenant_id, code, name, kind, status, permission_mode)
+      values (${tenant}, 'reader', 'Reader', 'org', 'active', 'explicit') returning id`),
+  ).id
+  const readPermission = one<{ id: string }>(
+    yield* db.execute(sql`
+      insert into permissions (code, plugin, name, target_kind)
+      values ('auth.user.read', 'auth', 'read users', 'org-node')
+      on conflict (code) do update set plugin = excluded.plugin returning id`),
+  ).id
+  yield* db.execute(sql`
+    insert into role_permissions (tenant_id, role_id, permission_id)
+    values (${tenant}, ${readRole}, ${readPermission})`)
+  yield* db.execute(sql`
+    insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+    values (${tenant}, ${manager}, ${readRole}, ${root}, 'self'),
+           (${tenant}, ${manager}, ${readRole}, ${right}, 'subtree')`)
+
+  const person = (name: string, at: string) =>
+    db.execute(sql`
+      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+      values (${tenant}, ${name}, ${staff}, ${at}) returning id`)
+  const onLeft = one<{ id: string }>(yield* person('Ada', left)).id
+  const onRight = one<{ id: string }>(yield* person('Grace', right)).id
+
   const as: Principal = { tenantId: tenant, userId: manager, sessionId: 's' }
-  return { tenant, root, left, right, staff, manager, as }
+  return { tenant, root, left, right, staff, manager, as, onLeft, onRight }
 })
 
 describe.runIf(postgresAvailable)('users', () => {
@@ -247,6 +282,122 @@ describe.runIf(postgresAvailable)('users', () => {
       )
       // access ends now, not when the session happens to expire
       expect(ok(exit)).toBe(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('what a caller may read about people', () => {
+  it('intersects the requested scope with the one the caller was actually granted', async () => {
+    // The recorded failure: the requested scope alone decided this, so a bare
+    // self grant at a node returned every user below it. A partial subtree is
+    // the correct answer here, not an error.
+    const db = await createTestContext('effect-users-read')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const database = yield* Database
+          // asked for the whole tree; granted read at the root itself and
+          // over the right branch only
+          const all = yield* iam.users.list(f.as, {
+            orgNodeId: f.root,
+            scope: 'subtree',
+            limit: 50,
+          })
+          // asked for one node only
+          const justRoot = yield* iam.users.list(f.as, {
+            orgNodeId: f.root,
+            scope: 'self',
+            limit: 50,
+          })
+          // a caller granted nothing sees nothing, and is not told why
+          const stranger = one_(
+            yield* database.execute(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Nobody', ${f.staff}, ${f.right}) returning id`),
+          ).id
+          const blind: Principal = { tenantId: f.tenant, userId: stranger, sessionId: 's' }
+          const nothing = yield* iam.users.list(blind, {
+            orgNodeId: f.root,
+            scope: 'subtree',
+            limit: 50,
+          })
+          const hidden = yield* Effect.result(iam.users.get(blind, f.onLeft))
+          // read and manage are asked independently, so a person the manager
+          // may change is not thereby a person they may read
+          const unreadable = yield* Effect.result(iam.users.get(f.as, f.onLeft))
+          const visible = yield* iam.users.get(f.as, f.onRight)
+          const search = yield* iam.users.list(f.as, {
+            orgNodeId: f.root,
+            scope: 'subtree',
+            search: 'race',
+            limit: 50,
+          })
+          return { all, justRoot, nothing, hidden, unreadable, visible, search }
+        }),
+      )
+      const answer = ok(exit)
+      // Ada is inside the requested subtree and outside the granted one, so
+      // she is absent. This is the assertion the recorded bug fails.
+      expect(answer.all.map((row) => row.display_name).sort()).toEqual(['Grace', 'Manager'])
+      // the manager stands at the root, and is the only one there
+      expect(answer.justRoot.map((row) => row.display_name)).toEqual(['Manager'])
+      // seen but not editable: two permissions, two answers
+      expect(answer.visible.manageable).toBe(false)
+      expect(tagOf(answer.unreadable)).toBe('USER_NOT_FOUND')
+      // not-found and not-readable are indistinguishable on purpose
+      expect(answer.nothing).toEqual([])
+      expect(tagOf(answer.hidden)).toBe('USER_NOT_FOUND')
+      expect(answer.search.map((row) => row.display_name)).toEqual(['Grace'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('offers every node inside the coverage, not the anchors the grants sit on', async () => {
+    // A subtree grant at a college means every department under it is a place
+    // a user may stand; returning only the anchor made those unreachable.
+    const db = await createTestContext('effect-user-options')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const database = yield* Database
+          const orgType = one_(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+            ),
+          ).id
+          // a node below the subtree anchor: it is a place a user may stand,
+          // and returning only the anchor made it unreachable
+          yield* database.execute(sql`
+            insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+            values (${f.tenant}, ${f.right}, ${orgType}, 'Under', 'r.right.under', 2)`)
+          const options = yield* iam.users.options(f.as, undefined, 200)
+          // truncation is reported rather than presented as the whole list
+          const cut = yield* iam.users.options(f.as, undefined, 1)
+          return { options, cut }
+        }),
+      )
+      const answer = ok(exit)
+      // Root by its own anchor, and the right branch through a subtree
+      // anchor: Deep sits under an anchor the caller may manage but not read,
+      // so it is not a place this screen offers
+      expect(answer.options.nodes.map((node) => node.name)).toEqual(['Root', 'Right', 'Under'])
+      expect(answer.options.nodes.find((node) => node.name === 'Under')!.manageable).toBe(false)
+      // the assignable types come back with what each admits, so the screen
+      // pairs a person with a place in one round trip
+      expect(answer.options.userTypes.map((type) => type.code)).toEqual(['staff'])
+      expect(answer.options.userTypes[0]!.placementPolicy).toEqual({ mode: 'unrestricted' })
+      expect(answer.options.truncated).toBe(false)
+      expect(answer.cut.nodes).toHaveLength(1)
+      expect(answer.cut.truncated).toBe(true)
     } finally {
       await db.dispose()
     }

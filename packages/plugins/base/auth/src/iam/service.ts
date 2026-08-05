@@ -28,7 +28,16 @@ import {
   rolesStrandedByUserTypeQuery,
   deleteUserSessionsQuery,
   grantsBlockingUserTypeQuery,
+  assignableUserTypesQuery,
+  countOrgTypesQuery,
   insertUserQuery,
+  insertUserTypeQuery,
+  listUsersQuery,
+  orgTypeOptionsQuery,
+  placeableNodesQuery,
+  seedAllowedOrgTypesQuery,
+  userQuery,
+  type UserRow,
   orgNodeExistsQuery,
   placementAllowedQuery,
   setUserEnabledQuery,
@@ -98,19 +107,7 @@ export type PlacementPolicy =
   | { mode: 'unrestricted' }
   | { mode: 'allow-list'; orgTypeIds: string[] }
 
-export type UserRow = {
-  id: string
-  business_no: string | null
-  display_name: string
-  enabled: boolean
-  user_type_id: string
-  user_type_code: string
-  user_type_name: string
-  primary_org_node_id: string
-  primary_org_node_name: string
-  identity_count: number
-  manageable: boolean
-}
+export type { UserRow } from './queries.ts'
 
 export interface UserTypeInput {
   code: string
@@ -181,26 +178,27 @@ export class IamService {
     return this.write(async (tx) => {
       await this.lockTenant(tx, tenantId)
       const policy = input.placementPolicy
-      const created = await tx.execute<{ id: string }>(sql`
-        insert into user_types (tenant_id, code, name, description, allow_local_login,
-          allow_sso_login, sort_order, placement_mode)
-        values (${tenantId}, ${input.code}, ${input.name}, ${input.description ?? null},
-          ${input.allowLocalLogin ?? false}, ${input.allowSsoLogin ?? false},
-          ${input.sortOrder ?? 0}, ${policy.mode})
-        returning id`)
+      const created = await tx.execute<{ id: string }>(
+        insertUserTypeQuery({
+          tenantId,
+          code: input.code,
+          name: input.name,
+          description: input.description ?? null,
+          allowLocalLogin: input.allowLocalLogin ?? false,
+          allowSsoLogin: input.allowSsoLogin ?? false,
+          sortOrder: input.sortOrder ?? 0,
+          placementMode: policy.mode,
+        }),
+      )
       const id = created.rows[0]!.id
       if (policy.mode === 'allow-list') {
         const wanted = [...new Set(policy.orgTypeIds)]
-        const list = sql.raw(uuidArray(wanted))
+        const list = uuidArray(wanted)
         const found = (
-          await tx.execute<{ count: number }>(sql`
-            select count(*)::int as count from org_types
-            where tenant_id = ${tenantId} and id = any(${list})`)
+          await tx.execute<{ count: number }>(countOrgTypesQuery(tenantId, list))
         ).rows[0]!.count
         if (found !== wanted.length) throw iamErrors.create('USER_TYPE_ORG_TYPE_NOT_FOUND')
-        await tx.execute(sql`
-          insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
-          select ${tenantId}, ${id}, id from unnest(${list}) as id`)
+        await tx.execute(seedAllowedOrgTypesQuery(tenantId, id, list))
       }
       return id
     })
@@ -313,48 +311,24 @@ export class IamService {
     const [readScope, manageScope] = await this.scopes(principal)
     if (!readScope.tenantWide && readScope.anchors.length === 0) return []
     const after = decodeQueryCursor(input.cursor, input.fingerprint, 2)
-    const requested =
-      input.scope === 'subtree' ? sql`n.path <@ requested.path` : sql`n.id = requested.id`
-    const result = await this.db.execute<UserRow>(sql`
-      select u.id, u.business_no, u.display_name, u.enabled,
-        u.user_type_id, t.code as user_type_code, t.name as user_type_name,
-        u.primary_org_node_id, n.name as primary_org_node_name,
-        (select count(*)::int from user_identities i
-         where i.tenant_id = u.tenant_id and i.user_id = u.id) as identity_count,
-        ${scopeCoverage(manageScope, 'n')} as manageable
-      from users u
-      join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
-      join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-      join org_nodes requested on requested.tenant_id = u.tenant_id
-        and requested.id = ${input.orgNodeId}
-      where u.tenant_id = ${principal.tenantId}
-        and ${requested}
-        and ${scopeCoverage(readScope, 'n')}
-        and (${input.search ?? null}::text is null
-             or u.display_name ilike '%' || ${input.search ?? ''} || '%'
-             or coalesce(u.business_no, '') ilike '%' || ${input.search ?? ''} || '%')
-        and (${after?.[0] ?? null}::text is null
-             or (u.display_name, u.id::text) > (${after?.[0] ?? ''}, ${after?.[1] ?? ''}))
-      order by u.display_name, u.id
-      limit ${input.limit}`)
+    const result = await this.db.execute<UserRow>(
+      listUsersQuery(principal.tenantId, { read: readScope, manage: manageScope }, {
+        orgNodeId: input.orgNodeId,
+        scope: input.scope,
+        search: input.search,
+        after,
+        limit: input.limit,
+      }),
+    )
     return result.rows
   }
 
   async getUser(principal: Principal, userId: string): Promise<UserRow> {
     const [readScope, manageScope] = await this.scopes(principal)
     const row = (
-      await this.db.execute<UserRow>(sql`
-        select u.id, u.business_no, u.display_name, u.enabled,
-          u.user_type_id, t.code as user_type_code, t.name as user_type_name,
-          u.primary_org_node_id, n.name as primary_org_node_name,
-          (select count(*)::int from user_identities i
-           where i.tenant_id = u.tenant_id and i.user_id = u.id) as identity_count,
-          ${scopeCoverage(manageScope, 'n')} as manageable
-        from users u
-        join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
-        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-        where u.tenant_id = ${principal.tenantId} and u.id = ${userId}
-          and ${scopeCoverage(readScope, 'n')}`)
+      await this.db.execute<UserRow>(
+        userQuery(principal.tenantId, userId, { read: readScope, manage: manageScope }),
+      )
     ).rows[0]
     // not-found and not-readable are indistinguishable on purpose
     if (!row) throw iamErrors.create('USER_NOT_FOUND')
@@ -405,19 +379,15 @@ export class IamService {
         depth: number
         org_type_id: string
         manageable: boolean
-      }>(sql`
-        select n.id, n.name, n.depth, n.org_type_id,
-          ${scopeCoverage(manageScope, 'n')} as manageable
-        from org_nodes n
-        where n.tenant_id = ${principal.tenantId}
-          and ${scopeCoverage(readScope, 'n')}
-          and (${search ?? null}::text is null or n.name ilike '%' || ${search ?? ''} || '%')
-        order by n.path
-        limit ${limit + 1}`)
+      }>(
+        placeableNodesQuery(
+          principal.tenantId,
+          { read: readScope, manage: manageScope },
+          search,
+          limit,
+        ),
+      )
     ).rows
-    // Assignable types, with the org types each may stand at, so the screen
-    // can pair a type with a node without a second round trip. A system type
-    // is provisioned rather than assigned and never appears.
     const userTypes = (
       await this.db.execute<{
         id: string
@@ -425,15 +395,7 @@ export class IamService {
         name: string
         placement_mode: PlacementMode
         allowed_org_type_ids: string[]
-      }>(sql`
-        select t.id, t.code, t.name, t.placement_mode,
-          coalesce((select array_agg(a.org_type_id::text)
-            from user_type_allowed_org_types a
-            where a.tenant_id = t.tenant_id and a.user_type_id = t.id), '{}')
-            as allowed_org_type_ids
-        from user_types t
-        where t.tenant_id = ${principal.tenantId} and t.enabled and not t.is_system
-        order by t.sort_order, t.code`)
+      }>(assignableUserTypesQuery(principal.tenantId))
     ).rows
     return {
       nodes: nodes.slice(0, limit).map((row) => ({
@@ -461,9 +423,9 @@ export class IamService {
   // needs no permission over roles.
   async listOrgTypeOptions(tenantId: string) {
     return (
-      await this.db.execute<{ id: string; code: string; name: string }>(sql`
-        select id, code, name from org_types
-        where tenant_id = ${tenantId} order by name`)
+      await this.db.execute<{ id: string; code: string; name: string }>(
+        orgTypeOptionsQuery(tenantId),
+      )
     ).rows
   }
 

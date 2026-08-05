@@ -8,6 +8,9 @@ import {
   countOrgTypesQuery,
   countUsersOfTypeQuery,
   currentAllowedOrgTypesQuery,
+  insertUserTypeQuery,
+  orgTypeOptionsQuery,
+  seedAllowedOrgTypesQuery,
   lockUserTypeQuery,
   pruneAllowedOrgTypesQuery,
   setPlacementModeQuery,
@@ -117,6 +120,73 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       .pipe(Effect.orDie, Effect.map((r) => rows<{ count: number }>(r)[0]!.count))
 
   return {
+    /**
+     * A new type, with its placement policy stated from the start.
+     *
+     * The policy is required rather than defaulted: a type created without one
+     * constrains nothing, and "not configured yet" would be
+     * indistinguishable from "deliberately open".
+     */
+    create: Effect.fn('Iam.userTypes.create')(function* (
+      tenantId: string,
+      input: {
+        code: string
+        name: string
+        description?: string
+        allowLocalLogin?: boolean
+        allowSsoLogin?: boolean
+        sortOrder?: number
+        placementPolicy:
+          | { mode: 'unrestricted' }
+          | { mode: 'allow-list'; orgTypeIds: readonly string[] }
+      },
+    ) {
+      return yield* write(tenantId, (tx) =>
+        Effect.gen(function* () {
+          const policy = input.placementPolicy
+          const id = rows<{ id: string }>(
+            yield* tx.execute(
+              insertUserTypeQuery({
+                tenantId,
+                code: input.code,
+                name: input.name,
+                description: input.description ?? null,
+                allowLocalLogin: input.allowLocalLogin ?? false,
+                allowSsoLogin: input.allowSsoLogin ?? false,
+                sortOrder: input.sortOrder ?? 0,
+                placementMode: policy.mode,
+              }),
+            ),
+          )[0]!.id
+          if (policy.mode === 'allow-list') {
+            const wanted = [...new Set(policy.orgTypeIds)]
+            const literal = uuidArrayLiteral(wanted)
+            if (!literal) return yield* new UserTypeOrgTypeNotFound()
+            const found = rows<{ count: number }>(
+              yield* tx.execute(countOrgTypesQuery(tenantId, literal.sql)),
+            )[0]!.count
+            if (found !== literal.ids.length) return yield* new UserTypeOrgTypeNotFound()
+            yield* tx.execute(seedAllowedOrgTypesQuery(tenantId, id, literal.sql))
+          }
+          return id
+        }),
+      )
+    }),
+
+    /**
+     * The org types a user type screen picks from.
+     *
+     * Its own endpoint rather than the role screen's, so stating where a kind
+     * of person may stand needs no permission over roles.
+     */
+    orgTypeOptions: (tenantId: string) =>
+      database
+        .execute(orgTypeOptionsQuery(tenantId))
+        .pipe(
+          Effect.orDie,
+          Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
+        ),
+
     list: Effect.fn('Iam.userTypes.list')(function* (tenantId: string) {
       return rows<UserTypeRow>(
         yield* database.execute(userTypesOfTenant(tenantId)).pipe(Effect.orDie),

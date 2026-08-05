@@ -3,9 +3,20 @@ import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import { Database } from '@qualy/plugin-database/effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
-import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import {
+  DEFAULT_PAGE_SIZE,
+  QUALY_API_ID,
+  QUALY_API_PREFIX,
+  encodeQueryCursor,
+  readQueryCursor,
+} from '@qualy/api-kit'
+import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { Rbac } from '@qualy/rbac-contract/effect'
-import { strandedByQuery, usersBlockingOrgTypeQuery } from '../iam/queries.ts'
+import {
+  strandedByQuery,
+  usersBlockingOrgTypeQuery,
+  type UserRow as UserProjection,
+} from '../iam/queries.ts'
 import { identityApiGroup } from '../api.ts'
 import { CurrentUser } from './session.ts'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
@@ -115,8 +126,103 @@ const toUserTypeDto = (row: UserTypeRow) => ({
 // import the aggregate it is part of
 const local = HttpApi.make(QUALY_API_ID).add(identityApiGroup).prefix(QUALY_API_PREFIX)
 
+/**
+ * How much of a tree a picker will render before it says it stopped.
+ *
+ * Not a page: this list is a tree the screen expands, so a cursor would be
+ * meaningless. It reports truncation instead, which lets the screen ask for a
+ * search rather than quietly presenting a prefix as the whole.
+ */
+const USER_OPTIONS_LIMIT = 200
+
+const toUserDto = (row: UserProjection) => ({
+  id: row.id,
+  businessNo: row.business_no,
+  displayName: row.display_name,
+  status: row.enabled ? ('active' as const) : ('disabled' as const),
+  userType: { id: row.user_type_id, code: row.user_type_code, name: row.user_type_name },
+  primaryOrgNode: { id: row.primary_org_node_id, name: row.primary_org_node_name },
+  identityCount: row.identity_count,
+  manageable: row.manageable,
+})
+
 export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (handlers) =>
   handlers
+    .handle(
+      'createUserType',
+      Effect.fn('iam.createUserType.handler')(function* ({ payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.user-type.manage')
+        return { id: yield* iam.userTypes.create(principal.tenantId, payload) }
+      }),
+    )
+    .handle(
+      'getUserTypeOptions',
+      Effect.fn('iam.getUserTypeOptions.handler')(function* () {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.user-type.read')
+        return { orgTypes: yield* iam.userTypes.orgTypeOptions(principal.tenantId) }
+      }),
+    )
+    .handle(
+      'getUserOptions',
+      Effect.fn('iam.getUserOptions.handler')(function* ({ query }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.user.read')
+        return yield* iam.users.options(
+          principal,
+          query.search,
+          pageSize(query.limit, USER_OPTIONS_LIMIT),
+        )
+      }),
+    )
+    .handle(
+      'listUsers',
+      Effect.fn('iam.listUsers.handler')(function* ({ query }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.user.read')
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const scope = query.scope ?? 'subtree'
+        // the cursor belongs to this anchor, scope and search and no other
+        const fingerprint = `users:${query.orgNodeId}:${scope}:${query.search ?? ''}`
+        const key = readQueryCursor(query.cursor, fingerprint, 2)
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* iam.users.list(principal, {
+          orgNodeId: query.orgNodeId,
+          scope,
+          search: query.search,
+          after: key,
+          limit: limit + 1,
+        })
+        const items = found.slice(0, limit)
+        const last = items.at(-1)
+        return {
+          items: items.map(toUserDto),
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [last.display_name, last.id])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'getUser',
+      Effect.fn('iam.getUser.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.user.read')
+        return { user: toUserDto(yield* iam.users.get(principal, params.userId)) }
+      }),
+    )
     .handle(
       'listUserTypes',
       Effect.fn('iam.listUserTypes.handler')(function* () {
