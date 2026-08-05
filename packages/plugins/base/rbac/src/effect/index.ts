@@ -437,6 +437,33 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
       }),
     )
     .handle(
+      'getRoleEligibility',
+      Effect.fn('access.getRoleEligibility.handler')(function* ({ params }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.read')
+        return yield* access.roles.getEligibility(principal.tenantId, params.roleId)
+      }),
+    )
+    .handle(
+      'setRoleEligibility',
+      Effect.fn('access.setRoleEligibility.handler')(function* ({ params, payload }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.manage')
+        return {
+          version: yield* access.roles.setEligibility(
+            principal.tenantId,
+            params.roleId,
+            payload,
+            payload.version,
+          ),
+        }
+      }),
+    )
+    .handle(
       'deleteRole',
       Effect.fn('access.deleteRole.handler')(function* ({ params, query }) {
         const access = yield* Access

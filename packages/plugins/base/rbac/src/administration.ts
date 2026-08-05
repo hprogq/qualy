@@ -24,8 +24,13 @@ import {
   countGrantsOfRoleQuery,
   deleteGrantQuery,
   deleteRoleQuery,
+  addEligibilityQuery,
   addPermissionsQuery,
   bumpRoleQuery,
+  countIdsQuery,
+  grantsStrandedByEligibilityQuery,
+  pruneEligibilityQuery,
+  uuidArrayLiteral,
   insertRoleQuery,
   lockRoleQuery,
   prunePermissionsQuery,
@@ -384,20 +389,9 @@ export class Administration {
       // dropped every one of them, so narrowing a tenant role's user types
       // would have stranded its holders silently.
       const stranded = (
-        await tx.execute<{ count: number }>(sql`
-          select count(*)::int as count
-          from role_grants g
-          join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
-          left join org_nodes n on n.tenant_id = g.tenant_id and n.id = g.org_node_id
-          where g.tenant_id = ${tenantId} and g.role_id = ${role.id}
-            and (not exists (
-                  select 1 from role_allowed_user_types t
-                  where t.tenant_id = g.tenant_id and t.role_id = g.role_id
-                    and t.user_type_id = u.user_type_id)
-              or (n.id is not null and not exists (
-                  select 1 from role_allowed_org_types t
-                  where t.tenant_id = g.tenant_id and t.role_id = g.role_id
-                    and t.org_type_id = n.org_type_id)))`)
+        await tx.execute<{ count: number }>(
+          grantsStrandedByEligibilityQuery(tenantId, role.id),
+        )
       ).rows[0]!.count
       if (stranded > 0) throw accessErrors.create('GRANT_STRANDED', { grantCount: stranded })
       await this.bump(tx, tenantId, role.id)
@@ -418,16 +412,9 @@ export class Administration {
       ids: readonly string[],
     ) => {
       await this.requireAll(tx, tenantId, source, ids)
-      const list = sql.raw(uuidArray(ids))
-      await tx.execute(sql`
-        delete from ${sql.raw(table)}
-        where tenant_id = ${tenantId} and role_id = ${roleId}
-          and ${sql.raw(column)} <> all(${list})`)
+      await tx.execute(pruneEligibilityQuery(tenantId, roleId, table, column, uuidArray(ids)))
       if (ids.length > 0) {
-        await tx.execute(sql`
-          insert into ${sql.raw(table)} (tenant_id, role_id, ${sql.raw(column)})
-          select ${tenantId}, ${roleId}, id from unnest(${list}) as id
-          on conflict do nothing`)
+        await tx.execute(addEligibilityQuery(tenantId, roleId, table, column, uuidArray(ids)))
       }
     }
     if (sets.userTypeIds) {
@@ -856,15 +843,8 @@ export class Administration {
     ids: readonly string[],
   ) {
     if (ids.length === 0) return
-    const list = sql.raw(uuidArray(ids))
     const found = (
-      await tx.execute<{ count: number }>(
-        table === 'user_types'
-          ? sql`select count(*)::int as count from user_types
-                where tenant_id = ${tenantId} and id = any(${list})`
-          : sql`select count(*)::int as count from org_types
-                where tenant_id = ${tenantId} and id = any(${list})`,
-      )
+      await tx.execute<{ count: number }>(countIdsQuery(tenantId, table, uuidArray(ids)))
     ).rows[0]!.count
     if (found !== new Set(ids).size) {
       throw accessErrors.create(
@@ -876,16 +856,8 @@ export class Administration {
 
 export { CANONICAL_ADMIN_ROLE }
 
-// uuid lists reach postgres as an array literal rather than as a joined
-// string, so an empty set stays an empty array instead of a one-element list
-// containing the empty string. Every id is re-validated first: these come
-// from request input, and sql.raw does not parameterize.
 function uuidArray(ids: readonly string[]): string {
-  const unique = [...new Set(ids)]
-  for (const id of unique) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-      throw accessErrors.create('ROLE_NOT_FOUND', `malformed identifier ${id}`)
-    }
-  }
-  return unique.length === 0 ? `'{}'::uuid[]` : `array['${unique.join("','")}']::uuid[]`
+  const literal = uuidArrayLiteral(ids)
+  if (literal === undefined) throw accessErrors.create('ROLE_NOT_FOUND', 'malformed identifier')
+  return literal
 }

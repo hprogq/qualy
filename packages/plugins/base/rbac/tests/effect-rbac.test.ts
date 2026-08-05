@@ -678,6 +678,130 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
     }
   })
 
+  it('will not narrow eligibility past a grant that already exists', async () => {
+    // The tenant-grant case is the one on record: a tenant grant has no node,
+    // so the check joining the node inward dropped every one of them, and
+    // narrowing a tenant role's user types stranded its holders in silence.
+    const db = await createTestContext('effect-role-eligibility')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const database = yield* Database
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const other = one<{ id: string }>(
+            yield* database.execute(sql`
+              insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+              values (${f.tenant}, 'guest', 'Guest', true, 'unrestricted') returning id`),
+          ).id
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+            ),
+          ).id
+
+          const roleId = yield* access.roles.create(f.tenant, {
+            code: 'wide',
+            name: 'Wide',
+            kind: 'tenant',
+          })
+          // a tenant role admits no org types, whatever the caller sends
+          const version = yield* access.roles.setEligibility(
+            f.tenant,
+            roleId,
+            { userTypeIds: [staff], orgTypeIds: [orgType] },
+            1,
+          )
+          const stored = yield* access.roles.getEligibility(f.tenant, roleId)
+
+          // a tenant-wide grant: anchor and coverage null together
+          yield* database.execute(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.user}, ${roleId})`)
+
+          const stranding = yield* Effect.result(
+            access.roles.setEligibility(
+              f.tenant,
+              roleId,
+              { userTypeIds: [other], orgTypeIds: [] },
+              version,
+            ),
+          )
+          const unknown = yield* Effect.result(
+            access.roles.setEligibility(
+              f.tenant,
+              roleId,
+              { userTypeIds: ['00000000-0000-7000-8000-000000000000'], orgTypeIds: [] },
+              version,
+            ),
+          )
+          // the refusal has to have rolled the deletes back with it
+          const after = yield* access.roles.getEligibility(f.tenant, roleId)
+          return { stored, stranding, unknown, after, staff }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.stored.userTypeIds).toEqual([answer.staff])
+      expect(answer.stored.orgTypeIds).toEqual([])
+      expect(tagOf(answer.stranding)).toBe('GRANT_STRANDED')
+      expect((answer.stranding as { failure: { grantCount: number } }).failure.grantCount).toBe(1)
+      expect(tagOf(answer.unknown)).toBe('ROLE_USER_TYPE_NOT_FOUND')
+      expect(answer.after.userTypeIds).toEqual([answer.staff])
+      expect(answer.after.version).toBe(answer.stored.version)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('will not leave a usable role with nobody eligible, or edit the administrator', async () => {
+    const db = await createTestContext('effect-role-eligibility-empty')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const emptied = yield* Effect.result(
+            access.roles.setEligibility(
+              f.tenant,
+              f.plainRole,
+              { userTypeIds: [], orgTypeIds: [] },
+              1,
+            ),
+          )
+          // the canonical administrator is grantable to whoever the tenant
+          // designates, so it declares no eligibility to edit
+          const admin = yield* Effect.result(
+            access.roles.setEligibility(f.tenant, f.role, { userTypeIds: [], orgTypeIds: [] }, 1),
+          )
+          // a draft may be emptied: completeness is checked when it becomes usable
+          const draft = yield* access.roles.create(f.tenant, {
+            code: 'draft',
+            name: 'Draft',
+            kind: 'org',
+          })
+          const emptyDraft = yield* Effect.result(
+            access.roles.setEligibility(f.tenant, draft, { userTypeIds: [], orgTypeIds: [] }, 1),
+          )
+          return { emptied, admin, emptyDraft }
+        }),
+      )
+      const answer = ok(exit)
+      expect(tagOf(answer.emptied)).toBe('ROLE_NEEDS_ELIGIBILITY')
+      expect(tagOf(answer.admin)).toBe('ROLE_IS_SYSTEM')
+      expect(Exit.isSuccess(answer.emptyDraft as Exit.Exit<unknown, unknown>)).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('refuses a capability whose calling convention the role cannot use', async () => {
     const db = await createTestContext('effect-role-target')
     try {

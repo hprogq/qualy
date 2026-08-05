@@ -3,19 +3,25 @@ import { Database } from '@qualy/plugin-database/effect'
 import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
 import type { Principal } from '@qualy/rbac-contract'
 import {
+  addEligibilityQuery,
   addPermissionsQuery,
   bumpRoleQuery,
+  countIdsQuery,
   countGrantsOfRoleQuery,
   deleteRoleQuery,
   insertRoleQuery,
+  grantsStrandedByEligibilityQuery,
   lockRoleQuery,
   lockTenantQuery,
+  pruneEligibilityQuery,
   rolePermissionCodesQuery,
   prunePermissionsQuery,
+  roleEligibilityQuery,
   roleQuery,
   roleSetSizesQuery,
   setRoleStatusQuery,
   updateRoleQuery,
+  uuidArrayLiteral,
 } from '../queries.ts'
 import { RoleNotFound } from './grants.ts'
 import { assertMayDefineRole, type Authority } from './escalation.ts'
@@ -101,6 +107,31 @@ export class RoleTargetMismatch extends Schema.TaggedErrorClass<RoleTargetMismat
   'ROLE_TARGET_MISMATCH',
   { permissions: Schema.Array(Schema.String) },
   { httpApiStatus: 422, identifier: 'RoleTargetMismatch' },
+) {}
+
+export class RoleNeedsEligibility extends Schema.TaggedErrorClass<RoleNeedsEligibility>()(
+  'ROLE_NEEDS_ELIGIBILITY',
+  {},
+  { httpApiStatus: 422, identifier: 'RoleNeedsEligibility' },
+) {}
+
+export class RoleUserTypeNotFound extends Schema.TaggedErrorClass<RoleUserTypeNotFound>()(
+  'ROLE_USER_TYPE_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'RoleUserTypeNotFound' },
+) {}
+
+export class RoleOrgTypeNotFound extends Schema.TaggedErrorClass<RoleOrgTypeNotFound>()(
+  'ROLE_ORG_TYPE_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'RoleOrgTypeNotFound' },
+) {}
+
+/** grants the eligibility sets, as requested, would leave nobody qualified for */
+export class GrantStranded extends Schema.TaggedErrorClass<GrantStranded>()(
+  'GRANT_STRANDED',
+  { grantCount: Schema.Number },
+  { httpApiStatus: 409, identifier: 'GrantStranded' },
 ) {}
 
 export const make = Effect.fn('Rbac.roles.make')(function* (
@@ -310,6 +341,101 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
             yield* assertComplete(tx, tenantId, role, new Set(active.keys()))
           }
           yield* keepsAdministrator(tenantId)
+          return role.version + 1
+        }),
+      )
+    }),
+
+    /** which user types may hold the role, and which node types it may anchor to */
+    getEligibility: Effect.fn('Rbac.roles.getEligibility')(function* (
+      tenantId: string,
+      roleId: string,
+    ) {
+      const role = rows<RoleRow>(
+        yield* database.execute(roleQuery(tenantId, roleId)).pipe(Effect.orDie),
+      )[0]
+      if (!role) return yield* new RoleNotFound()
+      const sets = rows<{ user_type_ids: string[]; org_type_ids: string[] }>(
+        yield* database.execute(roleEligibilityQuery(tenantId, roleId)).pipe(Effect.orDie),
+      )[0]!
+      return {
+        userTypeIds: [...sets.user_type_ids].sort(),
+        orgTypeIds: [...sets.org_type_ids].sort(),
+        version: role.version,
+      }
+    }),
+
+    /**
+     * Both eligibility sets, replaced whole.
+     *
+     * A full replacement names both: omitting one and having it silently
+     * survive is how a replace quietly becomes a merge.
+     */
+    setEligibility: Effect.fn('Rbac.roles.setEligibility')(function* (
+      tenantId: string,
+      roleId: string,
+      sets: { userTypeIds: readonly string[]; orgTypeIds: readonly string[] },
+      expectedVersion: number,
+    ) {
+      return yield* write(tenantId, (tx) =>
+        Effect.gen(function* () {
+          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          // the canonical administrator is grantable to whoever the tenant
+          // designates; everything else declares who may hold it
+          if (role.system_key !== null) return yield* new RoleIsSystem()
+          const userTypeIds = [...new Set(sets.userTypeIds)]
+          // A tenant role reaches the whole tenant, so it anchors to nothing
+          // and admits no org types: the field is not part of its policy.
+          const orgTypeIds = role.kind === 'org' ? [...new Set(sets.orgTypeIds)] : []
+          if (
+            role.status === 'active' &&
+            (userTypeIds.length === 0 || (role.kind === 'org' && orgTypeIds.length === 0))
+          ) {
+            return yield* new RoleNeedsEligibility()
+          }
+
+          const replace = Effect.fn('Rbac.roles.replaceEligibility')(function* (
+            table: 'role_allowed_user_types' | 'role_allowed_org_types',
+            column: 'user_type_id' | 'org_type_id',
+            source: 'user_types' | 'org_types',
+            ids: readonly string[],
+          ) {
+            // the api validates the shape; this is the layer that must not
+            // interpolate anything it has not checked itself
+            const list = uuidArrayLiteral(ids)
+            if (list === undefined) {
+              return yield* source === 'user_types'
+                ? new RoleUserTypeNotFound()
+                : new RoleOrgTypeNotFound()
+            }
+            if (ids.length > 0) {
+              const found = rows<{ count: number }>(
+                yield* tx.execute(countIdsQuery(tenantId, source, list)),
+              )[0]!.count
+              if (found !== ids.length) {
+                return yield* source === 'user_types'
+                  ? new RoleUserTypeNotFound()
+                  : new RoleOrgTypeNotFound()
+              }
+            }
+            yield* tx.execute(pruneEligibilityQuery(tenantId, role.id, table, column, list))
+            if (ids.length > 0) {
+              yield* tx.execute(addEligibilityQuery(tenantId, role.id, table, column, list))
+            }
+          })
+          yield* replace('role_allowed_user_types', 'user_type_id', 'user_types', userTypeIds)
+          yield* replace('role_allowed_org_types', 'org_type_id', 'org_types', orgTypeIds)
+
+          // The sets and the grants are checked together under one lock, so a
+          // narrowing that would orphan a grant fails as a whole. The node is
+          // joined outward because a tenant grant has none: an inner join
+          // dropped every one of them, so narrowing a tenant role's user types
+          // would have stranded its holders silently.
+          const stranded = rows<{ count: number }>(
+            yield* tx.execute(grantsStrandedByEligibilityQuery(tenantId, role.id)),
+          )[0]!.count
+          if (stranded > 0) return yield* new GrantStranded({ grantCount: stranded })
+          yield* tx.execute(bumpRoleQuery(tenantId, role.id))
           return role.version + 1
         }),
       )

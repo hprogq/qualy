@@ -11,7 +11,11 @@ import {
 } from './effect/grants.ts'
 import { GrantEscalationRefused, RoleEscalationRefused } from './effect/escalation.ts'
 import {
+  GrantStranded,
   PermissionNotFound,
+  RoleNeedsEligibility,
+  RoleOrgTypeNotFound,
+  RoleUserTypeNotFound,
   RoleConflict,
   RoleTargetMismatch,
   RoleInUse,
@@ -118,6 +122,43 @@ export const accessApiGroup = HttpApiGroup.make('access')
         RoleEscalationRefused,
         RoleIncomplete,
         LastAdministrator,
+        RoleConflict,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getRoleEligibility', '/iam/roles/:roleId/eligibility', {
+      params: Schema.Struct({ roleId: id }),
+      success: Schema.Struct({
+        userTypeIds: Schema.Array(Schema.String),
+        orgTypeIds: Schema.Array(Schema.String),
+        version: Schema.Number,
+      }),
+      error: [RoleNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // which user types may hold the role, and at which org node types it may
+    // be anchored. "allowed" said neither
+    HttpApiEndpoint.put('setRoleEligibility', '/iam/roles/:roleId/eligibility', {
+      params: Schema.Struct({ roleId: id }),
+      payload: Schema.Struct({
+        version: Schema.Number,
+        // a full replacement names both sets: omitting one and having it
+        // silently survive is how a replace quietly becomes a merge
+        userTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+        orgTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+      }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        RoleNotFound,
+        RoleVersionConflict,
+        RoleIsSystem,
+        RoleNeedsEligibility,
+        RoleUserTypeNotFound,
+        RoleOrgTypeNotFound,
+        GrantStranded,
         RoleConflict,
         AccessDenied,
       ],

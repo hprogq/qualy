@@ -409,3 +409,83 @@ export const roleQuery = (tenantId: string, roleId: string): SQL => sql`
   select id, code, name, description, kind, status, permission_mode, system_key,
     assignable, version
   from roles where tenant_id = ${tenantId} and id = ${roleId}`
+
+// --- eligibility ---
+
+/**
+ * A uuid list as a postgres array literal.
+ *
+ * The ids reach postgres as an array literal rather than a joined string, so
+ * an empty set stays an empty array instead of a one-element list containing
+ * the empty string. Every id is re-validated because sql.raw does not
+ * parameterize; a malformed one yields undefined rather than an exception, so
+ * each runtime can raise the failure its own callers understand.
+ */
+export const uuidArrayLiteral = (ids: readonly string[]): string | undefined => {
+  const unique = [...new Set(ids)]
+  const shaped = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (unique.some((id) => !shaped.test(id))) return undefined
+  return unique.length === 0 ? `'{}'::uuid[]` : `array['${unique.join("','")}']::uuid[]`
+}
+
+export const countIdsQuery = (
+  tenantId: string,
+  table: 'user_types' | 'org_types',
+  list: string,
+): SQL =>
+  table === 'user_types'
+    ? sql`select count(*)::int as count from user_types
+          where tenant_id = ${tenantId} and id = any(${sql.raw(list)})`
+    : sql`select count(*)::int as count from org_types
+          where tenant_id = ${tenantId} and id = any(${sql.raw(list)})`
+
+export const pruneEligibilityQuery = (
+  tenantId: string,
+  roleId: string,
+  table: 'role_allowed_user_types' | 'role_allowed_org_types',
+  column: 'user_type_id' | 'org_type_id',
+  list: string,
+): SQL => sql`
+  delete from ${sql.raw(table)}
+  where tenant_id = ${tenantId} and role_id = ${roleId}
+    and ${sql.raw(column)} <> all(${sql.raw(list)})`
+
+export const addEligibilityQuery = (
+  tenantId: string,
+  roleId: string,
+  table: 'role_allowed_user_types' | 'role_allowed_org_types',
+  column: 'user_type_id' | 'org_type_id',
+  list: string,
+): SQL => sql`
+  insert into ${sql.raw(table)} (tenant_id, role_id, ${sql.raw(column)})
+  select ${tenantId}, ${roleId}, id from unnest(${sql.raw(list)}) as id
+  on conflict do nothing`
+
+/**
+ * Grants that the eligibility sets, as written, would orphan.
+ *
+ * The node is joined outward because a tenant grant has none: an inner join
+ * dropped every one of them, so narrowing a tenant role's user types would
+ * have stranded its holders silently.
+ */
+export const grantsStrandedByEligibilityQuery = (tenantId: string, roleId: string): SQL => sql`
+  select count(*)::int as count
+  from role_grants g
+  join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
+  left join org_nodes n on n.tenant_id = g.tenant_id and n.id = g.org_node_id
+  where g.tenant_id = ${tenantId} and g.role_id = ${roleId}
+    and (not exists (
+          select 1 from role_allowed_user_types t
+          where t.tenant_id = g.tenant_id and t.role_id = g.role_id
+            and t.user_type_id = u.user_type_id)
+      or (n.id is not null and not exists (
+          select 1 from role_allowed_org_types t
+          where t.tenant_id = g.tenant_id and t.role_id = g.role_id
+            and t.org_type_id = n.org_type_id)))`
+
+export const roleEligibilityQuery = (tenantId: string, roleId: string): SQL => sql`
+  select
+    coalesce((select array_agg(user_type_id::text) from role_allowed_user_types
+              where tenant_id = ${tenantId} and role_id = ${roleId}), '{}') as user_type_ids,
+    coalesce((select array_agg(org_type_id::text) from role_allowed_org_types
+              where tenant_id = ${tenantId} and role_id = ${roleId}), '{}') as org_type_ids`
