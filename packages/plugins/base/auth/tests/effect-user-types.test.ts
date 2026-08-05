@@ -7,6 +7,8 @@ import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
+import { LoginDrivers } from '@qualy/auth-contract/login'
+import { AuthConfig } from '../src/effect/sign-in.ts'
 import { Iam, layer as authLayer } from '../src/effect/index.ts'
 
 // User types under Effect.
@@ -21,7 +23,19 @@ const stack = (url: string) =>
   authLayer.pipe(
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
-      Layer.mergeAll(databaseLayer, Layer.succeed(PermissionCatalog, catalog)),
+      Layer.mergeAll(
+        databaseLayer,
+        Layer.succeed(PermissionCatalog, catalog),
+        Layer.succeed(LoginDrivers, []),
+        Layer.succeed(
+          AuthConfig,
+          AuthConfig.of({
+            defaultTenantSlug: 'default',
+            sessionTtlSeconds: 604_800,
+            secureCookies: false,
+          }),
+        ),
+      ),
     ),
     Layer.provide(
       Layer.succeed(

@@ -9,7 +9,10 @@
     ".": "./src/index.ts",
     "./contract": "./src/contract.ts",
     "./password": "./src/password.ts",
-    "./client": "./client/index.ts"
+    "./client": "./client/index.ts",
+    "./login-driver": "./src/login-driver.ts",
+    "./api": "./src/api.ts",
+    "./effect": "./src/effect/index.ts"
   },
   "peerDependencies": {
     "cordis": "catalog:",
@@ -20,6 +23,8 @@
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "@qualy/api-contract": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-server": "workspace:*",
@@ -34,5 +39,17 @@
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@types/react": "catalog:"
+  },
+  "qualy": {
+    "loginDriver": {
+      "entry": "./src/login-driver.ts"
+    },
+    "runtime": {
+      "entry": "./effect",
+      "api": "./api",
+      "dependsOn": [
+        "@qualy/plugin-auth"
+      ]
+    }
   }
 }

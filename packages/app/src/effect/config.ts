@@ -2,7 +2,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { DatabaseConfig } from '@qualy/plugin-database/effect'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
+import { LoginDrivers } from '@qualy/auth-contract/login'
+import { AuthConfig } from '@qualy/plugin-auth/effect/sign-in'
 import { permissionCatalog } from '../../permissions.gen.ts'
+import { loginDrivers } from '../../login-drivers.gen.ts'
 
 // Everything the assembly needs from its environment, in one place.
 //
@@ -69,3 +72,34 @@ export const databaseConfigLayer = Layer.effect(
  * plugin that consumes it does not go looking for it.
  */
 export const permissionCatalogLayer = Layer.succeed(PermissionCatalog, permissionCatalog)
+
+/**
+ * The login drivers this assembly serves.
+ *
+ * Generated from the manifest for the same reason the permission catalog is:
+ * which ways in a deployment offers is decided by resolution, not by which
+ * plugins happened to finish constructing.
+ */
+export const loginDriversLayer = Layer.succeed(LoginDrivers, loginDrivers)
+
+/**
+ * What auth needs to know about this deployment.
+ *
+ * Cookies are secure whenever the process is not a development one, which is
+ * the same rule the cordis config expressed as an 'auto' setting.
+ */
+export const authConfigLayer = Layer.effect(
+  AuthConfig,
+  Effect.gen(function* () {
+    return AuthConfig.of({
+      defaultTenantSlug: yield* Config.string('QUALY_DEFAULT_TENANT').pipe(
+        Config.withDefault('default'),
+      ),
+      sessionTtlSeconds: yield* Config.number('QUALY_SESSION_TTL_SECONDS').pipe(
+        Config.withDefault(604_800),
+      ),
+      secureCookies: (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development')))
+        === 'production',
+    })
+  }),
+)

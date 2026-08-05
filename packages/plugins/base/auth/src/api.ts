@@ -3,7 +3,7 @@ import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import { BadRequest, pageOf, pageQuery } from '@qualy/api-kit/schema'
 
-import { Authenticated } from './effect/session.ts'
+import { Authenticated, AuthRequired } from './effect/session.ts'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
@@ -338,4 +338,63 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         AccessDenied,
       ],
     }).middleware(Authenticated),
+  )
+
+// The session is a resource, not a pair of verbs: reading it says who is
+// signed in, deleting it signs them out. /auth/me and /auth/logout modelled
+// the same thing two different ways and left no room for the per-device
+// listing this will grow.
+
+/** the public descriptor of one way in; never config, never internal ids */
+const loginMethod = Schema.Union([
+  Schema.Struct({
+    code: Schema.String,
+    type: Schema.String,
+    name: Schema.String,
+    mode: Schema.Literal('component'),
+    component: Schema.String,
+  }),
+  Schema.Struct({
+    code: Schema.String,
+    type: Schema.String,
+    name: Schema.String,
+    mode: Schema.Literal('redirect'),
+    href: Schema.String,
+  }),
+])
+
+const signedInUser = Schema.Struct({
+  id: Schema.String,
+  displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  userType: Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
+  primaryOrgNode: Schema.Struct({
+    id: Schema.String,
+    code: Schema.NullOr(Schema.String),
+    name: Schema.String,
+  }),
+  tenant: Schema.Struct({ id: Schema.String, slug: Schema.String, name: Schema.String }),
+})
+
+export const sessionApiGroup = HttpApiGroup.make('auth')
+  .add(
+    HttpApiEndpoint.get('listLoginMethods', '/auth/login-methods', {
+      success: Schema.Struct({ methods: Schema.Array(loginMethod) }),
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get('getSession', '/auth/session', {
+      success: Schema.Struct({ user: signedInUser }),
+      // the middleware already declares AUTH_REQUIRED and SESSION_EXPIRED, and
+      // it is what tells them apart: a session that was presented and has
+      // since lapsed is not the same as never having had one
+      error: [AuthRequired],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // no middleware: refusing an already-signed-out caller would make the
+    // client handle a failure that means the thing it asked for is already true
+    HttpApiEndpoint.delete('endSession', '/auth/session', {
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+    }),
   )

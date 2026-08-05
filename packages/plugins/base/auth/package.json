@@ -15,7 +15,8 @@
     "./constants": "./src/constants.ts",
     "./effect": "./src/effect/index.ts",
     "./effect/session": "./src/effect/session.ts",
-    "./api": "./src/api.ts"
+    "./api": "./src/api.ts",
+    "./effect/sign-in": "./src/effect/sign-in.ts"
   },
   "qualy": {
     "contributions": {
@@ -66,10 +67,11 @@
     "@qualy/auth-contract": "workspace:*"
   },
   "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
-    "@types/react": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@qualy/api-kit": "workspace:*"
+    "@types/react": "catalog:"
   }
 }

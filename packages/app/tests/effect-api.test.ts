@@ -9,7 +9,10 @@ import { createTestContext, postgresAvailable } from '@qualy/plugin-database/tes
 import { DatabaseConfig } from '@qualy/plugin-database/effect'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import { pluginLayers } from '../runtime.gen.ts'
+import { LoginDrivers } from '@qualy/auth-contract/login'
+import { AuthConfig } from '@qualy/plugin-auth/effect/sign-in'
 import { permissionCatalog } from '../permissions.gen.ts'
+import { loginDrivers } from '../login-drivers.gen.ts'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { apiHandlers } from '../api-handlers.gen.ts'
@@ -51,6 +54,15 @@ const shell = (url: string) =>
           }),
         ),
         Layer.succeed(PermissionCatalog, permissionCatalog),
+        Layer.succeed(LoginDrivers, loginDrivers),
+        Layer.succeed(
+          AuthConfig,
+          AuthConfig.of({
+            defaultTenantSlug: 'default',
+            sessionTtlSeconds: 604_800,
+            secureCookies: false,
+          }),
+        ),
       ),
     ),
   )

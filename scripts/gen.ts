@@ -31,6 +31,7 @@ console.log(
 await import('./gen-contracts.ts')
 await import('./gen-api.ts')
 await import('./gen-permissions.ts')
+await import('./gen-login-drivers.ts')
 await import('./gen-plugins.ts')
 
 export {}

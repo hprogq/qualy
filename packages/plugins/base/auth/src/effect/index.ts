@@ -17,8 +17,10 @@ import {
   usersBlockingOrgTypeQuery,
   type UserRow as UserProjection,
 } from '../iam/queries.ts'
-import { identityApiGroup } from '../api.ts'
-import { CurrentUser } from './session.ts'
+import { identityApiGroup, sessionApiGroup } from '../api.ts'
+import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
+import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
+import { AuthRequired, CurrentUser } from './session.ts'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers } from './users.ts'
 import { Authenticated, layer as sessionLayer } from './session.ts'
@@ -100,8 +102,11 @@ const tags: Layer.Layer<Placement | Iam, never, Database | Rbac> = Layer.effectC
  * declares the middleware cannot be composed into an assembly that does not
  * provide it. The requirement reaches the entry point and fails the build.
  */
-export const layer: Layer.Layer<Placement | Iam | Authenticated, never, Database | Rbac> =
-  Layer.merge(tags, sessionLayer)
+export const layer: Layer.Layer<
+  Placement | Iam | Authenticated | SignIn | LoginSessions,
+  never,
+  Database | Rbac | AuthConfig | LoginDrivers
+> = Layer.mergeAll(tags, sessionLayer, signInLayer)
 
 // --- api ---
 
@@ -124,7 +129,43 @@ const toUserTypeDto = (row: UserTypeRow) => ({
 
 // see QUALY_API_ID: implemented against a local api so this plugin does not
 // import the aggregate it is part of
-const local = HttpApi.make(QUALY_API_ID).add(identityApiGroup).prefix(QUALY_API_PREFIX)
+const local = HttpApi.make(QUALY_API_ID)
+  .add(identityApiGroup)
+  .add(sessionApiGroup)
+  .prefix(QUALY_API_PREFIX)
+
+export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers) =>
+  handlers
+    .handle(
+      'listLoginMethods',
+      Effect.fn('auth.listLoginMethods.handler')(function* () {
+        const signIn = yield* SignIn
+        return { methods: yield* signIn.loginMethods() }
+      }),
+    )
+    .handle(
+      'getSession',
+      Effect.fn('auth.getSession.handler')(function* () {
+        const signIn = yield* SignIn
+        const principal = yield* CurrentUser
+        const user = yield* signIn.loadUser(principal.tenantId, principal.userId)
+        // the middleware resolved the session a moment ago; if the account is
+        // gone now, that is a lapsed session rather than a missing person
+        if (!user) return yield* new AuthRequired()
+        return { user }
+      }),
+    )
+    .handle(
+      'endSession',
+      Effect.fn('auth.endSession.handler')(function* () {
+        const signIn = yield* SignIn
+        // the caller may or may not have had one; either way they end up
+        // without one, which is what they asked for
+        yield* signIn.endSession()
+        return { ok: true as const }
+      }),
+    ),
+)
 
 /**
  * How much of a tree a picker will render before it says it stopped.

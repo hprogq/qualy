@@ -310,6 +310,9 @@ importers:
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../plugins/base/auth
+      '@qualy/plugin-auth-local':
+        specifier: workspace:*
+        version: link:../plugins/base/auth-local
       '@qualy/plugin-org':
         specifier: workspace:*
         version: link:../plugins/base/org
@@ -415,6 +418,9 @@ importers:
       '@qualy/assembly-contract':
         specifier: workspace:*
         version: link:../assembly-contract
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../auth-contract
       '@qualy/plugin-api-reference':
         specifier: workspace:*
         version: link:../plugins/infra/api-reference
@@ -597,6 +603,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../api-kit
+      '@qualy/plugin-auth-local':
+        specifier: workspace:*
+        version: link:../auth-local
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../rbac
@@ -618,6 +627,12 @@ importers:
       '@qualy/api-contract':
         specifier: workspace:*
         version: link:../../../api-contract
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../api-kit
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../../auth-contract
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract

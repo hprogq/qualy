@@ -7,6 +7,8 @@ import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/effect'
 import { layer as authLayer } from '@qualy/plugin-auth/effect'
+import { AuthConfig } from '@qualy/plugin-auth/effect/sign-in'
+import { LoginDrivers } from '@qualy/auth-contract/login'
 import { Org, layer as orgLayer } from '../src/effect/index.ts'
 
 // The slice the whole milestone rests on.
@@ -34,7 +36,19 @@ const stack = (url: string) =>
     Layer.provideMerge(authLayer),
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
-      Layer.mergeAll(databaseLayer, Layer.succeed(PermissionCatalog, catalog)),
+      Layer.mergeAll(
+        databaseLayer,
+        Layer.succeed(PermissionCatalog, catalog),
+        Layer.succeed(LoginDrivers, []),
+        Layer.succeed(
+          AuthConfig,
+          AuthConfig.of({
+            defaultTenantSlug: 'default',
+            sessionTtlSeconds: 604_800,
+            secureCookies: false,
+          }),
+        ),
+      ),
     ),
     Layer.provide(
       Layer.succeed(
