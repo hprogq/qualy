@@ -13,6 +13,7 @@ export {
   type ManifestEntry,
 } from './manifest.ts'
 export { createPackageResolver, type PackageResolver, type PluginMetadata } from './metadata.ts'
+export { capabilityModules, moduleDrift, type GeneratedModule } from './modules.ts'
 export { loadProviders, type LoadedProvider } from './registry.ts'
 export {
   activePlugins,

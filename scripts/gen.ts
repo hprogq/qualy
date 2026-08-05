@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { writeRuntimeModule } from '@qualy/assembly'
+import { capabilityModules, writeAtomic, writeRuntimeModule } from '@qualy/assembly'
 import { currentResolution } from './lib/read-entries.ts'
 import { RUNTIME_MODULE, generatedPath } from './lib/paths.ts'
 
@@ -25,6 +25,17 @@ console.log(
     ? `${RUNTIME_MODULE} written`
     : `${RUNTIME_MODULE} unchanged, skipped`,
 )
+
+// Whatever the capabilities derive, written by a caller that does not know
+// what any of it says. A capability with tables emits a module about tables
+// here; an assembly without one emits nothing and never mentions a database.
+for (const module of capabilityModules(resolution)) {
+  console.log(
+    writeAtomic(generatedPath(module.path), module.content)
+      ? `${module.path} written`
+      : `${module.path} unchanged, skipped`,
+  )
+}
 
 await import('./gen-api.ts')
 await import('./gen-routes.ts')

@@ -21,6 +21,9 @@ import type { DatabaseState } from './state.ts'
 // aggregate built from the active set alone hands a diffing schema generator a
 // database that is missing them - which is how data gets dropped.
 
+/** where the host finds the aggregate, relative to its own workspace */
+export const ENTITIES_MODULE = 'entities.gen.ts'
+
 export interface EntityContribution {
   pluginId: string
   /** the import specifier the host will use, e.g. `@qualy/plugin-org/db` */

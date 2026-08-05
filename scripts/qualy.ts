@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  capabilityModules,
   capabilityWork,
   lockDrift,
+  moduleDrift,
   lockFromResolution,
   lockPathFor,
   readLock,
@@ -72,6 +74,13 @@ const drift = (previous: AssemblyLock | undefined, resolution: Resolution): stri
   else if (fs.readFileSync(modulePath, 'utf8') !== renderRuntimeModule(resolution)) {
     reasons.push(`${relative(modulePath)} is not what this manifest generates`)
   }
+  // the modules capabilities derive are as much a part of this tree as the one
+  // the core derives, and a plugin joining or leaving changes both
+  const read = (module: string) => {
+    const file = generatedPath(module)
+    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : undefined
+  }
+  reasons.push(...moduleDrift(capabilityModules(resolution), read))
   return reasons
 }
 
