@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineEntity, MikroORM } from '@mikro-orm/core'
 import { PostgreSqlDriver } from '@mikro-orm/postgresql'
 import { describe, expect, it } from 'vitest'
@@ -118,6 +121,37 @@ describe.runIf(postgresAvailable)('the ddl entities can emit', () => {
     const ddl = await ddlOf(fullEntities)
     expect(ddl).toContain('ltree')
     expect(ddl.toLowerCase()).not.toContain('create extension')
+  }, 60_000)
+
+  it('reverse-engineers foreign keys and indexes, and none of the checks', async () => {
+    // Whether the other twelve tables can be done mechanically.
+    //
+    // The entity generator reads a live database and emits defineEntity source,
+    // which would make the remaining tables a command rather than a week. It
+    // very nearly does: run against the deployed lineage it recovers all 16
+    // tables, the foreign keys including the composite tenant-scoped ones, and
+    // all but one of the partial indexes.
+    //
+    // It recovers none of the 30 check constraints. Single-column ones it
+    // reinterprets as enums - same values enforced, different constraint name,
+    // which is the name error translation keys on. Multi-column ones
+    // (chk_roles_tenant_admin_shape, chk_roles_all_active_is_system) and the
+    // regex ones (chk_org_nodes_code_format) simply do not survive.
+    //
+    // So the generator is a starting point and not a migration: taking its
+    // output as-is builds a database missing thirty invariants, and nothing
+    // fails until data that should have been refused is already stored.
+    const generatedDir = fileURLToPath(new URL('../generated', import.meta.url))
+    if (!fs.existsSync(generatedDir)) return
+
+    const sources = fs
+      .readdirSync(generatedDir)
+      .filter((file) => file.endsWith('.ts') && file !== 'SchemaMigrations.ts')
+    const withChecks = sources.filter((file) =>
+      fs.readFileSync(path.join(generatedDir, file), 'utf8').includes('checks:'),
+    )
+    expect(sources.length).toBeGreaterThan(10)
+    expect(withChecks, 'the generator started emitting checks; revisit the plan').toEqual([])
   }, 60_000)
 
   it('drops the foreign key entirely when the relation does not persist', async () => {
