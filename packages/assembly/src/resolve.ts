@@ -69,7 +69,7 @@ export interface ResolveOptions {
 
 export async function resolveAssembly(options: ResolveOptions): Promise<Resolution> {
   const manifest = readManifest(options.manifestPath)
-  const resolver = createPackageResolver(options.hostDir ?? hostDirFor(options.manifestPath))
+  const resolver = createPackageResolver(options.hostDir ?? hostDirFor(manifest))
   const previous = options.previousLock
 
   const states = new Map<string, PluginState>()

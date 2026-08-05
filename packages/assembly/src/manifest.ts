@@ -24,12 +24,26 @@ export interface AssemblyManifest {
   plugins: Map<string, ManifestEntry>
   /** where it was read from, so errors can name the file */
   source: string
+  /**
+   * Where the plugins this manifest names are installed, relative to it.
+   *
+   * The manifest is the product's configuration and belongs where somebody
+   * editing a port or a database url would look for it. Which package declares
+   * the plugin dependencies is a separate fact, and it used to be inferred
+   * from the manifest's own directory - which silently required the two to be
+   * the same directory, and made the configuration file live inside the source
+   * tree of one of the applications reading it.
+   *
+   * Omitted means the manifest's own directory, which is the standalone
+   * deployment layout: manifest, lock and node_modules side by side.
+   */
+  workspace?: string
 }
 
 export const MANIFEST_VERSION = 1
 
 const PLUGIN_KEYS = new Set(['enabled', 'config'])
-const TOP_LEVEL_KEYS = new Set(['version', 'plugins'])
+const TOP_LEVEL_KEYS = new Set(['version', 'plugins', 'application'])
 
 function fail(source: string, message: string): never {
   throw new Error(`${source}: ${message}`)
@@ -59,6 +73,23 @@ export function parseManifest(text: string, source: string): AssemblyManifest {
   }
   if (Array.isArray(record.plugins)) fail(source, 'plugins must be a mapping, not a list')
 
+  const application = record.application
+  if (application !== undefined && (!application || typeof application !== 'object')) {
+    fail(source, 'application must be a mapping')
+  }
+  const app = (application ?? {}) as Record<string, unknown>
+  for (const key of Object.keys(app)) {
+    if (key !== 'workspace') fail(source, `application: unknown key ${key}`)
+  }
+  if (app.workspace !== undefined && typeof app.workspace !== 'string') {
+    fail(source, 'application.workspace must be a path relative to this file')
+  }
+  const workspace = app.workspace as string | undefined
+  if (workspace !== undefined && path.isAbsolute(workspace)) {
+    // an absolute host would make the manifest describe one machine
+    fail(source, 'application.workspace must be relative to this file')
+  }
+
   const plugins = new Map<string, ManifestEntry>()
   for (const [id, value] of Object.entries((record.plugins ?? {}) as Record<string, unknown>)) {
     if (!id.trim()) fail(source, 'a plugin id cannot be empty')
@@ -79,7 +110,7 @@ export function parseManifest(text: string, source: string): AssemblyManifest {
     }
     plugins.set(id, { enabled: entry.enabled ?? true, config: entry.config })
   }
-  return { version: MANIFEST_VERSION, plugins, source }
+  return { version: MANIFEST_VERSION, plugins, source, workspace }
 }
 
 export function readManifest(file: string): AssemblyManifest {
@@ -136,9 +167,10 @@ export const lockPathFor = (manifestPath: string) =>
 /**
  * The directory plugin packages resolve from.
  *
- * Resolution is anchored at the manifest's directory, so the
- * host that owns the manifest is also the host that owns the dependencies.
- * Everything reading plugin metadata has to resolve the same way the loader
- * will, or generation and runtime disagree about which package is meant.
+ * The manifest names it, so where the configuration lives and which package
+ * declares the plugins are two answers instead of one. Everything reading
+ * plugin metadata resolves through here, or generation and the running process
+ * disagree about which package a plugin id means.
  */
-export const hostDirFor = (manifestPath: string) => path.dirname(path.resolve(manifestPath))
+export const hostDirFor = (manifest: AssemblyManifest): string =>
+  path.resolve(path.dirname(path.resolve(manifest.source)), manifest.workspace ?? '.')

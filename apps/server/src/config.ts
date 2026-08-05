@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
@@ -36,11 +37,30 @@ export class ServerConfig extends Context.Service<
   )
 }
 
-/** the manifest this process was started with, the same one main.ts verifies */
-export const manifestPath = (): string =>
-  process.env.QUALY_CONFIG
-    ? path.resolve(process.env.QUALY_CONFIG)
-    : path.join(appRoot, 'qualy.yml')
+/**
+ * The manifest this process was started with, the same one main.ts verifies.
+ *
+ * Found by walking up from this package rather than named at a fixed depth,
+ * because the two layouts put it in different places: in this repository it
+ * sits at the root, beside the apps it configures, while a standalone
+ * deployment has it next to the host and its node_modules. Walking up answers
+ * both, and QUALY_CONFIG overrides it outright.
+ */
+export const manifestPath = (): string => {
+  if (process.env.QUALY_CONFIG) return path.resolve(process.env.QUALY_CONFIG)
+  let dir = appRoot
+  for (;;) {
+    const candidate = path.join(dir, 'qualy.yml')
+    if (fs.existsSync(candidate)) return candidate
+    const parent = path.dirname(dir)
+    if (parent === dir) {
+      throw new Error(
+        `no qualy.yml found in ${appRoot} or any directory above it; set QUALY_CONFIG to name one`,
+      )
+    }
+    dir = parent
+  }
+}
 
 /**
  * Where the lineage lives, as the manifest declares it.

@@ -427,7 +427,7 @@ describe('the manifest this repository ships', () => {
   it('has a lock that matches it', async () => {
     // the committed lock is what a deployment runs with; a stale one turns
     // every frozen start into a puzzle
-    const file = path.resolve('apps/server/qualy.yml')
+    const file = path.resolve('qualy.yml')
     expect(lockDrift(readLock(lockPathFor(file)), await resolve(file))).toEqual([])
   })
 })

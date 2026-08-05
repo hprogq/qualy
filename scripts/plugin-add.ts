@@ -40,7 +40,7 @@ fs.writeFileSync(rootManifestPath, JSON.stringify(rootManifest, null, 2) + '\n')
 
 // appended rather than rewritten through the parser, so a hand-maintained
 // manifest keeps its comments, blank lines and grouping
-const manifestPath = 'apps/server/qualy.yml'
+const manifestPath = 'qualy.yml'
 const manifest = fs.readFileSync(manifestPath, 'utf8')
 if (!new RegExp(`^\\s*'?${name}'?:`, 'm').test(manifest)) {
   fs.writeFileSync(manifestPath, `${manifest.trimEnd()}\n  '${name}': {}\n`)
