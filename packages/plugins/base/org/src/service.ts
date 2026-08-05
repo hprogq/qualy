@@ -20,6 +20,15 @@ import {
  * to mean trusted, which made forgetting indistinguishable from being allowed.
  */
 type Actor = Principal | SystemActor
+import {
+  byPath,
+  coveredBy,
+  forestRoots,
+  forestShape,
+  subtreeCoveredBy,
+  type AnchorPath,
+  type ResolvedScope,
+} from './coverage.ts'
 import { orgErrors } from './errors.ts'
 import {
   deleteNode,
@@ -54,31 +63,7 @@ import {
   type OrgTx,
 } from './repo.ts'
 
-// a resolved authorization anchor: the anchor node's id/path plus coverage
-export type AnchorPath = { id: string; path: string; coverage: 'self' | 'subtree' }
-
-// how far the caller's grants for one permission reach, with anchor paths
-// resolved. A tenant role reaches everything, which no anchor list can say.
-export type ResolvedScope = { tenantWide: boolean; anchors: AnchorPath[] }
-
-const coveredBy = (scope: ResolvedScope, node: { id: string; path: string }) =>
-  scope.tenantWide ||
-  scope.anchors.some((anchor) =>
-    anchor.coverage === 'self'
-      ? anchor.id === node.id
-      : node.path === anchor.path || node.path.startsWith(`${anchor.path}.`),
-  )
-
-// the whole subtree of the node is inside the caller's authority: only a
-// subtree-coverage anchor above it, or tenant-wide authority, can guarantee
-// that (a self anchor covers one node, never its descendants)
-const subtreeCoveredBy = (scope: ResolvedScope, node: { path: string }) =>
-  scope.tenantWide ||
-  scope.anchors.some(
-    (anchor) =>
-      anchor.coverage === 'subtree' &&
-      (node.path === anchor.path || node.path.startsWith(`${anchor.path}.`)),
-  )
+export type { AnchorPath, ResolvedScope } from './coverage.ts'
 
 // database constraints stay loud backstops: a violation that slips past
 // the in-transaction checks surfaces as the matching domain error
@@ -159,19 +144,8 @@ export class OrgTreeService {
       if (!root) return { roots: [], nodes: [] }
       return { roots: [root.id], nodes: await listSubtree(db, tenantId, root.path) }
     }
-    const anchors = scope.anchors
-    if (anchors.length === 0) return { roots: [], nodes: [] }
-    const covered = (path: string, keep: AnchorPath[]) =>
-      keep.some((kept) => path === kept.path || path.startsWith(`${kept.path}.`))
-    const keptSubtrees: AnchorPath[] = []
-    for (const anchor of [...anchors]
-      .filter((anchor) => anchor.coverage === 'subtree')
-      .sort((a, b) => a.path.length - b.path.length)) {
-      if (!covered(anchor.path, keptSubtrees)) keptSubtrees.push(anchor)
-    }
-    const selfAnchors = anchors.filter(
-      (anchor) => anchor.coverage === 'self' && !covered(anchor.path, keptSubtrees),
-    )
+    if (scope.anchors.length === 0) return { roots: [], nodes: [] }
+    const { subtrees: keptSubtrees, selves: selfAnchors } = forestShape(scope)
     const nodes = new Map<string, NodeRow>()
     for (const anchor of keptSubtrees) {
       for (const node of await listSubtree(db, tenantId, anchor.path)) {
@@ -182,10 +156,10 @@ export class OrgTreeService {
       const node = await getNode(db, tenantId, anchor.id)
       if (node) nodes.set(node.id, node)
     }
-    const roots = [...new Set([...keptSubtrees, ...selfAnchors].map((anchor) => anchor.id))].filter(
-      (id) => nodes.has(id),
+    const roots = forestRoots({ subtrees: keptSubtrees, selves: selfAnchors }, (id) =>
+      nodes.has(id),
     )
-    return { roots, nodes: [...nodes.values()].sort((a, b) => (a.path < b.path ? -1 : 1)) }
+    return { roots, nodes: [...nodes.values()].sort(byPath) }
   }
 
   // in-lock authorization re-validation: the router's requireAt runs before
