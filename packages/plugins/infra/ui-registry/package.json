@@ -30,6 +30,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@effect/platform-node": "catalog:",
     "@standard-schema/spec": "catalog:"
   },
   "qualy": {

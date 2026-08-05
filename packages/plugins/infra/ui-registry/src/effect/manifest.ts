@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from 'effect'
 import {
   isVisibleTo,
   primaryNavigation,
+  type NamespacedId,
   type NavigationItem,
   type ResolvedNavigationItem,
   type UiSurfaces,
@@ -58,21 +59,30 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
   // see them
   const collections = [
     ...catalog.flatMap((surface) => surface.collections ?? []),
-    ...pages
-      .filter((page) => page.navigation)
-      .map((page) => ({
-        key: primaryNavigation.key,
-        id: page.page.id,
-        value: {
-          id: page.page.id,
-          label: page.navigation!.label,
-          target: { kind: 'page' as const, pageId: page.page.id },
-          icon: page.navigation!.icon,
-          order: page.navigation!.order,
-        } satisfies NavigationItem,
-        visibility: page.visibility,
-        order: page.navigation!.order,
-      })),
+    ...pages.flatMap((page) => {
+      const navigation = page.navigation
+      if (!navigation) return []
+      const id = `${page.page.id}/nav` as NamespacedId
+      return [
+        {
+          key: primaryNavigation.key,
+          id,
+          // Absent keys are omitted rather than set to undefined. A key whose
+          // value is undefined is still a key, and it is not a JSON value, so
+          // encoding the response fails on it. zod and JSON.stringify both
+          // swallowed that, which is why the oRPC path never noticed.
+          value: {
+            id,
+            label: navigation.label,
+            target: { kind: 'page' as const, pageId: page.page.id },
+            ...(navigation.icon === undefined ? {} : { icon: navigation.icon }),
+            ...(navigation.order === undefined ? {} : { order: navigation.order }),
+          } satisfies NavigationItem,
+          visibility: page.visibility,
+          order: navigation.order,
+        },
+      ]
+    }),
   ]
 
   const byContract = new Map(layouts.map((layout) => [layout.contract, layout]))

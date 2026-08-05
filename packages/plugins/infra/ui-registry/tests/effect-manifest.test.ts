@@ -1,5 +1,9 @@
-import { Effect, Layer } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { NodeHttpServer } from '@effect/platform-node'
+import { Effect, Exit, Layer, Scope } from 'effect'
+import { HttpRouter } from 'effect/unstable/http'
+import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
+import { createServer } from 'node:http'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   ADMIN_SHELL,
   BLANK_SHELL,
@@ -15,6 +19,7 @@ import { message } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { UiAuthorizer } from '../src/effect/authorizer.ts'
 import { UiCatalog, UiManifest, layer as manifestLayer } from '../src/effect/manifest.ts'
+import { appApiGroup } from '../src/api.ts'
 
 // The manifest is an authorized projection, and this is where that is stated.
 //
@@ -104,6 +109,69 @@ const build = (principal: Principal | undefined, held: readonly string[]) =>
     ),
   )
 
+// The endpoint served for real, because the encoder is where the failure was.
+//
+// A projection assertion cannot see it: toEqual ignores a key whose value is
+// undefined and JSON.stringify drops it. The response encoder does neither. A
+// navigation entry with no icon carried `icon: undefined`, which is not a JSON
+// value, and the running process answered 400 while every test stayed green.
+
+const port = 3193
+const api = HttpApi.make('test').add(appApiGroup).prefix('/api')
+
+const handlers = HttpApiBuilder.group(api, 'app', (h) =>
+  h.handle(
+    'getManifest',
+    Effect.fn('test.getManifest')(function* () {
+      const manifest = yield* UiManifest
+      return yield* manifest.build(viewer)
+    }),
+  ),
+)
+
+let scope: Scope.Scope
+
+beforeAll(async () => {
+  // the authorizer goes in at the application level, not into the manifest
+  // layer: it is a per-request requirement, which is the whole point of
+  // reading it per request rather than capturing it at construction
+  const application = HttpRouter.serve(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers))).pipe(
+    Layer.provide(manifestLayer.pipe(Layer.provide(Layer.succeed(UiCatalog, surfaces)))),
+    Layer.provide(
+      Layer.succeed(UiAuthorizer, {
+        permissionsFor: () => Effect.succeed(new Set(['test.thing.read'])),
+      }),
+    ),
+    Layer.provide(NodeHttpServer.layer(createServer, { port })),
+  )
+  scope = await Effect.runPromise(Scope.make())
+  await Effect.runPromise(Layer.buildWithScope(application, scope))
+})
+
+afterAll(async () => {
+  await Effect.runPromise(Scope.close(scope, Exit.void))
+})
+
+describe('the manifest over the wire', () => {
+  it('encodes as the response schema it declares', async () => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/app/manifest`)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      pages: { id: string }[]
+      collections: Record<string, { id: string; icon?: string }[]>
+    }
+    expect(body.pages.map((page) => page.id).sort()).toEqual([
+      'test/gated',
+      'test/member',
+      'test/public',
+    ])
+    // the entry with no icon is the one that used to fail: it must arrive
+    // without the key rather than with an undefined one
+    const navigation = body.collections['admin-shell/navigation-primary']!
+    expect(navigation.every((item) => !('icon' in item))).toBe(true)
+  })
+})
+
 describe('the manifest a viewer receives', () => {
   it('shows an anonymous visitor only the public surfaces', async () => {
     const manifest = await build(undefined, [])
@@ -151,12 +219,12 @@ describe('the manifest a viewer receives', () => {
 
   it('resolves navigation to paths, and drops entries for pages it hid', async () => {
     const anonymous = await build(undefined, [])
-    expect(anonymous.collections[primaryNavigation.key]).toEqual([
+    // strict, so an absent icon is an absent key rather than an undefined one
+    expect(anonymous.collections[primaryNavigation.key]).toStrictEqual([
       {
-        id: 'test/public',
+        id: 'test/public/nav',
         label,
         target: { kind: 'page', pageId: 'test/public', path: '/public' },
-        icon: undefined,
         order: 1,
       },
     ])
@@ -165,6 +233,6 @@ describe('the manifest a viewer receives', () => {
     const member = await build(viewer, [])
     expect(
       (member.collections[primaryNavigation.key] as { id: string }[]).map((item) => item.id),
-    ).toEqual(['test/public', 'test/member'])
+    ).toEqual(['test/public/nav', 'test/member/nav'])
   })
 })
