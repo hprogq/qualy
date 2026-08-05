@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@orpc/server": "catalog:",
+    "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",

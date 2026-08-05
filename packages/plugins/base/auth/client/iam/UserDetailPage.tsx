@@ -1,8 +1,9 @@
+import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import {
   PageLink,
-  useApi,
+  useApi, useRunApi,
   useApiQuery,
   usePageRouteParams,
 } from '@qualy/web-runtime'
@@ -21,6 +22,7 @@ import { UserGrants } from './UserGrants.tsx'
 export default function UserDetailPage() {
   const { userId } = usePageRouteParams(userDetailPage)
   const api = useApi()
+  const runApi = useRunApi()
   const orpc = useApiQuery()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
@@ -32,8 +34,8 @@ export default function UserDetailPage() {
   const [userTypeId, setUserTypeId] = useState('')
   const [placement, setPlacement] = useState('')
 
-  const user = useQuery(orpc.identity.getUser.queryOptions({ input: { userId } }))
-  const options = useQuery(orpc.identity.getUserOptions.queryOptions({ input: {} }))
+  const user = useQuery(orpc.identity.getUser.queryOptions({ params: { userId } }))
+  const options = useQuery(orpc.identity.getUserOptions.queryOptions({ query: {} }))
   const record = user.data?.user
 
   useEffect(() => {
@@ -47,8 +49,10 @@ export default function UserDetailPage() {
   }, [record])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
-  const run = <Variables,>(call: (input: Variables) => Promise<unknown>) => ({
-    mutationFn: call,
+  // the one crossing from an effect to a promise on this screen: TanStack
+  // needs a promise, and doing it here keeps every call site an effect
+  const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({
+    mutationFn: (input: Variables) => runApi(call(input)),
     onMutate: () => {
       setFeedback(null)
       setSaved(false)
@@ -62,19 +66,14 @@ export default function UserDetailPage() {
 
   const saveProfile = useMutation(
     run(() =>
-      api.identity.updateUser({
-        userId,
-        displayName,
-        userTypeId,
-        businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
-      }),
+      api.identity.updateUser({ params: { userId }, payload: { displayName, userTypeId, businessNo: businessNo.trim() === '' ? undefined : businessNo.trim() } }),
     ),
   )
   const transfer = useMutation(
-    run(() => api.identity.setUserPlacement({ userId, primaryOrgNodeId: placement })),
+    run(() => api.identity.setUserPlacement({ params: { userId }, payload: { primaryOrgNodeId: placement } })),
   )
   const setStatus = useMutation({
-    ...run((status: 'active' | 'disabled') => api.identity.setUserStatus({ userId, status })),
+    ...run((status: 'active' | 'disabled') => api.identity.setUserStatus({ params: { userId }, payload: { status } })),
     onSuccess: async () => {
       setConfirmingDisable(false)
       setSaved(true)

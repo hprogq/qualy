@@ -75,14 +75,17 @@ const OWNERSHIP: readonly { pattern: RegExp; why: string }[] = [
   { pattern: /create database|drop database/i, why: 'manages database lifetime' },
 ]
 
-const breaches = (files: readonly string[], rules: readonly { pattern: RegExp; why: string }[]) =>
+const breaches = (
+  files: readonly string[],
+  rules: readonly { pattern: RegExp; why: string; skipLine?: (line: string) => boolean }[],
+) =>
   files.flatMap((file) =>
     fs
       .readFileSync(file, 'utf8')
       .split('\n')
       .flatMap((line, index) =>
         rules
-          .filter((rule) => rule.pattern.test(line))
+          .filter((rule) => rule.pattern.test(line) && !rule.skipLine?.(line))
           .map((rule) => `${posix(file)}:${index + 1} ${rule.why}`),
       ),
   )
@@ -282,7 +285,15 @@ describe('test layering', () => {
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
       'packages/api-client/src/effect/query.ts',
+      // the browser's composition root, and it runs exactly one effect:
+      // building the client. Everything after that is handed to the runtime
+      // above rather than run in a component.
+      'apps/web/src/App.tsx',
     ]
+    // A comment is not a call. The pattern matches the name anywhere in the
+    // file, so prose explaining why a boundary is where it is would otherwise
+    // read as a breach of it.
+    const commented = (line: string) => /^\s*(?:\/\/|\*|\/\*)/.test(line)
     const production = walk('packages')
       .concat(walk('apps'))
       .filter((file) => !isTestFile(file))
@@ -292,6 +303,7 @@ describe('test layering', () => {
       {
         pattern: /Effect\.run(?:Promise|Sync|Fork|PromiseExit|SyncExit)\b/,
         why: 'runs an effect outside an entry point',
+        skipLine: commented,
       },
     ])
     expect(offenders).toEqual([])

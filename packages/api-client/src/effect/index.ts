@@ -11,3 +11,15 @@ export const makeClient = (baseUrl: string) =>
   HttpApiClient.make(qualyApi, { baseUrl }).pipe(Effect.provide(FetchHttpClient.layer))
 
 export type QualyClient = Effect.Success<ReturnType<typeof makeClient>>
+
+/**
+ * What one endpoint answers with.
+ *
+ * A screen that renders a row should be typed from the api that produced it,
+ * not from a hand-written copy: `RoleEditor` took the oRPC DTO and kept
+ * compiling after the api's own shape moved, because the two happened to agree.
+ */
+export type ApiResult<Group extends keyof QualyClient, Endpoint extends keyof QualyClient[Group]> =
+  QualyClient[Group][Endpoint] extends (...args: never[]) => Effect.Effect<infer A, unknown>
+    ? A
+    : never

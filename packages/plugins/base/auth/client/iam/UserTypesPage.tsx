@@ -15,7 +15,7 @@ export default function UserTypesPage() {
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('type')
 
-  const types = useQuery(orpc.identity.listUserTypes.queryOptions())
+  const types = useQuery(orpc.identity.listUserTypes.queryOptions({}))
   const canManage = types.data?.capabilities.canManage ?? false
   const current = types.data?.userTypes.find((type) => type.id === selected)
 

@@ -16,7 +16,7 @@ export default function RolesPage() {
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('role')
 
-  const roles = useQuery(orpc.access.listRoles.queryOptions({ input: {} }))
+  const roles = useQuery(orpc.access.listRoles.queryOptions({ query: {} }))
   const canManage = roles.data?.capabilities.canManage ?? false
   const current = roles.data?.roles.find((role) => role.id === selected)
 

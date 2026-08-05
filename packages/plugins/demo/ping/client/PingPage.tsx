@@ -1,11 +1,8 @@
-import { useEffect, useState } from 'react'
-import { useApi } from '@qualy/web-runtime'
+import { useQuery } from '@tanstack/react-query'
+import { useApiQuery } from '@qualy/web-runtime'
 
 export default function PingPage() {
-  const api = useApi()
-  const [message, setMessage] = useState('…')
-  useEffect(() => {
-    api.ping.hello({ name: 'web' }).then((result) => setMessage(result.msg))
-  }, [api])
-  return <h2>{message}</h2>
+  const queries = useApiQuery()
+  const hello = useQuery(queries.ping.hello.queryOptions({ query: { name: 'web' } }))
+  return <h2>{hello.data?.msg ?? '\u2026'}</h2>
 }

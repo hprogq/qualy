@@ -1,4 +1,3 @@
-import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 import {
   QueryClient,
   QueryClientProvider,
@@ -15,6 +14,7 @@ import {
   type LazyExoticComponent,
   type ReactNode,
 } from 'react'
+import type { Effect } from 'effect'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type {
   PageParams,
@@ -27,7 +27,8 @@ import { Button } from '@qualy/ui/button'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
-import type { AppClient } from '@qualy/api-client'
+import type { QualyClient } from '@qualy/api-client/effect'
+import { createQueryUtils, runMutation } from '@qualy/api-client/effect/query'
 import {
   buildPageHref,
   sessionDestinationHref,
@@ -55,16 +56,18 @@ export {
 } from './route-builder.tsx'
 export { PageLink } from './links.tsx'
 
-export type Manifest = Awaited<ReturnType<AppClient['app']['getManifest']>>
+// the manifest as the api declares it, read off the derived client so a shape
+// change is a compile error in every page rather than a runtime surprise
+export type Manifest = Effect.Success<ReturnType<QualyClient['app']['getManifest']>>
 // heterogeneous by design: each page or renderer declares its own props,
 // consumers pass whatever the target component expects
 export type ComponentRegistry = Record<string, LazyExoticComponent<ComponentType<any>>>
 
-const buildQueryUtils = (client: AppClient) => createTanstackQueryUtils(client)
+const buildQueryUtils = (client: QualyClient) => createQueryUtils(client)
 export type ApiQueryUtils = ReturnType<typeof buildQueryUtils>
 
 export interface Runtime {
-  client: AppClient
+  client: QualyClient
   orpc: ApiQueryUtils
   manifest: Manifest
   registry: ComponentRegistry
@@ -73,7 +76,7 @@ export interface Runtime {
 const RuntimeContext = createContext<Runtime | null>(null)
 
 export interface RuntimeProviderProps {
-  client: AppClient
+  client: QualyClient
   registry: ComponentRegistry
   children: ReactNode
 }
@@ -157,6 +160,16 @@ export function useRuntime(): Runtime {
 }
 
 export const useApi = () => useRuntime().client
+
+/**
+ * Turns one call into a promise, for a mutation.
+ *
+ * TanStack needs a promise from `mutationFn`, and this is the only crossing a
+ * component is offered: doing it inline would spread `Effect.runPromise`
+ * through the whole ui and throw away each endpoint's failure type at every
+ * one of those lines.
+ */
+export const useRunApi = () => runMutation()
 // resolve one registered component by its namespaced key ('plugin/Component');
 // undefined means the owning plugin is not part of this build
 export const useComponent = (name: string) => useRuntime().registry[name]

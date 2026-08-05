@@ -47,7 +47,9 @@
     "@orpc/contract": "catalog:",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
+    "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
@@ -61,10 +63,9 @@
     "@tanstack/react-query": "catalog:",
     "cookie": "catalog:",
     "drizzle-orm": "catalog:",
-    "react-router": "catalog:",
-    "zod": "catalog:",
     "effect": "catalog:",
-    "@qualy/auth-contract": "workspace:*"
+    "react-router": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@effect/platform-node": "catalog:",

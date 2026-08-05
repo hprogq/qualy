@@ -130,13 +130,15 @@ const toUserTypeDto = (row: UserTypeRow) => ({
   description: row.description,
   allowLocalLogin: row.allow_local_login,
   allowSsoLogin: row.allow_sso_login,
-  enabled: row.enabled,
+  status: row.enabled ? ('active' as const) : ('disabled' as const),
   isSystem: row.is_system,
   sortOrder: row.sort_order,
   version: row.version,
-  placementMode: placementModeOf(row),
   userCount: row.user_count,
-  allowedOrgTypeIds: row.allowed_org_types,
+  placementPolicy:
+    placementModeOf(row) === 'allow-list'
+      ? { mode: 'allow-list' as const, orgTypeIds: row.allowed_org_types }
+      : { mode: placementModeOf(row) as 'unrestricted' | 'tenant-root' },
 })
 
 // see QUALY_API_ID: implemented against a local api so this plugin does not

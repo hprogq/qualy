@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import type { AppClient } from '@qualy/api-client'
+import type { QualyClient } from '@qualy/api-client/effect'
 import type { UserTypeDto } from '@qualy/plugin-auth/contract'
 import type { RoleDto } from '@qualy/plugin-rbac/contract'
 import { components } from '../src/plugins.gen.ts'
+import { Effect } from 'effect'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
@@ -69,24 +70,24 @@ const orgTypeOptions = [
 // keys are checked against the real client, so a procedure that is renamed
 // on the server takes this file down with it rather than leaving a stub
 // nobody calls and a screen reading undefined
-type Stubs<Namespace extends keyof AppClient> = Partial<
-  Record<keyof AppClient[Namespace], (...args: never[]) => unknown>
+type Stubs<Namespace extends keyof QualyClient> = Partial<
+  Record<keyof QualyClient[Namespace], (...args: never[]) => unknown>
 >
 
 // Defaults per namespace, overridden one method at a time: a test that only
 // cares about roles must not have to restate every identity procedure, and
 // forgetting one is a crash rather than a failed assertion.
 const identityStubs = (over: Stubs<'identity'> = {}): Stubs<'identity'> => ({
-  listUserTypes: () => Promise.resolve({ userTypes: [], capabilities: { canManage: false } }),
-  getUserTypeOptions: () => Promise.resolve({ orgTypes: orgTypeOptions }),
+  listUserTypes: () => Effect.succeed({ userTypes: [], capabilities: { canManage: false } }),
+  getUserTypeOptions: () => Effect.succeed({ orgTypes: orgTypeOptions }),
   ...over,
 })
 
 const accessStubs = (over: Stubs<'access'> = {}): Stubs<'access'> => ({
-  listPermissions: () => Promise.resolve({ permissions: [] }),
-  getRoleOptions: () => Promise.resolve({ userTypes: [], orgTypes: [] }),
+  listPermissions: () => Effect.succeed({ permissions: [] }),
+  getRoleOptions: () => Effect.succeed({ userTypes: [], orgTypes: [] }),
   listRoles: () =>
-    Promise.resolve({ roles: [], capabilities: { canManage: false, canEscalate: false } }),
+    Effect.succeed({ roles: [], capabilities: { canManage: false, canEscalate: false } }),
   ...over,
 })
 
@@ -94,7 +95,7 @@ const stubs = ({
   identity,
   access,
 }: { identity?: Stubs<'identity'>; access?: Stubs<'access'> } = {}) => ({
-  app: { getManifest: () => Promise.resolve(emptyManifest()) },
+  app: { getManifest: () => Effect.succeed(emptyManifest()) },
   identity: identityStubs(identity),
   access: accessStubs(access),
 })
@@ -106,7 +107,7 @@ describe('user types screen', () => {
         stubs({
           identity: {
             listUserTypes: () =>
-              Promise.resolve({
+              Effect.succeed({
                 userTypes: [userType()],
                 capabilities: { canManage: false },
               }),
@@ -136,7 +137,7 @@ describe('user types screen', () => {
         stubs({
           identity: {
             listUserTypes: () =>
-              Promise.resolve({
+              Effect.succeed({
                 userTypes: [userType({ userCount: 3 })],
                 capabilities: { canManage: true },
               }),
@@ -160,7 +161,7 @@ describe('user types screen', () => {
         stubs({
           identity: {
             listUserTypes: () =>
-              Promise.resolve({
+              Effect.succeed({
                 userTypes: [userType({ allowLocalLogin: false, allowSsoLogin: false })],
                 capabilities: { canManage: true },
               }),
@@ -173,13 +174,13 @@ describe('user types screen', () => {
   })
 
   it('refuses an allow-list that names nothing', async () => {
-    const save = vi.fn(() => Promise.resolve({ version: 4 }))
+    const save = vi.fn(() => Effect.succeed({ version: 4 }))
     renderScreen({
       client: fakeClient(
         stubs({
           identity: {
             listUserTypes: () =>
-              Promise.resolve({
+              Effect.succeed({
                 userTypes: [
                   userType({
                     placementPolicy: { mode: 'allow-list', orgTypeIds: [COLLEGE_TYPE_ID] },
@@ -219,23 +220,22 @@ describe('user types screen', () => {
     await saves.nth(1).click()
     await expect.element(page.getByText('已保存。')).toBeInTheDocument()
     expect(save).toHaveBeenCalledWith({
-      userTypeId: USER_TYPE_ID,
-      expectedVersion: 3,
-      policy: { mode: 'unrestricted' },
+      params: { userTypeId: USER_TYPE_ID },
+      payload: { version: 3, policy: { mode: 'unrestricted' } },
     })
   })
 
   it('localizes a typed refusal instead of showing the protocol message', async () => {
     const save = vi.fn(() =>
       // the backend says LAST_ADMINISTRATOR in english; the reader must not
-      Promise.reject(apiError('LAST_ADMINISTRATOR', undefined, 409)),
+      Effect.fail(apiError('LAST_ADMINISTRATOR', undefined)),
     )
     renderScreen({
       client: fakeClient(
         stubs({
           identity: {
             listUserTypes: () =>
-              Promise.resolve({
+              Effect.succeed({
                 userTypes: [
                   userType({
                     isSystem: true,
@@ -266,24 +266,23 @@ describe('user types screen', () => {
     // the row is versioned as a whole, and a save that cannot say which
     // version it read is one that overwrites whoever went second
     expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({ userTypeId: USER_TYPE_ID, expectedVersion: 7 }),
+      expect.objectContaining({
+        params: { userTypeId: USER_TYPE_ID },
+        payload: expect.objectContaining({ version: 7 }),
+      }),
     )
   })
 
   it('submits a form once, through the form itself', async () => {
-    let resolve = () => {}
-    const create = vi.fn(
-      () =>
-        new Promise<{ id: string }>((done) => {
-          resolve = () => done({ id: 'new' })
-        }),
-    )
+    // a call that stays in flight: the point is what the form does while one
+    // is outstanding, so this effect is never allowed to settle
+    const create = vi.fn(() => Effect.never as Effect.Effect<{ id: string }>)
     renderScreen({
       client: fakeClient(
         stubs({
           identity: {
             listUserTypes: () =>
-              Promise.resolve({ userTypes: [], capabilities: { canManage: true } }),
+              Effect.succeed({ userTypes: [], capabilities: { canManage: true } }),
             createUserType: create,
           },
         }),
@@ -307,12 +306,13 @@ describe('user types screen', () => {
     expect(create).toHaveBeenCalledTimes(1)
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        code: 'faculty',
-        name: '教职工',
-        placementPolicy: { mode: 'unrestricted' },
+        payload: expect.objectContaining({
+          code: 'faculty',
+          name: '教职工',
+          placementPolicy: { mode: 'unrestricted' },
+        }),
       }),
     )
-    resolve()
   })
 })
 
@@ -323,7 +323,7 @@ describe('roles screen', () => {
         stubs({
           access: {
             listRoles: () =>
-              Promise.resolve({
+              Effect.succeed({
                 roles: [
                   role({
                     id: ADMIN_ROLE_ID,
@@ -364,14 +364,14 @@ describe('roles screen', () => {
         stubs({
           access: {
             listRoles: () =>
-              Promise.resolve({
+              Effect.succeed({
                 roles: [role()],
                 capabilities: { canManage: true, canEscalate: false },
               }),
             // the permission catalog is what fills the checkbox list, and a
             // failure here is otherwise indistinguishable from "no permissions"
             listPermissions: () =>
-              Promise.reject(apiError('INTERNAL_SERVER_ERROR', undefined, 500)),
+              Effect.fail(apiError('INTERNAL_SERVER_ERROR', undefined)),
           },
         }),
       ),
@@ -400,13 +400,13 @@ describe('roles screen', () => {
   // the identity fields, so a careful administrator filled in three pickers
   // that were discarded on submit. It now asks for what it actually sends.
   it('creates a role from what the form asks for, including its kind', async () => {
-    const create = vi.fn(() => Promise.resolve({ id: 'created-role' }))
+    const create = vi.fn(() => Effect.succeed({ id: 'created-role' }))
     renderScreen({
       client: fakeClient(
         stubs({
           access: {
             listRoles: () =>
-              Promise.resolve({
+              Effect.succeed({
                 roles: [],
                 capabilities: { canManage: true, canEscalate: false },
               }),
@@ -431,17 +431,19 @@ describe('roles screen', () => {
     await page.getByRole('button', { name: '创建' }).click()
 
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
-    expect(create).toHaveBeenCalledWith({ code: 'reviewer', name: '审核员', kind: 'tenant' })
+    expect(create).toHaveBeenCalledWith({
+      payload: { code: 'reviewer', name: '审核员', kind: 'tenant' },
+    })
   })
 
   it('asks before deleting, in a dialog that can be read and cancelled', async () => {
-    const remove = vi.fn(() => Promise.resolve({ ok: true as const }))
+    const remove = vi.fn(() => Effect.succeed({ ok: true as const }))
     renderScreen({
       client: fakeClient(
         stubs({
           access: {
             listRoles: () =>
-              Promise.resolve({
+              Effect.succeed({
                 roles: [role()],
                 capabilities: { canManage: true, canEscalate: false },
               }),
@@ -464,6 +466,10 @@ describe('roles screen', () => {
     expect(remove).toHaveBeenCalledTimes(1)
     // deleting states the version it read, so a role edited meanwhile is a
     // refusal rather than a surprise
-    expect(remove).toHaveBeenCalledWith({ roleId: ROLE_ID, expectedVersion: 5 })
+    expect(remove).toHaveBeenCalledWith({
+      params: { roleId: ROLE_ID },
+      // a delete carries its version in the query, since it has no body
+      query: { version: '5' },
+    })
   })
 })

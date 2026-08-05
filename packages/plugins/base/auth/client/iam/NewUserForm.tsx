@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -15,6 +15,7 @@ export function NewUserForm({
   userTypes: readonly { id: string; code: string; name: string }[]
 }) {
   const api = useApi()
+  const run = useRunApi()
   const orpc = useApiQuery()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
@@ -24,13 +25,7 @@ export function NewUserForm({
   const [userTypeId, setUserTypeId] = useState('')
 
   const create = useMutation({
-    mutationFn: () =>
-      api.identity.createUser({
-        displayName,
-        userTypeId,
-        primaryOrgNodeId: orgNodeId,
-        businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
-      }),
+    mutationFn: () => run(api.identity.createUser({ payload: { displayName, userTypeId, primaryOrgNodeId: orgNodeId, businessNo: businessNo.trim() === '' ? undefined : businessNo.trim() } })),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       setDisplayName('')

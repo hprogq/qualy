@@ -3,7 +3,8 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
 import { RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
-import type { AppClient } from '@qualy/api-client'
+import { Effect } from 'effect'
+import type { QualyClient } from '@qualy/api-client/effect'
 import { catalogs, errorMessages } from '../../src/plugins.gen.ts'
 
 // The harness lives in the host's own test folder, not in a package export.
@@ -26,33 +27,35 @@ export const emptyManifest = (): FakeManifest => ({
   slots: {},
 })
 
-// A client is a tree of plain async functions and the query utils bind them
-// by enumerating keys, so the stub is a plain object rather than a proxy: a
-// proxy answers `bind` with another proxy and the binding step then fails
-// somewhere far from the cause.
-export function fakeClient(stubs: Record<string, Record<string, unknown>>): AppClient {
+// A client is a tree of functions returning effects and the query utils bind
+// them by enumerating keys, so the stub is a plain object rather than a proxy:
+// a proxy answers every property, and the binding step then fails somewhere
+// far from the cause.
+//
+// A stub value becomes a succeeding effect; a stub function is used as given,
+// so a test that wants to fail returns `Effect.fail(...)` itself.
+export function fakeClient(stubs: Record<string, Record<string, unknown>>): QualyClient {
   const namespaces: Record<string, Record<string, unknown>> = {}
   for (const [namespace, methods] of Object.entries(stubs)) {
     const entries: Record<string, unknown> = {}
     for (const [name, value] of Object.entries(methods)) {
-      entries[name] =
-        typeof value === 'function' ? value : (..._args: unknown[]) => Promise.resolve(value)
+      entries[name] = typeof value === 'function' ? value : () => Effect.succeed(value)
     }
     namespaces[namespace] = entries
   }
-  return namespaces as unknown as AppClient
+  return namespaces as unknown as QualyClient
 }
 
-// an error shaped the way the client surfaces one, so formatError takes the
-// same path it does in production
-export function apiError(code: string, data?: unknown, status = 409) {
-  return Object.assign(new Error(code), {
-    code,
-    status,
-    data,
-    defined: true,
-    name: 'ORPCError',
-  })
+/**
+ * A failure shaped the way the derived client surfaces one.
+ *
+ * The client decodes a declared failure into its tagged class, so the code is
+ * `_tag` and the payload sits on the instance rather than under `data`.
+ * Building it here means formatError takes the same path it does in
+ * production instead of a shape only the tests produce.
+ */
+export function apiError(code: string, data?: Record<string, unknown>) {
+  return Object.assign(new Error(code), { _tag: code }, data ?? {})
 }
 
 export function renderScreen({
@@ -65,7 +68,7 @@ export function renderScreen({
   // says so through the same stored preference a user's toggle writes
   locale = 'zh-CN',
 }: {
-  client: AppClient
+  client: QualyClient
   registry?: ComponentRegistry
   children: ReactNode
   route?: string

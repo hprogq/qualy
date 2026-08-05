@@ -41,6 +41,24 @@ import {
 
 const id = Schema.String.check(Schema.isUUID())
 
+const resourceStatus = Schema.Literals(['active', 'disabled'])
+
+/**
+ * What a reader is told, which for a system identity is not what the row stores.
+ *
+ * `tenant-root` is readable and not writable: it is the rule enforced for a
+ * system type, which ignores the stored mode entirely, and it is a platform
+ * fact rather than a configuration.
+ */
+const placementPolicyView = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+  Schema.Struct({
+    mode: Schema.Literal('allow-list'),
+    orgTypeIds: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({ mode: Schema.Literal('tenant-root') }),
+])
+
 const userType = Schema.Struct({
   id: Schema.String,
   code: Schema.String,
@@ -48,13 +66,15 @@ const userType = Schema.Struct({
   description: Schema.NullOr(Schema.String),
   allowLocalLogin: Schema.Boolean,
   allowSsoLogin: Schema.Boolean,
-  enabled: Schema.Boolean,
+  status: resourceStatus,
+  // a system type is provisioned by the platform and never handed out
   isSystem: Schema.Boolean,
   sortOrder: Schema.Number,
   version: Schema.Number,
-  placementMode: Schema.String,
   userCount: Schema.Number,
-  allowedOrgTypeIds: Schema.Array(Schema.String),
+  // Where this kind of person may stand. A user type confers no authority
+  // (that is what roles are for), so this is the whole of what it decides.
+  placementPolicy: placementPolicyView,
 })
 
 /** every set replacement carries the version it expected, so a concurrent edit is refused */
@@ -199,14 +219,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         // nested as the contract declares it, and 'tenant-root' is readable
         // and not writable: it is the rule the database enforces for a system
         // identity, which ignores the stored mode entirely
-        policy: Schema.Union([
-          Schema.Struct({ mode: Schema.Literal('unrestricted') }),
-          Schema.Struct({
-            mode: Schema.Literal('allow-list'),
-            orgTypeIds: Schema.Array(Schema.String),
-          }),
-          Schema.Struct({ mode: Schema.Literal('tenant-root') }),
-        ]),
+        policy: placementPolicyView,
         version: Schema.Number,
       }),
       error: [UserTypeNotFound, AccessDenied],
