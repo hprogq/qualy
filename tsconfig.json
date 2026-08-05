@@ -8,7 +8,9 @@
     "packages/*/src",
     "packages/*/tests",
     "packages/plugins/*/*/src",
-    "packages/plugins/*/*/tests"
+    "packages/plugins/*/*/tests",
+    "experiments/*/src",
+    "experiments/*/tests"
   ],
   "exclude": [
     "packages/web-runtime",

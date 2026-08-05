@@ -1,0 +1,17 @@
+{
+  "name": "@qualy/spike-mikroorm",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@mikro-orm/core": "catalog:",
+    "@mikro-orm/postgresql": "catalog:",
+    "@mikro-orm/migrations": "catalog:",
+    "kysely": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@qualy/plugin-database": "workspace:*"
+  }
+}

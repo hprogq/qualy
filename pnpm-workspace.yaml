@@ -2,6 +2,8 @@ packages:
   - packages/*
   - packages/plugins/*/*
   - apps/*
+  # decision spike, deleted whichever way the orm question resolves
+  - experiments/*
 allowBuilds:
   argon2: true
   esbuild: true
@@ -14,6 +16,9 @@ catalog:
   drizzle-orm: 1.0.0-rc.4
   # vendored for the orm decision spike; nothing installs it yet
   '@mikro-orm/core': 7.1.10
+  '@mikro-orm/postgresql': 7.1.10
+  '@mikro-orm/migrations': 7.1.10
+  kysely: 0.29.4
   drizzle-kit: 1.0.0-rc.4
   # Effect v4 beta. Every effect package must sit on the SAME version: the
   # ecosystem peers on an exact beta, and drizzle-orm's effect-postgres

@@ -24,6 +24,15 @@ catalogs:
     '@lingui/message-utils':
       specifier: 6.6.0
       version: 6.6.0
+    '@mikro-orm/core':
+      specifier: 7.1.10
+      version: 7.1.10
+    '@mikro-orm/migrations':
+      specifier: 7.1.10
+      version: 7.1.10
+    '@mikro-orm/postgresql':
+      specifier: 7.1.10
+      version: 7.1.10
     '@radix-ui/react-label':
       specifier: 2.1.15
       version: 2.1.15
@@ -78,6 +87,9 @@ catalogs:
     effect:
       specifier: 4.0.0-beta.103
       version: 4.0.0-beta.103
+    kysely:
+      specifier: 0.29.4
+      version: 0.29.4
     pg:
       specifier: 8.22.0
       version: 8.22.0
@@ -329,6 +341,31 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
+
+  experiments/mikroorm:
+    dependencies:
+      '@mikro-orm/core':
+        specifier: 'catalog:'
+        version: 7.1.10
+      '@mikro-orm/migrations':
+        specifier: 'catalog:'
+        version: 7.1.10(@mikro-orm/core@7.1.10)
+      '@mikro-orm/postgresql':
+        specifier: 'catalog:'
+        version: 7.1.10(@mikro-orm/core@7.1.10)
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.4
+    devDependencies:
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/database
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
 
   packages/api:
     dependencies:
@@ -1366,6 +1403,33 @@ packages:
   '@messageformat/parser@5.1.1':
     resolution: {integrity: sha512-3p0YRGCcTUCYvBKLIxtDDyrJ0YijGIwrTRu1DT8gIviIDZru8H23+FkY6MJBzM1n9n20CiM4VeDYuBsrrwnLjg==}
 
+  '@mikro-orm/core@7.1.10':
+    resolution: {integrity: sha512-0jAFdGaJx5ExVulfSTjpCM8p8aUkQjWu+80a6pvDZD567FXFUD/RPe0TVUYhh2TxJz0N05NmKTeRWAE6k+UFQg==}
+    engines: {node: '>= 22.17.0'}
+    peerDependencies:
+      dataloader: 2.2.3
+    peerDependenciesMeta:
+      dataloader:
+        optional: true
+
+  '@mikro-orm/migrations@7.1.10':
+    resolution: {integrity: sha512-gTu3qr+o+LAxT+cTGHnyHsnF2bep8Mx8xjbZnEfe3MYRlnoAsDxHbsU88knThUQUGr3VP8BTwqKeaTBTmmQ2NQ==}
+    engines: {node: '>= 22.17.0'}
+    peerDependencies:
+      '@mikro-orm/core': 7.1.10
+
+  '@mikro-orm/postgresql@7.1.10':
+    resolution: {integrity: sha512-DAqy9zoN8wkv6/RgWCe+oQLdWXVGYKAygWpca67CzPSpqH+laZrJWC+aSaYQSgKq/YM+1jMD9SV6CsSlKZIdQg==}
+    engines: {node: '>= 22.17.0'}
+    peerDependencies:
+      '@mikro-orm/core': 7.1.10
+
+  '@mikro-orm/sql@7.1.10':
+    resolution: {integrity: sha512-9RvzikHCHCjyUu52fa0xvvMVM3W1+KLE8AdXvUfLm7cJpaaXKlv5fzg6Suuna86m6NM9VYzOG2xVs3DUQDOMUQ==}
+    engines: {node: '>= 22.17.0'}
+    peerDependencies:
+      '@mikro-orm/core': 7.1.10
+
   '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
     resolution: {integrity: sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ==}
     cpu: [arm64]
@@ -2089,6 +2153,10 @@ packages:
   kubernetes-types@1.30.0:
     resolution: {integrity: sha512-Dew1okvhM/SQcIa2rcgujNndZwU8VnSapDgdxlYoB84ZlpAD43U6KLAFqYo17ykSFGHNPrg0qry0bP+GJd9v7Q==}
 
+  kysely@0.29.4:
+    resolution: {integrity: sha512-y5mVgQNkMbs1eK9Xyc0pmNdabN2wHhRYY/5r4W5HrUT1rYCEPeVNSj1RUJeSDKT3U0p+mXCvLgkrFuIafYI6BA==}
+    engines: {node: '>=22.0.0'}
+
   leven@3.1.0:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
     engines: {node: '>=6'}
@@ -2410,6 +2478,10 @@ packages:
 
   postgres-interval@3.0.0:
     resolution: {integrity: sha512-BSNDnbyZCXSxgA+1f5UU2GmwhoI0aU5yMxRGO8CdFEcY2BQF9xm/7MqKnYoM1nJDk8nONNWDk9WeSmePFhQdlw==}
+    engines: {node: '>=12'}
+
+  postgres-interval@4.1.0:
+    resolution: {integrity: sha512-nJLACcOHi2iyRuMJeW6CuIA0Dc0i1YEpRr26XDyHAfxPjYUJOFxwZjmOc5oFFctTTh/OlRAMlnlXEJvr170fJg==}
     engines: {node: '>=12'}
 
   postgres-range@1.1.4:
@@ -2978,6 +3050,31 @@ snapshots:
     dependencies:
       moo: 0.5.3
 
+  '@mikro-orm/core@7.1.10': {}
+
+  '@mikro-orm/migrations@7.1.10(@mikro-orm/core@7.1.10)':
+    dependencies:
+      '@mikro-orm/core': 7.1.10
+      '@mikro-orm/sql': 7.1.10(@mikro-orm/core@7.1.10)
+
+  '@mikro-orm/postgresql@7.1.10(@mikro-orm/core@7.1.10)':
+    dependencies:
+      '@mikro-orm/core': 7.1.10
+      '@mikro-orm/sql': 7.1.10(@mikro-orm/core@7.1.10)
+      kysely: 0.29.4
+      pg: 8.22.0
+      pg-cursor: 2.21.0(pg@8.22.0)
+      postgres-array: 3.0.4
+      postgres-date: 2.1.0
+      postgres-interval: 4.1.0
+    transitivePeerDependencies:
+      - pg-native
+
+  '@mikro-orm/sql@7.1.10(@mikro-orm/core@7.1.10)':
+    dependencies:
+      '@mikro-orm/core': 7.1.10
+      kysely: 0.29.4
+
   '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
     optional: true
 
@@ -3523,6 +3620,8 @@ snapshots:
 
   kubernetes-types@1.30.0: {}
 
+  kysely@0.29.4: {}
+
   leven@3.1.0: {}
 
   lightningcss-android-arm64@1.32.0:
@@ -3766,6 +3865,8 @@ snapshots:
       xtend: 4.0.2
 
   postgres-interval@3.0.0: {}
+
+  postgres-interval@4.1.0: {}
 
   postgres-range@1.1.4: {}
 
