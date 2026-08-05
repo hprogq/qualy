@@ -3,6 +3,9 @@ import { Effect, Exit, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/effect'
+import { PermissionCatalog } from '@qualy/rbac-contract/effect'
+import type { ActivePermission } from '@qualy/rbac-contract'
+import { layer as rbacLayer } from '@qualy/plugin-rbac/effect'
 import { Placement } from '@qualy/auth-contract'
 import { Iam, layer as authLayer } from '../src/effect/index.ts'
 
@@ -13,9 +16,16 @@ import { Iam, layer as authLayer } from '../src/effect/index.ts'
 // And that it joins the caller's transaction, which is what lets org ask the
 // question about a retype it has written but not committed.
 
+const catalog: readonly ActivePermission[] = []
+
 const stack = (url: string) =>
   authLayer.pipe(
-    Layer.provideMerge(databaseLayer),
+    // auth needs rbac now: closing a sign-in channel has to ask whether the
+    // tenant keeps an administrator who can still use one
+    Layer.provideMerge(rbacLayer),
+    Layer.provideMerge(
+      Layer.mergeAll(databaseLayer, Layer.succeed(PermissionCatalog, catalog)),
+    ),
     Layer.provide(
       Layer.succeed(
         DatabaseConfig,

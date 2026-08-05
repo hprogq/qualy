@@ -14,7 +14,8 @@
     "./ui": "./src/ui.ts",
     "./constants": "./src/constants.ts",
     "./effect": "./src/effect/index.ts",
-    "./effect/session": "./src/effect/session.ts"
+    "./effect/session": "./src/effect/session.ts",
+    "./api": "./src/api.ts"
   },
   "qualy": {
     "contributions": {
@@ -31,8 +32,10 @@
     "runtime": {
       "entry": "./effect",
       "dependsOn": [
-        "@qualy/plugin-database"
-      ]
+        "@qualy/plugin-database",
+        "@qualy/plugin-rbac"
+      ],
+      "api": "./api"
     }
   },
   "peerDependencies": {

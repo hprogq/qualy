@@ -29,7 +29,10 @@ const catalog: readonly ActivePermission[] = [
 
 const stack = (url: string) =>
   orgLayer.pipe(
-    Layer.provideMerge(Layer.mergeAll(rbacLayer, authLayer)),
+    // the same levels the generated runtime derives: auth needs rbac, and
+    // both need the database
+    Layer.provideMerge(authLayer),
+    Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(databaseLayer, Layer.succeed(PermissionCatalog, catalog)),
     ),

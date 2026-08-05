@@ -21,7 +21,19 @@ import {
  */
 type Actor = Principal | SystemActor
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
-import { placementLegal, strandedByQuery } from './queries.ts'
+import {
+  countUsersOfTypeQuery,
+  deleteUserTypeQuery,
+  lockTenantQuery,
+  rolesStrandedByUserTypeQuery,
+  placementLegal,
+  setUserTypeEnabledQuery,
+  strandedByQuery,
+  oneUserType,
+  updateUserTypeQuery,
+  userTypeGuardQuery,
+  userTypesOfTenant,
+} from './queries.ts'
 import { iamErrors } from './errors.ts'
 
 // Identity administration: user types and users.
@@ -119,8 +131,7 @@ export class IamService {
   // serializes identity writes against each other, against org structural
   // writes and against rbac grant writes, which all take the same lock
   private async lockTenant(tx: Tx, tenantId: string) {
-    const row = (await tx.execute(sql`select 1 from tenants where id = ${tenantId} for update`))
-      .rows[0]
+    const row = (await tx.execute(lockTenantQuery(tenantId))).rows[0]
     if (!row) throw new Error(`tenant ${tenantId} does not exist`)
   }
 
@@ -136,34 +147,16 @@ export class IamService {
 
   // --- user types ---
 
-  private userTypeProjection(where: SQL) {
-    return sql`
-      select t.id, t.code, t.name, t.description, t.allow_local_login, t.allow_sso_login,
-        t.enabled, t.is_system, t.sort_order, t.version, t.placement_mode,
-        (select count(*)::int from users u where u.tenant_id = t.tenant_id and u.user_type_id = t.id)
-          as user_count,
-        -- where this kind of person may stand. A type confers no authority,
-        -- so this is the whole of what it decides.
-        coalesce(
-          (select array_agg(a.org_type_id::text)
-           from user_type_allowed_org_types a
-           where a.tenant_id = t.tenant_id and a.user_type_id = t.id),
-          '{}') as allowed_org_types
-      from user_types t
-      where ${where}
-      order by t.sort_order, t.code`
-  }
-
   async listUserTypes(tenantId: string): Promise<UserTypeRow[]> {
     return (
-      await this.db.execute<UserTypeRow>(this.userTypeProjection(sql`t.tenant_id = ${tenantId}`))
+      await this.db.execute<UserTypeRow>(userTypesOfTenant(tenantId))
     ).rows
   }
 
   async getUserType(tenantId: string, userTypeId: string): Promise<UserTypeRow> {
     const row = (
       await this.db.execute<UserTypeRow>(
-        this.userTypeProjection(sql`t.tenant_id = ${tenantId} and t.id = ${userTypeId}`),
+        oneUserType(tenantId, userTypeId),
       )
     ).rows[0]
     if (!row) throw iamErrors.create('USER_TYPE_NOT_FOUND')
@@ -228,16 +221,7 @@ export class IamService {
       }
       // a system type's code and system flag are immutable; its display
       // fields and sign-in policy stay editable
-      await tx.execute(sql`
-        update user_types set
-          name = coalesce(${fields.name ?? null}, name),
-          description = ${fields.description === undefined ? sql`description` : fields.description},
-          allow_local_login = coalesce(${fields.allowLocalLogin ?? null}, allow_local_login),
-          allow_sso_login = coalesce(${fields.allowSsoLogin ?? null}, allow_sso_login),
-          sort_order = coalesce(${fields.sortOrder ?? null}, sort_order),
-          version = version + 1,
-          updated_at = now()
-        where tenant_id = ${tenantId} and id = ${type.id}`)
+      await tx.execute(updateUserTypeQuery(tenantId, type.id, fields))
       // closing a sign-in channel can lock a tenant out just as surely as
       // disabling the people who use it
       if (fields.allowLocalLogin === false || fields.allowSsoLogin === false) {
@@ -269,9 +253,7 @@ export class IamService {
         const inUse = await this.countUsersOfType(tx, tenantId, type.id)
         if (inUse > 0) throw iamErrors.create('USER_TYPE_IN_USE', { userCount: inUse })
       }
-      await tx.execute(sql`
-        update user_types set enabled = ${enabled}, version = version + 1, updated_at = now()
-        where tenant_id = ${tenantId} and id = ${type.id}`)
+      await tx.execute(setUserTypeEnabledQuery(tenantId, type.id, enabled))
       return type.version + 1
     })
   }
@@ -292,19 +274,12 @@ export class IamService {
       // only at org roles left a live tenant role behind with nobody
       // eligible for it, which is the inert state the lifecycle prevents.
       const stranded = (
-        await tx.execute<{ count: number }>(sql`
-          select count(*)::int as count from roles r
-          where r.tenant_id = ${tenantId}
-            and exists (select 1 from role_allowed_user_types t
-                        where t.tenant_id = r.tenant_id and t.role_id = r.id
-                          and t.user_type_id = ${type.id})
-            and not exists (select 1 from role_allowed_user_types t
-                            where t.tenant_id = r.tenant_id and t.role_id = r.id
-                              and t.user_type_id <> ${type.id})`)
+        await tx.execute<{ count: number }>(
+          rolesStrandedByUserTypeQuery(tenantId, type.id),
+        )
       ).rows[0]!.count
       if (stranded > 0) throw iamErrors.create('USER_TYPE_LAST_FOR_ROLE', { roleCount: stranded })
-      await tx.execute(sql`
-        delete from user_types where tenant_id = ${tenantId} and id = ${type.id}`)
+      await tx.execute(deleteUserTypeQuery(tenantId, type.id))
     })
   }
 
@@ -761,9 +736,7 @@ export class IamService {
 
   private async countUsersOfType(tx: Tx, tenantId: string, userTypeId: string): Promise<number> {
     return (
-      await tx.execute<{ count: number }>(sql`
-        select count(*)::int as count from users
-        where tenant_id = ${tenantId} and user_type_id = ${userTypeId}`)
+      await tx.execute<{ count: number }>(countUsersOfTypeQuery(tenantId, userTypeId))
     ).rows[0]!.count
   }
 
@@ -780,9 +753,7 @@ export class IamService {
         enabled: boolean
         is_system: boolean
         version: number
-      }>(sql`
-        select id, code, enabled, is_system, version from user_types
-        where tenant_id = ${tenantId} and id = ${userTypeId}`)
+      }>(userTypeGuardQuery(tenantId, userTypeId))
     ).rows[0]
     if (!row) throw iamErrors.create('USER_TYPE_NOT_FOUND')
     if (expectedVersion !== undefined && row.version !== expectedVersion) {

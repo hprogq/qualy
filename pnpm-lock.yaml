@@ -307,6 +307,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../api-kit
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../plugins/base/auth
       '@qualy/plugin-org':
         specifier: workspace:*
         version: link:../plugins/base/org

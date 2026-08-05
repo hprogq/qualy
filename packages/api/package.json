@@ -12,6 +12,7 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "effect": "catalog:",
-    "@qualy/plugin-org": "workspace:*"
+    "@qualy/plugin-org": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*"
   }
 }

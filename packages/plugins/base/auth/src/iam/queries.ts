@@ -94,3 +94,94 @@ export const deleteSessionQuery = (sessionId: string): SQL =>
 /** last_used_at is only written when it has gone stale, to keep reads from writing */
 export const touchSessionQuery = (sessionId: string): SQL =>
   sql`update sessions set last_used_at = now() where id = ${sessionId}`
+
+// --- user types ---
+
+/**
+ * A user type as an administrator sees it.
+ *
+ * The allowed org types come along because they are the whole of what a type
+ * decides: a type confers no authority, only where its holders may stand.
+ */
+export const userTypeProjection = (where: SQL): SQL => sql`
+  select t.id, t.code, t.name, t.description, t.allow_local_login, t.allow_sso_login,
+    t.enabled, t.is_system, t.sort_order, t.version, t.placement_mode,
+    (select count(*)::int from users u where u.tenant_id = t.tenant_id and u.user_type_id = t.id)
+      as user_count,
+    coalesce(
+      (select array_agg(a.org_type_id::text)
+       from user_type_allowed_org_types a
+       where a.tenant_id = t.tenant_id and a.user_type_id = t.id),
+      '{}') as allowed_org_types
+  from user_types t
+  where ${where}
+  order by t.sort_order, t.code`
+
+export const userTypesOfTenant = (tenantId: string): SQL =>
+  userTypeProjection(sql`t.tenant_id = ${tenantId}`)
+
+export const oneUserType = (tenantId: string, userTypeId: string): SQL =>
+  userTypeProjection(sql`t.tenant_id = ${tenantId} and t.id = ${userTypeId}`)
+
+/** the columns a guard needs, without the projection's aggregates */
+export const userTypeGuardQuery = (tenantId: string, userTypeId: string): SQL => sql`
+  select id, code, enabled, is_system, version from user_types
+  where tenant_id = ${tenantId} and id = ${userTypeId}`
+
+export const countUsersOfTypeQuery = (tenantId: string, userTypeId: string): SQL => sql`
+  select count(*)::int as count from users
+  where tenant_id = ${tenantId} and user_type_id = ${userTypeId}`
+
+export const setUserTypeEnabledQuery = (
+  tenantId: string,
+  userTypeId: string,
+  enabled: boolean,
+): SQL => sql`
+  update user_types set enabled = ${enabled}, version = version + 1, updated_at = now()
+  where tenant_id = ${tenantId} and id = ${userTypeId}`
+
+export const updateUserTypeQuery = (
+  tenantId: string,
+  userTypeId: string,
+  fields: {
+    name?: string
+    description?: string | null
+    allowLocalLogin?: boolean
+    allowSsoLogin?: boolean
+    sortOrder?: number
+  },
+): SQL => sql`
+  update user_types set
+    name = coalesce(${fields.name ?? null}, name),
+    description = ${fields.description === undefined ? sql`description` : fields.description},
+    allow_local_login = coalesce(${fields.allowLocalLogin ?? null}, allow_local_login),
+    allow_sso_login = coalesce(${fields.allowSsoLogin ?? null}, allow_sso_login),
+    sort_order = coalesce(${fields.sortOrder ?? null}, sort_order),
+    version = version + 1,
+    updated_at = now()
+  where tenant_id = ${tenantId} and id = ${userTypeId}`
+
+export const lockTenantQuery = (tenantId: string): SQL =>
+  sql`select 1 from tenants where id = ${tenantId} for update`
+
+/**
+ * Roles that would be left assignable to nobody if this type went away.
+ *
+ * Eligibility rows cascade with the type, which would silently empty a role's
+ * allowed set. The count says how many roles must be fixed first. Asked of
+ * every kind of role, because a tenant role declares who may hold it too:
+ * looking only at org roles once left a live tenant role behind with nobody
+ * eligible for it, which is the inert state the lifecycle exists to prevent.
+ */
+export const rolesStrandedByUserTypeQuery = (tenantId: string, userTypeId: string): SQL => sql`
+  select count(*)::int as count from roles r
+  where r.tenant_id = ${tenantId}
+    and exists (select 1 from role_allowed_user_types t
+                where t.tenant_id = r.tenant_id and t.role_id = r.id
+                  and t.user_type_id = ${userTypeId})
+    and not exists (select 1 from role_allowed_user_types t
+                    where t.tenant_id = r.tenant_id and t.role_id = r.id
+                      and t.user_type_id <> ${userTypeId})`
+
+export const deleteUserTypeQuery = (tenantId: string, userTypeId: string): SQL =>
+  sql`delete from user_types where tenant_id = ${tenantId} and id = ${userTypeId}`
