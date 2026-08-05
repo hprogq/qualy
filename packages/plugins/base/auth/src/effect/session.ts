@@ -1,8 +1,9 @@
-import { Context, Effect, Layer, Redacted, Schema } from 'effect'
-import { HttpApiMiddleware, HttpApiSecurity } from 'effect/unstable/httpapi'
+import { Context, Duration, Effect, Layer, Redacted, Schema } from 'effect'
+import { HttpApiBuilder, HttpApiMiddleware, HttpApiSecurity } from 'effect/unstable/httpapi'
 import { Database } from '@qualy/plugin-database/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { deleteSessionQuery, sessionByTokenQuery, touchSessionQuery } from '../iam/queries.ts'
+import { AuthConfig } from './auth-config.ts'
 import { hashSessionToken } from '../session.ts'
 
 // The session, as a middleware rather than an enricher.
@@ -79,10 +80,29 @@ const staleness = (lastUsedAt: Date | string | null) => {
   return Date.now() - at.getTime()
 }
 
+/**
+ * Drops the cookie a request presented.
+ *
+ * Both dead-session branches clear it, as the cordis enricher did. Without
+ * this the browser keeps re-presenting a token the server has already refused
+ * until the cookie's own lifetime lapses, and on the not-usable branch the row
+ * is not deleted either, so a user disabled and re-enabled resumes on it.
+ */
+export const clearSessionCookie = (secure: boolean) =>
+  HttpApiBuilder.securitySetCookie(sessionSecurity, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    secure,
+    maxAge: Duration.zero,
+  })
+
 export const layer = Layer.effect(
   Authenticated,
   Effect.gen(function* () {
     const database = yield* Database
+    const config = yield* AuthConfig
+    const clear = () => clearSessionCookie(config.secureCookies)
 
     return Authenticated.of({
       // the handler wraps the rest of the request rather than returning a
@@ -97,11 +117,15 @@ export const layer = Layer.effect(
         if (!session) return yield* new AuthRequired()
         if (session.expired) {
           yield* database.execute(deleteSessionQuery(session.id)).pipe(Effect.orDie)
+          yield* clear()
           return yield* new SessionExpired()
         }
         // a disabled user, a disabled type or a lapsed tenant is not a
         // distinguishable state either: it is simply not a session
-        if (!session.usable) return yield* new AuthRequired()
+        if (!session.usable) {
+          yield* clear()
+          return yield* new AuthRequired()
+        }
 
         if (staleness(session.last_used_at) > TOUCH_INTERVAL_MS) {
           yield* database.execute(touchSessionQuery(session.id)).pipe(Effect.orDie)

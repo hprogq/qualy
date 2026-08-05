@@ -1,7 +1,17 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
-import { BadRequest, pageOf, pageQuery } from '@qualy/api-kit/schema'
+import {
+  BadRequest,
+  boundedInt,
+  changed,
+  boundedText,
+  expectedVersion,
+  kebabCode,
+  pageOf,
+  pageQuery,
+  trimmedName,
+} from '@qualy/api-kit/schema'
 
 import { Authenticated, AuthRequired } from './effect/session.ts'
 import {
@@ -20,6 +30,7 @@ import {
   UserTypeOrgTypeNotFound,
   UserTypePlacementInUse,
   UserTypeVersionConflict,
+  UserConflict,
 } from './effect/errors.ts'
 
 // The identity api this plugin serves, as definitions only.
@@ -47,7 +58,8 @@ const userType = Schema.Struct({
 })
 
 /** every set replacement carries the version it expected, so a concurrent edit is refused */
-const versioned = { version: Schema.Number }
+const versioned = { version: expectedVersion }
+const sortOrder = boundedInt(0, 32767)
 
 /**
  * Where a kind of person may stand.
@@ -82,19 +94,24 @@ const user = Schema.Struct({
 export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.get('listUserTypes', '/iam/user-types', {
-      success: Schema.Struct({ userTypes: Schema.Array(userType) }),
+      success: Schema.Struct({
+        userTypes: Schema.Array(userType),
+        // read and manage are separate grants, so a read-only administrator
+        // gets a screen without buttons rather than buttons that answer 403
+        capabilities: Schema.Struct({ canManage: Schema.Boolean }),
+      }),
       error: [AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.post('createUserType', '/iam/user-types', {
       payload: Schema.Struct({
-        code: Schema.String,
-        name: Schema.String,
-        description: Schema.optional(Schema.String),
+        code: kebabCode,
+        name: trimmedName(100),
+        description: Schema.optional(boundedText(500)),
         allowLocalLogin: Schema.optional(Schema.Boolean),
         allowSsoLogin: Schema.optional(Schema.Boolean),
-        sortOrder: Schema.optional(Schema.Number),
+        sortOrder: Schema.optional(sortOrder),
         // required: a type created without one constrains nothing, and "not
         // configured yet" is indistinguishable from "deliberately open"
         placementPolicy,
@@ -123,14 +140,17 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.patch('updateUserType', '/iam/user-types/:userTypeId', {
       params: Schema.Struct({ userTypeId: id }),
-      payload: Schema.Struct({
-        ...versioned,
-        name: Schema.optional(Schema.String),
-        description: Schema.optional(Schema.NullOr(Schema.String)),
-        allowLocalLogin: Schema.optional(Schema.Boolean),
-        allowSsoLogin: Schema.optional(Schema.Boolean),
-        sortOrder: Schema.optional(Schema.Number),
-      }),
+      payload: changed(
+        {
+          ...versioned,
+          name: Schema.optional(trimmedName(100)),
+          description: Schema.optional(Schema.NullOr(boundedText(500))),
+          allowLocalLogin: Schema.optional(Schema.Boolean),
+          allowSsoLogin: Schema.optional(Schema.Boolean),
+          sortOrder: Schema.optional(sortOrder),
+        },
+        ['name', 'description', 'allowLocalLogin', 'allowSsoLogin', 'sortOrder'],
+      ),
       success: Schema.Struct({ version: Schema.Number }),
       error: [
         UserTypeNotFound,
@@ -176,8 +196,17 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     HttpApiEndpoint.get('getPlacementPolicy', '/iam/user-types/:userTypeId/placement-policy', {
       params: Schema.Struct({ userTypeId: id }),
       success: Schema.Struct({
-        mode: Schema.Literals(['unrestricted', 'allow-list']),
-        orgTypeIds: Schema.Array(Schema.String),
+        // nested as the contract declares it, and 'tenant-root' is readable
+        // and not writable: it is the rule the database enforces for a system
+        // identity, which ignores the stored mode entirely
+        policy: Schema.Union([
+          Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+          Schema.Struct({
+            mode: Schema.Literal('allow-list'),
+            orgTypeIds: Schema.Array(Schema.String),
+          }),
+          Schema.Struct({ mode: Schema.Literal('tenant-root') }),
+        ]),
         version: Schema.Number,
       }),
       error: [UserTypeNotFound, AccessDenied],
@@ -188,11 +217,10 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     // allow-list means "nowhere", not "anywhere"
     HttpApiEndpoint.put('setPlacementPolicy', '/iam/user-types/:userTypeId/placement-policy', {
       params: Schema.Struct({ userTypeId: id }),
-      payload: Schema.Struct({
-        version: Schema.Number,
-        mode: Schema.Literals(['unrestricted', 'allow-list']),
-        orgTypeIds: Schema.Array(id),
-      }),
+      // the same constrained union createUserType takes: an empty allow-list
+      // commits a type nobody may stand anywhere with, which the contract
+      // refuses and this accepted
+      payload: Schema.Struct({ version: expectedVersion, policy: placementPolicy }),
       success: Schema.Struct({ version: Schema.Number }),
       error: [
         UserTypeNotFound,
@@ -272,13 +300,14 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.post('createUser', '/iam/users', {
       payload: Schema.Struct({
-        displayName: Schema.String,
+        displayName: trimmedName(100),
         userTypeId: id,
         primaryOrgNodeId: id,
-        businessNo: Schema.optional(Schema.String),
+        businessNo: Schema.optional(trimmedName(64)),
       }),
       success: Schema.Struct({ id: Schema.String }),
       error: [
+        UserConflict,
         UserTypeNotFound,
         UserTypeDisabled,
         UserPlacementNotFound,
@@ -290,13 +319,17 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.patch('updateUser', '/iam/users/:userId', {
       params: Schema.Struct({ userId: id }),
-      payload: Schema.Struct({
-        displayName: Schema.optional(Schema.String),
-        userTypeId: Schema.optional(id),
-        businessNo: Schema.optional(Schema.String),
-      }),
+      payload: changed(
+        {
+          displayName: Schema.optional(trimmedName(100)),
+          userTypeId: Schema.optional(id),
+          businessNo: Schema.optional(trimmedName(64)),
+        },
+        ['displayName', 'userTypeId', 'businessNo'],
+      ),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
+        UserConflict,
         UserNotFound,
         UserTypeNotFound,
         UserTypeDisabled,

@@ -126,6 +126,30 @@ export class GrantIncompatible extends Schema.TaggedErrorClass<GrantIncompatible
   { httpApiStatus: 409, identifier: 'GrantIncompatible' },
 ) {}
 
+/**
+ * A business number already used in this tenant.
+ *
+ * Reached through the unique index: no service guard checks it and the insert
+ * has no ON CONFLICT, so without the translation a duplicate answered 500.
+ * `fk_users_user_type` is deliberately absent - requireType pre-checks inside
+ * the transaction, so it cannot be reached.
+ */
+export class UserConflict extends Schema.TaggedErrorClass<UserConflict>()(
+  'USER_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'UserConflict' },
+) {}
+
 export const userConstraints: Record<string, () => UserPlacementNotFound> = {
   fk_users_primary_org_node: () => new UserPlacementNotFound(),
+}
+
+/**
+ * The extra index only the two statements that write a business number can hit.
+ *
+ * Kept apart from the shared wrapper's map so a placement or status change does
+ * not have to declare a conflict it cannot produce.
+ */
+export const businessNoConstraints: Record<string, () => UserConflict> = {
+  uq_users_tenant_business_no: () => new UserConflict(),
 }

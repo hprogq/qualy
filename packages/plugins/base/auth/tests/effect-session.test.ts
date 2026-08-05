@@ -21,6 +21,7 @@ import {
   sessionCookieName,
   layer as sessionLayer,
 } from '../src/effect/session.ts'
+import { AuthConfig } from '../src/effect/auth-config.ts'
 
 // The session as a middleware, over a real server and a real database.
 //
@@ -129,9 +130,13 @@ beforeAll(async () => {
     }),
   )
   const infra = databaseLayer.pipe(Layer.provide(config))
+  const authConfig = Layer.succeed(
+    AuthConfig,
+    AuthConfig.of({ defaultTenantSlug: 'default', sessionTtlSeconds: 3600, secureCookies: false }),
+  )
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(api).pipe(
-      Layer.provide(handlers.pipe(Layer.provide(sessionLayer.pipe(Layer.provide(infra))))),
+      Layer.provide(handlers.pipe(Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))))),
     ),
   ).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })), Layer.provide(infra))
 

@@ -408,9 +408,61 @@ describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
         }),
       )
       const answer = ok(exit)
-      // the bind escape hatch must not be a route to becoming superuser
-      expect(answer.refused).toBe('ACCESS_DENIED')
+      // The bind escape hatch must not be a route to becoming superuser. Its
+      // own code, not a plain denial: the client has a sentence for this case,
+      // and collapsing it into ACCESS_DENIED made that sentence unreachable.
+      expect(answer.refused).toBe('TENANT_ADMIN_REQUIRED')
       expect(answer.allowed).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('answers a duplicate grant as a conflict rather than a fault', async () => {
+    // Nothing in the write reads existing grants and the insert has no ON
+    // CONFLICT, so both runtimes reach the unique index. Without translation
+    // the violation is a defect and a double-click answers 500.
+    const db = await createTestContext('effect-grant-duplicate')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const database = yield* Database
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const orgType = one<{ id: string }>(
+            yield* database.execute(
+              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+            ),
+          ).id
+          yield* database.execute(sql`
+            insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+            values (${f.tenant}, ${f.plainRole}, ${staff})`)
+          yield* database.execute(sql`
+            insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+            values (${f.tenant}, ${f.plainRole}, ${orgType})`)
+          const target = { kind: 'org-node' as const, orgNodeId: f.child, coverage: 'self' as const }
+          yield* access.grants.grant(
+            f.tenant,
+            { userId: f.user, roleId: f.plainRole, target },
+            f.principal,
+          )
+          return yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              { userId: f.user, roleId: f.plainRole, target },
+              f.principal,
+            ),
+          )
+        }),
+      )
+      expect(tagOf(ok(exit))).toBe('GRANT_EXISTS')
     } finally {
       await db.dispose()
     }

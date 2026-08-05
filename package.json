@@ -12,15 +12,19 @@
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",
+    "@qualy/api": "workspace:*",
+    "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@vitest/browser-playwright": "catalog:",
+    "effect": "catalog:",
     "pg": "catalog:",
     "playwright": "catalog:",
     "prettier": "catalog:",
@@ -28,10 +32,7 @@
     "vitest": "catalog:",
     "vitest-browser-react": "catalog:",
     "yaml": "catalog:",
-    "@qualy/api": "workspace:*",
-    "@qualy/api-kit": "workspace:*",
-    "effect": "catalog:",
-    "@qualy/plugin-org": "workspace:*"
+    "zod": "catalog:"
   },
   "scripts": {
     "build": "tsx scripts/gen.ts --all && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",

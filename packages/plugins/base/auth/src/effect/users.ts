@@ -29,6 +29,7 @@ import {
   UserPlacementNotFound,
   UserTypeDisabled,
   UserTypeNotFound,
+  businessNoConstraints,
   userConstraints,
 } from './errors.ts'
 
@@ -271,7 +272,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
               }),
             ),
           )[0]!.id
-        }),
+          // the business-number index is only reachable from the two
+          // statements that write it, so its translation lives with them
+        }).pipe(translateConstraints(businessNoConstraints)),
       )
     }),
 
@@ -311,7 +314,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // a type change can move the last administrator onto a type that
           // cannot sign in at all
           if (changingType) yield* rbac.assertTenantKeepsAdministrator(tenantId)
-        }),
+        }).pipe(translateConstraints(businessNoConstraints)),
       )
     }),
 

@@ -1,14 +1,25 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { BadRequest, pageOf, pageQuery } from '@qualy/api-kit/schema'
+import {
+  BadRequest,
+  boundedText,
+  changed,
+  expectedVersion,
+  kebabCode,
+  pageOf,
+  pageQuery,
+  trimmedName,
+} from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/plugin-auth/effect/session'
 import {
+  GrantExists,
   GrantNodeNotFound,
   GrantNotEligible,
   GrantNotFound,
   GrantUserNotFound,
   RoleNotFound,
+  TenantAdminRequired,
 } from './effect/grants.ts'
 import { GrantEscalationRefused, RoleEscalationRefused } from './effect/escalation.ts'
 import { AccessTargetRequired } from './effect/diagnostics.ts'
@@ -123,6 +134,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
             code: Schema.String,
             plugin: Schema.String,
             name: Schema.String,
+            description: Schema.NullOr(Schema.String),
+            groupKey: Schema.NullOr(Schema.String),
             target: permissionTarget,
           }),
         ),
@@ -169,24 +182,31 @@ export const accessApiGroup = HttpApiGroup.make('access')
     // activation, which is where completeness is checked
     HttpApiEndpoint.post('createRole', '/iam/roles', {
       payload: Schema.Struct({
-        code: Schema.String,
-        name: Schema.String,
-        description: Schema.optional(Schema.String),
-        kind: Schema.Literals(['tenant', 'org']),
+        code: kebabCode,
+        name: trimmedName(100),
+        description: Schema.optional(boundedText(500)),
+        kind: roleKind,
       }),
-      success: Schema.Struct({ id: Schema.String }),
+      success: Schema.Struct({
+        id: Schema.String,
+        status: Schema.Literals(['draft', 'active', 'disabled']),
+        version: Schema.Number,
+      }),
       error: [RoleConflict, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.patch('updateRole', '/iam/roles/:roleId', {
       params: Schema.Struct({ roleId: id }),
-      payload: Schema.Struct({
-        version: Schema.Number,
-        name: Schema.optional(Schema.String),
-        description: Schema.optional(Schema.NullOr(Schema.String)),
-        assignable: Schema.optional(Schema.Boolean),
-      }),
+      payload: changed(
+        {
+          version: expectedVersion,
+          name: Schema.optional(trimmedName(100)),
+          description: Schema.optional(Schema.NullOr(boundedText(500))),
+          assignable: Schema.optional(Schema.Boolean),
+        },
+        ['name', 'description', 'assignable'],
+      ),
       success: Schema.Struct({ version: Schema.Number }),
       error: [RoleNotFound, RoleVersionConflict, RoleIsSystem, RoleConflict, AccessDenied],
     }).middleware(Authenticated),
@@ -195,7 +215,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.put('setRoleStatus', '/iam/roles/:roleId/status', {
       params: Schema.Struct({ roleId: id }),
       payload: Schema.Struct({
-        version: Schema.Number,
+        version: expectedVersion,
         status: Schema.Literals(['active', 'disabled']),
       }),
       success: Schema.Struct({ version: Schema.Number }),
@@ -215,14 +235,9 @@ export const accessApiGroup = HttpApiGroup.make('access')
   .add(
     HttpApiEndpoint.get('getRolePermissions', '/iam/roles/:roleId/permissions', {
       params: Schema.Struct({ roleId: id }),
-      success: Schema.Struct({
-        // what the role carries and can still use, apart from what it carries
-        // and cannot: a code whose plugin is unloaded grants nothing but has
-        // not been taken away either
-        active: Schema.Array(Schema.String),
-        unavailable: Schema.Array(Schema.String),
-        version: Schema.Number,
-      }),
+      // the codes the role carries AND can still use. A code whose plugin is
+      // unloaded grants nothing, and the contract answers only the usable set
+      success: Schema.Struct({ codes: Schema.Array(Schema.String), version: Schema.Number }),
       error: [RoleNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
@@ -230,7 +245,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.put('setRolePermissions', '/iam/roles/:roleId/permissions', {
       params: Schema.Struct({ roleId: id }),
       payload: Schema.Struct({
-        version: Schema.Number,
+        version: expectedVersion,
         codes: Schema.Array(Schema.String),
       }),
       success: Schema.Struct({ version: Schema.Number }),
@@ -265,7 +280,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.put('setRoleEligibility', '/iam/roles/:roleId/eligibility', {
       params: Schema.Struct({ roleId: id }),
       payload: Schema.Struct({
-        version: Schema.Number,
+        version: expectedVersion,
         // a full replacement names both sets: omitting one and having it
         // silently survive is how a replace quietly becomes a merge
         userTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
@@ -336,10 +351,12 @@ export const accessApiGroup = HttpApiGroup.make('access')
       success: Schema.Struct({ id: Schema.String }),
       error: [
         RoleNotFound,
+        GrantExists,
         GrantUserNotFound,
         GrantNodeNotFound,
         GrantNotEligible,
         GrantEscalationRefused,
+        TenantAdminRequired,
         AccessDenied,
       ],
     }).middleware(Authenticated),
@@ -348,7 +365,13 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.delete('deleteRoleGrant', '/iam/role-grants/:grantId', {
       params: Schema.Struct({ grantId: id }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [GrantNotFound, RoleNotFound, LastAdministrator, AccessDenied],
+      error: [
+        GrantNotFound,
+        RoleNotFound,
+        TenantAdminRequired,
+        LastAdministrator,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(

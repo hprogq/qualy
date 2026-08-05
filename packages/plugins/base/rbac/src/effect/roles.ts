@@ -1,6 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { Database } from '@qualy/plugin-database/effect'
 import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
+import type { LastAdministrator } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import {
   addEligibilityQuery,
@@ -139,7 +140,7 @@ export class GrantStranded extends Schema.TaggedErrorClass<GrantStranded>()(
 
 export const make = Effect.fn('Rbac.roles.make')(function* (
   authorityFor: (actor: Principal) => Authority,
-  keepsAdministrator: (tenantId: string) => Effect.Effect<void, never>,
+  keepsAdministrator: (tenantId: string) => Effect.Effect<void, LastAdministrator>,
 ) {
   const database = yield* Database
 
@@ -359,6 +360,12 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
         yield* database.execute(roleQuery(tenantId, roleId)).pipe(Effect.orDie),
       )[0]
       if (!role) return yield* new RoleNotFound()
+      // an all-active role carries whatever the assembly serves, and stores no
+      // rows at all: reading the join alone reported the administrator role as
+      // carrying nothing
+      if (role.permission_mode === 'all-active') {
+        return { active: [...active.keys()].sort(), unavailable: [], version: role.version }
+      }
       const codes = yield* database
         .execute(rolePermissionCodesQuery(tenantId, roleId))
         .pipe(Effect.orDie, Effect.map((r) => rows<{ code: string }>(r).map((row) => row.code)))

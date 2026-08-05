@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import { boundedInt, changed, kebabCode, trimmedName } from '@qualy/api-kit/schema'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { Authenticated } from '@qualy/plugin-auth/effect/session'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
@@ -36,6 +37,16 @@ import {
 // 404. The oRPC contract has always done this; the port had let it through as
 // a plain string.
 const id = Schema.String.check(Schema.isUUID())
+// Payload primitives only, mirroring the zod constants in contract.ts. A
+// response DTO keeps a bare String: it describes what is stored, and putting an
+// input constraint there would refuse to encode a legitimate row written before
+// the rule tightened.
+//
+// A node name is allowed to be longer than a type name because it names a real
+// place rather than a category.
+const nodeName = trimmedName(255)
+const typeName = trimmedName(100)
+const sortOrder = boundedInt(0, 32767)
 
 // The wire shape stays camelCase, as the contract declares it. Rows come out
 // of the database in snake_case, and letting that reach the client would make
@@ -53,7 +64,6 @@ const orgNode = Schema.Struct({
   orgTypeId: Schema.String,
   code: Schema.NullOr(Schema.String),
   name: Schema.String,
-  path: Schema.String,
   depth: Schema.Number,
   sortOrder: Schema.Number,
   // what this caller may do, so the client hides controls it cannot use. This
@@ -72,7 +82,7 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
   HttpApiEndpoint.put('changeNodeType', '/org/nodes/:nodeId/type', {
     params: Schema.Struct({ nodeId: id }),
     payload: Schema.Struct({ orgTypeId: id }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
+    success: Schema.Struct({ node: orgNode }),
     // every way this can be refused, each carrying its own status. The caller
     // has to deal with them, which is the point of declaring them here.
     error: [
@@ -89,11 +99,13 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
 ).add(
   HttpApiEndpoint.patch('updateNode', '/org/nodes/:nodeId', {
     params: Schema.Struct({ nodeId: id }),
-    payload: Schema.Struct({
-      name: Schema.optional(Schema.String),
-      sortOrder: Schema.optional(Schema.Number),
-    }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
+    payload: changed(
+      { name: Schema.optional(nodeName), sortOrder: Schema.optional(sortOrder) },
+      ['name', 'sortOrder'],
+    ),
+    // the updated row, as the contract declares: answering ok makes a client
+    // re-read to learn what it just wrote
+    success: Schema.Struct({ node: orgNode }),
     error: [NodeNotFound, AccessDenied, NodeConflict, NodeInUse],
   }).middleware(Authenticated),
 ).add(
@@ -110,9 +122,9 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
 ).add(
   HttpApiEndpoint.post('createType', '/org/types', {
     payload: Schema.Struct({
-      code: Schema.String,
-      name: Schema.String,
-      sortOrder: Schema.optional(Schema.Number),
+      code: kebabCode,
+      name: typeName,
+      sortOrder: Schema.optional(sortOrder),
     }),
     success: Schema.Struct({ type: orgType }),
     error: [AccessDenied, TypeConflict, TypeInUse],
@@ -120,11 +132,13 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
 ).add(
   HttpApiEndpoint.patch('updateType', '/org/types/:typeId', {
     params: Schema.Struct({ typeId: id }),
-    payload: Schema.Struct({
-      name: Schema.optional(Schema.String),
-      sortOrder: Schema.optional(Schema.Number),
-    }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
+    payload: changed(
+      { name: Schema.optional(typeName), sortOrder: Schema.optional(sortOrder) },
+      ['name', 'sortOrder'],
+    ),
+    // the updated row, as the contract declares: answering ok makes a client
+    // re-read to learn what it just wrote
+    success: Schema.Struct({ type: orgType }),
     error: [TypeNotFound, AccessDenied, TypeConflict, TypeInUse],
   }).middleware(Authenticated),
 ).add(
@@ -175,9 +189,9 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
     payload: Schema.Struct({
       parentId: id,
       orgTypeId: id,
-      name: Schema.String,
-      code: Schema.optional(Schema.String),
-      sortOrder: Schema.optional(Schema.Number),
+      name: nodeName,
+      code: Schema.optional(kebabCode),
+      sortOrder: Schema.optional(sortOrder),
     }),
     success: Schema.Struct({ node: orgNode }),
     error: [NodeNotFound, TypeNotFound, RuleViolation, AccessDenied, NodeConflict, NodeInUse],
@@ -189,9 +203,9 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
     params: Schema.Struct({ nodeId: id }),
     payload: Schema.Struct({
       parentId: id,
-      sortOrder: Schema.optional(Schema.Number),
+      sortOrder: Schema.optional(sortOrder),
     }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
+    success: Schema.Struct({ node: orgNode }),
     error: [
       NodeNotFound,
       NodeIsRoot,

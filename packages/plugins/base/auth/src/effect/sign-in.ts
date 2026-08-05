@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from 'effect'
+import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Database } from '@qualy/plugin-database/effect'
@@ -20,6 +20,9 @@ import {
   touchIdentityQuery,
 } from '../iam/queries.ts'
 import { createSessionToken, hashSessionToken } from '../session.ts'
+import { AuthConfig } from './auth-config.ts'
+
+export { AuthConfig }
 import { sessionCookieName, sessionSecurity } from './session.ts'
 
 // Signing in, and signing out.
@@ -30,17 +33,6 @@ import { sessionCookieName, sessionSecurity } from './session.ts'
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
-
-/** what the host tells this plugin about its own deployment */
-export class AuthConfig extends Context.Service<
-  AuthConfig,
-  {
-    /** the tenant an anonymous visitor is offered a way into */
-    readonly defaultTenantSlug: string
-    readonly sessionTtlSeconds: number
-    readonly secureCookies: boolean
-  }
->()('@qualy/plugin-auth/AuthConfig') {}
 
 /**
  * A driver's redirect target, kept same-origin.
@@ -117,16 +109,18 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
     return row ? toSignedInUser(row) : undefined
   })
 
-  const setCookie = (value: string, maxAge: number) =>
-    HttpApiBuilder.securitySetCookie(sessionSecurity, value,
-      {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: config.secureCookies,
-        maxAge,
-      },
-    )
+  // maxAge is a Duration, not seconds: a bare number is read as MILLISECONDS,
+  // so 604800 serialized as `Max-Age=604` and every session died after ten
+  // minutes while its row still held a seven-day expiry. Verified against the
+  // installed package.
+  const setCookie = (value: string, maxAgeSeconds: number) =>
+    HttpApiBuilder.securitySetCookie(sessionSecurity, value, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: config.secureCookies,
+      maxAge: Duration.seconds(maxAgeSeconds),
+    })
 
   const sessions: LoginSessionsShape = {
     resolveProvider: Effect.fn('Auth.signIn.resolveProvider')(function* (input) {
@@ -179,6 +173,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             userId: input.userId,
             tokenHash,
             ttlSeconds: config.sessionTtlSeconds,
+            loginIp: Option.getOrUndefined(request.remoteAddress),
             userAgent: request.headers['user-agent'],
           }),
         )

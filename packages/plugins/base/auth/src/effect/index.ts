@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
+import type { Principal } from '@qualy/rbac-contract'
 import { Database } from '@qualy/plugin-database/effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
@@ -11,7 +12,7 @@ import {
   readQueryCursor,
 } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
-import { Rbac } from '@qualy/rbac-contract/effect'
+import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import {
   strandedByQuery,
   usersBlockingOrgTypeQuery,
@@ -111,6 +112,17 @@ export const layer: Layer.Layer<
 // --- api ---
 
 // Rows leave the database in snake_case; the contract describes camelCase.
+/**
+ * What a reader is told, which for a system identity is not what the row stores.
+ *
+ * The rule enforced for a system type ignores placement_mode entirely: it may
+ * stand at the tenant root and nowhere else. Reporting the stored column told
+ * an administrator the recovery account may stand anywhere while every write
+ * refused anything but the root.
+ */
+const placementModeOf = (row: { is_system: boolean; placement_mode: string }) =>
+  row.is_system ? ('tenant-root' as const) : (row.placement_mode as 'unrestricted' | 'allow-list')
+
 const toUserTypeDto = (row: UserTypeRow) => ({
   id: row.id,
   code: row.code,
@@ -122,7 +134,7 @@ const toUserTypeDto = (row: UserTypeRow) => ({
   isSystem: row.is_system,
   sortOrder: row.sort_order,
   version: row.version,
-  placementMode: row.placement_mode,
+  placementMode: placementModeOf(row),
   userCount: row.user_count,
   allowedOrgTypeIds: row.allowed_org_types,
 })
@@ -176,6 +188,21 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
  */
 const USER_OPTIONS_LIMIT = 200
 
+/**
+ * Reading users is org-scope and held per anchor, so the gate is "anywhere at
+ * all"; which users come back is the query's own decision.
+ *
+ * `require` refuses an org-node code as a caller mistake and dies, so using it
+ * here answered 500 for everyone, including a tenant administrator holding the
+ * permission tenant-wide.
+ */
+const requireUserRead = Effect.fn('iam.requireUserRead')(function* (principal: Principal) {
+  const rbac = yield* Rbac
+  if (!(yield* rbac.hasPermission(principal, 'auth.user.read'))) {
+    return yield* new AccessDenied({ reason: 'permission not held' })
+  }
+})
+
 const toUserDto = (row: UserProjection) => ({
   id: row.id,
   businessNo: row.business_no,
@@ -213,9 +240,8 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       'getUserOptions',
       Effect.fn('iam.getUserOptions.handler')(function* ({ query }) {
         const iam = yield* Iam
-        const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.user.read')
+        yield* requireUserRead(principal)
         return yield* iam.users.options(
           principal,
           query.search,
@@ -227,9 +253,8 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       'listUsers',
       Effect.fn('iam.listUsers.handler')(function* ({ query }) {
         const iam = yield* Iam
-        const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.user.read')
+        yield* requireUserRead(principal)
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         const scope = query.scope ?? 'subtree'
         // the cursor belongs to this anchor, scope and search and no other
@@ -258,9 +283,8 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       'getUser',
       Effect.fn('iam.getUser.handler')(function* ({ params }) {
         const iam = yield* Iam
-        const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.user.read')
+        yield* requireUserRead(principal)
         return { user: toUserDto(yield* iam.users.get(principal, params.userId)) }
       }),
     )
@@ -272,7 +296,12 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.user-type.read')
         const userTypes = yield* iam.userTypes.list(principal.tenantId)
-        return { userTypes: userTypes.map(toUserTypeDto) }
+        return {
+          userTypes: userTypes.map(toUserTypeDto),
+          capabilities: {
+            canManage: yield* rbac.hasPermission(principal, 'auth.user-type.manage'),
+          },
+        }
       }),
     )
     .handle(
@@ -379,9 +408,12 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.user-type.read')
         const type = yield* iam.userTypes.get(principal.tenantId, params.userTypeId)
+        const mode = placementModeOf(type)
         return {
-          mode: type.placement_mode as 'unrestricted' | 'allow-list',
-          orgTypeIds: type.allowed_org_types,
+          policy:
+            mode === 'allow-list'
+              ? { mode, orgTypeIds: type.allowed_org_types }
+              : { mode },
           version: type.version,
         }
       }),
@@ -397,7 +429,9 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
           version: yield* iam.userTypes.setPlacementPolicy(
             principal.tenantId,
             params.userTypeId,
-            { mode: payload.mode, orgTypeIds: payload.orgTypeIds },
+            payload.policy.mode === 'allow-list'
+              ? { mode: 'allow-list', orgTypeIds: payload.policy.orgTypeIds }
+              : { mode: 'unrestricted', orgTypeIds: [] },
             payload.version,
           ),
         }

@@ -221,8 +221,11 @@ export const make = Effect.fn('Rbac.make')(function* () {
     catalog: () => catalog,
   })
 
+  // not orDie: the refusal is a declared 409 on three endpoints, and a defect
+  // would answer 500 with no code. auth calls the same port without orDie,
+  // which is what made this a slip rather than a policy.
   const keepsAdministrator = (tenantId: string) =>
-    shapeRef.assertTenantKeepsAdministrator(tenantId).pipe(Effect.orDie)
+    shapeRef.assertTenantKeepsAdministrator(tenantId)
 
   const grants = yield* makeGrants(authorityFor)
   const roles = yield* makeRoles(authorityFor, keepsAdministrator)
@@ -472,12 +475,18 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
             definition.name.toLowerCase().includes(search),
         )
         return {
-          permissions: permissions.map((definition) => ({
-            code: definition.code,
-            plugin: definition.plugin,
-            name: definition.name,
-            target: definition.target,
-          })),
+          // sorted by code, as the registry's own reads are: the checkbox list
+          // a client renders is in whatever order it receives
+          permissions: [...permissions]
+            .sort((a, b) => a.code.localeCompare(b.code))
+            .map((definition) => ({
+              code: definition.code,
+              plugin: definition.plugin,
+              name: definition.name,
+              description: definition.description ?? null,
+              groupKey: definition.groupKey ?? null,
+              target: definition.target,
+            })),
         }
       }),
     )
@@ -616,7 +625,13 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'iam.role.manage')
-        return { id: yield* access.roles.create(principal.tenantId, payload) }
+        // the created row's status and version travel back, so a client can
+        // continue without a read: the management api creates drafts only
+        return {
+          id: yield* access.roles.create(principal.tenantId, payload),
+          status: 'draft' as const,
+          version: 1,
+        }
       }),
     )
     .handle(
@@ -662,7 +677,12 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'iam.role.read')
-        return yield* access.roles.getPermissions(principal.tenantId, params.roleId, principal)
+        const carried = yield* access.roles.getPermissions(
+          principal.tenantId,
+          params.roleId,
+          principal,
+        )
+        return { codes: carried.active, version: carried.version }
       }),
     )
     .handle(

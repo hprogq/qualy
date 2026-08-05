@@ -22,7 +22,7 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
 export class AccessTargetRequired extends Schema.TaggedErrorClass<AccessTargetRequired>()(
   'ACCESS_TARGET_REQUIRED',
   {},
-  { httpApiStatus: 422, identifier: 'AccessTargetRequired' },
+  { httpApiStatus: 400, identifier: 'AccessTargetRequired' },
 ) {}
 
 export interface PermissionSource {

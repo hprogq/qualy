@@ -653,7 +653,12 @@ export const make = Effect.fn('Org.make')(function* () {
             const node = rows<NodeRow>(
               yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
             )[0]
-            if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
+            // not-found and not-covered are indistinguishable on purpose, and
+            // the shared answer is a refusal: a client branching on 403 to
+            // re-prompt for authorization must keep doing so
+            if (!node || !coveredBy(readScope, node)) {
+              return yield* new AccessDenied({ reason: 'not allowed to read this node' })
+            }
             roots = [node.id]
             // the incident this guards: only a subtree anchor yields the
             // subtree. A self anchor yields the one node it names.
@@ -838,7 +843,6 @@ const toNodeDto = (node: NodeView) => ({
   orgTypeId: node.org_type_id,
   code: node.code,
   name: node.name,
-  path: node.path,
   depth: node.depth,
   sortOrder: node.sort_order,
   manageable: node.manageable,
@@ -865,7 +869,9 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       // must not be able to name the tenant they are acting on
       const principal = yield* CurrentUser
       yield* org.changeNodeType(principal.tenantId, params.nodeId, payload.orgTypeId, principal)
-      return { ok: true as const }
+      // the row it produced, as the contract declares: answering ok makes a
+      // client re-read to learn what it just wrote
+      return { node: toNodeDto(yield* org.readNode(principal.tenantId, params.nodeId, principal)) }
     }),
   )
     .handle(
@@ -874,7 +880,9 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const org = yield* Org
         const principal = yield* CurrentUser
         yield* org.updateNode(principal.tenantId, params.nodeId, payload, principal)
-        return { ok: true as const }
+        return {
+          node: toNodeDto(yield* org.readNode(principal.tenantId, params.nodeId, principal)),
+        }
       }),
     )
     .handle(
@@ -908,7 +916,9 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
           principal,
           payload.sortOrder,
         )
-        return { ok: true as const }
+        return {
+          node: toNodeDto(yield* org.readNode(principal.tenantId, params.nodeId, principal)),
+        }
       }),
     )
     .handle(
@@ -951,7 +961,8 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const org = yield* Org
         const principal = yield* CurrentUser
         yield* org.updateType(principal.tenantId, params.typeId, payload, principal)
-        return { ok: true as const }
+        const types = yield* org.listTypes(principal.tenantId, principal)
+        return { type: toTypeDto(types.find((row) => row.id === params.typeId)!) }
       }),
     )
     .handle(

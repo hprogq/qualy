@@ -10,6 +10,7 @@ import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
+import { hashSessionToken } from '../src/session.ts'
 import { authLocalApiHandlers } from '@qualy/plugin-auth-local/effect'
 import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
 import { driver as localDriver } from '@qualy/plugin-auth-local/login-driver'
@@ -128,7 +129,7 @@ beforeAll(async () => {
     Layer.provide(Layer.mergeAll(infra, authConfig, Layer.succeed(LoginDrivers, [localDriver]))),
   )
   const handlers = Layer.mergeAll(sessionApiHandlers, authLocalApiHandlers).pipe(
-    Layer.provide(sessionLayer.pipe(Layer.provide(infra))),
+    Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
   )
   // the service layers go in at the application level, the way the host wires
   // them: a handler's requirement is per-request, so it travels past the
@@ -154,6 +155,20 @@ afterAll(async () => {
   await db.dispose()
 })
 
+const probeInfra = () =>
+  databaseLayer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        DatabaseConfig,
+        DatabaseConfig.of({
+          url: Redacted.make(db.url),
+          migrations: 'off',
+          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
+        }),
+      ),
+    ),
+  )
+
 const login = (body: { identifier: string; password: string }, code = 'password') =>
   fetch(`${base}/auth/local/${code}/login`, {
     method: 'POST',
@@ -165,6 +180,13 @@ const cookieFrom = (response: Response) => {
   const header = response.headers.get('set-cookie') ?? ''
   return header.split(';')[0] ?? ''
 }
+
+/** the attributes, which the cookie value alone throws away */
+const attributesOf = (response: Response) =>
+  (response.headers.get('set-cookie') ?? '')
+    .split(';')
+    .slice(1)
+    .map((part) => part.trim())
 
 describe.runIf(postgresAvailable)('signing in', () => {
   it('offers only the providers whose driver this assembly loaded', async () => {
@@ -192,6 +214,14 @@ describe.runIf(postgresAvailable)('signing in', () => {
     })
     const cookie = cookieFrom(response)
     expect(cookie.startsWith(`${sessionCookieName}=`)).toBe(true)
+    // Max-Age is a Duration upstream, and a bare number is milliseconds: the
+    // ttl went out as `Max-Age=3` and every session died in three seconds
+    // while its row still held an hour. Asserted in seconds, not merely present.
+    expect(attributesOf(response)).toEqual(
+      expect.arrayContaining(['Max-Age=3600', 'Path=/', 'HttpOnly', 'SameSite=Lax']),
+    )
+    // not secure here, because this test server is plain http
+    expect(attributesOf(response)).not.toContain('Secure')
 
     const session = await fetch(`${base}/auth/session`, { headers: { cookie } })
     expect(session.status).toBe(200)
@@ -226,6 +256,68 @@ describe.runIf(postgresAvailable)('signing in', () => {
     const response = await login({ identifier: 'grace', password })
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'INVALID_CREDENTIALS' })
+  })
+
+  it('drops the cookie when the session it presented is dead', async () => {
+    // Without this the browser keeps re-presenting a token the server has
+    // already refused until the cookie's own lifetime lapses.
+    const response = await login({ identifier: 'ada', password })
+    const cookie = cookieFrom(response)
+    const token = cookie.slice(sessionCookieName.length + 1)
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const database = yield* Database
+        yield* database.execute(
+          sql`update sessions set expires_at = now() - interval '1 minute'
+              where token_hash = ${hashSessionToken(token)}`,
+        )
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    const dead = await fetch(`${base}/auth/session`, { headers: { cookie } })
+    expect(dead.status).toBe(401)
+    expect(await dead.json()).toMatchObject({ _tag: 'SESSION_EXPIRED' })
+    expect(dead.headers.get('set-cookie') ?? '').toContain('Max-Age=0')
+  })
+
+  it('drops the cookie when the account behind a live session is disabled', async () => {
+    // this branch does not delete the row either, so a user disabled and later
+    // re-enabled would otherwise resume on the same cookie
+    const response = await login({ identifier: 'ada', password })
+    const cookie = cookieFrom(response)
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const database = yield* Database
+        yield* database.execute(sql`update users set enabled = false where display_name = 'Ada'`)
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    const refused = await fetch(`${base}/auth/session`, { headers: { cookie } })
+    expect(refused.status).toBe(401)
+    expect(refused.headers.get('set-cookie') ?? '').toContain('Max-Age=0')
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const database = yield* Database
+        yield* database.execute(sql`update users set enabled = true where display_name = 'Ada'`)
+      }).pipe(Effect.provide(probeInfra())),
+    )
+  })
+
+  it('records the address the session was created from', async () => {
+    const response = await login({ identifier: 'ada', password })
+    const token = cookieFrom(response).slice(sessionCookieName.length + 1)
+    const ip = await Effect.runPromise(
+      Effect.gen(function* () {
+        const database = yield* Database
+        const result = (yield* database.execute(
+          sql`select login_ip::text from sessions where token_hash = ${hashSessionToken(token)}`,
+        )) as unknown as { rows: { login_ip: string | null }[] }
+        return result.rows[0]!.login_ip
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    // Audit data, not a response field: nothing reads it, so nothing noticed
+    // that every Effect-created session recorded no address at all. Node
+    // reports loopback as the IPv4-mapped IPv6 form, and inet stores it as
+    // written, so the assertion is that an address arrived at all.
+    expect(ip).toMatch(/127\.0\.0\.1/)
   })
 
   it('signs out a caller who was never signed in', async () => {
