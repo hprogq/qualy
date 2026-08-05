@@ -373,9 +373,6 @@ importers:
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../plugins/infra/database
-      '@qualy/plugin-dict':
-        specifier: workspace:*
-        version: link:../plugins/base/dict
       '@qualy/plugin-layout-default':
         specifier: workspace:*
         version: link:../plugins/base/layout-default
@@ -558,8 +555,6 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
-
-  packages/plugins/base/dict: {}
 
   packages/plugins/base/layout-default:
     dependencies:

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:1ae16c06baf445906ad7daec7f6c64af6f3aed9c2e54785f74c9b9899338e915",
-  "resolutionHash": "sha256:73922e14fe109bf0316c750febc633f80b891941f79fd97568885603862c252e",
+  "manifestHash": "sha256:a814d93605499fa828b6bc317936fe8fc44a887c74198e533e395ae6e0b02754",
+  "resolutionHash": "sha256:4a7609a561a05d5304b85a2eb912256ffd2e1e0b546376535e8636b034c668e3",
   "plugins": {
     "@qualy/plugin-auth": {
       "version": "0.0.0",
@@ -22,16 +22,6 @@
     "@qualy/plugin-database": {
       "version": "0.0.0",
       "state": "active"
-    },
-    "@qualy/plugin-dict": {
-      "version": "0.0.0",
-      "state": "active",
-      "contributions": {
-        "database": {
-          "schemaEntry": "src/db/schema.ts",
-          "dependsOn": []
-        }
-      }
     },
     "@qualy/plugin-layout-default": {
       "version": "0.0.0",
@@ -87,7 +77,6 @@
         "order": [
           "@qualy/plugin-org",
           "@qualy/plugin-auth",
-          "@qualy/plugin-dict",
           "@qualy/plugin-ping",
           "@qualy/plugin-rbac"
         ]
@@ -99,7 +88,6 @@
       "@qualy/plugin-auth",
       "@qualy/plugin-auth-local",
       "@qualy/plugin-database",
-      "@qualy/plugin-dict",
       "@qualy/plugin-layout-default",
       "@qualy/plugin-org",
       "@qualy/plugin-ping",

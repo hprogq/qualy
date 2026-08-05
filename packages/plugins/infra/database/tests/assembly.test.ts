@@ -240,7 +240,6 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       '@qualy/plugin-rbac',
       '@qualy/plugin-auth',
       '@qualy/plugin-org',
-      '@qualy/plugin-dict',
       '@qualy/plugin-auth-local',
       '@qualy/plugin-layout-default',
           ],
