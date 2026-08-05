@@ -37,7 +37,7 @@ export async function generateDatabase(
   const name = flag(context.args, 'name')
 
   const fragments = collectBaseline(context, state)
-  const pending = pendingBaseline(fragments, compiledBaseline(work.migrations))
+  const pending = pendingBaseline(fragments, compiledBaseline(work.migrations), state.order)
 
   const before = new Set(migrationDirs(work.migrations))
   fs.mkdirSync(work.migrations, { recursive: true })

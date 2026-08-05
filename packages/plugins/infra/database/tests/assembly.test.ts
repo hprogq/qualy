@@ -84,9 +84,34 @@ describe('database contributions', () => {
       )
       // editing a fragment databases have already run would leave the lineage
       // and the package disagreeing about what was applied
-      expect(() => pendingBaseline(fragments, compiled)).toThrow(/changed after they were compiled/)
+      const carried = asState(work.state).order
+      expect(() => pendingBaseline(fragments, compiled, carried)).toThrow(
+        /changed after they were compiled/,
+      )
       expect(
-        pendingBaseline(fragments, new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha]))),
+        pendingBaseline(
+          fragments,
+          new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha])),
+          carried,
+        ),
+      ).toEqual([])
+
+      // and losing one is the same fault as editing one, including when it was
+      // the plugin's only fragment. The check used to ask whether the plugin
+      // still had SOME fragment on disk, so deleting the last one - the shape
+      // org actually has, one file holding the extension its column type needs
+      // - produced a lineage that failed on every empty database
+      expect(() =>
+        pendingBaseline(
+          [],
+          new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha])),
+          carried,
+        ),
+      ).toThrow(/no longer exist/)
+
+      // a plugin that has left the assembly keeps its history instead
+      expect(
+        pendingBaseline([], new Map(fragments.map((f) => [`${f.plugin} ${f.file}`, f.sha])), []),
       ).toEqual([])
     } finally {
       workspace.dispose()
