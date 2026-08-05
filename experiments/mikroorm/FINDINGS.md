@@ -237,6 +237,11 @@ drop 掉、纯从实体声明重建,然后逐对象比较。
 
 ## 八、剩下 12 张表能不能机械完成:**不能全自动**
 
+> **措辞界定(重要)**:MikroORM 的 **Schema Generator 能表达 Qualy 当前全部数据库结构**——
+> org 四张表手写后达成完整 parity 已经证明这一点。有缺陷的是 **Entity Generator v7.1.10 的
+> 反向工程链路**,它只能用作一次性骨架生成器,**不能作为迁移或 parity 的可信来源**。
+> 这两件事必须分开说。
+
 `@mikro-orm/entity-generator` 能读活库直接吐 `defineEntity` 源码,如果保真,剩下 12 张表就是
 一条命令而不是一周。实测(对着部署好的 lineage 跑):
 
@@ -272,6 +277,41 @@ parity 的判据应当是「约束名 + 类型 + 规范化表达式 + validated 
 
 **结论:生成器是起点不是迁移。** 直接采用它的产出会建出一个少了三十道防线的数据库,而且在
 本该被拒绝的数据已经存进去之前,什么都不会失败。
+
+### 三处缺口已在 vendored 源码里定位(v7.1.10,`packages/sql/src/schema/DatabaseTable.ts`)
+
+不是 introspection 没读到,也不是 PostgreSQL 的限制——前半段都正常,丢在从 `DatabaseTable`
+转成 `EntityMetadata` 的那一步:
+
+**① checks 读进来了,没被复制出去。** `#checks` 有赋值(:99、:121)也有 getter(:75),
+但 `getEntityDeclaration()` 全文对 `getChecks`/`#checks` 的引用次数是 **0**。
+单列 `IN (...)` 之所以「看起来没全丢」,是因为 helper 把它识别成枚举——值域留下了,
+**约束名与原始表达式没有进入 enum metadata**。
+
+**② 单列 partial index 被预过滤掉了。** 同一个文件里两处判断不一致:
+
+```
+:299  预过滤   index.deferMode || index.expression || …        ← 没有 index.where
+:355  isTrivial !index.deferMode && !index.expression && !index.where && …   ← 有
+```
+
+`uq_org_nodes_tenant_single_root` 恰好单列、非 skipped、无 deferMode、无 expression,
+且 `tenant_id` 参与外键——五个条件全不满足,进循环之前就被滤掉了。后半段明明把 `where`
+当高级特征,前半段忘了。
+
+**③ 索引列顺序丢在 Set 里。** `getIndexProperties()` 用 `propBaseNames: Set<string>` 收集
+属性名,最后 `return Array.from(propBaseNames).map(...)`(:764)。物理列被压缩成 relation
+property 时,顺序变成**插入顺序**而不是索引的列顺序;多个复合外键共享 `tenant_id` 时
+(User/Role/OrgNode 都含它),第一次遇到 `tenant_id` 就可能一次性加入三个 relation,
+后面再遇到各自的列已在 Set 中,不再重新定位。
+
+值得注意的是,同一个方法已经有正确的回退设计(:376):
+「无法无歧义映射到属性时,退回 raw expression」。三处缺口都属于**没有走到那个回退**,
+而不是设计上认为可以有损。
+
+**④ `persist(false)` 不是缺陷**:`getPropertyDeclaration()` 只在「该列已由 relation 持有、
+且正在额外生成纯标量视图」时才置 false,relation 自身仍持有 fieldNames /
+referencedColumnNames / foreignKeyName,FK 照常生成。属有意设计。
 
 正确做法是:生成器出骨架 → **逐表手工补 checks + 约束名** → 每张表过 parity 门禁。
 org 那四张已经用这个流程走通(第七节),剩下 12 张按同法逐张做,parity 是验收标准。
