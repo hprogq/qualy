@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   frozenLockfile,
   lockDrift,
@@ -29,10 +29,12 @@ export async function verifyAssembly(
   const previousLock = readLock(lockPathFor(manifestPath))
   const resolution = await resolveAssembly({ manifestPath, previousLock })
   const problems = lockDrift(previousLock, resolution)
-  // the runtime reads a generated module, and it is as derived as the lock:
-  // an instance whose layers do not match the reviewed lock is running an
-  // assembly nobody approved
-  const runtimeModulePath = path.join(path.dirname(path.resolve(manifestPath)), 'runtime.gen.ts')
+  // The module THIS process imports, not one derived from the manifest path.
+  // The import in ./effect/runtime.ts is static, so QUALY_CONFIG pointing at
+  // another directory does not move it; deriving the path from the manifest
+  // checked a file the process would never load, and reported an assembly as
+  // verified while running a different one.
+  const runtimeModulePath = fileURLToPath(new URL('../runtime.gen.ts', import.meta.url))
   if (!fs.existsSync(runtimeModulePath)) {
     problems.push(`${runtimeModulePath} is missing; run \`pnpm gen\``)
   } else if (fs.readFileSync(runtimeModulePath, 'utf8') !== renderRuntimeModule(resolution)) {
