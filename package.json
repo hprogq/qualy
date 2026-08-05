@@ -49,6 +49,7 @@
     "test:all": "pnpm test && pnpm test:browser",
     "test:browser": "tsx scripts/gen.ts && vitest run --config vitest.browser.config.ts",
     "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts",
-    "vendor:sync": "tsx scripts/vendor-sync.ts"
+    "vendor:sync": "tsx scripts/vendor-sync.ts",
+    "vendor:check": "tsx scripts/vendor-sync.ts && vitest run scripts/tests/vendor.test.ts"
   }
 }

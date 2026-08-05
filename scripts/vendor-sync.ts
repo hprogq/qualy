@@ -26,6 +26,14 @@ export interface VendoredSource {
   /** how that package's version becomes an upstream tag */
   tagFor(version: string): string
   /**
+   * The manifest inside the tree that says which version it is.
+   *
+   * The clone's `.git` is stripped, so a checked-out tree carries no commit to
+   * compare against. This is what `pnpm vendor:check` reads instead to tell a
+   * stale tree from the one the lock names.
+   */
+  versionFile: string
+  /**
    * Paths in this upstream that describe a version other than the pinned one.
    *
    * The tree exists so that reasoning about a library reads what actually
@@ -42,12 +50,14 @@ export const VENDORED: readonly VendoredSource[] = [
     repository: 'https://github.com/Effect-TS/effect.git',
     packageName: 'effect',
     tagFor: (version) => `effect@${version}`,
+    versionFile: 'packages/effect/package.json',
   },
   {
     name: 'drizzle-orm',
     repository: 'https://github.com/drizzle-team/drizzle-orm.git',
     packageName: 'drizzle-orm',
     tagFor: (version) => `v${version}`,
+    versionFile: 'drizzle-orm/package.json',
   },
   // Vendored ahead of any dependency on it: the orm decision spike has to read
   // what v7 actually does with entity metadata, the Kysely bridge and the
@@ -59,6 +69,7 @@ export const VENDORED: readonly VendoredSource[] = [
     repository: 'https://github.com/mikro-orm/mikro-orm.git',
     packageName: '@mikro-orm/core',
     tagFor: (version) => `v${version}`,
+    versionFile: 'packages/core/package.json',
     // 176MB of docusaurus snapshots for v2 through v6. The version this tree
     // is pinned to documents itself in docs/docs, which stays.
     supersededPaths: ['docs/versioned_docs', 'docs/versioned_sidebars'],

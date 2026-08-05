@@ -13,6 +13,12 @@ client-dist/
 # legacy source clones
 legacy/
 
+# vendored upstream sources: restored by `pnpm vendor:sync` from the commit
+# vendor-lock.json pins, which is what makes them reproducible. Committing the
+# trees added 7,759 files to a repository with 376 of its own.
+repos/*
+!repos/vendor-lock.json
+
 # generated files
 **/*.gen.ts
 

@@ -25,8 +25,23 @@ const walk = (dir: string, depth = 0): string[] =>
 describe('vendored upstream sources', () => {
   const lock = readVendorLock()
 
-  it.each(VENDORED.map((source) => source.name))('%s is present', (name) => {
-    expect(fs.existsSync(path.join(REPOS, name)), `${REPOS}/${name} is missing`).toBe(true)
+  // Whether the tree is on disk is `pnpm vendor:check`, not this suite.
+  //
+  // The trees are no longer in version control: vendor-lock.json pins an exact
+  // commit, which is what makes them reproducible, and committing 103MB of
+  // upstream source bought only offline reads. So a plain `pnpm test` must
+  // pass on a fresh clone that has never run vendor:sync, and everything here
+  // reads the lock and this repository rather than the trees.
+  const present = VENDORED.filter((source) => fs.existsSync(path.join(REPOS, source.name)))
+
+  it.runIf(present.length > 0)('is the version the lock names, where it is checked out', () => {
+    for (const source of present) {
+      const manifest = path.join(REPOS, source.name, source.versionFile)
+      const { version } = JSON.parse(fs.readFileSync(manifest, 'utf8')) as { version: string }
+      expect(version, `${REPOS}/${source.name} is stale; run \`pnpm vendor:sync\``).toBe(
+        lock.sources[source.packageName]!.packageVersion,
+      )
+    }
   })
 
   it('records the version each tree was taken from', () => {
@@ -81,7 +96,9 @@ describe('vendored upstream sources', () => {
     expect(fs.readFileSync('vitest.config.ts', 'utf8')).toContain("'repos/**'")
     expect(fs.readFileSync('.prettierignore', 'utf8')).toContain('repos/')
     expect(fs.readFileSync('pnpm-workspace.yaml', 'utf8')).not.toContain('repos/')
-    // and it must stay in version control, or vendoring it proved nothing
-    expect(fs.readFileSync('.gitignore', 'utf8')).not.toMatch(/^repos\/?$/m)
+    // and out of version control, except the lock that makes it reproducible
+    const ignored = fs.readFileSync('.gitignore', 'utf8')
+    expect(ignored).toMatch(/^repos\/\*$/m)
+    expect(ignored).toMatch(/^!repos\/vendor-lock\.json$/m)
   })
 })
