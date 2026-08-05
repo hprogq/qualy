@@ -1,4 +1,6 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from 'cordis'
 import { sql, type SQL } from 'drizzle-orm'
@@ -99,6 +101,73 @@ function parameterize(text: string, params: readonly unknown[]): SQL {
   )
 }
 
+/**
+ * A migrated database, built once and copied per test.
+ *
+ * Every suite used to create an empty database and replay the whole lineage
+ * into it, which is most of what a database-backed test costs: the assertions
+ * are milliseconds and the lineage is not. `CREATE DATABASE ... TEMPLATE`
+ * copies the files instead, so the lineage runs once per distinct lineage
+ * rather than once per test.
+ *
+ * The name carries a hash of the migration files, so editing one produces a
+ * different template rather than reusing a stale one. It survives the run on
+ * purpose: a second run skips the lineage entirely.
+ */
+const templateName = (folder: string) => {
+  const hash = createHash('sha256')
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : 1,
+    )) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.name.endsWith('.sql')) hash.update(entry.name).update(fs.readFileSync(full))
+    }
+  }
+  walk(folder)
+  return `qualy_tpl_${hash.digest('hex').slice(0, 16)}`
+}
+
+/**
+ * Builds the template if nobody has, and waits if somebody is.
+ *
+ * Test files run in parallel workers, so several arrive here at once. The
+ * advisory lock makes exactly one of them do the work; the rest block on the
+ * lock and then find it already there. Without it they would race on CREATE
+ * DATABASE and all but one would fail.
+ */
+const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
+  const name = templateName(folder)
+  const lock = BigInt.asIntN(64, BigInt(`0x${createHash('sha256').update(name).digest('hex').slice(0, 15)}`))
+  const client = await admin.connect()
+  try {
+    await client.query('select pg_advisory_lock($1)', [lock.toString()])
+    const { rows } = await client.query('select 1 from pg_database where datname = $1', [name])
+    if (rows.length === 0) {
+      const building = `${name}_building_${randomUUID().slice(0, 8)}`
+      await client.query(`create database "${building}"`)
+      const url = new URL(baseUrl)
+      url.pathname = `/${building}`
+      // the plugin's own migrator, so the template is built the way a
+      // deployment is rather than by a second implementation
+      const ctx = new Context()
+      await ctx.plugin(Database, { url: url.href, migrations: 'apply', migrationsFolder: folder })
+      await ctx.fiber.dispose()
+      // renamed only once it is complete, so a crashed build never becomes a
+      // template that other tests copy
+      await client.query(`alter database "${building}" rename to "${name}"`)
+      // a template must not be written to, and postgres refuses to copy one
+      // that has connections, so it is marked and left alone
+      await client.query(`update pg_database set datallowconn = true where datname = $1`, [name])
+    }
+    return name
+  } finally {
+    await client.query('select pg_advisory_unlock($1)', [lock.toString()])
+    client.release()
+  }
+}
+
 export interface TestContextOptions {
   /**
    * 'apply' is the production path and the default: the plugin runs the
@@ -164,8 +233,20 @@ export async function createTestContext(
 ): Promise<TestContext> {
   const name = `qualy_${label.replaceAll(/[^a-z0-9]+/gi, '_')}_${randomUUID().slice(0, 8)}`
   const admin = new Pool({ connectionString: baseUrl })
+  const folder = options.migrationsFolder ?? migrationsFolder
+  // The template is for the committed lineage and nothing else. A test that
+  // names its own folder is asserting something about deploying it - assembly
+  // does exactly this - and handing it a database that already has those
+  // tables is not an empty database, whatever the journal says. 'off' means
+  // the test drives the lineage itself and wants an empty one too.
+  const template =
+    (options.migrations ?? 'apply') === 'apply' && options.migrationsFolder === undefined
+      ? await ensureTemplate(admin, folder)
+      : undefined
   try {
-    await admin.query(`create database "${name}"`)
+    await admin.query(
+      template ? `create database "${name}" template "${template}"` : `create database "${name}"`,
+    )
   } catch (error) {
     // nothing was created, so there is nothing to drop; the pool still has
     // to go, which the old shape skipped by starting its try one line later
@@ -179,8 +260,10 @@ export async function createTestContext(
   try {
     await ctx.plugin(Database, {
       url: url.href,
+      // the copy already carries the lineage, so this run finds it applied and
+      // starts; the plugin's own check still has to agree, which is the point
       migrations: options.migrations ?? 'apply',
-      migrationsFolder: options.migrationsFolder ?? migrationsFolder,
+      migrationsFolder: folder,
     })
   } catch (error) {
     // init may already have registered effects, so the partial context is

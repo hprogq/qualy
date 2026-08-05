@@ -20,7 +20,12 @@ import { afterAll, describe, expect, it } from 'vitest'
 // type exists only by accident cannot be ported faithfully.
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
-const probe = path.join(repoRoot, 'tsconfig.plugin-isolation.probe.json')
+// One probe per plugin, not one reused file. These cases run concurrently, and
+// a shared probe would have each tsc compiling whichever plugin wrote last -
+// which still passes, because every plugin does compile alone, so the file
+// would go green while checking the wrong things.
+const probeFor = (dir: string) =>
+  path.join(repoRoot, `tsconfig.probe.${dir.replaceAll('/', '-')}.json`)
 
 const pluginDirs = fs
   .readdirSync(path.join(repoRoot, 'packages/plugins'))
@@ -32,10 +37,11 @@ const pluginDirs = fs
   .filter((dir) => fs.existsSync(path.join(repoRoot, dir, 'src')))
 
 afterAll(() => {
-  fs.rmSync(probe, { force: true })
+  for (const dir of pluginDirs) fs.rmSync(probeFor(dir), { force: true })
 })
 
 const typecheckAlone = (dir: string) => {
+  const probe = probeFor(dir)
   fs.writeFileSync(
     probe,
     JSON.stringify({
@@ -56,7 +62,10 @@ const typecheckAlone = (dir: string) => {
   }
 }
 
-describe('every plugin typechecks on its own', () => {
+// concurrent: each case compiles one plugin in its own subprocess, and they
+// share nothing but the disk. Run in sequence this file was the whole suite's
+// critical path, since vitest parallelises files and not the cases inside one.
+describe.concurrent('every plugin typechecks on its own', () => {
   it('found plugins to check', () => {
     expect(pluginDirs.length).toBeGreaterThan(5)
   })

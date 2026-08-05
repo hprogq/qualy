@@ -97,7 +97,7 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, node, collegeType, clubType }
 })
 
-describe.runIf(postgresAvailable)('the placement port', () => {
+describe.runIf(postgresAvailable).concurrent('the placement port', () => {
   it('counts nobody when the node keeps a type the people standing there allow', async () => {
     const db = await createTestContext('effect-placement-ok')
     try {

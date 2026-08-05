@@ -20,7 +20,7 @@ import { databaseLayer } from '../src/index.ts'
 const port = 3199
 const base = `http://127.0.0.1:${port}`
 
-describe.runIf(postgresAvailable)('one scope owns the server and the pool', () => {
+describe.runIf(postgresAvailable).concurrent('one scope owns the server and the pool', () => {
   it('serves the api, its openapi document and its docs, then closes both on one signal', async () => {
     const db = await createTestContext('effect-spike-runtime')
     const connections = async () =>

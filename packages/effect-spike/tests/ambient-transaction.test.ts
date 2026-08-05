@@ -51,7 +51,7 @@ const peerBackendPid = Effect.fn('peer.backendPid')(function* () {
   return Number((result as unknown as { rows: Array<{ pid: number }> }).rows[0]!.pid)
 })
 
-describe.runIf(postgresAvailable)('the transaction is ambient, not a parameter', () => {
+describe.runIf(postgresAvailable).concurrent('the transaction is ambient, not a parameter', () => {
   it('lets a peer service see what its caller has written but not committed', async () => {
     const db = await createTestContext('ambient-tx')
     try {

@@ -153,7 +153,7 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, root, left, right, staff, manager, as, onLeft, onRight }
 })
 
-describe.runIf(postgresAvailable)('users', () => {
+describe.runIf(postgresAvailable).concurrent('users', () => {
   it('lets a manager create only inside the branch they manage', async () => {
     const db = await createTestContext('effect-users-create')
     try {
@@ -302,7 +302,7 @@ describe.runIf(postgresAvailable)('users', () => {
   })
 })
 
-describe.runIf(postgresAvailable)('what a caller may read about people', () => {
+describe.runIf(postgresAvailable).concurrent('what a caller may read about people', () => {
   it('intersects the requested scope with the one the caller was actually granted', async () => {
     // The recorded failure: the requested scope alone decided this, so a bare
     // self grant at a node returned every user below it. A partial subtree is

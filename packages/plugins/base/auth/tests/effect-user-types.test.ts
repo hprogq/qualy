@@ -103,7 +103,7 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, node, staff, system }
 })
 
-describe.runIf(postgresAvailable)('user types', () => {
+describe.runIf(postgresAvailable).concurrent('user types', () => {
   it('refuses an edit whose expected version has moved on', async () => {
     const db = await createTestContext('effect-ut-version')
     try {

@@ -36,7 +36,7 @@ const stack = (url: string, permissions: readonly ActivePermission[]) =>
     ),
   )
 
-describe.runIf(postgresAvailable)('the stored permission row', () => {
+describe.runIf(postgresAvailable).concurrent('the stored permission row', () => {
   it('refuses to build when a declaration disagrees with what is stored', async () => {
     const db = await createTestContext('effect-rbac-drift')
     try {

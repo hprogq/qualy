@@ -128,7 +128,7 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, root, university, college, department, section, principal }
 })
 
-describe.runIf(postgresAvailable)('what the cordis tree suite covered', () => {
+describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered', () => {
   it('enforces the type rule and the sibling name on creation', async () => {
     // from org.test.ts 'enforces type rules and sibling names on creation'. A
     // node's place in the tree is governed by the rule graph, and two siblings

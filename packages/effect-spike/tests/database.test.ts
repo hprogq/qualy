@@ -44,7 +44,7 @@ const failureOf = <A, E>(exit: Exit.Exit<A, E>): { _tag?: string; cause?: unknow
 
 class Rejected extends Schema.ErrorClass<Rejected>('Rejected')({}) {}
 
-describe.runIf(postgresAvailable)('effect-postgres against the real schema', () => {
+describe.runIf(postgresAvailable).concurrent('effect-postgres against the real schema', () => {
   it('reads a snakeCase table, an ltree column and a PG18 uuidv7 default', async () => {
     const db = await createTestContext('effect-spike-schema')
     try {

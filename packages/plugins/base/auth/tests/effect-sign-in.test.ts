@@ -320,6 +320,39 @@ describe.runIf(postgresAvailable)('signing in', () => {
     expect(ip).toMatch(/127\.0\.0\.1/)
   })
 
+  it('normalizes the identifier before it looks anything up', async () => {
+    // from local-login.test.ts 'logs in with normalized identifier'. The stored
+    // identifier is the normalized form, so a login that skipped normalizing
+    // would refuse the same person depending on how they typed their name.
+    for (const typed of ['  ADA  ', 'Ada', 'ada']) {
+      const response = await login({ identifier: typed, password })
+      expect(response.status, `${typed} should be the same person`).toBe(200)
+    }
+    // and a shape the normalizer rejects is refused like any other miss,
+    // without reaching the database
+    const bad = await login({ identifier: 'a', password })
+    expect(bad.status).toBe(401)
+  })
+
+  it('stores only the hash of a session token', async () => {
+    // from local-login.test.ts of the same name. A readable token column is a
+    // password file: anyone with a database dump could present one.
+    const response = await login({ identifier: 'ada', password })
+    const token = cookieFrom(response).slice(sessionCookieName.length + 1)
+    const stored = await Effect.runPromise(
+      Effect.gen(function* () {
+        const database = yield* Database
+        const result = (yield* database.execute(
+          sql`select token_hash from sessions where token_hash = ${hashSessionToken(token)}`,
+        )) as unknown as { rows: { token_hash: string }[] }
+        return result.rows[0]?.token_hash
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    expect(stored).toBeDefined()
+    expect(stored).not.toBe(token)
+    expect(stored).toBe(hashSessionToken(token))
+  })
+
   it('signs out a caller who was never signed in', async () => {
     const response = await fetch(`${base}/auth/session`, { method: 'DELETE' })
     expect(response.status).toBe(200)

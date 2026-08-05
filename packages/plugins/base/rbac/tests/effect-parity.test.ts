@@ -152,7 +152,7 @@ const seed = Effect.fn('seed')(function* () {
 
 const as = (tenantId: string, userId: string): Principal => ({ tenantId, userId, sessionId: 's' })
 
-describe.runIf(postgresAvailable)('what the cordis suite covered', () => {
+describe.runIf(postgresAvailable).concurrent('what the cordis suite covered', () => {
   it('stops authorizing through a role that is no longer active', async () => {
     // from rbac.test.ts 'fails closed on a role that is not active'. Disabling
     // a role must take its capabilities away immediately; the grant survives,

@@ -138,7 +138,7 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, root, child, user, role, plainRole, principal, anchored }
 })
 
-describe.runIf(postgresAvailable)('rbac as an Effect layer', () => {
+describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
   it('lets an administrator reach every node, and says so through the port', async () => {
     const db = await createTestContext('effect-rbac-admin')
     try {

@@ -146,7 +146,7 @@ const typeOf = Effect.fn('typeOf')(function* (nodeId: string) {
   return result.rows[0]!.org_type_id
 })
 
-describe.runIf(postgresAvailable)('changing a node type across three plugins', () => {
+describe.runIf(postgresAvailable).concurrent('changing a node type across three plugins', () => {
   it('retypes when no peer objects', async () => {
     const db = await createTestContext('effect-retype-ok')
     try {

@@ -50,7 +50,7 @@ const status = async (path: string) => {
   }
 }
 
-describe.runIf(postgresAvailable)('effect application shell', () => {
+describe.runIf(postgresAvailable).concurrent('effect application shell', () => {
   it('binds the port only after the database is ready, and releases both together', async () => {
     const db = await createTestContext('effect-shell')
     const connections = async () =>

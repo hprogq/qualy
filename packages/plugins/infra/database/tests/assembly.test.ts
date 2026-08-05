@@ -203,7 +203,7 @@ describe('drop guard', () => {
   })
 })
 
-describe.runIf(postgresAvailable)('assembly deployment', () => {
+describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
   const selections: Record<string, string[]> = {
     // no auth, no rbac: the smallest thing that still owns tables
     minimal: [...INFRA, '@qualy/plugin-org'],
