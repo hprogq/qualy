@@ -246,26 +246,31 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
     body: (tx: Tx, node: NodeRow) => Effect.Effect<A, E>,
   ) =>
-    database
-      .transaction((tx) =>
-        Effect.gen(function* () {
-          yield* tx.execute(lockTenantQuery(tenantId))
-          const node = rows<NodeRow>(
-            yield* tx.execute(nodeQuery(tenantId, nodeId)),
-          )[0]
-          if (!node) return yield* new NodeNotFound()
-          yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
-          return yield* body(tx, node)
-        }),
-      )
-      .pipe(
-        translateConstraints(nodeConstraints),
-        // both tags: the transaction itself raises SqlError on begin/commit,
-        // while a statement inside it arrives wrapped as
-        // EffectDrizzleQueryError. Catching only the first leaves the second
-        // in the error channel, where nothing declares it.
-        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
-      )
+    // Refuse before taking the lock. The check inside the transaction is the
+    // authoritative one, because a concurrent move can re-anchor the target
+    // between the two; this one only stops an unauthorized caller from
+    // serializing every structural write of the tenant behind them first.
+    rbac.requireAt(as, 'org.tree.manage', nodeId).pipe(
+      Effect.andThen(
+        database.transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx.execute(lockTenantQuery(tenantId))
+            const node = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, nodeId)))[0]
+            if (!node) return yield* new NodeNotFound()
+            // re-decided under the lock: the pre-check ran before it, and the
+            // target may have been re-anchored since
+            yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
+            return yield* body(tx, node)
+          }),
+        ),
+      ),
+      translateConstraints(nodeConstraints),
+      // both tags: the transaction itself raises SqlError on begin and commit,
+      // while a statement inside it arrives wrapped as
+      // EffectDrizzleQueryError. Catching only the first leaves the second in
+      // the error channel, where nothing declares it.
+      Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+    )
 
   const updateNode = Effect.fn('Org.updateNode')(function* (
     tenantId: string,
@@ -475,6 +480,21 @@ export const layer: Layer.Layer<Org, never, Database | Rbac | Placement> = Layer
 
 // --- api ---
 
+// Rows leave the database in snake_case; the contract describes camelCase.
+// Mapping at the boundary rather than renaming the columns keeps the SQL
+// readable and keeps both runtimes describing a record the same way.
+const toTypeDto = (row: TypeRow) => ({
+  id: row.id,
+  code: row.code,
+  name: row.name,
+  sortOrder: row.sort_order,
+})
+
+const toRuleDto = (row: RuleRow) => ({
+  parentTypeId: row.parent_type_id,
+  childTypeId: row.child_type_id,
+})
+
 // The local API exists so this plugin implements its group without importing
 // the aggregate that contains it; see QUALY_API_ID. It carries the same prefix
 // as the aggregate, because routes are built from this one and the document
@@ -516,7 +536,8 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       Effect.fn('org.listTypes.handler')(function* () {
         const org = yield* Org
         const principal = yield* CurrentUser
-        return { types: yield* org.listTypes(principal.tenantId, principal) }
+        const types = yield* org.listTypes(principal.tenantId, principal)
+        return { types: types.map(toTypeDto) }
       }),
     )
     .handle(
@@ -524,7 +545,7 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       Effect.fn('org.createType.handler')(function* ({ payload }) {
         const org = yield* Org
         const principal = yield* CurrentUser
-        return { type: yield* org.createType(principal.tenantId, payload, principal) }
+        return { type: toTypeDto(yield* org.createType(principal.tenantId, payload, principal)) }
       }),
     )
     .handle(
@@ -550,7 +571,8 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       Effect.fn('org.listRules.handler')(function* () {
         const org = yield* Org
         const principal = yield* CurrentUser
-        return { rules: yield* org.listRules(principal.tenantId, principal) }
+        const rules = yield* org.listRules(principal.tenantId, principal)
+        return { rules: rules.map(toRuleDto) }
       }),
     )
     .handle(

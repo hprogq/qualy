@@ -30,22 +30,31 @@ import {
 // why this is a PUT on /type and not a POST to /retype.
 
 
+// An id a caller supplies is validated before any work happens, so a
+// malformed one is a 400 rather than a query that finds nothing and answers
+// 404. The oRPC contract has always done this; the port had let it through as
+// a plain string.
+const id = Schema.String.check(Schema.isUUID())
+
+// The wire shape stays camelCase, as the contract declares it. Rows come out
+// of the database in snake_case, and letting that reach the client would make
+// the two runtimes describe the same record differently.
 const orgType = Schema.Struct({
   id: Schema.String,
   code: Schema.String,
   name: Schema.String,
-  sort_order: Schema.Number,
+  sortOrder: Schema.Number,
 })
 
 const orgRule = Schema.Struct({
-  parent_type_id: Schema.String,
-  child_type_id: Schema.String,
+  parentTypeId: Schema.String,
+  childTypeId: Schema.String,
 })
 
 export const orgApiGroup = HttpApiGroup.make('org').add(
   HttpApiEndpoint.put('changeNodeType', '/org/nodes/:nodeId/type', {
-    params: Schema.Struct({ nodeId: Schema.String }),
-    payload: Schema.Struct({ orgTypeId: Schema.String }),
+    params: Schema.Struct({ nodeId: id }),
+    payload: Schema.Struct({ orgTypeId: id }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
     // every way this can be refused, each carrying its own status. The caller
     // has to deal with them, which is the point of declaring them here.
@@ -62,7 +71,7 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.patch('updateNode', '/org/nodes/:nodeId', {
-    params: Schema.Struct({ nodeId: Schema.String }),
+    params: Schema.Struct({ nodeId: id }),
     payload: Schema.Struct({
       name: Schema.optional(Schema.String),
       sortOrder: Schema.optional(Schema.Number),
@@ -72,7 +81,7 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.delete('deleteNode', '/org/nodes/:nodeId', {
-    params: Schema.Struct({ nodeId: Schema.String }),
+    params: Schema.Struct({ nodeId: id }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
     error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied, NodeConflict, NodeInUse],
   }).middleware(Authenticated),
@@ -93,7 +102,7 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.patch('updateType', '/org/types/:typeId', {
-    params: Schema.Struct({ typeId: Schema.String }),
+    params: Schema.Struct({ typeId: id }),
     payload: Schema.Struct({
       name: Schema.optional(Schema.String),
       sortOrder: Schema.optional(Schema.Number),
@@ -103,7 +112,7 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.delete('deleteType', '/org/types/:typeId', {
-    params: Schema.Struct({ typeId: Schema.String }),
+    params: Schema.Struct({ typeId: id }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
     error: [TypeNotFound, TypeInUse, AccessDenied, TypeConflict],
   }).middleware(Authenticated),
@@ -116,13 +125,13 @@ export const orgApiGroup = HttpApiGroup.make('org').add(
   // idempotent: the pair identifies the rule, so repeating converges rather
   // than conflicting, which is why this is a PUT on the pair
   HttpApiEndpoint.put('putRule', '/org/type-rules/:parentTypeId/:childTypeId', {
-    params: Schema.Struct({ parentTypeId: Schema.String, childTypeId: Schema.String }),
+    params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
     error: [RuleInvalid, TypeNotFound, RuleCycle, AccessDenied, TypeConflict, TypeInUse],
   }).middleware(Authenticated),
 ).add(
   HttpApiEndpoint.delete('deleteRule', '/org/type-rules/:parentTypeId/:childTypeId', {
-    params: Schema.Struct({ parentTypeId: Schema.String, childTypeId: Schema.String }),
+    params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
     success: Schema.Struct({ ok: Schema.Literal(true) }),
     error: [RuleNotFound, RuleInUse, AccessDenied, TypeConflict, TypeInUse],
   }).middleware(Authenticated),
