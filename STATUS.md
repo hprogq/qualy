@@ -466,3 +466,30 @@ clean-room parity                 → 129 列 / 195 约束 / 57 索引 / 80 函�
 清单指向不存在的 lineage 后启动     → 按清单路径 ENOENT(证明运行时确实读清单)
 管理员 / 学生 manifest             → 7 页 / 2 页
 ```
+
+### 装配审查结果(18 agent,10 条确认,2026-08-06)
+
+审查角度四个:CLI 与运行时各自决定的事实、失效的清单 config、from-scratch lineage 完整性、seed。
+每条findings 都经独立 agent 反驳一轮才留下。**已修 8 条**,2 条留待决策。
+
+已修:
+
+1. `config.url` 被 CLI 采纳、运行时看不见(且优先级高于 DATABASE_URL)。改为连同一切未知键**拒绝**。
+2. 非 provider 插件的 `config:` 被静默丢弃,而 manifestHash 照变——resolve 成功、frozen 启动通过,
+   设置看起来生效了。核心与 database provider 现在都会点名说不认识这个键。
+3. `runtime.gen.ts` 写在 `--yml` 指定清单旁边,其余六个产物写死路径。**全部产物都是静态 import**,
+   所以谁也不能搬家;结果 `--yml` 会让 layers 用一份装配、permissions/routes/handlers 用另一份。
+4. 同因:`QUALY_CONFIG` 指向别处时,启动校验去核对一个进程根本不会加载的模块,然后报告「已验证」。
+5. `db:reset` 在 `docker compose up -d` 返回后约 1s 就连库,而 postgres 需要约 6s。改用 `--wait`
+   等健康检查(实测 `Waiting → Healthy → applied 15 migration(s)`,7.3s)。
+6. seed 把租户 slug 写死 `default`,而应用读 `QUALY_DEFAULT_TENANT`——设了这个变量就会「种一个租户、
+   服务另一个」,症状是所有登录都解析不到 provider。改为读同一个变量。
+
+留待决策(都属中央 seed,阶段 4 会整体重做):
+
+- **重跑 seed 会把管理员撤销过的 demo 角色权限加回来**。对 demo 数据这也许正是想要的,但它确实会
+  静默推翻运维决定。
+- **seed 放置 demo 用户时不校验站位不变量**,若某租户先收紧了 student 的 placement policy,重跑 seed
+  可能写出一条 API 本身会拒绝的站位。
+
+后两条要不要改,取决于「seed 是幂等保证态,还是只在空库跑」——这是产品决定,不是缺陷判定。
