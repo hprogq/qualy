@@ -1,0 +1,94 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RefToPivotTable > mysql-entity-dump 1`] = `
+[
+  "import { PrimaryKeyProp, type Ref, defineEntity, p } from '@mikro-orm/core';
+import { Emails } from './Emails';
+import { SenderEmails } from './SenderEmails';
+
+export class EmailMessagesLog {
+  [PrimaryKeyProp]?: 'logId';
+  logId!: number;
+  sender!: Ref<SenderEmails>;
+  recepient!: Ref<Emails>;
+}
+
+export const EmailMessagesLogSchema = defineEntity({
+  class: EmailMessagesLog,
+  properties: {
+    logId: p.integer().primary(),
+    sender: () => p.manyToOne(SenderEmails).ref().fieldNames('sender_id','sender_email_id').deleteRule('restrict').index('fk_email_messages_log_sender_emails1_idx'),
+    recepient: () => p.manyToOne(Emails).ref().index('fk_email_messages_log_emails1_idx'),
+  },
+});
+",
+  "import { Collection, PrimaryKeyProp, defineEntity, p } from '@mikro-orm/core';
+import { EmailMessagesLog } from './EmailMessagesLog';
+import { Sender } from './Sender';
+import { SenderEmails } from './SenderEmails';
+
+export class Emails {
+  [PrimaryKeyProp]?: 'emailId';
+  emailId!: number;
+  email!: string;
+  emailMessagesLogCollection = new Collection<EmailMessagesLog>(this);
+  emailsInverse = new Collection<Sender>(this);
+  senderEmailsCollection = new Collection<SenderEmails>(this);
+}
+
+export const EmailsSchema = defineEntity({
+  class: Emails,
+  properties: {
+    emailId: p.integer().primary(),
+    email: p.string().unique('email_UNIQUE'),
+    emailMessagesLogCollection: () => p.oneToMany(EmailMessagesLog).mappedBy('recepient'),
+    emailsInverse: () => p.manyToMany(Sender).mappedBy('emails'),
+    senderEmailsCollection: () => p.oneToMany(SenderEmails).mappedBy('email'),
+  },
+});
+",
+  "import { Collection, PrimaryKeyProp, defineEntity, p } from '@mikro-orm/core';
+import { Emails } from './Emails';
+import { SenderEmails } from './SenderEmails';
+
+export class Sender {
+  [PrimaryKeyProp]?: 'senderId';
+  senderId!: number;
+  name!: string;
+  emails = new Collection<Emails>(this);
+  senderEmailsCollection = new Collection<SenderEmails>(this);
+}
+
+export const SenderSchema = defineEntity({
+  class: Sender,
+  properties: {
+    senderId: p.smallint().primary(),
+    name: p.string().unique('name_UNIQUE'),
+    emails: () => p.manyToMany(Emails).pivotEntity(() => SenderEmails).joinColumn('sender_id').inverseJoinColumn('email_id'),
+    senderEmailsCollection: () => p.oneToMany(SenderEmails).mappedBy('sender'),
+  },
+});
+",
+  "import { Collection, PrimaryKeyProp, type Ref, defineEntity, p } from '@mikro-orm/core';
+import { EmailMessagesLog } from './EmailMessagesLog';
+import { Emails } from './Emails';
+import { Sender } from './Sender';
+
+export class SenderEmails {
+  [PrimaryKeyProp]?: ['sender', 'email'];
+  sender!: Ref<Sender>;
+  email!: Ref<Emails>;
+  emailMessagesLogCollection = new Collection<EmailMessagesLog>(this);
+}
+
+export const SenderEmailsSchema = defineEntity({
+  class: SenderEmails,
+  properties: {
+    sender: () => p.manyToOne(Sender).primary().ref().name('sender_id'),
+    email: () => p.manyToOne(Emails).primary().ref().name('email_id').deleteRule('restrict').index('fk_sender_emails_emails1_idx'),
+    emailMessagesLogCollection: () => p.oneToMany(EmailMessagesLog).mappedBy('sender'),
+  },
+});
+",
+]
+`;

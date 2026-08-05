@@ -1,0 +1,69 @@
+import {
+  type AnyEntity,
+  type EntityClass,
+  type EntitySchema,
+  defineConfig,
+  type MikroORM,
+  type Options,
+  type IDatabaseDriver,
+  type EntityManager,
+  type EntityManagerType,
+} from '@mikro-orm/core';
+import { SqlMikroORM, type SqlEntityManager } from '@mikro-orm/sql';
+import { SqliteDriver } from './SqliteDriver.js';
+
+/** Configuration options for the SQLite driver. */
+export type SqliteOptions<
+  EM extends SqlEntityManager<SqliteDriver> = SqlEntityManager<SqliteDriver>,
+  Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+    | string
+    | EntityClass<AnyEntity>
+    | EntitySchema
+  )[],
+> = Partial<Options<SqliteDriver, EM, Entities>>;
+
+/** Creates a type-safe configuration object for the SQLite driver. */
+export function defineSqliteConfig<
+  EM extends SqlEntityManager<SqliteDriver> = SqlEntityManager<SqliteDriver>,
+  Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+    | string
+    | EntityClass<AnyEntity>
+    | EntitySchema
+  )[],
+>(options: Partial<Options<SqliteDriver, EM, Entities>>): Partial<Options<SqliteDriver, EM, Entities>> {
+  return defineConfig({ driver: SqliteDriver, ...options });
+}
+
+/**
+ * @inheritDoc
+ */
+export class SqliteMikroORM<
+  EM extends SqlEntityManager<SqliteDriver> = SqlEntityManager<SqliteDriver>,
+  Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+    | string
+    | EntityClass<AnyEntity>
+    | EntitySchema
+  )[],
+> extends SqlMikroORM<SqliteDriver, EM, Entities> {
+  /**
+   * @inheritDoc
+   */
+  static override async init<
+    D extends IDatabaseDriver = SqliteDriver,
+    EM extends EntityManager<D> = D[typeof EntityManagerType] & EntityManager<D>,
+    Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+      | string
+      | EntityClass<AnyEntity>
+      | EntitySchema
+    )[],
+  >(options: Partial<Options<D, EM, Entities>>): Promise<MikroORM<D, EM, Entities>> {
+    return super.init(defineSqliteConfig(options as any) as any);
+  }
+
+  /**
+   * @inheritDoc
+   */
+  constructor(options: Partial<Options<SqliteDriver, EM, Entities>>) {
+    super(defineSqliteConfig(options));
+  }
+}

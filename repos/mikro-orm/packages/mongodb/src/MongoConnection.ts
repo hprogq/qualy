@@ -1,0 +1,721 @@
+import {
+  type Abortable,
+  type BulkWriteResult,
+  type ClientSession,
+  type Collection,
+  type Db,
+  type DeleteResult,
+  type Filter,
+  type FindCursor,
+  type FindOptions,
+  type InsertManyResult,
+  type InsertOneResult,
+  MongoClient,
+  type MongoClientOptions,
+  ObjectId,
+  type OptionalUnlessRequiredId,
+  type SortDirection,
+  type TransactionOptions,
+  type UpdateFilter,
+  type UpdateResult,
+} from 'mongodb';
+import {
+  type AnyEntity,
+  type CollationOptions,
+  type Configuration,
+  Connection,
+  type ConnectionOptions,
+  type ConnectionType,
+  type Dictionary,
+  type EntityData,
+  type EntityName,
+  EventType,
+  type FilterQuery,
+  inspect,
+  type IsolationLevel,
+  type LoggingOptions,
+  QueryOrder,
+  type QueryOrderMap,
+  type QueryResult,
+  type Transaction,
+  type TransactionEventBroadcaster,
+  type UpsertManyOptions,
+  type UpsertOptions,
+  Utils,
+  ValidationError,
+} from '@mikro-orm/core';
+
+/** MongoDB database connection using the official `mongodb` driver. */
+export class MongoConnection extends Connection {
+  #client?: MongoClient;
+  #db?: Db;
+
+  constructor(config: Configuration, options?: ConnectionOptions, type: ConnectionType = 'write') {
+    super(config, options, type);
+
+    // @ts-ignore
+    ObjectId.prototype[Symbol.for('nodejs.util.inspect.custom')] = function () {
+      return `ObjectId('${this.toHexString()}')`;
+    };
+
+    // @ts-ignore
+    Date.prototype[Symbol.for('nodejs.util.inspect.custom')] = function () {
+      return `ISODate('${this.toISOString()}')`;
+    };
+  }
+
+  async connect(options?: { skipOnConnect?: boolean }): Promise<void> {
+    this.getClient();
+    this.connected = true;
+
+    if (options?.skipOnConnect !== true) {
+      await this.onConnect();
+    }
+  }
+
+  createClient(): void {
+    let driverOptions = this.options.driverOptions ?? this.config.get('driverOptions');
+
+    if (typeof driverOptions === 'function') {
+      driverOptions = driverOptions();
+    }
+
+    if (driverOptions instanceof MongoClient) {
+      this.logger.log('info', 'Reusing MongoClient provided via `driverOptions`');
+      this.#client = driverOptions;
+    } else {
+      this.#client = new MongoClient(
+        this.config.get('clientUrl'),
+        this.mapOptions(driverOptions as MongoClientOptions),
+      );
+      this.#client.appendMetadata({
+        name: 'MikroORM',
+        version: Utils.getORMVersion(),
+      });
+      const onCreateConnection = this.options.onCreateConnection ?? this.config.get('onCreateConnection');
+      /* v8 ignore next */
+      this.#client.on('connectionCreated', () => {
+        void onCreateConnection?.(this.#client);
+      });
+    }
+
+    this.#db = this.#client.db(this.config.get('dbName'));
+  }
+
+  override async close(force?: boolean): Promise<void> {
+    await this.#client?.close(force);
+    this.connected = false;
+    this.#client = undefined;
+  }
+
+  async isConnected(): Promise<boolean> {
+    try {
+      const res = await this.#db?.command({ ping: 1 });
+      return (this.connected = !!res?.ok);
+    } catch (error) {
+      return (this.connected = false);
+    }
+  }
+
+  async checkConnection(): Promise<{ ok: true } | { ok: false; reason: string; error?: Error }> {
+    try {
+      const res = await this.#db?.command({ ping: 1 });
+      return res?.ok
+        ? { ok: true }
+        : { ok: false, reason: 'Ping reply does not feature "ok" property, or it evaluates to "false"' };
+    } catch (error: any) {
+      return { ok: false, reason: error.message, error };
+    }
+  }
+
+  getClient(): MongoClient {
+    if (!this.#client) {
+      this.createClient();
+    }
+
+    return this.#client!;
+  }
+
+  getCollection<T extends object>(name: EntityName<T> | string): Collection<T> {
+    return this.getDb().collection<T>(this.getCollectionName(name));
+  }
+
+  async createCollection<T extends object>(name: EntityName<T>): Promise<Collection<T>> {
+    return this.getDb().createCollection(this.getCollectionName(name));
+  }
+
+  async listCollections(): Promise<string[]> {
+    const collections = await this.getDb().listCollections({}, { nameOnly: true }).toArray();
+    return collections.map(c => c.name);
+  }
+
+  async dropCollection(name: EntityName<AnyEntity>): Promise<boolean> {
+    return this.getDb().dropCollection(this.getCollectionName(name));
+  }
+
+  mapOptions(overrides: MongoClientOptions): MongoClientOptions {
+    const ret: MongoClientOptions = {};
+    const pool = this.config.get('pool');
+    const username = this.config.get('user');
+    const password = this.config.get('password') as string;
+
+    if (this.config.get('host')) {
+      throw new ValidationError('Mongo driver does not support `host` options, use `clientUrl` instead!');
+    }
+
+    if (username && password) {
+      ret.auth = { username, password };
+    }
+
+    ret.minPoolSize = pool.min;
+    ret.maxPoolSize = pool.max;
+    ret.waitQueueTimeoutMS = pool.idleTimeoutMillis;
+    return Utils.mergeConfig(ret, overrides);
+  }
+
+  getDb(): Db {
+    this.#db ??= this.getClient().db(this.config.get('dbName'));
+    return this.#db;
+  }
+
+  async execute(query: string): Promise<any> {
+    throw new Error(`${this.constructor.name} does not support generic execute method`);
+  }
+
+  async find<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    opts: MongoFindOptions<T> = {},
+  ): Promise<EntityData<T>[]> {
+    const { cursor, query } = await this._find<T>(entityName, where, opts);
+    const now = Date.now();
+    const res = await cursor.toArray();
+    this.logQuery(`${query}.toArray();`, { took: Date.now() - now, results: res.length, ...opts.loggerContext });
+
+    return res as EntityData<T>[];
+  }
+
+  async *stream<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    opts: MongoFindOptions<T> = {},
+  ): AsyncIterableIterator<T> {
+    const { cursor, query } = await this._find<T>(entityName, where, opts);
+    this.logQuery(`${query}.toArray();`, opts.loggerContext);
+    yield* cursor;
+  }
+
+  private async _find<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    opts: MongoFindOptions<T> = {},
+  ): Promise<{ cursor: FindCursor<T>; query: string }> {
+    await this.ensureConnection();
+    const collection = this.getCollectionName(entityName);
+    const options: FindOptions & Abortable = opts.ctx ? { session: opts.ctx } : {};
+
+    if (opts.fields) {
+      options.projection = opts.fields.reduce((o, k) => Object.assign(o, { [k]: 1 }), {});
+    }
+
+    if (opts.collation) {
+      options.collation = opts.collation;
+    }
+
+    if (opts.indexHint != null) {
+      options.hint = opts.indexHint;
+    }
+
+    if (opts.maxTimeMS != null) {
+      options.maxTimeMS = opts.maxTimeMS;
+    }
+
+    if (opts.allowDiskUse != null) {
+      options.allowDiskUse = opts.allowDiskUse;
+    }
+    if (opts.chunkSize != null) {
+      options.batchSize = opts.chunkSize;
+    }
+
+    if (opts.signal) {
+      options.signal = opts.signal;
+    }
+
+    const resultSet = this.getCollection<T>(entityName).find(where as Filter<T>, options);
+    let query = `db.getCollection('${collection}').find(${this.logObject(where)}, ${this.logObject(options)})`;
+    const orderBy = Utils.asArray(opts.orderBy);
+
+    if (orderBy.length > 0) {
+      const orderByTuples: [string, SortDirection][] = [];
+      orderBy.forEach(o => {
+        Utils.keys(o).forEach(k => {
+          const direction = o[k] as SortDirection;
+          if (typeof direction === 'string') {
+            orderByTuples.push([k.toString(), direction.toUpperCase() === QueryOrder.ASC ? 1 : -1]);
+          } else {
+            orderByTuples.push([k.toString(), direction]);
+          }
+        });
+      });
+      if (orderByTuples.length > 0) {
+        query += `.sort(${this.logObject(orderByTuples)})`;
+        resultSet.sort(orderByTuples);
+      }
+    }
+
+    if (opts.limit !== undefined) {
+      query += `.limit(${opts.limit})`;
+      resultSet.limit(opts.limit);
+    }
+
+    if (opts.offset !== undefined) {
+      query += `.skip(${opts.offset})`;
+      resultSet.skip(opts.offset);
+    }
+
+    return { cursor: resultSet as any, query };
+  }
+
+  async insertOne<T extends object>(
+    entityName: EntityName<T>,
+    data: Partial<T>,
+    ctx?: Transaction<ClientSession>,
+    signal?: AbortSignal,
+  ): Promise<QueryResult<T>> {
+    return this.runQuery<T>('insertOne', entityName, data, undefined, ctx, { signal });
+  }
+
+  async insertMany<T extends object>(
+    entityName: EntityName<T>,
+    data: Partial<T>[],
+    ctx?: Transaction<ClientSession>,
+    signal?: AbortSignal,
+  ): Promise<QueryResult<T>> {
+    return this.runQuery<T>('insertMany', entityName, data, undefined, ctx, { signal });
+  }
+
+  async updateMany<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    data: Partial<T>,
+    ctx?: Transaction<ClientSession>,
+    upsert?: boolean,
+    upsertOptions?: UpsertOptions<T>,
+    signal?: AbortSignal,
+  ): Promise<QueryResult<T>> {
+    return this.runQuery<T>('updateMany', entityName, data, where, ctx, { upsert, upsertOptions, signal });
+  }
+
+  async bulkUpdateMany<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>[],
+    data: Partial<T>[],
+    ctx?: Transaction<ClientSession>,
+    upsert?: boolean,
+    upsertOptions?: UpsertManyOptions<T>,
+    signal?: AbortSignal,
+  ): Promise<QueryResult<T>> {
+    return this.runQuery<T>('bulkUpdateMany', entityName, data, where, ctx, { upsert, upsertOptions, signal });
+  }
+
+  async deleteMany<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    ctx?: Transaction<ClientSession>,
+    signal?: AbortSignal,
+  ): Promise<QueryResult<T>> {
+    return this.runQuery<T>('deleteMany', entityName, undefined, where, ctx, { signal });
+  }
+
+  async aggregate<T extends object = any>(
+    entityName: EntityName<T>,
+    pipeline: any[],
+    ctx?: Transaction<ClientSession>,
+    loggerContext?: LoggingOptions,
+    signal?: AbortSignal,
+  ): Promise<T[]> {
+    await this.ensureConnection();
+    const collection = this.getCollectionName(entityName);
+    /* v8 ignore next */
+    const options: Dictionary = ctx ? { session: ctx } : {};
+    if (signal) {
+      options.signal = signal;
+    }
+    const query = `db.getCollection('${collection}').aggregate(${this.logObject(pipeline)}, ${this.logObject(options)}).toArray();`;
+    const now = Date.now();
+    const res = await this.getCollection(entityName).aggregate<T>(pipeline, options).toArray();
+    this.logQuery(query, { took: Date.now() - now, results: res.length, ...loggerContext });
+
+    return res;
+  }
+
+  async *streamAggregate<T extends object>(
+    entityName: EntityName<T>,
+    pipeline: any[],
+    ctx?: Transaction<ClientSession>,
+    loggerContext?: LoggingOptions,
+    stream = false,
+    signal?: AbortSignal,
+  ): AsyncIterableIterator<T> {
+    await this.ensureConnection();
+    const collection = this.getCollectionName(entityName);
+    /* v8 ignore next */
+    const options: Dictionary = ctx ? { session: ctx } : {};
+    if (signal) {
+      options.signal = signal;
+    }
+    const query = `db.getCollection('${collection}').aggregate(${this.logObject(pipeline)}, ${this.logObject(options)})};`;
+    const cursor = this.getCollection(entityName).aggregate<T>(pipeline, options);
+
+    this.logQuery(query, { ...loggerContext });
+    yield* cursor as AsyncIterableIterator<T>;
+  }
+
+  async countDocuments<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    opts: MongoCountOptions = {},
+  ): Promise<number> {
+    return this.runQuery<T, number>('countDocuments', entityName, undefined, where, opts.ctx, {
+      loggerContext: opts.loggerContext,
+      collation: opts.collation,
+      indexHint: opts.indexHint,
+      maxTimeMS: opts.maxTimeMS,
+      signal: opts.signal,
+    });
+  }
+
+  override async transactional<T>(
+    cb: (trx: Transaction<ClientSession>) => Promise<T>,
+    options: {
+      isolationLevel?: IsolationLevel;
+      ctx?: Transaction<ClientSession>;
+      eventBroadcaster?: TransactionEventBroadcaster;
+    } & TransactionOptions = {},
+  ): Promise<T> {
+    await this.ensureConnection();
+    const session = await this.begin(options);
+
+    try {
+      const ret = await cb(session);
+      await this.commit(session, options.eventBroadcaster);
+
+      return ret;
+    } catch (error) {
+      await this.rollback(session, options.eventBroadcaster);
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  override async begin(
+    options: {
+      isolationLevel?: IsolationLevel;
+      ctx?: ClientSession;
+      eventBroadcaster?: TransactionEventBroadcaster;
+    } & TransactionOptions = {},
+  ): Promise<ClientSession> {
+    await this.ensureConnection();
+    const { ctx, isolationLevel, eventBroadcaster, ...txOptions } = options;
+
+    if (!ctx) {
+      await eventBroadcaster?.dispatchEvent(EventType.beforeTransactionStart);
+    }
+    const session = ctx || this.getClient().startSession();
+    session.startTransaction(txOptions);
+    this.logQuery('db.begin();');
+    await eventBroadcaster?.dispatchEvent(EventType.afterTransactionStart, session);
+
+    return session;
+  }
+
+  override async commit(ctx: ClientSession, eventBroadcaster?: TransactionEventBroadcaster): Promise<void> {
+    await this.ensureConnection();
+    await eventBroadcaster?.dispatchEvent(EventType.beforeTransactionCommit, ctx);
+    await ctx.commitTransaction();
+    this.logQuery('db.commit();');
+    await eventBroadcaster?.dispatchEvent(EventType.afterTransactionCommit, ctx);
+  }
+
+  override async rollback(ctx: ClientSession, eventBroadcaster?: TransactionEventBroadcaster): Promise<void> {
+    await this.ensureConnection();
+    await eventBroadcaster?.dispatchEvent(EventType.beforeTransactionRollback, ctx);
+    await ctx.abortTransaction();
+    this.logQuery('db.rollback();');
+    await eventBroadcaster?.dispatchEvent(EventType.afterTransactionRollback, ctx);
+  }
+
+  private async runQuery<T extends object, U extends QueryResult<T> | number = QueryResult<T>>(
+    method: 'insertOne' | 'insertMany' | 'updateMany' | 'bulkUpdateMany' | 'deleteMany' | 'countDocuments',
+    entityName: EntityName<T>,
+    data?: Partial<T> | Partial<T>[],
+    where?: FilterQuery<T> | FilterQuery<T>[],
+    ctx?: Transaction<ClientSession>,
+    opts?: {
+      upsert?: boolean;
+      upsertOptions?: UpsertOptions<T>;
+      loggerContext?: LoggingOptions;
+      collation?: CollationOptions;
+      indexHint?: string | Dictionary;
+      maxTimeMS?: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<U> {
+    await this.ensureConnection();
+    const { upsert, upsertOptions, loggerContext, collation, indexHint, maxTimeMS, signal } = opts ?? {};
+    const collection = this.getCollectionName(entityName);
+    const logger = this.config.getLogger();
+    const options: Dictionary = ctx ? { session: ctx, upsert } : { upsert };
+
+    if (options.upsert === undefined) {
+      delete options.upsert;
+    }
+
+    if (signal) {
+      options.signal = signal;
+    }
+
+    const now = Date.now();
+    let res: InsertOneResult<T> | InsertManyResult<T> | UpdateResult | DeleteResult | BulkWriteResult | number;
+    let query: string;
+    const log = (msg: () => string) => (logger.isEnabled('query') ? msg() : '');
+
+    switch (method) {
+      case 'insertOne':
+        Object.keys(data as Dictionary)
+          .filter(k => typeof (data as Dictionary)[k] === 'undefined')
+          .forEach(k => delete (data as Dictionary)[k]);
+        query = log(
+          () => `db.getCollection('${collection}').insertOne(${this.logObject(data)}, ${this.logObject(options)});`,
+        );
+        res = await this.rethrow(
+          this.getCollection(entityName).insertOne(data as OptionalUnlessRequiredId<T>, options),
+          query,
+        );
+        break;
+      case 'insertMany':
+        (data as Dictionary[]).forEach(data =>
+          Object.keys(data)
+            .filter(k => typeof data[k] === 'undefined')
+            .forEach(k => delete data[k]),
+        );
+        query = log(
+          () => `db.getCollection('${collection}').insertMany(${this.logObject(data)}, ${this.logObject(options)});`,
+        );
+        res = await this.rethrow(
+          this.getCollection(entityName).insertMany(data as OptionalUnlessRequiredId<T>[], options),
+          query,
+        );
+        break;
+      case 'updateMany': {
+        const payload = Object.keys(data!).every(k => k.startsWith('$'))
+          ? data
+          : this.createUpdatePayload(data as T, upsertOptions);
+        query = log(
+          () =>
+            `db.getCollection('${collection}').updateMany(${this.logObject(where)}, ${this.logObject(payload)}, ${this.logObject(options)});`,
+        );
+        res = (await this.rethrow(
+          this.getCollection(entityName).updateMany(where as Filter<T>, payload as UpdateFilter<T>, options),
+          query,
+        )) as UpdateResult;
+        break;
+      }
+      case 'bulkUpdateMany': {
+        query = log(
+          () => `bulk = db.getCollection('${collection}').initializeUnorderedBulkOp(${this.logObject(options)});\n`,
+        );
+        const bulk = this.getCollection(entityName).initializeUnorderedBulkOp(options);
+
+        (data as T[]).forEach((row, idx) => {
+          const id = (where as Dictionary[])[idx];
+          const cond = Utils.isPlainObject(id) ? id : { _id: id };
+          const doc = this.createUpdatePayload(row, upsertOptions) as Dictionary;
+
+          if (upsert) {
+            if (Utils.isEmpty(cond)) {
+              query += log(() => `bulk.insert(${this.logObject(row)});\n`);
+              bulk.insert(row);
+            } else {
+              query += log(() => `bulk.find(${this.logObject(cond)}).upsert().update(${this.logObject(doc)});\n`);
+              bulk.find(cond).upsert().update(doc);
+            }
+
+            return;
+          }
+
+          query += log(() => `bulk.find(${this.logObject(cond)}).update(${this.logObject(doc)});\n`);
+          bulk.find(cond).update(doc);
+        });
+
+        query += log(() => `bulk.execute()`);
+        res = await this.rethrow(bulk.execute(), query);
+        break;
+      }
+      case 'deleteMany':
+      case 'countDocuments':
+        if (method === 'countDocuments') {
+          if (collation) {
+            options.collation = collation;
+          }
+
+          if (indexHint != null) {
+            options.hint = indexHint;
+          }
+
+          if (maxTimeMS != null) {
+            options.maxTimeMS = maxTimeMS;
+          }
+        }
+
+        query = log(
+          () => `db.getCollection('${collection}').${method}(${this.logObject(where)}, ${this.logObject(options)});`,
+        );
+        res = await this.rethrow(
+          this.getCollection(entityName)[method](where as Filter<T>, options) as Promise<number>,
+          query,
+        );
+        break;
+    }
+
+    this.logQuery(query!, { took: Date.now() - now, ...loggerContext });
+
+    if (method === 'countDocuments') {
+      return res as unknown as U;
+    }
+
+    return this.transformResult<T>(res) as U;
+  }
+
+  private rethrow<T>(promise: Promise<T>, query: string): Promise<T> {
+    return promise.catch(e => {
+      this.logQuery(query, { level: 'error' });
+      e.message += '\nQuery: ' + query;
+      throw e;
+    });
+  }
+
+  private createUpdatePayload<T extends object>(
+    row: T,
+    upsertOptions?: UpsertOptions<T>,
+  ): { $set?: unknown[]; $unset?: unknown[]; $setOnInsert?: unknown[]; $inc?: unknown[] } {
+    row = { ...row };
+    const doc: Dictionary = { $set: row };
+    Utils.keys(row).forEach(k => {
+      if (k.toString().startsWith('$')) {
+        doc[k as keyof typeof doc] = row[k];
+        delete row[k];
+      }
+    });
+    const $unset: { [K: PropertyKey]: unknown } = {};
+    const $inc: { [K: PropertyKey]: number } = {};
+
+    for (const k of Utils.keys(row)) {
+      const item = row[k] as Dictionary;
+
+      if (typeof item === 'undefined') {
+        $unset[k] = '';
+        delete row[k];
+        continue;
+      }
+
+      if (Utils.isPlainObject(item) && '$inc' in item) {
+        $inc[k] = item.$inc;
+        delete row[k];
+      }
+    }
+
+    if (upsertOptions) {
+      if (upsertOptions.onConflictAction === 'ignore') {
+        doc.$setOnInsert = doc.$set;
+        delete doc.$set;
+      }
+
+      if (upsertOptions.onConflictMergeFields) {
+        doc.$setOnInsert = {};
+
+        upsertOptions.onConflictMergeFields.forEach(f => {
+          doc.$setOnInsert[f] = doc.$set[f];
+          delete doc.$set[f];
+        });
+
+        const { $set, $setOnInsert } = doc;
+        doc.$set = $setOnInsert;
+        doc.$setOnInsert = $set;
+      } else if (upsertOptions.onConflictExcludeFields) {
+        doc.$setOnInsert = {};
+
+        upsertOptions.onConflictExcludeFields.forEach(f => {
+          doc.$setOnInsert[f] = doc.$set[f];
+          delete doc.$set[f];
+        });
+      }
+    }
+
+    if (Utils.hasObjectKeys($unset)) {
+      doc.$unset = $unset;
+    }
+
+    if (Utils.hasObjectKeys($inc)) {
+      doc.$inc = $inc;
+    }
+
+    if (!Utils.hasObjectKeys(doc.$set)) {
+      delete doc.$set;
+    }
+
+    return doc;
+  }
+
+  private transformResult<T>(res: any): QueryResult<T> {
+    return {
+      affectedRows: res.modifiedCount || res.deletedCount || res.insertedCount || 0,
+      insertId: res.insertedId ?? res.insertedIds?.[0],
+      insertedIds: res.insertedIds ? Object.values(res.insertedIds) : undefined,
+    };
+  }
+
+  private getCollectionName<T>(entityName: EntityName<T> | string): string {
+    const meta = this.metadata.find(entityName as EntityName<T>);
+    return meta ? meta.collection : Utils.className(entityName);
+  }
+
+  private logObject(o: any): string {
+    if (o?.session) {
+      o = { ...o, session: `[ClientSession]` };
+    }
+
+    return inspect(o, { depth: 5, compact: true, breakLength: 300 });
+  }
+}
+
+/** Options shared across MongoDB query operations. */
+export interface MongoQueryOptions {
+  collation?: CollationOptions;
+  indexHint?: string | Dictionary;
+  maxTimeMS?: number;
+  allowDiskUse?: boolean;
+  /**
+   * Forwarded to the MongoDB driver. When fired, the driver aborts the in-flight operation
+   * by closing the underlying socket; the rejection reason is `signal.reason`.
+   */
+  signal?: AbortSignal;
+}
+
+/** Options for MongoDB find operations. */
+export interface MongoFindOptions<T extends object> extends MongoQueryOptions {
+  orderBy?: QueryOrderMap<T> | QueryOrderMap<T>[];
+  limit?: number;
+  offset?: number;
+  fields?: string[];
+  chunkSize?: number;
+  ctx?: Transaction<ClientSession>;
+  loggerContext?: LoggingOptions;
+}
+
+/** Options for MongoDB count operations. */
+export interface MongoCountOptions extends Omit<MongoQueryOptions, 'allowDiskUse'> {
+  ctx?: Transaction<ClientSession>;
+  loggerContext?: LoggingOptions;
+}

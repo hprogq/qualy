@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GH #4919 > 0. create schema 1`] = `
+{
+  "down": "drop table if exists "user" cascade;
+",
+  "up": "create table "user" ("id" serial primary key, "delivered_at" timestamptz not null);
+",
+}
+`;
+
+exports[`GH #4919 > 1. rename column 1`] = `
+{
+  "down": "alter table "user" drop column "canceled_at", drop column "arrived_at";
+alter table "user" rename column "completed_at" to "delivered_at";
+",
+  "up": "alter table "user" add "canceled_at" timestamptz not null, add "arrived_at" timestamptz not null;
+alter table "user" rename column "delivered_at" to "completed_at";
+",
+}
+`;

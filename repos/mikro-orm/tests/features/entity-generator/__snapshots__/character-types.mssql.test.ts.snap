@@ -1,0 +1,51 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`character-types 1`] = `
+[
+  "import { defineEntity, p } from '@mikro-orm/core';
+
+export class Test {
+  id!: number;
+  firstName?: string;
+  middleInitial?: string;
+  lastName?: string;
+  gender?: string;
+  currency?: string;
+  locale?: string;
+  bloodType?: string;
+  motherInitial?: string;
+  spouceInitial?: string;
+  notes?: string;
+  favoriteLetter?: string;
+  governmentId?: string;
+  descr?: string;
+  fatherInitial?: string;
+  fatherInGroup?: string;
+  memberInGroup?: string;
+}
+
+export const TestSchema = defineEntity({
+  class: Test,
+  properties: {
+    id: p.integer().primary(),
+    firstName: p.string().columnType('varchar(max)').nullable(),
+    middleInitial: p.string().columnType('char(1)').nullable(),
+    lastName: p.string().columnType('varchar(255)').nullable(),
+    gender: p.character().nullable(),
+    currency: p.character().length(2).nullable(),
+    locale: p.string().columnType('varchar(45)').nullable(),
+    bloodType: p.string().columnType('char(2)').nullable(),
+    motherInitial: p.string().columnType('char(1)').nullable(),
+    spouceInitial: p.string().columnType('varchar(1)').nullable(),
+    notes: p.string().length(-1).nullable(),
+    favoriteLetter: p.string().length(1).nullable(),
+    governmentId: p.string().length(10).nullable(),
+    descr: p.string().nullable(),
+    fatherInitial: p.character().nullable(),
+    fatherInGroup: p.string().columnType('varchar(1)').nullable(),
+    memberInGroup: p.string().length(1).nullable(),
+  },
+});
+",
+]
+`;

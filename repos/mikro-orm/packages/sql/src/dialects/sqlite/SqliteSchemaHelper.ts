@@ -1,0 +1,922 @@
+import { type Connection, type Dictionary, type Transaction, Utils } from '@mikro-orm/core';
+import type { AbstractSqlConnection } from '../../AbstractSqlConnection.js';
+import { SchemaHelper } from '../../schema/SchemaHelper.js';
+import type { CheckDef, Column, IndexDef, Table, TableDifference, SqlTriggerDef } from '../../typings.js';
+import type { DatabaseTable } from '../../schema/DatabaseTable.js';
+import type { DatabaseSchema } from '../../schema/DatabaseSchema.js';
+
+/** SpatiaLite system views that should be automatically ignored */
+const SPATIALITE_VIEWS = [
+  'geometry_columns',
+  'spatial_ref_sys',
+  'views_geometry_columns',
+  'virts_geometry_columns',
+  'geom_cols_ref_sys',
+  'spatial_ref_sys_aux',
+  'vector_layers',
+  'vector_layers_auth',
+  'vector_layers_field_infos',
+  'vector_layers_statistics',
+  'ElementaryGeometries',
+];
+
+export class SqliteSchemaHelper extends SchemaHelper {
+  private static readonly PARTIAL_WHERE_RE = /\swhere\s+(.+?)\s*$/is;
+
+  override disableForeignKeysSQL(): string {
+    return 'pragma foreign_keys = off;';
+  }
+
+  override enableForeignKeysSQL(): string {
+    return 'pragma foreign_keys = on;';
+  }
+
+  override supportsSchemaConstraints(): boolean {
+    return false;
+  }
+
+  override getCreateNamespaceSQL(name: string): string {
+    return '';
+  }
+
+  override getDropNamespaceSQL(name: string): string {
+    return '';
+  }
+
+  override async tableExists(
+    connection: AbstractSqlConnection,
+    tableName: string,
+    _schemaName: string | undefined,
+    ctx?: Transaction,
+  ): Promise<boolean> {
+    const rows = await connection.execute<{ name: string }[]>(
+      `select name from sqlite_master where type = 'table' and name = ${this.platform.quoteValue(tableName)}`,
+      [],
+      'all',
+      ctx,
+    );
+    return rows.length > 0;
+  }
+
+  override getListTablesSQL(): string {
+    return (
+      `select name as table_name from sqlite_master where type = 'table' and name != 'sqlite_sequence' and name != 'geometry_columns' and name != 'spatial_ref_sys' ` +
+      `union all select name as table_name from sqlite_temp_master where type = 'table' order by name`
+    );
+  }
+
+  override async getAllTables(
+    connection: AbstractSqlConnection,
+    schemas?: string[],
+    ctx?: Transaction,
+  ): Promise<Table[]> {
+    const databases = await this.getDatabaseList(connection, ctx);
+    const hasAttachedDbs = databases.length > 1; // More than just 'main'
+
+    // If no attached databases, use original behavior
+    if (!hasAttachedDbs && !schemas?.length) {
+      return connection.execute<Table[]>(this.getListTablesSQL(), [], 'all', ctx);
+    }
+
+    // With attached databases, query each one
+    const targetSchemas = schemas?.length ? schemas : databases;
+    const allTables: Table[] = [];
+
+    for (const dbName of targetSchemas) {
+      const prefix = this.getSchemaPrefix(dbName);
+      const tables = await connection.execute<{ name: string }[]>(
+        `select name from ${prefix}sqlite_master where type = 'table' ` +
+          `and name != 'sqlite_sequence' and name != 'geometry_columns' and name != 'spatial_ref_sys' order by name`,
+        [],
+        'all',
+        ctx,
+      );
+      for (const t of tables) {
+        allTables.push({ table_name: t.name, schema_name: dbName });
+      }
+    }
+    return allTables;
+  }
+
+  override async getNamespaces(connection: AbstractSqlConnection, ctx?: Transaction): Promise<string[]> {
+    return this.getDatabaseList(connection, ctx);
+  }
+
+  private getIgnoredViewsCondition(): string {
+    return SPATIALITE_VIEWS.map(v => `name != '${v}'`).join(' and ');
+  }
+
+  override getListViewsSQL(): string {
+    return `select name as view_name, sql as view_definition from sqlite_master where type = 'view' and ${this.getIgnoredViewsCondition()} order by name`;
+  }
+
+  override async loadViews(
+    schema: DatabaseSchema,
+    connection: AbstractSqlConnection,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<void> {
+    const databases = await this.getDatabaseList(connection, ctx);
+    const hasAttachedDbs = databases.length > 1; // More than just 'main'
+
+    // If no attached databases and no specific schema, use original behavior
+    if (!hasAttachedDbs && !schemaName) {
+      const views = await connection.execute<{ view_name: string; view_definition: string }[]>(
+        this.getListViewsSQL(),
+        [],
+        'all',
+        ctx,
+      );
+      for (const view of views) {
+        schema.addView(view.view_name, schemaName, this.extractViewDefinition(view.view_definition));
+      }
+      return;
+    }
+
+    // With attached databases, query each one
+    /* v8 ignore next - schemaName branch not commonly used */
+    const targetDbs = schemaName ? [schemaName] : databases;
+    for (const dbName of targetDbs) {
+      const prefix = this.getSchemaPrefix(dbName);
+      const views = await connection.execute<{ view_name: string; view_definition: string }[]>(
+        `select name as view_name, sql as view_definition from ${prefix}sqlite_master where type = 'view' and ${this.getIgnoredViewsCondition()} order by name`,
+        [],
+        'all',
+        ctx,
+      );
+      for (const view of views) {
+        schema.addView(view.view_name, dbName, this.extractViewDefinition(view.view_definition));
+      }
+    }
+  }
+
+  override getDropDatabaseSQL(name: string): string {
+    if (name === ':memory:') {
+      return '';
+    }
+
+    /* v8 ignore next */
+    return `drop database if exists ${this.quote(name)}`;
+  }
+
+  override async loadInformationSchema(
+    schema: DatabaseSchema,
+    connection: AbstractSqlConnection,
+    tables: Table[],
+    schemas?: string[],
+    ctx?: Transaction,
+  ): Promise<void> {
+    for (const t of tables) {
+      const table = schema.addTable(t.table_name, t.schema_name, t.table_comment);
+      const cols = await this.getColumns(connection, table.name, table.schema, ctx);
+      const indexes = await this.getIndexes(connection, table.name, table.schema, ctx);
+      const checks = await this.getChecks(connection, table.name, table.schema, ctx);
+      const pks = await this.getPrimaryKeys(connection, indexes, table.name, table.schema, ctx);
+      const fks = await this.getForeignKeys(connection, table.name, table.schema, ctx);
+      const enums = this.extractEnumValuesFromChecks(checks);
+      const triggers = await this.getTableTriggers(connection, table.name);
+      table.init(cols, indexes, checks, pks, fks, enums);
+      table.setTriggers(triggers);
+    }
+  }
+
+  override createTable(table: DatabaseTable, alter?: boolean): string[] {
+    let sql = `create table ${table.getQuotedName()} (`;
+
+    const columns = table.getColumns();
+    const lastColumn = columns[columns.length - 1].name;
+
+    for (const column of columns) {
+      const col = this.createTableColumn(column, table);
+
+      if (col) {
+        const comma = column.name === lastColumn ? '' : ', ';
+        sql += col + comma;
+      }
+    }
+
+    const primaryKey = table.getPrimaryKey();
+    const createPrimary = primaryKey?.composite;
+
+    if (createPrimary && primaryKey) {
+      sql += `, primary key (${primaryKey.columnNames.map(c => this.quote(c)).join(', ')})`;
+    }
+
+    const parts: string[] = [];
+
+    for (const fk of Object.values(table.getForeignKeys())) {
+      parts.push(this.createForeignKey(table, fk, false));
+    }
+
+    for (const check of table.getChecks()) {
+      const sql = `constraint ${this.quote(check.name)} check (${check.expression})`;
+      parts.push(sql);
+    }
+
+    if (parts.length > 0) {
+      sql += ', ' + parts.join(', ');
+    }
+
+    sql += ')';
+
+    if (table.comment) {
+      sql += ` /* ${table.comment} */`;
+    }
+
+    const ret: string[] = [];
+    this.append(ret, sql);
+
+    for (const index of table.getIndexes()) {
+      this.append(ret, this.createIndex(index, table));
+    }
+
+    for (const trigger of table.getTriggers()) {
+      this.append(ret, this.createTrigger(table, trigger));
+    }
+
+    return ret;
+  }
+
+  override createTableColumn(
+    column: Column,
+    table: DatabaseTable,
+    _changedProperties?: Set<string>,
+  ): string | undefined {
+    const col = [this.quote(column.name)];
+    const checks = table.getChecks();
+    const check = checks.findIndex(check => check.columnName === column.name);
+    const useDefault = column.default != null && column.default !== 'null';
+
+    let columnType = column.type;
+
+    if (column.autoincrement) {
+      columnType = 'integer';
+    }
+
+    if (column.generated) {
+      columnType += ` generated always as ${column.generated}`;
+    }
+
+    col.push(columnType);
+
+    if (check !== -1) {
+      col.push(`check (${checks[check].expression as string})`);
+      checks.splice(check, 1);
+    }
+
+    Utils.runIfNotEmpty(() => col.push(this.getCollateSQL(column.collation!)), column.collation);
+    Utils.runIfNotEmpty(() => col.push('null'), column.nullable);
+    Utils.runIfNotEmpty(() => col.push('not null'), !column.nullable && !column.generated);
+    Utils.runIfNotEmpty(() => col.push('primary key'), column.primary);
+    Utils.runIfNotEmpty(() => col.push('autoincrement'), column.autoincrement);
+    Utils.runIfNotEmpty(() => col.push(`default ${column.default}`), useDefault);
+
+    return col.join(' ');
+  }
+
+  override getAddColumnsSQL(table: DatabaseTable, columns: Column[], diff?: TableDifference): string[] {
+    return columns.map(column => {
+      let sql = `alter table ${table.getQuotedName()} add column ${this.createTableColumn(column, table)!}`;
+
+      const foreignKey = Object.values(diff!.addedForeignKeys).find(
+        fk => fk.columnNames.length === 1 && fk.columnNames[0] === column.name,
+      );
+
+      if (foreignKey && this.options.createForeignKeyConstraints) {
+        delete diff!.addedForeignKeys[foreignKey.constraintName];
+        sql += ' ' + this.createForeignKey(diff!.toTable, foreignKey, false, true);
+      }
+
+      return sql;
+    });
+  }
+
+  override dropForeignKey(tableName: string, constraintName: string): string {
+    return '';
+  }
+
+  override getDropColumnsSQL(tableName: string, columns: Column[], schemaName?: string): string {
+    /* v8 ignore next */
+    const name = this.quote(
+      (schemaName && schemaName !== this.platform.getDefaultSchemaName() ? schemaName + '.' : '') + tableName,
+    );
+
+    return columns
+      .map(column => {
+        return `alter table ${name} drop column ${this.quote(column.name)}`;
+      })
+      .join(';\n');
+  }
+
+  override getCreateIndexSQL(tableName: string, index: IndexDef): string {
+    /* v8 ignore next */
+    if (index.expression) {
+      return index.expression;
+    }
+
+    // SQLite requires: CREATE INDEX schema.index_name ON table_name (columns)
+    // NOT: CREATE INDEX index_name ON schema.table_name (columns)
+    const [schemaName, rawTableName] = this.splitTableName(tableName);
+    const quotedTableName = this.quote(rawTableName);
+
+    // If there's a schema, prefix the index name with it
+    let keyName: string;
+    if (schemaName && schemaName !== 'main') {
+      keyName = `${this.quote(schemaName)}.${this.quote(index.keyName)}`;
+    } else {
+      keyName = this.quote(index.keyName);
+    }
+
+    const sqlPrefix = `create ${index.unique ? 'unique ' : ''}index ${keyName} on ${quotedTableName}`;
+
+    /* v8 ignore next 4 */
+    if (index.columnNames.some(column => column.includes('.'))) {
+      // JSON columns can have unique index but not unique constraint, and we need to distinguish those, so we can properly drop them
+      const columns = this.platform.getJsonIndexDefinition(index);
+      return `${sqlPrefix} (${columns.join(', ')})${this.getIndexWhereClause(index)}`;
+    }
+
+    // Use getIndexColumns to support advanced options like sort order and collation
+    return `${sqlPrefix} (${this.getIndexColumns(index)})${this.getIndexWhereClause(index)}`;
+  }
+
+  private parseTableDefinition(sql: string, cols: any[]) {
+    const columns: Dictionary<{ name: string; definition: string }> = {};
+    const constraints: string[] = [];
+
+    // extract all columns definitions
+    let columnsDef = new RegExp(`create table [\`"']?.*?[\`"']? \\((.*)\\)`, 'i').exec(sql.replaceAll('\n', ''))?.[1];
+
+    /* v8 ignore next */
+    if (columnsDef) {
+      if (columnsDef.includes(', constraint ')) {
+        constraints.push(...columnsDef.substring(columnsDef.indexOf(', constraint') + 2).split(', '));
+        columnsDef = columnsDef.substring(0, columnsDef.indexOf(', constraint'));
+      }
+
+      for (let i = cols.length - 1; i >= 0; i--) {
+        const col = cols[i];
+        const re = ` *, *[\`"']?${col.name}[\`"']? (.*)`;
+        const columnDef = new RegExp(re, 'i').exec(columnsDef);
+
+        if (columnDef) {
+          columns[col.name] = { name: col.name, definition: columnDef[1] };
+          columnsDef = columnsDef.substring(0, columnDef.index);
+        }
+      }
+    }
+
+    return { columns, constraints };
+  }
+
+  /**
+   * Returns schema prefix for pragma and sqlite_master queries.
+   * Returns empty string for main database (no prefix needed).
+   */
+  private getSchemaPrefix(schemaName?: string): string {
+    if (!schemaName || schemaName === 'main') {
+      return '';
+    }
+    return `${this.platform.quoteIdentifier(schemaName)}.`;
+  }
+
+  /**
+   * Returns all database names excluding 'temp'.
+   */
+  private async getDatabaseList(connection: AbstractSqlConnection, ctx?: Transaction): Promise<string[]> {
+    const databases = await connection.execute<{ name: string }[]>('pragma database_list', [], 'all', ctx);
+    return databases.filter(d => d.name !== 'temp').map(d => d.name);
+  }
+
+  /**
+   * Extracts the SELECT part from a CREATE VIEW statement.
+   */
+  private extractViewDefinition(viewDefinition: string): string {
+    const match = /create\s+view\s+[`"']?\w+[`"']?\s+as\s+(.*)/is.exec(viewDefinition);
+    /* v8 ignore next - fallback for non-standard view definitions */
+    return match ? match[1] : viewDefinition;
+  }
+
+  private async getColumns(
+    connection: AbstractSqlConnection,
+    tableName: string,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<any[]> {
+    const prefix = this.getSchemaPrefix(schemaName);
+    const columns = await connection.execute<any[]>(`pragma ${prefix}table_xinfo('${tableName}')`, [], 'all', ctx);
+    const sql = `select sql from ${prefix}sqlite_master where type = ? and name = ?`;
+    const tableDefinition = await connection.execute<{ sql: string }>(sql, ['table', tableName], 'get', ctx);
+    const composite = columns.reduce((count, col) => count + (col.pk ? 1 : 0), 0) > 1;
+    // there can be only one, so naive check like this should be enough
+    const hasAutoincrement = tableDefinition.sql.toLowerCase().includes('autoincrement');
+    const { columns: columnDefinitions } = this.parseTableDefinition(tableDefinition.sql, columns);
+
+    return columns.map(col => {
+      const mappedType = connection.getPlatform().getMappedType(col.type);
+      let generated: string | undefined;
+
+      if (col.hidden > 1) {
+        /* v8 ignore next */
+        const storage = col.hidden === 2 ? 'virtual' : 'stored';
+        const re = new RegExp(`(generated always)? as \\((.*)\\)( ${storage})?$`, 'i');
+        const match = columnDefinitions[col.name].definition.match(re);
+
+        if (match) {
+          generated = `${match[2]} ${storage}`;
+        }
+      }
+
+      // Strip string literals first (their contents could contain unbalanced parens), then
+      // repeatedly strip the innermost balanced `(...)` until none remain — a single pass would
+      // only remove the innermost level, leaving `collate` tokens inside nested CHECK/default
+      // expressions exposed to the column-collation regex.
+      let cleanDef = (columnDefinitions[col.name]?.definition ?? '').replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
+      let prev: string;
+      do {
+        prev = cleanDef;
+        cleanDef = cleanDef.replace(/\([^()]*\)/g, '');
+      } while (cleanDef !== prev);
+      const collationMatch = /\bcollate\s+([`"']?)([\w\-.]+)\1/i.exec(cleanDef);
+
+      return {
+        name: col.name,
+        type: col.type,
+        default: this.wrapExpressionDefault(col.dflt_value),
+        nullable: !col.notnull,
+        primary: !!col.pk,
+        mappedType,
+        unsigned: false,
+        autoincrement: !composite && col.pk && this.platform.isNumericColumn(mappedType) && hasAutoincrement,
+        generated,
+        collation: collationMatch ? collationMatch[2] : undefined,
+      };
+    });
+  }
+
+  /**
+   * SQLite strips outer parentheses from expression defaults (`DEFAULT (expr)` → `expr` in pragma).
+   * We need to add them back so they match what we generate in DDL.
+   */
+  private wrapExpressionDefault(value: string | null): string | null {
+    if (value == null) {
+      return null;
+    }
+
+    // simple values that are returned as-is from pragma (no wrapping needed)
+    if (
+      /^-?\d/.test(value) ||
+      /^[xX]'/.test(value) ||
+      value.startsWith("'") ||
+      value.startsWith('"') ||
+      value.startsWith('(')
+    ) {
+      return value;
+    }
+
+    const lower = value.toLowerCase();
+
+    if (['null', 'true', 'false', 'current_timestamp', 'current_date', 'current_time'].includes(lower)) {
+      return value;
+    }
+
+    // everything else is an expression that had its outer parens stripped
+    return `(${value})`;
+  }
+
+  /** Extract enum values from `IN (…)` CHECKs only — a `!= 'x'` check would otherwise be misread as a one-item enum. */
+  private extractEnumValuesFromChecks(checks: CheckDef[]): Dictionary<string[]> {
+    const result: Dictionary<string[]> = {};
+
+    for (const check of checks) {
+      if (!check.columnName || typeof check.expression !== 'string') {
+        continue;
+      }
+
+      const inClause = /\bin\s*\(([^)]*)\)/i.exec(check.expression);
+      if (!inClause) {
+        continue;
+      }
+
+      const items = [...inClause[1].matchAll(/'((?:[^']|'')*)'/g)].map(m => m[1].replace(/''/g, "'"));
+      if (items.length > 0) {
+        result[check.columnName] = items;
+      }
+    }
+
+    return result;
+  }
+
+  override async getPrimaryKeys(
+    connection: AbstractSqlConnection,
+    indexes: IndexDef[],
+    tableName: string,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<string[]> {
+    const prefix = this.getSchemaPrefix(schemaName);
+    const sql = `pragma ${prefix}table_info(\`${tableName}\`)`;
+    const cols = await connection.execute<{ pk: number; name: string }[]>(sql, [], 'all', ctx);
+
+    return cols.filter(col => !!col.pk).map(col => col.name);
+  }
+
+  private async getIndexes(
+    connection: AbstractSqlConnection,
+    tableName: string,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<IndexDef[]> {
+    const prefix = this.getSchemaPrefix(schemaName);
+    const sql = `pragma ${prefix}table_info(\`${tableName}\`)`;
+    const cols = await connection.execute<{ pk: number; name: string }[]>(sql, [], 'all', ctx);
+    const indexes = await connection.execute<any[]>(`pragma ${prefix}index_list(\`${tableName}\`)`, [], 'all', ctx);
+    // sqlite_master.sql holds the original CREATE INDEX statement — the only place a partial
+    // index's WHERE predicate is preserved (PRAGMA index_* don't expose it).
+    const indexSqls = await connection.execute<{ name: string; sql: string | null }[]>(
+      `select name, sql from ${prefix}sqlite_master where type = 'index' and tbl_name = ?`,
+      [tableName],
+      'all',
+      ctx,
+    );
+    const wherePredicates = new Map<string, string>();
+    for (const row of indexSqls) {
+      const match = row.sql && SqliteSchemaHelper.PARTIAL_WHERE_RE.exec(row.sql);
+      if (match) {
+        wherePredicates.set(row.name, match[1].trim());
+      }
+    }
+
+    const ret: IndexDef[] = [];
+
+    for (const col of cols.filter(c => c.pk)) {
+      ret.push({
+        columnNames: [col.name],
+        keyName: 'primary',
+        constraint: true,
+        unique: true,
+        primary: true,
+      });
+    }
+
+    for (const index of indexes.filter(index => !this.isImplicitIndex(index.name))) {
+      const res = await connection.execute<{ name: string }[]>(
+        `pragma ${prefix}index_info(\`${index.name}\`)`,
+        [],
+        'all',
+        ctx,
+      );
+      const where = wherePredicates.get(index.name);
+      ret.push(
+        ...res.map(row => ({
+          columnNames: [row.name],
+          keyName: index.name,
+          unique: !!index.unique,
+          constraint: !!index.unique,
+          primary: false,
+          ...(where ? { where } : {}),
+        })),
+      );
+    }
+
+    return this.mapIndexes(ret);
+  }
+
+  private async getChecks(
+    connection: AbstractSqlConnection,
+    tableName: string,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<CheckDef[]> {
+    const { columns, constraints } = await this.getColumnDefinitions(connection, tableName, schemaName, ctx);
+    const checks: CheckDef[] = [];
+
+    for (const key of Object.keys(columns)) {
+      const column = columns[key];
+      const expression = / (check \((.*)\))/i.exec(column.definition);
+
+      if (expression) {
+        checks.push({
+          name: this.platform.getConfig().getNamingStrategy().indexName(tableName, [column.name], 'check'),
+          definition: expression[1],
+          expression: expression[2],
+          columnName: column.name,
+        });
+      }
+    }
+
+    for (const constraint of constraints) {
+      const expression = /constraint *[`"']?(.*?)[`"']? * (check \((.*)\))/i.exec(constraint);
+
+      if (expression) {
+        checks.push({
+          name: expression[1],
+          definition: expression[2],
+          expression: expression[3],
+        });
+      }
+    }
+
+    return checks;
+  }
+
+  private async getColumnDefinitions(
+    connection: AbstractSqlConnection,
+    tableName: string,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<{ columns: Dictionary<{ name: string; definition: string }>; constraints: string[] }> {
+    const prefix = this.getSchemaPrefix(schemaName);
+    const columns = await connection.execute<any[]>(`pragma ${prefix}table_xinfo('${tableName}')`, [], 'all', ctx);
+    const sql = `select sql from ${prefix}sqlite_master where type = ? and name = ?`;
+    const tableDefinition = await connection.execute<{ sql: string }>(sql, ['table', tableName], 'get', ctx);
+
+    return this.parseTableDefinition(tableDefinition.sql, columns);
+  }
+
+  private async getForeignKeys(
+    connection: AbstractSqlConnection,
+    tableName: string,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<Dictionary> {
+    const { constraints } = await this.getColumnDefinitions(connection, tableName, schemaName, ctx);
+    const prefix = this.getSchemaPrefix(schemaName);
+    const fks = await connection.execute<any[]>(`pragma ${prefix}foreign_key_list(\`${tableName}\`)`, [], 'all', ctx);
+    const qualifiedTableName = schemaName ? `${schemaName}.${tableName}` : tableName;
+
+    return fks.reduce((ret, fk: any) => {
+      const constraintName = this.platform.getIndexName(tableName, [fk.from], 'foreign');
+      const constraint = constraints?.find(c => c.includes(constraintName));
+      ret[constraintName] = {
+        constraintName,
+        columnName: fk.from,
+        columnNames: [fk.from],
+        localTableName: qualifiedTableName,
+        referencedTableName: fk.table,
+        referencedColumnName: fk.to,
+        referencedColumnNames: [fk.to],
+        updateRule: fk.on_update.toLowerCase(),
+        deleteRule: fk.on_delete.toLowerCase(),
+        deferMode: constraint?.match(/ deferrable initially (deferred|immediate)/i)?.[1].toLowerCase(),
+      };
+
+      return ret;
+    }, {});
+  }
+
+  override getManagementDbName(): string {
+    return '';
+  }
+
+  override getCreateDatabaseSQL(name: string): string {
+    return '';
+  }
+
+  override async databaseExists(connection: Connection, name: string): Promise<boolean> {
+    const tables = await connection.execute(this.getListTablesSQL());
+    return tables.length > 0;
+  }
+
+  /**
+   * Implicit indexes will be ignored when diffing
+   */
+  isImplicitIndex(name: string): boolean {
+    // Ignore indexes with reserved names, e.g. autoindexes
+    return name.startsWith('sqlite_');
+  }
+
+  override dropIndex(table: string, index: IndexDef, oldIndexName = index.keyName): string {
+    return `drop index ${this.quote(oldIndexName)}`;
+  }
+
+  /**
+   * SQLite does not support schema-qualified table names in REFERENCES clauses.
+   * Foreign key references can only point to tables in the same database.
+   */
+  override getReferencedTableName(referencedTableName: string, schema?: string): string {
+    const [schemaName, tableName] = this.splitTableName(referencedTableName);
+    // Strip any schema prefix - SQLite REFERENCES clause doesn't support it
+    return tableName;
+  }
+
+  override alterTable(diff: TableDifference, safe?: boolean): string[] {
+    const ret: string[] = [];
+    const [schemaName, tableName] = this.splitTableName(diff.name);
+
+    if (
+      Utils.hasObjectKeys(diff.removedChecks) ||
+      Utils.hasObjectKeys(diff.changedChecks) ||
+      Utils.hasObjectKeys(diff.changedForeignKeys) ||
+      Utils.hasObjectKeys(diff.changedColumns)
+    ) {
+      return this.getAlterTempTableSQL(diff);
+    }
+
+    for (const index of Object.values(diff.removedIndexes)) {
+      this.append(ret, this.dropIndex(diff.name, index));
+    }
+
+    for (const index of Object.values(diff.changedIndexes)) {
+      this.append(ret, this.dropIndex(diff.name, index));
+    }
+
+    /* v8 ignore next */
+    if (!safe && Object.values(diff.removedColumns).length > 0) {
+      this.append(ret, this.getDropColumnsSQL(tableName, Object.values(diff.removedColumns), schemaName));
+    }
+
+    if (Object.values(diff.addedColumns).length > 0) {
+      this.append(ret, this.getAddColumnsSQL(diff.toTable, Object.values(diff.addedColumns), diff));
+    }
+
+    if (Utils.hasObjectKeys(diff.addedForeignKeys) || Utils.hasObjectKeys(diff.addedChecks)) {
+      return this.getAlterTempTableSQL(diff);
+    }
+
+    for (const [oldColumnName, column] of Object.entries(diff.renamedColumns)) {
+      this.append(ret, this.getRenameColumnSQL(tableName, oldColumnName, column, schemaName));
+    }
+
+    for (const index of Object.values(diff.addedIndexes)) {
+      ret.push(this.createIndex(index, diff.toTable));
+    }
+
+    for (const index of Object.values(diff.changedIndexes)) {
+      ret.push(this.createIndex(index, diff.toTable, true));
+    }
+
+    for (const [oldIndexName, index] of Object.entries(diff.renamedIndexes)) {
+      if (index.unique) {
+        this.append(ret, this.dropIndex(diff.name, index, oldIndexName));
+        this.append(ret, this.createIndex(index, diff.toTable));
+      } else {
+        this.append(ret, this.getRenameIndexSQL(diff.name, index, oldIndexName));
+      }
+    }
+
+    if (!safe) {
+      for (const trigger of Object.values(diff.removedTriggers)) {
+        this.append(ret, this.dropTrigger(diff.toTable, trigger));
+      }
+    }
+
+    for (const trigger of Object.values(diff.changedTriggers)) {
+      this.append(ret, this.dropTrigger(diff.toTable, trigger));
+      this.append(ret, this.createTrigger(diff.toTable, trigger));
+    }
+
+    for (const trigger of Object.values(diff.addedTriggers)) {
+      this.append(ret, this.createTrigger(diff.toTable, trigger));
+    }
+
+    return ret;
+  }
+
+  /** Generates SQL to create SQLite triggers. SQLite requires one trigger per event. */
+  override createTrigger(table: DatabaseTable, trigger: SqlTriggerDef): string {
+    if (trigger.expression) {
+      return trigger.expression;
+    }
+
+    const timing = trigger.timing.toUpperCase();
+    const forEach = trigger.forEach === 'statement' ? 'STATEMENT' : 'ROW';
+    const ret: string[] = [];
+
+    for (const event of trigger.events) {
+      const name = trigger.events.length > 1 ? `${trigger.name}_${event}` : trigger.name;
+      const when = trigger.when ? `\n  when ${trigger.when}` : '';
+      ret.push(
+        `create trigger ${this.quote(name)} ${timing} ${event.toUpperCase()} on ${table.getQuotedName()} for each ${forEach}${when} begin ${this.normalizeTriggerBody(trigger.body)} end`,
+      );
+    }
+
+    return ret.join(';\n');
+  }
+
+  private async getTableTriggers(connection: AbstractSqlConnection, tableName: string): Promise<SqlTriggerDef[]> {
+    const rows = await connection.execute<{ name: string; sql: string }[]>(
+      `select name, sql from sqlite_master where type = 'trigger' and tbl_name = ?`,
+      [tableName],
+    );
+
+    // First pass: parse all triggers and collect names to detect multi-event groups
+    const parsedRows: { name: string; parsed: SqlTriggerDef }[] = [];
+    for (const row of rows) {
+      /* v8 ignore next 3 */
+      if (!row.sql) {
+        continue;
+      }
+
+      const parsed = this.parseTriggerDDL(row.sql, row.name);
+
+      if (parsed) {
+        parsedRows.push({ name: row.name, parsed });
+      }
+    }
+
+    const allNames = parsedRows.map(r => r.name);
+    const triggers: SqlTriggerDef[] = [];
+    const triggerMap = new Map<string, SqlTriggerDef>();
+
+    for (const { name, parsed } of parsedRows) {
+      // Only strip event suffix when another trigger with the same base exists
+      const eventLower = parsed.events[0];
+      const candidateBase = name.endsWith(`_${eventLower}`) ? name.slice(0, -eventLower.length - 1) : null;
+      const baseName =
+        candidateBase && allNames.some(n => n !== name && n.startsWith(`${candidateBase}_`)) ? candidateBase : name;
+
+      if (triggerMap.has(baseName)) {
+        const existing = triggerMap.get(baseName)!;
+        if (!existing.events.includes(parsed.events[0])) {
+          existing.events.push(parsed.events[0]);
+        }
+        continue;
+      }
+
+      const trigger: SqlTriggerDef = { ...parsed, name: baseName };
+      triggers.push(trigger);
+      triggerMap.set(baseName, trigger);
+    }
+
+    return triggers;
+  }
+
+  private parseTriggerDDL(sql: string, name: string): SqlTriggerDef | null {
+    // Split at the last top-level BEGIN to separate header from body,
+    // so that a WHEN clause containing the word "begin" in a string literal doesn't confuse parsing.
+    const beginIdx = sql.search(/\bbegin\b(?=[^]*$)/i);
+
+    /* v8 ignore next 3 */
+    if (beginIdx === -1) {
+      return null;
+    }
+
+    const header = sql.slice(0, beginIdx);
+    const bodyPart = sql.slice(beginIdx);
+
+    const headerMatch =
+      /create\s+trigger\s+["`]?\w+["`]?\s+(before|after|instead\s+of)\s+(insert|update|delete)\s+on\s+["`]?\w+["`]?\s*(?:for\s+each\s+(row|statement))?\s*(?:when\s+([\s\S]*?))?\s*$/i.exec(
+        header,
+      );
+
+    /* v8 ignore next 3 */
+    if (!headerMatch) {
+      return null;
+    }
+
+    const bodyMatch = /^begin\s+([\s\S]*?)\s*end/i.exec(bodyPart);
+
+    /* v8 ignore next 3 */
+    if (!bodyMatch) {
+      return null;
+    }
+
+    const timing = headerMatch[1].toLowerCase() as SqlTriggerDef['timing'];
+    const event = headerMatch[2].toLowerCase() as SqlTriggerDef['events'][number];
+    const forEach = (headerMatch[3]?.toLowerCase() ?? 'row') as SqlTriggerDef['forEach'];
+    const when = headerMatch[4]?.trim() || undefined;
+    const body = bodyMatch[1].trim().replace(/;\s*$/, '');
+
+    return {
+      name,
+      timing,
+      events: [event],
+      forEach,
+      body,
+      when,
+    };
+  }
+
+  private getAlterTempTableSQL(changedTable: TableDifference): string[] {
+    const tempName = `${changedTable.toTable.name}__temp_alter`;
+    const quotedName = this.quote(changedTable.toTable.name);
+    const quotedTempName = this.quote(tempName);
+    const [first, ...rest] = this.createTable(changedTable.toTable);
+
+    const sql = [
+      'pragma foreign_keys = off;',
+      first.replace(`create table ${quotedName}`, `create table ${quotedTempName}`),
+    ];
+
+    const columns: string[] = [];
+
+    for (const column of changedTable.toTable.getColumns()) {
+      const fromColumn = changedTable.fromTable.getColumn(column.name);
+
+      if (fromColumn) {
+        columns.push(this.quote(column.name));
+      } else {
+        columns.push(`null as ${this.quote(column.name)}`);
+      }
+    }
+
+    sql.push(`insert into ${quotedTempName} select ${columns.join(', ')} from ${quotedName};`);
+    sql.push(`drop table ${quotedName};`);
+    sql.push(`alter table ${quotedTempName} rename to ${quotedName};`);
+    sql.push(...rest);
+    sql.push('pragma foreign_keys = on;');
+
+    return sql;
+  }
+}

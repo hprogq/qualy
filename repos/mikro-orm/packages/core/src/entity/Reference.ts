@@ -1,0 +1,525 @@
+import type {
+  AddEager,
+  AddOptional,
+  Dictionary,
+  EntityClass,
+  EntityKey,
+  EntityProperty,
+  LazyRef,
+  Loaded,
+  LoadedReference,
+  Primary,
+  Ref,
+} from '../typings.js';
+import type { EntityFactory } from './EntityFactory.js';
+import { DataloaderType } from '../enums.js';
+import { helper, wrap } from './wrap.js';
+import { Utils } from '../utils/Utils.js';
+import { QueryHelper } from '../utils/QueryHelper.js';
+import type { FindOneOptions, FindOneOrFailOptions } from '../drivers/IDatabaseDriver.js';
+import { NotFoundError } from '../errors.js';
+import { inspect } from '../logging/inspect.js';
+
+// Globally registered so the markers survive the CJS/ESM dual-package hazard
+// (see entitySymbol rationale in EntityHelper.ts and #7515/#7534).
+const referenceSymbol = Symbol.for('@mikro-orm/core/Reference');
+const scalarReferenceSymbol = Symbol.for('@mikro-orm/core/ScalarReference');
+
+/** Wrapper around an entity that provides lazy loading capabilities and identity-preserving reference semantics. */
+export class Reference<T extends object> {
+  private property?: EntityProperty;
+
+  constructor(private entity: T) {
+    Object.defineProperty(this, referenceSymbol, { value: true, enumerable: false });
+    this.set(entity);
+    const meta = helper(this.entity).__meta;
+
+    meta.primaryKeys.forEach(primaryKey => {
+      Object.defineProperty(this, primaryKey, {
+        get() {
+          return this.entity[primaryKey];
+        },
+      });
+    });
+
+    if (meta.serializedPrimaryKey && meta.primaryKeys[0] !== meta.serializedPrimaryKey) {
+      Object.defineProperty(this, meta.serializedPrimaryKey, {
+        get() {
+          return helper(this.entity).getSerializedPrimaryKey();
+        },
+      });
+    }
+  }
+
+  /** Creates a Reference wrapper for the given entity, preserving identity if one already exists. */
+  static create<T extends object>(entity: T | Ref<T>): Ref<T> {
+    const unwrapped = Reference.unwrapReference(entity);
+    const ref = helper(entity).toReference() as Reference<T>;
+
+    if (unwrapped !== ref.unwrap()) {
+      ref.set(unwrapped);
+    }
+
+    return ref as Ref<T>;
+  }
+
+  /** Creates a Reference wrapper for an entity identified by its primary key, wrapped in a Ref. */
+  static createFromPK<T extends object>(
+    entityType: EntityClass<T>,
+    pk: Primary<T>,
+    options?: { schema?: string },
+  ): Ref<T> {
+    const ref = this.createNakedFromPK(entityType, pk, options);
+    return helper(ref)?.toReference() ?? ref;
+  }
+
+  /** Creates an uninitialized entity reference by primary key without wrapping it in a Reference. */
+  static createNakedFromPK<T extends object>(
+    entityType: EntityClass<T>,
+    pk: Primary<T>,
+    options?: { schema?: string },
+  ): T {
+    const factory = entityType.prototype.__factory as EntityFactory;
+
+    if (!factory) {
+      // this can happen only if `ref()` is used as a property initializer, and the value is important only for the
+      // inference of defaults, so it's fine to return it directly without wrapping with `Reference` class
+      return pk as T;
+    }
+
+    const entity = factory.createReference(entityType, pk, {
+      merge: false,
+      convertCustomTypes: false,
+      ...options,
+    });
+
+    const wrapped = helper(entity);
+    wrapped.__meta.primaryKeys.forEach(key => wrapped.__loadedProperties.add(key));
+    wrapped.__originalEntityData = factory.getComparator().prepareEntity(entity);
+
+    return entity as T;
+  }
+
+  /**
+   * Checks whether the argument is instance of `Reference` wrapper.
+   */
+  static isReference<T extends object>(data: any): data is Reference<T> {
+    return data != null && Object.hasOwn(data, referenceSymbol);
+  }
+
+  /**
+   * Wraps the entity in a `Reference` wrapper if the property is defined as `ref`.
+   */
+  static wrapReference<T extends object, O extends object>(
+    entity: T | Reference<T>,
+    prop: EntityProperty<O, T>,
+  ): Reference<T> | T {
+    if (entity && prop.ref && !Reference.isReference(entity)) {
+      const ref = Reference.create(entity) as Reference<T>;
+      ref.property = prop;
+
+      return ref;
+    }
+
+    return entity;
+  }
+
+  /**
+   * Returns wrapped entity.
+   */
+  static unwrapReference<T extends object>(ref: T | Reference<T> | ScalarReference<T> | Ref<T>): T {
+    return Reference.isReference<T>(ref) ? ref.unwrap() : (ref as T);
+  }
+
+  /**
+   * Ensures the underlying entity is loaded first (without reloading it if it already is loaded). Returns the entity.
+   * If the entity is not found in the database (e.g. it was deleted in the meantime, or currently active filters disallow loading of it)
+   * the method returns `null`. Use `loadOrFail()` if you want an error to be thrown in such a case.
+   */
+  async load<TT extends T, P extends string = never, F extends string = never, E extends string = never>(
+    options: LoadReferenceOptions<TT, P, F, E> = {},
+  ): Promise<Loaded<TT, P, F, E> | null> {
+    const wrapped = helper(this.entity as TT & object);
+
+    if (!wrapped.__em) {
+      return this.entity as Loaded<TT, P, F, E>;
+    }
+
+    options = { ...options, filters: QueryHelper.mergePropertyFilters(this.property?.filters, options.filters)! };
+
+    if (this.isInitialized() && !options.refresh && options.populate) {
+      await wrapped.__em.populate(this.entity, options.populate as any, options as any);
+    }
+
+    if (!this.isInitialized() || options.refresh) {
+      if (
+        options.dataloader ??
+        [DataloaderType.ALL, DataloaderType.REFERENCE].includes(wrapped.__em.config.getDataloaderType())
+      ) {
+        const dataLoader = await wrapped.__em.getDataLoader('ref');
+        return dataLoader.load([this, options]);
+      }
+
+      return wrapped.init(options);
+    }
+
+    return this.entity as Loaded<TT, P, F, E>;
+  }
+
+  /**
+   * Ensures the underlying entity is loaded first (without reloading it if it already is loaded).
+   * Returns the entity or throws an error just like `em.findOneOrFail()` (and respects the same config options).
+   */
+  async loadOrFail<TT extends T, P extends string = never, F extends string = never, E extends string = never>(
+    options: LoadReferenceOrFailOptions<TT, P, F, E> = {},
+  ): Promise<Loaded<TT, P, F, E>> {
+    const ret = await this.load(options);
+
+    if (!ret) {
+      const wrapped = helper(this.entity);
+      options.failHandler ??= wrapped.__em!.config.get('findOneOrFailHandler');
+      const entityName = this.entity.constructor.name;
+      const where = wrapped.getPrimaryKey() as any;
+      throw options.failHandler(entityName, where);
+    }
+
+    return ret;
+  }
+
+  private set<TT extends T>(entity: TT | Ref<TT>): void {
+    this.entity = Reference.unwrapReference(entity as T & object);
+    delete helper(this.entity).__reference;
+  }
+
+  /** Returns the underlying entity without checking initialization state. */
+  unwrap(): T {
+    return this.entity;
+  }
+
+  /** Returns the underlying entity, throwing an error if the reference is not initialized. */
+  getEntity(): T {
+    if (!this.isInitialized()) {
+      throw new Error(
+        `Reference<${helper(this.entity).__meta.name}> ${helper(this.entity).getPrimaryKey()} not initialized`,
+      );
+    }
+
+    return this.entity;
+  }
+
+  /** Returns the value of a property on the underlying entity. Throws if the reference is not initialized. */
+  getProperty<K extends keyof T>(prop: K): T[K] {
+    return this.getEntity()[prop];
+  }
+
+  /** Loads the entity if needed, then returns the value of the specified property. */
+  async loadProperty<TT extends T, P extends string = never, K extends keyof TT = keyof TT>(
+    prop: K,
+    options?: LoadReferenceOrFailOptions<TT, P>,
+  ): Promise<Loaded<TT, P>[K]> {
+    await this.loadOrFail(options);
+    return (this.getEntity() as TT)[prop] as Loaded<TT, P>[K];
+  }
+
+  /** Returns whether the underlying entity has been fully loaded from the database. */
+  isInitialized(): boolean {
+    return helper(this.entity).__initialized;
+  }
+
+  /** Marks the underlying entity as populated or not for serialization purposes. */
+  populated(populated?: boolean): void {
+    helper(this.entity).populated(populated);
+  }
+
+  /** Serializes the underlying entity to a plain JSON object. */
+  toJSON(...args: any[]): Dictionary {
+    return wrap(this.entity as object).toJSON(...args);
+  }
+
+  /** @ignore */
+  [Symbol.for('nodejs.util.inspect.custom')](depth = 2): string {
+    const object = { ...this };
+    const hidden = ['meta', 'property'];
+    hidden.forEach(k => delete object[k as keyof this]);
+    const ret = inspect(object, { depth });
+    const wrapped = helper(this.entity);
+    const meta = wrapped.__meta;
+    /* v8 ignore next */
+    const pk = wrapped.hasPrimaryKey() ? '<' + wrapped.getSerializedPrimaryKey() + '>' : '';
+    const name = `Ref<${meta.className}${pk}>`;
+
+    return ret === '[Object]' ? `[${name}]` : name + ' ' + ret;
+  }
+}
+
+/** Wrapper for lazy scalar properties that provides on-demand loading from the database. */
+export class ScalarReference<Value> {
+  private entity?: object;
+  #property?: string;
+  #initialized: boolean;
+
+  constructor(
+    private value?: Value,
+    initialized = value != null,
+  ) {
+    Object.defineProperty(this, scalarReferenceSymbol, { value: true, enumerable: false });
+    this.#initialized = initialized;
+  }
+
+  /**
+   * Ensures the underlying entity is loaded first (without reloading it if it already is loaded).
+   * Returns either the whole entity, or the requested property.
+   */
+  async load(
+    options?: Omit<LoadReferenceOptions<any, any>, 'populate' | 'fields' | 'exclude'>,
+  ): Promise<Value | undefined> {
+    const opts: Dictionary =
+      typeof options === 'object' ? options : ({ prop: options } as LoadReferenceOptions<any, any>);
+
+    if (!this.#initialized || opts.refresh) {
+      if (this.entity == null || this.#property == null) {
+        throw new Error('Cannot load scalar reference that is not bound to an entity property.');
+      }
+
+      await helper(this.entity).populate<any>([this.#property], opts);
+    }
+
+    return this.value;
+  }
+
+  /**
+   * Ensures the underlying entity is loaded first (without reloading it if it already is loaded).
+   * Returns the entity or throws an error just like `em.findOneOrFail()` (and respects the same config options).
+   */
+  async loadOrFail(
+    options: Omit<LoadReferenceOrFailOptions<any, any>, 'populate' | 'fields' | 'exclude'> = {},
+  ): Promise<Value> {
+    const ret = await this.load(options);
+
+    if (ret == null) {
+      const wrapped = helper(this.entity!);
+      options.failHandler ??= wrapped.__em!.config.get('findOneOrFailHandler');
+      const entityName = this.entity!.constructor.name;
+      throw NotFoundError.failedToLoadProperty(entityName, this.#property!, wrapped.getPrimaryKey());
+    }
+
+    return ret;
+  }
+
+  /** Sets the scalar value and marks the reference as initialized. */
+  set(value: Value): void {
+    this.value = value;
+    this.#initialized = true;
+  }
+
+  /** Binds this scalar reference to a specific entity and property for lazy loading support. */
+  bind<Entity extends object>(entity: Entity, property: EntityKey<Entity>): void {
+    this.entity = entity;
+    this.#property = property;
+    Object.defineProperty(this, 'entity', { enumerable: false, value: entity });
+  }
+
+  /** Returns the current scalar value, or undefined if not yet loaded. */
+  unwrap(): Value | undefined {
+    return this.value;
+  }
+
+  /** Returns whether the scalar value has been loaded. */
+  isInitialized(): boolean {
+    return this.#initialized;
+  }
+
+  static isScalarReference(data: any): data is ScalarReference<any> {
+    return data != null && typeof data === 'object' && Object.hasOwn(data, scalarReferenceSymbol);
+  }
+
+  /** @ignore */
+  /* v8 ignore next */
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return this.#initialized ? `Ref<${inspect(this.value)}>` : `Ref<?>`;
+  }
+}
+
+Object.defineProperties(Reference.prototype, {
+  __meta: {
+    get() {
+      return this.entity.__meta!;
+    },
+  },
+  __platform: {
+    get() {
+      return this.entity.__platform!;
+    },
+  },
+  __helper: {
+    get() {
+      return this.entity.__helper!;
+    },
+  },
+  $: {
+    get() {
+      return this.entity;
+    },
+  },
+  get: {
+    get() {
+      return () => this.entity;
+    },
+  },
+});
+
+Object.defineProperties(ScalarReference.prototype, {
+  $: {
+    get() {
+      return this.value;
+    },
+  },
+  get: {
+    get() {
+      return () => this.value;
+    },
+  },
+});
+
+/** Options for `Reference.load()` to control how the referenced entity is loaded. */
+export interface LoadReferenceOptions<
+  T extends object,
+  P extends string = never,
+  F extends string = never,
+  E extends string = never,
+> extends FindOneOptions<T, P, F, E> {
+  /** Whether to use the dataloader for batching reference loads. */
+  dataloader?: boolean;
+}
+
+/** Options for `Reference.loadOrFail()` which throws when the entity is not found. */
+export interface LoadReferenceOrFailOptions<
+  T extends object,
+  P extends string = never,
+  F extends string = never,
+  E extends string = never,
+> extends FindOneOrFailOptions<T, P, F, E> {
+  /** Whether to use the dataloader for batching reference loads. */
+  dataloader?: boolean;
+}
+
+/**
+ * shortcut for `wrap(entity).toReference()`
+ */
+export function ref<I extends unknown | Ref<unknown> | undefined | null, T extends I & {}>(
+  entity: I,
+): (Ref<T> & LoadedReference<Loaded<T, AddEager<T>>>) | AddOptional<typeof entity>;
+
+/**
+ * shortcut for `Reference.createFromPK(entityType, pk)`
+ */
+export function ref<I extends unknown | undefined | null, T, PKV extends Primary<T> = Primary<T>>(
+  entityType: EntityClass<T>,
+  pk: I,
+): Ref<T> | AddOptional<typeof pk>;
+
+/**
+ * shortcut for `wrap(entity).toReference()`
+ */
+export function ref<T, PKV extends Primary<T> = Primary<T>>(
+  entityOrType?: T | Ref<T> | EntityClass<T> | null,
+  pk?: T | PKV | null,
+): Ref<T> | undefined | null {
+  if (entityOrType == null) {
+    return entityOrType as unknown as null;
+  }
+
+  if (Utils.isEntity(entityOrType, true)) {
+    return helper(entityOrType).toReference() as Ref<T>;
+  }
+
+  if (Utils.isEntity(pk, true)) {
+    return helper(pk).toReference() as Ref<T>;
+  }
+
+  if (arguments.length === 1) {
+    return new ScalarReference<T>(entityOrType, true) as Ref<T>;
+  }
+
+  if (pk == null) {
+    return pk as null;
+  }
+
+  return Reference.createFromPK(entityOrType as EntityClass<T>, pk as PKV) as Ref<T>;
+}
+
+/**
+ * Unwraps a reference to its underlying value, returning the entity or scalar. Works on any of:
+ *
+ * - `Ref<T>` / `Reference<T>` (entity) — calls `.unwrap()` to extract the wrapped entity, returns `T`.
+ * - `LazyRef<T>` — type-only marker; runtime value is already `T`, so returned as-is.
+ * - plain entity `T` — returned as-is.
+ * - `ScalarReference<V>` / `ScalarRef<V>` — calls `.unwrap()` to extract the scalar value, returns `V | undefined`
+ *   (a scalar reference may be bound without an initial value).
+ *
+ * Inverse of the {@link ref} helper. Use as a typed escape hatch when you know a relation is populated
+ * but don't want to (or can't) thread `Loaded<T, 'relation'>` through a function signature.
+ *
+ * ```ts
+ * function logAuthor(book: Book) {
+ *   // `book.author` is typed as `LazyRef<Author>`, so `.name` is not directly accessible
+ *   console.log(unref(book.author).name);
+ * }
+ *
+ * // Scalar reference:
+ * const scalar = ref('hello');
+ * unref(scalar); // 'hello' (type: string | undefined)
+ * ```
+ *
+ * Note: `unref` is a compile-time narrowing only for entity refs. On a `LazyRef<T>` or plain entity
+ * relation that is a stub (PK only, never populated), reads of non-PK properties will still return
+ * `undefined` at runtime — same footgun as a plain non-`Ref` relation.
+ */
+export function unref<V>(value: ScalarReference<V>): V | undefined;
+
+export function unref<T extends object>(value: Ref<T> | LazyRef<T> | T): T;
+
+/**
+ * Unwraps a reference to its underlying value. Nullable variant — returns `null` unchanged.
+ */
+export function unref<T extends object>(value: Ref<T> | LazyRef<T> | T | null): T | null;
+
+/**
+ * Unwraps a reference to its underlying value. Optional variant — returns `undefined` unchanged.
+ */
+export function unref<T extends object>(value: Ref<T> | LazyRef<T> | T | undefined): T | undefined;
+
+/**
+ * Unwraps a reference to its underlying value. Nullable variant — returns `null`/`undefined` unchanged.
+ */
+export function unref<T extends object>(value: Ref<T> | LazyRef<T> | T | null | undefined): T | null | undefined;
+
+export function unref(value: any): any {
+  if (value == null) {
+    return value;
+  }
+
+  if (ScalarReference.isScalarReference(value)) {
+    return value.unwrap();
+  }
+
+  return Reference.unwrapReference(value);
+}
+
+/**
+ * shortcut for `Reference.createNakedFromPK(entityType, pk)`
+ */
+export function rel<T, PK extends Primary<T>>(entityType: EntityClass<T>, pk: T | PK): T;
+
+/**
+ * shortcut for `Reference.createNakedFromPK(entityType, pk)`
+ */
+export function rel<T, PK extends Primary<T>>(entityType: EntityClass<T>, pk?: T | PK): T | undefined | null {
+  if (pk == null || Utils.isEntity(pk)) {
+    return pk as T;
+  }
+
+  return Reference.createNakedFromPK(entityType, pk) as T;
+}
+
+export { Reference as Ref };

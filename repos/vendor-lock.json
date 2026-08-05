@@ -1,5 +1,10 @@
 {
   "sources": {
+    "@mikro-orm/core": {
+      "packageVersion": "7.1.10",
+      "tag": "v7.1.10",
+      "commit": "30668271b7c30ccd5cc684e543979cce673292d6"
+    },
     "drizzle-orm": {
       "packageVersion": "1.0.0-rc.4",
       "tag": "v1.0.0-rc.4",

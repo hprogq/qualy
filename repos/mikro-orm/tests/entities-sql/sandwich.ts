@@ -1,0 +1,23 @@
+import { Collection } from '@mikro-orm/core';
+import { Entity, ManyToMany, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { User2 } from './User2.js';
+
+@Entity()
+export class Sandwich {
+  @PrimaryKey()
+  id!: number;
+
+  @Property({ length: 255 })
+  name: string;
+
+  @Property()
+  price: number;
+
+  @ManyToMany(() => User2, u => u.sandwiches)
+  users = new Collection<User2>(this);
+
+  constructor(name: string, price: number) {
+    this.name = name;
+    this.price = price;
+  }
+}

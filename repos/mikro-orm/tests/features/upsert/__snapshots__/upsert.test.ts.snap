@@ -1,0 +1,1441 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`em.upsert [mariadb] > em.upsert(Type, data) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (1, 'a1', 41) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`_id\` = 1 limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (2, 'a2', 42) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`_id\` = 2 limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (3, 'a3', 43) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`_id\` = 3 limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsert(Type, data) with unique composite property (no additional props) 1`] = `
+[
+  [
+    "[query] insert ignore into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb1', 1)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\`, \`f0\`.\`prop_name\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 1 and \`f0\`.\`name\` = 'fb1' limit 1",
+  ],
+  [
+    "[query] insert ignore into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb2', 2)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\`, \`f0\`.\`prop_name\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 2 and \`f0\`.\`name\` = 'fb2' limit 1",
+  ],
+  [
+    "[query] insert ignore into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb3', 3)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\`, \`f0\`.\`prop_name\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 3 and \`f0\`.\`name\` = 'fb3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsert(Type, data) with unique composite property (update additional prop) 1`] = `
+[
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb1', 1, 'val 1') on duplicate key update \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 1 and \`f0\`.\`name\` = 'fb1' limit 1",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb2', 2, 'val 2') on duplicate key update \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 2 and \`f0\`.\`name\` = 'fb2' limit 1",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb3', 3, 'val 3') on duplicate key update \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 3 and \`f0\`.\`name\` = 'fb3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsert(Type, data) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a1', 41) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a2', 42) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a2' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a3', 43) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsert(Type, data, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (2, 'a2', 42, true) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a2' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (5, 'a3', 43, true) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsert(Type, entity, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (2, 'a2', 42, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a2' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (5, 'a3', 43, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsert(entity) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (2, 'a2', 42, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (3, 'a3', 43, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsert(entity) with unique composite property 1`] = `
+[
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (1, 1, 'fb1', 'val 1') on duplicate key update \`author__id\` = values(\`author__id\`), \`name\` = values(\`name\`), \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (2, 2, 'fb2', 'val 2') on duplicate key update \`author__id\` = values(\`author__id\`), \`name\` = values(\`name\`), \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (3, 3, 'fb3', 'val 3') on duplicate key update \`author__id\` = values(\`author__id\`), \`name\` = values(\`name\`), \`prop_name\` = values(\`prop_name\`)",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany([entity1, entity2, entity3]) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, false, 123), (2, 'a2', 42, false, 123), (3, 'a3', 43, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany([entity1, entity2, entity3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`, \`foo\`, \`bar\`) values ('a1', 41, false, 123), ('a2', 42, false, 123), ('a3', 43, false, 123) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [data], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [data], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [data], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [data1, data2, data3]) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (1, 'a1', 41), (2, 'a2', 42), (3, 'a3', 43) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`_id\` from \`author\` as \`a0\` where (\`a0\`.\`_id\` = 1 or \`a0\`.\`_id\` = 2 or \`a0\`.\`_id\` = 3)",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [data1, data2, data3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a1', 41), ('a2', 42), ('a3', 43) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [entity], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [entity], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mariadb] > em.upsertMany(Type, [entity], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(Type, data) with PK 1`] = `
+[
+  [
+    "[query] db.getCollection('author').updateMany({ _id: 1 }, { '$set': { _id: 1, email: 'a1', current_age: 41 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ _id: 1 }, { projection: { id: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ _id: 2 }, { '$set': { _id: 2, email: 'a2', current_age: 42 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ _id: 2 }, { projection: { id: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ _id: 3 }, { '$set': { _id: 3, email: 'a3', current_age: 43 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ _id: 3 }, { projection: { id: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(Type, data) with unique composite property (no additional props) 1`] = `
+[
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ author: 1, name: 'fb1' }, { '$set': { name: 'fb1', author: 1 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').find({ author: 1, name: 'fb1' }, { projection: { _id: 1, propName: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ author: 2, name: 'fb2' }, { '$set': { name: 'fb2', author: 2 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').find({ author: 2, name: 'fb2' }, { projection: { _id: 1, propName: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ author: 3, name: 'fb3' }, { '$set': { name: 'fb3', author: 3 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').find({ author: 3, name: 'fb3' }, { projection: { _id: 1, propName: 1 } }).limit(1).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(Type, data) with unique composite property (update additional prop) 1`] = `
+[
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ author: 1, name: 'fb1' }, { '$set': { name: 'fb1', author: 1, propName: 'val 1' } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').find({ author: 1, name: 'fb1' }, { projection: { _id: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ author: 2, name: 'fb2' }, { '$set': { name: 'fb2', author: 2, propName: 'val 2' } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').find({ author: 2, name: 'fb2' }, { projection: { _id: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ author: 3, name: 'fb3' }, { '$set': { name: 'fb3', author: 3, propName: 'val 3' } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').find({ author: 3, name: 'fb3' }, { projection: { _id: 1 } }).limit(1).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(Type, data) with unique property 1`] = `
+[
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a1' }, { '$set': { email: 'a1', current_age: 41 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a1' }, { projection: { _id: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a2' }, { '$set': { email: 'a2', current_age: 42 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a2' }, { projection: { _id: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a3' }, { '$set': { email: 'a3', current_age: 43 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a3' }, { projection: { _id: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(Type, data, options) with advanced options 1`] = `
+[
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a1' }, { '$setOnInsert': { _id: 1, email: 'a1', current_age: 41, foo: true } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a1' }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a2' }, { '$set': { current_age: 42 }, '$setOnInsert': { _id: 2, email: 'a2', foo: true } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a2' }, { projection: { _id: 1, foo: 1, bar: 1, current_age: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a3' }, { '$set': { email: 'a3', current_age: 43, foo: true }, '$setOnInsert': { _id: 5 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a3' }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(Type, entity, options) with advanced options 1`] = `
+[
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a1' }, { '$setOnInsert': { _id: 1, email: 'a1', current_age: 41, foo: true, bar: 123 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a1' }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a2' }, { '$set': { current_age: 42 }, '$setOnInsert': { _id: 2, email: 'a2', foo: true, bar: 123 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a2' }, { projection: { _id: 1, foo: 1, bar: 1, current_age: 1 } }).limit(1).toArray();",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ email: 'a3' }, { '$set': { email: 'a3', current_age: 43, foo: true, bar: 123 }, '$setOnInsert': { _id: 5 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').find({ email: 'a3' }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1 } }).limit(1).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(entity) 1`] = `
+[
+  [
+    "[query] db.getCollection('author').updateMany({ _id: 1 }, { '$set': { _id: 1, email: 'a1', current_age: 41, foo: false, bar: 123 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ _id: 2 }, { '$set': { _id: 2, email: 'a2', current_age: 42, foo: false, bar: 123 } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('author').updateMany({ _id: 3 }, { '$set': { _id: 3, email: 'a3', current_age: 43, foo: false, bar: 123 } }, { upsert: true });",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsert(entity) with unique composite property 1`] = `
+[
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ _id: 1 }, { '$set': { _id: 1, author: 1, name: 'fb1', propName: 'val 1' } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ _id: 2 }, { '$set': { _id: 2, author: 2, name: 'fb2', propName: 'val 2' } }, { upsert: true });",
+  ],
+  [
+    "[query] db.getCollection('foo-bar').updateMany({ _id: 3 }, { '$set': { _id: 3, author: 3, name: 'fb3', propName: 'val 3' } }, { upsert: true });",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany([entity1, entity2, entity3]) with PK 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ _id: 1 }).upsert().update({ '$set': { _id: 1, email: 'a1', current_age: 41, foo: false, bar: 123 } });bulk.find({ _id: 2 }).upsert().update({ '$set': { _id: 2, email: 'a2', current_age: 42, foo: false, bar: 123 } });bulk.find({ _id: 3 }).upsert().update({ '$set': { _id: 3, email: 'a3', current_age: 43, foo: false, bar: 123 } });bulk.execute()",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany([entity1, entity2, entity3]) with unique property 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$set': { email: 'a1', current_age: 41, foo: false, bar: 123 } });bulk.find({ email: 'a2' }).upsert().update({ '$set': { email: 'a2', current_age: 42, foo: false, bar: 123 } });bulk.find({ email: 'a3' }).upsert().update({ '$set': { email: 'a3', current_age: 43, foo: false, bar: 123 } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, email: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [data], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$setOnInsert': { _id: 1, email: 'a1', current_age: 41, foo: true } });bulk.find({ email: 'a2' }).upsert().update({ '$setOnInsert': { _id: 2, email: 'a2', current_age: 42, foo: true } });bulk.find({ email: 'a3' }).upsert().update({ '$setOnInsert': { _id: 5, email: 'a3', current_age: 43, foo: true } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1, email: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [data], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$set': { email: 'a1', current_age: 41, foo: true }, '$setOnInsert': { _id: 1 } });bulk.find({ email: 'a2' }).upsert().update({ '$set': { email: 'a2', current_age: 42, foo: true }, '$setOnInsert': { _id: 2 } });bulk.find({ email: 'a3' }).upsert().update({ '$set': { email: 'a3', current_age: 43, foo: true }, '$setOnInsert': { _id: 5 } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1, email: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [data], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$set': { current_age: 41 }, '$setOnInsert': { _id: 1, email: 'a1', foo: true } });bulk.find({ email: 'a2' }).upsert().update({ '$set': { current_age: 42 }, '$setOnInsert': { _id: 2, email: 'a2', foo: true } });bulk.find({ email: 'a3' }).upsert().update({ '$set': { current_age: 43 }, '$setOnInsert': { _id: 5, email: 'a3', foo: true } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, foo: 1, bar: 1, email: 1, current_age: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [data1, data2, data3]) with PK 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ _id: 1 }).upsert().update({ '$set': { _id: 1, email: 'a1', current_age: 41 } });bulk.find({ _id: 2 }).upsert().update({ '$set': { _id: 2, email: 'a2', current_age: 42 } });bulk.find({ _id: 3 }).upsert().update({ '$set': { _id: 3, email: 'a3', current_age: 43 } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { _id: 1 }, { _id: 2 }, { _id: 3 } ] }, { projection: { foo: 1, bar: 1, _id: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [data1, data2, data3]) with unique property 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$set': { email: 'a1', current_age: 41 } });bulk.find({ email: 'a2' }).upsert().update({ '$set': { email: 'a2', current_age: 42 } });bulk.find({ email: 'a3' }).upsert().update({ '$set': { email: 'a3', current_age: 43 } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, foo: 1, bar: 1, email: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [entity], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$setOnInsert': { _id: 1, email: 'a1', current_age: 41, foo: true, bar: 123 } });bulk.find({ email: 'a2' }).upsert().update({ '$setOnInsert': { _id: 2, email: 'a2', current_age: 42, foo: true, bar: 123 } });bulk.find({ email: 'a3' }).upsert().update({ '$setOnInsert': { _id: 5, email: 'a3', current_age: 43, foo: true, bar: 123 } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1, email: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [entity], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$set': { email: 'a1', current_age: 41, foo: true, bar: 123 }, '$setOnInsert': { _id: 1 } });bulk.find({ email: 'a2' }).upsert().update({ '$set': { email: 'a2', current_age: 42, foo: true, bar: 123 }, '$setOnInsert': { _id: 2 } });bulk.find({ email: 'a3' }).upsert().update({ '$set': { email: 'a3', current_age: 43, foo: true, bar: 123 }, '$setOnInsert': { _id: 5 } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, current_age: 1, foo: 1, bar: 1, email: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mongo] > em.upsertMany(Type, [entity], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] bulk = db.getCollection('author').initializeUnorderedBulkOp({ upsert: true });bulk.find({ email: 'a1' }).upsert().update({ '$set': { current_age: 41 }, '$setOnInsert': { _id: 1, email: 'a1', foo: true, bar: 123 } });bulk.find({ email: 'a2' }).upsert().update({ '$set': { current_age: 42 }, '$setOnInsert': { _id: 2, email: 'a2', foo: true, bar: 123 } });bulk.find({ email: 'a3' }).upsert().update({ '$set': { current_age: 43 }, '$setOnInsert': { _id: 5, email: 'a3', foo: true, bar: 123 } });bulk.execute()",
+  ],
+  [
+    "[query] db.getCollection('author').find({ '$or': [ { email: 'a1' }, { email: 'a2' }, { email: 'a3' } ] }, { projection: { _id: 1, foo: 1, bar: 1, email: 1, current_age: 1 } }).toArray();",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(Type, data) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (1, 'a1', 41) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`_id\` = 1 limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (2, 'a2', 42) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`_id\` = 2 limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (3, 'a3', 43) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`_id\` = 3 limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(Type, data) with unique composite property (no additional props) 1`] = `
+[
+  [
+    "[query] insert ignore into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb1', 1)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\`, \`f0\`.\`prop_name\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 1 and \`f0\`.\`name\` = 'fb1' limit 1",
+  ],
+  [
+    "[query] insert ignore into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb2', 2)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\`, \`f0\`.\`prop_name\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 2 and \`f0\`.\`name\` = 'fb2' limit 1",
+  ],
+  [
+    "[query] insert ignore into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb3', 3)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\`, \`f0\`.\`prop_name\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 3 and \`f0\`.\`name\` = 'fb3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(Type, data) with unique composite property (update additional prop) 1`] = `
+[
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb1', 1, 'val 1') on duplicate key update \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 1 and \`f0\`.\`name\` = 'fb1' limit 1",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb2', 2, 'val 2') on duplicate key update \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 2 and \`f0\`.\`name\` = 'fb2' limit 1",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb3', 3, 'val 3') on duplicate key update \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 3 and \`f0\`.\`name\` = 'fb3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(Type, data) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a1', 41) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a2', 42) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a2' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a3', 43) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(Type, data, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (2, 'a2', 42, true) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a2' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (5, 'a3', 43, true) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(Type, entity, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (2, 'a2', 42, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a2' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (5, 'a3', 43, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a3' limit 1",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(entity) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (2, 'a2', 42, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (3, 'a3', 43, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsert(entity) with unique composite property 1`] = `
+[
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (1, 1, 'fb1', 'val 1') on duplicate key update \`author__id\` = values(\`author__id\`), \`name\` = values(\`name\`), \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (2, 2, 'fb2', 'val 2') on duplicate key update \`author__id\` = values(\`author__id\`), \`name\` = values(\`name\`), \`prop_name\` = values(\`prop_name\`)",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (3, 3, 'fb3', 'val 3') on duplicate key update \`author__id\` = values(\`author__id\`), \`name\` = values(\`name\`), \`prop_name\` = values(\`prop_name\`)",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany([entity1, entity2, entity3]) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, false, 123), (2, 'a2', 42, false, 123), (3, 'a3', 43, false, 123) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany([entity1, entity2, entity3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`, \`foo\`, \`bar\`) values ('a1', 41, false, 123), ('a2', 42, false, 123), ('a3', 43, false, 123) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [data], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [data], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [data], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [data1, data2, data3]) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (1, 'a1', 41), (2, 'a2', 42), (3, 'a3', 43) on duplicate key update \`email\` = values(\`email\`), \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`_id\` from \`author\` as \`a0\` where (\`a0\`.\`_id\` = 1 or \`a0\`.\`_id\` = 2 or \`a0\`.\`_id\` = 3)",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [data1, data2, data3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a1', 41), ('a2', 42), ('a3', 43) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [entity], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert ignore into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [entity], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`), \`foo\` = values(\`foo\`), \`bar\` = values(\`bar\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [mysql] > em.upsertMany(Type, [entity], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on duplicate key update \`current_age\` = values(\`current_age\`)",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\`, \`a0\`.\`current_age\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(Type, data) with PK 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age") values (tsource."_id", tsource."email", tsource."current_age") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age" returning "author"."foo", "author"."bar" into :out_foo, :out_bar",
+  ],
+  [
+    "[query] merge into "author" using (select 2 as "_id", 'a2' as "email", 42 as "current_age" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age") values (tsource."_id", tsource."email", tsource."current_age") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age" returning "author"."foo", "author"."bar" into :out_foo, :out_bar",
+  ],
+  [
+    "[query] merge into "author" using (select 3 as "_id", 'a3' as "email", 43 as "current_age" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age") values (tsource."_id", tsource."email", tsource."current_age") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age" returning "author"."foo", "author"."bar" into :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(Type, data) with unique composite property (no additional props) 1`] = `
+[
+  [
+    "[query] merge into "foo_bar" using (select 'fb1' as "name", 1 as "author__id" from dual) tsource on ("foo_bar"."author__id" = tsource."author__id" and "foo_bar"."name" = tsource."name") when not matched then insert ("name", "author__id") values (tsource."name", tsource."author__id") returning "foo_bar"."_id", "foo_bar"."prop_name" into :out__id, :out_prop_name",
+  ],
+  [
+    "[query] select "f0"."_id", "f0"."prop_name" from "foo_bar" "f0" where "f0"."author__id" = 1 and "f0"."name" = 'fb1' fetch next 1 rows only",
+  ],
+  [
+    "[query] merge into "foo_bar" using (select 'fb2' as "name", 2 as "author__id" from dual) tsource on ("foo_bar"."author__id" = tsource."author__id" and "foo_bar"."name" = tsource."name") when not matched then insert ("name", "author__id") values (tsource."name", tsource."author__id") returning "foo_bar"."_id", "foo_bar"."prop_name" into :out__id, :out_prop_name",
+  ],
+  [
+    "[query] merge into "foo_bar" using (select 'fb3' as "name", 3 as "author__id" from dual) tsource on ("foo_bar"."author__id" = tsource."author__id" and "foo_bar"."name" = tsource."name") when not matched then insert ("name", "author__id") values (tsource."name", tsource."author__id") returning "foo_bar"."_id", "foo_bar"."prop_name" into :out__id, :out_prop_name",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(Type, data) with unique composite property (update additional prop) 1`] = `
+[
+  [
+    "[query] merge into "foo_bar" using (select 'fb1' as "name", 1 as "author__id", 'val 1' as "prop_name" from dual) tsource on ("foo_bar"."author__id" = tsource."author__id" and "foo_bar"."name" = tsource."name") when not matched then insert ("name", "author__id", "prop_name") values (tsource."name", tsource."author__id", tsource."prop_name") when matched then update set "prop_name" = tsource."prop_name" returning "foo_bar"."_id" into :out__id",
+  ],
+  [
+    "[query] merge into "foo_bar" using (select 'fb2' as "name", 2 as "author__id", 'val 2' as "prop_name" from dual) tsource on ("foo_bar"."author__id" = tsource."author__id" and "foo_bar"."name" = tsource."name") when not matched then insert ("name", "author__id", "prop_name") values (tsource."name", tsource."author__id", tsource."prop_name") when matched then update set "prop_name" = tsource."prop_name" returning "foo_bar"."_id" into :out__id",
+  ],
+  [
+    "[query] merge into "foo_bar" using (select 'fb3' as "name", 3 as "author__id", 'val 3' as "prop_name" from dual) tsource on ("foo_bar"."author__id" = tsource."author__id" and "foo_bar"."name" = tsource."name") when not matched then insert ("name", "author__id", "prop_name") values (tsource."name", tsource."author__id", tsource."prop_name") when matched then update set "prop_name" = tsource."prop_name" returning "foo_bar"."_id" into :out__id",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(Type, data) with unique property 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 'a1' as "email", 41 as "current_age" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("email", "current_age") values (tsource."email", tsource."current_age") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+  [
+    "[query] merge into "author" using (select 'a2' as "email", 42 as "current_age" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("email", "current_age") values (tsource."email", tsource."current_age") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+  [
+    "[query] merge into "author" using (select 'a3' as "email", 43 as "current_age" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("email", "current_age") values (tsource."email", tsource."current_age") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(Type, data, options) with advanced options 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo") returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar" from "author" "a0" where "a0"."email" = 'a1' fetch next 1 rows only",
+  ],
+  [
+    "[query] merge into "author" using (select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+  [
+    "[query] merge into "author" using (select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo") when matched then update set "current_age" = tsource."current_age", "foo" = tsource."foo" returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(Type, entity, options) with advanced options 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo", 123 as "bar" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar" from "author" "a0" where "a0"."email" = 'a1' fetch next 1 rows only",
+  ],
+  [
+    "[query] merge into "author" using (select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo", 123 as "bar" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+  [
+    "[query] merge into "author" using (select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo", 123 as "bar" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "current_age" = tsource."current_age", "foo" = tsource."foo", "bar" = tsource."bar" returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(entity) 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", false as "foo", 123 as "bar" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age", "foo" = tsource."foo", "bar" = tsource."bar"",
+  ],
+  [
+    "[query] merge into "author" using (select 2 as "_id", 'a2' as "email", 42 as "current_age", false as "foo", 123 as "bar" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age", "foo" = tsource."foo", "bar" = tsource."bar"",
+  ],
+  [
+    "[query] merge into "author" using (select 3 as "_id", 'a3' as "email", 43 as "current_age", false as "foo", 123 as "bar" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age", "foo" = tsource."foo", "bar" = tsource."bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsert(entity) with unique composite property 1`] = `
+[
+  [
+    "[query] merge into "foo_bar" using (select 1 as "_id", 1 as "author__id", 'fb1' as "name", 'val 1' as "prop_name" from dual) tsource on ("foo_bar"."_id" = tsource."_id") when not matched then insert ("_id", "author__id", "name", "prop_name") values (tsource."_id", tsource."author__id", tsource."name", tsource."prop_name") when matched then update set "author__id" = tsource."author__id", "name" = tsource."name", "prop_name" = tsource."prop_name"",
+  ],
+  [
+    "[query] merge into "foo_bar" using (select 2 as "_id", 2 as "author__id", 'fb2' as "name", 'val 2' as "prop_name" from dual) tsource on ("foo_bar"."_id" = tsource."_id") when not matched then insert ("_id", "author__id", "name", "prop_name") values (tsource."_id", tsource."author__id", tsource."name", tsource."prop_name") when matched then update set "author__id" = tsource."author__id", "name" = tsource."name", "prop_name" = tsource."prop_name"",
+  ],
+  [
+    "[query] merge into "foo_bar" using (select 3 as "_id", 3 as "author__id", 'fb3' as "name", 'val 3' as "prop_name" from dual) tsource on ("foo_bar"."_id" = tsource."_id") when not matched then insert ("_id", "author__id", "name", "prop_name") values (tsource."_id", tsource."author__id", tsource."name", tsource."prop_name") when matched then update set "author__id" = tsource."author__id", "name" = tsource."name", "prop_name" = tsource."prop_name"",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany([entity1, entity2, entity3]) with PK 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", false as "foo", 123 as "bar" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age", false as "foo", 123 as "bar" from dual union all select 3 as "_id", 'a3' as "email", 43 as "current_age", false as "foo", 123 as "bar" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age", "foo" = tsource."foo", "bar" = tsource."bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany([entity1, entity2, entity3]) with unique property 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 'a1' as "email", 41 as "current_age", false as "foo", 123 as "bar" from dual union all select 'a2' as "email", 42 as "current_age", false as "foo", 123 as "bar" from dual union all select 'a3' as "email", 43 as "current_age", false as "foo", 123 as "bar" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("email", "current_age", "foo", "bar") values (tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "current_age" = tsource."current_age", "foo" = tsource."foo", "bar" = tsource."bar" returning "author"."_id" into :out__id",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [data], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo" from dual union all select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo") returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar", "a0"."email" from "author" "a0" where ("a0"."email" = 'a1' or "a0"."email" = 'a2' or "a0"."email" = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [data], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo" from dual union all select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo") when matched then update set "current_age" = tsource."current_age", "foo" = tsource."foo" returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [data], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo" from dual union all select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [data1, data2, data3]) with PK 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age" from dual union all select 3 as "_id", 'a3' as "email", 43 as "current_age" from dual) tsource on ("author"."_id" = tsource."_id") when not matched then insert ("_id", "email", "current_age") values (tsource."_id", tsource."email", tsource."current_age") when matched then update set "email" = tsource."email", "current_age" = tsource."current_age" returning "author"."foo", "author"."bar" into :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [data1, data2, data3]) with unique property 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 'a1' as "email", 41 as "current_age" from dual union all select 'a2' as "email", 42 as "current_age" from dual union all select 'a3' as "email", 43 as "current_age" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("email", "current_age") values (tsource."email", tsource."current_age") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [entity], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo", 123 as "bar" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo", 123 as "bar" from dual union all select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo", 123 as "bar" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar", "a0"."email" from "author" "a0" where ("a0"."email" = 'a1' or "a0"."email" = 'a2' or "a0"."email" = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [entity], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo", 123 as "bar" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo", 123 as "bar" from dual union all select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo", 123 as "bar" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "current_age" = tsource."current_age", "foo" = tsource."foo", "bar" = tsource."bar" returning "author"."_id", "author"."current_age", "author"."foo", "author"."bar" into :out__id, :out_current_age, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [oracledb] > em.upsertMany(Type, [entity], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] merge into "author" using (select 1 as "_id", 'a1' as "email", 41 as "current_age", true as "foo", 123 as "bar" from dual union all select 2 as "_id", 'a2' as "email", 42 as "current_age", true as "foo", 123 as "bar" from dual union all select 5 as "_id", 'a3' as "email", 43 as "current_age", true as "foo", 123 as "bar" from dual) tsource on ("author"."email" = tsource."email") when not matched then insert ("_id", "email", "current_age", "foo", "bar") values (tsource."_id", tsource."email", tsource."current_age", tsource."foo", tsource."bar") when matched then update set "current_age" = tsource."current_age" returning "author"."_id", "author"."foo", "author"."bar" into :out__id, :out_foo, :out_bar",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(Type, data) with PK 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age") values (1, 'a1', 41) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age" returning "foo", "bar"",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age") values (2, 'a2', 42) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age" returning "foo", "bar"",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age") values (3, 'a3', 43) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age" returning "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(Type, data) with unique composite property (no additional props) 1`] = `
+[
+  [
+    "[query] insert into "foo_bar" ("name", "author__id") values ('fb1', 1) on conflict ("author__id", "name") do nothing returning "_id", "prop_name"",
+  ],
+  [
+    "[query] select "f0"."_id", "f0"."prop_name" from "foo_bar" as "f0" where "f0"."author__id" = 1 and "f0"."name" = 'fb1' limit 1",
+  ],
+  [
+    "[query] insert into "foo_bar" ("name", "author__id") values ('fb2', 2) on conflict ("author__id", "name") do nothing returning "_id", "prop_name"",
+  ],
+  [
+    "[query] insert into "foo_bar" ("name", "author__id") values ('fb3', 3) on conflict ("author__id", "name") do nothing returning "_id", "prop_name"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(Type, data) with unique composite property (update additional prop) 1`] = `
+[
+  [
+    "[query] insert into "foo_bar" ("name", "author__id", "prop_name") values ('fb1', 1, 'val 1') on conflict ("author__id", "name") do update set "prop_name" = excluded."prop_name" returning "_id"",
+  ],
+  [
+    "[query] insert into "foo_bar" ("name", "author__id", "prop_name") values ('fb2', 2, 'val 2') on conflict ("author__id", "name") do update set "prop_name" = excluded."prop_name" returning "_id"",
+  ],
+  [
+    "[query] insert into "foo_bar" ("name", "author__id", "prop_name") values ('fb3', 3, 'val 3') on conflict ("author__id", "name") do update set "prop_name" = excluded."prop_name" returning "_id"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(Type, data) with unique property 1`] = `
+[
+  [
+    "[query] insert into "author" ("email", "current_age") values ('a1', 41) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+  [
+    "[query] insert into "author" ("email", "current_age") values ('a2', 42) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+  [
+    "[query] insert into "author" ("email", "current_age") values ('a3', 43) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(Type, data, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo") values (1, 'a1', 41, true) on conflict ("email") do nothing returning "_id", "current_age", "foo", "bar"",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar" from "author" as "a0" where "a0"."email" = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo") values (2, 'a2', 42, true) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo") values (5, 'a3', 43, true) on conflict ("email") do update set "current_age" = excluded."current_age", "foo" = excluded."foo" returning "_id", "current_age", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(Type, entity, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (1, 'a1', 41, true, 123) on conflict ("email") do nothing returning "_id", "current_age", "foo", "bar"",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar" from "author" as "a0" where "a0"."email" = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (2, 'a2', 42, true, 123) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (5, 'a3', 43, true, 123) on conflict ("email") do update set "current_age" = excluded."current_age", "foo" = excluded."foo", "bar" = excluded."bar" returning "_id", "current_age", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(entity) 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (1, 'a1', 41, false, 123) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age", "foo" = excluded."foo", "bar" = excluded."bar" returning "_id"",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (2, 'a2', 42, false, 123) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age", "foo" = excluded."foo", "bar" = excluded."bar" returning "_id"",
+  ],
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (3, 'a3', 43, false, 123) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age", "foo" = excluded."foo", "bar" = excluded."bar" returning "_id"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsert(entity) with unique composite property 1`] = `
+[
+  [
+    "[query] insert into "foo_bar" ("_id", "author__id", "name", "prop_name") values (1, 1, 'fb1', 'val 1') on conflict ("_id") do update set "author__id" = excluded."author__id", "name" = excluded."name", "prop_name" = excluded."prop_name" returning "_id"",
+  ],
+  [
+    "[query] insert into "foo_bar" ("_id", "author__id", "name", "prop_name") values (2, 2, 'fb2', 'val 2') on conflict ("_id") do update set "author__id" = excluded."author__id", "name" = excluded."name", "prop_name" = excluded."prop_name" returning "_id"",
+  ],
+  [
+    "[query] insert into "foo_bar" ("_id", "author__id", "name", "prop_name") values (3, 3, 'fb3', 'val 3') on conflict ("_id") do update set "author__id" = excluded."author__id", "name" = excluded."name", "prop_name" = excluded."prop_name" returning "_id"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany([entity1, entity2, entity3]) with PK 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (1, 'a1', 41, false, 123), (2, 'a2', 42, false, 123), (3, 'a3', 43, false, 123) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age", "foo" = excluded."foo", "bar" = excluded."bar" returning "_id", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany([entity1, entity2, entity3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into "author" ("email", "current_age", "foo", "bar") values ('a1', 41, false, 123), ('a2', 42, false, 123), ('a3', 43, false, 123) on conflict ("email") do update set "current_age" = excluded."current_age", "foo" = excluded."foo", "bar" = excluded."bar" returning "_id"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [data], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo") values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on conflict ("email") do nothing returning "_id", "current_age", "foo", "bar"",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar", "a0"."email" from "author" as "a0" where ("a0"."email" = 'a1' or "a0"."email" = 'a2' or "a0"."email" = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [data], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo") values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on conflict ("email") do update set "current_age" = excluded."current_age", "foo" = excluded."foo" returning "_id", "current_age", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [data], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo") values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [data1, data2, data3]) with PK 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age") values (1, 'a1', 41), (2, 'a2', 42), (3, 'a3', 43) on conflict ("_id") do update set "email" = excluded."email", "current_age" = excluded."current_age" returning "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [data1, data2, data3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into "author" ("email", "current_age") values ('a1', 41), ('a2', 42), ('a3', 43) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [entity], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on conflict ("email") do nothing returning "_id", "current_age", "foo", "bar"",
+  ],
+  [
+    "[query] select "a0"."_id", "a0"."current_age", "a0"."foo", "a0"."bar", "a0"."email" from "author" as "a0" where ("a0"."email" = 'a1' or "a0"."email" = 'a2' or "a0"."email" = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [entity], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on conflict ("email") do update set "current_age" = excluded."current_age", "foo" = excluded."foo", "bar" = excluded."bar" returning "_id", "current_age", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [postgresql] > em.upsertMany(Type, [entity], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into "author" ("_id", "email", "current_age", "foo", "bar") values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on conflict ("email") do update set "current_age" = excluded."current_age" returning "_id", "foo", "bar"",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(Type, data) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (1, 'a1', 41) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\` returning \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (2, 'a2', 42) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\` returning \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (3, 'a3', 43) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\` returning \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(Type, data) with unique composite property (no additional props) 1`] = `
+[
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb1', 1) on conflict (\`author__id\`, \`name\`) do nothing returning \`_id\`, \`prop_name\`",
+  ],
+  [
+    "[query] select \`f0\`.\`_id\`, \`f0\`.\`prop_name\` from \`foo_bar\` as \`f0\` where \`f0\`.\`author__id\` = 1 and \`f0\`.\`name\` = 'fb1' limit 1",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb2', 2) on conflict (\`author__id\`, \`name\`) do nothing returning \`_id\`, \`prop_name\`",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`) values ('fb3', 3) on conflict (\`author__id\`, \`name\`) do nothing returning \`_id\`, \`prop_name\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(Type, data) with unique composite property (update additional prop) 1`] = `
+[
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb1', 1, 'val 1') on conflict (\`author__id\`, \`name\`) do update set \`prop_name\` = excluded.\`prop_name\` returning \`_id\`",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb2', 2, 'val 2') on conflict (\`author__id\`, \`name\`) do update set \`prop_name\` = excluded.\`prop_name\` returning \`_id\`",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`name\`, \`author__id\`, \`prop_name\`) values ('fb3', 3, 'val 3') on conflict (\`author__id\`, \`name\`) do update set \`prop_name\` = excluded.\`prop_name\` returning \`_id\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(Type, data) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a1', 41) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a2', 42) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a3', 43) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(Type, data, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true) on conflict (\`email\`) do nothing returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (2, 'a2', 42, true) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (5, 'a3', 43, true) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\` returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(Type, entity, options) with advanced options 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123) on conflict (\`email\`) do nothing returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\` from \`author\` as \`a0\` where \`a0\`.\`email\` = 'a1' limit 1",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (2, 'a2', 42, true, 123) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (5, 'a3', 43, true, 123) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\`, \`bar\` = excluded.\`bar\` returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(entity) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, false, 123) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\`, \`bar\` = excluded.\`bar\` returning \`_id\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (2, 'a2', 42, false, 123) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\`, \`bar\` = excluded.\`bar\` returning \`_id\`",
+  ],
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (3, 'a3', 43, false, 123) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\`, \`bar\` = excluded.\`bar\` returning \`_id\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsert(entity) with unique composite property 1`] = `
+[
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (1, 1, 'fb1', 'val 1') on conflict (\`_id\`) do update set \`author__id\` = excluded.\`author__id\`, \`name\` = excluded.\`name\`, \`prop_name\` = excluded.\`prop_name\` returning \`_id\`",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (2, 2, 'fb2', 'val 2') on conflict (\`_id\`) do update set \`author__id\` = excluded.\`author__id\`, \`name\` = excluded.\`name\`, \`prop_name\` = excluded.\`prop_name\` returning \`_id\`",
+  ],
+  [
+    "[query] insert into \`foo_bar\` (\`_id\`, \`author__id\`, \`name\`, \`prop_name\`) values (3, 3, 'fb3', 'val 3') on conflict (\`_id\`) do update set \`author__id\` = excluded.\`author__id\`, \`name\` = excluded.\`name\`, \`prop_name\` = excluded.\`prop_name\` returning \`_id\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany([entity1, entity2, entity3]) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, false, 123), (2, 'a2', 42, false, 123), (3, 'a3', 43, false, 123) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\`, \`bar\` = excluded.\`bar\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany([entity1, entity2, entity3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`, \`foo\`, \`bar\`) values ('a1', 41, false, 123), ('a2', 42, false, 123), ('a3', 43, false, 123) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\`, \`bar\` = excluded.\`bar\` returning \`_id\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [data], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on conflict (\`email\`) do nothing returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [data], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\` returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [data], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`) values (1, 'a1', 41, true), (2, 'a2', 42, true), (5, 'a3', 43, true) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [data1, data2, data3]) with PK 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`) values (1, 'a1', 41), (2, 'a2', 42), (3, 'a3', 43) on conflict (\`_id\`) do update set \`email\` = excluded.\`email\`, \`current_age\` = excluded.\`current_age\` returning \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [data1, data2, data3]) with unique property 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`email\`, \`current_age\`) values ('a1', 41), ('a2', 42), ('a3', 43) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [entity], options) with advanced options (ignore) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on conflict (\`email\`) do nothing returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+  [
+    "[query] select \`a0\`.\`_id\`, \`a0\`.\`current_age\`, \`a0\`.\`foo\`, \`a0\`.\`bar\`, \`a0\`.\`email\` from \`author\` as \`a0\` where (\`a0\`.\`email\` = 'a1' or \`a0\`.\`email\` = 'a2' or \`a0\`.\`email\` = 'a3')",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [entity], options) with advanced options (onConflictExcludeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\`, \`foo\` = excluded.\`foo\`, \`bar\` = excluded.\`bar\` returning \`_id\`, \`current_age\`, \`foo\`, \`bar\`",
+  ],
+]
+`;
+
+exports[`em.upsert [sqlite] > em.upsertMany(Type, [entity], options) with advanced options (onConflictMergeFields) 1`] = `
+[
+  [
+    "[query] insert into \`author\` (\`_id\`, \`email\`, \`current_age\`, \`foo\`, \`bar\`) values (1, 'a1', 41, true, 123), (2, 'a2', 42, true, 123), (5, 'a3', 43, true, 123) on conflict (\`email\`) do update set \`current_age\` = excluded.\`current_age\` returning \`_id\`, \`foo\`, \`bar\`",
+  ],
+]
+`;

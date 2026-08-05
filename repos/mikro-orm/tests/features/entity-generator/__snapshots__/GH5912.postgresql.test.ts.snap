@@ -1,0 +1,70 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`gh5912 1`] = `
+[
+  "import { BaseEntity, Collection, PrimaryKeyProp, defineEntity, p } from '@mikro-orm/core';
+import { UserDepartment } from './UserDepartment';
+
+export class Department extends BaseEntity {
+  [PrimaryKeyProp]?: 'departmentId';
+  departmentId!: number;
+  userDepartmentCollection = new Collection<UserDepartment>(this);
+}
+
+export const DepartmentSchema = defineEntity({
+  class: Department,
+  properties: {
+    departmentId: p.integer().primary(),
+    userDepartmentCollection: () => p.oneToMany(UserDepartment).mappedBy('department'),
+  },
+});
+",
+  "import { BaseEntity, Collection, PrimaryKeyProp, defineEntity, p } from '@mikro-orm/core';
+import { UserDepartment } from './UserDepartment';
+
+export class User extends BaseEntity {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userDepartmentCollection = new Collection<UserDepartment>(this);
+}
+
+export const UserSchema = defineEntity({
+  class: User,
+  properties: {
+    userId: p.integer().primary(),
+    userDepartmentCollection: () => p.oneToMany(UserDepartment).mappedBy('user'),
+  },
+});
+",
+  "import { BaseEntity, PrimaryKeyProp, type Ref, defineEntity, p } from '@mikro-orm/core';
+import { Department } from './Department';
+import { User } from './User';
+
+export class UserDepartment extends BaseEntity {
+  [PrimaryKeyProp]?: 'userDepartmentId';
+  userDepartmentId!: number;
+  department!: Ref<Department>;
+  departmentId!: number;
+  user!: Ref<User>;
+  userId!: number;
+}
+
+export const UserDepartmentSchema = defineEntity({
+  class: UserDepartment,
+  uniques: [
+    {
+      name: 'user_department_department_id_user_id_unique',
+      properties: ['departmentId', 'userId'],
+    },
+  ],
+  properties: {
+    userDepartmentId: p.integer().primary(),
+    department: () => p.manyToOne(Department).ref().name('department_id').updateRule('no action').deleteRule('no action'),
+    departmentId: p.integer().persist(false),
+    user: () => p.manyToOne(User).ref().name('user_id').updateRule('no action').deleteRule('no action'),
+    userId: p.integer().persist(false),
+  },
+});
+",
+]
+`;

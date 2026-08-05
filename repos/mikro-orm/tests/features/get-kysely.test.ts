@@ -1,0 +1,1047 @@
+import {
+  defineEntity,
+  p,
+  PrimaryKeyProp,
+  EntityName,
+  Collection,
+  Opt,
+  Rel,
+  MikroORM,
+  InferClassEntityDB,
+  InferDBFromKysely,
+  InferKyselyDB,
+  InferKyselyTable,
+  MikroKyselyPluginOptions,
+} from '@mikro-orm/sqlite';
+import {
+  Entity,
+  PrimaryKey,
+  Property,
+  ManyToOne,
+  OneToMany,
+  ReflectMetadataProvider,
+} from '@mikro-orm/decorators/legacy';
+
+describe('InferKyselyDB', () => {
+  test('infer table and column', async () => {
+    const User = defineEntity({
+      name: 'User',
+      tableName: 'users',
+      properties: {
+        fullName: p.string().primary(),
+        email: p.string().nullable(),
+        firstName: p.string(),
+        lastName: p.string().fieldName('the_last_name'),
+        profile: () => p.oneToOne(UserProfile),
+      },
+    });
+
+    const UserProfile = defineEntity({
+      name: 'UserProfile',
+      properties: {
+        user: () => p.oneToOne(User).owner().primary(),
+        bio: p.string().nullable(),
+        avatar: p.string().nullable(),
+        location: p.string().nullable(),
+      },
+    });
+
+    const Post = defineEntity({
+      name: 'Post',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        title: p.string(),
+        description: p.text(),
+        author: () => p.manyToOne(User),
+      },
+    });
+
+    const Book = defineEntity({
+      name: 'Book',
+      properties: {
+        // tricky column names to verify SnakeCase vs UnderscoreNamingStrategy alignment
+        ISBN: p.string().primary(),
+        htmlContent: p.string(),
+        userID: p.string(),
+        XMLHttpRequestLog: p.string(),
+        user2FAEnabled: p.boolean(),
+        sslError: p.string(),
+        title: p.string(),
+      },
+    });
+
+    const orm = new MikroORM({
+      entities: [User, UserProfile, Post, Book],
+      dbName: ':memory:',
+    });
+
+    const generator = orm.schema;
+    const createDump = await generator.getCreateSchemaSQL();
+    expect(createDump).toMatchInlineSnapshot(`
+      "create table \`book\` (\`isbn\` text not null primary key, \`html_content\` text not null, \`user_id\` text not null, \`xmlhttp_request_log\` text not null, \`user2faenabled\` integer not null, \`ssl_error\` text not null, \`title\` text not null);
+
+      create table \`user_profile\` (\`user_full_name\` text not null primary key, \`bio\` text null, \`avatar\` text null, \`location\` text null, constraint \`user_profile_user_full_name_foreign\` foreign key (\`user_full_name\`) references \`users\` (\`full_name\`) on update cascade on delete cascade);
+
+      create table \`users\` (\`full_name\` text not null primary key, \`email\` text null, \`first_name\` text not null, \`the_last_name\` text not null, \`profile_user_full_name\` text not null, constraint \`users_profile_user_full_name_foreign\` foreign key (\`profile_user_full_name\`) references \`user_profile\` (\`user_full_name\`));
+      create unique index \`users_profile_user_full_name_unique\` on \`users\` (\`profile_user_full_name\`);
+
+      create table \`post\` (\`id\` integer not null primary key autoincrement, \`title\` text not null, \`description\` text not null, \`author_full_name\` text not null, constraint \`post_author_full_name_foreign\` foreign key (\`author_full_name\`) references \`users\` (\`full_name\`));
+      create index \`post_author_full_name_index\` on \`post\` (\`author_full_name\`);
+      "
+    `);
+
+    type KyselyDB = InferKyselyDB<typeof User | typeof UserProfile | typeof Post | typeof Book, {}>;
+    type UserTable = KyselyDB['users'];
+    expectTypeOf<UserTable>().toEqualTypeOf<{
+      full_name: string;
+      email: string | null;
+      first_name: string;
+      the_last_name: string;
+    }>();
+    type UserProfileTable = KyselyDB['user_profile'];
+    expectTypeOf<UserProfileTable>().toEqualTypeOf<{
+      user_full_name: string;
+      bio: string | null;
+      avatar: string | null;
+      location: string | null;
+    }>();
+    type PostTable = KyselyDB['post'];
+    expectTypeOf<PostTable>().toEqualTypeOf<{
+      id: Generated<number>;
+      title: string;
+      description: string;
+      author_full_name: string;
+    }>();
+
+    type BookTable = KyselyDB['book'];
+    expectTypeOf<BookTable>().toEqualTypeOf<{
+      isbn: string;
+      html_content: string;
+      user_id: string;
+      xmlhttp_request_log: string;
+      user2faenabled: NonNullable<boolean | null | undefined>;
+      ssl_error: string;
+      title: string;
+    }>();
+  });
+
+  test('infer table with tableNamingStrategy: entity', async () => {
+    const User = defineEntity({
+      name: 'User',
+      tableName: 'users',
+      properties: {
+        fullName: p.string().primary(),
+      },
+    });
+
+    const UserProfile = defineEntity({
+      name: 'UserProfile',
+      tableName: 'user_profiles',
+      properties: {
+        user: () => p.oneToOne(User).owner().primary(),
+        bio: p.string().nullable(),
+        avatar: p.string().nullable(),
+        location: p.string().nullable(),
+      },
+    });
+
+    const kyselyOptions = {
+      tableNamingStrategy: 'entity',
+      columnNamingStrategy: 'property',
+    } as const satisfies MikroKyselyPluginOptions;
+    type KyselyDB = InferKyselyDB<typeof User | typeof UserProfile, typeof kyselyOptions>;
+
+    expectTypeOf<KyselyDB>().toEqualTypeOf<{
+      User: {
+        fullName: string;
+      };
+      UserProfile: {
+        user: string;
+        bio: string | null;
+        avatar: string | null;
+        location: string | null;
+      };
+    }>();
+  });
+
+  test('infer table with tableNamingStrategy: table', async () => {
+    const User = defineEntity({
+      name: 'User',
+      tableName: 'users',
+      properties: {
+        fullName: p.string().primary(),
+      },
+    });
+
+    const UserProfile = defineEntity({
+      name: 'UserProfile',
+      tableName: 'user_profiles',
+      properties: {
+        user: () => p.oneToOne(User).owner().primary(),
+        bio: p.string().nullable(),
+        avatar: p.string().nullable(),
+        location: p.string().nullable(),
+      },
+    });
+
+    const kyselyOptions = {
+      tableNamingStrategy: 'table',
+      columnNamingStrategy: 'column',
+    } as const satisfies MikroKyselyPluginOptions;
+    type KyselyDB = InferKyselyDB<typeof User | typeof UserProfile, typeof kyselyOptions>;
+
+    expectTypeOf<KyselyDB>().toEqualTypeOf<{
+      users: {
+        full_name: string;
+      };
+      user_profiles: {
+        user_full_name: string;
+        bio: string | null;
+        avatar: string | null;
+        location: string | null;
+      };
+    }>();
+  });
+
+  test('infer pivot table', async () => {
+    const User = defineEntity({
+      name: 'User',
+      properties: {
+        name: p.string().primary(),
+        email: p.string().nullable(),
+        viewedPosts: () =>
+          p
+            .manyToMany(Post)
+            .owner()
+            .pivotEntity(() => UserViewedPosts),
+      },
+    });
+
+    const Post = defineEntity({
+      name: 'Post',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        title: p.string(),
+        description: p.text(),
+        author: () => p.manyToOne(User),
+        viewers: () => p.manyToMany(User),
+      },
+    });
+
+    const UserViewedPosts = defineEntity({
+      name: 'UserViewedPosts',
+      properties: {
+        user: () => p.manyToOne(User).primary(),
+        post: () => p.manyToOne(Post).primary(),
+        viewedAt: p.datetime().onUpdate(() => new Date()),
+      },
+    });
+
+    const orm = new MikroORM({
+      entities: [User, Post, UserViewedPosts],
+      dbName: ':memory:',
+    });
+    const generator = orm.schema;
+    const createDump = await generator.getCreateSchemaSQL();
+    expect(createDump).toMatchInlineSnapshot(`
+      "create table \`user\` (\`name\` text not null primary key, \`email\` text null);
+
+      create table \`post\` (\`id\` integer not null primary key autoincrement, \`title\` text not null, \`description\` text not null, \`author_name\` text not null, constraint \`post_author_name_foreign\` foreign key (\`author_name\`) references \`user\` (\`name\`));
+      create index \`post_author_name_index\` on \`post\` (\`author_name\`);
+
+      create table \`post_viewers\` (\`post_id\` integer not null, \`user_name\` text not null, primary key (\`post_id\`, \`user_name\`), constraint \`post_viewers_post_id_foreign\` foreign key (\`post_id\`) references \`post\` (\`id\`) on update cascade on delete cascade, constraint \`post_viewers_user_name_foreign\` foreign key (\`user_name\`) references \`user\` (\`name\`) on update cascade on delete cascade);
+      create index \`post_viewers_post_id_index\` on \`post_viewers\` (\`post_id\`);
+      create index \`post_viewers_user_name_index\` on \`post_viewers\` (\`user_name\`);
+
+      create table \`user_viewed_posts\` (\`user_name\` text not null, \`post_id\` integer not null, \`viewed_at\` datetime not null, primary key (\`user_name\`, \`post_id\`), constraint \`user_viewed_posts_user_name_foreign\` foreign key (\`user_name\`) references \`user\` (\`name\`) on update cascade on delete cascade, constraint \`user_viewed_posts_post_id_foreign\` foreign key (\`post_id\`) references \`post\` (\`id\`) on update cascade on delete cascade);
+      create index \`user_viewed_posts_user_name_index\` on \`user_viewed_posts\` (\`user_name\`);
+      create index \`user_viewed_posts_post_id_index\` on \`user_viewed_posts\` (\`post_id\`);
+      "
+    `);
+
+    const kysely = orm.em.getKysely();
+    type KyselyDB = InferDBFromKysely<typeof kysely>;
+    type UserTable = KyselyDB['user'];
+    expectTypeOf<UserTable>().toEqualTypeOf<{
+      name: string;
+      email: string | null;
+    }>();
+    type PostTable = KyselyDB['post'];
+    expectTypeOf<PostTable>().toEqualTypeOf<{
+      id: Generated<number>;
+      title: string;
+      description: string;
+      author_name: string;
+    }>();
+    type UserViewedPostsTable = KyselyDB['user_viewed_posts'];
+    expectTypeOf<UserViewedPostsTable>().toEqualTypeOf<{
+      user_name: string;
+      post_id: number;
+      viewed_at: Date;
+    }>();
+  });
+
+  test('infer table with non-persistent and oneToMany relation', async () => {
+    const User = defineEntity({
+      name: 'User',
+      tableName: 'users',
+      properties: {
+        name: p.string().primary(),
+        email: p.string().nullable(),
+        nonPersistent: p.string().persist(false),
+        posts: () => p.oneToMany(Post).mappedBy(p => p.author),
+      },
+    });
+
+    const Post = defineEntity({
+      name: 'Post',
+      tableName: 'posts',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        title: p.string(),
+        description: p.text(),
+        author: () => p.manyToOne(User),
+      },
+    });
+
+    const orm = new MikroORM({
+      entities: [User, Post],
+      dbName: ':memory:',
+    });
+
+    const createDump = await orm.schema.getCreateSchemaSQL();
+    expect(createDump).toMatchInlineSnapshot(`
+      "create table \`users\` (\`name\` text not null primary key, \`email\` text null);
+
+      create table \`posts\` (\`id\` integer not null primary key autoincrement, \`title\` text not null, \`description\` text not null, \`author_name\` text not null, constraint \`posts_author_name_foreign\` foreign key (\`author_name\`) references \`users\` (\`name\`));
+      create index \`posts_author_name_index\` on \`posts\` (\`author_name\`);
+      "
+    `);
+
+    type KyselyDB = InferKyselyDB<typeof User | typeof Post, {}>;
+    type UserTable = KyselyDB['users'];
+    expectTypeOf<UserTable>().toEqualTypeOf<{
+      name: string;
+      email: string | null;
+    }>();
+    type PostTable = KyselyDB['posts'];
+    expectTypeOf<PostTable>().toEqualTypeOf<{
+      id: Generated<number>;
+      title: string;
+      description: string;
+      author_name: string;
+    }>();
+  });
+
+  test('infer with defineEntity and class', async () => {
+    class User {
+      fullName!: string;
+      email!: string | null;
+      firstName!: string;
+      lastName!: string;
+      profile!: UserProfile;
+
+      [PrimaryKeyProp]?: 'fullName';
+    }
+
+    class UserProfile {
+      user!: User;
+      bio!: string | null;
+      avatar!: string | null;
+      location!: string | null;
+
+      [PrimaryKeyProp]?: 'user';
+    }
+
+    class Post {
+      id!: number;
+      title!: string;
+      description!: string;
+      author!: User;
+
+      [PrimaryKeyProp]?: 'id';
+    }
+
+    const UserSchema = defineEntity({
+      class: User,
+      className: 'User',
+      tableName: 'users',
+      properties: {
+        fullName: p.string().primary(),
+        email: p.string().nullable(),
+        firstName: p.string(),
+        lastName: p.string().fieldName('the_last_name'),
+        profile: () => p.oneToOne(UserProfile),
+      },
+    });
+
+    const UserProfileSchema = defineEntity({
+      class: UserProfile,
+      className: 'UserProfile',
+      tableName: 'user_profiles',
+      properties: {
+        user: () => p.oneToOne(User).owner().primary(),
+        bio: p.string().nullable(),
+        avatar: p.string().nullable(),
+        location: p.string().nullable(),
+      },
+    });
+
+    const PostSchema = defineEntity({
+      class: Post,
+      className: 'Post',
+      tableName: 'posts',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        title: p.string(),
+        description: p.text(),
+        author: () => p.manyToOne(User),
+      },
+    });
+
+    const orm = new MikroORM({
+      entities: [UserSchema, UserProfileSchema, PostSchema],
+      dbName: ':memory:',
+    });
+
+    const createDump = await orm.schema.getCreateSchemaSQL();
+    expect(createDump).toMatchInlineSnapshot(`
+      "create table \`user_profiles\` (\`user_full_name\` text not null primary key, \`bio\` text null, \`avatar\` text null, \`location\` text null, constraint \`user_profiles_user_full_name_foreign\` foreign key (\`user_full_name\`) references \`users\` (\`full_name\`) on update cascade on delete cascade);
+
+      create table \`users\` (\`full_name\` text not null primary key, \`email\` text null, \`first_name\` text not null, \`the_last_name\` text not null, \`profile_user_full_name\` text not null, constraint \`users_profile_user_full_name_foreign\` foreign key (\`profile_user_full_name\`) references \`user_profiles\` (\`user_full_name\`));
+      create unique index \`users_profile_user_full_name_unique\` on \`users\` (\`profile_user_full_name\`);
+
+      create table \`posts\` (\`id\` integer not null primary key autoincrement, \`title\` text not null, \`description\` text not null, \`author_full_name\` text not null, constraint \`posts_author_full_name_foreign\` foreign key (\`author_full_name\`) references \`users\` (\`full_name\`));
+      create index \`posts_author_full_name_index\` on \`posts\` (\`author_full_name\`);
+      "
+    `);
+
+    type KyselyDB = InferKyselyDB<typeof UserSchema | typeof UserProfileSchema | typeof PostSchema, {}>;
+    type UserTable = KyselyDB['users'];
+    expectTypeOf<UserTable>().toEqualTypeOf<{
+      full_name: string;
+      email: string | null;
+      first_name: string;
+      the_last_name: string;
+    }>();
+    type UserProfileTable = KyselyDB['user_profiles'];
+    expectTypeOf<UserProfileTable>().toEqualTypeOf<{
+      user_full_name: string;
+      bio: string | null;
+      avatar: string | null;
+      location: string | null;
+    }>();
+    type PostTable = KyselyDB['posts'];
+    expectTypeOf<PostTable>().toEqualTypeOf<{
+      id: Generated<number>;
+      title: string;
+      description: string;
+      author_full_name: string;
+    }>();
+  });
+
+  test('infer columns inherited via extends (GH #7937)', async () => {
+    const BaseEntity = defineEntity({
+      abstract: true,
+      name: 'BaseEntity7937',
+      properties: {
+        id: p.integer().autoincrement().primary(),
+        createdAt: p.datetime().fieldName('created_at'),
+      },
+    });
+
+    const Book = defineEntity({
+      name: 'Book7937',
+      tableName: 'books7937',
+      extends: BaseEntity,
+      properties: p => ({
+        title: p.string(),
+      }),
+    });
+
+    const orm = new MikroORM({
+      entities: [Book],
+      dbName: ':memory:',
+    });
+
+    type KyselyDB = InferKyselyDB<typeof Book, {}>;
+    type BookTable = KyselyDB['books7937'];
+    expectTypeOf<BookTable>().toEqualTypeOf<{
+      id: Generated<number>;
+      created_at: Date;
+      title: string;
+    }>();
+
+    const kysely = orm.em.getKysely();
+    kysely.selectFrom('books7937').select(['id', 'created_at', 'title']);
+  });
+
+  test('use InferKyselyTable manually', async () => {
+    const User = defineEntity({
+      name: 'User',
+      properties: {
+        name: p.string().primary(),
+        email: p.string().nullable(),
+        age: p.integer(),
+      },
+    });
+
+    const Post = defineEntity({
+      name: 'Post',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        title: p.string(),
+        content: p.text(),
+        author: () => p.manyToOne(User),
+        createdAt: p.datetime().onCreate(() => new Date()),
+      },
+    });
+
+    const Comment = defineEntity({
+      name: 'Comment',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        text: p.string(),
+        post: () => p.manyToOne(Post),
+        author: () => p.manyToOne(User),
+      },
+    });
+
+    const orm = new MikroORM({
+      entities: [User, Post, Comment],
+      dbName: ':memory:',
+    });
+
+    type InferredUserTable = InferKyselyTable<typeof User>;
+    expectTypeOf<InferredUserTable>().toEqualTypeOf<{
+      name: string;
+      email: string | null;
+      age: number;
+    }>();
+
+    type InferredPostTable = InferKyselyTable<typeof Post>;
+    expectTypeOf<InferredPostTable>().toEqualTypeOf<{
+      id: Generated<number>;
+      title: string;
+      content: string;
+      author_name: string;
+      created_at: Date;
+    }>();
+
+    type InferredCommentTable = InferKyselyTable<typeof Comment>;
+    expectTypeOf<InferredCommentTable>().toEqualTypeOf<{
+      id: Generated<number>;
+      text: string;
+      post_id: number;
+      author_name: string;
+    }>();
+
+    interface ManualUserTable {
+      name: string;
+      email: string | null;
+      age: number;
+    }
+
+    interface ManualPostTable {
+      id: Generated<number>;
+      title: string;
+      content: string;
+      author_name: string;
+      created_at: Date;
+    }
+
+    interface ManualCommentTable {
+      id: Generated<number>;
+      text: string;
+      post_id: number;
+      author_name: string;
+    }
+
+    expectTypeOf<InferredUserTable>().toEqualTypeOf<ManualUserTable>();
+    expectTypeOf<InferredPostTable>().toEqualTypeOf<ManualPostTable>();
+    expectTypeOf<InferredCommentTable>().toEqualTypeOf<ManualCommentTable>();
+
+    interface ManualDatabase {
+      user: ManualUserTable;
+      post: ManualPostTable;
+      comment: ManualCommentTable;
+    }
+
+    const kyselyAuto = orm.em.getKysely();
+    type AutoInferredDB = InferDBFromKysely<typeof kyselyAuto>;
+    expectTypeOf<AutoInferredDB['user']>().toEqualTypeOf<InferredUserTable>();
+    expectTypeOf<AutoInferredDB['post']>().toEqualTypeOf<InferredPostTable>();
+    expectTypeOf<AutoInferredDB['comment']>().toEqualTypeOf<InferredCommentTable>();
+
+    const kyselyManual = orm.em.getKysely<ManualDatabase>();
+    type ManualDB = InferDBFromKysely<typeof kyselyManual>;
+    expectTypeOf<ManualDB>().toEqualTypeOf<ManualDatabase>();
+    expectTypeOf<ManualDB['user']>().toEqualTypeOf<ManualUserTable>();
+    expectTypeOf<ManualDB['post']>().toEqualTypeOf<ManualPostTable>();
+    expectTypeOf<ManualDB['comment']>().toEqualTypeOf<ManualCommentTable>();
+
+    expectTypeOf<AutoInferredDB>().toEqualTypeOf<ManualDatabase>();
+  });
+
+  test('infer columns inherited via extends, including multi-level chains (GH #7937)', () => {
+    const Base = defineEntity({
+      name: 'Base7937',
+      abstract: true,
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        createdAt: p.datetime().fieldName('created_at_col'),
+      },
+    });
+
+    const Middle = defineEntity({
+      name: 'Middle7937',
+      extends: Base,
+      abstract: true,
+      properties: {
+        mid: p.string(),
+      },
+    });
+
+    // single-level child of Base
+    const Animal = defineEntity({
+      name: 'Animal7937',
+      tableName: 'animal',
+      extends: Base,
+      properties: {
+        species: p.string(),
+      },
+    });
+
+    // multi-level child: Base -> Middle -> Cat
+    const Cat = defineEntity({
+      name: 'Cat7937',
+      tableName: 'cat',
+      extends: Middle,
+      properties: {
+        lives: p.integer(),
+      },
+    });
+
+    type DB = InferKyselyDB<typeof Animal | typeof Cat, {}>;
+
+    // single-level: own + grandparent-less base columns (builder metadata like fieldName propagates)
+    expectTypeOf<DB['animal']>().toEqualTypeOf<{
+      id: Generated<number>;
+      created_at_col: Date;
+      species: string;
+    }>();
+
+    // multi-level: own + parent + grandparent columns
+    expectTypeOf<DB['cat']>().toEqualTypeOf<{
+      id: Generated<number>;
+      created_at_col: Date;
+      mid: string;
+      lives: number;
+    }>();
+  });
+});
+
+describe('InferClassEntityDB', () => {
+  @Entity()
+  class Author {
+    [EntityName]?: 'Author';
+
+    @PrimaryKey()
+    id!: number;
+
+    @Property()
+    firstName!: string;
+
+    @Property()
+    email!: string;
+
+    @OneToMany(() => Post, post => post.author)
+    posts = new Collection<Post>(this);
+  }
+
+  @Entity()
+  class Post {
+    [EntityName]?: 'Post';
+
+    @PrimaryKey()
+    id!: number;
+
+    @Property()
+    title!: string;
+
+    @Property()
+    createdAt: Date & Opt = new Date();
+
+    @ManyToOne(() => Author)
+    author!: Author;
+  }
+
+  test('infer decorator entity types via getKysely', async () => {
+    const orm = await MikroORM.init({
+      entities: [Author, Post],
+      dbName: ':memory:',
+      metadataProvider: ReflectMetadataProvider,
+    });
+
+    await orm.schema.create();
+
+    const kysely = orm.em.getKysely({
+      columnNamingStrategy: 'property',
+    });
+    type DB = InferDBFromKysely<typeof kysely>;
+
+    // table names are snake_cased from entity names
+    expectTypeOf<DB>().toHaveProperty('author');
+    expectTypeOf<DB>().toHaveProperty('post');
+
+    // author columns: id, firstName, email (collection excluded)
+    expectTypeOf<DB['author']>().toHaveProperty('id');
+    expectTypeOf<DB['author']>().toHaveProperty('firstName');
+    expectTypeOf<DB['author']>().toHaveProperty('email');
+    expectTypeOf<DB['author']['id']>().toEqualTypeOf<number>();
+    expectTypeOf<DB['author']['firstName']>().toEqualTypeOf<string>();
+
+    // post columns: id, title, createdAt, author (FK as property name)
+    expectTypeOf<DB['post']>().toHaveProperty('id');
+    expectTypeOf<DB['post']>().toHaveProperty('title');
+    expectTypeOf<DB['post']>().toHaveProperty('createdAt');
+    expectTypeOf<DB['post']>().toHaveProperty('author');
+    expectTypeOf<DB['post']['author']>().toEqualTypeOf<number>();
+
+    // runtime: insert and select using property names
+    await kysely.insertInto('author').values({ id: 1, firstName: 'John', email: 'john@example.com' }).execute();
+
+    const authors = await kysely.selectFrom('author').select(['id', 'firstName', 'email']).execute();
+
+    expect(authors).toEqual([{ id: 1, firstName: 'John', email: 'john@example.com' }]);
+
+    await orm.close();
+  });
+
+  test('infer decorator entity with tableNamingStrategy: entity', async () => {
+    const orm = await MikroORM.init({
+      entities: [Author, Post],
+      dbName: ':memory:',
+      metadataProvider: ReflectMetadataProvider,
+    });
+
+    await orm.schema.create();
+
+    const kysely = orm.em.getKysely({
+      tableNamingStrategy: 'entity',
+      columnNamingStrategy: 'property',
+    });
+    type DB = InferDBFromKysely<typeof kysely>;
+
+    // with entity naming strategy, table names match entity names
+    expectTypeOf<DB>().toHaveProperty('Author');
+    expectTypeOf<DB>().toHaveProperty('Post');
+
+    // runtime: insert and select using entity/property names
+    await kysely.insertInto('Author').values({ id: 1, firstName: 'Jane', email: 'jane@example.com' }).execute();
+
+    const authors = await kysely.selectFrom('Author').select(['firstName', 'email']).execute();
+
+    expect(authors).toEqual([{ firstName: 'Jane', email: 'jane@example.com' }]);
+
+    await orm.close();
+  });
+
+  test('InferClassEntityDB type utility', () => {
+    // default: column name mapping (snake_case + FK suffix)
+    type DB = InferClassEntityDB<typeof Author | typeof Post>;
+
+    expectTypeOf<DB>().toHaveProperty('author');
+    expectTypeOf<DB>().toHaveProperty('post');
+    expectTypeOf<DB['author']['id']>().toEqualTypeOf<number>();
+    expectTypeOf<DB['author']['first_name']>().toEqualTypeOf<string>();
+    expectTypeOf<DB['post']['title']>().toEqualTypeOf<string>();
+    expectTypeOf<DB['post']>().toHaveProperty('created_at');
+
+    // collections are excluded, FK columns are inferred with column names
+    type AuthorKeys = keyof DB['author'];
+    expectTypeOf<'posts'>().not.toMatchTypeOf<AuthorKeys>();
+    // post has author_id FK column with PK type
+    expectTypeOf<DB['post']>().toHaveProperty('author_id');
+    expectTypeOf<DB['post']['author_id']>().toEqualTypeOf<number>();
+
+    // property naming strategy
+    type DBProp = InferClassEntityDB<typeof Author | typeof Post, { columnNamingStrategy: 'property' }>;
+    expectTypeOf<DBProp['author']['firstName']>().toEqualTypeOf<string>();
+    expectTypeOf<DBProp['post']['author']>().toEqualTypeOf<number>();
+
+    // entity naming strategy
+    type DBEntity = InferClassEntityDB<typeof Author | typeof Post, { tableNamingStrategy: 'entity' }>;
+    expectTypeOf<DBEntity>().toHaveProperty('Author');
+    expectTypeOf<DBEntity>().toHaveProperty('Post');
+  });
+
+  test('FK columns inferred for decorator entities (GH #7367)', async () => {
+    @Entity()
+    class Author7367 {
+      [EntityName]?: 'Author7367';
+      @PrimaryKey({ type: 'uuid' }) id!: string;
+      @Property() name!: string;
+    }
+
+    @Entity()
+    class Book7367 {
+      [EntityName]?: 'Book7367';
+      @PrimaryKey({ type: 'uuid' }) id!: string;
+      @Property() title!: string;
+      @ManyToOne(() => Author7367) author!: Author7367;
+    }
+
+    const orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Book7367, Author7367],
+      dbName: ':memory:',
+    });
+
+    // default column naming: FK uses column name (author_id)
+    const db = orm.em.getKysely();
+    db.selectFrom('book7367').select('book7367.title');
+    db.selectFrom('book7367').select('book7367.author_id');
+
+    // property naming: FK uses property name (author)
+    const db2 = orm.em.getKysely({ columnNamingStrategy: 'property' });
+    db2.selectFrom('book7367').select('book7367.author');
+
+    await orm.close(true);
+  });
+
+  test('decorator and defineEntity produce consistent column naming', () => {
+    @Entity()
+    class AuthorDec {
+      [EntityName]?: 'AuthorDec';
+      @PrimaryKey({ type: 'uuid' }) id!: string;
+      @Property() name!: string;
+    }
+
+    @Entity()
+    class BookDec {
+      [EntityName]?: 'BookDec';
+      @PrimaryKey({ type: 'uuid' }) id!: string;
+      @Property() title!: string;
+      @ManyToOne(() => AuthorDec) author!: Rel<AuthorDec>;
+    }
+
+    const AuthorDE = defineEntity({
+      name: 'AuthorDE',
+      properties: {
+        id: p.uuid().primary(),
+        name: p.string(),
+      },
+    });
+
+    const BookDE = defineEntity({
+      name: 'BookDE',
+      properties: {
+        id: p.uuid().primary(),
+        title: p.string(),
+        author: () => p.manyToOne(AuthorDE),
+      },
+    });
+
+    // decorator entities: default column naming (snake_case + FK suffix)
+    type DBDec = InferClassEntityDB<typeof AuthorDec | typeof BookDec>;
+    expectTypeOf<DBDec['author_dec']>().toHaveProperty('id');
+    expectTypeOf<DBDec['author_dec']>().toHaveProperty('name');
+    expectTypeOf<DBDec['book_dec']>().toHaveProperty('id');
+    expectTypeOf<DBDec['book_dec']>().toHaveProperty('title');
+    expectTypeOf<DBDec['book_dec']>().toHaveProperty('author_id');
+    expectTypeOf<DBDec['book_dec']['author_id']>().toEqualTypeOf<string>();
+
+    // defineEntity: same column naming
+    type DBDE = InferKyselyDB<typeof AuthorDE | typeof BookDE>;
+    expectTypeOf<DBDE['author_de']>().toHaveProperty('id');
+    expectTypeOf<DBDE['author_de']>().toHaveProperty('name');
+    expectTypeOf<DBDE['book_de']>().toHaveProperty('id');
+    expectTypeOf<DBDE['book_de']>().toHaveProperty('title');
+    expectTypeOf<DBDE['book_de']>().toHaveProperty('author_id');
+    expectTypeOf<DBDE['book_de']['author_id']>().toEqualTypeOf<string>();
+
+    // property naming strategy: use property names as-is
+    type DBProp = InferClassEntityDB<typeof AuthorDec | typeof BookDec, { columnNamingStrategy: 'property' }>;
+    expectTypeOf<DBProp['book_dec']>().toHaveProperty('author');
+    expectTypeOf<DBProp['book_dec']['author']>().toEqualTypeOf<string>();
+  });
+
+  test('entities without EntityName are excluded from inference', () => {
+    class NoName {
+      @PrimaryKey()
+      id!: number;
+    }
+
+    type DB = InferClassEntityDB<typeof NoName>;
+    expectTypeOf<DB>().toEqualTypeOf<unknown>();
+  });
+
+  test('class extending defineEntity().class is inferred via ~entityName brand (GH #7423)', () => {
+    const FooSchema = defineEntity({
+      name: 'Foo7423',
+      properties: {
+        id: p.integer().primary(),
+        name: p.string(),
+      },
+    });
+
+    class Foo7423 extends FooSchema.class {}
+    FooSchema.setClass(Foo7423);
+
+    type DB = InferClassEntityDB<typeof Foo7423>;
+    expectTypeOf<DB>().toHaveProperty('foo7423');
+    expectTypeOf<DB['foo7423']>().toHaveProperty('id');
+    expectTypeOf<DB['foo7423']>().toHaveProperty('name');
+
+    type DBEntity = InferClassEntityDB<typeof Foo7423, { tableNamingStrategy: 'entity' }>;
+    expectTypeOf<DBEntity>().toHaveProperty('Foo7423');
+  });
+
+  test('nullable m:1 FK columns keep null in class inference (GH #7962)', async () => {
+    const Address = defineEntity({
+      name: 'Address7962',
+      properties: {
+        id: p.uuid().primary(),
+      },
+    });
+
+    const UserSchema = defineEntity({
+      name: 'User7962',
+      properties: {
+        id: p.integer().primary(),
+        address: () => p.manyToOne(Address).nullable(),
+      },
+    });
+
+    class User7962 extends UserSchema.class {}
+    UserSchema.setClass(User7962);
+
+    // nullable FK column must stay nullable on the class-based inference path,
+    // matching the schema-based path
+    type DB = InferClassEntityDB<typeof User7962>;
+    expectTypeOf<DB['user7962']['address_id']>().toEqualTypeOf<string | null>();
+
+    type DBProp = InferClassEntityDB<typeof User7962, { columnNamingStrategy: 'property' }>;
+    expectTypeOf<DBProp['user7962']['address']>().toEqualTypeOf<string | null>();
+
+    // the type surfaces through getKysely() the same as a class-less schema, so `null` is accepted
+    const orm = await MikroORM.init({
+      entities: [User7962, Address],
+      dbName: ':memory:',
+    });
+    await orm.schema.create();
+
+    const kysely = orm.em.getKysely();
+    type KyselyDB = InferDBFromKysely<typeof kysely>;
+    expectTypeOf<KyselyDB['user7962']['address_id']>().toEqualTypeOf<string | null>();
+
+    await kysely.insertInto('user7962').values({ id: 1, address_id: null }).execute();
+    const rows = await kysely.selectFrom('user7962').select(['id', 'address_id']).execute();
+    expect(rows).toEqual([{ id: 1, address_id: null }]);
+
+    await orm.close();
+  });
+
+  test('scalar array properties are inferred as columns (GH #7751)', () => {
+    interface Stop {
+      offset: number;
+      color: string;
+    }
+
+    @Entity()
+    class ColorTemplateFlat {
+      [EntityName]?: 'ColorTemplateFlat';
+
+      @PrimaryKey({ type: 'uuid' })
+      id!: string;
+
+      @Property({ nullable: true })
+      name!: null | string;
+
+      @Property({ default: true })
+      visible: boolean = true;
+
+      @Property()
+      hexColors!: string[];
+
+      @Property({ defaultRaw: `'[]'::jsonb`, nullable: false, type: 'jsonb' })
+      stops!: Stop[];
+    }
+
+    type DB = InferClassEntityDB<typeof ColorTemplateFlat>;
+    type ColumnKeys = keyof DB['color_template_flat'];
+    expectTypeOf<'hex_colors'>().toExtend<ColumnKeys>();
+    expectTypeOf<'stops'>().toExtend<ColumnKeys>();
+    expectTypeOf<DB['color_template_flat']['hex_colors']>().toEqualTypeOf<string[]>();
+    expectTypeOf<DB['color_template_flat']['stops']>().toEqualTypeOf<Stop[]>();
+
+    type DBProp = InferClassEntityDB<typeof ColorTemplateFlat, { columnNamingStrategy: 'property' }>;
+    type ColumnKeysProp = keyof DBProp['color_template_flat'];
+    expectTypeOf<'hexColors'>().toExtend<ColumnKeysProp>();
+    expectTypeOf<'stops'>().toExtend<ColumnKeysProp>();
+    expectTypeOf<DBProp['color_template_flat']['hexColors']>().toEqualTypeOf<string[]>();
+  });
+});
+
+describe('typed EntityManager via `~entities` graft (discovery:export DI use case)', () => {
+  // Mirrors the shape `mikro-orm discovery:export` emits:
+  //   export const entities = [Author, BookSchema] as const;
+  //   export type Database = typeof entities;
+  //   export type EntityManager = DriverEntityManager & { '~entities': Database };
+  test('getKysely return type respects naming strategies even when EM is received via DI', async () => {
+    const Author = defineEntity({
+      name: 'Author',
+      tableName: 'authors',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        firstName: p.string(),
+        lastName: p.string(),
+      },
+    });
+
+    const Book = defineEntity({
+      name: 'Book',
+      properties: {
+        id: p.integer().primary().autoincrement(),
+        title: p.string(),
+        author: () => p.manyToOne(Author),
+      },
+    });
+
+    const entities = [Author, Book] as const;
+    type Database = typeof entities;
+
+    const orm = new MikroORM({ entities, dbName: ':memory:' });
+
+    // simulate DI: forget the inferred EM type, recover entities via graft alone
+    type DriverEntityManager = typeof orm.em;
+    type TypedEm = DriverEntityManager & { '~entities': Database };
+    const em = orm.em as unknown as TypedEm;
+
+    // default (physical/underscore naming) — picks up `tableName: 'authors'`
+    const k1 = em.getKysely();
+    type K1 = InferDBFromKysely<typeof k1>;
+    expectTypeOf<keyof K1>().toEqualTypeOf<'authors' | 'book'>();
+    expectTypeOf<keyof K1['authors']>().toExtend<'first_name' | 'last_name' | 'id'>();
+    expectTypeOf<keyof K1['book']>().toExtend<'title' | 'author_id' | 'id'>();
+
+    // entity-name tables — overrides `tableName` and uses the `name` field
+    const k2 = em.getKysely({ tableNamingStrategy: 'entity' });
+    type K2 = InferDBFromKysely<typeof k2>;
+    expectTypeOf<keyof K2>().toEqualTypeOf<'Author' | 'Book'>();
+
+    // property-name columns
+    const k3 = em.getKysely({ columnNamingStrategy: 'property' });
+    type K3 = InferDBFromKysely<typeof k3>;
+    expectTypeOf<keyof K3['authors']>().toExtend<'firstName' | 'lastName' | 'id'>();
+
+    await orm.close();
+  });
+});
+
+interface Generated<T> {
+  readonly __select__: T;
+  readonly __insert__: T | undefined;
+  readonly __update__: T;
+}

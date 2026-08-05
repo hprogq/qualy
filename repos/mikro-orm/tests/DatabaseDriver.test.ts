@@ -1,0 +1,133 @@
+import type {
+  Connection,
+  CountOptions,
+  EntityData,
+  FilterQuery,
+  FindOneOptions,
+  FindOptions,
+  ObjectQuery,
+  Primary,
+  QueryResult,
+  Transaction,
+  IDatabaseDriver,
+  AnyEntity,
+  EntityDictionary,
+  NativeInsertUpdateManyOptions,
+  NativeInsertUpdateOptions,
+  EntityName,
+  StreamOptions,
+} from '@mikro-orm/core';
+import { Configuration, DatabaseDriver, EntityManager, EntityRepository, LockMode, Platform } from '@mikro-orm/core';
+import { MongoDriver } from '@mikro-orm/mongodb';
+
+class Platform1 extends Platform {}
+
+class Driver extends DatabaseDriver<Connection> implements IDatabaseDriver {
+  protected override readonly platform = new Platform1();
+
+  constructor(
+    override readonly config: Configuration,
+    dependencies: string[],
+  ) {
+    super(config, dependencies);
+  }
+
+  async count<T extends object>(
+    entityName: EntityName<T>,
+    where: ObjectQuery<T>,
+    options: CountOptions<T>,
+  ): Promise<number> {
+    return 0;
+  }
+
+  stream<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: StreamOptions<T>,
+  ): AsyncIterableIterator<T> {
+    throw new Error('Method not implemented.');
+  }
+
+  async find<T extends object, P extends string = never, F extends string = '*', E extends string = never>(
+    entityName: EntityName<T>,
+    where: ObjectQuery<T>,
+    options: FindOptions<T, P, F, E> | undefined,
+  ): Promise<EntityData<T>[]> {
+    return [];
+  }
+
+  async findOne<T extends object, P extends string = never, F extends string = '*', E extends string = never>(
+    entityName: EntityName<T>,
+    where: ObjectQuery<T>,
+    options: FindOneOptions<T, P, F, E> | undefined,
+  ): Promise<EntityData<T> | null> {
+    return null;
+  }
+
+  async nativeDelete<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    ctx: Transaction | undefined,
+  ): Promise<QueryResult<T>> {
+    return { affectedRows: 0, insertId: 0 as Primary<T> };
+  }
+
+  async nativeInsert<T extends AnyEntity<T>>(
+    entityName: EntityName<T>,
+    data: EntityDictionary<T>,
+    options?: NativeInsertUpdateOptions<T>,
+  ): Promise<QueryResult<T>> {
+    return { affectedRows: 0, insertId: 0 as Primary<T> };
+  }
+
+  async nativeInsertMany<T extends AnyEntity<T>>(
+    entityName: EntityName<T>,
+    data: EntityDictionary<T>[],
+    options?: NativeInsertUpdateManyOptions<T>,
+  ): Promise<QueryResult<T>> {
+    return { affectedRows: 0, insertId: 0 as Primary<T> };
+  }
+
+  async nativeUpdate<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    data: EntityData<T>,
+    ctx: Transaction | undefined,
+  ): Promise<QueryResult<T>> {
+    return { affectedRows: 0, insertId: 0 as Primary<T> };
+  }
+}
+
+class Test {}
+
+describe('DatabaseDriver', () => {
+  const config = new Configuration({ driver: MongoDriver, allowGlobalContext: true } as any, false);
+  const driver = new Driver(config, []);
+
+  test('default validations', async () => {
+    expect(driver.createEntityManager()).toBeInstanceOf(EntityManager);
+    expect(driver.getPlatform().getRepositoryClass()).toBe(EntityRepository);
+    expect(driver.getPlatform().quoteValue('a')).toBe('a');
+    await expect(driver.aggregate(Test, [])).rejects.toThrow('Aggregations are not supported by Driver driver');
+    await expect(driver.nativeUpdateMany(Test, [], [])).rejects.toThrow(
+      'Batch updates are not supported by Driver driver',
+    );
+    await expect(driver.lockPessimistic({}, { lockMode: LockMode.NONE })).rejects.toThrow(
+      'Pessimistic locks are not supported by Driver driver',
+    );
+    const e1 = driver.convertException(new Error('test'));
+    const e2 = driver.convertException(e1);
+    expect(e1).toBe(e2);
+    driver.getPlatform().lookupExtensions({} as any);
+  });
+
+  test('not supported', async () => {
+    expect(driver.getPlatform().supportsCreatingFullTextIndex()).toBe(false);
+    expect(() => driver.getPlatform().getFullTextWhereClause({} as any)).toThrow(
+      'Full text searching is not supported by this driver.',
+    );
+    expect(() => driver.getPlatform().getFullTextIndexExpression({} as any, {} as any, {} as any, {} as any)).toThrow(
+      'Full text searching is not supported by this driver.',
+    );
+  });
+});

@@ -1,0 +1,148 @@
+import type { EntityClass, EntityMetadata, IndexCallback } from '../typings.js';
+import type { Logger } from '../logging/Logger.js';
+import { Utils } from '../utils/Utils.js';
+import type { SyncCacheAdapter } from '../cache/CacheAdapter.js';
+import type { Platform } from '../platforms/Platform.js';
+import { EntitySchema } from './EntitySchema.js';
+
+// to get around circular dependencies
+export interface IConfiguration {
+  get(key: string, defaultValue?: any): any;
+  getLogger(): Logger;
+  getMetadataCacheAdapter(): SyncCacheAdapter;
+  getPlatform(): Platform;
+}
+
+/** Base metadata provider that resolves entity type information and manages metadata caching. */
+export class MetadataProvider {
+  constructor(protected readonly config: IConfiguration) {}
+
+  /** Resolves entity references and type information for all properties in the given metadata. */
+  loadEntityMetadata(meta: EntityMetadata): void {
+    for (const prop of meta.props) {
+      /* v8 ignore next */
+      if (typeof prop.entity === 'string') {
+        prop.type = prop.entity;
+      } else if (prop.entity) {
+        const tmp = prop.entity() as EntityClass;
+        prop.type = Array.isArray(tmp)
+          ? tmp
+              .map(t => this.resolveEntityName(t))
+              .sort()
+              .join(' | ')
+          : this.resolveEntityName(tmp);
+        prop.target = EntitySchema.is(tmp) ? tmp.meta.class : tmp;
+      } else if (!prop.type && !((prop.enum || prop.array) && (prop.items?.length ?? 0) > 0)) {
+        throw new Error(`Please provide either 'type' or 'entity' attribute in ${meta.className}.${prop.name}.`);
+      }
+    }
+  }
+
+  /**
+   * Resolves the entity name for a given class or schema, respecting explicit names
+   * set via `defineEntity({ name })` + `setClass()`.
+   */
+  private resolveEntityName(entity: EntityClass): string {
+    if (EntitySchema.is(entity)) {
+      return entity.meta.className;
+    }
+
+    const schema = EntitySchema.REGISTRY.get(entity);
+
+    if (schema) {
+      return schema.name as string;
+    }
+
+    return Utils.className(entity);
+  }
+
+  /** Merges cached metadata into the given entity metadata, preserving function expressions. */
+  loadFromCache(meta: EntityMetadata, cache: EntityMetadata): void {
+    // `_id` is a process-local runtime counter; a cached value comes from a different discovery
+    // run and can collide with ids assigned in the current process, collapsing distinct entities.
+    Reflect.deleteProperty(cache, '_id');
+
+    Object.values(cache.properties).forEach(prop => {
+      const metaProp = meta.properties[prop.name];
+
+      /* v8 ignore next */
+      if (metaProp?.enum && Array.isArray(metaProp.items)) {
+        delete prop.items;
+      }
+    });
+
+    // Preserve function expressions from indexes/uniques — they can't survive JSON cache serialization
+    const expressionMap = new Map<string, IndexCallback<any>>();
+
+    for (const arr of [meta.indexes, meta.uniques]) {
+      for (const idx of arr ?? []) {
+        if (typeof idx.expression === 'function' && idx.name) {
+          expressionMap.set(idx.name, idx.expression);
+        }
+      }
+    }
+
+    Utils.mergeConfig(meta, cache);
+
+    // Restore function expressions that were lost during JSON serialization
+    if (expressionMap.size > 0) {
+      for (const arr of [meta.indexes, meta.uniques]) {
+        for (const idx of arr ?? []) {
+          const fn = idx.name && expressionMap.get(idx.name);
+
+          if (fn && typeof idx.expression !== 'function') {
+            idx.expression = fn;
+          }
+        }
+      }
+    }
+  }
+
+  /** Whether this provider class uses metadata caching by default. */
+  static useCache(): boolean {
+    return false;
+  }
+
+  /** Whether metadata caching is enabled for this instance. */
+  useCache(): boolean {
+    return this.config.get('metadataCache').enabled ?? MetadataProvider.useCache();
+  }
+
+  saveToCache(meta: EntityMetadata): void {
+    //
+  }
+
+  /** Attempts to load metadata from cache, returning undefined if not available. */
+  getCachedMetadata<T>(
+    meta: Pick<EntityMetadata<T>, 'className' | 'path' | 'root'>,
+    root: EntityMetadata<T>,
+  ): EntityMetadata<T> | undefined {
+    if (!this.useCache()) {
+      return undefined;
+    }
+
+    const cache = meta.path && this.config.getMetadataCacheAdapter().get(this.getCacheKey(meta));
+
+    if (cache) {
+      this.loadFromCache(meta as EntityMetadata<T>, cache);
+      meta.root = root;
+    }
+
+    return cache;
+  }
+
+  /** Combines individual metadata cache entries into a single file. */
+  combineCache(): void {
+    const path = this.config.getMetadataCacheAdapter().combine?.();
+
+    // override the path in the options, so we can log it from the CLI in `cache:generate` command
+    if (path) {
+      this.config.get('metadataCache').combined = path;
+    }
+  }
+
+  /** Returns the cache key for the given entity metadata. */
+  getCacheKey(meta: Pick<EntityMetadata, 'className' | 'path'>): string {
+    return meta.className;
+  }
+}

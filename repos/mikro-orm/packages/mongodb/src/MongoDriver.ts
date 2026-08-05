@@ -1,0 +1,822 @@
+import { type ClientSession, ObjectId } from 'mongodb';
+import {
+  type Configuration,
+  type Constructor,
+  type CountOptions,
+  DatabaseDriver,
+  type Dictionary,
+  type EntityData,
+  type EntityDictionary,
+  type EntityField,
+  type EntityKey,
+  EntityManagerType,
+  type EntityName,
+  type FilterQuery,
+  type FindByCursorOptions,
+  type FindOneOptions,
+  type FindOptions,
+  type NativeInsertUpdateManyOptions,
+  type NativeInsertUpdateOptions,
+  PolymorphicRef,
+  type PopulateOptions,
+  type PopulatePath,
+  type QueryResult,
+  ReferenceKind,
+  type StreamOptions,
+  type Transaction,
+  type UpsertManyOptions,
+  type UpsertOptions,
+  Utils,
+} from '@mikro-orm/core';
+import { MongoConnection, type MongoQueryOptions } from './MongoConnection.js';
+import { MongoPlatform } from './MongoPlatform.js';
+import { MongoEntityManager } from './MongoEntityManager.js';
+import { MongoMikroORM } from './MongoMikroORM.js';
+
+/** Database driver for MongoDB. */
+export class MongoDriver extends DatabaseDriver<MongoConnection> {
+  override [EntityManagerType]!: MongoEntityManager<this>;
+
+  protected override readonly connection: MongoConnection = new MongoConnection(this.config);
+  protected override readonly platform: MongoPlatform = new MongoPlatform();
+
+  constructor(config: Configuration) {
+    super(config, ['mongodb']);
+  }
+
+  override createEntityManager(useContext?: boolean): this[typeof EntityManagerType] {
+    const EntityManagerClass = this.config.get('entityManager', MongoEntityManager);
+    return new EntityManagerClass(this.config, this, this.metadata, useContext);
+  }
+
+  async *stream<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: StreamOptions<T, any, any, any> & { rawResults?: boolean },
+  ): AsyncIterableIterator<T> {
+    if (this.metadata.find(entityName)?.virtual) {
+      yield* this.streamVirtual(entityName, where, options) as any;
+      return;
+    }
+
+    const fields = this.buildFields(
+      entityName,
+      (options.populate as unknown as PopulateOptions<T>[]) || [],
+      options.fields,
+      options.exclude as any,
+    );
+    where = this.renameFields(entityName, where as T, true);
+    const orderBy = Utils.asArray(options.orderBy).map(orderBy => this.renameFields(entityName, orderBy as T, true));
+    const res = this.getConnection('read').stream(entityName, where, {
+      orderBy,
+      limit: options.limit,
+      offset: options.offset,
+      fields,
+      ctx: options.ctx,
+      chunkSize: options.chunkSize ?? 100,
+      ...this.buildQueryOptions(options),
+    });
+
+    for await (const item of res) {
+      if (options.rawResults) {
+        yield item as any;
+      } else {
+        yield this.mapResult(item, this.metadata.find(entityName)) as T;
+      }
+    }
+  }
+
+  async find<T extends object, P extends string = never, F extends string = never, E extends string = never>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: FindOptions<T, P, F, E> = {},
+  ): Promise<EntityData<T>[]> {
+    if (this.metadata.find(entityName)?.virtual) {
+      return this.findVirtual(entityName, where, options);
+    }
+
+    const { first, last, before, after } = options as FindByCursorOptions<T>;
+    const fields = this.buildFields(
+      entityName,
+      (options.populate as unknown as PopulateOptions<T>[]) || [],
+      options.fields,
+      options.exclude as any[],
+    );
+    where = this.renameFields(entityName, where as T, true);
+    const isCursorPagination = [first, last, before, after].some(v => v != null);
+
+    if (isCursorPagination) {
+      const andWhere = (cond1: FilterQuery<T>, cond2: FilterQuery<T>): FilterQuery<T> => {
+        if (Utils.isEmpty(cond1)) {
+          return cond2;
+        }
+
+        if (Utils.isEmpty(cond2)) {
+          return cond1;
+        }
+
+        return { $and: [cond1, cond2] } as FilterQuery<T>;
+      };
+      const meta = this.metadata.find<T>(entityName)!;
+      const { orderBy: newOrderBy, where: newWhere } = this.processCursorOptions(meta, options, options.orderBy!);
+      const newWhereConverted = this.renameFields(entityName, newWhere as T, true);
+      const orderBy = Utils.asArray(newOrderBy).map(order => this.renameFields(entityName, order as T, true));
+      const res = await this.rethrow(
+        this.getConnection('read').find(entityName, andWhere(where, newWhereConverted), {
+          orderBy,
+          limit: options.limit,
+          offset: options.offset,
+          fields,
+          ctx: options.ctx,
+          loggerContext: options.logging,
+          ...this.buildQueryOptions(options),
+        }),
+      );
+
+      if (isCursorPagination && !first && !!last) {
+        res.reverse();
+      }
+
+      return res.map(r => this.mapResult<T>(r, this.metadata.find<T>(entityName))!);
+    }
+
+    const orderBy = Utils.asArray(options.orderBy).map(orderBy => this.renameFields(entityName, orderBy as T, true));
+    const partitionLimit = (options as Dictionary)._partitionLimit as
+      | { partitionBy: string; limit: number; offset?: number }
+      | undefined;
+
+    if (partitionLimit) {
+      return this.findWithPartitionLimit(entityName, where, orderBy, fields ?? [], partitionLimit, options);
+    }
+
+    const res = await this.rethrow(
+      this.getConnection('read').find(entityName, where, {
+        orderBy,
+        limit: options.limit,
+        offset: options.offset,
+        fields,
+        ctx: options.ctx,
+        ...this.buildQueryOptions(options),
+      }),
+    );
+
+    return res.map(r => this.mapResult<T>(r, this.metadata.find<T>(entityName))!);
+  }
+
+  private async findWithPartitionLimit<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    orderBy: Dictionary[],
+    fields: string[],
+    partitionLimit: { partitionBy: string; limit: number; offset?: number },
+    options: FindOptions<T, any, any, any>,
+  ): Promise<EntityData<T>[]> {
+    const meta = this.metadata.find<T>(entityName)!;
+    const { limit, offset = 0 } = partitionLimit;
+
+    // Resolve the partition property to its DB field name; callers always pass
+    // a declared property on the target meta (FK of the owning side).
+    const prop = (meta.properties as Dictionary)[partitionLimit.partitionBy];
+    const partitionField = prop.fieldNames[0];
+
+    const pipeline: Dictionary[] = [];
+    pipeline.push({ $match: where });
+
+    if (orderBy.length > 0) {
+      const sortSpec: Dictionary = {};
+
+      for (const order of orderBy) {
+        for (const [key, dir] of Object.entries(order)) {
+          sortSpec[key] = dir === 'ASC' || dir === 'asc' || dir === 1 ? 1 : -1;
+        }
+      }
+
+      pipeline.push({ $sort: sortSpec });
+    }
+
+    // $sort before $group ensures $push collects in correct order
+    pipeline.push({
+      $group: {
+        _id: `$${partitionField}`,
+        __docs: { $push: '$$ROOT' },
+      },
+    });
+    pipeline.push({
+      $project: {
+        __docs: { $slice: ['$__docs', offset, limit] },
+      },
+    });
+    pipeline.push({ $unwind: '$__docs' });
+    pipeline.push({ $replaceRoot: { newRoot: '$__docs' } });
+
+    if (fields.length > 0) {
+      const projection: Dictionary = {};
+
+      for (const field of fields) {
+        projection[field] = 1;
+      }
+
+      pipeline.push({ $project: projection });
+    }
+
+    const res = await this.rethrow(
+      this.getConnection('read').aggregate<T>(entityName, pipeline, options.ctx, options.logging, options.signal),
+    );
+
+    return res.map(r => this.mapResult<T>(r, meta)!);
+  }
+
+  async findOne<T extends object, P extends string = never, F extends string = never, E extends string = never>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: FindOneOptions<T, P, F, E> = { populate: [], orderBy: {} },
+  ): Promise<EntityData<T> | null> {
+    if (this.metadata.find(entityName)?.virtual) {
+      const [item] = await this.findVirtual(entityName, where, options as FindOptions<T, any, any, any>);
+      /* v8 ignore next */
+      return item ?? null;
+    }
+
+    if (Utils.isPrimaryKey(where)) {
+      where = this.buildFilterById(entityName, where as string);
+    }
+
+    const fields = this.buildFields(
+      entityName,
+      (options.populate as unknown as PopulateOptions<T>[]) || [],
+      options.fields,
+      options.exclude as any[],
+    );
+    where = this.renameFields(entityName, where as T, true);
+    const orderBy = Utils.asArray(options.orderBy).map(orderBy => this.renameFields(entityName, orderBy as T, true));
+    const res = await this.rethrow(
+      this.getConnection('read').find(entityName, where, {
+        orderBy,
+        limit: 1,
+        fields,
+        ctx: options.ctx,
+        loggerContext: options.logging,
+        ...this.buildQueryOptions(options),
+      }),
+    );
+
+    return this.mapResult<T>(res[0], this.metadata.find(entityName));
+  }
+
+  override async findVirtual<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: FindOptions<T, any, any, any>,
+  ): Promise<EntityData<T>[]> {
+    const meta = this.metadata.find(entityName)!;
+
+    if (meta.expression instanceof Function) {
+      const em = this.createEntityManager();
+      return meta.expression(em, where as T, options) as EntityData<T>[];
+    }
+
+    /* v8 ignore next */
+    return super.findVirtual(entityName, where, options);
+  }
+
+  async *streamVirtual<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: FindOptions<T, any, any, any>,
+  ): AsyncIterableIterator<EntityData<T>> {
+    const meta = this.metadata.find(entityName)!;
+
+    if (meta.expression instanceof Function) {
+      const em = this.createEntityManager();
+      const stream = await meta.expression(em, where as any, options, true);
+      yield* stream as EntityData<T>[];
+
+      return;
+    }
+
+    /* v8 ignore next */
+    return super.findVirtual(entityName, where, options);
+  }
+
+  async count<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: CountOptions<T> = {},
+  ): Promise<number> {
+    /* v8 ignore next */
+    if (this.metadata.find(entityName)?.virtual) {
+      return this.countVirtual(entityName, where, options);
+    }
+
+    where = this.renameFields(entityName, where as T, true);
+    const queryOpts = this.buildQueryOptions(options);
+    return this.rethrow(
+      this.getConnection('read').countDocuments(entityName, where as object, {
+        ctx: options.ctx,
+        loggerContext: options.logging,
+        ...queryOpts,
+      }),
+    );
+  }
+
+  async nativeInsert<T extends object>(
+    entityName: EntityName<T>,
+    data: EntityDictionary<T>,
+    options: NativeInsertUpdateOptions<T> = {},
+  ): Promise<QueryResult<T>> {
+    this.handleVersionProperty(entityName, data);
+    data = this.renameFields(entityName, data);
+    return this.rethrow(
+      this.getConnection('write').insertOne(entityName, data, options.ctx, options.signal),
+    ) as unknown as Promise<QueryResult<T>>;
+  }
+
+  override async nativeClone<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    overrides?: EntityData<T>,
+    options: NativeInsertUpdateOptions<T> = {},
+  ): Promise<QueryResult<T>> {
+    const meta = this.metadata.find(entityName)!;
+    const pk = meta.getPrimaryProps()[0].fieldNames[0] ?? '_id';
+    const normalizedWhere = Utils.isPrimaryKey(where) ? ({ [pk]: where } as FilterQuery<T>) : where;
+    const renameWhere = this.renameFields(entityName, normalizedWhere as unknown as EntityDictionary<T>);
+    const source = await this.rethrow(
+      this.getConnection('read').find<T>(entityName, renameWhere as FilterQuery<T>, { ctx: options.ctx, limit: 1 }),
+    );
+
+    if (!source.length) {
+      throw new Error('Cannot clone: no entity found matching the given condition');
+    }
+
+    const doc = source[0] as Dictionary;
+    delete doc[pk];
+
+    if (overrides) {
+      const mapped = this.renameFields(entityName, overrides as unknown as EntityDictionary<T>);
+      Object.assign(doc, mapped);
+    }
+
+    if (meta.versionProperty) {
+      const vProp = meta.properties[meta.versionProperty];
+      doc[vProp.fieldNames[0]] = vProp.runtimeType === 'Date' ? new Date() : 1;
+    }
+
+    return this.rethrow(
+      this.getConnection('write').insertOne<T>(entityName, doc as EntityDictionary<T>, options.ctx),
+    ) as unknown as Promise<QueryResult<T>>;
+  }
+
+  async nativeInsertMany<T extends object>(
+    entityName: EntityName<T>,
+    data: EntityDictionary<T>[],
+    options: NativeInsertUpdateManyOptions<T> = {},
+  ): Promise<QueryResult<T>> {
+    data = data.map(item => {
+      this.handleVersionProperty(entityName, item);
+      return this.renameFields(entityName, item);
+    });
+    const meta = this.metadata.find(entityName);
+    /* v8 ignore next */
+    const pk = meta?.getPrimaryProps()[0].fieldNames[0] ?? '_id';
+    const res = await this.rethrow(
+      this.getConnection('write').insertMany(entityName, data as any[], options.ctx, options.signal),
+    );
+    res.rows = res.insertedIds!.map(id => ({ [pk]: id }));
+
+    return res as unknown as QueryResult<T>;
+  }
+
+  async nativeUpdate<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    data: EntityDictionary<T>,
+    options: NativeInsertUpdateOptions<T> & UpsertOptions<T> = {},
+  ): Promise<QueryResult<T>> {
+    if (Utils.isPrimaryKey(where)) {
+      where = this.buildFilterById(entityName, where as string);
+    }
+
+    this.handleVersionProperty(entityName, data, true);
+    data = this.renameFields(entityName, data);
+    where = this.renameFields(entityName, where as T, true);
+    options = { ...options };
+
+    const meta = this.metadata.find(entityName);
+    /* v8 ignore next */
+    const rename = (field: keyof T) =>
+      meta ? ((meta.properties[field as EntityKey<T>]?.fieldNames[0] as keyof T) ?? field) : field;
+
+    if (options.onConflictFields && Array.isArray(options.onConflictFields)) {
+      options.onConflictFields = options.onConflictFields.map(rename);
+    }
+
+    if (options.onConflictMergeFields) {
+      options.onConflictMergeFields = options.onConflictMergeFields.map(rename) as never[];
+    }
+
+    if (options.onConflictExcludeFields) {
+      options.onConflictExcludeFields = options.onConflictExcludeFields.map(rename) as never[];
+    }
+
+    return this.rethrow(
+      this.getConnection('write').updateMany<T>(
+        entityName,
+        where as object,
+        data as object,
+        options.ctx,
+        options.upsert,
+        options,
+        options.signal,
+      ),
+    );
+  }
+
+  override async nativeUpdateMany<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>[],
+    data: EntityDictionary<T>[],
+    options: NativeInsertUpdateOptions<T> & UpsertManyOptions<T> = {},
+  ): Promise<QueryResult<T>> {
+    where = where.map(row => {
+      if (Utils.isPlainObject(row)) {
+        return this.renameFields(entityName, row as T, true);
+      }
+
+      return row;
+    });
+    data = data.map(row => {
+      this.handleVersionProperty(entityName, row, true);
+      return this.renameFields(entityName, row);
+    });
+    options = { ...options };
+
+    const meta = this.metadata.find(entityName);
+    /* v8 ignore next */
+    const rename = (field: keyof T) =>
+      meta ? ((meta.properties[field as EntityKey<T>]?.fieldNames[0] as keyof T) ?? field) : field;
+
+    if (options.onConflictFields && Array.isArray(options.onConflictFields)) {
+      options.onConflictFields = options.onConflictFields.map(rename);
+    }
+
+    if (options.onConflictMergeFields) {
+      options.onConflictMergeFields = options.onConflictMergeFields.map(rename) as never[];
+    }
+
+    if (options.onConflictExcludeFields) {
+      options.onConflictExcludeFields = options.onConflictExcludeFields.map(rename) as never[];
+    }
+
+    /* v8 ignore next */
+    const pk = meta?.getPrimaryProps()[0].fieldNames[0] ?? '_id';
+    const res = await this.rethrow(
+      this.getConnection('write').bulkUpdateMany<T>(
+        entityName,
+        where as object[],
+        data as object[],
+        options.ctx,
+        options.upsert,
+        options,
+        options.signal,
+      ),
+    );
+
+    if (res.insertedIds) {
+      let i = 0;
+      res.rows = where.map(cond => {
+        if (Utils.isEmpty(cond)) {
+          return { [pk]: res.insertedIds![i++] };
+        }
+
+        return { [pk]: cond[pk as EntityKey] };
+      });
+    }
+
+    return res;
+  }
+
+  async nativeDelete<T extends object>(
+    entityName: EntityName<T>,
+    where: FilterQuery<T>,
+    options: { ctx?: Transaction<ClientSession>; signal?: AbortSignal } = {},
+  ): Promise<QueryResult<T>> {
+    if (Utils.isPrimaryKey(where)) {
+      where = this.buildFilterById(entityName, where as string);
+    }
+
+    where = this.renameFields(entityName, where as T, true);
+
+    return this.rethrow(
+      this.getConnection('write').deleteMany(entityName, where as object, options.ctx, options.signal),
+    ) as unknown as Promise<QueryResult<T>>;
+  }
+
+  override async aggregate(
+    entityName: EntityName,
+    pipeline: any[],
+    ctx?: Transaction<ClientSession>,
+    signal?: AbortSignal,
+  ): Promise<any[]> {
+    return this.rethrow(this.getConnection('read').aggregate(entityName, pipeline, ctx, undefined, signal));
+  }
+
+  async *streamAggregate<T extends object>(
+    entityName: EntityName<T>,
+    pipeline: any[],
+    ctx?: Transaction<ClientSession>,
+    signal?: AbortSignal,
+  ): AsyncIterableIterator<T> {
+    yield* this.getConnection('read').streamAggregate<T>(entityName, pipeline, ctx, undefined, false, signal);
+  }
+
+  override getPlatform(): MongoPlatform {
+    return this.platform;
+  }
+
+  private buildQueryOptions(
+    options: Pick<
+      FindOptions<any, any, any, any>,
+      'collation' | 'indexHint' | 'using' | 'maxTimeMS' | 'allowDiskUse' | 'signal'
+    >,
+  ): MongoQueryOptions {
+    if (options.collation != null && typeof options.collation === 'string') {
+      throw new Error(
+        "Collation option for MongoDB must be a CollationOptions object (e.g. { locale: 'en' }). Use a string only with SQL drivers.",
+      );
+    }
+
+    const ret: MongoQueryOptions = {};
+
+    if (options.collation) {
+      ret.collation = options.collation;
+    }
+
+    if (options.indexHint != null) {
+      ret.indexHint = options.indexHint;
+    } else if (options.using != null) {
+      const names = Utils.asArray(options.using);
+
+      if (names.length > 1) {
+        throw new Error(
+          'MongoDB only supports a single index hint per query. Provide one index name instead of an array.',
+        );
+      }
+
+      ret.indexHint = names[0];
+    }
+
+    if (options.maxTimeMS != null) {
+      ret.maxTimeMS = options.maxTimeMS;
+    }
+
+    if (options.allowDiskUse != null) {
+      ret.allowDiskUse = options.allowDiskUse;
+    }
+
+    if (options.signal) {
+      ret.signal = options.signal;
+    }
+
+    return ret;
+  }
+
+  /** @internal */
+  renameFields<T extends object>(
+    entityName: EntityName<T>,
+    data: T,
+    dotPaths = false,
+    object?: boolean,
+    root = true,
+  ): T {
+    if (data == null && root) {
+      return {} as T;
+    }
+
+    if (typeof data !== 'object' || data === null) {
+      return data;
+    }
+    // copy to new variable to prevent changing the T type or doing as unknown casts
+    const copiedData: Dictionary = Object.assign({}, data); // copy first
+    const meta = this.metadata.find(entityName);
+
+    if (meta?.serializedPrimaryKey && !meta.embeddable && meta.serializedPrimaryKey !== meta.primaryKeys[0]) {
+      Utils.renameKey(copiedData, meta.serializedPrimaryKey, meta.primaryKeys[0]);
+    }
+
+    if (meta && !meta.embeddable) {
+      this.inlineEmbeddables(meta, copiedData as T, dotPaths);
+    }
+
+    // If we had a query with $fulltext and some filter we end up with $and with $fulltext in it.
+    // We will try to move $fulltext to top level.
+    if (copiedData.$and) {
+      for (let i = 0; i < copiedData.$and.length; i++) {
+        const and = copiedData.$and[i];
+        if ('$fulltext' in and) {
+          /* v8 ignore next */
+          if ('$fulltext' in copiedData) {
+            throw new Error('Cannot merge multiple $fulltext conditions to top level of the query object.');
+          }
+
+          copiedData.$fulltext = and.$fulltext!;
+          delete and.$fulltext;
+        }
+      }
+    }
+
+    // move search terms from data['$fulltext'] to mongo's structure: data['$text']['search']
+    if ('$fulltext' in copiedData) {
+      copiedData.$text = { $search: copiedData.$fulltext! };
+      delete copiedData.$fulltext;
+    }
+
+    // mongo only allows the $text operator in the root of the object and will
+    // search all documents where the field has a text index.
+    if (Utils.hasNestedKey(copiedData, '$fulltext')) {
+      throw new Error('Full text search is only supported on the top level of the query object.');
+    }
+
+    Utils.keys(copiedData).forEach(k => {
+      if (Utils.isOperator(k)) {
+        if (Array.isArray(copiedData[k])) {
+          copiedData[k] = copiedData[k].map(v => this.renameFields(entityName, v, dotPaths, object, false));
+        } else {
+          copiedData[k] = this.renameFields(entityName, copiedData[k], dotPaths, object, false);
+        }
+
+        return;
+      }
+
+      if (meta?.properties[k as EntityKey<T>]) {
+        const prop = meta.properties[k as EntityKey<T>];
+        let isObjectId = false;
+
+        if (prop.kind === ReferenceKind.SCALAR) {
+          isObjectId = prop.type === 'ObjectId';
+        } else if (prop.kind === ReferenceKind.EMBEDDED) {
+          if (copiedData[prop.name] == null) {
+            return;
+          }
+
+          if (prop.array && Array.isArray(copiedData[prop.name])) {
+            copiedData[prop.name] = copiedData[prop.name].map((item: Dictionary) =>
+              this.renameFields(prop.targetMeta!.class, item, dotPaths, true, false),
+            );
+          } else {
+            copiedData[prop.name] = this.renameFields(
+              prop.targetMeta!.class,
+              copiedData[prop.name],
+              dotPaths,
+              prop.object || object,
+              false,
+            );
+          }
+        } else if (prop.polymorphic && prop.fieldNames?.length >= 2) {
+          // Polymorphic M:1: split into discriminator + FK fields
+          const value = copiedData[k];
+          delete copiedData[k];
+
+          if (value instanceof PolymorphicRef) {
+            copiedData[prop.fieldNames[0]] = value.discriminator;
+            const idField = prop.fieldNames[1];
+            const targetMeta = this.metadata.find(prop.discriminatorMap![value.discriminator] as any);
+            const hasObjectId = targetMeta && targetMeta.properties[targetMeta.primaryKeys[0]]?.type === 'ObjectId';
+            copiedData[idField] = hasObjectId ? this.convertObjectIds(value.id as any) : value.id;
+          } else if (Array.isArray(value)) {
+            // Tuple format: [discriminator, id]
+            copiedData[prop.fieldNames[0]] = value[0];
+            copiedData[prop.fieldNames[1]] = value[1] != null ? this.convertObjectIds(value[1]) : value[1];
+          } else if (value == null) {
+            prop.fieldNames.forEach(f => (copiedData[f] = null));
+          }
+
+          return;
+        } else {
+          const meta2 = this.metadata.find(prop.targetMeta!.class)!;
+          const pk = meta2.properties[meta2.primaryKeys[0]];
+          isObjectId = pk.type === 'ObjectId';
+        }
+
+        if (isObjectId) {
+          copiedData[k] = this.convertObjectIds(copiedData[k]);
+        }
+
+        if (prop.fieldNames) {
+          Utils.renameKey(copiedData, k, prop.fieldNames[0]);
+        }
+      }
+
+      if (Utils.isPlainObject(copiedData[k]) && '$re' in copiedData[k]) {
+        copiedData[k] = new RegExp(copiedData[k].$re);
+      }
+    });
+
+    return copiedData as T;
+  }
+
+  private convertObjectIds<T extends ObjectId | Dictionary | string | any[]>(data: T): T {
+    if (data instanceof ObjectId) {
+      return data;
+    }
+
+    if (typeof data === 'string' && /^[0-9a-f]{24}$/i.exec(data)) {
+      return new ObjectId(data) as T;
+    }
+
+    if (Array.isArray(data)) {
+      return (data as T[]).map((item: any) => this.convertObjectIds(item)) as T;
+    }
+
+    if (Utils.isObject(data)) {
+      Object.keys(data).forEach(k => {
+        data[k] = this.convertObjectIds(data[k]);
+      });
+    }
+
+    return data;
+  }
+
+  private buildFilterById<T extends { _id: any }>(entityName: EntityName, id: string): FilterQuery<T> {
+    const meta = this.metadata.find(entityName)!;
+
+    if (meta.properties[meta.primaryKeys[0]].type === 'ObjectId') {
+      return { _id: new ObjectId(id) } as FilterQuery<T>;
+    }
+
+    return { _id: id } as FilterQuery<T>;
+  }
+
+  protected buildFields<T extends object, P extends string = never>(
+    entityName: EntityName<T>,
+    populate: PopulateOptions<T>[],
+    fields?: readonly EntityField<T, P>[],
+    exclude?: string[],
+  ): string[] | undefined {
+    const meta = this.metadata.get(entityName);
+    const lazyProps = meta.props.filter(prop => prop.lazy && !populate.some(p => this.isPopulated(meta, prop, p)));
+    const ret: string[] = [];
+
+    if (fields) {
+      for (let field of fields) {
+        /* v8 ignore next */
+        if (Utils.isPlainObject(field)) {
+          continue;
+        }
+
+        if (field.toString().includes('.')) {
+          field = field.toString().substring(0, field.toString().indexOf('.')) as EntityField<T, P>;
+        }
+
+        let prop = meta.properties[field as EntityKey<T>];
+
+        /* v8 ignore next */
+        if (prop) {
+          if (!prop.fieldNames) {
+            continue;
+          }
+
+          prop = prop.serializedPrimaryKey ? meta.getPrimaryProps()[0] : prop;
+          ret.push(prop.fieldNames[0]);
+        } else if (field === '*') {
+          const props = meta.props.filter(prop => this.platform.shouldHaveColumn(prop, populate));
+          ret.push(...Utils.flatten(props.filter(p => !lazyProps.includes(p)).map(p => p.fieldNames)));
+        } else {
+          ret.push(field as keyof T & string);
+        }
+      }
+
+      ret.unshift(...meta.primaryKeys.filter(pk => !fields.includes(pk)));
+    } else if (!Utils.isEmpty(exclude) || lazyProps.some(p => !p.formula)) {
+      const props = meta.props.filter(prop => this.platform.shouldHaveColumn(prop, populate, exclude));
+      ret.push(...Utils.flatten(props.filter(p => !lazyProps.includes(p)).map(p => p.fieldNames)));
+    }
+
+    return ret.length > 0 ? ret : undefined;
+  }
+
+  private handleVersionProperty<T extends object>(
+    entityName: EntityName<T>,
+    data: EntityDictionary<T>,
+    update = false,
+  ): void {
+    const meta = this.metadata.find(entityName);
+
+    if (!meta?.versionProperty) {
+      return;
+    }
+
+    const versionProperty = meta.properties[meta.versionProperty];
+
+    if (versionProperty.runtimeType === 'Date') {
+      data[versionProperty.name as EntityKey<T>] ??= new Date();
+    } else {
+      data[versionProperty.name as EntityKey<T>] ??= update ? { $inc: 1 } : 1;
+    }
+  }
+
+  /** @inheritDoc */
+  override getORMClass(): Constructor<MongoMikroORM> {
+    return MongoMikroORM;
+  }
+}

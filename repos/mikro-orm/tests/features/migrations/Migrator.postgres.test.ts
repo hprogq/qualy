@@ -1,0 +1,590 @@
+process.env.FORCE_COLOR = '0';
+import { rm } from 'node:fs/promises';
+import { DatabaseSchema, DatabaseTable, EntitySchema, MetadataStorage, MikroORM, raw } from '@mikro-orm/postgresql';
+import { Migration, MigrationStorage, Migrator, TSMigrationGenerator } from '@mikro-orm/migrations';
+import { ReflectMetadataProvider } from '@mikro-orm/decorators/legacy';
+import {
+  Address2,
+  Author2,
+  Book2,
+  BookTag2,
+  Configuration2,
+  FooBar2,
+  FooBaz2,
+  FooParam2,
+  Publisher2,
+  Test2,
+} from '../../entities-sql/index.js';
+import { BASE_DIR, mockLogger } from '../../bootstrap.js';
+
+class MigrationTest1 extends Migration {
+  async up(): Promise<void> {
+    this.addSql('select 1 + 1');
+  }
+}
+
+class MigrationTest2 extends Migration {
+  async up(): Promise<void> {
+    this.addSql('select 1 + 1');
+    this.addSql(raw('select 1 + 1'));
+    this.addSql(raw('select 2 + 2 as count2'));
+    const res = await this.execute('select 1 + 1 as count1');
+    expect(res).toEqual([{ count1: 2 }]);
+
+    await this.getEntityManager().persist(FooBar2.create('fb')).flush();
+  }
+
+  override isTransactional(): boolean {
+    return false;
+  }
+}
+
+describe('Migrator (postgres)', () => {
+  let orm: MikroORM;
+  let originalMigrationsSettings: any;
+
+  beforeAll(async () => {
+    orm = await MikroORM.init({
+      entities: [Author2, Address2, Book2, BookTag2, Publisher2, Test2, FooBar2, FooBaz2, FooParam2, Configuration2],
+      dbName: `mikro_orm_test_migrations`,
+      metadataProvider: ReflectMetadataProvider,
+      schema: 'custom',
+      logger: () => void 0,
+      migrations: { path: BASE_DIR + '/../temp/migrations-456', snapshot: false },
+      extensions: [Migrator],
+    });
+
+    originalMigrationsSettings = orm.config.get('migrations');
+    await orm.schema.refresh();
+    await orm.schema.execute('alter table "custom"."book2" add column "foo" varchar null default \'lol\';');
+    await orm.schema.execute(
+      'alter table "custom"."book2" alter column "double" type numeric using ("double"::numeric);',
+    );
+    await orm.schema.execute('alter table "custom"."test2" add column "path" polygon null default null;');
+    await rm(process.cwd() + '/temp/migrations-456', { recursive: true, force: true });
+  });
+  beforeEach(() => {
+    orm.config.set('migrations', originalMigrationsSettings);
+    orm.config.resetServiceCache();
+  });
+  afterAll(async () => orm.close(true));
+
+  test('generate js schema migration', async () => {
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migrationsSettings = orm.config.get('migrations');
+    orm.config.set('migrations', { ...migrationsSettings, emit: 'js' }); // Set migration type to js
+    const migration = await orm.migrator.create();
+    expect(migration).toMatchSnapshot('migration-js-dump');
+    orm.config.set('migrations', migrationsSettings); // Revert migration config changes
+    await rm(process.cwd() + '/temp/migrations-456/' + migration.fileName);
+  });
+
+  test('generate migration with custom migrator', async () => {
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migrationsSettings = orm.config.get('migrations');
+    orm.config.set('migrations', {
+      ...migrationsSettings,
+      generator: class extends TSMigrationGenerator {
+        override generateMigrationFile(className: string, diff: { up: string[]; down: string[] }): string {
+          const comment = '// this file was generated via custom migration generator\n\n';
+          return comment + super.generateMigrationFile(className, diff);
+        }
+
+        override createStatement(sql: string, padLeft: number): string {
+          sql = sql
+            .split('\n')
+            .map((l, i) => (i === 0 ? l : `${' '.repeat(padLeft + 13)}${l}`))
+            .join('\n');
+
+          return super.createStatement(sql, padLeft);
+        }
+      },
+    });
+    const migration = await orm.migrator.create();
+    expect(migration).toMatchSnapshot('migration-ts-dump');
+    orm.config.set('migrations', migrationsSettings); // Revert migration config changes
+    await rm(process.cwd() + '/temp/migrations-456/' + migration.fileName);
+  });
+
+  test('generate migration with custom name', async () => {
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migrationsSettings = orm.config.get('migrations');
+    orm.config.set('migrations', { ...migrationsSettings, fileName: time => `migration-${time}` });
+    const migration = await orm.migrator.create();
+    expect(migration).toMatchSnapshot('migration-dump');
+    const executeMock = vi.spyOn(Migrator.prototype as any, 'executeMigrations');
+    executeMock.mockResolvedValue([]);
+    await orm.migrator.up();
+    await orm.migrator.down(migration.fileName.replace('.ts', ''));
+    await orm.migrator.up();
+    await orm.migrator.down(migration.fileName);
+    await orm.migrator.up();
+    await orm.migrator.down(migration.fileName.replace('migration-', '').replace('.ts', ''));
+    orm.config.set('migrations', migrationsSettings); // Revert migration config changes
+    await rm(process.cwd() + '/temp/migrations-456/' + migration.fileName);
+    executeMock.mockRestore();
+  });
+
+  test('generate migration with custom name with name option', async () => {
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migrationsSettings = orm.config.get('migrations');
+    orm.config.set('migrations', { ...migrationsSettings, fileName: (time, name) => `migration${time}_${name}` });
+    const migration = await orm.migrator.create(undefined, false, false, 'custom_name');
+    expect(migration).toMatchSnapshot('migration-dump');
+    expect(migration.fileName).toEqual('migration20191013214813_custom_name.ts');
+    const executeMock = vi.spyOn(Migrator.prototype as any, 'executeMigrations');
+    executeMock.mockResolvedValue([]);
+    await orm.migrator.up();
+    await orm.migrator.down(migration.fileName.replace('.ts', ''));
+    await orm.migrator.up();
+    await orm.migrator.down(migration.fileName);
+    await orm.migrator.up();
+    orm.config.set('migrations', migrationsSettings); // Revert migration config changes
+    await rm(process.cwd() + '/temp/migrations-456/' + migration.fileName);
+    executeMock.mockRestore();
+  });
+
+  test('generate schema migration', async () => {
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migration = await orm.migrator.create();
+    expect(migration).toMatchSnapshot('migration-dump');
+    await rm(process.cwd() + '/temp/migrations-456/' + migration.fileName);
+  });
+
+  test('generate migration with snapshot', async () => {
+    const migrations = orm.config.get('migrations');
+    migrations.snapshot = true;
+
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migration1 = await orm.migrator.create();
+    expect(migration1).toMatchSnapshot('migration-snapshot-dump-1');
+    await rm(process.cwd() + '/temp/migrations-456/' + migration1.fileName);
+
+    // will use the snapshot, so should be empty
+    const migration2 = await orm.migrator.create();
+    expect(migration2.diff).toEqual({ down: [], up: [] });
+    expect(migration2).toMatchSnapshot('migration-snapshot-dump-2');
+
+    migrations.snapshot = false;
+  });
+
+  test('migration:up and migration:down both update the snapshot to reflect current DB state', async () => {
+    const migrations = orm.config.get('migrations');
+    migrations.snapshot = true;
+
+    const { readFileSync } = await import('node:fs');
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const path = process.cwd() + '/temp/migrations-456';
+    const snapshotPath = path + '/.snapshot-mikro_orm_test_migrations.json';
+
+    // remove any leftover snapshot from previous tests
+    await rm(snapshotPath, { force: true });
+
+    // create a real migration — the DB has schema diffs from entities
+    const migration1 = await orm.migrator.create();
+    expect(migration1.diff.up.length).toBeGreaterThan(0);
+
+    // snapshot now contains the target schema (entities)
+    const snapshotAfterCreate = readFileSync(snapshotPath, 'utf8');
+
+    // creating again should produce empty diff (snapshot matches target)
+    const migration2 = await orm.migrator.create();
+    expect(migration2.diff).toEqual({ down: [], up: [] });
+
+    // mock executeMigrations to avoid any real DB changes
+    const executeMock = vi.spyOn(Migrator.prototype as any, 'executeMigrations');
+    executeMock.mockResolvedValueOnce([{ name: migration1.fileName }]); // up
+    executeMock.mockResolvedValueOnce([{ name: migration1.fileName }]); // down
+
+    try {
+      await orm.migrator.up(migration1.fileName);
+
+      // after up, snapshot should be updated via DB introspection
+      const snapshotAfterUp = readFileSync(snapshotPath, 'utf8');
+      expect(snapshotAfterUp).not.toEqual(snapshotAfterCreate);
+
+      await orm.migrator.down(migration1.fileName);
+
+      // after down, snapshot should also be updated to reflect current DB state
+      const snapshotAfterDown = readFileSync(snapshotPath, 'utf8');
+      expect(snapshotAfterDown).not.toEqual(snapshotAfterCreate);
+
+      // since the snapshot now reflects the DB (not the target), create finds diffs again
+      const migration3 = await orm.migrator.create();
+      expect(migration3.diff.up.length).toBeGreaterThan(0);
+      await rm(path + '/' + migration3.fileName);
+    } finally {
+      await rm(path + '/' + migration1.fileName, { force: true });
+      await rm(snapshotPath, { force: true });
+      executeMock.mockRestore();
+      migrations.snapshot = false;
+    }
+  });
+
+  test('migrator.up with external transaction and snapshot: true does not deadlock (GH #7424)', async () => {
+    const migrations = orm.config.get('migrations');
+    migrations.snapshot = true;
+    const path = process.cwd() + '/temp/migrations-456';
+    const snapshotPath = path + '/.snapshot-mikro_orm_test_migrations.json';
+    await rm(snapshotPath, { force: true });
+
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migration1 = await orm.migrator.create(path, true);
+
+    // mock executeMigrations so no real DDL runs, but runMigrations still
+    // triggers DatabaseSchema.create() for the snapshot update
+    const executeMock = vi.spyOn(Migrator.prototype as any, 'executeMigrations');
+    executeMock.mockResolvedValueOnce([{ name: migration1.fileName }]);
+
+    try {
+      // run migrator.up inside an external transaction — this previously
+      // deadlocked because DatabaseSchema.create() tried to acquire a
+      // separate pool connection while the transaction held locks
+      await orm.em.transactional(async em => {
+        const ret = await orm.migrator.up({ transaction: em.getTransactionContext() });
+        expect(ret).toHaveLength(1);
+      });
+
+      // snapshot should have been written successfully
+      const { existsSync } = await import('node:fs');
+      expect(existsSync(snapshotPath)).toBe(true);
+    } finally {
+      await rm(path + '/' + migration1.fileName, { force: true });
+      await rm(snapshotPath, { force: true });
+      executeMock.mockRestore();
+      migrations.snapshot = false;
+    }
+  });
+
+  test('generate initial migration', async () => {
+    await orm.schema.dropTableIfExists(orm.config.get('migrations').tableName!, 'custom');
+    const getExecutedMigrationsMock = vi.spyOn(Migrator.prototype, 'getExecuted');
+    const getPendingMigrationsMock = vi.spyOn(Migrator.prototype, 'getPending');
+    getExecutedMigrationsMock.mockResolvedValueOnce([{ id: 1, name: 'test.ts', executed_at: new Date() }]);
+    // await orm.migrator.create(undefined, false, true);
+    const err = 'Initial migration cannot be created, as some migrations already exist';
+    await expect(orm.migrator.create(undefined, false, true)).rejects.toThrow(err);
+
+    getExecutedMigrationsMock.mockResolvedValueOnce([]);
+    const logMigrationMock = vi.spyOn<any, any>(MigrationStorage.prototype, 'logMigration');
+    logMigrationMock.mockImplementationOnce(i => i);
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+
+    const metadataMock = vi.spyOn(MetadataStorage.prototype, 'getAll');
+    const schemaMock = vi.spyOn(DatabaseSchema.prototype, 'getTables');
+    schemaMock.mockReturnValueOnce([
+      { name: 'author2', schema: 'custom' } as DatabaseTable,
+      { name: 'book2', schema: 'custom' } as DatabaseTable,
+    ]);
+    getPendingMigrationsMock.mockResolvedValueOnce([]);
+    const err2 = `Some tables already exist in your schema, remove them first to create the initial migration: custom.author2, custom.book2`;
+    await expect(orm.migrator.createInitial(undefined)).rejects.toThrow(err2);
+
+    metadataMock.mockReturnValueOnce(new Map());
+    const err3 = `No entities found`;
+    await expect(orm.migrator.createInitial(undefined)).rejects.toThrow(err3);
+
+    schemaMock.mockReturnValueOnce([]);
+    getPendingMigrationsMock.mockResolvedValueOnce([]);
+    const migration1 = await orm.migrator.createInitial(undefined);
+    expect(logMigrationMock).not.toHaveBeenCalledWith('Migration20191013214813.ts');
+    expect(migration1).toMatchSnapshot('initial-migration-dump');
+    await rm(process.cwd() + '/temp/migrations-456/' + migration1.fileName);
+
+    await orm.schema.dropTableIfExists(orm.config.get('migrations').tableName!, 'custom');
+    const migrator2 = new Migrator(orm.em);
+    const migration2 = await migrator2.createInitial(undefined);
+    expect(logMigrationMock).toHaveBeenCalledWith({ name: 'Migration20191013214813.ts' });
+    expect(migration2).toMatchSnapshot('initial-migration-dump');
+    await rm(process.cwd() + '/temp/migrations-456/' + migration2.fileName);
+  });
+
+  test('migration storage getter', async () => {
+    expect(orm.migrator.getStorage()).toBeInstanceOf(MigrationStorage);
+
+    expect(orm.migrator.getStorage().getTableName!()).toEqual({
+      schemaName: 'custom',
+      tableName: 'mikro_orm_migrations',
+      entity: expect.any(EntitySchema),
+    });
+
+    // @ts-expect-error private property
+    orm.migrator.options.tableName = 'custom.mikro_orm_migrations';
+    expect(orm.migrator.getStorage().getTableName!()).toEqual({
+      schemaName: 'custom',
+      tableName: 'mikro_orm_migrations',
+      entity: expect.any(EntitySchema),
+    });
+    // @ts-expect-error private property
+    orm.migrator.options.tableName = 'mikro_orm_migrations';
+  });
+
+  test('migration is skipped when no diff', async () => {
+    const getSchemaDiffMock = vi.spyOn<any, any>(Migrator.prototype, 'getSchemaDiff');
+    getSchemaDiffMock.mockResolvedValueOnce({ up: [], down: [] });
+    const migration = await orm.migrator.create();
+    expect(migration).toEqual({ fileName: '', code: '', diff: { up: [], down: [] } });
+  });
+
+  test('run schema migration', async () => {
+    const executeMock = vi.spyOn(Migrator.prototype as any, 'executeMigrations');
+    executeMock.mockResolvedValue([]);
+    await orm.migrator.up();
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    await orm.em.begin();
+    await orm.migrator.down({ transaction: orm.em.getTransactionContext() });
+    await orm.em.commit();
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    executeMock.mockRestore();
+  });
+
+  test('run schema migration without existing migrations folder (GH #907)', async () => {
+    await rm(process.cwd() + '/temp/migrations-456', { recursive: true, force: true });
+    await orm.migrator.up();
+  });
+
+  test('ensureTable and list executed migrations', async () => {
+    await orm.schema.dropTableIfExists(orm.config.get('migrations').tableName!, 'custom');
+    const storage = orm.migrator.getStorage();
+
+    await storage.ensureTable!(); // creates the table
+    await storage.logMigration({ name: 'test' });
+    await expect(storage.getExecutedMigrations()).resolves.toMatchObject([{ name: 'test' }]);
+    await expect(storage.executed()).resolves.toEqual(['test']);
+
+    await storage.ensureTable!(); // table exists, no-op
+    await storage.unlogMigration({ name: 'test' });
+    await expect(storage.executed()).resolves.toEqual([]);
+
+    await expect(orm.migrator.getPending()).resolves.toEqual([]);
+  });
+
+  test('runner', async () => {
+    await orm.schema.dropTableIfExists(orm.config.get('migrations').tableName!, 'custom');
+    await orm.migrator.getStorage().ensureTable!();
+    // @ts-ignore
+    const runner = orm.migrator.runner;
+    // @ts-ignore
+    orm.migrator.options.disableForeignKeys = true;
+
+    const mock = mockLogger(orm, ['query']);
+
+    const migration1 = new MigrationTest1(orm.em.getDriver(), orm.config);
+    const spy1 = vi.spyOn(Migration.prototype, 'addSql');
+    mock.mock.calls.length = 0;
+    await runner.run(migration1, 'up');
+    expect(spy1).toHaveBeenCalledWith('select 1 + 1');
+    expect(mock.mock.calls.length).toBe(6);
+    expect(mock.mock.calls[0][0]).toMatch('begin');
+    expect(mock.mock.calls[1][0]).toMatch("set names 'utf8';");
+    expect(mock.mock.calls[2][0]).toMatch("set session_replication_role = 'replica';");
+    expect(mock.mock.calls[3][0]).toMatch('select 1 + 1');
+    expect(mock.mock.calls[4][0]).toMatch("set session_replication_role = 'origin';");
+    expect(mock.mock.calls[5][0]).toMatch('commit');
+    mock.mock.calls.length = 0;
+
+    await expect(runner.run(migration1, 'down')).rejects.toThrow('This migration cannot be reverted');
+    const executed = await orm.migrator.getExecuted();
+    expect(executed).toEqual([]);
+
+    mock.mock.calls.length = 0;
+    // @ts-ignore
+    orm.migrator.options.disableForeignKeys = false;
+    const migration2 = new MigrationTest2(orm.em.getDriver(), orm.config);
+    await runner.run(migration2, 'up');
+    expect(mock.mock.calls).toHaveLength(8);
+    expect(mock.mock.calls[0][0]).toMatch('select 1 + 1 as count1');
+    expect(mock.mock.calls[1][0]).toMatch('begin');
+    expect(mock.mock.calls[2][0]).toMatch(
+      'insert into "custom"."foo_bar2" ("name") values (?) returning "id", "version"',
+    );
+    expect(mock.mock.calls[3][0]).toMatch('commit');
+    expect(mock.mock.calls[4][0]).toMatch(`set names 'utf8'`);
+    expect(mock.mock.calls[5][0]).toMatch('select 1 + 1');
+    expect(mock.mock.calls[6][0]).toMatch('select 1 + 1');
+    expect(mock.mock.calls[7][0]).toMatch('select 2 + 2 as count2');
+  });
+
+  test('up/down params [all or nothing enabled]', async () => {
+    await orm.schema.dropTableIfExists(orm.config.get('migrations').tableName!, 'custom');
+    // @ts-ignore
+    orm.migrator.options.disableForeignKeys = false;
+    const path = process.cwd() + '/temp/migrations-456';
+
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+    const migration = await orm.migrator.create(path, true);
+    const migratorMock = vi.spyOn(Migration.prototype, 'down');
+    migratorMock.mockImplementation(async () => void 0);
+
+    const mock = mockLogger(orm, ['query']);
+
+    await orm.migrator.up(migration.fileName);
+    await orm.migrator.down(migration.fileName.replace('Migration', '').replace('.ts', ''));
+    await orm.migrator.up({ migrations: [migration.fileName] });
+    await orm.migrator.down({ from: 0, to: 0 } as any);
+    await orm.migrator.up({ to: migration.fileName });
+    await orm.migrator.up({ from: migration.fileName } as any);
+    await orm.migrator.down();
+
+    await rm(path + '/' + migration.fileName);
+    const calls = mock.mock.calls.map(call => {
+      return call[0]
+        .replace(/ \[took \d+ ms([^\]]*)]/, '')
+        .replace(/\[query] /, '')
+        .replace(/ trx\d+/, 'trx\\d+');
+    });
+    expect(calls).toMatchSnapshot('all-or-nothing');
+  });
+
+  test('up/down with explicit transaction', async () => {
+    await orm.schema.dropTableIfExists(orm.config.get('migrations').tableName!, 'custom');
+    const path = process.cwd() + '/temp/migrations-456';
+
+    // @ts-ignore
+    orm.migrator.options.disableForeignKeys = false;
+
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValueOnce('2020-09-22T10:00:01.000Z');
+    dateMock.mockReturnValueOnce('2020-09-22T10:00:02.000Z');
+    const migration1 = await orm.migrator.create(path, true);
+    const migration2 = await orm.migrator.create(path, true);
+    const migrationMock = vi.spyOn(Migration.prototype, 'down');
+    migrationMock.mockImplementation(async () => void 0);
+
+    const mock = mockLogger(orm, ['query']);
+
+    await orm.em.transactional(async em => {
+      const ret1 = await orm.migrator.up({ transaction: em.getTransactionContext() });
+      const ret2 = await orm.migrator.down({ transaction: em.getTransactionContext() });
+      const ret3 = await orm.migrator.down({ transaction: em.getTransactionContext() });
+      const ret4 = await orm.migrator.down({ transaction: em.getTransactionContext() });
+      expect(ret1).toHaveLength(2);
+      expect(ret2).toHaveLength(1);
+      expect(ret3).toHaveLength(1);
+      expect(ret4).toHaveLength(0);
+    });
+
+    await rm(path + '/' + migration1.fileName);
+    await rm(path + '/' + migration2.fileName);
+    const calls = mock.mock.calls.map(call => {
+      return call[0]
+        .replace(/ \[took \d+ ms([^\]]*)]/, '')
+        .replace(/\[query] /, '')
+        .replace(/ trx\d+/, 'trx_xx');
+    });
+    expect(calls).toMatchSnapshot('explicit-tx');
+  });
+
+  test('up/down params [all or nothing disabled]', async () => {
+    await orm.schema.dropTableIfExists(orm.config.get('migrations').tableName!, 'custom');
+    // @ts-ignore
+    orm.migrator.options.disableForeignKeys = false;
+    // @ts-ignore
+    orm.migrator.options.allOrNothing = false;
+    const path = process.cwd() + '/temp/migrations-456';
+
+    const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+    dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+
+    const migration = await orm.migrator.create(path, true);
+    const migratorMock = vi.spyOn(Migration.prototype, 'down');
+    migratorMock.mockImplementation(async () => void 0);
+
+    const mock = mockLogger(orm, ['query']);
+
+    await orm.migrator.up(migration.fileName);
+    await orm.migrator.down(migration.fileName.replace('Migration', ''));
+    await orm.migrator.up({ migrations: [migration.fileName] });
+    await orm.migrator.down({ from: 0, to: 0 } as any);
+    await orm.migrator.up({ to: migration.fileName });
+    await orm.migrator.up({ from: migration.fileName } as any);
+    await orm.migrator.down();
+
+    await rm(path + '/' + migration.fileName);
+    const calls = mock.mock.calls.map(call => {
+      return call[0]
+        .replace(/ \[took \d+ ms([^\]]*)]/, '')
+        .replace(/\[query] /, '')
+        .replace(/ trx\d+/, 'trx_xx');
+    });
+    expect(calls).toMatchSnapshot('all-or-nothing-disabled');
+  });
+});
+
+test('ensureTable when the schema does not exist', async () => {
+  const orm = await MikroORM.init({
+    entities: [Author2, Address2, Book2, BookTag2, Publisher2, Test2, FooBar2, FooBaz2, FooParam2, Configuration2],
+    dbName: `mikro_orm_test_migrations2`,
+    metadataProvider: ReflectMetadataProvider,
+    schema: 'custom2',
+    migrations: { path: BASE_DIR + '/../temp/migrations-456', snapshot: false },
+    extensions: [Migrator],
+  });
+  await orm.schema.ensureDatabase();
+  await orm.schema.execute('drop schema if exists "custom2" cascade');
+  const storage = orm.migrator.getStorage();
+
+  const mock = mockLogger(orm);
+  await storage.ensureTable!(); // ensures the schema first
+  expect(mock.mock.calls[0][0]).toMatch(
+    `select 1 from information_schema.tables where table_schema = 'custom2' and table_name = 'mikro_orm_migrations'`,
+  );
+  expect(mock.mock.calls[1][0]).toMatch(
+    `select schema_name from information_schema.schemata where "schema_name" not like 'pg_%' and "schema_name" not like 'crdb_%' and "schema_name" not like '_timescaledb_%' and "schema_name" not in ('information_schema', 'tiger', 'topology') order by schema_name`,
+  );
+  expect(mock.mock.calls[2][0]).toMatch(`create schema if not exists "custom2"`);
+  expect(mock.mock.calls[3][0]).toMatch(
+    `create table "custom2"."mikro_orm_migrations" ("id" serial primary key, "name" varchar(255) not null, "executed_at" timestamptz(6) not null default current_timestamp(6))`,
+  );
+  await orm.close();
+});
+
+test('respects the skipTables option when diffing schemas', async () => {
+  const baseConfig = {
+    entities: [Author2, Address2, Book2, BookTag2, Publisher2, Test2, FooBar2, FooBaz2, FooParam2, Configuration2],
+    dbName: `mikro_orm_test_migrations3`,
+    schema: 'custom',
+    extensions: [Migrator],
+    metadataProvider: ReflectMetadataProvider,
+    migrations: { path: BASE_DIR + '/../temp/migrations-456', snapshot: false },
+  };
+  const initOrm = await MikroORM.init(baseConfig);
+
+  await initOrm.schema.refresh();
+  await initOrm.schema.execute('alter table "custom"."book2" add column "foo" varchar null default \'lol\';');
+  await initOrm.schema.execute(
+    'alter table "custom"."book2" alter column "double" type numeric using ("double"::numeric);',
+  );
+  await initOrm.schema.execute('alter table "custom"."test2" add column "path" polygon null default null;');
+  await rm(process.cwd() + '/temp/migrations-456', { force: true, recursive: true });
+  await initOrm.close();
+
+  // Two ORM instances here because updates to the schemaGenerator option and syncing won't actually make its way to the
+  //  Migrator's SqlSchemaGenerator instance because that is initialized ahead of time when the orm instance is defined.
+  const updatedOrm = await MikroORM.init({
+    ...baseConfig,
+    schemaGenerator: {
+      skipTables: ['book2'],
+    },
+  });
+
+  const dateMock = vi.spyOn(Date.prototype, 'toISOString');
+  dateMock.mockReturnValue('2019-10-13T21:48:13.382Z');
+  const migrator = updatedOrm.migrator;
+  const migration = await migrator.create();
+  // This should only include changes to "test2" since the orm instance here has been told to ignore "book2"
+  expect(migration).toMatchSnapshot('migration-dump-with-skip-tables');
+  await rm(process.cwd() + '/temp/migrations-456/' + migration.fileName, { force: true, recursive: true });
+
+  await updatedOrm.close();
+});

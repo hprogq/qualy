@@ -1,0 +1,136 @@
+services:
+  mongo:
+    image: mongo:8.3
+    expose:
+      - 27017
+    ports:
+      - "27017:27017"
+    restart: always
+    healthcheck:
+      test: /usr/bin/mongosh --eval 'process.exit(+!(db.runCommand("ping").ok === 1))'
+
+  mysql9:
+    image: mysql:9.0-oracle
+    restart: unless-stopped
+    ports:
+      - "3308:3306"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+    command: [
+      "mysqld",
+      "--innodb_file_per_table=0",
+      "--innodb_doublewrite=0",
+      "--skip-name-resolve"
+    ]
+    volumes:
+      - mysql9:/var/lib/mysql
+    healthcheck:
+      test: /usr/bin/mysql --protocol=TCP -e 'select 1'
+      start_period: 30s
+
+  mariadb:
+    image: mariadb:12
+    ports:
+      - "3309:3306"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+    volumes:
+      - mariadb:/var/lib/mysql
+    healthcheck:
+      test: /usr/bin/mariadb --protocol=TCP -e 'select 1'
+
+  postgre:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgre:/var/lib/postgresql/data
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: /usr/bin/pg_isready -h 'localhost'
+
+  postgis:
+    image: imresamu/postgis:16-3.4
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgis:/var/lib/postgresql/data
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: /usr/bin/pg_isready -h 'localhost'
+
+  cockroachdb:
+    image: cockroachdb/cockroach:latest-v24.3
+    restart: unless-stopped
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - cockroachdb:/cockroach/cockroach-data
+    command: start-single-node --insecure
+    healthcheck:
+      test: cockroach sql --insecure -e 'select 1'
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2025-CU3-ubuntu-24.04
+    platform: linux/amd64
+    restart: always
+    ports:
+      - '1433:1433'
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      MSSQL_SA_PASSWORD: Root.Root
+      MSSQL_TELEMETRY_ENABLED: 0
+      ACCEPT_EULA: 1
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -b -C -S tcp:localhost -U sa -P 'Root.Root' -Q 'select 1'
+      start_period: 60s
+      interval: 5s
+      timeout: 10s
+      retries: 24
+
+  oracledb:
+    image: container-registry.oracle.com/database/free:latest-lite
+    ports:
+      - '1521:1521'
+    environment:
+      - ORACLE_ALLOW_REMOTE=true
+      - ORACLE_PWD=oracle123
+      - ORACLE_MEM_TARGET=2G
+    healthcheck:
+      test: bash -c "echo 'select 1 from dual;' | sqlplus -L -S pdbadmin/oracle123@//localhost:1521/FREEPDB1"
+      start_period: 300s
+      start_interval: 5s
+    volumes:
+      - oracledb:/opt/oracle/data
+      - ./docker/oracle-init.sql:/opt/oracle/scripts/startup/oracle-init.sql
+      - ./docker/oracle-startup.sh:/opt/oracle/scripts/startup/oracle-startup.sh
+
+volumes:
+  mysql9:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  mariadb:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  postgre:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  postgis:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  cockroachdb:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  oracledb:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs

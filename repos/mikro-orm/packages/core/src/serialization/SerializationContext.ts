@@ -1,0 +1,160 @@
+import type { AnyEntity, EntityMetadata, EntityName, PopulateOptions } from '../typings.js';
+import { Utils } from '../utils/Utils.js';
+import { helper } from '../entity/wrap.js';
+
+/**
+ * Helper that allows to keep track of where we are currently at when serializing complex entity graph with cycles.
+ * Before we process a property, we call `visit` that checks if it is not a cycle path (but allows to pass cycles that
+ * are defined in populate hint). If not, we proceed and call `leave` afterwards.
+ */
+export class SerializationContext<T extends object> {
+  readonly path: [EntityName, string][] = [];
+  readonly visited: Set<AnyEntity> = new Set();
+  #entities = new Set<AnyEntity>();
+  readonly #populate: PopulateOptions<T>[];
+  readonly #fields?: Set<string>;
+  readonly #exclude?: readonly string[];
+
+  constructor(populate: PopulateOptions<T>[] = [], fields?: Set<string>, exclude?: readonly string[]) {
+    this.#populate = populate;
+    this.#fields = fields;
+    this.#exclude = exclude;
+  }
+
+  /**
+   * Returns true when there is a cycle detected.
+   */
+  visit(entityName: EntityName, prop: string): boolean {
+    if (!this.path.find(([cls, item]) => entityName === cls && prop === item)) {
+      this.path.push([entityName, prop]);
+      return false;
+    }
+
+    // check if the path is explicitly populated
+    if (!this.isMarkedAsPopulated(entityName, prop)) {
+      return true;
+    }
+
+    this.path.push([entityName, prop]);
+    return false;
+  }
+
+  /** Removes the last entry from the visit path after processing a property. */
+  leave(entityName: EntityName, prop: string) {
+    const last = this.path.pop();
+
+    /* v8 ignore next */
+    if (last?.[0] !== entityName || last[1] !== prop) {
+      throw new Error(`Trying to leave wrong property: ${entityName}.${prop} instead of ${last?.join('.')}`);
+    }
+  }
+
+  /** Cleans up the serialization context by removing root references from all tracked entities. */
+  close() {
+    for (const entity of this.#entities) {
+      delete helper(entity).__serializationContext.root;
+    }
+  }
+
+  /**
+   * When initializing new context, we need to propagate it to the whole entity graph recursively.
+   */
+  static propagate(
+    root: SerializationContext<any>,
+    entity: AnyEntity,
+    isVisible: (meta: EntityMetadata, prop: string) => boolean,
+  ): void {
+    root.register(entity);
+    const meta = helper(entity).__meta;
+
+    for (const key of Object.keys(entity)) {
+      if (!isVisible(meta, key)) {
+        continue;
+      }
+
+      const target = entity[key];
+
+      if (Utils.isEntity<AnyEntity>(target, true)) {
+        if (!target.__helper!.__serializationContext.root) {
+          this.propagate(root, target, isVisible);
+        }
+
+        continue;
+      }
+
+      if (Utils.isCollection(target)) {
+        for (const item of target.getItems(false)) {
+          if (!(item as AnyEntity).__helper!.__serializationContext.root) {
+            this.propagate(root, item, isVisible);
+          }
+        }
+      }
+    }
+  }
+
+  /** Checks whether a property is explicitly listed in the populate hints for the current path. */
+  isMarkedAsPopulated(entityName: EntityName, prop: string): boolean {
+    let populate: PopulateOptions<T>[] = this.#populate ?? [];
+
+    for (const segment of this.path) {
+      const hints = populate.filter(p => p.field === segment[1]);
+
+      if (hints.length > 0) {
+        const childHints: PopulateOptions<T>[] = [];
+
+        for (const hint of hints) {
+          // we need to check for cycles here too, as we could fall into endless loops for bidirectional relations
+          if (hint.all) {
+            return !this.path.find(([cls, item]) => entityName === cls && prop === item);
+          }
+
+          if (hint.children) {
+            childHints.push(...(hint.children as PopulateOptions<T>[]));
+          }
+        }
+
+        populate = childHints;
+      }
+    }
+
+    return !!populate?.some(p => p.field === prop);
+  }
+
+  /** Checks whether a property is excluded from serialization via the exclude list. */
+  isExcluded(entityName: EntityName, prop: string): boolean {
+    if (!this.#exclude || this.#exclude.length === 0) {
+      return false;
+    }
+
+    const fullPath = this.path.map(segment => segment[1] + '.').join('') + prop;
+
+    return this.#exclude.includes(fullPath);
+  }
+
+  /** Checks whether a property is included in the partial fields selection for the current path. */
+  isPartiallyLoaded(entityName: EntityName, prop: string): boolean {
+    if (!this.#fields) {
+      return true;
+    }
+
+    let fields: string[] = [...this.#fields];
+
+    for (const segment of this.path) {
+      /* v8 ignore next */
+      if (fields.length === 0) {
+        return true;
+      }
+
+      fields = fields
+        .filter(field => field.startsWith(`${segment[1]}.`) || field === '*')
+        .map(field => (field === '*' ? field : field.substring(segment[1].length + 1)));
+    }
+
+    return fields.some(p => p === prop || p === '*');
+  }
+
+  private register(entity: AnyEntity) {
+    helper(entity as T).__serializationContext.root = this;
+    this.#entities.add(entity);
+  }
+}

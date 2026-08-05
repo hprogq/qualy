@@ -1,0 +1,165 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`embedded entities in postgres > diffing 1`] = `
+"function(entity) {
+  const ret = {};
+  if (typeof entity.id !== 'undefined') {
+    ret.id = entity.id;
+  }
+
+  if (typeof entity.name !== 'undefined') {
+    ret.name = entity.name;
+  }
+
+  if (entity.profile1 === null) {
+    ret.profile1_username = null;
+    ret.profile1_identity_email = null;
+    ret.profile1_identity_meta_foo = null;
+    ret.profile1_identity_meta_bar = null;
+    ret.profile1_identity_links = null;
+  }
+  if (entity.profile1 != null) {
+    if (typeof entity.profile1.username !== 'undefined') ret.profile1_username = clone(entity.profile1.username);
+
+    if (entity.profile1.identity === null) {
+      ret.profile1_identity_email = null;
+      ret.profile1_identity_meta_foo = null;
+      ret.profile1_identity_meta_bar = null;
+      ret.profile1_identity_links = null;
+    }
+    if (entity.profile1.identity != null) {
+      if (typeof entity.profile1.identity.email !== 'undefined') ret.profile1_identity_email = clone(entity.profile1.identity.email);
+
+      if (entity.profile1.identity.meta === null) {
+        ret.profile1_identity_meta_foo = null;
+        ret.profile1_identity_meta_bar = null;
+      }
+      if (entity.profile1.identity.meta != null) {
+        if (typeof entity.profile1.identity.meta.foo !== 'undefined') ret.profile1_identity_meta_foo = clone(entity.profile1.identity.meta.foo);
+        if (typeof entity.profile1.identity.meta.bar !== 'undefined') ret.profile1_identity_meta_bar = clone(entity.profile1.identity.meta.bar);
+      }
+
+      if (entity.profile1.identity.links === null) ret.profile1_identity_links = null;
+      if (Array.isArray(entity.profile1.identity.links)) {
+        ret.profile1_identity_links = [];
+        entity.profile1.identity.links.forEach((_, idx_0) => {
+
+          if (entity.profile1.identity.links[idx_0] === null) ret.profile1_identity_links[idx_0] = null;
+          if (entity.profile1.identity.links[idx_0] != null) {
+            ret.profile1_identity_links[idx_0] = {};
+            if (typeof entity.profile1.identity.links[idx_0].url !== 'undefined') ret.profile1_identity_links[idx_0].url = clone(entity.profile1.identity.links[idx_0].url);
+            if (typeof entity.profile1.identity.links[idx_0].createdAt !== 'undefined') ret.profile1_identity_links[idx_0].createdAt = clone(entity.profile1.identity.links[idx_0].createdAt);
+
+            if (entity.profile1.identity.links[idx_0].meta === null) ret.profile1_identity_links[idx_0].meta = null;
+            if (entity.profile1.identity.links[idx_0].meta != null) {
+              ret.profile1_identity_links[idx_0].meta = {};
+              if (typeof entity.profile1.identity.links[idx_0].meta.foo !== 'undefined') ret.profile1_identity_links[idx_0].meta.foo = clone(entity.profile1.identity.links[idx_0].meta.foo);
+              if (typeof entity.profile1.identity.links[idx_0].meta.bar !== 'undefined') ret.profile1_identity_links[idx_0].meta.bar = clone(entity.profile1.identity.links[idx_0].meta.bar);
+            }
+
+            if (entity.profile1.identity.links[idx_0].metas === null) ret.profile1_identity_links[idx_0].metas = null;
+            if (Array.isArray(entity.profile1.identity.links[idx_0].metas)) {
+              ret.profile1_identity_links[idx_0].metas = [];
+              entity.profile1.identity.links[idx_0].metas.forEach((_, idx_1) => {
+
+                if (entity.profile1.identity.links[idx_0].metas[idx_1] === null) ret.profile1_identity_links[idx_0].metas[idx_1] = null;
+                if (entity.profile1.identity.links[idx_0].metas[idx_1] != null) {
+                  ret.profile1_identity_links[idx_0].metas[idx_1] = {};
+                  if (typeof entity.profile1.identity.links[idx_0].metas[idx_1].foo !== 'undefined') ret.profile1_identity_links[idx_0].metas[idx_1].foo = clone(entity.profile1.identity.links[idx_0].metas[idx_1].foo);
+                  if (typeof entity.profile1.identity.links[idx_0].metas[idx_1].bar !== 'undefined') ret.profile1_identity_links[idx_0].metas[idx_1].bar = clone(entity.profile1.identity.links[idx_0].metas[idx_1].bar);
+                }
+              });
+            }
+
+          }
+        });
+        ret.profile1_identity_links = cloneEmbeddable(ret.profile1_identity_links);
+      }
+
+    }
+
+  }
+
+  if (entity.profile2 === null) ret.profile2 = null;
+  if (entity.profile2 != null) {
+    ret.profile2 = {};
+    if (typeof entity.profile2.username !== 'undefined') ret.profile2.username = clone(entity.profile2.username);
+
+    if (entity.profile2.identity === null) ret.profile2.identity = null;
+    if (entity.profile2.identity != null) {
+      ret.profile2.identity = {};
+      if (typeof entity.profile2.identity.email !== 'undefined') ret.profile2.identity.email = clone(entity.profile2.identity.email);
+
+      if (entity.profile2.identity.meta === null) ret.profile2.identity.meta = null;
+      if (entity.profile2.identity.meta != null) {
+        ret.profile2.identity.meta = {};
+        if (typeof entity.profile2.identity.meta.foo !== 'undefined') ret.profile2.identity.meta.foo = clone(entity.profile2.identity.meta.foo);
+        if (typeof entity.profile2.identity.meta.bar !== 'undefined') ret.profile2.identity.meta.bar = clone(entity.profile2.identity.meta.bar);
+      }
+
+      if (entity.profile2.identity.links === null) ret.profile2.identity.links = null;
+      if (Array.isArray(entity.profile2.identity.links)) {
+        ret.profile2.identity.links = [];
+        entity.profile2.identity.links.forEach((_, idx_2) => {
+
+          if (entity.profile2.identity.links[idx_2] === null) ret.profile2.identity.links[idx_2] = null;
+          if (entity.profile2.identity.links[idx_2] != null) {
+            ret.profile2.identity.links[idx_2] = {};
+            if (typeof entity.profile2.identity.links[idx_2].url !== 'undefined') ret.profile2.identity.links[idx_2].url = clone(entity.profile2.identity.links[idx_2].url);
+            if (typeof entity.profile2.identity.links[idx_2].createdAt !== 'undefined') ret.profile2.identity.links[idx_2].createdAt = clone(entity.profile2.identity.links[idx_2].createdAt);
+
+            if (entity.profile2.identity.links[idx_2].meta === null) ret.profile2.identity.links[idx_2].meta = null;
+            if (entity.profile2.identity.links[idx_2].meta != null) {
+              ret.profile2.identity.links[idx_2].meta = {};
+              if (typeof entity.profile2.identity.links[idx_2].meta.foo !== 'undefined') ret.profile2.identity.links[idx_2].meta.foo = clone(entity.profile2.identity.links[idx_2].meta.foo);
+              if (typeof entity.profile2.identity.links[idx_2].meta.bar !== 'undefined') ret.profile2.identity.links[idx_2].meta.bar = clone(entity.profile2.identity.links[idx_2].meta.bar);
+            }
+
+            if (entity.profile2.identity.links[idx_2].metas === null) ret.profile2.identity.links[idx_2].metas = null;
+            if (Array.isArray(entity.profile2.identity.links[idx_2].metas)) {
+              ret.profile2.identity.links[idx_2].metas = [];
+              entity.profile2.identity.links[idx_2].metas.forEach((_, idx_3) => {
+
+                if (entity.profile2.identity.links[idx_2].metas[idx_3] === null) ret.profile2.identity.links[idx_2].metas[idx_3] = null;
+                if (entity.profile2.identity.links[idx_2].metas[idx_3] != null) {
+                  ret.profile2.identity.links[idx_2].metas[idx_3] = {};
+                  if (typeof entity.profile2.identity.links[idx_2].metas[idx_3].foo !== 'undefined') ret.profile2.identity.links[idx_2].metas[idx_3].foo = clone(entity.profile2.identity.links[idx_2].metas[idx_3].foo);
+                  if (typeof entity.profile2.identity.links[idx_2].metas[idx_3].bar !== 'undefined') ret.profile2.identity.links[idx_2].metas[idx_3].bar = clone(entity.profile2.identity.links[idx_2].metas[idx_3].bar);
+                }
+              });
+            }
+
+          }
+        });
+      }
+
+    }
+
+    ret.profile2 = cloneEmbeddable(ret.profile2);
+  }
+
+  return ret;
+}"
+`;
+
+exports[`embedded entities in postgres > schema > nested embeddables 1 1`] = `
+"create table "user" ("id" serial primary key, "name" varchar(255) not null, "profile1_username" varchar(255) not null, "profile1_identity_email" varchar(255) not null, "profile1_identity_meta_foo" varchar(255) null, "profile1_identity_links" jsonb not null, "profile1_identity_meta_bar" varchar(255) null, "profile2" jsonb not null);
+create index "user_profile1_identity_meta_bar_index" on "user" ("profile1_identity_meta_bar");
+create index "user_profile1_identity_links_meta_bar_index" on "user" (("profile1_identity_links"->'meta'->>'bar'));
+create index "user_profile1_identity_links_metas_bar_index" on "user" (("profile1_identity_links"->'metas'->>'bar'));
+create index "user_profile2_identity_meta_bar_index" on "user" (("profile2"->'identity'->'meta'->>'bar'));
+create index "user_profile2_identity_links_meta_bar_index" on "user" (("profile2"->'identity'->'links'->'meta'->>'bar'));
+create index "user_profile2_identity_links_metas_bar_index" on "user" (("profile2"->'identity'->'links'->'metas'->>'bar'));
+alter table "user" add constraint "user_profile1_identity_email_unique" unique ("profile1_identity_email");
+alter table "user" add constraint "user_profile1_username_unique" unique ("profile1_username");
+create unique index "user_profile2_identity_email_unique" on "user" (("profile2"->'identity'->>'email'));
+create unique index "user_profile2_username_unique" on "user" (("profile2"->>'username'));
+"
+`;
+
+exports[`embedded entities in postgres > schema > nested embeddables 2 1`] = `""`;
+
+exports[`embedded entities in postgres > schema > nested embeddables 3 1`] = `
+"drop table if exists "user" cascade;
+"
+`;

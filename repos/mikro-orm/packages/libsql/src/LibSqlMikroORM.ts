@@ -1,0 +1,69 @@
+import {
+  type AnyEntity,
+  type EntityClass,
+  type EntitySchema,
+  defineConfig,
+  type MikroORM,
+  type Options,
+  type IDatabaseDriver,
+  type EntityManager,
+  type EntityManagerType,
+} from '@mikro-orm/core';
+import { SqlMikroORM, type SqlEntityManager } from '@mikro-orm/sql';
+import { LibSqlDriver } from './LibSqlDriver.js';
+
+/** Configuration options for the libSQL driver. */
+export type LibSqlOptions<
+  EM extends SqlEntityManager<LibSqlDriver> = SqlEntityManager<LibSqlDriver>,
+  Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+    | string
+    | EntityClass<AnyEntity>
+    | EntitySchema
+  )[],
+> = Partial<Options<LibSqlDriver, EM, Entities>>;
+
+/** Creates a type-safe configuration object for the libSQL driver. */
+export function defineLibSqlConfig<
+  EM extends SqlEntityManager<LibSqlDriver> = SqlEntityManager<LibSqlDriver>,
+  Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+    | string
+    | EntityClass<AnyEntity>
+    | EntitySchema
+  )[],
+>(options: LibSqlOptions<EM, Entities>): LibSqlOptions<EM, Entities> {
+  return defineConfig({ driver: LibSqlDriver, ...options });
+}
+
+/**
+ * @inheritDoc
+ */
+export class LibSqlMikroORM<
+  EM extends SqlEntityManager<LibSqlDriver> = SqlEntityManager<LibSqlDriver>,
+  Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+    | string
+    | EntityClass<AnyEntity>
+    | EntitySchema
+  )[],
+> extends SqlMikroORM<LibSqlDriver, EM, Entities> {
+  /**
+   * @inheritDoc
+   */
+  static override async init<
+    D extends IDatabaseDriver = LibSqlDriver,
+    EM extends EntityManager<D> = D[typeof EntityManagerType] & EntityManager<D>,
+    Entities extends readonly (string | EntityClass<AnyEntity> | EntitySchema)[] = (
+      | string
+      | EntityClass<AnyEntity>
+      | EntitySchema
+    )[],
+  >(options: Partial<Options<D, EM, Entities>>): Promise<MikroORM<D, EM, Entities>> {
+    return super.init(defineLibSqlConfig(options as any) as any);
+  }
+
+  /**
+   * @inheritDoc
+   */
+  constructor(options: Partial<Options<LibSqlDriver, EM, Entities>>) {
+    super(defineLibSqlConfig(options));
+  }
+}

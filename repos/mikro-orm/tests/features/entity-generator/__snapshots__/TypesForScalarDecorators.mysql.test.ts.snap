@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`TypesForScalarDecorators > dump 1`] = `
+[
+  "import { type Opt, PrimaryKeyProp, defineEntity, p } from '@mikro-orm/core';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  username!: string;
+  views!: bigint;
+  enabled!: boolean;
+  createdAt!: Date & Opt;
+}
+
+export const UsersSchema = defineEntity({
+  class: Users,
+  properties: {
+    userId: p.integer().primary(),
+    username: p.string(),
+    views: p.bigint().unsigned(),
+    enabled: p.boolean(),
+    createdAt: p.datetime().defaultRaw(\`CURRENT_TIMESTAMP\`),
+  },
+});
+",
+]
+`;

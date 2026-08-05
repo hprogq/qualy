@@ -1,0 +1,545 @@
+process.env.FORCE_COLOR = '0';
+
+import { EntitySchema, MikroORM, NullCacheAdapter } from '@mikro-orm/core';
+import { ReflectMetadataProvider } from '@mikro-orm/decorators/legacy';
+import { BASE_DIR } from './helpers.js';
+import { Author, Test } from './entities/index.js';
+import { Author2, Car2, CarOwner2, Sandwich, User2 } from './entities-sql/index.js';
+import { BaseEntity2 } from './entities-sql/BaseEntity2.js';
+import { MsSqlDriver } from '@mikro-orm/mssql';
+import { MySqlDriver } from '@mikro-orm/mysql';
+import { OracleDriver } from '@mikro-orm/oracledb';
+import { PostgreSqlDriver } from '@mikro-orm/postgresql';
+import { SqliteDriver } from '@mikro-orm/sqlite';
+import { MongoDriver, MikroORM as MongoMikroORM } from '@mikro-orm/mongodb';
+import { SeedManager } from '@mikro-orm/seeder';
+import { Migrator } from '@mikro-orm/migrations';
+import { Migrator as MongoMigrator } from '@mikro-orm/migrations-mongodb';
+import { fs } from '@mikro-orm/core/fs-utils';
+import { discoverEntities, fs as fs2 } from '../packages/core/src/not-supported.js';
+
+describe('MikroORM', () => {
+  test('should throw when not enough config provided', async () => {
+    const err = `No driver specified, please fill in the \`driver\` option or use \`defineConfig\` helper (to define your ORM config) or \`MikroORM\` class (to call the \`init\` method) exported from the driver package (e.g. \`import { defineConfig } from '@mikro-orm/mysql'; export defineConfig({ ... })\`).`;
+    expect(() => new MikroORM({ entities: [Author], clientUrl: '' })).toThrow(err);
+    expect(() => new MikroORM({ driver: MongoDriver, entities: [Author], dbName: '' })).toThrow(
+      'No database specified, please fill in `dbName` or `clientUrl` option',
+    );
+    expect(() => new MikroORM({ driver: MongoDriver, entities: [Author], clientUrl: '...' })).toThrow(
+      "No database specified, `clientUrl` option provided but it's missing the pathname.",
+    );
+    expect(() => new MikroORM({ driver: MongoDriver, entities: [], dbName: 'test' })).toThrow(
+      'No entities found, please use `entities` option',
+    );
+    expect(
+      () =>
+        new MikroORM({
+          metadataProvider: ReflectMetadataProvider,
+          driver: MongoDriver,
+          dbName: 'test',
+          entities: [Author],
+          clientUrl: 'test',
+        }),
+    ).not.toThrow();
+  });
+
+  test('source folder detection', async () => {
+    const pathExistsMock = vi.spyOn(fs, 'pathExists');
+
+    pathExistsMock.mockImplementation(path => !!/src$/.exec(path));
+    const orm1 = await MongoMikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      dbName: 'test',
+      baseDir: import.meta.dirname + '/../packages/core',
+      entities: [import.meta.dirname + '/entities'],
+      clientUrl: 'test',
+      // mongo migrator won't be registered automatically, since the sql one is available too and it takes precedence
+      extensions: [MongoMigrator],
+    });
+    expect(orm1.migrator).toBeInstanceOf(MongoMigrator);
+    expect(orm1.seeder).toBeInstanceOf(SeedManager);
+    // source folder detection is deferred to the first async call
+    await (orm1.migrator as any).init();
+    await (orm1.seeder as any).init();
+    expect(orm1.config.get('migrations')).toMatchObject({
+      path: './src/migrations',
+      pathTs: './src/migrations',
+    });
+    expect(orm1.config.get('seeder')).toMatchObject({
+      path: './src/seeders',
+      pathTs: './src/seeders',
+    });
+
+    pathExistsMock.mockImplementation(path => !!/src|dist$/.exec(path));
+    const orm2 = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: SqliteDriver,
+      dbName: ':memory:',
+      baseDir: import.meta.dirname + '/../packages/core',
+      entities: [import.meta.dirname + '/entities'],
+    });
+    expect(orm2.migrator).toBeInstanceOf(Migrator);
+    expect(orm2.seeder).toBeInstanceOf(SeedManager);
+    await (orm2.migrator as any).init();
+    await (orm2.seeder as any).init();
+    expect(orm2.config.get('migrations')).toMatchObject({
+      path: './dist/migrations',
+      pathTs: './src/migrations',
+    });
+    expect(orm2.config.get('seeder')).toMatchObject({
+      path: './dist/seeders',
+      pathTs: './src/seeders',
+    });
+
+    pathExistsMock.mockImplementation(path => !!/src|build$/.exec(path));
+    const orm3 = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: MongoDriver,
+      dbName: 'test',
+      baseDir: import.meta.dirname + '/../packages/core',
+      entities: [import.meta.dirname + '/entities'],
+      clientUrl: 'test',
+      extensions: [SeedManager, MongoMigrator],
+    });
+    expect(orm3.migrator).toBeInstanceOf(MongoMigrator);
+    expect(orm3.seeder).toBeInstanceOf(SeedManager);
+    await (orm3.migrator as any).init();
+    await (orm3.seeder as any).init();
+    expect(orm3.config.get('migrations')).toMatchObject({
+      path: './build/migrations',
+      pathTs: './src/migrations',
+    });
+    expect(orm3.config.get('seeder')).toMatchObject({
+      path: './build/seeders',
+      pathTs: './src/seeders',
+    });
+
+    pathExistsMock.mockRestore();
+  });
+
+  test('should throw when no entity discovered', async () => {
+    await expect(
+      MikroORM.init({
+        metadataProvider: ReflectMetadataProvider,
+        driver: MongoDriver,
+        dbName: 'test',
+        entities: ['not-existing/path'],
+      }),
+    ).rejects.toThrow('No entities were discovered');
+  });
+
+  test('should work with absolute paths (GH issue #1073)', async () => {
+    await expect(
+      MikroORM.init({
+        metadataProvider: ReflectMetadataProvider,
+        driver: MongoDriver,
+        dbName: 'test',
+        entities: [process.cwd() + '/tests/entities'],
+      }),
+    ).resolves.not.toBeUndefined();
+  });
+
+  test('should throw when multiple entities with same table name discovered', async () => {
+    await expect(
+      MikroORM.init({
+        metadataProvider: ReflectMetadataProvider,
+        driver: MongoDriver,
+        dbName: 'test',
+        baseDir: BASE_DIR,
+        entities: ['entities-1', 'entities-2'],
+      }),
+    ).rejects.toThrow('Duplicate table names are not allowed: dup1, dup2');
+  });
+
+  test('should NOT throw when multiple entities in same file were discovered', async () => {
+    const orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: SqliteDriver,
+      dbName: ':memory:',
+      baseDir: BASE_DIR,
+      entities: ['complex-entities/**/*.entity.js'],
+      entitiesTs: ['complex-entities/**/*.entity.ts'],
+    });
+
+    expect(orm).toBeInstanceOf(MikroORM);
+    expect([...orm.getMetadata().getAll().keys()].map(k => k.name).sort()).toEqual([
+      'AbstractClass',
+      'ClassA',
+      'ClassB',
+      'User',
+    ]);
+  });
+
+  test('should discover defineEntity class via glob when only class is exported', async () => {
+    const orm = await MikroORM.init({
+      driver: SqliteDriver,
+      dbName: ':memory:',
+      baseDir: BASE_DIR,
+      entities: ['complex-entities/define-entity-class-only.entity.js'],
+      entitiesTs: ['complex-entities/define-entity-class-only.entity.ts'],
+    });
+
+    expect(orm).toBeInstanceOf(MikroORM);
+    expect([...orm.getMetadata().getAll().keys()].map(k => k.name).sort()).toEqual(['User']);
+
+    await orm.close();
+  });
+
+  test('should NOT throw when multiple entities with same file name discovered', async () => {
+    const ormInitCommandPromise = MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: MongoDriver,
+      dbName: 'test',
+      baseDir: BASE_DIR,
+      entities: ['entities-1', 'entities-2'],
+      discovery: { checkDuplicateTableNames: false },
+    });
+
+    await expect(ormInitCommandPromise).resolves.toBeTruthy();
+
+    await ormInitCommandPromise.then(orm => orm.close());
+  });
+
+  test('should throw when only abstract entities were discovered', async () => {
+    const err =
+      'Only abstract entities were discovered, maybe you forgot to use @Entity() decorator? This can also happen when you have multiple `@mikro-orm/core` packages installed side by side.';
+    await expect(
+      MikroORM.init({
+        metadataProvider: ReflectMetadataProvider,
+        driver: MongoDriver,
+        dbName: 'test',
+        baseDir: BASE_DIR,
+        entities: [BaseEntity2],
+      }),
+    ).rejects.toThrow(err);
+  });
+
+  test('should throw when a relation is pointing to not discovered entity', async () => {
+    const err =
+      "Entity 'FooBaz2' was not discovered, please make sure to provide it in 'entities' array when initializing the ORM";
+    await expect(
+      MikroORM.init({
+        metadataProvider: ReflectMetadataProvider,
+        driver: SqliteDriver,
+        dbName: ':memory:',
+        entities: [Author2, BaseEntity2],
+      }),
+    ).rejects.toThrow(err);
+  });
+
+  test('should throw when only multiple property legacy are used', async () => {
+    const err = `Multiple property decorators used on 'MultiDecorator.name' property`;
+    await expect(
+      MikroORM.init({
+        metadataProvider: ReflectMetadataProvider,
+        driver: MongoDriver,
+        dbName: 'test',
+        baseDir: BASE_DIR,
+        entities: ['entities-4'],
+      }),
+    ).rejects.toThrow(err);
+  });
+
+  test('should throw when async callback provided in `driverOptions`', async () => {
+    const err = '`driverOptions` callback cannot be async';
+    await expect(
+      MikroORM.init({
+        driver: SqliteDriver,
+        dbName: ':memory:',
+        entities: [Author2, BaseEntity2],
+        driverOptions: async () => ({}),
+      }),
+    ).rejects.toThrow(err);
+  });
+
+  test('should throw when async callback provided in `driverOptions`', async () => {
+    const err = '`driverOptions` callback cannot be async';
+    await expect(
+      MikroORM.init({
+        driver: MongoDriver,
+        dbName: 'dbname',
+        entities: [Author2, BaseEntity2],
+        driverOptions: async () => ({}),
+      }),
+    ).rejects.toThrow(err);
+  });
+
+  test('folder based discover with multiple entities in single file', async () => {
+    const orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: MongoDriver,
+      dbName: 'test',
+      baseDir: BASE_DIR,
+      entities: ['entities'],
+    });
+    expect([...orm.getMetadata().getAll().keys()].map(k => k.name).sort()).toEqual([
+      'Author',
+      'Book',
+      'BookTag',
+      'Dummy',
+      'Foo1',
+      'Foo2',
+      'Foo3',
+      'FooBar',
+      'FooBaz',
+      'Publisher',
+      'Test',
+    ]);
+    await orm.close();
+  });
+
+  test('should use environment variables as defaults, but prefer explicit options', async () => {
+    process.env.MIKRO_ORM_BASE_DIR = './tests';
+    process.env.MIKRO_ORM_TYPE = 'sqlite';
+    process.env.MIKRO_ORM_ENTITIES = './entities-schema';
+    process.env.MIKRO_ORM_HOST = '123.0.0.4';
+    process.env.MIKRO_ORM_PORT = '1234';
+    process.env.MIKRO_ORM_USER = 'string';
+    process.env.MIKRO_ORM_PASSWORD = 'lol';
+    process.env.MIKRO_ORM_DB_NAME = ':memory:';
+    process.env.MIKRO_ORM_MIGRATIONS_PATH = './dist/migrations';
+    process.env.MIKRO_ORM_MIGRATIONS_GLOB = '*.js';
+    process.env.MIKRO_ORM_POPULATE_AFTER_FLUSH = 'true';
+    process.env.MIKRO_ORM_FORCE_ENTITY_CONSTRUCTOR = 'true';
+    process.env.MIKRO_ORM_FORCE_UNDEFINED = 'true';
+
+    const orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: SqliteDriver,
+      host: '123.0.0.321',
+    });
+    Object.keys(process.env)
+      .filter(k => k.startsWith('MIKRO_ORM_'))
+      .forEach(k => delete process.env[k]);
+
+    expect(orm).toBeInstanceOf(MikroORM);
+    expect(orm.config.getAll()).toMatchObject({
+      driver: SqliteDriver,
+      entities: ['./entities-schema'],
+      host: '123.0.0.321', // explicit options have preference over env vars
+      port: 1234,
+      user: 'string',
+      password: 'lol',
+      dbName: ':memory:',
+      populateAfterFlush: true,
+      forceEntityConstructor: true,
+      forceUndefined: true,
+      discovery: {},
+      migrations: { path: './dist/migrations', glob: '*.js' },
+    });
+    expect([...orm.getMetadata().getAll().keys()].map(k => k.name).sort()).toEqual([
+      'Author4',
+      'Book4',
+      'BookTag4',
+      'FooBar4',
+      'FooBaz4',
+      'Identity',
+      'Publisher4',
+      'Test4',
+      'User4',
+      'publisher4_tests',
+      'tags_ordered',
+      'tags_unordered',
+    ]);
+  });
+
+  test('should prefer environment variables with preferEnvVars option', async () => {
+    process.env.MIKRO_ORM_BASE_DIR = './tests';
+    process.env.MIKRO_ORM_ENTITIES = './entities-schema';
+    process.env.MIKRO_ORM_HOST = '123.0.0.4';
+    process.env.MIKRO_ORM_DB_NAME = ':memory:';
+
+    const orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: SqliteDriver,
+      host: '123.0.0.321',
+      preferEnvVars: true,
+    });
+    Object.keys(process.env)
+      .filter(k => k.startsWith('MIKRO_ORM_'))
+      .forEach(k => delete process.env[k]);
+
+    expect(orm).toBeInstanceOf(MikroORM);
+    expect(orm.config.getAll()).toMatchObject({
+      host: '123.0.0.4', // env vars win with preferEnvVars
+      dbName: ':memory:',
+    });
+  });
+
+  test('should work with dynamic passwords/tokens [mysql]', async () => {
+    const passwordFn = vi.fn(async () => 'pass1');
+    const o = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Test],
+      driver: MySqlDriver,
+      dbName: 'mikro-orm-test',
+      port: 3308,
+      ensureDatabase: false,
+      password: passwordFn,
+    });
+    await expect(() => o.driver.execute('select 1')).rejects.toThrow('Access denied');
+    await expect(() => o.driver.execute('select 1')).rejects.toThrow('Access denied');
+    expect(passwordFn.mock.calls.length).toBeGreaterThanOrEqual(3);
+    await o.close();
+  });
+
+  test('should not re-invoke password callback when reusing pooled connections [mysql]', async () => {
+    const passwordFn = vi.fn(async () => '');
+    const o = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Test],
+      driver: MySqlDriver,
+      dbName: 'mysql',
+      port: 3308,
+      ensureDatabase: false,
+      password: passwordFn,
+    });
+    await o.driver.execute('select 1');
+    const callsAfterFirst = passwordFn.mock.calls.length;
+    await o.driver.execute('select 1');
+    // reusing the pooled connection must not re-invoke the callback
+    expect(passwordFn.mock.calls.length).toBe(callsAfterFirst);
+    await o.close();
+  });
+
+  test('should propagate password callback errors [mysql]', async () => {
+    const passwordFn = vi
+      .fn()
+      .mockResolvedValueOnce('pass1') // initial pool creation
+      .mockRejectedValue(new Error('token refresh failed'));
+    const o = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Test],
+      driver: MySqlDriver,
+      dbName: 'mikro-orm-test',
+      port: 3308,
+      ensureDatabase: false,
+      password: passwordFn,
+    });
+    await expect(() => o.driver.execute('select 1')).rejects.toThrow('token refresh failed');
+    await o.close();
+  });
+
+  test('should work with dynamic passwords/tokens [postgresql]', async () => {
+    // pg natively supports password-as-function, calling it per-connection during auth.
+    // The docker PostgreSQL uses trust auth so the callback won't fire, but we verify
+    // that passing a function doesn't break the connection.
+    const o = new MikroORM({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Test],
+      driver: PostgreSqlDriver,
+      dbName: 'postgres',
+      port: 5432,
+      ensureDatabase: false,
+      password: async () => 'Root.Root',
+    });
+    const r = await o.driver.execute('select 1 as foo');
+    expect(r).toEqual([{ foo: 1 }]);
+    await o.close();
+  });
+
+  test('should work with dynamic passwords/tokens [oracle]', async () => {
+    const passwordFn = vi.fn(async () => 'oracle123');
+    const o = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Test],
+      driver: OracleDriver,
+      dbName: 'system',
+      ensureDatabase: false,
+      password: passwordFn,
+    });
+    const r = await o.driver.execute('select 1 as foo from dual');
+    expect(r).toEqual([{ foo: 1 }]);
+    expect(passwordFn).toHaveBeenCalled();
+    await o.close();
+  });
+
+  test('should work with dynamic passwords/tokens [mssql]', async () => {
+    const o = new MikroORM({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Test],
+      driver: MsSqlDriver,
+      dbName: 'mikro-orm-test',
+      ensureDatabase: false,
+      password: async () => 'Root.Root',
+    });
+    const r = await o.driver.execute('select 1 as foo');
+    expect(r).toEqual([{ foo: 1 }]);
+    await o.close();
+  });
+
+  test('orm.close() calls CacheAdapter.close()', async () => {
+    let closed = 0;
+
+    class Adapter extends NullCacheAdapter {
+      async close() {
+        closed++;
+      }
+    }
+
+    const orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      driver: SqliteDriver,
+      dbName: ':memory:',
+      entities: [Car2, CarOwner2, User2, Sandwich],
+      metadataCache: { adapter: Adapter, enabled: true },
+      resultCache: { adapter: Adapter },
+    });
+    expect(closed).toBe(0);
+    await orm.close();
+    expect(closed).toBe(2);
+  });
+
+  test('EntitySchema.is', () => {
+    const schema = new EntitySchema({ name: 'IsEntitySchemaTest', properties: {} });
+    // real instances pass via instanceof
+    expect(EntitySchema.is(schema)).toBe(true);
+    // duck-type fallback: object with matching constructor name and `meta` property
+    const fake = Object.create({ constructor: { name: 'EntitySchema' } });
+    Object.defineProperty(fake, 'meta', { value: {}, enumerable: true });
+    expect(EntitySchema.is(fake)).toBe(true);
+    // non-matching values
+    expect(EntitySchema.is(null)).toBe(false);
+    expect(EntitySchema.is(undefined)).toBe(false);
+    expect(EntitySchema.is({})).toBe(false);
+    expect(EntitySchema.is('string')).toBe(false);
+    expect(EntitySchema.is(42)).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    expect(EntitySchema.is(() => {})).toBe(false);
+  });
+
+  test('folder based discover with duck-typed EntitySchema (CJS/ESM interop)', async () => {
+    const Author4Schema = (await import('./entities-schema/Author4.js')).Author4Schema;
+    const Author4 = (await import('./entities-schema/Author4.js')).Author4;
+
+    // simulate dual-package hazard: EntitySchema from a different module graph
+    // where instanceof fails but duck-typing succeeds (same class name, different identity)
+    const ForeignEntitySchema = {
+      EntitySchema: class EntitySchema {
+        get meta() {
+          return Author4Schema.meta;
+        }
+      },
+    };
+    const foreign = new ForeignEntitySchema.EntitySchema();
+
+    expect(foreign instanceof EntitySchema).toBe(false);
+    expect(EntitySchema.is(foreign)).toBe(true);
+
+    const spy = vi.spyOn(fs, 'dynamicImport').mockResolvedValueOnce({
+      Author4Schema: foreign,
+      Author4,
+    });
+
+    const { discoverEntities } = await import('@mikro-orm/core/file-discovery');
+    const entities = [...(await discoverEntities(['entities-schema/Author4.ts'], { baseDir: BASE_DIR }))];
+    expect(entities).toHaveLength(1);
+    expect(entities[0]).toBe(foreign);
+    spy.mockRestore();
+  });
+
+  test('not supported', async () => {
+    expect(() => discoverEntities()).toThrow('Folder-based discovery is not supported in this environment.');
+    expect(() => (fs2 as any).glob('*')).toThrow('File system is not supported in this environment.');
+  });
+});

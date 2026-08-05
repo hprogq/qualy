@@ -1,0 +1,34 @@
+import { initORMSqlite } from '../../bootstrap.js';
+
+describe.each(['sqlite', 'libsql'] as const)('SchemaGenerator (%s)', driver => {
+  test('generate schema from metadata', async () => {
+    const orm = await initORMSqlite(driver);
+
+    const dropDump = await orm.schema.getDropSchemaSQL({ wrap: false, dropMigrationsTable: true });
+    expect(dropDump).toMatchSnapshot('sqlite2-drop-schema-dump-1');
+    await orm.schema.execute(dropDump, { wrap: true });
+
+    const dropDump2 = await orm.schema.getDropSchemaSQL();
+    expect(dropDump2).toMatchSnapshot('sqlite2-drop-schema-dump-2');
+    await orm.schema.execute(dropDump, { wrap: true });
+
+    const createDump = await orm.schema.getCreateSchemaSQL();
+    expect(createDump).toMatchSnapshot('sqlite2-create-schema-dump');
+    await orm.schema.execute(createDump, { wrap: true });
+
+    const updateDump = await orm.schema.getUpdateSchemaSQL();
+    expect(updateDump).toMatchSnapshot('sqlite2-update-schema-dump');
+    await orm.schema.execute(updateDump, { wrap: true });
+
+    await orm.close(true);
+  });
+
+  test('schema.clear() ignores missing tables after reconnect to in-memory DB', async () => {
+    const orm = await initORMSqlite(driver);
+    await orm.close(true);
+    await orm.connect();
+    // the in-memory DB is now empty (all tables lost), clear() should not throw
+    await orm.schema.clear();
+    await orm.close(true);
+  });
+});

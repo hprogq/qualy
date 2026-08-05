@@ -1,0 +1,15 @@
+{
+  "name": "@mikro-orm/decorators",
+  "version": "7.1.9",
+  "exports": {
+    "./es": "./src/es/index.ts",
+    "./legacy": "./src/legacy/index.ts"
+  },
+  "publish": {
+    "exclude": ["dist/", "node_modules/", "tests/"]
+  },
+  "imports": {
+    "@mikro-orm/core": "jsr:@mikro-orm/core@7.1.9",
+    "reflect-metadata": "npm:reflect-metadata@^0.2.0"
+  }
+}

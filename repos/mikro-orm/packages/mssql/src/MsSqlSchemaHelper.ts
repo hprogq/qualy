@@ -1,0 +1,1164 @@
+import {
+  type AbstractSqlConnection,
+  type CheckDef,
+  type Column,
+  type DatabaseSchema,
+  type DatabaseTable,
+  type Dictionary,
+  type EntityProperty,
+  EnumType,
+  type ForeignKey,
+  type IndexDef,
+  SchemaHelper,
+  StringType,
+  type Table,
+  type TableDifference,
+  TextType,
+  type SqlTriggerDef,
+  type SqlRoutineDef,
+  type Transaction,
+  type Type,
+  Utils,
+} from '@mikro-orm/sql';
+import { UnicodeStringType } from './UnicodeStringType.js';
+
+/** Schema introspection helper for Microsoft SQL Server. */
+export class MsSqlSchemaHelper extends SchemaHelper {
+  static readonly DEFAULT_VALUES = {
+    true: ['1'],
+    false: ['0'],
+    'getdate()': ['current_timestamp'],
+  };
+
+  // `stripAutoNotNullFilter` unwraps balanced per-clause parens before calling `.exec`, so we
+  // only need to match the bare form here — previously the pattern allowed independently
+  // optional leading/trailing parens, which accepted unbalanced strings like `([col] IS NOT NULL`.
+  private static readonly AUTO_NOT_NULL_RE = /^\[([^\]]+)\]\s+IS\s+NOT\s+NULL$/i;
+
+  // MSSQL `filter_definition` and `where` predicates use `[…]` bracket-quoting for identifiers,
+  // so `splitTopLevelAnd` must treat `[` as opening a quoted span (otherwise `[some and col]`
+  // would split mid-identifier).
+  protected override get bracketQuotedIdentifiers(): boolean {
+    return true;
+  }
+
+  override getManagementDbName(): string {
+    return 'master';
+  }
+
+  override getDropDatabaseSQL(name: string): string {
+    // `set offline` rejects all connections including the issuing session, so there is no
+    // single-user race window where a torn-down pool connection can reconnect between the
+    // mode switch and the drop (SQL Server error 3702 "currently in use"). Dropping an
+    // offline database leaves the underlying `.mdf`/`.ldf` files behind though, which
+    // makes a subsequent `create database` with the same name fail with error 5170
+    // ("file already exists"). Capture the physical paths up front and call
+    // `master.sys.xp_delete_files` after the drop to clean them up.
+    const quoted = this.quote(name);
+    const literal = this.platform.quoteValue(name);
+    return (
+      `if db_id(${literal}) is not null begin ` +
+      `declare @drop_files table (path nvarchar(260)); ` +
+      `insert into @drop_files (path) select physical_name from sys.master_files where database_id = db_id(${literal}); ` +
+      `alter database ${quoted} set offline with rollback immediate; ` +
+      `drop database ${quoted}; ` +
+      `declare @drop_path nvarchar(260); ` +
+      `declare drop_files_cursor cursor local fast_forward for select path from @drop_files; ` +
+      `open drop_files_cursor; fetch next from drop_files_cursor into @drop_path; ` +
+      `while @@fetch_status = 0 begin ` +
+      `begin try exec master.sys.xp_delete_files @drop_path; end try begin catch end catch; ` +
+      `fetch next from drop_files_cursor into @drop_path; ` +
+      `end ` +
+      `close drop_files_cursor; deallocate drop_files_cursor; ` +
+      `end`
+    );
+  }
+
+  override disableForeignKeysSQL(): string {
+    return `exec sp_MSforeachtable 'alter table ? nocheck constraint all';`;
+  }
+
+  override enableForeignKeysSQL(): string {
+    return `exec sp_MSforeachtable 'alter table ? check constraint all';`;
+  }
+
+  override getDatabaseExistsSQL(name: string): string {
+    return `select 1 from sys.databases where name = N'${name}'`;
+  }
+
+  override getListTablesSQL(): string {
+    return `select t.name as table_name, schema_name(t2.schema_id) schema_name, ep.value as table_comment
+      from sysobjects t
+      inner join sys.tables t2 on t2.object_id = t.id
+      left join sys.extended_properties ep on ep.major_id = t.id and ep.name = 'MS_Description' and ep.minor_id = 0
+      order by schema_name(t2.schema_id), t.name`;
+  }
+
+  override getListViewsSQL(): string {
+    return `select v.name as view_name, schema_name(v.schema_id) as schema_name, m.definition as view_definition
+      from sys.views v
+      inner join sys.sql_modules m on v.object_id = m.object_id
+      order by schema_name(v.schema_id), v.name`;
+  }
+
+  override async loadViews(
+    schema: DatabaseSchema,
+    connection: AbstractSqlConnection,
+    schemaName?: string,
+    ctx?: Transaction,
+  ): Promise<void> {
+    const views = await connection.execute<{ view_name: string; schema_name: string; view_definition: string }[]>(
+      this.getListViewsSQL(),
+      [],
+      'all',
+      ctx,
+    );
+
+    for (const view of views) {
+      // Extract SELECT statement from CREATE VIEW ... AS SELECT ...
+      const match = /\bAS\s+(.+)$/is.exec(view.view_definition);
+      const definition = match?.[1]?.trim();
+
+      if (definition) {
+        const schemaName = view.schema_name === this.platform.getDefaultSchemaName() ? undefined : view.schema_name;
+        schema.addView(view.view_name, schemaName, definition);
+      }
+    }
+  }
+
+  override async getNamespaces(connection: AbstractSqlConnection, ctx?: Transaction): Promise<string[]> {
+    const sql = `select name as schema_name from sys.schemas order by name`;
+    const res = await connection.execute<{ schema_name: string }[]>(sql, [], 'all', ctx);
+    return res.map(row => row.schema_name);
+  }
+
+  override normalizeDefaultValue(
+    defaultValue: string,
+    length: number,
+    defaultValues: Dictionary<string[]> = {},
+    stripQuotes = false,
+  ): string | number {
+    let match = /^\((.*)\)$/.exec(defaultValue);
+
+    if (match) {
+      defaultValue = match[1];
+    }
+
+    match = /^\((.*)\)$/.exec(defaultValue);
+
+    if (match) {
+      defaultValue = match[1];
+    }
+
+    match = /^'(.*)'$/.exec(defaultValue);
+
+    if (stripQuotes && match) {
+      defaultValue = match[1];
+    }
+
+    return super.normalizeDefaultValue(defaultValue, length, MsSqlSchemaHelper.DEFAULT_VALUES);
+  }
+
+  async getAllColumns(
+    connection: AbstractSqlConnection,
+    tablesBySchemas: Map<string | undefined, Table[]>,
+    ctx?: Transaction,
+  ): Promise<Dictionary<Column[]>> {
+    const sql = `select table_name as table_name,
+      table_schema as schema_name,
+      column_name as column_name,
+      column_default as column_default,
+      t5.name as column_default_name,
+      t4.value as column_comment,
+      ic.is_nullable as is_nullable,
+      data_type as data_type,
+      cmp.definition as generation_expression,
+      cmp.is_persisted as is_persisted,
+      numeric_precision as numeric_precision,
+      numeric_scale as numeric_scale,
+      datetime_precision as datetime_precision,
+      character_maximum_length as character_maximum_length,
+      columnproperty(sc.object_id, column_name, 'IsIdentity') is_identity,
+      nullif(ic.collation_name, convert(nvarchar(128), databasepropertyex(db_name(), 'Collation'))) as collation_name
+      from information_schema.columns ic
+      inner join sys.columns sc on sc.name = ic.column_name and sc.object_id = object_id(ic.table_schema + '.' + ic.table_name)
+      left join sys.computed_columns cmp on cmp.name = ic.column_name and cmp.object_id = object_id(ic.table_schema + '.' + ic.table_name)
+      left join sys.extended_properties t4 on t4.major_id = object_id(ic.table_schema + '.' + ic.table_name) and t4.name = 'MS_Description' and t4.minor_id = sc.column_id
+      left join sys.default_constraints t5 on sc.default_object_id = t5.object_id
+      where (${[...tablesBySchemas.entries()].map(([schema, tables]) => `(ic.table_name in (${tables.map(t => this.platform.quoteValue(t.table_name)).join(',')}) and ic.table_schema = '${schema}')`).join(' or ')})
+      order by ordinal_position`;
+    const allColumns = await connection.execute<any[]>(sql, [], 'all', ctx);
+    const str = (val?: string | number) => (val != null ? '' + val : val);
+    const ret = {} as Dictionary;
+
+    for (const col of allColumns) {
+      const mappedType = this.platform.getMappedType(col.data_type);
+      const defaultValue = str(this.normalizeDefaultValue(col.column_default, col.length, {}, true));
+      const increments = col.is_identity === 1 && connection.getPlatform().isNumericColumn(mappedType);
+      const key = this.getTableKey(col);
+      /* v8 ignore next */
+      const generated = col.generation_expression
+        ? `${col.generation_expression}${col.is_persisted ? ' persisted' : ''}`
+        : undefined;
+      let type = col.data_type;
+
+      if (['varchar', 'nvarchar', 'char', 'nchar', 'varbinary'].includes(col.data_type)) {
+        col.length = col.character_maximum_length;
+      }
+
+      if (['timestamp', 'datetime', 'datetime2', 'time', 'datetimeoffset'].includes(col.data_type)) {
+        col.length = col.datetime_precision;
+      }
+
+      if (col.length != null && !type.endsWith(`(${col.length})`) && !['text', 'date'].includes(type)) {
+        type += `(${col.length === -1 ? 'max' : col.length})`;
+      }
+
+      if (type === 'numeric' && col.numeric_precision != null && col.numeric_scale != null) {
+        type += `(${col.numeric_precision},${col.numeric_scale})`;
+      }
+
+      if (type === 'float' && col.numeric_precision != null) {
+        type += `(${col.numeric_precision})`;
+      }
+
+      ret[key] ??= [];
+      ret[key].push({
+        name: col.column_name,
+        type: this.platform.isNumericColumn(mappedType)
+          ? col.data_type.replace(/ unsigned$/, '').replace(/\(\d+\)$/, '')
+          : type,
+        mappedType,
+        unsigned: col.data_type.endsWith(' unsigned'),
+        length: col.length,
+        default: this.wrap(defaultValue, mappedType),
+        defaultConstraint: col.column_default_name,
+        nullable: col.is_nullable === 'YES',
+        autoincrement: increments,
+        precision: col.numeric_precision,
+        scale: col.numeric_scale,
+        comment: col.column_comment,
+        collation: col.collation_name ?? undefined,
+        generated,
+      });
+    }
+
+    return ret;
+  }
+
+  async getAllIndexes(
+    connection: AbstractSqlConnection,
+    tablesBySchemas: Map<string | undefined, Table[]>,
+    ctx?: Transaction,
+  ): Promise<Dictionary<IndexDef[]>> {
+    const sql = `select t.name as table_name,
+      ind.name as index_name,
+      is_unique as is_unique,
+      ind.is_primary_key as is_primary_key,
+      col.name as column_name,
+      schema_name(t.schema_id) as schema_name,
+      (case when filter_definition is not null then concat('where ', filter_definition) else null end) as expression,
+      filter_definition as filter_definition,
+      ind.is_disabled as is_disabled,
+      ind.type as index_type,
+      ind.fill_factor as fill_factor,
+      ic.is_included_column as is_included_column,
+      ic.is_descending_key as is_descending_key
+      from sys.indexes ind
+      inner join sys.index_columns ic on ind.object_id = ic.object_id and ind.index_id = ic.index_id
+      inner join sys.columns col on ic.object_id = col.object_id and ic.column_id = col.column_id
+      inner join sys.tables t on ind.object_id = t.object_id
+      where
+      (${[...tablesBySchemas.entries()].map(([schema, tables]) => `(t.name in (${tables.map(t => this.platform.quoteValue(t.table_name)).join(',')}) and schema_name(t.schema_id) = '${schema}')`).join(' OR ')})
+      order by t.name, ind.name, ic.is_included_column, ic.key_ordinal`;
+    const allIndexes = await connection.execute<any[]>(sql, [], 'all', ctx);
+    const ret = {} as Dictionary;
+
+    for (const index of allIndexes) {
+      const key = this.getTableKey(index);
+      const isIncluded = index.is_included_column;
+
+      const indexDef: IndexDef = {
+        columnNames: isIncluded ? [] : [index.column_name],
+        keyName: index.index_name,
+        unique: index.is_unique,
+        primary: index.is_primary_key,
+        constraint: index.is_unique,
+      };
+
+      // Capture INCLUDE columns
+      if (isIncluded) {
+        indexDef.include = [index.column_name];
+      }
+
+      // Capture sort order for key columns
+      if (!isIncluded && index.is_descending_key) {
+        indexDef.columns = [{ name: index.column_name, sort: 'DESC' }];
+      }
+
+      // Capture disabled flag
+      if (index.is_disabled) {
+        indexDef.disabled = true;
+      }
+
+      // Capture clustered flag (type 1 = clustered)
+      if (index.index_type === 1 && !index.is_primary_key) {
+        indexDef.clustered = true;
+      }
+
+      // Capture fill factor (0 means default, so only set if non-zero)
+      if (index.fill_factor > 0) {
+        indexDef.fillFactor = index.fill_factor;
+      }
+
+      /* v8 ignore next: function-based / computed-column introspection path, same as pre-PR */
+      if (index.column_name?.match(/[(): ,"'`]/)) {
+        indexDef.expression = index.expression;
+        indexDef.expression = this.getCreateIndexSQL(index.table_name, indexDef, !!index.expression);
+      } else if (index.filter_definition) {
+        // Auto-NOT-NULL stripping runs post-mapIndexes (needs the consolidated column list).
+        indexDef.where = index.filter_definition;
+      }
+
+      ret[key] ??= [];
+      ret[key].push(indexDef);
+    }
+
+    for (const key of Object.keys(ret)) {
+      ret[key] = await this.mapIndexes(ret[key]);
+
+      for (const idx of ret[key]) {
+        if (idx.where) {
+          const stripped = this.stripAutoNotNullFilter(idx.where, idx.columnNames, MsSqlSchemaHelper.AUTO_NOT_NULL_RE);
+          if (stripped === '') {
+            delete idx.where;
+          } else {
+            idx.where = stripped;
+          }
+        }
+      }
+    }
+
+    return ret;
+  }
+
+  override mapForeignKeys(fks: any[], tableName: string, schemaName?: string): Dictionary {
+    const ret = super.mapForeignKeys(fks, tableName, schemaName);
+
+    for (const fk of Utils.values(ret)) {
+      fk.columnNames = Utils.unique(fk.columnNames);
+      fk.referencedColumnNames = Utils.unique(fk.referencedColumnNames);
+    }
+
+    return ret;
+  }
+
+  async getAllForeignKeys(
+    connection: AbstractSqlConnection,
+    tablesBySchemas: Map<string | undefined, Table[]>,
+    ctx?: Transaction,
+  ): Promise<Dictionary<Dictionary<ForeignKey>>> {
+    const sql = `select ccu.constraint_name, ccu.table_name, ccu.table_schema schema_name, ccu.column_name,
+      kcu.constraint_schema referenced_schema_name,
+      kcu.column_name referenced_column_name,
+      kcu.table_name referenced_table_name,
+      rc.update_rule,
+      rc.delete_rule
+      from information_schema.constraint_column_usage ccu
+      inner join information_schema.referential_constraints rc on ccu.constraint_name = rc.constraint_name and rc.constraint_schema = ccu.constraint_schema
+      inner join information_schema.key_column_usage kcu on kcu.constraint_name = rc.unique_constraint_name and rc.unique_constraint_schema = kcu.constraint_schema
+      where (${[...tablesBySchemas.entries()].map(([schema, tables]) => `(ccu.table_name in (${tables.map(t => this.platform.quoteValue(t.table_name)).join(',')}) and ccu.table_schema = '${schema}')`).join(' or ')})
+      order by kcu.table_schema, kcu.table_name, kcu.ordinal_position, kcu.constraint_name`;
+    const allFks = await connection.execute<any[]>(sql, [], 'all', ctx);
+    const ret = {} as Dictionary;
+
+    for (const fk of allFks) {
+      const key = this.getTableKey(fk);
+      ret[key] ??= [];
+      ret[key].push(fk);
+    }
+
+    Object.keys(ret).forEach(key => {
+      const [schemaName, tableName] = key.split('.');
+      ret[key] = this.mapForeignKeys(ret[key], tableName, schemaName);
+    });
+
+    return ret;
+  }
+
+  private getEnumDefinitions(checks: CheckDef[]): Dictionary<string[]> {
+    return checks.reduce(
+      (o, item, index) => {
+        // check constraints are defined as
+        // `([type]='owner' OR [type]='manager' OR [type]='employee')`
+        const m1 = item.definition?.match(/^check \((.*)\)/);
+        let items = m1?.[1].split(' OR ');
+
+        /* v8 ignore next */
+        const hasItems = (items?.length ?? 0) > 0;
+
+        if (item.columnName && hasItems) {
+          items = items!
+            .map(val => /^\(?'(.*)'/.exec(val.trim().replace(`[${item.columnName}]=`, ''))?.[1])
+            .filter(Boolean) as string[];
+
+          if (items.length > 0) {
+            o[item.columnName] = items.reverse();
+          }
+        }
+
+        return o;
+      },
+      {} as Dictionary<string[]>,
+    );
+  }
+
+  private getChecksSQL(tablesBySchemas: Map<string | undefined, Table[]>): string {
+    return `select con.name as name,
+      schema_name(t.schema_id) schema_name,
+      t.name table_name,
+      col.name column_name,
+      con.definition expression
+      from sys.check_constraints con
+      left outer join sys.objects t on con.parent_object_id = t.object_id
+      left outer join sys.all_columns col on con.parent_column_id = col.column_id and con.parent_object_id = col.object_id
+      where (${[...tablesBySchemas.entries()].map(([schema, tables]) => `t.name in (${tables.map(t => this.platform.quoteValue(t.table_name)).join(',')}) and schema_name(t.schema_id) = '${schema}'`).join(' or ')})
+      order by con.name`;
+  }
+
+  async getAllChecks(
+    connection: AbstractSqlConnection,
+    tablesBySchemas: Map<string | undefined, Table[]>,
+    ctx?: Transaction,
+  ): Promise<Dictionary<CheckDef[]>> {
+    const sql = this.getChecksSQL(tablesBySchemas);
+    const allChecks = await connection.execute<
+      { name: string; column_name: string; schema_name: string; table_name: string; expression: string }[]
+    >(sql, [], 'all', ctx);
+    const ret = {} as Dictionary;
+
+    for (const check of allChecks) {
+      const key = this.getTableKey(check);
+      ret[key] ??= [];
+      const expression = check.expression.replace(/^\((.*)\)$/, '$1');
+      ret[key].push({
+        name: check.name,
+        columnName: check.column_name,
+        definition: `check (${expression})`,
+        expression,
+      });
+    }
+
+    return ret;
+  }
+
+  /** Generates SQL to create an MSSQL trigger. MSSQL supports AFTER and INSTEAD OF only. */
+  override createTrigger(table: DatabaseTable, trigger: SqlTriggerDef): string {
+    if (trigger.expression) {
+      return trigger.expression;
+    }
+
+    /* v8 ignore next 3 */
+    if (trigger.timing === 'before') {
+      throw new Error(`MSSQL does not support BEFORE triggers. Use AFTER or INSTEAD OF for trigger "${trigger.name}".`);
+    }
+
+    const timing = trigger.timing.toUpperCase();
+    const events = trigger.events.map(e => e.toUpperCase()).join(', ');
+    const qualifiedName = this.getSchemaQualifiedName(table, trigger.name);
+    return `create trigger ${qualifiedName} on ${table.getQuotedName()} ${timing} ${events} as begin ${this.normalizeTriggerBody(trigger.body)} end`;
+  }
+
+  /** Generates SQL to drop an MSSQL trigger. */
+  override dropTrigger(table: DatabaseTable, trigger: SqlTriggerDef): string {
+    return `drop trigger if exists ${this.getSchemaQualifiedName(table, trigger.name)}`;
+  }
+
+  override routineParamReference(name: string): string {
+    return `@${name}`;
+  }
+
+  /** T-SQL's `OUTPUT` covers both OUT and INOUT; `sys.parameters.is_output` is true for both. */
+  override normaliseRoutineParamDirection(direction: 'in' | 'out' | 'inout'): 'in' | 'out' | 'inout' {
+    return direction === 'out' ? 'inout' : direction;
+  }
+
+  override createRoutine(routine: SqlRoutineDef): string {
+    if (routine.expression) {
+      return routine.expression;
+    }
+
+    const qualifiedName = this.qualifiedRoutineName(routine);
+    const params = routine.params
+      .map(p => {
+        const dir = p.direction === 'out' || p.direction === 'inout' ? ' OUTPUT' : '';
+        return `@${p.name} ${p.type}${dir}`;
+      })
+      .join(', ');
+    const body = this.wrapRoutineBody(routine.body ?? '');
+
+    if (routine.type === 'procedure') {
+      return `create or alter procedure ${qualifiedName} ${params} as ${body}`;
+    }
+
+    const returnType = routine.returns?.type ?? 'nvarchar(max)';
+    return `create or alter function ${qualifiedName}(${params}) returns ${returnType} as ${body}`;
+  }
+
+  override dropRoutine(routine: SqlRoutineDef): string {
+    const kind = routine.type === 'procedure' ? 'procedure' : 'function';
+    return `drop ${kind} if exists ${this.qualifiedRoutineName(routine)}`;
+  }
+
+  override async getAllRoutines(connection: AbstractSqlConnection): Promise<SqlRoutineDef[]> {
+    const sql = `
+      select
+        s.name as schema_name,
+        o.name as name,
+        case
+          when o.type = 'P' then 'procedure'
+          when o.type in ('FN', 'IF', 'TF') then 'function'
+        end as kind,
+        m.definition as definition,
+        ep.value as comment
+      from sys.objects o
+      join sys.schemas s on s.schema_id = o.schema_id
+      join sys.sql_modules m on m.object_id = o.object_id
+      left join sys.extended_properties ep
+        on ep.major_id = o.object_id and ep.minor_id = 0 and ep.name = 'MS_Description'
+      where o.type in ('P', 'FN', 'IF', 'TF')
+        and o.is_ms_shipped = 0
+      order by s.name, o.name
+    `;
+
+    const [rows, paramsAndReturns] = await Promise.all([
+      connection.execute<
+        {
+          schema_name: string;
+          name: string;
+          kind: 'procedure' | 'function';
+          definition: string;
+          comment: string | null;
+        }[]
+      >(sql),
+      this.getAllRoutineParams(connection),
+    ]);
+    const { params, returns } = paramsAndReturns;
+
+    return rows.map(row => ({
+      name: row.name,
+      schema: row.schema_name,
+      type: row.kind,
+      body: this.unwrapMsSqlBody(row.definition),
+      comment: row.comment ?? undefined,
+      params: params.get(`${row.schema_name}.${row.name}`) ?? [],
+      returns:
+        row.kind === 'function'
+          ? (returns.get(`${row.schema_name}.${row.name}`) ?? { type: 'nvarchar(max)', nullable: true })
+          : undefined,
+    }));
+  }
+
+  private async getAllRoutineParams(connection: AbstractSqlConnection): Promise<{
+    params: Map<string, SqlRoutineDef['params']>;
+    returns: Map<string, NonNullable<SqlRoutineDef['returns']>>;
+  }> {
+    // `parameter_id = 0` is the function's return type; positive IDs are formal parameters.
+    const sql = `
+      select
+        s.name as schema_name,
+        o.name as routine_name,
+        p.name as param_name,
+        type_name(p.user_type_id) as type,
+        p.is_output as is_output,
+        p.parameter_id as position
+      from sys.parameters p
+      join sys.objects o on o.object_id = p.object_id
+      join sys.schemas s on s.schema_id = o.schema_id
+      where o.type in ('P', 'FN', 'IF', 'TF')
+        and o.is_ms_shipped = 0
+      order by o.object_id, p.parameter_id
+    `;
+    const rows = await connection.execute<
+      {
+        schema_name: string;
+        routine_name: string;
+        param_name: string;
+        type: string;
+        is_output: boolean;
+        position: number;
+      }[]
+    >(sql);
+
+    const params = new Map<string, SqlRoutineDef['params']>();
+    const returns = new Map<string, NonNullable<SqlRoutineDef['returns']>>();
+    for (const row of rows) {
+      const key = `${row.schema_name}.${row.routine_name}`;
+
+      if (row.position === 0) {
+        returns.set(key, { type: row.type, nullable: true });
+        continue;
+      }
+
+      if (!params.has(key)) {
+        params.set(key, []);
+      }
+
+      // is_output is true for both OUT and INOUT; we always report `inout`. See normaliseRoutineParamDirection.
+      params.get(key)!.push({
+        name: row.param_name.replace(/^@/, ''),
+        type: row.type,
+        direction: row.is_output ? 'inout' : 'in',
+      });
+    }
+
+    return { params, returns };
+  }
+
+  private unwrapMsSqlBody(definition: string): string {
+    const asMatch = /\bas\s+([\s\S]*)$/i.exec(definition);
+    return this.stripRoutineBody(asMatch ? asMatch[1] : definition);
+  }
+
+  private getSchemaQualifiedName(table: DatabaseTable, name: string): string {
+    const defaultSchema = this.platform.getDefaultSchemaName();
+
+    if (table.schema && table.schema !== defaultSchema) {
+      return `${this.quote(table.schema)}.${this.quote(name)}`;
+    }
+
+    return this.quote(name);
+  }
+
+  async getDatabaseCollation(connection: AbstractSqlConnection, ctx?: Transaction): Promise<string | undefined> {
+    const [row] = await connection.execute<{ collation: string }[]>(
+      `select convert(nvarchar(128), databasepropertyex(db_name(), 'Collation')) as collation`,
+      [],
+      'all',
+      ctx,
+    );
+    return row?.collation;
+  }
+
+  async getAllTriggers(
+    connection: AbstractSqlConnection,
+    tablesBySchemas: Map<string | undefined, Table[]>,
+  ): Promise<Dictionary<SqlTriggerDef[]>> {
+    const conditions: string[] = [];
+
+    for (const [schema, tables] of tablesBySchemas) {
+      const names = tables.map(t => this.platform.quoteValue(t.table_name)).join(', ');
+      const schemaName = this.platform.quoteValue(schema ?? this.platform.getDefaultSchemaName());
+      conditions.push(`(schema_name(p.schema_id) = ${schemaName} and p.name in (${names}))`);
+    }
+
+    const sql = `select t.name as trigger_name, schema_name(p.schema_id) as schema_name,
+      p.name as table_name, te.type_desc as event,
+      case when t.is_instead_of_trigger = 1 then 'INSTEAD OF' else 'AFTER' end as timing,
+      object_definition(t.object_id) as definition
+    from sys.triggers t
+    join sys.trigger_events te on t.object_id = te.object_id
+    join sys.objects p on t.parent_id = p.object_id
+    where (${conditions.join(' or ')})
+    order by t.name, te.type_desc`;
+
+    const allTriggers = await connection.execute<any[]>(sql);
+    const ret = {} as Dictionary<SqlTriggerDef[]>;
+    const triggerMap = new Map<string, SqlTriggerDef>();
+
+    for (const row of allTriggers) {
+      const key = this.getTableKey(row);
+      const dedupeKey = `${key}:${row.trigger_name}`;
+      const event = row.event.toLowerCase() as SqlTriggerDef['events'][number];
+
+      if (triggerMap.has(dedupeKey)) {
+        const existing = triggerMap.get(dedupeKey)!;
+        if (!existing.events.includes(event)) {
+          existing.events.push(event);
+        }
+        continue;
+      }
+
+      // Parse body from full trigger definition
+      let body = '';
+      if (row.definition) {
+        const bodyMatch = /\bas\s+begin\s+([\s\S]*)\s*end\s*;?\s*$/i.exec(row.definition);
+        if (bodyMatch) {
+          body = bodyMatch[1].trim().replace(/;\s*$/, '');
+        }
+      }
+
+      ret[key] ??= [];
+      const trigger: SqlTriggerDef = {
+        name: row.trigger_name,
+        timing: row.timing.toLowerCase() as SqlTriggerDef['timing'],
+        events: [event],
+        forEach: 'row', // MSSQL has no FOR EACH ROW/STATEMENT syntax; match the metadata default to avoid false diffs
+        body,
+      };
+      ret[key].push(trigger);
+      triggerMap.set(dedupeKey, trigger);
+    }
+
+    return ret;
+  }
+
+  override async loadInformationSchema(
+    schema: DatabaseSchema,
+    connection: AbstractSqlConnection,
+    tables: Table[],
+    schemas?: string[],
+    ctx?: Transaction,
+  ): Promise<void> {
+    if (tables.length === 0) {
+      return;
+    }
+
+    const tablesBySchema = this.getTablesGroupedBySchemas(tables);
+    const columns = await this.getAllColumns(connection, tablesBySchema, ctx);
+    const indexes = await this.getAllIndexes(connection, tablesBySchema, ctx);
+    const checks = await this.getAllChecks(connection, tablesBySchema, ctx);
+    const fks = await this.getAllForeignKeys(connection, tablesBySchema, ctx);
+    const triggers = await this.getAllTriggers(connection, tablesBySchema);
+    const dbCollation = await this.getDatabaseCollation(connection, ctx);
+
+    for (const t of tables) {
+      const key = this.getTableKey(t);
+      const table = schema.addTable(t.table_name, t.schema_name, t.table_comment);
+      table.collation = dbCollation;
+      const pks = await this.getPrimaryKeys(connection, indexes[key], table.name, table.schema);
+      const enums = this.getEnumDefinitions(checks[key] ?? []);
+      table.init(columns[key], indexes[key], checks[key], pks, fks[key], enums);
+
+      if (triggers[key]) {
+        table.setTriggers(triggers[key]);
+      }
+    }
+  }
+
+  override getPreAlterTable(tableDiff: TableDifference, safe: boolean): string[] {
+    const ret: string[] = [];
+    const indexes = tableDiff.fromTable.getIndexes();
+    const parts = tableDiff.name.split('.');
+    const tableName = parts.pop()!;
+    const schemaName = parts.pop();
+    /* v8 ignore next */
+    const name =
+      (schemaName && schemaName !== this.platform.getDefaultSchemaName() ? schemaName + '.' : '') + tableName;
+    const quotedName = this.quote(name);
+
+    // indexes need to be first dropped to be able to change a column type
+    const changedTypes = Object.values(tableDiff.changedColumns).filter(col => col.changedProperties.has('type'));
+
+    for (const col of changedTypes) {
+      for (const index of indexes) {
+        if (index.columnNames.includes(col.column.name)) {
+          ret.push(this.getDropIndexSQL(name, index));
+        }
+      }
+
+      // convert to string first if it's not already a string or has a smaller length
+      const type = this.platform.extractSimpleType(col.fromColumn.type);
+
+      if (!['varchar', 'nvarchar', 'varbinary'].includes(type) || col.fromColumn.length! < col.column.length!) {
+        ret.push(`alter table ${quotedName} alter column [${col.oldColumnName}] nvarchar(max)`);
+      }
+    }
+
+    return ret;
+  }
+
+  override getPostAlterTable(tableDiff: TableDifference, safe: boolean): string[] {
+    const ret: string[] = [];
+    const indexes = tableDiff.fromTable.getIndexes();
+    const parts = tableDiff.name.split('.');
+    const tableName = parts.pop()!;
+    const schemaName = parts.pop();
+    /* v8 ignore next */
+    const name =
+      (schemaName && schemaName !== this.platform.getDefaultSchemaName() ? schemaName + '.' : '') + tableName;
+
+    // indexes need to be first dropped to be able to change a column type
+    const changedTypes = Object.values(tableDiff.changedColumns).filter(col => col.changedProperties.has('type'));
+
+    for (const col of changedTypes) {
+      for (const index of indexes) {
+        if (index.columnNames.includes(col.column.name)) {
+          this.append(ret, this.getCreateIndexSQL(name, index));
+        }
+      }
+    }
+
+    return ret;
+  }
+
+  override getCreateNamespaceSQL(name: string): string {
+    return `if (schema_id(${this.platform.quoteValue(name)}) is null) begin exec ('create schema ${this.quote(name)} authorization [dbo]') end`;
+  }
+
+  override getDropNamespaceSQL(name: string): string {
+    return `drop schema if exists ${this.quote(name)}`;
+  }
+
+  override getDropIndexSQL(tableName: string, index: IndexDef): string {
+    return `drop index ${this.quote(index.keyName)} on ${this.quote(tableName)}`;
+  }
+
+  override dropIndex(table: string, index: IndexDef, oldIndexName = index.keyName): string {
+    if (index.primary) {
+      return `alter table ${this.quote(table)} drop constraint ${this.quote(oldIndexName)}`;
+    }
+
+    return `drop index ${this.quote(oldIndexName)} on ${this.quote(table)}`;
+  }
+
+  override getDropColumnsSQL(tableName: string, columns: Column[], schemaName?: string): string {
+    /* v8 ignore next */
+    const tableNameRaw = this.quote(
+      (schemaName && schemaName !== this.platform.getDefaultSchemaName() ? schemaName + '.' : '') + tableName,
+    );
+    const drops: string[] = [];
+    const constraints = this.getDropDefaultsSQL(tableName, columns, schemaName);
+
+    for (const column of columns) {
+      drops.push(this.quote(column.name));
+    }
+
+    return `${constraints.join(';\n')};\nalter table ${tableNameRaw} drop column ${drops.join(', ')}`;
+  }
+
+  private getDropDefaultsSQL(tableName: string, columns: Column[], schemaName?: string): string[] {
+    /* v8 ignore next */
+    const tableNameRaw = this.quote(
+      (schemaName && schemaName !== this.platform.getDefaultSchemaName() ? schemaName + '.' : '') + tableName,
+    );
+    const constraints: string[] = [];
+    schemaName ??= this.platform.getDefaultSchemaName();
+
+    for (const column of columns) {
+      if (column.defaultConstraint) {
+        constraints.push(`alter table ${tableNameRaw} drop constraint ${this.quote(column.defaultConstraint)}`);
+        continue;
+      }
+
+      const i = (globalThis as Dictionary).idx;
+      (globalThis as Dictionary).idx++;
+
+      constraints.push(
+        `declare @constraint${i} varchar(100) = (select default_constraints.name from sys.all_columns` +
+          ' join sys.tables on all_columns.object_id = tables.object_id' +
+          ' join sys.schemas on tables.schema_id = schemas.schema_id' +
+          ' join sys.default_constraints on all_columns.default_object_id = default_constraints.object_id' +
+          ` where schemas.name = '${schemaName}' and tables.name = '${tableName}' and all_columns.name = '${column.name}')` +
+          ` if @constraint${i} is not null exec('alter table ${tableNameRaw} drop constraint ' + @constraint${i})`,
+      );
+    }
+
+    return constraints;
+  }
+
+  override getRenameColumnSQL(tableName: string, oldColumnName: string, to: Column, schemaName?: string): string {
+    /* v8 ignore next */
+    const oldName =
+      (schemaName && schemaName !== this.platform.getDefaultSchemaName() ? schemaName + '.' : '') +
+      tableName +
+      '.' +
+      oldColumnName;
+    const columnName = this.platform.quoteValue(to.name);
+
+    return `exec sp_rename ${this.platform.quoteValue(oldName)}, ${columnName}, 'COLUMN'`;
+  }
+
+  override createTableColumn(
+    column: Column,
+    table: DatabaseTable,
+    changedProperties?: Set<string>,
+  ): string | undefined {
+    const compositePK = table.getPrimaryKey()?.composite;
+    const primaryKey = !changedProperties && !this.hasNonDefaultPrimaryKeyName(table);
+    const columnType = column.generated ? `as ${column.generated}` : column.type;
+    const col = [this.quote(column.name)];
+
+    if (
+      column.autoincrement &&
+      !column.generated &&
+      !compositePK &&
+      (!changedProperties || changedProperties.has('autoincrement') || changedProperties.has('type'))
+    ) {
+      col.push(column.mappedType.getColumnType({ autoincrement: true } as EntityProperty, this.platform));
+    } else {
+      col.push(columnType);
+    }
+
+    Utils.runIfNotEmpty(() => col.push(this.getCollateSQL(column.collation!)), column.collation);
+    // `IDENTITY(1,1)` is rejected inside `ALTER COLUMN`, so it must only be emitted when the
+    // change actually involves the identity attribute or is a fresh column (no `changedProperties`).
+    Utils.runIfNotEmpty(
+      () => col.push('identity(1,1)'),
+      column.autoincrement &&
+        (!changedProperties || changedProperties.has('autoincrement') || changedProperties.has('type')),
+    );
+    Utils.runIfNotEmpty(() => col.push('null'), column.nullable);
+    Utils.runIfNotEmpty(() => col.push('not null'), !column.nullable && !column.generated);
+
+    if (
+      column.autoincrement &&
+      !column.generated &&
+      !compositePK &&
+      (!changedProperties || changedProperties.has('autoincrement') || changedProperties.has('type'))
+    ) {
+      const primaryKeyName = this.platform.getDefaultPrimaryName(table.name, [column.name]);
+      Utils.runIfNotEmpty(
+        () => col.push(`constraint ${this.quote(primaryKeyName)} primary key`),
+        primaryKey && column.primary,
+      );
+    }
+
+    const useDefault = changedProperties
+      ? false
+      : column.default != null && column.default !== 'null' && !column.autoincrement;
+    const defaultName = this.platform.getConfig().getNamingStrategy().indexName(table.name, [column.name], 'default');
+    Utils.runIfNotEmpty(() => col.push(`constraint ${this.quote(defaultName)} default ${column.default}`), useDefault);
+
+    return col.join(' ');
+  }
+
+  // SQL Server generates a random `PK__…` name when the constraint is unnamed, so always name it
+  protected override getPrimaryKeyConstraintPrefix(table: DatabaseTable, index: IndexDef): string {
+    return `constraint ${this.quote(index.keyName)} `;
+  }
+
+  override alterTableColumn(column: Column, table: DatabaseTable, changedProperties: Set<string>): string[] {
+    const parts: string[] = [];
+
+    if (changedProperties.has('default')) {
+      const [constraint] = this.getDropDefaultsSQL(table.name, [column], table.schema);
+      parts.push(constraint);
+    }
+
+    if (changedProperties.has('type') || changedProperties.has('nullable') || changedProperties.has('collation')) {
+      const col = this.createTableColumn(column, table, changedProperties);
+      parts.push(`alter table ${table.getQuotedName()} alter column ${col}`);
+    }
+
+    if (changedProperties.has('default') && column.default != null) {
+      const defaultName = this.platform.getConfig().getNamingStrategy().indexName(table.name, [column.name], 'default');
+      parts.push(
+        `alter table ${table.getQuotedName()} add constraint ${this.quote(defaultName)} default ${column.default} for ${this.quote(column.name)}`,
+      );
+    }
+
+    return parts;
+  }
+
+  override getCreateIndexSQL(tableName: string, index: IndexDef, partialExpression = false): string {
+    /* v8 ignore next */
+    if (index.expression && !partialExpression) {
+      return index.expression;
+    }
+
+    if (index.fillFactor != null && (index.fillFactor < 0 || index.fillFactor > 100)) {
+      throw new Error(`fillFactor must be between 0 and 100, got ${index.fillFactor} for index '${index.keyName}'`);
+    }
+
+    const keyName = this.quote(index.keyName);
+    // Only add clustered keyword when explicitly requested, otherwise omit (defaults to nonclustered)
+    const clustered = index.clustered ? 'clustered ' : '';
+    let sql = `create ${index.unique ? 'unique ' : ''}${clustered}index ${keyName} on ${this.quote(tableName)} `;
+
+    if (index.expression && partialExpression) {
+      return sql + `(${index.expression})` + this.getMsSqlIndexSuffix(index) + this.getIndexWhereClause(index);
+    }
+
+    // Build column list with advanced options
+    const columns = this.getIndexColumns(index);
+    sql += `(${columns})`;
+
+    // Add INCLUDE clause for covering indexes
+    if (index.include?.length) {
+      sql += ` include (${index.include.map(c => this.quote(c)).join(', ')})`;
+    }
+
+    sql += this.getMsSqlIndexSuffix(index) + this.getIndexWhereClause(index);
+
+    // Disabled indexes need to be created first, then disabled
+    if (index.disabled) {
+      sql += `;\nalter index ${keyName} on ${this.quote(tableName)} disable`;
+    }
+
+    return sql;
+  }
+
+  /**
+   * Build the column list for a MSSQL index.
+   */
+  protected override getIndexColumns(index: IndexDef): string {
+    return index.columnNames
+      .map(name => {
+        const col = index.columns?.find(c => c.name === name);
+        let colDef = this.quote(name);
+
+        // MSSQL supports sort order
+        if (col?.sort) {
+          colDef += ` ${col.sort}`;
+        }
+
+        return colDef;
+      })
+      .join(', ');
+  }
+
+  /**
+   * Get MSSQL-specific index WITH options like fill factor.
+   */
+  private getMsSqlIndexSuffix(index: IndexDef): string {
+    const withOptions: string[] = [];
+
+    if (index.fillFactor != null) {
+      withOptions.push(`fillfactor = ${index.fillFactor}`);
+    }
+
+    if (withOptions.length > 0) {
+      return ` with (${withOptions.join(', ')})`;
+    }
+
+    return '';
+  }
+
+  override createIndex(index: IndexDef, table: DatabaseTable, createPrimary = false): string {
+    if (index.primary) {
+      return '';
+    }
+
+    if (index.expression) {
+      return index.expression;
+    }
+
+    const needsAutoNotNull = index.unique && index.columnNames.some(column => table.getColumn(column)?.nullable);
+
+    if (!needsAutoNotNull) {
+      return this.getCreateIndexSQL(table.getShortestName(), index);
+    }
+
+    // Strip `index.where` from the base SQL so we can combine it with the auto NOT-NULL guard
+    // ourselves, wrapping the user predicate in parens to defuse operator precedence
+    // (a bare `a = 1 or b = 2 and [col] is not null` would bind as `a = 1 or (b = 2 and …)`).
+    let sql = this.getCreateIndexSQL(table.getShortestName(), { ...index, where: undefined, disabled: false });
+    const autoNotNull = index.columnNames.map(c => `${this.quote(c)} is not null`).join(' and ');
+    sql += index.where ? ` where (${index.where}) and ${autoNotNull}` : ` where ${autoNotNull}`;
+
+    if (index.disabled) {
+      sql += `;\nalter index ${this.quote(index.keyName)} on ${table.getQuotedName()} disable`;
+    }
+
+    return sql;
+  }
+
+  override dropForeignKey(tableName: string, constraintName: string): string {
+    return `alter table ${this.quote(tableName)} drop constraint ${this.quote(constraintName)}`;
+  }
+
+  override dropTableIfExists(name: string, schema?: string): string {
+    if (schema === this.platform.getDefaultSchemaName()) {
+      schema = undefined;
+    }
+
+    return `if object_id('${this.quote(schema, name)}', 'U') is not null drop table ${this.quote(schema, name)}`;
+  }
+
+  override dropViewIfExists(name: string, schema?: string): string {
+    const viewName = this.quote(this.getTableName(name, schema));
+    return `if object_id('${viewName}', 'V') is not null drop view ${viewName}`;
+  }
+
+  override getAddColumnsSQL(table: DatabaseTable, columns: Column[]): string[] {
+    const adds = columns
+      .map(column => {
+        return this.createTableColumn(column, table)!;
+      })
+      .join(', ');
+
+    const sql = [`alter table ${table.getQuotedName()} add ${adds}`];
+
+    for (const column of columns) {
+      if (column.comment) {
+        sql.push(this.getCommentSQL(table.schema, table.name, column.comment, column.name));
+      }
+    }
+
+    return sql;
+  }
+
+  override appendComments(table: DatabaseTable): string[] {
+    const sql: string[] = [];
+
+    if (table.comment) {
+      sql.push(this.getCommentSQL(table.schema, table.name, table.comment));
+    }
+
+    for (const column of table.getColumns()) {
+      if (column.comment) {
+        sql.push(this.getCommentSQL(table.schema, table.name, column.comment, column.name));
+      }
+    }
+
+    return sql;
+  }
+
+  override alterTableComment(table: DatabaseTable, comment?: string): string {
+    return this.getCommentSQL(table.schema, table.name, comment);
+  }
+
+  override getChangeColumnCommentSQL(tableName: string, to: Column, schemaName?: string): string {
+    return this.getCommentSQL(schemaName, tableName, to.comment, to.name);
+  }
+
+  /** Comments are stored as `MS_Description` extended properties, which have separate add/update/drop procedures. */
+  private getCommentSQL(
+    schemaName: string | undefined,
+    tableName: string,
+    comment?: string,
+    columnName?: string,
+  ): string {
+    const schema = this.platform.quoteValue(schemaName ?? this.platform.getDefaultSchemaName());
+    const table = this.platform.quoteValue(tableName);
+    const level1 = `N'Schema', N${schema}, N'Table', N${table}`;
+    const level2 = columnName ? `N'Column', N${this.platform.quoteValue(columnName)}` : '';
+    const exists = `if exists(select * from sys.fn_listextendedproperty(N'MS_Description', ${level1}, ${level2 || 'null, null'}))`;
+    const target = level2 ? `${level1}, ${level2}` : level1;
+
+    if (!comment) {
+      return `${exists}\n  exec sys.sp_dropextendedproperty N'MS_Description', ${target}`;
+    }
+
+    const value = this.platform.quoteValue(comment);
+
+    return `${exists}
+  exec sys.sp_updateextendedproperty N'MS_Description', N${value}, ${target}
+else
+  exec sys.sp_addextendedproperty N'MS_Description', N${value}, ${target}`;
+  }
+
+  override inferLengthFromColumnType(type: string): number | undefined {
+    const match = /^(\w+)\s*\(\s*(-?\d+|max)\s*\)/.exec(type);
+
+    if (!match) {
+      return;
+    }
+
+    if (match[2] === 'max') {
+      return -1;
+    }
+
+    return +match[2];
+  }
+
+  protected wrap(val: string | undefined, type: Type<unknown>): string | undefined {
+    const stringType =
+      type instanceof StringType ||
+      type instanceof TextType ||
+      type instanceof EnumType ||
+      type instanceof UnicodeStringType;
+    return typeof val === 'string' && val.length > 0 && stringType ? this.platform.quoteValue(val) : val;
+  }
+}

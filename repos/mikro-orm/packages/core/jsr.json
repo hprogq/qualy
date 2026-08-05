@@ -1,0 +1,18 @@
+{
+  "name": "@mikro-orm/core",
+  "version": "7.1.9",
+  "exports": {
+    ".": "./src/index.ts",
+    "./file-discovery": "./src/metadata/discover-entities.ts",
+    "./fs-utils": "./src/utils/fs-utils.ts",
+    "./migrations": "./src/utils/AbstractMigrator.ts",
+    "./schema": "./src/utils/AbstractSchemaGenerator.ts",
+    "./dataloader": "./src/utils/DataloaderUtils.ts"
+  },
+  "publish": {
+    "exclude": ["dist/", "node_modules/", "tests/"]
+  },
+  "imports": {
+    "dataloader": "npm:dataloader@2.2.3"
+  }
+}

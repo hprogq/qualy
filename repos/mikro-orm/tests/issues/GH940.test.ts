@@ -1,0 +1,85 @@
+import { Collection, MikroORM } from '@mikro-orm/sqlite';
+import {
+  Entity,
+  ManyToOne,
+  OneToMany,
+  PrimaryKey,
+  Property,
+  ReflectMetadataProvider,
+} from '@mikro-orm/decorators/legacy';
+import { mockLogger } from '../helpers.js';
+
+@Entity()
+class User {
+  @PrimaryKey()
+  id!: bigint;
+
+  @OneToMany(() => UserOrganization, 'user')
+  organizations = new Collection<UserOrganization>(this);
+}
+
+@Entity()
+class UserOrganization {
+  @PrimaryKey()
+  id!: bigint;
+
+  @ManyToOne(() => User, { nullable: true })
+  user?: User;
+
+  @Property()
+  isAdmin: boolean;
+
+  constructor(user?: User, isAdmin = false) {
+    this.user = user;
+    this.isAdmin = isAdmin;
+  }
+}
+
+describe('GH issue 940, 1117', () => {
+  let orm: MikroORM;
+
+  beforeAll(async () => {
+    orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [User, UserOrganization],
+      dbName: ':memory:',
+    });
+    await orm.schema.create();
+  });
+
+  afterAll(async () => orm.close(true));
+
+  test('A boolean in the nested where conditions is kept even if the primary key is BigIntType', async () => {
+    const user1 = new User();
+    const user2 = new User();
+    const user1org = new UserOrganization(user1, true);
+    const user2org = new UserOrganization(user2, false);
+
+    await orm.em.persist([user1org, user2org]).flush();
+
+    const users = await orm.em.find(User, { organizations: { isAdmin: true } });
+    expect(users).toMatchObject([
+      {
+        id: user1.id,
+        organizations: {
+          0: { id: user1org.id, isAdmin: true },
+        },
+      },
+    ]);
+  });
+
+  test('bigint type is correctly diffed (null vs undefined) - GH #1117', async () => {
+    const user1 = new User();
+    const user2 = new User();
+    const org1 = new UserOrganization(user1, true);
+    const org2 = new UserOrganization(user2, false);
+    const org3 = new UserOrganization();
+    await orm.em.persist([org1, org2, org3]).flush();
+    orm.em.clear();
+
+    const orgs = await orm.em.find(UserOrganization, {});
+    const mock = mockLogger(orm, ['query', 'query-params']);
+    await orm.em.flush();
+    expect(mock.mock.calls).toHaveLength(0);
+  });
+});

@@ -1,0 +1,14 @@
+{
+  "name": "@mikro-orm/reflection",
+  "version": "7.1.9",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publish": {
+    "exclude": ["dist/", "node_modules/", "tests/"]
+  },
+  "imports": {
+    "ts-morph": "npm:ts-morph@28.0.0",
+    "@mikro-orm/core": "jsr:@mikro-orm/core@7.1.9"
+  }
+}

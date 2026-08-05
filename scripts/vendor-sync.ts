@@ -25,6 +25,15 @@ export interface VendoredSource {
   packageName: string
   /** how that package's version becomes an upstream tag */
   tagFor(version: string): string
+  /**
+   * Paths in this upstream that describe a version other than the pinned one.
+   *
+   * The tree exists so that reasoning about a library reads what actually
+   * runs. A directory of documentation snapshots for five superseded majors is
+   * the opposite of that, and every search through the tree would surface it
+   * beside the real answer.
+   */
+  supersededPaths?: readonly string[]
 }
 
 export const VENDORED: readonly VendoredSource[] = [
@@ -39,6 +48,20 @@ export const VENDORED: readonly VendoredSource[] = [
     repository: 'https://github.com/drizzle-team/drizzle-orm.git',
     packageName: 'drizzle-orm',
     tagFor: (version) => `v${version}`,
+  },
+  // Vendored ahead of any dependency on it: the orm decision spike has to read
+  // what v7 actually does with entity metadata, the Kysely bridge and the
+  // migrator, and reasoning from release notes is how a spike concludes that a
+  // product supports something it supports differently. `docs/` in this tree is
+  // the documentation site's source.
+  {
+    name: 'mikro-orm',
+    repository: 'https://github.com/mikro-orm/mikro-orm.git',
+    packageName: '@mikro-orm/core',
+    tagFor: (version) => `v${version}`,
+    // 176MB of docusaurus snapshots for v2 through v6. The version this tree
+    // is pinned to documents itself in docs/docs, which stays.
+    supersededPaths: ['docs/versioned_docs', 'docs/versioned_sidebars'],
   },
 ]
 
@@ -93,7 +116,7 @@ function vendor(source: VendoredSource, version: string): string {
     git(['clone', '--depth', '1', '--branch', tag, source.repository, temp])
     const commit = git(['rev-parse', 'HEAD'], temp)
     fs.rmSync(path.join(temp, '.git'), { recursive: true, force: true })
-    for (const unwanted of NOT_VENDORED) {
+    for (const unwanted of [...NOT_VENDORED, ...(source.supersededPaths ?? [])]) {
       fs.rmSync(path.join(temp, unwanted), { recursive: true, force: true })
     }
     fs.rmSync(target, { recursive: true, force: true })

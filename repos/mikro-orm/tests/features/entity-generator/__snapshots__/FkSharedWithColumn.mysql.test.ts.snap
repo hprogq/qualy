@@ -1,0 +1,2060 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'countries';
+
+  @Property({ type: 'character', length: 2, persist: false })
+  country!: string;
+
+  @OneToOne({ entity: () => Countries, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  countries!: Countries;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries_idx' })
+  userCountry!: string;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries1_idx' })
+  userCountryBorn!: string;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Countries;
+
+  @ManyToOne({ entity: () => LegalUserCountries, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: LegalUserCountries;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  fkUserCountryBorn!: Countries;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'countries';
+  country!: string;
+  countries!: Countries;
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: { type: 'character', length: 2, persist: false },
+    countries: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountry!: string;
+  userCountryBorn!: string;
+  fkUserCountry!: Countries;
+  legalUserCountries!: LegalUserCountries;
+  fkUserCountryBorn!: Countries;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountry: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries_idx',
+    },
+    userCountryBorn: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+    fkUserCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'countries';
+
+  @Property({ type: 'character', length: 2, persist: false })
+  country!: string;
+
+  @OneToOne({ entity: () => Countries, ref: true, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  countries!: Ref<Countries>;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries_idx' })
+  userCountry!: string;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries1_idx' })
+  userCountryBorn!: string;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => LegalUserCountries, ref: true, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: Ref<LegalUserCountries>;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  fkUserCountryBorn!: Ref<Countries>;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'countries';
+  country!: string;
+  countries!: Ref<Countries>;
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: { type: 'character', length: 2, persist: false },
+    countries: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountry!: string;
+  userCountryBorn!: string;
+  fkUserCountry!: Ref<Countries>;
+  legalUserCountries!: Ref<LegalUserCountries>;
+  fkUserCountryBorn!: Ref<Countries>;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountry: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries_idx',
+    },
+    userCountryBorn: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+    fkUserCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+  @OneToOne({ entity: () => LegalUserCountries, mappedBy: 'countries' })
+  legalUserCountries?: LegalUserCountries;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountry' })
+  usersCollection = new Collection<Users>(this);
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountryBorn' })
+  usersCollection1 = new Collection<Users>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'countries';
+
+  @Property({ type: 'character', length: 2, persist: false })
+  country!: string;
+
+  @OneToOne({ entity: () => Countries, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  countries!: Countries;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'legalUserCountries' })
+  usersCollection = new Collection<Users>(this);
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries_idx' })
+  userCountry!: string;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries1_idx' })
+  userCountryBorn!: string;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Countries;
+
+  @ManyToOne({ entity: () => LegalUserCountries, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: LegalUserCountries;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  fkUserCountryBorn!: Countries;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+  legalUserCountries?: LegalUserCountries;
+  usersCollection = new Collection<Users>(this);
+  usersCollection1 = new Collection<Users>(this);
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+    legalUserCountries: {
+      kind: '1:1',
+      entity: () => LegalUserCountries,
+      mappedBy: 'countries',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountry',
+    },
+    usersCollection1: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountryBorn',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'countries';
+  country!: string;
+  countries!: Countries;
+  usersCollection = new Collection<Users>(this);
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: { type: 'character', length: 2, persist: false },
+    countries: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'legalUserCountries',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountry!: string;
+  userCountryBorn!: string;
+  fkUserCountry!: Countries;
+  legalUserCountries!: LegalUserCountries;
+  fkUserCountryBorn!: Countries;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountry: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries_idx',
+    },
+    userCountryBorn: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+    fkUserCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+  @OneToOne({ entity: () => LegalUserCountries, ref: true, mappedBy: 'countries' })
+  legalUserCountries?: Ref<LegalUserCountries>;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountry' })
+  usersCollection = new Collection<Users>(this);
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountryBorn' })
+  usersCollection1 = new Collection<Users>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'countries';
+
+  @Property({ type: 'character', length: 2, persist: false })
+  country!: string;
+
+  @OneToOne({ entity: () => Countries, ref: true, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  countries!: Ref<Countries>;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'legalUserCountries' })
+  usersCollection = new Collection<Users>(this);
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries_idx' })
+  userCountry!: string;
+
+  @Property({ type: 'character', length: 2, persist: false, index: 'fk_users_countries1_idx' })
+  userCountryBorn!: string;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => LegalUserCountries, ref: true, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: Ref<LegalUserCountries>;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  fkUserCountryBorn!: Ref<Countries>;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+  legalUserCountries?: Ref<LegalUserCountries>;
+  usersCollection = new Collection<Users>(this);
+  usersCollection1 = new Collection<Users>(this);
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+    legalUserCountries: {
+      kind: '1:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      mappedBy: 'countries',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountry',
+    },
+    usersCollection1: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountryBorn',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'countries';
+  country!: string;
+  countries!: Ref<Countries>;
+  usersCollection = new Collection<Users>(this);
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: { type: 'character', length: 2, persist: false },
+    countries: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'legalUserCountries',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountry!: string;
+  userCountryBorn!: string;
+  fkUserCountry!: Ref<Countries>;
+  legalUserCountries!: Ref<LegalUserCountries>;
+  fkUserCountryBorn!: Ref<Countries>;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountry: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries_idx',
+    },
+    userCountryBorn: {
+      type: 'character',
+      length: 2,
+      persist: false,
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+    fkUserCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Countries;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Countries;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Countries;
+
+  @ManyToOne({ entity: () => LegalUserCountries, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: LegalUserCountries;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Countries;
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Countries;
+  fkUserCountry!: Countries;
+  legalUserCountries!: LegalUserCountries;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, ref: true, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Ref<Countries>;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => LegalUserCountries, ref: true, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: Ref<LegalUserCountries>;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Ref<Countries>;
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Ref<Countries>;
+  fkUserCountry!: Ref<Countries>;
+  legalUserCountries!: Ref<LegalUserCountries>;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+  @OneToOne({ entity: () => LegalUserCountries, mappedBy: 'country' })
+  legalUserCountries?: LegalUserCountries;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'userCountryBorn' })
+  usersCollection = new Collection<Users>(this);
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountry' })
+  usersCollection1 = new Collection<Users>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Countries;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'legalUserCountries' })
+  usersCollection = new Collection<Users>(this);
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Countries;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Countries;
+
+  @ManyToOne({ entity: () => LegalUserCountries, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: LegalUserCountries;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+  legalUserCountries?: LegalUserCountries;
+  usersCollection = new Collection<Users>(this);
+  usersCollection1 = new Collection<Users>(this);
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+    legalUserCountries: {
+      kind: '1:1',
+      entity: () => LegalUserCountries,
+      mappedBy: 'country',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'userCountryBorn',
+    },
+    usersCollection1: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountry',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Countries;
+  usersCollection = new Collection<Users>(this);
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'legalUserCountries',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Countries;
+  fkUserCountry!: Countries;
+  legalUserCountries!: LegalUserCountries;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+  @OneToOne({ entity: () => LegalUserCountries, ref: true, mappedBy: 'country' })
+  legalUserCountries?: Ref<LegalUserCountries>;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'userCountryBorn' })
+  usersCollection = new Collection<Users>(this);
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountry' })
+  usersCollection1 = new Collection<Users>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, ref: true, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Ref<Countries>;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'legalUserCountries' })
+  usersCollection = new Collection<Users>(this);
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => LegalUserCountries, ref: true, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: Ref<LegalUserCountries>;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+  legalUserCountries?: Ref<LegalUserCountries>;
+  usersCollection = new Collection<Users>(this);
+  usersCollection1 = new Collection<Users>(this);
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+    legalUserCountries: {
+      kind: '1:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      mappedBy: 'country',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'userCountryBorn',
+    },
+    usersCollection1: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountry',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Ref<Countries>;
+  usersCollection = new Collection<Users>(this);
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'legalUserCountries',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Ref<Countries>;
+  fkUserCountry!: Ref<Countries>;
+  legalUserCountries!: Ref<LegalUserCountries>;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Countries;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Countries;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Countries;
+
+  @ManyToOne({ entity: () => LegalUserCountries, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: LegalUserCountries;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Countries;
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Countries;
+  fkUserCountry!: Countries;
+  legalUserCountries!: LegalUserCountries;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, ref: true, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Ref<Countries>;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => LegalUserCountries, ref: true, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: Ref<LegalUserCountries>;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Ref<Countries>;
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Ref<Countries>;
+  fkUserCountry!: Ref<Countries>;
+  legalUserCountries!: Ref<LegalUserCountries>;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+  @OneToOne({ entity: () => LegalUserCountries, mappedBy: 'country' })
+  legalUserCountries?: LegalUserCountries;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'userCountryBorn' })
+  usersCollection = new Collection<Users>(this);
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountry' })
+  usersCollection1 = new Collection<Users>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Countries;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'legalUserCountries' })
+  usersCollection = new Collection<Users>(this);
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Countries;
+
+  @ManyToOne({ entity: () => Countries, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Countries;
+
+  @ManyToOne({ entity: () => LegalUserCountries, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: LegalUserCountries;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+  legalUserCountries?: LegalUserCountries;
+  usersCollection = new Collection<Users>(this);
+  usersCollection1 = new Collection<Users>(this);
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+    legalUserCountries: {
+      kind: '1:1',
+      entity: () => LegalUserCountries,
+      mappedBy: 'country',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'userCountryBorn',
+    },
+    usersCollection1: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountry',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Countries;
+  usersCollection = new Collection<Users>(this);
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'legalUserCountries',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Countries;
+  fkUserCountry!: Countries;
+  legalUserCountries!: LegalUserCountries;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+@Entity()
+export class Countries {
+
+  [PrimaryKeyProp]?: 'code';
+
+  @PrimaryKey({ type: 'character', length: 2 })
+  code!: string;
+
+  @OneToOne({ entity: () => LegalUserCountries, ref: true, mappedBy: 'country' })
+  legalUserCountries?: Ref<LegalUserCountries>;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'userCountryBorn' })
+  usersCollection = new Collection<Users>(this);
+
+  @OneToMany({ entity: () => Users, mappedBy: 'fkUserCountry' })
+  usersCollection1 = new Collection<Users>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+@Entity()
+export class LegalUserCountries {
+
+  [PrimaryKeyProp]?: 'country';
+
+  @OneToOne({ entity: () => Countries, ref: true, fieldName: 'country', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  country!: Ref<Countries>;
+
+  @OneToMany({ entity: () => Users, mappedBy: 'legalUserCountries' })
+  usersCollection = new Collection<Users>(this);
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, PrimaryKey } from '@mikro-orm/decorators/legacy';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+@Entity()
+export class Users {
+
+  [PrimaryKeyProp]?: 'userId';
+
+  @PrimaryKey()
+  userId!: number;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country_born', updateRule: 'no action', deleteRule: 'no action', index: 'fk_users_countries1_idx' })
+  userCountryBorn!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => Countries, ref: true, fieldName: 'user_country', updateRule: 'restrict', deleteRule: 'restrict', index: 'fk_users_countries_idx' })
+  fkUserCountry!: Ref<Countries>;
+
+  @ManyToOne({ entity: () => LegalUserCountries, ref: true, fieldName: 'user_country', updateRule: 'cascade', deleteRule: 'cascade', index: 'fk_users_countries_idx' })
+  legalUserCountries!: Ref<LegalUserCountries>;
+
+}
+",
+]
+`;
+
+exports[`fk_shared_with_column_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { LegalUserCountries } from './LegalUserCountries';
+import { Users } from './Users';
+
+export class Countries {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+  legalUserCountries?: Ref<LegalUserCountries>;
+  usersCollection = new Collection<Users>(this);
+  usersCollection1 = new Collection<Users>(this);
+}
+
+export const CountriesSchema = new EntitySchema({
+  class: Countries,
+  properties: {
+    code: { primary: true, type: 'character', length: 2 },
+    legalUserCountries: {
+      kind: '1:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      mappedBy: 'country',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'userCountryBorn',
+    },
+    usersCollection1: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'fkUserCountry',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { Users } from './Users';
+
+export class LegalUserCountries {
+  [PrimaryKeyProp]?: 'country';
+  country!: Ref<Countries>;
+  usersCollection = new Collection<Users>(this);
+}
+
+export const LegalUserCountriesSchema = new EntitySchema({
+  class: LegalUserCountries,
+  properties: {
+    country: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'country',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    usersCollection: {
+      kind: '1:m',
+      entity: () => Users,
+      mappedBy: 'legalUserCountries',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Countries } from './Countries';
+import { LegalUserCountries } from './LegalUserCountries';
+
+export class Users {
+  [PrimaryKeyProp]?: 'userId';
+  userId!: number;
+  userCountryBorn!: Ref<Countries>;
+  fkUserCountry!: Ref<Countries>;
+  legalUserCountries!: Ref<LegalUserCountries>;
+}
+
+export const UsersSchema = new EntitySchema({
+  class: Users,
+  properties: {
+    userId: { primary: true, type: 'integer' },
+    userCountryBorn: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country_born',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_users_countries1_idx',
+    },
+    fkUserCountry: {
+      kind: 'm:1',
+      entity: () => Countries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'restrict',
+      deleteRule: 'restrict',
+      index: 'fk_users_countries_idx',
+    },
+    legalUserCountries: {
+      kind: 'm:1',
+      entity: () => LegalUserCountries,
+      ref: true,
+      fieldName: 'user_country',
+      updateRule: 'cascade',
+      deleteRule: 'cascade',
+      index: 'fk_users_countries_idx',
+    },
+  },
+});
+",
+]
+`;

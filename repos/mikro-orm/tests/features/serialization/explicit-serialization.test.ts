@@ -1,0 +1,484 @@
+import { wrap, serialize } from '@mikro-orm/core';
+import { MikroORM } from '@mikro-orm/postgresql';
+import { initORMPostgreSql } from '../../bootstrap.js';
+import { Author2, Book2, FooBar2, Publisher2, PublisherType } from '../../entities-sql/index.js';
+
+let orm: MikroORM;
+
+beforeAll(async () => (orm = await initORMPostgreSql()));
+beforeEach(() => orm.schema.clear());
+afterAll(async () => {
+  await orm.schema.dropDatabase();
+  await orm.close(true);
+});
+
+async function createEntities() {
+  const god = new Author2('God', 'hello@heaven.god');
+  const bible = new Book2('Bible', god);
+  bible.double = 123.45;
+  const author = new Author2('Jon Snow', 'snow@wall.st');
+  author.born = '1990-03-23';
+  author.favouriteBook = bible;
+  const publisher = new Publisher2('7K publisher', PublisherType.GLOBAL);
+  const book1 = new Book2('My Life on The Wall, part 1', author);
+  book1.publisher = wrap(publisher).toReference();
+  const book2 = new Book2('My Life on The Wall, part 2', author);
+  book2.publisher = wrap(publisher).toReference();
+  const book3 = new Book2('My Life on The Wall, part 3', author);
+  book3.publisher = wrap(publisher).toReference();
+  await orm.em.persist([book1, book2, book3]).flush();
+  orm.em.clear();
+
+  return { god, author, publisher, book1, book2, book3 };
+}
+
+test('explicit serialization with ORM BaseEntity', async () => {
+  const fb = orm.em.create(FooBar2, { name: 'fb' });
+  await orm.em.flush();
+
+  const o1 = wrap(fb).serialize();
+  expect(o1).toMatchObject({
+    id: fb.id,
+    name: fb.name,
+  });
+});
+
+test('explicit serialization with groups', async () => {
+  const { god, author, publisher, book1, book2, book3 } = await createEntities();
+  const jon = await orm.em.findOneOrFail(Author2, author, { populate: ['*'] });
+  jon.age = 34;
+
+  const o1 = wrap(jon).serialize({ groups: [] });
+  expect(o1).toEqual({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    name: 'Jon Snow',
+  });
+  const o2 = wrap(jon).serialize({ groups: ['personal'] });
+  expect(o2).toEqual({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [book1.uuid, book2.uuid, book3.uuid],
+    books2: [book1.uuid, book2.uuid, book3.uuid],
+    favouriteBook: jon.favouriteBook!.uuid,
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+    age: 34,
+    address: null,
+    identity: null,
+    optional: null,
+    bornTime: null,
+    favouriteAuthor: null,
+    followers: [],
+    following: [],
+    friends: [],
+  });
+  const o3 = wrap(jon).serialize({ groups: ['admin'] });
+  expect(o3).toEqual({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    name: 'Jon Snow',
+    email: 'snow@wall.st',
+    age: 34,
+    termsAccepted: false,
+    identities: null,
+    born: '1990-03-23',
+    bornTime: null,
+    address: null,
+    identity: null,
+    code: 'snow@wall.st - Jon Snow',
+    code2: 'snow@wall.st - Jon Snow',
+  });
+});
+
+test('explicit serialization', async () => {
+  const { god, author, publisher, book1, book2, book3 } = await createEntities();
+  const jon = await orm.em.findOneOrFail(Author2, author, { populate: ['*'] });
+
+  const o1 = wrap(jon).serialize();
+  expect(o1).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [book1.uuid, book2.uuid, book3.uuid],
+    favouriteBook: jon.favouriteBook!.uuid,
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+    age: null,
+  });
+
+  const o1s = serialize([jon, jon, jon]);
+  expect(o1s).toHaveLength(3);
+  expect(o1s[0]).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [book1.uuid, book2.uuid, book3.uuid],
+    favouriteBook: jon.favouriteBook!.uuid,
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+
+  const o2 = serialize(jon, { populate: ['books'], skipNull: true });
+  expect(o2).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [
+      { author: jon.id, publisher: publisher.id, title: 'My Life on The Wall, part 1' },
+      { author: jon.id, publisher: publisher.id, title: 'My Life on The Wall, part 2' },
+      { author: jon.id, publisher: publisher.id, title: 'My Life on The Wall, part 3' },
+    ],
+    favouriteBook: jon.favouriteBook!.uuid,
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+  expect('age' in o2).toBe(false);
+
+  const o3 = serialize(jon, { populate: ['books', 'favouriteBook'] });
+  expect(o3).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [
+      { author: jon.id, publisher: publisher.id, title: 'My Life on The Wall, part 1' },
+      { author: jon.id, publisher: publisher.id, title: 'My Life on The Wall, part 2' },
+      { author: jon.id, publisher: publisher.id, title: 'My Life on The Wall, part 3' },
+    ],
+    favouriteBook: { author: god.id, title: 'Bible' },
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+
+  const o4 = serialize(jon, { populate: ['books.author', 'favouriteBook'] });
+  expect(o4).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: publisher.id,
+        title: 'My Life on The Wall, part 1',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: publisher.id,
+        title: 'My Life on The Wall, part 2',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: publisher.id,
+        title: 'My Life on The Wall, part 3',
+      },
+    ],
+    favouriteBook: { author: god.id, title: 'Bible' },
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+
+  const o5 = serialize(jon, { populate: ['books.author', 'favouriteBook'], forceObject: true });
+  const pub = o5.books[0].publisher!.id;
+  expect(pub).toBe(1);
+  expect(o5).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: { id: publisher.id },
+        title: 'My Life on The Wall, part 1',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: { id: publisher.id },
+        title: 'My Life on The Wall, part 2',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: { id: publisher.id },
+        title: 'My Life on The Wall, part 3',
+      },
+    ],
+    favouriteBook: { author: { id: god.id }, title: 'Bible' },
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+
+  const o6 = serialize(jon, { populate: ['books.author', 'books.publisher', 'favouriteBook'] });
+  expect(o6).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 1',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 2',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 3',
+      },
+    ],
+    favouriteBook: { author: god.id, title: 'Bible' },
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+
+  const o7 = serialize(jon, {
+    populate: ['books.author', 'books.publisher', 'favouriteBook'],
+    exclude: ['books.author.email'],
+  });
+
+  expect(o7.email).toBeDefined();
+  expect(o7.books[0].author.email).toBeUndefined();
+  expect(o7).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [
+      {
+        author: { id: jon.id, name: 'Jon Snow' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 1',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 2',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 3',
+      },
+    ],
+    favouriteBook: { author: god.id, title: 'Bible' },
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+});
+
+test('explicit serialization with populate: true', async () => {
+  const { god, author, publisher } = await createEntities();
+  const jon = await orm.em.findOneOrFail(Author2, author, { populate: ['*'] });
+
+  const o8 = serialize(jon, { populate: ['*'] });
+  expect(o8).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    books: [
+      {
+        author: { id: jon.id, name: 'Jon Snow' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 1',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 2',
+      },
+      {
+        author: { id: jon.id, name: 'Jon Snow' },
+        publisher: { id: publisher.id, name: publisher.name },
+        title: 'My Life on The Wall, part 3',
+      },
+    ],
+    favouriteBook: { author: { id: god.id, name: 'God', books: [{ title: 'Bible' }] }, title: 'Bible' },
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+});
+
+test('explicit serialization with not initialized properties', async () => {
+  const { author } = await createEntities();
+  const jon = await orm.em.findOneOrFail(Author2, author);
+
+  const o = serialize(jon, { populate: ['*'] });
+  expect(o.id.toFixed()).toBe('2'); // PKs should be non-nullable even if defined in `OptionalProps` explicitly
+  expect(o).toMatchObject({
+    id: jon.id,
+    createdAt: jon.createdAt,
+    updatedAt: jon.updatedAt,
+    favouriteBook: jon.favouriteBook!.uuid,
+    born: '1990-03-23',
+    email: 'snow@wall.st',
+    name: 'Jon Snow',
+  });
+
+  const o2 = serialize(jon.favouriteBook!, { populate: ['*'] });
+  expect(o2).toEqual({
+    uuid: jon.favouriteBook!.uuid,
+  });
+});
+
+test('explicit serialization with convertCustomTypes option', async () => {
+  const { author } = await createEntities();
+  const jon = await orm.em.findOneOrFail(Author2, author, { populate: ['*'] });
+  jon.age = 34;
+
+  // Test that the option is passed through to serialization
+  const o1 = wrap(jon).serialize({ populate: ['favouriteBook'], convertCustomTypes: false });
+  expect(o1.favouriteBook).toMatchObject({
+    uuid: jon.favouriteBook!.uuid,
+    double: 123.45,
+  });
+
+  const o2 = wrap(jon).serialize({ populate: ['favouriteBook'], convertCustomTypes: true });
+  expect(o2.favouriteBook).toMatchObject({
+    uuid: jon.favouriteBook!.uuid,
+    double: 123.45, // double type returns number in both toJSON and convertToDatabaseValue
+  });
+
+  // Test on unpopulated FK reference
+  orm.em.clear();
+  const jonUnpopulated = await orm.em.findOneOrFail(Author2, author);
+
+  const o3 = wrap(jonUnpopulated).serialize({ convertCustomTypes: false });
+  expect(o3.favouriteBook).toBe(jon.favouriteBook!.uuid);
+
+  const o4 = wrap(jonUnpopulated).serialize({ convertCustomTypes: true });
+  expect(o4.favouriteBook).toBe(jon.favouriteBook!.uuid);
+
+  // Test with collection - ensure convertCustomTypes option doesn't break collection serialization
+  orm.em.clear();
+  const jonWithBooks = await orm.em.findOneOrFail(Author2, author, { populate: ['books'] });
+
+  const o5 = wrap(jonWithBooks).serialize({ populate: [] });
+  expect(Array.isArray(o5.books)).toBe(true);
+  expect(o5.books.length).toBe(3);
+
+  const o6 = wrap(jonWithBooks).serialize({ populate: ['books'], convertCustomTypes: true });
+  expect(Array.isArray(o6.books)).toBe(true);
+  expect(o6.books.length).toBe(3);
+  o6.books.forEach((book: any) => {
+    expect(book).toHaveProperty('uuid');
+    expect(book).toHaveProperty('title');
+  });
+
+  // Test unpopulated collection with custom type PKs (covers processCollection with custom types)
+  orm.em.clear();
+  const jonUnpopulatedBooks = await orm.em.findOneOrFail(Author2, author);
+  await orm.em.populate(jonUnpopulatedBooks, ['books']); // Initialize collection but don't populate items
+
+  const o7 = wrap(jonUnpopulatedBooks).serialize({ populate: [], convertCustomTypes: false });
+  expect(Array.isArray(o7.books)).toBe(true);
+  expect(o7.books.length).toBe(3);
+  // With convertCustomTypes: false, should use toJSON on UUID custom type
+  o7.books.forEach((bookId: any) => {
+    expect(typeof bookId).toBe('string'); // UUID toJSON returns string
+  });
+
+  const o8 = wrap(jonUnpopulatedBooks).serialize({ populate: [], convertCustomTypes: true });
+  expect(Array.isArray(o8.books)).toBe(true);
+  expect(o8.books).toHaveLength(3);
+  // With convertCustomTypes: true, should use convertToDatabaseValue on UUID custom type
+  o8.books.forEach((bookId: any) => {
+    expect(typeof bookId).toBe('string'); // UUID convertToDatabaseValue also returns string
+  });
+});
+
+test('explicit serialization with fields option', async () => {
+  const { author } = await createEntities();
+  const jon = await orm.em.findOneOrFail(Author2, author, { populate: ['*'] });
+
+  const o1 = serialize(jon, { fields: ['name'] });
+  expect(o1).toEqual({ name: 'Jon Snow' });
+  // @ts-expect-error `id` is not part of the narrowed type
+  expect(o1.id).toBeUndefined();
+  // @ts-expect-error `email` is not part of the narrowed type
+  expect(o1.email).toBeUndefined();
+
+  const o2 = serialize(jon, { fields: ['id', 'name', 'email'] });
+  expect(o2).toEqual({ id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' });
+
+  const o3 = serialize(jon, { populate: ['books'], fields: ['books.title'] });
+  expect(o3).toEqual({
+    books: [
+      { title: 'My Life on The Wall, part 1' },
+      { title: 'My Life on The Wall, part 2' },
+      { title: 'My Life on The Wall, part 3' },
+    ],
+  });
+  // @ts-expect-error nothing else made it through
+  expect(o3.id).toBeUndefined();
+
+  // a bare relation name in `fields` opts the whole sub-tree in, instead of recursing with an empty whitelist
+  const o4 = serialize(jon, { populate: ['books.author'], fields: ['books'] });
+  expect(Object.keys(o4)).toEqual(['books']);
+  expect(o4.books).toHaveLength(3);
+  expect(o4.books[0]).toMatchObject({
+    title: 'My Life on The Wall, part 1',
+    author: { id: jon.id, name: 'Jon Snow', email: 'snow@wall.st' },
+  });
+  // @ts-expect-error top-level fields are still filtered out
+  expect(o4.name).toBeUndefined();
+
+  const o5 = serialize(jon, { populate: ['books'], fields: ['name', 'books.title'] });
+  expect(o5).toEqual({
+    name: 'Jon Snow',
+    books: [
+      { title: 'My Life on The Wall, part 1' },
+      { title: 'My Life on The Wall, part 2' },
+      { title: 'My Life on The Wall, part 3' },
+    ],
+  });
+
+  // `exclude` wins over `fields` on conflict — strip after whitelist
+  const o6 = serialize(jon, { fields: ['name', 'email'], exclude: ['email'] });
+  expect(o6).toEqual({ name: 'Jon Snow' });
+  // @ts-expect-error `email` was excluded even though listed in fields
+  expect(o6.email).toBeUndefined();
+
+  const o7 = wrap(jon).serialize({ fields: ['name'] });
+  expect(o7).toEqual({ name: 'Jon Snow' });
+  // @ts-expect-error PK dropped under strict whitelist
+  expect(o7.id).toBeUndefined();
+
+  const arr = serialize([jon, jon], { fields: ['name'] });
+  expect(arr).toEqual([{ name: 'Jon Snow' }, { name: 'Jon Snow' }]);
+
+  const o9 = serialize(jon, { populate: ['favouriteBook'], fields: ['favouriteBook.title'] });
+  expect(o9).toEqual({ favouriteBook: { title: 'Bible' } });
+});
+
+test('wrap().serialize() inherits the partial-load fields hint at the type level', async () => {
+  const { author } = await createEntities();
+
+  // partial load — the entity type carries the `fields` hint via `Loaded<...>`
+  const partial = await orm.em.findOneOrFail(Author2, author, { fields: ['name'] });
+
+  // standalone serialize() narrows the return type from the entity hint…
+  const a = serialize(partial);
+  expect(a.name).toBe('Jon Snow');
+  // @ts-expect-error `email` was not partial-loaded
+  expect(a.email).toBeUndefined();
+
+  // …and wrap(e).serialize() does the same now
+  const b = wrap(partial).serialize();
+  expect(b.name).toBe('Jon Snow');
+  // @ts-expect-error `email` was not partial-loaded
+  expect(b.email).toBeUndefined();
+});

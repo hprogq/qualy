@@ -1,0 +1,3307 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  startingAt!: Date;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  place!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property({ persist: false, index: 'fk_shippable_products_destinations1_idx' })
+  destination!: string;
+
+  @ManyToOne({ entity: () => DeliverableProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: DeliverableProducts;
+
+  @ManyToOne({ entity: () => Destinations, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destinations!: Destinations;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  productId!: number;
+  startingAt!: Date;
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    startingAt: { type: 'datetime' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  productId!: number;
+  place!: string;
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    place: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  productId!: number;
+  destination!: string;
+  deliverableProducts!: DeliverableProducts;
+  destinations!: Destinations;
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    productId: { type: 'integer', unsigned: true, persist: false },
+    destination: {
+      type: 'string',
+      persist: false,
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    destinations: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  startingAt!: Date;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  place!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property({ persist: false, index: 'fk_shippable_products_destinations1_idx' })
+  destination!: string;
+
+  @ManyToOne({ entity: () => DeliverableProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: Ref<DeliverableProducts>;
+
+  @ManyToOne({ entity: () => Destinations, ref: true, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destinations!: Ref<Destinations>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  productId!: number;
+  startingAt!: Date;
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    startingAt: { type: 'datetime' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  productId!: number;
+  place!: string;
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    place: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  productId!: number;
+  destination!: string;
+  deliverableProducts!: Ref<DeliverableProducts>;
+  destinations!: Ref<Destinations>;
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    productId: { type: 'integer', unsigned: true, persist: false },
+    destination: {
+      type: 'string',
+      persist: false,
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    destinations: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      ref: true,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  startingAt!: Date;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'deliverableProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'destinations' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  place!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts1' })
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+  @OneToOne({ entity: () => DeliverableProducts, mappedBy: 'product' })
+  deliverableProducts?: DeliverableProducts;
+
+  @OneToOne({ entity: () => ManufacturedProducts, mappedBy: 'product' })
+  manufacturedProducts?: ManufacturedProducts;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property({ persist: false, index: 'fk_shippable_products_destinations1_idx' })
+  destination!: string;
+
+  @ManyToOne({ entity: () => DeliverableProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: DeliverableProducts;
+
+  @ManyToOne({ entity: () => Destinations, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destinations!: Destinations;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  productId!: number;
+  startingAt!: Date;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    startingAt: { type: 'datetime' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'deliverableProducts',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { ShippableProducts } from './ShippableProducts';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'destinations',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  productId!: number;
+  place!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    place: { type: 'string' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts',
+    },
+    shippableProductsCollection1: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts1',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+  deliverableProducts?: DeliverableProducts;
+  manufacturedProducts?: ManufacturedProducts;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+    deliverableProducts: {
+      kind: '1:1',
+      entity: () => DeliverableProducts,
+      mappedBy: 'product',
+    },
+    manufacturedProducts: {
+      kind: '1:1',
+      entity: () => ManufacturedProducts,
+      mappedBy: 'product',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  productId!: number;
+  destination!: string;
+  deliverableProducts!: DeliverableProducts;
+  destinations!: Destinations;
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    productId: { type: 'integer', unsigned: true, persist: false },
+    destination: {
+      type: 'string',
+      persist: false,
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    destinations: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  startingAt!: Date;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'deliverableProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'destinations' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property()
+  place!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts1' })
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+  @OneToOne({ entity: () => DeliverableProducts, ref: true, mappedBy: 'product' })
+  deliverableProducts?: Ref<DeliverableProducts>;
+
+  @OneToOne({ entity: () => ManufacturedProducts, ref: true, mappedBy: 'product' })
+  manufacturedProducts?: Ref<ManufacturedProducts>;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @Property({ unsigned: true, persist: false })
+  productId!: number;
+
+  @Property({ persist: false, index: 'fk_shippable_products_destinations1_idx' })
+  destination!: string;
+
+  @ManyToOne({ entity: () => DeliverableProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: Ref<DeliverableProducts>;
+
+  @ManyToOne({ entity: () => Destinations, ref: true, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destinations!: Ref<Destinations>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=always > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  productId!: number;
+  startingAt!: Date;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    startingAt: { type: 'datetime' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'deliverableProducts',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { ShippableProducts } from './ShippableProducts';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'destinations',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  productId!: number;
+  place!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    productId: { type: 'integer', unsigned: true, persist: false },
+    place: { type: 'string' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts',
+    },
+    shippableProductsCollection1: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts1',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+  deliverableProducts?: Ref<DeliverableProducts>;
+  manufacturedProducts?: Ref<ManufacturedProducts>;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+    deliverableProducts: {
+      kind: '1:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      mappedBy: 'product',
+    },
+    manufacturedProducts: {
+      kind: '1:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      mappedBy: 'product',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  productId!: number;
+  destination!: string;
+  deliverableProducts!: Ref<DeliverableProducts>;
+  destinations!: Ref<Destinations>;
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    productId: { type: 'integer', unsigned: true, persist: false },
+    destination: {
+      type: 'string',
+      persist: false,
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    destinations: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      ref: true,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  startingAt!: Date;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  place!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Destinations;
+
+  @ManyToOne({ entity: () => DeliverableProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: DeliverableProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  startingAt!: Date;
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  place!: string;
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Destinations;
+  deliverableProducts!: DeliverableProducts;
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  startingAt!: Date;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  place!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, ref: true, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Ref<Destinations>;
+
+  @ManyToOne({ entity: () => DeliverableProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: Ref<DeliverableProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  startingAt!: Date;
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  place!: string;
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Ref<Destinations>;
+  deliverableProducts!: Ref<DeliverableProducts>;
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      ref: true,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  startingAt!: Date;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'deliverableProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'destination' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  place!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts1' })
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+  @OneToOne({ entity: () => DeliverableProducts, mappedBy: 'product' })
+  deliverableProducts?: DeliverableProducts;
+
+  @OneToOne({ entity: () => ManufacturedProducts, mappedBy: 'product' })
+  manufacturedProducts?: ManufacturedProducts;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Destinations;
+
+  @ManyToOne({ entity: () => DeliverableProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: DeliverableProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  startingAt!: Date;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'deliverableProducts',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { ShippableProducts } from './ShippableProducts';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'destination',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  place!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts',
+    },
+    shippableProductsCollection1: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts1',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+  deliverableProducts?: DeliverableProducts;
+  manufacturedProducts?: ManufacturedProducts;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+    deliverableProducts: {
+      kind: '1:1',
+      entity: () => DeliverableProducts,
+      mappedBy: 'product',
+    },
+    manufacturedProducts: {
+      kind: '1:1',
+      entity: () => ManufacturedProducts,
+      mappedBy: 'product',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Destinations;
+  deliverableProducts!: DeliverableProducts;
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  startingAt!: Date;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'deliverableProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'destination' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  place!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts1' })
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+  @OneToOne({ entity: () => DeliverableProducts, ref: true, mappedBy: 'product' })
+  deliverableProducts?: Ref<DeliverableProducts>;
+
+  @OneToOne({ entity: () => ManufacturedProducts, ref: true, mappedBy: 'product' })
+  manufacturedProducts?: Ref<ManufacturedProducts>;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, ref: true, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Ref<Destinations>;
+
+  @ManyToOne({ entity: () => DeliverableProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: Ref<DeliverableProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=never > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  startingAt!: Date;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'deliverableProducts',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { ShippableProducts } from './ShippableProducts';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'destination',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  place!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts',
+    },
+    shippableProductsCollection1: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts1',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+  deliverableProducts?: Ref<DeliverableProducts>;
+  manufacturedProducts?: Ref<ManufacturedProducts>;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+    deliverableProducts: {
+      kind: '1:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      mappedBy: 'product',
+    },
+    manufacturedProducts: {
+      kind: '1:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      mappedBy: 'product',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Ref<Destinations>;
+  deliverableProducts!: Ref<DeliverableProducts>;
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      ref: true,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  startingAt!: Date;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  place!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Destinations;
+
+  @ManyToOne({ entity: () => DeliverableProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: DeliverableProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  startingAt!: Date;
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  place!: string;
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Destinations;
+  deliverableProducts!: DeliverableProducts;
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  startingAt!: Date;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  place!: string;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, ref: true, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Ref<Destinations>;
+
+  @ManyToOne({ entity: () => DeliverableProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: Ref<DeliverableProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=false > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  startingAt!: Date;
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  place!: string;
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Ref<Destinations>;
+  deliverableProducts!: Ref<DeliverableProducts>;
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      ref: true,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  startingAt!: Date;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'deliverableProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'destination' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Products;
+
+  @Property()
+  place!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts1' })
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+  @OneToOne({ entity: () => DeliverableProducts, mappedBy: 'product' })
+  deliverableProducts?: DeliverableProducts;
+
+  @OneToOne({ entity: () => ManufacturedProducts, mappedBy: 'product' })
+  manufacturedProducts?: ManufacturedProducts;
+
+}
+",
+  "import { PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Destinations;
+
+  @ManyToOne({ entity: () => DeliverableProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: DeliverableProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=false > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  startingAt!: Date;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'deliverableProducts',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { ShippableProducts } from './ShippableProducts';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'destination',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Products;
+  place!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts',
+    },
+    shippableProductsCollection1: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts1',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+  deliverableProducts?: DeliverableProducts;
+  manufacturedProducts?: ManufacturedProducts;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+    deliverableProducts: {
+      kind: '1:1',
+      entity: () => DeliverableProducts,
+      mappedBy: 'product',
+    },
+    manufacturedProducts: {
+      kind: '1:1',
+      entity: () => ManufacturedProducts,
+      mappedBy: 'product',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Destinations;
+  deliverableProducts!: DeliverableProducts;
+  fkShippableProductsManufacturedProducts!: ManufacturedProducts;
+  fkShippableProductsManufacturedProducts1!: ManufacturedProducts;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=decorators > dump 1`] = `
+[
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class DeliverableProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  startingAt!: Date;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'deliverableProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp } from '@mikro-orm/core';
+import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class Destinations {
+
+  [PrimaryKeyProp]?: 'destinationId';
+
+  @PrimaryKey()
+  destinationId!: number;
+
+  @Property({ unique: 'name_UNIQUE' })
+  name!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'destination' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { Collection, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToMany, OneToOne, Property } from '@mikro-orm/decorators/legacy';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+@Entity()
+export class ManufacturedProducts {
+
+  [PrimaryKeyProp]?: 'product';
+
+  @OneToOne({ entity: () => Products, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  product!: Ref<Products>;
+
+  @Property()
+  place!: string;
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts' })
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+
+  @OneToMany({ entity: () => ShippableProducts, mappedBy: 'fkShippableProductsManufacturedProducts1' })
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, OneToOne, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class Products {
+
+  [PrimaryKeyProp]?: 'productId';
+
+  @PrimaryKey({ autoincrement: false })
+  productId!: number;
+
+  @Property()
+  name!: string;
+
+  @OneToOne({ entity: () => DeliverableProducts, ref: true, mappedBy: 'product' })
+  deliverableProducts?: Ref<DeliverableProducts>;
+
+  @OneToOne({ entity: () => ManufacturedProducts, ref: true, mappedBy: 'product' })
+  manufacturedProducts?: Ref<ManufacturedProducts>;
+
+}
+",
+  "import { PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Entity, ManyToOne } from '@mikro-orm/decorators/legacy';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+@Entity()
+export class ShippableProducts {
+
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+
+  @ManyToOne({ entity: () => Destinations, ref: true, fieldName: 'destination', updateRule: 'no action', deleteRule: 'no action', index: 'fk_shippable_products_destinations1_idx' })
+  destination!: Ref<Destinations>;
+
+  @ManyToOne({ entity: () => DeliverableProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  deliverableProducts!: Ref<DeliverableProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+
+  @ManyToOne({ entity: () => ManufacturedProducts, ref: true, fieldName: 'product_id', updateRule: 'no action', deleteRule: 'no action', primary: true })
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+
+}
+",
+]
+`;
+
+exports[`non_composite_ambiguous_fk_example > scalarPropertiesForRelations=smart > bidirectionalRelations=true > identifiedReferences=true > entityDefinition=entitySchema > dump 1`] = `
+[
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class DeliverableProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  startingAt!: Date;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DeliverableProductsSchema = new EntitySchema({
+  class: DeliverableProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    startingAt: { type: 'datetime' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'deliverableProducts',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp } from '@mikro-orm/core';
+import { ShippableProducts } from './ShippableProducts';
+
+export class Destinations {
+  [PrimaryKeyProp]?: 'destinationId';
+  destinationId!: number;
+  name!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+}
+
+export const DestinationsSchema = new EntitySchema({
+  class: Destinations,
+  properties: {
+    destinationId: { primary: true, type: 'integer' },
+    name: { type: 'string', unique: 'name_UNIQUE' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'destination',
+    },
+  },
+});
+",
+  "import { Collection, EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { Products } from './Products';
+import { ShippableProducts } from './ShippableProducts';
+
+export class ManufacturedProducts {
+  [PrimaryKeyProp]?: 'product';
+  product!: Ref<Products>;
+  place!: string;
+  shippableProductsCollection = new Collection<ShippableProducts>(this);
+  shippableProductsCollection1 = new Collection<ShippableProducts>(this);
+}
+
+export const ManufacturedProductsSchema = new EntitySchema({
+  class: ManufacturedProducts,
+  properties: {
+    product: {
+      primary: true,
+      kind: '1:1',
+      entity: () => Products,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    place: { type: 'string' },
+    shippableProductsCollection: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts',
+    },
+    shippableProductsCollection1: {
+      kind: '1:m',
+      entity: () => ShippableProducts,
+      mappedBy: 'fkShippableProductsManufacturedProducts1',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class Products {
+  [PrimaryKeyProp]?: 'productId';
+  productId!: number;
+  name!: string;
+  deliverableProducts?: Ref<DeliverableProducts>;
+  manufacturedProducts?: Ref<ManufacturedProducts>;
+}
+
+export const ProductsSchema = new EntitySchema({
+  class: Products,
+  properties: {
+    productId: { primary: true, type: 'integer', autoincrement: false },
+    name: { type: 'string' },
+    deliverableProducts: {
+      kind: '1:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      mappedBy: 'product',
+    },
+    manufacturedProducts: {
+      kind: '1:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      mappedBy: 'product',
+    },
+  },
+});
+",
+  "import { EntitySchema, PrimaryKeyProp, type Ref } from '@mikro-orm/core';
+import { DeliverableProducts } from './DeliverableProducts';
+import { Destinations } from './Destinations';
+import { ManufacturedProducts } from './ManufacturedProducts';
+
+export class ShippableProducts {
+  [PrimaryKeyProp]?: ['deliverableProducts', 'fkShippableProductsManufacturedProducts', 'fkShippableProductsManufacturedProducts1'];
+  destination!: Ref<Destinations>;
+  deliverableProducts!: Ref<DeliverableProducts>;
+  fkShippableProductsManufacturedProducts!: Ref<ManufacturedProducts>;
+  fkShippableProductsManufacturedProducts1!: Ref<ManufacturedProducts>;
+}
+
+export const ShippableProductsSchema = new EntitySchema({
+  class: ShippableProducts,
+  properties: {
+    destination: {
+      kind: 'm:1',
+      entity: () => Destinations,
+      ref: true,
+      fieldName: 'destination',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+      index: 'fk_shippable_products_destinations1_idx',
+    },
+    deliverableProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => DeliverableProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+    fkShippableProductsManufacturedProducts1: {
+      primary: true,
+      kind: 'm:1',
+      entity: () => ManufacturedProducts,
+      ref: true,
+      fieldName: 'product_id',
+      updateRule: 'no action',
+      deleteRule: 'no action',
+    },
+  },
+});
+",
+]
+`;

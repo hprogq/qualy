@@ -1,0 +1,22 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GH issue 2930 > mysql > should ignore custom pk name 1`] = `
+"set names utf8mb4;
+
+create table \`a\` (\`id\` int unsigned not null auto_increment primary key, \`prop\` varchar(255) not null) default character set utf8mb4 engine = InnoDB;
+"
+`;
+
+exports[`GH issue 2930 > postgresql (PK not override) > should not generate a sql naming PK 1`] = `
+"set names 'utf8';
+
+create table "a" ("id" serial primary key, "prop" varchar(255) not null);
+"
+`;
+
+exports[`GH issue 2930 > postgresql (PK override) > should not ignore custom pk name 1`] = `
+"set names 'utf8';
+
+create table "a" ("id" serial, "prop" varchar(255) not null, constraint "pk_a_id" primary key ("id"));
+"
+`;

@@ -1,0 +1,174 @@
+{
+  "name": "@mikro-orm/root",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "tests/bench/types"
+  ],
+  "version": "7.0.0",
+  "description": "TypeScript ORM for Node.js based on Data Mapper, Unit of Work and Identity Map patterns. Supports MongoDB, MySQL, PostgreSQL and SQLite databases as well as usage with vanilla JavaScript.",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/mikro-orm/mikro-orm.git"
+  },
+  "funding": "https://github.com/sponsors/b4nan",
+  "keywords": [
+    "orm",
+    "mongo",
+    "mongodb",
+    "mysql",
+    "mariadb",
+    "postgresql",
+    "sqlite",
+    "sqlite3",
+    "ts",
+    "typescript",
+    "js",
+    "javascript",
+    "entity",
+    "ddd",
+    "mikro-orm",
+    "unit-of-work",
+    "data-mapper",
+    "identity-map"
+  ],
+  "author": "Martin Adámek",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mikro-orm/mikro-orm/issues"
+  },
+  "homepage": "https://mikro-orm.io",
+  "scripts": {
+    "prepare": "husky",
+    "clean": "yarn workspaces foreach -Ap run clean && rimraf packages/*/*.tsbuildinfo",
+    "build": "yarn workspaces foreach -Ap --topological-dev run build",
+    "publish:prod": "lerna publish from-package --contents dist --force-publish",
+    "release:prod": "yarn build && yarn publish:prod",
+    "publish:next": "lerna publish from-package --contents dist --dist-tag next --force-publish",
+    "publish:rc": "lerna publish from-package --contents dist --dist-tag rc --force-publish",
+    "publish:jsr": "node scripts/publish-jsr.mjs",
+    "release:next": "yarn workspaces foreach -Ap run compile && yarn publish:next",
+    "release:pin-versions": "yarn workspaces foreach -Ap run copy -- --pin-versions",
+    "test": "vitest run",
+    "test:sqlite": "vitest run **/*.sqlite.test.ts **/*.win.test.ts",
+    "test:fast": "vitest run --exclude='tests/features/schema-generator'",
+    "bench": "tsx tests/bench/basic.bench.ts",
+    "bench:types": "bash -c 'for f in tests/bench/types/*.ts; do node --import=tsx \"$f\" || exit 1; done'",
+    "clean-tests": "rimraf temp tests/generated-entities",
+    "coverage": "yarn clean-tests && yarn test --coverage",
+    "lint": "oxlint packages tests --tsconfig=tsconfig.json --type-aware --type-check",
+    "lint:fix": "oxlint packages tests --tsconfig=tsconfig.json --fix --type-aware --type-check",
+    "format": "oxfmt packages tests --write",
+    "format:check": "oxfmt packages tests"
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  },
+  "lint-staged": {
+    "*.ts": [
+      "oxlint --fix",
+      "oxfmt --write --no-error-on-unmatched-pattern"
+    ]
+  },
+  "renovate": {
+    "extends": [
+      "config:base",
+      ":preserveSemverRanges",
+      ":semanticCommitTypeAll(chore)"
+    ],
+    "semanticCommits": "enabled",
+    "minimumReleaseAge": "1 day",
+    "separateMajorMinor": false,
+    "dependencyDashboard": false,
+    "packageRules": [
+      {
+        "matchUpdateTypes": [
+          "patch",
+          "minor"
+        ],
+        "groupName": "patch/minor dependencies",
+        "groupSlug": "all-non-major",
+        "automerge": true,
+        "automergeType": "branch"
+      }
+    ],
+    "schedule": [
+      "every weekday"
+    ],
+    "ignoreDeps": [
+      "mysql",
+      "@docusaurus/*",
+      "@apify/docusaurus-plugin-typedoc-api",
+      "typedoc"
+    ]
+  },
+  "engines": {
+    "node": ">= 22.17.0",
+    "yarn": ">=4.6.0"
+  },
+  "dependenciesMeta": {
+    "@swc/core": {
+      "built": true
+    },
+    "better-sqlite3": {
+      "built": true
+    },
+    "esbuild": {
+      "built": true
+    },
+    "nx": {
+      "built": true
+    },
+    "oracledb": {
+      "built": true
+    }
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.1",
+    "@commitlint/config-conventional": "21.2.0",
+    "@mikro-orm/mongo-highlighter": "1.0.0",
+    "@mikro-orm/sql-highlighter": "1.0.1",
+    "@swc-node/register": "1.12.1",
+    "@swc/core": "1.15.47",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.13.3",
+    "@types/oracledb": "7.0.2",
+    "@types/pg": "8.20.3",
+    "@types/pg-cursor": "2.7.2",
+    "@types/picomatch": "4.0.3",
+    "@types/semver": "7.8.0",
+    "@types/sqlstring": "2.3.2",
+    "@types/uuid": "11.0.0",
+    "@types/yargs": "17.0.35",
+    "@vitest/coverage-v8": "4.1.10",
+    "bson": "7.3.1",
+    "conditional-type-checks": "1.0.6",
+    "dataloader": "2.2.3",
+    "husky": "9.1.7",
+    "jiti": "2.7.0",
+    "jsr": "0.14.3",
+    "knex": "3.3.0",
+    "lerna": "10.0.0",
+    "lint-staged": "17.3.0",
+    "mongodb-memory-server-core": "11.2.0",
+    "oxfmt": "0.61.0",
+    "oxlint": "1.76.0",
+    "oxlint-tsgolint": "^7.0.0",
+    "reflect-metadata": "0.2.2",
+    "rimraf": "6.1.3",
+    "tsimp": "2.0.12",
+    "tsx": "4.23.5",
+    "typescript": "7.0.2",
+    "unplugin-swc": "1.5.9",
+    "uuid": "14.0.1",
+    "vitest": "4.1.10"
+  },
+  "resolutions": {
+    "lerna/js-yaml": "4.3.0",
+    "lerna/tar": "7.5.22"
+  },
+  "packageManager": "yarn@4.18.0"
+}

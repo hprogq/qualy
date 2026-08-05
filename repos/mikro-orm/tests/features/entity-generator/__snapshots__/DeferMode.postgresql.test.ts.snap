@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`defer-mode 1`] = `
+[
+  "import { Collection, PrimaryKeyProp, defineEntity, p } from '@mikro-orm/core';
+import { Test } from './Test';
+
+export class Locale {
+  [PrimaryKeyProp]?: 'code';
+  code!: string;
+  testCollection = new Collection<Test>(this);
+}
+
+export const LocaleSchema = defineEntity({
+  class: Locale,
+  properties: {
+    code: p.string().primary().length(10),
+    testCollection: () => p.oneToMany(Test).mappedBy('locale'),
+  },
+});
+",
+  "import { DeferMode, type Ref, defineEntity, p } from '@mikro-orm/core';
+import { Locale } from './Locale';
+
+export class Test {
+  id!: bigint;
+  firstName?: string;
+  middleInitial?: string;
+  lastName?: string;
+  governmentId?: string;
+  locale?: Ref<Locale>;
+}
+
+export const TestSchema = defineEntity({
+  class: Test,
+  uniques: [
+    {
+      name: 'must_be_different',
+      properties: ['governmentId'],
+      deferMode: DeferMode.INITIALLY_DEFERRED,
+    },
+  ],
+  properties: {
+    id: p.bigint().primary().autoincrement(false),
+    firstName: p.string().length(-1).nullable(),
+    middleInitial: p.character().nullable(),
+    lastName: p.string().nullable(),
+    governmentId: p.character().length(10).nullable().unique('must_be_different'),
+    locale: () => p.manyToOne(Locale).ref().name('locale').updateRule('no action').deleteRule('no action').nullable().deferMode(DeferMode.INITIALLY_DEFERRED),
+  },
+});
+",
+]
+`;

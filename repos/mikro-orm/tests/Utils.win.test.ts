@@ -1,0 +1,770 @@
+import { platform } from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { compareObjects, EntityMetadata, MikroORM, sql, Utils } from '@mikro-orm/sqlite';
+import { fs } from '@mikro-orm/core/fs-utils';
+
+import { lookupPathFromDecorator } from '../packages/decorators/src/utils.js';
+import { Author4 } from './entities-schema/Author4.js';
+import { initORMSqlite } from './bootstrap.js';
+
+class Test {}
+
+describe('Utils', () => {
+  let orm: MikroORM;
+
+  beforeAll(async () => (orm = await initORMSqlite()));
+  beforeEach(async () => orm.schema.clear());
+
+  test('getObjectType', () => {
+    class Foo {
+      get [Symbol.toStringTag]() {
+        return 'Foo.Bar';
+      }
+    }
+
+    expect(Utils.getObjectType(new Foo())).toBe('Foo.Bar');
+  });
+
+  test('isObject', () => {
+    expect(Utils.isObject(undefined)).toBe(false);
+    expect(Utils.isObject('a')).toBe(false);
+    expect(Utils.isObject(0)).toBe(false);
+    expect(Utils.isObject(5)).toBe(false);
+    expect(Utils.isObject(5.3)).toBe(false);
+    expect(Utils.isObject(['a'])).toBe(false);
+    expect(Utils.isObject(null)).toBe(false);
+    expect(Utils.isObject(() => 1)).toBe(false);
+    expect(
+      Utils.isObject(function () {
+        return 1;
+      }),
+    ).toBe(false);
+    expect(Utils.isObject({})).toBe(true);
+    expect(Utils.isObject(new Test())).toBe(true);
+    expect(Utils.isObject(new Date())).toBe(true);
+    expect(Utils.isObject(Test)).toBe(false);
+  });
+
+  test('isEntity', () => {
+    expect(Utils.isEntity(Author4.prototype)).toBe(true);
+    expect(Utils.isEntity(new Author4('a', 'b'))).toBe(true);
+  });
+
+  test('equals', () => {
+    expect(Utils.equals([1, 2, 3], [3, 2, 1])).toBe(false);
+    expect(Utils.equals([1, 2, 3], [1, 2, 3, 4])).toBe(false);
+    expect(Utils.equals([1, 2, 3, 4], [1, 2, 3])).toBe(false);
+    expect(Utils.equals([1, 2, 3], [1, 2, 3])).toBe(true);
+    expect(Utils.equals(Buffer.from([1, 2, 3]), Buffer.from([1, 2, 3]))).toBe(true);
+    expect(Utils.equals(Buffer.from([1, 2, 3, 4]), Buffer.from([1, 2, 3]))).toBe(false);
+    expect(Utils.equals(Buffer.from([1, 2, 3, 4]), Buffer.from([1, 2, 3, 5]))).toBe(false);
+    expect(Utils.equals({ a: 'a', b: 'c' }, { a: 'b', b: 'c' })).toBe(false);
+    expect(Utils.equals({ a: 'a', b: 'b', c: 'c' }, { a: 'b', b: 'b' })).toBe(false);
+    expect(Utils.equals({ a: 'a', b: 'b' }, { a: 'b', c: 'c' })).toBe(false);
+    expect(
+      Utils.equals({ a: 'a', b: 'c', c: { d: 'e', f: ['i', 'h'] } }, { a: 'b', b: 'c', c: { d: 'e', f: ['g', 'h'] } }),
+    ).toBe(false);
+    expect(Utils.equals({ a: 'a', b: 'c' }, { a: 'a', b: 'c' })).toBe(true);
+    expect(
+      Utils.equals({ a: 'a', b: 'c', c: { d: 'e', f: ['g', 'h'] } }, { a: 'b', b: 'c', c: { d: 'e', f: ['g', 'h'] } }),
+    ).toBe(false);
+    expect(
+      Utils.equals({ a: 'a', b: 'c', c: { d: 'e', f: ['g', 'h'] } }, { a: 'a', b: 'c', c: { d: 'e', f: ['g', 'h'] } }),
+    ).toBe(true);
+    expect(compareObjects(null, undefined)).toBe(true);
+    expect(compareObjects(Object.create(null), Object.create(null))).toBe(true);
+    expect(compareObjects({}, Object.create(null))).toBe(true);
+    expect(compareObjects(Object.create(null), {})).toBe(true);
+    expect(compareObjects({ a: Object.create(null) }, { a: {} })).toBe(true);
+    expect(compareObjects({}, Object.create(null))).toBe(true);
+    expect(compareObjects(new Test(), new Author4('n', 'e'))).toBe(false);
+    expect(compareObjects(sql`select 1`, sql`select 1`)).toBe(true);
+    expect(compareObjects(sql`select ${1}`, sql`select ${1}`)).toBe(true);
+    expect(compareObjects(sql`select ${1}`, sql`select ${2}`)).toBe(false);
+    expect(compareObjects(new Date('2024-10-01T08:54:48.651Z'), new Date('2024-10-01T08:54:48.651Z'))).toBe(true);
+    expect(compareObjects(new Date('2024-10-01T08:54:48.651Z'), new Date('2024-10-01T08:54:48.676Z'))).toBe(false);
+    expect(() => compareObjects(new Date('2024-10-01T08:54:48.651Z'), new Date(NaN))).toThrowError(
+      'Comparing invalid dates is not supported',
+    );
+    expect(() => compareObjects(new Date(NaN), new Date(NaN))).toThrowError('Comparing invalid dates is not supported');
+    expect(Utils.equals(NaN, NaN)).toBe(true);
+  });
+
+  test('merge', () => {
+    expect(Utils.merge({ a: 'a', b: 'c' }, { a: 'b', b: 'c' })).toEqual({ a: 'b', b: 'c' });
+    expect(
+      Utils.merge({ a: 'a', b: 'c', c: { d: 'e', f: ['i', 'h'] } }, { a: 'b', b: 'c', c: { d: 'e', f: ['g', 'h'] } }),
+    ).toEqual({ a: 'b', b: 'c', c: { d: 'e', f: ['g', 'h'] } });
+    expect(Utils.merge({ a: 'a', b: 'c' }, { a: 'a', b: 'c' })).toEqual({ a: 'a', b: 'c' });
+    expect(
+      Utils.merge({ a: 'a', b: 'c', c: { a: 'u', f: ['g', 'h'] } }, { a: 'b', b: 'c', c: { d: 'e', f: ['g', 'h'] } }),
+    ).toEqual({ a: 'b', b: 'c', c: { a: 'u', d: 'e', f: ['g', 'h'] } });
+    expect(Utils.merge({ a: 'a' }, { a: 'b', b: ['c'] })).toEqual({ a: 'b', b: ['c'] });
+    expect(Utils.merge({ a: 'a', b: ['c'] }, { b: [] })).toEqual({ a: 'a', b: [] });
+    expect(Utils.merge({ a: 'a', b: ['c'] }, { a: 'b' })).toEqual({ a: 'b', b: ['c'] });
+    expect(Utils.merge({ a: 'a', b: ['c'] }, { a: null })).toEqual({ a: null, b: ['c'] });
+    expect(Utils.merge({ a: 'a', b: ['c'] }, { a: undefined })).toEqual({ a: undefined, b: ['c'] });
+    expect(Utils.merge('a', 'b')).toEqual('a');
+    expect(Utils.mergeConfig({ a: 'a', b: ['c'] }, { a: undefined })).toEqual({ a: 'a', b: ['c'] });
+
+    // GH #4101
+    const source = {
+      nestedData: { foo: 'bar' },
+      moreDeep: { moreDeepData: { foo: 'bar' } },
+    };
+
+    expect(Utils.merge({ nestedData: null, moreDeep: { moreDeepData: null } }, source)).toEqual(source);
+    expect(Utils.merge({ nestedData: 'test', moreDeep: { moreDeepData: 'test' } }, source)).toEqual(source);
+    expect(Utils.merge({ nestedData: {}, moreDeep: { moreDeepData: {} } }, source)).toEqual(source);
+  });
+
+  test('merge should skip unsafe keys like __proto__', () => {
+    const target = {};
+    Utils.merge(target, JSON.parse('{"__proto__":{"polluted":"yes"}}'));
+    expect(({} as any).polluted).toBeUndefined();
+    expect(target).toEqual({});
+
+    // constructor and prototype should also be skipped
+    Utils.merge(target, { constructor: { polluted: true } });
+    expect(({} as any).polluted).toBeUndefined();
+  });
+
+  test('merge Buffers', () => {
+    const buffer = Buffer.from('Test buffer');
+    expect(Utils.merge({}, { a: buffer })).toEqual({ a: buffer });
+  });
+
+  describe('copy', () => {
+    test('should copy simple object', () => {
+      const a = { a: 'a', b: 'c' };
+      const b = Utils.copy(a);
+      b.a = 'b';
+      expect(a.a).toBe('a');
+      expect(b.a).toBe('b');
+      expect(Utils.copy(new Error('foo'))).toEqual(new Error('foo'));
+      expect(Utils.copy(/abc/gim)).toEqual(/abc/gim);
+
+      const re = /a/;
+      re.lastIndex = 1;
+      expect(Utils.copy(re)).toEqual(re);
+      expect(Utils.copy(re).lastIndex).toEqual(re.lastIndex);
+
+      const c = { a: 'a', b: 'c', inner: { foo: 'bar', p: Promise.resolve() } } as any;
+      const d = Utils.copy(c);
+      d.inner.lol = 'new';
+      expect(c.inner.lol).toBeUndefined();
+      expect(d.inner.lol).toBe('new');
+      expect(c.inner.p).toBeInstanceOf(Promise);
+    });
+
+    test('should honor a sync custom clone method but keep async-clonable resources by reference', () => {
+      const sync = {
+        value: 1,
+        clone() {
+          return { value: 2 };
+        },
+      };
+      expect(Utils.copy({ inner: sync }).inner).toEqual({ value: 2 });
+
+      // an async `clone()` signals a live resource (e.g. a PGlite instance) that
+      // the sync copy must keep by reference rather than invoke
+      let cloned = false;
+      const resource = {
+        async clone() {
+          cloned = true;
+          return {};
+        },
+      };
+      const copy = Utils.copy({ inner: resource });
+      expect(copy.inner).toBe(resource);
+      expect(cloned).toBe(false);
+    });
+
+    it('should copy child object even though getter property is dynamically injected', () => {
+      function NameDecorator<T extends { new (...args: any[]): {} }>(constructor: T) {
+        return class extends constructor {
+          name = constructor.name;
+        };
+      }
+
+      class Parent {
+        constructor(private readonly __name__: string) {}
+
+        get name() {
+          return this.__name__;
+        }
+      }
+
+      @NameDecorator
+      class Child extends Parent {}
+
+      // given
+      const expected = 'child_name';
+      const child = new Child(expected);
+
+      // when
+      const copied = Utils.copy(child);
+
+      // then
+      expect(copied).toBeInstanceOf(Child);
+      expect(copied.name).toBe(expected);
+    });
+
+    describe('should copy TypedArray', () => {
+      test('should copy Uint8Array', () => {
+        const a = new Uint8Array([1, 2, 3]);
+        const b = Utils.copy(a);
+        expect(b).not.toBe(a);
+        expect(b.toString()).toBe(a.toString());
+        b[0] = 99;
+        expect(a[0]).toBe(1);
+      });
+      test('should copy Int8Array', () => {
+        const a = new Int8Array([-1, 1]);
+        const b = Utils.copy(a);
+        expect(b).not.toBe(a);
+        expect(b.toString()).toBe(a.toString());
+        b[0] = 99;
+        expect(a[0]).toBe(-1);
+      });
+    });
+  });
+
+  test('getConstructorParams', () => {
+    expect(Utils.getConstructorParams(Test)).toEqual(undefined);
+    expect(Utils.getConstructorParams(Author4)).toEqual(['name', 'email']);
+    expect(Utils.getConstructorParams('')).toEqual(undefined);
+    expect(Utils.getConstructorParams('constructor')).toEqual(undefined);
+  });
+
+  test('defaultValue', () => {
+    const prop1 = {} as any;
+    Utils.defaultValue(prop1, 'test', 'default');
+    expect(prop1.test).toBe('default');
+    const prop2 = { test: 'foo' } as any;
+    Utils.defaultValue(prop2, 'test', 'default');
+    expect(prop2.test).toBe('foo');
+  });
+
+  test('extractPK with PK uuid', () => {
+    const meta = { primaryKeys: ['uuid'] } as EntityMetadata;
+    expect(Utils.extractPK({ id: '...' }, meta)).toBeNull();
+    expect(Utils.extractPK({ _id: '...' }, meta)).toBeNull();
+    expect(Utils.extractPK({ foo: 'bar' }, meta)).toBeNull();
+    expect(Utils.extractPK({ uuid: 'uuid-123' }, meta)).toBe('uuid-123');
+  });
+
+  test('normalizePath', () => {
+    expect(fs.normalizePath()).toBe('.');
+    expect(fs.normalizePath('./test')).toBe('./test');
+    expect(fs.normalizePath('./test/foo/bar/')).toBe('./test/foo/bar');
+    expect(fs.normalizePath('test/')).toBe('./test');
+    expect(fs.normalizePath('/test')).toBe('/test');
+    expect(fs.normalizePath('./foo', '/test')).toBe('/test');
+  });
+
+  test.skipIf(platform() === 'win32')('normalizePath [posix]', () => {
+    expect(fs.normalizePath('file:///test')).toBe('/test');
+    expect(fs.normalizePath('./foo', 'file:///test')).toBe('/test');
+  });
+
+  test('normalizePath [windows]', () => {
+    const expected = platform() === 'win32' ? 'C:/test' : '/C:/test';
+    expect(fs.normalizePath('file:///C:/test')).toBe(expected);
+    expect(fs.normalizePath('./foo', 'file:///C:/test')).toBe(expected);
+  });
+
+  test('relativePath', () => {
+    expect(fs.relativePath('', process.cwd())).toBe('');
+    expect(fs.relativePath('./test', process.cwd())).toBe('./test');
+    expect(fs.relativePath('test', process.cwd())).toBe('./test');
+    expect(fs.relativePath(process.cwd() + '/tests/', process.cwd())).toBe('./tests');
+    expect(fs.relativePath(process.cwd() + '/tests/cli/', process.cwd())).toBe('./tests/cli');
+    expect(fs.relativePath(pathToFileURL(process.cwd() + '/tests/cli/').href, process.cwd())).toBe('./tests/cli');
+    expect(fs.relativePath(process.cwd() + '/tests/cli/', pathToFileURL(process.cwd()).href)).toBe('./tests/cli');
+  });
+
+  test('absolutePath', () => {
+    expect(fs.absolutePath('./test')).toBe(fs.normalizePath(process.cwd() + '/test'));
+    expect(fs.absolutePath('test')).toBe(fs.normalizePath(process.cwd() + '/test'));
+    expect(fs.absolutePath(process.cwd() + '/tests/')).toBe(fs.normalizePath(process.cwd() + '/tests'));
+    expect(fs.absolutePath('./tests/cli')).toBe(fs.normalizePath(process.cwd() + '/tests/cli'));
+    expect(fs.absolutePath('')).toBe(fs.normalizePath(process.cwd()));
+    expect(fs.absolutePath(pathToFileURL(process.cwd() + '/tests/').href)).toBe(
+      fs.normalizePath(process.cwd() + '/tests'),
+    );
+  });
+
+  test('pathExists wrapper', async () => {
+    expect(fs.pathExists('LIC*')).toBe(true);
+    expect(fs.pathExists('tests')).toBe(true);
+    expect(fs.pathExists('tests/**/*.ts')).toBe(true);
+  });
+
+  test('isPlainObject', async () => {
+    expect(Utils.isPlainObject({ foo: 'bar' })).toBe(true);
+    class Foo {}
+    expect(Utils.isPlainObject(new Foo())).toBe(false);
+    expect(Utils.isPlainObject(Object.create(null))).toBe(true);
+  });
+
+  test('extractEnumKeys', async () => {
+    enum PublisherType {
+      LOCAL = 'local',
+      GLOBAL = 'global',
+    }
+
+    enum PublisherType2 {
+      LOCAL = 'LOCAL',
+      GLOBAL = 'GLOBAL',
+    }
+
+    enum PublisherType3 {
+      LOCAL = 'local',
+      GLOBAL = 'GLOBAL',
+    }
+
+    enum Enum2 {
+      PROP1 = 1,
+      PROP2 = 2,
+    }
+
+    enum Enum3 {
+      Queued,
+      Running,
+      Failed,
+      Cancelled,
+    }
+
+    // GH #7500: enums merged with a namespace containing functions
+    // simulate the runtime shape produced by `enum X {} namespace X { export function f() {} }`
+    const NumericWithNs = {
+      0: 'Pending',
+      1: 'Success',
+      2: 'Error',
+      3: 'Running',
+      Pending: 0,
+      Success: 1,
+      Error: 2,
+      Running: 3,
+      isComplete(status: number) {
+        return status === 1 || status === 2;
+      },
+    };
+    const StringWithNs = {
+      LOCAL: 'local',
+      GLOBAL: 'global',
+      isLocal(type: string) {
+        return type === 'local';
+      },
+    };
+
+    expect(Utils.extractEnumValues(PublisherType)).toEqual(['local', 'global']);
+    expect(Utils.extractEnumValues(PublisherType2)).toEqual(['LOCAL', 'GLOBAL']);
+    expect(Utils.extractEnumValues(PublisherType3)).toEqual(['local', 'GLOBAL']);
+    expect(Utils.extractEnumValues(Enum2)).toEqual([1, 2]);
+    expect(Utils.extractEnumValues(Enum3)).toEqual([0, 1, 2, 3]);
+    expect(Utils.extractEnumValues(NumericWithNs)).toEqual([0, 1, 2, 3]);
+    expect(Utils.extractEnumValues(StringWithNs)).toEqual(['local', 'global']);
+  });
+
+  test('lookup path from decorator', () => {
+    // with tslib, compiled
+    const stack1 = [
+      '    at Function.lookupPathFromDecorator (/usr/local/var/www/my-project/node_modules/mikro-orm/dist/utils/Utils.js:170:23)',
+      '    at /usr/local/var/www/my-project/node_modules/mikro-orm/dist/legacy/PrimaryKey.js:12:23',
+      '    at DecorateProperty (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:553:33)',
+      '    at Object.decorate (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:123:24)',
+      '    at Object.__decorate (/usr/local/var/www/my-project/node_modules/tslib/tslib.js:92:96)',
+      '    at Object.<anonymous> (/usr/local/var/www/my-project/dist/entities/Customer.js:20:9)',
+      '    at Module._compile (internal/modules/cjs/loader.js:776:30)',
+      '    at Object.Module._extensions.js (internal/modules/cjs/loader.js:787:10)',
+      '    at Module.load (internal/modules/cjs/loader.js:643:32)',
+      '    at Function.Module._load (internal/modules/cjs/loader.js:556:12)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack1)).toBe('/usr/local/var/www/my-project/dist/entities/Customer.js');
+
+    // no tslib, via ts-node
+    const stack2 = [
+      '    at Function.lookupPathFromDecorator (/usr/local/var/www/my-project/node_modules/mikro-orm/dist/utils/Utils.js:170:23)',
+      '    at /usr/local/var/www/my-project/node_modules/mikro-orm/dist/legacy/PrimaryKey.js:12:23',
+      '    at DecorateProperty (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:553:33)',
+      '    at Object.decorate (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:123:24)',
+      '    at __decorate (/usr/local/var/www/my-project/src/entities/Customer.ts:4:92)',
+      '    at Object.<anonymous> (/usr/local/var/www/my-project/src/entities/Customer.ts:9:3)',
+      '    at Module._compile (internal/modules/cjs/loader.js:776:30)',
+      '    at Module.m._compile (/usr/local/var/www/my-project/node_modules/ts-node/src/index.ts:473:23)',
+      '    at Module._extensions.js (internal/modules/cjs/loader.js:787:10)',
+      '    at Object.require.extensions.<computed> [as .ts] (/usr/local/var/www/my-project/node_modules/ts-node/src/index.ts:476:12)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack2)).toBe('/usr/local/var/www/my-project/src/entities/Customer.ts');
+
+    // no parens
+    const stack3 = [
+      '    at Function.lookupPathFromDecorator (/usr/local/var/www/my-project/node_modules/mikro-orm/dist/utils/Utils.js:170:23)',
+      '    at /usr/local/var/www/my-project/node_modules/mikro-orm/dist/legacy/PrimaryKey.js:12:23',
+      '    at DecorateProperty (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:553:33)',
+      '    at Object.decorate (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:123:24)',
+      '    at Object.__decorate (/usr/local/var/www/my-project/node_modules/tslib/tslib.js:92:96)',
+      '    at /usr/local/var/www/my-project/dist/entities/Customer.js:20:9',
+      '    at Module._compile (internal/modules/cjs/loader.js:776:30)',
+      '    at Object.Module._extensions.js (internal/modules/cjs/loader.js:787:10)',
+      '    at Module.load (internal/modules/cjs/loader.js:643:32)',
+      '    at Function.Module._load (internal/modules/cjs/loader.js:556:12)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack3)).toBe('/usr/local/var/www/my-project/dist/entities/Customer.js');
+
+    // with babel we search for `_applyDecoratedDescriptor`
+    const stack4 = [
+      '    at Function.lookupPathFromDecorator (/usr/local/var/www/my-project/node_modules/@mikro-orm/core/utils/Utils.js:360:26)',
+      '    at Function.getMetadataFromDecorator (/usr/local/var/www/my-project/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:21:36)',
+      '    at /usr/local/var/www/my-project/node_modules/@mikro-orm/core/legacy/PrimaryKey.js:8:49',
+      '    at /usr/local/var/www/my-project/dist/entities/Customer.js:20:9',
+      '    at Array.reduce (<anonymous>)',
+      '    at _applyDecoratedDescriptor (/usr/local/var/www/my-project/dist/entities/Customer.js:20:9)',
+      '    at Object.<anonymous> (/usr/local/var/www/my-project/dist/entities/Customer.js:20:9)',
+      '    at Module._compile (internal/modules/cjs/loader.js:1138:30)',
+      '    at Object.Module._extensions..js (internal/modules/cjs/loader.js:1158:10)',
+      '    at Module.load (internal/modules/cjs/loader.js:986:32)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack4)).toBe('/usr/local/var/www/my-project/dist/entities/Customer.js');
+
+    // using babel will ignore the path when there is no `__decorate` or `_applyDecoratedDescriptor`
+    // @see https://github.com/mikro-orm/mikro-orm/issues/790
+    const stack5 = [
+      '    at Function.lookupPathFromDecorator (/usr/local/var/www/my-project/node_modules/@mikro-orm/core/utils/Utils.js:360:26)',
+      '    at Function.getMetadataFromDecorator (/usr/local/var/www/my-project/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:21:36)',
+      '    at /usr/local/var/www/my-project/node_modules/@mikro-orm/core/legacy/Entity.js:8:49',
+      '    at Object.<anonymous> (/usr/local/var/www/my-project/dist/entities/Customer.js:20:9)',
+      '    at Module._compile (internal/modules/cjs/loader.js:1138:30)',
+      '    at Object.Module._extensions..js (internal/modules/cjs/loader.js:1158:10)',
+      '    at Module.load (internal/modules/cjs/loader.js:986:32)',
+      '    at Function.Module._load (internal/modules/cjs/loader.js:879:14)',
+      '    at Module.require (internal/modules/cjs/loader.js:1026:19)',
+      '    at require (internal/modules/cjs/helpers.js:72:18)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack5)).toBe('Customer');
+
+    // unknown type of stack trace fallback
+    expect(
+      lookupPathFromDecorator('Customer', [
+        '    at Object.__decorate (/usr/local/var/www/my-project/node_modules/tslib/tslib.js:92:96)',
+        '    at Object.<anonymous> ( ... )',
+      ]),
+    ).toBe('Customer');
+
+    // no decorated line found
+    expect(lookupPathFromDecorator('Customer')).toBe('Customer');
+
+    // when the constructor name is used in place of `__decorate` then try `Reflect.decorate`
+    expect(
+      lookupPathFromDecorator('AuthorizationTokenEntity', [
+        '    at Function.lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:502:26)',
+        '    at Function.getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:33:36)',
+        '    at /opt/app/node_modules/@mikro-orm/core/legacy/Entity.js:8:49',
+        '    at DecorateConstructor (/opt/app/node_modules/reflect-metadata/Reflect.js:541:33)',
+        '    at Reflect.decorate (/opt/app/node_modules/reflect-metadata/Reflect.js:130:24)',
+        '    at AuthorizationTokenEntity (/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntity.js:19:92)',
+        '    at Object.<anonymous> (/opt/app/packages/entity/src/entity/AuthorizationTokenEntity.ts:14:38)',
+        '    at Module._compile (node:internal/modules/cjs/loader:1149:14)',
+        '    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1203:10)',
+        '    at Module.load (node:internal/modules/cjs/loader:1027:32)',
+      ]),
+    ).toBe('/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntity.js');
+
+    // when both `__decorate` and `Reflect.decorator` exist in the stack (`__decorate` first)
+    expect(
+      lookupPathFromDecorator('AuthorizationTokenEntity', [
+        '    at Function.lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:502:26)',
+        '    at Function.getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:33:36)',
+        '    at /opt/app/node_modules/@mikro-orm/core/legacy/Entity.js:8:49',
+        '    at DecorateConstructor (/opt/app/node_modules/reflect-metadata/Reflect.js:541:33)',
+        '    at __decorate (/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntityFromDecorate.js:14:38)',
+        '    at Reflect.decorate (/opt/app/node_modules/reflect-metadata/Reflect.js:130:24)',
+        '    at AuthorizationTokenEntity (/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntityFromReflectDecorate.js:19:92)',
+        '    at Object.<anonymous> (/opt/app/packages/entity/src/entity/AuthorizationTokenEntity.ts:14:38)',
+        '    at Module._compile (node:internal/modules/cjs/loader:1149:14)',
+        '    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1203:10)',
+        '    at Module.load (node:internal/modules/cjs/loader:1027:32)',
+      ]),
+    ).toBe('/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntityFromDecorate.js');
+
+    // when both `__decorate` and `Reflect.decorator` exist in the stack (`__decorate` last)
+    expect(
+      lookupPathFromDecorator('AuthorizationTokenEntity', [
+        '    at Function.lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:502:26)',
+        '    at Function.getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:33:36)',
+        '    at /opt/app/node_modules/@mikro-orm/core/legacy/Entity.js:8:49',
+        '    at DecorateConstructor (/opt/app/node_modules/reflect-metadata/Reflect.js:541:33)',
+        '    at Reflect.decorate (/opt/app/node_modules/reflect-metadata/Reflect.js:130:24)',
+        '    at AuthorizationTokenEntity (/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntityFromReflectDecorate.js:19:92)',
+        '    at __decorate (/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntityFromDecorate.js:14:38)',
+        '    at Object.<anonymous> (/opt/app/packages/entity/src/entity/AuthorizationTokenEntity.ts:14:38)',
+        '    at Module._compile (node:internal/modules/cjs/loader:1149:14)',
+        '    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1203:10)',
+        '    at Module.load (node:internal/modules/cjs/loader:1027:32)',
+      ]),
+    ).toBe('/opt/app/packages/entity/dist/node/entity/AuthorizationTokenEntityFromReflectDecorate.js');
+
+    expect(
+      lookupPathFromDecorator('Requirement', [
+        'Error',
+        '    at Function.lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:508:26)',
+        '    at Function.getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:26:36)',
+        '    at /opt/app/node_modules/@mikro-orm/core/legacy/Entity.js:8:49',
+        '    at DecorateConstructor (/opt/app/node_modules/reflect-metadata/Reflect.js:541:33)',
+        '    at Reflect.decorate (/opt/app/node_modules/reflect-metadata/Reflect.js:130:24)',
+        '    at Object.__decorate (/opt/app/node_modules/tslib/tslib.js:99:96)',
+        '    at Object.<anonymous> (/opt/app/entity/requirement.ts:23:23)',
+        '    at Module._compile (node:internal/modules/cjs/loader:1159:14)',
+        '    at Module.m._compile (/opt/app/node_modules/ts-node/src/index.ts:1618:23)',
+        '    at Module.m._compile (/opt/app/node_modules/ts-node/src/index.ts:1618:23)',
+      ]),
+    ).toBe('/opt/app/entity/requirement.ts');
+
+    // TypeScript 5+ native ES decorators use `__esDecorate` helper (inlined into the user file)
+    // @see https://github.com/mikro-orm/mikro-orm/issues/7583
+    expect(
+      lookupPathFromDecorator('Hello', [
+        'Error',
+        '    at lookupPathFromDecorator (file:///private/tmp/app/node_modules/@mikro-orm/decorators/utils.js:86:20)',
+        '    at getMetadataFromDecorator (file:///private/tmp/app/node_modules/@mikro-orm/decorators/utils.js:131:14)',
+        '    at file:///private/tmp/app/node_modules/@mikro-orm/decorators/es/Entity.js:6:18',
+        '    at __esDecorate (file:///private/tmp/app/dist/entities/Hello.entity.js:12:40)',
+        '    at <static_initializer> (file:///private/tmp/app/dist/entities/Hello.entity.js:56:13)',
+        '    at file:///private/tmp/app/dist/entities/Hello.entity.js:48:17',
+        '    at file:///private/tmp/app/dist/entities/Hello.entity.js:69:3',
+        '    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)',
+      ]),
+    ).toBe('file:///private/tmp/app/dist/entities/Hello.entity.js');
+  });
+
+  test('lookup path from decorator with bun', () => {
+    // bun version < 1.2.7 (DecorateProperty)
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:636:20)',
+        '    at getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:28:51)',
+        '    at <anonymous> (/opt/app/node_modules/@mikro-orm/core/legacy/PrimaryKey.js:9:67)',
+        '    at DecorateProperty (/opt/app/node_modules/reflect-metadata/Reflect.js:561:67)',
+        '    at A (bun:wrap:1:2617)',
+        '    at module code (/opt/app/src/entities/Book.ts:11:42)',
+        '    at moduleEvaluation (:1:11)',
+        '    at <anonymous> (:2:1)',
+        '    at processTicksAndRejections (:12:39)',
+      ]),
+    ).toBe('/opt/app/src/entities/Book.ts');
+
+    // bun version < 1.2.7 (DecorateConstructor)
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:636:20)',
+        '    at getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:28:51)',
+        '    at <anonymous> (/opt/app/node_modules/@mikro-orm/core/legacy/Entity.js:8:47)',
+        '    at DecorateConstructor (/opt/app/node_modules/reflect-metadata/Reflect.js:549:67)',
+        '    at A (bun:wrap:1:2617)',
+        '    at module code (/opt/app/src/entities/Book.ts:9:8)',
+        '    at moduleEvaluation (:1:11)',
+        '    at <anonymous> (:2:1)',
+        '    at processTicksAndRejections (:12:39)',
+      ]),
+    ).toBe('/opt/app/src/entities/Book.ts');
+
+    // bun version >= 1.2.7 (DecorateProperty)
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:657:30)',
+        '    at getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:30:95)',
+        '    at <anonymous> (/opt/app/node_modules/@mikro-orm/core/legacy/PrimaryKey.js:10:49)',
+        '    at DecorateProperty (/opt/app/node_modules/reflect-metadata/Reflect.js:561:33)',
+        '    at decorate (/opt/app/node_modules/reflect-metadata/Reflect.js:136:24)',
+        '    at d (bun:wrap:1:1558)',
+        '    at /opt/app/src/entities/Book.ts:11:42',
+        '    at moduleEvaluation (native:1:11)',
+        '    at <anonymous> (native:2)',
+        '    at processTicksAndRejections (native:7:39)',
+      ]),
+    ).toBe('/opt/app/src/entities/Book.ts');
+
+    // bun version >= 1.2.7 (DecorateConstructor)
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at lookupPathFromDecorator (/opt/app/node_modules/@mikro-orm/core/utils/Utils.js:657:30)',
+        '    at getMetadataFromDecorator (/opt/app/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:30:95)',
+        '    at <anonymous> (/opt/app/node_modules/@mikro-orm/core/legacy/Entity.js:8:49)',
+        '    at DecorateConstructor (/opt/app/node_modules/reflect-metadata/Reflect.js:549:33)',
+        '    at decorate (/opt/app/node_modules/reflect-metadata/Reflect.js:143:24)',
+        '    at d (bun:wrap:1:1558)',
+        '    at /opt/app/src/entities/Book.ts:9:8',
+        '    at moduleEvaluation (native:1:11)',
+        '    at <anonymous> (native:2)',
+        '    at processTicksAndRejections (native:7:39)',
+      ]),
+    ).toBe('/opt/app/src/entities/Book.ts');
+
+    // using bun build for generating a standalone binary will ignore the path as there is no reflect-metadata in the stack trace
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at lookupPathFromDecorator (/$bunfs/root/app-build:40282:33)',
+        '    at getMetadataFromDecorator (/$bunfs/root/app-build:52487:57)',
+        '    at <anonymous> (/$bunfs/root/app-build:55177:71)',
+        '    at DecorateProperty (/$bunfs/root/app-build:41850:36)',
+        '    at __legacyDecorateClassTS (/$bunfs/root/app-build:50:25)',
+        '    at module code (/$bunfs/root/app-build:284492:24)',
+        '    at moduleEvaluation (:1:11)',
+        '    at moduleEvaluation (:1:11)',
+        '    at <anonymous> (:2:1)',
+      ]),
+    ).toBe('Book');
+
+    // invalid stack trace - not complete
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at lookupPathFromDecorator (/home/ruby/workspace/bun-playground/node_modules/@mikro-orm/core/utils/Utils.js:400:33)',
+        '    at getMetadataFromDecorator (/home/ruby/workspace/bun-playground/node_modules/@mikro-orm/core/metadata/MetadataStorage.js:27:57)',
+        '    at <anonymous> (/home/ruby/workspace/bun-playground/node_modules/@mikro-orm/core/legacy/Entity.js:4:71)',
+        '    at DecorateConstructor (/home/ruby/workspace/bun-playground/node_modules/reflect-metadata/Reflect.js:171:61)',
+        '    at A (bun:wrap:1:2617)',
+      ]),
+    ).toBe('Book');
+
+    // bun with transpiled decorator helpers (`__decorate`)
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at <anonymous> (/usr/local/var/www/my-project/dist/entities/Book.js:16:54)',
+        '    at __decorate (/usr/local/var/www/my-project/dist/entities/Book.js:4:110)',
+        '    at /usr/local/var/www/my-project/dist/entities/Book.js:22',
+        '    at moduleEvaluation (native:1:11)',
+        '    at moduleEvaluation (native:1:11)',
+        '    at loadAndEvaluateModule (native:2)',
+      ]),
+    ).toBe('/usr/local/var/www/my-project/dist/entities/Book.js');
+
+    // bun with native ES decorators (`bun:wrap`)
+    expect(
+      lookupPathFromDecorator('Book', [
+        'Error',
+        '    at <anonymous> (/opt/app/src/entities/Book.ts:5:47)',
+        '    at se (bun:wrap:1:3694)',
+        '    at /opt/app/src/entities/Book.ts:16',
+        '    at moduleEvaluation (native:1:11)',
+        '    at moduleEvaluation (native:1:11)',
+        '    at loadAndEvaluateModule (native:2)',
+      ]),
+    ).toBe('/opt/app/src/entities/Book.ts');
+  });
+
+  test('lookup path from decorator on windows', () => {
+    // with tslib, via ts-node
+    const stack1 = [
+      '    at Function.lookupPathFromDecorator (C:\\www\\my-project\\node_modules\\mikro-orm\\dist\\utils\\Utils.js:175:26)',
+      '    at C:\\www\\my-project\\node_modules\\mikro-orm\\dist\\legacy\\PrimaryKey.js:12:23',
+      '    at Object.__decorate (C:\\www\\my-project\\node_modules\\tslib\\tslib.js:93:114)',
+      '    at Object.<anonymous> (C:\\www\\my-project\\src\\entities\\Customer.ts:7:5)',
+      '    at Module._compile (internal/modules/cjs/loader.js:936:30)',
+      '    at Module.m._compile (C:\\www\\my-project\\node_modules\\ts-node\\src\\index.ts:493:23)',
+      '    at Module._extensions.js (internal/modules/cjs/loader.js:947:10)',
+      '    at Object.require.extensions.<computed> [as .ts] (C:\\www\\my-project\\node_modules\\ts-node\\src\\index.ts:496:12)',
+      '    at Module.load (internal/modules/cjs/loader.js:790:32)',
+      '    at Function.Module._load (internal/modules/cjs/loader.js:703:12)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack1)).toBe('C:\\www\\my-project\\src\\entities\\Customer.ts');
+  });
+
+  test('lookup path from decorator loaded from an ES module [posix]', () => {
+    // with tslib, via ts-node
+    const stack1 = [
+      '    at Function.lookupPathFromDecorator (/usr/local/var/www/my-project/node_modules/mikro-orm/dist/utils/Utils.js:170:23)',
+      '    at /usr/local/var/www/my-project/node_modules/mikro-orm/dist/legacy/PrimaryKey.js:12:23',
+      '    at DecorateProperty (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:553:33)',
+      '    at Object.decorate (/usr/local/var/www/my-project/node_modules/reflect-metadata/Reflect.js:123:24)',
+      '    at __decorate (file:///usr/local/var/www/my-project/src/entities/Customer.ts:4:92)',
+      '    at Object.<anonymous> (/usr/local/var/www/my-project/src/entities/Customer.ts:9:3)',
+      '    at Module._compile (internal/modules/cjs/loader.js:776:30)',
+      '    at Module.m._compile (/usr/local/var/www/my-project/node_modules/ts-node/src/index.ts:473:23)',
+      '    at Module._extensions.js (internal/modules/cjs/loader.js:787:10)',
+      '    at Object.require.extensions.<computed> [as .ts] (/usr/local/var/www/my-project/node_modules/ts-node/src/index.ts:476:12)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack1)).toBe(
+      'file:///usr/local/var/www/my-project/src/entities/Customer.ts',
+    );
+  });
+
+  test('lookup path from decorator loaded from an ES module [windows]', () => {
+    // with tslib, via ts-node
+    const stack1 = [
+      '    at Function.lookupPathFromDecorator (C:\\www\\my-project\\node_modules\\mikro-orm\\dist\\utils\\Utils.js:175:26)',
+      '    at C:\\www\\my-project\\node_modules\\mikro-orm\\dist\\legacy\\PrimaryKey.js:12:23',
+      '    at Object.__decorate (C:\\www\\my-project\\node_modules\\tslib\\tslib.js:93:114)',
+      '    at Object.<anonymous> (file:///C:/www/my-project/src/entities/Customer.ts:7:5)',
+      '    at Module._compile (internal/modules/cjs/loader.js:936:30)',
+      '    at Module.m._compile (C:\\www\\my-project\\node_modules\\ts-node\\src\\index.ts:493:23)',
+      '    at Module._extensions.js (internal/modules/cjs/loader.js:947:10)',
+      '    at Object.require.extensions.<computed> [as .ts] (C:\\www\\my-project\\node_modules\\ts-node\\src\\index.ts:496:12)',
+      '    at Module.load (internal/modules/cjs/loader.js:790:32)',
+      '    at Function.Module._load (internal/modules/cjs/loader.js:703:12)',
+    ];
+    expect(lookupPathFromDecorator('Customer', stack1)).toBe('file:///C:/www/my-project/src/entities/Customer.ts');
+  });
+
+  test('tryImport', async () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+    warnSpy.mockImplementationOnce(i => i);
+    const ret = await Utils.tryImport({ module: 'not-existing-dep', warning: 'not found' });
+    expect(ret).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith('not found');
+  });
+
+  test('getPrimaryKeyCond', () => {
+    // @ts-expect-error no PK so this correctly fails compilation
+    expect(Utils.getPrimaryKeyCond({ a: null }, ['a'])).toBe(null);
+  });
+
+  test('asArray', () => {
+    expect(Utils.asArray('a')).toEqual(['a']);
+    expect(Utils.asArray(['a'])).toEqual(['a']);
+    expect(Utils.asArray(new Set(['a']))).toEqual(['a']);
+  });
+
+  test('getObjectKeysSize', () => {
+    expect(Utils.getObjectKeysSize({ a: 'a' })).toEqual(1);
+    expect(Utils.getObjectKeysSize({ a: 'a', __proto__: null })).toEqual(1);
+  });
+
+  test('hasObjectKeys', () => {
+    expect(Utils.hasObjectKeys({})).toEqual(false);
+    expect(Utils.hasObjectKeys({ __proto__: null })).toEqual(false);
+    expect(Utils.hasObjectKeys({ a: 'a' })).toEqual(true);
+    expect(Utils.hasObjectKeys({ a: 'a', __proto__: null })).toEqual(true);
+  });
+
+  test('removeDuplicates', () => {
+    expect(Utils.removeDuplicates(['foo', 'bar', 'foo', 'bar2'])).toEqual(['foo', 'bar', 'bar2']);
+    expect(Utils.removeDuplicates([{ v: 'foo' }, { v: 'bar' }, { v: 'foo' }, { v: 'bar2' }])).toEqual([
+      { v: 'foo' },
+      { v: 'bar' },
+      { v: 'bar2' },
+    ]);
+  });
+
+  test('getORMPackageVersion', () => {
+    const version = fs.getORMPackageVersion('@mikro-orm/core');
+    expect(version).toBeDefined();
+    expect(typeof version).toBe('string');
+  });
+
+  test('getPackageConfig', () => {
+    const config = fs.getPackageConfig();
+    expect(config).toBeDefined();
+    expect(config.name).toBe('@mikro-orm/root');
+  });
+
+  afterAll(async () => orm.close(true));
+});

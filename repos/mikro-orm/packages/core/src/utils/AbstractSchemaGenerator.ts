@@ -1,0 +1,176 @@
+import type {
+  ClearDatabaseOptions,
+  DropSchemaOptions,
+  EntityMetadata,
+  ISchemaGenerator,
+  UpdateSchemaOptions,
+  CreateSchemaOptions,
+  RefreshDatabaseOptions,
+  EnsureDatabaseOptions,
+} from '../typings.js';
+import { CommitOrderCalculator } from '../unit-of-work/CommitOrderCalculator.js';
+import { type EntityManagerType, type IDatabaseDriver } from '../drivers/IDatabaseDriver.js';
+import type { MetadataStorage } from '../metadata/MetadataStorage.js';
+import type { Configuration } from './Configuration.js';
+import { EntityManager } from '../EntityManager.js';
+
+export abstract class AbstractSchemaGenerator<D extends IDatabaseDriver> implements ISchemaGenerator {
+  protected readonly em?: D[typeof EntityManagerType];
+  protected readonly driver: D;
+  protected readonly config: Configuration;
+  protected readonly metadata: MetadataStorage;
+  protected readonly platform: ReturnType<D['getPlatform']>;
+  protected readonly connection: ReturnType<D['getConnection']>;
+
+  constructor(em: D | D[typeof EntityManagerType]) {
+    this.em = em instanceof EntityManager ? em : undefined;
+    this.driver = em instanceof EntityManager ? (em.getDriver() as D) : em;
+    this.config = this.driver.config;
+    this.metadata = this.driver.getMetadata();
+    this.platform = this.driver.getPlatform() as ReturnType<D['getPlatform']>;
+    this.connection = this.driver.getConnection() as ReturnType<D['getConnection']>;
+  }
+
+  async create(options?: CreateSchemaOptions): Promise<void> {
+    this.notImplemented();
+  }
+
+  /**
+   * Returns true if the database was created.
+   */
+  async ensureDatabase(options?: EnsureDatabaseOptions): Promise<boolean> {
+    this.notImplemented();
+  }
+
+  async refresh(options?: RefreshDatabaseOptions): Promise<void> {
+    if (options?.dropDb) {
+      const name = this.config.get('dbName')!;
+      await this.dropDatabase(name);
+      await this.createDatabase(name);
+    } else {
+      await this.ensureDatabase();
+      await this.drop(options);
+    }
+
+    if (options?.createSchema !== false) {
+      await this.create(options);
+    }
+  }
+
+  async clear(options?: ClearDatabaseOptions): Promise<void> {
+    for (const meta of this.getOrderedMetadataForClear(options?.schema).reverse()) {
+      await this.driver.nativeDelete(meta.class, {}, options);
+    }
+
+    if (options?.clearIdentityMap ?? true) {
+      this.clearIdentityMap();
+    }
+  }
+
+  protected clearIdentityMap(): void {
+    /* v8 ignore next */
+    if (!this.em) {
+      return;
+    }
+
+    const allowGlobalContext = this.config.get('allowGlobalContext');
+    this.config.set('allowGlobalContext', true);
+    this.em.clear();
+    this.config.set('allowGlobalContext', allowGlobalContext);
+  }
+
+  async getCreateSchemaSQL(options?: CreateSchemaOptions): Promise<string> {
+    this.notImplemented();
+  }
+
+  async drop(options?: DropSchemaOptions): Promise<void> {
+    this.notImplemented();
+  }
+
+  async getDropSchemaSQL(options?: Omit<DropSchemaOptions, 'dropDb'>): Promise<string> {
+    this.notImplemented();
+  }
+
+  async update(options?: UpdateSchemaOptions): Promise<void> {
+    this.notImplemented();
+  }
+
+  async getUpdateSchemaSQL(options?: UpdateSchemaOptions): Promise<string> {
+    this.notImplemented();
+  }
+
+  async getUpdateSchemaMigrationSQL(options?: UpdateSchemaOptions): Promise<{ up: string; down: string }> {
+    this.notImplemented();
+  }
+
+  /**
+   * creates new database and connects to it
+   */
+  async createDatabase(name?: string): Promise<void> {
+    this.notImplemented();
+  }
+
+  async dropDatabase(name?: string): Promise<void> {
+    this.notImplemented();
+  }
+
+  async execute(query: string) {
+    this.notImplemented();
+  }
+
+  async ensureIndexes() {
+    this.notImplemented();
+  }
+
+  protected getOrderedMetadata(schema?: string, includeWildcardSchema = false): EntityMetadata[] {
+    const metadata = [...this.metadata.getAll().values()].filter(meta => {
+      const isRootEntity = meta.root.class === meta.class;
+      const isTPTChild = meta.inheritanceType === 'tpt' && meta.tptParent;
+      return (isRootEntity || isTPTChild) && !meta.embeddable && !meta.virtual;
+    });
+    const calc = new CommitOrderCalculator();
+
+    metadata.forEach(meta => {
+      const nodeId = meta.inheritanceType === 'tpt' && meta.tptParent ? meta._id : meta.root._id;
+      calc.addNode(nodeId);
+    });
+
+    let meta = metadata.pop();
+
+    while (meta) {
+      const nodeId = meta.inheritanceType === 'tpt' && meta.tptParent ? meta._id : meta.root._id;
+
+      for (const prop of meta.relations) {
+        calc.discoverProperty(prop, nodeId);
+      }
+
+      if (meta.inheritanceType === 'tpt' && meta.tptParent) {
+        const parentId = meta.tptParent._id;
+        calc.addDependency(parentId, nodeId, 1);
+      }
+
+      meta = metadata.pop();
+    }
+
+    return calc
+      .sort()
+      .map(cls => this.metadata.getById(cls))
+      .filter(meta => {
+        if (includeWildcardSchema && meta.schema === '*') {
+          return true;
+        }
+
+        const targetSchema = meta.schema ?? this.config.get('schema', this.platform.getDefaultSchemaName());
+        return schema ? [schema, '*'].includes(targetSchema) : meta.schema !== '*';
+      });
+  }
+
+  /** View entities are not backed by real tables, so they must be skipped when truncating/deleting during `clear()`. */
+  protected getOrderedMetadataForClear(schema?: string): EntityMetadata[] {
+    return this.getOrderedMetadata(schema).filter(meta => !meta.view);
+  }
+
+  protected notImplemented(): never {
+    throw new Error(`This method is not supported by ${this.driver.constructor.name} driver`);
+  }
+}

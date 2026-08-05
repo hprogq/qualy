@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`BidirectionalSkippedReferencedTable > generate entities with bidirectional relations and skipped referenced table > entity-bidirectional-skipped-tables-dump 1`] = `
+[
+  "import { defineEntity, p } from '@mikro-orm/core';
+
+export class Book {
+  id!: number;
+  title!: string;
+  price!: number;
+  author!: number;
+}
+
+export const BookSchema = defineEntity({
+  class: Book,
+  properties: {
+    id: p.integer().primary(),
+    title: p.text(),
+    price: p.integer(),
+    author: p.integer().name('author_id').index('book_author_id_index'),
+  },
+});
+",
+]
+`;

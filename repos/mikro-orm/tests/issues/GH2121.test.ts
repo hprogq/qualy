@@ -1,0 +1,77 @@
+import { Collection, MikroORM } from '@mikro-orm/sqlite';
+import { Entity, ManyToMany, PrimaryKey, Property, ReflectMetadataProvider } from '@mikro-orm/decorators/legacy';
+
+@Entity()
+export class Tag {
+  @PrimaryKey()
+  id!: number;
+
+  @Property()
+  slug!: string;
+}
+
+@Entity()
+export class Product {
+  @PrimaryKey()
+  id!: number;
+
+  @Property()
+  name!: string;
+
+  @ManyToMany(() => Tag)
+  tags = new Collection<Tag>(this);
+}
+
+describe('GH issue 2121', () => {
+  let orm: MikroORM;
+
+  beforeAll(async () => {
+    orm = await MikroORM.init({
+      metadataProvider: ReflectMetadataProvider,
+      entities: [Tag, Product],
+      dbName: ':memory:',
+    });
+    await orm.schema.create();
+  });
+
+  afterAll(() => orm.close(true));
+
+  test('populating m:n collection', async () => {
+    const tag = orm.em.create(Tag, { slug: 'slug0' });
+    const tag2 = orm.em.create(Tag, { slug: 'slug2' });
+
+    for (let i = 0; i < 10; i++) {
+      const product = orm.em.create(Product, {
+        name: 'product' + i,
+        tags: [tag, tag2],
+      });
+      orm.em.persist(product);
+    }
+
+    await orm.em.flush();
+    orm.em.clear();
+    const result = await orm.em.find(
+      Product,
+      { tags: { slug: ['slug0'] } },
+      {
+        populate: ['tags'],
+        limit: 10,
+        offset: 8,
+      },
+    );
+    expect(result[0].tags).toHaveLength(2);
+    orm.em.clear();
+
+    const result2 = await orm.em.find(
+      Product,
+      { tags: { slug: ['slug0'] } },
+      {
+        populate: ['tags'],
+        limit: 10,
+        offset: 9,
+      },
+    );
+    expect(result2[0].tags).toHaveLength(2);
+    await result2[0].tags.init();
+  });
+});

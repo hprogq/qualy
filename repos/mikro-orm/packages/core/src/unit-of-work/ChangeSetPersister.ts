@@ -1,0 +1,720 @@
+import type { MetadataStorage } from '../metadata/MetadataStorage.js';
+import type {
+  AnyEntity,
+  Dictionary,
+  EntityData,
+  EntityDictionary,
+  EntityMetadata,
+  EntityProperty,
+  EntityKey,
+  FilterQuery,
+  IHydrator,
+  IPrimaryKey,
+  IPrimaryKeyValue,
+} from '../typings.js';
+import { EntityIdentifier } from '../entity/EntityIdentifier.js';
+import { PolymorphicRef } from '../entity/PolymorphicRef.js';
+import { type Collection } from '../entity/Collection.js';
+import { type EntityFactory } from '../entity/EntityFactory.js';
+import { helper } from '../entity/wrap.js';
+import { ChangeSetType, type ChangeSet } from './ChangeSet.js';
+import type { QueryResult } from '../connections/Connection.js';
+import { isRaw } from '../utils/RawQueryFragment.js';
+import { equals, Utils } from '../utils/Utils.js';
+import { type Configuration } from '../utils/Configuration.js';
+import { type EntityComparator } from '../utils/EntityComparator.js';
+import type { DriverMethodOptions, IDatabaseDriver } from '../drivers/IDatabaseDriver.js';
+import { OptimisticLockError, ValidationError } from '../errors.js';
+import { ReferenceKind } from '../enums.js';
+import type { Platform } from '../platforms/Platform.js';
+import type { EntityManager } from '../EntityManager.js';
+
+/** @internal Executes change sets against the database, handling inserts, updates, and deletes. */
+export class ChangeSetPersister {
+  readonly #platform: Platform;
+  readonly #comparator: EntityComparator;
+  readonly #usesReturningStatement: boolean;
+  readonly #driver: IDatabaseDriver;
+  readonly #metadata: MetadataStorage;
+  readonly #hydrator: IHydrator;
+  readonly #factory: EntityFactory;
+  readonly #config: Configuration;
+
+  readonly #em: EntityManager;
+
+  constructor(em: EntityManager) {
+    this.#em = em;
+    this.#driver = this.#em.getDriver();
+    this.#config = this.#em.config;
+    this.#metadata = this.#em.getMetadata();
+    this.#factory = this.#em.getEntityFactory();
+    this.#platform = this.#driver.getPlatform();
+    this.#hydrator = this.#config.getHydrator(this.#metadata);
+    this.#comparator = this.#config.getComparator(this.#metadata);
+    this.#usesReturningStatement = this.#platform.usesReturningStatement() || this.#platform.usesOutputStatement();
+  }
+
+  /** Executes all pending INSERT change sets, using batch inserts when possible. */
+  async executeInserts<T extends object>(
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+    withSchema?: boolean,
+  ): Promise<void> {
+    if (!withSchema) {
+      return this.runForEachSchema(changeSets, 'executeInserts', options);
+    }
+
+    const meta = changeSets[0].meta;
+    changeSets.forEach(changeSet => this.processProperties(changeSet));
+
+    if (changeSets.length > 1 && this.#config.get('useBatchInserts', this.#platform.usesBatchInserts())) {
+      return this.persistNewEntities(meta, changeSets, options);
+    }
+
+    for (const changeSet of changeSets) {
+      await this.persistNewEntity(meta, changeSet, options);
+    }
+  }
+
+  /** Executes all pending UPDATE change sets, using batch updates when possible. */
+  async executeUpdates<T extends object>(
+    changeSets: ChangeSet<T>[],
+    batched: boolean,
+    options?: DriverMethodOptions,
+    withSchema?: boolean,
+  ): Promise<void> {
+    if (!withSchema) {
+      return this.runForEachSchema(changeSets, 'executeUpdates', options, batched);
+    }
+
+    const meta = changeSets[0].meta;
+    changeSets.forEach(changeSet => this.processProperties(changeSet));
+
+    // For STI with conflicting fieldNames (renamedFrom properties), we can't batch mixed child types
+    const hasSTIConflicts = meta.root.props.some(p => p.renamedFrom);
+    const hasMixedTypes = hasSTIConflicts && changeSets.some(cs => cs.meta.class !== meta.class);
+
+    if (
+      batched &&
+      changeSets.length > 1 &&
+      !hasMixedTypes &&
+      this.#config.get('useBatchUpdates', this.#platform.usesBatchUpdates())
+    ) {
+      return this.persistManagedEntities(meta, changeSets, options);
+    }
+
+    for (const changeSet of changeSets) {
+      await this.persistManagedEntity(changeSet, options);
+    }
+  }
+
+  /** Executes all pending DELETE change sets in batches. */
+  async executeDeletes<T extends object>(
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+    withSchema?: boolean,
+  ): Promise<void> {
+    if (!withSchema) {
+      return this.runForEachSchema(changeSets, 'executeDeletes', options);
+    }
+
+    const size = this.#config.get('batchSize');
+    const meta = changeSets[0].meta;
+    const pk = Utils.getPrimaryKeyHash(meta.primaryKeys);
+
+    for (let i = 0; i < changeSets.length; i += size) {
+      const chunk = changeSets.slice(i, i + size);
+      const pks = chunk.map(cs => cs.getPrimaryKey());
+      options = this.prepareOptions(meta, options);
+      await this.#driver.nativeDelete(meta.root.class, { [pk]: { $in: pks } } as FilterQuery<T>, options);
+    }
+  }
+
+  private async runForEachSchema<T extends object>(
+    changeSets: ChangeSet<T>[],
+    method: 'executeInserts' | 'executeUpdates' | 'executeDeletes',
+    options?: DriverMethodOptions,
+    ...args: unknown[]
+  ): Promise<void> {
+    const groups = new Map<string, ChangeSet<T>[]>();
+    changeSets.forEach(cs => {
+      const group = groups.get(cs.schema!) ?? [];
+      group.push(cs);
+      groups.set(cs.schema!, group);
+    });
+
+    for (const [key, group] of groups.entries()) {
+      options = { ...options, schema: key };
+      // @ts-ignore
+      await this[method](group, ...args, options, true);
+    }
+  }
+
+  private validateRequired<T extends object>(entity: T): void {
+    const wrapped = helper(entity);
+
+    for (const prop of wrapped.__meta.props) {
+      if (
+        !prop.nullable &&
+        !prop.autoincrement &&
+        !prop.default &&
+        !prop.defaultRaw &&
+        !prop.onCreate &&
+        !prop.generated &&
+        !prop.embedded &&
+        ![ReferenceKind.ONE_TO_MANY, ReferenceKind.MANY_TO_MANY].includes(prop.kind) &&
+        !(
+          prop.kind === ReferenceKind.EMBEDDED &&
+          prop.targetMeta?.props.every(p => p.formula || p.persist === false || p.primary)
+        ) &&
+        prop.name !== wrapped.__meta.root.discriminatorColumn &&
+        prop.type !== 'ObjectId' &&
+        prop.persist !== false &&
+        entity[prop.name] == null
+      ) {
+        throw ValidationError.propertyRequired(entity, prop);
+      }
+    }
+  }
+
+  private processProperties<T extends object>(changeSet: ChangeSet<T>): void {
+    const meta = changeSet.meta;
+
+    for (const prop of meta.relations) {
+      this.processProperty(changeSet, prop);
+    }
+
+    if (changeSet.type === ChangeSetType.CREATE && this.#config.get('validateRequired')) {
+      this.validateRequired(changeSet.entity);
+    }
+  }
+
+  private async persistNewEntity<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSet: ChangeSet<T>,
+    options?: DriverMethodOptions,
+  ): Promise<void> {
+    const wrapped = helper(changeSet.entity);
+    options = this.prepareOptions(meta, options, {
+      convertCustomTypes: false,
+    });
+
+    this.resolveTPTIdentifiers(changeSet);
+
+    // Use changeSet's own meta for STI entities to get correct field mappings
+    const res = await this.#driver.nativeInsertMany(changeSet.meta.class, [changeSet.payload], options);
+
+    if (!wrapped.hasPrimaryKey()) {
+      this.mapPrimaryKey(meta, res.insertId ?? res.row?.[meta.primaryKeys[0]], changeSet);
+    }
+
+    this.mapReturnedValues(changeSet.entity, changeSet.payload, res.row, meta);
+    this.syncCompositeIdentifiers(changeSet);
+    this.markAsPopulated(changeSet, meta);
+    wrapped.__initialized = true;
+    wrapped.__managed = true;
+
+    if (!this.#usesReturningStatement) {
+      await this.reloadVersionValues(meta, [changeSet], options);
+    }
+
+    changeSet.persisted = true;
+  }
+
+  private async persistNewEntities<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+  ): Promise<void> {
+    const size = this.#config.get('batchSize');
+
+    for (let i = 0; i < changeSets.length; i += size) {
+      const chunk = changeSets.slice(i, i + size);
+      await this.persistNewEntitiesBatch(meta, chunk, options);
+
+      if (!this.#usesReturningStatement) {
+        await this.reloadVersionValues(meta, chunk, options);
+      }
+    }
+  }
+
+  private prepareOptions<T extends object>(
+    meta: EntityMetadata<T>,
+    options?: DriverMethodOptions,
+    additionalOptions?: Dictionary,
+  ): DriverMethodOptions {
+    const loggerContext = Utils.merge(
+      { id: this.#em._id },
+      this.#em.getLoggerContext({ disableContextResolution: true }),
+    );
+
+    return {
+      ...options,
+      ...additionalOptions,
+      schema: options?.schema ?? meta.schema,
+      loggerContext,
+    };
+  }
+
+  private async persistNewEntitiesBatch<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+  ): Promise<void> {
+    options = this.prepareOptions(meta, options, {
+      convertCustomTypes: false,
+      processCollections: false,
+    });
+
+    for (const changeSet of changeSets) {
+      this.resolveTPTIdentifiers(changeSet);
+    }
+
+    const res = await this.#driver.nativeInsertMany(
+      meta.class,
+      changeSets.map(cs => cs.payload),
+      options,
+    );
+
+    for (let i = 0; i < changeSets.length; i++) {
+      const changeSet = changeSets[i];
+      const wrapped = helper(changeSet.entity);
+
+      if (!wrapped.hasPrimaryKey()) {
+        const field = meta.getPrimaryProps()[0].fieldNames[0];
+        this.mapPrimaryKey(meta, res.rows![i][field], changeSet);
+      }
+
+      if (res.rows) {
+        this.mapReturnedValues(changeSet.entity, changeSet.payload, res.rows[i], meta);
+      }
+      this.syncCompositeIdentifiers(changeSet);
+      this.markAsPopulated(changeSet, meta);
+      wrapped.__initialized = true;
+      wrapped.__managed = true;
+      changeSet.persisted = true;
+    }
+  }
+
+  private async persistManagedEntity<T extends object>(
+    changeSet: ChangeSet<T>,
+    options?: DriverMethodOptions,
+  ): Promise<void> {
+    const meta = changeSet.meta;
+    const res = await this.updateEntity(meta, changeSet, options);
+    this.checkOptimisticLock(meta, changeSet, res);
+    this.mapReturnedValues(changeSet.entity, changeSet.payload, res.row, meta);
+    await this.reloadVersionValues(meta, [changeSet], options);
+    changeSet.persisted = true;
+  }
+
+  private async persistManagedEntities<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+  ): Promise<void> {
+    const size = this.#config.get('batchSize');
+
+    for (let i = 0; i < changeSets.length; i += size) {
+      const chunk = changeSets.slice(i, i + size);
+      await this.persistManagedEntitiesBatch(meta, chunk, options);
+      await this.reloadVersionValues(meta, chunk, options);
+    }
+  }
+
+  private checkConcurrencyKeys<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSet: ChangeSet<T>,
+    cond: Dictionary,
+  ): void {
+    const tmp: string[] = [];
+
+    for (const key of meta.concurrencyCheckKeys) {
+      cond[key] = changeSet.originalEntity![key];
+
+      if (changeSet.payload[key]) {
+        tmp.push(key);
+      }
+    }
+
+    if (tmp.length === 0 && meta.concurrencyCheckKeys.size > 0) {
+      throw OptimisticLockError.lockFailed(changeSet.entity);
+    }
+  }
+
+  private async persistManagedEntitiesBatch<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+  ): Promise<void> {
+    await this.checkOptimisticLocks(meta, changeSets, options);
+    options = this.prepareOptions(meta, options, {
+      convertCustomTypes: false,
+      processCollections: false,
+    });
+    const cond = [] as FilterQuery<T>[];
+    const payload = [] as EntityData<T>[];
+
+    for (const changeSet of changeSets) {
+      const where = changeSet.getPrimaryKey(true) as FilterQuery<T>;
+      this.checkConcurrencyKeys(meta, changeSet, where);
+      cond.push(where);
+      payload.push(changeSet.payload);
+    }
+
+    const res = await this.#driver.nativeUpdateMany(meta.class, cond, payload, options);
+    const map = new Map<string, Dictionary>();
+    // returning rows are not mapped yet, so they are keyed by field names - we need to build the hash
+    // from those to be able to match them with `getSerializedPrimaryKey()` of the entity
+    const pkFields = meta.getPrimaryProps().flatMap(prop => prop.fieldNames);
+    res.rows?.forEach(item => map.set(Utils.getPrimaryKeyHash(pkFields.map(field => item[field])), item));
+
+    for (const changeSet of changeSets) {
+      if (res.rows) {
+        const row = map.get(helper(changeSet.entity).getSerializedPrimaryKey());
+        // STI batches can mix child types, so map through the change set's own metadata
+        this.mapReturnedValues(changeSet.entity, changeSet.payload, row, changeSet.meta);
+      }
+
+      changeSet.persisted = true;
+    }
+  }
+
+  private mapPrimaryKey<T extends object>(meta: EntityMetadata<T>, value: IPrimaryKey, changeSet: ChangeSet<T>): void {
+    const prop = meta.properties[meta.primaryKeys[0]];
+    const insertId = prop.customType ? prop.customType.convertToJSValue(value, this.#platform) : value;
+    const wrapped = helper(changeSet.entity);
+
+    if (!wrapped.hasPrimaryKey()) {
+      wrapped.setPrimaryKey(insertId);
+    }
+
+    // some drivers might be returning bigint PKs as numbers when the number is small enough,
+    // but we need to have it as string so comparison works in change set tracking, so instead
+    // of using the raw value from db, we convert it back to the db value explicitly
+    value = prop.customType
+      ? prop.customType.convertToDatabaseValue(insertId, this.#platform, { mode: 'serialization' })
+      : value;
+    changeSet.payload[wrapped.__meta.primaryKeys[0]] = value;
+
+    if (wrapped.__identifier && !Array.isArray(wrapped.__identifier)) {
+      wrapped.__identifier.setValue(value);
+    }
+  }
+
+  /**
+   * After INSERT + hydration, sync all EntityIdentifier placeholders in composite PK arrays
+   * with the real values now present on the entity. This is needed because `mapPrimaryKey`
+   * only handles the first PK column, but any scalar PK in a composite key may be auto-generated.
+   */
+  private syncCompositeIdentifiers<T extends object>(changeSet: ChangeSet<T>): void {
+    const wrapped = helper(changeSet.entity);
+
+    if (!Array.isArray(wrapped.__identifier)) {
+      return;
+    }
+
+    const pks = changeSet.meta.getPrimaryProps();
+
+    for (let i = 0; i < pks.length; i++) {
+      const ident = wrapped.__identifier[i];
+
+      if (ident instanceof EntityIdentifier && pks[i].kind === ReferenceKind.SCALAR) {
+        ident.setValue(changeSet.entity[pks[i].name] as IPrimaryKeyValue);
+      }
+    }
+  }
+
+  /**
+   * Sets populate flag to new entities so they are serialized like if they were loaded from the db
+   */
+  private markAsPopulated<T extends object>(changeSet: ChangeSet<T>, meta: EntityMetadata<T>) {
+    helper(changeSet.entity).__schema = this.#driver.getSchemaName(meta, changeSet);
+
+    if (!this.#config.get('populateAfterFlush')) {
+      return;
+    }
+
+    helper(changeSet.entity).populated();
+    meta.relations.forEach(prop => {
+      const value = changeSet.entity[prop.name];
+
+      if (Utils.isEntity(value, true)) {
+        (value as AnyEntity).__helper!.populated();
+      } else if (Utils.isCollection(value)) {
+        (value as Collection<any>).populated();
+      }
+    });
+  }
+
+  private async updateEntity<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSet: ChangeSet<T>,
+    options?: DriverMethodOptions,
+  ): Promise<QueryResult<T>> {
+    const cond = changeSet.getPrimaryKey(true) as Dictionary;
+    options = this.prepareOptions(meta, options, {
+      convertCustomTypes: false,
+    });
+
+    if (
+      meta.concurrencyCheckKeys.size === 0 &&
+      (!meta.versionProperty || changeSet.entity[meta.versionProperty] == null)
+    ) {
+      return this.#driver.nativeUpdate(changeSet.meta.class, cond as FilterQuery<T>, changeSet.payload, options);
+    }
+
+    if (meta.versionProperty) {
+      cond[meta.versionProperty] = this.#platform.convertVersionValue(
+        changeSet.entity[meta.versionProperty] as unknown as Date,
+        meta.properties[meta.versionProperty],
+      );
+    }
+
+    this.checkConcurrencyKeys(meta, changeSet, cond);
+
+    return this.#driver.nativeUpdate<T>(changeSet.meta.class, cond as FilterQuery<T>, changeSet.payload, options);
+  }
+
+  private async checkOptimisticLocks<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+  ): Promise<void> {
+    if (
+      meta.concurrencyCheckKeys.size === 0 &&
+      (!meta.versionProperty || changeSets.every(cs => cs.entity[meta.versionProperty] == null))
+    ) {
+      return;
+    }
+
+    // skip entity references as they don't have version values loaded
+    changeSets = changeSets.filter(cs => helper(cs.entity).__initialized);
+
+    const $or = changeSets.map(cs => {
+      const cond = Utils.getPrimaryKeyCond<T>(
+        cs.originalEntity as T,
+        meta.primaryKeys.concat(...meta.concurrencyCheckKeys),
+      ) as FilterQuery<T>;
+
+      if (meta.versionProperty) {
+        // @ts-ignore
+        cond[meta.versionProperty] = this.#platform.convertVersionValue(
+          cs.entity[meta.versionProperty] as unknown as Date,
+          meta.properties[meta.versionProperty],
+        );
+      }
+
+      return cond;
+    });
+
+    const primaryKeys = meta.primaryKeys.concat(...meta.concurrencyCheckKeys);
+    options = this.prepareOptions(meta, options, {
+      fields: primaryKeys,
+      orderBy: meta.primaryKeys.reduce((o, pk) => {
+        o[pk] = 'asc';
+        return o;
+      }, {} as Dictionary),
+    });
+    const res = await this.#driver.find<T>(meta.root.class, { $or } as FilterQuery<T>, options);
+
+    if (res.length !== changeSets.length) {
+      // a FK pointing to a composite PK is an array, so the values need to be compared deeply
+      const compare = (a: Dictionary, b: Dictionary, keys: string[]) => keys.every(k => equals(a[k], b[k]));
+      const entity = changeSets.find(cs => {
+        return !res.some(row => compare(Utils.getPrimaryKeyCond(cs.entity, primaryKeys)!, row, primaryKeys));
+      })!.entity;
+      throw OptimisticLockError.lockFailed(entity);
+    }
+  }
+
+  private checkOptimisticLock<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSet: ChangeSet<T>,
+    res?: QueryResult<T>,
+  ) {
+    if ((meta.versionProperty || meta.concurrencyCheckKeys.size > 0) && res && !res.affectedRows) {
+      throw OptimisticLockError.lockFailed(changeSet.entity);
+    }
+  }
+
+  /**
+   * This method also handles reloading of database default values for inserts and raw property updates,
+   * so we use a single query in case of both versioning and default values is used.
+   */
+  private async reloadVersionValues<T extends object>(
+    meta: EntityMetadata<T>,
+    changeSets: ChangeSet<T>[],
+    options?: DriverMethodOptions,
+  ) {
+    const reloadProps =
+      meta.versionProperty && !this.#usesReturningStatement ? [meta.properties[meta.versionProperty]] : [];
+
+    if (changeSets[0].type === ChangeSetType.CREATE) {
+      for (const prop of meta.props) {
+        if (prop.persist === false) {
+          continue;
+        }
+
+        if (isRaw(changeSets[0].entity[prop.name])) {
+          reloadProps.push(prop);
+          continue;
+        }
+
+        // do not reload things that already had a runtime value
+        if (changeSets[0].entity[prop.name] != null || prop.defaultRaw === 'null') {
+          continue;
+        }
+
+        if (prop.autoincrement || prop.generated || prop.defaultRaw) {
+          reloadProps.push(prop);
+        }
+      }
+    }
+
+    if (changeSets[0].type === ChangeSetType.UPDATE) {
+      const returning = new Set<EntityProperty<T>>();
+      changeSets.forEach(cs => {
+        Utils.keys(cs.payload).forEach(k => {
+          if (isRaw(cs.payload[k]) && isRaw(cs.entity[k as EntityKey<T>])) {
+            // STI batches can mix child types, so the property might not exist on `meta`
+            returning.add(cs.meta.properties[k as EntityKey<T>]);
+          }
+        });
+      });
+      // reload generated columns
+      if (!this.#usesReturningStatement) {
+        meta.props.filter(prop => prop.generated && !prop.primary).forEach(prop => reloadProps.push(prop));
+        reloadProps.push(...returning);
+      }
+    }
+
+    if (reloadProps.length === 0) {
+      return;
+    }
+
+    reloadProps.unshift(...meta.getPrimaryProps());
+    const pk = Utils.getPrimaryKeyHash(meta.primaryKeys);
+    const pks = changeSets.map(cs => {
+      const val = helper(cs.entity).getPrimaryKey(true);
+
+      if (Utils.isPlainObject(val)) {
+        return Utils.getCompositeKeyValue(val, meta, false, this.#platform);
+      }
+
+      return val;
+    });
+    options = this.prepareOptions(meta, options, {
+      fields: Utils.unique(reloadProps.map(prop => prop.name)),
+    });
+    // a mixed STI batch shares one table but the child discriminator would filter out the siblings
+    const target = changeSets.some(cs => cs.meta !== meta) && meta.root.discriminatorColumn ? meta.root : meta;
+    const data = await this.#driver.find<T>(target.class, { [pk]: { $in: pks } } as FilterQuery<T>, options);
+    const map = new Map<string, Dictionary>();
+    data.forEach(item => map.set(Utils.getCompositeKeyHash(item, meta, false, this.#platform, true), item));
+
+    for (const changeSet of changeSets) {
+      const data = map.get(helper(changeSet.entity).getSerializedPrimaryKey());
+      this.#hydrator.hydrate<T>(
+        changeSet.entity,
+        changeSet.meta,
+        data as EntityData<T>,
+        this.#factory,
+        'full',
+        false,
+        true,
+      );
+      Object.assign(changeSet.payload, data); // merge to the changeset payload, so it gets saved to the entity snapshot
+    }
+  }
+
+  /**
+   * For TPT child tables, resolve EntityIdentifier values in PK fields.
+   * The parent table insert assigns the actual PK value, which the child table references.
+   */
+  private resolveTPTIdentifiers<T extends object>(changeSet: ChangeSet<T>): void {
+    if (changeSet.meta.inheritanceType !== 'tpt' || !changeSet.meta.tptParent) {
+      return;
+    }
+
+    for (const pk of changeSet.meta.primaryKeys) {
+      const value = changeSet.payload[pk] as unknown;
+
+      if (value instanceof EntityIdentifier) {
+        changeSet.payload[pk] = value.getValue();
+      }
+    }
+  }
+
+  private processProperty<T extends object>(changeSet: ChangeSet<T>, prop: EntityProperty<T>): void {
+    const meta = changeSet.meta;
+    const value = changeSet.payload[prop.name] as unknown; // for inline embeddables
+
+    if (value instanceof EntityIdentifier) {
+      changeSet.payload[prop.name] = value.getValue();
+      return;
+    }
+
+    if (value instanceof PolymorphicRef) {
+      if (value.id instanceof EntityIdentifier) {
+        value.id = value.id.getValue();
+      }
+      return;
+    }
+
+    if (Array.isArray(value) && value.some(item => item instanceof EntityIdentifier)) {
+      changeSet.payload[prop.name] = value.map(item => (item instanceof EntityIdentifier ? item.getValue() : item));
+      return;
+    }
+
+    if (prop.kind === ReferenceKind.MANY_TO_MANY && Array.isArray(value)) {
+      changeSet.payload[prop.name] = value.map(val => (val instanceof EntityIdentifier ? val.getValue() : val));
+      return;
+    }
+
+    if (prop.name in changeSet.payload) {
+      return;
+    }
+
+    const values = Utils.unwrapProperty(changeSet.payload, meta, prop, true); // for object embeddables
+
+    values.forEach(([value, indexes]) => {
+      if (value instanceof EntityIdentifier) {
+        Utils.setPayloadProperty<T>(changeSet.payload, meta, prop, value.getValue(), indexes);
+      }
+    });
+  }
+
+  /**
+   * Maps values returned via `returning` statement (postgres) or the inserted id (other sql drivers).
+   * No need to handle composite keys here as they need to be set upfront.
+   * We do need to map to the change set payload too, as it will be used in the originalEntityData for new entities.
+   */
+  mapReturnedValues<T extends object>(
+    entity: T | null | undefined,
+    payload: EntityDictionary<T>,
+    row: Dictionary | undefined,
+    meta: EntityMetadata<T>,
+    upsert = false,
+  ): void {
+    if ((!this.#usesReturningStatement && !upsert) || !row || !Utils.hasObjectKeys(row)) {
+      return;
+    }
+
+    const mapped = this.#comparator.mapResult<T>(meta, row as EntityDictionary<T>);
+
+    if (entity) {
+      this.#hydrator.hydrate(entity, meta, mapped, this.#factory, 'full', false, true);
+    }
+
+    if (upsert) {
+      for (const prop of meta.props) {
+        if (prop.customType && prop.name in mapped) {
+          mapped[prop.name] = prop.customType.convertToJSValue(mapped[prop.name], this.#platform);
+        }
+      }
+    }
+
+    Object.assign(payload, mapped);
+  }
+}

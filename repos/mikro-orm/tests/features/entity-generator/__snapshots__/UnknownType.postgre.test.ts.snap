@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`unknown-types 1`] = `
+[
+  "import { defineEntity, p } from '@mikro-orm/core';
+
+export class Test {
+  id!: bigint;
+  cidr?: unknown;
+  poly?: unknown;
+  r?: unknown;
+}
+
+export const TestSchema = defineEntity({
+  class: Test,
+  properties: {
+    id: p.bigint().primary().autoincrement(false),
+    cidr: p.unknown().columnType('cidr').nullable().default('127.0.0.0/8'),
+    poly: p.unknown().columnType('polygon').nullable().default('((0,0),(1,0),(1,1),(0,1))'),
+    r: p.unknown().columnType('varbit(8)').nullable().default('1').ignoreSchemaChanges('type'),
+  },
+});
+",
+]
+`;

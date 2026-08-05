@@ -1,0 +1,232 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version bump strategy
+        required: true
+        default: patch
+        type: choice
+        options: [ patch, minor, major, custom ]
+      custom_version:
+        description: Custom version (only when version=custom)
+        required: false
+        type: string
+      dist-tag:
+        description: NPM dist-tag (prod, rc, or any next* canary tag like next / next-v7)
+        required: false
+        type: string
+        default: 'prod'
+      canary-bump:
+        description: Canary bump strategy (patch for patch canaries, minor for upcoming-minor dev builds)
+        required: false
+        type: string
+        default: 'patch'
+      ref:
+        description: Git ref to publish (branch, tag, or commit SHA)
+        type: string
+        default: 'master'
+
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to publish (branch, tag, or commit SHA)
+        required: true
+        type: string
+      dist-tag:
+        description: NPM dist-tag (prod, rc, or any next* canary tag like next / next-v7)
+        type: string
+      canary-bump:
+        description: Canary bump strategy (patch / minor / major)
+        type: string
+        default: 'patch'
+
+permissions:
+  contents: write
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: release
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+jobs:
+  manual-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.dist-tag == 'prod'
+    name: Release ${{ inputs.custom_version || inputs.version }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: |
+          corepack enable
+          corepack prepare yarn@stable --activate
+
+      - uses: actions/setup-node@v7
+        with:
+          cache: yarn
+          registry-url: 'https://registry.npmjs.org'
+          always-auth: false
+          provenance: true
+
+      - run: yarn
+      - run: yarn build
+      - run: yarn format
+
+      - name: Configure git
+        run: |
+          git config --global user.name 'MikroORM Release Bot'
+          git config --global user.email 'noreply@mikro-orm.io'
+
+      - name: Bump version
+        run: |
+          git pull --rebase
+          yarn lerna version ${{ github.event.inputs.custom_version || github.event.inputs.version }} --force-publish --yes
+
+      - name: Pin versions
+        run: |
+          yarn release:pin-versions
+          yarn install --no-immutable
+          yarn format
+          git add .
+          git diff-index --quiet HEAD || git commit -m 'chore(release): update internal dependencies [skip ci]'
+          git push
+
+      - name: Determine dist-tag
+        id: dist-tag
+        run: |
+          if [[ "${{ inputs.ref }}" == "master" ]]; then
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          else
+            MAJOR=$(echo "${{ inputs.ref }}" | grep -oP '^\d+')
+            echo "tag=--dist-tag latest-v${MAJOR}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        run: yarn publish:prod ${{ steps.dist-tag.outputs.tag }} --yes
+
+      - name: Publish to JSR
+        run: yarn publish:jsr
+
+  canary-release:
+    if: startsWith(inputs.dist-tag, 'next') || inputs.dist-tag == 'rc'
+    name: Release ${{ inputs.dist-tag == 'rc' && 'RC' || 'canary' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: |
+          corepack enable
+          corepack prepare yarn@stable --activate
+
+      - uses: actions/setup-node@v7
+        with:
+          cache: yarn
+          registry-url: 'https://registry.npmjs.org'
+          always-auth: false
+          provenance: true
+
+      - name: Configure git
+        run: |
+          git config --global user.name 'MikroORM Release Bot'
+          git config --global user.email 'noreply@mikro-orm.io'
+
+      - run: yarn
+      - run: yarn build
+
+      - name: Bump version
+        run: |
+          PREID=${{ inputs.dist-tag == 'rc' && 'rc' || 'dev' }}
+          yarn lerna run copy -- -- --canary=${{ inputs.canary-bump }} --preid=$PREID
+          git commit -am 'chore: bump ${{ inputs.dist-tag }} versions [skip ci]'
+          git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+
+      - name: Publish to npm
+        run: yarn lerna publish from-package --contents dist --dist-tag ${{ inputs.dist-tag }} --force-publish --yes
+
+      - name: Create git tag
+        if: inputs.dist-tag == 'rc'
+        run: |
+          VERSION=$(node -p "require('./packages/core/dist/package.json').version")
+          git reset --hard HEAD~1
+          git tag "v$VERSION"
+          git push origin "refs/tags/v$VERSION"
+
+  version-docs:
+    needs: manual-release
+    runs-on: ubuntu-latest
+    if: inputs.ref == 'master' && (inputs.version == 'minor' || inputs.version == 'major')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Enable corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@stable --activate
+
+      - name: Activate cache for Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          cache: yarn
+          cache-dependency-path: docs/yarn.lock
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: |
+          cd docs
+          yarn
+
+      - name: Snapshot the current version
+        run: |
+          cd docs
+          VERSION=$(jq -r '.version' ../lerna.json)
+          if [ -z "$VERSION" ]; then
+              echo "Error: VERSION is empty. Ensure lerna.json exists and contains a valid .version field."
+              exit 1
+          fi
+          MAJOR_MINOR=$(echo $VERSION | cut -d. -f1,2)
+          yarn docusaurus docs:version $MAJOR_MINOR
+          yarn docusaurus api:version $MAJOR_MINOR
+
+      - name: Commit and push the version snapshot
+        run: |
+          git config --global user.name 'MikroORM Release Bot'
+          git config --global user.email 'noreply@mikro-orm.io'
+          git add .
+          git diff-index --quiet HEAD || git commit -m 'docs: update docs for ${{ inputs.version }} version'
+          git push

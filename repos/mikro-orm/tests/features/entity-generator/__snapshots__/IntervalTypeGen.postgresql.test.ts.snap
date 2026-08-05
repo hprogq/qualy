@@ -1,0 +1,27 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`IntervalTypeGen 1`] = `
+[
+  "import { defineEntity, p } from '@mikro-orm/core';
+
+export class Range {
+  id!: number;
+  start?: Date;
+  duration?: string;
+  aftermath?: string;
+  cooldown?: string;
+}
+
+export const RangeSchema = defineEntity({
+  class: Range,
+  properties: {
+    id: p.integer().primary(),
+    start: p.datetime().nullable(),
+    duration: p.interval().nullable(),
+    aftermath: p.interval().nullable(),
+    cooldown: p.interval().length(0).nullable(),
+  },
+});
+",
+]
+`;
