@@ -19,6 +19,7 @@ type Actor = Principal | SystemActor
 import { REACH_RANK, REACHES_EVERY_NODE, type Authorization } from './authorization.ts'
 import { assertGrantEligible } from './eligibility.ts'
 import { assertMayDefineRole, assertMayGrantRole } from './escalation.ts'
+import { type Reach } from './queries.ts'
 import { grantsBlockingOrgTypeQuery } from './queries.ts'
 import { accessErrors } from './errors.ts'
 
@@ -777,7 +778,7 @@ export class Administration {
     // revoke — a grant that reaches its whole subtree.
     const reach = await this.authorization.reachAt(actor, target.orgNodeId, tx)
     const mine = reach.get('iam.grant.manage')
-    if (mine === undefined || REACH_RANK[mine] < REACH_RANK[target.coverage]) {
+    if (mine === undefined || REACH_RANK[mine] < REACH_RANK[target.coverage as Reach]) {
       throw new AccessDeniedError('not allowed to administer grants of that reach')
     }
   }

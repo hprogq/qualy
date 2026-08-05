@@ -2,8 +2,12 @@ import { ORPCError } from '@orpc/server'
 import { sql, type SQL } from 'drizzle-orm'
 import {
   REACHES_EVERY_NODE,
+  REACH_RANK,
+  type Reach,
   authorizedScopeQuery,
   canAtQuery,
+  effectiveRowsQuery,
+  reachAtQuery,
   carries,
   foldScope,
   hasTenantPermissionQuery,
@@ -25,9 +29,10 @@ import type {
 import type { PermissionRegistry } from './permission-registry.ts'
 
 // how far one grant carries, weakest first; a bind may never hand out more
-// than the actor holds
-export type Reach = 'self' | 'subtree' | 'tenant'
-export const REACH_RANK: Record<Reach, number> = { self: 0, subtree: 1, tenant: 2 }
+// than the actor holds. Both live in queries.ts so the Effect side compares
+// reaches by the same ranking.
+export { REACH_RANK } from './queries.ts'
+export type { Reach } from './queries.ts'
 
 // The one role that reaches every node of its tenant. Exported because
 // authorization, the profile projection and the diagnostics all have to
@@ -233,24 +238,7 @@ export class Authorization {
       kind: 'tenant' | 'org'
       every_node: boolean
       coverage: 'self' | 'subtree' | null
-    }>(sql`
-      select distinct p.code, p.plugin, p.target_kind, r.kind,
-        (${REACHES_EVERY_NODE}) as every_node, held.coverage
-      from (${this.heldRoles(principal)}) held
-      join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
-        and r.status = 'active'
-      join org_nodes node on node.tenant_id = ${principal.tenantId}
-        and node.id = ${orgNodeId}
-      left join org_nodes anchor on anchor.tenant_id = ${principal.tenantId}
-        and anchor.id = held.org_node_id
-      join permissions p on r.permission_mode = 'all-active'
-        or exists (
-          select 1 from role_permissions rp
-          where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
-        )
-      where ${REACHES_EVERY_NODE}
-        or (held.coverage = 'self' and held.org_node_id = ${orgNodeId})
-        or (held.coverage = 'subtree' and node.path <@ anchor.path)`)
+    }>(reachAtQuery(principal, orgNodeId))
     const reach = new Map<string, Reach>()
     for (const row of result.rows) {
       const def = this.registry.get(row.code)
@@ -273,36 +261,12 @@ export class Authorization {
     // they hold at all, which is what surface discovery asks — a capability
     // held at one college is discoverable even though it applies nowhere
     // else.
-    const at = typeof target === 'object' ? target : undefined
-    const reach = at
-      ? sql`(
-          ${REACHES_EVERY_NODE}
-          or (held.coverage = 'self' and held.org_node_id = ${at.orgNodeId})
-          or (held.coverage = 'subtree' and node.path <@ anchor.path)
-        )`
-      : target === 'anywhere'
-        ? sql`true`
-        : sql`r.kind = 'tenant'`
     const result = await this.db(handle).execute<{
       code: string
       plugin: string
       target_kind: string
       kind: 'tenant' | 'org'
-    }>(sql`
-      select distinct p.code, p.plugin, p.target_kind, r.kind
-      from (${this.heldRoles(principal)}) held
-      join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
-        and r.status = 'active'
-      left join org_nodes anchor on anchor.tenant_id = ${principal.tenantId}
-        and anchor.id = held.org_node_id
-      left join org_nodes node on node.tenant_id = ${principal.tenantId}
-        and node.id = ${at?.orgNodeId ?? null}
-      join permissions p on r.permission_mode = 'all-active'
-        or exists (
-          select 1 from role_permissions rp
-          where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
-        )
-      where ${reach}`)
+    }>(effectiveRowsQuery(principal, target))
     const rows: { def: ActivePermission; roleKind: 'tenant' | 'org' }[] = []
     for (const row of result.rows) {
       const def = this.registry.get(row.code)

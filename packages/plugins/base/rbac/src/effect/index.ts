@@ -10,8 +10,15 @@ import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Database } from '@qualy/plugin-database/effect'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 import {
+  REACH_RANK,
+  type Reach,
   administratorSurvivorsQuery,
+  permissionRowQuery,
+  refreshPermissionTextQuery,
+  upsertPermissionQuery,
   authorizedScopeQuery,
+  effectiveRowsQuery,
+  reachAtQuery,
   canAtQuery,
   foldScope,
   grantsBlockingOrgTypeQuery,
@@ -36,16 +43,39 @@ import {
 // that must see the caller's uncommitted state do, by construction rather than
 // by remembering an argument.
 
-/** the codes this assembly serves, indexed for the decisions below */
-const index = (catalog: readonly ActivePermission[]) =>
-  new Map(catalog.map((permission) => [permission.code, permission]))
-
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
 export const make = Effect.fn('Rbac.make')(function* () {
   const database = yield* Database
-  const catalog = index(yield* PermissionCatalog)
+  const declared = yield* PermissionCatalog
+
+  // The catalog is mirrored into the permissions table before anything reads
+  // it, because the authorization statements join that table: a code the
+  // declaration knows and the table does not authorizes nothing.
+  //
+  // Ownership and calling convention are the stable semantics, so a stored row
+  // that disagrees with the declaration is refused rather than overwritten:
+  // live grants already assume the old meaning, and a changed meaning needs a
+  // new code. Doing this while the layer is built means drift stops the
+  // assembly instead of an instance authorizing against a half-synced table.
+  const catalog = new Map<string, ActivePermission>()
+  for (const permission of declared) {
+    yield* database.execute(upsertPermissionQuery(permission)).pipe(Effect.orDie)
+    const stored = rows<{ plugin: string; target_kind: string }>(
+      yield* database.execute(permissionRowQuery(permission.code)).pipe(Effect.orDie),
+    )[0]
+    if (!stored || stored.plugin !== permission.plugin || stored.target_kind !== permission.target) {
+      return yield* Effect.die(
+        new Error(
+          `permission ${permission.code} conflicts with its stored row; changed ownership or ` +
+            'calling convention needs a new code',
+        ),
+      )
+    }
+    yield* database.execute(refreshPermissionTextQuery(permission)).pipe(Effect.orDie)
+    catalog.set(permission.code, permission)
+  }
 
   // a code the catalog does not serve authorizes nothing, whatever a stored
   // row says
@@ -69,6 +99,60 @@ export const make = Effect.fn('Rbac.make')(function* () {
       .execute(authorizedScopeQuery(principal, definition))
       .pipe(Effect.orDie)
     return foldScope(rows<ScopeRow>(result))
+  })
+
+  /**
+   * Rows pinned to what the catalog serves.
+   *
+   * A stored permission row whose plugin or target no longer matches the
+   * declaration contributes nothing, so a row edited out of band stops
+   * authorizing rather than starting to.
+   */
+  const effectiveRows = Effect.fn('Rbac.effectiveRows')(function* (
+    principal: Principal,
+    target: { orgNodeId: string } | 'anywhere' | undefined,
+  ) {
+    const result = yield* database
+      .execute(effectiveRowsQuery(principal, target))
+      .pipe(Effect.orDie)
+    const kept: { definition: ActivePermission; roleKind: 'tenant' | 'org' }[] = []
+    for (const row of rows<{
+      code: string
+      plugin: string
+      target_kind: string
+      kind: 'tenant' | 'org'
+    }>(result)) {
+      const definition = catalog.get(row.code)
+      if (!definition) continue
+      if (row.plugin !== definition.plugin || row.target_kind !== definition.target) continue
+      kept.push({ definition, roleKind: row.kind })
+    }
+    return kept
+  })
+
+  /** the strongest reach the principal has for each code at one node */
+  const reachAt = Effect.fn('Rbac.reachAt')(function* (principal: Principal, orgNodeId: string) {
+    const result = yield* database
+      .execute(reachAtQuery(principal, orgNodeId))
+      .pipe(Effect.orDie)
+    const reach = new Map<string, Reach>()
+    for (const row of rows<{
+      code: string
+      plugin: string
+      target_kind: string
+      every_node: boolean
+      coverage: 'self' | 'subtree' | null
+    }>(result)) {
+      const definition = catalog.get(row.code)
+      if (!definition) continue
+      if (row.plugin !== definition.plugin || row.target_kind !== definition.target) continue
+      const here: Reach = row.every_node ? 'tenant' : (row.coverage ?? 'self')
+      const known = reach.get(definition.code)
+      if (known === undefined || REACH_RANK[here] > REACH_RANK[known]) {
+        reach.set(definition.code, here)
+      }
+    }
+    return reach
   })
 
   const canAt: RbacShape['canAt'] = Effect.fn('Rbac.canAt')(function* (
@@ -181,18 +265,22 @@ export const make = Effect.fn('Rbac.make')(function* () {
     getProfile: Effect.fn('Rbac.getProfile')(function* (principal) {
       // "anywhere at all" rather than "here": the manifest asks what a viewer
       // may discover, and an org capability held at one node is discoverable
-      // even though it applies at no other
+      // even though it applies at no other.
+      //
+      // One statement rather than one per code, and the same statement the
+      // cordis service runs. Rebuilding this from the scope projection gave a
+      // different answer: that requires an anchor with both a node and a
+      // coverage, where this includes a code as soon as any active role
+      // carries it.
+      const rows_ = yield* effectiveRows(principal, 'anywhere')
       const tenantPermissions: string[] = []
       const orgPermissions: string[] = []
-      for (const definition of catalog.values()) {
+      for (const { definition, roleKind } of rows_) {
         if (definition.target === 'tenant') {
-          if (yield* hasTenantPermission(principal, definition)) {
-            tenantPermissions.push(definition.code)
-          }
-          continue
+          if (roleKind === 'tenant') tenantPermissions.push(definition.code)
+        } else {
+          orgPermissions.push(definition.code)
         }
-        const scope = yield* scopeOf(principal, definition)
-        if (scope.tenantWide || scope.anchors.length > 0) orgPermissions.push(definition.code)
       }
       return {
         tenantPermissions: [...new Set(tenantPermissions)].sort(),

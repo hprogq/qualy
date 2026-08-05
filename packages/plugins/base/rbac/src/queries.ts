@@ -157,3 +157,88 @@ export const administratorSurvivorsQuery = (tenantId: string, roleId: string): S
   join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
   join user_types t on t.tenant_id = u.tenant_id and t.id = u.user_type_id
   where g.tenant_id = ${tenantId} and g.role_id = ${roleId} and ${LOGIN_CAPABLE}`
+
+/**
+ * Every permission a principal effectively holds, for one of three questions.
+ *
+ * They are deliberately distinct. With a node: what they hold AT it. Without
+ * one: what they hold tenant-wide, which is what an escalation guard must
+ * compare against. Anywhere: what they hold at all, which is what surface
+ * discovery asks, since a capability held at one college is discoverable even
+ * though it applies nowhere else.
+ */
+export const effectiveRowsQuery = (
+  principal: Principal,
+  target: { orgNodeId: string } | 'anywhere' | undefined,
+): SQL => {
+  const at = typeof target === 'object' ? target : undefined
+  const reach = at
+    ? sql`(
+        ${REACHES_EVERY_NODE}
+        or (held.coverage = 'self' and held.org_node_id = ${at.orgNodeId})
+        or (held.coverage = 'subtree' and node.path <@ anchor.path)
+      )`
+    : target === 'anywhere'
+      ? sql`true`
+      : sql`r.kind = 'tenant'`
+  return sql`
+    select distinct p.code, p.plugin, p.target_kind, r.kind
+    from (${heldRoles(principal)}) held
+    join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
+      and r.status = 'active'
+    left join org_nodes anchor on anchor.tenant_id = ${principal.tenantId}
+      and anchor.id = held.org_node_id
+    left join org_nodes node on node.tenant_id = ${principal.tenantId}
+      and node.id = ${at?.orgNodeId ?? null}
+    join permissions p on r.permission_mode = 'all-active'
+      or exists (
+        select 1 from role_permissions rp
+        where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
+      )
+    where ${reach}`
+}
+
+/**
+ * The strongest reach the principal has for each permission at one node.
+ *
+ * A bind guard needs more than "do they hold it here": granting subtree
+ * coverage from a self anchor would hand out more than the actor has.
+ */
+export const reachAtQuery = (principal: Principal, orgNodeId: string): SQL => sql`
+  select distinct p.code, p.plugin, p.target_kind, r.kind,
+    (${REACHES_EVERY_NODE}) as every_node, held.coverage
+  from (${heldRoles(principal)}) held
+  join roles r on r.tenant_id = ${principal.tenantId} and r.id = held.role_id
+    and r.status = 'active'
+  join org_nodes node on node.tenant_id = ${principal.tenantId}
+    and node.id = ${orgNodeId}
+  left join org_nodes anchor on anchor.tenant_id = ${principal.tenantId}
+    and anchor.id = held.org_node_id
+  join permissions p on r.permission_mode = 'all-active'
+    or exists (
+      select 1 from role_permissions rp
+      where rp.tenant_id = r.tenant_id and rp.role_id = r.id and rp.permission_id = p.id
+    )
+  where ${REACHES_EVERY_NODE}
+    or (held.coverage = 'self' and held.org_node_id = ${orgNodeId})
+    or (held.coverage = 'subtree' and node.path <@ anchor.path)`
+
+/** how far a grant reaches, ordered so a wider one can be compared to a narrower */
+export const REACH_RANK = { self: 0, subtree: 1, tenant: 2 } as const
+export type Reach = keyof typeof REACH_RANK
+
+/** the catalog's row, inserted if absent; the stored row stays the single truth */
+export const upsertPermissionQuery = (permission: ActivePermission): SQL => sql`
+  insert into permissions (code, plugin, name, description, group_key, target_kind)
+  values (${permission.code}, ${permission.plugin}, ${permission.name},
+    ${permission.description ?? null}, ${permission.groupKey ?? null}, ${permission.target})
+  on conflict (code) do nothing`
+
+export const permissionRowQuery = (code: string): SQL =>
+  sql`select plugin, target_kind from permissions where code = ${code}`
+
+/** display text follows the declaration freely, because it decides nothing */
+export const refreshPermissionTextQuery = (permission: ActivePermission): SQL => sql`
+  update permissions set name = ${permission.name}, description = ${permission.description ?? null},
+    group_key = ${permission.groupKey ?? null}, updated_at = now()
+  where code = ${permission.code}`
