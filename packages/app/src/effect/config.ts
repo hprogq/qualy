@@ -1,5 +1,7 @@
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
+import { readManifest } from '@qualy/assembly'
 import { DatabaseConfig } from '@qualy/plugin-database/effect'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import { LoginDrivers } from '@qualy/auth-contract/login'
@@ -34,6 +36,27 @@ export class ServerConfig extends Context.Service<
   )
 }
 
+/** the manifest this process was started with, the same one main.ts verifies */
+export const manifestPath = (): string =>
+  process.env.QUALY_CONFIG
+    ? path.resolve(process.env.QUALY_CONFIG)
+    : path.join(appRoot, 'qualy.yml')
+
+/**
+ * Where the lineage lives, as the manifest declares it.
+ *
+ * The path is relative to the manifest rather than to the working directory,
+ * which is what lets `qualy generate` and this process agree from anywhere.
+ */
+export const manifestMigrationsFolder = (): string => {
+  const file = manifestPath()
+  const declared = (readManifest(file).plugins.get('@qualy/plugin-database')?.config ?? {}) as {
+    migrationsFolder?: string
+  }
+  const folder = declared.migrationsFolder ?? 'db/migrations'
+  return path.isAbsolute(folder) ? folder : path.resolve(path.dirname(file), folder)
+}
+
 /**
  * The database's configuration, supplied by the assembly.
  *
@@ -59,9 +82,14 @@ export const databaseConfigLayer = Layer.effect(
       migrations: yield* Config.literals(['apply', 'off'], 'QUALY_MIGRATIONS').pipe(
         Config.withDefault('apply' as const),
       ),
-      // relative to the app package, the same declaration qualy.yml carries,
-      // so both runtimes mean one directory
-      migrationsFolder: fileURLToPath(new URL('../../db/migrations', pathToFileURL(appRoot))),
+      // Read from the manifest, not hardcoded here.
+      //
+      // `qualy generate` and `qualy deploy` take this folder from the database
+      // plugin's config block, so a copy of the path in this file is a second
+      // place the answer lives: point the manifest somewhere else and the CLI
+      // writes one lineage while the process applies another. Same default as
+      // the CLI's, for the same reason - a manifest need not say.
+      migrationsFolder: manifestMigrationsFolder(),
     })
   }),
 )

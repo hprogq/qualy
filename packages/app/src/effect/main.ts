@@ -1,8 +1,7 @@
-import { fileURLToPath } from 'node:url'
-import path from 'node:path'
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
 import { verifyAssembly } from '../verify-assembly.ts'
+import { manifestPath } from './config.ts'
 import { application } from './runtime.ts'
 
 // Start validates and starts; it never repairs. The generated modules this
@@ -10,11 +9,7 @@ import { application } from './runtime.ts'
 // whose layers, routes or permission catalog do not match the reviewed lock is
 // running an assembly nobody approved. Production refuses; development warns,
 // because editing the manifest and restarting is the whole loop there.
-const appRoot = fileURLToPath(new URL('../../', import.meta.url))
-const configPath = process.env.QUALY_CONFIG
-  ? path.resolve(process.env.QUALY_CONFIG)
-  : path.join(appRoot, 'qualy.yml')
-await verifyAssembly(configPath, (message) => console.warn(message))
+await verifyAssembly(manifestPath(), (message) => console.warn(message))
 
 // The entry point.
 //

@@ -119,9 +119,19 @@ export function renderManifest(manifest: AssemblyManifest): string {
   return YAML.stringify({ version: manifest.version, plugins }, { lineWidth: 0 })
 }
 
-/** the lock lives beside the manifest that produced it */
+/**
+ * The lock lives beside the manifest that produced it, and is named after it.
+ *
+ * A fixed name meant every manifest in a directory shared one lock, so
+ * resolving a throwaway `--yml` next to the product manifest overwrote the
+ * product's own lock with a hash of the wrong file. The default case is
+ * unchanged: `qualy.yml` still produces `qualy.lock.json`.
+ */
 export const lockPathFor = (manifestPath: string) =>
-  path.join(path.dirname(manifestPath), 'qualy.lock.json')
+  path.join(
+    path.dirname(manifestPath),
+    `${path.basename(manifestPath, path.extname(manifestPath))}.lock.json`,
+  )
 
 /**
  * The directory plugin packages resolve from.

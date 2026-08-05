@@ -65,6 +65,15 @@ export function databaseWork(
   context: CapabilityWorkContext<DatabaseContribution, DatabaseState>,
 ): DatabaseWork {
   const config = (context.providerConfig ?? {}) as { migrationsFolder?: string; url?: string }
+  // Refused rather than honoured. The manifest is committed, so a connection
+  // string in it is a credential in version control; and only this side ever
+  // read it, so a deployment that set one had its CLI talk to one database
+  // while the application talked to another.
+  if (config.url !== undefined) {
+    throw new Error(
+      `${context.manifestPath}: @qualy/plugin-database config.url is not supported; set DATABASE_URL in the environment instead, so the lineage and the application cannot address different databases`,
+    )
+  }
   const declared = config.migrationsFolder ?? 'db/migrations'
   const migrations = path.isAbsolute(declared)
     ? declared
@@ -72,7 +81,7 @@ export function databaseWork(
   return {
     migrations,
     schema: schemaEntries(context, asState(context.state)),
-    url: config.url ?? process.env.DATABASE_URL ?? LOCAL_FALLBACK,
+    url: process.env.DATABASE_URL ?? LOCAL_FALLBACK,
   }
 }
 
