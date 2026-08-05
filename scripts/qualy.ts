@@ -13,6 +13,7 @@ import {
   type Resolution,
 } from '@qualy/assembly'
 import { DEFAULT_MANIFEST } from './lib/read-entries.ts'
+import { RUNTIME_MODULE, generatedPath } from './lib/paths.ts'
 
 // deploy and the capability commands reach real systems, and the connection
 // details for them live in .env exactly as they do for `pnpm dev`
@@ -66,7 +67,7 @@ const resolve = async (): Promise<{
 /** every reason this tree is not the one the lock describes */
 const drift = (previous: AssemblyLock | undefined, resolution: Resolution): string[] => {
   const reasons = lockDrift(previous, resolution)
-  const modulePath = path.join(path.dirname(manifestPath), 'runtime.gen.ts')
+  const modulePath = generatedPath(RUNTIME_MODULE)
   if (!fs.existsSync(modulePath)) reasons.push(`${relative(modulePath)} is missing`)
   else if (fs.readFileSync(modulePath, 'utf8') !== renderRuntimeModule(resolution)) {
     reasons.push(`${relative(modulePath)} is not what this manifest generates`)

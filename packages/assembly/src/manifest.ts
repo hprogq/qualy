@@ -31,16 +31,17 @@ export interface AssemblyManifest {
    * editing a port or a database url would look for it. Which package declares
    * the plugin dependencies is a separate fact, and it used to be inferred
    * from the manifest's own directory - which silently required the two to be
-   * the same directory, and made the configuration file live inside the source
-   * tree of one of the applications reading it.
+   * the same directory, and put the configuration file inside the source tree
+   * of one of the applications reading it.
    *
-   * Omitted means the manifest's own directory, which is the standalone
-   * deployment layout: manifest, lock and node_modules side by side.
+   * Required, including the standalone layout's `.`: an assembly that does not
+   * say where its plugins are installed is one guessing, and a guess that is
+   * usually right is the kind that fails once, in someone else's layout.
    */
-  workspace?: string
+  workspace: string
 }
 
-export const MANIFEST_VERSION = 1
+export const MANIFEST_VERSION = 2
 
 const PLUGIN_KEYS = new Set(['enabled', 'config'])
 const TOP_LEVEL_KEYS = new Set(['version', 'plugins', 'application'])
@@ -85,7 +86,13 @@ export function parseManifest(text: string, source: string): AssemblyManifest {
     fail(source, 'application.workspace must be a path relative to this file')
   }
   const workspace = app.workspace as string | undefined
-  if (workspace !== undefined && path.isAbsolute(workspace)) {
+  if (workspace === undefined || workspace === '') {
+    fail(
+      source,
+      'application.workspace is required: name the package whose dependencies these plugin ids resolve against, relative to this file, or "." if they are installed beside it',
+    )
+  }
+  if (path.isAbsolute(workspace)) {
     // an absolute host would make the manifest describe one machine
     fail(source, 'application.workspace must be relative to this file')
   }
@@ -128,9 +135,25 @@ export function readManifest(file: string): AssemblyManifest {
  * added, removed, toggled or reconfigured, which is exactly when a lock
  * stops describing the manifest it was built from.
  */
+/**
+ * The workspace as the hash sees it, so equivalent spellings are one assembly.
+ *
+ * `./apps/server`, `apps/server` and `apps/server/` all name the same package;
+ * hashing them apart would report drift on a whitespace-level edit and make a
+ * lock look stale for no reason.
+ */
+export const normalizeWorkspace = (workspace: string): string => {
+  const normalized = path.normalize(workspace).replace(/[/\\]+$/, '')
+  return normalized === '' ? '.' : normalized.split(path.sep).join('/')
+}
+
 export function manifestHash(manifest: AssemblyManifest): string {
   return canonicalHash({
     version: manifest.version,
+    // the host is part of what this manifest says: pointing it at another
+    // package selects different installed versions of the same plugin ids,
+    // and a hash that ignored it would call that the same assembly
+    application: { workspace: normalizeWorkspace(manifest.workspace) },
     plugins: Object.fromEntries(
       [...manifest.plugins.entries()]
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -147,7 +170,14 @@ export function renderManifest(manifest: AssemblyManifest): string {
     if (entry.config !== undefined) body.config = entry.config
     plugins[id] = Object.keys(body).length > 0 ? body : {}
   }
-  return YAML.stringify({ version: manifest.version, plugins }, { lineWidth: 0 })
+  return YAML.stringify(
+    {
+      version: manifest.version,
+      application: { workspace: manifest.workspace },
+      plugins,
+    },
+    { lineWidth: 0 },
+  )
 }
 
 /**
@@ -172,5 +202,16 @@ export const lockPathFor = (manifestPath: string) =>
  * plugin metadata resolves through here, or generation and the running process
  * disagree about which package a plugin id means.
  */
-export const hostDirFor = (manifest: AssemblyManifest): string =>
-  path.resolve(path.dirname(path.resolve(manifest.source)), manifest.workspace ?? '.')
+export const hostDirFor = (manifest: AssemblyManifest): string => {
+  const host = path.resolve(path.dirname(path.resolve(manifest.source)), manifest.workspace)
+  // Checked here rather than left to the first plugin that fails to resolve.
+  // A workspace naming a directory with no package.json produces
+  // MODULE_NOT_FOUND for every plugin at once, which reads as "the plugins are
+  // not installed" rather than "the manifest is pointing somewhere wrong".
+  if (!fs.existsSync(path.join(host, 'package.json'))) {
+    throw new Error(
+      `${manifest.source}: application.workspace ${manifest.workspace} is not a package (no package.json at ${host})`,
+    )
+  }
+  return host
+}

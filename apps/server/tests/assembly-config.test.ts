@@ -35,7 +35,8 @@ const withManifest = <T>(text: string, run: (file: string) => T): T => {
   }
 }
 
-const manifest = (body: string) => `version: 1\n\nplugins:\n${body}`
+const manifest = (body: string) =>
+  `version: 2\n\napplication:\n  workspace: .\n\nplugins:\n${body}`
 
 describe('what the manifest decides and this process reads', () => {
   it('takes the lineage folder from the manifest, resolved against it', () => {

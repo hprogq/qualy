@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 # The package whose dependencies these plugin ids resolve against. It is the
 # deployment root, not this file's directory: configuration belongs where

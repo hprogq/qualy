@@ -5,7 +5,9 @@ import {
   lockDrift,
   lockFromResolution,
   lockPathFor,
+  manifestHash,
   parseManifest,
+  renderManifest,
   readLock,
   renderLock,
   renderRuntimeModule,
@@ -38,6 +40,8 @@ const commit = async (manifestPath: string) => {
 
 describe('manifest', () => {
   const parse = (text: string) => () => parseManifest(text, 'qualy.yml')
+  /** a v2 body, so a case about one rule is not also a case about the header */
+  const v2 = (body: string) => `version: 2\napplication:\n  workspace: .\n${body}`
 
   it('refuses the entry-array form it replaced', () => {
     // the old file is valid yaml, so without this it would parse as a manifest
@@ -48,19 +52,70 @@ describe('manifest', () => {
   it('refuses one plugin declared twice', () => {
     // yaml's own answer is last-one-wins, which leaves no single answer for the
     // plugin's config
-    expect(parse("version: 1\nplugins:\n  '@a': {}\n  '@a': {}\n")).toThrow()
+    expect(parse(v2("plugins:\n  '@a': {}\n  '@a': {}\n"))).toThrow()
   })
 
   it('refuses keys it does not understand', () => {
-    expect(parse('version: 1\nplugins: {}\nsetup: {}\n')).toThrow(/unknown top-level key setup/)
-    expect(parse("version: 1\nplugins:\n  '@a':\n    enable: true\n")).toThrow(/unknown key enable/)
-    expect(parse('version: 2\nplugins: {}\n')).toThrow(/version must be 1/)
+    expect(parse(v2('plugins: {}\nsetup: {}\n'))).toThrow(/unknown top-level key setup/)
+    expect(parse(v2("plugins:\n  '@a':\n    enable: true\n"))).toThrow(/unknown key enable/)
+    expect(parse('version: 2\napplication:\n  root: .\nplugins: {}\n')).toThrow(
+      /application: unknown key root/,
+    )
+    expect(parse('version: 3\nplugins: {}\n')).toThrow(/version must be 2/)
+  })
+
+  it('refuses a manifest that will not say where its plugins are installed', () => {
+    // The version bump exists for this. A v1 parser refuses `application` as an
+    // unknown top-level key, so a file carrying one was never readable as v1 -
+    // and leaving the field optional would have kept the guess it replaces:
+    // that the manifest's own directory is the host, which is right until
+    // somebody puts the manifest where its readers can find it.
+    expect(parse('version: 2\nplugins: {}\n')).toThrow(/application.workspace is required/)
+    expect(parse('version: 2\napplication: {}\nplugins: {}\n')).toThrow(
+      /application.workspace is required/,
+    )
+    expect(parse('version: 2\napplication:\n  workspace: /srv\nplugins: {}\n')).toThrow(
+      /must be relative/,
+    )
+  })
+
+  it('reads the host it names', () => {
+    const manifest = parseManifest(v2('plugins: {}\n'), 'qualy.yml')
+    expect(manifest.version).toBe(2)
+    expect(manifest.workspace).toBe('.')
   })
 
   it('reads a plugin with nothing after the colon as selected', () => {
-    const manifest = parseManifest("version: 1\nplugins:\n  '@a':\n  '@b': {}\n", 'qualy.yml')
+    const manifest = parseManifest(v2("plugins:\n  '@a':\n  '@b': {}\n"), 'qualy.yml')
     expect([...manifest.plugins.keys()]).toEqual(['@a', '@b'])
     expect(manifest.plugins.get('@a')!.enabled).toBe(true)
+  })
+
+  it('hashes the host it names, and spells it one way', () => {
+    // Pointing the workspace at another package selects different installed
+    // versions of the same plugin ids, so a hash that ignored it would call
+    // that the same assembly and a frozen start would accept it. Equivalent
+    // spellings must NOT drift, or a whitespace-level edit reads as a change.
+    const hashOf = (workspace: string) =>
+      manifestHash(parseManifest(`version: 2\napplication:\n  workspace: ${workspace}\nplugins: {}\n`, 'qualy.yml'))
+    expect(hashOf('./apps/server')).toBe(hashOf('apps/server'))
+    expect(hashOf('./apps/server')).toBe(hashOf('./apps/./server'))
+    expect(hashOf('./apps/server')).toBe(hashOf('apps/server/'))
+    expect(hashOf('./apps/server')).not.toBe(hashOf('./apps/web'))
+    expect(hashOf('.')).toBe(hashOf('./'))
+  })
+
+  it('survives a round trip through the renderer', () => {
+    // renderManifest is what rewrites a manifest; dropping the application
+    // block would silently turn a hosted assembly into a standalone one
+    const original = parseManifest(
+      v2("plugins:\n  '@a': {}\n  '@b':\n    enabled: false\n"),
+      'qualy.yml',
+    )
+    const again = parseManifest(renderManifest(original), 'qualy.yml')
+    expect(again.workspace).toBe(original.workspace)
+    expect(again.version).toBe(2)
+    expect(manifestHash(again)).toBe(manifestHash(original))
   })
 
   it('is rendered the way the testkit renders manifests', () => {
