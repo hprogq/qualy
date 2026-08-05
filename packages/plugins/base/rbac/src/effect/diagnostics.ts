@@ -1,9 +1,18 @@
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 import { Database } from '@qualy/plugin-database/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { explainRowsQuery, orgNodeExistsQuery, userExistsQuery } from '../queries.ts'
 import { GrantNodeNotFound, GrantUserNotFound } from './grants.ts'
 import { PermissionNotFound } from './roles.ts'
+
+import {
+  AccessTargetRequired,
+} from './errors.ts'
+
+// re-exported so a service and its failures still read as one module
+export {
+  AccessTargetRequired,
+}
 
 // Why someone holds what they hold.
 //
@@ -18,12 +27,6 @@ import { PermissionNotFound } from './roles.ts'
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
-/** an org capability asked about without saying where */
-export class AccessTargetRequired extends Schema.TaggedErrorClass<AccessTargetRequired>()(
-  'ACCESS_TARGET_REQUIRED',
-  {},
-  { httpApiStatus: 400, identifier: 'AccessTargetRequired' },
-) {}
 
 export interface PermissionSource {
   readonly roleId: string

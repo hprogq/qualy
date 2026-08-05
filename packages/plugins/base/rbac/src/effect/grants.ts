@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 import { Database } from '@qualy/plugin-database/effect'
 import { translateConstraints } from '@qualy/plugin-database/effect/constraints'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
@@ -34,6 +34,27 @@ import {
 } from '../queries.ts'
 import { assertMayGrantRole, type Authority } from './escalation.ts'
 
+import {
+  GrantExists,
+  GrantNodeNotFound,
+  GrantNotEligible,
+  GrantNotFound,
+  GrantUserNotFound,
+  RoleNotFound,
+  TenantAdminRequired,
+} from './errors.ts'
+
+// re-exported so a service and its failures still read as one module
+export {
+  GrantExists,
+  GrantNodeNotFound,
+  GrantNotEligible,
+  GrantNotFound,
+  GrantUserNotFound,
+  RoleNotFound,
+  TenantAdminRequired,
+}
+
 // Handing a role to somebody, and taking it back.
 //
 // Four separate questions, deliberately not merged. Whether the caller may
@@ -47,74 +68,17 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
 
 type ErrorOf<T> = T extends Effect.Effect<unknown, infer E, unknown> ? E : never
 
-export class RoleNotFound extends Schema.TaggedErrorClass<RoleNotFound>()(
-  'ROLE_NOT_FOUND',
-  {},
-  { httpApiStatus: 404, identifier: 'RoleNotFound' },
-) {}
 
-export class GrantNotFound extends Schema.TaggedErrorClass<GrantNotFound>()(
-  'GRANT_NOT_FOUND',
-  {},
-  { httpApiStatus: 404, identifier: 'GrantNotFound' },
-) {}
 
-export class GrantUserNotFound extends Schema.TaggedErrorClass<GrantUserNotFound>()(
-  'GRANT_USER_NOT_FOUND',
-  {},
-  { httpApiStatus: 404, identifier: 'GrantUserNotFound' },
-) {}
 
-export class GrantNodeNotFound extends Schema.TaggedErrorClass<GrantNodeNotFound>()(
-  'GRANT_NODE_NOT_FOUND',
-  {},
-  { httpApiStatus: 404, identifier: 'GrantNodeNotFound' },
-) {}
 
-/**
- * The same person already holds this role here.
- *
- * Reached through the unique indexes rather than a pre-read: nothing in the
- * write checks for it, and a pre-read would race the insert anyway.
- */
-export class GrantExists extends Schema.TaggedErrorClass<GrantExists>()(
-  'GRANT_EXISTS',
-  {},
-  { httpApiStatus: 409, identifier: 'GrantExists' },
-) {}
 
-/**
- * Granting or revoking the administrator role is reserved for its holders.
- *
- * Its own code rather than a plain denial: the client has a sentence for this
- * case, and collapsing it into ACCESS_DENIED made that sentence unreachable.
- */
-export class TenantAdminRequired extends Schema.TaggedErrorClass<TenantAdminRequired>()(
-  'TENANT_ADMIN_REQUIRED',
-  {},
-  { httpApiStatus: 403, identifier: 'TenantAdminRequired' },
-) {}
 
 const grantConstraints: Record<string, () => GrantExists> = {
   uq_role_grants_anchored: () => new GrantExists(),
   uq_role_grants_tenant_wide: () => new GrantExists(),
 }
 
-/** the reason is a closed set, so a client can explain the refusal precisely */
-export class GrantNotEligible extends Schema.TaggedErrorClass<GrantNotEligible>()(
-  'GRANT_NOT_ELIGIBLE',
-  {
-    reason: Schema.Literals([
-      'role-unassignable',
-      'user-disabled',
-      'user-type',
-      'org-type',
-      'tenant-role-anchored',
-      'org-role-unanchored',
-    ]),
-  },
-  { httpApiStatus: 409, identifier: 'GrantNotEligible' },
-) {}
 
 interface RoleRow extends Record<string, unknown> {
   id: string

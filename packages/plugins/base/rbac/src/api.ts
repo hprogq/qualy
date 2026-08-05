@@ -1,3 +1,27 @@
+import {
+  AccessTargetRequired,
+  GrantEscalationRefused,
+  GrantExists,
+  GrantNodeNotFound,
+  GrantNotEligible,
+  GrantNotFound,
+  GrantStranded,
+  GrantUserNotFound,
+  PermissionNotFound,
+  RoleConflict,
+  RoleEscalationRefused,
+  RoleInUse,
+  RoleIncomplete,
+  RoleIsSystem,
+  RoleNeedsEligibility,
+  RoleNotDraft,
+  RoleNotFound,
+  RoleOrgTypeNotFound,
+  RoleTargetMismatch,
+  RoleUserTypeNotFound,
+  RoleVersionConflict,
+  TenantAdminRequired,
+} from './effect/errors.ts'
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import {
@@ -11,32 +35,7 @@ import {
   trimmedName,
 } from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
-import { Authenticated } from '@qualy/plugin-auth/effect/session'
-import {
-  GrantExists,
-  GrantNodeNotFound,
-  GrantNotEligible,
-  GrantNotFound,
-  GrantUserNotFound,
-  RoleNotFound,
-  TenantAdminRequired,
-} from './effect/grants.ts'
-import { GrantEscalationRefused, RoleEscalationRefused } from './effect/escalation.ts'
-import { AccessTargetRequired } from './effect/diagnostics.ts'
-import {
-  GrantStranded,
-  PermissionNotFound,
-  RoleNeedsEligibility,
-  RoleOrgTypeNotFound,
-  RoleUserTypeNotFound,
-  RoleConflict,
-  RoleTargetMismatch,
-  RoleInUse,
-  RoleIncomplete,
-  RoleIsSystem,
-  RoleNotDraft,
-  RoleVersionConflict,
-} from './effect/roles.ts'
+import { Authenticated } from '@qualy/plugin-auth/effect/session-contract'
 
 // The access api, as definitions only. Paths are frozen.
 //

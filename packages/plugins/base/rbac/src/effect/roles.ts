@@ -30,6 +30,37 @@ import {
 import { RoleNotFound } from './grants.ts'
 import { assertMayDefineRole, type Authority } from './escalation.ts'
 
+import {
+  GrantStranded,
+  PermissionNotFound,
+  RoleConflict,
+  RoleInUse,
+  RoleIncomplete,
+  RoleIsSystem,
+  RoleNeedsEligibility,
+  RoleNotDraft,
+  RoleOrgTypeNotFound,
+  RoleTargetMismatch,
+  RoleUserTypeNotFound,
+  RoleVersionConflict,
+} from './errors.ts'
+
+// re-exported so a service and its failures still read as one module
+export {
+  GrantStranded,
+  PermissionNotFound,
+  RoleConflict,
+  RoleInUse,
+  RoleIncomplete,
+  RoleIsSystem,
+  RoleNeedsEligibility,
+  RoleNotDraft,
+  RoleOrgTypeNotFound,
+  RoleTargetMismatch,
+  RoleUserTypeNotFound,
+  RoleVersionConflict,
+}
+
 // The role lifecycle: draft, active, disabled.
 //
 // The management api creates drafts only. A role becomes usable through
@@ -40,43 +71,6 @@ import { assertMayDefineRole, type Authority } from './escalation.ts'
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
-
-export class RoleIsSystem extends Schema.TaggedErrorClass<RoleIsSystem>()(
-  'ROLE_IS_SYSTEM',
-  {},
-  { httpApiStatus: 409, identifier: 'RoleIsSystem' },
-) {}
-
-export class RoleInUse extends Schema.TaggedErrorClass<RoleInUse>()(
-  'ROLE_IN_USE',
-  { grantCount: Schema.Number },
-  { httpApiStatus: 409, identifier: 'RoleInUse' },
-) {}
-
-export class RoleVersionConflict extends Schema.TaggedErrorClass<RoleVersionConflict>()(
-  'ROLE_VERSION_CONFLICT',
-  { currentVersion: Schema.Number },
-  { httpApiStatus: 409, identifier: 'RoleVersionConflict' },
-) {}
-
-export class RoleNotDraft extends Schema.TaggedErrorClass<RoleNotDraft>()(
-  'ROLE_NOT_DRAFT',
-  {},
-  { httpApiStatus: 409, identifier: 'RoleNotDraft' },
-) {}
-
-/** what a role still needs before it can be activated */
-export class RoleIncomplete extends Schema.TaggedErrorClass<RoleIncomplete>()(
-  'ROLE_INCOMPLETE',
-  { missing: Schema.Array(Schema.Literals(['permissions', 'user-types', 'org-types'])) },
-  { httpApiStatus: 422, identifier: 'RoleIncomplete' },
-) {}
-
-export class RoleConflict extends Schema.TaggedErrorClass<RoleConflict>()(
-  'ROLE_CONFLICT',
-  {},
-  { httpApiStatus: 409, identifier: 'RoleConflict' },
-) {}
 
 const roleConstraints: Record<string, () => RoleConflict> = {
   uq_roles_tenant_code: () => new RoleConflict(),
@@ -93,50 +87,6 @@ interface RoleRow extends Record<string, unknown> {
   assignable: boolean
   version: number
 }
-
-export class PermissionNotFound extends Schema.TaggedErrorClass<PermissionNotFound>()(
-  'PERMISSION_NOT_FOUND',
-  { permissions: Schema.Array(Schema.String) },
-  { httpApiStatus: 404, identifier: 'PermissionNotFound' },
-) {}
-
-/**
- * A capability whose calling convention does not match the role's kind.
- *
- * An org capability inside a tenant role would apply at every node without any
- * grant having said so, and reaching every node belongs to the canonical
- * administrator alone.
- */
-export class RoleTargetMismatch extends Schema.TaggedErrorClass<RoleTargetMismatch>()(
-  'ROLE_TARGET_MISMATCH',
-  { permissions: Schema.Array(Schema.String) },
-  { httpApiStatus: 422, identifier: 'RoleTargetMismatch' },
-) {}
-
-export class RoleNeedsEligibility extends Schema.TaggedErrorClass<RoleNeedsEligibility>()(
-  'ROLE_NEEDS_ELIGIBILITY',
-  {},
-  { httpApiStatus: 422, identifier: 'RoleNeedsEligibility' },
-) {}
-
-export class RoleUserTypeNotFound extends Schema.TaggedErrorClass<RoleUserTypeNotFound>()(
-  'ROLE_USER_TYPE_NOT_FOUND',
-  {},
-  { httpApiStatus: 404, identifier: 'RoleUserTypeNotFound' },
-) {}
-
-export class RoleOrgTypeNotFound extends Schema.TaggedErrorClass<RoleOrgTypeNotFound>()(
-  'ROLE_ORG_TYPE_NOT_FOUND',
-  {},
-  { httpApiStatus: 404, identifier: 'RoleOrgTypeNotFound' },
-) {}
-
-/** grants the eligibility sets, as requested, would leave nobody qualified for */
-export class GrantStranded extends Schema.TaggedErrorClass<GrantStranded>()(
-  'GRANT_STRANDED',
-  { grantCount: Schema.Number },
-  { httpApiStatus: 409, identifier: 'GrantStranded' },
-) {}
 
 export const make = Effect.fn('Rbac.roles.make')(function* (
   authorityFor: (actor: Principal) => Authority,

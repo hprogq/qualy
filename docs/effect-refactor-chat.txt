@@ -1524,7 +1524,7 @@ M7：原子切换
 在所有门禁通过后：
 main.effect.ts → main.ts
 runtime.gen.ts 成为唯一运行时装配入口
-dev:effect → dev
+dev:effect → dev 
 start:effect → start
 随后在同一迁移分支删除：
 Cordis composition roots；

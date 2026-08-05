@@ -16,7 +16,8 @@
     "./effect": "./src/effect/index.ts",
     "./effect/session": "./src/effect/session.ts",
     "./api": "./src/api.ts",
-    "./effect/sign-in": "./src/effect/sign-in.ts"
+    "./effect/sign-in": "./src/effect/sign-in.ts",
+    "./effect/session-contract": "./src/effect/session-contract.ts"
   },
   "qualy": {
     "contributions": {

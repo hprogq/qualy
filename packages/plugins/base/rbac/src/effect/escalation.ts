@@ -1,6 +1,17 @@
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 import type { GrantTarget, Principal } from '@qualy/rbac-contract'
 import { REACH_RANK, type Reach } from '../queries.ts'
+
+import {
+  GrantEscalationRefused,
+  RoleEscalationRefused,
+} from './errors.ts'
+
+// re-exported so a service and its failures still read as one module
+export {
+  GrantEscalationRefused,
+  RoleEscalationRefused,
+}
 
 // Privilege escalation control.
 //
@@ -22,17 +33,7 @@ export const ESCALATE = 'iam.role.escalate'
 export const TENANT_BIND = 'iam.tenant-role.bind'
 export const ORG_BIND = 'iam.org-role.bind'
 
-export class RoleEscalationRefused extends Schema.TaggedErrorClass<RoleEscalationRefused>()(
-  'ROLE_ESCALATION_REFUSED',
-  { permissions: Schema.Array(Schema.String) },
-  { httpApiStatus: 403, identifier: 'RoleEscalationRefused' },
-) {}
 
-export class GrantEscalationRefused extends Schema.TaggedErrorClass<GrantEscalationRefused>()(
-  'GRANT_ESCALATION_REFUSED',
-  { permissions: Schema.Array(Schema.String) },
-  { httpApiStatus: 403, identifier: 'GrantEscalationRefused' },
-) {}
 
 /** what the guards need to know about the actor, however it is answered */
 export interface Authority {

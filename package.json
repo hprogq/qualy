@@ -29,6 +29,7 @@
     "playwright": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:",
     "vitest-browser-react": "catalog:",
     "yaml": "catalog:",

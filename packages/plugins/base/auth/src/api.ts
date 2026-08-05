@@ -13,7 +13,7 @@ import {
   trimmedName,
 } from '@qualy/api-kit/schema'
 
-import { Authenticated, AuthRequired } from './effect/session.ts'
+import { Authenticated, AuthRequired } from './effect/session-contract.ts'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
