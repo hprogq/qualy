@@ -1,7 +1,10 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import fs from 'node:fs'
 import { createServer } from 'node:http'
+import os from 'node:os'
+import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer } from '@qualy/api-kit/node'
@@ -21,7 +24,17 @@ import { WebConfig, routes } from '../src/server/index.ts'
 
 const port = 3191
 const base = `http://127.0.0.1:${port}`
-const assetRoot = new URL('../client-dist/', import.meta.url).pathname
+
+// A shell of its own, not the staged build.
+//
+// Every property here is about which side of the api mount a path falls on,
+// and none of them reads the bundle. Pointing at client-dist made the suite
+// depend on `pnpm build` having run, which on CI it has not: the whole file
+// died with WebUnservable, in a job where the build step comes after the
+// tests. It also meant these assertions could only run after a full frontend
+// build, for no gain.
+const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-assets-'))
+fs.writeFileSync(path.join(assetRoot, 'index.html'), '<!doctype html><title>shell</title>')
 
 let scope: Scope.Scope
 
@@ -48,6 +61,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
+  fs.rmSync(assetRoot, { recursive: true, force: true })
 })
 
 describe('the shell against the api mount', () => {
@@ -61,6 +75,35 @@ describe('the shell against the api mount', () => {
     const response = await fetch(`${base}${QUALY_API_PREFIX}/probe`)
     expect(response.status).toBe(200)
     expect(await response.text()).toBe('probe')
+  })
+
+  it('refuses to build at all when the assets it would serve are absent', async () => {
+    // Enabling this plugin is a claim that the shell can be served, so a
+    // missing build is a startup failure rather than a silent downgrade to a
+    // headless deployment. Asserted here because the suite used to depend on
+    // the staged build existing, which both hid this property and made the
+    // file die outright on CI, where the tests run before the build.
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-empty-'))
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Layer.build(
+            routes.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.succeed(WebConfig, WebConfig.of({ mode: 'production', assetRoot: empty })),
+                  Layer.sync(NodeServer, () => createServer()),
+                  HttpRouter.layer,
+                ),
+              ),
+            ),
+          ),
+        ),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true })
+    }
   })
 
   it('refuses an unmatched path inside the api mount instead of serving html', async () => {
