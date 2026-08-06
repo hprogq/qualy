@@ -35,5 +35,8 @@ describe.runIf(postgresAvailable)('a schema built from auth entities', () => {
       expect(parity[what].lineage.length, `no ${what} were compared`).toBeGreaterThan(0)
       expect(parity[what].entities, `${what} differ`).toEqual(parity[what].lineage)
     }
+    // no non-empty demand here: this plugin owns no trigger, and the day it
+    // does, one the entities cannot rebuild is a difference
+    expect(parity.triggers.entities, 'triggers differ').toEqual(parity.triggers.lineage)
   }, 240_000)
 })

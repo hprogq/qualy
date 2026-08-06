@@ -1417,3 +1417,24 @@ repos/effect/packages/effect/src/Cause.ts:761-840。
 
 **顺带**:`asApiError` 里的 ORPCError 分支删除(全仓已无 oRPC)。**遗留**:前端仍把 query utils
 变量叫 `orpc`(`useApiQuery()` 的返回值,十几个组件),纯命名残留,与本轮无关。
+
+### 审计第 5 条:parity 加深
+
+**clean-room parity**(整条 lineage 对整条 lineage)补齐四类:①列宽与精度——原来只比 `data_type`,
+而每个 varchar 在它眼里都是 `character varying`,255 与 100 完全相等(逐插件那份 parity 早就吃过这个
+亏并修了,整体这份没有);②函数改比 `pg_get_functiondef` 全文,原来只比「名字/参数类型」,函数体改了
+全绿;③触发器改比 `pg_get_triggerdef` 全文,原来只比 `表.触发器名`;④新增视图(`pg_get_viewdef`)、
+物化视图(`pg_matviews`)与枚举标签(`pg_enum`)。
+
+**逐插件 parity** 补触发器(表作用域,随表一起被删,所以生成侧必须经 `afterCreate` 声明才能留下)。
+
+**伪造验证**:把 `tenants.name` 从 255 改成 200,clean-room 立刻红并逐行打印
+`character varying(255)` vs `(200)`;改回后绿。这条差异在改动之前是**完全看不见**的。
+
+**当前都是空集**:本 schema 没有函数、视图、物化视图、触发器,状态用 check 约束而不是 PG 枚举。
+它们现在比的是空对空——价值在于哪天有了,改一行函数体或触发条件会是差异而不是「名字一样就过」。
+
+**没做**:审计还提到「baseline 声明的必需数据行的显式探针」。全仓只有一条 baseline 片段
+(org 的 `CREATE EXTENSION ltree`),它已经有显式锚点断言;没有任何插件用 baseline 插数据行,
+按冻结元规则不为不存在的东西建探针。触发条件:第一条带 `INSERT ... ON CONFLICT DO NOTHING`
+的 baseline 片段落地。

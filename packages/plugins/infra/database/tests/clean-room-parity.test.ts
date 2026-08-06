@@ -41,7 +41,13 @@ const productSelection = (): string[] => {
 const LEDGER = 'mikro_orm_migrations'
 
 const CATALOG = {
+  // width and precision, not just the type name: every varchar in this schema
+  // is 'character varying' to `data_type` alone, so a 255 where the lineage
+  // has 100 compares equal. The per-plugin gate learned this and this one had
+  // not.
   columns: `select table_name || '.' || column_name || ' ' || data_type
+              || coalesce('(' || character_maximum_length || ')', '')
+              || coalesce('(' || numeric_precision || ',' || numeric_scale || ')', '')
               || ' null=' || is_nullable || ' default=' || coalesce(column_default, '-')
             from information_schema.columns
             where table_schema = 'public' and table_name <> '${LEDGER}'
@@ -53,12 +59,28 @@ const CATALOG = {
                 order by 1`,
   indexes: `select indexdef from pg_indexes
             where schemaname = 'public' and tablename <> '${LEDGER}' order by 1`,
-  routines: `select p.proname || '/' || pg_get_function_identity_arguments(p.oid)
+  // the whole definition rather than the signature: a function is carried by a
+  // baseline fragment, and a fragment whose body changed while its name stayed
+  // is precisely the edit this gate exists to catch
+  routines: `select case when p.prokind in ('f', 'p') then pg_get_functiondef(p.oid)
+                        else p.proname || '/' || pg_get_function_identity_arguments(p.oid) end
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
              where n.nspname = 'public' order by 1`,
-  triggers: `select c.relname || '.' || t.tgname
+  triggers: `select c.relname || '.' || t.tgname || ' ' || pg_get_triggerdef(t.oid)
              from pg_trigger t join pg_class c on c.oid = t.tgrelid
              where not t.tgisinternal order by 1`,
+  views: `select table_name || ' ' || pg_get_viewdef(('public.' || quote_ident(table_name))::regclass)
+          from information_schema.views where table_schema = 'public' order by 1`,
+  materialized: `select matviewname || ' ' || definition from pg_matviews
+                 where schemaname = 'public' order by 1`,
+  // this schema spells its states as check constraints rather than as enum
+  // types, so this is empty today; a label added to a type nobody compares is
+  // invisible to every query above, which sees only 'USER-DEFINED'
+  enums: `select t.typname || ' ' || string_agg(e.enumlabel, ',' order by e.enumsortorder)
+          from pg_type t
+          join pg_enum e on e.enumtypid = t.oid
+          join pg_namespace n on n.oid = t.typnamespace
+          where n.nspname = 'public' group by t.typname order by 1`,
   extensions: `select extname from pg_extension order by 1`,
 }
 
@@ -100,9 +122,11 @@ describe.runIf(postgresAvailable)('a lineage rebuilt from the plugins alone', ()
         }
 
         // Anchors, so two empty databases cannot agree their way to green.
-        // Not "every category is non-empty": this schema has no triggers,
-        // the two the lineage created having been dropped by the migration
-        // that removed the columns they read.
+        // Not "every category is non-empty": this schema has no functions,
+        // views or triggers - the two triggers the lineage created were
+        // dropped by the migration that removed the columns they read - and
+        // those categories are compared so that the day one arrives, an
+        // edited body is a difference rather than a matching name.
         expect(seen.extensions).toContain('ltree')
         expect(seen.columns).toContain('org_nodes.path USER-DEFINED null=NO default=-')
         expect(seen.columns!.length).toBeGreaterThan(100)

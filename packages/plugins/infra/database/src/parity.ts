@@ -36,6 +36,14 @@ const catalog = (tables: readonly string[]) => ({
                 order by 1`,
   indexes: `select indexdef from pg_indexes
             where schemaname = 'public' and tablename in (${list(tables)}) order by 1`,
+  // A trigger belongs to its table and is dropped with it, so the generated
+  // side has to declare one to keep it - through `afterCreate`, since entity
+  // metadata cannot express one. Empty for every plugin today, and the whole
+  // definition rather than the name, so an edited condition is a difference
+  // rather than a match.
+  triggers: `select c.relname || '.' || t.tgname || ' ' || pg_get_triggerdef(t.oid)
+             from pg_trigger t join pg_class c on c.oid = t.tgrelid
+             where not t.tgisinternal and c.relname in (${list(tables)}) order by 1`,
 })
 
 export interface SchemaParity {
@@ -43,6 +51,7 @@ export interface SchemaParity {
   columns: { lineage: string[]; entities: string[] }
   constraints: { lineage: string[]; entities: string[] }
   indexes: { lineage: string[]; entities: string[] }
+  triggers: { lineage: string[]; entities: string[] }
 }
 
 export interface SchemaParityOptions {
@@ -119,6 +128,7 @@ export async function schemaParity(
       columns: await both(queries.columns),
       constraints: await both(queries.constraints),
       indexes: await both(queries.indexes),
+      triggers: await both(queries.triggers),
     }
   }
   return withCleanup(
