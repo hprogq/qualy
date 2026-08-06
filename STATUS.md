@@ -954,3 +954,19 @@ auth 的七个测试文件各写一份实体闭包,rbac 的查询开始经 ORM �
 
 **下一步**:roles.ts(20 条左右)→ diagnostics 的两条 → org(252 行查询 + 1001 行 index)。
 没有共享片段的约束了,可以一条一条改。
+
+### rbac 全部切完:`src/queries.ts` 已删除
+
+角色 CRUD、eligibility 集合替换、role projection、diagnostics 的存在性检查 —— 最后一批。
+每条语句现在住在跑它的那个 service 旁边,两个 service 都读的(role projection、
+rolePermissionCodes、lockTenant、userExists/orgNodeExists)住在 `server/db.ts`。
+
+eligibility 的替换不再拿表名和列名当字符串参数。它原先那样是因为一条 drizzle 语句
+经 `sql.raw` 同时服务两个集合 —— 这也是那些 id 必须先校验再拼进语句的原因。
+现在两个集合各自成句,id 是绑定的。
+
+`CanonicalAdminShape` 改成 camelCase:它读的就是 `roleForGrant` 返回的那一行。
+
+**剩余**:org(`src/queries.ts` 252 行 + `server/index.ts` 1001 行),以及
+auth 里那两条读 rbac 表的语句(应改成 rbac 服务上的端口)。rbac 的 `LegacySql`
+现在只用来开事务、不再执行任何语句,org 切完后可以一并换成 `transaction()`。
