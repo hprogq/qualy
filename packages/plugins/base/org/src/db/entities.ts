@@ -41,7 +41,7 @@ export const OrgType = defineEntity({
   tableName: 'org_types',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: () =>
+    tenantId: () =>
       p
         .manyToOne(Tenant)
         .joinColumns('tenant_id')
@@ -82,7 +82,7 @@ export const OrgTypeRule = defineEntity({
   name: 'OrgTypeRule',
   tableName: 'org_type_rules',
   properties: {
-    tenant: () =>
+    tenantId: () =>
       p
         .manyToOne(Tenant)
         .primary()
@@ -111,7 +111,7 @@ export const OrgNode = defineEntity({
   tableName: 'org_nodes',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: () =>
+    tenantId: () =>
       p
         .manyToOne(Tenant)
         .joinColumns('tenant_id')

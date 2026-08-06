@@ -75,7 +75,7 @@ export const Role = defineEntity({
   tableName: 'roles',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: tenantOf('roles_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('roles_tenant_id_tenants_id_fkey'),
     code: p.string().length(63),
     name: p.string().length(100),
     description: p.string().length(500).nullable(),
@@ -151,9 +151,9 @@ export const RolePermission = defineEntity({
   name: 'RolePermission',
   tableName: 'role_permissions',
   properties: {
-    tenant: tenantKeyOf('role_permissions_tenant_id_tenants_id_fkey'),
+    tenantId: tenantKeyOf('role_permissions_tenant_id_tenants_id_fkey'),
     roleId: p.uuid().primary(),
-    permission: () =>
+    permissionId: () =>
       p
         .manyToOne(Permission)
         .primary()
@@ -176,7 +176,7 @@ export const RoleAllowedOrgType = defineEntity({
   name: 'RoleAllowedOrgType',
   tableName: 'role_allowed_org_types',
   properties: {
-    tenant: tenantKeyOf('role_allowed_org_types_tenant_id_tenants_id_fkey'),
+    tenantId: tenantKeyOf('role_allowed_org_types_tenant_id_tenants_id_fkey'),
     roleId: p.uuid().primary(),
     orgTypeId: p.uuid().primary(),
     createdAt: p.datetime().defaultRaw('now()'),
@@ -189,7 +189,7 @@ export const RoleAllowedUserType = defineEntity({
   name: 'RoleAllowedUserType',
   tableName: 'role_allowed_user_types',
   properties: {
-    tenant: tenantKeyOf('role_allowed_user_types_tenant_id_tenants_id_fkey'),
+    tenantId: tenantKeyOf('role_allowed_user_types_tenant_id_tenants_id_fkey'),
     roleId: p.uuid().primary(),
     userTypeId: p.uuid().primary(),
     createdAt: p.datetime().defaultRaw('now()'),
@@ -207,7 +207,7 @@ export const RoleGrant = defineEntity({
   tableName: 'role_grants',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: tenantOf('role_grants_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('role_grants_tenant_id_tenants_id_fkey'),
     userId: p.uuid(),
     roleId: p.uuid(),
     orgNodeId: p.uuid().nullable(),

@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '../src/db/entities.ts'
 import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
@@ -9,6 +11,10 @@ import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
+
+// what the orm must know for a query to name a table; in production the host
+// hands over the generated aggregate, here the plugin's own closure
+const authClosure = [...orgEntities, ...authEntities] as const
 
 // People, and who may administer them.
 //
@@ -29,7 +35,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseFor(url),
+        databaseFor(url, { entities: authClosure }),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(

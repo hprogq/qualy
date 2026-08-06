@@ -136,6 +136,29 @@ export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effec
     )
   })
 
+/**
+ * Supplies the database to an effect, for a layer whose product may carry no
+ * requirements of its own.
+ *
+ * An http middleware is the case: its handler type fixes what the request
+ * context contains, so an effect needing `Orm` does not fit, and the layer has
+ * to close over the database while it is being built. Under drizzle that was
+ * `const database = yield* Database` at the top of the layer.
+ *
+ * What comes back can only put the database into another effect. It is not the
+ * ORM, so it cannot be asked for a manager off the pool - which is the whole
+ * reason `Orm` is not exported as a value.
+ */
+export const withDatabase: Effect.Effect<
+  <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>,
+  never,
+  Orm
+> = Effect.gen(function* () {
+  const orm = yield* Orm
+  return <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.provideService(effect, Orm, orm) as Effect.Effect<A, E, Exclude<R, Orm>>
+})
+
 export class QueryFailed extends Error {
   readonly _tag = 'QueryFailed'
   constructor(override readonly cause: unknown) {

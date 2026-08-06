@@ -32,6 +32,7 @@ export {
   transaction,
   query,
   QueryFailed,
+  withDatabase,
   kyselyOf,
   type ClosureEntityManager,
 } from './orm.ts'

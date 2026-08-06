@@ -31,7 +31,7 @@ export const UserType = defineEntity({
   tableName: 'user_types',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: tenantOf('user_types_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('user_types_tenant_id_tenants_id_fkey'),
     code: p.string().length(63),
     name: p.string().length(100),
     description: p.string().length(500).nullable(),
@@ -84,7 +84,7 @@ export const UserTypeAllowedOrgType = defineEntity({
   name: 'UserTypeAllowedOrgType',
   tableName: 'user_type_allowed_org_types',
   properties: {
-    tenant: () =>
+    tenantId: () =>
       p
         .manyToOne(Tenant)
         .primary()
@@ -110,7 +110,7 @@ export const User = defineEntity({
   tableName: 'users',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: tenantOf('users_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('users_tenant_id_tenants_id_fkey'),
     // tenant business number (student/staff id); once bound, ordinary
     // updates must not clear it
     businessNo: p.string().length(64).nullable(),
@@ -152,7 +152,7 @@ export const AuthProvider = defineEntity({
   tableName: 'auth_providers',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: tenantOf('auth_providers_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('auth_providers_tenant_id_tenants_id_fkey'),
     code: p.string().length(63),
     // provider family; only 'local' ships in this phase, cas may follow
     type: p.string().length(32),
@@ -190,7 +190,7 @@ export const UserIdentity = defineEntity({
   tableName: 'user_identities',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: tenantOf('user_identities_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('user_identities_tenant_id_tenants_id_fkey'),
     userId: p.uuid(),
     authProviderId: p.uuid(),
     identifier: p.string().length(255),
@@ -223,7 +223,7 @@ export const Session = defineEntity({
   tableName: 'sessions',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenant: tenantOf('sessions_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('sessions_tenant_id_tenants_id_fkey'),
     userId: p.uuid(),
     // sha256 of the raw cookie token; the raw value is never stored
     tokenHash: p.character().length(64).unique('sessions_token_hash_key'),

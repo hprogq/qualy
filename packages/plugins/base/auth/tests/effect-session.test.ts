@@ -12,6 +12,8 @@ import {
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '../src/db/entities.ts'
 import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
@@ -22,6 +24,10 @@ import {
   layer as sessionLayer,
 } from '../src/server/session.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
+
+// what the orm must know for a query to name a table; in production the host
+// hands over the generated aggregate, here the plugin's own closure
+const authClosure = [...orgEntities, ...authEntities] as const
 
 // The session as a middleware, over a real server and a real database.
 //
@@ -121,7 +127,7 @@ beforeAll(async () => {
   expiredToken = 'token-expired'
   disabledToken = 'token-disabled'
 
-  const infra = databaseFor(db.url)
+  const infra = databaseFor(db.url, { entities: authClosure })
   const authConfig = Layer.succeed(
     AuthConfig,
     AuthConfig.of({ defaultTenantSlug: 'default', sessionTtlSeconds: 3600, secureCookies: false }),
@@ -151,7 +157,7 @@ afterAll(async () => {
   await db.dispose()
 })
 
-const probeInfra = () => databaseFor(db.url, { migrations: 'off' })
+const probeInfra = () => databaseFor(db.url, { migrations: 'off', entities: authClosure })
 
 const withCookie = (token: string) =>
   fetch(`${base}/probe/me`, { headers: { cookie: `${sessionCookieName}=${token}` } })
@@ -189,7 +195,7 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
           sql`select count(*)::int as count from sessions where token_hash = ${hashSessionToken(expiredToken)}`,
         )) as unknown as { rows: { count: number }[] }
         return result.rows[0]!.count
-      }).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off' }))),
+      }).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure }))),
     )
     expect(gone).toBe(0)
   })

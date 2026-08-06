@@ -1,8 +1,9 @@
 import { Duration, Effect, Layer, Redacted } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import type { HttpServerRequest } from 'effect/unstable/http'
-import { Database } from '@qualy/plugin-database/server'
-import { deleteSessionQuery, sessionByTokenQuery, touchSessionQuery } from '../iam/queries.ts'
+import { kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { sql } from 'kysely'
+import { authEntityManager, type AuthEntityManager } from './db.ts'
 import { AuthConfig } from './auth-config.ts'
 import {
   AuthRequired,
@@ -42,14 +43,51 @@ import { hashSessionToken } from '../session.ts'
 // declare it and cannot read one at all. The check moves from something a
 // handler remembers to something its signature states.
 
-interface SessionRow extends Record<string, unknown> {
-  id: string
-  tenant_id: string
-  user_id: string
-  last_used_at: Date | string | null
-  expired: boolean
-  usable: boolean
-}
+/**
+ * The session behind a token, with the two questions that decide its fate.
+ *
+ * The aliases are worth reading slowly: `t` is the USER TYPE and `n` is the
+ * TENANT. Checking `t.enabled` and forgetting `n.enabled` leaves a disabled
+ * tenant's sessions working, which is what this expression got wrong once.
+ */
+const sessionByToken = (em: AuthEntityManager, tokenHash: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Session as s')
+      .innerJoin('User as u', (join) =>
+        join.onRef('u.tenantId', '=', 's.tenantId').onRef('u.id', '=', 's.userId'),
+      )
+      .innerJoin('UserType as t', (join) =>
+        join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
+      )
+      .innerJoin('Tenant as n', 'n.id', 's.tenantId')
+      .where('s.tokenHash', '=', tokenHash)
+      .select((eb) => [
+        's.id',
+        's.tenantId',
+        's.userId',
+        's.lastUsedAt',
+        sql<boolean>`${eb.ref('s.expiresAt')} <= now()`.as('expired'),
+        sql<boolean>`
+          ${eb.ref('u.enabled')} and ${eb.ref('t.enabled')} and ${eb.ref('n.enabled')}
+          and (${eb.ref('n.expiresAt')} is null or ${eb.ref('n.expiresAt')} > now())
+        `.as('usable'),
+      ])
+      .executeTakeFirst(),
+  )
+
+const deleteSession = (em: AuthEntityManager, id: string) =>
+  query(() => kyselyOf(em).deleteFrom('Session').where('id', '=', id).execute())
+
+/** lastUsedAt is only written when it has gone stale, to keep reads from writing */
+const touchSession = (em: AuthEntityManager, id: string) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('Session')
+      .set({ lastUsedAt: sql<Date>`now()` })
+      .where('id', '=', id)
+      .execute(),
+  )
 
 /** how long a session may go unused before its last-used stamp is rewritten */
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000
@@ -85,17 +123,14 @@ export const clearSessionCookie = (secure: boolean) =>
  * reports an anonymous viewer.
  */
 const resolve = Effect.fn('Auth.resolveSession')(function* (
-  database: typeof Database.Service,
   clear: () => Effect.Effect<void, never, HttpServerRequest.HttpServerRequest>,
   token: string,
 ) {
-  const rows = (yield* database
-    .execute(sessionByTokenQuery(hashSessionToken(token)))
-    .pipe(Effect.orDie)) as unknown as { rows: SessionRow[] }
-  const session = rows.rows[0]
+  const em = yield* authEntityManager()
+  const session = yield* sessionByToken(em, hashSessionToken(token)).pipe(Effect.orDie)
   if (!session) return { state: 'absent' as const }
   if (session.expired) {
-    yield* database.execute(deleteSessionQuery(session.id)).pipe(Effect.orDie)
+    yield* deleteSession(em, session.id).pipe(Effect.orDie)
     yield* clear()
     return { state: 'expired' as const }
   }
@@ -105,14 +140,14 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
     yield* clear()
     return { state: 'absent' as const }
   }
-  if (staleness(session.last_used_at) > TOUCH_INTERVAL_MS) {
-    yield* database.execute(touchSessionQuery(session.id)).pipe(Effect.orDie)
+  if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
+    yield* touchSession(em, session.id).pipe(Effect.orDie)
   }
   return {
     state: 'valid' as const,
     principal: {
-      tenantId: session.tenant_id,
-      userId: session.user_id,
+      tenantId: session.tenantId,
+      userId: session.userId,
       sessionId: session.id,
     },
   }
@@ -127,17 +162,20 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
 export const viewerLayer = Layer.effect(
   Viewer,
   Effect.gen(function* () {
-    const database = yield* Database
     const config = yield* AuthConfig
+    const withDb = yield* withDatabase
     const clear = () => clearSessionCookie(config.secureCookies)
     return Viewer.of({
-      session: Effect.fn('Viewer.session')(function* (httpEffect, { credential }) {
-        const token = Redacted.value(credential)
-        const found = token === '' ? { state: 'absent' as const } : yield* resolve(database, clear, token)
-        return yield* Effect.provideService(httpEffect, CurrentViewer, {
-          principal: found.state === 'valid' ? found.principal : undefined,
-        })
-      }),
+      session: (httpEffect, { credential }) =>
+        withDb(
+          Effect.gen(function* () {
+            const token = Redacted.value(credential)
+            const found = token === '' ? { state: 'absent' as const } : yield* resolve(clear, token)
+            return yield* Effect.provideService(httpEffect, CurrentViewer, {
+              principal: found.state === 'valid' ? found.principal : undefined,
+            })
+          }),
+        ),
     })
   }),
 )
@@ -145,43 +183,47 @@ export const viewerLayer = Layer.effect(
 export const layer = Layer.effect(
   Authenticated,
   Effect.gen(function* () {
-    const database = yield* Database
     const config = yield* AuthConfig
+    const withDb = yield* withDatabase
     const clear = () => clearSessionCookie(config.secureCookies)
 
     return Authenticated.of({
       // the handler wraps the rest of the request rather than returning a
       // value: it decides whether to continue at all, and provides the
       // principal into whatever runs next
-      session: Effect.fn('Authenticated.session')(function* (httpEffect, { credential }) {
-        const rows = (yield* database
-          .execute(sessionByTokenQuery(hashSessionToken(Redacted.value(credential))))
-          .pipe(Effect.orDie)) as unknown as { rows: SessionRow[] }
-        const session = rows.rows[0]
-        // an unknown token and no token are the same answer
-        if (!session) return yield* new AuthRequired()
-        if (session.expired) {
-          yield* database.execute(deleteSessionQuery(session.id)).pipe(Effect.orDie)
-          yield* clear()
-          return yield* new SessionExpired()
-        }
-        // a disabled user, a disabled type or a lapsed tenant is not a
-        // distinguishable state either: it is simply not a session
-        if (!session.usable) {
-          yield* clear()
-          return yield* new AuthRequired()
-        }
+      session: (httpEffect, { credential }) =>
+        withDb(
+          Effect.gen(function* () {
+            const em = yield* authEntityManager()
+            const session = yield* sessionByToken(
+              em,
+              hashSessionToken(Redacted.value(credential)),
+            ).pipe(Effect.orDie)
+            // an unknown token and no token are the same answer
+            if (!session) return yield* new AuthRequired()
+            if (session.expired) {
+              yield* deleteSession(em, session.id).pipe(Effect.orDie)
+              yield* clear()
+              return yield* new SessionExpired()
+            }
+            // a disabled user, a disabled type or a lapsed tenant is not a
+            // distinguishable state either: it is simply not a session
+            if (!session.usable) {
+              yield* clear()
+              return yield* new AuthRequired()
+            }
 
-        if (staleness(session.last_used_at) > TOUCH_INTERVAL_MS) {
-          yield* database.execute(touchSessionQuery(session.id)).pipe(Effect.orDie)
-        }
+            if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
+              yield* touchSession(em, session.id).pipe(Effect.orDie)
+            }
 
-        return yield* Effect.provideService(httpEffect, CurrentUser, {
-          tenantId: session.tenant_id,
-          userId: session.user_id,
-          sessionId: session.id,
-        })
-      }),
+            return yield* Effect.provideService(httpEffect, CurrentUser, {
+              tenantId: session.tenantId,
+              userId: session.userId,
+              sessionId: session.id,
+            })
+          }),
+        ),
     })
   }),
 )

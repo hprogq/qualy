@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
-import { Database } from '@qualy/plugin-database/server'
+import { Database, type Orm } from '@qualy/plugin-database/server'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   DEFAULT_PAGE_SIZE,
@@ -106,7 +106,7 @@ const tags: Layer.Layer<Placement | Iam, never, Database | Rbac> = Layer.effectC
 export const layer: Layer.Layer<
   Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
-  Database | Rbac | AuthConfig | LoginDrivers
+  Database | Orm | Rbac | AuthConfig | LoginDrivers
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
 
 // --- api ---
@@ -314,9 +314,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.user-type.read')
         return {
-          userType: toUserTypeDto(
-            yield* iam.userTypes.get(principal.tenantId, params.userTypeId),
-          ),
+          userType: toUserTypeDto(yield* iam.userTypes.get(principal.tenantId, params.userTypeId)),
         }
       }),
     )
@@ -412,10 +410,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const type = yield* iam.userTypes.get(principal.tenantId, params.userTypeId)
         const mode = placementModeOf(type)
         return {
-          policy:
-            mode === 'allow-list'
-              ? { mode, orgTypeIds: type.allowed_org_types }
-              : { mode },
+          policy: mode === 'allow-list' ? { mode, orgTypeIds: type.allowed_org_types } : { mode },
           version: type.version,
         }
       }),

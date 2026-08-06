@@ -6,6 +6,8 @@ import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '../src/db/entities.ts'
 import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { LoginDrivers } from '@qualy/auth-contract/login'
@@ -18,6 +20,10 @@ import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
 import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { layer as sessionLayer, sessionCookieName } from '../src/server/session.ts'
+
+// what the orm must know for a query to name a table; in production the host
+// hands over the generated aggregate, here the plugin's own closure
+const authClosure = [...orgEntities, ...authEntities] as const
 
 // The whole sign-in cycle, over a real server: no method, a password, the
 // session it creates, and signing out again.
@@ -106,7 +112,7 @@ let userId: string
 beforeAll(async () => {
   if (!postgresAvailable) return
   db = await createTestContext('effect-sign-in')
-  const infra = databaseFor(db.url)
+  const infra = databaseFor(db.url, { entities: authClosure })
   const authConfig = Layer.succeed(
     AuthConfig,
     AuthConfig.of({
@@ -147,7 +153,7 @@ afterAll(async () => {
   await db.dispose()
 })
 
-const probeInfra = () => databaseFor(db.url, { migrations: 'off' })
+const probeInfra = () => databaseFor(db.url, { migrations: 'off', entities: authClosure })
 
 const login = (body: { identifier: string; password: string }, code = 'password') =>
   fetch(`${base}/auth/local/${code}/login`, {
