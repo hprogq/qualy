@@ -1084,3 +1084,40 @@ handler 在 group 建立时取它即可;当时的编译错误是 `ping` 已经�
 
 **遗留**:`repos/drizzle-orm/` 这棵树还在磁盘上(gitignored,已从 vendor-lock 与 vendor-sync
 的清单里移除),手动删掉即可。
+
+### 审计待办(用户 2026-08-06 提出,按此顺序处理)
+
+迁移换成 MikroORM 的 `Migrator` 之后,原审计第 1 条(账本、严格前缀、advisory lock)大部分归上游:
+排序、事务、`mikro_orm_migrations` 账本、并发都由 `MigrationRunner` 负责。**仍然成立的是**
+上游账本只记 `name` 与 `executed_at`,不记内容哈希 —— 已应用迁移被改动仍然无人察觉。
+
+按优先级:
+
+1. **destructive guard 在写文件之前跑**。现在仍是「先写 → 再扫 → 抛错」,被拒的迁移已经落在
+   `db/migrations` 里,而且它的 baseline marker 下一轮会被当成已编译。改成:内存渲染 → 扫描 →
+   通过才落盘(临时文件 + rename)。
+2. **错误定义两个事实源已经漂移**。`src/errors.ts` 的 Zod `defineDomainErrors` 与
+   `src/server/errors.ts` 的 `Schema.TaggedErrorClass` 各说一遍:旧表还留着 `ORG_RULE_CONFLICT`
+   (幂等 PUT 之后已不存在),`TypeInUse` / `RuleViolation` 的 `reason` 字段旧表没有。
+   合成一份中立描述表(code / identifier / status / fields / message),两侧都从它派生。
+3. **错误 tag 的全局门禁**:`^[A-Z][A-Z0-9_]*$`、全局唯一、插件私有错误带领域前缀
+   (`ORG_*` / `AUTH_*` / `RBAC_*`),公共码(`ACCESS_DENIED` 等)归共享 contract。
+   Effect TaggedError 这条路绕过了旧 `defineDomainErrors` 的校验,现在没人守。
+4. **实体碰撞检查换 AST**。`assertNoCollisions` 用正则扫 `name:`/`tableName:`,会把 check /
+   index 对象里的 `name:` 当成实体名,只认单引号,且同插件内重名不报。
+5. **clean-room parity 加深**:补 `pg_get_functiondef` / `pg_get_triggerdef` / `pg_get_viewdef`、
+   `pg_views`、`pg_matviews`(将来 `pg_policies`),以及 baseline 声明的必需数据行的显式探针。
+   现在函数体、触发器条件、视图定义变了都是全绿。
+6. **cleanup 错误遮蔽根因**:`structuralDiff` 与 `schemaParity` 的 finally 里,scratch 库删不掉
+   就抛新的 AggregateError,把原始失败盖掉。应当两者一起带出去。
+7. **启动期失败的类型要与叙述一致**:ORM 初始化与迁移执行仍走 `Effect.promise`(defect),
+   而模块头注释声称在 error channel 里。要么改注释,要么加 `DatabaseStartupFailed` / `MigrationFailed`
+   走 `tryPromise`(不进 HTTP 领域错误 union,只进 Layer 构建失败)。
+8. **生产禁止 localhost fallback**:`NODE_ENV=production` 且缺 `DATABASE_URL` 时硬失败,
+   开发/测试保留 fallback 但告警。
+9. **`compositeForeignKeys` 要在加载期校验形状**:现在只校验 `entities` 是数组;导出成字符串会
+   被逐字符 for...of。
+
+**错误码格式已裁决:保持 SCREAMING_SNAKE**。四层命名各司其职,不合并:
+class `NodeNotFound` / schema identifier `OrgNodeNotFound` / 协议码 `ORG_NODE_NOT_FOUND` /
+message id `org/error/node-not-found`。
