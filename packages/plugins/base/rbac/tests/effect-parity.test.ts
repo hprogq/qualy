@@ -8,7 +8,7 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { Database, type Orm } from '@qualy/plugin-database/server'
+import { type Orm } from '@qualy/plugin-database/server'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'

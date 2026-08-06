@@ -10,7 +10,7 @@ import {
 import { entities as orgEntities } from '../src/db/entities.ts'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
-import { Database, type Orm } from '@qualy/plugin-database/server'
+import { type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'

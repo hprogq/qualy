@@ -1,28 +1,25 @@
-import { PgClient } from '@effect/sql-pg'
-import * as PgDrizzle from 'drizzle-orm/effect-postgres'
-import { Context, Effect, Layer, Redacted } from 'effect'
-import type { SqlError } from 'effect/unstable/sql'
-import { sql as rawSql } from 'drizzle-orm'
+import { Effect, Layer, Redacted } from 'effect'
+import { sql as rawSql } from 'kysely'
 import { Pool } from 'pg'
 import { DatabaseConfig } from './config.ts'
-import { Entities, Orm, layer as ormLayer } from './orm.ts'
+import {
+  Entities,
+  Orm,
+  QueryFailed,
+  entityManager,
+  kyselyOf,
+  layer as ormLayer,
+  query,
+} from './orm.ts'
 import { pendingMigrations, runMigrations } from '../migrator.ts'
 
 // The database as an Effect resource.
 //
-// The cordis service and this one describe the same thing and will not both
-// survive; while they coexist they share the migrator, so there is one
-// implementation of "apply the committed lineage" and not two.
-//
-// What changed in the translation is where the failures live. Under cordis a
-// missing migration, an unreachable server and a bad connection string were
-// all throws inside Service.init that nothing in the type system mentioned.
-// Here they are in the layer's error channel, so a composition that does not
-// deal with them does not compile.
-
-export type Db = Effect.Success<ReturnType<typeof PgDrizzle.makeWithDefaults>>
-
-export class Database extends Context.Service<Database, Db>()('@qualy/plugin-database/Database') {}
+// Where the failures live is the whole difference from what came before. Under
+// cordis a missing migration, an unreachable server and a bad connection
+// string were all throws inside Service.init that nothing in the type system
+// mentioned. Here they are in the layer's error channel, so a composition that
+// does not deal with them does not compile.
 
 export { DatabaseConfig } from './config.ts'
 export {
@@ -52,14 +49,16 @@ export type { Orm } from './orm.ts'
 /**
  * Does the database still answer?
  *
- * Exported so a readiness probe can ask without reaching through the ORM: the
- * composition root should not have to depend on drizzle to find out whether
- * the plugin that owns the connection is healthy.
+ * A value rather than a function, and it names `Orm` in its requirement, which
+ * is the whole reason it can be exported at all: a readiness handler takes it
+ * while its group is built, inside the composition that already has the ORM.
+ * `Orm` being type-only stops the composition root holding one, not from a
+ * layer built over this plugin's asking for it.
  */
-export const ping = Effect.fn('Database.ping')(function* () {
-  const database = yield* Database
-  yield* database.execute(rawSql`select 1`)
-})
+export const ping: Effect.Effect<void, QueryFailed, Orm> = Effect.gen(function* () {
+  const em = yield* entityManager<readonly []>()
+  yield* query(() => rawSql`select 1`.execute(kyselyOf(em)))
+}).pipe(Effect.withSpan('Database.ping'))
 
 export class MigrationsBehind extends Error {
   readonly _tag = 'MigrationsBehind'
@@ -110,46 +109,12 @@ const prepare = Effect.fn('Database.prepare')(function* () {
 })
 
 /**
- * The connection, ready to be used.
- *
- * `Layer.effect` supplies and then strips the Scope, so the pool's finalizer is
- * tied to this layer's lifetime and nothing leaks into its type.
- */
-const connection: Layer.Layer<Database, SqlError.SqlError | MigrationsBehind, DatabaseConfig> =
-  Layer.effect(
-    Database,
-    Effect.gen(function* () {
-      yield* prepare()
-      return yield* PgDrizzle.makeWithDefaults()
-    }),
-  ).pipe(
-    Layer.provide(
-      Layer.unwrap(
-        Effect.gen(function* () {
-          const config = yield* DatabaseConfig
-          // Two runtimes are alive at once for as long as the migration lasts,
-          // and this one no longer serves a request: every statement runs on
-          // the orm's connection. Left at its default it holds a full pool
-          // against a server with one max_connections, which several suites in
-          // parallel exhaust - and the failure surfaces as an unrelated test
-          // failing to connect.
-          return PgClient.layer({ url: config.url, maxConnections: 2 })
-        }),
-      ),
-    ),
-  )
-
-/**
  * Everything this plugin owns.
  *
- * Two access paths to one database while the tables move from one to the
- * other, and the order between them is not incidental: `provideMerge` builds
- * its argument first, so the lineage has been applied by the time the ORM
- * exists. Building them side by side would let queries run against a schema
- * that is still being brought up to date.
+ * The lineage is applied before the ORM exists, not beside it: a layer built
+ * side by side would let queries run against a schema still being brought up
+ * to date.
  */
-export const layer: Layer.Layer<
-  Database | Orm,
-  SqlError.SqlError | MigrationsBehind,
-  DatabaseConfig | Entities
-> = ormLayer.pipe(Layer.provideMerge(connection))
+export const layer: Layer.Layer<Orm, MigrationsBehind, DatabaseConfig | Entities> = ormLayer.pipe(
+  Layer.provideMerge(Layer.effectDiscard(prepare())),
+)

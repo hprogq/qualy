@@ -5,7 +5,6 @@ import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
-import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '../src/server/index.ts'

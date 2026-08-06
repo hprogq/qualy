@@ -21,10 +21,10 @@ import { asState } from '../src/assembly/state.ts'
 // nothing and deploy it?
 //
 // Adding a plugin on top of the migrations already committed proved only that
-// drizzle can diff against them. Starting from an empty migrations directory is
+// the generator can build a schema from them. Starting from an empty migrations directory is
 // a different question, and the answer was no for every selection tried,
 // including the default one: `CREATE EXTENSION ltree` lived in a hand-written
-// host migration, drizzle-kit reproduces tables and nothing else, and org_nodes
+// host migration, a schema generator reproduces tables and nothing else, and org_nodes
 // cannot be created without the type that extension provides. The plugin that
 // needed it already said so in a comment, `-- owner: @qualy/plugin-org`; it
 // just had no way to carry it.
@@ -58,7 +58,7 @@ async function generateFromNothing(workspace: ReturnType<typeof createWorkspace>
 }
 
 describe('database contributions', () => {
-  it('carries the sql a plugin owns but drizzle cannot see', async () => {
+  it('carries the sql a plugin owns but no schema comparison can see', async () => {
     const workspace = workspaceFor([...INFRA, '@qualy/plugin-org'])
     try {
       const work = await context(workspace)
@@ -273,7 +273,7 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
   }
 
   it('keeps the tables of a detached plugin in the lineage', async () => {
-    // taking a plugin out of the manifest must not make drizzle see its tables
+    // taking a plugin out of the manifest must not make the generator see its tables
     // disappear, because the data is still there
     const selection = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-ping']
     const workspace = workspaceFor(selection)

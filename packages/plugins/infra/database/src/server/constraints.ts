@@ -9,12 +9,11 @@ import { TRANSLATABLE } from '../pg-errors.ts'
 // database failure became a defect, and a delete blocked by users still
 // standing on a node answered 500 where it used to answer 409.
 //
-// The chain is deeper here than under node-postgres, and was walked rather
-// than guessed. drizzle's effect-postgres raises EffectDrizzleQueryError whose
-// cause is an Effect Cause; inside it a SqlError carries a typed `reason`
-// (UniqueViolation and friends) which carries the constraint name, and under
-// that sits the driver's own DatabaseError with the sqlstate. Reading only the
-// top level finds nothing.
+// The chain is walked rather than guessed, and it is a tree rather than a
+// list: a wrapper's cause can be an Effect Cause holding an array of failures
+// instead of a single link, and the driver's own DatabaseError - the only
+// thing carrying the sqlstate and the constraint name - sits under all of it.
+// Reading only the top level finds nothing.
 
 /** the first constraint name in the chain that belongs to a translatable sqlstate */
 export const constraintOf = (error: unknown): string | undefined => {

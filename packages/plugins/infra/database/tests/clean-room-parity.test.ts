@@ -9,8 +9,8 @@ import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 
 // The lineage you can regenerate has to be the lineage you have.
 //
-// Every migration in db/migrations was either produced by drizzle-kit from a
-// plugin's schema or hand-written. The hand-written ones are the hazard: they
+// Every migration in db/migrations was either derived from a plugin's
+// entities or hand-written. The hand-written ones are the hazard: they
 // exist only in that directory, so unless an equivalent lives in some plugin's
 // baselineDir, a deployment built from the plugins alone silently lacks it.
 // That is not hypothetical - `CREATE EXTENSION ltree` was exactly this, and
@@ -40,12 +40,12 @@ const CATALOG = {
   columns: `select table_name || '.' || column_name || ' ' || data_type
               || ' null=' || is_nullable || ' default=' || coalesce(column_default, '-')
             from information_schema.columns
-            where table_schema = 'public' and table_name <> '__drizzle_migrations'
+            where table_schema = 'public'
             order by 1`,
   constraints: `select conrelid::regclass || ' ' || conname || ' ' || pg_get_constraintdef(oid)
                 from pg_constraint where connamespace = 'public'::regnamespace order by 1`,
   indexes: `select indexdef from pg_indexes
-            where schemaname = 'public' and tablename <> '__drizzle_migrations' order by 1`,
+            where schemaname = 'public' order by 1`,
   routines: `select p.proname || '/' || pg_get_function_identity_arguments(p.oid)
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
              where n.nspname = 'public' order by 1`,

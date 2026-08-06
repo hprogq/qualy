@@ -11,7 +11,6 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'

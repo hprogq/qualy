@@ -30,7 +30,7 @@ import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 // The assembly core reaches it because @qualy/plugin-database's package.json
 // declares qualy.capabilityProvider, and it disappears the moment that plugin
 // leaves the manifest: an assembly of plugins that own no tables never loads
-// this file, never resolves a schema and never runs drizzle.
+// this file, never resolves a schema and never opens a database.
 //
 // Importing this module must stay free of side effects. It runs inside the
 // CLI, where there is no cordis context to attach to and nothing has agreed to

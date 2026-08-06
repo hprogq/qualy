@@ -23,10 +23,9 @@ const appRoot = fileURLToPath(new URL('../', import.meta.url))
 
 export const localFallback = 'postgres://qualy:qualy@localhost:5432/qualy'
 
-export class ServerConfig extends Context.Service<
-  ServerConfig,
-  { readonly port: number }
->()('@qualy/app/ServerConfig') {
+export class ServerConfig extends Context.Service<ServerConfig, { readonly port: number }>()(
+  '@qualy/app/ServerConfig',
+) {
   static readonly layer = Layer.effect(
     ServerConfig,
     Effect.gen(function* () {
@@ -149,8 +148,8 @@ export const authConfigLayer = Layer.effect(
       sessionTtlSeconds: yield* Config.number('QUALY_SESSION_TTL_SECONDS').pipe(
         Config.withDefault(604_800),
       ),
-      secureCookies: (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development')))
-        === 'production',
+      secureCookies:
+        (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) === 'production',
     })
   }),
 )
@@ -197,9 +196,10 @@ export const apiReferenceEnabled = Effect.gen(function* () {
 export const webConfigLayer = Layer.effect(
   WebConfig,
   Effect.gen(function* () {
-    const mode = yield* Config.literals(['auto', 'development', 'production'], 'QUALY_WEB_MODE').pipe(
-      Config.withDefault('auto' as const),
-    )
+    const mode = yield* Config.literals(
+      ['auto', 'development', 'production'],
+      'QUALY_WEB_MODE',
+    ).pipe(Config.withDefault('auto' as const))
     const environment = yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))
     return WebConfig.of({
       mode: mode === 'auto' ? (environment === 'production' ? 'production' : 'development') : mode,

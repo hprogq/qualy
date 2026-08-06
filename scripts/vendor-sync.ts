@@ -53,13 +53,6 @@ export const VENDORED: readonly VendoredSource[] = [
     tagFor: (version) => `effect@${version}`,
     versionFile: 'packages/effect/package.json',
   },
-  {
-    name: 'drizzle-orm',
-    repository: 'https://github.com/drizzle-team/drizzle-orm.git',
-    packageName: 'drizzle-orm',
-    tagFor: (version) => `v${version}`,
-    versionFile: 'drizzle-orm/package.json',
-  },
   // Vendored ahead of any dependency on it: the orm decision spike has to read
   // what v7 actually does with entity metadata, the Kysely bridge and the
   // migrator, and reasoning from release notes is how a spike concludes that a

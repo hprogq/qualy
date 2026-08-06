@@ -17,7 +17,6 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
 import {

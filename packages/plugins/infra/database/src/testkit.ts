@@ -4,12 +4,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context, Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { Pool } from 'pg'
-import type * as SqlError from 'effect/unstable/sql/SqlError'
 import type { EntitySchema } from '@mikro-orm/core'
 import { schemaParity as compareSchemas, type SchemaParityOptions } from './parity.ts'
 import { CompiledQuery, type RawBuilder } from 'kysely'
 import {
-  Database,
   DatabaseConfig,
   Entities,
   entityManager,
@@ -73,7 +71,7 @@ export interface TestContext {
    * lineage applies and the server answers, which is the same claim a
    * deployment makes.
    */
-  services: Layer.Layer<Database | Orm, SqlError.SqlError | MigrationsBehind>
+  services: Layer.Layer<Orm, MigrationsBehind>
   /** the scratch database this context is bound to */
   url: string
   /**
@@ -315,7 +313,7 @@ export async function createTestContext(
     entities: options.entities ?? [],
   })
   const scope = await Effect.runPromise(Scope.make())
-  let built: Context.Context<Database | Orm>
+  let built: Context.Context<Orm>
   try {
     built = await Effect.runPromise(Layer.buildWithScope(services, scope))
   } catch (error) {
@@ -372,7 +370,7 @@ const TEST_POOL_SIZE = 2
 export const databaseFor = (
   url: string,
   options: { migrations?: 'apply' | 'off'; entities?: readonly EntitySchema[] } = {},
-): Layer.Layer<Database | Orm, SqlError.SqlError | MigrationsBehind> =>
+): Layer.Layer<Orm, MigrationsBehind> =>
   databaseLayer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -416,17 +414,11 @@ const servicesFor = (url: string, options: Required<TestContextOptions>) =>
 const build = async (
   url: string,
   options: Required<TestContextOptions>,
-  body: (database: typeof Database.Service) => Promise<void>,
+  body: (services: Context.Context<Orm>) => Promise<void>,
 ) => {
   const scope = await Effect.runPromise(Scope.make())
   try {
-    const database = await Effect.runPromise(
-      Effect.gen(function* () {
-        const built = yield* Layer.buildWithScope(servicesFor(url, options), scope)
-        return Context.get(built, Database)
-      }),
-    )
-    await body(database)
+    await body(await Effect.runPromise(Layer.buildWithScope(servicesFor(url, options), scope)))
   } finally {
     await Effect.runPromise(Scope.close(scope, Exit.void))
   }
@@ -435,15 +427,14 @@ const build = async (
 /**
  * The SQLSTATE a write was refused with, or 'no error' when it succeeded.
  *
- * Drizzle wraps driver failures in its own error and puts the original on
- * `cause`, so reading `code` off the top level quietly yields undefined and
- * an assertion about a constraint becomes an assertion about nothing.
+ * The orm wraps driver failures and puts the original further down, so reading
+ * `code` off the top level quietly yields undefined and an assertion about a
+ * constraint becomes an assertion about nothing.
  */
 export function pgCode(work: Promise<unknown>): Promise<string> {
-  // The chain is a tree, not a list. Drizzle wraps the driver failure, and
-  // under the effect driver the wrapper's cause is an Effect Cause holding an
-  // array of failures rather than a single `cause` link, so walking only
-  // `.cause` stopped at the wrapper and returned its message.
+  // The chain is a tree, not a list: a wrapper's cause can be an Effect Cause
+  // holding an array of failures rather than a single `cause` link, so walking
+  // only `.cause` stopped at the wrapper and returned its message.
   const find = (node: unknown, depth: number, seen: Set<unknown>): string | undefined => {
     if (!node || typeof node !== 'object' || depth > 10 || seen.has(node)) return undefined
     seen.add(node)

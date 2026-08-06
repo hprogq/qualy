@@ -42,7 +42,7 @@ export const healthHandlers = HttpApiBuilder.group(healthApi, 'health', (handler
   handlers
     .handle('live', () => Effect.succeed({ status: 'live' as const }))
     .handle('ready', () =>
-      ping().pipe(
+      ping.pipe(
         Effect.as({ status: 'ready' as const }),
         // why it failed belongs in the log, not in the body of an
         // unauthenticated endpoint

@@ -8,7 +8,7 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { Database, kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
+import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
 import { authEntityManager } from '../src/server/db.ts'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'

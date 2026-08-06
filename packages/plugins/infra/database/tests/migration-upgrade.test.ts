@@ -67,7 +67,7 @@ describe.runIf(available)('access model upgrade', () => {
     await adminPool.end().catch(() => {})
   })
 
-  // drizzle's migrator runs every pending migration inside one transaction, so
+  // the migrator runs every pending migration inside one transaction, so
   // a data step that raises rolls the whole batch back rather than leaving the
   // database half converted. Applying batches the same way here keeps the
   // failure scenarios honest about what an operator would find afterwards.

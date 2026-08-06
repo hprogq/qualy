@@ -124,8 +124,7 @@ export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effec
  *
  * An http middleware is the case: its handler type fixes what the request
  * context contains, so an effect needing `Orm` does not fit, and the layer has
- * to close over the database while it is being built. Under drizzle that was
- * `const database = yield* Database` at the top of the layer.
+ * to close over the database while it is being built.
  *
  * What comes back can only put the database into another effect. It is not the
  * ORM, so it cannot be asked for a manager off the pool - which is the whole
