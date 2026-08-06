@@ -25,7 +25,7 @@ export interface Assembled {
 
 export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
   const providers = new Map<string, { plugin: string; feature: ProvideExtension }>()
-  const contributions = new Map<string, { plugin: string; value: unknown }[]>()
+  const contributions = new Map<string, { plugin: string; value: unknown; phase: ExtensionPhase }[]>()
   const serviceLayers: AnyLayer[] = []
 
   for (const descriptor of descriptors) {
@@ -43,7 +43,7 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
         }
         case 'Contribute': {
           const list = contributions.get(feature.point.id) ?? []
-          list.push({ plugin: descriptor.id, value: feature.value })
+          list.push({ plugin: descriptor.id, value: feature.value, phase: feature.point.phase })
           contributions.set(feature.point.id, list)
           break
         }
@@ -56,8 +56,10 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
   }
 
   // a contribution nobody interprets would vanish silently, which is the
-  // exact failure the CLI's capability model already refuses
+  // exact failure the CLI's capability model already refuses - except for
+  // external channels, whose interpreter is a different host by declaration
   for (const [pointId, list] of contributions) {
+    if (list.every((entry) => entry.phase === 'external')) continue
     if (!providers.has(pointId)) {
       throw new Error(
         `${list.map((entry) => entry.plugin).join(', ')} contribute(s) to ${pointId}, which no selected plugin provides`,

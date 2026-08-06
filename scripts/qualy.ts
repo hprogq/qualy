@@ -1,6 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { isPluginDescriptor } from '@qualy/plugin-kit'
+import { collectCliCommands } from '@qualy/plugin-kit/cli'
+import { resolvePluginModuleUrl } from './lib/packages.ts'
 import {
+  capabilityContext,
   capabilityModules,
   capabilityWork,
   lockDrift,
@@ -12,6 +16,7 @@ import {
   writeLock,
   type AssemblyLock,
   type Resolution,
+  runtimeLayers,
 } from '@qualy/assembly'
 import { DEFAULT_MANIFEST } from './lib/read-entries.ts'
 import { generatedPath } from './lib/paths.ts'
@@ -36,8 +41,12 @@ const USAGE = [
   '  pnpm qualy plan',
   '  pnpm qualy generate [capability args]',
   '  pnpm qualy deploy',
-  '  pnpm qualy <capability> <command> [args]',
+  '  pnpm qualy list',
+  '  pnpm qualy <namespace> <command> [args]',
 ].join('\n')
+
+/** the lifecycle's own verbs; a plugin namespace may not shadow one */
+const RESERVED = ['resolve', 'plan', 'generate', 'deploy', 'list', 'help']
 
 const argv = process.argv.slice(2)
 const [command, ...rest] = argv
@@ -163,18 +172,82 @@ async function main(): Promise<void> {
     return
   }
 
+  if (command === 'list') {
+    const resolution = await resolveCurrent('list')
+    const { commands } = await descriptorCommands(resolution)
+    console.log('lifecycle: resolve, plan, generate, deploy')
+    for (const [key, entry] of [...commands.entries()].sort()) {
+      console.log(`${key}  -  ${entry.command.summary} (${entry.plugin})`)
+    }
+    for (const capability of capabilityWork(resolution)) {
+      const names = Object.keys(
+        (resolution.providers.get(capability.key)?.provider.commands ?? {}) as object,
+      )
+      for (const name of names.sort()) {
+        console.log(`${capability.key} ${name}  -  capability command (${capability.pluginId})`)
+      }
+    }
+    return
+  }
+
   const [key, name, ...args] = argv
   if (!key || !name || key.startsWith('-')) die(USAGE)
   const resolution = await resolveCurrent(`run ${key} ${name}`)
+
+  // Descriptor commands first: the namespace table already refused every
+  // collision, including with capability keys, so first-match is the only
+  // match. Capability lifecycle commands stay reachable under their key.
+  const { namespaces, commands } = await descriptorCommands(resolution)
+  const namespace = namespaces.get(key!)
+  if (namespace) {
+    const entry = commands.get(`${namespace} ${name}`)
+    if (!entry) die(`namespace ${namespace} has no command ${name}`)
+    const implementation = await entry!.command.load()
+    await implementation.run({
+      args,
+      capability:
+        entry!.command.context === 'capability'
+          ? capabilityContext(resolution, capabilityKeyOf(resolution, entry!.plugin), args)
+          : undefined,
+    })
+    return
+  }
+
   const capability = capabilityWork(resolution).find((entry) => entry.key === key)
   if (!capability) {
-    const available = [...resolution.capabilities.keys()].join(', ')
-    die(`no capability ${key} in this assembly; available: ${available || '(none)'}`)
+    const available = [...resolution.capabilities.keys(), ...namespaces.keys()].join(', ')
+    die(`no capability or namespace ${key} in this assembly; available: ${available || '(none)'}`)
     return
   }
   if (!(await capability.command(name!, args))) {
     die(`capability ${key} has no command ${name}`)
   }
+}
+
+/** the capability a plugin provides, for commands that asked for its work context */
+function capabilityKeyOf(resolution: Resolution, pluginId: string): string {
+  for (const [key, loaded] of resolution.providers) {
+    if (loaded.pluginId === pluginId) return key
+  }
+  throw new Error(`${pluginId} declares a capability-context command but provides no capability`)
+}
+
+/**
+ * Every active plugin's commands, from its descriptor.
+ *
+ * Imported lazily and only for command routing: resolve and the lifecycle
+ * never load plugin code, and a command's implementation loads only when it
+ * is invoked.
+ */
+async function descriptorCommands(resolution: Resolution) {
+  const descriptors = []
+  for (const entry of runtimeLayers(resolution)) {
+    // resolved through the host package, like every other plugin import the
+    // scripts make: the repo root deliberately depends on no business plugin
+    const module = (await import(resolvePluginModuleUrl(entry.specifier))) as { default?: unknown }
+    if (isPluginDescriptor(module.default)) descriptors.push(module.default)
+  }
+  return collectCliCommands(descriptors, RESERVED)
 }
 
 await main()

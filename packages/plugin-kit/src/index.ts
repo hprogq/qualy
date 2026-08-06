@@ -42,8 +42,13 @@ export type IdentifierOf<K> = K extends Context.Key<infer Identifier, any> ? Ide
  * and upstream types make that a real requirement rather than a phantom one.
  * `boot` runs once after everything is built and before the port binds - the
  * assembled barrier's job, unchanged.
+ *
+ * `external` is for channels a different host interprets - cli commands are
+ * read by the command runner, not by the process serving requests - so the
+ * layer assembler collects nothing from them and demands no provider: its
+ * completeness rule speaks only for the graph it builds.
  */
-export type ExtensionPhase = 'prepare' | 'afterServices' | 'boot'
+export type ExtensionPhase = 'prepare' | 'afterServices' | 'boot' | 'external'
 
 export interface ExtensionPoint<in out Contribution> {
   readonly _tag: 'ExtensionPoint'

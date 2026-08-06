@@ -4,6 +4,7 @@ import { NodeHttpServer } from '@effect/platform-node'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { Plugin, isPluginDescriptor } from '@qualy/plugin-kit'
+import { Cli, collectCliCommands } from '@qualy/plugin-kit/cli'
 import { assemble } from '@qualy/plugin-kit/assemble'
 import { DatabaseEntities, Postgres } from '@qualy/plugin-database/plugin'
 import { ReactUi, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
@@ -128,4 +129,43 @@ describe('the descriptor prototype', () => {
       }
     },
   )
+})
+
+describe('cli command collection', () => {
+  const command = (namespace: string, name: string, aliases?: readonly string[]) =>
+    Cli.command({
+      namespace,
+      ...(aliases ? { aliases } : {}),
+      name,
+      summary: 'x',
+      context: 'assembly',
+      load: () => Promise.resolve({ run: async () => {} }),
+    })
+
+  it('routes aliases to the canonical namespace', () => {
+    const { namespaces, commands } = collectCliCommands(
+      [Plugin.define('@fake/a', command('database', 'migrate', ['db']))],
+      ['resolve'],
+    )
+    expect(namespaces.get('db')).toBe('database')
+    expect(commands.get('database migrate')?.plugin).toBe('@fake/a')
+  })
+
+  it('refuses two plugins claiming one namespace, naming both', () => {
+    expect(() =>
+      collectCliCommands(
+        [
+          Plugin.define('@fake/a', command('tools', 'one')),
+          Plugin.define('@fake/b', command('tools', 'two')),
+        ],
+        [],
+      ),
+    ).toThrow(/cli namespace tools is claimed by both @fake\/a and @fake\/b/)
+  })
+
+  it('refuses a namespace shadowing a lifecycle verb', () => {
+    expect(() =>
+      collectCliCommands([Plugin.define('@fake/a', command('resolve', 'x'))], ['resolve']),
+    ).toThrow(/claims cli namespace resolve, which is a core verb/)
+  })
 })

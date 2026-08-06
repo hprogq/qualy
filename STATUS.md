@@ -1634,3 +1634,31 @@ openapi/docs/外壳/ready 全 200,零 [E]。
 `Postgres.scope`(纯清扫);②M3 CLI 统一(resolve 改读描述器、qualy run 动态命令、
 作废"resolve 不 import 插件代码"并改 CLAUDE);③CLAUDE 插件形态节需按描述器模型重写
 (与 M3 一起,避免改两次)。
+
+### M3a:CLI 动态命令落地
+
+**结构裁决**(先例分析入 docs/plugin-descriptor-plan.md):名词优先两级
+`qualy <namespace> <command>`,**不加 run 间接层**——npm 的 `run` 是给任意用户脚本防冲突的,
+qualy 的命令来自插件声明,命名空间即所有权(docker buildx / rails db:migrate 同款);
+「一键一主」规则天然保证命名空间唯一。核心动词(resolve/plan/generate/deploy/list/help)是
+保留字;`aliases` 支持;实现**惰性加载**(oclif 同款)——描述器保持轻,服务端 boot 不背迁移器。
+`effect/unstable/cli`(Command/HelpDoc/Completions 全套在)暂不引入,feature 形状兼容,
+等需要 typed options/补全时整体换壳。
+
+**实施**:`@qualy/plugin-kit/cli` 定义 `CliCommands` 点 + `Cli.command` + `collectCliCommands`
+(命名空间/别名/保留字三重硬拒,点名双方);scripts/qualy.ts 作 CLI 宿主解释(经
+resolvePluginModuleUrl 走宿主包解析——根包故意不依赖业务插件);`qualy list` 列出生命周期 +
+描述器命令 + 能力生命周期命令。首个动态命令:**`qualy db migrate`**(= deploy 的迁移半边,
+`context: 'capability'` 档拿 CapabilityWorkContext),`qualy database migrate` 与别名双拼写实测通。
+
+**内核新概念**:`ExtensionPhase` 增 `'external'`——由**另一个宿主**解释的通道(CLI 命令由命令
+运行器解释,不由服务进程),层装配器对它零收集零 provider 要求;完整性规则只为自己构建的图发言。
+发现过程:服务端装配器曾把 CLI 贡献当"没人解释"拒掉,这个相位就是那次失败的正确答案。
+
+**CLAUDE**:插件形态节按描述器模型重写 + CLI 规则一节;M3b 前 `qualy.contributions/runtime`
+仍在 package.json、"resolve 不 import 插件代码"仍有效(命令路由是唯一例外,已注明)。
+
+**验收**:typecheck 11 工程零错;node 359 / browser 13;`qualy list`、`qualy db migrate`、
+`qualy database migrate` 实测;未知命令/冲突命名空间/保留字占用三条硬拒有测试;真实启动照常零 [E]。
+
+**M3b 待做**:resolve/lock/seed 改读描述器,database assembly 删声明解析,正式作废 resolve 纪律。

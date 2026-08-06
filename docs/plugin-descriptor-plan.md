@@ -54,10 +54,42 @@ ping 的 layer/apiHandlers 导出由描述器共享的常量派生(桥),主系�
   测试台换装(harness 用 serviceLayer + compileCatalog 的真实目录)。
 - 每批过门禁:typecheck、node+browser 套件、真实启动。
 
-**M3 CLI 统一**:resolve/lock 改读描述器(lock 记 feature 投影,retained 语义不变);
-database assembly 删 package.json 声明解析;seed 改读描述器;`qualy run <cap> <cmd>` 动态命令;
-Pre/Post 形式化为 phase;**作废"resolve 不 import 插件代码"纪律并改 CLAUDE**(描述器是纯值、
-import 无副作用,但确实执行 TS —— 这是有意识的裁决)。
+**M3 CLI 统一**,拆两批:
+
+**M3a 动态命令**(先做)。命令结构的裁决,按大型项目先例:
+
+| 模型                                                        | 代表                                         | 取舍                                                                                    |
+| ----------------------------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 平铺 + PATH 发现(`git foo` / `cargo foo`)                   | git、cargo、kubectl 插件                     | 核心与扩展命令同名冲突要靠约定;发现机制基于二进制,不适用单进程 CLI                      |
+| `run <task>` 间接层                                         | npm run、nx run                              | 为"任意用户脚本"设计的防冲突层;qualy 的命令来自插件声明,不是任意字符串,多打一层纯是成本 |
+| **名词优先两级**(`docker buildx build`、`rails db:migrate`) | docker CLI 插件、rake namespace、oclif topic | 命名空间即所有权;qualy 的「一键一主」规则已经天然保证命名空间唯一                       |
+
+**裁决:名词优先两级,不加 `run`**——现有 `qualy database <cmd>` 就是这个形状,推广之:
+
+```
+qualy resolve | plan | generate | deploy      # 生命周期,核心持有(保留字)
+qualy <namespace> <command> [args]            # 插件命令,来自描述器
+qualy list                                    # 发现:核心动词 + 全部命名空间与命令
+```
+
+规则:①命名空间一次认领、一个所有者(与 ExtensionPoint/能力键同规则,冲突点名双方硬拒);
+②核心动词是保留字,命名空间不得占用;③`aliases` 支持(`db` → `database`,docker 同款);
+④命令实现**惰性加载**(`load: () => import(...)`,oclif 同款)——描述器保持轻,服务端 boot
+不因 CLI 命令背上迁移器;⑤命令声明 context 档位:`assembly`(只要 resolution)/
+`capability`(CapabilityWorkContext,现有 database 命令的档)/ 将来 `runtime`
+(起服务不绑端口,rails runner 同款——等第一个需要服务的命令出现再建);
+⑥`effect/unstable/cli`(Command/HelpDoc/Completions)暂不引入:feature 形状已兼容
+(name/summary/run),等需要 typed options 或补全时整体换壳,不影响插件侧。
+
+实施:`@qualy/plugin-kit/cli` 定义 `CliCommands` 扩展点与 `Cli.command` 构造器;
+scripts/qualy.ts 作为 CLI 宿主解释该点;database 描述器给出首个动态命令
+`qualy db migrate`(= deploy 的迁移半边);`qualy web build`(alias `ui`)等
+staging 脚本归属挪进 web 插件后再上(所有权先于命令)。
+
+**M3b 声明源统一**(后做):resolve/lock 改读描述器(lock 记 feature 投影,retained 语义
+不变);database assembly 删 package.json 声明解析;seed 改读描述器;
+**作废"resolve 不 import 插件代码"纪律并改 CLAUDE**(描述器是纯值、import 无副作用,
+但确实执行 TS——这是有意识的裁决)。
 
 **M4(未裁决)**:每插件自持 typed client,删 @qualy/api 与全局 api-client,前端全量换装。
 

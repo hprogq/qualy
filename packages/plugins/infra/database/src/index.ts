@@ -1,4 +1,5 @@
 import { Plugin } from '@qualy/plugin-kit'
+import { Cli } from '@qualy/plugin-kit/cli'
 import { Postgres } from './plugin.ts'
 import { layer as serviceLayer } from './server/index.ts'
 
@@ -11,6 +12,14 @@ const plugin = Plugin.define(
   '@qualy/plugin-database',
   Postgres.provider,
   Plugin.layer(serviceLayer),
+  Cli.command({
+    namespace: 'database',
+    aliases: ['db'],
+    name: 'migrate',
+    summary: 'apply the committed lineage to the configured database',
+    context: 'capability',
+    load: () => import('./assembly/migrate-command.ts'),
+  }),
 )
 
 export default plugin
