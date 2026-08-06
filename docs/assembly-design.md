@@ -1797,6 +1797,119 @@ Layer 不能把两个互相要求对方完整 service 的插件直接组合。�
 
 这是整个迁移里最需要设计的部分，细节与进度在 effect-migration.md。
 
+## 阶段 2.6：组合根收口（设计定稿 2026-08-06，未实施）
+
+阶段 2 的静态 Effect 运行时留下一个缺口：`apps/server/src/{runtime,config,health}.ts` 无条件点名
+五处插件导入，没有 database 的装配连编译都过不去——能力边界在核心里成立（有测试守），在能跑的
+产品里不成立。
+
+诊断：宿主的七处点名**不是一类问题，是三类**，而三类各自的机制都已存在一半。
+
+### A 类：目录聚合（permissions / login-drivers / ui / entities）
+
+四份「每个插件声明的 X，拼起来」。entities 已经走对了路——database 能力的 `modules()` 产出
+`entities.gen.ts`；另外三份还卡在根脚本（gen-permissions / gen-login-drivers / gen-ui），
+且产物只导出**数据**，由宿主手写 `Layer.succeed(Tag, data)` 包一层——点名 Tag 因此不可避免。
+
+一个此前没人说破的对称性：**每份目录的唯一消费者恰是它的天然 provider**——
+PermissionCatalog（住 rbac-contract）只被 rbac 的 layer 消费，LoginDrivers（auth-contract）只被
+auth 消费，UiCatalog 只被 ui-registry 消费，Entities 只被 database 消费。所以：
+
+- **permissions 升为能力，provider = rbac**；贡献方声明 `qualy.contributions.permissions`
+  （旧 `qualy.permissions` 硬拒并指路，同 qualy.database 迁移前例）。
+- **login-drivers 升为能力，provider = auth**；auth-local 声明贡献。
+- **ui 升为能力，provider = ui-registry**。
+- 三个根脚本删除，逻辑变成各 provider 的 `modules()`。CLAUDE.md 写的 tooling 重评触发条件
+  「第四类 codegen 能力落地（如 rbac.permissions）」正是此刻——答案是能力的 `modules()` 就是
+  注册表，不建新机制。
+- **生成模块导出 layer 而非数据**：`entities.gen.ts` 导出
+  `entitiesLayer = Layer.succeed(Entities, [...])`，Tag 由生成模块自己 import。能力缺席时模块
+  不存在、没人 import 缺失的 Tag——条件性落在生成期，正是「anything conditional belongs in
+  resolution」。
+- 契约层加一个字段：`CapabilityModule` 增加可选 `layerExport?: string`。核心不解释它，只把这个
+  字符串交给 runtime 模块生成器去 emit `import { <name> } from './<path>'` 并合并。
+- 硬失败自动继承：贡献了 permissions 但装配里没有 rbac → resolve 拒绝（该插件的 layer 本就
+  require Rbac，两道门一致）。现有 capability-boundary 测试的选择集
+  `[web, layout-default]` 在 ui 升为能力后需加入 ui-registry——这是设计行为，不是回归。
+
+### B 类：每插件配置（DatabaseConfig / AuthConfig / WebConfig）
+
+根因：cordis 的 loader 会把清单 config 交给插件；静态运行时没有这条路径，宿主于是替每个插件读
+环境变量。修法是给 `qualy.runtime` 加一个面：
+
+- 声明：`qualy.runtime.config: true` = 「我的 runtime entry 导出 `config`」。声明不探测。
+- 插件侧：`export const config = (manifest: AuthManifestConfig, context: { manifestDir: string })
+=> Layer.Layer<AuthConfig, ConfigError>`——环境变量读取、默认值、校验全归插件。
+- 生成器把清单里该插件的 `config:` 节**作为字面量**写进 `runtime.gen.ts` 的调用：
+  `databaseConfig({ migrationsFolder: './db/migrations' }, { manifestDir })`。字面量由插件导出的
+  参数类型在 typecheck 期检查——yml 形状错 = 编译错，与 runtime.gen 现有的
+  「缺包挂在 build 不挂在 boot」同一性质。
+- **核心不解释 config**：路径类字段（migrationsFolder）由插件自己按 `manifestDir` resolve；
+  生成器只负责 `const manifestDir = fileURLToPath(new URL('<相对>', import.meta.url))` 一行锚定，
+  不知道哪个键是路径。
+- 硬失败：清单里给了 `config:` 但插件既无 capabilityProvider 也未声明 `runtime.config` →
+  resolve 拒绝（设置静默失效是本仓最恨的失败形态；databaseWork 现有的未知键硬拒保持不变）。
+- 安全边界不变：清单本就是提交物，`config.url` 已被硬拒；secret 走环境变量，由插件的 config
+  函数读取。
+- 审计第 8 条（生产禁 localhost fallback）自然落进 database 的 config 导出，随此步一起修。
+- 测试注入方式不变：config 是服务，testkit 继续直接 provide `DatabaseConfig`。
+
+### C 类：就绪探针（ping）
+
+`qualy.runtime` 的第三个面：`readiness: true` = 「runtime entry 导出
+`readiness: Effect<void, unknown, R>`」。生成器汇出
+`export const readinessProbes = [{ plugin: 'database', probe }] as const`——**不写类型注解**，
+让推断携带 R 的并集，由 health handler 的 requirement 吸收、pluginLayers 清偿。零探针时
+R = never，`/health/ready` 空 checks 返回 200，与冻结的健康语义一致（ready 只声称已装载的都
+健康）。health.ts 里「本组合没有 database 就建不起来」的注释随之作废。
+
+### 端态
+
+`runtime.gen.ts` 成为唯一组合模块：
+
+```ts
+// 生成物（示意）
+import { Layer } from 'effect'
+import { fileURLToPath } from 'node:url'
+import { layer as pluginAuth, config as authConfig } from '@qualy/plugin-auth/server'
+import { layer as pluginDatabase, config as databaseConfig, readiness as databaseReadiness } from '@qualy/plugin-database/server'
+import { entitiesLayer } from './entities.gen.ts'
+import { permissionCatalogLayer } from './permissions.gen.ts'
+// ...
+const manifestDir = fileURLToPath(new URL('..', import.meta.url))
+const pluginLayers = /* 现有分层 provideMerge，不变 */
+export const assembly = pluginLayers.pipe(
+  Layer.provide(Layer.mergeAll(
+    authConfig({}, { manifestDir }),
+    databaseConfig({ migrationsFolder: './db/migrations' }, { manifestDir }),
+    entitiesLayer, permissionCatalogLayer, /* ... */
+  )),
+)
+export const readinessProbes = [{ plugin: 'database', probe: databaseReadiness }] as const
+```
+
+宿主手写文件只剩自己的领地：`runtime.ts` import `{ assembly }`；`config.ts` 只剩 ServerConfig 与
+apiReferenceEnabled（端口与文档曝光是宿主事实）；`health.ts` 遍历 `readinessProbes`。
+**宿主不再出现任何 `@qualy/plugin-*` 导入。**
+
+### 不动的
+
+api-handlers.gen / routes.gen / api.gen：API 聚合是产品面，宿主拥有，已经不点名插件；不升能力。
+契约包里 Tag 的位置（PermissionCatalog 在 rbac-contract 等）由契约双方决定，不变。
+`Layer.mergeAll` 分层与 `dependsOn` 语义不变。
+
+### 实施顺序（每步一个绿提交）
+
+1. `runtime.config` 面 + auth/web 两个 config 搬家（最小闭环，不碰能力）。
+2. database config 搬家（manifestDir 锚定 + 生产禁 fallback 一起落）。
+3. `layerExport` 契约字段 + entities.gen 导出 layer，宿主删 `Entities` 导入。
+4. permissions 升能力（删 gen-permissions，旧键硬拒；seed 的 catalog 读取改走 lock 贡献）。
+5. login-drivers 升能力。
+6. ui 升能力（capability-boundary 测试选择集加 ui-registry）。
+7. `readiness` 面，health.ts 去插件化。
+8. 宿主收口为 `{ assembly, readinessProbes }`；验收 = capability-boundary 加一例：**纯静态装配
+   render 出的 runtime 模块可编译、全文不含 database**，即「没装 db 插件也能启动」有测试守。
+
 ## 阶段 3：数据库版本演进
 
 目标：完整支持 clean-room 和插件升级。

@@ -1185,5 +1185,7 @@ cordis 时代 loader 把 config 交给插件,现在没有 loader,于是宿主手
 **清单 config 进被提交的生成文件安全**:`databaseWork` 已经硬拒 `config.url` 并指明
 「连接串放环境变量,清单是提交物」,所以清单 config 按规则就是非密的。这条门禁已经存在。
 
-**为什么不在本次会话开工**:这是五个文件的机制改动加两套新机制,当前上下文余量不够把它做完
-并逐条验证。下次单开一次会话,按上面 1→6 的顺序,每步一个绿提交。
+**此草稿已被取代**:完整设计定稿在 docs/assembly-design.md「阶段 2.6:组合根收口」,比这份
+草稿多出的关键结论:三份目录聚合(permissions/login-drivers/ui)升为能力(provider 分别是
+rbac/auth/ui-registry,每份目录的唯一消费者恰是它的 provider),三个根脚本随之删除;生成模块
+导出 layer 而非数据;`qualy.runtime` 加 config 与 readiness 两个面。按该节的 1→8 顺序实施。
