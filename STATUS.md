@@ -1008,3 +1008,24 @@ auth 最后两条读 rbac 表的语句改成了 rbac 服务上的端口
    套上 `withDb`(否则 `Orm` 会泄进服务方法的类型)。**试过一次用脚本批量改,括号改乱了,
    已回滚**;这件事要手改五个文件,不要用正则。
 2. drizzle 表定义 `*/src/db/tables/`、drizzle schema 聚合与 drizzle 依赖撤下。
+
+### 查询层完全脱离 drizzle;shim 已删除
+
+`LegacySql` 与它的测试删除。事务直接来自 orm 的 `transaction()`,三个 `write` 包装器
+套 `withDb`(事务把数据库供给 body,包装器把它供给事务,服务因此仍然零 requirement)。
+两条守跨插件事务参与的用例也改成用同一个入口开事务,断言一字未改。
+
+341 测试(少的 3 条是 shim 自己的)。**没有任何服务再 import drizzle。**
+
+### drizzle 还剩什么:只有 schema 那一半
+
+- `*/src/db/tables/*` + `db/schema.ts` —— 仍是 `qualy.contributions.database.schemaEntry`
+  指向的对象,也就是 **drizzle-kit 仍在生成迁移**
+- `org/src/db/ltree.ts`(自定义列类型)、`auth/src/db/relations.ts`(RQB)
+- `Database` 服务:生产里只剩 `ping()` 一处,其余全是测试 seeding
+
+**下一阶段是独立的一件事**:把迁移生成从 drizzle-kit 换到 MikroORM 的 SchemaGenerator。
+`packages/plugins/infra/database/src/parity.ts` 与三个 `entity-parity.test.ts` 就是为这一步
+建的 —— 它们已经在证明实体产出的 schema 与 lineage 逐列一致(含宽度与精度)。
+换完之后 `db/tables`、`db/schema.ts`、`relations.ts`、`ltree.ts` 与 drizzle 依赖一并撤下,
+`Database` 服务与 `@effect/sql-pg` 也随之消失(`ping` 改走 orm,测试 seeding 改用 Kysely)。

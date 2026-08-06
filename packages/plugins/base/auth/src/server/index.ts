@@ -1,4 +1,3 @@
-import { sql, type SQL } from 'drizzle-orm'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
@@ -30,7 +29,7 @@ import { Authenticated, Viewer, layer as sessionLayer, viewerLayer } from './ses
 // travels in the fiber and there is nothing left to pass. `Iam` is auth's own
 // surface, which its handlers use and no peer does.
 //
-// Like rbac, this reads org's tables by raw SQL and never holds the org
+// Like rbac, this reads org's tables directly and never holds the org
 // service. Keeping it that way is what keeps the service graph acyclic.
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
