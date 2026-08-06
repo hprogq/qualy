@@ -895,3 +895,22 @@ docs/notes/mikro-orm.md。已切的两个文件都不在事务里,所以是安�
 
 连跑 6 次全量:5 次 342 全绿,1 次 1 失败但**没抓到是哪条**(报告开着的那 4 次都是绿的)。
 偶发失败仍 unresolved,只是同一类错误现在有了上界。
+
+### auth 切完;共享的授权片段也切了
+
+`user-types.ts`、`users.ts` 全部 Kysely。`scopeCoverage`(`@qualy/rbac-contract/scope.ts`)
+连同它的**六处使用**一次切完 —— 这个不能分两次:一条授权谓词有两份实现,不会大声失败,
+只会答得不一样。rbac 的 `grantsQuery` 因此也一起搬了,并新建了 `rbac/src/server/db.ts` 闭包。
+
+片段的参数从 alias 字符串变成列引用(`eb.ref('n.path')`),锚点 id 从拼进语句变成绑定参数 ——
+那个手写的 uuid 校验本来只是注入防护,不是领域规则,绑定之后它防的东西已经不存在了。
+
+**踩到一个真 bug,被既有测试抓住**:搜索条件写成一整段裸 `sql` 且顶层含 `or`,
+Kysely 不会给裸片段加括号,于是 `and` 结合更紧,keyset 的游标条件掉进了 `or` 的另一支 ——
+第二页原样返回第一页。改用 `eb.or([...])` 让分组由构造器表达,而不是靠人记得写括号。
+**裸片段里出现顶层 `or` 就是这个坑**,后面 rbac/org 改写时注意。
+
+auth 还剩两条 drizzle 语句(`iam/queries.ts`,63 行),都读 rbac 的表 ——
+不在 auth 的实体闭包里,**也不应该在**。它们该是 rbac 服务上的端口,随 rbac 迁移一起做。
+
+测试侧:org 与 rbac 的 harness 现在都要传完整实体闭包,否则 ORM 不知道 `User` 对应哪张表。
