@@ -722,6 +722,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.4
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -883,6 +886,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.4
     devDependencies:
       '@qualy/auth-contract':
         specifier: workspace:*

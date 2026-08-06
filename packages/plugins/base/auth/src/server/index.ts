@@ -13,14 +13,14 @@ import {
 } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
-import { type UserRow as UserProjection } from '../iam/queries.ts'
+
 import { placementViolations, usersBlockingOrgType } from './placement.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
 import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, CurrentUser } from './session.ts'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
-import { make as makeUsers } from './users.ts'
+import { make as makeUsers, type UserProjection } from './users.ts'
 import { Authenticated, Viewer, layer as sessionLayer, viewerLayer } from './session.ts'
 
 // auth as an Effect layer.
@@ -195,12 +195,12 @@ const requireUserRead = Effect.fn('iam.requireUserRead')(function* (principal: P
 
 const toUserDto = (row: UserProjection) => ({
   id: row.id,
-  businessNo: row.business_no,
-  displayName: row.display_name,
+  businessNo: row.businessNo,
+  displayName: row.displayName,
   status: row.enabled ? ('active' as const) : ('disabled' as const),
-  userType: { id: row.user_type_id, code: row.user_type_code, name: row.user_type_name },
-  primaryOrgNode: { id: row.primary_org_node_id, name: row.primary_org_node_name },
-  identityCount: row.identity_count,
+  userType: { id: row.userTypeId, code: row.userTypeCode, name: row.userTypeName },
+  primaryOrgNode: { id: row.primaryOrgNodeId, name: row.primaryOrgNodeName },
+  identityCount: row.identityCount,
   manageable: row.manageable,
 })
 
@@ -264,7 +264,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
           items: items.map(toUserDto),
           nextCursor:
             found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.display_name, last.id])
+              ? encodeQueryCursor(fingerprint, [last.displayName, last.id])
               : null,
         }
       }),

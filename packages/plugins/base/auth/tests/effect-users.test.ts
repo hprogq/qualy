@@ -351,16 +351,16 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
       const answer = ok(exit)
       // Ada is inside the requested subtree and outside the granted one, so
       // she is absent. This is the assertion the recorded bug fails.
-      expect(answer.all.map((row) => row.display_name).sort()).toEqual(['Grace', 'Manager'])
+      expect(answer.all.map((row) => row.displayName).sort()).toEqual(['Grace', 'Manager'])
       // the manager stands at the root, and is the only one there
-      expect(answer.justRoot.map((row) => row.display_name)).toEqual(['Manager'])
+      expect(answer.justRoot.map((row) => row.displayName)).toEqual(['Manager'])
       // seen but not editable: two permissions, two answers
       expect(answer.visible.manageable).toBe(false)
       expect(tagOf(answer.unreadable)).toBe('USER_NOT_FOUND')
       // not-found and not-readable are indistinguishable on purpose
       expect(answer.nothing).toEqual([])
       expect(tagOf(answer.hidden)).toBe('USER_NOT_FOUND')
-      expect(answer.search.map((row) => row.display_name)).toEqual(['Grace'])
+      expect(answer.search.map((row) => row.displayName)).toEqual(['Grace'])
     } finally {
       await db.dispose()
     }

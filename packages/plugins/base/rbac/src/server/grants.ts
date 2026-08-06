@@ -1,19 +1,23 @@
 import { Effect } from 'effect'
-import { LegacySql } from '@qualy/plugin-database/server'
+import { LegacySql, kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { sql, type Expression } from 'kysely'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import {
   CANONICAL_ADMIN_ROLE,
   isCanonicalTenantAdmin,
+  scopeCoverage,
+  type AuthorizationScope,
   type GrantTarget,
+  type OrgNodeRef,
   type Principal,
 } from '@qualy/rbac-contract'
+import { rbacEntityManager, type RbacEntityManager } from './db.ts'
 import {
   REACH_RANK,
   type Reach,
   deleteGrantQuery,
   grantQuery,
-  grantsQuery,
   holdsCanonicalAdminQuery,
   insertGrantQuery,
   lockTenantQuery,
@@ -28,7 +32,6 @@ import {
   userExistsQuery,
   userForGrantQuery,
   orgNodeExistsQuery,
-  type GrantRow,
   type GrantScope,
   type RoleRow as RoleProjection,
 } from '../queries.ts'
@@ -83,10 +86,107 @@ interface RoleRow extends Record<string, unknown> {
   assignable: boolean
 }
 
+/**
+ * Whether a grant is inside a scope, for a query that has outer-joined its node.
+ *
+ * Takes expressions rather than a builder, so it composes into both the filter
+ * and the projection without either having to name the closure's table types.
+ */
+const withinScope = (
+  refs: OrgNodeRef & { orgNodeId: Expression<string | null> },
+  held: AuthorizationScope,
+  /** a tenant-wide grant has no node, so node coverage cannot decide it */
+  tenantWide: boolean,
+) =>
+  sql<boolean>`case when ${refs.orgNodeId} is null then ${tenantWide}
+    else ${scopeCoverage(held, refs)} end`
+
+/**
+ * The grants a caller may see, with whether they may change each one.
+ *
+ * The visibility filter is pushed into the statement rather than applied row
+ * by row afterwards, which is also what makes the keyset page correct: a page
+ * assembled and then filtered returns short pages and a cursor that skips.
+ */
+const grantRows = (
+  em: RbacEntityManager,
+  tenantId: string,
+  filter: { userId?: string; orgNodeId?: string },
+  scope: GrantScope | undefined,
+  page: { after?: string; limit: number } | undefined,
+) =>
+  query(() => {
+    let found = kyselyOf(em)
+      .selectFrom('RoleGrant as g')
+      .innerJoin('User as u', (join) =>
+        join.onRef('u.tenantId', '=', 'g.tenantId').onRef('u.id', '=', 'g.userId'),
+      )
+      .innerJoin('Role as r', (join) =>
+        join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
+      )
+      .leftJoin('OrgNode as n', (join) =>
+        join.onRef('n.tenantId', '=', 'g.tenantId').onRef('n.id', '=', 'g.orgNodeId'),
+      )
+      .where('g.tenantId', '=', tenantId)
+      .where((eb) =>
+        scope === undefined
+          ? sql<boolean>`true`
+          : withinScope(
+              {
+                orgNodeId: eb.ref('g.orgNodeId'),
+                id: eb.ref('n.id'),
+                tenantId: eb.ref('n.tenantId'),
+                path: eb.ref('n.path'),
+              },
+              scope.read,
+              scope.tenantGrants.read,
+            ),
+      )
+      .select((eb) => [
+        'g.id',
+        'g.userId',
+        'u.displayName as userDisplayName',
+        'g.roleId',
+        'r.code as roleCode',
+        'r.name as roleName',
+        // the check constraint is what makes these two closed sets; the column
+        // is a string as far as the schema's type is concerned
+        sql<'tenant' | 'org'>`r.kind`.as('roleKind'),
+        'g.orgNodeId',
+        'n.name as orgNodeName',
+        sql<'self' | 'subtree' | null>`g.coverage`.as('coverage'),
+        (scope === undefined
+          ? sql<boolean>`true`
+          : withinScope(
+              {
+                orgNodeId: eb.ref('g.orgNodeId'),
+                id: eb.ref('n.id'),
+                tenantId: eb.ref('n.tenantId'),
+                path: eb.ref('n.path'),
+              },
+              scope.manage,
+              scope.tenantGrants.manage,
+            )
+        ).as('manageable'),
+      ])
+      .orderBy('g.id')
+
+    // stated only when asked for, rather than `(? is null or ...)` wrapped
+    // around each: an absent filter is now an absent clause
+    if (filter.userId !== undefined) found = found.where('g.userId', '=', filter.userId)
+    if (filter.orgNodeId !== undefined) found = found.where('g.orgNodeId', '=', filter.orgNodeId)
+    if (page?.after !== undefined) found = found.where('g.id', '>', page.after)
+    if (page) found = found.limit(page.limit)
+    return found.execute()
+  })
+
+export type GrantRow = Effect.Success<ReturnType<typeof grantRows>>[number]
+
 export const make = Effect.fn('Rbac.grants.make')(function* (
   authorityFor: (actor: Principal) => Authority,
 ) {
   const database = yield* LegacySql
+  const withDb = yield* withDatabase
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
   /**
@@ -333,9 +433,11 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       scope: GrantScope,
       page?: { after?: string; limit: number },
     ) =>
-      database.execute(grantsQuery(tenantId, filter, scope, page)).pipe(
-        Effect.orDie,
-        Effect.map((result) => rows<GrantRow>(result)),
+      withDb(
+        Effect.gen(function* () {
+          const em = yield* rbacEntityManager()
+          return yield* grantRows(em, tenantId, filter, scope, page).pipe(Effect.orDie)
+        }),
       ),
 
     options,

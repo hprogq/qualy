@@ -39,3 +39,20 @@ export const lockTenant = (em: AuthEntityManager, tenantId: string) =>
       .forUpdate()
       .execute(),
   )
+
+/**
+ * The columns a guard needs off a user type, without the projection's aggregates.
+ *
+ * Here rather than beside either caller because both the type screen and the
+ * people screen decide by it, and a second copy is a second answer to "may
+ * this type be handed out".
+ */
+export const userTypeGuard = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('UserType')
+      .select(['id', 'code', 'enabled', 'isSystem', 'version'])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userTypeId)
+      .executeTakeFirst(),
+  )

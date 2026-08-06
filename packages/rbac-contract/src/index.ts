@@ -5,13 +5,12 @@
 
 export { accessInvariantErrors } from './errors.ts'
 export { isSystemActor, type SystemActor } from './system-actor.ts'
-export { scopeCoverage } from './scope.ts'
+export { scopeCoverage, type OrgNodeRef } from './scope.ts'
 
 // one grant of one role to one user. A tenant role reaches the whole tenant
 // and carries no node; an org role is anchored and carries both.
 export type GrantTarget =
-  | { kind: 'tenant' }
-  | { kind: 'org-node'; orgNodeId: string; coverage: 'self' | 'subtree' }
+  { kind: 'tenant' } | { kind: 'org-node'; orgNodeId: string; coverage: 'self' | 'subtree' }
 
 export interface GrantInput {
   tenantId: string
@@ -83,4 +82,3 @@ export interface AuthorizationScope {
 // caller's own transaction connection. Never omit it while holding a lock:
 // a second pool connection under a held lock can exhaust the pool and
 // deadlock the whole process.
-

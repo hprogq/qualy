@@ -290,10 +290,10 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
             })
           const first = yield* page()
           const last = first.at(-1)!
-          const next = yield* page([last.display_name, last.id])
+          const next = yield* page([last.displayName, last.id])
           return {
-            first: first.map((row) => row.display_name),
-            next: next.map((row) => row.display_name),
+            first: first.map((row) => row.displayName),
+            next: next.map((row) => row.displayName),
           }
         }),
       )

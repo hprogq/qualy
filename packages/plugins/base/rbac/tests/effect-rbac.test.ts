@@ -2,6 +2,9 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities as rbacEntities } from '../src/db/entities.ts'
 import { Database, LegacySql, type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
@@ -34,11 +37,14 @@ const catalog: readonly ActivePermission[] = [
   { code: 'iam.tenant-grant.read', name: 'read tenant grants', target: 'tenant', plugin: 'iam' },
 ]
 
+// what the orm must know for a query to name a table
+const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
 const stack = (url: string) =>
   rbacLayer.pipe(
     // provideMerge rather than provide: the tests write fixtures through the
     // same Database the layer uses, so it has to stay available above
-    Layer.provideMerge(Layer.mergeAll(databaseFor(url), Layer.succeed(PermissionCatalog, catalog))),
+    Layer.provideMerge(Layer.mergeAll(databaseFor(url, { entities: closure }), Layer.succeed(PermissionCatalog, catalog))),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Database | Orm>) =>
@@ -789,7 +795,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       // exactly the grant under the anchor: not the tenant-wide one, whose
       // node is null and which no node anchor can reach, and not the one at
       // the sibling node
-      expect(answer.scoped.map((row) => row.org_node_id)).toEqual([answer.child])
+      expect(answer.scoped.map((row) => row.orgNodeId)).toEqual([answer.child])
       // may see it, may not change it: two permissions, two answers
       expect(answer.scoped[0]!.manageable).toBe(false)
       // the page is full, because the invisible rows never entered it

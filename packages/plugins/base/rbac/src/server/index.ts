@@ -16,7 +16,7 @@ import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
-import { make as makeGrants } from './grants.ts'
+import { make as makeGrants, type GrantRow } from './grants.ts'
 import { make as makeRoles } from './roles.ts'
 import { make as makeDiagnostics } from './diagnostics.ts'
 import { ESCALATE, type Authority } from './escalation.ts'
@@ -35,7 +35,6 @@ import {
   grantsBlockingOrgTypeQuery,
   hasTenantPermissionQuery,
   lockAdministratorRoleQuery,
-  type GrantRow,
   type GrantScope,
   type RoleRow as RoleProjection,
   type ScopeRow,
@@ -427,19 +426,19 @@ const toRoleShape = (
 
 const toGrantShape = (row: GrantRow) => ({
   id: row.id,
-  userId: row.user_id,
-  userDisplayName: row.user_display_name,
-  roleId: row.role_id,
-  roleCode: row.role_code,
-  roleName: row.role_name,
-  roleKind: row.role_kind,
+  userId: row.userId,
+  userDisplayName: row.userDisplayName,
+  roleId: row.roleId,
+  roleCode: row.roleCode,
+  roleName: row.roleName,
+  roleKind: row.roleKind,
   target:
-    row.org_node_id === null
+    row.orgNodeId === null
       ? ({ kind: 'tenant' } as const)
       : ({
           kind: 'org-node',
-          orgNodeId: row.org_node_id,
-          orgNodeName: row.org_node_name ?? '',
+          orgNodeId: row.orgNodeId,
+          orgNodeName: row.orgNodeName ?? '',
           coverage: row.coverage ?? 'self',
         } as const),
   manageable: row.manageable,

@@ -5,7 +5,7 @@ import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { rolesStrandedByUserTypeQuery } from '../iam/queries.ts'
-import { authEntityManager, lockTenant, type AuthEntityManager } from './db.ts'
+import { authEntityManager, lockTenant, userTypeGuard, type AuthEntityManager } from './db.ts'
 import { strandedByPolicy } from './placement.ts'
 import {
   RecoveryChannelRequired,
@@ -88,17 +88,6 @@ const oneUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string
 
 /** what the projection returns, read off the query rather than restated */
 export type UserTypeRow = NonNullable<Effect.Success<ReturnType<typeof oneUserType>>>
-
-/** the columns a guard needs, without the projection's aggregates */
-const userTypeGuard = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('UserType')
-      .select(['id', 'code', 'enabled', 'isSystem', 'version'])
-      .where('tenantId', '=', tenantId)
-      .where('id', '=', userTypeId)
-      .executeTakeFirst(),
-  )
 
 /** the type's own row, locked, with what a policy edit needs to decide */
 const lockUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>

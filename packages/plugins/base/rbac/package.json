@@ -58,6 +58,7 @@
     "@tanstack/react-query": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
+    "kysely": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

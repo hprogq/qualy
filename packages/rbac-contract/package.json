@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@qualy/api-contract": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "kysely": "catalog:"
   },
   "devDependencies": {
     "@qualy/auth-contract": "workspace:*"

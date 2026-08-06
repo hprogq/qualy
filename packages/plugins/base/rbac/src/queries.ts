@@ -514,20 +514,6 @@ export type RoleRow = {
   allowed_org_types: string[]
 }
 
-export type GrantRow = {
-  id: string
-  user_id: string
-  user_display_name: string
-  role_id: string
-  role_code: string
-  role_name: string
-  role_kind: 'tenant' | 'org'
-  org_node_id: string | null
-  org_node_name: string | null
-  coverage: 'self' | 'subtree' | null
-  manageable: boolean
-}
-
 /** one role or all of a tenant's, with the sets a role screen needs */
 export const roleProjectionQuery = (tenantId: string, roleId?: string): SQL => sql`
   select r.id, r.code, r.name, r.description, r.kind, r.status, r.permission_mode,
@@ -614,44 +600,4 @@ export interface GrantScope {
   manage: AuthorizationScope
   /** a tenant-wide grant has no node, so node coverage cannot decide it */
   tenantGrants: { read: boolean; manage: boolean }
-}
-
-/**
- * The grants a caller may see, with whether they may change each one.
- *
- * The visibility filter is pushed into the statement rather than applied row
- * by row afterwards, which is also what makes the keyset page correct: a page
- * assembled and then filtered returns short pages and a cursor that skips.
- */
-export const grantsQuery = (
-  tenantId: string,
-  filter: { userId?: string; orgNodeId?: string },
-  scope: GrantScope | undefined,
-  page: { after?: string; limit: number } | undefined,
-): SQL => {
-  const visible = scope
-    ? sql`case when g.org_node_id is null then ${scope.tenantGrants.read}
-               else ${scopeCoverage(scope.read, 'n')} end`
-    : sql`true`
-  const manageable = scope
-    ? sql`case when g.org_node_id is null then ${scope.tenantGrants.manage}
-               else ${scopeCoverage(scope.manage, 'n')} end`
-    : sql`true`
-  return sql`
-    select g.id, g.user_id, u.display_name as user_display_name,
-      g.role_id, r.code as role_code, r.name as role_name, r.kind as role_kind,
-      g.org_node_id, n.name as org_node_name, g.coverage,
-      ${manageable} as manageable
-    from role_grants g
-    join users u on u.tenant_id = g.tenant_id and u.id = g.user_id
-    join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id
-    left join org_nodes n on n.tenant_id = g.tenant_id and n.id = g.org_node_id
-    where g.tenant_id = ${tenantId}
-      and (${filter.userId ?? null}::uuid is null or g.user_id = ${filter.userId ?? null})
-      and (${filter.orgNodeId ?? null}::uuid is null
-           or g.org_node_id = ${filter.orgNodeId ?? null})
-      and (${page?.after ?? null}::uuid is null or g.id > ${page?.after ?? null}::uuid)
-      and ${visible}
-    order by g.id
-    ${page ? sql`limit ${page.limit}` : sql``}`
 }
