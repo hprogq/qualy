@@ -68,7 +68,7 @@
 
 - rc.7 的 d.ts(index.d.ts 及内部各文件)全部使用无扩展名相对重导出(`export * from './context'`),按 bundler 解析习惯发布。NodeNext 严格要求 ESM 相对引用带扩展名,解析失败 + skipLibCheck 吞错,最终呈现为误导性的 `TS2305: Module '"cordis"' has no exported member 'Context'`(已实测,TS 6/7 一致)。@cordisjs 全家同风格,逐个 pnpm patch 不值得。
 - 定案:tsconfig.base 用 `module: "Preserve"`(bundler 解析);`types: ["node"]` 补回 Node 全局(web 侧 tsconfig 覆写清空);相对导入带 `.ts` 扩展名降为软约定。
-- 重评条件:4.0 stable 发布时检查 index.d.ts 是否改为 `./context.js` 风格,是则可切回 NodeNext。**优先级低**,Preserve 跑通后切换收益很薄。
+- **已切回 NodeNext(2026-08-06)**:cordis 随 Effect 迁移离开代码库,这条约束的来源消失了,11 个工程零错误通过。相对导入的 `.ts` 扩展名从软约定变成编译器强制,这正是当初想要的。本节保留为历史记录。
 
 ## package.json 的 `cordis` 字段:私有插件不需要
 

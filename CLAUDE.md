@@ -29,7 +29,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 ## 工程基线
 
 - Node 24 LTS(mise 管理,engines ≥24);pnpm workspaces;vitest。
-- tsconfig 分层:根 tsconfig.base.json 用 module: Preserve + bundler 解析(cordis 生态 d.ts 内部相对导入无扩展名,NodeNext 解析不了,实测见 docs/notes/cordis.md)。types 分层:base 带 `["node"]`,web 侧包(apps/web、web-runtime、插件 client)覆写 `"types": []` 或 `["vite/client"]` 并加 lib DOM、jsx: react-jsx,防止 Node 全局类型泄进浏览器代码。相对导入保持 `.ts` 扩展名:软约定,编译器不强制,review 时留意(与现有代码及未来 node 原生 strip-types 兼容)。
+- tsconfig 分层:根 tsconfig.base.json 用 `module: NodeNext`(2026-08-06 从 Preserve 切回:当初改成 bundler 解析是因为 cordis 生态的 d.ts 相对重导出无扩展名,cordis 已随 Effect 迁移离开,11 个工程全部通过)。相对导入的 `.ts` 扩展名因此由软约定变成编译器强制。types 分层:base 带 `["node"]`,web 侧包(apps/web、web-runtime、插件 client)覆写 `"types": []` 或 `["vite/client"]` 并加 lib DOM、jsx: react-jsx,防止 Node 全局类型泄进浏览器代码。相对导入保持 `.ts` 扩展名:软约定,编译器不强制,review 时留意(与现有代码及未来 node 原生 strip-types 兼容)。
 - scripts 跨平台:禁止内联环境变量语法;.env 统一走 `node --env-file-if-exists=.env`。
 - 启动入口是 apps/server/src/main.ts(复刻 cordis bin + SIGINT/SIGTERM 优雅关闭:根 fiber dispose 级联清理、5s 超时与二次信号强退);不要直跑 node_modules/cordis/bin.js(零信号处理,Ctrl+C 即硬杀)。装配清单默认 apps/server/qualy.yml(import.meta.url 锚定,与 cwd 无关),可经 QUALY_CONFIG 指向外部清单——但外部路径只在独立部署布局(扁平 node_modules)可用;monorepo 内启动必须带 --expose-internals(loader.internal 按清单目录解析宿主依赖;无 internal 的回退从 loader 包位置解析,pnpm 隔离下静默零装载,实测见 notes/cordis.md)。生产清单不含 hmr(hmr 是 app 的 devDependency)。readiness 的装配完成信号用 `ctx.loader.await()`,且必须在 include 条目创建之后 await(空树立即返回;`intercept('loader',{await:true})` 两种注册时机都不对,实测见 notes/cordis.md)。
 

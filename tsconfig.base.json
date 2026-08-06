@@ -2,14 +2,22 @@
   "compilerOptions": {
     "strict": true,
     "target": "ES2023",
-    "lib": ["ES2023"],
-    "module": "Preserve",
-    "types": ["node"],
+    "lib": [
+      "ES2023"
+    ],
+    "module": "NodeNext",
+    "types": [
+      "node"
+    ],
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
-    "plugins": [{ "name": "@effect/language-service" }]
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ]
   }
 }
