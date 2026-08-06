@@ -1,6 +1,11 @@
 import { Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import {
+  registerLoginDriver,
+  type LoginDriver,
+  type LoginDrivers,
+} from '@qualy/auth-contract/login'
 import { LoginSessions } from '@qualy/auth-contract/login'
 import { authLocalApiGroup, InvalidCredentials } from '../api.ts'
 import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from '../password.ts'
@@ -15,14 +20,25 @@ import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from '.
 // assembly imports without loading any of this.
 
 /**
- * What this plugin contributes to the running application: no services.
+ * How this driver asks to be presented on the sign-in screen.
  *
- * A driver proves a password and hands the proof to the core; it owns no state
- * and answers no peer. The entry still exists because the assembly imports the
- * handlers from it, and the presentation the sign-in screen needs is a
- * separate zero-dependency module the catalog reads instead.
+ * The proof itself is the api handler below; this is only what the login shell
+ * has to render to collect it.
  */
-export const layer: Layer.Layer<never> = Layer.empty
+const driver: LoginDriver = {
+  type: 'local',
+  describe: () => ({ mode: 'component', component: 'auth-local/LoginMethod' }),
+}
+
+/**
+ * What this plugin contributes: itself, to the registry that will be asked.
+ *
+ * A driver owns no state and answers no peer, so it publishes no service. It
+ * used to publish its presentation as a separate zero-dependency module that a
+ * generated catalog imported - a file, a subpath export and a generator, to
+ * say four lines.
+ */
+export const layer: Layer.Layer<never, never, LoginDrivers> = registerLoginDriver(driver)
 
 // see QUALY_API_ID: implemented against a local api so this plugin does not
 // import the aggregate it is part of

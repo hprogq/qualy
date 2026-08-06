@@ -8,7 +8,6 @@
   "exports": {
     "./password": "./src/password.ts",
     "./client": "./client/index.ts",
-    "./login-driver": "./src/login-driver.ts",
     "./api": "./src/api.ts",
     "./server": "./src/server/index.ts",
     "./package.json": "./package.json"
@@ -35,9 +34,6 @@
     "@types/react": "catalog:"
   },
   "qualy": {
-    "loginDriver": {
-      "entry": "./src/login-driver.ts"
-    },
     "runtime": {
       "entry": "./server",
       "api": "./api",

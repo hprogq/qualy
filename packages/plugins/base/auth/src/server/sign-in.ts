@@ -227,8 +227,9 @@ const toSignedInUser = (row: SignedInRow): SignedInUser => ({
 
 export const make = Effect.fn('Auth.signIn.make')(function* () {
   const config = yield* AuthConfig
+  // the registry handle, not its contents: a driver registers while its own
+  // layer is built, and this one is built before some of them
   const drivers = yield* LoginDrivers
-  const byType = new Map(drivers.map((driver) => [driver.type, driver]))
 
   // The database is closed over rather than required, because what this builds
   // is a shape whose requirements the login contract fixes: a driver calls
@@ -274,7 +275,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         const tenant = yield* defaultTenant()
         if (!tenant) return undefined
         // a driver nobody loaded proves nothing, so its rows are not routes
-        if (!byType.has(input.expectedType)) return undefined
+        if (!(yield* drivers.forType(input.expectedType))) return undefined
         const em = yield* authEntityManager()
         const provider = yield* providerByCode(
           em,
@@ -358,7 +359,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         const providers = yield* loginProviders(em, tenant.id).pipe(Effect.orDie)
         const methods: LoginMethod[] = []
         for (const provider of providers) {
-          const driver = byType.get(provider.type)
+          const driver = yield* drivers.forType(provider.type)
           if (!driver) continue
           let presentation: LoginPresentation = driver.describe({ code: provider.code })
           if (presentation.mode === 'redirect') {

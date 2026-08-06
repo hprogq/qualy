@@ -1,14 +1,17 @@
-import { Context, Effect } from 'effect'
+import { Context, Effect, Layer, Scope } from 'effect'
 import type { HttpServerRequest } from 'effect/unstable/http/HttpServerRequest'
 
-// The login surface a driver plugin needs, and the catalog of drivers itself.
+// The login surface a driver plugin needs, and the registry of drivers itself.
 //
 // A driver proves who somebody is; the core turns that proof into a session.
-// Under cordis the driver pushed itself into the core's registry from its own
-// constructor, which a static graph cannot express: the core would have to be
-// built after every driver to be complete, and before them to answer their
-// calls. The catalog is therefore pulled from the manifest, exactly as the
-// permission catalog is, and the core is handed a finished one.
+// A driver registers itself while its own layer is built and the core reads
+// the registry per request, which is the shape the router upstream uses for
+// routes: nothing has to be built after everything else to be complete,
+// because nothing reads the registry until a request arrives.
+//
+// The alternative, deriving the catalog from the manifest, needed a generated
+// module, a subpath export and a declaration per driver - four places to
+// change to add a way of signing in.
 
 /** how a driver asks to be presented on the sign-in screen */
 export type LoginPresentation =
@@ -34,10 +37,55 @@ export interface LoginDriver {
   readonly describe: (provider: { readonly code: string }) => LoginPresentation
 }
 
-/** every login driver this assembly serves, resolved from the manifest */
-export class LoginDrivers extends Context.Service<LoginDrivers, readonly LoginDriver[]>()(
-  '@qualy/auth-contract/LoginDrivers',
-) {}
+/** every login driver this assembly serves, as its drivers registered them */
+export class LoginDrivers extends Context.Service<
+  LoginDrivers,
+  {
+    /**
+     * Adds a driver for as long as the registering layer lives.
+     *
+     * Scoped, so a plugin that goes away takes its driver with it rather than
+     * leaving the sign-in screen offering a way in that nothing implements.
+     */
+    readonly register: (driver: LoginDriver) => Effect.Effect<void, never, Scope.Scope>
+    /** the driver for a provider type, or none if no plugin implements it */
+    readonly forType: (type: string) => Effect.Effect<LoginDriver | undefined>
+  }
+>()('@qualy/auth-contract/LoginDrivers') {}
+
+/**
+ * The registry itself, provided by whoever consumes it.
+ *
+ * A Map in a closure rather than a field that is reassigned: registration
+ * mutates the container, and every reader holds the same one.
+ */
+export const loginDriversLayer: Layer.Layer<LoginDrivers> = Layer.sync(LoginDrivers, () => {
+  const drivers = new Map<string, LoginDriver>()
+  return LoginDrivers.of({
+    register: (driver) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          // Two plugins claiming one provider type would leave whichever
+          // registered last deciding how the other is presented. It is a
+          // broken assembly rather than a condition anything can handle, so
+          // the layer refuses to build.
+          if (drivers.has(driver.type)) {
+            throw new Error(`login driver type ${driver.type} is registered twice`)
+          }
+          drivers.set(driver.type, driver)
+        }),
+        () => Effect.sync(() => drivers.delete(driver.type)),
+      ).pipe(Effect.orDie, Effect.asVoid),
+    forType: (type) => Effect.sync(() => drivers.get(type)),
+  })
+})
+
+/**
+ * A layer that contributes one driver, which is a whole driver plugin's
+ * contribution to the running application.
+ */
+export const registerLoginDriver = (driver: LoginDriver): Layer.Layer<never, never, LoginDrivers> =>
+  Layer.effectDiscard(Effect.flatMap(LoginDrivers, (drivers) => drivers.register(driver)))
 
 export interface ResolvedProvider {
   readonly tenantId: string

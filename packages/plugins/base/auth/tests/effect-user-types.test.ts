@@ -13,7 +13,7 @@ import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
-import { LoginDrivers } from '@qualy/auth-contract/login'
+import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
 
@@ -32,7 +32,7 @@ const stack = (url: string) =>
       Layer.mergeAll(
         databaseFor(url, { entities: authClosure }),
         Layer.succeed(PermissionCatalog, catalog),
-        Layer.succeed(LoginDrivers, []),
+        loginDriversLayer,
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({

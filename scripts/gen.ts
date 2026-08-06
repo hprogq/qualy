@@ -38,7 +38,6 @@ export async function generateAll(): Promise<void> {
   await import('./gen-api.ts')
   await import('./gen-routes.ts')
   await import('./gen-permissions.ts')
-  await import('./gen-login-drivers.ts')
   await import('./gen-ui.ts')
   await import('./gen-plugins.ts')
 }

@@ -15,7 +15,7 @@ import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 
 import { placementViolations, usersBlockingOrgType } from './placement.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
-import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
+import { loginDriversLayer, LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, CurrentUser } from './session.ts'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
@@ -91,10 +91,16 @@ const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac> = Layer.effectContex
  * provide it. The requirement reaches the entry point and fails the build.
  */
 export const layer: Layer.Layer<
-  Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
+  Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions | LoginDrivers,
   never,
-  Orm | Rbac | AuthConfig | LoginDrivers
-> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
+  Orm | Rbac | AuthConfig
+> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer).pipe(
+  // The registry travels with its consumer. auth is the only thing that reads
+  // it, and a driver plugin needs somewhere to register before auth is built -
+  // which `provideMerge` gives it, by publishing the registry as well as
+  // supplying it.
+  Layer.provideMerge(loginDriversLayer),
+)
 
 // --- api ---
 

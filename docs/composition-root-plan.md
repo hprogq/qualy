@@ -87,7 +87,7 @@ yield * readiness.register({ name: 'database', probe: withDb(ping) })
 宿主在 `runtime.ts` 用 `Layer.provide(readinessLayer)` 供给 —— Readiness 是 api-kit 的,
 不算点名插件。
 
-## 3. LoginDrivers 注册表
+## 3. LoginDrivers 注册表 —— **已实施 2026-08-06**
 
 Tag 与 `LoginDriver` 类型都已在 `@qualy/auth-contract/login`,**位置不动**,值的形状从
 `readonly LoginDriver[]` 改为注册表句柄:
@@ -267,8 +267,14 @@ Readiness。**宿主零 `@qualy/plugin-*` 导入。**
    就绪探针这个概念」正是本次要拆的耦合,方向相反而已(与 rbac 可选注册 ui authorizer 同型)。
    新增用例「无任何探针的装配 `/health/ready` 返回 200」——**这个组合在改动前根本无法构建**,
    不是漏测,是不可能。
-2. **LoginDrivers 注册表**:契约值形状改句柄,auth 提供、auth-local 注册,删 gen 与子路径。
-   验收:sign-in 全套用例;重复 driver id 注册 → 构建失败(新用例)。
+2. ~~**LoginDrivers 注册表**~~ **已完成**:契约值形状改句柄(`register` / `forType`),auth 用
+   `provideMerge(loginDriversLayer)` 连注册表一起发布(它是唯一消费者,而驱动插件要在 auth 建成
+   之前有地方注册),auth-local 的整个 layer 就是 `registerLoginDriver(driver)`。删除
+   `gen-login-drivers.ts`、`login-drivers.gen.ts`、`src/login-driver.ts`、`exports['./login-driver']`
+   与 `qualy.loginDriver` 声明。sign-in 三处消费改请求期读。
+   **发现的洞**:把 auth-local 的注册删掉,全套 336 例照绿 —— 从来没有任何测试断言 local 登录
+   方式真的被提供(生成器结构性地保证了它,所以没人写)。补了一例:真实 pluginLayers 起服务、
+   seed 一行 provider,断言 `/auth/login-methods` 含 local 且 component 正确;删注册即红。
 3. **Ui 注册表**:Ui 服务四方法 + UiManifest 请求期读 + 各插件 layer 注册,删
    `UiCatalog`/`gen-ui`/`ui.gen`。验收:manifest 投影用例、browser 套件、重复 id die 用例;
    component-keys 门禁改读 `ui.ts` 的 surface 声明。

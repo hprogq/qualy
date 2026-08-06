@@ -1215,3 +1215,27 @@ requirement。硬需求会传染到每个提供 `context.services` 的测试 har
 新增用例:**没有任何探针的装配,`/health/ready` 返回 200**。这个组合在改动前根本无法构建
 (handler 直接 import 了 database 插件),所以它不是漏测,是不可能。反向验证:把注册条件取反,
 两条既有就绪用例立刻红。
+
+### mikro-orm 7.1.11:少了一个 patch hunk
+
+你提的四条上游都修了。做法不是猜哪几条:**先把 patch 整个拿掉跑门禁**,让测试回答 ——
+kysely 类型套件直接绿了(7.1.11 里就是 `default: unknown`,正是那个缺陷),两条 introspection
+用例仍然红。所以按 7.1.11 重建 patch,只留仍然挣得到的两个 hunk,上游源码也确认了原因:
+`PostgreSqlSchemaHelper.ts:699` 的 check cast 剥离与 `:407` 的索引 access method 丢失原样还在。
+那两条(草稿 5、6)从没提过。vendored 树随之到 v7.1.11,patch 注释里引的路径是存在的路径。
+
+### 阶段 2.6 第 2 步完成:LoginDrivers 注册表
+
+契约的值从 `readonly LoginDriver[]` 变成句柄(`register` 挂 scope / `forType` 请求期查)。
+auth 用 `provideMerge(loginDriversLayer)` 把注册表连同自己一起发布 —— 它是唯一消费者,而驱动
+插件需要在 auth 建成之前有地方注册。auth-local 的整个 layer 现在就是一行
+`registerLoginDriver(driver)`。
+
+删除:`gen-login-drivers.ts`、`login-drivers.gen.ts`、`src/login-driver.ts`、
+`exports['./login-driver']`、`qualy.loginDriver` 声明、宿主的 `loginDriversLayer`。
+**一种登录方式的成本从「文件 + 子路径 + 声明 + 生成器」变成 layer 里的一行。**
+
+**顺带找到一个洞**:把 auth-local 的注册删掉,336 例全绿 —— 从来没有任何测试断言 local 登录
+方式真的被提供。生成器时代它是结构性成立的,所以没人写断言;而注册是一行代码,一行代码可以
+被删掉。补了一例(真实 pluginLayers 起服务 + seed 一行 provider,断言 `/auth/login-methods`
+含 local 且 component 正确),删注册即红。

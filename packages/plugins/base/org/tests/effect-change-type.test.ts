@@ -16,7 +16,7 @@ import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { layer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
-import { LoginDrivers } from '@qualy/auth-contract/login'
+import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Org, layer as orgLayer } from '../src/server/index.ts'
 
 // The slice the whole milestone rests on.
@@ -51,7 +51,7 @@ const stack = (url: string) =>
       Layer.mergeAll(
         databaseFor(url, { entities: closure }),
         Layer.succeed(PermissionCatalog, catalog),
-        Layer.succeed(LoginDrivers, []),
+        loginDriversLayer,
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({

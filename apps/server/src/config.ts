@@ -2,10 +2,8 @@ import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { manifestMigrationsFolder, manifestPath } from './manifest.ts'
 import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
-import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { permissionCatalog } from '../permissions.gen.ts'
-import { loginDrivers } from '../login-drivers.gen.ts'
 import { UiCatalog } from '@qualy/plugin-ui-registry/server'
 import { WebConfig } from '@qualy/plugin-web/server'
 import { uiSurfaces } from '../ui.gen.ts'
@@ -87,7 +85,6 @@ export const permissionCatalogLayer = Layer.succeed(PermissionCatalog, permissio
  * which ways in a deployment offers is decided by resolution, not by which
  * plugins happened to finish constructing.
  */
-export const loginDriversLayer = Layer.succeed(LoginDrivers, loginDrivers)
 
 /**
  * What auth needs to know about this deployment.

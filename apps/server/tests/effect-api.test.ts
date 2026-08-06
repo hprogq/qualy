@@ -11,11 +11,9 @@ import { DatabaseConfig, Entities } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import { entities } from '../entities.gen.ts'
 import { pluginLayers } from '../runtime.gen.ts'
-import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { permissionCatalog } from '../permissions.gen.ts'
 import { UiCatalog } from '@qualy/plugin-ui-registry/server'
-import { loginDrivers } from '../login-drivers.gen.ts'
 import { uiSurfaces } from '../ui.gen.ts'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
@@ -64,7 +62,6 @@ const shell = (url: string) =>
         readinessLayer,
         Layer.succeed(Entities, entities),
         Layer.succeed(PermissionCatalog, permissionCatalog),
-        Layer.succeed(LoginDrivers, loginDrivers),
         Layer.succeed(UiCatalog, uiSurfaces),
         Layer.succeed(
           AuthConfig,
@@ -105,6 +102,42 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       // orchestrator probes a fixed path
       expect((await fetch(`${base}/health/live`)).status).toBe(200)
       expect((await fetch(`${base}${QUALY_API_PREFIX}/health/live`)).status).toBe(404)
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await db.dispose()
+    }
+  })
+
+  // A driver plugin's whole contribution is that it registers itself, so this
+  // is the only thing that proves auth-local is in the assembly at all. It
+  // went untested while a generated catalog carried the driver, because the
+  // generator made it structurally true; a registration is a line of code,
+  // and a line of code can be deleted.
+  it('offers the login method of every driver plugin the assembly loaded', async () => {
+    const db = await createTestContext('effect-api-login-methods')
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      // a method is a provider row paired with the driver that presents it,
+      // so the row has to exist before the pairing can be observed
+      const tenant = await db.row<{ id: string }>(
+        `insert into tenants (slug, name) values ('default','Default') returning id`,
+      )
+      await db.query(
+        `insert into auth_providers (tenant_id, code, type, name) values ($1,'local','local','Password')`,
+        [tenant.id],
+      )
+
+      await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
+      const response = await fetch(`${base}${QUALY_API_PREFIX}/auth/login-methods`)
+      expect(response.status).toBe(200)
+      const { methods } = (await response.json()) as {
+        methods: readonly { type: string; mode: string; component?: string }[]
+      }
+      expect(methods.map((method) => method.type)).toContain('local')
+      expect(methods.find((method) => method.type === 'local')).toMatchObject({
+        mode: 'component',
+        component: 'auth-local/LoginMethod',
+      })
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()

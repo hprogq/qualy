@@ -8,7 +8,12 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
+import {
+  loginDriversLayer,
+  registerLoginDriver,
+  type LoginDriver,
+  type LoginDrivers,
+} from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
 
@@ -41,7 +46,15 @@ const stack = (url: string) =>
     Layer.provideMerge(
       Layer.mergeAll(
         databaseFor(url, { entities: authClosure }),
-        Layer.succeed(LoginDrivers, drivers),
+        // the registrations need the registry, so it is provided to them and
+        // published in the same move
+        drivers
+          .map(registerLoginDriver)
+          .reduce(
+            (all, one) => Layer.merge(all, one),
+            Layer.empty as Layer.Layer<never, never, LoginDrivers>,
+          )
+          .pipe(Layer.provideMerge(loginDriversLayer)),
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({

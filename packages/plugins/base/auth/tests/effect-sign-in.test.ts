@@ -12,12 +12,11 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
-import { LoginDrivers } from '@qualy/auth-contract/login'
+import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
 import { hashSessionToken } from '../src/session.ts'
 import { authLocalApiHandlers } from '@qualy/plugin-auth-local/server'
 import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
-import { driver as localDriver } from '@qualy/plugin-auth-local/login-driver'
 import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
 import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
@@ -120,7 +119,16 @@ beforeAll(async () => {
   // only the local driver is in the catalog, so the cas provider row has
   // nothing to present it
   const signIn = signInLayer.pipe(
-    Layer.provide(Layer.mergeAll(infra, authConfig, Layer.succeed(LoginDrivers, [localDriver]))),
+    Layer.provide(
+      Layer.mergeAll(
+        infra,
+        authConfig,
+        registerLoginDriver({
+          type: 'local',
+          describe: () => ({ mode: 'component', component: 'auth-local/LoginMethod' }),
+        }).pipe(Layer.provideMerge(loginDriversLayer)),
+      ),
+    ),
   )
   const handlers = Layer.mergeAll(sessionApiHandlers, authLocalApiHandlers).pipe(
     Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
