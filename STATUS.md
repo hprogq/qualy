@@ -1029,3 +1029,16 @@ auth 最后两条读 rbac 表的语句改成了 rbac 服务上的端口
 建的 —— 它们已经在证明实体产出的 schema 与 lineage 逐列一致(含宽度与精度)。
 换完之后 `db/tables`、`db/schema.ts`、`relations.ts`、`ltree.ts` 与 drizzle 依赖一并撤下,
 `Database` 服务与 `@effect/sql-pg` 也随之消失(`ping` 改走 orm,测试 seeding 改用 Kysely)。
+
+### 试过把 `ping()` 也搬走,失败了 —— 而且失败得有道理
+
+想法是让就绪探针不再经 drizzle 的 `Database`。改完编译不过:`ping` 的 requirement 变成
+`Orm`,而 `Orm` **故意只导出类型**,所以 apps/server 的 handler 既无法 yield 它、也无法
+`provideService` 它,requirement 一路泄到 main.ts 变成 `unknown`。已回滚。
+
+这不是障碍,是设计在起作用:探针要的是「这个插件健不健康」,该由**拥有连接的插件**回答,
+而不是由组合根自己去连。Effect 端目前还没有 `server.readiness(key, probe)` 那套注册
+(cordis 时代的设计还没搬过来)。**所以 `ping` 与 `Database` 服务同生共死**:
+等就绪探针改成插件注册、且测试 seeding 不再用 `Database` 时,两者一起走。
+
+顺带删掉 `auth/src/db/relations.ts`(drizzle RQB 定义,已无人 import)。
