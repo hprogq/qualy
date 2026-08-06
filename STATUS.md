@@ -1190,3 +1190,28 @@ cordis 时代 loader 把 config 交给插件,现在没有 loader,于是宿主手
 login-drivers、ui surfaces、permissions 运行时目录、readiness 全部改为 Effect 原生注册表
 (服务即注册表、Layer 即注册、layer 图即 loader.await、acquireRelease 即 ctx.effect,
 上游例证 HttpRouter.use 与 HttpApiBuilder.group)。**完整实施方案在 docs/composition-root-plan.md(v3)**:注册表 API 逐个定型(Ui 是 addPage/registerLayout/contribute/fillSlot 四方法,不是笼统 register),五条注册表纪律,permissions 因 rbac 构建期把 catalog 镜像进表(时序倒置实证)改回静态能力;按该文档 §9 的 1→8 实施。
+
+### 开发库清理(2026-08-06)
+
+一次清掉 14 个残留库(约 100MB):4 个过期 `qualy_tpl_*`(模板按 lineage 内容寻址,迁移改一次
+生一个新的,旧的没人回收)、7 个 `qualy_upgrade_*` 与 `qualy_ddl_probe`(已删除的
+migration-upgrade 测试留下的,来自被中断的运行)、`qualy_fresh`/`qualy_psql`(我做空库 deploy
+与 `psql -f` 验证时建的)。留下的 `qualy_tpl_5fc62b89ff2e9de1` 是当前 lineage 的模板,**正常且
+必要**:测试靠 `CREATE DATABASE ... TEMPLATE` 复制它,免掉每套件重放迁移,故意跨运行保留。
+
+**没有做自动清理**:testkit 的 dispose 在正常路径上是干净的,这批全部来自 Ctrl+C 打断的运行;
+而「测试启动时按名字模式删库」在并行跑十几个文件时会删掉别人正在用的库,风险远大于收益。
+需要时一句 psql 即可。
+
+### 阶段 2.6 第 1 步完成:Readiness 注册表
+
+`@qualy/api-kit/readiness` 提供注册表服务(register 挂 scope、checks 请求期读),database 插件
+在自己的 layer 里注册预绑定的探针,`health.ts` 不再 import 任何插件。
+
+**实施中改了一处设计**:注册用 `Effect.serviceOption` 而不是把 Readiness 列进 layer 的
+requirement。硬需求会传染到每个提供 `context.services` 的测试 harness —— 而「一个只想要数据库
+的套件不必知道就绪探针存在」正是本次要拆的耦合,只是方向相反。与 rbac 可选注册 ui authorizer 同型。
+
+新增用例:**没有任何探针的装配,`/health/ready` 返回 200**。这个组合在改动前根本无法构建
+(handler 直接 import 了 database 插件),所以它不是漏测,是不可能。反向验证:把注册条件取反,
+两条既有就绪用例立刻红。

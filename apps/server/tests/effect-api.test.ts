@@ -1,3 +1,4 @@
+import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
@@ -60,6 +61,7 @@ const shell = (url: string) =>
         // the aggregate the host provides, for the same reason the plugin
         // layers are the generated ones: a hand-built subset would not notice
         // a plugin that started shipping entities
+        readinessLayer,
         Layer.succeed(Entities, entities),
         Layer.succeed(PermissionCatalog, permissionCatalog),
         Layer.succeed(LoginDrivers, loginDrivers),

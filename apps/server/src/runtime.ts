@@ -5,6 +5,7 @@ import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer } from '@qualy/api-kit/node'
+import { readinessLayer } from '@qualy/api-kit/readiness'
 import { qualyApi } from '@qualy/api'
 import { Entities } from '@qualy/plugin-database/server'
 import { apiHandlers } from '../api-handlers.gen.ts'
@@ -50,12 +51,10 @@ const routes = Layer.unwrap(
         Layer.provide(apiHandlers),
       ),
       documented ? HttpApiScalar.layer(qualyApi, { path: docs }) : Layer.empty,
-      // Health is declared by the host rather than by a plugin, but it is not
-      // plugin-free: readiness asks the database, so this assembly does not build
-      // without one. That is a real constraint rather than an oversight, and it is
-      // stated here because the alternative reading, that an assembly with no
-      // plugins can serve, is not true of this composition. Making the probes a
-      // contribution is deferred until a second one exists to contribute.
+      // Health is the host's, and now plugin-free: readiness reads whatever
+      // registered a probe, so an assembly with nothing to probe serves it
+      // too. Which is the only honest reading - ready has never claimed the
+      // assembly is complete, only that what is loaded is healthy.
       HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
       // Routes that are not api endpoints, and cannot be: the browser shell is
       // a raw handler on the router's wildcard. Every declared path still wins,
@@ -94,6 +93,10 @@ const server = Layer.unwrap(
  */
 export const application = server.pipe(
   Layer.provide(pluginLayers),
+  // the registry a plugin puts its own probe into, and the health handler
+  // reads: it belongs to the server base, not to whoever happens to own a
+  // resource in this assembly
+  Layer.provideMerge(readinessLayer),
   // One logger for everything the process says, colours included. The default
   // one prints the same layout without them, and a dev terminal that tells an
   // error from a request at a glance is worth the one line.

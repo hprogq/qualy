@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./readiness": "./src/readiness.ts",
     "./schema": "./src/schema.ts",
     "./node": "./src/node.ts"
   },

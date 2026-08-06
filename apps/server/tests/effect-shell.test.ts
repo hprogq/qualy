@@ -4,6 +4,7 @@ import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
+import { readinessLayer } from '@qualy/api-kit/readiness'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MigrationsBehind } from '@qualy/plugin-database/server'
 import { healthApi, healthHandlers } from '../src/health.ts'
@@ -16,6 +17,8 @@ import { healthApi, healthHandlers } from '../src/health.ts'
 // lineage stops the assembly instead of being served.
 
 const port = 3197
+// its own, because suites are separate files and files run in parallel
+const barePort = 3196
 const base = `http://127.0.0.1:${port}`
 
 const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>
@@ -28,7 +31,10 @@ const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>
     ),
   ).pipe(
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
-    Layer.provide(databaseFor(url, { migrations })),
+    // the registry the database plugin offers its probe to, and the health
+    // handler reads: provided under the database so the plugin can find it
+    Layer.provide(databaseFor(url, { migrations }).pipe(Layer.provide(readinessLayer))),
+    Layer.provideMerge(readinessLayer),
   )
 
 const status = async (path: string) => {
@@ -43,6 +49,33 @@ const status = async (path: string) => {
 // nothing is listening on it. Running them together had the second read the
 // first one's server and see 200 where it required a closed port - which only
 // showed up in a full run, because a single-file run schedules them apart.
+// Readiness with nothing to probe, which is the assembly this repository does
+// not ship but the design promises: no database plugin, no probe, and a
+// working endpoint. Before the registry the handler imported the database
+// plugin directly, so this composition could not be built at all - not a
+// missing test, a missing possibility.
+describe('readiness without anything to probe', () => {
+  const bare = HttpRouter.serve(
+    HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
+  ).pipe(
+    Layer.provide(NodeHttpServer.layer(createServer, { port: barePort })),
+    Layer.provideMerge(readinessLayer),
+  )
+
+  it('answers ready, because ready has never claimed the assembly is complete', async () => {
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      await Effect.runPromise(Layer.buildWithScope(bare, scope))
+      const response = await fetch(`http://127.0.0.1:${barePort}/health/ready`)
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ status: 'ready' })
+      expect((await fetch(`http://127.0.0.1:${barePort}/health/live`)).status).toBe(200)
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+    }
+  })
+})
+
 describe.runIf(postgresAvailable)('effect application shell', () => {
   it('binds the port only after the database is ready, and releases both together', async () => {
     const db = await createTestContext('effect-shell')

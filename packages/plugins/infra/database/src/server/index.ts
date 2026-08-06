@@ -1,4 +1,5 @@
-import { Effect, Layer, Redacted } from 'effect'
+import { Effect, Layer, Option, Redacted } from 'effect'
+import { Readiness } from '@qualy/api-kit/readiness'
 import { sql as rawSql } from 'kysely'
 import { DatabaseConfig } from './config.ts'
 import {
@@ -9,6 +10,7 @@ import {
   kyselyOf,
   layer as ormLayer,
   query,
+  withDatabase,
 } from './orm.ts'
 import { pendingMigrations, runMigrations } from '../migrator.ts'
 
@@ -48,16 +50,33 @@ export type { Orm } from './orm.ts'
 /**
  * Does the database still answer?
  *
- * A value rather than a function, and it names `Orm` in its requirement, which
- * is the whole reason it can be exported at all: a readiness handler takes it
- * while its group is built, inside the composition that already has the ORM.
- * `Orm` being type-only stops the composition root holding one, not from a
- * layer built over this plugin's asking for it.
+ * Registered rather than exported for the host to call. Only this plugin can
+ * supply the ORM the probe needs, so it binds it here and hands over an effect
+ * that needs nothing - which is what lets a readiness endpoint exist in an
+ * assembly that has no database at all.
  */
-export const ping: Effect.Effect<void, QueryFailed, Orm> = Effect.gen(function* () {
+const ping: Effect.Effect<void, QueryFailed, Orm> = Effect.gen(function* () {
   const em = yield* entityManager<readonly []>()
   yield* query(() => rawSql`select 1`.execute(kyselyOf(em)))
 }).pipe(Effect.withSpan('Database.ping'))
+
+/**
+ * Offers the probe, without demanding somewhere to put it.
+ *
+ * `serviceOption` rather than a requirement: a readiness registry is the
+ * server base's, and a suite that only wants a database should not have to
+ * know the concept exists. Demanding it made every harness in the repository
+ * provide one, which is the coupling this whole change is removing, pointed
+ * the other way.
+ */
+const registerProbe: Layer.Layer<never, never, Orm> = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const readiness = yield* Effect.serviceOption(Readiness)
+    if (Option.isNone(readiness)) return
+    const withDb = yield* withDatabase
+    yield* readiness.value.register({ name: 'database', probe: withDb(ping) })
+  }),
+)
 
 export class MigrationsBehind extends Error {
   readonly _tag = 'MigrationsBehind'
@@ -107,4 +126,7 @@ const prepare = Effect.fn('Database.prepare')(function* () {
  */
 export const layer: Layer.Layer<Orm, MigrationsBehind, DatabaseConfig | Entities> = ormLayer.pipe(
   Layer.provideMerge(Layer.effectDiscard(prepare())),
+  // the probe closes over the orm, so it is registered from a layer built on
+  // top of one rather than beside it
+  (built) => Layer.merge(built, registerProbe.pipe(Layer.provide(built))),
 )

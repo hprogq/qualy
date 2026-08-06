@@ -53,7 +53,7 @@ cordis 对应:`ctx.xxx.register(v)` → 贡献方 layer 里 `yield* xxx.addPage(
 
 可变容器遵守既有纪律:装进 Map/数组等稳定容器再变更,不做 `this.prop =` 重赋值。
 
-## 2. Readiness 注册表(第一步,验证习语)
+## 2. Readiness 注册表(第一步,验证习语)—— **已实施 2026-08-06**
 
 住 `@qualy/api-kit`(宿主与插件都已依赖,且探针概念属于服务器基座):
 
@@ -261,8 +261,12 @@ Readiness。**宿主零 `@qualy/plugin-*` 导入。**
 
 ## 9. 实施顺序(每步一个绿提交)
 
-1. **Readiness 注册表**:api-kit 服务 + database 注册 + health.ts 改读注册表。
-   验收:effect-shell 就绪用例不变绿;宿主 health.ts 无插件导入。
+1. ~~**Readiness 注册表**~~ **已完成**:api-kit 服务 + database 注册 + health.ts 改读注册表。
+   实施中改了一处设计:注册用 `Effect.serviceOption` 而非 require —— 把 Readiness 变成硬需求
+   会传染到每一个提供 `context.services` 的测试 harness,而「一个只想要数据库的套件不必知道
+   就绪探针这个概念」正是本次要拆的耦合,方向相反而已(与 rbac 可选注册 ui authorizer 同型)。
+   新增用例「无任何探针的装配 `/health/ready` 返回 200」——**这个组合在改动前根本无法构建**,
+   不是漏测,是不可能。
 2. **LoginDrivers 注册表**:契约值形状改句柄,auth 提供、auth-local 注册,删 gen 与子路径。
    验收:sign-in 全套用例;重复 driver id 注册 → 构建失败(新用例)。
 3. **Ui 注册表**:Ui 服务四方法 + UiManifest 请求期读 + 各插件 layer 注册,删
