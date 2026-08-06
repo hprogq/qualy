@@ -762,3 +762,68 @@ npx tsx scripts/qualy.ts generate       → database: nothing to generate(drizzl
 
 查询层:把 repo 从 drizzle 逐个改写到 Kysely(`kyselyOf(em)`,entity 名 + property 名 +
 convertValues)。每个 repo 单独过它自己的既有测试,drizzle 侧最后整体撤下。
+
+---
+
+## 阶段 C 续:改写查询之前先堵住类型缺陷(裁决执行)
+
+### 一、`defaultRaw` 缺陷在依赖边界修,不由查询层长期承担
+
+`MaybeGenerated` 判的是「选项**值等于** `true`」而不是「选项**存在**」,而 builder 记的是实际值。
+最锋利的说法是:**两个只差默认值的声明行为不同** —— `.default(true)` 可省略,
+`.default(false)` 必填。`.defaultRaw()` 那条分支**从不命中**,而它正是文档推荐给
+`now()` / `uuidv7()` 的写法。
+
+实测(patch 前),缺的是 `disabled, id, count, createdAt`,**唯独不缺 `enabled`**。
+
+`patches/@mikro-orm__sql@7.1.10.patch` 把两处 `true` 改成 `unknown`(= 属性存在)。
+被否掉的三个候选与理由记在 notes/mikro-orm.md;核心是**不让 5300 行业务查询为一个类型 bug
+永久付代价**,也不在应用层复制一份上游的实体→Kysely 推导(猜错的方向是「类型说可省略、
+元数据其实没默认值」:编译通过,运行时 NOT NULL)。
+
+**patch 是自守的**:`kysely-types.test.ts` 是纯类型测试(函数从不调用,断言交给 `pnpm typecheck`)。
+已实测把已解析的那份 `typings.d.ts` 改回 `true` → typecheck 立刻红。这条很重要,因为
+pnpm 的 `prepare` 在部分安装下可能被静默跳过(effect LSP patch 踩过同样的坑)。
+
+上游 issue 草稿四份在 `docs/upstream/`(本条 + entity generator 三条),按上游表单字段写好,
+reproduction 一节留给提交者附仓库。
+
+### 二、查询必须走 `query()`,不能裸 `Effect.promise`
+
+改写前发现的:`translateConstraints` 从**错误通道** catch,而 `Effect.promise` 把拒绝变成
+defect —— 不在同一个通道上。裸写会让约束翻译**永不触发**,restrict 外键挡住的删除答 500 而不是
+409,调用点看不出问题。已加 `query()`(内部 `tryPromise`,失败包 `QueryFailed`,驱动错误挂
+`cause`)。由「a refused write」一条钉住:换回 `Effect.promise` 立刻红。
+
+### 三、事务:补中断与 defect,收回 `Orm`
+
+原先只测了 typed failure 回滚。已补:**fiber 中断**(Deferred 通知写入已发生 → interrupt →
+事务外查询为空)与 **defect**(`Effect.die`)。三条路径在「release 永远 commit」时同时变红。
+
+`Orm` 从 `@qualy/plugin-database/server` 改为**只导出类型**。持有它就能 `orm.em.fork()`,
+在事务内逃出事务而毫无异样——测试里的 `outsider` 正是这么构造的。收回后编译器直接拦:
+业务插件写 `import { Orm }` 会得到 TS1485。这比 grep 门禁强。
+
+`transaction()` 的语义已写明是 **join-existing**,不是 requires-new,也不是 savepoint;
+将来要局部回滚另加 `savepoint()`,不改这个的语义。
+
+**未做(记触发条件)**:`entityManager<T>()` 目前由插件自填 `T`,理论上可声明更宽的元组绕过依赖
+闭包。等 wiring generator 为每个插件生成绑定闭包的入口再收紧——现在还没有插件写查询,
+按「复杂度必须由已发生的问题证明」先不建。
+
+### 四、偶发失败:仍未定位,但已可诊断
+
+instrument 而非猜测串行化:
+
+- `QUALY_TEST_REPORT=<path>` 让全量跑额外写一份 json 结果(平时不开,免得每次本地跑都落文件)
+- scratch 库 drop 失败时,**在服务器还这么认为的时候**打印该库的 backend 数与
+  `connections / max_connections`——被强制 drop 救回来的那次否则什么都不留下
+
+两组对照都跑了,**都没复现**:
+
+```
+默认并发   339 passed   22.7s
+--no-file-parallelism  339 passed   96.4s
+```
+
+串行慢 4 倍,所以「串行化」本身也不是免费的修法。**保持 unresolved**。

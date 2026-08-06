@@ -230,6 +230,26 @@ async function teardown(options: {
     await options.admin.query(`drop database "${options.name}"`)
   } catch (error) {
     errors.push(error)
+    // What the server had to say about itself when the drop was refused.
+    //
+    // A drop fails for reasons that are invisible afterwards: a backend still
+    // attached, or no slots left to open the next connection. Reading it here,
+    // while it is still true, is the difference between a diagnosis and a
+    // guess - a failure recovered by the forced drop below would otherwise
+    // leave nothing behind at all.
+    try {
+      const { rows } = await options.admin.query<{ what: string; count: string }>(
+        `select 'backends on ' || $1 as what, count(*)::text as count
+           from pg_stat_activity where datname = $1
+         union all
+         select 'connections / max', count(*) || ' / ' || current_setting('max_connections')
+           from pg_stat_activity`,
+        [options.name],
+      )
+      for (const row of rows) console.error(`  ${row.what}: ${row.count}`)
+    } catch {
+      // the diagnosis is best effort; its failure must not replace the real one
+    }
     try {
       await options.admin.query(`drop database if exists "${options.name}" with (force)`)
     } catch (forced) {

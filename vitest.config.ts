@@ -25,6 +25,14 @@ export default defineConfig({
     // the suite, or changing what the application logs in order to make its
     // tests quieter.
     silent: 'passed-only',
+    // A full run failed once and passed the seven after it, and nobody had
+    // recorded which case it was, so there was nothing to reason from. Set
+    // QUALY_TEST_REPORT to a path and a run writes a machine-readable result
+    // beside the human one; opt-in, because a report file per local run is
+    // noise until something is being chased.
+    reporters: process.env.QUALY_TEST_REPORT
+      ? ['default', ['json', { outputFile: process.env.QUALY_TEST_REPORT }]]
+      : ['default'],
     exclude: [
       ...defaultExclude,
       // legacy/ holds read-only clones of the old codebases
