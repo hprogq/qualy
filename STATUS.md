@@ -872,3 +872,26 @@ docs/notes/mikro-orm.md。已切的两个文件都不在事务里,所以是安�
 **下一步**:逐个模块把语句改写成 Kysely,顺序建议 `rbac-contract/src/scope.ts`(`scopeCoverage`,
 三个插件都嵌它)→ rbac/src/queries.ts(652)→ org/src/queries.ts(252)→ auth/src/iam/queries.ts(458)。
 行形状从 snake_case 变 camelCase 是每次改写的主要涟漪,只影响该模块的消费方。
+
+### 第一个共享片段已切:placement rule
+
+`auth/src/server/placement.ts`(新)。四个消费方共用的那条判定,drizzle 版本连同
+`strandedByQuery` / `usersBlockingOrgTypeQuery` / `strandedByPolicyQuery` / `placementAllowedQuery`
+一并删掉 —— 不留给「只有测试还在用」的那份,否则同一条不变量就有两个实现。
+
+变化:谓词原先拿 alias **字符串**(`placementLegal('t', ...)`),join 改个名字没人会发现;
+现在拿列引用(`eb.ref('t.isSystem')`),不在作用域里就编译不过。内层
+`exists (select 1 from user_type_allowed_org_types ...)` 仍是裸 SQL(只涉及一张表、无外部 alias)。
+
+`effect-parity.test.ts` 里直接断言该谓词的用例改成用 Kysely 版本重建查询 —— 顺带证明这个片段
+能嵌进调用方自己的 select(org 将来就是这么用的)。
+
+### 连接预算(实测,已收口)
+
+翻转之后 ORM 的池才是活的,测试并发需求大约翻倍,`53300 too_many_connections` 开始出现 ——
+而且报错落在**下一个连接的测试**上,不在起因处。采样看到峰值 80+/100。三处各自定了上限:
+迁移器 1 条(它本来就是一条条跑)、drizzle 池 2 条(已经没人走它)、ORM 池由
+`DatabaseConfig.poolSize` 决定,testkit 取 2。
+
+连跑 6 次全量:5 次 342 全绿,1 次 1 失败但**没抓到是哪条**(报告开着的那 4 次都是绿的)。
+偶发失败仍 unresolved,只是同一类错误现在有了上界。
