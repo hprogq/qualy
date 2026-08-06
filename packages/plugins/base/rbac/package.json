@@ -12,7 +12,8 @@
     "./client": "./client/index.ts",
     "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./assembly": "./src/assembly/index.ts"
   },
   "qualy": {
     "contributions": {
@@ -22,10 +23,10 @@
           "@qualy/plugin-auth"
         ],
         "entitiesEntry": "src/db/entities.ts"
+      },
+      "permissions": {
+        "entry": "src/permissions.ts"
       }
-    },
-    "permissions": {
-      "entry": "src/permissions.ts"
     },
     "runtime": {
       "entry": "./server",
@@ -34,6 +35,10 @@
         "@qualy/plugin-ui-registry"
       ],
       "api": "./api"
+    },
+    "capabilityProvider": {
+      "key": "permissions",
+      "entry": "./assembly"
     }
   },
   "peerDependencies": {
@@ -44,6 +49,7 @@
     "@qualy/api-client": "workspace:*",
     "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
+    "@qualy/assembly-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",

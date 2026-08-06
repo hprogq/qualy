@@ -81,6 +81,17 @@ export interface CapabilityModule {
   /** relative to the host workspace, which is where the host imports it from */
   path: string
   content: string
+  /**
+   * The name of a `Layer` this module exports, if it exports one.
+   *
+   * The core does not know what a Layer is; it passes the name to whoever
+   * renders the runtime module, which imports it and merges it in. That is
+   * what lets a generated module carry the service its capability needs
+   * instead of a bare value the host would have to know the tag for - and
+   * what makes the whole thing disappear with the capability, since a module
+   * that is not generated is a service nothing names.
+   */
+  layerExport?: string
 }
 
 /**

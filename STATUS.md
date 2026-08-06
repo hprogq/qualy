@@ -1304,3 +1304,35 @@ localhost 上碰巧存在的那个 postgres,而且 migrations 默认是 apply,�
 **教训**:默认 ConfigProvider 只读一次 `process.env`。测试里先跑一遍、改环境变量、再跑一遍,
 第二遍读到的仍是第一次的值 —— 生产分支因此一直没被走到。改成显式
 `ConfigProvider.layer(ConfigProvider.fromEnv({ env }))` 把环境**供给**进去,而不是改进程的。
+
+### 阶段 2.6 第 6-8 步完成:宿主不再点名任何插件
+
+**permissions 升为 rbac 的能力**(`@qualy/plugin-rbac/assembly`)。`layerExport` 契约字段随之落地:
+生成模块自己 import `PermissionCatalog` 并导出 layer,runtime 生成器把它并进 `capabilityLayers`。
+entities 同样处理。`gen-permissions.ts` 删除,seed 改读 `qualy.contributions.permissions.entry`。
+
+三处实施发现:
+
+1. **disabled 语义两个能力不一样**。停用插件保留表(不能丢数据),但必须**停止**贡献权限码
+   —— 否则是一条没人服务的授权。所以 permissions 的 resolve 只取 active 集,而 database 取
+   retained 集。同一个问题两个答案,正好说明为什么每个能力自己回答。
+2. **生成模块跟随清单的 workspace**(与 entities 一致),而旧的 `gen-permissions.ts` 写死
+   `apps/server/`。这修掉一个潜在 bug:用 `--yml` 指向另一份清单时,旧生成器会把那份装配的
+   权限目录写进本仓库的 `apps/server/`。
+3. **org/auth/rbac 从 resolve 期起就是一个整体**。它们互相贡献与依赖,单选其一现在会被拒。
+   测试夹具改成选真实闭包 —— 那本来就是这三个插件的真相,只是过去 database 能力不在乎。
+
+**终局**:`apps/server/src` 里没有任何 `@qualy/plugin-*` 导入,由 capability-boundary 的
+扫目录用例守住(把 `capabilityLayers` 从组合里删掉,typecheck 立刻两个错)。
+`runtime.gen.ts` 导出三样:`pluginLayers`、`pluginConfig`、`capabilityLayers`。
+
+**第 8 步里没做的那半**:没有把宿主收成单个 `assembly` 导出。`runtime.ts` 仍自己组合这三者加
+readiness、logger、api/health/routes —— 那些是宿主自己的领地(端口、文档曝光、两个 API 的挂载
+方式),塞进生成器只会让生成器学会宿主的事。目标(宿主不点名插件)已经达到。
+
+### CI 教训:不要用 grep 过滤门禁输出
+
+CI 挂在 `pnpm typecheck`,本地却"通过"了 —— 我一直在跑
+`pnpm typecheck 2>&1 | grep -E "error|message"`,而那次的诊断是 `warning TS18`
+(Effect LSP 的 `multipleEffectProvide`),既不匹配 grep,管道又把退出码换成了 grep 的。
+同一天早些时候还用 `head -4` 截掉过真正的 `TS2304`。**门禁看退出码,不看过滤后的文本。**

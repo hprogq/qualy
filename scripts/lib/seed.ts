@@ -23,7 +23,7 @@ const passwordModule = async () =>
 type PermissionRow = import('../../packages/rbac-contract/src/index.ts').PermissionDefinition
 
 // permission catalogs are discovered through package metadata
-// (qualy.permissions.entry) so the seed never enumerates plugin names; the
+// (qualy.contributions.permissions.entry) so the seed never enumerates plugin names; the
 // same modules feed the runtime registry
 async function permissionCatalog(): Promise<{ plugin: string; rows: readonly PermissionRow[] }[]> {
   return Promise.all(

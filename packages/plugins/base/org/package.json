@@ -20,10 +20,10 @@
       "database": {
         "baselineDir": "db/baseline",
         "entitiesEntry": "src/db/entities.ts"
+      },
+      "permissions": {
+        "entry": "src/permissions.ts"
       }
-    },
-    "permissions": {
-      "entry": "src/permissions.ts"
     },
     "runtime": {
       "entry": "./server",

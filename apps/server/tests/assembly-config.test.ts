@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ConfigProvider, Effect, Redacted } from 'effect'
+import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
 import { lockPathFor } from '@qualy/assembly'
 import {
   DatabaseConfig,
@@ -59,9 +59,14 @@ const configured = (
   env: Record<string, string> = {},
 ) =>
   Effect.runPromise(
+    // one provide, not two: chained provides give each layer its own scope,
+    // and the config layer has to be built with the provider already in place
     Effect.flatMap(DatabaseConfig, Effect.succeed).pipe(
-      Effect.provide(config(declared, { manifestDir })),
-      Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+      Effect.provide(
+        config(declared, { manifestDir }).pipe(
+          Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+        ),
+      ),
     ),
   )
 

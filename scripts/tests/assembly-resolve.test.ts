@@ -28,7 +28,15 @@ import { createWorkspace, renderManifestText, type SyntheticPackage } from '@qua
 // asserted next to the plugin that owns the capability.
 
 const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
-const WITH_TABLES = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-auth']
+// org, auth and rbac are one selection, not three: they contribute codes to
+// the permissions capability rbac provides, and rbac's tables reference
+// auth's, so any of them alone is an assembly resolution refuses
+const WITH_TABLES = [
+  ...INFRA,
+  '@qualy/plugin-org',
+  '@qualy/plugin-auth',
+  '@qualy/plugin-rbac',
+]
 
 const resolve = (manifestPath: string) =>
   resolveAssembly({ manifestPath, previousLock: readLock(lockPathFor(manifestPath)) })
@@ -161,8 +169,10 @@ describe('resolution', () => {
     const workspace = createWorkspace(WITH_TABLES)
     try {
       const lock = lockFromResolution(await commit(workspace.manifestPath))
-      expect(Object.keys(lock.capabilities)).toEqual(['database'])
+      // two of them, each with its own provider and its own opaque state
+      expect(Object.keys(lock.capabilities).sort()).toEqual(['database', 'permissions'])
       expect(lock.capabilities.database!.provider).toBe('@qualy/plugin-database')
+      expect(lock.capabilities.permissions!.provider).toBe('@qualy/plugin-rbac')
       // the plugin's own declaration travels with the plugin, not the capability
       expect(lock.plugins['@qualy/plugin-auth']!.contributions).toHaveProperty('database')
       expect(lock.plugins['@qualy/plugin-ui-registry']!.contributions).toBeUndefined()
@@ -216,11 +226,11 @@ describe('resolution', () => {
   })
 
   it('ignores plugin metadata that names no capability', async () => {
-    // qualy.permissions is read by rbac at runtime and is none of the
-    // assembly's business; refusing every unknown key would make the core the
-    // registry of what plugins may say to each other
+    // qualy.ui and its kind are read by one plugin from another at runtime and
+    // are none of the assembly's business; refusing every unknown key would
+    // make the core the registry of what plugins may say to each other
     const workspace = createWorkspace([...INFRA, '@fake/plugin-meta'], {
-      synthetic: [{ id: '@fake/plugin-meta', qualy: { permissions: { entry: 'index.js' } } }],
+      synthetic: [{ id: '@fake/plugin-meta', qualy: { presentation: { entry: 'index.js' } } }],
     })
     try {
       const resolution = await resolve(workspace.manifestPath)

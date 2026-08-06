@@ -9,6 +9,11 @@ const pluginsPath = 'apps/web/src/plugins.gen.ts'
 const apiPath = 'packages/api/src/api.gen.ts'
 const apiHandlersPath = 'apps/server/api-handlers.gen.ts'
 const catalogPath = 'apps/server/permissions.gen.ts'
+// A capability's module lands where the manifest says its host lives, so a
+// throwaway manifest that names no workspace gets it beside itself. The old
+// generator wrote one hardcoded path whatever the manifest said, which is the
+// bug that would have shipped a second assembly's catalog into this one.
+const scratchCatalogPath = 'permissions.gen.ts'
 
 // Every run in this file generates into its own tree.
 //
@@ -145,7 +150,7 @@ describe('generator determinism', () => {
     )
     try {
       gen(`--yml ${workspace.manifestPath}`)
-      const catalog = read(catalogPath)
+      const catalog = read(scratchCatalogPath)
       expect(catalog).not.toContain('@qualy/plugin-org/permissions')
       expect(catalog).not.toContain("plugin: 'org'")
       // rbac is still selected, so this is a real difference rather than an
@@ -171,7 +176,7 @@ describe('generator determinism', () => {
     )
     try {
       gen(`--yml ${workspace.manifestPath} --all`)
-      const catalog = read(catalogPath)
+      const catalog = read(scratchCatalogPath)
       expect(catalog).not.toContain("plugin: 'org'")
     } finally {
       workspace.dispose()

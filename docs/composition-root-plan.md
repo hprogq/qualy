@@ -149,7 +149,7 @@ yield * ui.addPage(pingPageSurface)
   `defineSurfaces` 聚合导出(声明改为逐 surface 常量,由 layer 注册)。
 - 重复 page id / path / layout contract → die(gen-ui 的三条校验原样搬进注册方法)。
 
-## 5. permissions:升为 rbac 的能力(不能走注册表的那一个)
+## 5. permissions:升为 rbac 的能力(不能走注册表的那一个)—— **已实施 2026-08-06**
 
 时序证据:rbac 构建期 `yield* PermissionCatalog` 并把 catalog 镜像进 permissions 表
 (index.ts:63-75「mirrored into the permissions table before anything reads it」),而贡献方
@@ -169,7 +169,7 @@ auth/org require Rbac、构建在 rbac 之上 —— 注册表必然空读。加
 - rbac 缺席的装配:能力不存在 → 模块不生成 → 没人 import 缺失的 Tag。贡献了 permissions
   但装配无 rbac → resolve 硬失败(能力通用规则,免费获得)。
 
-## 6. entities:生成模块导出 layer
+## 6. entities:生成模块导出 layer —— **已实施 2026-08-06**
 
 契约加一个核心不解释的字段:
 
@@ -301,11 +301,23 @@ Readiness。**宿主零 `@qualy/plugin-*` 导入。**
    一律 `onExcessProperty: 'error'`(默认是 ignore,那正好是「看起来生效、其实没人读」)。
    **教训**:默认 ConfigProvider 只读一次 `process.env`,测试里改环境变量再跑第二遍读到的还是
    第一次的值;改成显式 `ConfigProvider.fromEnv({ env })` 供给。
-6. **permissions 升能力**(rbac `./assembly`、resolve 期唯一性、`layerExport`,seed 改读
-   contributions,旧键硬拒)。验收:assembly-resolve 加同码冲突用例;seed 测试不变绿。
-7. **entities `layerExport`** + 宿主删 `Entities`。
-8. **宿主收口**:`runtime.ts` 只剩 `{ assembly }` + registries;capability-boundary 加终局
-   用例 —— **纯静态装配 render 出的 runtime 模块可编译、全文不含 database**。
+6. ~~**permissions 升能力**~~ **已完成**。`layerExport` 契约字段一并落地(第 3 项因此提前完成一半):
+   生成模块自己 import `PermissionCatalog` 并导出 layer,runtime 生成器把它并进 `capabilityLayers`。
+   实施中的三处发现:
+   ①**disabled 语义两个能力不同** —— 停用插件保留表(不能丢数据),但必须**停止**贡献权限码
+   (否则是一条没人服务的授权),所以 permissions 的 resolve 只取 active 集;
+   ②生成模块现在**跟随清单的 workspace**(和 entities 一样),而旧的 gen-permissions 写死
+   `apps/server/`——临时清单的测试因此要读新位置,这修掉了「另一份装配的目录写进本装配」这个潜在 bug;
+   ③org/auth/rbac 从此在 resolve 期就是一个整体:它们互相贡献/依赖,单选其一会被拒。
+   测试夹具改成选真实闭包 —— 那本来就是这三个插件的真相,只是过去 database 能力不在乎。
+7. ~~**entities `layerExport`** + 宿主删 `Entities`~~ **已完成**。
+8. ~~**宿主收口**~~ **已完成**:`apps/server/src` 里已无任何 `@qualy/plugin-*` 导入,由
+   capability-boundary 的终局用例扫目录守住。`runtime.gen.ts` 现在导出三样:`pluginLayers`、
+   `pluginConfig`(每插件的清单块)、`capabilityLayers`(各能力生成的服务)。
+   **未做**:把宿主进一步收成单个 `assembly` 导出。现在 `runtime.ts` 仍自己组合这三者加
+   `readinessLayer`、logger、api/health/routes —— 那些是宿主自己的领地(端口、文档曝光、
+   两个 API 的挂载方式),把它们塞进生成器只会让生成器学会宿主的事。目标(宿主不点名插件)
+   已经达到,这一项按已完成处理。
 
 ## 10. 风险与已答的问题
 

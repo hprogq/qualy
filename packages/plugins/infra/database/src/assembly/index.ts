@@ -66,7 +66,13 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
   modules: (context) => {
     const contributions = entityContributions(context, asState(context.state))
     assertNoCollisions(contributions)
-    return [{ path: ENTITIES_MODULE, content: renderEntityModule(contributions) }]
+    return [
+      {
+        path: ENTITIES_MODULE,
+        layerExport: 'entitiesLayer',
+        content: renderEntityModule(contributions),
+      },
+    ]
   },
 
   generate: generateDatabase,

@@ -31,6 +31,12 @@ import { asState } from '../src/assembly/state.ts'
 
 const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
 
+// org, auth and rbac are one selection, not three. They contribute codes to
+// the permissions capability rbac provides, and rbac's tables reference
+// auth's, so any of them alone is an assembly resolution refuses - which was
+// always true of running one of them alone, and is now true of resolving it.
+const AUTHORIZED = ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac']
+
 // where a throwaway assembly keeps its lineage: the same declaration the
 // runtime reads, so generation and application cannot mean different folders
 const MIGRATIONS = 'migrations'
@@ -59,7 +65,7 @@ async function generateFromNothing(workspace: ReturnType<typeof createWorkspace>
 
 describe('database contributions', () => {
   it('carries the sql a plugin owns but no schema comparison can see', async () => {
-    const workspace = workspaceFor([...INFRA, '@qualy/plugin-org'])
+    const workspace = workspaceFor([...INFRA, ...AUTHORIZED])
     try {
       const work = await context(workspace)
       const ltree = collectBaseline(work, asState(work.state)).find(
@@ -75,7 +81,7 @@ describe('database contributions', () => {
   })
 
   it('treats a compiled fragment as history', async () => {
-    const workspace = workspaceFor([...INFRA, '@qualy/plugin-org'])
+    const workspace = workspaceFor([...INFRA, ...AUTHORIZED])
     try {
       const work = await context(workspace)
       const fragments = collectBaseline(work, asState(work.state))
@@ -121,7 +127,7 @@ describe('database contributions', () => {
   it('aggregates the schema of plugins that are switched off or removed', async () => {
     // neither switching a plugin off nor taking it out of the manifest removes
     // its tables, so neither may change what the declared schema is built from
-    const selection = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-ping']
+    const selection = [...INFRA, ...AUTHORIZED, '@qualy/plugin-ping']
     const enabled = workspaceFor(selection)
     const disabled = workspaceFor(selection, { disabled: ['@qualy/plugin-ping'] })
     const removed = workspaceFor(selection)
@@ -136,7 +142,12 @@ describe('database contributions', () => {
         )
       }
       const baseline = await of(enabled)
-      expect(baseline).toEqual(['base/org/src/db/entities.ts', 'demo/ping/src/db/entities.ts'])
+      expect(baseline).toEqual([
+        'base/org/src/db/entities.ts',
+        'base/auth/src/db/entities.ts',
+        'demo/ping/src/db/entities.ts',
+        'base/rbac/src/db/entities.ts',
+      ])
       expect(await of(disabled)).toEqual(baseline)
 
       await commitLock(removed)
@@ -157,7 +168,8 @@ describe('database dependency graph', () => {
   it('refuses a selection that leaves a schema dependency behind', async () => {
     // rbac's tables reference auth's. Without this the failure arrives from
     // postgres midway through applying a migration, naming a relation rather
-    // than the plugin that owns it.
+    // than the plugin that owns it. rbac is in the selection so the permissions
+    // capability is satisfied and this is the only thing left to refuse.
     const workspace = workspaceFor([...INFRA, '@qualy/plugin-org', '@qualy/plugin-rbac'])
     try {
       await expect(orderOf(workspace)).rejects.toThrow(
@@ -169,8 +181,8 @@ describe('database dependency graph', () => {
   })
 
   it('orders by declared dependency, not by the file', async () => {
-    const forward = workspaceFor([...INFRA, '@qualy/plugin-org', '@qualy/plugin-auth'])
-    const reversed = workspaceFor(['@qualy/plugin-auth', '@qualy/plugin-org', ...INFRA])
+    const forward = workspaceFor([...INFRA, ...AUTHORIZED])
+    const reversed = workspaceFor(['@qualy/plugin-rbac', '@qualy/plugin-auth', '@qualy/plugin-org', ...INFRA])
     try {
       for (const workspace of [forward, reversed]) {
         const order = await orderOf(workspace)
@@ -231,7 +243,7 @@ describe('drop guard', () => {
 describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
   const selections: Record<string, string[]> = {
     // no auth, no rbac: the smallest thing that still owns tables
-    minimal: [...INFRA, '@qualy/plugin-org'],
+    minimal: [...INFRA, ...AUTHORIZED],
     // what this repository ships
     full: [
       ...INFRA,
@@ -274,7 +286,7 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
   it('keeps the tables of a detached plugin in the lineage', async () => {
     // taking a plugin out of the manifest must not make the generator see its tables
     // disappear, because the data is still there
-    const selection = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-ping']
+    const selection = [...INFRA, ...AUTHORIZED, '@qualy/plugin-ping']
     const workspace = workspaceFor(selection)
     try {
       await generateFromNothing(workspace)

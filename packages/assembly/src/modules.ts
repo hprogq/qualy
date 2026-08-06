@@ -15,6 +15,8 @@ export interface GeneratedModule {
   /** relative to the manifest's directory, like every other generated artifact */
   path: string
   content: string
+  /** the Layer this module exports, for the runtime module to import and merge */
+  layerExport?: string
 }
 
 /** where a capability's module lands, given the workspace the host lives in */
@@ -57,7 +59,11 @@ export function capabilityModules(resolution: Resolution): GeneratedModule[] {
       const owner = owners.get(at)
       if (owner) throw new Error(`capabilities ${owner} and ${key} both generate ${at}`)
       owners.set(at, key)
-      modules.push({ path: at, content: module.content })
+      modules.push({
+        path: at,
+        content: module.content,
+        ...(module.layerExport === undefined ? {} : { layerExport: module.layerExport }),
+      })
     }
   }
   return modules.sort((left, right) => (left.path < right.path ? -1 : 1))

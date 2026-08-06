@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   capabilityModules,
@@ -191,6 +194,38 @@ describe('a plugin that takes configuration', () => {
     }
   })
 
+  it('merges a service a capability generated, and mentions none when there is no capability', async () => {
+    // the second half is what makes the whole design work: a tag lives in a
+    // contract package, and a host that named it would be naming a service
+    // that does not exist in an assembly without the capability that provides
+    // it. The generated module names it instead, and is not generated.
+    const bare = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-layout-default'])
+    const authorized = createWorkspace([
+      '@qualy/plugin-database',
+      '@qualy/plugin-ui-registry',
+      '@qualy/plugin-org',
+      '@qualy/plugin-auth',
+      '@qualy/plugin-rbac',
+    ])
+    try {
+      const withCapability = renderRuntimeModule(
+        await resolveWorkspace(authorized),
+        'runtime.gen.ts',
+      )
+      expect(withCapability).toContain(
+        "import { permissionCatalogLayer } from './permissions.gen.ts'",
+      )
+      expect(withCapability).toContain('export const capabilityLayers')
+
+      const without = renderRuntimeModule(await resolveWorkspace(bare), 'runtime.gen.ts')
+      expect(without).not.toContain('capabilityLayers')
+      expect(without).not.toContain('permissions')
+    } finally {
+      bare.dispose()
+      authorized.dispose()
+    }
+  })
+
   it('says nothing about config when no plugin takes any', async () => {
     // layout-default ships a runtime entry and reads nothing from the manifest,
     // which is the ordinary case: configuration is the exception
@@ -223,5 +258,28 @@ describe('a plugin that takes configuration', () => {
     } finally {
       workspace.dispose()
     }
+  })
+})
+
+// The point of all of it, as one assertion.
+//
+// Every plugin-specific thing the host used to assemble - the entity set, the
+// permission catalog, three plugins' configuration, a readiness probe, a
+// driver catalog, a surface catalog - reached it by name, so an assembly
+// without that plugin could not compile. They arrive by registry, by
+// capability module or by the manifest now, and the composition root names
+// none of them.
+describe('the composition root', () => {
+  const host = fileURLToPath(new URL('../../apps/server/src', import.meta.url))
+
+  it('names no plugin', () => {
+    const offenders = fs
+      .readdirSync(host, { recursive: true })
+      .filter((entry): entry is string => typeof entry === 'string' && entry.endsWith('.ts'))
+      .flatMap((entry) => {
+        const source = fs.readFileSync(path.join(host, entry), 'utf8')
+        return source.includes("from '@qualy/plugin-") ? [entry] : []
+      })
+    expect(offenders).toEqual([])
   })
 })

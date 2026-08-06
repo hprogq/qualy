@@ -37,7 +37,6 @@ export async function generateAll(): Promise<void> {
   // process, which is what both callers want
   await import('./gen-api.ts')
   await import('./gen-routes.ts')
-  await import('./gen-permissions.ts')
   await import('./gen-plugins.ts')
 }
 
