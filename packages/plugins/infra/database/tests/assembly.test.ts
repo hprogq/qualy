@@ -12,7 +12,7 @@ import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import provider, { type DatabaseContribution, type DatabaseState } from '../src/assembly/index.ts'
 import { collectBaseline, compiledBaseline, pendingBaseline } from '../src/assembly/baseline.ts'
-import { entityContributions } from '../src/assembly/entities.ts'
+import { declaredEntityModules } from '../src/assembly/entities.ts'
 import { allMigrationFiles, scanDestructive } from '../src/assembly/drop-guard.ts'
 import { guardDestructive } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
@@ -132,21 +132,16 @@ describe('database contributions', () => {
     const disabled = workspaceFor(selection, { disabled: ['@qualy/plugin-ping'] })
     const removed = workspaceFor(selection)
     try {
-      // named by plugin, because every entities file is called
-      // src/db/entities.ts and comparing basenames would assert only how many
-      // there are
       const of = async (workspace: ReturnType<typeof createWorkspace>) => {
         const work = await context(workspace)
-        return entityContributions(work, asState(work.state)).map((entry) =>
-          entry.file.replace(/^.*\/packages\/plugins\//, ''),
-        )
+        return declaredEntityModules(work, asState(work.state)).map((module) => module.pluginId)
       }
       const baseline = await of(enabled)
       expect(baseline).toEqual([
-        'base/org/src/db/entities.ts',
-        'base/auth/src/db/entities.ts',
-        'demo/ping/src/db/entities.ts',
-        'base/rbac/src/db/entities.ts',
+        '@qualy/plugin-org',
+        '@qualy/plugin-auth',
+        '@qualy/plugin-ping',
+        '@qualy/plugin-rbac',
       ])
       expect(await of(disabled)).toEqual(baseline)
 
@@ -201,14 +196,23 @@ describe('database dependency graph', () => {
 
   it('refuses a cycle and names the path', async () => {
     // tables are created in this order, so it has to exist
-    const contribution = (dependsOn: string) => ({
-      contributions: { database: { entitiesEntry: 'index.js', dependsOn: [dependsOn] } },
+    // descriptor literals with a database declaration, no real entities needed
+    const declaring = (id: string, dependsOn: string) => ({
+      id,
+      files: {
+        'index.js': [
+          `export default { _tag: 'Plugin', id: '${id}', dependsOn: [], features: [{`,
+          `  _tag: 'Contribute', point: { id: '@qualy/plugin-database/entities' },`,
+          `  value: { entities: [{ meta: { className: '${id.slice(6)}', tableName: '${id.slice(6)}' } }], dependsOn: ['${dependsOn}'] },`,
+          '}] }',
+        ].join('\n'),
+      },
     })
     const cyclic = createWorkspace([...INFRA, '@fake/plugin-a', '@fake/plugin-b'], {
       configs: { '@qualy/plugin-database': { migrationsFolder: MIGRATIONS } },
       synthetic: [
-        { id: '@fake/plugin-a', qualy: contribution('@fake/plugin-b') },
-        { id: '@fake/plugin-b', qualy: contribution('@fake/plugin-a') },
+        declaring('@fake/plugin-a', '@fake/plugin-b'),
+        declaring('@fake/plugin-b', '@fake/plugin-a'),
       ],
     })
     try {
@@ -298,8 +302,15 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       synthetic: [
         {
           id: '@fake/plugin-drops',
-          qualy: { contributions: { database: { baselineDir: './baseline' } } },
-          files: { 'baseline/0001_drop.sql': 'DROP TABLE IF EXISTS whatever;\n' },
+          files: {
+            'index.js': [
+              "export default { _tag: 'Plugin', id: '@fake/plugin-drops', dependsOn: [], features: [{",
+              "  _tag: 'Contribute', point: { id: '@qualy/plugin-database/entities' },",
+              "  value: { entities: [], baselineDir: './baseline' },",
+              '}] }',
+            ].join('\n'),
+            'baseline/0001_drop.sql': 'DROP TABLE IF EXISTS whatever;\n',
+          },
         },
       ],
     })

@@ -17,15 +17,6 @@
     "./assembly": "./src/assembly/index.ts"
   },
   "qualy": {
-    "contributions": {
-      "database": {
-        "dependsOn": [
-          "@qualy/plugin-org",
-          "@qualy/plugin-auth"
-        ],
-        "entitiesEntry": "src/db/entities.ts"
-      }
-    },
     "capabilityProvider": {
       "key": "permissions",
       "entry": "./assembly"

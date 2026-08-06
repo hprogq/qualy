@@ -47,6 +47,15 @@ export interface CapabilityResolveContext<Contribution, State> {
   plugins: ReadonlyMap<string, AssemblyPlugin>
   /** parsed contributions to this capability, keyed by plugin id */
   contributions: ReadonlyMap<string, Contribution>
+  /**
+   * Every accounted plugin's imported descriptor, keyed by plugin id.
+   *
+   * Untyped here because this package depends on nothing; a capability that
+   * reads declarations knows what a descriptor is. This is how the work
+   * phases reach declared VALUES - a lock contribution is a serialisable
+   * projection, and the values it projects live on the descriptor.
+   */
+  descriptors: ReadonlyMap<string, unknown>
   resolvePackageDir(pluginId: string): string
   /** what this capability recorded last time, advisory only */
   previousState: State | undefined
@@ -136,6 +145,8 @@ export interface AssemblyCapabilityProvider<Contribution = unknown, State = unkn
   contributionFromDescriptor?(input: {
     pluginId: string
     descriptor: unknown
+    /** absolute, real path to the plugin package, for declarations that name files */
+    packageRoot: string
   }): Contribution | undefined
 
   /**

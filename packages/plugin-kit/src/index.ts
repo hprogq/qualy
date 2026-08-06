@@ -54,6 +54,16 @@ export interface ExtensionPoint<in out Contribution> {
   readonly _tag: 'ExtensionPoint'
   readonly id: string
   readonly phase: ExtensionPhase
+  /**
+   * The assembly capability that owns this channel, if one does.
+   *
+   * A capability's contributions outlive the process - tables, permission
+   * rows - so `qualy resolve` refuses a selection that contributes to one
+   * whose provider is not selected, before a lock is written. Points without
+   * a capability are runtime-only channels; the boot assembler's completeness
+   * rule is their gate.
+   */
+  readonly capability?: string
   /** phantom carrier for the contribution type; never assigned */
   readonly Contribution?: Contribution
 }
@@ -61,8 +71,13 @@ export interface ExtensionPoint<in out Contribution> {
 export const ExtensionPoint = {
   make: <Contribution>(
     id: string,
-    options: { readonly phase: ExtensionPhase },
-  ): ExtensionPoint<Contribution> => ({ _tag: 'ExtensionPoint', id, phase: options.phase }),
+    options: { readonly phase: ExtensionPhase; readonly capability?: string },
+  ): ExtensionPoint<Contribution> => ({
+    _tag: 'ExtensionPoint',
+    id,
+    phase: options.phase,
+    ...(options.capability === undefined ? {} : { capability: options.capability }),
+  }),
 }
 
 /** one plugin's value pushed into a channel */

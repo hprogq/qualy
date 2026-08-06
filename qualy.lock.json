@@ -1,14 +1,21 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:9a81c728fab3b6f92537b47b30ad6f9fc5e73ae55b1a7dc8e9a7e2f85a19e332",
-  "resolutionHash": "sha256:0b89fd13e047a551e0d6dd28939440119cdd57e2983396f49e3fbe66c0dc5c0a",
+  "resolutionHash": "sha256:7c4b24e79c970a6a1df915c20fca908aa4dc04e26b60082ff9694c13ba63f153",
   "plugins": {
     "@qualy/plugin-auth": {
       "version": "0.0.0",
       "state": "active",
       "contributions": {
         "database": {
-          "entitiesEntry": "src/db/entities.ts",
+          "entities": [
+            "AuthProvider",
+            "Session",
+            "User",
+            "UserIdentity",
+            "UserType",
+            "UserTypeAllowedOrgType"
+          ],
           "dependsOn": [
             "@qualy/plugin-org"
           ]
@@ -41,7 +48,12 @@
       "state": "active",
       "contributions": {
         "database": {
-          "entitiesEntry": "src/db/entities.ts",
+          "entities": [
+            "OrgNode",
+            "OrgType",
+            "OrgTypeRule",
+            "Tenant"
+          ],
           "baselineDir": "db/baseline",
           "dependsOn": []
         },
@@ -59,7 +71,9 @@
       "state": "active",
       "contributions": {
         "database": {
-          "entitiesEntry": "src/db/entities.ts",
+          "entities": [
+            "PingLog"
+          ],
           "dependsOn": []
         }
       }
@@ -69,7 +83,14 @@
       "state": "active",
       "contributions": {
         "database": {
-          "entitiesEntry": "src/db/entities.ts",
+          "entities": [
+            "Permission",
+            "Role",
+            "RoleAllowedOrgType",
+            "RoleAllowedUserType",
+            "RoleGrant",
+            "RolePermission"
+          ],
           "dependsOn": [
             "@qualy/plugin-auth",
             "@qualy/plugin-org"

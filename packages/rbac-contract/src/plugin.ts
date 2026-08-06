@@ -16,7 +16,7 @@ export interface PermissionDeclaration {
 /** every plugin's permission declarations, in plugin order */
 export const PermissionDeclarations = ExtensionPoint.make<PermissionDeclaration>(
   '@qualy/rbac-contract/permissions',
-  { phase: 'prepare' },
+  { phase: 'prepare', capability: 'permissions' },
 )
 
 /**

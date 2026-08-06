@@ -15,7 +15,7 @@ import {
 } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
-import { entities } from './db/entities.ts'
+import { compositeForeignKeys, entities } from './db/entities.ts'
 import { iamMessages } from './iam/messages.ts'
 import { permissions } from './permissions.ts'
 import { identityApiHandlers, serviceLayer, sessionApiHandlers } from './server/index.ts'
@@ -30,7 +30,7 @@ const plugin = Plugin.define(
     dependsOn: ['@qualy/plugin-database', '@qualy/plugin-rbac', '@qualy/plugin-ui-registry'],
     config,
   },
-  Db.entities(entities),
+  Db.entities(entities, { compositeForeignKeys, dependsOn: ['@qualy/plugin-org'] }),
   Ui.surfaces(
     defineSurfaces({
       pages: [

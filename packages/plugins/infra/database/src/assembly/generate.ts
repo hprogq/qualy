@@ -9,7 +9,7 @@ import {
   type BaselineFragment,
 } from './baseline.ts'
 import type { DatabaseContribution } from './contribution.ts'
-import { loadEntityModules, structuralDiff } from './diff.ts'
+import { structuralDiff } from './diff.ts'
 import { destructiveIn, scanDestructive } from './drop-guard.ts'
 import { asState, type DatabaseState } from './state.ts'
 import { databaseWork } from './work.ts'
@@ -55,10 +55,9 @@ export async function generateDatabase(
   const fragments = collectBaseline(context, state)
   const pending = pendingBaseline(fragments, compiledBaseline(work.migrations), state.order)
 
-  const modules = await loadEntityModules(work.entities)
   // every fragment, not just the pending ones: the declared database has to be
   // whole for the comparison to be about structure
-  const diff = await structuralDiff(work, modules, fragments)
+  const diff = await structuralDiff(work, work.modules, fragments)
 
   if (diff.up.length === 0 && pending.length === 0) {
     console.log('database: nothing to generate')

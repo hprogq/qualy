@@ -5,7 +5,7 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
-import { entities } from './db/entities.ts'
+import { compositeForeignKeys, entities } from './db/entities.ts'
 import { orgNavigationLabel } from './messages.ts'
 import { permissions } from './permissions.ts'
 import { orgApiHandlers, serviceLayer } from './server/index.ts'
@@ -24,7 +24,7 @@ const plugin = Plugin.define(
       '@qualy/plugin-ui-registry',
     ],
   },
-  Db.entities(entities),
+  Db.entities(entities, { compositeForeignKeys, baselineDir: 'db/baseline' }),
   Ui.surfaces(
     defineSurfaces({
       pages: [

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { pathToFileURL } from 'node:url'
 import { DatabaseSchema, MikroORM, SchemaComparator } from '@mikro-orm/postgresql'
 import type { EntitySchema } from '@mikro-orm/core'
 import { Pool } from 'pg'
@@ -7,7 +6,7 @@ import { QualyNamingStrategy } from '../naming.ts'
 import { closeAll, withCleanup } from '../cleanup.ts'
 import { runMigrations } from '../migrator.ts'
 import type { BaselineFragment } from './baseline.ts'
-import { assertNoCollisions, type EntityContribution } from './entities.ts'
+import type { EntityModule } from './entities.ts'
 import type { DatabaseWork } from './work.ts'
 
 // What it would take to turn the committed lineage into the schema this
@@ -30,74 +29,6 @@ import type { DatabaseWork } from './work.ts'
 // reads them into a schema, so nothing can diff them. They travel as baseline
 // fragments, written into the migration verbatim, and the two mechanisms
 // therefore never describe the same object.
-
-/** what a plugin's entities module contributes to the schema */
-export interface EntityModule {
-  entities: readonly EntitySchema[]
-  /**
-   * DDL applied after the tables exist, for what the metadata cannot declare.
-   *
-   * Optional and, today, always the tenant-scoped composite foreign keys.
-   * Anything put here has to be something the comparator can see, or it will
-   * never reach a migration: the invisible half belongs in a baseline fragment.
-   */
-  compositeForeignKeys?: readonly string[]
-}
-
-/**
- * Every retained plugin's entities, loaded.
- *
- * Resolution never imports plugin code; generation must, because the schema
- * lives in those modules and there is nothing else to read it from.
- */
-export async function loadEntityModules(
-  contributions: readonly EntityContribution[],
-): Promise<EntityModule[]> {
-  const loaded: EntityModule[] = []
-  for (const entry of contributions) {
-    const module = (await import(pathToFileURL(entry.file).href)) as Partial<EntityModule>
-    if (!Array.isArray(module.entities)) {
-      throw new Error(
-        `${entry.pluginId}: qualy.contributions.database.entitiesEntry (${entry.specifier}) must export an \`entities\` tuple`,
-      )
-    }
-    loaded.push({
-      entities: module.entities,
-      compositeForeignKeys: statements(entry, module.compositeForeignKeys),
-    })
-  }
-  // here rather than during resolution, which may not import plugin code and
-  // therefore could only ever guess at what a module declares
-  assertNoCollisions(
-    contributions.map((entry, at) => ({
-      pluginId: entry.pluginId,
-      entities: loaded[at]!.entities,
-    })),
-  )
-  return loaded
-}
-
-/**
- * The extra DDL, checked before anything iterates it.
- *
- * A plugin exporting a string here would be spread one character at a time
- * into the schema, and each character would be run as a statement. Only the
- * `entities` export was ever checked, which is the half a plugin is least
- * likely to get wrong.
- */
-function statements(entry: EntityContribution, value: unknown): readonly string[] | undefined {
-  if (value === undefined) return undefined
-  const where = `${entry.pluginId}: ${entry.specifier} exports \`compositeForeignKeys\``
-  if (!Array.isArray(value)) throw new Error(`${where}, which must be an array of sql statements`)
-  for (const statement of value as unknown[]) {
-    if (typeof statement !== 'string' || !statement.trim()) {
-      throw new Error(
-        `${where} containing something that is not a sql statement: ${String(statement)}`,
-      )
-    }
-  }
-  return value as readonly string[]
-}
 
 /** where the migrator records what it has run, which nothing may diff against */
 const LEDGER_TABLE = 'mikro_orm_migrations'

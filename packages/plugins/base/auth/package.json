@@ -19,16 +19,6 @@
     "./server/session-contract": "./src/server/session-contract.ts",
     "./package.json": "./package.json"
   },
-  "qualy": {
-    "contributions": {
-      "database": {
-        "dependsOn": [
-          "@qualy/plugin-org"
-        ],
-        "entitiesEntry": "src/db/entities.ts"
-      }
-    }
-  },
   "peerDependencies": {
     "react": "catalog:"
   },

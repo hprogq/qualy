@@ -28,6 +28,7 @@ export function capabilityContext(
     providerConfig: resolution.manifest.plugins.get(loaded.pluginId)?.config,
     plugins: resolution.plugins,
     contributions: resolution.contributions.get(key) ?? new Map(),
+    descriptors: resolution.descriptors,
     resolvePackageDir: resolution.resolver.resolvePackageDir,
     state: resolution.capabilities.get(key)?.state,
     args,

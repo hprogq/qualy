@@ -5,7 +5,7 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
-import { entities } from './db/entities.ts'
+import { compositeForeignKeys, entities } from './db/entities.ts'
 import { rbacNavigation } from './messages.ts'
 import { permissions } from './permissions.ts'
 import { accessApiHandlers, serviceLayer } from './server/index.ts'
@@ -18,7 +18,10 @@ import { rolesPage } from './pages.ts'
 const plugin = Plugin.define(
   '@qualy/plugin-rbac',
   { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
-  Db.entities(entities),
+  Db.entities(entities, {
+    compositeForeignKeys,
+    dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
+  }),
   Ui.surfaces(
     defineSurfaces({
       pages: [

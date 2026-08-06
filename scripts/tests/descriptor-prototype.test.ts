@@ -42,9 +42,9 @@ describe('the descriptor prototype', () => {
   it('yields its entities to a reader that builds nothing', () => {
     // claim 2: the migration CLI can discover the schema from the descriptor
     // alone - no service started, no database opened
-    const tuples = Plugin.contributionsOf(pingPlugin, DatabaseEntities)
-    expect(tuples).toHaveLength(1)
-    expect(tuples[0]!.map((entity) => entity.tableName)).toContain('ping_logs')
+    const declarations = Plugin.contributionsOf(pingPlugin, DatabaseEntities)
+    expect(declarations).toHaveLength(1)
+    expect(declarations[0]!.entities.map((entity) => entity.tableName)).toContain('ping_logs')
   })
 
   it('puts its page into the catalog without ever requiring Ui', () => {

@@ -1,16 +1,16 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { defineCapabilityProvider } from '@qualy/assembly-contract'
+import { defineCapabilityProvider, type ContributionInput } from '@qualy/assembly-contract'
 import {
+  declarationOf,
   lockedOwnsObjects,
-  parseDatabaseContribution,
+  parseDeclaration,
   type DatabaseContribution,
 } from './contribution.ts'
 import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
 import { collectBaseline } from './baseline.ts'
 import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
-import { entityContributions } from './entities.ts'
-import { diffAgainstDeclared, loadEntityModules } from './diff.ts'
+import { diffAgainstDeclared } from './diff.ts'
 import { blankMigration, generateDatabase, guardDestructive } from './generate.ts'
 import { adoptMigrations, runMigrations } from '../migrator.ts'
 import { asState, resolveDatabase, type DatabaseState } from './state.ts'
@@ -20,7 +20,10 @@ import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 // The assembly core reaches it because @qualy/plugin-database's package.json
 // declares qualy.capabilityProvider, and it disappears the moment that plugin
 // leaves the manifest: an assembly of plugins that own no tables never loads
-// this file, never resolves a schema and never opens a database.
+// this file, never resolves a schema and never opens a database. The
+// contributions come from plugin descriptors - the same Db.entities feature
+// the runtime compiles - so the lock records a reviewed projection of the
+// declared schema, and the work phases read the declared values themselves.
 //
 // Importing this module must stay free of side effects. It runs inside the
 // CLI, where there is no cordis context to attach to and nothing has agreed to
@@ -34,7 +37,19 @@ const arg = (args: readonly string[], name: string) => {
 export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
   key: 'database',
 
-  parseContribution: parseDatabaseContribution,
+  // package.json declarations are refused by the core once the descriptor
+  // hook exists; this only satisfies the contract's shape
+  parseContribution: (input: ContributionInput): DatabaseContribution => {
+    throw new Error(
+      `${input.pluginId}: qualy.contributions.database moved into the plugin descriptor (Db.entities)`,
+    )
+  },
+
+  contributionFromDescriptor: ({ pluginId, descriptor, packageRoot }) => {
+    const declaration = declarationOf(pluginId, descriptor)
+    if (!declaration) return undefined
+    return parseDeclaration(pluginId, packageRoot, declaration)
+  },
 
   resolve: resolveDatabase,
 
@@ -58,10 +73,9 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
 
   deploy: async (context) => {
     const work = databaseWork(context)
-    const modules = await loadEntityModules(work.entities)
     const { applied, elapsed } = await runMigrations(work.url, {
       folder: work.migrations,
-      entities: modules.flatMap((module) => [...module.entities]),
+      entities: work.modules.flatMap((module) => [...module.entities]),
     })
     console.log(
       applied > 0
@@ -93,12 +107,11 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     // over a database that differs hides the difference rather than closing it.
     adopt: async (context) => {
       const work = databaseWork(context)
-      const modules = await loadEntityModules(work.entities)
       const state = asState(context.state)
       const difference = await diffAgainstDeclared(
         work.url,
         work.url,
-        modules,
+        work.modules,
         collectBaseline(context, state),
       )
       if (difference.up.length > 0) {
@@ -108,7 +121,7 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
       }
       const adopted = await adoptMigrations(work.url, {
         folder: work.migrations,
-        entities: modules.flatMap((module) => [...module.entities]),
+        entities: work.modules.flatMap((module) => [...module.entities]),
       })
       console.log(
         adopted.length > 0

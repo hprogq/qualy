@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import type { DatabaseContribution } from './contribution.ts'
-import { entityContributions, type EntityContribution } from './entities.ts'
+import { declaredEntityModules, type EntityModule } from './entities.ts'
 import { asState, type DatabaseState } from './state.ts'
 import { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
 
@@ -12,8 +12,8 @@ export { LOCAL_FALLBACK } from '../defaults.ts'
 
 export interface DatabaseWork {
   migrations: string
-  /** every retained plugin that ships entities, in database dependency order */
-  entities: EntityContribution[]
+  /** every retained plugin's declared entities, in database dependency order */
+  modules: EntityModule[]
   url: string
 }
 
@@ -46,7 +46,7 @@ export function databaseWork(
     : path.resolve(path.dirname(context.manifestPath), declared)
   return {
     migrations,
-    entities: entityContributions(context, asState(context.state)),
+    modules: declaredEntityModules(context, asState(context.state)),
     url: process.env.DATABASE_URL ?? LOCAL_FALLBACK,
   }
 }

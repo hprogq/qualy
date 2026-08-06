@@ -1,80 +1,59 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import type { EntitySchema } from '@mikro-orm/core'
-import type { CapabilityResolveContext } from '@qualy/assembly-contract'
-import type { DatabaseContribution } from './contribution.ts'
+import type { CapabilityWorkContext } from '@qualy/assembly-contract'
+import { declarationOf, type DatabaseContribution } from './contribution.ts'
 import type { DatabaseState } from './state.ts'
 
-// The retained set's entity contributions, for generation and deployment.
+// The retained set's entity declarations, for generation and deployment.
 //
-// The RUNNING aggregate is the descriptor assembler's now - the prepare-phase
+// The RUNNING aggregate is the descriptor assembler's - the prepare-phase
 // compile of the active plugins' declarations. This module answers the other
 // question, the one only the lock can: which plugins' tables exist, including
 // plugins that are switched off or removed. An aggregate built from the
 // active set alone hands a diffing schema generator a database missing their
 // tables - which is how data gets dropped.
+//
+// The values come from the same descriptors resolution imported. There is no
+// module path to follow any more: a retained plugin's package is installed, so
+// its descriptor is in the resolution's map, disabled and detached included.
 
-export interface EntityContribution {
+/** what one plugin's declaration contributes to the schema */
+export interface EntityModule {
   pluginId: string
-  /** the import specifier the host will use, e.g. `@qualy/plugin-org/db` */
-  specifier: string
-  /** absolute path to the module, so its exports can be checked */
-  file: string
-}
-
-const exportTarget = (value: unknown): string | undefined => {
-  if (typeof value === 'string') return value
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    return exportTarget(record.import ?? record.default)
-  }
-  return undefined
+  entities: readonly EntitySchema[]
+  /** DDL applied after the tables exist, for what the metadata cannot declare */
+  compositeForeignKeys?: readonly string[]
 }
 
 /**
- * Every retained plugin that ships entities, in database dependency order.
- *
- * The subpath a plugin declares has to be one it also exports: the host cannot
- * import a path the package does not publish, and discovering that at build
- * time rather than here would name the aggregate as the broken file instead of
- * the plugin that broke it.
+ * Every retained plugin's declared entities, in database dependency order.
  */
-export function entityContributions(
-  context: Pick<
-    CapabilityResolveContext<DatabaseContribution, DatabaseState>,
-    'contributions' | 'resolvePackageDir'
-  >,
+export function declaredEntityModules(
+  context: Pick<CapabilityWorkContext<DatabaseContribution, DatabaseState>, 'descriptors'>,
   state: DatabaseState,
-): EntityContribution[] {
-  const found: EntityContribution[] = []
+): EntityModule[] {
+  const modules: EntityModule[] = []
   for (const pluginId of state.order) {
-    const entitiesEntry = context.contributions.get(pluginId)?.entitiesEntry
-    if (!entitiesEntry) continue
-    const packageDir = context.resolvePackageDir(pluginId)
-    const file = path.resolve(packageDir, entitiesEntry)
-
-    const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
-      exports?: Record<string, unknown>
+    const declaration = declarationOf(pluginId, context.descriptors.get(pluginId))
+    if (!declaration) {
+      // the order is derived from the contributions, so a plugin in it whose
+      // descriptor says nothing means the resolution and the descriptor map
+      // disagree - a fault here, not an empty declaration
+      throw new Error(`${pluginId} is in the database order but its descriptor declares nothing`)
     }
-    const subpath = Object.entries(pkg.exports ?? {}).find(
-      ([, target]) =>
-        exportTarget(target) && path.resolve(packageDir, exportTarget(target)!) === file,
-    )?.[0]
-    if (!subpath) {
-      throw new Error(
-        `${pluginId}: qualy.contributions.database.entitiesEntry (${entitiesEntry}) is not reachable through this package's exports; the host imports it by subpath`,
-      )
-    }
-    found.push({
+    if (declaration.entities.length === 0) continue
+    modules.push({
       pluginId,
-      specifier: subpath === '.' ? pluginId : `${pluginId}${subpath.slice(1)}`,
-      file,
+      entities: declaration.entities,
+      ...(declaration.compositeForeignKeys === undefined
+        ? {}
+        : { compositeForeignKeys: declaration.compositeForeignKeys }),
     })
   }
-  return found
+  assertNoCollisions(modules)
+  return modules
 }
 
-/** one plugin's entities, as its module exported them */
+/** one plugin's entities, as declared */
 export interface DeclaredEntities {
   pluginId: string
   entities: readonly EntitySchema[]
@@ -88,13 +67,6 @@ export interface DeclaredEntities {
  * means. The orm does refuse duplicate table names when it starts, but says
  * only the name - which of a dozen packages put it there is left to the reader,
  * and duplicate entity names it does not check at all.
- *
- * Asked of the metadata the modules exported, rather than of their source. The
- * source scan this replaces read `name:` and `tableName:` with a regular
- * expression, so it saw the `name:` of every check constraint and index as an
- * entity, missed anything written with double quotes, and let one plugin
- * declare the same table twice. Reading a declaration is the parser's job, and
- * generation already has the loaded modules in hand.
  */
 export function assertNoCollisions(declared: readonly DeclaredEntities[]): void {
   const owners = { name: new Map<string, string>(), table: new Map<string, string>() }

@@ -15,14 +15,6 @@
     "./api": "./src/api.ts",
     "./package.json": "./package.json"
   },
-  "qualy": {
-    "contributions": {
-      "database": {
-        "baselineDir": "db/baseline",
-        "entitiesEntry": "src/db/entities.ts"
-      }
-    }
-  },
   "peerDependencies": {
     "react": "catalog:"
   },

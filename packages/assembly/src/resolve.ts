@@ -233,6 +233,7 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
   // missing descriptor.
   const descriptors = new Map<string, PluginDescriptor>()
   const misconfigured: string[] = []
+  const orphanedFeatures: string[] = []
   // every accounted plugin, not just the running set: a disabled or detached
   // plugin's declarations still shape the assembly - that is what retained
   // means - and its package is installed by the uninstalled-check above
@@ -242,12 +243,28 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
       throw new Error(`${id} does not default-export a plugin descriptor`)
     }
     descriptors.set(id, module.default)
+    // A contribution to a capability-owned channel needs that capability's
+    // provider in the assembly. The point itself says which capability owns
+    // it - the plugin imported the point object from the capability's own
+    // module - so the core can refuse without knowing what the channel means.
+    // Runtime-only channels carry no capability and are the boot assembler's
+    // completeness rule to enforce; a capability's objects outlive the
+    // process, so its answer cannot wait for a boot.
+    for (const feature of module.default.features) {
+      if (feature._tag !== 'Contribute' || feature.point.capability === undefined) continue
+      if (!providers.has(feature.point.capability)) {
+        orphanedFeatures.push(
+          `${id} contributes to capability ${feature.point.capability}, which no plugin in this assembly provides`,
+        )
+      }
+    }
     // Descriptor-sourced contributions, for the capabilities that read them.
     for (const [key, loaded] of providers) {
       if (!loaded.provider.contributionFromDescriptor) continue
       const parsed = loaded.provider.contributionFromDescriptor({
         pluginId: id,
         descriptor: module.default,
+        packageRoot: resolver.resolvePackageDir(id),
       })
       if (parsed === undefined) continue
       const perKey = contributions.get(key) ?? new Map<string, unknown>()
@@ -271,6 +288,9 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
   }
   if (misconfigured.length > 0) {
     throw new Error(misconfigured.join('\n'))
+  }
+  if (orphanedFeatures.length > 0) {
+    throw new Error(`incomplete assembly:\n  ${orphanedFeatures.join('\n  ')}`)
   }
 
   // A plugin kept because of what it contributed has to still contribute it. A
@@ -325,6 +345,7 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
       manifestPath: options.manifestPath,
       plugins,
       contributions: contributions.get(key) ?? new Map(),
+      descriptors,
       resolvePackageDir: resolver.resolvePackageDir,
       previousState: previous?.capabilities?.[key]?.state,
     })

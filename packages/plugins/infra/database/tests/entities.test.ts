@@ -1,31 +1,25 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defineEntity } from '@mikro-orm/core'
 import { assertNoCollisions } from '../src/assembly/entities.ts'
-import type { EntityContribution } from '../src/assembly/entities.ts'
-import { loadEntityModules } from '../src/assembly/diff.ts'
+import { parseDeclaration } from '../src/assembly/contribution.ts'
+import type { DatabaseDeclaration } from '../src/plugin.ts'
 
-// What loading a plugin's entity declarations refuses.
+// What reading a plugin's database declaration refuses.
 //
 // The generated aggregate module is gone - the running set is compiled by the
-// descriptor assembler, the retained set is read from the lock by the CLI -
-// so what is left to assert is the checking both paths share: collisions read
-// from metadata, and module shapes that would corrupt a schema.
+// descriptor assembler, the retained set is read from the same descriptors by
+// the CLI - so what is left to assert is the checking both paths share:
+// collisions read from metadata, and declaration shapes that would corrupt a
+// schema.
 
-/** what a plugin's module exports, as the loader hands it over */
+/** what a plugin's descriptor declares, as the reader hands it over */
 const declaring = (pluginId: string, ...entities: { name: string; tableName?: string }[]) => ({
   pluginId,
   entities: entities.map((entity) => defineEntity({ ...entity, properties: {} })),
 })
 
-/** a plugin package whose entities module is loaded for real */
-const loadable = (pluginId: string, body: string): EntityContribution => {
-  const dir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? '/tmp', 'qualy-entities-'))
-  const file = path.join(dir, 'db.js')
-  fs.writeFileSync(file, body)
-  return { pluginId, specifier: `${pluginId}/db`, file }
-}
+const parse = (declaration: object) =>
+  parseDeclaration('@qualy/plugin-a', '/pkg', { entities: [], ...declaration } as DatabaseDeclaration)
 
 describe('entity declarations', () => {
   it('refuses two plugins claiming one table', () => {
@@ -93,32 +87,39 @@ describe('entity declarations', () => {
   })
 })
 
-describe('loading a plugin entities module', () => {
-  it('refuses composite foreign keys that are not statements', async () => {
-    // a string here used to be spread one character at a time, and each
+describe('validating a database declaration', () => {
+  it('refuses composite foreign keys that are not statements', () => {
+    // a string here used to be iterated one character at a time, and each
     // character run as a statement; only `entities` was ever checked
-    await expect(
-      loadEntityModules([
-        loadable(
-          '@qualy/plugin-a',
-          `export const entities = []\nexport const compositeForeignKeys = 'ALTER TABLE a ADD CONSTRAINT b'\n`,
-        ),
-      ]),
-    ).rejects.toThrow(/compositeForeignKeys.*must be an array of sql statements/s)
+    expect(() =>
+      parse({ compositeForeignKeys: 'ALTER TABLE a ADD CONSTRAINT b' as never }),
+    ).toThrow(/compositeForeignKeys must be an array of sql statements/)
 
-    await expect(
-      loadEntityModules([
-        loadable(
-          '@qualy/plugin-a',
-          `export const entities = []\nexport const compositeForeignKeys = ['ok', 42]\n`,
-        ),
-      ]),
-    ).rejects.toThrow(/not a sql statement: 42/)
+    expect(() => parse({ compositeForeignKeys: ['ok', 42] as never })).toThrow(
+      /not a sql statement: 42/,
+    )
   })
 
-  it('refuses a module with no entity tuple', async () => {
-    await expect(
-      loadEntityModules([loadable('@qualy/plugin-a', `export const entities = 'nope'\n`)]),
-    ).rejects.toThrow(/must export an `entities` tuple/)
+  it('refuses a declaration with no entity tuple', () => {
+    expect(() =>
+      parseDeclaration('@qualy/plugin-a', '/pkg', { entities: 'nope' } as never),
+    ).toThrow(/must be given an entity tuple/)
+  })
+
+  it('refuses something that is not a defineEntity value', () => {
+    expect(() => parse({ entities: [{ notMeta: true }] as never })).toThrow(
+      /not a defineEntity value/,
+    )
+  })
+
+  it('projects entity names for the lock, sorted', () => {
+    const projected = parse({
+      entities: declaring('@qualy/plugin-a', { name: 'B', tableName: 'b' }, { name: 'A' }).entities,
+      dependsOn: ['@qualy/plugin-z', '@qualy/plugin-b'],
+    })
+    expect(projected).toEqual({
+      entities: ['A', 'B'],
+      dependsOn: ['@qualy/plugin-b', '@qualy/plugin-z'],
+    })
   })
 })

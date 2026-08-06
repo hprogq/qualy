@@ -51,6 +51,7 @@ export function capabilityModules(resolution: Resolution): GeneratedModule[] {
       manifestPath: resolution.manifest.source,
       plugins: resolution.plugins,
       contributions: resolution.contributions.get(key) ?? new Map(),
+      descriptors: resolution.descriptors,
       resolvePackageDir: resolution.resolver.resolvePackageDir,
       state: resolution.capabilities.get(key)?.state,
     })
