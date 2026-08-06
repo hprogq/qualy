@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database } from '@qualy/plugin-database/server'
+import { Database, LegacySql, type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access, layer as rbacLayer } from '../src/server/index.ts'
@@ -41,7 +41,7 @@ const stack = (url: string) =>
     Layer.provideMerge(Layer.mergeAll(databaseFor(url), Layer.succeed(PermissionCatalog, catalog))),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Database | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const tagOf = (result: { _tag: string; failure?: unknown }) =>
@@ -225,7 +225,9 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const rbac = yield* Rbac
-          const database = yield* Database
+          // the caller opens its transaction the way auth does, which is what
+          // decides whether the check lands on the same connection
+          const database = yield* LegacySql
           const before = yield* Effect.result(rbac.assertTenantKeepsAdministrator(f.tenant))
           // disable the only administrator inside a transaction, then ask:
           // the check has to see the write that has not committed yet

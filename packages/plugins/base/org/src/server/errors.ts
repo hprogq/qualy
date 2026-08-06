@@ -65,10 +65,9 @@ export class NodeHasChildren extends Schema.TaggedErrorClass<NodeHasChildren>()(
   { httpApiStatus: 409, identifier: 'OrgNodeHasChildren' },
 ) {}
 
-export type UpdateNodeError = NodeNotFound | AccessDenied
-  | NodeConstraintError
-export type DeleteNodeError = NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied
-  | NodeConstraintError
+export type UpdateNodeError = NodeNotFound | AccessDenied | NodeConstraintError
+export type DeleteNodeError =
+  NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied | NodeConstraintError
 
 export class TypeInUse extends Schema.TaggedErrorClass<TypeInUse>()(
   'ORG_TYPE_IN_USE',
@@ -101,14 +100,11 @@ export class RuleInUse extends Schema.TaggedErrorClass<RuleInUse>()(
 ) {}
 
 export type CreateTypeError = AccessDenied | TypeConstraintError
-export type UpdateTypeError = TypeNotFound | AccessDenied
-  | TypeConstraintError
-export type DeleteTypeError = TypeNotFound | TypeInUse | AccessDenied
-  | TypeConstraintError
-export type PutRuleError = RuleInvalid | TypeNotFound | RuleCycle | AccessDenied
-  | TypeConstraintError
-export type DeleteRuleError = RuleNotFound | RuleInUse | AccessDenied
-  | TypeConstraintError
+export type UpdateTypeError = TypeNotFound | AccessDenied | TypeConstraintError
+export type DeleteTypeError = TypeNotFound | TypeInUse | AccessDenied | TypeConstraintError
+export type PutRuleError =
+  RuleInvalid | TypeNotFound | RuleCycle | AccessDenied | TypeConstraintError
+export type DeleteRuleError = RuleNotFound | RuleInUse | AccessDenied | TypeConstraintError
 
 export class NodeConflict extends Schema.TaggedErrorClass<NodeConflict>()(
   'ORG_NODE_CONFLICT',
@@ -156,7 +152,8 @@ export const nodeConstraints: Record<string, () => NodeConstraintError> = {
 export const typeConstraints: Record<string, () => TypeConstraintError> = {
   uq_org_types_tenant_code: () => new TypeConflict(),
   uq_org_types_tenant_name: () => new TypeConflict(),
-  fk_role_allowed_org_types_type: () => new TypeInUse({ reason: 'roles still allow this org type' }),
+  fk_role_allowed_org_types_type: () =>
+    new TypeInUse({ reason: 'roles still allow this org type' }),
 }
 
 export class InvalidMove extends Schema.TaggedErrorClass<InvalidMove>()(
@@ -166,15 +163,6 @@ export class InvalidMove extends Schema.TaggedErrorClass<InvalidMove>()(
 ) {}
 
 export type CreateNodeError =
-  | NodeNotFound
-  | TypeNotFound
-  | RuleViolation
-  | AccessDenied
-  | NodeConstraintError
+  NodeNotFound | TypeNotFound | RuleViolation | AccessDenied | NodeConstraintError
 export type MoveNodeError =
-  | NodeNotFound
-  | NodeIsRoot
-  | InvalidMove
-  | RuleViolation
-  | AccessDenied
-  | NodeConstraintError
+  NodeNotFound | NodeIsRoot | InvalidMove | RuleViolation | AccessDenied | NodeConstraintError

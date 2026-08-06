@@ -67,8 +67,7 @@ export interface ForestShape {
  * surviving anchor instead of one per grant.
  */
 export const forestShape = (scope: ResolvedScope): ForestShape => {
-  const covered = (path: string, keep: AnchorPath[]) =>
-    keep.some((kept) => inside(path, kept.path))
+  const covered = (path: string, keep: AnchorPath[]) => keep.some((kept) => inside(path, kept.path))
 
   const subtrees: AnchorPath[] = []
   for (const anchor of [...scope.anchors]
@@ -84,9 +83,8 @@ export const forestShape = (scope: ResolvedScope): ForestShape => {
 }
 
 /** the roots of the projection, in the order a caller should render them */
-export const forestRoots = (shape: ForestShape, present: (id: string) => boolean): string[] => [
-  ...new Set([...shape.subtrees, ...shape.selves].map((anchor) => anchor.id)),
-].filter(present)
+export const forestRoots = (shape: ForestShape, present: (id: string) => boolean): string[] =>
+  [...new Set([...shape.subtrees, ...shape.selves].map((anchor) => anchor.id))].filter(present)
 
 /** paths sort the tree, so a parent always precedes its children */
 export const byPath = <T extends { path: string }>(a: T, b: T) => (a.path < b.path ? -1 : 1)

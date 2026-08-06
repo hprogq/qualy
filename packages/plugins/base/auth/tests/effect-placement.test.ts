@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '../src/db/entities.ts'
-import { Database } from '@qualy/plugin-database/server'
+import { Database, LegacySql, type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -48,7 +48,7 @@ const stack = (url: string) =>
     ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Database | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -138,7 +138,9 @@ describe.runIf(postgresAvailable).concurrent('the placement port', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const placement = yield* Placement
-          const database = yield* Database
+          // the caller opens its transaction the way org does, which is what
+          // decides whether the port lands on the same connection
+          const database = yield* LegacySql
           const outside = yield* placement.usersBlockingOrgType(f.tenant, f.node, f.clubType)
           // org's shape: write first, then ask. The question has to be about
           // rows the caller has changed, or a separate connection would answer

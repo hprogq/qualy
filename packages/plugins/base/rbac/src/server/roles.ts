@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect'
-import { Database } from '@qualy/plugin-database/server'
+import { LegacySql } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import type { LastAdministrator } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
@@ -92,7 +92,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
   authorityFor: (actor: Principal) => Authority,
   keepsAdministrator: (tenantId: string) => Effect.Effect<void, LastAdministrator>,
 ) {
-  const database = yield* Database
+  const database = yield* LegacySql
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
 
@@ -106,7 +106,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       )
       .pipe(
         translateConstraints(roleConstraints),
-        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
 
   const lockRole = Effect.fn('Rbac.roles.lock')(function* (
@@ -170,12 +170,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
         }
 
   const project = (tenantId: string, roleId?: string) =>
-    database
-      .execute(roleProjectionQuery(tenantId, roleId))
-      .pipe(
-        Effect.orDie,
-        Effect.map((result) => rows<RoleProjection & Record<string, unknown>>(result)),
-      )
+    database.execute(roleProjectionQuery(tenantId, roleId)).pipe(
+      Effect.orDie,
+      Effect.map((result) => rows<RoleProjection & Record<string, unknown>>(result)),
+    )
 
   return {
     /** the roles of a tenant, with what each one carries */
@@ -210,12 +208,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
      */
     options: Effect.fn('Rbac.roles.options')(function* (tenantId: string) {
       const read = (table: 'user_types' | 'org_types') =>
-        database
-          .execute(eligibilityOptionsQuery(tenantId, table))
-          .pipe(
-            Effect.orDie,
-            Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
-          )
+        database.execute(eligibilityOptionsQuery(tenantId, table)).pipe(
+          Effect.orDie,
+          Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
+        )
       return {
         userTypes: yield* read('user_types'),
         orgTypes: yield* read('org_types'),
@@ -316,9 +312,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       if (role.permission_mode === 'all-active') {
         return { active: [...active.keys()].sort(), unavailable: [], version: role.version }
       }
-      const codes = yield* database
-        .execute(rolePermissionCodesQuery(tenantId, roleId))
-        .pipe(Effect.orDie, Effect.map((r) => rows<{ code: string }>(r).map((row) => row.code)))
+      const codes = yield* database.execute(rolePermissionCodesQuery(tenantId, roleId)).pipe(
+        Effect.orDie,
+        Effect.map((r) => rows<{ code: string }>(r).map((row) => row.code)),
+      )
       return {
         active: codes.filter((code) => active.has(code)).sort(),
         unavailable: codes.filter((code) => !active.has(code)).sort(),
@@ -355,9 +352,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           }
           yield* assertMayDefineRole(authority, wanted)
 
-          yield* tx.execute(
-            prunePermissionsQuery(tenantId, role.id, [...active.keys()], wanted),
-          )
+          yield* tx.execute(prunePermissionsQuery(tenantId, role.id, [...active.keys()], wanted))
           if (wanted.length > 0) {
             yield* tx.execute(addPermissionsQuery(tenantId, role.id, wanted))
           }

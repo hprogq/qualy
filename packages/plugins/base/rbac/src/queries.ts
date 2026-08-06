@@ -1,5 +1,10 @@
 import { sql, type SQL } from 'drizzle-orm'
-import { scopeCoverage, type ActivePermission, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
+import {
+  scopeCoverage,
+  type ActivePermission,
+  type AuthorizationScope,
+  type Principal,
+} from '@qualy/rbac-contract'
 
 // The authorization SQL, owned in one place because two runtimes execute it.
 //

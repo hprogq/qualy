@@ -31,7 +31,6 @@ import {
 // idempotent subresource replacement rather than an action segment, which is
 // why this is a PUT on /type and not a POST to /retype.
 
-
 // An id a caller supplies is validated before any work happens, so a
 // malformed one is a 400 rather than a query that finds nothing and answers
 // 404. The oRPC contract has always done this; the port had let it through as
@@ -78,142 +77,156 @@ const orgRule = Schema.Struct({
   childTypeId: Schema.String,
 })
 
-export const orgApiGroup = HttpApiGroup.make('org').add(
-  HttpApiEndpoint.put('changeNodeType', '/org/nodes/:nodeId/type', {
-    params: Schema.Struct({ nodeId: id }),
-    payload: Schema.Struct({ orgTypeId: id }),
-    success: Schema.Struct({ node: orgNode }),
-    // every way this can be refused, each carrying its own status. The caller
-    // has to deal with them, which is the point of declaring them here.
-    error: [
-      NodeNotFound,
-      TypeNotFound,
-      RuleViolation,
-      AssignmentIncompatible,
-      PlacementBlocked,
-      AccessDenied,
-      NodeConflict,
-      NodeInUse,
-    ],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.patch('updateNode', '/org/nodes/:nodeId', {
-    params: Schema.Struct({ nodeId: id }),
-    payload: changed(
-      { name: Schema.optional(nodeName), sortOrder: Schema.optional(sortOrder) },
-      ['name', 'sortOrder'],
-    ),
-    // the updated row, as the contract declares: answering ok makes a client
-    // re-read to learn what it just wrote
-    success: Schema.Struct({ node: orgNode }),
-    error: [NodeNotFound, AccessDenied, NodeConflict, NodeInUse],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.delete('deleteNode', '/org/nodes/:nodeId', {
-    params: Schema.Struct({ nodeId: id }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied, NodeConflict, NodeInUse],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.get('listTypes', '/org/types', {
-    success: Schema.Struct({ types: Schema.Array(orgType) }),
-    error: [AccessDenied],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.post('createType', '/org/types', {
-    payload: Schema.Struct({
-      code: kebabCode,
-      name: typeName,
-      sortOrder: Schema.optional(sortOrder),
-    }),
-    success: Schema.Struct({ type: orgType }),
-    error: [AccessDenied, TypeConflict, TypeInUse],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.patch('updateType', '/org/types/:typeId', {
-    params: Schema.Struct({ typeId: id }),
-    payload: changed(
-      { name: Schema.optional(typeName), sortOrder: Schema.optional(sortOrder) },
-      ['name', 'sortOrder'],
-    ),
-    // the updated row, as the contract declares: answering ok makes a client
-    // re-read to learn what it just wrote
-    success: Schema.Struct({ type: orgType }),
-    error: [TypeNotFound, AccessDenied, TypeConflict, TypeInUse],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.delete('deleteType', '/org/types/:typeId', {
-    params: Schema.Struct({ typeId: id }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [TypeNotFound, TypeInUse, AccessDenied, TypeConflict],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.get('listRules', '/org/type-rules', {
-    success: Schema.Struct({ rules: Schema.Array(orgRule) }),
-    error: [AccessDenied],
-  }).middleware(Authenticated),
-).add(
-  // idempotent: the pair identifies the rule, so repeating converges rather
-  // than conflicting, which is why this is a PUT on the pair
-  HttpApiEndpoint.put('putRule', '/org/type-rules/:parentTypeId/:childTypeId', {
-    params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [RuleInvalid, TypeNotFound, RuleCycle, AccessDenied, TypeConflict, TypeInUse],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.delete('deleteRule', '/org/type-rules/:parentTypeId/:childTypeId', {
-    params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
-    success: Schema.Struct({ ok: Schema.Literal(true) }),
-    error: [RuleNotFound, RuleInUse, AccessDenied, TypeConflict, TypeInUse],
-  }).middleware(Authenticated),
-).add(
-  // the whole authorized projection, or one node's subtree when asked. A self
-  // anchor yields the node alone; only a subtree anchor yields what is below.
-  HttpApiEndpoint.get('getTree', '/org/tree', {
-    query: Schema.Struct({ nodeId: Schema.optional(id) }),
-    success: Schema.Struct({
-      roots: Schema.Array(Schema.String),
-      nodes: Schema.Array(orgNode),
-    }),
-    error: [NodeNotFound, AccessDenied],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.get('getNode', '/org/nodes/:nodeId', {
-    params: Schema.Struct({ nodeId: id }),
-    success: Schema.Struct({ node: orgNode }),
-    // a node the caller cannot see answers exactly as a missing one
-    error: [NodeNotFound, AccessDenied],
-  }).middleware(Authenticated),
-).add(
-  HttpApiEndpoint.post('createNode', '/org/nodes', {
-    payload: Schema.Struct({
-      parentId: id,
-      orgTypeId: id,
-      name: nodeName,
-      code: Schema.optional(kebabCode),
-      sortOrder: Schema.optional(sortOrder),
-    }),
-    success: Schema.Struct({ node: orgNode }),
-    error: [NodeNotFound, TypeNotFound, RuleViolation, AccessDenied, NodeConflict, NodeInUse],
-  }).middleware(Authenticated),
-).add(
-  // a relocation is an idempotent replacement of where the node sits, not an
-  // action, which is why it is a PUT on /placement
-  HttpApiEndpoint.put('setNodePlacement', '/org/nodes/:nodeId/placement', {
-    params: Schema.Struct({ nodeId: id }),
-    payload: Schema.Struct({
-      parentId: id,
-      sortOrder: Schema.optional(sortOrder),
-    }),
-    success: Schema.Struct({ node: orgNode }),
-    error: [
-      NodeNotFound,
-      NodeIsRoot,
-      InvalidMove,
-      RuleViolation,
-      AccessDenied,
-      NodeConflict,
-      NodeInUse,
-    ],
-  }).middleware(Authenticated),
-)
+export const orgApiGroup = HttpApiGroup.make('org')
+  .add(
+    HttpApiEndpoint.put('changeNodeType', '/org/nodes/:nodeId/type', {
+      params: Schema.Struct({ nodeId: id }),
+      payload: Schema.Struct({ orgTypeId: id }),
+      success: Schema.Struct({ node: orgNode }),
+      // every way this can be refused, each carrying its own status. The caller
+      // has to deal with them, which is the point of declaring them here.
+      error: [
+        NodeNotFound,
+        TypeNotFound,
+        RuleViolation,
+        AssignmentIncompatible,
+        PlacementBlocked,
+        AccessDenied,
+        NodeConflict,
+        NodeInUse,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.patch('updateNode', '/org/nodes/:nodeId', {
+      params: Schema.Struct({ nodeId: id }),
+      payload: changed({ name: Schema.optional(nodeName), sortOrder: Schema.optional(sortOrder) }, [
+        'name',
+        'sortOrder',
+      ]),
+      // the updated row, as the contract declares: answering ok makes a client
+      // re-read to learn what it just wrote
+      success: Schema.Struct({ node: orgNode }),
+      error: [NodeNotFound, AccessDenied, NodeConflict, NodeInUse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteNode', '/org/nodes/:nodeId', {
+      params: Schema.Struct({ nodeId: id }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied, NodeConflict, NodeInUse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listTypes', '/org/types', {
+      success: Schema.Struct({ types: Schema.Array(orgType) }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('createType', '/org/types', {
+      payload: Schema.Struct({
+        code: kebabCode,
+        name: typeName,
+        sortOrder: Schema.optional(sortOrder),
+      }),
+      success: Schema.Struct({ type: orgType }),
+      error: [AccessDenied, TypeConflict, TypeInUse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.patch('updateType', '/org/types/:typeId', {
+      params: Schema.Struct({ typeId: id }),
+      payload: changed({ name: Schema.optional(typeName), sortOrder: Schema.optional(sortOrder) }, [
+        'name',
+        'sortOrder',
+      ]),
+      // the updated row, as the contract declares: answering ok makes a client
+      // re-read to learn what it just wrote
+      success: Schema.Struct({ type: orgType }),
+      error: [TypeNotFound, AccessDenied, TypeConflict, TypeInUse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteType', '/org/types/:typeId', {
+      params: Schema.Struct({ typeId: id }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [TypeNotFound, TypeInUse, AccessDenied, TypeConflict],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listRules', '/org/type-rules', {
+      success: Schema.Struct({ rules: Schema.Array(orgRule) }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // idempotent: the pair identifies the rule, so repeating converges rather
+    // than conflicting, which is why this is a PUT on the pair
+    HttpApiEndpoint.put('putRule', '/org/type-rules/:parentTypeId/:childTypeId', {
+      params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [RuleInvalid, TypeNotFound, RuleCycle, AccessDenied, TypeConflict, TypeInUse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteRule', '/org/type-rules/:parentTypeId/:childTypeId', {
+      params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [RuleNotFound, RuleInUse, AccessDenied, TypeConflict, TypeInUse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the whole authorized projection, or one node's subtree when asked. A self
+    // anchor yields the node alone; only a subtree anchor yields what is below.
+    HttpApiEndpoint.get('getTree', '/org/tree', {
+      query: Schema.Struct({ nodeId: Schema.optional(id) }),
+      success: Schema.Struct({
+        roots: Schema.Array(Schema.String),
+        nodes: Schema.Array(orgNode),
+      }),
+      error: [NodeNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getNode', '/org/nodes/:nodeId', {
+      params: Schema.Struct({ nodeId: id }),
+      success: Schema.Struct({ node: orgNode }),
+      // a node the caller cannot see answers exactly as a missing one
+      error: [NodeNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('createNode', '/org/nodes', {
+      payload: Schema.Struct({
+        parentId: id,
+        orgTypeId: id,
+        name: nodeName,
+        code: Schema.optional(kebabCode),
+        sortOrder: Schema.optional(sortOrder),
+      }),
+      success: Schema.Struct({ node: orgNode }),
+      error: [NodeNotFound, TypeNotFound, RuleViolation, AccessDenied, NodeConflict, NodeInUse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // a relocation is an idempotent replacement of where the node sits, not an
+    // action, which is why it is a PUT on /placement
+    HttpApiEndpoint.put('setNodePlacement', '/org/nodes/:nodeId/placement', {
+      params: Schema.Struct({ nodeId: id }),
+      payload: Schema.Struct({
+        parentId: id,
+        sortOrder: Schema.optional(sortOrder),
+      }),
+      success: Schema.Struct({ node: orgNode }),
+      error: [
+        NodeNotFound,
+        NodeIsRoot,
+        InvalidMove,
+        RuleViolation,
+        AccessDenied,
+        NodeConflict,
+        NodeInUse,
+      ],
+    }).middleware(Authenticated),
+  )

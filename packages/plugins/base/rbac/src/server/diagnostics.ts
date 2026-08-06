@@ -1,18 +1,14 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/server'
+import { LegacySql } from '@qualy/plugin-database/server'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { explainRowsQuery, orgNodeExistsQuery, userExistsQuery } from '../queries.ts'
 import { GrantNodeNotFound, GrantUserNotFound } from './grants.ts'
 import { PermissionNotFound } from './roles.ts'
 
-import {
-  AccessTargetRequired,
-} from './errors.ts'
+import { AccessTargetRequired } from './errors.ts'
 
 // re-exported so a service and its failures still read as one module
-export {
-  AccessTargetRequired,
-}
+export { AccessTargetRequired }
 
 // Why someone holds what they hold.
 //
@@ -26,7 +22,6 @@ export {
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
-
 
 export interface PermissionSource {
   readonly roleId: string
@@ -52,7 +47,7 @@ export interface EffectivePermission {
 export const make = Effect.fn('Rbac.diagnostics.make')(function* (
   catalogOf: () => ReadonlyMap<string, ActivePermission>,
 ) {
-  const database = yield* Database
+  const database = yield* LegacySql
 
   const explain = Effect.fn('Rbac.diagnostics.explain')(function* (
     tenantId: string,
@@ -74,7 +69,10 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
       .execute(explainRowsQuery(tenantId, userId, orgNodeId))
       .pipe(Effect.orDie)
 
-    const out = new Map<string, { code: string; name: string; target: 'tenant' | 'org-node'; sources: PermissionSource[] }>()
+    const out = new Map<
+      string,
+      { code: string; name: string; target: 'tenant' | 'org-node'; sources: PermissionSource[] }
+    >()
     for (const row of rows<{
       code: string
       plugin: string
@@ -89,7 +87,11 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
       // the catalog is the authority on what a code means; a stored row that
       // drifted from its definition explains nothing
       const definition = catalog.get(row.code)
-      if (!definition || definition.plugin !== row.plugin || definition.target !== row.target_kind) {
+      if (
+        !definition ||
+        definition.plugin !== row.plugin ||
+        definition.target !== row.target_kind
+      ) {
         continue
       }
       // a tenant capability only ever arrives through a tenant role

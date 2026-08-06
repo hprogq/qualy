@@ -6,5 +6,5 @@ export default {
   'auth-local/action/submit': '登录',
   'auth-local/action/submitting': '登录中…',
   'auth-local/error/invalid-credentials': '用户名或密码错误。',
-// exact key coverage per locale is enforced by scripts/tests/catalogs.test
+  // exact key coverage per locale is enforced by scripts/tests/catalogs.test
 } satisfies MessageCatalog

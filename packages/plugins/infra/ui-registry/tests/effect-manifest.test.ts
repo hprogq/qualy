@@ -133,7 +133,9 @@ beforeAll(async () => {
   // the authorizer goes in at the application level, not into the manifest
   // layer: it is a per-request requirement, which is the whole point of
   // reading it per request rather than capturing it at construction
-  const application = HttpRouter.serve(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers))).pipe(
+  const application = HttpRouter.serve(
+    HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)),
+  ).pipe(
     Layer.provide(manifestLayer.pipe(Layer.provide(Layer.succeed(UiCatalog, surfaces)))),
     Layer.provide(
       Layer.mergeAll(

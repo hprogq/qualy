@@ -1,12 +1,5 @@
 import { sql } from 'drizzle-orm'
-import {
-  check,
-  snakeCase,
-  timestamp,
-  uniqueIndex,
-  uuid,
-  varchar,
-} from 'drizzle-orm/pg-core'
+import { check, snakeCase, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
 
 // Platform-level capability catalog: rows are reference data owned by the
 // permission registry (plugins upsert their definitions), never deleted at

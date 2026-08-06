@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/server'
+import { LegacySql } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { canonicalTenantAdmin, type Principal } from '@qualy/rbac-contract'
@@ -59,7 +59,7 @@ interface TypeRow extends Record<string, unknown> {
 }
 
 export const make = Effect.fn('Iam.users.make')(function* () {
-  const database = yield* Database
+  const database = yield* LegacySql
   const rbac = yield* Rbac
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
@@ -74,7 +74,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       )
       .pipe(
         translateConstraints(userConstraints),
-        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
 
   /** authority over a person is authority over the node they stand at */
@@ -165,18 +165,14 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       const held = yield* scopes(principal)
       if (!readable(held)) return []
       return rows<UserProjection & Record<string, unknown>>(
-        yield* database
-          .execute(listUsersQuery(principal.tenantId, held, input))
-          .pipe(Effect.orDie),
+        yield* database.execute(listUsersQuery(principal.tenantId, held, input)).pipe(Effect.orDie),
       )
     }),
 
     get: Effect.fn('Iam.users.get')(function* (principal: Principal, userId: string) {
       const held = yield* scopes(principal)
       const row = rows<UserProjection & Record<string, unknown>>(
-        yield* database
-          .execute(userQuery(principal.tenantId, userId, held))
-          .pipe(Effect.orDie),
+        yield* database.execute(userQuery(principal.tenantId, userId, held)).pipe(Effect.orDie),
       )[0]
       // not-found and not-readable are indistinguishable on purpose
       if (!row) return yield* new UserNotFound()
@@ -214,11 +210,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         name: string
         placement_mode: 'unrestricted' | 'allow-list'
         allowed_org_type_ids: string[]
-      }>(
-        yield* database
-          .execute(assignableUserTypesQuery(principal.tenantId))
-          .pipe(Effect.orDie),
-      )
+      }>(yield* database.execute(assignableUserTypesQuery(principal.tenantId)).pipe(Effect.orDie))
       return {
         nodes: nodes.slice(0, limit).map((row) => ({
           orgNodeId: row.id,
@@ -236,8 +228,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           name: row.name,
           placementPolicy:
             row.placement_mode === 'allow-list'
-              ? ({ mode: 'allow-list' as const, orgTypeIds: row.allowed_org_type_ids })
-              : ({ mode: 'unrestricted' as const }),
+              ? { mode: 'allow-list' as const, orgTypeIds: row.allowed_org_type_ids }
+              : { mode: 'unrestricted' as const },
         })),
       }
     }),

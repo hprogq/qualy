@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
-import { Database, type Orm } from '@qualy/plugin-database/server'
+import { LegacySql, type Orm } from '@qualy/plugin-database/server'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   DEFAULT_PAGE_SIZE,
@@ -49,7 +49,7 @@ export class Iam extends Context.Service<
 >()('@qualy/plugin-auth/Iam') {}
 
 export const make = Effect.fn('Auth.make')(function* () {
-  const database = yield* Database
+  const database = yield* LegacySql
   const userTypes = yield* makeUserTypes()
   const users = yield* makeUsers()
 
@@ -87,7 +87,7 @@ export const make = Effect.fn('Auth.make')(function* () {
  * One construction provides both tags, so the port org holds and the surface
  * auth's own handlers use come from the same state rather than two.
  */
-const tags: Layer.Layer<Placement | Iam, never, Database | Rbac> = Layer.effectContext(
+const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac> = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, iam } = yield* make()
     return Context.empty().pipe(Context.add(Placement, placement), Context.add(Iam, iam))
@@ -106,7 +106,7 @@ const tags: Layer.Layer<Placement | Iam, never, Database | Rbac> = Layer.effectC
 export const layer: Layer.Layer<
   Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
-  Database | Orm | Rbac | AuthConfig | LoginDrivers
+  Orm | Rbac | AuthConfig | LoginDrivers
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
 
 // --- api ---

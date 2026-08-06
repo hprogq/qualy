@@ -49,8 +49,7 @@ export default {
   'auth/field/allow-sso-login': '单点登录',
   'auth/field/placement-unrestricted': '可以挂在任何组织节点下',
   'auth/field/placement-tenant-root': '固定在租户根节点',
-  'auth/field/placement-hint':
-    '这里只决定这类人可以站在哪；能做什么由角色决定。',
+  'auth/field/placement-hint': '这里只决定这类人可以站在哪；能做什么由角色决定。',
   'auth/field/allowed-org-types': '可挂在这些类型的组织节点下',
   'auth/user-types/placement-count': '{count} 种节点类型',
   'auth/error/user-type-placement-not-allowed': '这类人不能挂在这类节点下。',
@@ -88,6 +87,7 @@ export default {
   'auth/error/identity-conflict': '该登录名已被占用。',
   'auth/error/user-placement-not-found': '未找到该组织节点。',
   'auth/error/recovery-channel-required': '管理员用户类型必须保留密码登录。',
-  'auth/error/system-account-protected': '系统账户是租户的恢复入口，其类型、状态与所在位置不可更改。',
+  'auth/error/system-account-protected':
+    '系统账户是租户的恢复入口，其类型、状态与所在位置不可更改。',
   'auth/error/grant-incompatible': '有 {grantCount} 个角色授权不允许该变更。',
 } satisfies MessageCatalog

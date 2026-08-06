@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/server'
+import { LegacySql } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import {
@@ -68,17 +68,10 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
 
 type ErrorOf<T> = T extends Effect.Effect<unknown, infer E, unknown> ? E : never
 
-
-
-
-
-
-
 const grantConstraints: Record<string, () => GrantExists> = {
   uq_role_grants_anchored: () => new GrantExists(),
   uq_role_grants_tenant_wide: () => new GrantExists(),
 }
-
 
 interface RoleRow extends Record<string, unknown> {
   id: string
@@ -90,10 +83,10 @@ interface RoleRow extends Record<string, unknown> {
   assignable: boolean
 }
 
-export const make = Effect.fn('Rbac.grants.make')(function* (authorityFor: (
-  actor: Principal,
-) => Authority) {
-  const database = yield* Database
+export const make = Effect.fn('Rbac.grants.make')(function* (
+  authorityFor: (actor: Principal) => Authority,
+) {
+  const database = yield* LegacySql
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
   /**
@@ -114,9 +107,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (authorityFor: (
           return yield* body(tx)
         }),
       )
-      .pipe(
-        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
-      )
+      .pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
   /**
    * Authority over the grant itself: which grants the caller may touch.
@@ -286,9 +277,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (authorityFor: (
     const wantedKind = request.target.kind === 'tenant' ? 'tenant' : 'org'
     const candidates = rows<RoleProjection & Record<string, unknown>>(
       yield* database.execute(roleProjectionQuery(tenantId)).pipe(Effect.orDie),
-    ).filter(
-      (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
-    )
+    ).filter((role) => role.kind === wantedKind && role.status === 'active' && role.assignable)
     const offered: { id: string; code: string; name: string; kind: 'tenant' | 'org' }[] = []
     for (const role of candidates) {
       const verdict = yield* database
@@ -327,9 +316,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (authorityFor: (
             ],
             () => Effect.succeed(false),
           ),
-          Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) =>
-            Effect.die(error),
-          ),
+          Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         )
       if (verdict) {
         offered.push({ id: role.id, code: role.code, name: role.name, kind: role.kind })
@@ -346,9 +333,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (authorityFor: (
       scope: GrantScope,
       page?: { after?: string; limit: number },
     ) =>
-      database
-        .execute(grantsQuery(tenantId, filter, scope, page))
-        .pipe(Effect.orDie, Effect.map((result) => rows<GrantRow>(result))),
+      database.execute(grantsQuery(tenantId, filter, scope, page)).pipe(
+        Effect.orDie,
+        Effect.map((result) => rows<GrantRow>(result)),
+      ),
 
     options,
     grant: Effect.fn('Rbac.grants.grant')(function* (

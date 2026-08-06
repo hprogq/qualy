@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/server'
+import { LegacySql } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
@@ -72,7 +72,7 @@ interface GuardRow extends Record<string, unknown> {
 }
 
 export const make = Effect.fn('Iam.userTypes.make')(function* () {
-  const database = yield* Database
+  const database = yield* LegacySql
   const rbac = yield* Rbac
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
@@ -106,18 +106,20 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       )
       .pipe(
         translateConstraints(userTypeConstraints),
-        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
 
   const countHolders = (tx: Tx, tenantId: string, userTypeId: string) =>
-    tx
-      .execute(countUsersOfTypeQuery(tenantId, userTypeId))
-      .pipe(Effect.orDie, Effect.map((r) => rows<{ count: number }>(r)[0]!.count))
+    tx.execute(countUsersOfTypeQuery(tenantId, userTypeId)).pipe(
+      Effect.orDie,
+      Effect.map((r) => rows<{ count: number }>(r)[0]!.count),
+    )
 
   const stranded = (tx: Tx, tenantId: string, userTypeId: string) =>
-    tx
-      .execute(strandedByPolicyQuery(tenantId, userTypeId))
-      .pipe(Effect.orDie, Effect.map((r) => rows<{ count: number }>(r)[0]!.count))
+    tx.execute(strandedByPolicyQuery(tenantId, userTypeId)).pipe(
+      Effect.orDie,
+      Effect.map((r) => rows<{ count: number }>(r)[0]!.count),
+    )
 
   return {
     /**
@@ -137,8 +139,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
         allowSsoLogin?: boolean
         sortOrder?: number
         placementPolicy:
-          | { mode: 'unrestricted' }
-          | { mode: 'allow-list'; orgTypeIds: readonly string[] }
+          { mode: 'unrestricted' } | { mode: 'allow-list'; orgTypeIds: readonly string[] }
       },
     ) {
       return yield* write(tenantId, (tx) =>
@@ -180,12 +181,10 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
      * of person may stand needs no permission over roles.
      */
     orgTypeOptions: (tenantId: string) =>
-      database
-        .execute(orgTypeOptionsQuery(tenantId))
-        .pipe(
-          Effect.orDie,
-          Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
-        ),
+      database.execute(orgTypeOptionsQuery(tenantId)).pipe(
+        Effect.orDie,
+        Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
+      ),
 
     list: Effect.fn('Iam.userTypes.list')(function* (tenantId: string) {
       return rows<UserTypeRow>(

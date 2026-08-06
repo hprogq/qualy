@@ -1,8 +1,4 @@
-import {
-  defineErrorTranslations,
-  defineMessage,
-  definePluginMessages,
-} from '@qualy/i18n-contract'
+import { defineErrorTranslations, defineMessage, definePluginMessages } from '@qualy/i18n-contract'
 import { orgErrors } from '../src/errors.ts'
 import { orgNavigationLabel } from '../src/messages.ts'
 
@@ -40,7 +36,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Check your connection or permissions and try again.',
     },
     treeTitle: { id: 'org/tree/title', defaultMessage: 'Organization tree' },
-    treeEmpty: { id: 'org/tree/empty', defaultMessage: 'No organization nodes are visible to you.' },
+    treeEmpty: {
+      id: 'org/tree/empty',
+      defaultMessage: 'No organization nodes are visible to you.',
+    },
     selectHint: {
       id: 'org/tree/select-hint',
       defaultMessage: 'Select a node on the left to see its details.',

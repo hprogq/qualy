@@ -16,9 +16,12 @@ describe.runIf(postgresAvailable)('org schema tenant boundary', () => {
   // row() rather than rows[0]!: an insert that returned nothing is a fault
   // worth naming where it happens, not a null dereference three lines later
   const createTenant = async (slug: string) =>
-    (await db.row<{ id: string }>(`insert into tenants (slug, name) values ($1, $1) returning id`, [
-      slug,
-    ])).id
+    (
+      await db.row<{ id: string }>(
+        `insert into tenants (slug, name) values ($1, $1) returning id`,
+        [slug],
+      )
+    ).id
 
   const createType = async (tenantId: string, code: string) =>
     (

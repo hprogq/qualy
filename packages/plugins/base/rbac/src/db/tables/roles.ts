@@ -53,10 +53,7 @@ export const roles = snakeCase.table(
     check('chk_roles_name_not_blank', sql`btrim(${table.name}) <> ''`),
     check('chk_roles_kind', sql`${table.kind} IN ('tenant', 'org')`),
     check('chk_roles_status', sql`${table.status} IN ('draft', 'active', 'disabled')`),
-    check(
-      'chk_roles_permission_mode',
-      sql`${table.permissionMode} IN ('explicit', 'all-active')`,
-    ),
+    check('chk_roles_permission_mode', sql`${table.permissionMode} IN ('explicit', 'all-active')`),
     // Holding every capability is reserved for the administrator role the
     // platform provisions; a tenant cannot mint a second one.
     //
