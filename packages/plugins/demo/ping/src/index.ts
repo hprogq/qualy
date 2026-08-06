@@ -3,8 +3,8 @@ import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
-import { Postgres } from '@qualy/plugin-database/plugin'
-import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
+import { Db } from '@qualy/plugin-database/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { ADMIN_SHELL, PUBLIC, defineSurfaces } from '@qualy/ui-contract'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
@@ -22,7 +22,7 @@ import { pingPage } from './pages.ts'
 // same prefix as the aggregate because routes are built from this one.
 const local = HttpApi.make(QUALY_API_ID).add(pingApiGroup).prefix(QUALY_API_PREFIX)
 
-const db = Postgres.scope([...entities] as const)
+const db = Db.scope([...entities] as const)
 
 const surfaces = defineSurfaces({
   pages: [
@@ -62,8 +62,8 @@ const handlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
 const plugin = Plugin.define(
   '@qualy/plugin-ping',
   { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
-  Postgres.entities(entities),
-  ReactUi.surfaces(surfaces),
+  Db.entities(entities),
+  Ui.surfaces(surfaces),
   Api.group(pingApiGroup, handlers),
 )
 

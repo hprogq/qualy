@@ -1,5 +1,5 @@
 import { Plugin } from '@qualy/plugin-kit'
-import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { ADMIN_SHELL, BLANK_SHELL, defineSurfaces } from '@qualy/ui-contract'
 
 // A layout plugin ships one thing: implementations behind layout contracts.
@@ -9,7 +9,7 @@ import { ADMIN_SHELL, BLANK_SHELL, defineSurfaces } from '@qualy/ui-contract'
 const plugin = Plugin.define(
   '@qualy/plugin-layout-default',
   { dependsOn: ['@qualy/plugin-ui-registry'] },
-  ReactUi.surfaces(
+  Ui.surfaces(
     defineSurfaces({
       layouts: [
         {

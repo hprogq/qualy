@@ -16,7 +16,7 @@ export const UiSurfaceDeclarations = ExtensionPoint.make<UiSurfaces>(
   { phase: 'prepare' },
 )
 
-export const ReactUi = {
+export const Ui = {
   /** declares this plugin's pages, layouts, collections and slots */
   surfaces: (surfaces: UiSurfaces): PluginFeature =>
     Plugin.contribute(UiSurfaceDeclarations, surfaces),

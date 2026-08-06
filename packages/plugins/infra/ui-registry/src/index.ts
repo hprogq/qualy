@@ -1,6 +1,6 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
-import { ReactUi } from './plugin.ts'
+import { Ui } from './plugin.ts'
 import { appApiGroup } from './api.ts'
 import { appApiHandlers, layer as serviceLayer } from './server/index.ts'
 
@@ -11,7 +11,7 @@ import { appApiHandlers, layer as serviceLayer } from './server/index.ts'
 
 const plugin = Plugin.define(
   '@qualy/plugin-ui-registry',
-  ReactUi.provider,
+  Ui.provider,
   Plugin.layer(serviceLayer),
   Api.group(appApiGroup, appApiHandlers),
 )

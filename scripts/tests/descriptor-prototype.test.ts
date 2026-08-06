@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest'
 import { Plugin, isPluginDescriptor } from '@qualy/plugin-kit'
 import { Cli, collectCliCommands } from '@qualy/plugin-kit/cli'
 import { assemble } from '@qualy/plugin-kit/assemble'
-import { DatabaseEntities, Postgres } from '@qualy/plugin-database/plugin'
-import { ReactUi, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
+import { DatabaseEntities, Db } from '@qualy/plugin-database/plugin'
+import { Ui, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
 import { Api } from '@qualy/api-kit/plugin'
 import { DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
-import { Ui } from '@qualy/plugin-ui-registry/server/registry'
+import { Ui as UiService } from '@qualy/plugin-ui-registry/server/registry'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import pingPlugin from '@qualy/plugin-ping'
 
@@ -22,12 +22,12 @@ import pingPlugin from '@qualy/plugin-ping'
 // what the host will one day be: infrastructure as descriptors too
 const databasePlugin = Plugin.define(
   '@qualy/plugin-database',
-  Postgres.provider,
+  Db.provider,
   // the service layer itself still rides a bare layer feature: the Orm key is
   // deliberately not exported as a value, so tag topology cannot name it yet
   Plugin.layer(databaseLayer),
 )
-const uiPlugin = Plugin.define('@qualy/plugin-ui-registry', ReactUi.provider)
+const uiPlugin = Plugin.define('@qualy/plugin-ui-registry', Ui.provider)
 const apiPlugin = Plugin.define('@qualy/api', Api.provider())
 
 describe('the descriptor prototype', () => {
@@ -59,18 +59,18 @@ describe('the descriptor prototype', () => {
     const { prepared } = assemble([
       uiPlugin,
       apiPlugin,
-      Plugin.define('@qualy/plugin-database', Postgres.provider),
+      Plugin.define('@qualy/plugin-database', Db.provider),
       pingPlugin,
     ])
     // the erased boundary the plan declares: assembled layers carry any/any,
     // and the caller narrows once, to what it knows the compilation provides
-    const catalog = prepared as Layer.Layer<Ui>
+    const catalog = prepared as Layer.Layer<UiService>
     const surfaces = Effect.runSync(
       Effect.scoped(
         Effect.gen(function* () {
           const context = yield* Layer.build(catalog)
           return yield* Effect.provideContext(
-            Effect.flatMap(Ui, (ui) => ui.surfaces),
+            Effect.flatMap(UiService, (ui) => ui.surfaces),
             context,
           )
         }),

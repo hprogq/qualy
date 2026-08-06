@@ -1,6 +1,6 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Cli } from '@qualy/plugin-kit/cli'
-import { Postgres } from './plugin.ts'
+import { Db } from './plugin.ts'
 import { config, layer as serviceLayer } from './server/index.ts'
 
 // The database plugin, as a description: it owns the entities extension
@@ -11,7 +11,7 @@ import { config, layer as serviceLayer } from './server/index.ts'
 const plugin = Plugin.define(
   '@qualy/plugin-database',
   { config },
-  Postgres.provider,
+  Db.provider,
   Plugin.layer(serviceLayer),
   Cli.command({
     namespace: 'database',

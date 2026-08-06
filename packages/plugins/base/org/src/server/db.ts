@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Postgres, type ScopedKysely } from '@qualy/plugin-database/plugin'
+import { Db, type ScopedKysely } from '@qualy/plugin-database/plugin'
 import { sql } from 'kysely'
 import { entities } from '../db/entities.ts'
 
@@ -11,7 +11,7 @@ import { entities } from '../db/entities.ts'
 // joins it by construction, which is what the explicit `em` parameter used
 // to spell at every signature.
 
-export const db = Postgres.scope([...entities] as const)
+export const db = Db.scope([...entities] as const)
 
 /** the builder fragment helpers receive, inside a query's callback */
 type Db = ScopedKysely<readonly [...typeof entities]>

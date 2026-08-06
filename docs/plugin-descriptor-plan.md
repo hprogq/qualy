@@ -14,7 +14,7 @@
   `prepare`(任何 Layer 构建之前收集、编译成值:实体、权限目录、UI 页面、API 契约)/
   `afterServices`(全部服务 Layer 之上闭合:API handlers、raw routes)/
   `boot`(现有 Assembled:镜像、预热)。核心只认协议,能力插件自定义扩展点与 Feature 构造器
-  (`Postgres.entities`、`ReactUi.surfaces`、`Api.group`,未来 `Search.index`、`VueUi.page`)。
+  (`Db.entities`、`Ui.surfaces`、`Api.group`,未来 `Search.index`、`VueUi.page`)。
 - **Feature**:插件参与装配的单位(贡献 / 提供扩展点 / 提供服务 / boot hook)。
 
 **环的消解**:auth 构建期需要 Ui 只因为页面注册被做成了运行时服务调用。页面改为 prepare 期纯数据后,
@@ -50,7 +50,7 @@ ping 的 layer/apiHandlers 导出由描述器共享的常量派生(桥),主系�
 - ~~批 5(宿主切换)~~ **已完成 2026-08-07**:装配器接管 apps/server(src/assembly.ts 走
   verify 后的 resolution 动态 import 描述器),runtime.gen / entities.gen / routes.gen 全部消失;
   PermissionCatalog / LoginDrivers / Ui 均为 prepare 期编译值,屏障只剩 rbac 镜像等 boot hook;
-  `Postgres.scope` 已在 ping 验证(全插件调用点清扫另记);compat 助手删除;
+  `Db.scope` 已在 ping 验证(全插件调用点清扫另记);compat 助手删除;
   测试台换装(harness 用 serviceLayer + compileCatalog 的真实目录)。
 - 每批过门禁:typecheck、node+browser 套件、真实启动。
 

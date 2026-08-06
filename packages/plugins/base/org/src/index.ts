@@ -1,7 +1,7 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
-import { Postgres } from '@qualy/plugin-database/plugin'
-import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
+import { Db } from '@qualy/plugin-database/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
@@ -24,8 +24,8 @@ const plugin = Plugin.define(
       '@qualy/plugin-ui-registry',
     ],
   },
-  Postgres.entities(entities),
-  ReactUi.surfaces(
+  Db.entities(entities),
+  Ui.surfaces(
     defineSurfaces({
       pages: [
         {

@@ -1,4 +1,4 @@
-import { Postgres, type ScopedKysely } from '@qualy/plugin-database/plugin'
+import { Db, type ScopedKysely } from '@qualy/plugin-database/plugin'
 import { sql } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities } from '../db/entities.ts'
@@ -13,7 +13,7 @@ import { entities } from '../db/entities.ts'
 
 const closure = [...orgEntities, ...entities] as const
 
-export const db = Postgres.scope(closure)
+export const db = Db.scope(closure)
 
 /** the builder fragment helpers receive, inside a query's callback */
 export type Db = ScopedKysely<typeof closure>

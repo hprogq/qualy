@@ -24,7 +24,7 @@ export const DatabaseEntities = ExtensionPoint.make<readonly EntitySchema[]>(
   { phase: 'prepare' },
 )
 
-export const Postgres = {
+export const Db = {
   /** declares this plugin's tables; pure data until the owner compiles it */
   entities: (entities: readonly EntitySchema[]): PluginFeature =>
     Plugin.contribute(DatabaseEntities, entities),

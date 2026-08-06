@@ -1,9 +1,9 @@
 import { Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
-import { Postgres } from '@qualy/plugin-database/plugin'
+import { Db } from '@qualy/plugin-database/plugin'
 import { Login } from '@qualy/auth-contract/plugin'
-import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import {
   ADMIN_SHELL,
@@ -30,8 +30,8 @@ const plugin = Plugin.define(
     dependsOn: ['@qualy/plugin-database', '@qualy/plugin-rbac', '@qualy/plugin-ui-registry'],
     config,
   },
-  Postgres.entities(entities),
-  ReactUi.surfaces(
+  Db.entities(entities),
+  Ui.surfaces(
     defineSurfaces({
       pages: [
         { page: loginPage, component: 'auth/LoginPage', layout: BLANK_SHELL, visibility: PUBLIC },
