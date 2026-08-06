@@ -1185,7 +1185,8 @@ cordis 时代 loader 把 config 交给插件,现在没有 loader,于是宿主手
 **清单 config 进被提交的生成文件安全**:`databaseWork` 已经硬拒 `config.url` 并指明
 「连接串放环境变量,清单是提交物」,所以清单 config 按规则就是非密的。这条门禁已经存在。
 
-**此草稿已被取代**:完整设计定稿在 docs/assembly-design.md「阶段 2.6:组合根收口」,比这份
-草稿多出的关键结论:三份目录聚合(permissions/login-drivers/ui)升为能力(provider 分别是
-rbac/auth/ui-registry,每份目录的唯一消费者恰是它的 provider),三个根脚本随之删除;生成模块
-导出 layer 而非数据;`qualy.runtime` 加 config 与 readiness 两个面。按该节的 1→8 顺序实施。
+**此草稿已被取代**:设计在 docs/assembly-design.md「阶段 2.6:组合根收口」(v2)。v2 的核心:
+只有「不启动应用就必须存在」的值走静态文件(entities/契约/chunk 表/layer 列表);
+login-drivers、ui surfaces、permissions 运行时目录、readiness 全部改为 Effect 原生注册表
+(服务即注册表、Layer 即注册、layer 图即 loader.await、acquireRelease 即 ctx.effect,
+上游例证 HttpRouter.use 与 HttpApiBuilder.group),三个 gen 脚本直接删除。按该节 1→8 实施。

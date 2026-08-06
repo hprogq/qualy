@@ -1797,40 +1797,52 @@ Layer 不能把两个互相要求对方完整 service 的插件直接组合。�
 
 这是整个迁移里最需要设计的部分，细节与进度在 effect-migration.md。
 
-## 阶段 2.6：组合根收口（设计定稿 2026-08-06，未实施）
+## 阶段 2.6：组合根收口（设计修订 2026-08-06 v2，未实施）
 
 阶段 2 的静态 Effect 运行时留下一个缺口：`apps/server/src/{runtime,config,health}.ts` 无条件点名
 五处插件导入，没有 database 的装配连编译都过不去——能力边界在核心里成立（有测试守），在能跑的
 产品里不成立。
 
-诊断：宿主的七处点名**不是一类问题，是三类**，而三类各自的机制都已存在一半。
+诊断：宿主的七处点名**不是一类问题，是三类**。v2 修订的核心认识：**只有「不启动应用就必须存在」
+的值才需要静态文件**（client 类型、CLI generate、浏览器 chunk、layer 列表本身）；纯运行时的值走
+Effect 原生的注册表习语，零 codegen。上游源码里就有三种注册表（实读路径）：
 
-### A 类：目录聚合（permissions / login-drivers / ui / entities）
+- `HttpRouter`（unstable/http/HttpRouter.ts:103-170,478-480,565）：`Context.Service` 内装可变
+  路由器，注册即 `use(f) = Layer.effectDiscard(Effect.flatMap(HttpRouter, f))`，拥有方
+  `layer = Layer.effect(HttpRouter)(make)`。本仓 `pluginRoutes` 已在用。
+- `HttpApiBuilder.group`（unstable/httpapi/HttpApiBuilder.ts:120-155）：贡献方 layer 以
+  `group.key` 为键把 routes 发布成服务，收集方从 context 逐键读走。本仓 `apiHandlers` 已在用。
+- `Logger.CurrentLoggers`（Logger.ts:162）：`Context.Reference<ReadonlySet<Logger>>`，
+  带默认值的环境集合。
 
-四份「每个插件声明的 X，拼起来」。entities 已经走对了路——database 能力的 `modules()` 产出
-`entities.gen.ts`；另外三份还卡在根脚本（gen-permissions / gen-login-drivers / gen-ui），
-且产物只导出**数据**，由宿主手写 `Layer.succeed(Tag, data)` 包一层——点名 Tag 因此不可避免。
+cordis 对应关系（每项都更强）：`ctx.xxx.register(v)` → 贡献方 layer 里 `yield* Xxx.register(v)`
+（注册值有类型）；`ctx.effect(反动作)` → `Effect.acquireRelease` 挂 layer scope（卸载自动反注册）；
+`ctx.loader.await()` → **layer 图本身**（端口最后才绑，请求期读注册表必然完整）；`inject` 门控 →
+require 注册表服务（缺拥有方 = 编译错，而非静默不激活）。
 
-一个此前没人说破的对称性：**每份目录的唯一消费者恰是它的天然 provider**——
-PermissionCatalog（住 rbac-contract）只被 rbac 的 layer 消费，LoginDrivers（auth-contract）只被
-auth 消费，UiCatalog 只被 ui-registry 消费，Entities 只被 database 消费。所以：
+**读取时机规则**（注册表的唯一纪律）：消费只在两处安全——请求期，或 layer 图上贡献方之后。
+顺序无语义、ID 命名空间化（UI 组合模型的冻结规则升为一切注册表的通用规则）。
 
-- **permissions 升为能力，provider = rbac**；贡献方声明 `qualy.contributions.permissions`
-  （旧 `qualy.permissions` 硬拒并指路，同 qualy.database 迁移前例）。
-- **login-drivers 升为能力，provider = auth**；auth-local 声明贡献。
-- **ui 升为能力，provider = ui-registry**。
-- 三个根脚本删除，逻辑变成各 provider 的 `modules()`。CLAUDE.md 写的 tooling 重评触发条件
-  「第四类 codegen 能力落地（如 rbac.permissions）」正是此刻——答案是能力的 `modules()` 就是
-  注册表，不建新机制。
-- **生成模块导出 layer 而非数据**：`entities.gen.ts` 导出
-  `entitiesLayer = Layer.succeed(Entities, [...])`，Tag 由生成模块自己 import。能力缺席时模块
-  不存在、没人 import 缺失的 Tag——条件性落在生成期，正是「anything conditional belongs in
-  resolution」。
-- 契约层加一个字段：`CapabilityModule` 增加可选 `layerExport?: string`。核心不解释它，只把这个
-  字符串交给 runtime 模块生成器去 emit `import { <name> } from './<path>'` 并合并。
-- 硬失败自动继承：贡献了 permissions 但装配里没有 rbac → resolve 拒绝（该插件的 layer 本就
-  require Rbac，两道门一致）。现有 capability-boundary 测试的选择集
-  `[web, layout-default]` 在 ui 升为能力后需加入 ui-registry——这是设计行为，不是回归。
+### A 类：目录聚合 —— v2 修订：只有 entities 需要 codegen
+
+四份「每个插件声明的 X，拼起来」里，**只有 entities 是 CLI 需求**（`generate` 要在不启动应用时
+建 declared 库），保留为 database 能力的 `modules()` 产物，且生成模块导出
+`entitiesLayer = Layer.succeed(Entities, [...])`（Tag 由生成模块自己 import；能力缺席则模块
+不存在，没人 import 缺失的 Tag）。契约加可选 `CapabilityModule.layerExport?: string`，核心不解释、
+只交给 runtime 模块生成器 emit import 与合并。
+
+另外三份是纯运行时值，**不升能力、不 codegen，改注册表**：
+
+- **login-drivers**：auth 的 layer 提供注册表服务，auth-local 在自己 layer 里注册。
+  `login-driver.ts` 文件、exports 子路径、`gen-login-drivers.ts` 全部消失。sign-in 请求期读。
+- **ui surfaces**：ui-registry 提供注册表，插件 layer 注册；`gen-ui.ts` 删除。`ui.ts` 保留但
+  理由变了——definePage 的页面身份要被客户端共享（PageLink），是身份问题不是聚合问题。
+- **permissions**：运行时目录走注册（rbac 提供注册表），`gen-permissions.ts` 删除。唯一静态
+  消费者是 seed（CLI）——阶段 4 provision（运行中的装配自我供给）落地后该需求消失；过渡期
+  seed 照旧读 `qualy.permissions` 声明。
+
+新增一种集成点的成本从「新文件 + 新 exports 子路径 + 新声明 + 新 gen 脚本」降为：拥有方定义
+一个注册表服务，贡献方在已有 layer 里加一行。
 
 ### B 类：每插件配置（DatabaseConfig / AuthConfig / WebConfig）
 
@@ -1854,43 +1866,19 @@ auth 消费，UiCatalog 只被 ui-registry 消费，Entities 只被 database 消
 - 审计第 8 条（生产禁 localhost fallback）自然落进 database 的 config 导出，随此步一起修。
 - 测试注入方式不变：config 是服务，testkit 继续直接 provide `DatabaseConfig`。
 
-### C 类：就绪探针（ping）
+### C 类：就绪探针（ping） —— v2 修订：注册表吸收
 
-`qualy.runtime` 的第三个面：`readiness: true` = 「runtime entry 导出
-`readiness: Effect<void, unknown, R>`」。生成器汇出
-`export const readinessProbes = [{ plugin: 'database', probe }] as const`——**不写类型注解**，
-让推断携带 R 的并集，由 health handler 的 requirement 吸收、pluginLayers 清偿。零探针时
-R = never，`/health/ready` 空 checks 返回 200，与冻结的健康语义一致（ready 只声称已装载的都
-健康）。health.ts 里「本组合没有 database 就建不起来」的注释随之作废。
+不再生成 `readinessProbes` 数组。宿主（或 api-kit）定义 `Readiness` 注册表服务并在 health
+handler 请求期读取；database 的 layer 用 `Effect.acquireRelease` 注册自己的探针。零探针时空
+checks 返回 200，与冻结的健康语义一致。`health.ts` 里「本组合没有 database 就建不起来」的注释
+随之作废。
 
 ### 端态
 
-`runtime.gen.ts` 成为唯一组合模块：
-
-```ts
-// 生成物（示意）
-import { Layer } from 'effect'
-import { fileURLToPath } from 'node:url'
-import { layer as pluginAuth, config as authConfig } from '@qualy/plugin-auth/server'
-import { layer as pluginDatabase, config as databaseConfig, readiness as databaseReadiness } from '@qualy/plugin-database/server'
-import { entitiesLayer } from './entities.gen.ts'
-import { permissionCatalogLayer } from './permissions.gen.ts'
-// ...
-const manifestDir = fileURLToPath(new URL('..', import.meta.url))
-const pluginLayers = /* 现有分层 provideMerge，不变 */
-export const assembly = pluginLayers.pipe(
-  Layer.provide(Layer.mergeAll(
-    authConfig({}, { manifestDir }),
-    databaseConfig({ migrationsFolder: './db/migrations' }, { manifestDir }),
-    entitiesLayer, permissionCatalogLayer, /* ... */
-  )),
-)
-export const readinessProbes = [{ plugin: 'database', probe: databaseReadiness }] as const
-```
-
+`runtime.gen.ts` 只导出 `assembly`（pluginLayers + 各插件 config layer + 能力 layer 模块），
 宿主手写文件只剩自己的领地：`runtime.ts` import `{ assembly }`；`config.ts` 只剩 ServerConfig 与
-apiReferenceEnabled（端口与文档曝光是宿主事实）；`health.ts` 遍历 `readinessProbes`。
-**宿主不再出现任何 `@qualy/plugin-*` 导入。**
+apiReferenceEnabled；`health.ts` 读 Readiness 注册表。**宿主不再出现任何 `@qualy/plugin-*`
+导入。**
 
 ### 不动的
 
@@ -1903,12 +1891,12 @@ api-handlers.gen / routes.gen / api.gen：API 聚合是产品面，宿主拥有�
 1. `runtime.config` 面 + auth/web 两个 config 搬家（最小闭环，不碰能力）。
 2. database config 搬家（manifestDir 锚定 + 生产禁 fallback 一起落）。
 3. `layerExport` 契约字段 + entities.gen 导出 layer，宿主删 `Entities` 导入。
-4. permissions 升能力（删 gen-permissions，旧键硬拒；seed 的 catalog 读取改走 lock 贡献）。
-5. login-drivers 升能力。
-6. ui 升能力（capability-boundary 测试选择集加 ui-registry）。
-7. `readiness` 面，health.ts 去插件化。
-8. 宿主收口为 `{ assembly, readinessProbes }`；验收 = capability-boundary 加一例：**纯静态装配
-   render 出的 runtime 模块可编译、全文不含 database**，即「没装 db 插件也能启动」有测试守。
+4. LoginDrivers 注册表（auth 拥有）；删 `gen-login-drivers.ts` 与 login-driver 子路径。
+5. ui surfaces 注册表（ui-registry 拥有）；删 `gen-ui.ts`。
+6. permissions 运行时注册表（rbac 拥有）；删 `gen-permissions.ts`（seed 过渡期照旧读声明）。
+7. Readiness 注册表，health.ts 去插件化。
+8. 宿主收口为 `{ assembly }`；验收 = capability-boundary 加一例：**纯静态装配 render 出的
+   runtime 模块可编译、全文不含 database**，即「没装 db 插件也能启动」有测试守。
 
 ## 阶段 3：数据库版本演进
 
