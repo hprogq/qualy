@@ -1189,4 +1189,4 @@ cordis 时代 loader 把 config 交给插件,现在没有 loader,于是宿主手
 只有「不启动应用就必须存在」的值走静态文件(entities/契约/chunk 表/layer 列表);
 login-drivers、ui surfaces、permissions 运行时目录、readiness 全部改为 Effect 原生注册表
 (服务即注册表、Layer 即注册、layer 图即 loader.await、acquireRelease 即 ctx.effect,
-上游例证 HttpRouter.use 与 HttpApiBuilder.group),三个 gen 脚本直接删除。按该节 1→8 实施。
+上游例证 HttpRouter.use 与 HttpApiBuilder.group)。**完整实施方案在 docs/composition-root-plan.md(v3)**:注册表 API 逐个定型(Ui 是 addPage/registerLayout/contribute/fillSlot 四方法,不是笼统 register),五条注册表纪律,permissions 因 rbac 构建期把 catalog 镜像进表(时序倒置实证)改回静态能力;按该文档 §9 的 1→8 实施。

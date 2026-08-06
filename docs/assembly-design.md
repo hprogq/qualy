@@ -1797,7 +1797,7 @@ Layer 不能把两个互相要求对方完整 service 的插件直接组合。�
 
 这是整个迁移里最需要设计的部分，细节与进度在 effect-migration.md。
 
-## 阶段 2.6：组合根收口（设计修订 2026-08-06 v2，未实施）
+## 阶段 2.6：组合根收口（设计修订 2026-08-06 v2；**实施方案细化为 v3，见 docs/composition-root-plan.md**，其中 permissions 因 rbac 构建期表同步的时序证据改回静态能力）
 
 阶段 2 的静态 Effect 运行时留下一个缺口：`apps/server/src/{runtime,config,health}.ts` 无条件点名
 五处插件导入，没有 database 的装配连编译都过不去——能力边界在核心里成立（有测试守），在能跑的
