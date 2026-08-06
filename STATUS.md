@@ -1042,3 +1042,45 @@ auth 最后两条读 rbac 表的语句改成了 rbac 服务上的端口
 等就绪探针改成插件注册、且测试 seeding 不再用 `Database` 时,两者一起走。
 
 顺带删掉 `auth/src/db/relations.ts`(drizzle RQB 定义,已无人 import)。
+
+### 迁移生成换成 MikroORM;drizzle 全部撤下
+
+生成不再是「实体元数据 vs 快照」,而是**两个真实数据库的比较**:一个应用了已提交 lineage,
+一个按全新安装的方式由实体建成(pre-structure baseline → `getCreateSchemaSQL` → 复合外键 →
+post-structure baseline)。
+
+两侧都是真库是这件事成立的原因。租户复合外键指向复合唯一键,实体元数据没有这种声明,所以拿
+元数据去比,那 19 条外键**每次都会被判成要删**。放到第二个库上,它们两边都在,diff 从不提它们,
+而新增一条会自己作为 addition 出现。扩展、函数、种子行则相反:没有东西把它们读进 schema,
+所以照旧走 baseline 片段逐字写进迁移——两套机制永不描述同一个对象。
+
+第一次跑出来是 `nothing to generate`:实体声明的 schema 与已部署的 lineage 逐对象相同。
+反向验证做了三次:加一列 → 只产出 `add column`;删一列 → 产出 `drop column` 且被 drop-guard
+拦下;做了一条**正则里带 `;\n` 的 check** → 语句切分没有在字符串里断开。
+
+**路上撞到两个上游缺陷,都已 patch + `docs/upstream/` 存档 + 测试守**:
+
+1. 读回 check 约束时,剥 `(col)::text` 的正则没有锚定成对括号,body 里有两个括号项加一个 cast
+   就会把括号剥乱(`code IS NULL) OR ((code ~ ...`),产出的 SQL 根本不能解析。
+2. 索引 introspection 丢掉 access method,ltree 上的 gist 索引读回来变成 btree。这条是**静默的**:
+   DDL 合法,只是子树查询从此全表扫描——所以它单独有一个测试,而不是只靠 clean-room 门禁。
+
+`packages/plugins/infra/database/tests/introspection.test.ts` 直接问 postgres 这两个问题;
+把 patch 撤回去,两条立刻红。
+
+**drizzle 现在一点不剩**:表定义、schema 聚合、`schemaEntry`、ltree 列类型、测试播种、
+迁移执行器、`Database` 服务、`@effect/sql-pg`、catalog 条目、vendored 树,全部撤下。
+迁移执行器换成本插件自己写的(基于 pg),但**逐字复刻了 drizzle 的账本契约**:同样的目录名、
+同样的 statement-breakpoint、同样的整文件 sha256、同样的列。拿开发库(账本是 drizzle 写的)
+验过:第一条迁移算出来的 hash 与库里存的一致,deploy 报 up to date。
+
+两处行为**故意**不同:迁移目录不存在now是错误而不是「空 lineage」(读成空会让进程在一个从没建过的
+库上启动并自称 up to date,harness 的失败启动用例正是这么抓到的);账本里出现没有 name 的行直接
+拒绝,而不是猜。
+
+**上一份 STATUS 说 `ping` 搬不走,那个结论是错的**。`Orm` 出现在 requirement 里没有问题——
+handler 在 group 建立时取它即可;当时的编译错误是 `ping` 已经不是函数了而调用点还在调用它。
+`Orm` 只导出类型挡的是组合根自己持有 ORM,挡不住建在这个插件之上的 layer 去要一个。
+
+**遗留**:`repos/drizzle-orm/` 这棵树还在磁盘上(gitignored,已从 vendor-lock 与 vendor-sync
+的清单里移除),手动删掉即可。
