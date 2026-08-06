@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { postgresAvailable, schemaParity } from '@qualy/plugin-database/testkit'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
-import { authCompositeForeignKeys, entities } from '../src/db/entities.ts'
+import { compositeForeignKeys, entities } from '../src/db/entities.ts'
 
 // Is the schema these entities build the schema auth runs on?
 //
@@ -28,7 +28,7 @@ describe.runIf(postgresAvailable)('a schema built from auth entities', () => {
       tables: TABLES,
       entities,
       dependencies: { entities: orgEntities, tables: ORG_TABLES },
-      afterCreate: authCompositeForeignKeys,
+      afterCreate: compositeForeignKeys,
     })
 
     for (const what of ['columns', 'constraints', 'indexes'] as const) {

@@ -199,7 +199,7 @@ export const OrgNode = defineEntity({
  * key rather than at a primary one - the shape that carries tenant isolation
  * into the database, and one the schema generator has no declaration for.
  */
-export const orgCompositeForeignKeys = [
+export const compositeForeignKeys = [
   `alter table org_nodes add constraint fk_org_nodes_org_type
      foreign key (tenant_id, org_type_id) references org_types (tenant_id, id) on delete restrict`,
   `alter table org_nodes add constraint fk_org_nodes_parent

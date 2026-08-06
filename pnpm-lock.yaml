@@ -137,7 +137,7 @@ catalogs:
       version: 4.4.3
 
 patchedDependencies:
-  '@mikro-orm/sql@7.1.10': c5fad03baf645e24831e2a149f78dfcc2d8c1f60994b78543ef6d0a35ced0877
+  '@mikro-orm/sql@7.1.10': e4cf344bc16a93da55ce7238169e64383fd94bd147529629ab99fee331ce283d
 
 importers:
 
@@ -741,6 +741,9 @@ importers:
 
   packages/plugins/demo/ping:
     dependencies:
+      '@mikro-orm/core':
+        specifier: 'catalog:'
+        version: 7.1.10
       '@qualy/api-contract':
         specifier: workspace:*
         version: link:../../../api-contract
@@ -768,6 +771,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.4
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -3054,7 +3060,7 @@ snapshots:
   '@mikro-orm/postgresql@7.1.10(@mikro-orm/core@7.1.10)':
     dependencies:
       '@mikro-orm/core': 7.1.10
-      '@mikro-orm/sql': 7.1.10(patch_hash=c5fad03baf645e24831e2a149f78dfcc2d8c1f60994b78543ef6d0a35ced0877)(@mikro-orm/core@7.1.10)
+      '@mikro-orm/sql': 7.1.10(patch_hash=e4cf344bc16a93da55ce7238169e64383fd94bd147529629ab99fee331ce283d)(@mikro-orm/core@7.1.10)
       kysely: 0.29.4
       pg: 8.22.0
       pg-cursor: 2.21.0(pg@8.22.0)
@@ -3064,7 +3070,7 @@ snapshots:
     transitivePeerDependencies:
       - pg-native
 
-  '@mikro-orm/sql@7.1.10(patch_hash=c5fad03baf645e24831e2a149f78dfcc2d8c1f60994b78543ef6d0a35ced0877)(@mikro-orm/core@7.1.10)':
+  '@mikro-orm/sql@7.1.10(patch_hash=e4cf344bc16a93da55ce7238169e64383fd94bd147529629ab99fee331ce283d)(@mikro-orm/core@7.1.10)':
     dependencies:
       '@mikro-orm/core': 7.1.10
       kysely: 0.29.4

@@ -259,7 +259,7 @@ export const RoleGrant = defineEntity({
  * schema generator has no declaration for. Three reach into org and auth,
  * which is why this plugin declares database dependencies on both.
  */
-export const rbacCompositeForeignKeys = [
+export const compositeForeignKeys = [
   `alter table role_permissions add constraint fk_role_permissions_role
      foreign key (tenant_id, role_id) references roles (tenant_id, id) on delete cascade`,
   `alter table role_allowed_org_types add constraint fk_role_allowed_org_types_role

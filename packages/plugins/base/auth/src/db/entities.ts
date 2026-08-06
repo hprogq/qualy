@@ -251,7 +251,7 @@ export const Session = defineEntity({
  * schema generator has no declaration for. Two of them reach into org, which
  * is why this plugin declares a database dependency on it.
  */
-export const authCompositeForeignKeys = [
+export const compositeForeignKeys = [
   `alter table users add constraint fk_users_user_type
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete restrict`,
   `alter table users add constraint fk_users_primary_org_node

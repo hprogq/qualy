@@ -9,12 +9,13 @@ import {
   type BaselineFragment,
 } from './baseline.ts'
 import type { DatabaseContribution } from './contribution.ts'
-import { databaseWork, drizzleKit, migrationDirs } from './drizzle.ts'
+import { loadEntityModules, structuralDiff } from './diff.ts'
 import { scanDestructive } from './drop-guard.ts'
 import { asState, type DatabaseState } from './state.ts'
+import { createMigrationDir, databaseWork, migrationName } from './work.ts'
 
-// Generation for the whole assembly: the tables drizzle derives from the
-// aggregated schema, plus the SQL each plugin owns that drizzle cannot see.
+// Generation for the whole assembly: the tables the entities describe, plus
+// the SQL each plugin owns that no schema comparison can see.
 //
 // Both have to land in one migration and in the right order. An extension is
 // pre-structure because a column type depends on it; a trigger is
@@ -34,54 +35,39 @@ export async function generateDatabase(
 ): Promise<void> {
   const work = databaseWork(context)
   const state = asState(context.state)
-  const name = flag(context.args, 'name')
+  // before anything reads it: the lineage of an assembly that has never
+  // generated is an empty directory, not a missing one
+  fs.mkdirSync(work.migrations, { recursive: true })
 
   const fragments = collectBaseline(context, state)
   const pending = pendingBaseline(fragments, compiledBaseline(work.migrations), state.order)
 
-  const before = new Set(migrationDirs(work.migrations))
-  fs.mkdirSync(work.migrations, { recursive: true })
-  drizzleKit(work, ['generate', ...(name ? ['--name', name] : [])])
-  let created = migrationDirs(work.migrations).find((dir) => !before.has(dir))
+  const modules = await loadEntityModules(work.entities)
+  // every fragment, not just the pending ones: the declared database has to be
+  // whole for the comparison to be about structure
+  const { statements } = await structuralDiff(work, modules, fragments)
 
-  if (!created && pending.length > 0) {
-    // no table changed, but a plugin declared sql that is not in the lineage
-    // yet; an empty migration is the carrier drizzle offers for that
-    drizzleKit(work, ['generate', '--custom', '--name', name ?? 'baseline'])
-    created = migrationDirs(work.migrations).find((dir) => !before.has(dir))
-  }
-
-  if (!created) {
-    if (pending.length > 0) {
-      throw new Error('no migration was produced despite pending baseline fragments')
-    }
+  if (statements.length === 0 && pending.length === 0) {
     console.log('database: nothing to generate')
     return
   }
 
-  if (pending.length > 0) {
-    const file = path.join(work.migrations, created, 'migration.sql')
-    // an empty custom migration arrives carrying drizzle's placeholder
-    // comment, which is not structure and should not be framed as such
-    const structure = fs
-      .readFileSync(file, 'utf8')
-      .replace(/^--\s*Custom SQL migration file.*$/m, '')
-      .trim()
-    const section = (phase: BaselineFragment['phase']) =>
-      pending.filter((fragment) => fragment.phase === phase).map(renderBaseline)
-    const parts = [
-      ...section('pre-structure'),
-      ...(structure ? [structure] : []),
-      ...section('post-structure'),
-    ]
-    fs.writeFileSync(file, `${parts.join(`${BREAK}\n\n`)}\n`)
-    for (const fragment of pending) {
-      console.log(`database: compiled ${fragment.plugin} ${fragment.file} (${fragment.phase})`)
-    }
-  }
+  const section = (phase: BaselineFragment['phase']) =>
+    pending.filter((fragment) => fragment.phase === phase).map(renderBaseline)
+  const parts = [...section('pre-structure'), ...statements, ...section('post-structure')]
 
+  const created = createMigrationDir(
+    work.migrations,
+    migrationName(flag(context.args, 'name'), 'update'),
+  )
+  const file = path.join(work.migrations, created, 'migration.sql')
+  fs.writeFileSync(file, `${parts.join(`\n${BREAK}\n`)}\n`)
+
+  for (const fragment of pending) {
+    console.log(`database: compiled ${fragment.plugin} ${fragment.file} (${fragment.phase})`)
+  }
   console.log(`database: ${created}`)
-  guardDestructive([path.join(work.migrations, created, 'migration.sql')])
+  guardDestructive([file])
 }
 
 /**

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { Pool } from 'pg'
 import { defineCapabilityProvider } from '@qualy/assembly-contract'
@@ -7,7 +7,13 @@ import {
   parseDatabaseContribution,
   type DatabaseContribution,
 } from './contribution.ts'
-import { databaseWork, drizzleKit, LOCAL_FALLBACK } from './drizzle.ts'
+import {
+  assertDistinctPrefixes,
+  createMigrationDir,
+  databaseWork,
+  migrationName,
+  LOCAL_FALLBACK,
+} from './work.ts'
 import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
 import {
   assertNoCollisions,
@@ -89,17 +95,22 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     // a lineage where two branches added a migration with the same prefix
     // applies in an order that depends on which one you checked out
     check: async (context) => {
-      console.log(drizzleKit(databaseWork(context), ['check']).trim())
+      const work = databaseWork(context)
+      assertDistinctPrefixes(work.migrations)
+      console.log('database: lineage ok')
     },
 
     // an empty migration for SQL that records one historical step, as opposed
     // to a baseline fragment, which states a plugin's current shape
     custom: async (context) => {
       const work = databaseWork(context)
-      const name = arg(context.args, 'name')
-      console.log(
-        drizzleKit(work, ['generate', '--custom', ...(name ? ['--name', name] : [])]).trim(),
+      const created = createMigrationDir(
+        work.migrations,
+        migrationName(arg(context.args, 'name'), 'custom'),
       )
+      const file = path.join(work.migrations, created, 'migration.sql')
+      writeFileSync(file, '-- owner: @qualy/plugin-<name>\n')
+      console.log(`database: ${path.relative(process.cwd(), file)}`)
     },
 
     'drop-guard': async (context) => {
@@ -115,10 +126,6 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
         throw new Error(`database: there is no lineage at ${work.migrations} to scan`)
       }
       guardDestructive(allMigrationFiles(work.migrations))
-    },
-
-    studio: async (context) => {
-      drizzleKit(databaseWork(context), ['studio'])
     },
 
     // where this assembly keeps its lineage, for scripts that need the path

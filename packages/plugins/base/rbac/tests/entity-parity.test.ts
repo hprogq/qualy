@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { postgresAvailable, schemaParity } from '@qualy/plugin-database/testkit'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
-import { entities, rbacCompositeForeignKeys } from '../src/db/entities.ts'
+import { entities, compositeForeignKeys } from '../src/db/entities.ts'
 
 // Is the schema these entities build the schema rbac runs on?
 //
@@ -43,7 +43,7 @@ describe.runIf(postgresAvailable)('a schema built from rbac entities', () => {
         entities: [...orgEntities, ...authEntities],
         tables: UPSTREAM_TABLES,
       },
-      afterCreate: rbacCompositeForeignKeys,
+      afterCreate: compositeForeignKeys,
     })
 
     for (const what of ['columns', 'constraints', 'indexes'] as const) {

@@ -1,6 +1,6 @@
 import { MikroORM } from '@mikro-orm/postgresql'
 import type { EntitySchema } from '@mikro-orm/core'
-import { QualyNamingStrategy } from './server/orm.ts'
+import { QualyNamingStrategy } from './naming.ts'
 
 // Is a database built from entities the database the product runs on?
 //
