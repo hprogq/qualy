@@ -544,3 +544,44 @@ export const grantsBlockingOrgType = (
 /** how far a grant reaches, ordered so a wider one can be compared to a narrower */
 export const REACH_RANK = { self: 0, subtree: 1, tenant: 2 } as const
 export type Reach = keyof typeof REACH_RANK
+
+/** the catalog's row, inserted if absent; the stored row stays the single truth */
+export const upsertPermission = (em: RbacEntityManager, permission: ActivePermission) =>
+  query(() =>
+    kyselyOf(em)
+      .insertInto('Permission')
+      .values({
+        code: permission.code,
+        plugin: permission.plugin,
+        name: permission.name,
+        description: permission.description ?? null,
+        groupKey: permission.groupKey ?? null,
+        targetKind: permission.target,
+      })
+      .onConflict((conflict) => conflict.column('code').doNothing())
+      .execute(),
+  )
+
+export const permissionRow = (em: RbacEntityManager, code: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Permission')
+      .select(['plugin', 'targetKind'])
+      .where('code', '=', code)
+      .executeTakeFirst(),
+  )
+
+/** display text follows the declaration freely, because it decides nothing */
+export const refreshPermissionText = (em: RbacEntityManager, permission: ActivePermission) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('Permission')
+      .set({
+        name: permission.name,
+        description: permission.description ?? null,
+        groupKey: permission.groupKey ?? null,
+        updatedAt: sql<Date>`now()`,
+      })
+      .where('code', '=', permission.code)
+      .execute(),
+  )

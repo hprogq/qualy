@@ -27,18 +27,15 @@ import {
   grantsBlockingOrgType,
   hasTenantPermission as hasTenantPermissionQuery,
   lockAdministratorRole,
+  permissionRow,
+  refreshPermissionText,
+  upsertPermission,
   reachAt as reachAtQuery,
 } from './authorization.ts'
 import { make as makeRoles } from './roles.ts'
 import { make as makeDiagnostics } from './diagnostics.ts'
 import { ESCALATE, type Authority } from './escalation.ts'
-import {
-  permissionRowQuery,
-  refreshPermissionTextQuery,
-  upsertPermissionQuery,
-  type GrantScope,
-  type RoleRow as RoleProjection,
-} from '../queries.ts'
+import { type GrantScope, type RoleRow as RoleProjection } from '../queries.ts'
 
 // rbac as an Effect layer, and the root of the graph.
 //
@@ -83,15 +80,10 @@ export const make = Effect.fn('Rbac.make')(function* () {
   // assembly instead of an instance authorizing against a half-synced table.
   const catalog = new Map<string, ActivePermission>()
   for (const permission of declared) {
-    yield* database.execute(upsertPermissionQuery(permission)).pipe(Effect.orDie)
-    const stored = rows<{ plugin: string; target_kind: string }>(
-      yield* database.execute(permissionRowQuery(permission.code)).pipe(Effect.orDie),
-    )[0]
-    if (
-      !stored ||
-      stored.plugin !== permission.plugin ||
-      stored.target_kind !== permission.target
-    ) {
+    const em = yield* rbacEntityManager()
+    yield* upsertPermission(em, permission).pipe(Effect.orDie)
+    const stored = yield* permissionRow(em, permission.code).pipe(Effect.orDie)
+    if (!stored || stored.plugin !== permission.plugin || stored.targetKind !== permission.target) {
       return yield* Effect.die(
         new Error(
           `permission ${permission.code} conflicts with its stored row; changed ownership or ` +
@@ -99,7 +91,7 @@ export const make = Effect.fn('Rbac.make')(function* () {
         ),
       )
     }
-    yield* database.execute(refreshPermissionTextQuery(permission)).pipe(Effect.orDie)
+    yield* refreshPermissionText(em, permission).pipe(Effect.orDie)
     catalog.set(permission.code, permission)
   }
 
