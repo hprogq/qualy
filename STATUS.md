@@ -1144,3 +1144,46 @@ AggregateError,否则原始失败不会被清理失败盖掉。
 `src/manifest.ts`(config.ts 静态 import 了三个由清单派生的生成物)。
 
 生成器只报写了什么。九行 `unchanged, skipped` 只说明「codegen 跑过」,而调用方本来就知道。
+
+### 能力边界实测:核心解耦成立,组合根不成立
+
+`scripts/tests/capability-boundary.test.ts`(四例)把两条一直没人验的断言钉住了:
+
+1. **没有 database 的装配**:`providers` 空、`capabilityWork` 空(不是「跑了但没做事」)、
+   `capabilityModules` 空,lock 的 `capabilities` 为 `{}` 且整份 lock 的 JSON 不含
+   database/entities/migration 任何字样。
+2. **第二个能力**:现写一个 `cache` provider(真 provider 的形状),与 database 并存 ——
+   各自解析、各占 lock 一段、互相看不见对方 state,两个生成模块各生成各的;每个 provider
+   每阶段跑一次;命令只到自己的 provider;没实现的阶段报「没跑」而不是「跑完」。
+
+阶段 1.5 那次「无 database 实测」是 cordis 时代的,现在有测试守着了。
+
+**但组合根启动不了**。静态 Effect 运行时下,`apps/server/src/{runtime,config,health}.ts` 无条件
+点名五处插件导入,而 `entities.gen.ts` 只在 database 能力存在时才生成。
+
+根因不是「忘了解耦」,是**清单里的每插件 `config` 在 Effect 运行时下没有通往插件的路径**:
+cordis 时代 loader 把 config 交给插件,现在没有 loader,于是宿主手写代码替每个插件读了配置
+(`databaseConfigLayer` / `authConfigLayer` / `webConfigLayer` / `uiCatalogLayer`),
+点名因此不可避免。
+
+#### 下一阶段:让插件自己收配置
+
+1. **声明**:插件 package.json 加 `qualy.runtime.config: true`(声明不探测,与能力同规矩)。
+2. **生成器**:`renderRuntimeModule` 对声明了的插件 emit
+   `import { configLayer as X } from '<entry>'` 与 `X(<该插件的清单 config>)`,汇成
+   `export const pluginConfig`,provide 给 `pluginLayers`。~25 行,加 metadata 一个字段。
+3. **插件侧**:四个 config layer 的函数体从 `apps/server/src/config.ts` 搬进各自插件。
+   auth / web / ui-registry 三个只读环境变量,直接搬;database 还要 `migrationsFolder`,
+   它来自清单 —— 由生成器作为参数传入,这正是第 2 步存在的理由。
+4. **`Entities`**:由 database 能力的生成模块导出 layer(`modules()` 已经在生成
+   `entities.gen.ts`),生成器合并「能力模块导出的 layer」。这是**第二套机制**,与第 2 步不同,
+   不要混做。
+5. **`ping`**:就绪探针改为插件注册,`health.ts` 不再点名 database。
+6. **验收**:能力边界测试加一例 —— 无 database 的装配 `renderRuntimeModule` 产出不含
+   database,且组合根编译通过。
+
+**清单 config 进被提交的生成文件安全**:`databaseWork` 已经硬拒 `config.url` 并指明
+「连接串放环境变量,清单是提交物」,所以清单 config 按规则就是非密的。这条门禁已经存在。
+
+**为什么不在本次会话开工**:这是五个文件的机制改动加两套新机制,当前上下文余量不够把它做完
+并逐条验证。下次单开一次会话,按上面 1→6 的顺序,每步一个绿提交。
