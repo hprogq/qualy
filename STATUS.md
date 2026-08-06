@@ -914,3 +914,30 @@ auth 还剩两条 drizzle 语句(`iam/queries.ts`,63 行),都读 rbac 的表 —
 不在 auth 的实体闭包里,**也不应该在**。它们该是 rbac 服务上的端口,随 rbac 迁移一起做。
 
 测试侧:org 与 rbac 的 harness 现在都要传完整实体闭包,否则 ORM 不知道 `User` 对应哪张表。
+
+### rbac 的授权内核已切(最难的一块)
+
+`rbac/src/server/authorization.ts`(新):`canAt` / `hasTenantPermission` / `authorizedScope` /
+`effectiveRows` / `reachAt` / `explainRows`,加上它们共用的三个片段
+(`reachesEveryNode` / `carries` / `rolePermits` / `reaches`)。判定与解释仍然同源。
+
+**发现并消掉一处已存在的重复**:「这个人持有哪些授权」原先写了两遍 —— `heldRoles()` 一份,
+`explainRowsQuery` 里的 `with held as (...)` 又一份,差别只是后者多取一个 grant id。
+现在是同一个 CTE。这正是那个文件头部注释警告的漂移,只是它自己已经发生了。
+
+**补了一条缺失的测试**:`carries` 把权限钉在注册表验证过的 plugin + target 上。
+我把这两个条件删掉,**全部测试照旧通过** —— 说明这条安全相关的约束一直没人守。
+`effect-drift.test.ts` 守的是装配期(声明与存储行不一致就拒绝启动),不是**启动之后**
+有人直接改表。新用例:先断言 canAt 为 true,`update permissions set plugin = 'not-org'`,
+再断言变成 false;删掉钉死条件它立刻红。
+
+反向验证:把 self 锚点改成按 path 匹配(那个历史事故),11 条测试红。
+
+### 测试闭包收成一处
+
+auth 的七个测试文件各写一份实体闭包,rbac 的查询开始经 ORM 命名表时,七份都要同时学会 ——
+所以收进 `auth/tests/support/closure.ts`。org 与 rbac 的 harness 同样要传完整闭包。
+生产不受影响:宿主给的是生成的聚合。
+
+**剩余**:rbac 的 37 条 CRUD 查询(roles/grants/permissions,344 行)与 org(252 行 + index 1001 行)。
+都是机械改写,没有共享片段的约束了。
