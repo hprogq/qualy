@@ -1,8 +1,5 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
-import { readManifest } from '@qualy/assembly'
+import { manifestMigrationsFolder, manifestPath } from './manifest.ts'
 import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import { LoginDrivers } from '@qualy/auth-contract/login'
@@ -19,7 +16,7 @@ import { uiSurfaces } from '../ui.gen.ts'
 // the process behaves the same wherever it was started from. That was already
 // true of the cordis entry point and is worth keeping.
 
-const appRoot = fileURLToPath(new URL('../', import.meta.url))
+export { manifestMigrationsFolder, manifestPath }
 
 export const localFallback = 'postgres://qualy:qualy@localhost:5432/qualy'
 
@@ -34,46 +31,6 @@ export class ServerConfig extends Context.Service<ServerConfig, { readonly port:
       })
     }),
   )
-}
-
-/**
- * The manifest this process was started with, the same one main.ts verifies.
- *
- * Found by walking up from this package rather than named at a fixed depth,
- * because the two layouts put it in different places: in this repository it
- * sits at the root, beside the apps it configures, while a standalone
- * deployment has it next to the host and its node_modules. Walking up answers
- * both, and QUALY_CONFIG overrides it outright.
- */
-export const manifestPath = (): string => {
-  if (process.env.QUALY_CONFIG) return path.resolve(process.env.QUALY_CONFIG)
-  let dir = appRoot
-  for (;;) {
-    const candidate = path.join(dir, 'qualy.yml')
-    if (fs.existsSync(candidate)) return candidate
-    const parent = path.dirname(dir)
-    if (parent === dir) {
-      throw new Error(
-        `no qualy.yml found in ${appRoot} or any directory above it; set QUALY_CONFIG to name one`,
-      )
-    }
-    dir = parent
-  }
-}
-
-/**
- * Where the lineage lives, as the manifest declares it.
- *
- * The path is relative to the manifest rather than to the working directory,
- * which is what lets `qualy generate` and this process agree from anywhere.
- */
-export const manifestMigrationsFolder = (): string => {
-  const file = manifestPath()
-  const declared = (readManifest(file).plugins.get('@qualy/plugin-database')?.config ?? {}) as {
-    migrationsFolder?: string
-  }
-  const folder = declared.migrationsFolder ?? 'db/migrations'
-  return path.isAbsolute(folder) ? folder : path.resolve(path.dirname(file), folder)
 }
 
 /**

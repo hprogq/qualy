@@ -169,13 +169,35 @@ export async function structuralDiff(
 ): Promise<StructuralDiff> {
   const entities = modules.flatMap((module) => [...module.entities])
   const lineage = await scratchDatabase(work.url, 'lineage')
-  const declared = await scratchDatabase(work.url, 'declared')
-  const failures: unknown[] = []
   try {
     await runMigrations(lineage.url, { folder: work.migrations, entities })
+    return await diffAgainstDeclared(lineage.url, work.url, modules, baseline)
+  } finally {
+    await lineage.drop()
+  }
+}
 
+/**
+ * What one database is missing to be the schema this assembly declares.
+ *
+ * The subject can be any database - a scratch one with the lineage applied,
+ * which is what generation asks about, or a real one somebody wants to know
+ * about. The declared side is built the way a fresh install gets it, in a
+ * scratch database of its own.
+ */
+export async function diffAgainstDeclared(
+  subjectUrl: string,
+  adminUrl: string,
+  modules: readonly EntityModule[],
+  baseline: readonly BaselineFragment[],
+): Promise<StructuralDiff> {
+  const entities = modules.flatMap((module) => [...module.entities])
+  const declared = await scratchDatabase(adminUrl, 'declared')
+  const failures: unknown[] = []
+  let outcome: StructuralDiff | undefined
+  try {
     const declaredOrm = await open(declared.url, entities)
-    const lineageOrm = await open(lineage.url, entities)
+    const lineageOrm = await open(subjectUrl, entities)
     try {
       const phase = (want: BaselineFragment['phase']) =>
         baseline.filter((fragment) => fragment.phase === want)
@@ -202,20 +224,22 @@ export async function structuralDiff(
       // guard would then have to be taught to ignore, in the one place whose
       // whole job is to make a drop deliberate.
       const forward = comparator.compare(from, to)
-      return {
+      outcome = {
         up: splitStatements(
           lineageOrm.schema.diffToSQL(forward, { wrap: false, safe: false, dropTables: true }),
         ),
       }
+      return outcome
     } finally {
       await declaredOrm.close()
       await lineageOrm.close()
     }
   } finally {
-    for (const scratch of [declared, lineage]) {
-      await scratch.drop().catch((error: unknown) => failures.push(error))
-    }
-    if (failures.length > 0) {
+    await declared.drop().catch((error: unknown) => failures.push(error))
+    // Only when the body got as far as an answer. A cleanup failure raised on
+    // top of a real one replaces the cause with a symptom, and the cause is
+    // what the caller came for.
+    if (failures.length > 0 && outcome !== undefined) {
       throw new AggregateError(failures, 'could not drop a generation database')
     }
   }

@@ -99,6 +99,27 @@ export interface MigrationResult {
   elapsed: number
 }
 
+/**
+ * Records the whole lineage as applied, without running any of it.
+ *
+ * For a database that already holds the schema the lineage builds but has no
+ * record of it: one that predates the ledger, or one whose lineage was
+ * squashed underneath it. The caller is responsible for having checked that
+ * the schema actually matches - this only writes the ledger, and writing it
+ * over a database that does not match hides the mismatch instead of fixing it.
+ */
+export const adoptMigrations = (url: string, options: MigrationOptions): Promise<string[]> =>
+  withMigrator(url, options, async (migrator) => {
+    const storage = migrator.getStorage()
+    await storage.ensureTable()
+    const executed = new Set(await storage.executed())
+    const pending = migrationsIn(options.folder).filter((entry) => !executed.has(entry.name))
+    for (const entry of pending) {
+      await storage.logMigration({ name: entry.name })
+    }
+    return pending.map((entry) => entry.name)
+  })
+
 /** how many committed migrations this database has not run yet */
 export const pendingMigrations = (url: string, options: MigrationOptions): Promise<number> =>
   withMigrator(url, options, async (migrator) => (await migrator.getPending()).length)

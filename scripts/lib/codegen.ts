@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { generatedPath } from './paths.ts'
+import { report } from './report.ts'
 
 /**
  * Write a generated artifact, named by its repository-relative path.
@@ -21,11 +22,10 @@ export function writeGenerated(
     '',
   ].join('\n')
   const content = banner + body.trimEnd() + '\n'
-  if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) {
-    console.log(`${relative} unchanged, skipped`)
-    return
-  }
+  // silence is the common case and the useful one: nine "unchanged" lines
+  // before every start say only that codegen ran, which the caller knows
+  if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) return
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, content)
-  console.log(`${relative} written`)
+  report(`generated ${relative}`)
 }

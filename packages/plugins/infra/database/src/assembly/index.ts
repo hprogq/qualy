@@ -7,6 +7,7 @@ import {
   type DatabaseContribution,
 } from './contribution.ts'
 import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
+import { collectBaseline } from './baseline.ts'
 import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
 import {
   assertNoCollisions,
@@ -14,9 +15,9 @@ import {
   entityContributions,
   renderEntityModule,
 } from './entities.ts'
-import { loadEntityModules } from './diff.ts'
+import { diffAgainstDeclared, loadEntityModules } from './diff.ts'
 import { blankMigration, generateDatabase, guardDestructive } from './generate.ts'
-import { runMigrations } from '../migrator.ts'
+import { adoptMigrations, runMigrations } from '../migrator.ts'
 import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 
 // Everything the assembly knows about databases lives behind this one module.
@@ -99,6 +100,36 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
       const work = databaseWork(context)
       const file = blankMigration(work.migrations, arg(context.args, 'name'))
       console.log(`database: ${path.relative(process.cwd(), file)}`)
+    },
+
+    // A database that already holds this schema but has no record of it: one
+    // that predates the ledger, or one whose lineage was squashed underneath
+    // it. Refused unless the schema actually matches, because a ledger written
+    // over a database that differs hides the difference rather than closing it.
+    adopt: async (context) => {
+      const work = databaseWork(context)
+      const modules = await loadEntityModules(work.entities)
+      const state = asState(context.state)
+      const difference = await diffAgainstDeclared(
+        work.url,
+        work.url,
+        modules,
+        collectBaseline(context, state),
+      )
+      if (difference.up.length > 0) {
+        throw new Error(
+          `database: this database is not the schema this assembly declares, so adopting the lineage would record something untrue. It differs by:\n  ${difference.up.join('\n  ')}`,
+        )
+      }
+      const adopted = await adoptMigrations(work.url, {
+        folder: work.migrations,
+        entities: modules.flatMap((module) => [...module.entities]),
+      })
+      console.log(
+        adopted.length > 0
+          ? `database: adopted ${adopted.length} migration(s): ${adopted.join(', ')}`
+          : 'database: the lineage was already recorded as applied',
+      )
     },
 
     'drop-guard': async (context) => {
