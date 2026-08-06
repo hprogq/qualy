@@ -1,9 +1,22 @@
-// The plugin's entry: the registry-and-manifest service the assembly builds,
-// and the handlers behind its api group, exported under the one name every
-// entry uses. The handlers are not folded into the layer: an api group's
-// middleware is implemented by other plugins - the viewer arrives through
-// auth's, which itself builds on this registry - so the host composes every
-// plugin's handlers above every plugin's services, where the library expects
-// middleware to be found. Peers import the registry and authorizer through
-// their own subpaths rather than through this file.
+import { Plugin } from '@qualy/plugin-kit'
+import { Api } from '@qualy/api-kit/plugin'
+import { ReactUi } from './plugin.ts'
+import { appApiGroup } from './api.ts'
+import { appApiHandlers, layer as serviceLayer } from './server/index.ts'
+
+// The registry-and-manifest plugin, as a description: it owns the surface
+// extension point, provides the registry service, and serves the manifest
+// group. Peers import the registry and authorizer through their own subpaths
+// rather than through this file.
+
+const plugin = Plugin.define(
+  '@qualy/plugin-ui-registry',
+  ReactUi.provider,
+  Plugin.layer(serviceLayer),
+  Api.group(appApiGroup, appApiHandlers),
+)
+
+export default plugin
+
+// legacy bridge until the descriptor assembler takes over the host
 export { appApiHandlers as apiHandlers, layer } from './server/index.ts'
