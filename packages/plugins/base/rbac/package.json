@@ -47,7 +47,6 @@
   "dependencies": {
     "@mikro-orm/core": "catalog:",
     "@qualy/api-client": "workspace:*",
-    "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",

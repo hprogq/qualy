@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import type { DomainErrors, ErrorDataOf, ErrorDefinitions } from '@qualy/api-contract'
 
 // the serializable text protocol between server-side plugins and the web
 // runtime: plugins never pick the display language. A MessageRef names a
@@ -116,6 +115,38 @@ export interface PluginCatalogs {
 
 // --- typed api error localization ---
 
+/**
+ * The failures a module declares, keyed by the code they travel under.
+ *
+ * Written as `ErrorsByCode<typeof import('../src/server/errors.ts')>`, so a
+ * translation table is checked against the classes themselves: a new failure
+ * is a missing key, a deleted one is an excess key, and neither can be
+ * declared anywhere else.
+ *
+ * There used to be a second table - the same codes, statuses and messages
+ * written again in zod, for the contract layer that no longer exists - and by
+ * the time it was only feeding these types it had drifted: two codes nothing
+ * could raise were still being translated into two languages.
+ *
+ * The value is the error instance, because that is what the client receives
+ * and hands to `values()`: an http error decodes back into its class, fields
+ * and all.
+ */
+export type ErrorsByCode<Module> = {
+  [Name in keyof Module as ErrorCodeOf<Module[Name]>]: ErrorPayloadOf<Module[Name]>
+}
+
+/** the tag a tagged error class carries, or never for anything else exported */
+type ErrorCodeOf<Exported> = Exported extends abstract new (...args: never[]) => {
+  readonly _tag: infer Code extends string
+}
+  ? Code
+  : never
+
+type ErrorPayloadOf<Exported> = Exported extends abstract new (...args: never[]) => infer Instance
+  ? Instance
+  : never
+
 // values() receives the data of its own code, never `unknown`
 export interface ErrorMessageRegistration<Data = unknown> {
   message: MessageDescriptor
@@ -151,12 +182,12 @@ export type ErrorTranslation<Data> =
 // pinned to that message's declared placeholders. A single-pass parameter
 // cannot express this — an object literal has no way to say "my values
 // returns whatever my sibling message declares".
-type CheckedTranslations<Table, Defs extends ErrorDefinitions> = {
-  [Code in keyof Table]: Code extends keyof Defs & string
+type CheckedTranslations<Table, Errors> = {
+  [Code in keyof Table]: Code extends keyof Errors
     ? Table[Code] extends { message: infer Message extends MessageDescriptor }
-      ? ValuedErrorTranslation<ErrorDataOf<Defs[Code]>, Message>
+      ? ValuedErrorTranslation<Errors[Code], Message>
       : Table[Code]
-    : // a code the definitions never declare has no valid translation
+    : // a code nothing can raise has no valid translation
       never
 }
 
@@ -165,32 +196,34 @@ export interface ErrorTranslationSet {
   descriptors: Record<string, MessageDescriptor>
 }
 
-// translations for a domain error set: every code must be translated, a
-// code outside the definitions is rejected by excess property checking, and
-// each values() receives exactly the data its definition's zod schema
-// declares — all inferred from the dsl value, no contract type inference.
-// The parameter is the mapped type itself (not an inferred subtype): that
-// is what gives values(data) its contextual type and makes extra keys fail.
-export function defineErrorTranslations<
-  Defs extends ErrorDefinitions,
-  const Table extends { [Code in keyof Defs & string]: ErrorTranslation<ErrorDataOf<Defs[Code]>> },
->(
-  errors: DomainErrors<Defs>,
-  translations: Table & CheckedTranslations<Table, Defs>,
-): ErrorTranslationSet {
-  void errors
-  const registry: Record<string, ErrorMessageRegistration<never>> = {}
-  const descriptors: Record<string, MessageDescriptor> = {}
-  for (const [code, entry] of Object.entries(translations)) {
-    const registration =
-      'message' in entry && typeof entry.message === 'object'
-        ? (entry as { message: MessageDescriptor; values: (data: never) => MessageValues })
-        : { message: entry as MessageDescriptor }
-    registry[code] = registration as ErrorMessageRegistration<never>
-    descriptors[code] = registration.message
+// translations for one module's failures: every code must be translated, a
+// code the module cannot raise is rejected by excess property checking, and
+// each values() receives exactly the error it belongs to. The parameter is
+// the mapped type itself (not an inferred subtype): that is what gives
+// values(data) its contextual type and makes extra keys fail.
+//
+// Curried because the error set is named rather than passed. The classes live
+// in a server module, and the browser needs nothing from it but the types -
+// `import type` costs no bytes, while a value parameter would have pulled the
+// whole module into the bundle to be read once and discarded.
+export const defineErrorTranslations =
+  <Errors>() =>
+  <const Table extends { [Code in keyof Errors]: ErrorTranslation<Errors[Code]> }>(
+    translations: Table & CheckedTranslations<Table, Errors>,
+  ): ErrorTranslationSet => {
+    const registry: Record<string, ErrorMessageRegistration<never>> = {}
+    const descriptors: Record<string, MessageDescriptor> = {}
+    const entries = Object.entries(translations) as [string, ErrorTranslation<unknown>][]
+    for (const [code, entry] of entries) {
+      const registration =
+        'message' in entry && typeof entry.message === 'object'
+          ? (entry as { message: MessageDescriptor; values: (data: never) => MessageValues })
+          : { message: entry as MessageDescriptor }
+      registry[code] = registration as ErrorMessageRegistration<never>
+      descriptors[code] = registration.message
+    }
+    return { registry, descriptors }
   }
-  return { registry, descriptors }
-}
 
 // a plugin may translate errors from more than one declaration set — its own
 // and a shared invariant it can raise — and definePluginMessages takes one
@@ -255,14 +288,12 @@ export function definePluginMessages<
   }
 }
 
-// codes owned by the runtime; a plugin may localize its own codes only
+// codes owned by the runtime; a plugin localizes its own codes only
 export const commonErrorCodes = [
   'AUTH_REQUIRED',
   'SESSION_EXPIRED',
-  'FORBIDDEN',
-  'NOT_FOUND',
-  'INPUT_VALIDATION_FAILED',
-  'INTERNAL_SERVER_ERROR',
+  'ACCESS_DENIED',
+  'BAD_REQUEST',
 ] as const
 
 export type CommonErrorCode = (typeof commonErrorCodes)[number]

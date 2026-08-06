@@ -74,7 +74,13 @@ export function AsyncSection({
   return <>{children}</>
 }
 
-export function Feedback({ message, tone = 'error' }: { message?: string | null; tone?: 'error' | 'success' }) {
+export function Feedback({
+  message,
+  tone = 'error',
+}: {
+  message?: string | null
+  tone?: 'error' | 'success'
+}) {
   if (!message) return null
   return (
     <Alert variant={tone === 'error' ? 'destructive' : 'default'} role="alert">

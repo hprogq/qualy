@@ -31,12 +31,7 @@ const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
 // org, auth and rbac are one selection, not three: they contribute codes to
 // the permissions capability rbac provides, and rbac's tables reference
 // auth's, so any of them alone is an assembly resolution refuses
-const WITH_TABLES = [
-  ...INFRA,
-  '@qualy/plugin-org',
-  '@qualy/plugin-auth',
-  '@qualy/plugin-rbac',
-]
+const WITH_TABLES = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac']
 
 const resolve = (manifestPath: string) =>
   resolveAssembly({ manifestPath, previousLock: readLock(lockPathFor(manifestPath)) })

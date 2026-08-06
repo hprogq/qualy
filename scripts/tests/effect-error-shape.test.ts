@@ -50,6 +50,6 @@ describe('error schemas in the generated document', () => {
     const codes = Object.values(document().components.schemas)
       .flatMap((schema) => schema.properties?._tag?.enum ?? [])
       .filter((code) => !/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code))
-    expect(codes, 'a domain error code is upper snake, as defineDomainErrors requires').toEqual([])
+    expect(codes, 'a wire code is upper snake, which is how a client recognizes one').toEqual([])
   })
 })

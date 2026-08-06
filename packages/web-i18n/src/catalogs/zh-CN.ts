@@ -10,10 +10,8 @@ const runtimeMessages = {
   unexpected: unexpectedErrorMessage,
   authRequired: commonErrorMessages.AUTH_REQUIRED.message,
   sessionExpired: commonErrorMessages.SESSION_EXPIRED.message,
-  forbidden: commonErrorMessages.FORBIDDEN.message,
-  notFound: commonErrorMessages.NOT_FOUND.message,
-  invalidInput: commonErrorMessages.INPUT_VALIDATION_FAILED.message,
-  internal: commonErrorMessages.INTERNAL_SERVER_ERROR.message,
+  accessDenied: commonErrorMessages.ACCESS_DENIED.message,
+  badRequest: commonErrorMessages.BAD_REQUEST.message,
 } as const
 
 // common/* messages: shared shell copy and transport-level api errors.
@@ -25,10 +23,8 @@ export default {
   'common/action/go-home': '回到首页',
   'common/error/auth-required': '请先登录。',
   'common/error/session-expired': '登录状态已过期，请重新登录。',
-  'common/error/forbidden': '你没有执行该操作的权限。',
-  'common/error/not-found': '未找到请求的内容。',
-  'common/error/invalid-input': '输入内容有误。',
-  'common/error/internal': '服务端出现异常。',
+  'common/error/access-denied': '你没有执行该操作的权限。',
+  'common/error/bad-request': '输入内容有误。',
   'common/error/network': '无法连接服务器，请检查网络后重试。',
   'common/error/unexpected': '操作失败，请重试。',
   'common/state/loading': '加载中',

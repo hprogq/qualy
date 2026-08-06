@@ -34,9 +34,7 @@ export function UserTypeEditor({
   const [name, setName] = useState(userType.name)
   const [description, setDescription] = useState(userType.description ?? '')
   const [channels, setChannels] = useState<string[]>([])
-  const [unrestricted, setUnrestricted] = useState(
-    userType.placementPolicy.mode === 'unrestricted',
-  )
+  const [unrestricted, setUnrestricted] = useState(userType.placementPolicy.mode === 'unrestricted')
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>(
     userType.placementPolicy.mode === 'allow-list' ? [...userType.placementPolicy.orgTypeIds] : [],
   )
@@ -60,7 +58,9 @@ export function UserTypeEditor({
   useEffect(() => {
     setUnrestricted(userType.placementPolicy.mode === 'unrestricted')
     setOrgTypeIds(
-      userType.placementPolicy.mode === 'allow-list' ? [...userType.placementPolicy.orgTypeIds] : [],
+      userType.placementPolicy.mode === 'allow-list'
+        ? [...userType.placementPolicy.orgTypeIds]
+        : [],
     )
   }, [userType])
 
@@ -141,9 +141,7 @@ export function UserTypeEditor({
               // a populated type cannot be disabled at all: the api refuses
               // it, so offering the button would only produce an error
               disabled={setStatus.isPending || (userType.status === 'active' && populated)}
-              onClick={() =>
-                setStatus.mutate(userType.status === 'active' ? 'disabled' : 'active')
-              }
+              onClick={() => setStatus.mutate(userType.status === 'active' ? 'disabled' : 'active')}
             >
               {format(userType.status === 'active' ? m.disable : m.enable)}
             </Button>
@@ -226,44 +224,44 @@ export function UserTypeEditor({
             <p className="text-sm">{format(m.placementTenantRoot)}</p>
           ) : (
             <>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={unrestricted}
-              disabled={!canManage || userType.isSystem}
-              onChange={(event) => setUnrestricted(event.target.checked)}
-            />
-            {format(m.placementUnrestricted)}
-          </label>
-          {!unrestricted && (
-            <CheckboxGroup
-              legend={format(m.allowedOrgTypesLegend)}
-              emptyLabel={format(m.noOptions)}
-              disabled={!canManage || userType.isSystem}
-              options={(catalog.data?.orgTypes ?? []).map((type) => ({
-                value: type.id,
-                label: type.name,
-                hint: type.code,
-              }))}
-              selected={orgTypeIds}
-              onChange={setOrgTypeIds}
-            />
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            // an allow-list naming nothing is not a policy, and the api says
-            // so; the button says so first
-            disabled={
-              !canManage ||
-              userType.isSystem ||
-              savePlacement.isPending ||
-              (!unrestricted && orgTypeIds.length === 0)
-            }
-            onClick={() => savePlacement.mutate(undefined as never)}
-          >
-            {format(m.save)}
-          </Button>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={unrestricted}
+                  disabled={!canManage || userType.isSystem}
+                  onChange={(event) => setUnrestricted(event.target.checked)}
+                />
+                {format(m.placementUnrestricted)}
+              </label>
+              {!unrestricted && (
+                <CheckboxGroup
+                  legend={format(m.allowedOrgTypesLegend)}
+                  emptyLabel={format(m.noOptions)}
+                  disabled={!canManage || userType.isSystem}
+                  options={(catalog.data?.orgTypes ?? []).map((type) => ({
+                    value: type.id,
+                    label: type.name,
+                    hint: type.code,
+                  }))}
+                  selected={orgTypeIds}
+                  onChange={setOrgTypeIds}
+                />
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                // an allow-list naming nothing is not a policy, and the api says
+                // so; the button says so first
+                disabled={
+                  !canManage ||
+                  userType.isSystem ||
+                  savePlacement.isPending ||
+                  (!unrestricted && orgTypeIds.length === 0)
+                }
+                onClick={() => savePlacement.mutate(undefined as never)}
+              >
+                {format(m.save)}
+              </Button>
             </>
           )}
         </div>

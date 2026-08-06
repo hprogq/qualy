@@ -1,5 +1,10 @@
-import { defineErrorTranslations, defineMessage, definePluginMessages } from '@qualy/i18n-contract'
-import { iamErrors } from '../src/iam/errors.ts'
+import {
+  defineErrorTranslations,
+  defineMessage,
+  definePluginMessages,
+  type ErrorsByCode,
+} from '@qualy/i18n-contract'
+import type * as authErrors from '../src/server/errors.ts'
 import { iamMessages as navLabels } from '../src/iam/messages.ts'
 
 // the interpolating messages declare their placeholders
@@ -182,7 +187,7 @@ const i18n = definePluginMessages({
     },
     userCount: userCountMessage,
   },
-  errors: defineErrorTranslations(iamErrors, {
+  errors: defineErrorTranslations<ErrorsByCode<typeof authErrors>>()({
     USER_TYPE_NOT_FOUND: {
       id: 'auth/error/user-type-not-found',
       defaultMessage: 'User type not found.',
@@ -231,10 +236,6 @@ const i18n = definePluginMessages({
     USER_CONFLICT: {
       id: 'auth/error/user-conflict',
       defaultMessage: 'That business number is already taken.',
-    },
-    IDENTITY_CONFLICT: {
-      id: 'auth/error/identity-conflict',
-      defaultMessage: 'That sign-in name is already taken.',
     },
     USER_PLACEMENT_NOT_FOUND: {
       id: 'auth/error/user-placement-not-found',

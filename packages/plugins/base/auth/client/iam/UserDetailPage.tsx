@@ -1,12 +1,7 @@
 import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import {
-  PageLink,
-  useApi, useRunApi,
-  useApiQuery,
-  usePageRouteParams,
-} from '@qualy/web-runtime'
+import { PageLink, useApi, useRunApi, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
@@ -66,14 +61,28 @@ export default function UserDetailPage() {
 
   const saveProfile = useMutation(
     run(() =>
-      api.identity.updateUser({ params: { userId }, payload: { displayName, userTypeId, businessNo: businessNo.trim() === '' ? undefined : businessNo.trim() } }),
+      api.identity.updateUser({
+        params: { userId },
+        payload: {
+          displayName,
+          userTypeId,
+          businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
+        },
+      }),
     ),
   )
   const transfer = useMutation(
-    run(() => api.identity.setUserPlacement({ params: { userId }, payload: { primaryOrgNodeId: placement } })),
+    run(() =>
+      api.identity.setUserPlacement({
+        params: { userId },
+        payload: { primaryOrgNodeId: placement },
+      }),
+    ),
   )
   const setStatus = useMutation({
-    ...run((status: 'active' | 'disabled') => api.identity.setUserStatus({ params: { userId }, payload: { status } })),
+    ...run((status: 'active' | 'disabled') =>
+      api.identity.setUserStatus({ params: { userId }, payload: { status } }),
+    ),
     onSuccess: async () => {
       setConfirmingDisable(false)
       setSaved(true)
@@ -193,9 +202,7 @@ export default function UserDetailPage() {
                       disabled={!manageable}
                       onChange={(event) => setPlacement(event.target.value)}
                     >
-                      <option value={record.primaryOrgNode.id}>
-                        {record.primaryOrgNode.name}
-                      </option>
+                      <option value={record.primaryOrgNode.id}>{record.primaryOrgNode.name}</option>
                       {nodes
                         .filter(
                           (entry) =>

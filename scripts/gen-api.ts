@@ -49,7 +49,9 @@ for (const entry of await readEntries({ all: false })) {
   if (!api) continue
   const runtimeEntry = pkg.qualy?.runtime?.entry
   if (!runtimeEntry) {
-    throw new Error(`${entry.name} declares qualy.runtime.api but no qualy.runtime.entry to implement it`)
+    throw new Error(
+      `${entry.name} declares qualy.runtime.api but no qualy.runtime.entry to implement it`,
+    )
   }
   if (!apiDeps.has(entry.name)) {
     throw new Error(

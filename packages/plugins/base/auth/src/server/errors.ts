@@ -1,10 +1,12 @@
 import { Schema } from 'effect'
 
-// The identity failures, with the codes the client already translates.
+// The identity failures.
 //
-// Every code and status here matches src/iam/errors.ts, which the oRPC side
-// declares and the client catalog is keyed by; the parity gate checks that
-// rather than trusting it.
+// These classes are the only declaration of them: the code, the status and the
+// fields all live here, and the client's translation table is typed from this
+// module, so a code it cannot raise cannot be translated. There used to be a
+// second table saying the same things in zod, for the contract layer this
+// replaced, and it had drifted by the time it was deleted.
 
 export class UserTypeNotFound extends Schema.TaggedErrorClass<UserTypeNotFound>()(
   'USER_TYPE_NOT_FOUND',

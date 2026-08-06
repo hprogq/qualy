@@ -52,9 +52,7 @@ export default function UserMenu() {
           // a failed request leaves the identity intact and must say so
           // instead of pretending to have signed the user out
           void run(api.auth.endSession())
-            .then(() =>
-              endSession({ destination: { kind: 'page', page: loginPage } }),
-            )
+            .then(() => endSession({ destination: { kind: 'page', page: loginPage } }))
             .catch((error: unknown) => setSignOutError(formatError(error)))
         }}
       >

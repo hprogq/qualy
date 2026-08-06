@@ -92,11 +92,10 @@ export function resolveInitialLocale(): SupportedLocale {
 }
 
 // the runtime's own catalogs (common/*), shipped with this package
-const commonCatalogs: Partial<
-  Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>
-> = {
-  'zh-CN': () => import('./catalogs/zh-CN.ts'),
-}
+const commonCatalogs: Partial<Record<SupportedLocale, () => Promise<{ default: MessageCatalog }>>> =
+  {
+    'zh-CN': () => import('./catalogs/zh-CN.ts'),
+  }
 
 // namespaces never overlap (a test enforces that), so a flat merge is
 // enough; a missing catalog is normal because english lives in the
@@ -189,7 +188,11 @@ export function I18nProvider({
           ? text.value
           : format({ id: text.id, defaultMessage: text.defaultMessage }),
       formatError: (error: unknown, registry?: ErrorMessageMap) =>
-        formatApiError(error, { format }, registry ? { ...errorMessages, ...registry } : errorMessages),
+        formatApiError(
+          error,
+          { format },
+          registry ? { ...errorMessages, ...registry } : errorMessages,
+        ),
     }
     // `activated` is not read but ties the memo to the active catalog, so
     // every consumer re-renders after a locale switch

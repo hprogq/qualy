@@ -31,7 +31,6 @@ export default {
   'org/error/rule-not-found': '未找到该层级规则。',
   'org/error/node-not-found': '未找到该组织节点。',
   'org/error/type-conflict': '同名或同 code 的组织类型已存在。',
-  'org/error/rule-conflict': '该层级规则已存在。',
   'org/error/node-conflict': '同级下已存在同名或同 code 的节点。',
   'org/error/type-in-use': '该组织类型仍被引用，无法删除。',
   'org/error/rule-in-use': '已有节点依赖该规则，无法删除。',

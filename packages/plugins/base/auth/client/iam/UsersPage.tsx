@@ -35,7 +35,13 @@ export default function UsersPage() {
   }, [draft, setSearch])
 
   const users = useQuery({
-    ...orpc.identity.listUsers.queryOptions({ query: { orgNodeId: active?.orgNodeId ?? '', scope: scope === 'self' ? ('self' as const) : ('subtree' as const), search: search || undefined } }),
+    ...orpc.identity.listUsers.queryOptions({
+      query: {
+        orgNodeId: active?.orgNodeId ?? '',
+        scope: scope === 'self' ? ('self' as const) : ('subtree' as const),
+        search: search || undefined,
+      },
+    }),
     enabled: active !== undefined,
   })
 

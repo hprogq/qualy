@@ -69,7 +69,8 @@ export default function OrgPage() {
     return map
   }, [nodes, byId, rootIds])
   const types = typesQuery.data?.types ?? []
-  const typeName = (id: string) => types.find((type) => type.id === id)?.name ?? format(m.unknownType)
+  const typeName = (id: string) =>
+    types.find((type) => type.id === id)?.name ?? format(m.unknownType)
   const selected = selectedId ? byId.get(selectedId) : undefined
   const rootManageable = nodes.some((node) => !node.parentId && node.manageable)
 
@@ -157,12 +158,7 @@ export default function OrgPage() {
         </div>
       </div>
       {rootManageable && (
-        <TypeRuleAdmin
-          types={types}
-          rules={rulesQuery.data.rules}
-          api={api}
-          onAction={run}
-        />
+        <TypeRuleAdmin types={types} rules={rulesQuery.data.rules} api={api} onAction={run} />
       )}
     </div>
   )
@@ -214,9 +210,7 @@ function NodePanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!node.manageable && (
-          <p className="text-sm text-muted-foreground">{format(m.readOnly)}</p>
-        )}
+        {!node.manageable && <p className="text-sm text-muted-foreground">{format(m.readOnly)}</p>}
         {node.manageable && (
           <>
             <div className="space-y-2">
@@ -230,7 +224,11 @@ function NodePanel({
                 <Button
                   size="sm"
                   disabled={name.trim() === '' || name === node.name}
-                  onClick={() => void onAction(api.org.updateNode({ params: { nodeId: node.id }, payload: { name } }))}
+                  onClick={() =>
+                    void onAction(
+                      api.org.updateNode({ params: { nodeId: node.id }, payload: { name } }),
+                    )
+                  }
                 >
                   {format(m.rename)}
                 </Button>
@@ -255,7 +253,12 @@ function NodePanel({
                   variant="outline"
                   disabled={newTypeId === node.orgTypeId}
                   onClick={() =>
-                    void onAction(api.org.changeNodeType({ params: { nodeId: node.id }, payload: { orgTypeId: newTypeId } }))
+                    void onAction(
+                      api.org.changeNodeType({
+                        params: { nodeId: node.id },
+                        payload: { orgTypeId: newTypeId },
+                      }),
+                    )
                   }
                 >
                   {format(m.changeType)}
@@ -291,8 +294,7 @@ function NodePanel({
                       api.org.createNode({
                         payload: { parentId: node.id, orgTypeId: childTypeId, name: childName },
                       }),
-                    ).then(() => setChildName(''),
-                    )
+                    ).then(() => setChildName(''))
                   }
                 >
                   {format(m.create)}
@@ -321,7 +323,10 @@ function NodePanel({
                     disabled={moveTargetId === ''}
                     onClick={() =>
                       void onAction(
-                        api.org.setNodePlacement({ params: { nodeId: node.id }, payload: { parentId: moveTargetId } }),
+                        api.org.setNodePlacement({
+                          params: { nodeId: node.id },
+                          payload: { parentId: moveTargetId },
+                        }),
                       )
                     }
                   >
@@ -437,7 +442,9 @@ function TypeRuleAdmin({
                   variant="ghost"
                   onClick={() =>
                     void onAction(
-                      api.org.deleteRule({ params: { parentTypeId: rule.parentTypeId, childTypeId: rule.childTypeId } }),
+                      api.org.deleteRule({
+                        params: { parentTypeId: rule.parentTypeId, childTypeId: rule.childTypeId },
+                      }),
                     )
                   }
                 >

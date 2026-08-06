@@ -1380,3 +1380,40 @@ structuralDiff、diffAgainstDeclared、schemaParity。五条纯逻辑用例。
 **API 实查教训**:我按记忆写了 `Cause.failures(...)`,不存在。v4 beta.103 的 API 是
 `Cause.findErrorOption` / `findError`(Result)/ `hasFails`,见
 repos/effect/packages/effect/src/Cause.ts:761-840。
+
+### 审计第 2、3 条:错误定义收成一份,并把守门人重新装上
+
+审计说「两个事实源已经漂移」,提议合成一份中立描述表让两侧派生。**实际做法是删掉一份**,因为查完
+之后发现 zod 那份**在运行时已经没有任何调用者**:oRPC 全仓零引用,`orgErrors.create()` 之类一次都
+没有,`defineErrorTranslations(errors, table)` 里那个参数是 `void errors`(只用类型)。所以它只是
+在给前端翻译表提供类型。
+
+于是:`ErrorsByCode<typeof import('.../server/errors.ts')>` 从 Effect 的 TaggedErrorClass 直接推出
+「码 → 错误实例」,`defineErrorTranslations` 改柯里化(错误集只作类型参数,前端 `import type *`,
+**零字节进 bundle**——传值会把整个 server 模块拉进浏览器)。删掉 5 个 zod 表和整个
+`@qualy/api-contract` 包(8 个 package.json 的依赖条目一并清理)。
+
+**漂移实录**(现在是编译错误):`ORG_RULE_CONFLICT`(幂等 PUT 之后已不存在)与 `IDENTITY_CONFLICT`
+翻成了两种语言而没有任何东西能抛它们。
+
+**第 3 条门禁** `scripts/tests/error-codes.test.ts` 七条:自身完整性(扫全仓 `TaggedErrorClass<`,
+文件不在清单里就失败)、全局唯一(旧的唯一性检查随 gen-plugins 的 oRPC 聚合一起没了)、
+`^[A-Z][A-Z0-9_]*$`、identifier + 400-599 状态、每个码恰好被拥有它的一方翻译一次、不翻译不存在的码、
+公共表只留能被抛出的码。
+
+**门禁一上就抓到四条真问题**:①`ACCESS_DENIED` 与 `BAD_REQUEST` 前端根本没有翻译(浏览器一直在
+显示后端英文句子);②公共表里 `FORBIDDEN` / `NOT_FOUND` / `INPUT_VALIDATION_FAILED` /
+`INTERNAL_SERVER_ERROR` 四条**没有任何东西会抛**——它们是 oRPC 边界的产物,那层边界已经不存在了;
+③`asApiError` 的 tagged 分支**丢掉了 message**,所以未翻译的码连英文兜底都拿不到,直接显示
+「操作失败,请重试」(旧的 ORPCError 分支在测试里替它遮住了这个 bug,测试夹具也还在造
+`name: 'ORPCError'` 的对象);④rbac-contract 里 `LAST_ADMINISTRATOR` 与 `ACCESS_DENIED` 归属不同
+——前者是 rbac 拥有的跨插件不变量(按 CLAUDE 的规则由拥有规则的插件翻译),后者人人都能抛。
+
+**没做,并给出理由**:审计第 3 条还要求「插件私有错误带领域前缀 ORG__/AUTH__/RBAC_*」。CLAUDE 的
+既有裁决是**全局唯一 + 只在跨插件同义时加前缀**(`ROLE_ORG_TYPE_NOT_FOUND` /
+`USER_TYPE_ORG_TYPE_NOT_FOUND`),两套规则不能同时为真。前缀是为了保证唯一,而唯一性现在由门禁
+直接守;真按前缀重命名要改约 55 个**线上协议码**加两份语言目录与相关测试。若要改按前缀统一,
+这是一次独立的破坏性改名,应当单独决策。
+
+**顺带**:`asApiError` 里的 ORPCError 分支删除(全仓已无 oRPC)。**遗留**:前端仍把 query utils
+变量叫 `orpc`(`useApiQuery()` 的返回值,十几个组件),纯命名残留,与本轮无关。

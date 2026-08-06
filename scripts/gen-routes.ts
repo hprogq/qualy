@@ -29,7 +29,10 @@ for (const entry of (await readEntries({ all: false })).filter((e) =>
   if (!runtimeEntry) {
     throw new Error(`${entry.name}: qualy.runtime.routes needs qualy.runtime.entry to import from`)
   }
-  const owner = entry.name.split('/').pop()!.replace(/^plugin-/, '')
+  const owner = entry.name
+    .split('/')
+    .pop()!
+    .replace(/^plugin-/, '')
   const alias = `${owner.replace(/[^a-zA-Z0-9]+(.)/g, (_m, c: string) => c.toUpperCase())}Routes`
   imports.push(
     `import { routes as ${alias} } from '${entry.name}/${runtimeEntry.replace(/^\.\//, '')}'`,

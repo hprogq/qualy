@@ -30,8 +30,11 @@ const formatterFor = (catalog: MessageCatalog, locale = 'zh-CN'): MessageFormatt
   }
 }
 
-const apiError = (code: string, extra: Record<string, unknown> = {}) =>
-  Object.assign(new Error('backend fallback message'), { name: 'ORPCError', code, ...extra })
+// what an http api error decodes back into: the tagged class itself, its
+// fields on the instance, and the english message the server sends for
+// clients that do not localize
+const apiError = (code: string, fields: Record<string, unknown> = {}) =>
+  Object.assign(new Error('backend fallback message'), { _tag: code, ...fields })
 
 describe('web i18n runtime', () => {
   it('translates through the catalog and falls back to the english default', () => {
@@ -63,21 +66,21 @@ describe('web i18n runtime', () => {
       formatter.format(networkErrorMessage),
     )
     // common codes are owned by the runtime
-    expect(formatApiError(apiError('FORBIDDEN'), formatter)).toBe('你没有执行该操作的权限。')
+    expect(formatApiError(apiError('ACCESS_DENIED'), formatter)).toBe('你没有执行该操作的权限。')
     // a plugin registry wins over the common map and projects typed data
     const registry = {
       DEMO_INCOMPATIBLE: {
         message: { id: 'demo/error/incompatible', defaultMessage: '{count} blocked' },
         values: (data: unknown) => ({ count: (data as { count: number }).count }),
       },
-      FORBIDDEN: {
-        message: { id: 'demo/error/forbidden', defaultMessage: 'Plugin says no' },
+      ACCESS_DENIED: {
+        message: { id: 'demo/error/access-denied', defaultMessage: 'Plugin says no' },
       },
     }
-    expect(
-      formatApiError(apiError('DEMO_INCOMPATIBLE', { data: { count: 3 } }), formatter, registry),
-    ).toBe('3 blocked')
-    expect(formatApiError(apiError('FORBIDDEN'), formatter, registry)).toBe('Plugin says no')
+    expect(formatApiError(apiError('DEMO_INCOMPATIBLE', { count: 3 }), formatter, registry)).toBe(
+      '3 blocked',
+    )
+    expect(formatApiError(apiError('ACCESS_DENIED'), formatter, registry)).toBe('Plugin says no')
     // an unmapped code degrades to the backend english message
     expect(formatApiError(apiError('SOMETHING_NEW'), formatter, registry)).toBe(
       'backend fallback message',

@@ -1,5 +1,9 @@
-import { defineErrorTranslations, definePluginMessages } from '@qualy/i18n-contract'
-import { authLocalErrors } from '../src/errors.ts'
+import {
+  defineErrorTranslations,
+  definePluginMessages,
+  type ErrorsByCode,
+} from '@qualy/i18n-contract'
+import type * as authLocalErrors from '../src/api.ts'
 
 const i18n = definePluginMessages({
   namespace: 'auth-local',
@@ -9,7 +13,7 @@ const i18n = definePluginMessages({
     submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },
     submitting: { id: 'auth-local/action/submitting', defaultMessage: 'Signing in…' },
   },
-  errors: defineErrorTranslations(authLocalErrors, {
+  errors: defineErrorTranslations<ErrorsByCode<typeof authLocalErrors>>()({
     INVALID_CREDENTIALS: {
       id: 'auth-local/error/invalid-credentials',
       defaultMessage: 'Incorrect username or password.',

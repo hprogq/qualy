@@ -27,9 +27,20 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
   const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
 
   const create = useMutation({
-    mutationFn: () => run(api.identity.createUserType({ payload: { code, name, allowLocalLogin: channels.includes('local'), allowSsoLogin: channels.includes('sso'), placementPolicy: unrestricted
-          ? { mode: 'unrestricted' }
-          : { mode: 'allow-list', orgTypeIds } } })),
+    mutationFn: () =>
+      run(
+        api.identity.createUserType({
+          payload: {
+            code,
+            name,
+            allowLocalLogin: channels.includes('local'),
+            allowSsoLogin: channels.includes('sso'),
+            placementPolicy: unrestricted
+              ? { mode: 'unrestricted' }
+              : { mode: 'allow-list', orgTypeIds },
+          },
+        }),
+      ),
     onMutate: () => setFeedback(null),
     onSuccess: async (result) => {
       setCode('')

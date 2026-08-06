@@ -1,5 +1,10 @@
-import { defineErrorTranslations, defineMessage, definePluginMessages } from '@qualy/i18n-contract'
-import { orgErrors } from '../src/errors.ts'
+import {
+  defineErrorTranslations,
+  defineMessage,
+  definePluginMessages,
+  type ErrorsByCode,
+} from '@qualy/i18n-contract'
+import type * as orgErrors from '../src/server/errors.ts'
 import { orgNavigationLabel } from '../src/messages.ts'
 
 // everything the org plugin says to a human, declared once: page copy plus
@@ -68,7 +73,7 @@ const i18n = definePluginMessages({
     childType: { id: 'org/rule/child-type', defaultMessage: 'Child type' },
     delete: { id: 'org/action/delete', defaultMessage: 'Delete' },
   },
-  errors: defineErrorTranslations(orgErrors, {
+  errors: defineErrorTranslations<ErrorsByCode<typeof orgErrors>>()({
     ORG_TYPE_NOT_FOUND: {
       id: 'org/error/type-not-found',
       defaultMessage: 'Organization type not found.',
@@ -84,10 +89,6 @@ const i18n = definePluginMessages({
     ORG_TYPE_CONFLICT: {
       id: 'org/error/type-conflict',
       defaultMessage: 'An organization type with that code or name already exists.',
-    },
-    ORG_RULE_CONFLICT: {
-      id: 'org/error/rule-conflict',
-      defaultMessage: 'That hierarchy rule already exists.',
     },
     ORG_NODE_CONFLICT: {
       id: 'org/error/node-conflict',

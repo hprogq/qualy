@@ -94,7 +94,6 @@ export default {
   'auth/error/user-type-disabled': '该用户类型已停用。',
   'auth/error/user-not-found': '未找到该用户。',
   'auth/error/user-conflict': '该学工号已被占用。',
-  'auth/error/identity-conflict': '该登录名已被占用。',
   'auth/error/user-placement-not-found': '未找到该组织节点。',
   'auth/error/recovery-channel-required': '管理员用户类型必须保留密码登录。',
   'auth/error/system-account-protected':

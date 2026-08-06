@@ -14,7 +14,6 @@
     "effect": "catalog:"
   },
   "dependencies": {
-    "@qualy/api-contract": "workspace:*",
     "kysely": "catalog:"
   },
   "devDependencies": {

@@ -25,7 +25,17 @@ export function NewUserForm({
   const [userTypeId, setUserTypeId] = useState('')
 
   const create = useMutation({
-    mutationFn: () => run(api.identity.createUser({ payload: { displayName, userTypeId, primaryOrgNodeId: orgNodeId, businessNo: businessNo.trim() === '' ? undefined : businessNo.trim() } })),
+    mutationFn: () =>
+      run(
+        api.identity.createUser({
+          payload: {
+            displayName,
+            userTypeId,
+            primaryOrgNodeId: orgNodeId,
+            businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
+          },
+        }),
+      ),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       setDisplayName('')

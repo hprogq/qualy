@@ -3,7 +3,6 @@
 // which keeps the package graph acyclic (the implementation itself depends
 // on auth/org schemas)
 
-export { accessInvariantErrors } from './errors.ts'
 export { isSystemActor, type SystemActor } from './system-actor.ts'
 export { scopeCoverage, type OrgNodeRef } from './scope.ts'
 

@@ -1,9 +1,4 @@
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createContext,
   useCallback,
@@ -233,10 +228,7 @@ export function usePageNavigate() {
 // selected, what was searched for, which anchor is in view. Keeping it here
 // rather than in useState is what makes an administration screen linkable and
 // survivable across a reload.
-export function usePageQueryState(
-  key: string,
-  fallback = '',
-): [string, (next: string) => void] {
+export function usePageQueryState(key: string, fallback = ''): [string, (next: string) => void] {
   const [params, setParams] = useSearchParams()
   const value = params.get(key) ?? fallback
   const set = useCallback(
@@ -286,15 +278,14 @@ export function UiSlot({ token, context }: { token: UiSlotToken; context?: unkno
   return (
     <>
       {items.map((item) => {
-        const Renderer = registry[item.component] as ComponentType<{ context?: unknown }> | undefined
+        const Renderer = registry[item.component] as
+          ComponentType<{ context?: unknown }> | undefined
         return (
           <PluginComponent
             key={item.id}
             componentId={item.component}
             kind="slot"
-            component={
-              Renderer ? () => <Renderer context={context} /> : undefined
-            }
+            component={Renderer ? () => <Renderer context={context} /> : undefined}
             loading={null}
             fallback={() => null}
             missing={null}

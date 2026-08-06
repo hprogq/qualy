@@ -70,13 +70,17 @@ const DECLARED_CODE = /^[A-Z][A-Z0-9_]*$/
 
 function asApiError(error: unknown): ApiErrorShape | undefined {
   if (!error || typeof error !== 'object') return undefined
-  const candidate = error as { name?: unknown; code?: unknown; _tag?: unknown }
-  if (typeof candidate._tag === 'string' && DECLARED_CODE.test(candidate._tag)) {
+  const candidate = error as { _tag?: unknown }
+  if (typeof candidate._tag !== 'string' || !DECLARED_CODE.test(candidate._tag)) return undefined
+  return {
+    code: candidate._tag,
     // the fields are on the instance, so the instance is its own data
-    return { code: candidate._tag, data: error } as ApiErrorShape
+    data: error,
+    // and the english sentence the server sends for clients that do not
+    // localize, which is the last thing between an untranslated code and
+    // "something went wrong"
+    message: error instanceof Error ? error.message : undefined,
   }
-  if (candidate.name !== 'ORPCError' || typeof candidate.code !== 'string') return undefined
-  return error as unknown as ApiErrorShape
 }
 
 // a failed fetch never reaches the server, so there is no code to key on
@@ -84,8 +88,18 @@ function isNetworkError(error: unknown): boolean {
   return error instanceof TypeError || (error instanceof Error && error.name === 'AbortError')
 }
 
-// as const keeps the message ids literal, which is what lets CatalogFor
-// derive the exact key set the catalogs must cover
+// The codes every plugin's endpoints can answer with, because they come from
+// the request pipeline rather than from a domain.
+//
+// Exactly what the shared packages declare, which scripts/tests/error-codes
+// checks: this table used to hold FORBIDDEN, NOT_FOUND, INPUT_VALIDATION_FAILED
+// and INTERNAL_SERVER_ERROR - the codes the oRPC boundary produced - while what
+// arrives now is ACCESS_DENIED and BAD_REQUEST. Every one of those four
+// translations was unreachable, and the two that do arrive fell through to the
+// english message the server sends for non-browser clients.
+//
+// as const keeps the message ids literal, which is what lets CatalogFor derive
+// the exact key set the catalogs must cover.
 export const commonErrorMessages = {
   AUTH_REQUIRED: {
     message: { id: 'common/error/auth-required', defaultMessage: 'Please sign in to continue.' },
@@ -96,20 +110,14 @@ export const commonErrorMessages = {
       defaultMessage: 'Your session has expired. Please sign in again.',
     },
   },
-  FORBIDDEN: {
+  ACCESS_DENIED: {
     message: {
-      id: 'common/error/forbidden',
+      id: 'common/error/access-denied',
       defaultMessage: 'You are not allowed to perform this action.',
     },
   },
-  NOT_FOUND: {
-    message: { id: 'common/error/not-found', defaultMessage: 'The requested item was not found.' },
-  },
-  INPUT_VALIDATION_FAILED: {
-    message: { id: 'common/error/invalid-input', defaultMessage: 'Some input is invalid.' },
-  },
-  INTERNAL_SERVER_ERROR: {
-    message: { id: 'common/error/internal', defaultMessage: 'Something went wrong on the server.' },
+  BAD_REQUEST: {
+    message: { id: 'common/error/bad-request', defaultMessage: 'Some input is invalid.' },
   },
 } as const satisfies ErrorMessageMap
 

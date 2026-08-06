@@ -393,15 +393,6 @@ importers:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
 
-  packages/api-contract:
-    dependencies:
-      '@qualy/api-kit':
-        specifier: workspace:*
-        version: link:../api-kit
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
-
   packages/api-kit:
     dependencies:
       '@effect/platform-node':
@@ -430,9 +421,6 @@ importers:
 
   packages/i18n-contract:
     dependencies:
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../api-contract
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -445,9 +433,6 @@ importers:
       '@qualy/api-client':
         specifier: workspace:*
         version: link:../../../api-client
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../../../api-contract
       '@qualy/auth-contract':
         specifier: workspace:*
         version: link:../../../auth-contract
@@ -518,9 +503,6 @@ importers:
 
   packages/plugins/base/auth-local:
     dependencies:
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../../../api-contract
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../api-kit
@@ -604,9 +586,6 @@ importers:
       '@qualy/api-client':
         specifier: workspace:*
         version: link:../../../api-client
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../../../api-contract
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../api-kit
@@ -671,9 +650,6 @@ importers:
       '@qualy/api-client':
         specifier: workspace:*
         version: link:../../../api-client
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../../../api-contract
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../api-kit
@@ -735,9 +711,6 @@ importers:
       '@mikro-orm/core':
         specifier: 'catalog:'
         version: 7.1.11
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../../../api-contract
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../api-kit
@@ -812,9 +785,6 @@ importers:
 
   packages/plugins/infra/ui-registry:
     dependencies:
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../../../api-contract
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../api-kit
@@ -868,9 +838,6 @@ importers:
 
   packages/rbac-contract:
     dependencies:
-      '@qualy/api-contract':
-        specifier: workspace:*
-        version: link:../api-contract
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103

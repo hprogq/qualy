@@ -16,7 +16,6 @@
     "react": "catalog:"
   },
   "dependencies": {
-    "@qualy/api-contract": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",

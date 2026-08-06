@@ -139,9 +139,9 @@ export const NOT_VENDORED = [
 export function treeContentHash(root: string): string {
   const files: string[] = []
   const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    )) {
+    for (const entry of fs
+      .readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))) {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) walk(full)
       else if (entry.isFile()) files.push(full)

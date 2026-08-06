@@ -88,9 +88,7 @@ describe('manifest route projection', () => {
       slots,
     })
     const matched = matchRoutes(routes, '/nope')
-    const admin = routes.find((route) =>
-      route.children?.some((child) => child.path === '/ping'),
-    )
+    const admin = routes.find((route) => route.children?.some((child) => child.path === '/ping'))
     expect(matched?.[0]?.route.element).toBe(admin?.element)
     expect(matched?.[1]?.route.element).toBe('NOT_FOUND')
   })
@@ -117,7 +115,10 @@ describe('manifest route projection', () => {
     // there would land on the not-found screen by way of a page that read
     // as perfectly available
     const routes = buildManifestRoutes({
-      manifest: manifest([page('ghost/page', '/ghost', 'ghost-shell/v1'), ...pages], [ADMIN, BLANK]),
+      manifest: manifest(
+        [page('ghost/page', '/ghost', 'ghost-shell/v1'), ...pages],
+        [ADMIN, BLANK],
+      ),
       registry: {},
       homePath: '/ghost',
       slots,

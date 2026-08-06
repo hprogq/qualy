@@ -3,9 +3,10 @@ import {
   defineMessage,
   definePluginMessages,
   mergeErrorTranslations,
+  type ErrorsByCode,
 } from '@qualy/i18n-contract'
-import { accessInvariantErrors } from '@qualy/rbac-contract'
-import { accessErrors } from '../src/errors.ts'
+import type * as rbacErrors from '../src/server/errors.ts'
+import type * as invariantErrors from '@qualy/rbac-contract/effect'
 import { rbacNavigation } from '../src/messages.ts'
 
 const assignmentCountMessage = defineMessage<{ count: number }>()({
@@ -131,7 +132,7 @@ const i18n = definePluginMessages({
     assignmentCount: assignmentCountMessage,
   },
   errors: mergeErrorTranslations(
-    defineErrorTranslations(accessErrors, {
+    defineErrorTranslations<ErrorsByCode<typeof rbacErrors>>()({
       ROLE_NOT_FOUND: { id: 'rbac/error/role-not-found', defaultMessage: 'Role not found.' },
       ROLE_CONFLICT: {
         id: 'rbac/error/role-conflict',
@@ -215,7 +216,10 @@ const i18n = definePluginMessages({
     }),
     // the shared lockout invariant: auth raises it too, and one code carries
     // one translation, so the plugin that owns the rule owns the wording
-    defineErrorTranslations(accessInvariantErrors, {
+    // ACCESS_DENIED comes out of the same contract but belongs to nobody in
+    // particular: every plugin's authorization raises it, so the shell
+    // translates it and this table declares only the invariant rbac owns
+    defineErrorTranslations<Omit<ErrorsByCode<typeof invariantErrors>, 'ACCESS_DENIED'>>()({
       LAST_ADMINISTRATOR: {
         id: 'rbac/error/last-administrator',
         defaultMessage: 'The tenant would be left without an administrator who can still sign in.',
