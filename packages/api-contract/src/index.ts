@@ -116,7 +116,11 @@ export function defineDomainErrors<const Defs extends ErrorDefinitions>(
     if (!ERROR_CODE.test(code)) {
       throw new Error(`error code "${code}" must be SCREAMING_SNAKE_CASE`)
     }
-    if (!Number.isInteger(definition.status) || definition.status < 400 || definition.status > 599) {
+    if (
+      !Number.isInteger(definition.status) ||
+      definition.status < 400 ||
+      definition.status > 599
+    ) {
       throw new Error(`error ${code}: status must be an integer http error status`)
     }
     if (definition.message.trim() === '') {
@@ -129,8 +133,7 @@ export function defineDomainErrors<const Defs extends ErrorDefinitions>(
   Object.freeze(definitions)
   return {
     definitions,
-    pick: (...codes) =>
-      Object.fromEntries(codes.map((code) => [code, definitions[code]])) as never,
+    pick: (...codes) => Object.fromEntries(codes.map((code) => [code, definitions[code]])) as never,
     create: (code, ...args) => {
       const definition = definitions[code]!
       // whether the first argument is data or a message override is decided
@@ -143,8 +146,7 @@ export function defineDomainErrors<const Defs extends ErrorDefinitions>(
         data,
       ) as never
     },
-    is: (error): error is never =>
-      isDomainError(error) && Object.hasOwn(definitions, error.code),
+    is: (error): error is never => isDomainError(error) && Object.hasOwn(definitions, error.code),
   }
 }
 

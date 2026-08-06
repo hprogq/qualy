@@ -1,8 +1,13 @@
-import { sql } from 'drizzle-orm'
+import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { authClosure } from './support/closure.ts'
-import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
 import { Database, kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
 import { authEntityManager } from '../src/server/db.ts'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
@@ -44,7 +49,7 @@ const stack = (url: string) =>
     ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Database | Orm>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Orm | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -54,36 +59,35 @@ const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
 
 /** a tenant whose staff may only stand at a college, with one person at one */
 const seed = Effect.fn('seed')(function* () {
-  const db = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* db.execute(sql`insert into tenants (slug, name) values ('t', 'T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t', 'T') returning id`),
   ).id
   const collegeType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_types (tenant_id, code, name) values (${tenant}, 'college', 'College')
       returning id`),
   ).id
   const clubType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_types (tenant_id, code, name) values (${tenant}, 'club', 'Club')
       returning id`),
   ).id
   const node = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${collegeType}, 'Root', 'r', 0) returning id`),
   ).id
   const userType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant}, 'staff', 'Staff', true, 'allow-list') returning id`),
   ).id
   // staff may stand at a college and nowhere else
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
     values (${tenant}, ${userType}, ${collegeType})`)
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
     values (${tenant}, 'Ada', ${userType}, ${node})`)
   return { tenant, node, collegeType, clubType }
@@ -188,12 +192,9 @@ describe.runIf(postgresAvailable).concurrent('the placement port', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const database = yield* Database
           const before = yield* iam.placementViolations(f.tenant)
           // move the node under the person to a type their kind may not stand at
-          yield* database.execute(
-            sql`update org_nodes set org_type_id = ${f.clubType} where id = ${f.node}`,
-          )
+          yield* runSql(sql`update org_nodes set org_type_id = ${f.clubType} where id = ${f.node}`)
           return { before, after: yield* iam.placementViolations(f.tenant) }
         }),
       )

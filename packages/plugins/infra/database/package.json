@@ -30,8 +30,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "catalog:",
     "@qualy/assembly": "workspace:*",
-    "@types/pg": "catalog:",
-    "drizzle-kit": "catalog:"
+    "@types/pg": "catalog:"
   },
   "qualy": {
     "capabilityProvider": {

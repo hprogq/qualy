@@ -35,8 +35,7 @@ const withManifest = <T>(text: string, run: (file: string) => T): T => {
   }
 }
 
-const manifest = (body: string) =>
-  `version: 2\n\napplication:\n  workspace: .\n\nplugins:\n${body}`
+const manifest = (body: string) => `version: 2\n\napplication:\n  workspace: .\n\nplugins:\n${body}`
 
 describe('what the manifest decides and this process reads', () => {
   it('takes the lineage folder from the manifest, resolved against it', () => {
@@ -51,7 +50,7 @@ describe('what the manifest decides and this process reads', () => {
   it('falls back to the same default the CLI uses when the manifest is silent', () => {
     // a manifest need not say; what it must not do is mean one folder here and
     // another in `qualy generate`, whose default is 'db/migrations' relative
-    // to the manifest (packages/plugins/infra/database/src/assembly/drizzle.ts)
+    // to the manifest (packages/plugins/infra/database/src/assembly/work.ts)
     withManifest(manifest("  '@qualy/plugin-database': {}\n"), (file) => {
       expect(manifestMigrationsFolder()).toBe(path.resolve(path.dirname(file), 'db/migrations'))
     })
@@ -60,9 +59,7 @@ describe('what the manifest decides and this process reads', () => {
   it('honours an absolute declaration as given', () => {
     const absolute = path.join(os.tmpdir(), 'qualy-absolute-lineage')
     withManifest(
-      manifest(
-        `  '@qualy/plugin-database':\n    config:\n      migrationsFolder: ${absolute}\n`,
-      ),
+      manifest(`  '@qualy/plugin-database':\n    config:\n      migrationsFolder: ${absolute}\n`),
       () => {
         expect(manifestMigrationsFolder()).toBe(absolute)
       },

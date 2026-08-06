@@ -90,8 +90,10 @@ export interface CapabilityModule {
  * a function of the current one, and without `providerConfig`, because that is
  * where a connection string lives and this content lands in the working tree.
  */
-export interface CapabilityModuleContext<Contribution, State>
-  extends Omit<CapabilityResolveContext<Contribution, State>, 'previousState'> {
+export interface CapabilityModuleContext<Contribution, State> extends Omit<
+  CapabilityResolveContext<Contribution, State>,
+  'previousState'
+> {
   state: State
 }
 
@@ -135,7 +137,7 @@ export interface AssemblyCapabilityProvider<Contribution = unknown, State = unkn
    * Rewritten by codegen and compared by the frozen gate, so they are as
    * current as the plugin set is. Separate from `generate`, which runs a real
    * tool and produces artifacts that are reviewed and committed: these are
-   * pure, cheap and derived, and running drizzle on the way to a typecheck
+   * pure, cheap and derived, and opening a database on the way to a typecheck
    * would be neither.
    */
   modules?(context: CapabilityModuleContext<Contribution, State>): CapabilityModule[]

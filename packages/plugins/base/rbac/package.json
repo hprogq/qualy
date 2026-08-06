@@ -6,7 +6,6 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./schema": "./src/db/schema.ts",
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
     "./ui": "./src/ui.ts",
@@ -18,7 +17,6 @@
   "qualy": {
     "contributions": {
       "database": {
-        "schemaEntry": "src/db/schema.ts",
         "dependsOn": [
           "@qualy/plugin-org",
           "@qualy/plugin-auth"
@@ -56,7 +54,6 @@
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@tanstack/react-query": "catalog:",
-    "drizzle-orm": "catalog:",
     "effect": "catalog:",
     "kysely": "catalog:",
     "zod": "catalog:"

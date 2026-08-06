@@ -5,7 +5,7 @@ import { Tenant } from '@qualy/plugin-org/db'
 // stand, and what they log in with.
 //
 // Cross-plugin references are declared against org's own entities, the same
-// way the drizzle schema imported org's tables. That is what makes the
+// way auth's queries reach org's tables. That is what makes the
 // dependency real rather than a comment: an assembly without org fails during
 // resolution, by name, instead of failing halfway through a migration with
 // postgres complaining about a relation nobody connects to a missing plugin.

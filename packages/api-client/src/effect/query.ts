@@ -27,11 +27,7 @@ export const browserRuntime: ApiRuntime = {
  * services cannot be run here, so a component cannot accidentally reach for
  * something the browser runtime does not provide.
  */
-export const effectQueryOptions = <
-  const Key extends QueryKey,
-  A,
-  E,
->(
+export const effectQueryOptions = <const Key extends QueryKey, A, E>(
   key: Key,
   make: () => Effect.Effect<A, E>,
   runtime: ApiRuntime = browserRuntime,
@@ -59,15 +55,14 @@ type EndpointFn = (...args: any[]) => Effect.Effect<any, any>
 
 type Client = Record<string, Record<string, EndpointFn>>
 
-type Bound<Fn> =
-  Fn extends (...args: infer Args) => Effect.Effect<infer A, infer E>
-    ? {
-        /** query options carrying this endpoint's own success and failure types */
-        queryOptions: (...args: Args) => ReturnType<typeof queryOptions<A, E, A, QueryKey>>
-        /** where this endpoint's entries live, for invalidation */
-        key: (...args: Partial<Args>) => QueryKey
-      }
-    : never
+type Bound<Fn> = Fn extends (...args: infer Args) => Effect.Effect<infer A, infer E>
+  ? {
+      /** query options carrying this endpoint's own success and failure types */
+      queryOptions: (...args: Args) => ReturnType<typeof queryOptions<A, E, A, QueryKey>>
+      /** where this endpoint's entries live, for invalidation */
+      key: (...args: Partial<Args>) => QueryKey
+    }
+  : never
 
 export type QueryUtils<C extends Client> = {
   [Group in keyof C]: { [Endpoint in keyof C[Group]]: Bound<C[Group][Endpoint]> } & {

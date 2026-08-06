@@ -1,9 +1,14 @@
-import { sql } from 'drizzle-orm'
+import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { authClosure } from './support/closure.ts'
-import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database } from '@qualy/plugin-database/server'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
+import { Database, type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -40,7 +45,7 @@ const stack = (url: string) =>
     ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -52,23 +57,22 @@ const tagOf = (result: { _tag: string; failure?: unknown }) =>
   result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
 
 const seed = Effect.fn('seed')(function* () {
-  const db = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* db.execute(sql`insert into tenants (slug, name) values ('t','T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
   const orgType = one<{ id: string }>(
-    yield* db.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
   ).id
   const makeType = (code: string, extra = sql`, true, false`) =>
-    db.execute(sql`
+    runSql(sql`
       insert into user_types (tenant_id, code, name, placement_mode, allow_local_login, allow_sso_login)
       values (${tenant}, ${code}, ${code}, 'unrestricted'${extra}) returning id`)
   const staff = one<{ id: string }>(yield* makeType('staff')).id
@@ -78,17 +82,17 @@ const seed = Effect.fn('seed')(function* () {
   // edit is refused, which is correct but would make the test measure the
   // wrong thing.
   const admin = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Ada', ${system}, ${node}) returning id`),
   ).id
   const adminRole = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
       values (${tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
       returning id`),
   ).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${adminRole})`)
 
   return { tenant, node, staff, system }
@@ -163,8 +167,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
             values (${f.tenant}, 'Ada', ${f.staff}, ${f.node})`)
           const iam = yield* Iam
@@ -246,15 +249,14 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const role = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode)
               values (${f.tenant}, 'r', 'R', 'tenant', 'active', 'explicit') returning id`),
           ).id
           // the role admits this type and no other
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
             values (${f.tenant}, ${role}, ${f.staff})`)
           const iam = yield* Iam
@@ -285,19 +287,16 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const other = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_types (tenant_id, code, name) values (${f.tenant},'club','Club')
               returning id`),
           ).id
           const orgType = one<{ id: string }>(
-            yield* database.execute(
-              sql`select org_type_id as id from org_nodes where id = ${f.node}`,
-            ),
+            yield* runSql(sql`select org_type_id as id from org_nodes where id = ${f.node}`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
             values (${f.tenant}, 'Grace', ${f.staff}, ${f.node})`)
 
@@ -380,8 +379,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
-          yield* database.execute(sql`
+          yield* runSql(sql`
             update user_types set is_system = true where id = ${f.system}`)
           const iam = yield* Iam
           const blocked = yield* Effect.result(

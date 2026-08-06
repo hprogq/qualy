@@ -197,7 +197,7 @@ describe('resolution', () => {
     // sign of that is whatever the capability generates once the plugin has
     // dropped out of its set
     const workspace = createWorkspace([...INFRA, '@fake/plugin-legacy'], {
-      synthetic: [{ id: '@fake/plugin-legacy', qualy: { database: { schemaEntry: 'index.js' } } }],
+      synthetic: [{ id: '@fake/plugin-legacy', qualy: { database: { entitiesEntry: 'index.js' } } }],
     })
     try {
       await expect(resolve(workspace.manifestPath)).rejects.toThrow(

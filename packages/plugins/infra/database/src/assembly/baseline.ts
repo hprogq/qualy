@@ -5,15 +5,15 @@ import type { CapabilityResolveContext } from '@qualy/assembly-contract'
 import type { DatabaseContribution } from './contribution.ts'
 import type { DatabaseState } from './state.ts'
 
-// SQL a plugin owns that drizzle cannot express: extensions, functions,
+// SQL a plugin owns that no schema comparison can see: extensions, functions,
 // triggers, views, and the rows a schema is unusable without.
 //
 // Everything a plugin needs used to be expressible except this. A table came
-// from schemaEntry and reached the lineage on its own, but `CREATE EXTENSION
+// from its entities and reached the lineage on its own, but `CREATE EXTENSION
 // ltree` sat in a hand-written host migration marked `-- owner:
 // @qualy/plugin-org`: the ownership was already stated, only the carrier was
 // missing. The consequence showed up as soon as a different plugin selection
-// tried to build its own lineage from nothing, because drizzle-kit generate
+// tried to build its own lineage from nothing, because a schema generator
 // reproduces tables and nothing else, and org_nodes cannot be created without
 // the type the extension provides.
 //

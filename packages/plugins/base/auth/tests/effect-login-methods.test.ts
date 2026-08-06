@@ -1,8 +1,13 @@
-import { sql } from 'drizzle-orm'
+import { sql } from 'kysely'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { authClosure } from './support/closure.ts'
-import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
 import { Database } from '@qualy/plugin-database/server'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/auth-config.ts'
@@ -57,14 +62,13 @@ describe.runIf(postgresAvailable).concurrent('the ways in a deployment offers', 
     try {
       const methods = await Effect.runPromise(
         Effect.gen(function* () {
-          const database = yield* Database
           const tenant = (
-            (yield* database.execute(
+            (yield* runSql(
               sql`insert into tenants (slug, name) values ('default','T') returning id`,
             )) as unknown as { rows: { id: string }[] }
           ).rows[0]!.id
           for (const [index, code] of Object.keys(HREFS).entries()) {
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into auth_providers (tenant_id, code, type, name, enabled, sort_order)
               values (${tenant}, ${code}, 'redirecting', ${code}, true, ${index})`)
           }

@@ -1,11 +1,16 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { sql } from 'drizzle-orm'
+import { sql } from 'kysely'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
 import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { LoginDrivers } from '@qualy/auth-contract/login'
@@ -45,56 +50,53 @@ let db: Awaited<ReturnType<typeof createTestContext>>
 
 /** one tenant with two providers: one whose driver is loaded, one whose is not */
 const seed = Effect.fn('seed')(function* (hash: string) {
-  const database = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* database.execute(
-      sql`insert into tenants (slug, name) values ('default','Default') returning id`,
-    ),
+    yield* runSql(sql`insert into tenants (slug, name) values ('default','Default') returning id`),
   ).id
   const orgType = one<{ id: string }>(
-    yield* database.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, code, path, depth)
       values (${tenant}, ${orgType}, 'Root', 'root', 'r', 0) returning id`),
   ).id
   const userType = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant},'staff','Staff', true, 'unrestricted') returning id`),
   ).id
   // a type that admits no password, to prove the check is about the type
   // rather than about whether a credential was stored
   const ssoOnly = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant},'sso','Sso', false, 'unrestricted') returning id`),
   ).id
   const user = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Ada', ${userType}, ${node}) returning id`),
   ).id
   const other = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Grace', ${ssoOnly}, ${node}) returning id`),
   ).id
   const provider = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into auth_providers (tenant_id, code, type, name, enabled, sort_order)
       values (${tenant}, 'password', 'local', 'Password', true, 0) returning id`),
   ).id
   // enabled, but its driver is not in this assembly's catalog
-  yield* database.execute(sql`
+  yield* runSql(sql`
     insert into auth_providers (tenant_id, code, type, name, enabled, sort_order)
     values (${tenant}, 'campus', 'cas', 'Campus', true, 1)`)
   const identity = (userId: string, identifier: string) =>
-    database.execute(sql`
+    runSql(sql`
       insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
       values (${tenant}, ${userId}, ${provider}, ${identifier}, ${hash})`)
   yield* identity(user, 'ada')
@@ -246,13 +248,10 @@ describe.runIf(postgresAvailable)('signing in', () => {
     const cookie = cookieFrom(response)
     const token = cookie.slice(sessionCookieName.length + 1)
     await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database
-        yield* database.execute(
-          sql`update sessions set expires_at = now() - interval '1 minute'
+      runSql(
+        sql`update sessions set expires_at = now() - interval '1 minute'
               where token_hash = ${hashSessionToken(token)}`,
-        )
-      }).pipe(Effect.provide(probeInfra())),
+      ).pipe(Effect.provide(probeInfra())),
     )
     const dead = await fetch(`${base}/auth/session`, { headers: { cookie } })
     expect(dead.status).toBe(401)
@@ -266,19 +265,17 @@ describe.runIf(postgresAvailable)('signing in', () => {
     const response = await login({ identifier: 'ada', password })
     const cookie = cookieFrom(response)
     await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database
-        yield* database.execute(sql`update users set enabled = false where display_name = 'Ada'`)
-      }).pipe(Effect.provide(probeInfra())),
+      runSql(sql`update users set enabled = false where display_name = 'Ada'`).pipe(
+        Effect.provide(probeInfra()),
+      ),
     )
     const refused = await fetch(`${base}/auth/session`, { headers: { cookie } })
     expect(refused.status).toBe(401)
     expect(refused.headers.get('set-cookie') ?? '').toContain('Max-Age=0')
     await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database
-        yield* database.execute(sql`update users set enabled = true where display_name = 'Ada'`)
-      }).pipe(Effect.provide(probeInfra())),
+      runSql(sql`update users set enabled = true where display_name = 'Ada'`).pipe(
+        Effect.provide(probeInfra()),
+      ),
     )
   })
 
@@ -287,8 +284,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
     const token = cookieFrom(response).slice(sessionCookieName.length + 1)
     const ip = await Effect.runPromise(
       Effect.gen(function* () {
-        const database = yield* Database
-        const result = (yield* database.execute(
+        const result = (yield* runSql(
           sql`select login_ip::text from sessions where token_hash = ${hashSessionToken(token)}`,
         )) as unknown as { rows: { login_ip: string | null }[] }
         return result.rows[0]!.login_ip
@@ -322,8 +318,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
     const token = cookieFrom(response).slice(sessionCookieName.length + 1)
     const stored = await Effect.runPromise(
       Effect.gen(function* () {
-        const database = yield* Database
-        const result = (yield* database.execute(
+        const result = (yield* runSql(
           sql`select token_hash from sessions where token_hash = ${hashSessionToken(token)}`,
         )) as unknown as { rows: { token_hash: string }[] }
         return result.rows[0]?.token_hash

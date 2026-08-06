@@ -3,16 +3,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context, Effect, Exit, Layer, Redacted, Scope } from 'effect'
-import { sql, type SQL } from 'drizzle-orm'
 import { Pool } from 'pg'
 import type * as SqlError from 'effect/unstable/sql/SqlError'
 import type { EntitySchema } from '@mikro-orm/core'
 import { schemaParity as compareSchemas, type SchemaParityOptions } from './parity.ts'
+import { CompiledQuery, type RawBuilder } from 'kysely'
 import {
   Database,
   DatabaseConfig,
   Entities,
+  entityManager,
+  kyselyOf,
   layer as databaseLayer,
+  query as runQuery,
   type MigrationsBehind,
   type Orm,
 } from './server/index.ts'
@@ -78,10 +81,9 @@ export interface TestContext {
    * assertions that must reach past the services: a constraint only earns
    * its place if it refuses what a service would never send.
    *
-   * Values come back the way drizzle hands them over, which is not always
-   * the way the pg driver alone would: a timestamptz arrives as a string,
-   * because drizzle asks for the raw text and maps per column. Assert on the
-   * value rather than on its javascript type.
+   * Values come back the way the orm hands them over, which is not always
+   * the way the pg driver alone would: a timestamptz arrives as a string.
+   * Assert on the value rather than on its javascript type.
    */
   query<Row = Record<string, unknown>>(
     text: string,
@@ -100,23 +102,28 @@ export interface TestContext {
   dispose(): Promise<void>
 }
 
-// `$1` placeholders kept as they are, because that is what these statements
-// already read like and what a reader can paste into psql. sql.raw would
-// interpolate instead of binding, so the numbers are resolved into real
-// parameters here.
-//
-// sql.param rather than a bare template value: drizzle expands a top-level
-// array into an inline `(a, b)` list, which turns `= any($1::uuid[])` into a
-// record cast postgres refuses. A Param binds as one value, the way the
-// driver does.
-function parameterize(text: string, params: readonly unknown[]): SQL {
-  const parts = text.split(/\$(\d+)/)
-  return sql.join(
-    parts.map((part, index) =>
-      index % 2 === 0 ? sql.raw(part) : sql`${sql.param(params[Number(part) - 1])}`,
-    ),
-  )
-}
+/**
+ * Raw sql on the connection the services are on, for building a fixture.
+ *
+ * A fixture states the shape a test starts from, so it is written as sql
+ * rather than driven through the services under test: a seed built by them
+ * would only prove they agree with themselves. It has to run on their
+ * connection, though - a row inserted on a second pool is a row a transaction
+ * under test cannot see, which is not a hypothetical.
+ *
+ * It dies rather than failing: a fixture that did not apply is a broken test,
+ * not a case the test is about.
+ */
+export const runSql = <Row = Record<string, unknown>>(
+  statement: CompiledQuery | RawBuilder<Row>,
+): Effect.Effect<{ rows: Row[] }, never, Orm> =>
+  Effect.gen(function* () {
+    const em = yield* entityManager<readonly []>()
+    const db = kyselyOf(em)
+    return yield* runQuery(() =>
+      'sql' in statement ? db.executeQuery<Row>(statement) : statement.execute(db),
+    )
+  }).pipe(Effect.orDie)
 
 /**
  * A migrated database, built once and copied per test.
@@ -308,14 +315,9 @@ export async function createTestContext(
     entities: options.entities ?? [],
   })
   const scope = await Effect.runPromise(Scope.make())
-  let database: typeof Database.Service
+  let built: Context.Context<Database | Orm>
   try {
-    database = await Effect.runPromise(
-      Effect.gen(function* () {
-        const built = yield* Layer.buildWithScope(services, scope)
-        return Context.get(built, Database)
-      }),
-    )
+    built = await Effect.runPromise(Layer.buildWithScope(services, scope))
   } catch (error) {
     // building may already have acquired resources, so the partial scope is
     // closed like any other; the original failure is what the caller needs to
@@ -329,7 +331,7 @@ export async function createTestContext(
   }
 
   const execute = (text: string, params: readonly unknown[]) =>
-    Effect.runPromise(database.execute(parameterize(text, params)).pipe(Effect.orDie))
+    Effect.runPromise(runSql(CompiledQuery.raw(text, [...params])).pipe(Effect.provide(built)))
 
   return {
     services,

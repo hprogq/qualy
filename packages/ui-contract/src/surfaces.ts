@@ -51,8 +51,7 @@ export function defineUiSlot(options: {
 // whose page the viewer cannot see disappears with it. An external target
 // leaves the app and never enters the router.
 export type NavigationTarget =
-  | { kind: 'page'; pageId: NamespacedId }
-  | { kind: 'external'; href: string; newWindow?: boolean }
+  { kind: 'page'; pageId: NamespacedId } | { kind: 'external'; href: string; newWindow?: boolean }
 
 export interface NavigationItem {
   id: NamespacedId

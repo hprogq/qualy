@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
-import { CANONICAL_ADMIN_ROLE, type ActivePermission, type Principal } from '@qualy/rbac-contract'
+import { canonicalTenantAdmin, type ActivePermission, type Principal } from '@qualy/rbac-contract'
 import { rbacEntityManager, type RbacEntityManager } from './db.ts'
 
 // The authorization SQL.
@@ -669,9 +669,11 @@ export const grantsBlockingUserType = (
             .whereRef('r.id', '=', 'g.roleId')
             .where((inner) =>
               inner.not(
-                sql<boolean>`(${inner.ref('r.systemKey')} = ${CANONICAL_ADMIN_ROLE}
-                  and ${inner.ref('r.permissionMode')} = 'all-active'
-                  and ${inner.ref('r.kind')} = 'tenant')`,
+                canonicalTenantAdmin({
+                  systemKey: inner.ref('r.systemKey'),
+                  permissionMode: inner.ref('r.permissionMode'),
+                  kind: inner.ref('r.kind'),
+                }),
               ),
             ),
         ),

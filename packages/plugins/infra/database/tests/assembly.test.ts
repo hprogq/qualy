@@ -12,7 +12,7 @@ import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import provider, { type DatabaseContribution, type DatabaseState } from '../src/assembly/index.ts'
 import { collectBaseline, compiledBaseline, pendingBaseline } from '../src/assembly/baseline.ts'
-import { schemaEntries } from '../src/assembly/schema.ts'
+import { entityContributions } from '../src/assembly/entities.ts'
 import { allMigrationFiles, scanDestructive } from '../src/assembly/drop-guard.ts'
 import { guardDestructive } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
@@ -120,22 +120,23 @@ describe('database contributions', () => {
 
   it('aggregates the schema of plugins that are switched off or removed', async () => {
     // neither switching a plugin off nor taking it out of the manifest removes
-    // its tables, so neither may change what drizzle diffs against
+    // its tables, so neither may change what the declared schema is built from
     const selection = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-ping']
     const enabled = workspaceFor(selection)
     const disabled = workspaceFor(selection, { disabled: ['@qualy/plugin-ping'] })
     const removed = workspaceFor(selection)
     try {
-      // named by plugin, because every schema file is called src/db/schema.ts
-      // and comparing basenames would assert only how many there are
+      // named by plugin, because every entities file is called
+      // src/db/entities.ts and comparing basenames would assert only how many
+      // there are
       const of = async (workspace: ReturnType<typeof createWorkspace>) => {
         const work = await context(workspace)
-        return schemaEntries(work, asState(work.state)).map((file) =>
-          file.replace(/^.*\/packages\/plugins\//, ''),
+        return entityContributions(work, asState(work.state)).map((entry) =>
+          entry.file.replace(/^.*\/packages\/plugins\//, ''),
         )
       }
       const baseline = await of(enabled)
-      expect(baseline).toEqual(['base/org/src/db/schema.ts', 'demo/ping/src/db/schema.ts'])
+      expect(baseline).toEqual(['base/org/src/db/entities.ts', 'demo/ping/src/db/entities.ts'])
       expect(await of(disabled)).toEqual(baseline)
 
       await commitLock(removed)
@@ -184,7 +185,7 @@ describe('database dependency graph', () => {
   it('refuses a cycle and names the path', async () => {
     // tables are created in this order, so it has to exist
     const contribution = (dependsOn: string) => ({
-      contributions: { database: { schemaEntry: 'index.js', dependsOn: [dependsOn] } },
+      contributions: { database: { entitiesEntry: 'index.js', dependsOn: [dependsOn] } },
     })
     const cyclic = createWorkspace([...INFRA, '@fake/plugin-a', '@fake/plugin-b'], {
       configs: { '@qualy/plugin-database': { migrationsFolder: MIGRATIONS } },

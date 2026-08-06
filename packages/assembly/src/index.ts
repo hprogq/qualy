@@ -39,9 +39,5 @@ export {
   type LockedCapability,
   type LockedPlugin,
 } from './lock.ts'
-export {
-  renderRuntimeModule,
-  runtimeLayers,
-  writeRuntimeModule,
-} from './runtime-plan.ts'
+export { renderRuntimeModule, runtimeLayers, writeRuntimeModule } from './runtime-plan.ts'
 export { capabilityContext, capabilityWork, type CapabilityWork } from './work.ts'

@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { sql } from 'drizzle-orm'
+import { sql } from 'kysely'
 import { Effect, Exit, Layer, Schema, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import {
@@ -11,7 +11,12 @@ import {
 } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
 import { Database } from '@qualy/plugin-database/server'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
@@ -73,38 +78,37 @@ const seed = Effect.fn('seed')(function* (tokens: {
   expired: string
   disabled: string
 }) {
-  const database = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* database.execute(sql`insert into tenants (slug, name) values ('t','T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
   const orgType = one<{ id: string }>(
-    yield* database.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
   ).id
   const userType = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant},'staff','Staff', true, 'unrestricted') returning id`),
   ).id
   const user = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Ada', ${userType}, ${node}) returning id`),
   ).id
   const off = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, enabled)
       values (${tenant}, 'Gone', ${userType}, ${node}, false) returning id`),
   ).id
   const put = (userId: string, token: string, expires: string) =>
-    database.execute(sql`
+    runSql(sql`
       insert into sessions (tenant_id, user_id, token_hash, expires_at)
       values (${tenant}, ${userId}, ${hashSessionToken(token)}, now() + ${sql.raw(expires)})`)
   yield* put(user, tokens.valid, `interval '1 day'`)
@@ -185,8 +189,7 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
 
     const gone = await Effect.runPromise(
       Effect.gen(function* () {
-        const database = yield* Database
-        const result = (yield* database.execute(
+        const result = (yield* runSql(
           sql`select count(*)::int as count from sessions where token_hash = ${hashSessionToken(expiredToken)}`,
         )) as unknown as { rows: { count: number }[] }
         return result.rows[0]!.count
@@ -207,19 +210,13 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
     // tenant may be used at all. It was missed once, because the user-type
     // alias and the tenant alias both look like a plausible `enabled`.
     await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database
-        yield* database.execute(sql`update tenants set enabled = false`)
-      }).pipe(Effect.provide(probeInfra())),
+      runSql(sql`update tenants set enabled = false`).pipe(Effect.provide(probeInfra())),
     )
     const response = await withCookie(validToken)
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'AUTH_REQUIRED' })
     await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database
-        yield* database.execute(sql`update tenants set enabled = true`)
-      }).pipe(Effect.provide(probeInfra())),
+      runSql(sql`update tenants set enabled = true`).pipe(Effect.provide(probeInfra())),
     )
     expect((await withCookie(validToken)).status).toBe(200)
   })

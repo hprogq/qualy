@@ -11,7 +11,7 @@ import { Context, Effect } from 'effect'
 // value-imports org's schema for its foreign keys.
 //
 // It carries one method and no database types. The current signature takes
-// auth's own drizzle transaction, which leaks auth's ORM across a boundary
+// auth's own transaction, which leaks auth's connection across a boundary
 // whose whole purpose is to not do that. There is nothing to leak now: the
 // connection travels in the fiber, so a call made inside the caller's
 // transaction joins it.

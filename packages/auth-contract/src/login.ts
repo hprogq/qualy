@@ -72,33 +72,33 @@ export interface FoundIdentity {
  * lets the core stay unaware of which drivers exist.
  */
 export interface LoginSessionsShape {
-    /**
-     * A public provider code resolved against the anonymous tenant.
-     *
-     * The expected type is checked here so a row belonging to one driver
-     * cannot be driven through another's route.
-     */
-    readonly resolveProvider: (input: {
-      providerCode: string
-      expectedType: string
-    }) => Effect.Effect<ResolvedProvider | undefined>
-    readonly findIdentity: (input: {
-      tenantId: string
-      providerId: string
-      identifier: string
-    }) => Effect.Effect<FoundIdentity | undefined>
-    /**
-     * The driver proved the user; create the session and set the cookie.
-     *
-     * Answers undefined when the account state forbids signing in after all,
-     * so a driver reports one uniform refusal rather than describing the
-     * account to whoever asked.
-     */
-    readonly completeLogin: (input: {
-      tenantId: string
-      userId: string
-      identityId?: string
-    }) => Effect.Effect<SignedInUser | undefined, never, HttpServerRequest>
+  /**
+   * A public provider code resolved against the anonymous tenant.
+   *
+   * The expected type is checked here so a row belonging to one driver
+   * cannot be driven through another's route.
+   */
+  readonly resolveProvider: (input: {
+    providerCode: string
+    expectedType: string
+  }) => Effect.Effect<ResolvedProvider | undefined>
+  readonly findIdentity: (input: {
+    tenantId: string
+    providerId: string
+    identifier: string
+  }) => Effect.Effect<FoundIdentity | undefined>
+  /**
+   * The driver proved the user; create the session and set the cookie.
+   *
+   * Answers undefined when the account state forbids signing in after all,
+   * so a driver reports one uniform refusal rather than describing the
+   * account to whoever asked.
+   */
+  readonly completeLogin: (input: {
+    tenantId: string
+    userId: string
+    identityId?: string
+  }) => Effect.Effect<SignedInUser | undefined, never, HttpServerRequest>
 }
 
 export class LoginSessions extends Context.Service<LoginSessions, LoginSessionsShape>()(

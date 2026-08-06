@@ -222,7 +222,9 @@ export interface PluginMessages<Messages extends Record<string, MessageDescripto
   catalogs: PluginCatalogs
 }
 
-export function definePluginMessages<const Messages extends Record<string, MessageDescriptor>>(options: {
+export function definePluginMessages<
+  const Messages extends Record<string, MessageDescriptor>,
+>(options: {
   namespace: string
   messages: Messages
   errors?: ErrorTranslationSet

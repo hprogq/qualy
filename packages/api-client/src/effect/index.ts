@@ -33,7 +33,9 @@ export type QualyClient = Effect.Success<ReturnType<typeof makeClient>>
  * not from a hand-written copy: `RoleEditor` took the oRPC DTO and kept
  * compiling after the api's own shape moved, because the two happened to agree.
  */
-export type ApiResult<Group extends keyof QualyClient, Endpoint extends keyof QualyClient[Group]> =
-  QualyClient[Group][Endpoint] extends (...args: never[]) => Effect.Effect<infer A, unknown>
-    ? A
-    : never
+export type ApiResult<
+  Group extends keyof QualyClient,
+  Endpoint extends keyof QualyClient[Group],
+> = QualyClient[Group][Endpoint] extends (...args: never[]) => Effect.Effect<infer A, unknown>
+  ? A
+  : never

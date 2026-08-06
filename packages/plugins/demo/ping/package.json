@@ -6,7 +6,6 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./schema": "./src/db/schema.ts",
     "./db": "./src/db/entities.ts",
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
@@ -17,7 +16,6 @@
   "qualy": {
     "contributions": {
       "database": {
-        "schemaEntry": "src/db/schema.ts",
         "entitiesEntry": "src/db/entities.ts"
       }
     },
@@ -41,7 +39,6 @@
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@tanstack/react-query": "catalog:",
-    "drizzle-orm": "catalog:",
     "effect": "catalog:",
     "kysely": "catalog:",
     "zod": "catalog:"
