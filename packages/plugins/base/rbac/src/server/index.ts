@@ -18,7 +18,6 @@ import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
-import { permissions as ownPermissions } from '../permissions.ts'
 import { make as makeGrants, type GrantRow } from './grants.ts'
 import { rbacEntityManager } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -441,7 +440,6 @@ export const serviceLayer: Layer.Layer<
     // stops the boot, which is the same outcome mirroring at construction had
     const assembled = yield* Assembled
     yield* assembled.register({ name: 'rbac/permission-catalog', run: mirror })
-    yield* registry.declare('rbac', ownPermissions)
     return Context.empty().pipe(
       Context.add(Permissions, registry),
       Context.add(Rbac, shape),

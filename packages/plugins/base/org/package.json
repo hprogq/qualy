@@ -52,6 +52,7 @@
     "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",

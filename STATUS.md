@@ -1570,3 +1570,25 @@ ReactUi.surfaces(..), Api.group(..))`;legacy `layer`/`apiHandlers` 导出由**�
 
 **验收**:typecheck 11 工程零错;node 366(+5)/ browser 13;真实启动经桥照常
 (live 200、ping 200,零 [E])。M2 批 1(compat 派生助手)待继续。
+
+### M2 批 1-4:八个插件全部成为描述器(宿主未切)
+
+四批四个提交,每批门禁全绿:
+
+- **批 1**(2d6c1e7):桥机制化 —— `legacySurfaceLayer(plugin)` 等派生函数从描述器推出 legacy
+  注册层,两形态无从漂移。**类型事实**:handler 桥必须保持直接导出 —— 描述器存的是擦除的
+  AnyLayer,而过渡期 runtime.gen 的精确类型(中间件与请求期标记)是 serve 解包的依据。
+- **批 2**(d5086dd):layout-default、auth-local。新增 `Login.driver` feature
+  (@qualy/auth-contract/plugin)。
+- **批 3**(a909a1d):ui-registry、database 自己也 default-export 描述器
+  (provider + Plugin.layer)。
+- **批 4**(本提交):auth、org、rbac。新增 `Access.permissions` feature
+  (@qualy/rbac-contract/plugin)。rbac 的自有码从 service layer 里的 `registry.declare('rbac', …)`
+  挪进描述器 —— 两处并存会撞 registry 的重复码硬拒;它的桥用 **provideMerge** 而非 merge,
+  因为声明要进的 registry 正是它自己的 service 提供的(merge 不接线)。
+
+**现状**:8/8 插件 default-export `Plugin.define(...)`;legacy `layer`/`apiHandlers`/`config`
+导出全部由同一批常量或描述器派生;宿主与三个 gen 文件未动,批 5(宿主切换)待做。
+
+**验收**:typecheck 11 工程零错;node 366 / browser 13;真实启动:登录 → roles 200、
+manifest 7 页、ping 200,日志零 [E]。
