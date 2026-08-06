@@ -221,7 +221,7 @@ export default function UserDetailPage() {
               </form>
             </Panel>
 
-            <UserGrants userId={userId} />
+            <UserGrants userId={userId} nodes={options.data?.nodes ?? []} />
 
             <ConfirmDialog
               open={confirmingDisable}
