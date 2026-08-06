@@ -1,8 +1,11 @@
-import { randomUUID } from 'node:crypto'
 import { defineEntity } from '@mikro-orm/core'
 import { Context, Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { Orm, entityManager, kyselyOf } from '../src/server/index.ts'
+import { entityManager, kyselyOf, query } from '../src/server/index.ts'
+import { translateConstraints } from '../src/server/constraints.ts'
+// the value, reached inside the plugin that owns it: `/server` exports only
+// the type, so nothing outside can fork a manager off the pool
+import { Orm } from '../src/server/orm.ts'
 import { unwrapPgError } from '../src/pg-errors.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '../src/testkit.ts'
 
@@ -86,7 +89,7 @@ describe.runIf(postgresAvailable)('the orm this plugin builds', () => {
           const insert = () =>
             kyselyOf(em)
               .insertInto('Tenant')
-              .values({ id: randomUUID(), slug: 'twice', name: 'Twice', enabled: true })
+              .values({ slug: 'twice', name: 'Twice', enabled: true })
               .execute()
           return yield* Effect.promise(async () => {
             await insert()
@@ -124,6 +127,41 @@ describe.runIf(postgresAvailable)('the orm this plugin builds', () => {
 
       await Effect.runPromise(Scope.close(scope, Exit.void))
       expect(await orm.isConnected()).toBe(false)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+// The chain a caller actually depends on: a named constraint refuses a write,
+// and what comes back is the domain error the contract declares rather than an
+// opaque failure. Asserting the driver error's shape is not the same claim -
+// it says nothing about whether translation still fires.
+describe.runIf(postgresAvailable)('a refused write', () => {
+  class SlugTaken extends Error {
+    readonly _tag = 'SlugTaken'
+  }
+
+  it('comes back as the domain error the constraint means', async () => {
+    const db = await createTestContext('orm-translate')
+    try {
+      const insert = Effect.gen(function* () {
+        const em = yield* entityManager<typeof entities>()
+        return yield* query(() =>
+          kyselyOf(em)
+            .insertInto('Tenant')
+            .values({ slug: 'taken', name: 'Taken', enabled: true })
+            .execute(),
+        )
+      }).pipe(translateConstraints({ tenants_slug_key: () => new SlugTaken() }))
+
+      const services = databaseFor(db.url, { entities })
+      await Effect.runPromise(insert.pipe(Effect.provide(services)))
+      const exit = await Effect.runPromiseExit(insert.pipe(Effect.provide(services)))
+
+      // in the error channel and named, not a defect and not a 500
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(JSON.stringify(Exit.isFailure(exit) ? exit.cause : {})).toContain('SlugTaken')
     } finally {
       await db.dispose()
     }

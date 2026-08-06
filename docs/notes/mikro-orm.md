@@ -30,12 +30,47 @@
 这与 CLAUDE.md「主键统一 UUIDv7 且数据库侧生成……兜住 psql/ETL 等一切裸写入路径」的意图冲突:
 DDL 默认值仍在(灾备与裸写入路径不受影响),但应用侧被类型逼着自己造 ID。
 
-**当前处理**:database 插件的两个 wiring 测试里显式传 `id`,并就地注明原因。**正式 repo 改写前需要
-裁决**,候选:
+**处理**(已裁决):在依赖边界修,不让 5300 行业务查询为它长期付代价。
 
-1. 在 `kyselyOf` 的返回类型上做一次类型级重标(把库内约定的「数据库填充列」还原成 `Generated`);
-2. 每条 insert 显式传 ID(应用侧生成 UUIDv7,DDL 默认值只作裸写入兜底);
-3. 上游修掉之后再动(需要能接受在此之前维持 1 或 2)。
+`patches/@mikro-orm__sql@7.1.10.patch` 把两处「值等于 `true`」改成「属性存在」:
+
+```diff
+- : TOptions extends { default: true }
++ : TOptions extends { default: unknown }
+-   : TOptions extends { defaultRaw: true }
++   : TOptions extends { defaultRaw: unknown }
+```
+
+`unknown` 的语义正是「不关心默认值是什么,只要求这个必填属性在」——没有 `default` 键的类型
+不满足 `{ default: unknown }`(目标里该属性是必填),所以无默认值的列照旧必填。
+
+被否掉的三个候选与原因:
+
+1. **在 `kyselyOf` 上做类型重标**——等于在应用层复制一份 MikroORM 的实体→Kysely 推导,
+   且只能靠列名或项目约定猜哪些是数据库生成的。猜错的方向是**类型认为可省略、元数据其实没有
+   默认值**:编译通过,运行时 NOT NULL。而且要长期跟随上游内部类型漂移。
+2. **每条 insert 应用侧生成 ID**——为一个类型 bug 改掉全项目写入模式;UUIDv7 实现与数据库的
+   可能不一致、应用时间与数据库时间语义不同、上游修好后还要清理、忘写某个默认字段的可能性
+   重新出现。
+3. **等上游**——当前 master 未修,等待期间临时代码会先扩散到大量 `.values()` 里。
+
+**门禁**:`packages/plugins/infra/database/tests/kysely-types.test.ts` 是纯类型测试
+(`declare const em`,函数从不调用,断言由 `pnpm typecheck` 做)。patch 一旦没生效,
+它立刻编译失败——已实测:把已解析的那份 `typings.d.ts` 改回 `true`,typecheck 立刻红。
+这一点很重要,因为 pnpm 的 `prepare` 在部分安装下可能被跳过(effect LSP patch 踩过同样的坑)。
+
+上游 issue 草稿:`docs/upstream/mikro-orm-1-kysely-generated-columns.md`。**上游发布修复后
+删除 patch**。
+
+## 查询必须走 `query()`,不能裸 `Effect.promise`
+
+`translateConstraints` 是从**错误通道**catch 的(`Effect.catch`),而 `Effect.promise` 把拒绝
+变成 defect —— 两者不在同一个通道上。所以 Kysely 查询若写成 `Effect.promise(() => …execute())`,
+约束翻译**永远不会触发**,一个被 restrict 外键挡住的删除会答 500 而不是 409,且调用点看不出问题。
+
+`@qualy/plugin-database/server` 因此导出 `query(() => …)`(内部是 `Effect.tryPromise`,
+失败包成 `QueryFailed`,驱动错误挂在 `cause` 上,正是 `constraintOf` 已经会走的位置)。
+由 orm.test.ts 的「a refused write」一条钉住:把 `query` 换回 `Effect.promise` 立刻红。
 
 ## Kysely 的 pg 错误**不包装**
 

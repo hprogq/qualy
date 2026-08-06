@@ -136,6 +136,9 @@ catalogs:
       specifier: 4.4.3
       version: 4.4.3
 
+patchedDependencies:
+  '@mikro-orm/sql@7.1.10': c5fad03baf645e24831e2a149f78dfcc2d8c1f60994b78543ef6d0a35ced0877
+
 importers:
 
   .:
@@ -3039,7 +3042,7 @@ snapshots:
   '@mikro-orm/postgresql@7.1.10(@mikro-orm/core@7.1.10)':
     dependencies:
       '@mikro-orm/core': 7.1.10
-      '@mikro-orm/sql': 7.1.10(@mikro-orm/core@7.1.10)
+      '@mikro-orm/sql': 7.1.10(patch_hash=c5fad03baf645e24831e2a149f78dfcc2d8c1f60994b78543ef6d0a35ced0877)(@mikro-orm/core@7.1.10)
       kysely: 0.29.4
       pg: 8.22.0
       pg-cursor: 2.21.0(pg@8.22.0)
@@ -3049,7 +3052,7 @@ snapshots:
     transitivePeerDependencies:
       - pg-native
 
-  '@mikro-orm/sql@7.1.10(@mikro-orm/core@7.1.10)':
+  '@mikro-orm/sql@7.1.10(patch_hash=c5fad03baf645e24831e2a149f78dfcc2d8c1f60994b78543ef6d0a35ced0877)(@mikro-orm/core@7.1.10)':
     dependencies:
       '@mikro-orm/core': 7.1.10
       kysely: 0.29.4

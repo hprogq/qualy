@@ -66,3 +66,5 @@ minimumReleaseAgeExclude:
   - '@effect/vitest@4.0.0-beta.103'
   - '@effect/platform-node-shared@4.0.0-beta.103'
   - '@effect/platform-node@4.0.0-beta.103'
+patchedDependencies:
+  '@mikro-orm/sql@7.1.10': patches/@mikro-orm__sql@7.1.10.patch

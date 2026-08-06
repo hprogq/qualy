@@ -27,13 +27,26 @@ export class Database extends Context.Service<Database, Db>()('@qualy/plugin-dat
 export { DatabaseConfig } from './config.ts'
 export {
   Entities,
-  Orm,
   QualyNamingStrategy,
   entityManager,
   transaction,
+  query,
+  QueryFailed,
   kyselyOf,
   type ClosureEntityManager,
 } from './orm.ts'
+
+/**
+ * The ORM itself, as a type only.
+ *
+ * Deliberately not a value out here. Holding it means being able to call
+ * `orm.em.fork()`, which produces a manager bound to a pool connection - so a
+ * service inside a transaction could leave it without anything looking wrong,
+ * and the answer it gave would be about committed state. The layer's own type
+ * has to name this service, which a type export is enough for; asking for it
+ * with `yield*` is not.
+ */
+export type { Orm } from './orm.ts'
 
 /**
  * Does the database still answer?

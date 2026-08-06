@@ -1,14 +1,15 @@
-import { randomUUID } from 'node:crypto'
 import { defineEntity } from '@mikro-orm/core'
-import { Effect } from 'effect'
+import { Deferred, Effect, Exit, Fiber } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
-  Orm,
   entityManager,
   kyselyOf,
   transaction,
   type ClosureEntityManager,
 } from '../src/server/index.ts'
+// the value, reached inside the plugin that owns it: `/server` exports only
+// the type, so nothing outside can fork a manager off the pool
+import { Orm } from '../src/server/orm.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '../src/testkit.ts'
 
 // Does a peer called from inside a transaction run on that transaction?
@@ -59,17 +60,11 @@ const outsider = Effect.gen(function* () {
   return yield* Effect.promise(() => kyselyOf(em).selectFrom('Tenant').select(['slug']).execute())
 })
 
-// The id is supplied although the column defaults to uuidv7(). A raw sql
-// default is not mapped to a generated column, so kysely requires a value;
-// see docs/notes/mikro-orm.md.
 const insert = (slug: string) =>
   Effect.gen(function* () {
     const em = yield* entityManager<typeof entities>()
     yield* Effect.promise(() =>
-      kyselyOf(em)
-        .insertInto('Tenant')
-        .values({ id: randomUUID(), slug, name: slug, enabled: true })
-        .execute(),
+      kyselyOf(em).insertInto('Tenant').values({ slug, name: slug, enabled: true }).execute(),
     )
   })
 
@@ -118,6 +113,62 @@ describe.runIf(postgresAvailable)('a transaction', () => {
 
       const after = await Effect.runPromise(peer.pipe(Effect.provide(services)))
       expect(after).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('rolls back when the fiber is interrupted', async () => {
+    // Interruption is not the path a typed failure takes. `acquireUseRelease`
+    // is documented to run its release either way, but this is a lifecycle
+    // boundary between two runtimes - Effect's fibers and a pooled postgres
+    // connection - and the cost of being wrong is a transaction left open
+    // holding a tenant lock.
+    const db = await createTestContext('tx-interrupt')
+    try {
+      const services = databaseFor(db.url, { entities })
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const written = yield* Deferred.make<void>()
+          const fiber = yield* Effect.forkChild(
+            transaction(
+              Effect.gen(function* () {
+                yield* insert('interrupted')
+                // the write has happened and is uncommitted; interrupting now
+                // is interrupting a transaction with work in it
+                yield* Deferred.succeed(written, undefined)
+                return yield* Effect.never
+              }),
+            ),
+          )
+          yield* Deferred.await(written)
+          yield* Fiber.interrupt(fiber)
+          return yield* peer
+        }).pipe(Effect.provide(services)),
+      )
+      expect(exit._tag).toBe('Success')
+      expect(Exit.isSuccess(exit) ? exit.value : undefined).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('rolls back when the body dies rather than fails', async () => {
+    // a defect is not in the error channel at all, so nothing about it looks
+    // like a decision the caller made; the transaction still must not commit
+    const db = await createTestContext('tx-defect')
+    try {
+      const services = databaseFor(db.url, { entities })
+      const exit = await Effect.runPromiseExit(
+        transaction(
+          Effect.gen(function* () {
+            yield* insert('doomed')
+            return yield* Effect.die(new Error('boom'))
+          }),
+        ).pipe(Effect.provide(services)),
+      )
+      expect(exit._tag).toBe('Failure')
+      expect(await Effect.runPromise(peer.pipe(Effect.provide(services)))).toEqual([])
     } finally {
       await db.dispose()
     }

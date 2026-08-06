@@ -12,9 +12,9 @@ import {
   Database,
   DatabaseConfig,
   Entities,
-  Orm,
   layer as databaseLayer,
   type MigrationsBehind,
+  type Orm,
 } from './server/index.ts'
 
 // The postgres lifecycle a database-backed test needs, owned by the plugin

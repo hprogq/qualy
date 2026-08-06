@@ -108,10 +108,16 @@ export const entityManager = <const T extends readonly unknown[]>(): Effect.Effe
  * cannot commit dies rather than joining the failures a caller chooses
  * between: it is not a decision anyone made.
  *
- * Called from inside an open transaction it joins that one instead of opening
- * a second. Two transactions would be two connections, and the inner one would
- * not see what the outer has not committed - which is the entire reason a
- * structural write takes a tenant lock first.
+ * The propagation is JOIN-EXISTING, and only that. Called from inside an open
+ * transaction it joins that one; it never opens a second, and it never takes a
+ * savepoint. Two transactions would be two connections, and the inner one
+ * would not see what the outer has not committed - which is the entire reason
+ * a structural write takes a tenant lock first.
+ *
+ * A caller that one day needs to undo part of a transaction without losing the
+ * rest wants a savepoint, and that is a second function. Changing what this
+ * one means would silently give every existing nested call a connection that
+ * cannot see its caller's writes.
  */
 export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | Orm> =>
   Effect.gen(function* () {
@@ -129,6 +135,29 @@ export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effec
           : Effect.promise(() => em.rollback()),
     )
   })
+
+export class QueryFailed extends Error {
+  readonly _tag = 'QueryFailed'
+  constructor(override readonly cause: unknown) {
+    super(`a database query failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+  }
+}
+
+/**
+ * Runs a query, putting a driver failure in the error channel.
+ *
+ * Not `Effect.promise`, which makes it a defect. `translateConstraints` turns a
+ * named constraint violation into the domain error a contract declares, and it
+ * does that by catching from the error channel - so a query run as a defect
+ * skips translation entirely and a delete blocked by a restrict foreign key
+ * answers 500 where it should answer 409. Nothing about the call site would
+ * look wrong.
+ *
+ * The driver's error is carried on `cause`, which is where the constraint
+ * walker already looks.
+ */
+export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =>
+  Effect.tryPromise({ try: run, catch: (cause) => new QueryFailed(cause) })
 
 /**
  * Kysely, told to speak entity and property names.
