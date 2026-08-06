@@ -850,6 +850,25 @@ auth 会另开一条连接读**已提交**状态 —— 答案看起来完全正
 因此 org / auth / rbac 是**一个连通分量**,事务核心必须同批切;明细与守护它的测试见
 docs/notes/mikro-orm.md。已切的两个文件都不在事务里,所以是安全的。
 
-**下一步**:剩下的非事务读可以继续逐个搬(随时可提交);事务核心
-(org/index、rbac/index+roles+grants、auth/index+users+user-types)一次切完,
-由 `auth/tests/effect-placement.test.ts:133` 与 rbac 的并发 parity 用例守。
+### 解法:先换执行者,再换写法(已落地)
+
+原本只有一个选择:一次提交改完三个插件的全部语句,中间没有可运行状态。实测发现还有第二条路——
+**drizzle 编译出来的 SQL 可以直接在 ORM 的连接上跑**(`PgDialect.sqlToQuery` 是 drizzle 自己的
+驱动用的那个,参数照旧绑定;经 Kysely 的 `CompiledQuery.raw` 执行)。
+
+于是加了 `packages/plugins/infra/database/src/server/legacy-sql.ts`:一个和旧 `Database`
+**同形**的 `LegacySql`(`execute` / `transaction`),实现在 ORM 连接上。三个插件各改一行
+`yield* Database` → `yield* LegacySql`,加上 catchTag 换成 `QueryFailed`,**全部语句原样不动**。
+
+**drizzle 从此只负责拼 SQL,不再负责执行。**342 测试全绿。
+
+这个 shim 是临时的,最后一条 drizzle 语句走掉时跟着删。它换来的是:剩下的
+~1360 行查询可以**一个模块一个模块**地改写,每次都能跑全量,而不是一次改完赌一把。
+
+验证不是靠推理:翻转后那两个跨运行时的守护用例**立刻红了**(`inside` 得 1 不是 2,
+`refused` 得 false),因为测试自己还在用 drizzle 开事务 —— 把它们指向生产用的同一个入口后转绿。
+断言一个字没改。
+
+**下一步**:逐个模块把语句改写成 Kysely,顺序建议 `rbac-contract/src/scope.ts`(`scopeCoverage`,
+三个插件都嵌它)→ rbac/src/queries.ts(652)→ org/src/queries.ts(252)→ auth/src/iam/queries.ts(458)。
+行形状从 snake_case 变 camelCase 是每次改写的主要涟漪,只影响该模块的消费方。
