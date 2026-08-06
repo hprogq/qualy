@@ -11,7 +11,6 @@ import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
 
-
 // People, and who may administer them.
 //
 // Authority over a person is authority over the node they stand at, so the

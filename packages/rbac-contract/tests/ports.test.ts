@@ -39,6 +39,8 @@ const rbacStub = (allowed: boolean) =>
     listAuthorizedScope: () => Effect.succeed({ tenantWide: false, anchors: [] }),
     assertTenantKeepsAdministrator: () => Effect.void,
     grantsBlockingOrgType: () => Effect.succeed([]),
+    rolesStrandedByUserType: () => Effect.succeed(0),
+    grantsBlockingUserType: () => Effect.succeed(0),
   } satisfies typeof Rbac.Service)
 
 const placementStub = Layer.succeed(Placement, {

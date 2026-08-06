@@ -25,12 +25,14 @@ import {
   canAt as canAtQuery,
   effectiveRows as effectiveRowsQuery,
   grantsBlockingOrgType,
+  grantsBlockingUserType,
   hasTenantPermission as hasTenantPermissionQuery,
   lockAdministratorRole,
   permissionRow,
   refreshPermissionText,
   upsertPermission,
   reachAt as reachAtQuery,
+  rolesStrandedByUserType,
 } from './authorization.ts'
 import { make as makeRoles } from './roles.ts'
 import { make as makeDiagnostics } from './diagnostics.ts'
@@ -279,6 +281,22 @@ export const make = Effect.fn('Rbac.make')(function* () {
       Effect.fn('Rbac.grantsBlockingOrgType')(function* (tenantId, orgNodeId, orgTypeId) {
         const em = yield* rbacEntityManager()
         return yield* grantsBlockingOrgType(em, tenantId, orgNodeId, orgTypeId).pipe(Effect.orDie)
+      }),
+    ),
+    rolesStrandedByUserType: bound(
+      Effect.fn('Rbac.rolesStrandedByUserType')(function* (tenantId: string, userTypeId: string) {
+        const em = yield* rbacEntityManager()
+        return yield* rolesStrandedByUserType(em, tenantId, userTypeId).pipe(Effect.orDie)
+      }),
+    ),
+    grantsBlockingUserType: bound(
+      Effect.fn('Rbac.grantsBlockingUserType')(function* (
+        tenantId: string,
+        userId: string,
+        userTypeId: string,
+      ) {
+        const em = yield* rbacEntityManager()
+        return yield* grantsBlockingUserType(em, tenantId, userId, userTypeId).pipe(Effect.orDie)
       }),
     ),
     assertTenantKeepsAdministrator: bound(

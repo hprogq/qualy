@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
-import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import { CANONICAL_ADMIN_ROLE, type ActivePermission, type Principal } from '@qualy/rbac-contract'
 import { rbacEntityManager, type RbacEntityManager } from './db.ts'
 
 // The authorization SQL.
@@ -585,3 +585,97 @@ export const refreshPermissionText = (em: RbacEntityManager, permission: ActiveP
       .where('code', '=', permission.code)
       .execute(),
   )
+
+/**
+ * Roles that would be left assignable to nobody if this user type went away.
+ *
+ * A role that admits this type and no other has nobody left who may hold it,
+ * which is the inert state the lifecycle exists to prevent.
+ */
+export const rolesStrandedByUserType = (
+  em: RbacEntityManager,
+  tenantId: string,
+  userTypeId: string,
+) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Role as r')
+      .where('r.tenantId', '=', tenantId)
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('RoleAllowedUserType as t')
+            .select('t.userTypeId')
+            .whereRef('t.tenantId', '=', 'r.tenantId')
+            .whereRef('t.roleId', '=', 'r.id')
+            .where('t.userTypeId', '=', userTypeId),
+        ),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('RoleAllowedUserType as t')
+              .select('t.userTypeId')
+              .whereRef('t.tenantId', '=', 'r.tenantId')
+              .whereRef('t.roleId', '=', 'r.id')
+              .where('t.userTypeId', '!=', userTypeId),
+          ),
+        ),
+      )
+      .select(sql<number>`count(*)::int`.as('count'))
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row?.count ?? 0))
+
+/**
+ * Grants the new user type would not be eligible for.
+ *
+ * Asked of every kind of role, because a tenant role declares who may hold it
+ * too: narrowing this to org roles would let a retype strand a tenant grant
+ * instead of refusing.
+ */
+export const grantsBlockingUserType = (
+  em: RbacEntityManager,
+  tenantId: string,
+  userId: string,
+  userTypeId: string,
+) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('RoleGrant as g')
+      .where('g.tenantId', '=', tenantId)
+      .where('g.userId', '=', userId)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('RoleAllowedUserType as t')
+              .select('t.userTypeId')
+              .whereRef('t.tenantId', '=', 'g.tenantId')
+              .whereRef('t.roleId', '=', 'g.roleId')
+              .where('t.userTypeId', '=', userTypeId),
+          ),
+        ),
+      )
+      // the canonical administrator is exempt: its authority does not come
+      // from eligibility, and it is recognised by shape rather than by having
+      // a system key, which would exempt every system role added later
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('Role as r')
+            .select('r.id')
+            .whereRef('r.tenantId', '=', 'g.tenantId')
+            .whereRef('r.id', '=', 'g.roleId')
+            .where((inner) =>
+              inner.not(
+                sql<boolean>`(${inner.ref('r.systemKey')} = ${CANONICAL_ADMIN_ROLE}
+                  and ${inner.ref('r.permissionMode')} = 'all-active'
+                  and ${inner.ref('r.kind')} = 'tenant')`,
+              ),
+            ),
+        ),
+      )
+      .select(sql<number>`count(*)::int`.as('count'))
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row?.count ?? 0))

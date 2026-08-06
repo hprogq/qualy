@@ -12,7 +12,6 @@ import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
 
-
 // User types under Effect.
 //
 // A type carries no authority, so what is worth testing is not what it grants

@@ -14,7 +14,6 @@ import { placementLegal } from '../src/server/placement.ts'
 import { authEntityManager } from '../src/server/db.ts'
 import { sql as ksql } from 'kysely'
 
-
 // The identity behaviours the cordis suite asserted and the Effect suite did
 // not. Each names the cordis test it comes from.
 

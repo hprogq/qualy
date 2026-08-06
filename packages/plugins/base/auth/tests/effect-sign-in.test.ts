@@ -20,7 +20,6 @@ import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { layer as sessionLayer, sessionCookieName } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 
-
 // The whole sign-in cycle, over a real server: no method, a password, the
 // session it creates, and signing out again.
 //

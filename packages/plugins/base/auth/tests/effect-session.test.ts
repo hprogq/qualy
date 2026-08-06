@@ -24,7 +24,6 @@ import {
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { authClosure } from './support/closure.ts'
 
-
 // The session as a middleware, over a real server and a real database.
 //
 // The cordis enricher cannot reject, because it runs before every request and

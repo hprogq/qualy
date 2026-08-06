@@ -8,7 +8,6 @@ import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
 
-
 // What a sign-in screen is offered.
 //
 // From local-login.test.ts 'accepts only same-origin redirect targets,

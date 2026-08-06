@@ -3,13 +3,7 @@ import { LegacySql, kyselyOf, query, withDatabase } from '@qualy/plugin-database
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { sql } from 'kysely'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
-import {
-  canonicalTenantAdmin,
-  scopeCoverage,
-  type AuthorizationScope,
-  type Principal,
-} from '@qualy/rbac-contract'
-import { grantsBlockingUserTypeQuery } from '../iam/queries.ts'
+import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
 import { authEntityManager, lockTenant, userTypeGuard, type AuthEntityManager } from './db.ts'
 import { placementAllowed } from './placement.ts'
 import {
@@ -566,11 +560,10 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             yield* mayAssignType(type)
             // the new type must also permit where this person already stands
             yield* requirePlacement(tenantId, type.id, user.primaryOrgNodeId)
-            const blocking = rows<{ count: number }>(
-              yield* tx.execute(
-                grantsBlockingUserTypeQuery(tenantId, user.id, type.id, canonicalTenantAdmin('r')),
-              ),
-            )[0]!.count
+            // asked of rbac rather than read here: these are its tables, and
+            // it answers on this transaction because the connection is in the
+            // fiber
+            const blocking = yield* rbac.grantsBlockingUserType(tenantId, user.id, type.id)
             if (blocking > 0) return yield* new GrantIncompatible({ grantCount: blocking })
           }
           const em = yield* authEntityManager()

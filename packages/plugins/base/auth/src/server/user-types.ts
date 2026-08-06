@@ -4,7 +4,6 @@ import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
-import { rolesStrandedByUserTypeQuery } from '../iam/queries.ts'
 import { authEntityManager, lockTenant, userTypeGuard, type AuthEntityManager } from './db.ts'
 import { strandedByPolicy } from './placement.ts'
 import {
@@ -535,15 +534,9 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           if (inUse > 0) return yield* new UserTypeInUse({ userCount: inUse })
           // eligibility rows cascade with the type, which would silently empty
           // a role's allowed set and leave that role assignable to nobody.
-          // Asked of every kind of role, because a tenant role declares who
-          // may hold it too.
-          //
-          // Still the old runtime because it reads rbac's tables, which are not
-          // in this plugin's closure and should not be: the question belongs to
-          // rbac, and moves to a port on its service when rbac migrates.
-          const stranded = rows<{ count: number }>(
-            yield* tx.execute(rolesStrandedByUserTypeQuery(tenantId, type.id)),
-          )[0]!.count
+          // Asked of rbac rather than read here: they are its tables, and it
+          // answers on this transaction because the connection is in the fiber
+          const stranded = yield* rbac.rolesStrandedByUserType(tenantId, type.id)
           if (stranded > 0) return yield* new UserTypeLastForRole({ roleCount: stranded })
           yield* deleteUserType(em, tenantId, type.id)
         }),

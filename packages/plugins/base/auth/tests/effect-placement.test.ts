@@ -12,7 +12,6 @@ import { LoginDrivers } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
 
-
 // The port org holds, and the only call org makes into auth.
 //
 // Two things are being checked. That it answers what the cordis service
