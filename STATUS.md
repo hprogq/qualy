@@ -941,3 +941,16 @@ auth 的七个测试文件各写一份实体闭包,rbac 的查询开始经 ORM �
 
 **剩余**:rbac 的 37 条 CRUD 查询(roles/grants/permissions,344 行)与 org(252 行 + index 1001 行)。
 都是机械改写,没有共享片段的约束了。
+
+### rbac 授权面全部切完;剩角色 CRUD
+
+已切:授权内核、grant 的资格判定与写入、权限目录(装配期把 catalog 镜像进 permissions 表)。
+`rbac/src/queries.ts` 从 652 行降到 267 行、24 条查询,全部是**角色 CRUD**
+(roles.ts 的集合替换、role projection、eligibility)加 diagnostics 的两条存在性检查。
+
+`CanonicalAdminShape` 顺势改成 camelCase(`systemKey` / `permissionMode`) —— 它读的就是
+`roleForGrant` 返回的那一行,行形状变了它就得跟着变。SQL 版 `canonicalTenantAdmin(alias)`
+还是 drizzle,因为 auth 那条 `grantsBlockingUserTypeQuery` 还在用它。
+
+**下一步**:roles.ts(20 条左右)→ diagnostics 的两条 → org(252 行查询 + 1001 行 index)。
+没有共享片段的约束了,可以一条一条改。
