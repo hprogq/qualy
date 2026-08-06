@@ -14,9 +14,9 @@ catalog:
   # every @mikro-orm package sits on one version: the driver re-exports core's
   # types, and two copies of core would make an entity defined against one
   # unassignable to the other
-  '@mikro-orm/core': 7.1.10
-  '@mikro-orm/postgresql': 7.1.10
-  '@mikro-orm/migrations': 7.1.10
+  '@mikro-orm/core': 7.1.11
+  '@mikro-orm/postgresql': 7.1.11
+  '@mikro-orm/migrations': 7.1.11
   kysely: 0.29.4
   # Effect v4 beta. Every effect package must sit on the SAME version: the
   # ecosystem peers on an exact beta. The modules this project needs (httpapi,
@@ -62,5 +62,9 @@ minimumReleaseAgeExclude:
   - '@effect/vitest@4.0.0-beta.103'
   - '@effect/platform-node-shared@4.0.0-beta.103'
   - '@effect/platform-node@4.0.0-beta.103'
+  - '@mikro-orm/core@7.1.11'
+  - '@mikro-orm/migrations@7.1.11'
+  - '@mikro-orm/postgresql@7.1.11'
+  - '@mikro-orm/sql@7.1.11'
 patchedDependencies:
-  '@mikro-orm/sql@7.1.10': patches/@mikro-orm__sql@7.1.10.patch
+  '@mikro-orm/sql@7.1.11': patches/@mikro-orm__sql@7.1.11.patch
