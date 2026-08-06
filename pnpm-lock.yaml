@@ -430,6 +430,9 @@ importers:
 
   packages/auth-contract:
     dependencies:
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../plugin-kit
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
@@ -536,6 +539,9 @@ importers:
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../auth
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../plugin-kit
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../ui
@@ -570,6 +576,9 @@ importers:
 
   packages/plugins/base/layout-default:
     dependencies:
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../plugin-kit
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry

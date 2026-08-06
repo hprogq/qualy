@@ -1,11 +1,10 @@
 import { Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
-import {
-  registerLoginDriver,
-  type LoginDriver,
-  type LoginDrivers,
-} from '@qualy/auth-contract/login'
+import type { LoginDriver } from '@qualy/auth-contract/login'
+import { Login, legacyDriverLayer } from '@qualy/auth-contract/plugin'
+import { Api } from '@qualy/api-kit/plugin'
+import { Plugin } from '@qualy/plugin-kit'
 import { LoginSessions } from '@qualy/auth-contract/login'
 import { authLocalApiGroup, InvalidCredentials } from './api.ts'
 import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from './password.ts'
@@ -35,13 +34,12 @@ const driver: LoginDriver = {
  * generated catalog imported - a file, a subpath export and a generator, to
  * say four lines.
  */
-export const layer: Layer.Layer<never, never, LoginDrivers> = registerLoginDriver(driver)
 
 // see QUALY_API_ID: implemented against a local api so this plugin does not
 // import the aggregate it is part of
 const local = HttpApi.make(QUALY_API_ID).add(authLocalApiGroup).prefix(QUALY_API_PREFIX)
 
-export const apiHandlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
+const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
   handlers.handle(
     'login',
     Effect.fn('authLocal.login.handler')(function* ({ params, payload }) {
@@ -83,3 +81,17 @@ export const apiHandlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =
     }),
   ),
 )
+
+const plugin = Plugin.define(
+  '@qualy/plugin-auth-local',
+  Login.driver(driver),
+  Api.group(authLocalApiGroup, handlers),
+)
+
+export default plugin
+
+// legacy bridge until the descriptor assembler takes over the host; the
+// handlers stay a direct export because their precise type is load-bearing
+// in the generated composition
+export const apiHandlers = handlers
+export const layer = legacyDriverLayer(plugin)

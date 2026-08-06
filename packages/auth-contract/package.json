@@ -7,9 +7,13 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./login": "./src/login.ts"
+    "./login": "./src/login.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "peerDependencies": {
     "effect": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/plugin-kit": "workspace:*"
   }
 }
