@@ -89,6 +89,14 @@ export const Role = defineEntity({
     // means every currently active definition, which is how the tenant
     // administrator stays complete when a plugin adds a capability.
     permissionMode: p.string().length(16).defaultRaw(`'explicit'`),
+    // Who may hold the role, and where its duty applies, each stated rather
+    // than inferred from an empty list. Reading "no rows" as "anyone" would
+    // make unchecking the last box widen the rule instead of narrowing it,
+    // and would skip the stranding check on the way - the same mistake user
+    // type placement already made once and now states as a mode.
+    eligibilityMode: p.string().length(16).defaultRaw(`'allow-list'`),
+    // only meaningful for an org role: a tenant role anchors to nothing
+    anchorMode: p.string().length(16).defaultRaw(`'allow-list'`),
     // set for roles the platform provisions and protects; null for the
     // tenant's own roles
     systemKey: p.string().length(63).nullable(),
@@ -108,6 +116,11 @@ export const Role = defineEntity({
       name: 'chk_roles_permission_mode',
       expression: `permission_mode IN ('explicit', 'all-active')`,
     },
+    {
+      name: 'chk_roles_eligibility_mode',
+      expression: `eligibility_mode IN ('unrestricted', 'allow-list')`,
+    },
+    { name: 'chk_roles_anchor_mode', expression: `anchor_mode IN ('unrestricted', 'allow-list')` },
     // Holding every capability is reserved for the administrator role the
     // platform provisions; a tenant cannot mint a second one.
     //

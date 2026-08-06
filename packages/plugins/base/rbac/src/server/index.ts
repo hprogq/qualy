@@ -424,8 +424,14 @@ const toRoleShape = (
   grantCount: role.grantCount,
   permissions: permissions.active,
   unavailablePermissions: permissions.unavailable,
-  eligibleUserTypeIds: role.allowedUserTypes,
-  anchorOrgTypeIds: role.allowedOrgTypes,
+  eligibility:
+    role.eligibilityMode === 'unrestricted'
+      ? { mode: 'unrestricted' as const }
+      : { mode: 'allow-list' as const, userTypeIds: role.allowedUserTypes },
+  anchor:
+    role.anchorMode === 'unrestricted'
+      ? { mode: 'unrestricted' as const }
+      : { mode: 'allow-list' as const, orgTypeIds: role.allowedOrgTypes },
 })
 
 const toGrantShape = (row: GrantRow) => ({

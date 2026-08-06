@@ -20,6 +20,8 @@ export default {
   'rbac/field/kind-tenant-hint': '一次授予，没有可锚定的节点。',
   'rbac/field/allowed-user-types': '可以授予这些用户类型',
   'rbac/field/allowed-org-types': '职责作用于这些类型的组织节点',
+  'rbac/field/any-user-type': '可以授予任何用户类型',
+  'rbac/field/any-org-type': '在任何类型的组织节点上生效',
   'rbac/field/no-options': '暂时没有可选项。',
   'rbac/field/assignable': '可被授予',
   'rbac/action/create': '创建',

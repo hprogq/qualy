@@ -20,14 +20,16 @@ import {
   type Principal,
 } from '@qualy/rbac-contract'
 import {
+  admitsOrgType,
+  admitsUserType,
   lockTenant,
   orgNodeExists,
   rbacEntityManager,
   rolePermissionCodes,
   rolePermissionMode,
   rolesOfTenant,
-  userExists,
   type RbacEntityManager,
+  userExists,
 } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
 import { assertMayGrantRole, type Authority } from './escalation.ts'
@@ -222,47 +224,50 @@ const userForGrant = (em: RbacEntityManager, tenantId: string, userId: string) =
       .executeTakeFirst(),
   )
 
-const roleAllowsUserType = (
+/**
+ * Whether the role admits this kind of person, and this kind of node.
+ *
+ * Asked of the role row so the mode is part of the answer: a role that admits
+ * everyone has no rows to find, and a lookup in the list alone would read that
+ * as admitting nobody.
+ */
+const roleAdmits = (
   em: RbacEntityManager,
   tenantId: string,
   roleId: string,
-  userTypeId: string,
+  what: { userTypeId: string } | { orgTypeId: string },
 ) =>
   query(() =>
     kyselyOf(em)
-      .selectFrom('RoleAllowedUserType')
-      .select('userTypeId')
-      .where('tenantId', '=', tenantId)
-      .where('roleId', '=', roleId)
-      .where('userTypeId', '=', userTypeId)
+      .selectFrom('Role as r')
+      .where('r.tenantId', '=', tenantId)
+      .where('r.id', '=', roleId)
+      .select((eb) => {
+        const role = {
+          tenantId: eb.ref('r.tenantId'),
+          id: eb.ref('r.id'),
+          eligibilityMode: eb.ref('r.eligibilityMode'),
+          anchorMode: eb.ref('r.anchorMode'),
+        }
+        return (
+          'userTypeId' in what
+            ? admitsUserType(role, eb.val(what.userTypeId))
+            : admitsOrgType(role, eb.val(what.orgTypeId))
+        ).as('admitted')
+      })
       .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row !== undefined))
+  ).pipe(Effect.map((row) => row?.admitted === true))
 
+/** the node type a grant would anchor on, which decides whether the role may */
 const orgNodeType = (em: RbacEntityManager, tenantId: string, orgNodeId: string) =>
   query(() =>
     kyselyOf(em)
       .selectFrom('OrgNode')
-      .select('orgTypeId')
+      .select(['id', 'orgTypeId'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', orgNodeId)
       .executeTakeFirst(),
   )
-
-const roleAllowsOrgType = (
-  em: RbacEntityManager,
-  tenantId: string,
-  roleId: string,
-  orgTypeId: string,
-) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('RoleAllowedOrgType')
-      .select('orgTypeId')
-      .where('tenantId', '=', tenantId)
-      .where('roleId', '=', roleId)
-      .where('orgTypeId', '=', orgTypeId)
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row !== undefined))
 
 /** whether the actor themselves holds the canonical administrator role */
 const holdsCanonicalAdmin = (
@@ -431,7 +436,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // by having a system key, which would exempt every system role added
     // later.
     if (!isCanonicalTenantAdmin(role)) {
-      if (!(yield* roleAllowsUserType(em, tenantId, role.id, user.userTypeId))) {
+      if (!(yield* roleAdmits(em, tenantId, role.id, { userTypeId: user.userTypeId }))) {
         return yield* new GrantNotEligible({ reason: 'user-type' })
       }
     }
@@ -449,7 +454,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     }
     const node = yield* orgNodeType(em, tenantId, input.target.orgNodeId)
     if (!node) return yield* new GrantNodeNotFound()
-    if (!(yield* roleAllowsOrgType(em, tenantId, role.id, node.orgTypeId))) {
+    if (!(yield* roleAdmits(em, tenantId, role.id, { orgTypeId: node.orgTypeId }))) {
       return yield* new GrantNotEligible({ reason: 'org-type' })
     }
     return role

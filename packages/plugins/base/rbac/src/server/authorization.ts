@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
 import { canonicalTenantAdmin, type ActivePermission, type Principal } from '@qualy/rbac-contract'
-import { rbacEntityManager, type RbacEntityManager } from './db.ts'
+import { admitsUserType, rbacEntityManager, type RbacEntityManager } from './db.ts'
 
 // The authorization SQL.
 //
@@ -601,6 +601,7 @@ export const rolesStrandedByUserType = (
     kyselyOf(em)
       .selectFrom('Role as r')
       .where('r.tenantId', '=', tenantId)
+      .where('r.eligibilityMode', '=', 'allow-list')
       .where((eb) =>
         eb.exists(
           eb
@@ -645,15 +646,20 @@ export const grantsBlockingUserType = (
       .selectFrom('RoleGrant as g')
       .where('g.tenantId', '=', tenantId)
       .where('g.userId', '=', userId)
+      .innerJoin('Role as r', (join) =>
+        join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
+      )
+      // a role that admits every user type cannot be invalidated by a retype
       .where((eb) =>
         eb.not(
-          eb.exists(
-            eb
-              .selectFrom('RoleAllowedUserType as t')
-              .select('t.userTypeId')
-              .whereRef('t.tenantId', '=', 'g.tenantId')
-              .whereRef('t.roleId', '=', 'g.roleId')
-              .where('t.userTypeId', '=', userTypeId),
+          admitsUserType(
+            {
+              tenantId: eb.ref('g.tenantId'),
+              id: eb.ref('g.roleId'),
+              eligibilityMode: eb.ref('r.eligibilityMode'),
+              anchorMode: eb.ref('r.anchorMode'),
+            },
+            eb.val(userTypeId),
           ),
         ),
       )

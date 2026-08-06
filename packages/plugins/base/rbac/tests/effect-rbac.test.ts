@@ -61,6 +61,12 @@ const stack = (url: string) =>
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
+/** the lists a policy names, or null when it names everything */
+type EligibilityView = { eligibility: { mode: string; userTypeIds?: readonly string[] } }
+type AnchorView = { anchor: { mode: string; orgTypeIds?: readonly string[] } }
+const eligibleOf = (read: EligibilityView) => read.eligibility.userTypeIds ?? null
+const anchoredOf = (read: AnchorView) => read.anchor.orgTypeIds ?? null
+
 const tagOf = (result: { _tag: string; failure?: unknown }) =>
   result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
 
@@ -1006,7 +1012,10 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const version = yield* access.roles.setEligibility(
             f.tenant,
             roleId,
-            { userTypeIds: [staff], orgTypeIds: [orgType] },
+            {
+              eligibility: { mode: 'allow-list', userTypeIds: [staff] },
+              anchor: { mode: 'allow-list', orgTypeIds: [orgType] },
+            },
             1,
           )
           const stored = yield* access.roles.getEligibility(f.tenant, roleId)
@@ -1020,7 +1029,10 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             access.roles.setEligibility(
               f.tenant,
               roleId,
-              { userTypeIds: [other], orgTypeIds: [] },
+              {
+                eligibility: { mode: 'allow-list', userTypeIds: [other] },
+                anchor: { mode: 'allow-list', orgTypeIds: [] },
+              },
               version,
             ),
           )
@@ -1028,7 +1040,13 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             access.roles.setEligibility(
               f.tenant,
               roleId,
-              { userTypeIds: ['00000000-0000-7000-8000-000000000000'], orgTypeIds: [] },
+              {
+                eligibility: {
+                  mode: 'allow-list',
+                  userTypeIds: ['00000000-0000-7000-8000-000000000000'],
+                },
+                anchor: { mode: 'allow-list', orgTypeIds: [] },
+              },
               version,
             ),
           )
@@ -1038,13 +1056,110 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
         }),
       )
       const answer = ok(exit)
-      expect(answer.stored.userTypeIds).toEqual([answer.staff])
-      expect(answer.stored.orgTypeIds).toEqual([])
+      expect(eligibleOf(answer.stored)).toEqual([answer.staff])
+      expect(anchoredOf(answer.stored)).toEqual([])
       expect(tagOf(answer.stranding)).toBe('GRANT_STRANDED')
       expect((answer.stranding as { failure: { grantCount: number } }).failure.grantCount).toBe(1)
       expect(tagOf(answer.unknown)).toBe('ROLE_USER_TYPE_NOT_FOUND')
-      expect(answer.after.userTypeIds).toEqual([answer.staff])
+      expect(eligibleOf(answer.after)).toEqual([answer.staff])
       expect(answer.after.version).toBe(answer.stored.version)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // "anyone" and "nobody" are the same empty list, which is why the mode is
+  // stored rather than read off the list's size. Every consequence follows
+  // from that one column: activation stops demanding a list, a grant of a type
+  // the role never named is allowed, and deleting a user type cannot strand it.
+  it('lets a role admit every user type without naming one', async () => {
+    const db = await createTestContext('effect-role-eligibility-any')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const roleId = yield* access.roles.create(f.tenant, {
+            code: 'open',
+            name: 'Open',
+            kind: 'tenant',
+          })
+          yield* access.roles.setPermissions(f.tenant, roleId, ['iam.user.read'], 1, f.principal)
+          const version = yield* access.roles.setEligibility(
+            f.tenant,
+            roleId,
+            { eligibility: { mode: 'unrestricted' }, anchor: { mode: 'unrestricted' } },
+            2,
+          )
+          // an empty allow-list is refused here; the mode is what makes the
+          // same empty table mean the opposite
+          yield* access.roles.setStatus(f.tenant, roleId, 'active', version, f.principal)
+          const read = yield* access.roles.getEligibility(f.tenant, roleId)
+
+          // somebody of a type the role never named, and never could have
+          const visitorType = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, placement_mode, allow_local_login)
+              values (${f.tenant}, 'visitor', 'Visitor', 'unrestricted', true) returning id`),
+          ).id
+          const visitor = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Visitor', ${visitorType}, ${f.root}) returning id`),
+          ).id
+          yield* access.grants.grant(
+            f.tenant,
+            { userId: visitor, roleId, target: { kind: 'tenant' } },
+            f.principal,
+          )
+
+          // and deleting that type cannot strand a role that never named one
+          const stranded = yield* rbac.rolesStrandedByUserType(f.tenant, visitorType)
+
+          // the other half, on the side that has it: an org role activating
+          // without naming a single node type it may anchor to
+          const anchored = yield* access.roles.create(f.tenant, {
+            code: 'anywhere',
+            name: 'Anywhere',
+            kind: 'org',
+          })
+          yield* access.roles.setPermissions(
+            f.tenant,
+            anchored,
+            ['org.tree.manage'],
+            1,
+            f.principal,
+          )
+          const anchoredVersion = yield* access.roles.setEligibility(
+            f.tenant,
+            anchored,
+            { eligibility: { mode: 'unrestricted' }, anchor: { mode: 'unrestricted' } },
+            2,
+          )
+          yield* access.roles.setStatus(f.tenant, anchored, 'active', anchoredVersion, f.principal)
+          yield* access.grants.grant(
+            f.tenant,
+            {
+              userId: visitor,
+              roleId: anchored,
+              target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' },
+            },
+            f.principal,
+          )
+          const anchorRead = yield* access.roles.getEligibility(f.tenant, anchored)
+          return { read, stranded, anchorRead }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.read.eligibility.mode).toBe('unrestricted')
+      // a tenant role anchors to nothing, so its anchor policy stays the empty
+      // list that says exactly that, whatever the caller sent
+      expect(answer.read.anchor).toEqual({ mode: 'allow-list', orgTypeIds: [] })
+      expect(answer.stranded).toBe(0)
+      expect(answer.anchorRead.anchor.mode).toBe('unrestricted')
     } finally {
       await db.dispose()
     }
@@ -1062,14 +1177,25 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             access.roles.setEligibility(
               f.tenant,
               f.plainRole,
-              { userTypeIds: [], orgTypeIds: [] },
+              {
+                eligibility: { mode: 'allow-list', userTypeIds: [] },
+                anchor: { mode: 'allow-list', orgTypeIds: [] },
+              },
               1,
             ),
           )
           // the canonical administrator is grantable to whoever the tenant
           // designates, so it declares no eligibility to edit
           const admin = yield* Effect.result(
-            access.roles.setEligibility(f.tenant, f.role, { userTypeIds: [], orgTypeIds: [] }, 1),
+            access.roles.setEligibility(
+              f.tenant,
+              f.role,
+              {
+                eligibility: { mode: 'allow-list', userTypeIds: [] },
+                anchor: { mode: 'allow-list', orgTypeIds: [] },
+              },
+              1,
+            ),
           )
           // a draft may be emptied: completeness is checked when it becomes usable
           const draft = yield* access.roles.create(f.tenant, {
@@ -1080,7 +1206,10 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           yield* access.roles.setEligibility(
             f.tenant,
             draft,
-            { userTypeIds: [], orgTypeIds: [] },
+            {
+              eligibility: { mode: 'allow-list', userTypeIds: [] },
+              anchor: { mode: 'allow-list', orgTypeIds: [] },
+            },
             1,
           )
           const emptyDraft = yield* access.roles.getEligibility(f.tenant, draft)
@@ -1090,7 +1219,11 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       const answer = ok(exit)
       expect(tagOf(answer.emptied)).toBe('ROLE_NEEDS_ELIGIBILITY')
       expect(tagOf(answer.admin)).toBe('ROLE_IS_SYSTEM')
-      expect(answer.emptyDraft).toMatchObject({ userTypeIds: [], orgTypeIds: [], version: 2 })
+      expect(answer.emptyDraft).toMatchObject({
+        eligibility: { mode: 'allow-list', userTypeIds: [] },
+        anchor: { mode: 'allow-list', orgTypeIds: [] },
+        version: 2,
+      })
     } finally {
       await db.dispose()
     }

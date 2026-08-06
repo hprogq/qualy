@@ -97,6 +97,14 @@ const i18n = definePluginMessages({
       id: 'rbac/field/allowed-org-types',
       defaultMessage: 'This duty applies at these kinds of node',
     },
+    anyUserType: {
+      id: 'rbac/field/any-user-type',
+      defaultMessage: 'May be granted to any user type',
+    },
+    anyOrgType: {
+      id: 'rbac/field/any-org-type',
+      defaultMessage: 'This duty applies at any kind of node',
+    },
     noOptions: { id: 'rbac/field/no-options', defaultMessage: 'Nothing to choose from yet.' },
     assignableLabel: { id: 'rbac/field/assignable', defaultMessage: 'Can be granted' },
     create: { id: 'rbac/action/create', defaultMessage: 'Create' },

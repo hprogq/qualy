@@ -28,8 +28,14 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const [name, setName] = useState(role.name)
   const [description, setDescription] = useState(role.description ?? '')
   const [permissions, setPermissions] = useState<string[]>([...role.permissions])
-  const [userTypeIds, setUserTypeIds] = useState<string[]>([...role.eligibleUserTypeIds])
-  const [orgTypeIds, setOrgTypeIds] = useState<string[]>([...role.anchorOrgTypeIds])
+  const [anyUserType, setAnyUserType] = useState(role.eligibility.mode === 'unrestricted')
+  const [anyOrgType, setAnyOrgType] = useState(role.anchor.mode === 'unrestricted')
+  const [userTypeIds, setUserTypeIds] = useState<string[]>(
+    role.eligibility.mode === 'allow-list' ? [...role.eligibility.userTypeIds] : [],
+  )
+  const [orgTypeIds, setOrgTypeIds] = useState<string[]>(
+    role.anchor.mode === 'allow-list' ? [...role.anchor.orgTypeIds] : [],
+  )
 
   // a different record is a different form, so the draft re-seeds when the
   // selection changes or when a save brings back new server state
@@ -37,14 +43,18 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     setName(role.name)
     setDescription(role.description ?? '')
     setPermissions([...role.permissions])
-    setUserTypeIds([...role.eligibleUserTypeIds])
-    setOrgTypeIds([...role.anchorOrgTypeIds])
+    setAnyUserType(role.eligibility.mode === 'unrestricted')
+    setAnyOrgType(role.anchor.mode === 'unrestricted')
+    setUserTypeIds(role.eligibility.mode === 'allow-list' ? [...role.eligibility.userTypeIds] : [])
+    setOrgTypeIds(role.anchor.mode === 'allow-list' ? [...role.anchor.orgTypeIds] : [])
     setFeedback(null)
     setSaved(false)
   }, [role])
 
   const catalog = useQuery(
-    orpc.access.listPermissions.queryOptions({ query: { target: role.kind === 'org' ? 'org-node' : 'tenant' } }),
+    orpc.access.listPermissions.queryOptions({
+      query: { target: role.kind === 'org' ? 'org-node' : 'tenant' },
+    }),
   )
   const options = useQuery(orpc.access.getRoleOptions.queryOptions())
 
@@ -90,7 +100,15 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     run(() =>
       api.access.setRoleEligibility({
         params: { roleId: role.id },
-        payload: { version: role.version, userTypeIds, orgTypeIds },
+        payload: {
+          version: role.version,
+          eligibility: anyUserType
+            ? { mode: 'unrestricted' as const }
+            : { mode: 'allow-list' as const, userTypeIds },
+          anchor: anyOrgType
+            ? { mode: 'unrestricted' as const }
+            : { mode: 'allow-list' as const, orgTypeIds },
+        },
       }),
     ),
   )
@@ -231,38 +249,64 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       {/* every role says who may hold it; only an anchored one says where
           the duty applies */}
       <AsyncSection
-          pending={options.isPending}
-          error={options.isError ? formatError(options.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
-          onRetry={() => void options.refetch()}
-        >
+        pending={options.isPending}
+        error={options.isError ? formatError(options.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void options.refetch()}
+      >
         <div className="space-y-2">
-          <CheckboxGroup
-            legend={format(m.userTypesLegend)}
-            emptyLabel={format(m.noOptions)}
-            disabled={!editable}
-            options={(options.data?.userTypes ?? []).map((type) => ({
-              value: type.id,
-              label: type.name,
-              hint: type.code,
-            }))}
-            selected={userTypeIds}
-            onChange={setUserTypeIds}
-          />
-          {role.kind === 'org' && (
+          {/* the mode first, and the list only when it is the mode: an empty
+              allow-list means nobody, which is a different rule from anybody */}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={anyUserType}
+              disabled={!editable}
+              onChange={(event) => setAnyUserType(event.target.checked)}
+            />
+            {format(m.anyUserType)}
+          </label>
+          {!anyUserType && (
             <CheckboxGroup
-              legend={format(m.orgTypesLegend)}
+              legend={format(m.userTypesLegend)}
               emptyLabel={format(m.noOptions)}
               disabled={!editable}
-              options={(options.data?.orgTypes ?? []).map((type) => ({
+              options={(options.data?.userTypes ?? []).map((type) => ({
                 value: type.id,
                 label: type.name,
                 hint: type.code,
               }))}
-              selected={orgTypeIds}
-              onChange={setOrgTypeIds}
+              selected={userTypeIds}
+              onChange={setUserTypeIds}
             />
+          )}
+          {role.kind === 'org' && (
+            <>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={anyOrgType}
+                  disabled={!editable}
+                  onChange={(event) => setAnyOrgType(event.target.checked)}
+                />
+                {format(m.anyOrgType)}
+              </label>
+              {!anyOrgType && (
+                <CheckboxGroup
+                  legend={format(m.orgTypesLegend)}
+                  emptyLabel={format(m.noOptions)}
+                  disabled={!editable}
+                  options={(options.data?.orgTypes ?? []).map((type) => ({
+                    value: type.id,
+                    label: type.name,
+                    hint: type.code,
+                  }))}
+                  selected={orgTypeIds}
+                  onChange={setOrgTypeIds}
+                />
+              )}
+            </>
           )}
           <Button
             size="sm"

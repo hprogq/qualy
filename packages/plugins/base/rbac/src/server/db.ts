@@ -5,7 +5,7 @@ import {
   query,
   type ClosureEntityManager,
 } from '@qualy/plugin-database/server'
-import { sql } from 'kysely'
+import { sql, type Expression } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities } from '../db/entities.ts'
@@ -63,6 +63,48 @@ export const orgNodeExists = (em: RbacEntityManager, tenantId: string, orgNodeId
  * second projection would eventually disagree about what a role currently
  * carries.
  */
+/**
+ * The role columns the eligibility predicates read, wherever a query aliased
+ * them.
+ *
+ * References rather than an alias string, for the same reason the scope
+ * predicate takes them: a query that renamed its join stops compiling instead
+ * of describing a table that is not there.
+ */
+export interface RoleEligibilityRef {
+  readonly tenantId: Expression<string>
+  readonly id: Expression<string>
+  readonly eligibilityMode: Expression<string>
+  readonly anchorMode: Expression<string>
+}
+
+/**
+ * Whether a role admits this kind of person, and this kind of node.
+ *
+ * One definition each, because four questions are asked of them - may this
+ * grant be created, would this edit strand a grant, would deleting this user
+ * type leave a role nobody can hold, would retyping this person invalidate a
+ * grant - and four hand-written copies of "is it in the list, unless the mode
+ * says everything" is four chances to forget the mode.
+ */
+export const admitsUserType = (role: RoleEligibilityRef, userTypeId: Expression<string>) =>
+  sql<boolean>`(${role.eligibilityMode} = 'unrestricted' or exists (
+    select 1 from role_allowed_user_types t
+    where t.tenant_id = ${role.tenantId} and t.role_id = ${role.id}
+      and t.user_type_id = ${userTypeId}))`
+
+/**
+ * Nullable, because the node is outer-joined wherever a tenant grant may be in
+ * the same result set. Such a row has no node for this to decide, and the
+ * caller says so with a null test rather than by handing over a node that is
+ * not there.
+ */
+export const admitsOrgType = (role: RoleEligibilityRef, orgTypeId: Expression<string | null>) =>
+  sql<boolean>`(${role.anchorMode} = 'unrestricted' or exists (
+    select 1 from role_allowed_org_types t
+    where t.tenant_id = ${role.tenantId} and t.role_id = ${role.id}
+      and t.org_type_id = ${orgTypeId}))`
+
 const roleProjection = (em: RbacEntityManager, tenantId: string) =>
   kyselyOf(em)
     .selectFrom('Role as r')
@@ -86,6 +128,8 @@ const roleProjection = (em: RbacEntityManager, tenantId: string) =>
         where rp.tenant_id = ${eb.ref('r.tenantId')} and rp.role_id = ${eb.ref('r.id')}), '{}')`.as(
         'permissions',
       ),
+      eb.ref('r.eligibilityMode').$castTo<'unrestricted' | 'allow-list'>().as('eligibilityMode'),
+      eb.ref('r.anchorMode').$castTo<'unrestricted' | 'allow-list'>().as('anchorMode'),
       sql<string[]>`coalesce((select array_agg(t.user_type_id::text) from role_allowed_user_types t
         where t.tenant_id = ${eb.ref('r.tenantId')} and t.role_id = ${eb.ref('r.id')}), '{}')`.as(
         'allowedUserTypes',

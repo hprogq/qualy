@@ -49,6 +49,44 @@ const permissionTarget = Schema.Literals(['tenant', 'org-node'])
 const coverage = Schema.Literals(['self', 'subtree'])
 
 /** what a role is and what it currently carries, as a role screen needs it */
+/**
+ * Who may hold a role, and where an org role's duty applies.
+ *
+ * The mode is stated rather than inferred from an empty list, exactly as user
+ * type placement states it: reading "no rows" as "anyone, anywhere" makes
+ * unchecking the last box widen the rule instead of narrowing it, and skips
+ * the check that would have refused to strand the grants already made.
+ */
+const eligibilityView = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+  Schema.Struct({
+    mode: Schema.Literal('allow-list'),
+    userTypeIds: Schema.Array(Schema.String),
+  }),
+])
+
+const anchorView = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+  Schema.Struct({ mode: Schema.Literal('allow-list'), orgTypeIds: Schema.Array(Schema.String) }),
+])
+
+/** the same two, as a writer must state them: an allow-list has to list something */
+const eligibilityPolicy = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+  Schema.Struct({
+    mode: Schema.Literal('allow-list'),
+    userTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+  }),
+])
+
+const anchorPolicy = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+  Schema.Struct({
+    mode: Schema.Literal('allow-list'),
+    orgTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+  }),
+])
+
 const roleShape = Schema.Struct({
   id: Schema.String,
   code: Schema.String,
@@ -65,8 +103,8 @@ const roleShape = Schema.Struct({
   grantCount: Schema.Number,
   permissions: Schema.Array(Schema.String),
   unavailablePermissions: Schema.Array(Schema.String),
-  eligibleUserTypeIds: Schema.Array(Schema.String),
-  anchorOrgTypeIds: Schema.Array(Schema.String),
+  eligibility: eligibilityView,
+  anchor: anchorView,
 })
 
 /** where authority applies, resolved for display */
@@ -266,8 +304,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.get('getRoleEligibility', '/iam/roles/:roleId/eligibility', {
       params: Schema.Struct({ roleId: id }),
       success: Schema.Struct({
-        userTypeIds: Schema.Array(Schema.String),
-        orgTypeIds: Schema.Array(Schema.String),
+        eligibility: eligibilityView,
+        anchor: anchorView,
         version: Schema.Number,
       }),
       error: [RoleNotFound, AccessDenied],
@@ -280,10 +318,10 @@ export const accessApiGroup = HttpApiGroup.make('access')
       params: Schema.Struct({ roleId: id }),
       payload: Schema.Struct({
         version: expectedVersion,
-        // a full replacement names both sets: omitting one and having it
+        // a full replacement names both policies: omitting one and having it
         // silently survive is how a replace quietly becomes a merge
-        userTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
-        orgTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+        eligibility: eligibilityPolicy,
+        anchor: anchorPolicy,
       }),
       success: Schema.Struct({ version: Schema.Number }),
       error: [

@@ -2,6 +2,8 @@ import { Effect, Schema } from 'effect'
 import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { sql } from 'kysely'
 import {
+  admitsOrgType,
+  admitsUserType,
   lockTenant,
   oneRoleProjected,
   rbacEntityManager,
@@ -163,6 +165,45 @@ const countGrantsOfRole = (em: RbacEntityManager, tenantId: string, roleId: stri
   ).pipe(Effect.map((row) => row?.count ?? 0))
 
 /** what a completeness check counts: who may hold it, and what it may anchor to */
+/** who may hold a role: everyone, or exactly these user types */
+export type EligibilityPolicy =
+  | { readonly mode: 'unrestricted' }
+  | { readonly mode: 'allow-list'; readonly userTypeIds: readonly string[] }
+
+/** where an org role's duty applies: any node type, or exactly these */
+export type AnchorPolicy =
+  | { readonly mode: 'unrestricted' }
+  | { readonly mode: 'allow-list'; readonly orgTypeIds: readonly string[] }
+
+/** what the role says about who may hold it and where it applies */
+const roleModes = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Role')
+      .select((eb) => [
+        eb.ref('eligibilityMode').$castTo<'unrestricted' | 'allow-list'>().as('eligibilityMode'),
+        eb.ref('anchorMode').$castTo<'unrestricted' | 'allow-list'>().as('anchorMode'),
+      ])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .executeTakeFirstOrThrow(),
+  )
+
+const setRoleModes = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  modes: { eligibilityMode: string; anchorMode: string },
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('Role')
+      .set(modes)
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .execute(),
+  )
+
 const roleSetSizes = (em: RbacEntityManager, tenantId: string, roleId: string) =>
   query(() =>
     kyselyOf(em)
@@ -384,17 +425,22 @@ const grantsStrandedByEligibility = (em: RbacEntityManager, tenantId: string, ro
       )
       .where('g.tenantId', '=', tenantId)
       .where('g.roleId', '=', roleId)
-      .where(
-        (eb) => sql<boolean>`(
-          not exists (select 1 from role_allowed_user_types t
-            where t.tenant_id = ${eb.ref('g.tenantId')} and t.role_id = ${eb.ref('g.roleId')}
-              and t.user_type_id = ${eb.ref('u.userTypeId')})
-          or (${eb.ref('n.id')} is not null and not exists (
-            select 1 from role_allowed_org_types t
-            where t.tenant_id = ${eb.ref('g.tenantId')} and t.role_id = ${eb.ref('g.roleId')}
-              and t.org_type_id = ${eb.ref('n.orgTypeId')}))
-        )`,
+      .innerJoin('Role as r', (join) =>
+        join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
       )
+      .where((eb) => {
+        const role = {
+          tenantId: eb.ref('r.tenantId'),
+          id: eb.ref('r.id'),
+          eligibilityMode: eb.ref('r.eligibilityMode'),
+          anchorMode: eb.ref('r.anchorMode'),
+        }
+        return sql<boolean>`(
+          not ${admitsUserType(role, eb.ref('u.userTypeId'))}
+          or (${eb.ref('n.id')} is not null
+              and not ${admitsOrgType(role, eb.ref('n.orgTypeId'))})
+        )`
+      })
       .select(sql<number>`count(*)::int`.as('count'))
       .executeTakeFirst(),
   ).pipe(Effect.map((row) => row?.count ?? 0))
@@ -402,7 +448,12 @@ const grantsStrandedByEligibility = (em: RbacEntityManager, tenantId: string, ro
 const roleEligibility = (em: RbacEntityManager, tenantId: string, roleId: string) =>
   query(() =>
     kyselyOf(em)
-      .selectNoFrom([
+      .selectFrom('Role as r')
+      .where('r.tenantId', '=', tenantId)
+      .where('r.id', '=', roleId)
+      .select((eb) => [
+        eb.ref('r.eligibilityMode').$castTo<'unrestricted' | 'allow-list'>().as('eligibilityMode'),
+        eb.ref('r.anchorMode').$castTo<'unrestricted' | 'allow-list'>().as('anchorMode'),
         sql<string[]>`coalesce((select array_agg(user_type_id::text)
           from role_allowed_user_types
           where tenant_id = ${tenantId} and role_id = ${roleId}), '{}')`.as('userTypeIds'),
@@ -498,8 +549,11 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     const codes = yield* codesOf(tenantId, role.id)
     if (codes.filter((code) => active.has(code)).length === 0) missing.push('permissions')
     const counts = yield* roleSetSizes(em, tenantId, role.id)
-    if (counts.userTypes === 0) missing.push('user-types')
-    if (role.kind === 'org' && counts.orgTypes === 0) missing.push('org-types')
+    const modes = yield* roleModes(em, tenantId, role.id)
+    if (modes.eligibilityMode === 'allow-list' && counts.userTypes === 0) missing.push('user-types')
+    if (role.kind === 'org' && modes.anchorMode === 'allow-list' && counts.orgTypes === 0) {
+      missing.push('org-types')
+    }
     if (missing.length > 0) return yield* new RoleIncomplete({ missing })
   })
 
@@ -722,8 +776,14 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       if (!role) return yield* new RoleNotFound()
       const sets = yield* roleEligibility(em, tenantId, roleId).pipe(Effect.orDie)
       return {
-        userTypeIds: [...sets.userTypeIds].sort(),
-        orgTypeIds: [...sets.orgTypeIds].sort(),
+        eligibility:
+          sets.eligibilityMode === 'unrestricted'
+            ? ({ mode: 'unrestricted' } as const)
+            : ({ mode: 'allow-list', userTypeIds: [...sets.userTypeIds].sort() } as const),
+        anchor:
+          sets.anchorMode === 'unrestricted'
+            ? ({ mode: 'unrestricted' } as const)
+            : ({ mode: 'allow-list', orgTypeIds: [...sets.orgTypeIds].sort() } as const),
         version: role.version,
       }
     }),
@@ -737,7 +797,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     setEligibility: Effect.fn('Rbac.roles.setEligibility')(function* (
       tenantId: string,
       roleId: string,
-      sets: { userTypeIds: readonly string[]; orgTypeIds: readonly string[] },
+      policy: { eligibility: EligibilityPolicy; anchor: AnchorPolicy },
       expectedVersion: number,
     ) {
       return yield* write(tenantId, () =>
@@ -746,13 +806,23 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           // the canonical administrator is grantable to whoever the tenant
           // designates; everything else declares who may hold it
           if (role.systemKey !== null) return yield* new RoleIsSystem()
-          const userTypeIds = [...new Set(sets.userTypeIds)]
-          // A tenant role reaches the whole tenant, so it anchors to nothing
-          // and admits no org types: the field is not part of its policy.
-          const orgTypeIds = role.kind === 'org' ? [...new Set(sets.orgTypeIds)] : []
+          const eligibility = policy.eligibility
+          // A tenant role reaches the whole tenant, so it anchors to nothing:
+          // an empty allow-list is what says that, and it says it whatever the
+          // caller sent.
+          const anchor: AnchorPolicy =
+            role.kind === 'org' ? policy.anchor : { mode: 'allow-list', orgTypeIds: [] }
+          const userTypeIds =
+            eligibility.mode === 'allow-list' ? [...new Set(eligibility.userTypeIds)] : []
+          const orgTypeIds = anchor.mode === 'allow-list' ? [...new Set(anchor.orgTypeIds)] : []
+          // An active role has to be holdable and, if anchored, anchorable. A
+          // mode that admits everything satisfies that without a list; an empty
+          // allow-list does not, which is the whole reason the mode is stated
+          // rather than read off the list's size.
           if (
             role.status === 'active' &&
-            (userTypeIds.length === 0 || (role.kind === 'org' && orgTypeIds.length === 0))
+            ((eligibility.mode === 'allow-list' && userTypeIds.length === 0) ||
+              (role.kind === 'org' && anchor.mode === 'allow-list' && orgTypeIds.length === 0))
           ) {
             return yield* new RoleNeedsEligibility()
           }
@@ -781,6 +851,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           })
           yield* replace('user-types', userTypeIds)
           yield* replace('org-types', orgTypeIds)
+          yield* setRoleModes(em, tenantId, role.id, {
+            eligibilityMode: eligibility.mode,
+            anchorMode: anchor.mode,
+          })
 
           // The sets and the grants are checked together under one lock, so a
           // narrowing that would orphan a grant fails as a whole. The node is
