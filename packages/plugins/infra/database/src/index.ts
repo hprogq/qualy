@@ -12,6 +12,9 @@ const plugin = Plugin.define(
   '@qualy/plugin-database',
   { config },
   Db.provider,
+  // the assembly capability: schema resolution, generation and deployment.
+  // Imported by the CLI when the capability does work; boot never pays for it
+  Plugin.capability('database', () => import('./assembly/index.ts')),
   Plugin.layer(serviceLayer),
   Cli.command({
     namespace: 'database',

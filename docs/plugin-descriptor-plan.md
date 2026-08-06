@@ -101,12 +101,20 @@ PermissionDeclarations)` 读声明,lock 记 `{owner, codes}`(评审 diff 直接�
   一致性检查全删);auth/org/rbac 的 `qualy.contributions.permissions` 删除;
   seed(scripts/lib/permission-entries.ts)改读描述器,owner 来自声明本身。
   lock 只变内容不变版本(contribution 形状归 provider 所有)。
-- **M3b-2b(下一轮)**:database 走同一钩子——`Db.entities` 携值 + dependsOn +
-  compositeForeignKeys,`Db.baseline` feature 化,entitiesEntry/loadEntityModules
-  路径机械死掉,lock 投影 `{tables, baseline shas, dependsOn}`(LOCKFILE_VERSION 升级);
-  `qualy.capabilityProvider` → `Plugin.capability(key, lazyLoad)` feature;
-  metadata.ts 的 contributions/provider 解析随之删除;retained 语义不变
-  (retained 集按已安装包 import 描述器)。
+- ~~M3b-2b~~ **已完成 2026-08-07**,两刀:①database 走同一钩子——`Db.entities(entities,
+{dependsOn, compositeForeignKeys, baselineDir})` 一个 feature 携带全部声明,
+  entitiesEntry/loadEntityModules 路径机械死掉,generate/deploy/adopt 经
+  `context.descriptors` 直接拿声明值(与运行时同一批常量);lock 投影
+  `{entities(实体名,总是可得;表名可来自命名策略), baselineDir?, dependsOn}`,
+  **无需 LOCKFILE_VERSION 升级**——contribution 形状归 provider 所有,唯一跨版本读者是
+  `retainsPlugin`,`lockedOwnsObjects` 兼容旧 `entitiesEntry` 形状即可(detached 语义保住);
+  能力扩展点带 `capability` 键,resolve 在写 lock 前拒绝「贡献了没人提供的能力」
+  (运行时通道归 boot 完整性检查,与旧行为对齐:api/ui/login 本就没有 resolve 期检查)。
+  ②`qualy.capabilityProvider` → `Plugin.capability(key, lazyLoad)` feature(CLI 做事时才
+  import provider 模块,boot 永不付费);resolve 先 import 全部候选(清单 ∪ lock 召回)的
+  描述器再发现 provider,一键一主与「模块 key 与声明不符」的校验原样保留;残留的
+  package.json 声明按 orphaned 硬拒;test-layers 的 provider 入口门禁改从
+  `Plugin.capability` 声明发现。
 
 **M4(未裁决)**:每插件自持 typed client,删 @qualy/api 与全局 api-client,前端全量换装。
 

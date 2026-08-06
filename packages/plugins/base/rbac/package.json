@@ -16,12 +16,6 @@
     "./package.json": "./package.json",
     "./assembly": "./src/assembly/index.ts"
   },
-  "qualy": {
-    "capabilityProvider": {
-      "key": "permissions",
-      "entry": "./assembly"
-    }
-  },
   "peerDependencies": {
     "react": "catalog:"
   },

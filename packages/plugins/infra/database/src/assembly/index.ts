@@ -17,10 +17,10 @@ import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 
 // Everything the assembly knows about databases lives behind this one module.
 //
-// The assembly core reaches it because @qualy/plugin-database's package.json
-// declares qualy.capabilityProvider, and it disappears the moment that plugin
-// leaves the manifest: an assembly of plugins that own no tables never loads
-// this file, never resolves a schema and never opens a database. The
+// The assembly core reaches it through the descriptor's Plugin.capability
+// feature, and it disappears the moment that plugin leaves the manifest: an
+// assembly of plugins that own no tables never loads this file, never
+// resolves a schema and never opens a database. The
 // contributions come from plugin descriptors - the same Db.entities feature
 // the runtime compiles - so the lock records a reviewed projection of the
 // declared schema, and the work phases read the declared values themselves.

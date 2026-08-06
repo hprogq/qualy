@@ -1751,8 +1751,40 @@ exports 等价检查随"两个模块两个答案"的风险一起消失——现�
 `pnpm qualy resolve` 重写 lock 后 `--frozen-lockfile` 干净;真实启动 `/health/ready` 200、
 `/api/iam/roles` 401(未认证 fail-closed)。
 
-**M3b-2b 待做**:database 走同一钩子(`Db.entities` 携值 + dependsOn +
-compositeForeignKeys、`Db.baseline` feature、entitiesEntry/loadEntityModules 路径机械死、
-lock 投影 `{tables, baseline shas, dependsOn}` + LOCKFILE_VERSION 升级);
-`qualy.capabilityProvider` → `Plugin.capability(key, lazyLoad)` feature;
-metadata.ts 声明解析删除;retained 语义不变。
+### M3b-2b:database 迁描述器 + capabilityProvider feature 化(2026-08-07)
+
+**database 换轨**(两个 commit 的前一个):`Db.entities(entities, {dependsOn,
+compositeForeignKeys, baselineDir})` 一个 feature 携带全部声明,四个 package.json 的
+`qualy.contributions.database` 删除;entitiesEntry/loadEntityModules/exports 子路径核对
+全部死掉——generate/deploy/adopt/`qualy db migrate` 经 `context.descriptors`(契约新增,
+resolve/work/modules 三个上下文都带)直接拿声明值,与运行时编译的是同一批常量。
+lock 投影 `{entities(实体名), baselineDir?, dependsOn}`(评审 diff 直接看到实体面);
+**未升 LOCKFILE_VERSION**——形状归 provider 所有,唯一跨版本读者 `retainsPlugin`,
+`lockedOwnsObjects` 同时认旧 `entitiesEntry` 形状,detached 语义保住(计划里写了升级,
+实做发现不必:核心表结构未变)。
+
+**resolve 期完整性恢复**:package.json 声明消失后「org 贡献 database 但没人提供」一度
+只能等 boot 才报。裁决:能力扩展点自带归属——`ExtensionPoint.make(id, {phase,
+capability})`,贡献方 import 的 point 对象本身携带能力键,resolve 在写 lock 之前按键拒绝
+(报文与旧版一字不差);运行时通道(api/ui/login)无此键,归 boot 装配器完整性检查——
+与旧行为精确对齐(它们本就没有 resolve 期检查,宿主描述器提供的 api 点 resolve 也看不见)。
+先试过「泛化点级完整性搬进 resolve」,被产品清单自己证伪(api 组的 provider 在宿主
+描述器上),遂收窄为能力键方案。
+
+**capabilityProvider feature 化**(后一个 commit):`Plugin.capability(key, () =>
+import('./assembly/index.ts'))` 上描述器,database/rbac 两个 package.json 声明删除;
+resolve 改为先 import 全部候选(清单 ∪ lock 召回,均已装机)的描述器、再从中发现
+provider——一键一主与「模块提供的 key 与声明不符」校验原样保留,lazy load 保证 boot
+永不 import 迁移器。metadata.ts 的 provider 解析缩成 `declaresProvider` 布尔(仅用于
+把残留的 package.json 声明按 orphaned 硬拒),契约删 `CapabilityProviderDeclaration`;
+`qualy` 节对装配只剩 `contributions`(且仅无钩子能力在用,合成 cache 能力测试即此形态)。
+test-layers 的 provider 入口门禁改从 `Plugin.capability` 声明发现(仍是按声明不按目录名)。
+
+**验收(实际执行,两 commit 各自跑)**:`pnpm typecheck` 零错;`pnpm test` 60 文件 363
+全绿(database assembly/clean-room-parity 真库套件、descriptor-sourced contributions、
+两 provider 冲突拒绝);`pnpm test:browser` 13;`pnpm qualy resolve` 重写 lock 后
+`--frozen-lockfile` 干净(feature 化一刀 lock 零变更);`qualy list`/`qualy db migrate`/
+`qualy plan` 正常;真实启动 `/health/ready` 200、未认证 API 401、零 [E]。
+
+**M3b 至此收口**。package.json 对装配的残余:仅 `qualy.contributions`(无钩子能力)。
+下一个未裁决项:M4(每插件自持 typed client,删 @qualy/api 与全局 api-client)。

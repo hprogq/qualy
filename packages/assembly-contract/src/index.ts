@@ -200,10 +200,3 @@ export interface AssemblyCapabilityProvider<Contribution = unknown, State = unkn
 export const defineCapabilityProvider = <Contribution, State>(
   provider: AssemblyCapabilityProvider<Contribution, State>,
 ): AssemblyCapabilityProvider<Contribution, State> => provider
-
-/** what a plugin's package.json says to make itself a provider */
-export interface CapabilityProviderDeclaration {
-  key: string
-  /** subpath export of the declaring package, imported with no side effects */
-  entry: string
-}

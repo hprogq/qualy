@@ -38,6 +38,9 @@ const plugin = Plugin.define(
   Access.permissions('rbac', permissions),
   // rbac owns the catalog: contributors declare, this compiles the value
   Access.provider,
+  // and owns the assembly capability that validates the same declarations at
+  // `qualy resolve`; imported by the CLI, never by a booting server
+  Plugin.capability('permissions', () => import('./assembly/index.ts')),
   Api.group(accessApiGroup, accessApiHandlers),
   Plugin.layer(serviceLayer),
 )

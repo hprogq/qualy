@@ -33,11 +33,5 @@
     "@electric-sql/pglite": "catalog:",
     "@qualy/assembly": "workspace:*",
     "@types/pg": "catalog:"
-  },
-  "qualy": {
-    "capabilityProvider": {
-      "key": "database",
-      "entry": "./assembly"
-    }
   }
 }

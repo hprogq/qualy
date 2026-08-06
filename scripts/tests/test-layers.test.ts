@@ -153,18 +153,19 @@ describe('assembly core', () => {
   })
 })
 
-/** every package that declares itself a capability provider, and where its entry lives */
+/**
+ * Every package that declares itself a capability provider, and where its
+ * provider module lives - read from the `Plugin.capability(key, load)`
+ * declaration in the descriptor, which is where the package.json field moved.
+ */
 const providerEntries = () =>
   walkManifests('packages').flatMap((file) => {
-    const pkg = JSON.parse(fs.readFileSync(file, 'utf8')) as {
-      qualy?: { capabilityProvider?: { entry?: string } }
-      exports?: Record<string, string>
-    }
-    const entry = pkg.qualy?.capabilityProvider?.entry
-    if (!entry) return []
-    const target = pkg.exports?.[entry]
-    if (!target) throw new Error(`${file}: capabilityProvider.entry ${entry} is not an export`)
-    return [path.dirname(path.join(path.dirname(file), target))]
+    const index = path.join(path.dirname(file), 'src/index.ts')
+    if (!fs.existsSync(index)) return []
+    const source = fs.readFileSync(index, 'utf8')
+    return [
+      ...source.matchAll(/Plugin\.capability\([^,]+,\s*\(\)\s*=>\s*import\(['"]([^'"]+)['"]\)/g),
+    ].map((match) => path.dirname(path.resolve(path.dirname(index), match[1]!)))
   })
 
 describe('capability provider entry', () => {

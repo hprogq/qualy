@@ -54,6 +54,10 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
         case 'Layer':
           serviceLayers.push(feature.layer)
           break
+        case 'Capability':
+          // the CLI's channel: the provider module is imported when the
+          // capability does work, never while a server boots
+          break
       }
     }
   }

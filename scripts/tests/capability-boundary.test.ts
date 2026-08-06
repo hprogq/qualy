@@ -65,9 +65,11 @@ export default {
 
 const cachePlugin = {
   id: '@fake/plugin-cache',
-  qualy: { capabilityProvider: { key: 'cache', entry: './assembly' } },
-  files: { 'assembly.js': provider('cache') },
-  exports: { './assembly': './assembly.js' },
+  files: {
+    'index.js':
+      "export default { _tag: 'Plugin', id: '@fake/plugin-cache', dependsOn: [], features: [{ _tag: 'Capability', key: 'cache', load: () => import('./assembly.js') }] }\n",
+    'assembly.js': provider('cache'),
+  },
 }
 
 const cacheUser = (id: string, channel: string) => ({

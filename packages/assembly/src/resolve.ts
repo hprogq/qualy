@@ -109,7 +109,24 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     if (candidates.has(id) || !resolver.isInstalled(id)) continue
     candidates.set(id, resolver.readMetadata(id))
   }
-  const providers = await loadProviders(candidates.values(), resolver)
+  // Every candidate's descriptor, imported before anything else is decided:
+  // capability providers are declared on descriptors, and the candidate set -
+  // manifest plus recalled - is exactly the set whose providers may have to
+  // answer for this assembly. The repeal of "resolve does not import plugin
+  // code" was decided with the descriptor model (docs/plugin-descriptor-plan.md,
+  // M3b): a descriptor is a pure value and importing it opens nothing, but it
+  // IS TypeScript being run. After the metadata reads above, so a package
+  // whose manifest is malformed is reported as that rather than as a missing
+  // descriptor.
+  const candidateDescriptors = new Map<string, PluginDescriptor>()
+  for (const id of candidates.keys()) {
+    const module = (await import(resolver.resolveModuleUrl(id))) as { default?: unknown }
+    if (!isPluginDescriptor(module.default)) {
+      throw new Error(`${id} does not default-export a plugin descriptor`)
+    }
+    candidateDescriptors.set(id, module.default)
+  }
+  const providers = await loadProviders(candidateDescriptors)
 
   const retainedBy = new Map<string, string[]>()
   const unanswerable: string[] = []
@@ -194,6 +211,13 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
       if (!providers.has(key)) continue
       orphaned.push(`${id} declares qualy.${key}, which belongs under qualy.contributions.${key}`)
     }
+    if (entry.declaresProvider) {
+      // nothing reads it any more, and a plugin that believes it provides a
+      // capability while the assembly disagrees is not a plugin to ignore
+      orphaned.push(
+        `${id} declares qualy.capabilityProvider in package.json, but capabilities are declared on the plugin descriptor now (Plugin.capability)`,
+      )
+    }
     for (const [key, raw] of Object.entries(entry.contributions)) {
       const loaded = providers.get(key)
       if (!loaded) {
@@ -223,26 +247,17 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     throw new Error(`incomplete assembly:\n  ${orphaned.join('\n  ')}`)
   }
 
-  // Each active plugin's default export. Resolution executes plugin modules
-  // now - the repeal of an older rule, decided with the descriptor model
-  // (docs/plugin-descriptor-plan.md, M3b): a descriptor is a pure value and
-  // importing it opens nothing, but it IS TypeScript being run, and the
-  // runtime metadata that used to live in package.json - dependencies, the
-  // config channel - lives on it. After the metadata checks, so a package
-  // whose declarations are malformed is reported as that rather than as a
-  // missing descriptor.
+  // Every accounted plugin's descriptor, not just the running set: a disabled
+  // or detached plugin's declarations still shape the assembly - that is what
+  // retained means - and its package is installed by the uninstalled-check
+  // above, so its descriptor is in the candidate map.
+  const providerOwners = new Set([...providers.values()].map((loaded) => loaded.pluginId))
   const descriptors = new Map<string, PluginDescriptor>()
   const misconfigured: string[] = []
   const orphanedFeatures: string[] = []
-  // every accounted plugin, not just the running set: a disabled or detached
-  // plugin's declarations still shape the assembly - that is what retained
-  // means - and its package is installed by the uninstalled-check above
   for (const id of states.keys()) {
-    const module = (await import(resolver.resolveModuleUrl(id))) as { default?: unknown }
-    if (!isPluginDescriptor(module.default)) {
-      throw new Error(`${id} does not default-export a plugin descriptor`)
-    }
-    descriptors.set(id, module.default)
+    const descriptor = candidateDescriptors.get(id)!
+    descriptors.set(id, descriptor)
     // A contribution to a capability-owned channel needs that capability's
     // provider in the assembly. The point itself says which capability owns
     // it - the plugin imported the point object from the capability's own
@@ -250,7 +265,7 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     // Runtime-only channels carry no capability and are the boot assembler's
     // completeness rule to enforce; a capability's objects outlive the
     // process, so its answer cannot wait for a boot.
-    for (const feature of module.default.features) {
+    for (const feature of descriptor.features) {
       if (feature._tag !== 'Contribute' || feature.point.capability === undefined) continue
       if (!providers.has(feature.point.capability)) {
         orphanedFeatures.push(
@@ -263,7 +278,7 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
       if (!loaded.provider.contributionFromDescriptor) continue
       const parsed = loaded.provider.contributionFromDescriptor({
         pluginId: id,
-        descriptor: module.default,
+        descriptor,
         packageRoot: resolver.resolvePackageDir(id),
       })
       if (parsed === undefined) continue
@@ -278,8 +293,8 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     // and a frozen start passes: the setting looks applied and is not.
     if (
       manifest.plugins.get(id)?.config !== undefined &&
-      !metadata.get(id)?.provider &&
-      module.default.config === undefined
+      !providerOwners.has(id) &&
+      descriptor.config === undefined
     ) {
       misconfigured.push(
         `${id} is given config in ${manifest.source}, but it neither provides a capability nor takes configuration in its descriptor, so nothing would read this. Configure this plugin through the environment instead.`,

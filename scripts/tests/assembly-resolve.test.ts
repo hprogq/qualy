@@ -234,12 +234,15 @@ describe('resolution', () => {
   })
 
   it('refuses two plugins claiming one capability', async () => {
-    const provider = { capabilityProvider: { key: 'database', entry: './assembly' } }
+    // the load thunks never run: the conflict is settled from the declarations
+    const claiming = (id: string): SyntheticPackage => ({
+      id,
+      files: {
+        'index.js': `export default { _tag: 'Plugin', id: '${id}', dependsOn: [], features: [{ _tag: 'Capability', key: 'database', load: () => import('./provider.js') }] }\n`,
+      },
+    })
     const workspace = createWorkspace(['@fake/plugin-a', '@fake/plugin-b'], {
-      synthetic: [
-        { id: '@fake/plugin-a', qualy: provider },
-        { id: '@fake/plugin-b', qualy: provider },
-      ],
+      synthetic: [claiming('@fake/plugin-a'), claiming('@fake/plugin-b')],
     })
     try {
       await expect(resolve(workspace.manifestPath)).rejects.toThrow(
@@ -498,9 +501,8 @@ describe('the modules capabilities derive', () => {
   // table is.
   const provider = (key: string, body: string): SyntheticPackage => ({
     id: `@fake/plugin-${key}`,
-    qualy: { capabilityProvider: { key, entry: './provider' } },
-    exports: { './provider': './provider.js' },
     files: {
+      'index.js': `export default { _tag: 'Plugin', id: '@fake/plugin-${key}', dependsOn: [], features: [{ _tag: 'Capability', key: '${key}', load: () => import('./provider.js') }] }\n`,
       'provider.js': [
         'export default {',
         `  key: '${key}',`,
@@ -559,9 +561,9 @@ describe('descriptor-sourced contributions', () => {
   // above: the core pipes values it cannot read.
   const provider: SyntheticPackage = {
     id: '@fake/plugin-caps',
-    qualy: { capabilityProvider: { key: 'caps', entry: './provider' } },
-    exports: { './provider': './provider.js' },
     files: {
+      'index.js':
+        "export default { _tag: 'Plugin', id: '@fake/plugin-caps', dependsOn: [], features: [{ _tag: 'Capability', key: 'caps', load: () => import('./provider.js') }] }\n",
       'provider.js': [
         'export default {',
         "  key: 'caps',",

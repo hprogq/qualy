@@ -128,7 +128,27 @@ export interface LayerFeature {
   readonly layer: AnyLayer
 }
 
-export type PluginFeature = Contribute | ProvideExtension | ServiceFeature | LayerFeature
+/**
+ * The plugin owns an assembly capability.
+ *
+ * The provider module is imported through `load` by the CLI, when the
+ * capability does work - resolve, generate, deploy, commands - and never by
+ * the boot assembler, so the server process does not pay for a migrator it
+ * will not run. The kernel does not interpret the module; the assembly core
+ * checks it against its provider contract.
+ */
+export interface CapabilityFeature {
+  readonly _tag: 'Capability'
+  readonly key: string
+  readonly load: () => Promise<unknown>
+}
+
+export type PluginFeature =
+  | Contribute
+  | ProvideExtension
+  | ServiceFeature
+  | LayerFeature
+  | CapabilityFeature
 
 /** the manifest-block channel; present exactly when the plugin takes configuration */
 export type ConfigChannel = (block: unknown, context: { readonly manifestDir: string }) => AnyLayer
@@ -204,6 +224,13 @@ export const Plugin = {
   }),
 
   layer: (layer: AnyLayer): PluginFeature => ({ _tag: 'Layer', layer }),
+
+  /** declares this plugin the owner of an assembly capability; see CapabilityFeature */
+  capability: (key: string, load: () => Promise<unknown>): PluginFeature => ({
+    _tag: 'Capability',
+    key,
+    load,
+  }),
 
   /** the values a descriptor pushed into one channel, without building anything */
   contributionsOf: <Contribution>(
