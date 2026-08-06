@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
+    "@mikro-orm/migrations": "catalog:",
     "@mikro-orm/postgresql": "catalog:",
     "@qualy/assembly-contract": "workspace:*",
     "effect": "catalog:",

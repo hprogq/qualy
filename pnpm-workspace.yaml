@@ -16,6 +16,7 @@ catalog:
   # unassignable to the other
   '@mikro-orm/core': 7.1.10
   '@mikro-orm/postgresql': 7.1.10
+  '@mikro-orm/migrations': 7.1.10
   kysely: 0.29.4
   # Effect v4 beta. Every effect package must sit on the SAME version: the
   # ecosystem peers on an exact beta. The modules this project needs (httpapi,

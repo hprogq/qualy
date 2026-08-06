@@ -36,16 +36,23 @@ const productSelection = (): string[] => {
   return [...manifest.plugins.keys()]
 }
 
+// The migrator's own ledger is not part of anybody's schema, and it is in
+// `public` like everything else, so every query here has to leave it out.
+const LEDGER = 'mikro_orm_migrations'
+
 const CATALOG = {
   columns: `select table_name || '.' || column_name || ' ' || data_type
               || ' null=' || is_nullable || ' default=' || coalesce(column_default, '-')
             from information_schema.columns
-            where table_schema = 'public'
+            where table_schema = 'public' and table_name <> '${LEDGER}'
             order by 1`,
   constraints: `select conrelid::regclass || ' ' || conname || ' ' || pg_get_constraintdef(oid)
-                from pg_constraint where connamespace = 'public'::regnamespace order by 1`,
+                from pg_constraint
+                where connamespace = 'public'::regnamespace
+                  and conrelid::regclass::text <> '${LEDGER}'
+                order by 1`,
   indexes: `select indexdef from pg_indexes
-            where schemaname = 'public' order by 1`,
+            where schemaname = 'public' and tablename <> '${LEDGER}' order by 1`,
   routines: `select p.proname || '/' || pg_get_function_identity_arguments(p.oid)
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
              where n.nspname = 'public' order by 1`,

@@ -91,7 +91,7 @@ describe.runIf(postgresAvailable)('effect application shell', () => {
     // exactly what a deployment that forgot the migration job looks like
     const db = await createTestContext('effect-shell-behind')
     try {
-      await db.query(`delete from cordis_meta.schema_migrations`)
+      await db.query(`delete from mikro_orm_migrations`)
       const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(shell(db.url, 'off'))))
       expect(Exit.isFailure(exit)).toBe(true)
       const reason = (exit as Extract<typeof exit, { _tag: 'Failure' }>).cause.reasons[0]

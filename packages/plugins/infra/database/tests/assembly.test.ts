@@ -209,14 +209,13 @@ describe('drop guard', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-guard-'))
     try {
       const write = (name: string, sql: string) => {
-        fs.mkdirSync(path.join(dir, name), { recursive: true })
-        const file = path.join(dir, name, 'migration.sql')
+        const file = path.join(dir, name)
         fs.writeFileSync(file, sql)
         return file
       }
-      const plain = write('0001_plain', 'CREATE TABLE a (id uuid);\n')
-      const destructive = write('0002_drop', 'DROP TABLE a;\n')
-      const approved = write('0003_ok', '-- destructive: approved\nDROP TABLE a;\n')
+      const plain = write('0001_plain.sql', 'CREATE TABLE a (id uuid);\n')
+      const destructive = write('0002_drop.sql', 'DROP TABLE a;\n')
+      const approved = write('0003_ok.sql', '-- destructive: approved\nDROP TABLE a;\n')
 
       expect(allMigrationFiles(dir).sort()).toEqual([plain, destructive, approved].sort())
       expect(scanDestructive([plain])).toEqual([])
@@ -300,12 +299,8 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       await provider.generate!(work)
       const sql = fs
         .readdirSync(migrationsOf(workspace))
-        .filter((entry) =>
-          fs.existsSync(path.join(migrationsOf(workspace), entry, 'migration.sql')),
-        )
-        .map((entry) =>
-          fs.readFileSync(path.join(migrationsOf(workspace), entry, 'migration.sql'), 'utf8'),
-        )
+        .filter((entry) => entry.endsWith('.sql'))
+        .map((entry) => fs.readFileSync(path.join(migrationsOf(workspace), entry), 'utf8'))
         .join('\n')
       expect(sql).not.toMatch(/DROP TABLE/i)
     } finally {

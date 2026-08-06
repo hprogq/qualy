@@ -9,9 +9,6 @@ import { asState, type DatabaseState } from './state.ts'
 
 export const LOCAL_FALLBACK = 'postgres://qualy:qualy@localhost:5432/qualy'
 
-/** ledger location, which the runtime migrator has to agree with */
-export const LEDGER = { schema: 'cordis_meta', table: 'schema_migrations' }
-
 export interface DatabaseWork {
   migrations: string
   /** every retained plugin that ships entities, in database dependency order */
@@ -53,55 +50,20 @@ export function databaseWork(
   }
 }
 
-export const migrationDirs = (migrations: string): string[] =>
-  fs.existsSync(migrations)
-    ? fs
-        .readdirSync(migrations)
-        .filter((dir) => fs.existsSync(path.join(migrations, dir, 'migration.sql')))
-        .sort()
-    : []
-
 /**
- * A new, empty migration directory.
- *
- * The prefix is fourteen UTC digits because that is what the applier reads
- * back out of the folder name to order the lineage and to stamp the ledger;
- * the name after it is for the people reading `git log`.
- */
-export function createMigrationDir(migrations: string, name: string): string {
-  const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
-  const dir = `${stamp}_${name}`
-  const target = path.join(migrations, dir)
-  if (fs.existsSync(target)) {
-    throw new Error(`database: ${dir} already exists`)
-  }
-  fs.mkdirSync(target, { recursive: true })
-  return dir
-}
-
-/** the name given on the command line, reduced to what a directory may be called */
-export const migrationName = (given: string | undefined, fallback: string): string => {
-  const slug = (given ?? fallback)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  if (!slug) throw new Error(`database: --name ${given} has no usable characters`)
-  return slug
-}
-
-/**
- * Two migrations sharing a prefix apply in an order that depends on the
+ * Two migrations sharing a timestamp apply in an order that depends on the
  * checkout, which is what happens when two branches both generate one.
  */
 export function assertDistinctPrefixes(migrations: string): void {
   const seen = new Map<string, string>()
   const clashes: string[] = []
-  for (const dir of migrationDirs(migrations)) {
-    const prefix = dir.slice(0, 14)
+  for (const entry of fs.existsSync(migrations) ? fs.readdirSync(migrations).sort() : []) {
+    if (!entry.endsWith('.sql')) continue
+    const prefix = /\d{14}/.exec(entry)?.[0]
+    if (!prefix) continue
     const other = seen.get(prefix)
-    if (other) clashes.push(`${other} and ${dir}`)
-    else seen.set(prefix, dir)
+    if (other) clashes.push(`${other} and ${entry}`)
+    else seen.set(prefix, entry)
   }
   if (clashes.length > 0) {
     throw new Error(`database: migrations share a timestamp, so their order is undefined:

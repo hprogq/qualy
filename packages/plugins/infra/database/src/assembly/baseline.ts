@@ -82,10 +82,9 @@ export function collectBaseline(
 export function compiledBaseline(migrationsDir: string): Map<string, string> {
   const compiled = new Map<string, string>()
   if (!fs.existsSync(migrationsDir)) return compiled
-  for (const dir of fs.readdirSync(migrationsDir)) {
-    const file = path.join(migrationsDir, dir, 'migration.sql')
-    if (!fs.existsSync(file)) continue
-    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+  for (const entry of fs.readdirSync(migrationsDir)) {
+    if (!entry.endsWith('.sql')) continue
+    for (const line of fs.readFileSync(path.join(migrationsDir, entry), 'utf8').split('\n')) {
       if (!line.startsWith(MARKER)) continue
       const [plugin, relative, sha] = line.slice(MARKER.length).trim().split(/\s+/)
       if (plugin && relative && sha) compiled.set(`${plugin} ${relative}`, sha)

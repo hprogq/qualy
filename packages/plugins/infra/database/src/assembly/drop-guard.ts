@@ -36,10 +36,10 @@ export function scanDestructive(files: readonly string[]): string[] {
 export function allMigrationFiles(migrations: string): string[] {
   if (!fs.existsSync(migrations)) return []
   return fs
-    .readdirSync(migrations, { recursive: true })
-    .filter((entry): entry is string => typeof entry === 'string')
+    .readdirSync(migrations)
+    .filter((entry) => entry.endsWith('.sql'))
+    .sort()
     .map((entry) => path.join(migrations, entry))
-    .filter((file) => path.basename(file) === 'migration.sql')
 }
 
 /** migrations added or changed since a git ref */

@@ -12,7 +12,7 @@ import type { DatabaseContribution } from './contribution.ts'
 import { loadEntityModules, structuralDiff } from './diff.ts'
 import { scanDestructive } from './drop-guard.ts'
 import { asState, type DatabaseState } from './state.ts'
-import { createMigrationDir, databaseWork, migrationName } from './work.ts'
+import { databaseWork } from './work.ts'
 
 // Generation for the whole assembly: the tables the entities describe, plus
 // the SQL each plugin owns that no schema comparison can see.
@@ -22,12 +22,25 @@ import { createMigrationDir, databaseWork, migrationName } from './work.ts'
 // post-structure because the table it guards has to exist first. Splitting
 // them across two migrations would leave a window where the lineage does not
 // apply to an empty database, which is exactly the failure this replaces.
-
-const BREAK = '--> statement-breakpoint'
+//
+// A migration is a .sql file named by the instant it was generated, which is
+// also the order it applies in. Nothing else is in it: no separator
+// convention, no wrapper class, nothing that has to be parsed back out.
 
 const flag = (args: readonly string[], name: string) => {
   const at = args.indexOf(`--${name}`)
   return at >= 0 ? args[at + 1] : undefined
+}
+
+/** what a --name may become once it has to be part of a filename */
+const slug = (given: string) => {
+  const cleaned = given
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  if (!cleaned) throw new Error(`database: --name ${given} has no usable characters`)
+  return cleaned
 }
 
 export async function generateDatabase(
@@ -45,29 +58,44 @@ export async function generateDatabase(
   const modules = await loadEntityModules(work.entities)
   // every fragment, not just the pending ones: the declared database has to be
   // whole for the comparison to be about structure
-  const { statements } = await structuralDiff(work, modules, fragments)
+  const diff = await structuralDiff(work, modules, fragments)
 
-  if (statements.length === 0 && pending.length === 0) {
+  if (diff.up.length === 0 && pending.length === 0) {
     console.log('database: nothing to generate')
     return
   }
 
   const section = (phase: BaselineFragment['phase']) =>
     pending.filter((fragment) => fragment.phase === phase).map(renderBaseline)
-  const parts = [...section('pre-structure'), ...statements, ...section('post-structure')]
-
-  const created = createMigrationDir(
-    work.migrations,
-    migrationName(flag(context.args, 'name'), 'update'),
+  const parts = [...section('pre-structure'), ...diff.up, ...section('post-structure')]
+  const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
+  const given = flag(context.args, 'name')
+  const file = path.join(work.migrations, `${stamp}${given ? `_${slug(given)}` : ''}.sql`)
+  fs.writeFileSync(
+    file,
+    `${parts.map((part) => (part.trimEnd().endsWith(';') ? part : `${part};`)).join('\n\n')}\n`,
   )
-  const file = path.join(work.migrations, created, 'migration.sql')
-  fs.writeFileSync(file, `${parts.join(`\n${BREAK}\n`)}\n`)
 
   for (const fragment of pending) {
     console.log(`database: compiled ${fragment.plugin} ${fragment.file} (${fragment.phase})`)
   }
-  console.log(`database: ${created}`)
+  console.log(`database: ${path.basename(file)}`)
   guardDestructive([file])
+}
+
+/**
+ * An empty migration, for the SQL that records one historical step.
+ *
+ * The other half of the baseline rule: a fragment states a plugin's current
+ * shape and has to be idempotent, this records a step in time and is written
+ * as a strict CREATE.
+ */
+export function blankMigration(migrations: string, name: string | undefined): string {
+  fs.mkdirSync(migrations, { recursive: true })
+  const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
+  const file = path.join(migrations, `${stamp}_${slug(name ?? 'custom')}.sql`)
+  fs.writeFileSync(file, '-- owner: @qualy/plugin-<name>\n')
+  return file
 }
 
 /**

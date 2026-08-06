@@ -1,6 +1,5 @@
 import { Effect, Layer, Redacted } from 'effect'
 import { sql as rawSql } from 'kysely'
-import { Pool } from 'pg'
 import { DatabaseConfig } from './config.ts'
 import {
   Entities,
@@ -73,39 +72,30 @@ export class MigrationsBehind extends Error {
  * Bring the database to the state this assembly expects, before anything that
  * depends on it is built.
  *
- * A pool is borrowed for the duration rather than taken from the client,
- * because this runs before the client exists: the point is to fail assembly
- * rather than to serve traffic against a schema that is a version behind.
+ * The migrator opens a connection of its own rather than borrowing the
+ * application's, because this runs before the application's exists: the point
+ * is to fail assembly rather than to serve traffic against a schema that is a
+ * version behind.
  */
 const prepare = Effect.fn('Database.prepare')(function* () {
   const config = yield* DatabaseConfig
+  const entities = yield* Entities
+  const options = { folder: config.migrationsFolder, entities }
   const url = Redacted.value(config.url)
-  const folder = config.migrationsFolder
-  yield* Effect.acquireUseRelease(
-    // one connection, because the lineage is applied one statement at a time.
-    // The default pool is ten, held during layer construction - which is
-    // exactly when every suite in a parallel run is also constructing.
-    Effect.sync(() => new Pool({ connectionString: url, max: 1 })),
-    (pool) =>
-      Effect.gen(function* () {
-        if (config.migrations === 'apply') {
-          const { applied, elapsed } = yield* Effect.promise(() => runMigrations(pool, { folder }))
-          yield* Effect.logInfo(
-            applied > 0
-              ? `applied ${applied} migration(s) (${elapsed}ms)`
-              : `migrations up to date (${elapsed}ms)`,
-          )
-          return
-        }
-        // Refuse to start against a database the deployment job has not
-        // brought up to date. Without this the process comes up on a stale
-        // schema and fails later as missing columns, far from the cause.
-        const pending = yield* Effect.promise(() => pendingMigrations(pool, { folder }))
-        if (pending > 0) return yield* Effect.fail(new MigrationsBehind(pending))
-        yield* Effect.logInfo('migration execution disabled, schema is up to date')
-      }),
-    (pool) => Effect.promise(() => pool.end()),
-  )
+  if (config.migrations === 'apply') {
+    const { applied, elapsed } = yield* Effect.promise(() => runMigrations(url, options))
+    return yield* Effect.logInfo(
+      applied > 0
+        ? `applied ${applied} migration(s) (${elapsed}ms)`
+        : `migrations up to date (${elapsed}ms)`,
+    )
+  }
+  // Refuse to start against a database the deployment job has not brought up
+  // to date. Without this the process comes up on a stale schema and fails
+  // later as missing columns, far from the cause.
+  const pending = yield* Effect.promise(() => pendingMigrations(url, options))
+  if (pending > 0) return yield* Effect.fail(new MigrationsBehind(pending))
+  yield* Effect.logInfo('migration execution disabled, schema is up to date')
 })
 
 /**

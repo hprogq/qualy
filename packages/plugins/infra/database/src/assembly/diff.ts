@@ -7,7 +7,7 @@ import { QualyNamingStrategy } from '../naming.ts'
 import { runMigrations } from '../migrator.ts'
 import type { BaselineFragment } from './baseline.ts'
 import type { EntityContribution } from './entities.ts'
-import { LEDGER, type DatabaseWork } from './work.ts'
+import type { DatabaseWork } from './work.ts'
 
 // What it would take to turn the committed lineage into the schema this
 // assembly declares.
@@ -65,6 +65,9 @@ export async function loadEntityModules(
   return loaded
 }
 
+/** where the migrator records what it has run, which nothing may diff against */
+const LEDGER_TABLE = 'mikro_orm_migrations'
+
 interface Scratch {
   url: string
   drop: () => Promise<void>
@@ -113,9 +116,9 @@ const open = async (url: string, entities: readonly EntitySchema[]) =>
     clientUrl: url,
     namingStrategy: QualyNamingStrategy,
     discovery: { warnWhenNoEntities: false },
-    // names the ledger so introspection leaves it out of both schemas; it is
-    // the migrator's bookkeeping and no plugin declares it
-    migrations: { tableName: `${LEDGER.schema}.${LEDGER.table}` },
+    // introspection leaves the ledger out by name; it is the migrator's
+    // bookkeeping and no plugin declares it
+    migrations: { tableName: LEDGER_TABLE },
   })
 
 const readSchema = async (orm: MikroORM) =>
@@ -149,7 +152,7 @@ export function splitStatements(sql: string): string[] {
 
 export interface StructuralDiff {
   /** the statements that bring the lineage to the declared schema */
-  statements: string[]
+  up: string[]
 }
 
 /**
@@ -169,12 +172,7 @@ export async function structuralDiff(
   const declared = await scratchDatabase(work.url, 'declared')
   const failures: unknown[] = []
   try {
-    const pool = new Pool({ connectionString: lineage.url, max: 1 })
-    try {
-      await runMigrations(pool, { folder: work.migrations })
-    } finally {
-      await pool.end()
-    }
+    await runMigrations(lineage.url, { folder: work.migrations, entities })
 
     const declaredOrm = await open(declared.url, entities)
     const lineageOrm = await open(lineage.url, entities)
@@ -197,16 +195,18 @@ export async function structuralDiff(
       }
 
       const comparator = new SchemaComparator(lineageOrm.em.getPlatform())
-      const difference = comparator.compare(
-        await readSchema(lineageOrm),
-        await readSchema(declaredOrm),
-      )
-      const sql = lineageOrm.schema.diffToSQL(difference, {
-        wrap: false,
-        safe: false,
-        dropTables: true,
-      })
-      return { statements: splitStatements(sql) }
+      const from = await readSchema(lineageOrm)
+      const to = await readSchema(declaredOrm)
+      // No reverse. The lineage is fix-forward by rule, and a `down` for an
+      // initial migration is a file that drops every table - which the drop
+      // guard would then have to be taught to ignore, in the one place whose
+      // whole job is to make a drop deliberate.
+      const forward = comparator.compare(from, to)
+      return {
+        up: splitStatements(
+          lineageOrm.schema.diffToSQL(forward, { wrap: false, safe: false, dropTables: true }),
+        ),
+      }
     } finally {
       await declaredOrm.close()
       await lineageOrm.close()

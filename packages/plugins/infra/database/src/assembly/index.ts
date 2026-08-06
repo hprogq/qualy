@@ -1,19 +1,12 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { Pool } from 'pg'
 import { defineCapabilityProvider } from '@qualy/assembly-contract'
 import {
   lockedOwnsObjects,
   parseDatabaseContribution,
   type DatabaseContribution,
 } from './contribution.ts'
-import {
-  assertDistinctPrefixes,
-  createMigrationDir,
-  databaseWork,
-  migrationName,
-  LOCAL_FALLBACK,
-} from './work.ts'
+import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
 import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
 import {
   assertNoCollisions,
@@ -21,7 +14,8 @@ import {
   entityContributions,
   renderEntityModule,
 } from './entities.ts'
-import { generateDatabase, guardDestructive } from './generate.ts'
+import { loadEntityModules } from './diff.ts'
+import { blankMigration, generateDatabase, guardDestructive } from './generate.ts'
 import { runMigrations } from '../migrator.ts'
 import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 
@@ -78,17 +72,16 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
 
   deploy: async (context) => {
     const work = databaseWork(context)
-    const pool = new Pool({ connectionString: work.url })
-    try {
-      const { applied, elapsed } = await runMigrations(pool, { folder: work.migrations })
-      console.log(
-        applied > 0
-          ? `database: applied ${applied} migration(s) (${elapsed}ms)`
-          : `database: migrations up to date (${elapsed}ms)`,
-      )
-    } finally {
-      await pool.end()
-    }
+    const modules = await loadEntityModules(work.entities)
+    const { applied, elapsed } = await runMigrations(work.url, {
+      folder: work.migrations,
+      entities: modules.flatMap((module) => [...module.entities]),
+    })
+    console.log(
+      applied > 0
+        ? `database: applied ${applied} migration(s) (${elapsed}ms)`
+        : `database: migrations up to date (${elapsed}ms)`,
+    )
   },
 
   commands: {
@@ -104,12 +97,7 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     // to a baseline fragment, which states a plugin's current shape
     custom: async (context) => {
       const work = databaseWork(context)
-      const created = createMigrationDir(
-        work.migrations,
-        migrationName(arg(context.args, 'name'), 'custom'),
-      )
-      const file = path.join(work.migrations, created, 'migration.sql')
-      writeFileSync(file, '-- owner: @qualy/plugin-<name>\n')
+      const file = blankMigration(work.migrations, arg(context.args, 'name'))
       console.log(`database: ${path.relative(process.cwd(), file)}`)
     },
 

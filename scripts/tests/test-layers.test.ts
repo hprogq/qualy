@@ -137,7 +137,7 @@ describe('assembly core', () => {
   })
 
   it('keeps the repository root out of the database toolchain', () => {
-    // The root used to carry drizzle-kit, drizzle-orm and the drizzle config
+    // The root used to carry the database toolchain and its config file
     // itself, which made every assembly a database assembly. What is left is
     // pinned rather than forbidden: the seed still writes rows through pg and
     // has no owning capability yet, so it keeps the driver, and a NEW database
