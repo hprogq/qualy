@@ -215,6 +215,7 @@ export const layer: Layer.Layer<Orm, never, DatabaseConfig | Entities> = Layer.e
           entities: entities as EntitySchema[],
           clientUrl: Redacted.value(config.url),
           namingStrategy: QualyNamingStrategy,
+          ...(config.poolSize === undefined ? {} : { pool: { min: 0, max: config.poolSize } }),
           // an assembly part way through the migration has entities for some
           // of its tables and none for the rest, which is not a mistake
           discovery: { warnWhenNoEntities: false },

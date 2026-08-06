@@ -20,5 +20,15 @@ export class DatabaseConfig extends Context.Service<
     readonly migrations: 'apply' | 'off'
     /** absolute path to the lineage this assembly deploys */
     readonly migrationsFolder: string
+    /**
+     * How many connections this process may hold.
+     *
+     * Stated by the assembler because the answer is about the deployment, not
+     * about the plugin: one server process wants a pool, and a suite running
+     * fourteen of them against one postgres wants each to want very little.
+     * Left to a library default, the second exhausts max_connections and the
+     * failure lands on whichever unrelated test connected last.
+     */
+    readonly poolSize?: number | undefined
   }
 >()('@qualy/plugin-database/DatabaseConfig') {}

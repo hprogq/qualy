@@ -357,6 +357,16 @@ export async function createTestContext(
  * applied. It is one function so that adding something the plugin needs is one
  * edit, not fifteen - which is how it came to be extracted.
  */
+/**
+ * How many connections one suite's database may hold.
+ *
+ * Small on purpose: vitest runs a dozen files at once, each with its own
+ * scratch database and its own stack, and one postgres has one
+ * max_connections. A production-sized pool per suite exhausts it, and the
+ * error surfaces on whichever test happened to connect next.
+ */
+const TEST_POOL_SIZE = 2
+
 export const databaseFor = (
   url: string,
   options: { migrations?: 'apply' | 'off'; entities?: readonly EntitySchema[] } = {},
@@ -370,6 +380,7 @@ export const databaseFor = (
             url: Redacted.make(url),
             migrations: options.migrations ?? 'apply',
             migrationsFolder,
+            poolSize: TEST_POOL_SIZE,
           }),
         ),
         // A suite asserting one plugin's queries hands in that plugin's own
@@ -391,6 +402,7 @@ const servicesFor = (url: string, options: Required<TestContextOptions>) =>
             url: Redacted.make(url),
             migrations: options.migrations,
             migrationsFolder: options.migrationsFolder,
+            poolSize: TEST_POOL_SIZE,
           }),
         ),
         Layer.succeed(Entities, options.entities),

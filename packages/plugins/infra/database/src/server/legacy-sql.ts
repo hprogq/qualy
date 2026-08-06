@@ -43,9 +43,10 @@ export interface LegacyExecutor {
 }
 
 export interface LegacySql extends LegacyExecutor {
+  /** the body may reach for a manager of its own: the transaction supplies one */
   readonly transaction: <A, E, R>(
     body: (tx: LegacyExecutor) => Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, Exclude<R, Orm>>
 }
 
 const run = (statement: SQL) =>

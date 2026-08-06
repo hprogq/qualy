@@ -84,7 +84,10 @@ const prepare = Effect.fn('Database.prepare')(function* () {
   const url = Redacted.value(config.url)
   const folder = config.migrationsFolder
   yield* Effect.acquireUseRelease(
-    Effect.sync(() => new Pool({ connectionString: url })),
+    // one connection, because the lineage is applied one statement at a time.
+    // The default pool is ten, held during layer construction - which is
+    // exactly when every suite in a parallel run is also constructing.
+    Effect.sync(() => new Pool({ connectionString: url, max: 1 })),
     (pool) =>
       Effect.gen(function* () {
         if (config.migrations === 'apply') {
@@ -125,7 +128,13 @@ const connection: Layer.Layer<Database, SqlError.SqlError | MigrationsBehind, Da
       Layer.unwrap(
         Effect.gen(function* () {
           const config = yield* DatabaseConfig
-          return PgClient.layer({ url: config.url })
+          // Two runtimes are alive at once for as long as the migration lasts,
+          // and this one no longer serves a request: every statement runs on
+          // the orm's connection. Left at its default it holds a full pool
+          // against a server with one max_connections, which several suites in
+          // parallel exhaust - and the failure surfaces as an unrelated test
+          // failing to connect.
+          return PgClient.layer({ url: config.url, maxConnections: 2 })
         }),
       ),
     ),
