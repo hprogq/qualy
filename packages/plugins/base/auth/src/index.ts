@@ -11,15 +11,16 @@ import { registerSurfaces } from '@qualy/plugin-ui-registry/server/registry'
 import { declarePermissions } from '@qualy/rbac-contract/effect'
 import { iamMessages } from './iam/messages.ts'
 import { permissions } from './permissions.ts'
-import { serviceLayer } from './server/index.ts'
+import { identityApiHandlers, serviceLayer, sessionApiHandlers } from './server/index.ts'
 import { loginPage, userDetailPage, userTypesPage, usersPage } from './pages.ts'
 
 // The plugin: identity itself, plus what it puts where - four screens, a
-// header slot, and its permission codes. The api handlers pair with their
-// groups by name and are re-exported below.
+// header slot, its permission codes, and the handlers behind its two groups.
 
-export { identityApiHandlers, sessionApiHandlers } from './server/index.ts'
 export { config } from './server/auth-config.ts'
+
+/** both groups, under the one name every entry exports its handlers as */
+export const apiHandlers = Layer.mergeAll(identityApiHandlers, sessionApiHandlers)
 
 export const layer = serviceLayer.pipe(
   Layer.merge(

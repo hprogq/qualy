@@ -8,8 +8,7 @@ import { NodeServer } from '@qualy/api-kit/node'
 import { assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { qualyApi } from '@qualy/api'
-import { apiHandlers } from '../api-handlers.gen.ts'
-import { capabilityLayers, pluginConfig, pluginLayers } from '../runtime.gen.ts'
+import { apiHandlers, capabilityLayers, pluginConfig, pluginLayers } from '../runtime.gen.ts'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
 import { pluginRoutes } from '../routes.gen.ts'
@@ -37,6 +36,13 @@ const routes = Layer.unwrap(
       // the document is served only when the reference is: an instance that
       // hides its docs but publishes the spec they render has not hidden
       // anything
+      // Every entry exports its group implementations as `apiHandlers`, and
+      // the generated runtime module composes them; a group nobody implements
+      // is a missing service in this composition rather than a file a
+      // generator forgot to pair. Composed here, above every plugin's
+      // services, because a group's middleware is implemented by OTHER
+      // plugins - the viewer arrives through auth's - and the library
+      // resolves middleware where the groups are provided.
       HttpApiBuilder.layer(qualyApi, documented ? { openapiPath: spec } : {}).pipe(
         Layer.provide(apiHandlers),
       ),

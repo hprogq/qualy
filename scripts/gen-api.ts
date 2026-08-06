@@ -4,16 +4,19 @@ import { writeGenerated } from './lib/codegen.ts'
 import { readEntries } from './lib/read-entries.ts'
 import { resolvePackageDir, resolvePluginModuleUrl } from './lib/packages.ts'
 
-// The HttpApi aggregate, in two halves that must not be one file.
+// The HttpApi definitions aggregate, and only that.
 //
-// The definitions go to @qualy/api, which the browser imports: pure schema,
-// no handler, nothing that would drag a database driver into a bundle. The
-// handlers go to the host, because that is the only place they can run.
+// It goes to @qualy/api, which the browser imports: pure schema, no handler,
+// nothing that would drag a database driver into a bundle. It is the one api
+// artifact that must be generated, because it is a TYPE - the client's method
+// signatures and the openapi document are derived from it, and types do not
+// exist at runtime.
 //
-// A plugin declares qualy.runtime.api pointing at the module holding its
-// groups. Each `<ns>ApiGroup` export there is paired with a `<ns>ApiHandlers`
-// export from the plugin's runtime entry, so a group that nothing implements
-// is a missing import at build time rather than a 404 in production.
+// The handlers are not aggregated anywhere. Each plugin's entry layer carries
+// its own group implementation, so the pairing check this generator used to
+// do by export-name convention is the compiler's now: `HttpApiBuilder.layer`
+// requires every group's handler service, and a group nobody implements is a
+// missing service in the host composition rather than a 404 in production.
 //
 // The active set, and this generator ignores --all on purpose. That flag means
 // "the superset" for the client contract and the web bundle, where carrying a
@@ -35,8 +38,6 @@ const apiDeps = new Set(
 
 const groupImports: string[] = []
 const groupNames: string[] = []
-const handlerImports: string[] = []
-const handlerNames: string[] = []
 const seen = new Map<string, string>()
 
 for (const entry of await readEntries({ all: false })) {
@@ -59,8 +60,6 @@ for (const entry of await readEntries({ all: false })) {
     )
   }
   const apiSpecifier = `${entry.name}/${api.replace(/^\.\//, '')}`
-  const entrySpecifier =
-    runtimeEntry === '.' ? entry.name : `${entry.name}/${runtimeEntry.replace(/^\.\//, '')}`
   const module = (await import(resolvePluginModuleUrl(apiSpecifier))) as Record<string, unknown>
   const exportNames = Object.keys(module)
     .filter((name) => name.endsWith('ApiGroup'))
@@ -84,8 +83,6 @@ for (const entry of await readEntries({ all: false })) {
     seen.set(ns, entry.name)
     groupImports.push(`import { ${exportName} } from '${apiSpecifier}'`)
     groupNames.push(exportName)
-    handlerImports.push(`import { ${ns}ApiHandlers } from '${entrySpecifier}'`)
-    handlerNames.push(`${ns}ApiHandlers`)
   }
 }
 
@@ -105,19 +102,5 @@ writeGenerated(
   ].join('\n'),
 )
 
-writeGenerated(
-  'apps/server/api-handlers.gen.ts',
-  [
-    "import { Layer } from 'effect'",
-    ...handlerImports,
-    '',
-    '/** the implementations behind qualyApi, which only the host can run */',
-    handlerNames.length > 0
-      ? `export const apiHandlers = Layer.mergeAll(\n${handlerNames
-          .map((name) => `  ${name},`)
-          .join('\n')}\n)`
-      : 'export const apiHandlers = Layer.empty',
-  ].join('\n'),
-)
 
 export {}

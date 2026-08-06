@@ -41,7 +41,7 @@ export const layer: Layer.Layer<never, never, LoginDrivers> = registerLoginDrive
 // import the aggregate it is part of
 const local = HttpApi.make(QUALY_API_ID).add(authLocalApiGroup).prefix(QUALY_API_PREFIX)
 
-export const authLocalApiHandlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
+export const apiHandlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
   handlers.handle(
     'login',
     Effect.fn('authLocal.login.handler')(function* ({ params, payload }) {

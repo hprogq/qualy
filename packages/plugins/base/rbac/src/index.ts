@@ -9,7 +9,7 @@ import { rolesPage } from './pages.ts'
 // Its own permission codes are declared inside the service layer rather than
 // here, because the registry they go into is the service's to provide.
 
-export { accessApiHandlers } from './server/index.ts'
+export { accessApiHandlers as apiHandlers } from './server/index.ts'
 
 export const layer = serviceLayer.pipe(
   Layer.merge(

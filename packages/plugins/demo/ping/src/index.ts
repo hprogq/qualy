@@ -22,7 +22,7 @@ const local = HttpApi.make(QUALY_API_ID).add(pingApiGroup).prefix(QUALY_API_PREF
 
 const closure = [...entities] as const
 
-export const pingApiHandlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
+export const apiHandlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
   Effect.gen(function* () {
     // read once while the layer is built, not per request: a greeting that is
     // configured wrong should stop the assembly rather than fail requests
@@ -49,7 +49,7 @@ export const pingApiHandlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
   }),
 )
 
-/** the screen this plugin puts in the shell; its api is the group above */
+/** the screen this plugin puts in the shell; its api is the export above */
 export const layer: Layer.Layer<never, never, Ui> = registerSurfaces(
   defineSurfaces({
     pages: [

@@ -10,12 +10,11 @@ import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { DatabaseConfig, Entities } from '@qualy/plugin-database/server'
 import { entities } from '../entities.gen.ts'
-import { pluginLayers } from '../runtime.gen.ts'
+import { apiHandlers, pluginLayers } from '../runtime.gen.ts'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { makeClient } from '@qualy/api-client/effect'
-import { apiHandlers } from '../api-handlers.gen.ts'
 import { healthApi, healthHandlers } from '../src/health.ts'
 
 // M3: a plugin's endpoints reaching the aggregate.
@@ -32,18 +31,18 @@ const spec = `${QUALY_API_PREFIX}/openapi.json` as const
 
 const shell = (url: string) =>
   HttpRouter.serve(
+    // the same shape as the composition root: the generated aggregate of
+    // every entry's handlers, composed above the plugin services
     Layer.mergeAll(
       HttpApiBuilder.layer(qualyApi, { openapiPath: spec }).pipe(Layer.provide(apiHandlers)),
       HttpApiScalar.layer(qualyApi, { path: `${QUALY_API_PREFIX}/docs` }),
       HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
     ),
   ).pipe(
-    Layer.provide(NodeHttpServer.layer(createServer, { port })),
-    // the same shape as the composition root: handlers get their services from
-    // the generated plugin layers rather than from a hand-built subset, so a
-    // plugin that starts requiring something is caught here too - booted,
-    // because production serves only after the assembled barrier has run
+    // booted, because production serves only after the assembled barrier ran
     Layer.provide(booted(pluginLayers)),
+    Layer.provide(NodeHttpServer.layer(createServer, { port })),
+
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(

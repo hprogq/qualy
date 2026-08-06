@@ -17,6 +17,8 @@ export interface RuntimeLayer {
   dependsOn: readonly string[]
   /** the manifest block this plugin's `config` export turns into a service */
   config?: unknown
+  /** whether the entry exports `apiHandlers` for a declared api */
+  api?: boolean
 }
 
 /**
@@ -49,6 +51,7 @@ export const runtimeLayers = (resolution: Resolution): RuntimeLayer[] =>
         // failure this repository refuses everywhere else: resolution rejects
         // it rather than writing it into a call nobody makes.
         ...(runtime.config ? { config: resolution.manifest.plugins.get(id)?.config ?? {} } : {}),
+        ...(runtime.api ? { api: true } : {}),
       },
     ]
   })
@@ -170,11 +173,17 @@ export function renderRuntimeModule(resolution: Resolution, modulePath: string):
       ? []
       : [{ specifier: moduleSpecifier(modulePath, module.path), name: module.layerExport }],
   )
-  const imports = layers.map((layer) =>
-    layer.config === undefined
-      ? `import { layer as ${identifier(layer.id)} } from '${layer.specifier}'`
-      : `import { layer as ${identifier(layer.id)}, config as ${identifier(layer.id)}Config } from '${layer.specifier}'`,
-  )
+  const imports = layers.map((layer) => {
+    const names = [
+      `layer as ${identifier(layer.id)}`,
+      ...(layer.config === undefined ? [] : [`config as ${identifier(layer.id)}Config`]),
+      // the handlers stay a separate export rather than part of the layer: an
+      // api group's middleware is implemented by other plugins, so handlers
+      // compose above every plugin's services, at the serve site
+      ...(layer.api ? [`apiHandlers as ${identifier(layer.id)}Handlers`] : []),
+    ]
+    return `import { ${names.join(', ')} } from '${layer.specifier}'`
+  })
   const levels = runtimeLevels(layers)
   const composed = () => {
     // written top down: the most dependent level first, then everything it
@@ -207,6 +216,18 @@ export function renderRuntimeModule(resolution: Resolution, modulePath: string):
       ? `export const pluginLayers = ${composed()}`
       : 'export const pluginLayers = Layer.empty',
     '',
+    ...(layers.some((layer) => layer.api)
+      ? [
+          '/** every plugin group implementation, composed above the plugin services */',
+          (() => {
+            const names = layers.filter((l) => l.api).map((l) => `${identifier(l.id)}Handlers`)
+            return names.length === 1
+              ? `export const apiHandlers = ${names[0]!}`
+              : `export const apiHandlers = Layer.mergeAll(${names.join(', ')})`
+          })(),
+          '',
+        ]
+      : []),
     ...(derived.length > 0
       ? [
           '/** every service a capability in this assembly generated */',

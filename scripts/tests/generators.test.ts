@@ -7,7 +7,6 @@ import { createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
 
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
 const apiPath = 'packages/api/src/api.gen.ts'
-const apiHandlersPath = 'apps/server/api-handlers.gen.ts'
 
 // A capability's module lands where the manifest says its host lives, so a
 // throwaway manifest that names no workspace gets it beside itself. The old
@@ -49,7 +48,7 @@ describe('generator determinism', () => {
 
   it('produces byte-identical output on repeated runs', () => {
     gen()
-    const generated = [pluginsPath, apiPath, apiHandlersPath]
+    const generated = [pluginsPath, apiPath]
     const before = generated.map((file) => read(file))
     // silence is the signal now: a generator that rewrote an identical file
     // would say so, and a second run that says nothing wrote nothing
@@ -73,7 +72,6 @@ describe('generator determinism', () => {
       // a disabled plugin loses its routes, so both halves of the aggregate
       // have to forget it together
       expect(read(apiPath)).not.toContain('pingApiGroup')
-      expect(read(apiHandlersPath)).not.toContain('pingApiHandlers')
 
       gen(`--yml ${workspace.manifestPath} --all`)
       expect(read(pluginsPath)).toContain('pingComponents')
@@ -82,7 +80,8 @@ describe('generator determinism', () => {
       // bytes. Here it would mean a disabled plugin's endpoints are served,
       // because its dependencies are still present and its handler still works
       expect(read(apiPath)).not.toContain('pingApiGroup')
-      expect(read(apiHandlersPath)).not.toContain('pingApiHandlers')
+      // the handlers aggregate lives in the runtime module now, which follows
+      // the same active set as the layers themselves
     } finally {
       workspace.dispose()
     }
@@ -99,19 +98,14 @@ describe('generator determinism', () => {
     expect(new Set(claims).size).toBe(claims.length)
   })
 
-  it('pairs every api group with the handlers that implement it', () => {
-    // the two halves are generated into different packages, and only the
-    // handler half can be wrong on its own: a group nobody implements is a
-    // route the aggregate advertises and then cannot serve
+  it('gives no two plugins one group identifier', () => {
+    // handler pairing is the compiler's now - each entry carries its own
+    // group, and HttpApiBuilder.layer demands every group's service - so what
+    // is left to this generator is the aggregate itself: a duplicate group
+    // name would mean one plugin's routes silently replacing another's
     gen()
     const groups = [...read(apiPath).matchAll(/^\s+(\w+)ApiGroup,$/gm)].map((match) => match[1])
-    const handlers = [...read(apiHandlersPath).matchAll(/^\s+(\w+)ApiHandlers,$/gm)].map(
-      (match) => match[1],
-    )
     expect(groups.length).toBeGreaterThan(0)
-    expect(handlers).toEqual(groups)
-    // and no two plugins claim one identifier, which is how the aggregate
-    // finds handlers at runtime
     expect(new Set(groups).size).toBe(groups.length)
   })
 
@@ -156,7 +150,7 @@ describe('generator determinism', () => {
     // same either way or a release would serve and authorize things the
     // manifest switched off.
     gen()
-    const serverSide = [apiPath, apiHandlersPath, 'apps/server/runtime.gen.ts']
+    const serverSide = [apiPath, 'apps/server/runtime.gen.ts']
     const active = serverSide.map((file) => read(file))
     gen('--all')
     for (const [index, file] of serverSide.entries()) {

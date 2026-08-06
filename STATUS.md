@@ -1516,3 +1516,27 @@ chunk 全在;`resolve --frozen-lockfile` 干净;真实启动(PORT=3064):登录 �
 
 **未做,记触发条件**:①组件键仍是 `component: 'ping/PingPage'`,可由 page id 派生省一个名字——
 等下一轮 UI 触碰时一起;②auth/org/rbac 的 server/index.ts 内部拆分(handlers/service 分文件)。
+
+### api-handlers.gen.ts 消失(codegen 收缩第 1 步)
+
+用户方向:尽可能去 codegen。裁定分两半:**能死的是"值"的聚合,必须留的是"类型/打包"产物**
+(`@qualy/api` 是浏览器 client 类型与 openapi 的来源、`plugins.gen` 是 Vite chunk 图、
+entities 的 schema 语义属于 retained 集)。第 1 步杀 api-handlers.gen.ts;
+runtime.gen/entities.gen/routes.gen 由运行时装配器统一处理,方案已给用户、等发话。
+
+**实施**:每个入口统一导出 `apiHandlers`(与 `layer`/`config`/`routes` 同列的入口契约,不再有
+`<ns>ApiHandlers` 命名约定);runtime.gen 聚合它们(`qualy.runtime.api` 为真即 import,纯元数据、
+不动态加载);gen-api 只剩定义聚合那一半;宿主从 runtime.gen 取 `apiHandlers`。配对检查从生成器的
+字符串比对变成编译器的服务需求(`HttpApiBuilder.layer` 要求每个 group 的 handler 服务)。
+
+**一次失败的中间方案,教训记下**:曾把 handler 层直接并进插件 `layer`。上游事实
+(HttpApiBuilder.ts `HandlerRequirements`、HttpRouter.ts:770-795 与 serve 的 `HR`)是:
+handler 的请求期需求分两类——幻影标记(`Request<"Requires", X>`)只在 `HttpRouter.serve`
+参数内部解包;**中间件 tag(Authenticated/Viewer)是真实 R**。ui-registry 的 manifest handler
+请求期要 auth 的 viewer 中间件,而 auth 构建期依赖 ui-registry——构建图无环、请求图有环,
+group 并进 entry 后 pluginLayers 出现 R∩Out 重叠,而 `provide(x, x)` 自闭合在 Layer 代数里
+不成立(provide 会把 x 的 R 重新并进来)。**结论:group 层必须组合在全部插件服务之上**,
+这就是聚合存在的结构性理由;它可以不再是独立文件,但不能塌进各 entry。
+
+**验收**:typecheck 11 工程零错;node 361 / browser 13;真实启动:登录 → roles 200、manifest 7 页、
+ping 200、openapi.json 200,日志零 `[E]`。apps/server 下 .gen.ts 从 4 个变 3 个。

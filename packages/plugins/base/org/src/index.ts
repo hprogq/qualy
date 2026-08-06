@@ -8,11 +8,10 @@ import { serviceLayer } from './server/index.ts'
 import { orgPage } from './pages.ts'
 
 // The plugin: its service, and what it puts where. The organization screen
-// into the shell, its permission codes into the catalog, and the service the
-// rest of the assembly calls. The api handlers pair with the group by name
-// and are re-exported below, which is how the generated aggregate finds them.
+// into the shell, its permission codes into the catalog, the handlers behind
+// its api group, and the service the rest of the assembly calls.
 
-export { orgApiHandlers } from './server/index.ts'
+export { orgApiHandlers as apiHandlers } from './server/index.ts'
 
 export const layer = serviceLayer.pipe(
   Layer.merge(
