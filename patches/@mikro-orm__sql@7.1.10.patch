@@ -1,0 +1,40 @@
+diff --git a/dialects/postgresql/PostgreSqlSchemaHelper.js b/dialects/postgresql/PostgreSqlSchemaHelper.js
+index 8b29fc5f573a2a4e6d8509450e8a7a130167dbc1..9e55b1534be82b3d45a395418289e62893acae65 100644
+--- a/dialects/postgresql/PostgreSqlSchemaHelper.js
++++ b/dialects/postgresql/PostgreSqlSchemaHelper.js
+@@ -261,7 +261,9 @@ export class PostgreSqlSchemaHelper extends SchemaHelper {
+             if (index.condeferrable) {
+                 indexDef.deferMode = index.condeferred ? DeferMode.INITIALLY_DEFERRED : DeferMode.INITIALLY_IMMEDIATE;
+             }
+-            const hasFunctionalColumns = index.index_def.some((col) => PostgreSqlSchemaHelper.FUNCTIONAL_COL_RE.exec(col));
++            const accessMethod = /\busing\s+(\w+)/i.exec(index.expression ?? '');
++            const hasFunctionalColumns = index.index_def.some((col) => PostgreSqlSchemaHelper.FUNCTIONAL_COL_RE.exec(col))
++                || (!!accessMethod && accessMethod[1].toLowerCase() !== 'btree');
+             const whereMatch = hasFunctionalColumns
+                 ? null
+                 : PostgreSqlSchemaHelper.PARTIAL_WHERE_RE.exec(index.expression ?? '');
+@@ -492,7 +494,7 @@ export class PostgreSqlSchemaHelper extends SchemaHelper {
+             // SchemaHelper.createCheck).
+             const m = /^check \(\((.*)\)\)$/is.exec(check.expression);
+             const single = m ? null : /^check \((.*)\)$/is.exec(check.expression);
+-            const def = m ? m[1].replace(/\((.*?)\)::\w+/g, '$1') : single ? single[1] : check.expression;
++            const def = m ? m[1].replace(/\(([^()]*)\)::\w+/g, '$1') : single ? single[1] : check.expression;
+             ret[key].push({
+                 name: check.name,
+                 columnName: check.column_name,
+diff --git a/typings.d.ts b/typings.d.ts
+index c83b11b6a2735bc763cddba36c20213c90a60cbf..1b113f1cd3ef313bdb9ce0ba38e5bd27fc5ada22 100644
+--- a/typings.d.ts
++++ b/typings.d.ts
+@@ -368,9 +368,9 @@ type MaybeGenerated<TValue, TOptions, TProcessOnCreate extends boolean> = TOptio
+ } ? TValue | null : TOptions extends {
+     autoincrement: true;
+ } ? Generated<TValue> : TOptions extends {
+-    default: true;
++    default: unknown;
+ } ? Generated<TValue> : TOptions extends {
+-    defaultRaw: true;
++    defaultRaw: unknown;
+ } ? Generated<TValue> : TProcessOnCreate extends false ? TValue : TOptions extends {
+     onCreate: Function;
+ } ? Generated<TValue> : TValue;

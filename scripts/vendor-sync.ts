@@ -53,13 +53,6 @@ export const VENDORED: readonly VendoredSource[] = [
     tagFor: (version) => `effect@${version}`,
     versionFile: 'packages/effect/package.json',
   },
-  {
-    name: 'drizzle-orm',
-    repository: 'https://github.com/drizzle-team/drizzle-orm.git',
-    packageName: 'drizzle-orm',
-    tagFor: (version) => `v${version}`,
-    versionFile: 'drizzle-orm/package.json',
-  },
   // Vendored ahead of any dependency on it: the orm decision spike has to read
   // what v7 actually does with entity metadata, the Kysely bridge and the
   // migrator, and reasoning from release notes is how a spike concludes that a
@@ -124,8 +117,8 @@ const git = (args: readonly string[], cwd?: string) =>
  * A vendored tree is upstream source to read. Its own agent configuration is
  * instructions written for a different repository by people who never saw
  * this one, and a coding agent working here would pick them up as if they
- * were this project's rules. Vendoring drizzle-orm brought exactly that:
- * a skill announcing itself the moment the tree landed.
+ * were this project's rules. A vendored tree brought exactly that once:
+ * a skill announcing itself the moment it landed.
  */
 export const NOT_VENDORED = [
   '.claude',

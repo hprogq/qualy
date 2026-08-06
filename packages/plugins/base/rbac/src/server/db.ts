@@ -1,0 +1,131 @@
+import { Effect } from 'effect'
+import {
+  entityManager,
+  kyselyOf,
+  query,
+  type ClosureEntityManager,
+} from '@qualy/plugin-database/server'
+import { sql } from 'kysely'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities } from '../db/entities.ts'
+
+// What rbac's queries may reach.
+//
+// Its own tables plus org's and auth's, because rbac declares database
+// dependencies on both and its rows point at theirs: a grant names a user and
+// a node. Nothing else - the assembly's manager knows every table in the
+// deployment, and naming the closure here is what keeps a query from reaching
+// a plugin rbac has no relationship with.
+
+const closure = [...orgEntities, ...authEntities, ...entities] as const
+
+export type RbacEntityManager = ClosureEntityManager<typeof closure>
+
+/** a manager for rbac's tables, joining an open transaction if there is one */
+export const rbacEntityManager = () => entityManager<typeof closure>()
+
+/** the same row org and auth lock, so the three cannot interleave */
+export const lockTenant = (em: RbacEntityManager, tenantId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Tenant')
+      .select(sql<number>`1`.as('locked'))
+      .where('id', '=', tenantId)
+      .forUpdate()
+      .execute(),
+  )
+
+export const userExists = (em: RbacEntityManager, tenantId: string, userId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('User')
+      .select('id')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userId)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row !== undefined))
+
+export const orgNodeExists = (em: RbacEntityManager, tenantId: string, orgNodeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgNode')
+      .select('id')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', orgNodeId)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row !== undefined))
+
+/**
+ * One role or all of a tenant's, with the sets a role screen needs.
+ *
+ * Shared because the role screen and the grant picker both read it, and a
+ * second projection would eventually disagree about what a role currently
+ * carries.
+ */
+const roleProjection = (em: RbacEntityManager, tenantId: string) =>
+  kyselyOf(em)
+    .selectFrom('Role as r')
+    .select((eb) => [
+      'r.id',
+      'r.code',
+      'r.name',
+      'r.description',
+      'r.systemKey',
+      'r.assignable',
+      'r.version',
+      eb.ref('r.kind').$castTo<'tenant' | 'org'>().as('kind'),
+      eb.ref('r.status').$castTo<'draft' | 'active' | 'disabled'>().as('status'),
+      eb.ref('r.permissionMode').$castTo<'explicit' | 'all-active'>().as('permissionMode'),
+      sql<number>`(select count(*)::int from role_grants g
+        where g.tenant_id = ${eb.ref('r.tenantId')} and g.role_id = ${eb.ref('r.id')})`.as(
+        'grantCount',
+      ),
+      sql<string[]>`coalesce((select array_agg(p.code order by p.code)
+        from role_permissions rp join permissions p on p.id = rp.permission_id
+        where rp.tenant_id = ${eb.ref('r.tenantId')} and rp.role_id = ${eb.ref('r.id')}), '{}')`.as(
+        'permissions',
+      ),
+      sql<string[]>`coalesce((select array_agg(t.user_type_id::text) from role_allowed_user_types t
+        where t.tenant_id = ${eb.ref('r.tenantId')} and t.role_id = ${eb.ref('r.id')}), '{}')`.as(
+        'allowedUserTypes',
+      ),
+      sql<string[]>`coalesce((select array_agg(t.org_type_id::text) from role_allowed_org_types t
+        where t.tenant_id = ${eb.ref('r.tenantId')} and t.role_id = ${eb.ref('r.id')}), '{}')`.as(
+        'allowedOrgTypes',
+      ),
+    ])
+    .where('r.tenantId', '=', tenantId)
+    .orderBy('r.kind')
+    .orderBy('r.code')
+
+export const rolesOfTenant = (em: RbacEntityManager, tenantId: string) =>
+  query(() => roleProjection(em, tenantId).execute())
+
+export const oneRoleProjected = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() => roleProjection(em, tenantId).where('r.id', '=', roleId).executeTakeFirst())
+
+/** what the projection returns, read off the query rather than restated */
+export type RoleRow = Effect.Success<ReturnType<typeof rolesOfTenant>>[number]
+
+/** the codes a role currently carries */
+export const rolePermissionCodes = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('RolePermission as rp')
+      .innerJoin('Permission as p', 'p.id', 'rp.permissionId')
+      .where('rp.tenantId', '=', tenantId)
+      .where('rp.roleId', '=', roleId)
+      .select('p.code')
+      .execute(),
+  ).pipe(Effect.map((rows) => rows.map((row) => row.code)))
+
+export const rolePermissionMode = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Role')
+      .select((eb) => eb.ref('permissionMode').$castTo<'explicit' | 'all-active'>().as('mode'))
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .executeTakeFirst(),
+  )

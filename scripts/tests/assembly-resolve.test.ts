@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  capabilityModules,
   lockDrift,
   lockFromResolution,
   lockPathFor,
@@ -15,7 +16,11 @@ import {
   resolveAssembly,
   writeLock,
 } from '@qualy/assembly'
-import { createWorkspace, renderManifestText } from '@qualy/assembly/testkit'
+import {
+  createWorkspace,
+  renderManifestText,
+  type SyntheticPackage,
+} from '@qualy/assembly/testkit'
 
 // What an assembly resolves to has to be a function of what it says, not of
 // how it was written or of what ran before. Everything here is a property of
@@ -192,7 +197,7 @@ describe('resolution', () => {
     // sign of that is whatever the capability generates once the plugin has
     // dropped out of its set
     const workspace = createWorkspace([...INFRA, '@fake/plugin-legacy'], {
-      synthetic: [{ id: '@fake/plugin-legacy', qualy: { database: { schemaEntry: 'index.js' } } }],
+      synthetic: [{ id: '@fake/plugin-legacy', qualy: { database: { entitiesEntry: 'index.js' } } }],
     })
     try {
       await expect(resolve(workspace.manifestPath)).rejects.toThrow(
@@ -475,6 +480,69 @@ describe('runtime module', () => {
     } finally {
       workspace.dispose()
     }
+  })
+})
+
+describe('the modules capabilities derive', () => {
+  // Written and compared by a core that never reads them. Asserted with a
+  // capability this repository does not have, because a case that used the
+  // database one would pass just as well if the core had been taught what a
+  // table is.
+  const provider = (key: string, body: string): SyntheticPackage => ({
+    id: `@fake/plugin-${key}`,
+    qualy: { capabilityProvider: { key, entry: './provider' } },
+    exports: { './provider': './provider.js' },
+    files: {
+      'provider.js': [
+        'export default {',
+        `  key: '${key}',`,
+        '  parseContribution: () => ({}),',
+        '  resolve: () => ({}),',
+        `  modules: () => (${body}),`,
+        '}',
+      ].join('\n'),
+    },
+  })
+
+  const modulesOf = async (synthetic: readonly SyntheticPackage[], options = {}) => {
+    const workspace = createWorkspace(
+      synthetic.map((entry) => entry.id),
+      { ...options, synthetic },
+    )
+    try {
+      return capabilityModules(await resolve(workspace.manifestPath))
+    } finally {
+      workspace.dispose()
+    }
+  }
+
+  it('collects them without knowing what any of them says', async () => {
+    const modules = await modulesOf([
+      provider('widgets', "[{ path: 'widgets.gen.ts', content: 'export const widgets = []\\n' }]"),
+    ])
+    expect(modules).toEqual([
+      { path: 'widgets.gen.ts', content: 'export const widgets = []\n' },
+    ])
+  })
+
+  it('refuses two capabilities generating one file', async () => {
+    // silent otherwise: both write, the second wins, and the frozen gate then
+    // compares the survivor against whichever ran last
+    const same = "[{ path: 'shared.gen.ts', content: 'x' }]"
+    await expect(modulesOf([provider('a', same), provider('b', same)])).rejects.toThrow(
+      /capabilities a and b both generate shared.gen.ts/,
+    )
+  })
+
+  it('refuses one that reaches outside the workspace', async () => {
+    // the core writes these paths, so a capability naming `..` is naming a
+    // file anywhere on the disk
+    await expect(
+      modulesOf([provider('escape', "[{ path: '../outside.gen.ts', content: 'x' }]")]),
+    ).rejects.toThrow(/capability escape generates outside the workspace/)
+    await expect(
+      modulesOf([provider('absolute', "[{ path: '/etc/outside.gen.ts', content: 'x' }]")]),
+    ).rejects.toThrow(/capability absolute generates an absolute path/)
   })
 })
 

@@ -7,7 +7,7 @@ import {
   type RbacShape,
 } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
-import { Database } from '@qualy/plugin-database/server'
+import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
@@ -16,30 +16,29 @@ import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
-import { make as makeGrants } from './grants.ts'
+import { make as makeGrants, type GrantRow } from './grants.ts'
+import { rbacEntityManager } from './db.ts'
+import { REACH_RANK, type Reach } from './authorization.ts'
+import {
+  administratorSurvivors,
+  authorizedScope,
+  canAt as canAtQuery,
+  effectiveRows as effectiveRowsQuery,
+  grantsBlockingOrgType,
+  grantsBlockingUserType,
+  hasTenantPermission as hasTenantPermissionQuery,
+  lockAdministratorRole,
+  permissionRow,
+  refreshPermissionText,
+  upsertPermission,
+  reachAt as reachAtQuery,
+  rolesStrandedByUserType,
+} from './authorization.ts'
 import { make as makeRoles } from './roles.ts'
 import { make as makeDiagnostics } from './diagnostics.ts'
 import { ESCALATE, type Authority } from './escalation.ts'
-import {
-  REACH_RANK,
-  type Reach,
-  administratorSurvivorsQuery,
-  permissionRowQuery,
-  refreshPermissionTextQuery,
-  upsertPermissionQuery,
-  authorizedScopeQuery,
-  effectiveRowsQuery,
-  reachAtQuery,
-  canAtQuery,
-  foldScope,
-  grantsBlockingOrgTypeQuery,
-  hasTenantPermissionQuery,
-  lockAdministratorRoleQuery,
-  type GrantRow,
-  type GrantScope,
-  type RoleRow as RoleProjection,
-  type ScopeRow,
-} from '../queries.ts'
+import { type GrantScope } from './grants.ts'
+import { type RoleRow as RoleProjection } from './db.ts'
 
 // rbac as an Effect layer, and the root of the graph.
 //
@@ -61,8 +60,16 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
 export const make = Effect.fn('Rbac.make')(function* () {
-  const database = yield* Database
   const declared = yield* PermissionCatalog
+  // this layer's database, closed over: what it builds is a service, and a
+  // service that demands the orm has handed the orm to every caller
+  const withDb = yield* withDatabase
+
+  /** the same effect, with that database supplied */
+  const bound =
+    <Args extends unknown[], A, E, R>(fn: (...args: Args) => Effect.Effect<A, E, R>) =>
+    (...args: Args) =>
+      withDb(fn(...args))
 
   // The catalog is mirrored into the permissions table before anything reads
   // it, because the authorization statements join that table: a code the
@@ -75,11 +82,10 @@ export const make = Effect.fn('Rbac.make')(function* () {
   // assembly instead of an instance authorizing against a half-synced table.
   const catalog = new Map<string, ActivePermission>()
   for (const permission of declared) {
-    yield* database.execute(upsertPermissionQuery(permission)).pipe(Effect.orDie)
-    const stored = rows<{ plugin: string; target_kind: string }>(
-      yield* database.execute(permissionRowQuery(permission.code)).pipe(Effect.orDie),
-    )[0]
-    if (!stored || stored.plugin !== permission.plugin || stored.target_kind !== permission.target) {
+    const em = yield* rbacEntityManager()
+    yield* upsertPermission(em, permission).pipe(Effect.orDie)
+    const stored = yield* permissionRow(em, permission.code).pipe(Effect.orDie)
+    if (!stored || stored.plugin !== permission.plugin || stored.targetKind !== permission.target) {
       return yield* Effect.die(
         new Error(
           `permission ${permission.code} conflicts with its stored row; changed ownership or ` +
@@ -87,7 +93,7 @@ export const make = Effect.fn('Rbac.make')(function* () {
         ),
       )
     }
-    yield* database.execute(refreshPermissionTextQuery(permission)).pipe(Effect.orDie)
+    yield* refreshPermissionText(em, permission).pipe(Effect.orDie)
     catalog.set(permission.code, permission)
   }
 
@@ -95,25 +101,22 @@ export const make = Effect.fn('Rbac.make')(function* () {
   // row says
   const definitionOf = (code: string) => catalog.get(code)
 
-  const hasTenantPermission = Effect.fn('Rbac.hasTenantPermission')(function* (
-    principal: Principal,
-    definition: ActivePermission,
-  ) {
-    const result = yield* database
-      .execute(hasTenantPermissionQuery(principal, definition))
-      .pipe(Effect.orDie)
-    return rows<{ allowed: boolean }>(result)[0]?.allowed ?? false
-  })
+  const hasTenantPermission = bound(
+    Effect.fn('Rbac.hasTenantPermission')(function* (
+      principal: Principal,
+      definition: ActivePermission,
+    ) {
+      const em = yield* rbacEntityManager()
+      return yield* hasTenantPermissionQuery(em, principal, definition).pipe(Effect.orDie)
+    }),
+  )
 
-  const scopeOf = Effect.fn('Rbac.scopeOf')(function* (
-    principal: Principal,
-    definition: ActivePermission,
-  ) {
-    const result = yield* database
-      .execute(authorizedScopeQuery(principal, definition))
-      .pipe(Effect.orDie)
-    return foldScope(rows<ScopeRow>(result))
-  })
+  const scopeOf = bound(
+    Effect.fn('Rbac.scopeOf')(function* (principal: Principal, definition: ActivePermission) {
+      const em = yield* rbacEntityManager()
+      return yield* authorizedScope(em, principal, definition).pipe(Effect.orDie)
+    }),
+  )
 
   /**
    * Rows pinned to what the catalog serves.
@@ -122,72 +125,59 @@ export const make = Effect.fn('Rbac.make')(function* () {
    * declaration contributes nothing, so a row edited out of band stops
    * authorizing rather than starting to.
    */
-  const effectiveRows = Effect.fn('Rbac.effectiveRows')(function* (
-    principal: Principal,
-    target: { orgNodeId: string } | 'anywhere' | undefined,
-  ) {
-    const result = yield* database
-      .execute(effectiveRowsQuery(principal, target))
-      .pipe(Effect.orDie)
-    const kept: { definition: ActivePermission; roleKind: 'tenant' | 'org' }[] = []
-    for (const row of rows<{
-      code: string
-      plugin: string
-      target_kind: string
-      kind: 'tenant' | 'org'
-    }>(result)) {
-      const definition = catalog.get(row.code)
-      if (!definition) continue
-      if (row.plugin !== definition.plugin || row.target_kind !== definition.target) continue
-      kept.push({ definition, roleKind: row.kind })
-    }
-    return kept
-  })
+  const effectiveRows = bound(
+    Effect.fn('Rbac.effectiveRows')(function* (
+      principal: Principal,
+      target: { orgNodeId: string } | 'anywhere' | undefined,
+    ) {
+      const em = yield* rbacEntityManager()
+      const found = yield* effectiveRowsQuery(em, principal, target).pipe(Effect.orDie)
+      const kept: { definition: ActivePermission; roleKind: 'tenant' | 'org' }[] = []
+      for (const row of found) {
+        const definition = catalog.get(row.code)
+        if (!definition) continue
+        if (row.plugin !== definition.plugin || row.targetKind !== definition.target) continue
+        kept.push({ definition, roleKind: row.kind as 'tenant' | 'org' })
+      }
+      return kept
+    }),
+  )
 
   /** the strongest reach the principal has for each code at one node */
-  const reachAt = Effect.fn('Rbac.reachAt')(function* (principal: Principal, orgNodeId: string) {
-    const result = yield* database
-      .execute(reachAtQuery(principal, orgNodeId))
-      .pipe(Effect.orDie)
-    const reach = new Map<string, Reach>()
-    for (const row of rows<{
-      code: string
-      plugin: string
-      target_kind: string
-      every_node: boolean
-      coverage: 'self' | 'subtree' | null
-    }>(result)) {
-      const definition = catalog.get(row.code)
-      if (!definition) continue
-      if (row.plugin !== definition.plugin || row.target_kind !== definition.target) continue
-      const here: Reach = row.every_node ? 'tenant' : (row.coverage ?? 'self')
-      const known = reach.get(definition.code)
-      if (known === undefined || REACH_RANK[here] > REACH_RANK[known]) {
-        reach.set(definition.code, here)
+  const reachAt = bound(
+    Effect.fn('Rbac.reachAt')(function* (principal: Principal, orgNodeId: string) {
+      const em = yield* rbacEntityManager()
+      const found = yield* reachAtQuery(em, principal, orgNodeId).pipe(Effect.orDie)
+      const reach = new Map<string, Reach>()
+      for (const row of found) {
+        const definition = catalog.get(row.code)
+        if (!definition) continue
+        if (row.plugin !== definition.plugin || row.targetKind !== definition.target) continue
+        const here: Reach = row.everyNode ? 'tenant' : (row.coverage ?? 'self')
+        const known = reach.get(definition.code)
+        if (known === undefined || REACH_RANK[here] > REACH_RANK[known]) {
+          reach.set(definition.code, here)
+        }
       }
-    }
-    return reach
-  })
+      return reach
+    }),
+  )
 
-  const canAt: RbacShape['canAt'] = Effect.fn('Rbac.canAt')(function* (
-    principal,
-    code,
-    targetOrgNodeId,
-  ) {
-    const definition = definitionOf(code)
-    if (!definition) return false
-    if (definition.target !== 'org-node') {
-      // a tenant code checked against a node is a caller mistake rather than a
-      // denial, and answering false would hide it
-      return yield* Effect.die(
-        new Error(`canAt() got a tenant permission ${code}, use require()`),
-      )
-    }
-    const result = yield* database
-      .execute(canAtQuery(principal, definition, targetOrgNodeId))
-      .pipe(Effect.orDie)
-    return rows<{ allowed: boolean }>(result)[0]?.allowed ?? false
-  })
+  const canAt: RbacShape['canAt'] = bound(
+    Effect.fn('Rbac.canAt')(function* (principal, code, targetOrgNodeId) {
+      const definition = definitionOf(code)
+      if (!definition) return false
+      if (definition.target !== 'org-node') {
+        // a tenant code checked against a node is a caller mistake rather than a
+        // denial, and answering false would hide it
+        return yield* Effect.die(
+          new Error(`canAt() got a tenant permission ${code}, use require()`),
+        )
+      }
+      const em = yield* rbacEntityManager()
+      return yield* canAtQuery(em, principal, definition, targetOrgNodeId).pipe(Effect.orDie)
+    }),
+  )
 
   const listAuthorizedScope: RbacShape['listAuthorizedScope'] = Effect.fn(
     'Rbac.listAuthorizedScope',
@@ -199,16 +189,15 @@ export const make = Effect.fn('Rbac.make')(function* () {
     return yield* scopeOf(principal, definition)
   })
 
-  const hasPermission: RbacShape['hasPermission'] = Effect.fn('Rbac.hasPermission')(function* (
-    principal,
-    code,
-  ) {
-    const definition = definitionOf(code)
-    if (!definition) return false
-    if (definition.target === 'tenant') return yield* hasTenantPermission(principal, definition)
-    const scope = yield* scopeOf(principal, definition)
-    return scope.tenantWide || scope.anchors.length > 0
-  })
+  const hasPermission: RbacShape['hasPermission'] = Effect.fn('Rbac.hasPermission')(
+    function* (principal, code) {
+      const definition = definitionOf(code)
+      if (!definition) return false
+      if (definition.target === 'tenant') return yield* hasTenantPermission(principal, definition)
+      const scope = yield* scopeOf(principal, definition)
+      return scope.tenantWide || scope.anchors.length > 0
+    },
+  )
 
   /** what the guards ask about an actor, answered from this layer's own reads */
   const authorityFor = (actor: Principal): Authority => ({
@@ -224,8 +213,7 @@ export const make = Effect.fn('Rbac.make')(function* () {
   // not orDie: the refusal is a declared 409 on three endpoints, and a defect
   // would answer 500 with no code. auth calls the same port without orDie,
   // which is what made this a slip rather than a policy.
-  const keepsAdministrator = (tenantId: string) =>
-    shapeRef.assertTenantKeepsAdministrator(tenantId)
+  const keepsAdministrator = (tenantId: string) => shapeRef.assertTenantKeepsAdministrator(tenantId)
 
   const grants = yield* makeGrants(authorityFor)
   const roles = yield* makeRoles(authorityFor, keepsAdministrator)
@@ -288,41 +276,50 @@ export const make = Effect.fn('Rbac.make')(function* () {
         return yield* new AccessDenied({ reason: 'permission not held at this node' })
       }
     }),
-    grantsBlockingOrgType: Effect.fn('Rbac.grantsBlockingOrgType')(function* (
-      tenantId,
-      orgNodeId,
-      orgTypeId,
-    ) {
-      const result = yield* database
-        .execute(grantsBlockingOrgTypeQuery(tenantId, orgNodeId, orgTypeId))
-        .pipe(Effect.orDie)
-      return rows<{ code: string }>(result).map((row) => row.code)
-    }),
-    assertTenantKeepsAdministrator: Effect.fn('Rbac.assertTenantKeepsAdministrator')(function* (
-      tenantId,
-    ) {
-      // runs on the caller's connection because the connection is in the
-      // fiber, which is what lets it read the final state of the caller's
-      // transaction rather than a prediction of it
-      const locked = yield* database
-        .execute(lockAdministratorRoleQuery(tenantId, CANONICAL_ADMIN_ROLE))
-        .pipe(Effect.orDie)
-      const role = rows<{ id: string }>(locked)[0]
-      // fail closed: carrying on here would let every admin-reducing write
-      // through on exactly the tenants least able to survive one
-      if (!role) {
-        return yield* Effect.die(
-          new Error(
-            `tenant ${tenantId} has no canonical administrator role; refusing to change access`,
-          ),
+    grantsBlockingOrgType: bound(
+      Effect.fn('Rbac.grantsBlockingOrgType')(function* (tenantId, orgNodeId, orgTypeId) {
+        const em = yield* rbacEntityManager()
+        return yield* grantsBlockingOrgType(em, tenantId, orgNodeId, orgTypeId).pipe(Effect.orDie)
+      }),
+    ),
+    rolesStrandedByUserType: bound(
+      Effect.fn('Rbac.rolesStrandedByUserType')(function* (tenantId: string, userTypeId: string) {
+        const em = yield* rbacEntityManager()
+        return yield* rolesStrandedByUserType(em, tenantId, userTypeId).pipe(Effect.orDie)
+      }),
+    ),
+    grantsBlockingUserType: bound(
+      Effect.fn('Rbac.grantsBlockingUserType')(function* (
+        tenantId: string,
+        userId: string,
+        userTypeId: string,
+      ) {
+        const em = yield* rbacEntityManager()
+        return yield* grantsBlockingUserType(em, tenantId, userId, userTypeId).pipe(Effect.orDie)
+      }),
+    ),
+    assertTenantKeepsAdministrator: bound(
+      Effect.fn('Rbac.assertTenantKeepsAdministrator')(function* (tenantId: string) {
+        // runs on the caller's connection because the connection is in the
+        // fiber, which is what lets it read the final state of the caller's
+        // transaction rather than a prediction of it
+        const em = yield* rbacEntityManager()
+        const role = yield* lockAdministratorRole(em, tenantId, CANONICAL_ADMIN_ROLE).pipe(
+          Effect.orDie,
         )
-      }
-      const counted = yield* database
-        .execute(administratorSurvivorsQuery(tenantId, role.id))
-        .pipe(Effect.orDie)
-      const survivors = Number(rows<{ count: string }>(counted)[0]?.count ?? 0)
-      if (survivors === 0) return yield* new LastAdministrator()
-    }),
+        // fail closed: carrying on here would let every admin-reducing write
+        // through on exactly the tenants least able to survive one
+        if (!role) {
+          return yield* Effect.die(
+            new Error(
+              `tenant ${tenantId} has no canonical administrator role; refusing to change access`,
+            ),
+          )
+        }
+        const survivors = yield* administratorSurvivors(em, tenantId, role.id).pipe(Effect.orDie)
+        if (survivors === 0) return yield* new LastAdministrator()
+      }),
+    ),
     getProfile: Effect.fn('Rbac.getProfile')(function* (principal) {
       // "anywhere at all" rather than "here": the manifest asks what a viewer
       // may discover, and an org capability held at one node is discoverable
@@ -377,36 +374,31 @@ export class Access extends Context.Service<
  * Two tags from one construction: the port peers hold, and rbac's own
  * administration surface, which no peer reaches through a tag.
  */
-export const layer: Layer.Layer<
-  Rbac | Access | UiAuthorizer,
-  never,
-  Database | PermissionCatalog
-> = Layer.effectContext(
-  Effect.gen(function* () {
-    const { grants, roles, diagnostics, grantScopeFor, ...shape } = yield* make()
-    return Context.empty().pipe(
-      Context.add(Rbac, shape),
-      Context.add(Access, { grants, roles, diagnostics, grantScopeFor }),
-      // The one live registration the shell needs: which codes a viewer holds
-      // anywhere in their tenant. It is published from here because rbac is
-      // the only thing that can answer it, and it is a required service, so an
-      // assembly that serves a manifest without one fails to build rather than
-      // quietly showing every signed-in viewer nothing but public pages.
-      Context.add(UiAuthorizer, {
-        permissionsFor: (principal) =>
-          shape
-            .getProfile(principal)
-            .pipe(
-              Effect.map(
-                (profile) =>
-                  new Set([...profile.tenantPermissions, ...profile.orgPermissions]),
+export const layer: Layer.Layer<Rbac | Access | UiAuthorizer, never, Orm | PermissionCatalog> =
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const { grants, roles, diagnostics, grantScopeFor, ...shape } = yield* make()
+      return Context.empty().pipe(
+        Context.add(Rbac, shape),
+        Context.add(Access, { grants, roles, diagnostics, grantScopeFor }),
+        // The one live registration the shell needs: which codes a viewer holds
+        // anywhere in their tenant. It is published from here because rbac is
+        // the only thing that can answer it, and it is a required service, so an
+        // assembly that serves a manifest without one fails to build rather than
+        // quietly showing every signed-in viewer nothing but public pages.
+        Context.add(UiAuthorizer, {
+          permissionsFor: (principal) =>
+            shape
+              .getProfile(principal)
+              .pipe(
+                Effect.map(
+                  (profile) => new Set([...profile.tenantPermissions, ...profile.orgPermissions]),
+                ),
               ),
-            ),
-      }),
-    )
-  }),
-)
-
+        }),
+      )
+    }),
+  )
 
 // --- api ---
 
@@ -425,32 +417,32 @@ const toRoleShape = (
   description: role.description,
   kind: role.kind,
   status: role.status,
-  holdsEveryPermission: role.permission_mode === 'all-active',
-  systemKey: role.system_key,
+  holdsEveryPermission: role.permissionMode === 'all-active',
+  systemKey: role.systemKey,
   assignable: role.assignable,
   version: role.version,
-  grantCount: role.grant_count,
+  grantCount: role.grantCount,
   permissions: permissions.active,
   unavailablePermissions: permissions.unavailable,
-  eligibleUserTypeIds: role.allowed_user_types,
-  anchorOrgTypeIds: role.allowed_org_types,
+  eligibleUserTypeIds: role.allowedUserTypes,
+  anchorOrgTypeIds: role.allowedOrgTypes,
 })
 
 const toGrantShape = (row: GrantRow) => ({
   id: row.id,
-  userId: row.user_id,
-  userDisplayName: row.user_display_name,
-  roleId: row.role_id,
-  roleCode: row.role_code,
-  roleName: row.role_name,
-  roleKind: row.role_kind,
+  userId: row.userId,
+  userDisplayName: row.userDisplayName,
+  roleId: row.roleId,
+  roleCode: row.roleCode,
+  roleName: row.roleName,
+  roleKind: row.roleKind,
   target:
-    row.org_node_id === null
+    row.orgNodeId === null
       ? ({ kind: 'tenant' } as const)
       : ({
           kind: 'org-node',
-          orgNodeId: row.org_node_id,
-          orgNodeName: row.org_node_name ?? '',
+          orgNodeId: row.orgNodeId,
+          orgNodeName: row.orgNodeName ?? '',
           coverage: row.coverage ?? 'self',
         } as const),
   manageable: row.manageable,
@@ -643,12 +635,7 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         yield* rbac.require(principal, 'iam.role.manage')
         const { version, ...fields } = payload
         return {
-          version: yield* access.roles.update(
-            principal.tenantId,
-            params.roleId,
-            fields,
-            version,
-          ),
+          version: yield* access.roles.update(principal.tenantId, params.roleId, fields, version),
         }
       }),
     )

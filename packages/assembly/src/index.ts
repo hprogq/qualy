@@ -13,6 +13,7 @@ export {
   type ManifestEntry,
 } from './manifest.ts'
 export { createPackageResolver, type PackageResolver, type PluginMetadata } from './metadata.ts'
+export { capabilityModules, moduleDrift, type GeneratedModule } from './modules.ts'
 export { loadProviders, type LoadedProvider } from './registry.ts'
 export {
   activePlugins,
@@ -38,9 +39,5 @@ export {
   type LockedCapability,
   type LockedPlugin,
 } from './lock.ts'
-export {
-  renderRuntimeModule,
-  runtimeLayers,
-  writeRuntimeModule,
-} from './runtime-plan.ts'
+export { renderRuntimeModule, runtimeLayers, writeRuntimeModule } from './runtime-plan.ts'
 export { capabilityContext, capabilityWork, type CapabilityWork } from './work.ts'

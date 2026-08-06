@@ -247,19 +247,19 @@
 阶段性总结与要点在 **docs/reports/effect-migration-progress.md**(已完成什么、机制结论、被否掉的方案、
 待办与风险);设计与实测细节在 **docs/effect-migration.md**;决策在 docs/adr/0001-0003。这里只记进度与交接。
 
-| 里程碑 | 内容 | 状态 |
-| --- | --- | --- |
-| M0 / M0.5 | 依赖栈落地、effect/drizzle 源码 vendoring 与 agent 指令剥离 | e4ca3d5 |
-| M1a | 数据库切片实测(事务/回滚/中断/savepoint/约束名/ltree/uuidv7) | 3f2fac8 + 076bfea |
-| M1b | HTTP 切片实测(HttpApi、类型化 client、TanStack Query 桥接) | 13c8016 |
-| — | Effect LSP 接入 tsc,并用会失败的 fixture 守住 patch 是否还在 | 3d3f7a1 |
-| M2 | 应用外壳(健康探针、配置、组合根、优雅关闭) | b989041 |
-| — | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足** | 603f7ad |
-| M3 | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client | 本次 |
-| M4 | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | **55/55 路由已迁完** |
-| M5 | 其余插件按依赖簇迁移(清单 config → layer config 也在这里) | **完成**(api-reference / dict / web) |
-| M6 | 前端切到 HttpApiClient | 待办 |
-| M7 | 原子切换,删掉 cordis 与 oRPC | 待办 |
+| 里程碑    | 内容                                                           | 状态                                 |
+| --------- | -------------------------------------------------------------- | ------------------------------------ |
+| M0 / M0.5 | 依赖栈落地、effect/drizzle 源码 vendoring 与 agent 指令剥离    | e4ca3d5                              |
+| M1a       | 数据库切片实测(事务/回滚/中断/savepoint/约束名/ltree/uuidv7)   | 3f2fac8 + 076bfea                    |
+| M1b       | HTTP 切片实测(HttpApi、类型化 client、TanStack Query 桥接)     | 13c8016                              |
+| —         | Effect LSP 接入 tsc,并用会失败的 fixture 守住 patch 是否还在   | 3d3f7a1                              |
+| M2        | 应用外壳(健康探针、配置、组合根、优雅关闭)                     | b989041                              |
+| —         | cookie 会话 + middleware 实测,**ADR 0003 放行条件全部满足**    | 603f7ad                              |
+| M3        | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client          | 本次                                 |
+| M4        | auth/IAM + rbac + org —— **最难的一块**,要真的拆开 org↔rbac 环 | **55/55 路由已迁完**                 |
+| M5        | 其余插件按依赖簇迁移(清单 config → layer config 也在这里)      | **完成**(api-reference / dict / web) |
+| M6        | 前端切到 HttpApiClient                                         | 待办                                 |
+| M7        | 原子切换,删掉 cordis 与 oRPC                                   | 待办                                 |
 
 **M3 交接要点**:插件**不依赖**聚合体——用只装自己一个 group 的本地 `HttpApi` 实现,靠共享的
 `QUALY_API_ID` 让类型也对上(源码依据与实跑验证见迁移文档「M3 包边界」)。生成三份产物:
@@ -293,6 +293,7 @@ SIGTERM 后端口释放。冻结路径 `GET /ping/hello` 未变,`api-surface.tes
   失败后立刻断言 `pg_stat_activity` 为空,postgres 不保证那么快更新该视图。
 
 **M5 进展**:判据是「描述符还是资源」,不是「cordis 里有没有 Service」。
+
 - **api-reference 不需要插件层**:上游自带 `HttpApiScalar.layer`(inline source,不走 CDN),文档本来就由宿主
   提供;它缺的是 exposure 那个决定,而那是**宿主的 setup 声明**——没有任何东西依赖这个答案。已修:
   Effect 侧原先**无条件**同时提供 Scalar 与 openapi.json,生产环境等于把 API 参考公开出去。
@@ -419,13 +420,13 @@ type "ltree" does not exist
 pre-structure 片段排在结构 SQL 之前。随后把 from-scratch 与 committed 两条 lineage 分别部署到两个
 空库,逐对象比较:
 
-| 对象 | 数量 | 结果 |
-| --- | --- | --- |
-| 列(名/类型/可空/默认) | 129 | 完全一致 |
-| 约束 | 195 | 完全一致 |
-| 索引 | 57 | 完全一致 |
-| 函数 + 触发器 | 80 | 完全一致 |
-| 扩展 | ltree, plpgsql | 完全一致 |
+| 对象                  | 数量           | 结果     |
+| --------------------- | -------------- | -------- |
+| 列(名/类型/可空/默认) | 129            | 完全一致 |
+| 约束                  | 195            | 完全一致 |
+| 索引                  | 57             | 完全一致 |
+| 函数 + 触发器         | 80             | 完全一致 |
+| 扩展                  | ltree, plpgsql | 完全一致 |
 
 唯一差异是**列的物理顺序**(committed 靠 ALTER TABLE ADD COLUMN 追加,from-scratch 按声明顺序建表)
 与 pg_dump 的 `\restrict` 随机串,均无语义。手工 SQL 只有 ltree 需要进插件,且已经进了;
@@ -533,13 +534,13 @@ clean-room parity                 → 129 列 / 195 约束 / 57 索引 / 80 函�
 或改动规模还不够大,不能证明手写类型断言没有维护成本。触发条件是**已经存在**的——查询层与 Schema 类型
 链断裂:
 
-| 事实 | 实测 |
-| --- | --- |
-| `sql\`\`` 用量 | 108 处 / 15 个文件 |
-| Drizzle typed builder 用量 | 5 处(1 insert、4 update) |
-| 手写查询层 | auth 591 + rbac 652 + org 252 = 1,495 行 |
-| 表 | 16 张,840 行 schema |
-| 结果类型 | 经手写 `rows<Row>()` 断言 |
+| 事实                       | 实测                                     |
+| -------------------------- | ---------------------------------------- |
+| `sql\`\`` 用量             | 108 处 / 15 个文件                       |
+| Drizzle typed builder 用量 | 5 处(1 insert、4 update)                 |
+| 手写查询层                 | auth 591 + rbac 652 + org 252 = 1,495 行 |
+| 表                         | 16 张,840 行 schema                      |
+| 结果类型                   | 经手写 `rows<Row>()` 断言                |
 
 ### vendored 上游
 
@@ -659,11 +660,11 @@ MODULE_NOT_FOUND——后者读起来像「插件没装」,而不是「清单指
 **commit 说不出磁盘上是什么**:树已经不在版本控制里,本地改一个字节不留痕迹,比对 package version
 也看不见(两边 package.json 是同一个)。
 
-| 命令 | 做什么 | 写 lock |
-| --- | --- | --- |
-| `vendor:update` | 读 catalog → clone tag → 剥离 → 算内容 hash | **写** |
-| `vendor:restore` | 读 **lock 的 commit** → fetch → 剥离 → 校验 hash | 不写 |
-| `vendor:check` | 只看本地树:版本、内容 hash、该剥的剥没剥 | 不写 |
+| 命令             | 做什么                                           | 写 lock |
+| ---------------- | ------------------------------------------------ | ------- |
+| `vendor:update`  | 读 catalog → clone tag → 剥离 → 算内容 hash      | **写**  |
+| `vendor:restore` | 读 **lock 的 commit** → fetch → 剥离 → 校验 hash | 不写    |
+| `vendor:check`   | 只看本地树:版本、内容 hash、该剥的剥没剥         | 不写    |
 
 `contentSha256` 对剥离后的树按「路径 + 文件字节」计算,忽略 mtime 与权限(否则每次恢复都报漂移)。
 
@@ -692,3 +693,454 @@ pnpm dev + curl             → ready/manifest/spa 200,SIGTERM shutdown complete
 
 **阶段 A 完成,可以 squash merge。** 下一步按裁决:合并 → 删旧分支 → 在新 main 上打
 `pre-mikroorm-spike` → 从 main 建 `spike/mikroorm-kysely`,连真实 PostgreSQL 做纵向切片。
+
+---
+
+## 迁移分支 refactor/mikroorm-migration(阶段 C:正式迁移)
+
+spike 的结论已落地为四个提交,每一步都可单独回退。
+
+### 一、能力可以拥有生成物(核心不知道它生成了什么)
+
+实体聚合必须和插件集合一样新,也就是说 `pnpm gen` 要写它、frozen 门禁要比它——这两件事都在核心,
+而**核心不知道什么是实体**。所以契约多了一条声明(不是一个阶段):`modules?(context)`,
+纯函数、不拿 `providerConfig`(生成物会进工作树,连接串不进)。核心写字节、比字节,从不读内容。
+
+由此:`apps/server/entities.gen.ts` 由 database 能力产出,`qualy resolve --frozen-lockfile`
+在它缺失或过期时拒绝。两个能力抢同一路径、路径逃出 workspace 都是硬失败。
+
+### 二、entity 聚合的校验(实测每条都能红)
+
+- 两个插件声明同名实体 / 同名表 → 拒绝(拼接里完全无声,最后注册的赢)
+- 声明的路径不在包 exports 里 → 拒绝(否则构建期才发现,且看起来像聚合文件坏了)
+- 集合取 **retained**(active + disabled + detached);实测改成 active-only 后
+  「停用/移出清单仍保留」用例立刻红——这条正是数据被 DROP 的路径
+- 产物落在**宿主 workspace**,不是清单目录(改成清单目录后用例红)
+- 产物里不得出现 `any` / `unknown`(元组一旦被宽化,表名全变 `never`,而运行时什么都不报)
+- 插件集合变化后 frozen 门禁必须红(实测:装了 plugin-b 而聚合还是旧的 → 报 not what this
+  manifest generates)
+
+### 三、ORM 接上聚合
+
+`@qualy/plugin-database` 的 layer 现在是 `ormLayer.pipe(Layer.provideMerge(connection))`——
+顺序不是随意的:`provideMerge` 先构建参数(实测见 repos/effect/packages/effect/src/Layer.ts:1337),
+所以 ORM 出现时迁移已经跑完。宿主把 `entities.gen.ts` 交给插件,插件不做 discovery。
+
+宽化的 manager 收窄成插件自己的闭包类型,收窄**只做一次**(`entityManager<T>()`),
+不是在十五个调用点各写一次 cast。
+
+顺带把十五个各自重建 database layer 的测试文件收进 `databaseFor(url)`——正是这次「插件多要一个
+服务」要改十五处,才证明它该被提出来。
+
+### 四、16 张表全部声明为实体,逐插件过 parity
+
+| 插件 | 表  | columns | constraints | indexes |
+| ---- | --- | ------- | ----------- | ------- |
+| org  | 4   | 30      | 23          | 18      |
+| auth | 6   | 34      | 23          | 15      |
+| rbac | 6   | —       | —           | —       |
+
+**parity gate 的一个洞已补**:spike 版本只比 `data_type`,而 schema 里每个 varchar 的
+`data_type` 都是 `character varying`,长度在 `character_maximum_length` 里——spike 把
+`org_types.name` 声明成 255(实际 100)一直是绿的。现在比宽度与精度,实测把 100 改回 255 立刻红。
+
+**约束命名从「例外表」改成「规则」**:一个 assembly 只有一个 naming strategy,且主键名没有
+per-entity 覆写(实测见 repos/mikro-orm/packages/sql/src/schema/DatabaseSchema.ts:343)。
+五个复合主键都叫 `pk_<表>`、单列主键都取 postgres 默认——这是整个 schema 的规律,所以规则写在
+database 插件里,它不需要认识任何一张业务表。曾经考虑改名迁移,不需要了。
+
+### 验收(实际执行)
+
+```
+pnpm typecheck                          → 0 errors
+npx vitest run                          → Tests 330 passed / 53 files
+npx tsx scripts/qualy.ts resolve --frozen-lockfile → qualy.lock.json is up to date
+npx tsx scripts/qualy.ts generate       → database: nothing to generate(drizzle 侧无漂移)
+```
+
+### 下一步
+
+查询层:把 repo 从 drizzle 逐个改写到 Kysely(`kyselyOf(em)`,entity 名 + property 名 +
+convertValues)。每个 repo 单独过它自己的既有测试,drizzle 侧最后整体撤下。
+
+---
+
+## 阶段 C 续:改写查询之前先堵住类型缺陷(裁决执行)
+
+### 一、`defaultRaw` 缺陷在依赖边界修,不由查询层长期承担
+
+`MaybeGenerated` 判的是「选项**值等于** `true`」而不是「选项**存在**」,而 builder 记的是实际值。
+最锋利的说法是:**两个只差默认值的声明行为不同** —— `.default(true)` 可省略,
+`.default(false)` 必填。`.defaultRaw()` 那条分支**从不命中**,而它正是文档推荐给
+`now()` / `uuidv7()` 的写法。
+
+实测(patch 前),缺的是 `disabled, id, count, createdAt`,**唯独不缺 `enabled`**。
+
+`patches/@mikro-orm__sql@7.1.10.patch` 把两处 `true` 改成 `unknown`(= 属性存在)。
+被否掉的三个候选与理由记在 notes/mikro-orm.md;核心是**不让 5300 行业务查询为一个类型 bug
+永久付代价**,也不在应用层复制一份上游的实体→Kysely 推导(猜错的方向是「类型说可省略、
+元数据其实没默认值」:编译通过,运行时 NOT NULL)。
+
+**patch 是自守的**:`kysely-types.test.ts` 是纯类型测试(函数从不调用,断言交给 `pnpm typecheck`)。
+已实测把已解析的那份 `typings.d.ts` 改回 `true` → typecheck 立刻红。这条很重要,因为
+pnpm 的 `prepare` 在部分安装下可能被静默跳过(effect LSP patch 踩过同样的坑)。
+
+上游 issue 草稿四份在 `docs/upstream/`(本条 + entity generator 三条),按上游表单字段写好,
+reproduction 一节留给提交者附仓库。
+
+### 二、查询必须走 `query()`,不能裸 `Effect.promise`
+
+改写前发现的:`translateConstraints` 从**错误通道** catch,而 `Effect.promise` 把拒绝变成
+defect —— 不在同一个通道上。裸写会让约束翻译**永不触发**,restrict 外键挡住的删除答 500 而不是
+409,调用点看不出问题。已加 `query()`(内部 `tryPromise`,失败包 `QueryFailed`,驱动错误挂
+`cause`)。由「a refused write」一条钉住:换回 `Effect.promise` 立刻红。
+
+### 三、事务:补中断与 defect,收回 `Orm`
+
+原先只测了 typed failure 回滚。已补:**fiber 中断**(Deferred 通知写入已发生 → interrupt →
+事务外查询为空)与 **defect**(`Effect.die`)。三条路径在「release 永远 commit」时同时变红。
+
+`Orm` 从 `@qualy/plugin-database/server` 改为**只导出类型**。持有它就能 `orm.em.fork()`,
+在事务内逃出事务而毫无异样——测试里的 `outsider` 正是这么构造的。收回后编译器直接拦:
+业务插件写 `import { Orm }` 会得到 TS1485。这比 grep 门禁强。
+
+`transaction()` 的语义已写明是 **join-existing**,不是 requires-new,也不是 savepoint;
+将来要局部回滚另加 `savepoint()`,不改这个的语义。
+
+**未做(记触发条件)**:`entityManager<T>()` 目前由插件自填 `T`,理论上可声明更宽的元组绕过依赖
+闭包。等 wiring generator 为每个插件生成绑定闭包的入口再收紧——现在还没有插件写查询,
+按「复杂度必须由已发生的问题证明」先不建。
+
+### 四、偶发失败:仍未定位,但已可诊断
+
+instrument 而非猜测串行化:
+
+- `QUALY_TEST_REPORT=<path>` 让全量跑额外写一份 json 结果(平时不开,免得每次本地跑都落文件)
+- scratch 库 drop 失败时,**在服务器还这么认为的时候**打印该库的 backend 数与
+  `connections / max_connections`——被强制 drop 救回来的那次否则什么都不留下
+
+两组对照都跑了,**都没复现**:
+
+```
+默认并发   339 passed   22.7s
+--no-file-parallelism  339 passed   96.4s
+```
+
+串行慢 4 倍,所以「串行化」本身也不是免费的修法。**保持 unresolved**。
+
+## 查询改写:前两个 repo 已切,并发现迁移单元不是文件
+
+已切到 Kysely 并各自过了既有测试:
+
+- `auth/src/server/session.ts`(会话中间件,三表 join + 两个计算列)
+- `auth/src/server/sign-in.ts`(登录/登出/登录方式,八条查询)
+
+关系属性顺带按列名改了(`tenant` → `tenantId`、`permission` → `permissionId`):属性名就是
+Kysely 查询里写的名字,而列名由 `joinColumns` 决定,三份 parity gate 不受影响。晚发现就要回头改
+已经写完的查询。
+
+### 阻塞点:一个事务不能横跨两个运行时(已实测)
+
+drizzle 的 `database.transaction` 和 MikroORM 的 `em.begin()` 各从自己的池取连接。
+把 auth 单独切过去,org 在自己的事务里问 auth「这次改类型会不会把人晾着」时,
+auth 会另开一条连接读**已提交**状态 —— 答案看起来完全正常,只是回答的是别的问题。
+
+实测(临时探针,已删):drizzle 事务里插入的行,同一 fiber 里经 `entityManager()` 查得到 `[]`。
+
+因此 org / auth / rbac 是**一个连通分量**,事务核心必须同批切;明细与守护它的测试见
+docs/notes/mikro-orm.md。已切的两个文件都不在事务里,所以是安全的。
+
+### 解法:先换执行者,再换写法(已落地)
+
+原本只有一个选择:一次提交改完三个插件的全部语句,中间没有可运行状态。实测发现还有第二条路——
+**drizzle 编译出来的 SQL 可以直接在 ORM 的连接上跑**(`PgDialect.sqlToQuery` 是 drizzle 自己的
+驱动用的那个,参数照旧绑定;经 Kysely 的 `CompiledQuery.raw` 执行)。
+
+于是加了 `packages/plugins/infra/database/src/server/legacy-sql.ts`:一个和旧 `Database`
+**同形**的 `LegacySql`(`execute` / `transaction`),实现在 ORM 连接上。三个插件各改一行
+`yield* Database` → `yield* LegacySql`,加上 catchTag 换成 `QueryFailed`,**全部语句原样不动**。
+
+**drizzle 从此只负责拼 SQL,不再负责执行。**342 测试全绿。
+
+这个 shim 是临时的,最后一条 drizzle 语句走掉时跟着删。它换来的是:剩下的
+~1360 行查询可以**一个模块一个模块**地改写,每次都能跑全量,而不是一次改完赌一把。
+
+验证不是靠推理:翻转后那两个跨运行时的守护用例**立刻红了**(`inside` 得 1 不是 2,
+`refused` 得 false),因为测试自己还在用 drizzle 开事务 —— 把它们指向生产用的同一个入口后转绿。
+断言一个字没改。
+
+**下一步**:逐个模块把语句改写成 Kysely,顺序建议 `rbac-contract/src/scope.ts`(`scopeCoverage`,
+三个插件都嵌它)→ rbac/src/queries.ts(652)→ org/src/queries.ts(252)→ auth/src/iam/queries.ts(458)。
+行形状从 snake_case 变 camelCase 是每次改写的主要涟漪,只影响该模块的消费方。
+
+### 第一个共享片段已切:placement rule
+
+`auth/src/server/placement.ts`(新)。四个消费方共用的那条判定,drizzle 版本连同
+`strandedByQuery` / `usersBlockingOrgTypeQuery` / `strandedByPolicyQuery` / `placementAllowedQuery`
+一并删掉 —— 不留给「只有测试还在用」的那份,否则同一条不变量就有两个实现。
+
+变化:谓词原先拿 alias **字符串**(`placementLegal('t', ...)`),join 改个名字没人会发现;
+现在拿列引用(`eb.ref('t.isSystem')`),不在作用域里就编译不过。内层
+`exists (select 1 from user_type_allowed_org_types ...)` 仍是裸 SQL(只涉及一张表、无外部 alias)。
+
+`effect-parity.test.ts` 里直接断言该谓词的用例改成用 Kysely 版本重建查询 —— 顺带证明这个片段
+能嵌进调用方自己的 select(org 将来就是这么用的)。
+
+### 连接预算(实测,已收口)
+
+翻转之后 ORM 的池才是活的,测试并发需求大约翻倍,`53300 too_many_connections` 开始出现 ——
+而且报错落在**下一个连接的测试**上,不在起因处。采样看到峰值 80+/100。三处各自定了上限:
+迁移器 1 条(它本来就是一条条跑)、drizzle 池 2 条(已经没人走它)、ORM 池由
+`DatabaseConfig.poolSize` 决定,testkit 取 2。
+
+连跑 6 次全量:5 次 342 全绿,1 次 1 失败但**没抓到是哪条**(报告开着的那 4 次都是绿的)。
+偶发失败仍 unresolved,只是同一类错误现在有了上界。
+
+### auth 切完;共享的授权片段也切了
+
+`user-types.ts`、`users.ts` 全部 Kysely。`scopeCoverage`(`@qualy/rbac-contract/scope.ts`)
+连同它的**六处使用**一次切完 —— 这个不能分两次:一条授权谓词有两份实现,不会大声失败,
+只会答得不一样。rbac 的 `grantsQuery` 因此也一起搬了,并新建了 `rbac/src/server/db.ts` 闭包。
+
+片段的参数从 alias 字符串变成列引用(`eb.ref('n.path')`),锚点 id 从拼进语句变成绑定参数 ——
+那个手写的 uuid 校验本来只是注入防护,不是领域规则,绑定之后它防的东西已经不存在了。
+
+**踩到一个真 bug,被既有测试抓住**:搜索条件写成一整段裸 `sql` 且顶层含 `or`,
+Kysely 不会给裸片段加括号,于是 `and` 结合更紧,keyset 的游标条件掉进了 `or` 的另一支 ——
+第二页原样返回第一页。改用 `eb.or([...])` 让分组由构造器表达,而不是靠人记得写括号。
+**裸片段里出现顶层 `or` 就是这个坑**,后面 rbac/org 改写时注意。
+
+auth 还剩两条 drizzle 语句(`iam/queries.ts`,63 行),都读 rbac 的表 ——
+不在 auth 的实体闭包里,**也不应该在**。它们该是 rbac 服务上的端口,随 rbac 迁移一起做。
+
+测试侧:org 与 rbac 的 harness 现在都要传完整实体闭包,否则 ORM 不知道 `User` 对应哪张表。
+
+### rbac 的授权内核已切(最难的一块)
+
+`rbac/src/server/authorization.ts`(新):`canAt` / `hasTenantPermission` / `authorizedScope` /
+`effectiveRows` / `reachAt` / `explainRows`,加上它们共用的三个片段
+(`reachesEveryNode` / `carries` / `rolePermits` / `reaches`)。判定与解释仍然同源。
+
+**发现并消掉一处已存在的重复**:「这个人持有哪些授权」原先写了两遍 —— `heldRoles()` 一份,
+`explainRowsQuery` 里的 `with held as (...)` 又一份,差别只是后者多取一个 grant id。
+现在是同一个 CTE。这正是那个文件头部注释警告的漂移,只是它自己已经发生了。
+
+**补了一条缺失的测试**:`carries` 把权限钉在注册表验证过的 plugin + target 上。
+我把这两个条件删掉,**全部测试照旧通过** —— 说明这条安全相关的约束一直没人守。
+`effect-drift.test.ts` 守的是装配期(声明与存储行不一致就拒绝启动),不是**启动之后**
+有人直接改表。新用例:先断言 canAt 为 true,`update permissions set plugin = 'not-org'`,
+再断言变成 false;删掉钉死条件它立刻红。
+
+反向验证:把 self 锚点改成按 path 匹配(那个历史事故),11 条测试红。
+
+### 测试闭包收成一处
+
+auth 的七个测试文件各写一份实体闭包,rbac 的查询开始经 ORM 命名表时,七份都要同时学会 ——
+所以收进 `auth/tests/support/closure.ts`。org 与 rbac 的 harness 同样要传完整闭包。
+生产不受影响:宿主给的是生成的聚合。
+
+**剩余**:rbac 的 37 条 CRUD 查询(roles/grants/permissions,344 行)与 org(252 行 + index 1001 行)。
+都是机械改写,没有共享片段的约束了。
+
+### rbac 授权面全部切完;剩角色 CRUD
+
+已切:授权内核、grant 的资格判定与写入、权限目录(装配期把 catalog 镜像进 permissions 表)。
+`rbac/src/queries.ts` 从 652 行降到 267 行、24 条查询,全部是**角色 CRUD**
+(roles.ts 的集合替换、role projection、eligibility)加 diagnostics 的两条存在性检查。
+
+`CanonicalAdminShape` 顺势改成 camelCase(`systemKey` / `permissionMode`) —— 它读的就是
+`roleForGrant` 返回的那一行,行形状变了它就得跟着变。SQL 版 `canonicalTenantAdmin(alias)`
+还是 drizzle,因为 auth 那条 `grantsBlockingUserTypeQuery` 还在用它。
+
+**下一步**:roles.ts(20 条左右)→ diagnostics 的两条 → org(252 行查询 + 1001 行 index)。
+没有共享片段的约束了,可以一条一条改。
+
+### rbac 全部切完:`src/queries.ts` 已删除
+
+角色 CRUD、eligibility 集合替换、role projection、diagnostics 的存在性检查 —— 最后一批。
+每条语句现在住在跑它的那个 service 旁边,两个 service 都读的(role projection、
+rolePermissionCodes、lockTenant、userExists/orgNodeExists)住在 `server/db.ts`。
+
+eligibility 的替换不再拿表名和列名当字符串参数。它原先那样是因为一条 drizzle 语句
+经 `sql.raw` 同时服务两个集合 —— 这也是那些 id 必须先校验再拼进语句的原因。
+现在两个集合各自成句,id 是绑定的。
+
+`CanonicalAdminShape` 改成 camelCase:它读的就是 `roleForGrant` 返回的那一行。
+
+**剩余**:org(`src/queries.ts` 252 行 + `server/index.ts` 1001 行),以及
+auth 里那两条读 rbac 表的语句(应改成 rbac 服务上的端口)。rbac 的 `LegacySql`
+现在只用来开事务、不再执行任何语句,org 切完后可以一并换成 `transaction()`。
+
+### org 也切完:三个插件的查询模块全部删除
+
+`org/src/queries.ts` 与 `rbac/src/queries.ts` 都已删除,auth 的 `iam/queries.ts` 只剩两条。
+ltree 的两条(建节点的路径原子写入、`subpath`/`nlevel` 搬子树)仍然写成 SQL —— 那不是
+构造器能表达的东西 —— 但它们现在是 org 里仅有的 SQL 文本,返回的行也和别处一样命名。
+`NodeRow` / `NodeView` 去掉 snake_case,边界映射函数存在的理由随之消失。
+
+### 只剩两条语句还在旧运行时上
+
+都在 auth,都读 rbac 的表:
+
+- `rolesStrandedByUserTypeQuery`(删用户类型时:哪些角色会变得没人能拿)
+- `grantsBlockingUserTypeQuery`(改用户类型时:哪些授权会失效)
+
+它们不在 auth 的实体闭包里,**也不应该在** —— 这两个问题属于 rbac。正确形态是 rbac 服务上的
+两个端口,和 `assertTenantKeepsAdministrator`、`grantsBlockingOrgType` 同型。
+
+**收尾顺序**:①这两个端口 → ②auth 的 `iam/queries.ts` 删除 → ③`LegacySql` shim 删除
+(它现在只用来开事务;七个文件里没有一处 `tx.execute` 是 rbac/org 的了)→
+④drizzle 表定义 `*/src/db/tables/` 与 drizzle 依赖撤下。
+
+### 三个插件的查询全部在 Kysely 上;查询模块一个不剩
+
+auth 最后两条读 rbac 表的语句改成了 rbac 服务上的端口
+(`rolesStrandedByUserType` / `grantsBlockingUserType`),与 `assertTenantKeepsAdministrator`
+同型 —— 它们在调用方的事务里回答,因为连接在 fiber 里。`auth/src/iam/queries.ts` 随之删除。
+
+反向验证:把 `rolesStrandedByUserType` 的「且没有别的类型」条件改成「且有这个类型」,
+`refuses to delete a type that is the last one a role admits` 立刻红。
+
+**收尾只剩两件,都不改行为**:
+
+1. `LegacySql` shim 删除。所有 `tx.execute` 已经没有了,`database.transaction(...)` 换成
+   `transaction(...)` 即可,但 `write`/`writeAtRoot`/`readInSnapshot` 三个包装器要同时
+   套上 `withDb`(否则 `Orm` 会泄进服务方法的类型)。**试过一次用脚本批量改,括号改乱了,
+   已回滚**;这件事要手改五个文件,不要用正则。
+2. drizzle 表定义 `*/src/db/tables/`、drizzle schema 聚合与 drizzle 依赖撤下。
+
+### 查询层完全脱离 drizzle;shim 已删除
+
+`LegacySql` 与它的测试删除。事务直接来自 orm 的 `transaction()`,三个 `write` 包装器
+套 `withDb`(事务把数据库供给 body,包装器把它供给事务,服务因此仍然零 requirement)。
+两条守跨插件事务参与的用例也改成用同一个入口开事务,断言一字未改。
+
+341 测试(少的 3 条是 shim 自己的)。**没有任何服务再 import drizzle。**
+
+### drizzle 还剩什么:只有 schema 那一半
+
+- `*/src/db/tables/*` + `db/schema.ts` —— 仍是 `qualy.contributions.database.schemaEntry`
+  指向的对象,也就是 **drizzle-kit 仍在生成迁移**
+- `org/src/db/ltree.ts`(自定义列类型)、`auth/src/db/relations.ts`(RQB)
+- `Database` 服务:生产里只剩 `ping()` 一处,其余全是测试 seeding
+
+**下一阶段是独立的一件事**:把迁移生成从 drizzle-kit 换到 MikroORM 的 SchemaGenerator。
+`packages/plugins/infra/database/src/parity.ts` 与三个 `entity-parity.test.ts` 就是为这一步
+建的 —— 它们已经在证明实体产出的 schema 与 lineage 逐列一致(含宽度与精度)。
+换完之后 `db/tables`、`db/schema.ts`、`relations.ts`、`ltree.ts` 与 drizzle 依赖一并撤下,
+`Database` 服务与 `@effect/sql-pg` 也随之消失(`ping` 改走 orm,测试 seeding 改用 Kysely)。
+
+### 试过把 `ping()` 也搬走,失败了 —— 而且失败得有道理
+
+想法是让就绪探针不再经 drizzle 的 `Database`。改完编译不过:`ping` 的 requirement 变成
+`Orm`,而 `Orm` **故意只导出类型**,所以 apps/server 的 handler 既无法 yield 它、也无法
+`provideService` 它,requirement 一路泄到 main.ts 变成 `unknown`。已回滚。
+
+这不是障碍,是设计在起作用:探针要的是「这个插件健不健康」,该由**拥有连接的插件**回答,
+而不是由组合根自己去连。Effect 端目前还没有 `server.readiness(key, probe)` 那套注册
+(cordis 时代的设计还没搬过来)。**所以 `ping` 与 `Database` 服务同生共死**:
+等就绪探针改成插件注册、且测试 seeding 不再用 `Database` 时,两者一起走。
+
+顺带删掉 `auth/src/db/relations.ts`(drizzle RQB 定义,已无人 import)。
+
+### 迁移生成换成 MikroORM;drizzle 全部撤下
+
+生成不再是「实体元数据 vs 快照」,而是**两个真实数据库的比较**:一个应用了已提交 lineage,
+一个按全新安装的方式由实体建成(pre-structure baseline → `getCreateSchemaSQL` → 复合外键 →
+post-structure baseline)。
+
+两侧都是真库是这件事成立的原因。租户复合外键指向复合唯一键,实体元数据没有这种声明,所以拿
+元数据去比,那 19 条外键**每次都会被判成要删**。放到第二个库上,它们两边都在,diff 从不提它们,
+而新增一条会自己作为 addition 出现。扩展、函数、种子行则相反:没有东西把它们读进 schema,
+所以照旧走 baseline 片段逐字写进迁移——两套机制永不描述同一个对象。
+
+第一次跑出来是 `nothing to generate`:实体声明的 schema 与已部署的 lineage 逐对象相同。
+反向验证做了三次:加一列 → 只产出 `add column`;删一列 → 产出 `drop column` 且被 drop-guard
+拦下;做了一条**正则里带 `;\n` 的 check** → 语句切分没有在字符串里断开。
+
+**路上撞到两个上游缺陷,都已 patch + `docs/upstream/` 存档 + 测试守**:
+
+1. 读回 check 约束时,剥 `(col)::text` 的正则没有锚定成对括号,body 里有两个括号项加一个 cast
+   就会把括号剥乱(`code IS NULL) OR ((code ~ ...`),产出的 SQL 根本不能解析。
+2. 索引 introspection 丢掉 access method,ltree 上的 gist 索引读回来变成 btree。这条是**静默的**:
+   DDL 合法,只是子树查询从此全表扫描——所以它单独有一个测试,而不是只靠 clean-room 门禁。
+
+`packages/plugins/infra/database/tests/introspection.test.ts` 直接问 postgres 这两个问题;
+把 patch 撤回去,两条立刻红。
+
+**drizzle 现在一点不剩**:表定义、schema 聚合、`schemaEntry`、ltree 列类型、测试播种、
+迁移执行器、`Database` 服务、`@effect/sql-pg`、catalog 条目、vendored 树,全部撤下。
+迁移执行器换成本插件自己写的(基于 pg),但**逐字复刻了 drizzle 的账本契约**:同样的目录名、
+同样的 statement-breakpoint、同样的整文件 sha256、同样的列。拿开发库(账本是 drizzle 写的)
+验过:第一条迁移算出来的 hash 与库里存的一致,deploy 报 up to date。
+
+两处行为**故意**不同:迁移目录不存在now是错误而不是「空 lineage」(读成空会让进程在一个从没建过的
+库上启动并自称 up to date,harness 的失败启动用例正是这么抓到的);账本里出现没有 name 的行直接
+拒绝,而不是猜。
+
+**上一份 STATUS 说 `ping` 搬不走,那个结论是错的**。`Orm` 出现在 requirement 里没有问题——
+handler 在 group 建立时取它即可;当时的编译错误是 `ping` 已经不是函数了而调用点还在调用它。
+`Orm` 只导出类型挡的是组合根自己持有 ORM,挡不住建在这个插件之上的 layer 去要一个。
+
+**遗留**:`repos/drizzle-orm/` 这棵树还在磁盘上(gitignored,已从 vendor-lock 与 vendor-sync
+的清单里移除),手动删掉即可。
+
+### 审计待办(用户 2026-08-06 提出,按此顺序处理)
+
+迁移换成 MikroORM 的 `Migrator` 之后,原审计第 1 条(账本、严格前缀、advisory lock)大部分归上游:
+排序、事务、`mikro_orm_migrations` 账本、并发都由 `MigrationRunner` 负责。**仍然成立的是**
+上游账本只记 `name` 与 `executed_at`,不记内容哈希 —— 已应用迁移被改动仍然无人察觉。
+
+按优先级:
+
+1. **destructive guard 在写文件之前跑**。现在仍是「先写 → 再扫 → 抛错」,被拒的迁移已经落在
+   `db/migrations` 里,而且它的 baseline marker 下一轮会被当成已编译。改成:内存渲染 → 扫描 →
+   通过才落盘(临时文件 + rename)。
+2. **错误定义两个事实源已经漂移**。`src/errors.ts` 的 Zod `defineDomainErrors` 与
+   `src/server/errors.ts` 的 `Schema.TaggedErrorClass` 各说一遍:旧表还留着 `ORG_RULE_CONFLICT`
+   (幂等 PUT 之后已不存在),`TypeInUse` / `RuleViolation` 的 `reason` 字段旧表没有。
+   合成一份中立描述表(code / identifier / status / fields / message),两侧都从它派生。
+3. **错误 tag 的全局门禁**:`^[A-Z][A-Z0-9_]*$`、全局唯一、插件私有错误带领域前缀
+   (`ORG_*` / `AUTH_*` / `RBAC_*`),公共码(`ACCESS_DENIED` 等)归共享 contract。
+   Effect TaggedError 这条路绕过了旧 `defineDomainErrors` 的校验,现在没人守。
+4. **实体碰撞检查换 AST**。`assertNoCollisions` 用正则扫 `name:`/`tableName:`,会把 check /
+   index 对象里的 `name:` 当成实体名,只认单引号,且同插件内重名不报。
+5. **clean-room parity 加深**:补 `pg_get_functiondef` / `pg_get_triggerdef` / `pg_get_viewdef`、
+   `pg_views`、`pg_matviews`(将来 `pg_policies`),以及 baseline 声明的必需数据行的显式探针。
+   现在函数体、触发器条件、视图定义变了都是全绿。
+6. **cleanup 错误遮蔽根因**:`structuralDiff` 与 `schemaParity` 的 finally 里,scratch 库删不掉
+   就抛新的 AggregateError,把原始失败盖掉。应当两者一起带出去。
+7. **启动期失败的类型要与叙述一致**:ORM 初始化与迁移执行仍走 `Effect.promise`(defect),
+   而模块头注释声称在 error channel 里。要么改注释,要么加 `DatabaseStartupFailed` / `MigrationFailed`
+   走 `tryPromise`(不进 HTTP 领域错误 union,只进 Layer 构建失败)。
+8. **生产禁止 localhost fallback**:`NODE_ENV=production` 且缺 `DATABASE_URL` 时硬失败,
+   开发/测试保留 fallback 但告警。
+9. **`compositeForeignKeys` 要在加载期校验形状**:现在只校验 `entities` 是数组;导出成字符串会
+   被逐字符 for...of。
+
+**错误码格式已裁决:保持 SCREAMING_SNAKE**。四层命名各司其职,不合并:
+class `NodeNotFound` / schema identifier `OrgNodeNotFound` / 协议码 `ORG_NODE_NOT_FOUND` /
+message id `org/error/node-not-found`。
+
+### 已有数据库遇上被压缩的 lineage:`qualy database adopt`
+
+lineage 压成一条之后,任何已存在的数据库都会「不被认识」:新账本是空的,那条初始迁移要重新建表,
+于是 `relation "auth_providers" already exists`。开发库就是这么起不来的。
+
+`pnpm qualy database adopt` 是这件事的答案,而且**先验后写**:把目标库与「实体+复合外键+baseline
+建成的库」逐对象比对,不一致就拒绝并把差异逐条列出来,一致才把 lineage 记成已应用(只写账本、
+不跑任何 SQL)。第一次跑就拦下来了 —— 差异是旧的 `cordis_meta` 账本 schema,它确实不属于
+任何插件声明的 schema。删掉那个退役账本(一张表、15 行,指向的迁移都已不存在)后认领成功。
+
+顺带把 `structuralDiff` 拆出 `diffAgainstDeclared(subjectUrl, ...)`,adopt 与 generate 共用同一个
+比较,并修掉审计第 6 条的一半:scratch 库删不掉时,只有在主体已经拿到答案的情况下才抛
+AggregateError,否则原始失败不会被清理失败盖掉。
+
+### codegen 进了 main,dev 只剩一个进程
+
+`pnpm dev` 不再前置 `tsx scripts/gen.ts`。`apps/server/src/main.ts` 在导入任何 `.gen.ts` 之前
+自己跑一遍(仅非 production,动态 import),日志走应用同一个 logger。顺序是关键:`runtime.ts`
+改成 codegen 之后再动态 import,否则进程会冻在生成前的那份上;`manifestPath` 因此挪进
+`src/manifest.ts`(config.ts 静态 import 了三个由清单派生的生成物)。
+
+生成器只报写了什么。九行 `unchanged, skipped` 只说明「codegen 跑过」,而调用方本来就知道。

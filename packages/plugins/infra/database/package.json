@@ -17,18 +17,19 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@effect/sql-pg": "catalog:",
+    "@mikro-orm/core": "catalog:",
+    "@mikro-orm/migrations": "catalog:",
+    "@mikro-orm/postgresql": "catalog:",
     "@qualy/assembly-contract": "workspace:*",
-    "drizzle-orm": "catalog:",
     "effect": "catalog:",
+    "kysely": "catalog:",
     "pg": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:",
     "@qualy/assembly": "workspace:*",
-    "@types/pg": "catalog:",
-    "drizzle-kit": "catalog:"
+    "@types/pg": "catalog:"
   },
   "qualy": {
     "capabilityProvider": {

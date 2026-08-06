@@ -1,15 +1,40 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
 import { verifyAssembly } from './verify-assembly.ts'
-import { manifestPath } from './config.ts'
-import { application } from './runtime.ts'
+import { manifestPath } from './manifest.ts'
 
-// Start validates and starts; it never repairs. The generated modules this
-// process imports are derived from the manifest and the lock, so an instance
-// whose layers, routes or permission catalog do not match the reviewed lock is
-// running an assembly nobody approved. Production refuses; development warns,
-// because editing the manifest and restarting is the whole loop there.
-await verifyAssembly(manifestPath(), (message) => console.warn(message))
+// Everything this process does before it is an application, and everything it
+// says while doing it, through one logger.
+//
+// Codegen used to be a separate command in front of `pnpm dev`, which meant a
+// developer read two log formats from two processes for one start. It runs
+// here instead - but only in development, and only through a dynamic import,
+// because a deployment generates at build time and must not be able to rewrite
+// its own source at boot.
+//
+// The order is the reason `runtime.ts` is imported below rather than at the
+// top: it reaches the generated modules, and importing it first would freeze
+// this process on whatever they said before codegen ran.
+const prepare = Effect.gen(function* () {
+  if (process.env.NODE_ENV !== 'production') {
+    const { generateAllQuietly } = yield* Effect.promise(() => import('../../../scripts/gen.ts'))
+    for (const line of yield* Effect.promise(generateAllQuietly)) {
+      yield* Effect.logInfo(line)
+    }
+  }
+  // Start validates and starts; it never repairs. The generated modules this
+  // process imports are derived from the manifest and the lock, so an instance
+  // whose layers, routes or permission catalog do not match the reviewed lock
+  // is running an assembly nobody approved. Production refuses; development
+  // warns, because editing the manifest and restarting is the whole loop.
+  const warnings: string[] = []
+  yield* Effect.promise(() => verifyAssembly(manifestPath(), (message) => warnings.push(message)))
+  for (const warning of warnings) yield* Effect.logWarning(warning)
+})
+
+await Effect.runPromise(prepare)
+
+const { application } = await import('./runtime.ts')
 
 // The entry point.
 //
@@ -34,9 +59,8 @@ const launched = Layer.launch(application).pipe(
  *
  * The default teardown answers 130 for an interruption-only exit, which is the
  * POSIX convention and makes every `Ctrl+C` in development print a failed
- * command. The cordis entry already exits 0 on a clean stop, so the two entry
- * points agree while both exist. Anything that is not purely an interruption
- * still takes the default path and keeps its non-zero code.
+ * command. Anything that is not purely an interruption still takes the default
+ * path and keeps its non-zero code.
  */
 NodeRuntime.runMain(launched, {
   teardown: (exit, onExit) => {

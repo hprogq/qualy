@@ -1,8 +1,14 @@
-import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { sql } from 'kysely'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { authClosure } from './support/closure.ts'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
+import { type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -29,7 +35,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url, { entities: authClosure }),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -42,19 +48,9 @@ const stack = (url: string) =>
         ),
       ),
     ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -69,18 +65,17 @@ const tagOf = (result: { _tag: string; failure?: unknown }) =>
 
 /** two branches, and an administrator who manages only the left one */
 const seed = Effect.fn('seed')(function* () {
-  const db = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* db.execute(sql`insert into tenants (slug, name) values ('t','T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
   const orgType = one<{ id: string }>(
-    yield* db.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
     ),
   ).id
   const node = (name: string, path: string, parent?: string) =>
-    db.execute(sql`
+    runSql(sql`
       insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
       values (${tenant}, ${parent ?? null}, ${orgType}, ${name}, ${path}::ltree,
         ${path.split('.').length - 1})
@@ -90,32 +85,32 @@ const seed = Effect.fn('seed')(function* () {
   const right = one<{ id: string }>(yield* node('Right', 'r.right', root)).id
 
   const staff = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, placement_mode, allow_local_login)
       values (${tenant}, 'staff', 'Staff', 'unrestricted', true) returning id`),
   ).id
 
   // a manager whose authority is the left branch and nothing else
   const manager = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Manager', ${staff}, ${root}) returning id`),
   ).id
   const role = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode)
       values (${tenant}, 'mgr', 'Mgr', 'org', 'active', 'explicit') returning id`),
   ).id
   const permission = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into permissions (code, plugin, name, target_kind)
       values ('auth.user.manage', 'auth', 'manage users', 'org-node')
       on conflict (code) do update set plugin = excluded.plugin returning id`),
   ).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_permissions (tenant_id, role_id, permission_id)
     values (${tenant}, ${role}, ${permission})`)
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
     values (${tenant}, ${manager}, ${role}, ${left}, 'subtree')`)
 
@@ -124,26 +119,26 @@ const seed = Effect.fn('seed')(function* () {
   // change, is not readable through it, which is what makes the intersection
   // visible rather than incidental.
   const readRole = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode)
       values (${tenant}, 'reader', 'Reader', 'org', 'active', 'explicit') returning id`),
   ).id
   const readPermission = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into permissions (code, plugin, name, target_kind)
       values ('auth.user.read', 'auth', 'read users', 'org-node')
       on conflict (code) do update set plugin = excluded.plugin returning id`),
   ).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_permissions (tenant_id, role_id, permission_id)
     values (${tenant}, ${readRole}, ${readPermission})`)
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
     values (${tenant}, ${manager}, ${readRole}, ${root}, 'self'),
            (${tenant}, ${manager}, ${readRole}, ${right}, 'subtree')`)
 
   const person = (name: string, at: string) =>
-    db.execute(sql`
+    runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, ${name}, ${staff}, ${at}) returning id`)
   const onLeft = one<{ id: string }>(yield* person('Ada', left)).id
@@ -203,9 +198,7 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
             f.as,
           )
           // out of the managed branch: refused even though the source is managed
-          const out = yield* Effect.result(
-            iam.users.setPlacement(f.tenant, userId, f.right, f.as),
-          )
+          const out = yield* Effect.result(iam.users.setPlacement(f.tenant, userId, f.right, f.as))
           // within it: allowed
           const within = yield* Effect.result(
             iam.users.setPlacement(f.tenant, userId, f.left, f.as),
@@ -228,17 +221,16 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const other = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_types (tenant_id, code, name) values (${f.tenant},'club','Club')
               returning id`),
           ).id
           // staff may only stand at a club, and the left node is not one
-          yield* database.execute(sql`
+          yield* runSql(sql`
             update user_types set placement_mode = 'allow-list' where id = ${f.staff}`)
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
             values (${f.tenant}, ${f.staff}, ${other})`)
           const iam = yield* Iam
@@ -265,16 +257,15 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           // an administrator so the tenant survives the disable
           const adminRole = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
               values (${f.tenant},'admin','Admin','tenant','active','all-active','tenant-admin')
               returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id)
             values (${f.tenant}, ${f.manager}, ${adminRole})`)
 
@@ -284,11 +275,11 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
             { displayName: 'Ada', userTypeId: f.staff, primaryOrgNodeId: f.left },
             f.as,
           )
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into sessions (tenant_id, user_id, token_hash, expires_at)
             values (${f.tenant}, ${userId}, 'hash', now() + interval '1 day')`)
           yield* iam.users.setEnabled(f.tenant, userId, false, f.as)
-          const left = (yield* database.execute(
+          const left = (yield* runSql(
             sql`select count(*)::int as count from sessions where user_id = ${userId}`,
           )) as unknown as { rows: { count: number }[] }
           return left.rows[0]!.count
@@ -314,7 +305,6 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const database = yield* Database
           // asked for the whole tree; granted read at the root itself and
           // over the right branch only
           const all = yield* iam.users.list(f.as, {
@@ -330,7 +320,7 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
           })
           // a caller granted nothing sees nothing, and is not told why
           const stranger = one_(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               values (${f.tenant}, 'Nobody', ${f.staff}, ${f.right}) returning id`),
           ).id
@@ -357,16 +347,16 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
       const answer = ok(exit)
       // Ada is inside the requested subtree and outside the granted one, so
       // she is absent. This is the assertion the recorded bug fails.
-      expect(answer.all.map((row) => row.display_name).sort()).toEqual(['Grace', 'Manager'])
+      expect(answer.all.map((row) => row.displayName).sort()).toEqual(['Grace', 'Manager'])
       // the manager stands at the root, and is the only one there
-      expect(answer.justRoot.map((row) => row.display_name)).toEqual(['Manager'])
+      expect(answer.justRoot.map((row) => row.displayName)).toEqual(['Manager'])
       // seen but not editable: two permissions, two answers
       expect(answer.visible.manageable).toBe(false)
       expect(tagOf(answer.unreadable)).toBe('USER_NOT_FOUND')
       // not-found and not-readable are indistinguishable on purpose
       expect(answer.nothing).toEqual([])
       expect(tagOf(answer.hidden)).toBe('USER_NOT_FOUND')
-      expect(answer.search.map((row) => row.display_name)).toEqual(['Grace'])
+      expect(answer.search.map((row) => row.displayName)).toEqual(['Grace'])
     } finally {
       await db.dispose()
     }
@@ -382,15 +372,14 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const database = yield* Database
           const orgType = one_(
-            yield* database.execute(
+            yield* runSql(
               sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
             ),
           ).id
           // a node below the subtree anchor: it is a place a user may stand,
           // and returning only the anchor made it unreachable
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
             values (${f.tenant}, ${f.right}, ${orgType}, 'Under', 'r.right.under', 2)`)
           const options = yield* iam.users.options(f.as, undefined, 200)

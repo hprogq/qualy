@@ -68,6 +68,35 @@ export interface CapabilityWorkContext<Contribution, State> extends Omit<
   args: readonly string[]
 }
 
+/**
+ * A module derived from a capability's state.
+ *
+ * The core already derives one module of its own and holds the frozen gate
+ * over it. This is the same thing, owned by a capability instead: the core
+ * writes the bytes and compares them without reading them, so an assembly
+ * whose plugins own tables gets a module about tables from a core that has
+ * never heard of one.
+ */
+export interface CapabilityModule {
+  /** relative to the host workspace, which is where the host imports it from */
+  path: string
+  content: string
+}
+
+/**
+ * What a capability may see while deriving a module.
+ *
+ * Resolution's context minus the previous state, because a derived module is
+ * a function of the current one, and without `providerConfig`, because that is
+ * where a connection string lives and this content lands in the working tree.
+ */
+export interface CapabilityModuleContext<Contribution, State> extends Omit<
+  CapabilityResolveContext<Contribution, State>,
+  'previousState'
+> {
+  state: State
+}
+
 export interface RetentionInput<Contribution> {
   pluginId: string
   /** the contribution this plugin made while it was still in the manifest */
@@ -101,6 +130,17 @@ export interface AssemblyCapabilityProvider<Contribution = unknown, State = unkn
 
   /** what `qualy plan` prints under this capability, one line per entry */
   plan?(input: { previousState: State | undefined; nextState: State }): string[]
+
+  /**
+   * Modules this capability derives from its own state.
+   *
+   * Rewritten by codegen and compared by the frozen gate, so they are as
+   * current as the plugin set is. Separate from `generate`, which runs a real
+   * tool and produces artifacts that are reviewed and committed: these are
+   * pure, cheap and derived, and opening a database on the way to a typecheck
+   * would be neither.
+   */
+  modules?(context: CapabilityModuleContext<Contribution, State>): CapabilityModule[]
 
   /** produce local artifacts, for example migrations. Writes files, not systems. */
   generate?(context: CapabilityWorkContext<Contribution, State>): Promise<void>

@@ -1,11 +1,11 @@
-import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
+import { Effect, Exit, Layer, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { DatabaseConfig, MigrationsBehind, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { MigrationsBehind } from '@qualy/plugin-database/server'
 import { healthApi, healthHandlers } from '../src/health.ts'
 
 // M2: the application shell, assembled the way main.ts assembles it.
@@ -18,16 +18,6 @@ import { healthApi, healthHandlers } from '../src/health.ts'
 const port = 3197
 const base = `http://127.0.0.1:${port}`
 
-const configLayer = (url: string, migrations: 'apply' | 'off') =>
-  Layer.succeed(
-    DatabaseConfig,
-    DatabaseConfig.of({
-      url: Redacted.make(url),
-      migrations,
-      migrationsFolder: new URL('../../../db/migrations', import.meta.url).pathname,
-    }),
-  )
-
 const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>
   HttpRouter.serve(
     Layer.mergeAll(
@@ -38,8 +28,7 @@ const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>
     ),
   ).pipe(
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
-    Layer.provide(databaseLayer),
-    Layer.provide(configLayer(url, migrations)),
+    Layer.provide(databaseFor(url, { migrations })),
   )
 
 const status = async (path: string) => {
@@ -102,10 +91,8 @@ describe.runIf(postgresAvailable)('effect application shell', () => {
     // exactly what a deployment that forgot the migration job looks like
     const db = await createTestContext('effect-shell-behind')
     try {
-      await db.query(`delete from cordis_meta.schema_migrations`)
-      const exit = await Effect.runPromiseExit(
-        Effect.scoped(Layer.build(shell(db.url, 'off'))),
-      )
+      await db.query(`delete from mikro_orm_migrations`)
+      const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(shell(db.url, 'off'))))
       expect(Exit.isFailure(exit)).toBe(true)
       const reason = (exit as Extract<typeof exit, { _tag: 'Failure' }>).cause.reasons[0]
       expect((reason as { error?: unknown }).error).toBeInstanceOf(MigrationsBehind)

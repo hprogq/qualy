@@ -1,6 +1,6 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted, Schema, Scope } from 'effect'
+import { sql } from 'kysely'
+import { Effect, Exit, Layer, Schema, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import {
   HttpApi,
@@ -11,8 +11,12 @@ import {
 } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
 import {
@@ -22,6 +26,7 @@ import {
   layer as sessionLayer,
 } from '../src/server/session.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
+import { authClosure } from './support/closure.ts'
 
 // The session as a middleware, over a real server and a real database.
 //
@@ -72,38 +77,37 @@ const seed = Effect.fn('seed')(function* (tokens: {
   expired: string
   disabled: string
 }) {
-  const database = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* database.execute(sql`insert into tenants (slug, name) values ('t','T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
   const orgType = one<{ id: string }>(
-    yield* database.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
   ).id
   const userType = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant},'staff','Staff', true, 'unrestricted') returning id`),
   ).id
   const user = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Ada', ${userType}, ${node}) returning id`),
   ).id
   const off = one<{ id: string }>(
-    yield* database.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, enabled)
       values (${tenant}, 'Gone', ${userType}, ${node}, false) returning id`),
   ).id
   const put = (userId: string, token: string, expires: string) =>
-    database.execute(sql`
+    runSql(sql`
       insert into sessions (tenant_id, user_id, token_hash, expires_at)
       values (${tenant}, ${userId}, ${hashSessionToken(token)}, now() + ${sql.raw(expires)})`)
   yield* put(user, tokens.valid, `interval '1 day'`)
@@ -121,22 +125,18 @@ beforeAll(async () => {
   expiredToken = 'token-expired'
   disabledToken = 'token-disabled'
 
-  const config = Layer.succeed(
-    DatabaseConfig,
-    DatabaseConfig.of({
-      url: Redacted.make(db.url),
-      migrations: 'apply',
-      migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-    }),
-  )
-  const infra = databaseLayer.pipe(Layer.provide(config))
+  const infra = databaseFor(db.url, { entities: authClosure })
   const authConfig = Layer.succeed(
     AuthConfig,
     AuthConfig.of({ defaultTenantSlug: 'default', sessionTtlSeconds: 3600, secureCookies: false }),
   )
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(api).pipe(
-      Layer.provide(handlers.pipe(Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))))),
+      Layer.provide(
+        handlers.pipe(
+          Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
+        ),
+      ),
     ),
   ).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })), Layer.provide(infra))
 
@@ -155,19 +155,7 @@ afterAll(async () => {
   await db.dispose()
 })
 
-const probeInfra = () =>
-  databaseLayer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(db.url),
-          migrations: 'off',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
-  )
+const probeInfra = () => databaseFor(db.url, { migrations: 'off', entities: authClosure })
 
 const withCookie = (token: string) =>
   fetch(`${base}/probe/me`, { headers: { cookie: `${sessionCookieName}=${token}` } })
@@ -200,30 +188,11 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
 
     const gone = await Effect.runPromise(
       Effect.gen(function* () {
-        const database = yield* Database
-        const result = (yield* database.execute(
+        const result = (yield* runSql(
           sql`select count(*)::int as count from sessions where token_hash = ${hashSessionToken(expiredToken)}`,
         )) as unknown as { rows: { count: number }[] }
         return result.rows[0]!.count
-      }).pipe(
-        Effect.provide(
-          databaseLayer.pipe(
-            Layer.provide(
-              Layer.succeed(
-                DatabaseConfig,
-                DatabaseConfig.of({
-                  url: Redacted.make(db.url),
-                  migrations: 'off',
-                  migrationsFolder: new URL(
-                    '../../../../../db/migrations',
-                    import.meta.url,
-                  ).pathname,
-                }),
-              ),
-            ),
-          ),
-        ),
-      ),
+      }).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure }))),
     )
     expect(gone).toBe(0)
   })
@@ -240,19 +209,13 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
     // tenant may be used at all. It was missed once, because the user-type
     // alias and the tenant alias both look like a plausible `enabled`.
     await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database
-        yield* database.execute(sql`update tenants set enabled = false`)
-      }).pipe(Effect.provide(probeInfra())),
+      runSql(sql`update tenants set enabled = false`).pipe(Effect.provide(probeInfra())),
     )
     const response = await withCookie(validToken)
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'AUTH_REQUIRED' })
     await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database
-        yield* database.execute(sql`update tenants set enabled = true`)
-      }).pipe(Effect.provide(probeInfra())),
+      runSql(sql`update tenants set enabled = true`).pipe(Effect.provide(probeInfra())),
     )
     expect((await withCookie(validToken)).status).toBe(200)
   })

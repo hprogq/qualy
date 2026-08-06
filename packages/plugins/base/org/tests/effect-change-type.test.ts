@@ -1,8 +1,16 @@
-import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { sql } from 'kysely'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '../src/db/entities.ts'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
+import { type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -29,6 +37,10 @@ const catalog: readonly ActivePermission[] = [
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
 ]
 
+// what the orm must know for a query to name a table: this suite runs auth and
+// rbac alongside org, so their tables are part of what the assembly serves
+const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
 const stack = (url: string) =>
   orgLayer.pipe(
     // the same levels the generated runtime derives: auth needs rbac, and
@@ -37,7 +49,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url, { entities: closure }),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -50,19 +62,9 @@ const stack = (url: string) =>
         ),
       ),
     ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Org | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Org | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -75,43 +77,42 @@ const tagOf = (result: { _tag: string; failure?: unknown }) =>
 
 /** a college holding one staff member, an administrator, and a club type to retype into */
 const seed = Effect.fn('seed')(function* () {
-  const db = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* db.execute(sql`insert into tenants (slug, name) values ('t', 'T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t', 'T') returning id`),
   ).id
   const collegeType = one<{ id: string }>(
-    yield* db.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant}, 'college', 'C') returning id`,
     ),
   ).id
   const clubType = one<{ id: string }>(
-    yield* db.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant}, 'club', 'K') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${collegeType}, 'Root', 'r', 0) returning id`),
   ).id
   const adminType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant}, 'admin', 'Admin', true, 'unrestricted') returning id`),
   ).id
   const admin = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Ada', ${adminType}, ${node}) returning id`),
   ).id
   const adminRole = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
       values (${tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
       returning id`),
   ).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${adminRole})`)
   const principal: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
   return { tenant, node, collegeType, clubType, adminType, principal }
@@ -123,24 +124,22 @@ const addStrandableStaff = Effect.fn('addStaff')(function* (f: {
   node: string
   collegeType: string
 }) {
-  const db = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const staffType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${f.tenant}, 'staff', 'Staff', true, 'allow-list') returning id`),
   ).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
     values (${f.tenant}, ${staffType}, ${f.collegeType})`)
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
     values (${f.tenant}, 'Grace', ${staffType}, ${f.node})`)
 })
 
 const typeOf = Effect.fn('typeOf')(function* (nodeId: string) {
-  const db = yield* Database
-  const result = (yield* db.execute(
+  const result = (yield* runSql(
     sql`select org_type_id from org_nodes where id = ${nodeId}`,
   )) as unknown as { rows: { org_type_id: string }[] }
   return result.rows[0]!.org_type_id
@@ -201,18 +200,17 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           // an org role anchored here that is allowed on colleges only
           const role = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode)
               values (${f.tenant}, 'dean', 'Dean', 'org', 'active', 'explicit') returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
             values (${f.tenant}, ${role}, ${f.collegeType})`)
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
             values (${f.tenant}, ${f.principal.userId}, ${role}, ${f.node}, 'self')`)
 
@@ -238,12 +236,11 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           // a principal with no grants at all: the router would have stopped
           // them, and the in-lock check has to stop them too
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const stranger = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               values (${f.tenant}, 'Nobody', ${f.adminType}, ${f.node}) returning id`),
           ).id
@@ -285,12 +282,8 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
             (type) => type.id === created.id,
           )
           // the seeded college type has a node standing on it
-          const inUse = yield* Effect.result(
-            org.deleteType(f.tenant, f.collegeType, f.principal),
-          )
-          const removable = yield* Effect.result(
-            org.deleteType(f.tenant, created.id, f.principal),
-          )
+          const inUse = yield* Effect.result(org.deleteType(f.tenant, f.collegeType, f.principal))
+          const removable = yield* Effect.result(org.deleteType(f.tenant, created.id, f.principal))
           return {
             createdCode: created.code,
             listedCount: listed.length,
@@ -366,15 +359,14 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const child = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Leaf', 'r.leaf', 1) returning id`),
           ).id
           // someone stands on the leaf, so the restrict fk holds it
-          yield* database.execute(sql`
+          yield* runSql(sql`
             update users set primary_org_node_id = ${child} where tenant_id = ${f.tenant}`)
           const org = yield* Org
           const blocked = yield* Effect.result(org.deleteNode(f.tenant, child, f.principal))
@@ -419,38 +411,37 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const mid = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.mid', 1) returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
             values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.mid.deep', 2)`)
 
           // the plain user holds read at `mid` with self coverage only
           const role = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode)
               values (${f.tenant}, 'reader', 'Reader', 'org', 'active', 'explicit') returning id`),
           ).id
           const permission = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('org.tree.read', 'org', 'read', 'org-node')
               on conflict (code) do update set plugin = excluded.plugin returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
             values (${f.tenant}, ${role}, ${permission})`)
           const reader = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               values (${f.tenant}, 'Reader', ${f.adminType}, ${f.node}) returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
             values (${f.tenant}, ${reader}, ${role}, ${mid}, 'self')`)
 
@@ -479,18 +470,17 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
-  it("answers a node the caller cannot see exactly as a missing one", async () => {
+  it('answers a node the caller cannot see exactly as a missing one', async () => {
     const db = await createTestContext('effect-read-hidden')
     try {
       const exit = await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           // a user holding nothing at all: every node is invisible to them
           const stranger = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               values (${f.tenant}, 'Nobody', ${f.adminType}, ${f.node}) returning id`),
           ).id
@@ -524,70 +514,65 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const src = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Src', 'r.src', 1) returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
             values (${f.tenant}, ${src}, ${f.collegeType}, 'Deep', 'r.src.deep', 2)`)
           // the destination is a club, because a type cannot parent itself
           const dest = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${f.node}, ${f.clubType}, 'Dest', 'r.dest', 1) returning id`),
           ).id
           // a college may sit under a club, so the rules do not block the move
           // and the only thing deciding it is coverage
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into org_type_rules (tenant_id, parent_type_id, child_type_id)
             values (${f.tenant}, ${f.clubType}, ${f.collegeType})`)
 
           const role = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode)
               values (${f.tenant}, 'mover', 'Mover', 'org', 'active', 'explicit') returning id`),
           ).id
           const permission = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('org.tree.manage', 'org', 'manage', 'org-node')
               on conflict (code) do update set plugin = excluded.plugin returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
             values (${f.tenant}, ${role}, ${permission})`)
           const mover = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               values (${f.tenant}, 'Mover', ${f.adminType}, ${f.node}) returning id`),
           ).id
           // self on the node being moved, subtree on the destination
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
             values (${f.tenant}, ${mover}, ${role}, ${src}, 'self')`)
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
             values (${f.tenant}, ${mover}, ${role}, ${dest}, 'subtree')`)
 
           const org = yield* Org
           const asMover = { tenantId: f.tenant, userId: mover, sessionId: 's' }
-          const selfAnchored = yield* Effect.result(
-            org.moveNode(f.tenant, src, dest, asMover),
-          )
+          const selfAnchored = yield* Effect.result(org.moveNode(f.tenant, src, dest, asMover))
 
           // widen the same grant to subtree and it becomes allowed
-          yield* database.execute(sql`
+          yield* runSql(sql`
             update role_grants set coverage = 'subtree'
             where user_id = ${mover} and org_node_id = ${src}`)
-          const subtreeAnchored = yield* Effect.result(
-            org.moveNode(f.tenant, src, dest, asMover),
-          )
+          const subtreeAnchored = yield* Effect.result(org.moveNode(f.tenant, src, dest, asMover))
           const moved = one<{ path: string }>(
-            yield* database.execute(sql`select path::text as path from org_nodes where id = ${src}`),
+            yield* runSql(sql`select path::text as path from org_nodes where id = ${src}`),
           ).path
           return {
             refused: tagOf(selfAnchored),
@@ -613,21 +598,22 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const database = yield* Database
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const mid = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.mid', 1) returning id`),
           ).id
           const deep = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.mid.deep', 2) returning id`),
           ).id
           const org = yield* Org
           return {
-            intoDescendant: tagOf(yield* Effect.result(org.moveNode(f.tenant, mid, deep, f.principal))),
+            intoDescendant: tagOf(
+              yield* Effect.result(org.moveNode(f.tenant, mid, deep, f.principal)),
+            ),
             intoItself: tagOf(yield* Effect.result(org.moveNode(f.tenant, mid, mid, f.principal))),
             root: tagOf(yield* Effect.result(org.moveNode(f.tenant, f.node, mid, f.principal))),
           }

@@ -1,32 +1,18 @@
 import { Effect, Schema } from 'effect'
-import { Database } from '@qualy/plugin-database/server'
+import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
+import { sql } from 'kysely'
+import {
+  lockTenant,
+  oneRoleProjected,
+  rbacEntityManager,
+  rolePermissionCodes,
+  rolesOfTenant,
+  type RbacEntityManager,
+  type RoleRow as RoleProjection,
+} from './db.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import type { LastAdministrator } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
-import {
-  addEligibilityQuery,
-  addPermissionsQuery,
-  bumpRoleQuery,
-  countIdsQuery,
-  countGrantsOfRoleQuery,
-  deleteRoleQuery,
-  eligibilityOptionsQuery,
-  insertRoleQuery,
-  grantsStrandedByEligibilityQuery,
-  lockRoleQuery,
-  lockTenantQuery,
-  pruneEligibilityQuery,
-  rolePermissionCodesQuery,
-  prunePermissionsQuery,
-  roleEligibilityQuery,
-  roleProjectionQuery,
-  roleQuery,
-  roleSetSizesQuery,
-  setRoleStatusQuery,
-  updateRoleQuery,
-  uuidArrayLiteral,
-  type RoleRow as RoleProjection,
-} from '../queries.ts'
 import { RoleNotFound } from './grants.ts'
 import { assertMayDefineRole, type Authority } from './escalation.ts'
 
@@ -88,34 +74,398 @@ interface RoleRow extends Record<string, unknown> {
   version: number
 }
 
+const insertRole = (
+  em: RbacEntityManager,
+  input: {
+    tenantId: string
+    code: string
+    name: string
+    description: string | null
+    kind: 'tenant' | 'org'
+  },
+) =>
+  query(() =>
+    kyselyOf(em)
+      .insertInto('Role')
+      // a new role grants nothing until it is activated, and activation is
+      // where completeness is checked
+      .values({ ...input, status: 'draft', permissionMode: 'explicit' })
+      .returning('id')
+      .executeTakeFirstOrThrow(),
+  )
+
+const updateRole = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  fields: { name?: string; description?: string | null; assignable?: boolean },
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('Role')
+      // only what the caller named: a field left out keeps its value, and a
+      // description set to null is a caller clearing it rather than saying
+      // nothing
+      .set((eb) => ({
+        ...(fields.name === undefined ? {} : { name: fields.name }),
+        ...(fields.description === undefined ? {} : { description: fields.description }),
+        ...(fields.assignable === undefined ? {} : { assignable: fields.assignable }),
+        version: eb('version', '+', 1),
+        updatedAt: sql<Date>`now()`,
+      }))
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .execute(),
+  )
+
+const setRoleStatus = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  status: 'draft' | 'active' | 'disabled',
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('Role')
+      .set((eb) => ({ status, version: eb('version', '+', 1), updatedAt: sql<Date>`now()` }))
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .execute(),
+  )
+
+const bumpRole = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('Role')
+      .set((eb) => ({ version: eb('version', '+', 1), updatedAt: sql<Date>`now()` }))
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .execute(),
+  )
+
+const deleteRole = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .deleteFrom('Role')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .execute(),
+  )
+
+const countGrantsOfRole = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('RoleGrant')
+      .select(sql<number>`count(*)::int`.as('count'))
+      .where('tenantId', '=', tenantId)
+      .where('roleId', '=', roleId)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row?.count ?? 0))
+
+/** what a completeness check counts: who may hold it, and what it may anchor to */
+const roleSetSizes = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectNoFrom((eb) => [
+        eb
+          .selectFrom('RoleAllowedUserType')
+          .select(sql<number>`count(*)::int`.as('n'))
+          .where('tenantId', '=', tenantId)
+          .where('roleId', '=', roleId)
+          .as('userTypes'),
+        eb
+          .selectFrom('RoleAllowedOrgType')
+          .select(sql<number>`count(*)::int`.as('n'))
+          .where('tenantId', '=', tenantId)
+          .where('roleId', '=', roleId)
+          .as('orgTypes'),
+      ])
+      .executeTakeFirstOrThrow(),
+  )
+
+const lockRoleRow = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Role')
+      .select((eb) => [
+        'id',
+        'code',
+        'systemKey',
+        'assignable',
+        'version',
+        eb.ref('kind').$castTo<'tenant' | 'org'>().as('kind'),
+        eb.ref('status').$castTo<'draft' | 'active' | 'disabled'>().as('status'),
+        eb.ref('permissionMode').$castTo<'explicit' | 'all-active'>().as('permissionMode'),
+      ])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .forUpdate()
+      .executeTakeFirst(),
+  )
+
+/**
+ * Replace a role's permissions, but only within what is currently on offer.
+ *
+ * A row whose plugin is unloaded was never offered, so the caller did not
+ * decline it by omitting it, and deleting it would quietly discard authority
+ * that unloading a plugin is meant to suspend rather than destroy. Removing
+ * one is a separate decision needing its own operation.
+ */
+const prunePermissions = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  offered: readonly string[],
+  wanted: readonly string[],
+) =>
+  query(() => {
+    // nothing on offer is nothing this may remove
+    if (offered.length === 0) return Promise.resolve([])
+    let removing = kyselyOf(em)
+      .deleteFrom('RolePermission')
+      .where('tenantId', '=', tenantId)
+      .where('roleId', '=', roleId)
+      .where((eb) =>
+        eb(
+          'permissionId',
+          'in',
+          eb.selectFrom('Permission').select('id').where('code', 'in', offered),
+        ),
+      )
+    if (wanted.length > 0) {
+      removing = removing.where((eb) =>
+        eb(
+          'permissionId',
+          'not in',
+          eb.selectFrom('Permission').select('id').where('code', 'in', wanted),
+        ),
+      )
+    }
+    return removing.execute()
+  })
+
+const addPermissions = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  wanted: readonly string[],
+) =>
+  query(() => {
+    if (wanted.length === 0) return Promise.resolve([])
+    return kyselyOf(em)
+      .insertInto('RolePermission')
+      .columns(['tenantId', 'roleId', 'permissionId'])
+      .expression((eb) =>
+        eb
+          .selectFrom('Permission as p')
+          .select([sql.val(tenantId).as('tenantId'), sql.val(roleId).as('roleId'), 'p.id'])
+          .where('p.code', 'in', wanted),
+      )
+      .onConflict((conflict) => conflict.doNothing())
+      .execute()
+  })
+
+const oneRole = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Role')
+      .select((eb) => [
+        'id',
+        'code',
+        'name',
+        'description',
+        'systemKey',
+        'assignable',
+        'version',
+        eb.ref('kind').$castTo<'tenant' | 'org'>().as('kind'),
+        eb.ref('status').$castTo<'draft' | 'active' | 'disabled'>().as('status'),
+        eb.ref('permissionMode').$castTo<'explicit' | 'all-active'>().as('permissionMode'),
+      ])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .executeTakeFirst(),
+  )
+
+const countUserTypes = (em: RbacEntityManager, tenantId: string, ids: readonly string[]) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('UserType')
+      .select(sql<number>`count(*)::int`.as('count'))
+      .where('tenantId', '=', tenantId)
+      .where('id', 'in', ids)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row?.count ?? 0))
+
+const countOrgTypes = (em: RbacEntityManager, tenantId: string, ids: readonly string[]) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgType')
+      .select(sql<number>`count(*)::int`.as('count'))
+      .where('tenantId', '=', tenantId)
+      .where('id', 'in', ids)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row?.count ?? 0))
+
+const pruneAllowedUserTypes = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  keep: readonly string[],
+) =>
+  query(() => {
+    const rest = kyselyOf(em)
+      .deleteFrom('RoleAllowedUserType')
+      .where('tenantId', '=', tenantId)
+      .where('roleId', '=', roleId)
+    // an empty list keeps nothing, and `not in ()` is not sql
+    return (keep.length === 0 ? rest : rest.where('userTypeId', 'not in', keep)).execute()
+  })
+
+const pruneAllowedOrgTypes = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  keep: readonly string[],
+) =>
+  query(() => {
+    const rest = kyselyOf(em)
+      .deleteFrom('RoleAllowedOrgType')
+      .where('tenantId', '=', tenantId)
+      .where('roleId', '=', roleId)
+    return (keep.length === 0 ? rest : rest.where('orgTypeId', 'not in', keep)).execute()
+  })
+
+const addAllowedUserTypes = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  ids: readonly string[],
+) =>
+  query(() => {
+    if (ids.length === 0) return Promise.resolve([])
+    return kyselyOf(em)
+      .insertInto('RoleAllowedUserType')
+      .values(ids.map((userTypeId) => ({ tenantId, roleId, userTypeId })))
+      .onConflict((conflict) => conflict.doNothing())
+      .execute()
+  })
+
+const addAllowedOrgTypes = (
+  em: RbacEntityManager,
+  tenantId: string,
+  roleId: string,
+  ids: readonly string[],
+) =>
+  query(() => {
+    if (ids.length === 0) return Promise.resolve([])
+    return kyselyOf(em)
+      .insertInto('RoleAllowedOrgType')
+      .values(ids.map((orgTypeId) => ({ tenantId, roleId, orgTypeId })))
+      .onConflict((conflict) => conflict.doNothing())
+      .execute()
+  })
+
+/**
+ * Grants that the eligibility sets, as written, would orphan.
+ *
+ * The node is joined outward because a tenant grant has none: an inner join
+ * dropped every one of them, so narrowing a tenant role's user types would
+ * have stranded its holders silently.
+ */
+const grantsStrandedByEligibility = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('RoleGrant as g')
+      .innerJoin('User as u', (join) =>
+        join.onRef('u.tenantId', '=', 'g.tenantId').onRef('u.id', '=', 'g.userId'),
+      )
+      .leftJoin('OrgNode as n', (join) =>
+        join.onRef('n.tenantId', '=', 'g.tenantId').onRef('n.id', '=', 'g.orgNodeId'),
+      )
+      .where('g.tenantId', '=', tenantId)
+      .where('g.roleId', '=', roleId)
+      .where(
+        (eb) => sql<boolean>`(
+          not exists (select 1 from role_allowed_user_types t
+            where t.tenant_id = ${eb.ref('g.tenantId')} and t.role_id = ${eb.ref('g.roleId')}
+              and t.user_type_id = ${eb.ref('u.userTypeId')})
+          or (${eb.ref('n.id')} is not null and not exists (
+            select 1 from role_allowed_org_types t
+            where t.tenant_id = ${eb.ref('g.tenantId')} and t.role_id = ${eb.ref('g.roleId')}
+              and t.org_type_id = ${eb.ref('n.orgTypeId')}))
+        )`,
+      )
+      .select(sql<number>`count(*)::int`.as('count'))
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row?.count ?? 0))
+
+const roleEligibility = (em: RbacEntityManager, tenantId: string, roleId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectNoFrom([
+        sql<string[]>`coalesce((select array_agg(user_type_id::text)
+          from role_allowed_user_types
+          where tenant_id = ${tenantId} and role_id = ${roleId}), '{}')`.as('userTypeIds'),
+        sql<string[]>`coalesce((select array_agg(org_type_id::text)
+          from role_allowed_org_types
+          where tenant_id = ${tenantId} and role_id = ${roleId}), '{}')`.as('orgTypeIds'),
+      ])
+      .executeTakeFirstOrThrow(),
+  )
+
+/** the user types and node types a role's eligibility may name */
+const userTypeOptions = (em: RbacEntityManager, tenantId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('UserType')
+      .select(['id', 'code', 'name'])
+      .where('tenantId', '=', tenantId)
+      .orderBy('sortOrder')
+      .orderBy('code')
+      .execute(),
+  )
+
+const orgTypeOptions = (em: RbacEntityManager, tenantId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgType')
+      .select(['id', 'code', 'name'])
+      .where('tenantId', '=', tenantId)
+      .orderBy('sortOrder')
+      .orderBy('code')
+      .execute(),
+  )
+
 export const make = Effect.fn('Rbac.roles.make')(function* (
   authorityFor: (actor: Principal) => Authority,
   keepsAdministrator: (tenantId: string) => Effect.Effect<void, LastAdministrator>,
 ) {
-  const database = yield* Database
+  // this layer's database, closed over: the transaction supplies it to its
+  // body, and this supplies it to the transaction, so the service keeps
+  // declaring no requirements of its own
+  const withDb = yield* withDatabase
 
-  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
-
-  const write = <A, E>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E>) =>
-    database
-      .transaction((tx) =>
+  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
-          yield* tx.execute(lockTenantQuery(tenantId))
-          return yield* body(tx)
+          const em = yield* rbacEntityManager()
+          yield* lockTenant(em, tenantId)
+          return yield* body()
         }),
-      )
-      .pipe(
-        translateConstraints(roleConstraints),
-        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
-      )
+      ),
+    ).pipe(
+      translateConstraints(roleConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
 
   const lockRole = Effect.fn('Rbac.roles.lock')(function* (
-    tx: Tx,
     tenantId: string,
     roleId: string,
     expectedVersion?: number,
   ) {
-    const row = rows<RoleRow>(yield* tx.execute(lockRoleQuery(tenantId, roleId)))[0]
+    const em = yield* rbacEntityManager()
+    const row = yield* lockRoleRow(em, tenantId, roleId)
     if (!row) return yield* new RoleNotFound()
     if (expectedVersion !== undefined && row.version !== expectedVersion) {
       return yield* new RoleVersionConflict({ currentVersion: row.version })
@@ -123,10 +473,11 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     return row
   })
 
-  const codesOf = (tx: Tx, tenantId: string, roleId: string) =>
-    tx
-      .execute(rolePermissionCodesQuery(tenantId, roleId))
-      .pipe(Effect.map((r) => rows<{ code: string }>(r).map((row) => row.code)))
+  const codesOf = (tenantId: string, roleId: string) =>
+    Effect.gen(function* () {
+      const em = yield* rbacEntityManager()
+      return yield* rolePermissionCodes(em, tenantId, roleId)
+    })
 
   /**
    * Everything a usable role needs, checked at the moment it becomes usable.
@@ -138,19 +489,17 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
    * grant check skip it. Only an anchored role must say what it may anchor to.
    */
   const assertComplete = Effect.fn('Rbac.roles.assertComplete')(function* (
-    tx: Tx,
     tenantId: string,
-    role: RoleRow,
+    role: { id: string; kind: 'tenant' | 'org' },
     active: ReadonlySet<string>,
   ) {
     const missing: ('permissions' | 'user-types' | 'org-types')[] = []
-    const codes = yield* codesOf(tx, tenantId, role.id)
+    const em = yield* rbacEntityManager()
+    const codes = yield* codesOf(tenantId, role.id)
     if (codes.filter((code) => active.has(code)).length === 0) missing.push('permissions')
-    const counts = rows<{ user_types: number; org_types: number }>(
-      yield* tx.execute(roleSetSizesQuery(tenantId, role.id)),
-    )[0]!
-    if (counts.user_types === 0) missing.push('user-types')
-    if (role.kind === 'org' && counts.org_types === 0) missing.push('org-types')
+    const counts = yield* roleSetSizes(em, tenantId, role.id)
+    if (counts.userTypes === 0) missing.push('user-types')
+    if (role.kind === 'org' && counts.orgTypes === 0) missing.push('org-types')
     if (missing.length > 0) return yield* new RoleIncomplete({ missing })
   })
 
@@ -162,7 +511,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
    * something it does not; dropping it would tell them it was taken away.
    */
   const permissionsOf = (role: RoleProjection, active: ReadonlySet<string>) =>
-    role.permission_mode === 'all-active'
+    role.permissionMode === 'all-active'
       ? { active: [...active].sort(), unavailable: [] }
       : {
           active: role.permissions.filter((code) => active.has(code)),
@@ -170,12 +519,12 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
         }
 
   const project = (tenantId: string, roleId?: string) =>
-    database
-      .execute(roleProjectionQuery(tenantId, roleId))
-      .pipe(
-        Effect.orDie,
-        Effect.map((result) => rows<RoleProjection & Record<string, unknown>>(result)),
-      )
+    Effect.gen(function* () {
+      const em = yield* rbacEntityManager()
+      if (roleId === undefined) return yield* rolesOfTenant(em, tenantId).pipe(Effect.orDie)
+      const one = yield* oneRoleProjected(em, tenantId, roleId).pipe(Effect.orDie)
+      return one ? [one] : []
+    })
 
   return {
     /** the roles of a tenant, with what each one carries */
@@ -209,16 +558,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
      * worse answer than a scoped one.
      */
     options: Effect.fn('Rbac.roles.options')(function* (tenantId: string) {
-      const read = (table: 'user_types' | 'org_types') =>
-        database
-          .execute(eligibilityOptionsQuery(tenantId, table))
-          .pipe(
-            Effect.orDie,
-            Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
-          )
+      const em = yield* rbacEntityManager()
       return {
-        userTypes: yield* read('user_types'),
-        orgTypes: yield* read('org_types'),
+        userTypes: yield* userTypeOptions(em, tenantId).pipe(Effect.orDie),
+        orgTypes: yield* orgTypeOptions(em, tenantId).pipe(Effect.orDie),
       }
     }),
 
@@ -226,18 +569,18 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       tenantId: string,
       input: { code: string; name: string; description?: string; kind: 'tenant' | 'org' },
     ) {
-      return yield* write(tenantId, (tx) =>
-        tx
-          .execute(
-            insertRoleQuery({
-              tenantId,
-              code: input.code,
-              name: input.name,
-              description: input.description ?? null,
-              kind: input.kind,
-            }),
-          )
-          .pipe(Effect.map((r) => rows<{ id: string }>(r)[0]!.id)),
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          const em = yield* rbacEntityManager()
+          const created = yield* insertRole(em, {
+            tenantId,
+            code: input.code,
+            name: input.name,
+            description: input.description ?? null,
+            kind: input.kind,
+          })
+          return created.id
+        }),
       )
     }),
 
@@ -247,15 +590,16 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       fields: { name?: string; description?: string | null; assignable?: boolean },
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
           // the administrator role keeps its assignability: making it
           // unassignable is a lockout by another name
-          if (role.system_key !== null && fields.assignable === false) {
+          if (role.systemKey !== null && fields.assignable === false) {
             return yield* new RoleIsSystem()
           }
-          yield* tx.execute(updateRoleQuery(tenantId, role.id, fields))
+          const em = yield* rbacEntityManager()
+          yield* updateRole(em, tenantId, role.id, fields)
           return role.version + 1
         }),
       )
@@ -269,24 +613,25 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const authority = authorityFor(actor)
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
-          if (role.system_key !== null && status === 'disabled') {
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
+          if (role.systemKey !== null && status === 'disabled') {
             return yield* new RoleIsSystem()
           }
           if (status === 'active' && role.status !== 'active') {
             if (role.status !== 'draft' && role.status !== 'disabled') {
               return yield* new RoleNotDraft()
             }
-            yield* assertComplete(tx, tenantId, role, new Set(authority.activeCodes()))
+            yield* assertComplete(tenantId, role, new Set(authority.activeCodes()))
             // activating is where a definition becomes real, so it is where
             // the author's own authority is measured
-            yield* assertMayDefineRole(authority, yield* codesOf(tx, tenantId, role.id))
+            yield* assertMayDefineRole(authority, yield* codesOf(tenantId, role.id))
           }
           // a request that changes nothing must not invalidate every open editor
           if (role.status === status) return role.version
-          yield* tx.execute(setRoleStatusQuery(tenantId, role.id, status))
+          const em = yield* rbacEntityManager()
+          yield* setRoleStatus(em, tenantId, role.id, status)
           // a role losing its permissions can remove the last administrator
           if (status === 'disabled') yield* keepsAdministrator(tenantId)
           return role.version + 1
@@ -306,19 +651,16 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const active = authorityFor(actor).catalog()
-      const role = rows<RoleRow>(
-        yield* database.execute(roleQuery(tenantId, roleId)).pipe(Effect.orDie),
-      )[0]
+      const em = yield* rbacEntityManager()
+      const role = yield* oneRole(em, tenantId, roleId).pipe(Effect.orDie)
       if (!role) return yield* new RoleNotFound()
       // an all-active role carries whatever the assembly serves, and stores no
       // rows at all: reading the join alone reported the administrator role as
       // carrying nothing
-      if (role.permission_mode === 'all-active') {
+      if (role.permissionMode === 'all-active') {
         return { active: [...active.keys()].sort(), unavailable: [], version: role.version }
       }
-      const codes = yield* database
-        .execute(rolePermissionCodesQuery(tenantId, roleId))
-        .pipe(Effect.orDie, Effect.map((r) => rows<{ code: string }>(r).map((row) => row.code)))
+      const codes = yield* rolePermissionCodes(em, tenantId, roleId).pipe(Effect.orDie)
       return {
         active: codes.filter((code) => active.has(code)).sort(),
         unavailable: codes.filter((code) => !active.has(code)).sort(),
@@ -335,10 +677,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const authority = authorityFor(actor)
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
-          if (role.permission_mode === 'all-active') return yield* new RoleIsSystem()
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
+          if (role.permissionMode === 'all-active') return yield* new RoleIsSystem()
           const wanted = [...new Set(codes)]
 
           // only codes the catalog currently serves: a row left behind by an
@@ -355,17 +697,14 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           }
           yield* assertMayDefineRole(authority, wanted)
 
-          yield* tx.execute(
-            prunePermissionsQuery(tenantId, role.id, [...active.keys()], wanted),
-          )
-          if (wanted.length > 0) {
-            yield* tx.execute(addPermissionsQuery(tenantId, role.id, wanted))
-          }
-          yield* tx.execute(bumpRoleQuery(tenantId, role.id))
+          const em = yield* rbacEntityManager()
+          yield* prunePermissions(em, tenantId, role.id, [...active.keys()], wanted)
+          yield* addPermissions(em, tenantId, role.id, wanted)
+          yield* bumpRole(em, tenantId, role.id)
           // an active role that just lost everything would be live and grant
           // nothing, so activation's completeness rule applies here too
           if (role.status === 'active') {
-            yield* assertComplete(tx, tenantId, role, new Set(active.keys()))
+            yield* assertComplete(tenantId, role, new Set(active.keys()))
           }
           yield* keepsAdministrator(tenantId)
           return role.version + 1
@@ -378,16 +717,13 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       tenantId: string,
       roleId: string,
     ) {
-      const role = rows<RoleRow>(
-        yield* database.execute(roleQuery(tenantId, roleId)).pipe(Effect.orDie),
-      )[0]
+      const em = yield* rbacEntityManager()
+      const role = yield* oneRole(em, tenantId, roleId).pipe(Effect.orDie)
       if (!role) return yield* new RoleNotFound()
-      const sets = rows<{ user_type_ids: string[]; org_type_ids: string[] }>(
-        yield* database.execute(roleEligibilityQuery(tenantId, roleId)).pipe(Effect.orDie),
-      )[0]!
+      const sets = yield* roleEligibility(em, tenantId, roleId).pipe(Effect.orDie)
       return {
-        userTypeIds: [...sets.user_type_ids].sort(),
-        orgTypeIds: [...sets.org_type_ids].sort(),
+        userTypeIds: [...sets.userTypeIds].sort(),
+        orgTypeIds: [...sets.orgTypeIds].sort(),
         version: role.version,
       }
     }),
@@ -404,12 +740,12 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       sets: { userTypeIds: readonly string[]; orgTypeIds: readonly string[] },
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
           // the canonical administrator is grantable to whoever the tenant
           // designates; everything else declares who may hold it
-          if (role.system_key !== null) return yield* new RoleIsSystem()
+          if (role.systemKey !== null) return yield* new RoleIsSystem()
           const userTypeIds = [...new Set(sets.userTypeIds)]
           // A tenant role reaches the whole tenant, so it anchors to nothing
           // and admits no org types: the field is not part of its policy.
@@ -421,48 +757,39 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
             return yield* new RoleNeedsEligibility()
           }
 
+          const em = yield* rbacEntityManager()
           const replace = Effect.fn('Rbac.roles.replaceEligibility')(function* (
-            table: 'role_allowed_user_types' | 'role_allowed_org_types',
-            column: 'user_type_id' | 'org_type_id',
-            source: 'user_types' | 'org_types',
+            source: 'user-types' | 'org-types',
             ids: readonly string[],
           ) {
-            // the api validates the shape; this is the layer that must not
-            // interpolate anything it has not checked itself
-            const list = uuidArrayLiteral(ids)
-            if (list === undefined) {
-              return yield* source === 'user_types'
-                ? new RoleUserTypeNotFound()
-                : new RoleOrgTypeNotFound()
-            }
+            const missing = () =>
+              source === 'user-types' ? new RoleUserTypeNotFound() : new RoleOrgTypeNotFound()
             if (ids.length > 0) {
-              const found = rows<{ count: number }>(
-                yield* tx.execute(countIdsQuery(tenantId, source, list)),
-              )[0]!.count
-              if (found !== ids.length) {
-                return yield* source === 'user_types'
-                  ? new RoleUserTypeNotFound()
-                  : new RoleOrgTypeNotFound()
-              }
+              const found =
+                source === 'user-types'
+                  ? yield* countUserTypes(em, tenantId, ids)
+                  : yield* countOrgTypes(em, tenantId, ids)
+              if (found !== ids.length) return yield* missing()
             }
-            yield* tx.execute(pruneEligibilityQuery(tenantId, role.id, table, column, list))
-            if (ids.length > 0) {
-              yield* tx.execute(addEligibilityQuery(tenantId, role.id, table, column, list))
+            if (source === 'user-types') {
+              yield* pruneAllowedUserTypes(em, tenantId, role.id, ids)
+              yield* addAllowedUserTypes(em, tenantId, role.id, ids)
+            } else {
+              yield* pruneAllowedOrgTypes(em, tenantId, role.id, ids)
+              yield* addAllowedOrgTypes(em, tenantId, role.id, ids)
             }
           })
-          yield* replace('role_allowed_user_types', 'user_type_id', 'user_types', userTypeIds)
-          yield* replace('role_allowed_org_types', 'org_type_id', 'org_types', orgTypeIds)
+          yield* replace('user-types', userTypeIds)
+          yield* replace('org-types', orgTypeIds)
 
           // The sets and the grants are checked together under one lock, so a
           // narrowing that would orphan a grant fails as a whole. The node is
           // joined outward because a tenant grant has none: an inner join
           // dropped every one of them, so narrowing a tenant role's user types
           // would have stranded its holders silently.
-          const stranded = rows<{ count: number }>(
-            yield* tx.execute(grantsStrandedByEligibilityQuery(tenantId, role.id)),
-          )[0]!.count
+          const stranded = yield* grantsStrandedByEligibility(em, tenantId, role.id)
           if (stranded > 0) return yield* new GrantStranded({ grantCount: stranded })
-          yield* tx.execute(bumpRoleQuery(tenantId, role.id))
+          yield* bumpRole(em, tenantId, role.id)
           return role.version + 1
         }),
       )
@@ -473,15 +800,14 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       roleId: string,
       expectedVersion: number,
     ) {
-      yield* write(tenantId, (tx) =>
+      yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
-          if (role.system_key !== null) return yield* new RoleIsSystem()
-          const grants = rows<{ count: number }>(
-            yield* tx.execute(countGrantsOfRoleQuery(tenantId, role.id)),
-          )[0]!.count
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
+          if (role.systemKey !== null) return yield* new RoleIsSystem()
+          const em = yield* rbacEntityManager()
+          const grants = yield* countGrantsOfRole(em, tenantId, role.id)
           if (grants > 0) return yield* new RoleInUse({ grantCount: grants })
-          yield* tx.execute(deleteRoleQuery(tenantId, role.id))
+          yield* deleteRole(em, tenantId, role.id)
         }),
       )
     }),

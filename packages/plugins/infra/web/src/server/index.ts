@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Context, Data, Effect, Layer } from 'effect'
+import { Context, Data, Effect, Layer, Queue } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
+import type { Logger as ViteLogger } from 'vite'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer, fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
 
@@ -76,6 +77,53 @@ const production = Effect.fn('Web.production')(function* (assetRoot: string) {
   return assets(assetRoot)
 })
 
+/**
+ * Vite's log lines, in the application's own logger.
+ *
+ * Vite calls its logger synchronously from its own work, so the adapter cannot
+ * `yield*` and there is no caller fiber for it to belong to. It offers onto a
+ * queue instead and a forked fiber logs what it finds, which keeps the
+ * timestamp, the level, the fiber id and the colours identical to everything
+ * else the process says - with no `Effect.run*` inside a layer.
+ *
+ * The message is passed through as vite wrote it, colours and `[vite]` prefix
+ * included. Vite's own timestamp is never asked for, because ours is already
+ * in front of it.
+ */
+export const viteLogger = Effect.gen(function* () {
+  const lines = yield* Queue.make<Effect.Effect<void>>()
+  yield* Effect.forkScoped(Effect.forever(Effect.flatten(Queue.take(lines))))
+  const emit = (line: Effect.Effect<void>) => {
+    Queue.offerUnsafe(lines, line)
+  }
+  // vite reads this back to decide whether a run "had warnings", so it is
+  // state the adapter owns rather than something it can forward
+  const state = { warned: false }
+  const seen = new Set<string>()
+  return {
+    info: (message: string) => emit(Effect.logInfo(message)),
+    warn: (message: string) => {
+      state.warned = true
+      emit(Effect.logWarning(message))
+    },
+    warnOnce: (message: string) => {
+      if (seen.has(message)) return
+      seen.add(message)
+      state.warned = true
+      emit(Effect.logWarning(message))
+    },
+    error: (message: string) => emit(Effect.logError(message)),
+    // the screen is shared with the application's own output, so clearing it
+    // would take that away; vite is started with clearScreen off for the same
+    // reason
+    clearScreen: () => {},
+    hasErrorLogged: () => false,
+    get hasWarned() {
+      return state.warned
+    },
+  } satisfies ViteLogger
+})
+
 const development = Effect.fn('Web.development')(function* (sourceRoot: string) {
   if (!fs.existsSync(path.join(sourceRoot, 'index.html'))) {
     return yield* Effect.die(
@@ -99,6 +147,8 @@ const development = Effect.fn('Web.development')(function* (sourceRoot: string) 
   // puts the hot-reload websocket on the application's own port
   const httpServer = yield* NodeServer
 
+  const customLogger = yield* viteLogger
+
   const devServer = yield* Effect.acquireRelease(
     Effect.promise(() =>
       vite.createServer({
@@ -107,10 +157,7 @@ const development = Effect.fn('Web.development')(function* (sourceRoot: string) 
         appType: 'spa',
         clearScreen: false,
         server: { middlewareMode: { server: httpServer } },
-        // Vite keeps its own logger here, where the cordis plugin routed it
-        // through the runtime's. Adapting it would need an Effect.run* inside a
-        // layer, which the source policy reserves for the process edges, and a
-        // uniform dev log is not worth a queue-and-fiber to launder one.
+        customLogger,
       }),
     ),
     (server) => Effect.promise(() => server.close()),

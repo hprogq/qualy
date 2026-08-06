@@ -26,6 +26,9 @@ const readSubtree = Effect.fn('org.readSubtree')(function* (nodeId: string) {
 const rbacStub = (allowed: boolean) =>
   Layer.succeed(Rbac, {
     listPermissions: () => Effect.succeed([]),
+    // @effect-diagnostics-next-line effect/effectSucceedWithVoid:off
+    // undefined is the value here, not the absence of one: this port answers
+    // "no such permission", and Effect.void does not typecheck against it
     getPermission: () => Effect.succeed(undefined),
     hasPermission: () => Effect.succeed(allowed),
     require: () => Effect.void,
@@ -36,6 +39,8 @@ const rbacStub = (allowed: boolean) =>
     listAuthorizedScope: () => Effect.succeed({ tenantWide: false, anchors: [] }),
     assertTenantKeepsAdministrator: () => Effect.void,
     grantsBlockingOrgType: () => Effect.succeed([]),
+    rolesStrandedByUserType: () => Effect.succeed(0),
+    grantsBlockingUserType: () => Effect.succeed(0),
   } satisfies typeof Rbac.Service)
 
 const placementStub = Layer.succeed(Placement, {

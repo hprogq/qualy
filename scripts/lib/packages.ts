@@ -1,4 +1,9 @@
-import { createPackageResolver, hostDirFor, readManifest, type PackageResolver } from '@qualy/assembly'
+import {
+  createPackageResolver,
+  hostDirFor,
+  readManifest,
+  type PackageResolver,
+} from '@qualy/assembly'
 import { manifestPath } from './read-entries.ts'
 
 // Plugin packages resolve from the host the manifest names, which is the

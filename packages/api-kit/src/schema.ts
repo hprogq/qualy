@@ -96,10 +96,7 @@ export const boundedInt = (min: number, max: number) =>
   )
 
 /** the version a set replacement was written against; never optional */
-export const expectedVersion = Schema.Number.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(1),
-)
+export const expectedVersion = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
 
 /**
  * Refuses a patch that changes nothing.

@@ -49,8 +49,7 @@ export function buildPageHref(page: PageRef, options: PageHrefOptions = {}): str
 // place a literal path is legitimate, and it lives in the runtime rather
 // than in any plugin.
 export type SessionDestination =
-  | { kind: 'home' }
-  | { kind: 'page'; page: PageRef; params?: Record<string, string> }
+  { kind: 'home' } | { kind: 'page'; page: PageRef; params?: Record<string, string> }
 
 export function sessionDestinationHref(destination: SessionDestination): string {
   return destination.kind === 'home'

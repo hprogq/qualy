@@ -84,9 +84,12 @@ describe('session transitions', () => {
     // the data reads undefined cannot tell an emptied entry from a removed
     // one, and reset alone leaves the emptied entries there for the life of
     // the tab because it clears their collection timers
-    expect(queryClient.getQueryCache().getAll().map((query) => query.queryKey)).toEqual([
-      ['app', 'manifest'],
-    ])
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey),
+    ).toEqual([['app', 'manifest']])
     manifest.destroy()
   })
 })

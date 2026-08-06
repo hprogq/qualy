@@ -3,14 +3,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context, Effect, Exit, Layer, Redacted, Scope } from 'effect'
-import { sql, type SQL } from 'drizzle-orm'
 import { Pool } from 'pg'
-import type * as SqlError from 'effect/unstable/sql/SqlError'
+import type { EntitySchema } from '@mikro-orm/core'
+import { schemaParity as compareSchemas, type SchemaParityOptions } from './parity.ts'
+import { CompiledQuery, type RawBuilder } from 'kysely'
 import {
-  Database,
   DatabaseConfig,
+  Entities,
+  entityManager,
+  kyselyOf,
   layer as databaseLayer,
+  query as runQuery,
   type MigrationsBehind,
+  type Orm,
 } from './server/index.ts'
 
 // The postgres lifecycle a database-backed test needs, owned by the plugin
@@ -66,7 +71,7 @@ export interface TestContext {
    * lineage applies and the server answers, which is the same claim a
    * deployment makes.
    */
-  services: Layer.Layer<Database, SqlError.SqlError | MigrationsBehind>
+  services: Layer.Layer<Orm, MigrationsBehind>
   /** the scratch database this context is bound to */
   url: string
   /**
@@ -74,10 +79,9 @@ export interface TestContext {
    * assertions that must reach past the services: a constraint only earns
    * its place if it refuses what a service would never send.
    *
-   * Values come back the way drizzle hands them over, which is not always
-   * the way the pg driver alone would: a timestamptz arrives as a string,
-   * because drizzle asks for the raw text and maps per column. Assert on the
-   * value rather than on its javascript type.
+   * Values come back the way the orm hands them over, which is not always
+   * the way the pg driver alone would: a timestamptz arrives as a string.
+   * Assert on the value rather than on its javascript type.
    */
   query<Row = Record<string, unknown>>(
     text: string,
@@ -96,23 +100,28 @@ export interface TestContext {
   dispose(): Promise<void>
 }
 
-// `$1` placeholders kept as they are, because that is what these statements
-// already read like and what a reader can paste into psql. sql.raw would
-// interpolate instead of binding, so the numbers are resolved into real
-// parameters here.
-//
-// sql.param rather than a bare template value: drizzle expands a top-level
-// array into an inline `(a, b)` list, which turns `= any($1::uuid[])` into a
-// record cast postgres refuses. A Param binds as one value, the way the
-// driver does.
-function parameterize(text: string, params: readonly unknown[]): SQL {
-  const parts = text.split(/\$(\d+)/)
-  return sql.join(
-    parts.map((part, index) =>
-      index % 2 === 0 ? sql.raw(part) : sql`${sql.param(params[Number(part) - 1])}`,
-    ),
-  )
-}
+/**
+ * Raw sql on the connection the services are on, for building a fixture.
+ *
+ * A fixture states the shape a test starts from, so it is written as sql
+ * rather than driven through the services under test: a seed built by them
+ * would only prove they agree with themselves. It has to run on their
+ * connection, though - a row inserted on a second pool is a row a transaction
+ * under test cannot see, which is not a hypothetical.
+ *
+ * It dies rather than failing: a fixture that did not apply is a broken test,
+ * not a case the test is about.
+ */
+export const runSql = <Row = Record<string, unknown>>(
+  statement: CompiledQuery | RawBuilder<Row>,
+): Effect.Effect<{ rows: Row[] }, never, Orm> =>
+  Effect.gen(function* () {
+    const em = yield* entityManager<readonly []>()
+    const db = kyselyOf(em)
+    return yield* runQuery(() =>
+      'sql' in statement ? db.executeQuery<Row>(statement) : statement.execute(db),
+    )
+  }).pipe(Effect.orDie)
 
 /**
  * A migrated database, built once and copied per test.
@@ -130,9 +139,9 @@ function parameterize(text: string, params: readonly unknown[]): SQL {
 const templateName = (folder: string) => {
   const hash = createHash('sha256')
   const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name < b.name ? -1 : 1,
-    )) {
+    for (const entry of fs
+      .readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) walk(full)
       else if (entry.name.endsWith('.sql')) hash.update(entry.name).update(fs.readFileSync(full))
@@ -152,7 +161,10 @@ const templateName = (folder: string) => {
  */
 const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
   const name = templateName(folder)
-  const lock = BigInt.asIntN(64, BigInt(`0x${createHash('sha256').update(name).digest('hex').slice(0, 15)}`))
+  const lock = BigInt.asIntN(
+    64,
+    BigInt(`0x${createHash('sha256').update(name).digest('hex').slice(0, 15)}`),
+  )
   const client = await admin.connect()
   try {
     await client.query('select pg_advisory_lock($1)', [lock.toString()])
@@ -164,7 +176,11 @@ const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
       url.pathname = `/${building}`
       // the plugin's own migrator, so the template is built the way a
       // deployment is rather than by a second implementation
-      await build(url.href, { migrations: 'apply', migrationsFolder: folder }, async () => {})
+      await build(
+        url.href,
+        { migrations: 'apply', migrationsFolder: folder, entities: [] },
+        async () => {},
+      )
       // renamed only once it is complete, so a crashed build never becomes a
       // template that other tests copy
       await client.query(`alter database "${building}" rename to "${name}"`)
@@ -189,6 +205,8 @@ export interface TestContextOptions {
   migrations?: 'apply' | 'off'
   /** the committed lineage unless a test is deliberately pointing elsewhere */
   migrationsFolder?: string
+  /** the entity set the assembly under test has, empty unless a suite queries through the orm */
+  entities?: readonly EntitySchema[]
 }
 
 /**
@@ -217,6 +235,26 @@ async function teardown(options: {
     await options.admin.query(`drop database "${options.name}"`)
   } catch (error) {
     errors.push(error)
+    // What the server had to say about itself when the drop was refused.
+    //
+    // A drop fails for reasons that are invisible afterwards: a backend still
+    // attached, or no slots left to open the next connection. Reading it here,
+    // while it is still true, is the difference between a diagnosis and a
+    // guess - a failure recovered by the forced drop below would otherwise
+    // leave nothing behind at all.
+    try {
+      const { rows } = await options.admin.query<{ what: string; count: string }>(
+        `select 'backends on ' || $1 as what, count(*)::text as count
+           from pg_stat_activity where datname = $1
+         union all
+         select 'connections / max', count(*) || ' / ' || current_setting('max_connections')
+           from pg_stat_activity`,
+        [options.name],
+      )
+      for (const row of rows) console.error(`  ${row.what}: ${row.count}`)
+    } catch {
+      // the diagnosis is best effort; its failure must not replace the real one
+    }
     try {
       await options.admin.query(`drop database if exists "${options.name}" with (force)`)
     } catch (forced) {
@@ -272,16 +310,12 @@ export async function createTestContext(
     // starts; the layer's own check still has to agree, which is the point
     migrations: options.migrations ?? 'apply',
     migrationsFolder: folder,
+    entities: options.entities ?? [],
   })
   const scope = await Effect.runPromise(Scope.make())
-  let database: typeof Database.Service
+  let built: Context.Context<Orm>
   try {
-    database = await Effect.runPromise(
-      Effect.gen(function* () {
-        const built = yield* Layer.buildWithScope(services, scope)
-        return Context.get(built, Database)
-      }),
-    )
+    built = await Effect.runPromise(Layer.buildWithScope(services, scope))
   } catch (error) {
     // building may already have acquired resources, so the partial scope is
     // closed like any other; the original failure is what the caller needs to
@@ -295,7 +329,7 @@ export async function createTestContext(
   }
 
   const execute = (text: string, params: readonly unknown[]) =>
-    Effect.runPromise(database.execute(parameterize(text, params)).pipe(Effect.orDie))
+    Effect.runPromise(runSql(CompiledQuery.raw(text, [...params])).pipe(Effect.provide(built)))
 
   return {
     services,
@@ -314,17 +348,64 @@ export async function createTestContext(
   }
 }
 
+/**
+ * The database plugin, configured for one database the way an assembly
+ * configures it.
+ *
+ * Every suite that needs a database used to spell this out again, and the
+ * copies had begun to drift in the field that decides whether the lineage is
+ * applied. It is one function so that adding something the plugin needs is one
+ * edit, not fifteen - which is how it came to be extracted.
+ */
+/**
+ * How many connections one suite's database may hold.
+ *
+ * Small on purpose: vitest runs a dozen files at once, each with its own
+ * scratch database and its own stack, and one postgres has one
+ * max_connections. A production-sized pool per suite exhausts it, and the
+ * error surfaces on whichever test happened to connect next.
+ */
+const TEST_POOL_SIZE = 2
+
+export const databaseFor = (
+  url: string,
+  options: { migrations?: 'apply' | 'off'; entities?: readonly EntitySchema[] } = {},
+): Layer.Layer<Orm, MigrationsBehind> =>
+  databaseLayer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(
+          DatabaseConfig,
+          DatabaseConfig.of({
+            url: Redacted.make(url),
+            migrations: options.migrations ?? 'apply',
+            migrationsFolder,
+            poolSize: TEST_POOL_SIZE,
+          }),
+        ),
+        // A suite asserting one plugin's queries hands in that plugin's own
+        // tuple; the rest have no entities, which during the migration is the
+        // truth rather than a placeholder.
+        Layer.succeed(Entities, options.entities ?? []),
+      ),
+    ),
+  )
+
 /** the database layer, configured for one scratch database */
 const servicesFor = (url: string, options: Required<TestContextOptions>) =>
   databaseLayer.pipe(
     Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: options.migrations,
-          migrationsFolder: options.migrationsFolder,
-        }),
+      Layer.mergeAll(
+        Layer.succeed(
+          DatabaseConfig,
+          DatabaseConfig.of({
+            url: Redacted.make(url),
+            migrations: options.migrations,
+            migrationsFolder: options.migrationsFolder,
+            poolSize: TEST_POOL_SIZE,
+          }),
+        ),
+        Layer.succeed(Entities, options.entities),
       ),
     ),
   )
@@ -333,17 +414,11 @@ const servicesFor = (url: string, options: Required<TestContextOptions>) =>
 const build = async (
   url: string,
   options: Required<TestContextOptions>,
-  body: (database: typeof Database.Service) => Promise<void>,
+  body: (services: Context.Context<Orm>) => Promise<void>,
 ) => {
   const scope = await Effect.runPromise(Scope.make())
   try {
-    const database = await Effect.runPromise(
-      Effect.gen(function* () {
-        const built = yield* Layer.buildWithScope(servicesFor(url, options), scope)
-        return Context.get(built, Database)
-      }),
-    )
-    await body(database)
+    await body(await Effect.runPromise(Layer.buildWithScope(servicesFor(url, options), scope)))
   } finally {
     await Effect.runPromise(Scope.close(scope, Exit.void))
   }
@@ -352,15 +427,14 @@ const build = async (
 /**
  * The SQLSTATE a write was refused with, or 'no error' when it succeeded.
  *
- * Drizzle wraps driver failures in its own error and puts the original on
- * `cause`, so reading `code` off the top level quietly yields undefined and
- * an assertion about a constraint becomes an assertion about nothing.
+ * The orm wraps driver failures and puts the original further down, so reading
+ * `code` off the top level quietly yields undefined and an assertion about a
+ * constraint becomes an assertion about nothing.
  */
 export function pgCode(work: Promise<unknown>): Promise<string> {
-  // The chain is a tree, not a list. Drizzle wraps the driver failure, and
-  // under the effect driver the wrapper's cause is an Effect Cause holding an
-  // array of failures rather than a single `cause` link, so walking only
-  // `.cause` stopped at the wrapper and returned its message.
+  // The chain is a tree, not a list: a wrapper's cause can be an Effect Cause
+  // holding an array of failures rather than a single `cause` link, so walking
+  // only `.cause` stopped at the wrapper and returned its message.
   const find = (node: unknown, depth: number, seen: Set<unknown>): string | undefined => {
     if (!node || typeof node !== 'object' || depth > 10 || seen.has(node)) return undefined
     seen.add(node)
@@ -385,3 +459,16 @@ export function pgCode(work: Promise<unknown>): Promise<string> {
     (error: unknown) => find(error, 0, new Set()) ?? String(error),
   )
 }
+
+/**
+ * The lineage's schema and the entities' schema, ready to be compared.
+ *
+ * Here rather than in each plugin because it needs two scratch databases, and
+ * creating those is this plugin's job in tests exactly as owning connections
+ * is in production. Returns the readings instead of asserting on them, so the
+ * failure a suite reports is a diff of catalog rows rather than a boolean.
+ */
+export const schemaParity = (options: SchemaParityOptions) =>
+  compareSchemas((label) => createTestContext(label), options)
+
+export type { SchemaParity, SchemaParityOptions } from './parity.ts'

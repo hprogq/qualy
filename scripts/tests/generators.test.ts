@@ -47,8 +47,10 @@ describe('generator determinism', () => {
     gen()
     const generated = [pluginsPath, apiPath, apiHandlersPath, catalogPath]
     const before = generated.map((file) => read(file))
+    // silence is the signal now: a generator that rewrote an identical file
+    // would say so, and a second run that says nothing wrote nothing
     const second = gen()
-    expect(second).toContain('unchanged, skipped')
+    expect(second.trim()).toBe('')
     for (const [index, file] of generated.entries()) {
       expect(read(file)).toBe(before[index])
     }

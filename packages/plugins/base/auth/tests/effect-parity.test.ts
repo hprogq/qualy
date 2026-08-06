@@ -1,15 +1,23 @@
-import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { sql } from 'kysely'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { authClosure } from './support/closure.ts'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
+import { kyselyOf, type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
-import { placementLegal } from '../src/iam/queries.ts'
+import { placementLegal } from '../src/server/placement.ts'
+import { authEntityManager } from '../src/server/db.ts'
+import { sql as ksql } from 'kysely'
 
 // The identity behaviours the cordis suite asserted and the Effect suite did
 // not. Each names the cordis test it comes from.
@@ -24,7 +32,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url, { entities: authClosure }),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -37,20 +45,37 @@ const stack = (url: string) =>
         ),
       ),
     ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Orm | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+
+/** the rule the writes decide by, asked of one person through a caller's own query */
+const legalFor = (userId: string) =>
+  Effect.gen(function* () {
+    const em = yield* authEntityManager()
+    const row = yield* Effect.promise(() =>
+      kyselyOf(em)
+        .selectFrom('User as u')
+        .innerJoin('UserType as t', 't.id', 'u.userTypeId')
+        .innerJoin('OrgNode as n', 'n.id', 'u.primaryOrgNodeId')
+        .where('u.id', '=', userId)
+        .select((eb) =>
+          placementLegal(
+            {
+              isSystem: eb.ref('t.isSystem'),
+              placementMode: eb.ref('t.placementMode'),
+              tenantId: eb.ref('t.tenantId'),
+              id: eb.ref('t.id'),
+            },
+            eb.ref('n.orgTypeId'),
+            ksql<boolean>`${eb.ref('n.parentId')} is null`,
+          ).as('legal'),
+        )
+        .executeTakeFirst(),
+    )
+    return row!.legal
+  })
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -63,42 +88,41 @@ const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
 
 /** a tenant with a root, an administrator who reaches everything, and a plain type */
 const seed = Effect.fn('seed')(function* () {
-  const db = yield* Database
   const tenant = one<{ id: string }>(
-    yield* db.execute(sql`insert into tenants (slug, name) values ('default','T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('default','T') returning id`),
   ).id
   const orgType = one<{ id: string }>(
-    yield* db.execute(
+    yield* runSql(
       sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
     ),
   ).id
   const root = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
   ).id
   const staff = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant},'staff','Staff', true, 'unrestricted') returning id`),
   ).id
   const systemType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode, is_system)
       values (${tenant},'system-account','System', true, 'unrestricted', true) returning id`),
   ).id
   const admin = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Ada', ${staff}, ${root}) returning id`),
   ).id
   const adminRole = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
       values (${tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
       returning id`),
   ).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${adminRole})`)
   const principal: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
   return { tenant, orgType, root, staff, systemType, admin, principal }
@@ -170,9 +194,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
           const second = yield* create('Second', '2024001')
           // the same number in another tenant is a different person's number
           const elsewhere = one<{ id: string }>(
-            yield* (yield* Database).execute(
-              sql`insert into tenants (slug, name) values ('other','O') returning id`,
-            ),
+            yield* runSql(sql`insert into tenants (slug, name) values ('other','O') returning id`),
           ).id
           return { first, second, elsewhere }
         }),
@@ -201,43 +223,26 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const database = yield* Database
           const below = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${f.root}, ${f.orgType}, 'Below', 'r.b', 1) returning id`),
           ).id
           const stored = one<{ placement_mode: string }>(
-            yield* database.execute(
-              sql`select placement_mode from user_types where id = ${f.systemType}`,
-            ),
+            yield* runSql(sql`select placement_mode from user_types where id = ${f.systemType}`),
           ).placement_mode
           const system = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               values (${f.tenant}, 'System', ${f.systemType}, ${f.root}) returning id`),
           ).id
           // the predicate the writes decide by, asked of the node below: a
           // system identity standing there would be illegal, so retyping that
           // node is what the scan reports
-          const legalAtRoot = one<{ legal: boolean }>(
-            yield* database.execute(sql`
-              select ${placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)} as legal
-              from users u
-              join user_types t on t.id = u.user_type_id
-              join org_nodes n on n.id = u.primary_org_node_id
-              where u.id = ${system}`),
-          ).legal
-          yield* database.execute(sql`
+          const legalAtRoot = yield* legalFor(system)
+          yield* runSql(sql`
             update users set primary_org_node_id = ${below} where id = ${system}`)
-          const legalBelow = one<{ legal: boolean }>(
-            yield* database.execute(sql`
-              select ${placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)} as legal
-              from users u
-              join user_types t on t.id = u.user_type_id
-              join org_nodes n on n.id = u.primary_org_node_id
-              where u.id = ${system}`),
-          ).legal
+          const legalBelow = yield* legalFor(system)
           return { stored, legalAtRoot, legalBelow }
         }),
       )
@@ -279,10 +284,10 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
             })
           const first = yield* page()
           const last = first.at(-1)!
-          const next = yield* page([last.display_name, last.id])
+          const next = yield* page([last.displayName, last.id])
           return {
-            first: first.map((row) => row.display_name),
-            next: next.map((row) => row.display_name),
+            first: first.map((row) => row.displayName),
+            next: next.map((row) => row.displayName),
           }
         }),
       )
@@ -306,18 +311,17 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const database = yield* Database
           const second = yield* iam.users.create(
             f.tenant,
             { displayName: 'Second admin', userTypeId: f.staff, primaryOrgNodeId: f.root },
             f.principal,
           )
           const adminRole = one<{ id: string }>(
-            yield* database.execute(
+            yield* runSql(
               sql`select id from roles where tenant_id = ${f.tenant} and system_key is not null`,
             ),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id)
             values (${f.tenant}, ${second}, ${adminRole})`)
           const disable = (userId: string) =>
@@ -326,7 +330,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
             concurrency: 2,
           })
           const alive = one<{ count: number }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               select count(*)::int as count from users u
               join role_grants g on g.tenant_id = u.tenant_id and g.user_id = u.id
               where g.role_id = ${adminRole} and u.enabled`),

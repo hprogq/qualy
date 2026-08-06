@@ -59,10 +59,15 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     const url = new URL(baseUrl)
     url.pathname = `/${dbName}`
     pool = quietPool({ connectionString: url.href })
-    const { runMigrations } = (await import(
+    const { runMigrations, MIGRATIONS_FOLDER } = (await import(
       resolvePluginModuleUrl('@qualy/plugin-database/migrator')
     )) as typeof import('../../packages/plugins/infra/database/src/migrator.ts')
-    await runMigrations(pool)
+    // the aggregate the host runs on, so the lineage is applied against the
+    // same metadata the application would use
+    const { entities } = (await import('../../apps/server/entities.gen.ts')) as unknown as {
+      entities: Parameters<typeof runMigrations>[1]['entities']
+    }
+    await runMigrations(url.href, { folder: MIGRATIONS_FOLDER, entities })
   })
 
   afterAll(async () => {

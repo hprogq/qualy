@@ -1,8 +1,15 @@
-import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { sql } from 'kysely'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { authClosure } from './support/closure.ts'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
+import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
+import { authEntityManager } from '../src/server/db.ts'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -27,7 +34,7 @@ const stack = (url: string) =>
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url, { entities: authClosure }),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -40,19 +47,9 @@ const stack = (url: string) =>
         ),
       ),
     ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Orm | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -62,36 +59,35 @@ const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
 
 /** a tenant whose staff may only stand at a college, with one person at one */
 const seed = Effect.fn('seed')(function* () {
-  const db = yield* Database
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const tenant = one<{ id: string }>(
-    yield* db.execute(sql`insert into tenants (slug, name) values ('t', 'T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t', 'T') returning id`),
   ).id
   const collegeType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_types (tenant_id, code, name) values (${tenant}, 'college', 'College')
       returning id`),
   ).id
   const clubType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_types (tenant_id, code, name) values (${tenant}, 'club', 'Club')
       returning id`),
   ).id
   const node = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${collegeType}, 'Root', 'r', 0) returning id`),
   ).id
   const userType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant}, 'staff', 'Staff', true, 'allow-list') returning id`),
   ).id
   // staff may stand at a college and nowhere else
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
     values (${tenant}, ${userType}, ${collegeType})`)
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
     values (${tenant}, 'Ada', ${userType}, ${node})`)
   return { tenant, node, collegeType, clubType }
@@ -134,7 +130,7 @@ describe.runIf(postgresAvailable).concurrent('the placement port', () => {
     }
   })
 
-  it("counts a person the caller has moved but not committed", async () => {
+  it('counts a person the caller has moved but not committed', async () => {
     const db = await createTestContext('effect-placement-tx')
     try {
       const exit = await run(
@@ -142,22 +138,35 @@ describe.runIf(postgresAvailable).concurrent('the placement port', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const placement = yield* Placement
-          const database = yield* Database
           const outside = yield* placement.usersBlockingOrgType(f.tenant, f.node, f.clubType)
           // org's shape: write first, then ask. The question has to be about
           // rows the caller has changed, or a separate connection would answer
           // it identically and prove nothing. A second person moved to this
           // node inside the transaction must be counted.
-          const inside = yield* database.transaction((tx) =>
+          // the caller opens its transaction the way org does, which is what
+          // decides whether the port lands on the same connection
+          const inside = yield* transaction(
             Effect.gen(function* () {
-              const typeId = (
-                (yield* tx.execute(
-                  sql`select id from user_types where tenant_id = ${f.tenant} limit 1`,
-                )) as unknown as { rows: { id: string }[] }
-              ).rows[0]!.id
-              yield* tx.execute(sql`
-                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-                values (${f.tenant}, 'Grace', ${typeId}, ${f.node})`)
+              const em = yield* authEntityManager()
+              const type = yield* Effect.promise(() =>
+                kyselyOf(em)
+                  .selectFrom('UserType')
+                  .select('id')
+                  .where('tenantId', '=', f.tenant)
+                  .limit(1)
+                  .executeTakeFirstOrThrow(),
+              )
+              yield* Effect.promise(() =>
+                kyselyOf(em)
+                  .insertInto('User')
+                  .values({
+                    tenantId: f.tenant,
+                    displayName: 'Grace',
+                    userTypeId: type.id,
+                    primaryOrgNodeId: f.node,
+                  })
+                  .execute(),
+              )
               return yield* placement.usersBlockingOrgType(f.tenant, f.node, f.clubType)
             }),
           )
@@ -183,12 +192,9 @@ describe.runIf(postgresAvailable).concurrent('the placement port', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const database = yield* Database
           const before = yield* iam.placementViolations(f.tenant)
           // move the node under the person to a type their kind may not stand at
-          yield* database.execute(
-            sql`update org_nodes set org_type_id = ${f.clubType} where id = ${f.node}`,
-          )
+          yield* runSql(sql`update org_nodes set org_type_id = ${f.clubType} where id = ${f.node}`)
           return { before, after: yield* iam.placementViolations(f.tenant) }
         }),
       )

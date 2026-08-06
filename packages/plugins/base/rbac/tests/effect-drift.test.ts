@@ -1,8 +1,10 @@
-import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { sql } from 'kysely'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities as rbacEntities } from '../src/db/entities.ts'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '../src/server/index.ts'
@@ -19,19 +21,15 @@ const catalog = (target: 'tenant' | 'org-node'): readonly ActivePermission[] => 
   { code: 'demo.thing', name: 'Thing', target, plugin: 'demo' },
 ]
 
+// what the orm must know for a query to name a table
+const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
 const stack = (url: string, permissions: readonly ActivePermission[]) =>
   rbacLayer.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(databaseLayer, Layer.succeed(PermissionCatalog, permissions)),
-    ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
+      Layer.mergeAll(
+        databaseFor(url, { entities: closure }),
+        Layer.succeed(PermissionCatalog, permissions),
       ),
     ),
   )

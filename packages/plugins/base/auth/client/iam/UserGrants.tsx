@@ -6,6 +6,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
+import { GrantRoleForm } from './GrantRoleForm.tsx'
 
 // The grants one person holds. The api replaces the whole set in one
 // transaction, so this screen sends the set it wants rather than a sequence
@@ -14,7 +15,14 @@ import { iamMessages as m } from '../i18n.ts'
 // It reads access's own api directly. Both surfaces live under /iam and the
 // generated client is one object, so a user screen naming a grant endpoint
 // crosses no boundary the plugin graph cares about.
-export function UserGrants({ userId }: { userId: string }) {
+export function UserGrants({
+  userId,
+  nodes,
+}: {
+  userId: string
+  /** the org tree this caller may anchor a new grant in */
+  nodes: readonly { orgNodeId: string; name: string; depth: number; manageable: boolean }[]
+}) {
   const api = useApi()
   const run = useRunApi()
   const orpc = useApiQuery()
@@ -77,6 +85,7 @@ export function UserGrants({ userId }: { userId: string }) {
           </ul>
         )}
       </AsyncSection>
+      <GrantRoleForm userId={userId} nodes={nodes} />
     </Panel>
   )
 }

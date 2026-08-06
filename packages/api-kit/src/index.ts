@@ -39,7 +39,6 @@ export const QUALY_API_ID = 'qualy'
  */
 export const QUALY_API_PREFIX = '/api'
 
-
 // --- pagination ---
 
 // Keyset pagination, in the kit because the alternative is what every list

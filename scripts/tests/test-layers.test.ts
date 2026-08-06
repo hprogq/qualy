@@ -137,7 +137,7 @@ describe('assembly core', () => {
   })
 
   it('keeps the repository root out of the database toolchain', () => {
-    // The root used to carry drizzle-kit, drizzle-orm and the drizzle config
+    // The root used to carry the database toolchain and its config file
     // itself, which made every assembly a database assembly. What is left is
     // pinned rather than forbidden: the seed still writes rows through pg and
     // has no owning capability yet, so it keeps the driver, and a NEW database
@@ -278,7 +278,9 @@ describe('test layering', () => {
     // was relying on. Running belongs at the boundaries: the process entry,
     // the CLI, the browser's one runtime, and tests.
     const RUNS_EFFECTS = [
-      'apps/server/src/effect/main.ts',
+      // the process entry, and it runs exactly two: codegen with the
+      // application's own logger, and the application itself
+      'apps/server/src/main.ts',
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
       'packages/api-client/src/effect/query.ts',

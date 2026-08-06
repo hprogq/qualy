@@ -1,14 +1,14 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:9a81c728fab3b6f92537b47b30ad6f9fc5e73ae55b1a7dc8e9a7e2f85a19e332",
-  "resolutionHash": "sha256:4a7609a561a05d5304b85a2eb912256ffd2e1e0b546376535e8636b034c668e3",
+  "resolutionHash": "sha256:2cdfc1f1250f19ee4a07646f7cbdce089d0373b1946f7a4d9b7d1c49035a9188",
   "plugins": {
     "@qualy/plugin-auth": {
       "version": "0.0.0",
       "state": "active",
       "contributions": {
         "database": {
-          "schemaEntry": "src/db/schema.ts",
+          "entitiesEntry": "src/db/entities.ts",
           "dependsOn": [
             "@qualy/plugin-org"
           ]
@@ -32,7 +32,7 @@
       "state": "active",
       "contributions": {
         "database": {
-          "schemaEntry": "src/db/schema.ts",
+          "entitiesEntry": "src/db/entities.ts",
           "baselineDir": "db/baseline",
           "dependsOn": []
         }
@@ -43,7 +43,7 @@
       "state": "active",
       "contributions": {
         "database": {
-          "schemaEntry": "src/db/schema.ts",
+          "entitiesEntry": "src/db/entities.ts",
           "dependsOn": []
         }
       }
@@ -53,7 +53,7 @@
       "state": "active",
       "contributions": {
         "database": {
-          "schemaEntry": "src/db/schema.ts",
+          "entitiesEntry": "src/db/entities.ts",
           "dependsOn": [
             "@qualy/plugin-auth",
             "@qualy/plugin-org"

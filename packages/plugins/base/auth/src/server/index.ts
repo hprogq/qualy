@@ -1,8 +1,7 @@
-import { sql, type SQL } from 'drizzle-orm'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
-import { Database } from '@qualy/plugin-database/server'
+import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   DEFAULT_PAGE_SIZE,
@@ -13,17 +12,14 @@ import {
 } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
-import {
-  strandedByQuery,
-  usersBlockingOrgTypeQuery,
-  type UserRow as UserProjection,
-} from '../iam/queries.ts'
+
+import { placementViolations, usersBlockingOrgType } from './placement.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
 import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, CurrentUser } from './session.ts'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
-import { make as makeUsers } from './users.ts'
+import { make as makeUsers, type UserProjection } from './users.ts'
 import { Authenticated, Viewer, layer as sessionLayer, viewerLayer } from './session.ts'
 
 // auth as an Effect layer.
@@ -33,7 +29,7 @@ import { Authenticated, Viewer, layer as sessionLayer, viewerLayer } from './ses
 // travels in the fiber and there is nothing left to pass. `Iam` is auth's own
 // surface, which its handlers use and no peer does.
 //
-// Like rbac, this reads org's tables by raw SQL and never holds the org
+// Like rbac, this reads org's tables directly and never holds the org
 // service. Keeping it that way is what keeps the service graph acyclic.
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
@@ -49,15 +45,9 @@ export class Iam extends Context.Service<
 >()('@qualy/plugin-auth/Iam') {}
 
 export const make = Effect.fn('Auth.make')(function* () {
-  const database = yield* Database
+  const withDb = yield* withDatabase
   const userTypes = yield* makeUserTypes()
   const users = yield* makeUsers()
-
-  const countStranded = (query: SQL) =>
-    database.execute(query).pipe(
-      Effect.orDie,
-      Effect.map((result) => Number(rows<{ count: number }>(result)[0]?.count ?? 0)),
-    )
 
   return {
     placement: {
@@ -66,15 +56,12 @@ export const make = Effect.fn('Auth.make')(function* () {
       // transfer would. Called inside org's locked transaction, it joins that
       // transaction and therefore sees the retype that has not committed yet.
       usersBlockingOrgType: (tenantId: string, orgNodeId: string, orgTypeId: string) =>
-        countStranded(usersBlockingOrgTypeQuery(tenantId, orgNodeId, orgTypeId)),
+        withDb(usersBlockingOrgType(tenantId, orgNodeId, orgTypeId)),
     },
     iam: {
       // the same predicate every individual write is decided by, asked of
-      // every row at once. Written through strandedByQuery rather than spelled
-      // out again, because a second copy is how the rule starts answering two
-      // different things.
-      placementViolations: (tenantId: string) =>
-        countStranded(strandedByQuery(sql`u.tenant_id = ${tenantId}`, sql`n.org_type_id`)),
+      // every row at once
+      placementViolations: (tenantId: string) => withDb(placementViolations(tenantId)),
       userTypes,
       users,
     },
@@ -87,7 +74,7 @@ export const make = Effect.fn('Auth.make')(function* () {
  * One construction provides both tags, so the port org holds and the surface
  * auth's own handlers use come from the same state rather than two.
  */
-const tags: Layer.Layer<Placement | Iam, never, Database | Rbac> = Layer.effectContext(
+const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac> = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, iam } = yield* make()
     return Context.empty().pipe(Context.add(Placement, placement), Context.add(Iam, iam))
@@ -106,7 +93,7 @@ const tags: Layer.Layer<Placement | Iam, never, Database | Rbac> = Layer.effectC
 export const layer: Layer.Layer<
   Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
-  Database | Rbac | AuthConfig | LoginDrivers
+  Orm | Rbac | AuthConfig | LoginDrivers
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
 
 // --- api ---
@@ -120,24 +107,24 @@ export const layer: Layer.Layer<
  * an administrator the recovery account may stand anywhere while every write
  * refused anything but the root.
  */
-const placementModeOf = (row: { is_system: boolean; placement_mode: string }) =>
-  row.is_system ? ('tenant-root' as const) : (row.placement_mode as 'unrestricted' | 'allow-list')
+const placementModeOf = (row: { isSystem: boolean; placementMode: string }) =>
+  row.isSystem ? ('tenant-root' as const) : (row.placementMode as 'unrestricted' | 'allow-list')
 
 const toUserTypeDto = (row: UserTypeRow) => ({
   id: row.id,
   code: row.code,
   name: row.name,
   description: row.description,
-  allowLocalLogin: row.allow_local_login,
-  allowSsoLogin: row.allow_sso_login,
+  allowLocalLogin: row.allowLocalLogin,
+  allowSsoLogin: row.allowSsoLogin,
   status: row.enabled ? ('active' as const) : ('disabled' as const),
-  isSystem: row.is_system,
-  sortOrder: row.sort_order,
+  isSystem: row.isSystem,
+  sortOrder: row.sortOrder,
   version: row.version,
-  userCount: row.user_count,
+  userCount: row.userCount,
   placementPolicy:
     placementModeOf(row) === 'allow-list'
-      ? { mode: 'allow-list' as const, orgTypeIds: row.allowed_org_types }
+      ? { mode: 'allow-list' as const, orgTypeIds: row.allowedOrgTypes }
       : { mode: placementModeOf(row) as 'unrestricted' | 'tenant-root' },
 })
 
@@ -207,12 +194,12 @@ const requireUserRead = Effect.fn('iam.requireUserRead')(function* (principal: P
 
 const toUserDto = (row: UserProjection) => ({
   id: row.id,
-  businessNo: row.business_no,
-  displayName: row.display_name,
+  businessNo: row.businessNo,
+  displayName: row.displayName,
   status: row.enabled ? ('active' as const) : ('disabled' as const),
-  userType: { id: row.user_type_id, code: row.user_type_code, name: row.user_type_name },
-  primaryOrgNode: { id: row.primary_org_node_id, name: row.primary_org_node_name },
-  identityCount: row.identity_count,
+  userType: { id: row.userTypeId, code: row.userTypeCode, name: row.userTypeName },
+  primaryOrgNode: { id: row.primaryOrgNodeId, name: row.primaryOrgNodeName },
+  identityCount: row.identityCount,
   manageable: row.manageable,
 })
 
@@ -276,7 +263,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
           items: items.map(toUserDto),
           nextCursor:
             found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.display_name, last.id])
+              ? encodeQueryCursor(fingerprint, [last.displayName, last.id])
               : null,
         }
       }),
@@ -314,9 +301,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.user-type.read')
         return {
-          userType: toUserTypeDto(
-            yield* iam.userTypes.get(principal.tenantId, params.userTypeId),
-          ),
+          userType: toUserTypeDto(yield* iam.userTypes.get(principal.tenantId, params.userTypeId)),
         }
       }),
     )
@@ -412,10 +397,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const type = yield* iam.userTypes.get(principal.tenantId, params.userTypeId)
         const mode = placementModeOf(type)
         return {
-          policy:
-            mode === 'allow-list'
-              ? { mode, orgTypeIds: type.allowed_org_types }
-              : { mode },
+          policy: mode === 'allow-list' ? { mode, orgTypeIds: type.allowedOrgTypes } : { mode },
           version: type.version,
         }
       }),

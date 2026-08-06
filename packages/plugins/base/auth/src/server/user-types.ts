@@ -1,30 +1,11 @@
 import { Effect } from 'effect'
-import { Database } from '@qualy/plugin-database/server'
+import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
+import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
-import {
-  addAllowedOrgTypesQuery,
-  countOrgTypesQuery,
-  countUsersOfTypeQuery,
-  currentAllowedOrgTypesQuery,
-  insertUserTypeQuery,
-  orgTypeOptionsQuery,
-  seedAllowedOrgTypesQuery,
-  lockUserTypeQuery,
-  pruneAllowedOrgTypesQuery,
-  setPlacementModeQuery,
-  strandedByPolicyQuery,
-  uuidArrayLiteral,
-  lockTenantQuery,
-  oneUserType,
-  setUserTypeEnabledQuery,
-  updateUserTypeQuery,
-  deleteUserTypeQuery,
-  rolesStrandedByUserTypeQuery,
-  userTypeGuardQuery,
-  userTypesOfTenant,
-} from '../iam/queries.ts'
+import { authEntityManager, lockTenant, userTypeGuard, type AuthEntityManager } from './db.ts'
+import { strandedByPolicy } from './placement.ts'
 import {
   RecoveryChannelRequired,
   UserTypeInUse,
@@ -47,46 +28,267 @@ import {
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
-export interface UserTypeRow extends Record<string, unknown> {
-  id: string
-  code: string
-  name: string
-  description: string | null
-  allow_local_login: boolean
-  allow_sso_login: boolean
-  enabled: boolean
-  is_system: boolean
-  sort_order: number
-  version: number
-  placement_mode: string
-  user_count: number
-  allowed_org_types: string[]
+/**
+ * The ids, deduplicated, or nothing if any of them is not a uuid.
+ *
+ * A malformed id names no org type, which is the same answer as one that does
+ * not exist - and saying so here keeps a typo from reaching postgres as a cast
+ * error nobody declared.
+ */
+const uniqueUuids = (ids: readonly string[]): string[] | undefined => {
+  const unique = [...new Set(ids)]
+  const shaped = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return unique.some((id) => !shaped.test(id)) ? undefined : unique
 }
 
-interface GuardRow extends Record<string, unknown> {
-  id: string
-  code: string
-  enabled: boolean
-  is_system: boolean
-  version: number
-}
+/**
+ * A user type as an administrator sees it.
+ *
+ * The allowed org types come along because they are the whole of what a type
+ * decides: a type confers no authority, only where its holders may stand.
+ */
+const userTypeProjection = (em: AuthEntityManager) =>
+  kyselyOf(em)
+    .selectFrom('UserType as t')
+    .select((eb) => [
+      't.id',
+      't.code',
+      't.name',
+      't.description',
+      't.allowLocalLogin',
+      't.allowSsoLogin',
+      't.enabled',
+      't.isSystem',
+      't.sortOrder',
+      't.version',
+      't.placementMode',
+      sql<number>`(select count(*)::int from users u
+        where u.tenant_id = ${eb.ref('t.tenantId')} and u.user_type_id = ${eb.ref('t.id')})`.as(
+        'userCount',
+      ),
+      sql<string[]>`coalesce(
+        (select array_agg(a.org_type_id::text) from user_type_allowed_org_types a
+         where a.tenant_id = ${eb.ref('t.tenantId')} and a.user_type_id = ${eb.ref('t.id')}),
+        '{}')`.as('allowedOrgTypes'),
+    ])
+    .orderBy('t.sortOrder')
+    .orderBy('t.code')
+
+const userTypesOfTenant = (em: AuthEntityManager, tenantId: string) =>
+  query(() => userTypeProjection(em).where('t.tenantId', '=', tenantId).execute())
+
+const oneUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
+  query(() =>
+    userTypeProjection(em)
+      .where('t.tenantId', '=', tenantId)
+      .where('t.id', '=', userTypeId)
+      .executeTakeFirst(),
+  )
+
+/** what the projection returns, read off the query rather than restated */
+export type UserTypeRow = NonNullable<Effect.Success<ReturnType<typeof oneUserType>>>
+
+/** the type's own row, locked, with what a policy edit needs to decide */
+const lockUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('UserType')
+      .select(['id', 'version', 'isSystem', 'placementMode'])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userTypeId)
+      .forUpdate()
+      .executeTakeFirst(),
+  )
+
+const countUsersOfType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('User')
+      .select(sql<number>`count(*)::int`.as('count'))
+      .where('tenantId', '=', tenantId)
+      .where('userTypeId', '=', userTypeId)
+      .executeTakeFirst(),
+  ).pipe(
+    Effect.orDie,
+    Effect.map((row) => row?.count ?? 0),
+  )
+
+const insertUserType = (
+  em: AuthEntityManager,
+  input: {
+    tenantId: string
+    code: string
+    name: string
+    description: string | null
+    allowLocalLogin: boolean
+    allowSsoLogin: boolean
+    sortOrder: number
+    placementMode: 'unrestricted' | 'allow-list'
+  },
+) =>
+  query(() =>
+    kyselyOf(em).insertInto('UserType').values(input).returning('id').executeTakeFirstOrThrow(),
+  )
+
+const updateUserType = (
+  em: AuthEntityManager,
+  tenantId: string,
+  userTypeId: string,
+  fields: {
+    name?: string
+    description?: string | null
+    allowLocalLogin?: boolean
+    allowSsoLogin?: boolean
+    sortOrder?: number
+  },
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('UserType')
+      // only what the caller stated: a field left out keeps its value, and a
+      // description explicitly set to null is a caller clearing it rather than
+      // a caller saying nothing
+      .set((eb) => ({
+        ...(fields.name === undefined ? {} : { name: fields.name }),
+        ...(fields.description === undefined ? {} : { description: fields.description }),
+        ...(fields.allowLocalLogin === undefined
+          ? {}
+          : { allowLocalLogin: fields.allowLocalLogin }),
+        ...(fields.allowSsoLogin === undefined ? {} : { allowSsoLogin: fields.allowSsoLogin }),
+        ...(fields.sortOrder === undefined ? {} : { sortOrder: fields.sortOrder }),
+        version: eb('version', '+', 1),
+        updatedAt: sql<Date>`now()`,
+      }))
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userTypeId)
+      .execute(),
+  )
+
+const setUserTypeEnabled = (
+  em: AuthEntityManager,
+  tenantId: string,
+  userTypeId: string,
+  enabled: boolean,
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('UserType')
+      .set((eb) => ({ enabled, version: eb('version', '+', 1), updatedAt: sql<Date>`now()` }))
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userTypeId)
+      .execute(),
+  )
+
+const setPlacementMode = (
+  em: AuthEntityManager,
+  tenantId: string,
+  userTypeId: string,
+  mode: 'unrestricted' | 'allow-list',
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('UserType')
+      .set((eb) => ({
+        placementMode: mode,
+        version: eb('version', '+', 1),
+        updatedAt: sql<Date>`now()`,
+      }))
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userTypeId)
+      .execute(),
+  )
+
+const deleteUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .deleteFrom('UserType')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userTypeId)
+      .execute(),
+  )
+
+/**
+ * The org types a user type screen picks from.
+ *
+ * Its own endpoint rather than the role screen's, so stating where a kind of
+ * person may stand needs no permission over roles.
+ */
+const orgTypeOptions = (em: AuthEntityManager, tenantId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgType')
+      .select(['id', 'code', 'name'])
+      .where('tenantId', '=', tenantId)
+      .orderBy('name')
+      .execute(),
+  )
+
+const countOrgTypes = (em: AuthEntityManager, tenantId: string, ids: readonly string[]) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgType')
+      .select(sql<number>`count(*)::int`.as('count'))
+      .where('tenantId', '=', tenantId)
+      .where('id', 'in', ids)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row?.count ?? 0))
+
+const currentAllowedOrgTypes = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('UserTypeAllowedOrgType')
+      .select('orgTypeId')
+      .where('tenantId', '=', tenantId)
+      .where('userTypeId', '=', userTypeId)
+      .execute(),
+  )
+
+const addAllowedOrgTypes = (
+  em: AuthEntityManager,
+  tenantId: string,
+  userTypeId: string,
+  ids: readonly string[],
+) =>
+  query(() =>
+    kyselyOf(em)
+      .insertInto('UserTypeAllowedOrgType')
+      .values(ids.map((orgTypeId) => ({ tenantId, userTypeId, orgTypeId })))
+      .onConflict((conflict) => conflict.doNothing())
+      .execute(),
+  )
+
+/** everything this type allows that the new list does not */
+const pruneAllowedOrgTypes = (
+  em: AuthEntityManager,
+  tenantId: string,
+  userTypeId: string,
+  keep: readonly string[],
+) =>
+  query(() => {
+    const rest = kyselyOf(em)
+      .deleteFrom('UserTypeAllowedOrgType')
+      .where('tenantId', '=', tenantId)
+      .where('userTypeId', '=', userTypeId)
+    // an empty list keeps nothing, and `not in ()` is not sql
+    return (keep.length === 0 ? rest : rest.where('orgTypeId', 'not in', keep)).execute()
+  })
 
 export const make = Effect.fn('Iam.userTypes.make')(function* () {
-  const database = yield* Database
   const rbac = yield* Rbac
-
-  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
+  // the writes get their database from the transaction they open; a plain read
+  // opens nothing, so it is supplied here rather than left in the caller's
+  // requirements - what this builds is a service, and a service that demands
+  // the orm has handed the orm to everybody who calls it
+  const withDb = yield* withDatabase
 
   /** the type, with the version the caller expected still holding */
   const guard = Effect.fn('Iam.userTypes.guard')(function* (
-    tx: Tx,
     tenantId: string,
     userTypeId: string,
     expectedVersion: number,
   ) {
-    const row = rows<GuardRow>(
-      yield* tx.execute(userTypeGuardQuery(tenantId, userTypeId)).pipe(Effect.orDie),
-    )[0]
+    const em = yield* authEntityManager()
+    const row = yield* userTypeGuard(em, tenantId, userTypeId).pipe(Effect.orDie)
     if (!row) return yield* new UserTypeNotFound()
     if (row.version !== expectedVersion) {
       // the current version travels with the refusal so a client can re-read
@@ -96,28 +298,19 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     return row
   })
 
-  const write = <A, E>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E>) =>
-    database
-      .transaction((tx) =>
+  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
-          yield* tx.execute(lockTenantQuery(tenantId))
-          return yield* body(tx)
+          const em = yield* authEntityManager()
+          yield* lockTenant(em, tenantId)
+          return yield* body()
         }),
-      )
-      .pipe(
-        translateConstraints(userTypeConstraints),
-        Effect.catchTag(['SqlError', 'EffectDrizzleQueryError'], (error) => Effect.die(error)),
-      )
-
-  const countHolders = (tx: Tx, tenantId: string, userTypeId: string) =>
-    tx
-      .execute(countUsersOfTypeQuery(tenantId, userTypeId))
-      .pipe(Effect.orDie, Effect.map((r) => rows<{ count: number }>(r)[0]!.count))
-
-  const stranded = (tx: Tx, tenantId: string, userTypeId: string) =>
-    tx
-      .execute(strandedByPolicyQuery(tenantId, userTypeId))
-      .pipe(Effect.orDie, Effect.map((r) => rows<{ count: number }>(r)[0]!.count))
+      ),
+    ).pipe(
+      translateConstraints(userTypeConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
 
   return {
     /**
@@ -137,36 +330,31 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
         allowSsoLogin?: boolean
         sortOrder?: number
         placementPolicy:
-          | { mode: 'unrestricted' }
-          | { mode: 'allow-list'; orgTypeIds: readonly string[] }
+          { mode: 'unrestricted' } | { mode: 'allow-list'; orgTypeIds: readonly string[] }
       },
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
+          const em = yield* authEntityManager()
           const policy = input.placementPolicy
-          const id = rows<{ id: string }>(
-            yield* tx.execute(
-              insertUserTypeQuery({
-                tenantId,
-                code: input.code,
-                name: input.name,
-                description: input.description ?? null,
-                allowLocalLogin: input.allowLocalLogin ?? false,
-                allowSsoLogin: input.allowSsoLogin ?? false,
-                sortOrder: input.sortOrder ?? 0,
-                placementMode: policy.mode,
-              }),
-            ),
-          )[0]!.id
+          const { id } = yield* insertUserType(em, {
+            tenantId,
+            code: input.code,
+            name: input.name,
+            description: input.description ?? null,
+            allowLocalLogin: input.allowLocalLogin ?? false,
+            allowSsoLogin: input.allowSsoLogin ?? false,
+            sortOrder: input.sortOrder ?? 0,
+            placementMode: policy.mode,
+          })
           if (policy.mode === 'allow-list') {
-            const wanted = [...new Set(policy.orgTypeIds)]
-            const literal = uuidArrayLiteral(wanted)
-            if (!literal) return yield* new UserTypeOrgTypeNotFound()
-            const found = rows<{ count: number }>(
-              yield* tx.execute(countOrgTypesQuery(tenantId, literal.sql)),
-            )[0]!.count
-            if (found !== literal.ids.length) return yield* new UserTypeOrgTypeNotFound()
-            yield* tx.execute(seedAllowedOrgTypesQuery(tenantId, id, literal.sql))
+            const wanted = uniqueUuids(policy.orgTypeIds)
+            if (!wanted) return yield* new UserTypeOrgTypeNotFound()
+            if (wanted.length > 0) {
+              const found = yield* countOrgTypes(em, tenantId, wanted)
+              if (found !== wanted.length) return yield* new UserTypeOrgTypeNotFound()
+              yield* addAllowedOrgTypes(em, tenantId, id, wanted)
+            }
           }
           return id
         }),
@@ -180,26 +368,30 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
      * of person may stand needs no permission over roles.
      */
     orgTypeOptions: (tenantId: string) =>
-      database
-        .execute(orgTypeOptionsQuery(tenantId))
-        .pipe(
-          Effect.orDie,
-          Effect.map((result) => rows<{ id: string; code: string; name: string }>(result)),
-        ),
+      withDb(
+        Effect.gen(function* () {
+          const em = yield* authEntityManager()
+          return yield* orgTypeOptions(em, tenantId).pipe(Effect.orDie)
+        }).pipe(Effect.withSpan('Iam.userTypes.orgTypeOptions')),
+      ),
 
-    list: Effect.fn('Iam.userTypes.list')(function* (tenantId: string) {
-      return rows<UserTypeRow>(
-        yield* database.execute(userTypesOfTenant(tenantId)).pipe(Effect.orDie),
-      )
-    }),
+    list: (tenantId: string) =>
+      withDb(
+        Effect.gen(function* () {
+          const em = yield* authEntityManager()
+          return yield* userTypesOfTenant(em, tenantId).pipe(Effect.orDie)
+        }).pipe(Effect.withSpan('Iam.userTypes.list')),
+      ),
 
-    get: Effect.fn('Iam.userTypes.get')(function* (tenantId: string, userTypeId: string) {
-      const row = rows<UserTypeRow>(
-        yield* database.execute(oneUserType(tenantId, userTypeId)).pipe(Effect.orDie),
-      )[0]
-      if (!row) return yield* new UserTypeNotFound()
-      return row
-    }),
+    get: (tenantId: string, userTypeId: string) =>
+      withDb(
+        Effect.gen(function* () {
+          const em = yield* authEntityManager()
+          const row = yield* oneUserType(em, tenantId, userTypeId).pipe(Effect.orDie)
+          if (!row) return yield* new UserTypeNotFound()
+          return row
+        }).pipe(Effect.withSpan('Iam.userTypes.get')),
+      ),
 
     update: Effect.fn('Iam.userTypes.update')(function* (
       tenantId: string,
@@ -213,9 +405,9 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       },
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const type = yield* guard(tx, tenantId, userTypeId, expectedVersion)
+          const type = yield* guard(tenantId, userTypeId, expectedVersion)
           // the system account keeps password sign-in. The generic survivor
           // invariant cannot protect it: that check is satisfied by any open
           // channel, so closing local login while sso is nominally allowed
@@ -223,7 +415,8 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           if (fields.allowLocalLogin === false && type.code === SYSTEM_ACCOUNT_USER_TYPE) {
             return yield* new RecoveryChannelRequired()
           }
-          yield* tx.execute(updateUserTypeQuery(tenantId, type.id, fields))
+          const em = yield* authEntityManager()
+          yield* updateUserType(em, tenantId, type.id, fields)
           // closing a sign-in channel can lock a tenant out just as surely as
           // disabling the people who use it, and this runs after the write so
           // it reads the state being committed rather than predicting it
@@ -241,21 +434,22 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       enabled: boolean,
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const type = yield* guard(tx, tenantId, userTypeId, expectedVersion)
+          const type = yield* guard(tenantId, userTypeId, expectedVersion)
           // asking for the state it is already in is not an edit, so it
           // neither spends a version nor invalidates another edit in flight
           if (type.enabled === enabled) return type.version
+          const em = yield* authEntityManager()
           if (!enabled) {
             // Disabling a type people still hold is refused outright. It used
             // to be allowed and did two wrong things at once: it revoked
             // sign-in for every holder without ending a single session, so
             // re-enabling handed those sessions straight back.
-            const inUse = yield* countHolders(tx, tenantId, type.id)
+            const inUse = yield* countUsersOfType(em, tenantId, type.id)
             if (inUse > 0) return yield* new UserTypeInUse({ userCount: inUse })
           }
-          yield* tx.execute(setUserTypeEnabledQuery(tenantId, type.id, enabled))
+          yield* setUserTypeEnabled(em, tenantId, type.id, enabled)
           return type.version + 1
         }),
       )
@@ -275,56 +469,46 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       policy: { mode: 'unrestricted' | 'allow-list'; orgTypeIds: readonly string[] },
       expectedVersion: number,
     ) {
-      const wanted = policy.mode === 'allow-list' ? [...new Set(policy.orgTypeIds)] : []
-      // a malformed id names no org type, which is the same answer as one
-      // that does not exist
-      const literal = uuidArrayLiteral(wanted)
-      if (!literal) return yield* new UserTypeOrgTypeNotFound()
-      const list = literal.sql
+      const wanted = uniqueUuids(policy.mode === 'allow-list' ? policy.orgTypeIds : [])
+      if (!wanted) return yield* new UserTypeOrgTypeNotFound()
 
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const type = rows<{
-            id: string
-            version: number
-            is_system: boolean
-            placement_mode: string
-          }>(yield* tx.execute(lockUserTypeQuery(tenantId, userTypeId)))[0]
+          const em = yield* authEntityManager()
+          const type = yield* lockUserType(em, tenantId, userTypeId)
           if (!type) return yield* new UserTypeNotFound()
           // every other part of a system type is frozen; this one was the way in
-          if (type.is_system) return yield* new UserTypeIsSystem()
+          if (type.isSystem) return yield* new UserTypeIsSystem()
           if (type.version !== expectedVersion) {
             return yield* new UserTypeVersionConflict({ currentVersion: type.version })
           }
 
           if (wanted.length > 0) {
-            const found = rows<{ count: number }>(
-              yield* tx.execute(countOrgTypesQuery(tenantId, list)),
-            )[0]!.count
+            const found = yield* countOrgTypes(em, tenantId, wanted)
             if (found !== wanted.length) return yield* new UserTypeOrgTypeNotFound()
           }
 
-          const current = rows<{ org_type_id: string }>(
-            yield* tx.execute(currentAllowedOrgTypesQuery(tenantId, type.id)),
-          ).map((row) => row.org_type_id)
+          const current = (yield* currentAllowedOrgTypes(em, tenantId, type.id)).map(
+            (row) => row.orgTypeId,
+          )
           // an unchanged policy is not an edit, so it spends no version and
           // does not invalidate another edit against this row
           const unchanged =
-            type.placement_mode === policy.mode &&
+            type.placementMode === policy.mode &&
             current.length === wanted.length &&
             wanted.every((id) => current.includes(id))
           if (unchanged) return type.version
 
-          yield* tx.execute(pruneAllowedOrgTypesQuery(tenantId, type.id, list))
+          yield* pruneAllowedOrgTypes(em, tenantId, type.id, wanted)
           if (wanted.length > 0) {
-            yield* tx.execute(addAllowedOrgTypesQuery(tenantId, type.id, list))
+            yield* addAllowedOrgTypes(em, tenantId, type.id, wanted)
           }
-          yield* tx.execute(setPlacementModeQuery(tenantId, type.id, policy.mode))
+          yield* setPlacementMode(em, tenantId, type.id, policy.mode)
 
           // After the write, against the state that would result, and
           // UNCONDITIONALLY. The old code only looked when the new list was
           // non-empty, so clearing it entirely skipped the check outright.
-          const left = yield* stranded(tx, tenantId, type.id)
+          const left = yield* strandedByPolicy(tenantId, type.id)
           if (left > 0) return yield* new UserTypePlacementInUse({ userCount: left })
           return type.version + 1
         }),
@@ -336,23 +520,22 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       userTypeId: string,
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const type = yield* guard(tx, tenantId, userTypeId, expectedVersion)
-          if (type.is_system || type.code === SYSTEM_ACCOUNT_USER_TYPE) {
+          const type = yield* guard(tenantId, userTypeId, expectedVersion)
+          if (type.isSystem || type.code === SYSTEM_ACCOUNT_USER_TYPE) {
             return yield* new UserTypeIsSystem()
           }
-          const inUse = yield* countHolders(tx, tenantId, type.id)
+          const em = yield* authEntityManager()
+          const inUse = yield* countUsersOfType(em, tenantId, type.id)
           if (inUse > 0) return yield* new UserTypeInUse({ userCount: inUse })
           // eligibility rows cascade with the type, which would silently empty
           // a role's allowed set and leave that role assignable to nobody.
-          // Asked of every kind of role, because a tenant role declares who
-          // may hold it too.
-          const stranded = rows<{ count: number }>(
-            yield* tx.execute(rolesStrandedByUserTypeQuery(tenantId, type.id)),
-          )[0]!.count
+          // Asked of rbac rather than read here: they are its tables, and it
+          // answers on this transaction because the connection is in the fiber
+          const stranded = yield* rbac.rolesStrandedByUserType(tenantId, type.id)
           if (stranded > 0) return yield* new UserTypeLastForRole({ roleCount: stranded })
-          yield* tx.execute(deleteUserTypeQuery(tenantId, type.id))
+          yield* deleteUserType(em, tenantId, type.id)
         }),
       )
     }),

@@ -47,7 +47,7 @@ web-runtime
 
 | 类别              | 当前包                                                           |
 | ----------------- | ---------------------------------------------------------------- |
-| 可部署应用        | `app`、`apps/web`                                                |
+| 可部署应用        | `app`、`apps/ web`                                               |
 | 装配编译器        | `assembly`、`assembly-contract`                                  |
 | API 基础设施      | `api`、`api-kit`、`api-client`、`api-contract`                   |
 | 跨插件端口/纯模型 | `auth-contract`、`rbac-contract`、`ui-contract`、`i18n-contract` |

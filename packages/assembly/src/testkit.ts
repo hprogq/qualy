@@ -40,6 +40,10 @@ export interface ManifestOptions {
 export interface SyntheticPackage {
   id: string
   qualy?: unknown
+  /** extra files, keyed by package-relative path, written before resolution */
+  files?: Record<string, string>
+  /** extra export subpaths, for declarations a capability checks against them */
+  exports?: Record<string, string>
 }
 
 // anchored at this module rather than at the cwd, so a suite run from
@@ -104,11 +108,21 @@ export function createWorkspace(
   for (const entry of options.synthetic ?? []) {
     const at = path.join(modules, ...entry.id.split('/'))
     fs.mkdirSync(at, { recursive: true })
+    const exports = {
+      '.': './index.js',
+      './package.json': './package.json',
+      ...entry.exports,
+    }
     fs.writeFileSync(
       path.join(at, 'package.json'),
-      `${JSON.stringify({ name: entry.id, version: '0.0.0', type: 'module', exports: { '.': './index.js', './package.json': './package.json' }, qualy: entry.qualy }, null, 2)}\n`,
+      `${JSON.stringify({ name: entry.id, version: '0.0.0', type: 'module', exports, qualy: entry.qualy }, null, 2)}\n`,
     )
     fs.writeFileSync(path.join(at, 'index.js'), 'export const name = "synthetic"\n')
+    for (const [file, body] of Object.entries(entry.files ?? {})) {
+      const target = path.join(at, file)
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.writeFileSync(target, body)
+    }
   }
 
   const manifestPath = path.join(dir, 'qualy.yml')

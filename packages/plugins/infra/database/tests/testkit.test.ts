@@ -1,5 +1,4 @@
 import { Effect, Exit, Scope } from 'effect'
-import { sql } from 'drizzle-orm'
 import { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, pgCode, postgresAvailable } from '../src/testkit.ts'
@@ -26,10 +25,10 @@ const scratchDatabases = async () => {
 }
 
 describe.runIf(postgresAvailable)('database testkit', () => {
-  it('reads the sqlstate through the wrapper drizzle puts around it', async () => {
+  it('reads the sqlstate through the wrappers around it', async () => {
     const db = await createTestContext('testkit-sqlstate')
     try {
-      // drizzle raises its own error and hangs the driver's on cause, so a
+      // the orm raises its own error and hangs the driver's below it, so a
       // reader that only looks at the top level returns undefined and the
       // assertion it feeds stops being an assertion
       const refused = db.query(
@@ -47,9 +46,9 @@ describe.runIf(postgresAvailable)('database testkit', () => {
   it('binds an array as one parameter rather than an inline list', async () => {
     const db = await createTestContext('testkit-array')
     try {
-      // drizzle expands a bare array into `(a, b)`, which turns any(...) into
-      // a record cast postgres refuses; the harness binds through a param so
-      // a suite can keep writing the statement the driver accepts
+      // a bare array must reach the driver as one value: expanded into an
+      // inline `(a, b)` list it turns any(...) into a record cast postgres
+      // refuses, which is what the previous template-based harness did
       const ids = ['019fca00-0000-7000-8000-000000000001', '019fca00-0000-7000-8000-000000000002']
       const counted = await db.row<{ count: number }>(
         `select cardinality($1::uuid[])::int as count`,
@@ -71,9 +70,7 @@ describe.runIf(postgresAvailable)('database testkit', () => {
   it('refuses a statement that returned no row instead of handing back nothing', async () => {
     const db = await createTestContext('testkit-row')
     try {
-      await expect(
-        db.row(`select 1 where false`),
-      ).rejects.toThrow(/expected a row/)
+      await expect(db.row(`select 1 where false`)).rejects.toThrow(/expected a row/)
       // and still returns the row when there is one
       expect(await db.row<{ n: number }>(`select 1::int as n`)).toEqual({ n: 1 })
     } finally {

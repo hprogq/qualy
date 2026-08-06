@@ -43,16 +43,18 @@ export const sessionSecurity = HttpApiSecurity.apiKey({
   key: sessionCookieName,
 })
 
-export class Authenticated extends HttpApiMiddleware.Service<Authenticated, {
-  provides: CurrentUser
-}>()('@qualy/plugin-auth/Authenticated', {
+export class Authenticated extends HttpApiMiddleware.Service<
+  Authenticated,
+  {
+    provides: CurrentUser
+  }
+>()('@qualy/plugin-auth/Authenticated', {
   security: { session: sessionSecurity },
   // an array rather than a union: each member keeps its own status
   // annotation, and a union collapses them into one schema whose per-member
   // statuses are never read, which is a silent 500 for every declared failure
   error: [AuthRequired, SessionExpired],
 }) {}
-
 
 /**
  * Who the request is, when it is allowed not to be anyone.
@@ -79,8 +81,11 @@ export class CurrentViewer extends Context.Service<
  * an anonymous viewer - because this middleware's job is to say who is asking,
  * not whether they may. What they may see is the projection's decision.
  */
-export class Viewer extends HttpApiMiddleware.Service<Viewer, {
-  provides: CurrentViewer
-}>()('@qualy/plugin-auth/Viewer', {
+export class Viewer extends HttpApiMiddleware.Service<
+  Viewer,
+  {
+    provides: CurrentViewer
+  }
+>()('@qualy/plugin-auth/Viewer', {
   security: { session: sessionSecurity },
 }) {}

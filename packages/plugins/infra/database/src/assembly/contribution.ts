@@ -11,9 +11,16 @@ import type { ContributionInput } from '@qualy/assembly-contract'
 // the plugin that owns it.
 
 export interface DatabaseContribution {
-  /** the module whose named exports are this plugin's tables, enums and views */
-  schemaEntry?: string
-  /** directory of SQL fragments drizzle cannot derive, compiled into the lineage */
+  /**
+   * The module exporting this plugin's entity tuple, as `entities`.
+   *
+   * A tuple rather than an array on purpose - the aggregate's element types
+   * are what reach the query builder, and widening them makes every table name
+   * unusable without making anything fail here. The same module may export
+   * `compositeForeignKeys`, for the DDL entity metadata cannot declare.
+   */
+  entitiesEntry?: string
+  /** directory of SQL fragments no schema comparison can see, compiled into the lineage */
   baselineDir?: string
   /** plugins whose tables this plugin's schema references */
   dependsOn: string[]
@@ -26,7 +33,7 @@ const asRecord = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>
 }
 
-const KEYS = new Set(['schemaEntry', 'baselineDir', 'dependsOn'])
+const KEYS = new Set(['entitiesEntry', 'baselineDir', 'dependsOn'])
 
 export function parseDatabaseContribution(input: ContributionInput): DatabaseContribution {
   const where = `${input.pluginId}: qualy.contributions.database`
@@ -40,7 +47,7 @@ export function parseDatabaseContribution(input: ContributionInput): DatabaseCon
     if (!KEYS.has(key)) throw new Error(`${where}: unknown key ${key}`)
   }
 
-  const relative = (key: 'schemaEntry' | 'baselineDir'): string | undefined => {
+  const relative = (key: 'entitiesEntry' | 'baselineDir'): string | undefined => {
     const value = raw[key]
     if (value === undefined) return undefined
     if (typeof value !== 'string' || !value.trim()) {
@@ -65,7 +72,7 @@ export function parseDatabaseContribution(input: ContributionInput): DatabaseCon
   }
 
   return {
-    schemaEntry: relative('schemaEntry'),
+    entitiesEntry: relative('entitiesEntry'),
     baselineDir: relative('baselineDir'),
     dependsOn: [...(dependsOn as string[])].sort(),
   }
@@ -73,7 +80,7 @@ export function parseDatabaseContribution(input: ContributionInput): DatabaseCon
 
 /** whether this declaration means the plugin put something into a database */
 export const ownsObjects = (contribution: DatabaseContribution | undefined) =>
-  Boolean(contribution?.schemaEntry ?? contribution?.baselineDir)
+  Boolean(contribution?.entitiesEntry ?? contribution?.baselineDir)
 
 /**
  * The same question asked of a declaration that came back out of the lock.
@@ -84,5 +91,5 @@ export const ownsObjects = (contribution: DatabaseContribution | undefined) =>
 export const lockedOwnsObjects = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false
   const record = value as Partial<DatabaseContribution>
-  return typeof record.schemaEntry === 'string' || typeof record.baselineDir === 'string'
+  return typeof record.entitiesEntry === 'string' || typeof record.baselineDir === 'string'
 }

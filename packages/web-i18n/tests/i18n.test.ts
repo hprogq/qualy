@@ -83,9 +83,7 @@ describe('web i18n runtime', () => {
       'backend fallback message',
     )
     // a non-api throwable degrades to the generic message
-    expect(formatApiError({ oops: true }, formatter)).toBe(
-      formatter.format(unexpectedErrorMessage),
-    )
+    expect(formatApiError({ oops: true }, formatter)).toBe(formatter.format(unexpectedErrorMessage))
   })
 
   it('keeps every runtime message translated and compilable', () => {

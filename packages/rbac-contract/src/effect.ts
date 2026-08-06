@@ -127,6 +127,32 @@ export interface RbacShape {
     orgNodeId: string,
     orgTypeId: string,
   ) => Effect.Effect<readonly string[]>
+
+  /**
+   * How many roles would be left assignable to nobody if this user type went.
+   *
+   * Eligibility rows cascade with the type, which would silently empty a
+   * role's allowed set. Asked of every kind of role, because a tenant role
+   * declares who may hold it too: looking only at org roles once left a live
+   * tenant role behind with nobody eligible for it.
+   *
+   * Here rather than in auth because it is a question about roles. auth used
+   * to read these tables directly, which is a thing its entity closure now
+   * refuses to express.
+   */
+  readonly rolesStrandedByUserType: (tenantId: string, userTypeId: string) => Effect.Effect<number>
+
+  /**
+   * How many of a person's grants the new user type would not be eligible for.
+   *
+   * The canonical administrator is exempt, since its authority does not come
+   * from eligibility.
+   */
+  readonly grantsBlockingUserType: (
+    tenantId: string,
+    userId: string,
+    userTypeId: string,
+  ) => Effect.Effect<number>
 }
 
 export class Rbac extends Context.Service<Rbac, RbacShape>()('@qualy/rbac-contract/Rbac') {}

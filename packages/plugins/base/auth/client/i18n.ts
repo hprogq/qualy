@@ -85,6 +85,28 @@ const i18n = definePluginMessages({
       id: 'auth/users/grants-hint',
       defaultMessage: 'Only grants anchored where you administer are shown and editable.',
     },
+    grantAdd: { id: 'auth/users/grant-add', defaultMessage: 'Grant a role' },
+    grantScope: { id: 'auth/users/grant-scope', defaultMessage: 'Where it applies' },
+    grantScopeTenant: {
+      id: 'auth/users/grant-scope-tenant',
+      defaultMessage: 'The whole tenant',
+    },
+    grantScopeNode: {
+      id: 'auth/users/grant-scope-node',
+      defaultMessage: 'One organization node',
+    },
+    grantCoverage: { id: 'auth/users/grant-coverage', defaultMessage: 'Reach' },
+    grantCoverageSelf: { id: 'auth/users/grant-coverage-self', defaultMessage: 'That node only' },
+    grantCoverageSubtree: {
+      id: 'auth/users/grant-coverage-subtree',
+      defaultMessage: 'That node and everything under it',
+    },
+    grantRole: { id: 'auth/users/grant-role', defaultMessage: 'Role' },
+    grantRolesEmpty: {
+      id: 'auth/users/grant-roles-empty',
+      defaultMessage: 'No role you hold can be granted here.',
+    },
+    grantSubmit: { id: 'auth/action/grant', defaultMessage: 'Grant' },
     newUser: { id: 'auth/users/new', defaultMessage: 'New user' },
     newUserHint: {
       id: 'auth/users/new-hint',

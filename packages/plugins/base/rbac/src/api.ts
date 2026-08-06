@@ -304,7 +304,14 @@ export const accessApiGroup = HttpApiGroup.make('access')
       params: Schema.Struct({ roleId: id }),
       query: Schema.Struct({ version: Schema.String }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [RoleNotFound, RoleVersionConflict, RoleIsSystem, RoleInUse, RoleConflict, AccessDenied],
+      error: [
+        RoleNotFound,
+        RoleVersionConflict,
+        RoleIsSystem,
+        RoleInUse,
+        RoleConflict,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(
@@ -364,37 +371,27 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.delete('deleteRoleGrant', '/iam/role-grants/:grantId', {
       params: Schema.Struct({ grantId: id }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [
-        GrantNotFound,
-        RoleNotFound,
-        TenantAdminRequired,
-        LastAdministrator,
-        AccessDenied,
-      ],
+      error: [GrantNotFound, RoleNotFound, TenantAdminRequired, LastAdministrator, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     // why someone holds what they hold. Answering "allowed?" is easy; the
     // reason is what makes a wrong answer fixable, and what an audit needs
-    HttpApiEndpoint.get(
-      'getUserEffectivePermissions',
-      '/iam/users/:userId/effective-permissions',
-      {
-        params: Schema.Struct({ userId: id }),
-        query: Schema.Struct({ orgNodeId: Schema.optional(id) }),
-        success: Schema.Struct({
-          permissions: Schema.Array(
-            Schema.Struct({
-              code: Schema.String,
-              name: Schema.String,
-              target: permissionTarget,
-              sources: Schema.Array(permissionSourceShape),
-            }),
-          ),
-        }),
-        error: [GrantUserNotFound, GrantNodeNotFound, AccessDenied],
-      },
-    ).middleware(Authenticated),
+    HttpApiEndpoint.get('getUserEffectivePermissions', '/iam/users/:userId/effective-permissions', {
+      params: Schema.Struct({ userId: id }),
+      query: Schema.Struct({ orgNodeId: Schema.optional(id) }),
+      success: Schema.Struct({
+        permissions: Schema.Array(
+          Schema.Struct({
+            code: Schema.String,
+            name: Schema.String,
+            target: permissionTarget,
+            sources: Schema.Array(permissionSourceShape),
+          }),
+        ),
+      }),
+      error: [GrantUserNotFound, GrantNodeNotFound, AccessDenied],
+    }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.post('evaluateAccess', '/iam/access-evaluations', {

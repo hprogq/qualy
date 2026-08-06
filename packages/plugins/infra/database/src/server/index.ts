@@ -1,59 +1,63 @@
-import { PgClient } from '@effect/sql-pg'
-import * as PgDrizzle from 'drizzle-orm/effect-postgres'
-import { Context, Effect, Layer, Redacted } from 'effect'
-import type { SqlError } from 'effect/unstable/sql'
-import { sql as rawSql } from 'drizzle-orm'
-import { Pool } from 'pg'
+import { Effect, Layer, Redacted } from 'effect'
+import { sql as rawSql } from 'kysely'
+import { DatabaseConfig } from './config.ts'
+import {
+  Entities,
+  Orm,
+  QueryFailed,
+  entityManager,
+  kyselyOf,
+  layer as ormLayer,
+  query,
+} from './orm.ts'
 import { pendingMigrations, runMigrations } from '../migrator.ts'
 
 // The database as an Effect resource.
 //
-// The cordis service and this one describe the same thing and will not both
-// survive; while they coexist they share the migrator, so there is one
-// implementation of "apply the committed lineage" and not two.
-//
-// What changed in the translation is where the failures live. Under cordis a
-// missing migration, an unreachable server and a bad connection string were
-// all throws inside Service.init that nothing in the type system mentioned.
-// Here they are in the layer's error channel, so a composition that does not
-// deal with them does not compile.
+// Where the failures live is the whole difference from what came before. Under
+// cordis a missing migration, an unreachable server and a bad connection
+// string were all throws inside Service.init that nothing in the type system
+// mentioned. Here they are in the layer's error channel, so a composition that
+// does not deal with them does not compile.
 
-export type Db = Effect.Success<ReturnType<typeof PgDrizzle.makeWithDefaults>>
-
-export class Database extends Context.Service<Database, Db>()(
-  '@qualy/plugin-database/Database',
-) {}
+export { DatabaseConfig } from './config.ts'
+export {
+  Entities,
+  QualyNamingStrategy,
+  entityManager,
+  transaction,
+  query,
+  QueryFailed,
+  withDatabase,
+  kyselyOf,
+  type ClosureEntityManager,
+} from './orm.ts'
 
 /**
- * What the database needs to know, provided by whoever assembles the
- * application rather than read from the environment here.
+ * The ORM itself, as a type only.
  *
- * The plugin does not know where the assembly keeps its migrations, and
- * guessing from the working directory is how a process behaves differently
- * depending on where it was started.
+ * Deliberately not a value out here. Holding it means being able to call
+ * `orm.em.fork()`, which produces a manager bound to a pool connection - so a
+ * service inside a transaction could leave it without anything looking wrong,
+ * and the answer it gave would be about committed state. The layer's own type
+ * has to name this service, which a type export is enough for; asking for it
+ * with `yield*` is not.
  */
-export class DatabaseConfig extends Context.Service<
-  DatabaseConfig,
-  {
-    readonly url: Redacted.Redacted
-    /** 'apply' runs the committed lineage during startup; 'off' refuses to start behind it */
-    readonly migrations: 'apply' | 'off'
-    /** absolute path to the lineage this assembly deploys */
-    readonly migrationsFolder: string
-  }
->()('@qualy/plugin-database/DatabaseConfig') {}
+export type { Orm } from './orm.ts'
 
 /**
  * Does the database still answer?
  *
- * Exported so a readiness probe can ask without reaching through the ORM: the
- * composition root should not have to depend on drizzle to find out whether
- * the plugin that owns the connection is healthy.
+ * A value rather than a function, and it names `Orm` in its requirement, which
+ * is the whole reason it can be exported at all: a readiness handler takes it
+ * while its group is built, inside the composition that already has the ORM.
+ * `Orm` being type-only stops the composition root holding one, not from a
+ * layer built over this plugin's asking for it.
  */
-export const ping = Effect.fn('Database.ping')(function* () {
-  const database = yield* Database
-  yield* database.execute(rawSql`select 1`)
-})
+export const ping: Effect.Effect<void, QueryFailed, Orm> = Effect.gen(function* () {
+  const em = yield* entityManager<readonly []>()
+  yield* query(() => rawSql`select 1`.execute(kyselyOf(em)))
+}).pipe(Effect.withSpan('Database.ping'))
 
 export class MigrationsBehind extends Error {
   readonly _tag = 'MigrationsBehind'
@@ -68,63 +72,39 @@ export class MigrationsBehind extends Error {
  * Bring the database to the state this assembly expects, before anything that
  * depends on it is built.
  *
- * A pool is borrowed for the duration rather than taken from the client,
- * because this runs before the client exists: the point is to fail assembly
- * rather than to serve traffic against a schema that is a version behind.
+ * The migrator opens a connection of its own rather than borrowing the
+ * application's, because this runs before the application's exists: the point
+ * is to fail assembly rather than to serve traffic against a schema that is a
+ * version behind.
  */
 const prepare = Effect.fn('Database.prepare')(function* () {
   const config = yield* DatabaseConfig
+  const entities = yield* Entities
+  const options = { folder: config.migrationsFolder, entities }
   const url = Redacted.value(config.url)
-  const folder = config.migrationsFolder
-  yield* Effect.acquireUseRelease(
-    Effect.sync(() => new Pool({ connectionString: url })),
-    (pool) =>
-      Effect.gen(function* () {
-        if (config.migrations === 'apply') {
-          const { applied, elapsed } = yield* Effect.promise(() =>
-            runMigrations(pool, { folder }),
-          )
-          yield* Effect.logInfo(
-            applied > 0
-              ? `applied ${applied} migration(s) (${elapsed}ms)`
-              : `migrations up to date (${elapsed}ms)`,
-          )
-          return
-        }
-        // Refuse to start against a database the deployment job has not
-        // brought up to date. Without this the process comes up on a stale
-        // schema and fails later as missing columns, far from the cause.
-        const pending = yield* Effect.promise(() => pendingMigrations(pool, { folder }))
-        if (pending > 0) return yield* Effect.fail(new MigrationsBehind(pending))
-        yield* Effect.logInfo('migration execution disabled, schema is up to date')
-      }),
-    (pool) => Effect.promise(() => pool.end()),
-  )
+  if (config.migrations === 'apply') {
+    const { applied, elapsed } = yield* Effect.promise(() => runMigrations(url, options))
+    return yield* Effect.logInfo(
+      applied > 0
+        ? `applied ${applied} migration(s) (${elapsed}ms)`
+        : `migrations up to date (${elapsed}ms)`,
+    )
+  }
+  // Refuse to start against a database the deployment job has not brought up
+  // to date. Without this the process comes up on a stale schema and fails
+  // later as missing columns, far from the cause.
+  const pending = yield* Effect.promise(() => pendingMigrations(url, options))
+  if (pending > 0) return yield* Effect.fail(new MigrationsBehind(pending))
+  yield* Effect.logInfo('migration execution disabled, schema is up to date')
 })
 
 /**
- * The database, ready to be used.
+ * Everything this plugin owns.
  *
- * `Layer.effect` supplies and then strips the Scope, so the pool's finalizer is
- * tied to this layer's lifetime and nothing leaks into its type.
+ * The lineage is applied before the ORM exists, not beside it: a layer built
+ * side by side would let queries run against a schema still being brought up
+ * to date.
  */
-export const layer: Layer.Layer<
-  Database,
-  SqlError.SqlError | MigrationsBehind,
-  DatabaseConfig
-> = Layer.effect(
-  Database,
-  Effect.gen(function* () {
-    yield* prepare()
-    return yield* PgDrizzle.makeWithDefaults()
-  }),
-).pipe(
-  Layer.provide(
-    Layer.unwrap(
-      Effect.gen(function* () {
-        const config = yield* DatabaseConfig
-        return PgClient.layer({ url: config.url })
-      }),
-    ),
-  ),
+export const layer: Layer.Layer<Orm, MigrationsBehind, DatabaseConfig | Entities> = ormLayer.pipe(
+  Layer.provideMerge(Layer.effectDiscard(prepare())),
 )

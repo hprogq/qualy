@@ -12,7 +12,7 @@ import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import provider, { type DatabaseContribution, type DatabaseState } from '../src/assembly/index.ts'
 import { collectBaseline, compiledBaseline, pendingBaseline } from '../src/assembly/baseline.ts'
-import { schemaEntries } from '../src/assembly/schema.ts'
+import { entityContributions } from '../src/assembly/entities.ts'
 import { allMigrationFiles, scanDestructive } from '../src/assembly/drop-guard.ts'
 import { guardDestructive } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
@@ -21,10 +21,10 @@ import { asState } from '../src/assembly/state.ts'
 // nothing and deploy it?
 //
 // Adding a plugin on top of the migrations already committed proved only that
-// drizzle can diff against them. Starting from an empty migrations directory is
+// the generator can build a schema from them. Starting from an empty migrations directory is
 // a different question, and the answer was no for every selection tried,
 // including the default one: `CREATE EXTENSION ltree` lived in a hand-written
-// host migration, drizzle-kit reproduces tables and nothing else, and org_nodes
+// host migration, a schema generator reproduces tables and nothing else, and org_nodes
 // cannot be created without the type that extension provides. The plugin that
 // needed it already said so in a comment, `-- owner: @qualy/plugin-org`; it
 // just had no way to carry it.
@@ -58,7 +58,7 @@ async function generateFromNothing(workspace: ReturnType<typeof createWorkspace>
 }
 
 describe('database contributions', () => {
-  it('carries the sql a plugin owns but drizzle cannot see', async () => {
+  it('carries the sql a plugin owns but no schema comparison can see', async () => {
     const workspace = workspaceFor([...INFRA, '@qualy/plugin-org'])
     try {
       const work = await context(workspace)
@@ -120,22 +120,23 @@ describe('database contributions', () => {
 
   it('aggregates the schema of plugins that are switched off or removed', async () => {
     // neither switching a plugin off nor taking it out of the manifest removes
-    // its tables, so neither may change what drizzle diffs against
+    // its tables, so neither may change what the declared schema is built from
     const selection = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-ping']
     const enabled = workspaceFor(selection)
     const disabled = workspaceFor(selection, { disabled: ['@qualy/plugin-ping'] })
     const removed = workspaceFor(selection)
     try {
-      // named by plugin, because every schema file is called src/db/schema.ts
-      // and comparing basenames would assert only how many there are
+      // named by plugin, because every entities file is called
+      // src/db/entities.ts and comparing basenames would assert only how many
+      // there are
       const of = async (workspace: ReturnType<typeof createWorkspace>) => {
         const work = await context(workspace)
-        return schemaEntries(work, asState(work.state)).map((file) =>
-          file.replace(/^.*\/packages\/plugins\//, ''),
+        return entityContributions(work, asState(work.state)).map((entry) =>
+          entry.file.replace(/^.*\/packages\/plugins\//, ''),
         )
       }
       const baseline = await of(enabled)
-      expect(baseline).toEqual(['base/org/src/db/schema.ts', 'demo/ping/src/db/schema.ts'])
+      expect(baseline).toEqual(['base/org/src/db/entities.ts', 'demo/ping/src/db/entities.ts'])
       expect(await of(disabled)).toEqual(baseline)
 
       await commitLock(removed)
@@ -184,7 +185,7 @@ describe('database dependency graph', () => {
   it('refuses a cycle and names the path', async () => {
     // tables are created in this order, so it has to exist
     const contribution = (dependsOn: string) => ({
-      contributions: { database: { schemaEntry: 'index.js', dependsOn: [dependsOn] } },
+      contributions: { database: { entitiesEntry: 'index.js', dependsOn: [dependsOn] } },
     })
     const cyclic = createWorkspace([...INFRA, '@fake/plugin-a', '@fake/plugin-b'], {
       configs: { '@qualy/plugin-database': { migrationsFolder: MIGRATIONS } },
@@ -208,14 +209,13 @@ describe('drop guard', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-guard-'))
     try {
       const write = (name: string, sql: string) => {
-        fs.mkdirSync(path.join(dir, name), { recursive: true })
-        const file = path.join(dir, name, 'migration.sql')
+        const file = path.join(dir, name)
         fs.writeFileSync(file, sql)
         return file
       }
-      const plain = write('0001_plain', 'CREATE TABLE a (id uuid);\n')
-      const destructive = write('0002_drop', 'DROP TABLE a;\n')
-      const approved = write('0003_ok', '-- destructive: approved\nDROP TABLE a;\n')
+      const plain = write('0001_plain.sql', 'CREATE TABLE a (id uuid);\n')
+      const destructive = write('0002_drop.sql', 'DROP TABLE a;\n')
+      const approved = write('0003_ok.sql', '-- destructive: approved\nDROP TABLE a;\n')
 
       expect(allMigrationFiles(dir).sort()).toEqual([plain, destructive, approved].sort())
       expect(scanDestructive([plain])).toEqual([])
@@ -242,7 +242,7 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       '@qualy/plugin-org',
       '@qualy/plugin-auth-local',
       '@qualy/plugin-layout-default',
-          ],
+    ],
   }
 
   for (const [name, plugins] of Object.entries(selections)) {
@@ -272,7 +272,7 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
   }
 
   it('keeps the tables of a detached plugin in the lineage', async () => {
-    // taking a plugin out of the manifest must not make drizzle see its tables
+    // taking a plugin out of the manifest must not make the generator see its tables
     // disappear, because the data is still there
     const selection = [...INFRA, '@qualy/plugin-org', '@qualy/plugin-ping']
     const workspace = workspaceFor(selection)
@@ -299,12 +299,8 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       await provider.generate!(work)
       const sql = fs
         .readdirSync(migrationsOf(workspace))
-        .filter((entry) =>
-          fs.existsSync(path.join(migrationsOf(workspace), entry, 'migration.sql')),
-        )
-        .map((entry) =>
-          fs.readFileSync(path.join(migrationsOf(workspace), entry, 'migration.sql'), 'utf8'),
-        )
+        .filter((entry) => entry.endsWith('.sql'))
+        .map((entry) => fs.readFileSync(path.join(migrationsOf(workspace), entry), 'utf8'))
         .join('\n')
       expect(sql).not.toMatch(/DROP TABLE/i)
     } finally {

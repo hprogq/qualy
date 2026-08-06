@@ -9,7 +9,6 @@ application:
   workspace: ./apps/server
 
 plugins:
-
   '@qualy/plugin-database':
     config:
       migrationsFolder: ./db/migrations

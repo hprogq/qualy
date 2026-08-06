@@ -1,16 +1,23 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { Pool } from 'pg'
 import { defineCapabilityProvider } from '@qualy/assembly-contract'
 import {
   lockedOwnsObjects,
   parseDatabaseContribution,
   type DatabaseContribution,
 } from './contribution.ts'
-import { databaseWork, drizzleKit, LOCAL_FALLBACK } from './drizzle.ts'
+import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
+import { collectBaseline } from './baseline.ts'
 import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
-import { generateDatabase, guardDestructive } from './generate.ts'
-import { runMigrations } from '../migrator.ts'
+import {
+  assertNoCollisions,
+  ENTITIES_MODULE,
+  entityContributions,
+  renderEntityModule,
+} from './entities.ts'
+import { diffAgainstDeclared, loadEntityModules } from './diff.ts'
+import { blankMigration, generateDatabase, guardDestructive } from './generate.ts'
+import { adoptMigrations, runMigrations } from '../migrator.ts'
 import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 
 // Everything the assembly knows about databases lives behind this one module.
@@ -18,7 +25,7 @@ import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 // The assembly core reaches it because @qualy/plugin-database's package.json
 // declares qualy.capabilityProvider, and it disappears the moment that plugin
 // leaves the manifest: an assembly of plugins that own no tables never loads
-// this file, never resolves a schema and never runs drizzle.
+// this file, never resolves a schema and never opens a database.
 //
 // Importing this module must stay free of side effects. It runs inside the
 // CLI, where there is no cordis context to attach to and nothing has agreed to
@@ -52,37 +59,76 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     return lines.length > 0 ? lines : [`${nextState.order.length} plugin(s) own objects`]
   },
 
+  // The host imports one tuple, not one import per plugin, and the tuple is
+  // what carries table names into the query builder. Derived on every codegen
+  // rather than committed: it is a function of the plugin set, and a stale one
+  // types queries against a schema this assembly does not have.
+  modules: (context) => {
+    const contributions = entityContributions(context, asState(context.state))
+    assertNoCollisions(contributions)
+    return [{ path: ENTITIES_MODULE, content: renderEntityModule(contributions) }]
+  },
+
   generate: generateDatabase,
 
   deploy: async (context) => {
     const work = databaseWork(context)
-    const pool = new Pool({ connectionString: work.url })
-    try {
-      const { applied, elapsed } = await runMigrations(pool, { folder: work.migrations })
-      console.log(
-        applied > 0
-          ? `database: applied ${applied} migration(s) (${elapsed}ms)`
-          : `database: migrations up to date (${elapsed}ms)`,
-      )
-    } finally {
-      await pool.end()
-    }
+    const modules = await loadEntityModules(work.entities)
+    const { applied, elapsed } = await runMigrations(work.url, {
+      folder: work.migrations,
+      entities: modules.flatMap((module) => [...module.entities]),
+    })
+    console.log(
+      applied > 0
+        ? `database: applied ${applied} migration(s) (${elapsed}ms)`
+        : `database: migrations up to date (${elapsed}ms)`,
+    )
   },
 
   commands: {
     // a lineage where two branches added a migration with the same prefix
     // applies in an order that depends on which one you checked out
     check: async (context) => {
-      console.log(drizzleKit(databaseWork(context), ['check']).trim())
+      const work = databaseWork(context)
+      assertDistinctPrefixes(work.migrations)
+      console.log('database: lineage ok')
     },
 
     // an empty migration for SQL that records one historical step, as opposed
     // to a baseline fragment, which states a plugin's current shape
     custom: async (context) => {
       const work = databaseWork(context)
-      const name = arg(context.args, 'name')
+      const file = blankMigration(work.migrations, arg(context.args, 'name'))
+      console.log(`database: ${path.relative(process.cwd(), file)}`)
+    },
+
+    // A database that already holds this schema but has no record of it: one
+    // that predates the ledger, or one whose lineage was squashed underneath
+    // it. Refused unless the schema actually matches, because a ledger written
+    // over a database that differs hides the difference rather than closing it.
+    adopt: async (context) => {
+      const work = databaseWork(context)
+      const modules = await loadEntityModules(work.entities)
+      const state = asState(context.state)
+      const difference = await diffAgainstDeclared(
+        work.url,
+        work.url,
+        modules,
+        collectBaseline(context, state),
+      )
+      if (difference.up.length > 0) {
+        throw new Error(
+          `database: this database is not the schema this assembly declares, so adopting the lineage would record something untrue. It differs by:\n  ${difference.up.join('\n  ')}`,
+        )
+      }
+      const adopted = await adoptMigrations(work.url, {
+        folder: work.migrations,
+        entities: modules.flatMap((module) => [...module.entities]),
+      })
       console.log(
-        drizzleKit(work, ['generate', '--custom', ...(name ? ['--name', name] : [])]).trim(),
+        adopted.length > 0
+          ? `database: adopted ${adopted.length} migration(s): ${adopted.join(', ')}`
+          : 'database: the lineage was already recorded as applied',
       )
     },
 
@@ -99,10 +145,6 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
         throw new Error(`database: there is no lineage at ${work.migrations} to scan`)
       }
       guardDestructive(allMigrationFiles(work.migrations))
-    },
-
-    studio: async (context) => {
-      drizzleKit(databaseWork(context), ['studio'])
     },
 
     // where this assembly keeps its lineage, for scripts that need the path

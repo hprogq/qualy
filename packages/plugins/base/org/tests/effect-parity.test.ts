@@ -1,8 +1,16 @@
-import { sql } from 'drizzle-orm'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { sql } from 'kysely'
+import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, DatabaseConfig, layer as databaseLayer } from '@qualy/plugin-database/server'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '../src/db/entities.ts'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
+import { type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -22,13 +30,17 @@ const catalog: readonly ActivePermission[] = [
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
 ]
 
+// what the orm must know for a query to name a table: this suite runs auth and
+// rbac alongside org, so their tables are part of what the assembly serves
+const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
 const stack = (url: string) =>
   orgLayer.pipe(
     Layer.provideMerge(authLayer),
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseLayer,
+        databaseFor(url, { entities: closure }),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(
@@ -41,19 +53,9 @@ const stack = (url: string) =>
         ),
       ),
     ),
-    Layer.provide(
-      Layer.succeed(
-        DatabaseConfig,
-        DatabaseConfig.of({
-          url: Redacted.make(url),
-          migrations: 'apply',
-          migrationsFolder: new URL('../../../../../db/migrations', import.meta.url).pathname,
-        }),
-      ),
-    ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Org | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Org | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -83,46 +85,45 @@ const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
  * two colleges is not a shortcut to depth: the graph has to be real.
  */
 const seed = Effect.fn('seed')(function* () {
-  const db = yield* Database
   const tenant = one<{ id: string }>(
-    yield* db.execute(sql`insert into tenants (slug, name) values ('t','T') returning id`),
+    yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
   const type = (code: string) =>
-    db.execute(sql`
+    runSql(sql`
       insert into org_types (tenant_id, code, name) values (${tenant}, ${code}, ${code})
       returning id`)
   const university = one<{ id: string }>(yield* type('university')).id
   const college = one<{ id: string }>(yield* type('college')).id
   const department = one<{ id: string }>(yield* type('department')).id
   const section = one<{ id: string }>(yield* type('section')).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into org_type_rules (tenant_id, parent_type_id, child_type_id)
     values (${tenant}, ${university}, ${college}),
            (${tenant}, ${college}, ${department}),
            (${tenant}, ${department}, ${section}),
            (${tenant}, ${university}, ${department})`)
   const root = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${university}, 'Root', 'r', 0) returning id`),
   ).id
   const adminType = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
       values (${tenant}, 'admin', 'Admin', true, 'unrestricted') returning id`),
   ).id
   const admin = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
       values (${tenant}, 'Ada', ${adminType}, ${root}) returning id`),
   ).id
   const adminRole = one<{ id: string }>(
-    yield* db.execute(sql`
+    yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
       values (${tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
       returning id`),
   ).id
-  yield* db.execute(sql`
+  yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${adminRole})`)
   const principal: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
   return { tenant, root, university, college, department, section, principal }
@@ -142,11 +143,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
           const org = yield* Org
           const create = (name: string, orgTypeId: string) =>
             Effect.result(
-              org.createNode(
-                f.tenant,
-                { parentId: f.root, orgTypeId, name },
-                f.principal,
-              ),
+              org.createNode(f.tenant, { parentId: f.root, orgTypeId, name }, f.principal),
             )
           return {
             allowed: yield* create('Arts', f.college),
@@ -187,9 +184,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
             f.principal,
           )
           return {
-            move: yield* Effect.result(
-              org.moveNode(f.tenant, f.root, college.id, f.principal),
-            ),
+            move: yield* Effect.result(org.moveNode(f.tenant, f.root, college.id, f.principal)),
             remove: yield* Effect.result(org.deleteNode(f.tenant, f.root, f.principal)),
             // and a node that still has children is not deletable either
             occupied: yield* Effect.result(org.deleteNode(f.tenant, college.id, f.principal)),
@@ -217,7 +212,6 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
         Effect.gen(function* () {
           const f = yield* seed()
           const org = yield* Org
-          const database = yield* Database
           const node = (parentId: string, name: string, orgTypeId: string) =>
             org.createNode(f.tenant, { parentId, orgTypeId, name }, f.principal)
           const left = yield* node(f.root, 'Left', f.college)
@@ -228,7 +222,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
           yield* org.moveNode(f.tenant, middle.id, f.root, f.principal)
 
           const rows = (
-            (yield* database.execute(sql`
+            (yield* runSql(sql`
               select id, parent_id, path::text as path, depth from org_nodes
               where tenant_id = ${f.tenant} order by path`)) as unknown as {
               rows: { id: string; parent_id: string | null; path: string; depth: number }[]
@@ -276,9 +270,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
             { parentId: f.root, orgTypeId: f.college, name: 'Arts' },
             f.principal,
           )
-          return yield* Effect.result(
-            org.moveNode(f.tenant, child.id, child.id, f.principal),
-          )
+          return yield* Effect.result(org.moveNode(f.tenant, child.id, child.id, f.principal))
         }),
       )
       expect(tagOf(ok(exit))).toBe('ORG_NODE_INVALID_MOVE')
@@ -287,7 +279,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
     }
   })
 
-  it('keeps one tenant out of another tenant\'s tree', async () => {
+  it("keeps one tenant out of another tenant's tree", async () => {
     // from org.test.ts 'keeps tenants isolated at the service level'. Every
     // statement is tenant scoped, so a node of another tenant has to answer as
     // absent rather than as forbidden or, worse, as found.
@@ -298,19 +290,18 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
         Effect.gen(function* () {
           const f = yield* seed()
           const org = yield* Org
-          const database = yield* Database
           const other = one<{ id: string }>(
-            yield* database.execute(
+            yield* runSql(
               sql`insert into tenants (slug, name) values ('other','Other') returning id`,
             ),
           ).id
           const otherType = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_types (tenant_id, code, name)
               values (${other}, 'college', 'C') returning id`),
           ).id
           const otherRoot = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into org_nodes (tenant_id, org_type_id, name, path, depth)
               values (${other}, ${otherType}, 'Theirs', 'r', 0) returning id`),
           ).id
@@ -324,7 +315,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
               org.updateNode(f.tenant, otherRoot, { name: 'Mine now' }, f.principal),
             ),
             stillTheirs: one<{ name: string }>(
-              yield* database.execute(sql`select name from org_nodes where id = ${otherRoot}`),
+              yield* runSql(sql`select name from org_nodes where id = ${otherRoot}`),
             ).name,
           }
         }),
@@ -357,7 +348,6 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
         Effect.gen(function* () {
           const f = yield* seed()
           const org = yield* Org
-          const database = yield* Database
           const child = yield* org.createNode(
             f.tenant,
             { parentId: f.root, orgTypeId: f.college, name: 'Arts' },
@@ -365,36 +355,36 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
           )
           // a manager holding manage at the child, self coverage only
           const manager = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               select ${f.tenant}, 'Mgr', user_type_id, ${f.root} from users
               where tenant_id = ${f.tenant} limit 1
               returning id`),
           ).id
           const role = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode)
               values (${f.tenant}, 'mgr', 'Mgr', 'org', 'active', 'explicit') returning id`),
           ).id
           const permission = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('org.tree.manage','org','manage','org-node')
               on conflict (code) do update set plugin = excluded.plugin returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
             values (${f.tenant}, ${role}, ${permission})`)
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
             values (${f.tenant}, ${manager}, ${role}, ${child.id}, 'self')`)
           const readPermission = one<{ id: string }>(
-            yield* database.execute(sql`
+            yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('org.tree.read','org','read','org-node')
               on conflict (code) do update set plugin = excluded.plugin returning id`),
           ).id
-          yield* database.execute(sql`
+          yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
             values (${f.tenant}, ${role}, ${readPermission})`)
           const as: Principal = { tenantId: f.tenant, userId: manager, sessionId: 's' }

@@ -9,8 +9,8 @@ import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 
 // The lineage you can regenerate has to be the lineage you have.
 //
-// Every migration in db/migrations was either produced by drizzle-kit from a
-// plugin's schema or hand-written. The hand-written ones are the hazard: they
+// Every migration in db/migrations was either derived from a plugin's
+// entities or hand-written. The hand-written ones are the hazard: they
 // exist only in that directory, so unless an equivalent lives in some plugin's
 // baselineDir, a deployment built from the plugins alone silently lacks it.
 // That is not hypothetical - `CREATE EXTENSION ltree` was exactly this, and
@@ -36,16 +36,23 @@ const productSelection = (): string[] => {
   return [...manifest.plugins.keys()]
 }
 
+// The migrator's own ledger is not part of anybody's schema, and it is in
+// `public` like everything else, so every query here has to leave it out.
+const LEDGER = 'mikro_orm_migrations'
+
 const CATALOG = {
   columns: `select table_name || '.' || column_name || ' ' || data_type
               || ' null=' || is_nullable || ' default=' || coalesce(column_default, '-')
             from information_schema.columns
-            where table_schema = 'public' and table_name <> '__drizzle_migrations'
+            where table_schema = 'public' and table_name <> '${LEDGER}'
             order by 1`,
   constraints: `select conrelid::regclass || ' ' || conname || ' ' || pg_get_constraintdef(oid)
-                from pg_constraint where connamespace = 'public'::regnamespace order by 1`,
+                from pg_constraint
+                where connamespace = 'public'::regnamespace
+                  and conrelid::regclass::text <> '${LEDGER}'
+                order by 1`,
   indexes: `select indexdef from pg_indexes
-            where schemaname = 'public' and tablename <> '__drizzle_migrations' order by 1`,
+            where schemaname = 'public' and tablename <> '${LEDGER}' order by 1`,
   routines: `select p.proname || '/' || pg_get_function_identity_arguments(p.oid)
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
              where n.nspname = 'public' order by 1`,
@@ -56,59 +63,57 @@ const CATALOG = {
 }
 
 describe.runIf(postgresAvailable)('a lineage rebuilt from the plugins alone', () => {
-  it(
-    'produces the same database as the committed lineage',
-    async () => {
-      const workspace = createWorkspace(productSelection(), {
-        configs: { '@qualy/plugin-database': { migrationsFolder: 'migrations' } },
+  it('produces the same database as the committed lineage', async () => {
+    const workspace = createWorkspace(productSelection(), {
+      configs: { '@qualy/plugin-database': { migrationsFolder: 'migrations' } },
+    })
+    try {
+      await commitLock(workspace)
+      const work = (await capabilityWorkContext(workspace, 'database')) as CapabilityWorkContext<
+        DatabaseContribution,
+        DatabaseState
+      >
+      await provider.generate!(work)
+
+      // both applied the way production applies them, so this compares
+      // deployments rather than a replay written for the test
+      const fresh = await createTestContext('parity-fresh', {
+        migrationsFolder: path.join(workspace.dir, 'migrations'),
+      })
+      const committed = await createTestContext('parity-committed', {
+        migrationsFolder: committedLineage,
       })
       try {
-        await commitLock(workspace)
-        const work = (await capabilityWorkContext(workspace, 'database')) as CapabilityWorkContext<
-          DatabaseContribution,
-          DatabaseState
-        >
-        await provider.generate!(work)
-
-        // both applied the way production applies them, so this compares
-        // deployments rather than a replay written for the test
-        const fresh = await createTestContext('parity-fresh', {
-          migrationsFolder: path.join(workspace.dir, 'migrations'),
-        })
-        const committed = await createTestContext('parity-committed', {
-          migrationsFolder: committedLineage,
-        })
-        try {
-          const seen: Record<string, string[]> = {}
-          for (const [what, query] of Object.entries(CATALOG)) {
-            const left = (await committed.query<Record<string, string>>(query)).rows.map(
-              (row) => Object.values(row)[0]!,
-            )
-            const right = (await fresh.query<Record<string, string>>(query)).rows.map(
-              (row) => Object.values(row)[0]!,
-            )
-            expect(right, `${what} differ; something in db/migrations is not carried by any plugin`)
-              .toEqual(left)
-            seen[what] = left
-          }
-
-          // Anchors, so two empty databases cannot agree their way to green.
-          // Not "every category is non-empty": this schema has no triggers,
-          // the two the lineage created having been dropped by the migration
-          // that removed the columns they read.
-          expect(seen.extensions).toContain('ltree')
-          expect(seen.columns).toContain('org_nodes.path USER-DEFINED null=NO default=-')
-          expect(seen.columns!.length).toBeGreaterThan(100)
-          expect(seen.constraints!.length).toBeGreaterThan(100)
-          expect(seen.indexes!.length).toBeGreaterThan(40)
-        } finally {
-          await fresh.dispose()
-          await committed.dispose()
+        const seen: Record<string, string[]> = {}
+        for (const [what, query] of Object.entries(CATALOG)) {
+          const left = (await committed.query<Record<string, string>>(query)).rows.map(
+            (row) => Object.values(row)[0]!,
+          )
+          const right = (await fresh.query<Record<string, string>>(query)).rows.map(
+            (row) => Object.values(row)[0]!,
+          )
+          expect(
+            right,
+            `${what} differ; something in db/migrations is not carried by any plugin`,
+          ).toEqual(left)
+          seen[what] = left
         }
+
+        // Anchors, so two empty databases cannot agree their way to green.
+        // Not "every category is non-empty": this schema has no triggers,
+        // the two the lineage created having been dropped by the migration
+        // that removed the columns they read.
+        expect(seen.extensions).toContain('ltree')
+        expect(seen.columns).toContain('org_nodes.path USER-DEFINED null=NO default=-')
+        expect(seen.columns!.length).toBeGreaterThan(100)
+        expect(seen.constraints!.length).toBeGreaterThan(100)
+        expect(seen.indexes!.length).toBeGreaterThan(40)
       } finally {
-        workspace.dispose()
+        await fresh.dispose()
+        await committed.dispose()
       }
-    },
-    180_000,
-  )
+    } finally {
+      workspace.dispose()
+    }
+  }, 180_000)
 })

@@ -42,7 +42,9 @@ export interface Manifest {
   readonly layouts: readonly ManifestLayout[]
   readonly pages: readonly ManifestPage[]
   readonly collections: Readonly<Record<string, readonly unknown[]>>
-  readonly slots: Readonly<Record<string, readonly { id: string; component: string; order: number }[]>>
+  readonly slots: Readonly<
+    Record<string, readonly { id: string; component: string; order: number }[]>
+  >
 }
 
 const sorted = <T extends { order?: number; id: string }>(items: readonly T[]) =>
