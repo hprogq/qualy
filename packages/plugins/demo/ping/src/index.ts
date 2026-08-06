@@ -4,8 +4,7 @@ import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { Postgres } from '@qualy/plugin-database/plugin'
-import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
-import { registerSurfaces, type Ui } from '@qualy/plugin-ui-registry/server/registry'
+import { ReactUi, legacySurfaceLayer } from '@qualy/plugin-ui-registry/plugin'
 import { ADMIN_SHELL, PUBLIC, defineSurfaces } from '@qualy/ui-contract'
 import { entityManager, kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
@@ -65,16 +64,19 @@ const handlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
   }),
 )
 
-export default Plugin.define(
+const plugin = Plugin.define(
   '@qualy/plugin-ping',
   Postgres.entities(entities),
   ReactUi.surfaces(surfaces),
   Api.group(pingApiGroup, handlers),
 )
 
+export default plugin
+
 // Legacy bridge, until the descriptor assembler takes over the host
-// (docs/plugin-descriptor-plan.md, batch 5): the generated runtime module
-// still composes these two exports, built from the same values the
-// descriptor carries, so the two shapes cannot drift apart.
+// (docs/plugin-descriptor-plan.md, batch 5). The registration layer derives
+// from the descriptor; the handlers stay a direct export because their
+// precise type - middleware and request markers - is load-bearing in the
+// generated composition, and the descriptor stores them erased.
 export const apiHandlers = handlers
-export const layer: Layer.Layer<never, never, Ui> = registerSurfaces(surfaces)
+export const layer = legacySurfaceLayer(plugin)
