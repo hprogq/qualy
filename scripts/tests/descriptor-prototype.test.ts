@@ -27,7 +27,7 @@ const databasePlugin = Plugin.define(
   Plugin.layer(databaseLayer),
 )
 const uiPlugin = Plugin.define('@qualy/plugin-ui-registry', ReactUi.provider)
-const apiPlugin = Plugin.define('@qualy/api', Api.provider)
+const apiPlugin = Plugin.define('@qualy/api', Api.provider())
 
 describe('the descriptor prototype', () => {
   it('is the whole plugin, as one default export of pure data', () => {

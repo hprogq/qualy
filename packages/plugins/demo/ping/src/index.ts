@@ -6,7 +6,7 @@ import { Plugin } from '@qualy/plugin-kit'
 import { Postgres } from '@qualy/plugin-database/plugin'
 import { ReactUi, legacySurfaceLayer } from '@qualy/plugin-ui-registry/plugin'
 import { ADMIN_SHELL, PUBLIC, defineSurfaces } from '@qualy/ui-contract'
-import { entityManager, kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
 import { pingNavigationLabel } from './messages.ts'
@@ -22,7 +22,7 @@ import { pingPage } from './pages.ts'
 // same prefix as the aggregate because routes are built from this one.
 const local = HttpApi.make(QUALY_API_ID).add(pingApiGroup).prefix(QUALY_API_PREFIX)
 
-const closure = [...entities] as const
+const db = Postgres.scope([...entities] as const)
 
 const surfaces = defineSurfaces({
   pages: [
@@ -51,12 +51,7 @@ const handlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
         // the endpoint declares no failure, so a database that is down is a
         // defect: a 500 and a logged cause, not a shape the client must handle
         yield* withDb(
-          Effect.gen(function* () {
-            const em = yield* entityManager<typeof closure>()
-            yield* query(() =>
-              kyselyOf(em).insertInto('PingLog').values({ name: visitor }).execute(),
-            )
-          }),
+          db.query((kysely) => kysely.insertInto('PingLog').values({ name: visitor }).execute()),
         ).pipe(Effect.orDie)
         return { msg: `${greeting}, ${visitor}` }
       }),
