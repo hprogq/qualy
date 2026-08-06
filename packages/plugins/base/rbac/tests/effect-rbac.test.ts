@@ -44,7 +44,12 @@ const stack = (url: string) =>
   rbacLayer.pipe(
     // provideMerge rather than provide: the tests write fixtures through the
     // same Database the layer uses, so it has to stay available above
-    Layer.provideMerge(Layer.mergeAll(databaseFor(url, { entities: closure }), Layer.succeed(PermissionCatalog, catalog))),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        databaseFor(url, { entities: closure }),
+        Layer.succeed(PermissionCatalog, catalog),
+      ),
+    ),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Database | Orm>) =>
@@ -192,6 +197,35 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       // and a denial is a declared failure the caller must handle, not a defect
       expect(answer.denied).toBe(true)
       expect(answer.reason).toBe('ACCESS_DENIED')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('stops authorizing through a permission row edited out of band', async () => {
+    const db = await createTestContext('effect-rbac-repointed')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const rbac = yield* Rbac
+          const database = yield* Database
+          const before = yield* rbac.canAt(f.anchored, 'org.tree.manage', f.root)
+          // the assembly-time drift check has already run and passed; this is
+          // the row changing underneath it. What the registry verified is what
+          // authorizes, so a row that no longer matches the declaration must
+          // stop granting rather than start granting something else.
+          yield* database.execute(
+            sql`update permissions set plugin = 'not-org' where code = 'org.tree.manage'`,
+          )
+          const after = yield* rbac.canAt(f.anchored, 'org.tree.manage', f.root)
+          return { before, after }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.before).toBe(true)
+      expect(answer.after).toBe(false)
     } finally {
       await db.dispose()
     }

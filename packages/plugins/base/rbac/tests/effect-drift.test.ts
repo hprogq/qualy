@@ -2,6 +2,9 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities as rbacEntities } from '../src/db/entities.ts'
 import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
@@ -19,10 +22,16 @@ const catalog = (target: 'tenant' | 'org-node'): readonly ActivePermission[] => 
   { code: 'demo.thing', name: 'Thing', target, plugin: 'demo' },
 ]
 
+// what the orm must know for a query to name a table
+const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
 const stack = (url: string, permissions: readonly ActivePermission[]) =>
   rbacLayer.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(databaseFor(url), Layer.succeed(PermissionCatalog, permissions)),
+      Layer.mergeAll(
+        databaseFor(url, { entities: closure }),
+        Layer.succeed(PermissionCatalog, permissions),
+      ),
     ),
   )
 

@@ -13,9 +13,8 @@ import {
   type Principal,
 } from '@qualy/rbac-contract'
 import { rbacEntityManager, type RbacEntityManager } from './db.ts'
+import { REACH_RANK, type Reach } from './authorization.ts'
 import {
-  REACH_RANK,
-  type Reach,
   deleteGrantQuery,
   grantQuery,
   holdsCanonicalAdminQuery,

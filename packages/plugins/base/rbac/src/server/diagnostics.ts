@@ -1,7 +1,9 @@
 import { Effect } from 'effect'
 import { LegacySql } from '@qualy/plugin-database/server'
 import type { ActivePermission } from '@qualy/rbac-contract'
-import { explainRowsQuery, orgNodeExistsQuery, userExistsQuery } from '../queries.ts'
+import { orgNodeExistsQuery, userExistsQuery } from '../queries.ts'
+import { rbacEntityManager } from './db.ts'
+import { explainRows } from './authorization.ts'
 import { GrantNodeNotFound, GrantUserNotFound } from './grants.ts'
 import { PermissionNotFound } from './roles.ts'
 
@@ -65,33 +67,18 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
       if (node.length === 0) return yield* new GrantNodeNotFound()
     }
     const catalog = catalogOf()
-    const found = yield* database
-      .execute(explainRowsQuery(tenantId, userId, orgNodeId))
-      .pipe(Effect.orDie)
+    const em = yield* rbacEntityManager()
+    const found = yield* explainRows(em, tenantId, userId, orgNodeId).pipe(Effect.orDie)
 
     const out = new Map<
       string,
       { code: string; name: string; target: 'tenant' | 'org-node'; sources: PermissionSource[] }
     >()
-    for (const row of rows<{
-      code: string
-      plugin: string
-      target_kind: 'tenant' | 'org-node'
-      role_id: string
-      role_code: string
-      grant_id: string
-      org_node_id: string | null
-      org_node_name: string | null
-      coverage: 'self' | 'subtree' | null
-    }>(found)) {
+    for (const row of found) {
       // the catalog is the authority on what a code means; a stored row that
       // drifted from its definition explains nothing
       const definition = catalog.get(row.code)
-      if (
-        !definition ||
-        definition.plugin !== row.plugin ||
-        definition.target !== row.target_kind
-      ) {
+      if (!definition || definition.plugin !== row.plugin || definition.target !== row.targetKind) {
         continue
       }
       // a tenant capability only ever arrives through a tenant role
@@ -107,16 +94,16 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
         out.set(row.code, entry)
       }
       entry.sources.push({
-        roleId: row.role_id,
-        roleCode: row.role_code,
-        grantId: row.grant_id,
+        roleId: row.roleId,
+        roleCode: row.roleCode,
+        grantId: row.grantId,
         target:
-          row.org_node_id === null
+          row.orgNodeId === null
             ? { kind: 'tenant' }
             : {
                 kind: 'org-node',
-                orgNodeId: row.org_node_id,
-                orgNodeName: row.org_node_name ?? '',
+                orgNodeId: row.orgNodeId,
+                orgNodeName: row.orgNodeName ?? '',
                 coverage: row.coverage ?? 'self',
               },
       })

@@ -1,17 +1,13 @@
 import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { authClosure } from './support/closure.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { entities as orgEntities } from '@qualy/plugin-org/db'
-import { entities as authEntities } from '../src/db/entities.ts'
 import { Database } from '@qualy/plugin-database/server'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
 
-// what the orm must know for a query to name a table; in production the host
-// hands over the generated aggregate, here the plugin's own closure
-const authClosure = [...orgEntities, ...authEntities] as const
 
 // What a sign-in screen is offered.
 //

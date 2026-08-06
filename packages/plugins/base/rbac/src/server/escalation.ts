@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import type { GrantTarget, Principal } from '@qualy/rbac-contract'
-import { REACH_RANK, type Reach } from '../queries.ts'
+import { REACH_RANK, type Reach } from './authorization.ts'
 
 import { GrantEscalationRefused, RoleEscalationRefused } from './errors.ts'
 

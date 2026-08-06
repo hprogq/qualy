@@ -8,6 +8,9 @@ import {
   postgresAvailable,
 } from '@qualy/plugin-database/testkit'
 import { Database } from '@qualy/plugin-database/server'
+import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities as rbacEntities } from '../src/db/entities.ts'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access, layer as rbacLayer } from '../src/server/index.ts'
@@ -39,9 +42,17 @@ const catalog: readonly ActivePermission[] = [
   },
 ]
 
+// what the orm must know for a query to name a table
+const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
 const stack = (url: string) =>
   rbacLayer.pipe(
-    Layer.provideMerge(Layer.mergeAll(databaseFor(url), Layer.succeed(PermissionCatalog, catalog))),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        databaseFor(url, { entities: closure }),
+        Layer.succeed(PermissionCatalog, catalog),
+      ),
+    ),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Database>) =>

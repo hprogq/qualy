@@ -1,9 +1,8 @@
 import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { authClosure } from './support/closure.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { entities as orgEntities } from '@qualy/plugin-org/db'
-import { entities as authEntities } from '../src/db/entities.ts'
 import { Database, kyselyOf, type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
@@ -15,9 +14,6 @@ import { placementLegal } from '../src/server/placement.ts'
 import { authEntityManager } from '../src/server/db.ts'
 import { sql as ksql } from 'kysely'
 
-// what the orm must know for a query to name a table; in production the host
-// hands over the generated aggregate, here the plugin's own closure
-const authClosure = [...orgEntities, ...authEntities] as const
 
 // The identity behaviours the cordis suite asserted and the Effect suite did
 // not. Each names the cordis test it comes from.
