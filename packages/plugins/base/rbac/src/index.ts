@@ -17,6 +17,7 @@ import { rolesPage } from './pages.ts'
 
 const plugin = Plugin.define(
   '@qualy/plugin-rbac',
+  { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
   Postgres.entities(entities),
   ReactUi.surfaces(
     defineSurfaces({

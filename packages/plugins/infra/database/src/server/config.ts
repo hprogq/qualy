@@ -53,7 +53,8 @@ export type DatabaseManifestConfig = typeof DatabaseManifestConfig.Type
  * relative path against the manifest it was configured from.
  */
 export const config = (
-  manifest: DatabaseManifestConfig,
+  // the block as the manifest parses it: unknown until the schema says
+  manifest: unknown,
   context: { readonly manifestDir: string },
 ): Layer.Layer<DatabaseConfig, Schema.SchemaError | Config.ConfigError> =>
   Layer.effect(

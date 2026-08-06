@@ -422,6 +422,9 @@ importers:
       '@qualy/assembly-contract':
         specifier: workspace:*
         version: link:../assembly-contract
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../plugin-kit
       yaml:
         specifier: 'catalog:'
         version: 2.9.0

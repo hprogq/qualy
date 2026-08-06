@@ -12,45 +12,29 @@ export interface RuntimeLayer {
   id: string
   specifier: string
   dependsOn: readonly string[]
-  /** the manifest block this plugin's `config` export turns into a service */
+  /** the manifest block this plugin's config channel turns into a service */
   config?: unknown
-  /** whether the entry exports `apiHandlers` for a declared api */
-  api?: boolean
 }
 
 /**
- * The plugins that ship an Effect runtime.
+ * Every active plugin, as the assembler walks it.
  *
- * A plugin says so with `qualy.runtime.entry` in its package.json, naming one
- * of its own subpath exports. Declaring it there rather than in code is what
- * lets resolution stay a file-reading operation: the assembly decides what an
- * application contains without importing any of it.
- *
- * `qualy.runtime.dependsOn` names the plugins whose services this one's layer
- * needs while it is being built. It is separate from the database graph
- * because it answers a different question, and it exists because merging
- * layers does not wire them together.
+ * The metadata is the descriptor's own - a plugin IS its default export, so
+ * being in the manifest is what makes it a runtime layer. `dependsOn` names
+ * the plugins whose services its layers need while being built, separate
+ * from the database graph because it answers a different question; the
+ * config block travels exactly when the descriptor carries a channel for it,
+ * which resolution has already validated.
  */
 export const runtimeLayers = (resolution: Resolution): RuntimeLayer[] =>
-  resolution.runtimePlugins.flatMap((id) => {
-    const runtime = resolution.resolver.readMetadata(id).runtime
-    if (!runtime?.entry) return []
-    return [
-      {
-        id,
-        // '.' means the package root: the plugin IS its entry, which is the
-        // convention; a subpath entry stays expressible for the ones whose
-        // root belongs to something else
-        specifier: runtime.entry === '.' ? id : `${id}/${runtime.entry.replace(/^\.\//, '')}`,
-        dependsOn: runtime.dependsOn,
-        // Only when the plugin said it takes one. A manifest block for a
-        // plugin that reads none is a setting nothing consumes, which is the
-        // failure this repository refuses everywhere else: resolution rejects
-        // it rather than writing it into a call nobody makes.
-        ...(runtime.config ? { config: resolution.manifest.plugins.get(id)?.config ?? {} } : {}),
-        ...(runtime.api ? { api: true } : {}),
-      },
-    ]
+  resolution.runtimePlugins.map((id) => {
+    const descriptor = resolution.descriptors.get(id)!
+    return {
+      id,
+      specifier: id,
+      dependsOn: descriptor.dependsOn,
+      ...(descriptor.config ? { config: resolution.manifest.plugins.get(id)?.config ?? {} } : {}),
+    }
   })
 
 /**

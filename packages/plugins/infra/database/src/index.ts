@@ -1,7 +1,7 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Cli } from '@qualy/plugin-kit/cli'
 import { Postgres } from './plugin.ts'
-import { layer as serviceLayer } from './server/index.ts'
+import { config, layer as serviceLayer } from './server/index.ts'
 
 // The database plugin, as a description: it owns the entities extension
 // point and provides the connection. Peers reach the service helpers through
@@ -10,6 +10,7 @@ import { layer as serviceLayer } from './server/index.ts'
 
 const plugin = Plugin.define(
   '@qualy/plugin-database',
+  { config },
   Postgres.provider,
   Plugin.layer(serviceLayer),
   Cli.command({
@@ -23,6 +24,3 @@ const plugin = Plugin.define(
 )
 
 export default plugin
-
-/** the manifest block channel; the assembler calls it with this plugin's block */
-export { config } from './server/index.ts'

@@ -30,16 +30,6 @@
       "permissions": {
         "entry": "src/permissions.ts"
       }
-    },
-    "runtime": {
-      "entry": ".",
-      "dependsOn": [
-        "@qualy/plugin-database",
-        "@qualy/plugin-rbac",
-        "@qualy/plugin-ui-registry"
-      ],
-      "api": "./api",
-      "config": true
     }
   },
   "peerDependencies": {

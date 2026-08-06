@@ -38,10 +38,6 @@
     "capabilityProvider": {
       "key": "database",
       "entry": "./assembly"
-    },
-    "runtime": {
-      "entry": ".",
-      "config": true
     }
   }
 }

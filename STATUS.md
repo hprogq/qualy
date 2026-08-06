@@ -1662,3 +1662,30 @@ resolvePluginModuleUrl 走宿主包解析——根包故意不依赖业务插件
 `qualy database migrate` 实测;未知命令/冲突命名空间/保留字占用三条硬拒有测试;真实启动照常零 [E]。
 
 **M3b 待做**:resolve/lock/seed 改读描述器,database assembly 删声明解析,正式作废 resolve 纪律。
+
+### M3b-1:qualy.runtime 消失,resolve 纪律作废
+
+**范围裁决**:M3b 再切两刀——本轮杀 `qualy.runtime`(运行时元数据进描述器),
+contributions/lock 重塑(M3b-2)与 127 处 `Postgres.scope` 清扫各自成轮。
+
+**实施**:①`Plugin.define(id, options?, ...features)` 增选项:`dependsOn`(包 id 数组,
+与 `Plugin.service` 的 Tag requires 并存——基础设施故意不导出 key)与 `config`
+(manifest 块通道,函数直接住在描述器上);②resolve 在元数据校验之后 **import 每个 active
+插件的 default 描述器**(报错优先级:坏声明先于缺描述器),`Resolution.descriptors` 暴露给
+宿主——loadAssembly 不再自己 import,改同步;③config 通道单源化:三个插件的 `export const config`
+再导出删除,签名改 `(manifest: unknown, ...)`(块来自 YAML,本就 unknown,函数内本来就在
+decodeUnknown——原参数类型是方便的谎);④「给无通道插件配 config」的拒绝改读描述器,
+测试同步;⑤gen-api 以 `exports['./api']` 存在性发现契约(runtime.api 死);
+⑥八个 package.json 的 qualy.runtime 全删;⑦testkit 合成包 default-export 描述器**字面量**
+(`{_tag:'Plugin', id, dependsOn, config?, features: []}`——isPluginDescriptor 收纯对象,
+合成文件零 import),SyntheticPackage 增 dependsOn/takesConfig。
+
+**纪律正式作废并写入 CLAUDE**:"resolve 不 import 插件代码"。描述器是纯值、import 零副作用,
+但确实执行 TS;boot 的 verify-resolve 本来就在 import(装配器随后就要),模块缓存零额外成本。
+
+**验收**:typecheck 11 工程零错;node 359 / browser 13;`resolve --frozen-lockfile` 干净
+(lock 字节未变——runtime.plugins 形状没动);真实启动:登录 → roles 200、manifest 7 页、
+ping 200,零 [E]。
+
+**M3b-2 待做**:contributions(database entitiesEntry/baselineDir/dependsOn、permissions entry)
+迁描述器,lock 记 feature 投影,seed 改读描述器,retained 集语义不变。

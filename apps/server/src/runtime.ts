@@ -58,13 +58,13 @@ const nodeServerLayer = Layer.sync(NodeServer, () => createServer())
 /**
  * The whole application, from a verified resolution.
  *
- * Async because the plugins are imported here. The one type narrowing of the
+ * The plugins were imported by resolution; the one type narrowing of the
  * composition root is the return: the assembled layers carry erased channels,
  * and whether the assembly closes is the boot's answer - dev boots on every
  * run, and CI boots against a real database.
  */
 export async function makeApplication(resolution: Resolution): Promise<Layer.Layer<never>> {
-  const { prepared, services, above, configs } = await loadAssembly(resolution, {
+  const { prepared, services, above, configs } = loadAssembly(resolution, {
     host: [hostPlugin],
   })
 

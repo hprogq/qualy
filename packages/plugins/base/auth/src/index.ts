@@ -13,6 +13,7 @@ import {
   headerActions,
   permissionOf,
 } from '@qualy/ui-contract'
+import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
 import { iamMessages } from './iam/messages.ts'
@@ -25,6 +26,10 @@ import { loginPage, userDetailPage, userTypesPage, usersPage } from './pages.ts'
 
 const plugin = Plugin.define(
   '@qualy/plugin-auth',
+  {
+    dependsOn: ['@qualy/plugin-database', '@qualy/plugin-rbac', '@qualy/plugin-ui-registry'],
+    config,
+  },
   Postgres.entities(entities),
   ReactUi.surfaces(
     defineSurfaces({
@@ -74,8 +79,6 @@ const plugin = Plugin.define(
 )
 
 export default plugin
-
-export { config } from './server/auth-config.ts'
 
 // the handler layers stay named exports beside the descriptor: tests build
 // single groups from them, and a value export costs nothing

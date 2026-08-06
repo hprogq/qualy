@@ -42,7 +42,8 @@ export type AuthManifestConfig = typeof AuthManifestConfig.Type
  * would have to be told where it is.
  */
 export const config = (
-  manifest: AuthManifestConfig,
+  // the block as the manifest parses it: unknown until the schema says
+  manifest: unknown,
   _context: { readonly manifestDir: string },
 ): Layer.Layer<AuthConfig, Schema.SchemaError | Config.ConfigError> =>
   Layer.effect(

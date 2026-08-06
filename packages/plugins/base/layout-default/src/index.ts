@@ -8,6 +8,7 @@ import { ADMIN_SHELL, BLANK_SHELL, defineSurfaces } from '@qualy/ui-contract'
 
 const plugin = Plugin.define(
   '@qualy/plugin-layout-default',
+  { dependsOn: ['@qualy/plugin-ui-registry'] },
   ReactUi.surfaces(
     defineSurfaces({
       layouts: [

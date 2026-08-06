@@ -24,16 +24,6 @@
       "permissions": {
         "entry": "src/permissions.ts"
       }
-    },
-    "runtime": {
-      "entry": ".",
-      "dependsOn": [
-        "@qualy/plugin-auth",
-        "@qualy/plugin-database",
-        "@qualy/plugin-rbac",
-        "@qualy/plugin-ui-registry"
-      ],
-      "api": "./api"
     }
   },
   "peerDependencies": {

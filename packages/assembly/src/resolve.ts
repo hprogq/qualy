@@ -1,4 +1,5 @@
 import type { AssemblyPlugin, PluginState } from '@qualy/assembly-contract'
+import { isPluginDescriptor, type PluginDescriptor } from '@qualy/plugin-kit'
 import { hostDirFor, manifestHash, readManifest, type AssemblyManifest } from './manifest.ts'
 import { createPackageResolver, type PackageResolver, type PluginMetadata } from './metadata.ts'
 import { loadProviders, type LoadedProvider } from './registry.ts'
@@ -53,6 +54,16 @@ export interface Resolution {
    * initialisation meaning: cordis decides that from `inject`.
    */
   runtimePlugins: string[]
+  /**
+   * Each active plugin's default export, imported here.
+   *
+   * Resolution executes plugin modules now - the repeal of an older rule,
+   * decided with the descriptor model (docs/plugin-descriptor-plan.md, M3b):
+   * a descriptor is a pure value and importing it opens nothing, but it IS
+   * TypeScript being run, and the runtime metadata that used to live in
+   * package.json - dependencies, the config channel - lives on it.
+   */
+  descriptors: Map<string, PluginDescriptor>
   capabilities: Map<string, ResolvedCapability>
   /** loaded providers, for the commands that do work after resolution */
   providers: Map<string, LoadedProvider>
@@ -164,6 +175,11 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     )
   }
 
+  const runtimePlugins = [...states]
+    .filter(([, state]) => state === 'active')
+    .map(([id]) => id)
+    .sort()
+
   // Contributions are parsed by the capability that owns the key. A key nobody
   // owns is a plugin asking for something this assembly cannot do, and the
   // honest time to say so is now rather than halfway through a deployment.
@@ -177,21 +193,6 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     for (const key of entry.otherKeys) {
       if (!providers.has(key)) continue
       orphaned.push(`${id} declares qualy.${key}, which belongs under qualy.contributions.${key}`)
-    }
-    // A config block reaches exactly two kinds of plugin: a capability
-    // provider, as providerConfig during generate, deploy and its commands;
-    // and one that declared `qualy.runtime.config`, whose runtime entry is
-    // handed the block by the generated module. On any other plugin nothing
-    // reads it, and the manifest hash still changes, so resolve reports
-    // success and a frozen start passes: the setting looks applied and is not.
-    if (
-      manifest.plugins.get(id)?.config !== undefined &&
-      !entry.provider &&
-      !entry.runtime?.config
-    ) {
-      orphaned.push(
-        `${id} is given config in ${manifest.source}, but it neither provides a capability nor declares qualy.runtime.config, so nothing would read this. Configure this plugin through the environment instead, or have it declare that it takes config.`,
-      )
     }
     for (const [key, raw] of Object.entries(entry.contributions)) {
       const loaded = providers.get(key)
@@ -213,6 +214,41 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
   }
   if (orphaned.length > 0) {
     throw new Error(`incomplete assembly:\n  ${orphaned.join('\n  ')}`)
+  }
+
+  // Each active plugin's default export. Resolution executes plugin modules
+  // now - the repeal of an older rule, decided with the descriptor model
+  // (docs/plugin-descriptor-plan.md, M3b): a descriptor is a pure value and
+  // importing it opens nothing, but it IS TypeScript being run, and the
+  // runtime metadata that used to live in package.json - dependencies, the
+  // config channel - lives on it. After the metadata checks, so a package
+  // whose declarations are malformed is reported as that rather than as a
+  // missing descriptor.
+  const descriptors = new Map<string, PluginDescriptor>()
+  const misconfigured: string[] = []
+  for (const id of runtimePlugins) {
+    const module = (await import(resolver.resolveModuleUrl(id))) as { default?: unknown }
+    if (!isPluginDescriptor(module.default)) {
+      throw new Error(`${id} does not default-export a plugin descriptor`)
+    }
+    descriptors.set(id, module.default)
+    // A config block reaches exactly two kinds of plugin: a capability
+    // provider, as providerConfig during work phases; and one whose
+    // descriptor carries a config channel. On any other plugin nothing reads
+    // it, and the manifest hash still changes, so resolve reports success
+    // and a frozen start passes: the setting looks applied and is not.
+    if (
+      manifest.plugins.get(id)?.config !== undefined &&
+      !metadata.get(id)?.provider &&
+      module.default.config === undefined
+    ) {
+      misconfigured.push(
+        `${id} is given config in ${manifest.source}, but it neither provides a capability nor takes configuration in its descriptor, so nothing would read this. Configure this plugin through the environment instead.`,
+      )
+    }
+  }
+  if (misconfigured.length > 0) {
+    throw new Error(misconfigured.join('\n'))
   }
 
   // A plugin kept because of what it contributed has to still contribute it. A
@@ -278,10 +314,8 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     manifestHash: manifestHash(manifest),
     resolver,
     plugins,
-    runtimePlugins: [...states]
-      .filter(([, state]) => state === 'active')
-      .map(([id]) => id)
-      .sort(),
+    runtimePlugins,
+    descriptors,
     capabilities,
     providers,
     contributions,

@@ -16,6 +16,14 @@ import { orgPage } from './pages.ts'
 
 const plugin = Plugin.define(
   '@qualy/plugin-org',
+  {
+    dependsOn: [
+      '@qualy/plugin-auth',
+      '@qualy/plugin-database',
+      '@qualy/plugin-rbac',
+      '@qualy/plugin-ui-registry',
+    ],
+  },
   Postgres.entities(entities),
   ReactUi.surfaces(
     defineSurfaces({

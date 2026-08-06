@@ -25,13 +25,5 @@
   },
   "devDependencies": {
     "@types/react": "catalog:"
-  },
-  "qualy": {
-    "runtime": {
-      "entry": ".",
-      "dependsOn": [
-        "@qualy/plugin-ui-registry"
-      ]
-    }
   }
 }

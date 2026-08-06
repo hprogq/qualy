@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { Layer } from 'effect'
 import { runtimeLayers, runtimeLevels, type Resolution } from '@qualy/assembly'
-import { Plugin, isPluginDescriptor, type AnyLayer, type PluginDescriptor } from '@qualy/plugin-kit'
+import { Plugin, type AnyLayer, type PluginDescriptor } from '@qualy/plugin-kit'
 import { assemble, type Assembled } from '@qualy/plugin-kit/assemble'
 
 // The host's half of the descriptor model: from a verified resolution to the
@@ -26,39 +26,30 @@ export interface LoadedAssembly extends Assembled {
   readonly configs: AnyLayer
 }
 
-interface EntryModule {
-  readonly default?: unknown
-  readonly config?: (block: unknown, context: { readonly manifestDir: string }) => AnyLayer
-}
-
 /**
- * Every active plugin's descriptor, imported in dependency order.
+ * Every active plugin's descriptor, in dependency order.
  *
- * The order comes from `runtimeLevels`, the same topology the generator
- * rendered: the assembler folds service layers in list order, and a
- * flattened level walk is a valid linearization of the dependency graph.
+ * The descriptors were imported by resolution - a plugin IS its default
+ * export now - so this only orders them: `runtimeLevels` is the same
+ * topology the generator used to render, the assembler folds service layers
+ * in list order, and a flattened level walk is a valid linearization.
  */
-export async function loadAssembly(
+export function loadAssembly(
   resolution: Resolution,
   options: { readonly host?: readonly PluginDescriptor[] } = {},
-): Promise<LoadedAssembly> {
+): LoadedAssembly {
   const manifestDir = path.dirname(resolution.manifest.source)
-  const plan = runtimeLayers(resolution)
-  const order = runtimeLevels(plan).flat()
+  const order = runtimeLevels(runtimeLayers(resolution)).flat()
 
   const descriptors: PluginDescriptor[] = []
   const configs: AnyLayer[] = []
   for (const entry of order) {
-    const module = (await import(entry.specifier)) as EntryModule
-    if (!isPluginDescriptor(module.default)) {
-      throw new Error(`${entry.id} does not default-export a plugin descriptor`)
-    }
-    descriptors.push(module.default)
+    const descriptor = resolution.descriptors.get(entry.id)!
+    descriptors.push(descriptor)
     if (entry.config !== undefined) {
-      if (typeof module.config !== 'function') {
-        throw new Error(`${entry.id} declares qualy.runtime.config but exports no config`)
-      }
-      configs.push(module.config(entry.config, { manifestDir }))
+      // presence was validated at resolve; the channel turns the block into
+      // the plugin's own config service
+      configs.push(descriptor.config!(entry.config, { manifestDir }))
     }
   }
 

@@ -44,16 +44,12 @@ for (const entry of await readEntries({ all: false })) {
   if (!entry.name.startsWith('@qualy/')) continue
   const packageDir = resolvePackageDir(entry.name)
   const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
-    qualy?: { runtime?: { entry?: string; api?: string } }
+    exports?: Record<string, unknown>
   }
-  const api = pkg.qualy?.runtime?.api
-  if (!api) continue
-  const runtimeEntry = pkg.qualy?.runtime?.entry
-  if (!runtimeEntry) {
-    throw new Error(
-      `${entry.name} declares qualy.runtime.api but no qualy.runtime.entry to implement it`,
-    )
-  }
+  // the ./api subpath is the declaration: pure schema the browser aggregate
+  // imports, present exactly when the plugin serves an api group
+  if (!pkg.exports?.['./api']) continue
+  const api = './api'
   if (!apiDeps.has(entry.name)) {
     throw new Error(
       `${entry.name} contributes to the api but packages/api does not declare it; run pnpm plugin:add`,

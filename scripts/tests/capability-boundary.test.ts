@@ -173,9 +173,7 @@ describe('a second capability, beside the database', () => {
 describe('a plugin that takes configuration', () => {
   const configurable = {
     id: '@fake/plugin-tuned',
-    qualy: { runtime: { entry: './server', config: true } },
-    files: { 'server.js': 'export const layer = null\nexport const config = () => null\n' },
-    exports: { './server': './server.js' },
+    takesConfig: true,
   }
 
   it('is handed its own block, and only a configured plugin carries one', async () => {
@@ -190,7 +188,7 @@ describe('a plugin that takes configuration', () => {
       expect(plan).toEqual([
         {
           id: '@fake/plugin-tuned',
-          specifier: '@fake/plugin-tuned/server',
+          specifier: '@fake/plugin-tuned',
           dependsOn: [],
           config: { volume: 11 },
         },
@@ -204,18 +202,13 @@ describe('a plugin that takes configuration', () => {
     // the failure this replaces is silent: the manifest hash changes, resolve
     // succeeds, a frozen start passes, and the setting reads as applied
     const workspace = createWorkspace(['@fake/plugin-plain'], {
-      synthetic: [
-        {
-          id: '@fake/plugin-plain',
-          qualy: { runtime: { entry: './server' } },
-          files: { 'server.js': 'export const layer = null\n' },
-          exports: { './server': './server.js' },
-        },
-      ],
+      synthetic: [{ id: '@fake/plugin-plain' }],
       configs: { '@fake/plugin-plain': { volume: 11 } },
     })
     try {
-      await expect(resolveWorkspace(workspace)).rejects.toThrow(/declares qualy\.runtime\.config/)
+      await expect(resolveWorkspace(workspace)).rejects.toThrow(
+        /takes configuration in its descriptor/,
+      )
     } finally {
       workspace.dispose()
     }

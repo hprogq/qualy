@@ -25,22 +25,6 @@ export interface PluginMetadata {
   /** capability key to raw declaration, uninterpreted */
   contributions: Record<string, unknown>
   provider?: CapabilityProviderDeclaration
-  /** the subpath export whose `layer` this plugin contributes to the runtime */
-  runtime?: {
-    entry: string
-    api?: string
-    dependsOn: readonly string[]
-    /**
-     * Whether the runtime entry also exports `config`.
-     *
-     * Declared rather than probed, like everything else here: resolution reads
-     * files and never imports plugin code, so it cannot look. A plugin that
-     * says so is handed its own block of the manifest and returns the layer
-     * that turns it into a service; one that does not gets nothing, and a
-     * manifest that configures it anyway is refused rather than ignored.
-     */
-    config: boolean
-  }
   /** every other qualy.* key, so a misplaced contribution can be spotted later */
   otherKeys: string[]
   exports: Record<string, unknown>
@@ -60,12 +44,11 @@ interface RawManifest {
   qualy?: {
     contributions?: Record<string, unknown>
     capabilityProvider?: CapabilityProviderDeclaration
-    runtime?: { entry?: string; api?: string; dependsOn?: readonly string[]; config?: boolean }
   }
 }
 
 /** the `qualy` fields this layer reads; anything else is plugin-to-plugin metadata */
-const ASSEMBLY_KEYS = new Set(['contributions', 'capabilityProvider', 'runtime'])
+const ASSEMBLY_KEYS = new Set(['contributions', 'capabilityProvider'])
 
 const readProvider = (id: string, raw: RawManifest): CapabilityProviderDeclaration | undefined => {
   const declared = raw.qualy?.capabilityProvider
@@ -125,14 +108,6 @@ export function createPackageResolver(hostDir: string): PackageResolver {
       dir,
       contributions,
       provider: readProvider(id, raw),
-      runtime: raw.qualy?.runtime?.entry
-        ? {
-            entry: raw.qualy.runtime.entry,
-            api: raw.qualy.runtime.api,
-            dependsOn: [...(raw.qualy.runtime.dependsOn ?? [])],
-            config: raw.qualy.runtime.config === true,
-          }
-        : undefined,
       otherKeys: Object.keys((raw.qualy ?? {}) as Record<string, unknown>).filter(
         (key) => !ASSEMBLY_KEYS.has(key),
       ),

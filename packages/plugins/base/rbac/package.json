@@ -29,14 +29,6 @@
         "entry": "src/permissions.ts"
       }
     },
-    "runtime": {
-      "entry": ".",
-      "dependsOn": [
-        "@qualy/plugin-database",
-        "@qualy/plugin-ui-registry"
-      ],
-      "api": "./api"
-    },
     "capabilityProvider": {
       "key": "permissions",
       "entry": "./assembly"

@@ -115,18 +115,48 @@ export interface LayerFeature {
 
 export type PluginFeature = Contribute | ProvideExtension | ServiceFeature | LayerFeature
 
+/** the manifest-block channel; present exactly when the plugin takes configuration */
+export type ConfigChannel = (block: unknown, context: { readonly manifestDir: string }) => AnyLayer
+
+export interface PluginOptions {
+  /**
+   * Plugins whose services this one's layers need while being built.
+   *
+   * Package ids rather than tags, because infrastructure deliberately keeps
+   * some keys unexported; `Plugin.service` requires stays the typed form for
+   * plugins that can name theirs, and the assembler orders by both.
+   */
+  readonly dependsOn?: readonly string[]
+  readonly config?: ConfigChannel
+}
+
 export interface PluginDescriptor {
   readonly _tag: 'Plugin'
   readonly id: string
+  readonly dependsOn: readonly string[]
+  readonly config?: ConfigChannel
   readonly features: readonly PluginFeature[]
 }
 
+const isFeature = (value: unknown): value is PluginFeature =>
+  typeof value === 'object' && value !== null && '_tag' in value
+
 export const Plugin = {
-  define: (id: string, ...features: readonly PluginFeature[]): PluginDescriptor => ({
-    _tag: 'Plugin',
-    id,
-    features,
-  }),
+  define: (
+    id: string,
+    first?: PluginOptions | PluginFeature,
+    ...rest: readonly PluginFeature[]
+  ): PluginDescriptor => {
+    const options = first === undefined || isFeature(first) ? {} : first
+    const features = first !== undefined && isFeature(first) ? [first, ...rest] : rest
+    return {
+      _tag: 'Plugin',
+      id,
+      dependsOn: options.dependsOn ?? [],
+      ...(options.config ? { config: options.config } : {}),
+      features,
+    }
+  },
 
   contribute: <Contribution>(
     point: ExtensionPoint<Contribution>,

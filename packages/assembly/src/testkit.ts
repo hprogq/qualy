@@ -38,6 +38,10 @@ export interface ManifestOptions {
 }
 
 export interface SyntheticPackage {
+  /** runtime dependencies the descriptor literal declares */
+  dependsOn?: readonly string[]
+  /** whether the descriptor literal carries a config channel */
+  takesConfig?: boolean
   id: string
   qualy?: unknown
   /** extra files, keyed by package-relative path, written before resolution */
@@ -117,7 +121,14 @@ export function createWorkspace(
       path.join(at, 'package.json'),
       `${JSON.stringify({ name: entry.id, version: '0.0.0', type: 'module', exports, qualy: entry.qualy }, null, 2)}\n`,
     )
-    fs.writeFileSync(path.join(at, 'index.js'), 'export const name = "synthetic"\n')
+    // the root export is the plugin: a descriptor literal, so resolution's
+    // import finds what a real package would give it
+    fs.writeFileSync(
+      path.join(at, 'index.js'),
+      `export default { _tag: 'Plugin', id: ${JSON.stringify(entry.id)}, dependsOn: ${JSON.stringify(
+        entry.dependsOn ?? [],
+      )}, ${entry.takesConfig ? 'config: () => null, ' : ''}features: [] }\n`,
+    )
     for (const [file, body] of Object.entries(entry.files ?? {})) {
       const target = path.join(at, file)
       fs.mkdirSync(path.dirname(target), { recursive: true })

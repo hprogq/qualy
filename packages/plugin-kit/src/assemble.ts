@@ -25,7 +25,10 @@ export interface Assembled {
 
 export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
   const providers = new Map<string, { plugin: string; feature: ProvideExtension }>()
-  const contributions = new Map<string, { plugin: string; value: unknown; phase: ExtensionPhase }[]>()
+  const contributions = new Map<
+    string,
+    { plugin: string; value: unknown; phase: ExtensionPhase }[]
+  >()
   const serviceLayers: AnyLayer[] = []
 
   for (const descriptor of descriptors) {

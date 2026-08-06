@@ -55,7 +55,8 @@ export type WebManifestConfig = typeof WebManifestConfig.Type
  * files are is an assembly fact and comes from the manifest.
  */
 export const config = (
-  manifest: WebManifestConfig,
+  // the block as the manifest parses it: unknown until the schema says
+  manifest: unknown,
   context: { readonly manifestDir: string },
 ): Layer.Layer<WebConfig, Schema.SchemaError | Config.ConfigError> =>
   Layer.effect(

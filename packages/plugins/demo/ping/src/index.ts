@@ -61,6 +61,7 @@ const handlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
 
 const plugin = Plugin.define(
   '@qualy/plugin-ping',
+  { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
   Postgres.entities(entities),
   ReactUi.surfaces(surfaces),
   Api.group(pingApiGroup, handlers),

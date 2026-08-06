@@ -32,14 +32,5 @@
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@types/react": "catalog:"
-  },
-  "qualy": {
-    "runtime": {
-      "entry": ".",
-      "api": "./api",
-      "dependsOn": [
-        "@qualy/plugin-auth"
-      ]
-    }
   }
 }
