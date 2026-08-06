@@ -99,7 +99,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
    */
   type SqlFailure = ErrorOf<ReturnType<Tx['execute']>>
 
-  const write = <A, E>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E>) =>
+  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
     database
       .transaction((tx) =>
         Effect.gen(function* () {

@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
-import { LegacySql, type Orm } from '@qualy/plugin-database/server'
+import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   DEFAULT_PAGE_SIZE,
@@ -13,11 +13,8 @@ import {
 } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
-import {
-  strandedByQuery,
-  usersBlockingOrgTypeQuery,
-  type UserRow as UserProjection,
-} from '../iam/queries.ts'
+import { type UserRow as UserProjection } from '../iam/queries.ts'
+import { placementViolations, usersBlockingOrgType } from './placement.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
 import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
@@ -49,15 +46,9 @@ export class Iam extends Context.Service<
 >()('@qualy/plugin-auth/Iam') {}
 
 export const make = Effect.fn('Auth.make')(function* () {
-  const database = yield* LegacySql
+  const withDb = yield* withDatabase
   const userTypes = yield* makeUserTypes()
   const users = yield* makeUsers()
-
-  const countStranded = (query: SQL) =>
-    database.execute(query).pipe(
-      Effect.orDie,
-      Effect.map((result) => Number(rows<{ count: number }>(result)[0]?.count ?? 0)),
-    )
 
   return {
     placement: {
@@ -66,15 +57,12 @@ export const make = Effect.fn('Auth.make')(function* () {
       // transfer would. Called inside org's locked transaction, it joins that
       // transaction and therefore sees the retype that has not committed yet.
       usersBlockingOrgType: (tenantId: string, orgNodeId: string, orgTypeId: string) =>
-        countStranded(usersBlockingOrgTypeQuery(tenantId, orgNodeId, orgTypeId)),
+        withDb(usersBlockingOrgType(tenantId, orgNodeId, orgTypeId)),
     },
     iam: {
       // the same predicate every individual write is decided by, asked of
-      // every row at once. Written through strandedByQuery rather than spelled
-      // out again, because a second copy is how the rule starts answering two
-      // different things.
-      placementViolations: (tenantId: string) =>
-        countStranded(strandedByQuery(sql`u.tenant_id = ${tenantId}`, sql`n.org_type_id`)),
+      // every row at once
+      placementViolations: (tenantId: string) => withDb(placementViolations(tenantId)),
       userTypes,
       users,
     },

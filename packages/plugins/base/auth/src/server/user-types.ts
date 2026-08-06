@@ -14,7 +14,6 @@ import {
   lockUserTypeQuery,
   pruneAllowedOrgTypesQuery,
   setPlacementModeQuery,
-  strandedByPolicyQuery,
   uuidArrayLiteral,
   lockTenantQuery,
   oneUserType,
@@ -25,6 +24,7 @@ import {
   userTypeGuardQuery,
   userTypesOfTenant,
 } from '../iam/queries.ts'
+import { strandedByPolicy } from './placement.ts'
 import {
   RecoveryChannelRequired,
   UserTypeInUse,
@@ -96,7 +96,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     return row
   })
 
-  const write = <A, E>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E>) =>
+  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
     database
       .transaction((tx) =>
         Effect.gen(function* () {
@@ -111,12 +111,6 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
 
   const countHolders = (tx: Tx, tenantId: string, userTypeId: string) =>
     tx.execute(countUsersOfTypeQuery(tenantId, userTypeId)).pipe(
-      Effect.orDie,
-      Effect.map((r) => rows<{ count: number }>(r)[0]!.count),
-    )
-
-  const stranded = (tx: Tx, tenantId: string, userTypeId: string) =>
-    tx.execute(strandedByPolicyQuery(tenantId, userTypeId)).pipe(
       Effect.orDie,
       Effect.map((r) => rows<{ count: number }>(r)[0]!.count),
     )
@@ -323,7 +317,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           // After the write, against the state that would result, and
           // UNCONDITIONALLY. The old code only looked when the new list was
           // non-empty, so clearing it entirely skipped the check outright.
-          const left = yield* stranded(tx, tenantId, type.id)
+          const left = yield* strandedByPolicy(tenantId, type.id)
           if (left > 0) return yield* new UserTypePlacementInUse({ userCount: left })
           return type.version + 1
         }),

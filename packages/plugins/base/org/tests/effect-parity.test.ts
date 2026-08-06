@@ -2,6 +2,9 @@ import { sql } from 'drizzle-orm'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { entities as orgEntities } from '../src/db/entities.ts'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
+import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { Database } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
@@ -22,13 +25,17 @@ const catalog: readonly ActivePermission[] = [
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
 ]
 
+// what the orm must know for a query to name a table: this suite runs auth and
+// rbac alongside org, so their tables are part of what the assembly serves
+const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
 const stack = (url: string) =>
   orgLayer.pipe(
     Layer.provideMerge(authLayer),
     Layer.provideMerge(rbacLayer),
     Layer.provideMerge(
       Layer.mergeAll(
-        databaseFor(url),
+        databaseFor(url, { entities: closure }),
         Layer.succeed(PermissionCatalog, catalog),
         Layer.succeed(LoginDrivers, []),
         Layer.succeed(

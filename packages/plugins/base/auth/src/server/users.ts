@@ -12,7 +12,6 @@ import {
   lockTenantQuery,
   orgNodeExistsQuery,
   placeableNodesQuery,
-  placementAllowedQuery,
   setUserEnabledQuery,
   setUserPlacementQuery,
   updateUserQuery,
@@ -21,6 +20,7 @@ import {
   userTypeGuardQuery,
   type UserRow as UserProjection,
 } from '../iam/queries.ts'
+import { placementAllowed } from './placement.ts'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
@@ -64,7 +64,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
 
-  const write = <A, E>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E>) =>
+  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
     database
       .transaction((tx) =>
         Effect.gen(function* () {
@@ -111,17 +111,16 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     }
   })
 
-  const placementAllowed = Effect.fn('Iam.users.placementAllowed')(function* (
-    tx: Tx,
+  const requirePlacement = Effect.fn('Iam.users.requirePlacement')(function* (
     tenantId: string,
     userTypeId: string,
     orgNodeId: string,
   ) {
-    const row = rows<{ legal: boolean }>(
-      yield* tx.execute(placementAllowedQuery(tenantId, userTypeId, orgNodeId)),
-    )[0]
-    if (!row) return yield* new UserTypeNotFound()
-    if (!row.legal) return yield* new PlacementNotAllowed()
+    const legal = yield* placementAllowed(tenantId, userTypeId, orgNodeId)
+    // no row is not the same answer as a refusal: it means there is no such
+    // type or node to judge in the first place
+    if (legal === undefined) return yield* new UserTypeNotFound()
+    if (!legal) return yield* new PlacementNotAllowed()
   })
 
   const requireOrgNode = Effect.fn('Iam.users.requireOrgNode')(function* (
@@ -252,7 +251,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           if (!type.enabled) return yield* new UserTypeDisabled()
           yield* mayAssignType(type)
           yield* requireOrgNode(tx, tenantId, input.primaryOrgNodeId)
-          yield* placementAllowed(tx, tenantId, type.id, input.primaryOrgNodeId)
+          yield* requirePlacement(tenantId, type.id, input.primaryOrgNodeId)
           return rows<{ id: string }>(
             yield* tx.execute(
               insertUserQuery({
@@ -294,7 +293,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             if (!type.enabled) return yield* new UserTypeDisabled()
             yield* mayAssignType(type)
             // the new type must also permit where this person already stands
-            yield* placementAllowed(tx, tenantId, type.id, user.primary_org_node_id)
+            yield* requirePlacement(tenantId, type.id, user.primary_org_node_id)
             const blocking = rows<{ count: number }>(
               yield* tx.execute(
                 grantsBlockingUserTypeQuery(tenantId, user.id, type.id, canonicalTenantAdmin('r')),
@@ -330,7 +329,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           yield* manages(as, primaryOrgNodeId)
           yield* requireOrgNode(tx, tenantId, primaryOrgNodeId)
           // a transfer may not put someone where their kind of person may not be
-          yield* placementAllowed(tx, tenantId, user.user_type_id, primaryOrgNodeId)
+          yield* requirePlacement(tenantId, user.user_type_id, primaryOrgNodeId)
           yield* tx.execute(setUserPlacementQuery(tenantId, user.id, primaryOrgNodeId))
         }),
       )

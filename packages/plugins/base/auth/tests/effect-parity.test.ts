@@ -4,14 +4,16 @@ import { describe, expect, it } from 'vitest'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '../src/db/entities.ts'
-import { Database } from '@qualy/plugin-database/server'
+import { Database, kyselyOf, type Orm } from '@qualy/plugin-database/server'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
-import { placementLegal } from '../src/iam/queries.ts'
+import { placementLegal } from '../src/server/placement.ts'
+import { authEntityManager } from '../src/server/db.ts'
+import { sql as ksql } from 'kysely'
 
 // what the orm must know for a query to name a table; in production the host
 // hands over the generated aggregate, here the plugin's own closure
@@ -45,8 +47,35 @@ const stack = (url: string) =>
     ),
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Database>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Database | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+
+/** the rule the writes decide by, asked of one person through a caller's own query */
+const legalFor = (userId: string) =>
+  Effect.gen(function* () {
+    const em = yield* authEntityManager()
+    const row = yield* Effect.promise(() =>
+      kyselyOf(em)
+        .selectFrom('User as u')
+        .innerJoin('UserType as t', 't.id', 'u.userTypeId')
+        .innerJoin('OrgNode as n', 'n.id', 'u.primaryOrgNodeId')
+        .where('u.id', '=', userId)
+        .select((eb) =>
+          placementLegal(
+            {
+              isSystem: eb.ref('t.isSystem'),
+              placementMode: eb.ref('t.placementMode'),
+              tenantId: eb.ref('t.tenantId'),
+              id: eb.ref('t.id'),
+            },
+            eb.ref('n.orgTypeId'),
+            ksql<boolean>`${eb.ref('n.parentId')} is null`,
+          ).as('legal'),
+        )
+        .executeTakeFirst(),
+    )
+    return row!.legal
+  })
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -216,24 +245,10 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
           // the predicate the writes decide by, asked of the node below: a
           // system identity standing there would be illegal, so retyping that
           // node is what the scan reports
-          const legalAtRoot = one<{ legal: boolean }>(
-            yield* database.execute(sql`
-              select ${placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)} as legal
-              from users u
-              join user_types t on t.id = u.user_type_id
-              join org_nodes n on n.id = u.primary_org_node_id
-              where u.id = ${system}`),
-          ).legal
+          const legalAtRoot = yield* legalFor(system)
           yield* database.execute(sql`
             update users set primary_org_node_id = ${below} where id = ${system}`)
-          const legalBelow = one<{ legal: boolean }>(
-            yield* database.execute(sql`
-              select ${placementLegal('t', sql`n.org_type_id`, sql`n.parent_id is null`)} as legal
-              from users u
-              join user_types t on t.id = u.user_type_id
-              join org_nodes n on n.id = u.primary_org_node_id
-              where u.id = ${system}`),
-          ).legal
+          const legalBelow = yield* legalFor(system)
           return { stored, legalAtRoot, legalBelow }
         }),
       )

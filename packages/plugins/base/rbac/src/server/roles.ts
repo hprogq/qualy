@@ -96,7 +96,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
 
   type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
 
-  const write = <A, E>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E>) =>
+  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
     database
       .transaction((tx) =>
         Effect.gen(function* () {
