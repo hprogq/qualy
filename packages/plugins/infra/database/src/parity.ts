@@ -1,5 +1,6 @@
 import { MikroORM } from '@mikro-orm/postgresql'
 import type { EntitySchema } from '@mikro-orm/core'
+import { closeAll, withCleanup } from './cleanup.ts'
 import { QualyNamingStrategy } from './naming.ts'
 
 // Is a database built from entities the database the product runs on?
@@ -89,7 +90,7 @@ export async function schemaParity(
 ): Promise<SchemaParity> {
   const lineage = await create(`${options.label}-lineage`)
   const generated = await create(`${options.label}-generated`)
-  try {
+  const body = async (): Promise<SchemaParity> => {
     await generated.query(`drop table if exists ${options.tables.join(', ')} cascade`)
     const orm = await MikroORM.init({
       entities: [...options.entities, ...(options.dependencies?.entities ?? [])] as EntitySchema[],
@@ -119,13 +120,20 @@ export async function schemaParity(
       constraints: await both(queries.constraints),
       indexes: await both(queries.indexes),
     }
-  } finally {
+  }
+  return withCleanup(
+    body,
     // both, whatever happened to either: a scratch database left behind is a
     // database the next run has to work around
-    const failures: unknown[] = []
-    for (const context of [generated, lineage]) {
-      await context.dispose().catch((error: unknown) => failures.push(error))
-    }
-    if (failures.length > 0) throw new AggregateError(failures, 'could not drop a parity database')
-  }
+    () =>
+      closeAll(
+        [generated, lineage],
+        (context) => context.dispose(),
+        'could not drop a parity database',
+      ),
+    {
+      cleanupFailed: 'could not drop a parity database',
+      bothFailed: 'the comparison failed, and its databases could not be dropped',
+    },
+  )
 }

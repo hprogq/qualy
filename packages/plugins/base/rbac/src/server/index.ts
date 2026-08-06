@@ -84,6 +84,19 @@ export const make = Effect.fn('Rbac.make')(function* () {
   // assembly instead of an instance authorizing against a half-synced table.
   const catalog = new Map<string, ActivePermission>()
   for (const permission of declared) {
+    // Resolution refuses two plugins declaring one code, but it has to answer
+    // by reading source: it may not import plugin modules, because it also runs
+    // at startup where nothing can compile TypeScript. This is the same
+    // question asked of the catalog itself, and without it a code that got past
+    // that scan would be mirrored twice and quietly mean whichever came last.
+    const claimed = catalog.get(permission.code)
+    if (claimed) {
+      return yield* Effect.die(
+        new Error(
+          `permission ${permission.code} is declared by both ${claimed.plugin} and ${permission.plugin}`,
+        ),
+      )
+    }
     const em = yield* rbacEntityManager()
     yield* upsertPermission(em, permission).pipe(Effect.orDie)
     const stored = yield* permissionRow(em, permission.code).pipe(Effect.orDie)

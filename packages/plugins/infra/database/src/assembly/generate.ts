@@ -10,7 +10,7 @@ import {
 } from './baseline.ts'
 import type { DatabaseContribution } from './contribution.ts'
 import { loadEntityModules, structuralDiff } from './diff.ts'
-import { scanDestructive } from './drop-guard.ts'
+import { destructiveIn, scanDestructive } from './drop-guard.ts'
 import { asState, type DatabaseState } from './state.ts'
 import { databaseWork } from './work.ts'
 
@@ -71,16 +71,42 @@ export async function generateDatabase(
   const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
   const given = flag(context.args, 'name')
   const file = path.join(work.migrations, `${stamp}${given ? `_${slug(given)}` : ''}.sql`)
-  fs.writeFileSync(
-    file,
-    `${parts.map((part) => (part.trimEnd().endsWith(';') ? part : `${part};`)).join('\n\n')}\n`,
-  )
+  const sql = `${parts.map((part) => (part.trimEnd().endsWith(';') ? part : `${part};`)).join('\n\n')}\n`
+
+  // before it exists, not after: a refused migration that had already landed
+  // would be applied by the next deploy, and its baseline markers would be read
+  // as compiled by the next generate - so refusing it once would silently drop
+  // those fragments from every migration after it
+  refuse(destructiveIn(path.basename(file), sql), 1)
+  writeMigration(file, sql)
 
   for (const fragment of pending) {
     console.log(`database: compiled ${fragment.plugin} ${fragment.file} (${fragment.phase})`)
   }
   console.log(`database: ${path.basename(file)}`)
-  guardDestructive([file])
+}
+
+/**
+ * A migration lands whole or not at all.
+ *
+ * A half-written file is worse than a missing one: the lineage would apply the
+ * part that made it to disk and record the whole thing as done.
+ */
+function writeMigration(file: string, sql: string): void {
+  const temp = `${file}.${process.pid}.tmp`
+  const handle = fs.openSync(temp, 'wx')
+  try {
+    fs.writeFileSync(handle, sql)
+    fs.fsyncSync(handle)
+  } finally {
+    fs.closeSync(handle)
+  }
+  try {
+    fs.renameSync(temp, file)
+  } catch (error) {
+    fs.rmSync(temp, { force: true })
+    throw error
+  }
 }
 
 /**
@@ -106,12 +132,15 @@ export function blankMigration(migrations: string, name: string | undefined): st
  * marker inside the migration for one that has been reviewed.
  */
 export function guardDestructive(files: readonly string[]): void {
-  const hits = scanDestructive(files)
+  refuse(scanDestructive(files), files.length)
+}
+
+function refuse(hits: readonly string[], scanned: number): void {
   if (hits.length > 0 && process.env.ALLOW_DESTRUCTIVE !== '1') {
     const detail = hits.map((hit) => `  ${hit}`).join('\n')
     throw new Error(
       `database: destructive statements detected, set ALLOW_DESTRUCTIVE=1 to proceed\n${detail}`,
     )
   }
-  console.log(`database: drop guard ok (${files.length} file(s) scanned)`)
+  console.log(`database: drop guard ok (${scanned} file(s) scanned)`)
 }

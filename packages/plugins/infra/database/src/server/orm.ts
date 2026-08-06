@@ -179,30 +179,55 @@ export const kyselyOf = <T extends PostgresEntityManager>(em: T) =>
   })
 
 /**
+ * The connection could not be opened at all.
+ *
+ * An unreachable server, a connection string the driver rejects, entity
+ * metadata that does not validate. In the error channel rather than as a
+ * defect, because the plugin's whole claim is that these are visible in the
+ * type of its layer - as a defect the type said `never` and the process died
+ * with a driver stack trace, which is what it did under cordis.
+ *
+ * It never reaches an HTTP handler: nothing serves a request until this layer
+ * has been built.
+ */
+export class DatabaseStartupFailed extends Error {
+  readonly _tag = 'DatabaseStartupFailed'
+  constructor(override readonly cause: unknown) {
+    super(`could not open the database: ${cause instanceof Error ? cause.message : String(cause)}`)
+  }
+}
+
+/**
  * The ORM, closed when the layer that built it is.
  *
  * It does not migrate: the lineage is applied by the layer that owns the
  * connection, before anything is built on top of it, and a second thing
  * deciding whether the schema is current is a second answer.
  */
-export const layer: Layer.Layer<Orm, never, DatabaseConfig | Entities> = Layer.effect(
-  Orm,
-  Effect.gen(function* () {
-    const config = yield* DatabaseConfig
-    const entities = yield* Entities
-    return yield* Effect.acquireRelease(
-      Effect.promise(() =>
-        MikroORM.init({
-          entities: entities as EntitySchema[],
-          clientUrl: Redacted.value(config.url),
-          namingStrategy: QualyNamingStrategy,
-          ...(config.poolSize === undefined ? {} : { pool: { min: 0, max: config.poolSize } }),
-          // an assembly part way through the migration has entities for some
-          // of its tables and none for the rest, which is not a mistake
-          discovery: { warnWhenNoEntities: false },
+export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Entities> =
+  Layer.effect(
+    Orm,
+    Effect.gen(function* () {
+      const config = yield* DatabaseConfig
+      const entities = yield* Entities
+      return yield* Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () =>
+            MikroORM.init({
+              entities: entities as EntitySchema[],
+              clientUrl: Redacted.value(config.url),
+              namingStrategy: QualyNamingStrategy,
+              ...(config.poolSize === undefined ? {} : { pool: { min: 0, max: config.poolSize } }),
+              // an assembly part way through the migration has entities for
+              // some of its tables and none for the rest, which is not a
+              // mistake
+              discovery: { warnWhenNoEntities: false },
+            }),
+          catch: (cause) => new DatabaseStartupFailed(cause),
         }),
-      ),
-      (orm) => Effect.promise(() => orm.close()),
-    )
-  }),
-)
+        // a release that fails is nobody's decision to make: the scope is
+        // already closing and there is no caller left to hand it to
+        (orm) => Effect.promise(() => orm.close()),
+      )
+    }),
+  )

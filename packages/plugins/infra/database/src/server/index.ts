@@ -3,6 +3,7 @@ import { Readiness } from '@qualy/api-kit/readiness'
 import { sql as rawSql } from 'kysely'
 import { DatabaseConfig } from './config.ts'
 import {
+  DatabaseStartupFailed,
   Entities,
   Orm,
   QueryFailed,
@@ -19,12 +20,18 @@ import { pendingMigrations, runMigrations } from '../migrator.ts'
 // Where the failures live is the whole difference from what came before. Under
 // cordis a missing migration, an unreachable server and a bad connection
 // string were all throws inside Service.init that nothing in the type system
-// mentioned. Here they are in the layer's error channel, so a composition that
-// does not deal with them does not compile.
+// mentioned. Here they are in the layer's error channel - `StartupFailure`,
+// which is all three - so a composition that does not deal with them does not
+// compile.
+//
+// That claim was half true for a while: `MigrationsBehind` was typed, while an
+// unreachable server and a migration that would not apply were still defects
+// and the type still said the layer could only fail one way.
 
 export { DatabaseConfig, config } from './config.ts'
 export { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
 export {
+  DatabaseStartupFailed,
   Entities,
   QualyNamingStrategy,
   entityManager,
@@ -89,6 +96,34 @@ export class MigrationsBehind extends Error {
 }
 
 /**
+ * A migration would not apply, or the ledger would not be read.
+ *
+ * This is also what an unreachable server looks like at boot, whichever
+ * migration mode is set: `MikroORM.init` discovers metadata and creates an
+ * entity manager without opening a connection (upstream
+ * packages/core/src/MikroORM.ts, where `init` does not call `connect`), so the
+ * migrator - which opens one of its own either way - is what finds out first.
+ *
+ * Distinct from `MigrationsBehind`, which is a database this process refuses to
+ * serve rather than one it could not bring up to date. Both are in the error
+ * channel so the layer's type says a database can stop an assembly from being
+ * built - as a defect this one said `never`, which is the claim this module's
+ * comment makes about all of them.
+ */
+export class MigrationFailed extends Error {
+  readonly _tag = 'MigrationFailed'
+  constructor(
+    readonly attempted: string,
+    override readonly cause: unknown,
+  ) {
+    super(`could not ${attempted}: ${cause instanceof Error ? cause.message : String(cause)}`)
+  }
+}
+
+/** everything a database can say to stop this assembly from being built */
+export type StartupFailure = DatabaseStartupFailed | MigrationFailed | MigrationsBehind
+
+/**
  * Bring the database to the state this assembly expects, before anything that
  * depends on it is built.
  *
@@ -102,8 +137,12 @@ const prepare = Effect.fn('Database.prepare')(function* () {
   const entities = yield* Entities
   const options = { folder: config.migrationsFolder, entities }
   const url = Redacted.value(config.url)
+  const attempt = <A>(attempted: string, run: () => Promise<A>) =>
+    Effect.tryPromise({ try: run, catch: (cause) => new MigrationFailed(attempted, cause) })
   if (config.migrations === 'apply') {
-    const { applied, elapsed } = yield* Effect.promise(() => runMigrations(url, options))
+    const { applied, elapsed } = yield* attempt('apply the lineage', () =>
+      runMigrations(url, options),
+    )
     return yield* Effect.logInfo(
       applied > 0
         ? `applied ${applied} migration(s) (${elapsed}ms)`
@@ -113,7 +152,7 @@ const prepare = Effect.fn('Database.prepare')(function* () {
   // Refuse to start against a database the deployment job has not brought up
   // to date. Without this the process comes up on a stale schema and fails
   // later as missing columns, far from the cause.
-  const pending = yield* Effect.promise(() => pendingMigrations(url, options))
+  const pending = yield* attempt('read the migration ledger', () => pendingMigrations(url, options))
   if (pending > 0) return yield* Effect.fail(new MigrationsBehind(pending))
   yield* Effect.logInfo('migration execution disabled, schema is up to date')
 })
@@ -125,7 +164,7 @@ const prepare = Effect.fn('Database.prepare')(function* () {
  * side by side would let queries run against a schema still being brought up
  * to date.
  */
-export const layer: Layer.Layer<Orm, MigrationsBehind, DatabaseConfig | Entities> = ormLayer.pipe(
+export const layer: Layer.Layer<Orm, StartupFailure, DatabaseConfig | Entities> = ormLayer.pipe(
   Layer.provideMerge(Layer.effectDiscard(prepare())),
   // the probe closes over the orm, so it is registered from a layer built on
   // top of one rather than beside it

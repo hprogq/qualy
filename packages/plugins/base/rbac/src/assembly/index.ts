@@ -103,8 +103,10 @@ const catalogFile = (
  *
  * Authorization would answer with whichever definition was registered last,
  * and both plugins would look correct in isolation. Read from source rather
- * than by importing, because resolution reads files and never runs plugin
- * code - importing here would execute a plugin during `qualy resolve`.
+ * than by importing: resolution also runs at startup, where nothing can compile
+ * a plugin's TypeScript, so it reads files and never loads plugin code. That
+ * makes this an early answer rather than the authoritative one - rbac asks the
+ * same question of the catalog it actually mirrors.
  */
 function assertNoDuplicateCodes(files: readonly { pluginId: string; file: string }[]): void {
   const owners = new Map<string, string>()

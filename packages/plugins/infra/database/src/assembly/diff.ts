@@ -4,9 +4,10 @@ import { DatabaseSchema, MikroORM, SchemaComparator } from '@mikro-orm/postgresq
 import type { EntitySchema } from '@mikro-orm/core'
 import { Pool } from 'pg'
 import { QualyNamingStrategy } from '../naming.ts'
+import { closeAll, withCleanup } from '../cleanup.ts'
 import { runMigrations } from '../migrator.ts'
 import type { BaselineFragment } from './baseline.ts'
-import type { EntityContribution } from './entities.ts'
+import { assertNoCollisions, type EntityContribution } from './entities.ts'
 import type { DatabaseWork } from './work.ts'
 
 // What it would take to turn the committed lineage into the schema this
@@ -60,9 +61,42 @@ export async function loadEntityModules(
         `${entry.pluginId}: qualy.contributions.database.entitiesEntry (${entry.specifier}) must export an \`entities\` tuple`,
       )
     }
-    loaded.push({ entities: module.entities, compositeForeignKeys: module.compositeForeignKeys })
+    loaded.push({
+      entities: module.entities,
+      compositeForeignKeys: statements(entry, module.compositeForeignKeys),
+    })
   }
+  // here rather than during resolution, which may not import plugin code and
+  // therefore could only ever guess at what a module declares
+  assertNoCollisions(
+    contributions.map((entry, at) => ({
+      pluginId: entry.pluginId,
+      entities: loaded[at]!.entities,
+    })),
+  )
   return loaded
+}
+
+/**
+ * The extra DDL, checked before anything iterates it.
+ *
+ * A plugin exporting a string here would be spread one character at a time
+ * into the schema, and each character would be run as a statement. Only the
+ * `entities` export was ever checked, which is the half a plugin is least
+ * likely to get wrong.
+ */
+function statements(entry: EntityContribution, value: unknown): readonly string[] | undefined {
+  if (value === undefined) return undefined
+  const where = `${entry.pluginId}: ${entry.specifier} exports \`compositeForeignKeys\``
+  if (!Array.isArray(value)) throw new Error(`${where}, which must be an array of sql statements`)
+  for (const statement of value as unknown[]) {
+    if (typeof statement !== 'string' || !statement.trim()) {
+      throw new Error(
+        `${where} containing something that is not a sql statement: ${String(statement)}`,
+      )
+    }
+  }
+  return value as readonly string[]
 }
 
 /** where the migrator records what it has run, which nothing may diff against */
@@ -109,6 +143,13 @@ async function scratchDatabase(baseUrl: string, label: string): Promise<Scratch>
     },
   }
 }
+
+/** the body's answer, with the scratch database gone and neither failure lost */
+const withScratch = <T>(scratch: Scratch, body: () => Promise<T>): Promise<T> =>
+  withCleanup(body, scratch.drop, {
+    cleanupFailed: 'could not drop a generation database',
+    bothFailed: 'generation failed, and its database could not be dropped',
+  })
 
 const open = async (url: string, entities: readonly EntitySchema[]) =>
   MikroORM.init({
@@ -169,12 +210,10 @@ export async function structuralDiff(
 ): Promise<StructuralDiff> {
   const entities = modules.flatMap((module) => [...module.entities])
   const lineage = await scratchDatabase(work.url, 'lineage')
-  try {
+  return withScratch(lineage, async () => {
     await runMigrations(lineage.url, { folder: work.migrations, entities })
-    return await diffAgainstDeclared(lineage.url, work.url, modules, baseline)
-  } finally {
-    await lineage.drop()
-  }
+    return diffAgainstDeclared(lineage.url, work.url, modules, baseline)
+  })
 }
 
 /**
@@ -193,9 +232,7 @@ export async function diffAgainstDeclared(
 ): Promise<StructuralDiff> {
   const entities = modules.flatMap((module) => [...module.entities])
   const declared = await scratchDatabase(adminUrl, 'declared')
-  const failures: unknown[] = []
-  let outcome: StructuralDiff | undefined
-  try {
+  return withScratch(declared, async () => {
     const declaredOrm = await open(declared.url, entities)
     const lineageOrm = await open(subjectUrl, entities)
     try {
@@ -224,23 +261,19 @@ export async function diffAgainstDeclared(
       // guard would then have to be taught to ignore, in the one place whose
       // whole job is to make a drop deliberate.
       const forward = comparator.compare(from, to)
-      outcome = {
+      return {
         up: splitStatements(
           lineageOrm.schema.diffToSQL(forward, { wrap: false, safe: false, dropTables: true }),
         ),
       }
-      return outcome
     } finally {
-      await declaredOrm.close()
-      await lineageOrm.close()
+      // both, in order: closing the first used to be able to throw and leave
+      // the second connection open, which then made the drop fail as well
+      await closeAll<MikroORM>(
+        [declaredOrm, lineageOrm],
+        (orm) => orm.close(),
+        'could not close a generation connection',
+      )
     }
-  } finally {
-    await declared.drop().catch((error: unknown) => failures.push(error))
-    // Only when the body got as far as an answer. A cleanup failure raised on
-    // top of a real one replaces the cause with a symptom, and the cause is
-    // what the caller came for.
-    if (failures.length > 0 && outcome !== undefined) {
-      throw new AggregateError(failures, 'could not drop a generation database')
-    }
-  }
+  })
 }

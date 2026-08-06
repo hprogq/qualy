@@ -1336,3 +1336,47 @@ CI 挂在 `pnpm typecheck`,本地却"通过"了 —— 我一直在跑
 `pnpm typecheck 2>&1 | grep -E "error|message"`,而那次的诊断是 `warning TS18`
 (Effect LSP 的 `multipleEffectProvide`),既不匹配 grep,管道又把退出码换成了 grep 的。
 同一天早些时候还用 `head -4` 截掉过真正的 `TS2304`。**门禁看退出码,不看过滤后的文本。**
+
+### 审计第 1、4、6、7、9 条
+
+**1 destructive guard 提到写盘之前**。原来是「写 → 扫 → 抛」,被拒的迁移已经在 `db/migrations` 里,
+下一次部署会应用它,而且它编进去的 baseline 片段会被下一次 generate 当成「已编译」——**拒绝一次会让
+那些片段从此再也不出现在任何迁移里**。改成内存渲染 → 扫 → 临时文件 + rename 落盘。
+新增用例:一个只贡献 `DROP TABLE` baseline 的合成插件,generate 抛错且 `db/migrations` 为空目录。
+(伪造验证:把两行顺序换回来,该用例立刻红。)
+
+**4 实体碰撞改读元数据**。原正则扫源码 `\b(name|tableName):\s*'([^']+)'`:把 check/index 对象里的
+`name:` 当实体、只认单引号、同插件内重名不报。改成读 `EntitySchema.meta.className / tableName`
+—— 解析声明是解析器的活,而**生成本来就已经把模块 import 进来了**。因此检查从 `modules()`(codegen,
+纯函数、不许 import)挪到 `loadEntityModules()`(generate/deploy)。上游只在 ORM 启动时查**表名**重复
+(`MetadataValidator.ts:158`),消息里只有表名、没有插件名,实体名重复根本不查。
+
+同类问题在 rbac 的权限码扫描上**保留正则**,理由不同:resolve **也在启动时跑**,那里没有任何东西能编译
+插件的 TypeScript,所以 resolve 不能 import。改为承认它是「早期答案」,并在 rbac 真正镜像目录的那个
+循环里加一条精确判定(此前重复码会被静默后写覆盖:upsert 会把 plugin 列改成第二个插件,原有的
+「与存储行冲突」检查因此放行)。
+
+**6 cleanup 不再遮蔽根因**。`finally` 里抛出会替换掉正在抛的错误;上一轮的半修(主体失败时**吞掉**清理
+失败)又丢掉了「有一个库留在真实服务器上」这条事实。新增 `src/cleanup.ts`:两个失败一起进
+AggregateError,**根因在 errors[0]**。`closeAll` 同理:原来 `await a.close(); await b.close()` 第一个抛
+就漏掉第二个,而没关掉的连接正是随后 drop 失败的原因,于是报出来的是症状的症状。三处调用:
+structuralDiff、diffAgainstDeclared、schemaParity。五条纯逻辑用例。
+
+**7 启动期失败与叙述对齐**。模块头一直声称「三种失败都在 layer 的 error channel 里」,实际只有
+`MigrationsBehind` 是,ORM 初始化与迁移执行都是 `Effect.promise`(defect,类型说 `never`)。
+新增 `DatabaseStartupFailed` 与 `MigrationFailed`,导出 `StartupFailure` 联合。
+
+**实查上游**:`MikroORM.init` **不连接数据库**(repos/mikro-orm/packages/core/src/MikroORM.ts:120-144,
+只 discover 元数据 + createEntityManager;`connect()` 是 :176 的另一个方法,而且 sql 侧的
+`connect()` 也只是 initClient,pg Pool 本身是惰性的)。所以「服务器连不上」在两种 migrations 模式下
+都由**迁移器**先发现——它无论如何都会自己开一条连接。`MigrationFailed` 因此带 attempted 短语,
+消息是 `could not apply the lineage: ...` / `could not read the migration ledger: ...`。
+`DatabaseStartupFailed` 覆盖 init 真正会失败的事(实体元数据不合法等)。三条用例,伪造验证过
+(把 catch 换成 rethrow,「entity set will not load」立刻报 `the layer died rather than failing`)。
+
+**9 compositeForeignKeys 加载期校验**。原来只校验 `entities` 是数组;导出成字符串会被 `for...of`
+逐字符展开,每个字符当一条语句执行。
+
+**API 实查教训**:我按记忆写了 `Cause.failures(...)`,不存在。v4 beta.103 的 API 是
+`Cause.findErrorOption` / `findError`(Result)/ `hasFails`,见
+repos/effect/packages/effect/src/Cause.ts:761-840。

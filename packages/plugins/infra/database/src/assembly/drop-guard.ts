@@ -13,17 +13,25 @@ const destructivePatterns = [
 ]
 const approvalMarker = /^--\s*destructive:\s*approved\s*$/m
 
-export function scanDestructive(files: readonly string[]): string[] {
+/**
+ * What is destructive in one migration's SQL.
+ *
+ * Takes the text rather than a path, because generation has to be able to ask
+ * before the file exists: a migration that fails the guard must never reach the
+ * lineage, where the next run would read its baseline markers as compiled.
+ */
+export function destructiveIn(label: string, sql: string): string[] {
+  if (approvalMarker.test(sql)) return []
   const hits: string[] = []
-  for (const file of files) {
-    const sql = fs.readFileSync(file, 'utf8')
-    if (approvalMarker.test(sql)) continue
-    for (const pattern of destructivePatterns) {
-      const match = pattern.exec(sql)
-      if (match) hits.push(`${file}: ${match[0]}`)
-    }
+  for (const pattern of destructivePatterns) {
+    const match = pattern.exec(sql)
+    if (match) hits.push(`${label}: ${match[0]}`)
   }
   return hits
+}
+
+export function scanDestructive(files: readonly string[]): string[] {
+  return files.flatMap((file) => destructiveIn(file, fs.readFileSync(file, 'utf8')))
 }
 
 /**

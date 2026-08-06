@@ -9,12 +9,7 @@ import {
 import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
 import { collectBaseline } from './baseline.ts'
 import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
-import {
-  assertNoCollisions,
-  ENTITIES_MODULE,
-  entityContributions,
-  renderEntityModule,
-} from './entities.ts'
+import { ENTITIES_MODULE, entityContributions, renderEntityModule } from './entities.ts'
 import { diffAgainstDeclared, loadEntityModules } from './diff.ts'
 import { blankMigration, generateDatabase, guardDestructive } from './generate.ts'
 import { adoptMigrations, runMigrations } from '../migrator.ts'
@@ -65,7 +60,6 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
   // types queries against a schema this assembly does not have.
   modules: (context) => {
     const contributions = entityContributions(context, asState(context.state))
-    assertNoCollisions(contributions)
     return [
       {
         path: ENTITIES_MODULE,

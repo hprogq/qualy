@@ -14,7 +14,7 @@ import {
   kyselyOf,
   layer as databaseLayer,
   query as runQuery,
-  type MigrationsBehind,
+  type StartupFailure,
   type Orm,
 } from './server/index.ts'
 
@@ -71,7 +71,7 @@ export interface TestContext {
    * lineage applies and the server answers, which is the same claim a
    * deployment makes.
    */
-  services: Layer.Layer<Orm, MigrationsBehind>
+  services: Layer.Layer<Orm, StartupFailure>
   /** the scratch database this context is bound to */
   url: string
   /**
@@ -370,7 +370,7 @@ const TEST_POOL_SIZE = 2
 export const databaseFor = (
   url: string,
   options: { migrations?: 'apply' | 'off'; entities?: readonly EntitySchema[] } = {},
-): Layer.Layer<Orm, MigrationsBehind> =>
+): Layer.Layer<Orm, StartupFailure> =>
   databaseLayer.pipe(
     Layer.provide(
       Layer.mergeAll(

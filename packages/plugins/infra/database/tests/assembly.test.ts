@@ -182,7 +182,12 @@ describe('database dependency graph', () => {
 
   it('orders by declared dependency, not by the file', async () => {
     const forward = workspaceFor([...INFRA, ...AUTHORIZED])
-    const reversed = workspaceFor(['@qualy/plugin-rbac', '@qualy/plugin-auth', '@qualy/plugin-org', ...INFRA])
+    const reversed = workspaceFor([
+      '@qualy/plugin-rbac',
+      '@qualy/plugin-auth',
+      '@qualy/plugin-org',
+      ...INFRA,
+    ])
     try {
       for (const workspace of [forward, reversed]) {
         const order = await orderOf(workspace)
@@ -282,6 +287,31 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       }
     })
   }
+
+  it('refuses a destructive migration without leaving it behind', async () => {
+    // the guard used to run on the file it had just written, so a refused
+    // migration stayed in the lineage: the next deploy would apply it, and the
+    // next generation would read its baseline markers as already compiled and
+    // never emit those fragments again
+    const workspace = createWorkspace([...INFRA, '@fake/plugin-drops'], {
+      configs: { '@qualy/plugin-database': { migrationsFolder: MIGRATIONS } },
+      synthetic: [
+        {
+          id: '@fake/plugin-drops',
+          qualy: { contributions: { database: { baselineDir: './baseline' } } },
+          files: { 'baseline/0001_drop.sql': 'DROP TABLE IF EXISTS whatever;\n' },
+        },
+      ],
+    })
+    try {
+      const work = await context(workspace)
+      await expect(provider.generate!(work)).rejects.toThrow(/destructive statements detected/)
+      expect(allMigrationFiles(migrationsOf(workspace))).toEqual([])
+      expect(fs.readdirSync(migrationsOf(workspace))).toEqual([])
+    } finally {
+      workspace.dispose()
+    }
+  })
 
   it('keeps the tables of a detached plugin in the lineage', async () => {
     // taking a plugin out of the manifest must not make the generator see its tables

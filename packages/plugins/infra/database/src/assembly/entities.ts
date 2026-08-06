@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import type { EntitySchema } from '@mikro-orm/core'
 import type { CapabilityResolveContext } from '@qualy/assembly-contract'
 import type { DatabaseContribution } from './contribution.ts'
 import type { DatabaseState } from './state.ts'
@@ -84,31 +85,44 @@ export function entityContributions(
   return found
 }
 
+/** one plugin's entities, as its module exported them */
+export interface DeclaredEntities {
+  pluginId: string
+  entities: readonly EntitySchema[]
+}
+
 /**
- * Two plugins may not name the same entity or the same table.
+ * No entity name and no table name may be claimed twice.
  *
  * Both are silent in a concatenation: the tuple simply contains two elements
  * with one name, and whichever the orm registers last decides what a query
- * means. Read from source rather than by importing the modules, because
- * resolution reads files and never loads plugin code - importing here would
- * run a plugin's module during `qualy resolve`.
+ * means. The orm does refuse duplicate table names when it starts, but says
+ * only the name - which of a dozen packages put it there is left to the reader,
+ * and duplicate entity names it does not check at all.
+ *
+ * Asked of the metadata the modules exported, rather than of their source. The
+ * source scan this replaces read `name:` and `tableName:` with a regular
+ * expression, so it saw the `name:` of every check constraint and index as an
+ * entity, missed anything written with double quotes, and let one plugin
+ * declare the same table twice. Reading a declaration is the parser's job, and
+ * generation already has the loaded modules in hand.
  */
-export function assertNoCollisions(contributions: readonly EntityContribution[]): void {
-  const entities = new Map<string, string>()
-  const tables = new Map<string, string>()
+export function assertNoCollisions(declared: readonly DeclaredEntities[]): void {
+  const owners = { name: new Map<string, string>(), table: new Map<string, string>() }
   const clashes: string[] = []
-  for (const entry of contributions) {
-    const source = fs.readFileSync(entry.file, 'utf8')
-    for (const [, kind, value] of source.matchAll(
-      /\b(name|tableName):\s*'([^']+)'/g,
-    ) as Iterable<RegExpMatchArray>) {
-      const seen = kind === 'name' ? entities : tables
-      const owner = seen.get(value!)
-      if (owner && owner !== entry.pluginId) {
-        clashes.push(`${kind} ${value} is declared by both ${owner} and ${entry.pluginId}`)
-      } else {
-        seen.set(value!, entry.pluginId)
-      }
+  const claim = (kind: 'name' | 'table', value: string | undefined, pluginId: string) => {
+    // a table name the plugin left to the naming strategy is not known until
+    // the orm computes it, and the orm checks those itself
+    if (!value) return
+    const owner = owners[kind].get(value)
+    if (owner === undefined) owners[kind].set(value, pluginId)
+    else if (owner === pluginId) clashes.push(`${kind} ${value} is declared twice by ${pluginId}`)
+    else clashes.push(`${kind} ${value} is declared by both ${owner} and ${pluginId}`)
+  }
+  for (const entry of declared) {
+    for (const entity of entry.entities) {
+      claim('name', entity.meta.className, entry.pluginId)
+      claim('table', entity.meta.tableName, entry.pluginId)
     }
   }
   if (clashes.length > 0) {
