@@ -11,10 +11,22 @@ import {
   deleteType,
   insertRule,
   insertType,
+  deleteNode as deleteNodeRow,
+  hasChildren,
+  incompatibleChildTypes,
+  insertNode,
   listRules,
   listTypes,
   lockTenant,
+  moveSubtree,
+  nodesById,
+  oneNode,
   oneType,
+  readSnapshot,
+  rootNode,
+  setNodeType,
+  subtree,
+  updateNodeFields,
   orgEntityManager,
   ruleExists,
   ruleInUse,
@@ -61,20 +73,6 @@ import {
   subtreeCoveredBy,
   type ResolvedScope,
 } from '../coverage.ts'
-import {
-  deleteNodeQuery,
-  hasChildrenQuery,
-  insertNodeQuery,
-  moveSubtreeQuery,
-  nodesByIdQuery,
-  readSnapshotQuery,
-  rootQuery,
-  subtreeQuery,
-  incompatibleChildTypesQuery,
-  nodeQuery,
-  setNodeTypeQuery,
-  updateNodeFieldsQuery,
-} from '../queries.ts'
 
 // org as an Effect layer, starting with the retype path.
 //
@@ -94,38 +92,38 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
 /** the columns NODE_COLUMNS selects, as they come out of the database */
-interface NodeRow extends Record<string, unknown> {
+interface NodeRow {
   id: string
-  parent_id: string | null
-  org_type_id: string
+  parentId: string | null
+  orgTypeId: string
   code: string | null
   name: string
   path: string
   depth: number
-  sort_order: number
+  sortOrder: number
 }
 
 /** a node as a caller sees it, with what they may do to it */
 export type NodeRowPublic = {
   id: string
-  parent_id: string | null
-  org_type_id: string
+  parentId: string | null
+  orgTypeId: string
   code: string | null
   name: string
   path: string
   depth: number
-  sort_order: number
+  sortOrder: number
 }
 
 export interface NodeView {
   id: string
-  parent_id: string | null
-  org_type_id: string
+  parentId: string | null
+  orgTypeId: string
   code: string | null
   name: string
   path: string
   depth: number
-  sort_order: number
+  sortOrder: number
   manageable: boolean
   subtreeManageable: boolean
 }
@@ -261,29 +259,27 @@ export const make = Effect.fn('Org.make')(function* () {
           const em = yield* orgEntityManager()
           yield* lockTenant(em, tenantId)
 
-          const node = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, nodeId)))[0]
+          const node = yield* oneNode(em, tenantId, nodeId)
           if (!node) return yield* new NodeNotFound()
 
           // re-decided under the lock rather than trusted from the router: a
           // concurrent move can have re-anchored the target since that check
           yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
 
-          if (node.org_type_id === newTypeId) return
+          if (node.orgTypeId === newTypeId) return
           const type = yield* oneType(em, tenantId, newTypeId)
           if (!type) return yield* new TypeNotFound()
 
-          if (node.parent_id) {
-            const parent = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, node.parent_id)))[0]!
-            if (!(yield* ruleExists(em, tenantId, parent.org_type_id, newTypeId))) {
+          if (node.parentId) {
+            const parent = (yield* oneNode(em, tenantId, node.parentId))!
+            if (!(yield* ruleExists(em, tenantId, parent.orgTypeId, newTypeId))) {
               return yield* new RuleViolation({
                 reason: 'the new type is not allowed under the parent type',
               })
             }
           }
 
-          const incompatible = rows(
-            yield* tx.execute(incompatibleChildTypesQuery(tenantId, nodeId, newTypeId)),
-          )
+          const incompatible = yield* incompatibleChildTypes(em, tenantId, nodeId, newTypeId)
           if (incompatible.length > 0) {
             return yield* new RuleViolation({
               reason: 'existing children are incompatible with the new type',
@@ -303,7 +299,7 @@ export const make = Effect.fn('Org.make')(function* () {
           const stranded = yield* placement.usersBlockingOrgType(tenantId, nodeId, newTypeId)
           if (stranded > 0) return yield* new PlacementBlocked({ userCount: stranded })
 
-          yield* tx.execute(setNodeTypeQuery(tenantId, nodeId, newTypeId))
+          yield* setNodeType(em, tenantId, nodeId, newTypeId)
         }),
       )
       .pipe(
@@ -332,7 +328,7 @@ export const make = Effect.fn('Org.make')(function* () {
           Effect.gen(function* () {
             const em = yield* orgEntityManager()
             yield* lockTenant(em, tenantId)
-            const node = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, nodeId)))[0]
+            const node = yield* oneNode(em, tenantId, nodeId)
             if (!node) return yield* new NodeNotFound()
             // re-decided under the lock: the pre-check ran before it, and the
             // target may have been re-anchored since
@@ -355,7 +351,10 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
   ) {
     yield* write(tenantId, nodeId, as, (tx) =>
-      tx.execute(updateNodeFieldsQuery(tenantId, nodeId, fields)),
+      Effect.gen(function* () {
+        const em = yield* orgEntityManager()
+        yield* updateNodeFields(em, tenantId, nodeId, fields)
+      }),
     )
   })
 
@@ -366,14 +365,15 @@ export const make = Effect.fn('Org.make')(function* () {
   ) {
     yield* write(tenantId, nodeId, as, (tx, node) =>
       Effect.gen(function* () {
-        if (!node.parent_id) return yield* new NodeIsRoot()
-        const children = rows(yield* tx.execute(hasChildrenQuery(tenantId, nodeId)))
-        if (children.length > 0) return yield* new NodeHasChildren()
+        if (!node.parentId) return yield* new NodeIsRoot()
+        const em = yield* orgEntityManager()
+        const children = yield* hasChildren(em, tenantId, nodeId)
+        if (children) return yield* new NodeHasChildren()
         // users and assignments still block through their restrict foreign
         // keys. That is not a comment about intent: the write runs under
         // translateConstraints, which turns those constraint names into
         // ORG_NODE_IN_USE rather than letting them become a 500.
-        yield* tx.execute(deleteNodeQuery(tenantId, nodeId))
+        yield* deleteNodeRow(em, tenantId, nodeId)
       }),
     )
   })
@@ -381,7 +381,8 @@ export const make = Effect.fn('Org.make')(function* () {
   // types and rules are tenant-wide, so authority is proved at the root rather
   // than at a node: there is no node for a type to be managed at
   const atRoot = Effect.fn('Org.atRoot')(function* (tenantId: string, as: Principal) {
-    const root = rows<NodeRow>(yield* database.execute(rootQuery(tenantId)).pipe(Effect.orDie))[0]
+    const em = yield* orgEntityManager()
+    const root = yield* rootNode(em, tenantId).pipe(Effect.orDie)
     if (!root) return yield* Effect.die(new Error(`tenant ${tenantId} has no root node`))
     yield* rbac.requireAt(as, 'org.tree.manage', root.id)
   })
@@ -448,16 +449,12 @@ export const make = Effect.fn('Org.make')(function* () {
     if (scope.anchors.length === 0) {
       return { tenantWide: false, anchors: [] } satisfies ResolvedScope
     }
-    const found = rows<NodeRow>(
-      yield* tx
-        .execute(
-          nodesByIdQuery(
-            tenantId,
-            scope.anchors.map((anchor) => anchor.orgNodeId),
-          ),
-        )
-        .pipe(Effect.orDie),
-    )
+    const em = yield* orgEntityManager()
+    const found = yield* nodesById(
+      em,
+      tenantId,
+      scope.anchors.map((anchor) => anchor.orgNodeId),
+    ).pipe(Effect.orDie)
     const byId = new Map(found.map((node) => [node.id, node]))
     return {
       tenantWide: false,
@@ -469,11 +466,12 @@ export const make = Effect.fn('Org.make')(function* () {
   })
 
   /** every read projection runs in one snapshot; see readSnapshotQuery */
-  const readInSnapshot = <A, E>(body: (tx: Tx) => Effect.Effect<A, E>) =>
+  const readInSnapshot = <A, E, R>(body: (tx: Tx) => Effect.Effect<A, E, R>) =>
     database
       .transaction((tx) =>
         Effect.gen(function* () {
-          yield* tx.execute(readSnapshotQuery)
+          const em = yield* orgEntityManager()
+          yield* readSnapshot(em)
           return yield* body(tx)
         }),
       )
@@ -504,7 +502,7 @@ export const make = Effect.fn('Org.make')(function* () {
         const em = yield* orgEntityManager()
         const type = yield* oneType(em, tenantId, input.orgTypeId).pipe(Effect.orDie)
         if (!type) return yield* new TypeNotFound()
-        const allowed = yield* ruleExists(em, tenantId, parent.org_type_id, input.orgTypeId).pipe(
+        const allowed = yield* ruleExists(em, tenantId, parent.orgTypeId, input.orgTypeId).pipe(
           Effect.orDie,
         )
         if (!allowed) {
@@ -512,20 +510,16 @@ export const make = Effect.fn('Org.make')(function* () {
             reason: 'parent-child type combination is not allowed by the rules',
           })
         }
-        return rows<NodeRow>(
-          yield* tx.execute(
-            insertNodeQuery({
-              tenantId,
-              parentId: parent.id,
-              parentPath: parent.path,
-              parentDepth: parent.depth,
-              orgTypeId: input.orgTypeId,
-              code: input.code ?? null,
-              name: input.name,
-              sortOrder: input.sortOrder ?? 0,
-            }),
-          ),
-        )[0]!
+        return yield* insertNode(em, {
+          tenantId,
+          parentId: parent.id,
+          parentPath: parent.path,
+          parentDepth: parent.depth,
+          orgTypeId: input.orgTypeId,
+          code: input.code ?? null,
+          name: input.name,
+          sortOrder: input.sortOrder ?? 0,
+        })
       }),
     )
   })
@@ -554,10 +548,10 @@ export const make = Effect.fn('Org.make')(function* () {
           if (nodeId === newParentId) {
             return yield* new InvalidMove({ reason: 'a node cannot become its own parent' })
           }
-          const node = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, nodeId)))[0]
+          const node = yield* oneNode(em, tenantId, nodeId)
           if (!node) return yield* new NodeNotFound()
-          if (!node.parent_id) return yield* new NodeIsRoot()
-          const newParent = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, newParentId)))[0]
+          if (!node.parentId) return yield* new NodeIsRoot()
+          const newParent = yield* oneNode(em, tenantId, newParentId)
           if (!newParent) return yield* new NodeNotFound()
 
           const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
@@ -565,36 +559,32 @@ export const make = Effect.fn('Org.make')(function* () {
             return yield* new AccessDenied({ reason: 'not allowed to move this subtree' })
           }
 
-          if (newParent.id === node.parent_id) {
+          if (newParent.id === node.parentId) {
             // same parent: a reorder, with no structural change to validate
             if (newSortOrder !== undefined) {
-              yield* tx.execute(
-                updateNodeFieldsQuery(tenantId, nodeId, { sortOrder: newSortOrder }),
-              )
+              yield* updateNodeFields(em, tenantId, nodeId, { sortOrder: newSortOrder })
             }
             return
           }
           if (newParent.path === node.path || newParent.path.startsWith(`${node.path}.`)) {
             return yield* new InvalidMove({ reason: 'a node cannot move into its own subtree' })
           }
-          if (!(yield* ruleExists(em, tenantId, newParent.org_type_id, node.org_type_id))) {
+          if (!(yield* ruleExists(em, tenantId, newParent.orgTypeId, node.orgTypeId))) {
             return yield* new RuleViolation({
               reason: 'parent-child type combination is not allowed by the rules',
             })
           }
           const newPath = `${newParent.path}.${node.path.split('.').at(-1)}`
-          yield* tx.execute(
-            moveSubtreeQuery({
-              tenantId,
-              nodeId,
-              newParentId,
-              oldPath: node.path,
-              newPath,
-              depthDelta: newParent.depth + 1 - node.depth,
-            }),
-          )
+          yield* moveSubtree(em, {
+            tenantId,
+            nodeId,
+            newParentId,
+            oldPath: node.path,
+            newPath,
+            depthDelta: newParent.depth + 1 - node.depth,
+          })
           if (newSortOrder !== undefined) {
-            yield* tx.execute(updateNodeFieldsQuery(tenantId, nodeId, { sortOrder: newSortOrder }))
+            yield* updateNodeFields(em, tenantId, nodeId, { sortOrder: newSortOrder })
           }
         }),
       )
@@ -618,10 +608,9 @@ export const make = Effect.fn('Org.make')(function* () {
     ) {
       return yield* readInSnapshot((tx) =>
         Effect.gen(function* () {
+          const em = yield* orgEntityManager()
           const readScope = yield* resolveScope(tx, tenantId, as, 'org.tree.read')
-          const node = rows<NodeRow>(
-            yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
-          )[0]
+          const node = yield* oneNode(em, tenantId, nodeId).pipe(Effect.orDie)
           // not-found and not-covered answer the same on purpose: a caller
           // must not learn that a node they cannot see exists
           if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
@@ -640,19 +629,14 @@ export const make = Effect.fn('Org.make')(function* () {
         Effect.gen(function* () {
           const readScope = yield* resolveScope(tx, tenantId, as, 'org.tree.read')
           const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
-          const subtree = (path: string) =>
-            tx.execute(subtreeQuery(tenantId, path)).pipe(
-              Effect.orDie,
-              Effect.map((r) => rows<NodeRow>(r)),
-            )
+          const em = yield* orgEntityManager()
+          const branch = (path: string) => subtree(em, tenantId, path).pipe(Effect.orDie)
 
           let roots: string[] = []
           const nodes = new Map<string, NodeRow>()
 
           if (nodeId !== undefined) {
-            const node = rows<NodeRow>(
-              yield* tx.execute(nodeQuery(tenantId, nodeId)).pipe(Effect.orDie),
-            )[0]
+            const node = yield* oneNode(em, tenantId, nodeId).pipe(Effect.orDie)
             // not-found and not-covered are indistinguishable on purpose, and
             // the shared answer is a refusal: a client branching on 403 to
             // re-prompt for authorization must keep doing so
@@ -662,23 +646,21 @@ export const make = Effect.fn('Org.make')(function* () {
             roots = [node.id]
             // the incident this guards: only a subtree anchor yields the
             // subtree. A self anchor yields the one node it names.
-            const slice = subtreeCoveredBy(readScope, node) ? yield* subtree(node.path) : [node]
+            const slice = subtreeCoveredBy(readScope, node) ? yield* branch(node.path) : [node]
             for (const each of slice) nodes.set(each.id, each)
           } else if (readScope.tenantWide) {
-            const root = rows<NodeRow>(yield* tx.execute(rootQuery(tenantId)).pipe(Effect.orDie))[0]
+            const root = yield* rootNode(em, tenantId).pipe(Effect.orDie)
             if (root) {
               roots = [root.id]
-              for (const each of yield* subtree(root.path)) nodes.set(each.id, each)
+              for (const each of yield* branch(root.path)) nodes.set(each.id, each)
             }
           } else {
             const shape = forestShape(readScope)
             for (const anchor of shape.subtrees) {
-              for (const each of yield* subtree(anchor.path)) nodes.set(each.id, each)
+              for (const each of yield* branch(anchor.path)) nodes.set(each.id, each)
             }
             for (const anchor of shape.selves) {
-              const node = rows<NodeRow>(
-                yield* tx.execute(nodeQuery(tenantId, anchor.id)).pipe(Effect.orDie),
-              )[0]
+              const node = yield* oneNode(em, tenantId, anchor.id).pipe(Effect.orDie)
               if (node) nodes.set(node.id, node)
             }
             roots = forestRoots(shape, (id) => nodes.has(id))
@@ -828,12 +810,12 @@ const toTypeDto = (row: TypeRow) => ({
 
 const toNodeDto = (node: NodeView) => ({
   id: node.id,
-  parentId: node.parent_id,
-  orgTypeId: node.org_type_id,
+  parentId: node.parentId,
+  orgTypeId: node.orgTypeId,
   code: node.code,
   name: node.name,
   depth: node.depth,
-  sortOrder: node.sort_order,
+  sortOrder: node.sortOrder,
   manageable: node.manageable,
   subtreeManageable: node.subtreeManageable,
 })

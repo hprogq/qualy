@@ -247,3 +247,217 @@ export const deleteRule = (
       .where('childTypeId', '=', childTypeId)
       .execute(),
   )
+
+// --- nodes ---
+
+/**
+ * What a node row carries.
+ *
+ * `path` is cast to text because ltree comes back as an opaque value
+ * otherwise, and every caller compares it as a string.
+ */
+const nodeColumns = (em: OrgEntityManager) =>
+  kyselyOf(em)
+    .selectFrom('OrgNode')
+    .select([
+      'id',
+      'parentId',
+      'orgTypeId',
+      'code',
+      'name',
+      'depth',
+      'sortOrder',
+      sql<string>`path::text`.as('path'),
+    ])
+
+export type NodeRow =
+  Effect.Success<ReturnType<typeof rootNode>> extends infer R ? NonNullable<R> : never
+
+export const oneNode = (em: OrgEntityManager, tenantId: string, nodeId: string) =>
+  query(() =>
+    nodeColumns(em).where('tenantId', '=', tenantId).where('id', '=', nodeId).executeTakeFirst(),
+  )
+
+export const rootNode = (em: OrgEntityManager, tenantId: string) =>
+  query(() =>
+    nodeColumns(em)
+      .where('tenantId', '=', tenantId)
+      .where('parentId', 'is', null)
+      .executeTakeFirst(),
+  )
+
+export const nodesById = (em: OrgEntityManager, tenantId: string, nodeIds: readonly string[]) =>
+  query(() => {
+    if (nodeIds.length === 0) return Promise.resolve([])
+    return nodeColumns(em).where('tenantId', '=', tenantId).where('id', 'in', nodeIds).execute()
+  })
+
+export const subtree = (em: OrgEntityManager, tenantId: string, rootPath: string) =>
+  query(() =>
+    nodeColumns(em)
+      .where('tenantId', '=', tenantId)
+      .where((eb) => sql<boolean>`${eb.ref('path')} <@ ${rootPath}::ltree`)
+      .orderBy('path')
+      .execute(),
+  )
+
+/** children whose own type the new parent type would not permit */
+export const incompatibleChildTypes = (
+  em: OrgEntityManager,
+  tenantId: string,
+  nodeId: string,
+  newTypeId: string,
+) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgNode as child')
+      .where('child.tenantId', '=', tenantId)
+      .where('child.parentId', '=', nodeId)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('OrgTypeRule as r')
+              .select('r.parentTypeId')
+              .where('r.tenantId', '=', tenantId)
+              .where('r.parentTypeId', '=', newTypeId)
+              .whereRef('r.childTypeId', '=', 'child.orgTypeId'),
+          ),
+        ),
+      )
+      .select('child.orgTypeId')
+      .distinct()
+      .execute(),
+  )
+
+export const setNodeType = (
+  em: OrgEntityManager,
+  tenantId: string,
+  nodeId: string,
+  typeId: string,
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('OrgNode')
+      .set({ orgTypeId: typeId, updatedAt: sql<Date>`now()` })
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', nodeId)
+      .execute(),
+  )
+
+export const hasChildren = (em: OrgEntityManager, tenantId: string, nodeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgNode')
+      .select('id')
+      .where('tenantId', '=', tenantId)
+      .where('parentId', '=', nodeId)
+      .limit(1)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row !== undefined))
+
+export const updateNodeFields = (
+  em: OrgEntityManager,
+  tenantId: string,
+  nodeId: string,
+  fields: { name?: string; sortOrder?: number },
+) =>
+  query(() =>
+    kyselyOf(em)
+      .updateTable('OrgNode')
+      .set({
+        ...(fields.name === undefined ? {} : { name: fields.name }),
+        ...(fields.sortOrder === undefined ? {} : { sortOrder: fields.sortOrder }),
+        updatedAt: sql<Date>`now()`,
+      })
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', nodeId)
+      .execute(),
+  )
+
+export const deleteNode = (em: OrgEntityManager, tenantId: string, nodeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .deleteFrom('OrgNode')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', nodeId)
+      .execute(),
+  )
+
+/**
+ * The snapshot a read projection runs in.
+ *
+ * Anchors and the tree have to resolve against the same view of the database:
+ * without it a concurrent move can tear the response, and a grant revoked
+ * mid-read can still contribute nodes. Postgres requires it as the
+ * transaction's first statement, which is why it is a statement rather than an
+ * option.
+ */
+export const readSnapshot = (em: OrgEntityManager) =>
+  query(() => sql`set transaction isolation level repeatable read, read only`.execute(kyselyOf(em)))
+
+/**
+ * A new node, with its path written atomically with the row.
+ *
+ * The id comes from uuidv7() inside the statement so there is no window where
+ * the row exists with a placeholder path. Written out rather than built,
+ * because the path is derived from the id the same statement generates.
+ */
+export const insertNode = (
+  em: OrgEntityManager,
+  input: {
+    tenantId: string
+    parentId: string
+    parentPath: string
+    parentDepth: number
+    orgTypeId: string
+    code: string | null
+    name: string
+    sortOrder: number
+  },
+) =>
+  query(async () => {
+    const { rows } = await sql<NodeRow>`
+      insert into org_nodes (id, tenant_id, parent_id, org_type_id, code, name, path, depth, sort_order)
+      select v.id, ${input.tenantId}, ${input.parentId}, ${input.orgTypeId}, ${input.code},
+        ${input.name}, (${input.parentPath} || '.' || replace(v.id::text, '-', ''))::ltree,
+        ${input.parentDepth + 1}, ${input.sortOrder}
+      from (select uuidv7() as id) v
+      returning id, parent_id as "parentId", org_type_id as "orgTypeId", code, name,
+        path::text as path, depth, sort_order as "sortOrder"`.execute(kyselyOf(em))
+    return rows[0]!
+  })
+
+/**
+ * The whole subtree relocated by one statement.
+ *
+ * The moved node takes the exact new path and parent, descendants keep their
+ * tail below it, and depth shifts uniformly. Runs under the tenant lock, so
+ * the path snapshot cannot go stale between validation and update.
+ */
+export const moveSubtree = (
+  em: OrgEntityManager,
+  input: {
+    tenantId: string
+    nodeId: string
+    newParentId: string
+    oldPath: string
+    newPath: string
+    depthDelta: number
+  },
+) =>
+  query(() =>
+    sql`
+      update org_nodes set
+        parent_id = case when id = ${input.nodeId}::uuid then ${input.newParentId}::uuid
+          else parent_id end,
+        path = case
+          when id = ${input.nodeId}::uuid then ${input.newPath}::ltree
+          else ${input.newPath}::ltree || subpath(path, nlevel(${input.oldPath}::ltree))
+        end,
+        depth = depth + ${input.depthDelta},
+        updated_at = now()
+      where tenant_id = ${input.tenantId} and path <@ ${input.oldPath}::ltree`.execute(
+      kyselyOf(em),
+    ),
+  )
