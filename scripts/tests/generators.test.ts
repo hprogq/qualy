@@ -60,11 +60,7 @@ describe('generator determinism', () => {
     // ping owns tables, so the selection has to include the capability that
     // accepts them or resolution refuses the manifest
     const workspace = createWorkspace(
-      [
-        '@qualy/plugin-database',
-                '@qualy/plugin-ui-registry',
-        '@qualy/plugin-ping',
-      ],
+      ['@qualy/plugin-database', '@qualy/plugin-ui-registry', '@qualy/plugin-ping'],
       { disabled: ['@qualy/plugin-ping'] },
     )
     try {
@@ -94,9 +90,7 @@ describe('generator determinism', () => {
     // One plugin can no longer be selected twice, but two plugins are still
     // free to name a group the same thing.
     gen()
-    const claims = [...read(apiPath).matchAll(/^\s+(\w+ApiGroup),$/gm)].map(
-      (match) => match[1],
-    )
+    const claims = [...read(apiPath).matchAll(/^\s+(\w+ApiGroup),$/gm)].map((match) => match[1])
     expect(claims.length).toBeGreaterThan(0)
     expect(new Set(claims).size).toBe(claims.length)
   })
@@ -106,12 +100,10 @@ describe('generator determinism', () => {
     // handler half can be wrong on its own: a group nobody implements is a
     // route the aggregate advertises and then cannot serve
     gen()
-    const groups = [...read(apiPath).matchAll(/^\s+(\w+)ApiGroup,$/gm)].map(
+    const groups = [...read(apiPath).matchAll(/^\s+(\w+)ApiGroup,$/gm)].map((match) => match[1])
+    const handlers = [...read(apiHandlersPath).matchAll(/^\s+(\w+)ApiHandlers,$/gm)].map(
       (match) => match[1],
     )
-    const handlers = [
-      ...read(apiHandlersPath).matchAll(/^\s+(\w+)ApiHandlers,$/gm),
-    ].map((match) => match[1])
     expect(groups.length).toBeGreaterThan(0)
     expect(handlers).toEqual(groups)
     // and no two plugins claim one identifier, which is how the aggregate
@@ -144,7 +136,7 @@ describe('generator determinism', () => {
     const workspace = createWorkspace(
       [
         '@qualy/plugin-database',
-                '@qualy/plugin-ui-registry',
+        '@qualy/plugin-ui-registry',
         '@qualy/plugin-org',
         '@qualy/plugin-auth',
         '@qualy/plugin-rbac',
@@ -170,7 +162,7 @@ describe('generator determinism', () => {
     const workspace = createWorkspace(
       [
         '@qualy/plugin-database',
-                '@qualy/plugin-ui-registry',
+        '@qualy/plugin-ui-registry',
         '@qualy/plugin-org',
         '@qualy/plugin-auth',
         '@qualy/plugin-rbac',

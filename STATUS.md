@@ -1266,3 +1266,20 @@ auth 用 `provideMerge(loginDriversLayer)` 把注册表连同自己一起发布 
 
 **教训**:排错时用 `head -4` 截错误列表,把真正的 `TS2304: Cannot find name 'Ui'` 截掉了,
 在无关的 `any` 上绕了很久。错误列表不要截。
+
+### 阶段 2.6 第 4 步完成:config 通道 + auth/web 搬家
+
+`qualy.runtime.config: true` 声明「我的 runtime entry 导出 `config`」。生成器把该插件的清单块
+**作为字面量**写进调用:`pluginAuthConfig({}, { manifestDir })`,由插件自己声明的参数类型在
+typecheck 期校验。`manifestDir` 只在真有插件收配置时才 emit;`renderRuntimeModule` 因此多一个
+`modulePath` 参数 —— 从生成模块回到清单的相对锚点,只有调用方知道模块写去哪。
+
+auth 的三个环境变量与 web 的模式判断搬回各自插件。web 还多做一件事:`sourceRoot`/`assetRoot`
+是路径,由它自己按 `manifestDir` resolve —— 核心不知道哪个键是路径。
+
+resolve 期原本就有一条「给了 config 但只有 capability provider 会读」的硬失败,现在它也认
+`runtime.config`,所以「设置看起来生效实际没人读」这个失败形态仍然被堵住。
+
+三例新测试 + 真实启动验证。**注意**:业务测试直接注入 AuthConfig 服务(设计如此,方案里写明),
+所以 `config` 导出这条路只有真实启动会走到 —— 用 `login-methods` 验的,它需要 `defaultTenantSlug`
+才能找到租户。

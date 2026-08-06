@@ -178,14 +178,19 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
       if (!providers.has(key)) continue
       orphaned.push(`${id} declares qualy.${key}, which belongs under qualy.contributions.${key}`)
     }
-    // A config block only reaches a capability provider, as providerConfig
-    // during generate, deploy and capability commands. On any other plugin it
-    // is read by nothing at all, and the manifest hash still changes, so
-    // resolve reports success and a frozen start passes: the setting looks
-    // applied and is not. Plugins that want configuring read the environment.
-    if (manifest.plugins.get(id)?.config !== undefined && !entry.provider) {
+    // A config block reaches exactly two kinds of plugin: a capability
+    // provider, as providerConfig during generate, deploy and its commands;
+    // and one that declared `qualy.runtime.config`, whose runtime entry is
+    // handed the block by the generated module. On any other plugin nothing
+    // reads it, and the manifest hash still changes, so resolve reports
+    // success and a frozen start passes: the setting looks applied and is not.
+    if (
+      manifest.plugins.get(id)?.config !== undefined &&
+      !entry.provider &&
+      !entry.runtime?.config
+    ) {
       orphaned.push(
-        `${id} is given config in ${manifest.source}, but only a capability provider is given its config, so nothing would read this. Configure this plugin through the environment instead.`,
+        `${id} is given config in ${manifest.source}, but it neither provides a capability nor declares qualy.runtime.config, so nothing would read this. Configure this plugin through the environment instead, or have it declare that it takes config.`,
       )
     }
     for (const [key, raw] of Object.entries(entry.contributions)) {

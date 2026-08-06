@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Context, Data, Effect, Layer, Queue } from 'effect'
+import { Config, Context, Data, Effect, Layer, Queue, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
 import type { Logger as ViteLogger } from 'vite'
@@ -31,6 +31,56 @@ export class WebConfig extends Context.Service<
     readonly assetRoot?: string
   }
 >()('@qualy/plugin-web/WebConfig') {}
+
+/**
+ * What this plugin accepts in `qualy.yml`.
+ *
+ * The two roots are paths, and a path in a manifest is relative to the
+ * manifest - which is the whole reason the assembly hands `manifestDir` over.
+ * Resolving them here rather than in the host is what keeps the host from
+ * knowing this plugin serves files at all.
+ */
+export const WebManifestConfig = Schema.Struct({
+  sourceRoot: Schema.optional(Schema.String),
+  assetRoot: Schema.optional(Schema.String),
+})
+export type WebManifestConfig = typeof WebManifestConfig.Type
+
+/**
+ * How the browser application is served.
+ *
+ * `auto` follows NODE_ENV, the same rule the cordis config expressed. Which
+ * mode this is decides whether the process owns a Vite server or a static file
+ * handler, so it is a deployment fact and stays in the environment; where the
+ * files are is an assembly fact and comes from the manifest.
+ */
+export const config = (
+  manifest: WebManifestConfig,
+  context: { readonly manifestDir: string },
+): Layer.Layer<WebConfig, Schema.SchemaError | Config.ConfigError> =>
+  Layer.effect(
+    WebConfig,
+    Effect.gen(function* () {
+      const declared = yield* Schema.decodeUnknownEffect(WebManifestConfig)(manifest)
+      const mode = yield* Config.literals(
+        ['auto', 'development', 'production'],
+        'QUALY_WEB_MODE',
+      ).pipe(Config.withDefault('auto' as const))
+      const environment = yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))
+      const anchored = (declared: string | undefined) =>
+        declared === undefined ? undefined : path.resolve(context.manifestDir, declared)
+      return WebConfig.of({
+        mode:
+          mode === 'auto' ? (environment === 'production' ? 'production' : 'development') : mode,
+        ...(anchored(declared.sourceRoot) === undefined
+          ? {}
+          : { sourceRoot: anchored(declared.sourceRoot) }),
+        ...(anchored(declared.assetRoot) === undefined
+          ? {}
+          : { assetRoot: anchored(declared.assetRoot) }),
+      })
+    }),
+  )
 
 /**
  * The two ways enabling this plugin can turn out to be a lie.

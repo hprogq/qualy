@@ -30,36 +30,32 @@ const NODE_ONLY = [
 ]
 
 describe('what the browser bundle is allowed to reach', () => {
-  it(
-    'builds the api definition without pulling in anything node-only',
-    async () => {
-      const externals: string[] = []
-      await build({
-        logLevel: 'silent',
-        build: {
-          write: false,
-          lib: { entry: 'packages/api/src/index.ts', formats: ['es'], fileName: 'probe' },
-          rollupOptions: {
-            // Nothing is external: the browser has no module resolution to
-            // fall back on, so anything the graph reaches has to be bundled or
-            // named here as a failure. Marking node builtins external is
-            // exactly how this went unnoticed in the dev server, which
-            // externalizes them with a warning and carries on.
-            external: (id) => {
-              if (NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
-                externals.push(id)
-                return true
-              }
-              return false
-            },
+  it('builds the api definition without pulling in anything node-only', async () => {
+    const externals: string[] = []
+    await build({
+      logLevel: 'silent',
+      build: {
+        write: false,
+        lib: { entry: 'packages/api/src/index.ts', formats: ['es'], fileName: 'probe' },
+        rollupOptions: {
+          // Nothing is external: the browser has no module resolution to
+          // fall back on, so anything the graph reaches has to be bundled or
+          // named here as a failure. Marking node builtins external is
+          // exactly how this went unnoticed in the dev server, which
+          // externalizes them with a warning and carries on.
+          external: (id) => {
+            if (NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
+              externals.push(id)
+              return true
+            }
+            return false
           },
         },
-      })
-      expect(
-        [...new Set(externals)].sort(),
-        'the api definition reached a node-only module; an error class or a middleware is declared in the same file as the service that uses it',
-      ).toEqual([])
-    },
-    120_000,
-  )
+      },
+    })
+    expect(
+      [...new Set(externals)].sort(),
+      'the api definition reached a node-only module; an error class or a middleware is declared in the same file as the service that uses it',
+    ).toEqual([])
+  }, 120_000)
 })

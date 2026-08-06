@@ -92,6 +92,8 @@ const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac> = Layer.effectContex
  * declares the middleware cannot be composed into an assembly that does not
  * provide it. The requirement reaches the entry point and fails the build.
  */
+export { config } from './auth-config.ts'
+
 export const layer: Layer.Layer<
   Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions | LoginDrivers,
   never,

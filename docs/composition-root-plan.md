@@ -192,7 +192,7 @@ export const entitiesLayer = Layer.succeed(Entities, entities)
 
 宿主删 `Entities` 导入与 `Layer.succeed(Entities, entities)`。
 
-## 7. config 通道(`qualy.runtime.config`)
+## 7. config 通道(`qualy.runtime.config`)—— **auth/web 已实施 2026-08-06**
 
 - 声明:`qualy.runtime.config: true` = 「runtime entry 导出 `config`」。声明不探测。
 - 导出形状(以 auth 为例;参数类型由插件自己声明,zod/Schema 校验值):
@@ -287,7 +287,14 @@ Readiness。**宿主零 `@qualy/plugin-*` 导入。**
    **又一个洞**:删掉 ping 或 layout-default 的注册,336 例照绿 —— 与 login driver 同型。补了一例
    断言真实 manifest 含 ping 的页面与 admin-shell 实现(删任一注册即红),外加三例重复声明拒绝
    (页面 id / 路径 / 布局契约),那是被删掉的生成器原来守的三条。
-4. **`runtime.config` 面 + auth/web 搬家**。验收:typecheck(生成文件字面量对上参数类型)。
+4. ~~**`runtime.config` 面 + auth/web 搬家**~~ **已完成**。`renderRuntimeModule` 多导出一个
+   `pluginConfig`,并按需 emit `manifestDir` 锚定行(**只有真有插件收配置时才 emit**)。
+   `renderRuntimeModule(resolution, modulePath)` 多一个参数 —— 相对锚点只有调用方知道模块写去哪。
+   resolve 期的「config 无人读」硬失败原本只认 capability provider,现在也认 `runtime.config`。
+   验收:三例(拿到自己的块且是字面量、无人收配置时生成文件不提 config、给了块但插件不收 → 拒绝)
+   加真实启动 —— `login-methods` 需要 `defaultTenantSlug` 才能找到租户,它回来了就说明 auth 的
+   config 导出跑通了。**注意**:测试直接注入 AuthConfig 服务(设计如此),所以 config 导出这条路
+   只有真实启动会走到。
 5. **database config 搬家**(含生产禁 fallback)。验收:`NODE_ENV=production` 缺
    `DATABASE_URL` 拒启(新用例)。
 6. **permissions 升能力**(rbac `./assembly`、resolve 期唯一性、`layerExport`,seed 改读

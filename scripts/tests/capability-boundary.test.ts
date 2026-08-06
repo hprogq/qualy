@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { capabilityModules, capabilityWork, readLock, lockPathFor } from '@qualy/assembly'
+import {
+  capabilityModules,
+  capabilityWork,
+  lockPathFor,
+  readLock,
+  renderRuntimeModule,
+} from '@qualy/assembly'
 import { commitLock, createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
 
 // Is the assembly core actually free of the database?
@@ -148,6 +154,72 @@ describe('a second capability, beside the database', () => {
     })
     try {
       await expect(resolveWorkspace(workspace)).rejects.toThrow(/cache/)
+    } finally {
+      workspace.dispose()
+    }
+  })
+})
+
+// Configuration is the one thing that genuinely has to travel from the
+// manifest into a plugin, and the generated module is the only carrier there
+// is at runtime. What matters is that it goes to plugins that said they take
+// it, and that a block nobody reads is refused rather than ignored.
+describe('a plugin that takes configuration', () => {
+  const configurable = {
+    id: '@fake/plugin-tuned',
+    qualy: { runtime: { entry: './server', config: true } },
+    files: { 'server.js': 'export const layer = null\nexport const config = () => null\n' },
+    exports: { './server': './server.js' },
+  }
+
+  it('is handed its own block, as a literal the compiler can check', async () => {
+    const workspace = createWorkspace(['@fake/plugin-tuned'], {
+      synthetic: [configurable],
+      configs: { '@fake/plugin-tuned': { volume: 11 } },
+    })
+    try {
+      const module = renderRuntimeModule(await resolveWorkspace(workspace), 'runtime.gen.ts')
+      expect(module).toContain(
+        "import { layer as pluginTuned, config as pluginTunedConfig } from '@fake/plugin-tuned/server'",
+      )
+      expect(module).toContain('pluginTunedConfig({"volume":11}, { manifestDir })')
+      // anchored at the module, so a plugin resolves a path from the manifest
+      // rather than from wherever the process happened to start
+      expect(module).toContain('const manifestDir = fileURLToPath')
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  it('says nothing about config when no plugin takes any', async () => {
+    // layout-default ships a runtime entry and reads nothing from the manifest,
+    // which is the ordinary case: configuration is the exception
+    const workspace = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-layout-default'])
+    try {
+      const module = renderRuntimeModule(await resolveWorkspace(workspace), 'runtime.gen.ts')
+      expect(module).not.toContain('pluginConfig')
+      expect(module).not.toContain('manifestDir')
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  it('refuses a block for a plugin that reads none', async () => {
+    // the failure this replaces is silent: the manifest hash changes, resolve
+    // succeeds, a frozen start passes, and the setting reads as applied
+    const workspace = createWorkspace(['@fake/plugin-plain'], {
+      synthetic: [
+        {
+          id: '@fake/plugin-plain',
+          qualy: { runtime: { entry: './server' } },
+          files: { 'server.js': 'export const layer = null\n' },
+          exports: { './server': './server.js' },
+        },
+      ],
+      configs: { '@fake/plugin-plain': { volume: 11 } },
+    })
+    try {
+      await expect(resolveWorkspace(workspace)).rejects.toThrow(/declares qualy\.runtime\.config/)
     } finally {
       workspace.dispose()
     }

@@ -16,11 +16,7 @@ import {
   resolveAssembly,
   writeLock,
 } from '@qualy/assembly'
-import {
-  createWorkspace,
-  renderManifestText,
-  type SyntheticPackage,
-} from '@qualy/assembly/testkit'
+import { createWorkspace, renderManifestText, type SyntheticPackage } from '@qualy/assembly/testkit'
 
 // What an assembly resolves to has to be a function of what it says, not of
 // how it was written or of what ran before. Everything here is a property of
@@ -42,6 +38,10 @@ const commit = async (manifestPath: string) => {
   writeLock(lockPathFor(manifestPath), lockFromResolution(resolution))
   return resolution
 }
+
+// where a host would write the module; only its directory matters, for the
+// relative anchor back to the manifest
+const MODULE_PATH = 'runtime.gen.ts'
 
 describe('manifest', () => {
   const parse = (text: string) => () => parseManifest(text, 'qualy.yml')
@@ -102,7 +102,12 @@ describe('manifest', () => {
     // that the same assembly and a frozen start would accept it. Equivalent
     // spellings must NOT drift, or a whitespace-level edit reads as a change.
     const hashOf = (workspace: string) =>
-      manifestHash(parseManifest(`version: 2\napplication:\n  workspace: ${workspace}\nplugins: {}\n`, 'qualy.yml'))
+      manifestHash(
+        parseManifest(
+          `version: 2\napplication:\n  workspace: ${workspace}\nplugins: {}\n`,
+          'qualy.yml',
+        ),
+      )
     expect(hashOf('./apps/server')).toBe(hashOf('apps/server'))
     expect(hashOf('./apps/server')).toBe(hashOf('./apps/./server'))
     expect(hashOf('./apps/server')).toBe(hashOf('apps/server/'))
@@ -197,7 +202,9 @@ describe('resolution', () => {
     // sign of that is whatever the capability generates once the plugin has
     // dropped out of its set
     const workspace = createWorkspace([...INFRA, '@fake/plugin-legacy'], {
-      synthetic: [{ id: '@fake/plugin-legacy', qualy: { database: { entitiesEntry: 'index.js' } } }],
+      synthetic: [
+        { id: '@fake/plugin-legacy', qualy: { database: { entitiesEntry: 'index.js' } } },
+      ],
     })
     try {
       await expect(resolve(workspace.manifestPath)).rejects.toThrow(
@@ -454,8 +461,8 @@ describe('runtime module', () => {
     const workspace = createWorkspace(INFRA)
     try {
       const resolution = await resolve(workspace.manifestPath)
-      const module = renderRuntimeModule(resolution)
-      expect(module).toBe(renderRuntimeModule(await resolve(workspace.manifestPath)))
+      const module = renderRuntimeModule(resolution, MODULE_PATH)
+      expect(module).toBe(renderRuntimeModule(await resolve(workspace.manifestPath), MODULE_PATH))
       // asked of the plugin rather than spelled here: which subpath carries a
       // layer is the plugin's declaration, and writing it into the assertion
       // turned renaming that subpath into a failure of the generator
@@ -474,7 +481,7 @@ describe('runtime module', () => {
       disabled: ['@qualy/plugin-ping'],
     })
     try {
-      expect(renderRuntimeModule(await resolve(workspace.manifestPath))).not.toContain(
+      expect(renderRuntimeModule(await resolve(workspace.manifestPath), MODULE_PATH)).not.toContain(
         'plugin-ping',
       )
     } finally {
@@ -520,9 +527,7 @@ describe('the modules capabilities derive', () => {
     const modules = await modulesOf([
       provider('widgets', "[{ path: 'widgets.gen.ts', content: 'export const widgets = []\\n' }]"),
     ])
-    expect(modules).toEqual([
-      { path: 'widgets.gen.ts', content: 'export const widgets = []\n' },
-    ])
+    expect(modules).toEqual([{ path: 'widgets.gen.ts', content: 'export const widgets = []\n' }])
   })
 
   it('refuses two capabilities generating one file', async () => {

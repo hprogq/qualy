@@ -37,7 +37,8 @@
         "@qualy/plugin-rbac",
         "@qualy/plugin-ui-registry"
       ],
-      "api": "./api"
+      "api": "./api",
+      "config": true
     }
   },
   "peerDependencies": {

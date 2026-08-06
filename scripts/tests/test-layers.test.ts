@@ -265,7 +265,10 @@ describe('test layering', () => {
       .filter((file) => !isTestFile(file))
       .filter((file) => !posix(file).startsWith(`${OWNS_CONNECTIONS}/`))
     const offenders = breaches(production, [
-      { pattern: /PgClient\.(?:layer|make|makeWithDefaults)/, why: 'builds its own database client' },
+      {
+        pattern: /PgClient\.(?:layer|make|makeWithDefaults)/,
+        why: 'builds its own database client',
+      },
       { pattern: /from ['"]@effect\/sql-pg['"]/, why: 'reaches the postgres driver directly' },
     ])
     expect(offenders).toEqual([])

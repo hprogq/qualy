@@ -10,14 +10,12 @@ import { qualyApi } from '@qualy/api'
 import { Entities } from '@qualy/plugin-database/server'
 import { apiHandlers } from '../api-handlers.gen.ts'
 import { entities } from '../entities.gen.ts'
-import { pluginLayers } from '../runtime.gen.ts'
+import { pluginConfig, pluginLayers } from '../runtime.gen.ts'
 import {
   ServerConfig,
   apiReferenceEnabled,
-  authConfigLayer,
   databaseConfigLayer,
   permissionCatalogLayer,
-  webConfigLayer,
 } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
 import { pluginRoutes } from '../routes.gen.ts'
@@ -108,8 +106,9 @@ export const application = server.pipe(
       Layer.succeed(Entities, entities),
       databaseConfigLayer,
       permissionCatalogLayer,
-      authConfigLayer,
-      webConfigLayer,
+      // each plugin's own block of the manifest, turned into a service by the
+      // plugin that reads it rather than by this file
+      pluginConfig,
     ),
   ),
 )

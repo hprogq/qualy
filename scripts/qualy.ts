@@ -71,7 +71,7 @@ const drift = (previous: AssemblyLock | undefined, resolution: Resolution): stri
   const reasons = lockDrift(previous, resolution)
   const modulePath = generatedPath(RUNTIME_MODULE)
   if (!fs.existsSync(modulePath)) reasons.push(`${relative(modulePath)} is missing`)
-  else if (fs.readFileSync(modulePath, 'utf8') !== renderRuntimeModule(resolution)) {
+  else if (fs.readFileSync(modulePath, 'utf8') !== renderRuntimeModule(resolution, modulePath)) {
     reasons.push(`${relative(modulePath)} is not what this manifest generates`)
   }
   // the modules capabilities derive are as much a part of this tree as the one

@@ -23,7 +23,8 @@
     "runtime": {
       "entry": "./server",
       "routes": true,
-      "dependsOn": []
+      "dependsOn": [],
+      "config": true
     }
   }
 }

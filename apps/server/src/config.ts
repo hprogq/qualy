@@ -2,9 +2,7 @@ import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { manifestMigrationsFolder, manifestPath } from './manifest.ts'
 import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
-import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { permissionCatalog } from '../permissions.gen.ts'
-import { WebConfig } from '@qualy/plugin-web/server'
 
 // Everything the assembly needs from its environment, in one place.
 //
@@ -77,36 +75,6 @@ export const databaseConfigLayer = Layer.effect(
 export const permissionCatalogLayer = Layer.succeed(PermissionCatalog, permissionCatalog)
 
 /**
- * The login drivers this assembly serves.
- *
- * Generated from the manifest for the same reason the permission catalog is:
- * which ways in a deployment offers is decided by resolution, not by which
- * plugins happened to finish constructing.
- */
-
-/**
- * What auth needs to know about this deployment.
- *
- * Cookies are secure whenever the process is not a development one, which is
- * the same rule the cordis config expressed as an 'auto' setting.
- */
-export const authConfigLayer = Layer.effect(
-  AuthConfig,
-  Effect.gen(function* () {
-    return AuthConfig.of({
-      defaultTenantSlug: yield* Config.string('QUALY_DEFAULT_TENANT').pipe(
-        Config.withDefault('default'),
-      ),
-      sessionTtlSeconds: yield* Config.number('QUALY_SESSION_TTL_SECONDS').pipe(
-        Config.withDefault(604_800),
-      ),
-      secureCookies:
-        (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) === 'production',
-    })
-  }),
-)
-
-/**
  * Whether this instance serves its own API reference.
  *
  * `auto` serves it outside production, `public` serves it unconditionally (a
@@ -126,25 +94,3 @@ export const apiReferenceEnabled = Effect.gen(function* () {
   if (exposure === 'public') return true
   return (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) !== 'production'
 })
-
-/**
- * How the browser application is served.
- *
- * `auto` follows NODE_ENV, which is the same rule the cordis config expressed.
- * Which mode this is decides whether the process owns a Vite server or a static
- * file handler, so it is a deployment fact rather than anything a plugin can
- * work out for itself.
- */
-export const webConfigLayer = Layer.effect(
-  WebConfig,
-  Effect.gen(function* () {
-    const mode = yield* Config.literals(
-      ['auto', 'development', 'production'],
-      'QUALY_WEB_MODE',
-    ).pipe(Config.withDefault('auto' as const))
-    const environment = yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))
-    return WebConfig.of({
-      mode: mode === 'auto' ? (environment === 'production' ? 'production' : 'development') : mode,
-    })
-  }),
-)
