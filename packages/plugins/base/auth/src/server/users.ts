@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { LegacySql, kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { sql } from 'kysely'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
@@ -328,27 +328,24 @@ const deleteUserSessions = (em: AuthEntityManager, tenantId: string, userId: str
 type TypeRow = NonNullable<Effect.Success<ReturnType<typeof userTypeGuard>>>
 
 export const make = Effect.fn('Iam.users.make')(function* () {
-  const database = yield* LegacySql
   const rbac = yield* Rbac
   // a plain read opens no transaction, so it has nothing to take a database
   // from; supplying it here keeps the requirement off everybody who calls
   const withDb = yield* withDatabase
 
-  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
-
-  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
-    database
-      .transaction((tx) =>
+  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
           const em = yield* authEntityManager()
           yield* lockTenant(em, tenantId)
-          return yield* body(tx)
+          return yield* body()
         }),
-      )
-      .pipe(
-        translateConstraints(userConstraints),
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
+      ),
+    ).pipe(
+      translateConstraints(userConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
 
   /** authority over a person is authority over the node they stand at */
   const manages = Effect.fn('Iam.users.manages')(function* (as: Principal, orgNodeId: string) {
@@ -511,7 +508,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       },
       as: Principal,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
           // authority follows the node the user will stand on
           yield* manages(as, input.primaryOrgNodeId)
@@ -547,7 +544,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       fields: { displayName?: string; userTypeId?: string; businessNo?: string },
       as: Principal,
     ) {
-      yield* write(tenantId, (tx) =>
+      yield* write(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
           yield* manages(as, user.primaryOrgNodeId)
@@ -587,7 +584,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       primaryOrgNodeId: string,
       as: Principal,
     ) {
-      yield* write(tenantId, (tx) =>
+      yield* write(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
           if (user.isSystem) return yield* new SystemAccountProtected()
@@ -608,7 +605,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       enabled: boolean,
       as: Principal,
     ) {
-      yield* write(tenantId, (tx) =>
+      yield* write(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
           if (!enabled && user.isSystem) return yield* new SystemAccountProtected()

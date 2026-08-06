@@ -36,7 +36,6 @@ export {
   kyselyOf,
   type ClosureEntityManager,
 } from './orm.ts'
-export { LegacySql, type LegacyExecutor } from './legacy-sql.ts'
 
 /**
  * The ORM itself, as a type only.

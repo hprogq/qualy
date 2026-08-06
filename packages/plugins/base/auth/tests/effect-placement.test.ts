@@ -3,7 +3,8 @@ import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { authClosure } from './support/closure.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { Database, LegacySql, type Orm } from '@qualy/plugin-database/server'
+import { Database, kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
+import { authEntityManager } from '../src/server/db.ts'
 import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -133,24 +134,35 @@ describe.runIf(postgresAvailable).concurrent('the placement port', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const placement = yield* Placement
-          // the caller opens its transaction the way org does, which is what
-          // decides whether the port lands on the same connection
-          const database = yield* LegacySql
           const outside = yield* placement.usersBlockingOrgType(f.tenant, f.node, f.clubType)
           // org's shape: write first, then ask. The question has to be about
           // rows the caller has changed, or a separate connection would answer
           // it identically and prove nothing. A second person moved to this
           // node inside the transaction must be counted.
-          const inside = yield* database.transaction((tx) =>
+          // the caller opens its transaction the way org does, which is what
+          // decides whether the port lands on the same connection
+          const inside = yield* transaction(
             Effect.gen(function* () {
-              const typeId = (
-                (yield* tx.execute(
-                  sql`select id from user_types where tenant_id = ${f.tenant} limit 1`,
-                )) as unknown as { rows: { id: string }[] }
-              ).rows[0]!.id
-              yield* tx.execute(sql`
-                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-                values (${f.tenant}, 'Grace', ${typeId}, ${f.node})`)
+              const em = yield* authEntityManager()
+              const type = yield* Effect.promise(() =>
+                kyselyOf(em)
+                  .selectFrom('UserType')
+                  .select('id')
+                  .where('tenantId', '=', f.tenant)
+                  .limit(1)
+                  .executeTakeFirstOrThrow(),
+              )
+              yield* Effect.promise(() =>
+                kyselyOf(em)
+                  .insertInto('User')
+                  .values({
+                    tenantId: f.tenant,
+                    displayName: 'Grace',
+                    userTypeId: type.id,
+                    primaryOrgNodeId: f.node,
+                  })
+                  .execute(),
+              )
               return yield* placement.usersBlockingOrgType(f.tenant, f.node, f.clubType)
             }),
           )

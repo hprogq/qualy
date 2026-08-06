@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { LegacySql } from '@qualy/plugin-database/server'
+
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { orgNodeExists, rbacEntityManager, userExists } from './db.ts'
 import { explainRows } from './authorization.ts'
@@ -48,8 +48,6 @@ export interface EffectivePermission {
 export const make = Effect.fn('Rbac.diagnostics.make')(function* (
   catalogOf: () => ReadonlyMap<string, ActivePermission>,
 ) {
-  const database = yield* LegacySql
-
   const explain = Effect.fn('Rbac.diagnostics.explain')(function* (
     tenantId: string,
     userId: string,

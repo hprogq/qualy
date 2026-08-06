@@ -4,7 +4,7 @@ import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'
 import { Placement } from '@qualy/auth-contract'
-import { LegacySql, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import {
   countTypes,
   deleteRule,
@@ -235,7 +235,6 @@ export class Org extends Context.Service<
 >()('@qualy/plugin-org/Org') {}
 
 export const make = Effect.fn('Org.make')(function* () {
-  const database = yield* LegacySql
   // a read opens no transaction, so it has nothing to take a database from;
   // supplying it here keeps the requirement off everybody who calls
   const withDb = yield* withDatabase
@@ -251,8 +250,8 @@ export const make = Effect.fn('Org.make')(function* () {
     // the transaction itself can fail on BEGIN or COMMIT. That is the pool
     // being unreachable rather than a decision this caller makes, so it dies
     // as a 500 instead of joining the failures a handler chooses between
-    return yield* database
-      .transaction((tx) =>
+    return yield* withDb(
+      transaction(
         Effect.gen(function* () {
           // first statement, always: it serializes this tenant's structural
           // writes against rbac's and auth's
@@ -301,14 +300,12 @@ export const make = Effect.fn('Org.make')(function* () {
 
           yield* setNodeType(em, tenantId, nodeId, newTypeId)
         }),
-      )
-      .pipe(
-        translateConstraints(nodeConstraints),
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
+      ),
+    ).pipe(
+      translateConstraints(nodeConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
   })
-
-  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
 
   // the shape every structural write shares: lock the tenant, find the node,
   // re-decide authorization on the locked connection, then write
@@ -316,7 +313,7 @@ export const make = Effect.fn('Org.make')(function* () {
     tenantId: string,
     nodeId: string,
     as: Principal,
-    body: (tx: Tx, node: NodeRow) => Effect.Effect<A, E, R>,
+    body: (node: NodeRow) => Effect.Effect<A, E, R>,
   ) =>
     // Refuse before taking the lock. The check inside the transaction is the
     // authoritative one, because a concurrent move can re-anchor the target
@@ -324,17 +321,19 @@ export const make = Effect.fn('Org.make')(function* () {
     // serializing every structural write of the tenant behind them first.
     rbac.requireAt(as, 'org.tree.manage', nodeId).pipe(
       Effect.andThen(
-        database.transaction((tx) =>
-          Effect.gen(function* () {
-            const em = yield* orgEntityManager()
-            yield* lockTenant(em, tenantId)
-            const node = yield* oneNode(em, tenantId, nodeId)
-            if (!node) return yield* new NodeNotFound()
-            // re-decided under the lock: the pre-check ran before it, and the
-            // target may have been re-anchored since
-            yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
-            return yield* body(tx, node)
-          }),
+        withDb(
+          transaction(
+            Effect.gen(function* () {
+              const em = yield* orgEntityManager()
+              yield* lockTenant(em, tenantId)
+              const node = yield* oneNode(em, tenantId, nodeId)
+              if (!node) return yield* new NodeNotFound()
+              // re-decided under the lock: the pre-check ran before it, and the
+              // target may have been re-anchored since
+              yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
+              return yield* body(node)
+            }),
+          ),
         ),
       ),
       translateConstraints(nodeConstraints),
@@ -350,7 +349,7 @@ export const make = Effect.fn('Org.make')(function* () {
     fields: { name?: string; sortOrder?: number },
     as: Principal,
   ) {
-    yield* write(tenantId, nodeId, as, (tx) =>
+    yield* write(tenantId, nodeId, as, () =>
       Effect.gen(function* () {
         const em = yield* orgEntityManager()
         yield* updateNodeFields(em, tenantId, nodeId, fields)
@@ -363,7 +362,7 @@ export const make = Effect.fn('Org.make')(function* () {
     nodeId: string,
     as: Principal,
   ) {
-    yield* write(tenantId, nodeId, as, (tx, node) =>
+    yield* write(tenantId, nodeId, as, (node) =>
       Effect.gen(function* () {
         if (!node.parentId) return yield* new NodeIsRoot()
         const em = yield* orgEntityManager()
@@ -390,24 +389,24 @@ export const make = Effect.fn('Org.make')(function* () {
   const writeAtRoot = <A, E, R>(
     tenantId: string,
     as: Principal,
-    body: (tx: Tx) => Effect.Effect<A, E, R>,
+    body: () => Effect.Effect<A, E, R>,
   ) =>
-    database
-      .transaction((tx) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
           const em = yield* orgEntityManager()
           yield* lockTenant(em, tenantId)
           yield* atRoot(tenantId, as)
-          return yield* body(tx)
+          return yield* body()
         }),
-      )
-      .pipe(
-        translateConstraints(typeConstraints),
-        // a statement that fails for a reason no constraint names is nobody's
-        // decision, so it leaves the error channel here rather than widening
-        // every caller's error type
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
+      ),
+    ).pipe(
+      translateConstraints(typeConstraints),
+      // a statement that fails for a reason no constraint names is nobody's
+      // decision, so it leaves the error channel here rather than widening
+      // every caller's error type
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
 
   // a read: no constraint can fire, so dying here keeps the caller's error
   // type narrow without hiding anything translatable
@@ -423,7 +422,6 @@ export const make = Effect.fn('Org.make')(function* () {
   // pointing at a deleted node grants nothing, and failing the whole read
   // because of one stale grant would be worse than fail-closed.
   const resolveScope = Effect.fn('Org.resolveScope')(function* (
-    tx: Tx,
     tenantId: string,
     as: Principal,
     code: string,
@@ -466,16 +464,16 @@ export const make = Effect.fn('Org.make')(function* () {
   })
 
   /** every read projection runs in one snapshot; see readSnapshotQuery */
-  const readInSnapshot = <A, E, R>(body: (tx: Tx) => Effect.Effect<A, E, R>) =>
-    database
-      .transaction((tx) =>
+  const readInSnapshot = <A, E, R>(body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
           const em = yield* orgEntityManager()
           yield* readSnapshot(em)
-          return yield* body(tx)
+          return yield* body()
         }),
-      )
-      .pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      ),
+    ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
   const withFlags = (node: NodeRow, manageScope: ResolvedScope) => ({
     ...node,
@@ -497,7 +495,7 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
   ) {
     // authority over the parent, because creating a child mutates the parent
-    return yield* write(tenantId, input.parentId, as, (tx, parent) =>
+    return yield* write(tenantId, input.parentId, as, (parent) =>
       Effect.gen(function* () {
         const em = yield* orgEntityManager()
         const type = yield* oneType(em, tenantId, input.orgTypeId).pipe(Effect.orDie)
@@ -540,8 +538,8 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
     newSortOrder?: number,
   ) {
-    return yield* database
-      .transaction((tx) =>
+    return yield* withDb(
+      transaction(
         Effect.gen(function* () {
           const em = yield* orgEntityManager()
           yield* lockTenant(em, tenantId)
@@ -554,7 +552,7 @@ export const make = Effect.fn('Org.make')(function* () {
           const newParent = yield* oneNode(em, tenantId, newParentId)
           if (!newParent) return yield* new NodeNotFound()
 
-          const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
+          const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
           if (!subtreeCoveredBy(manageScope, node) || !coveredBy(manageScope, newParent)) {
             return yield* new AccessDenied({ reason: 'not allowed to move this subtree' })
           }
@@ -587,11 +585,11 @@ export const make = Effect.fn('Org.make')(function* () {
             yield* updateNodeFields(em, tenantId, nodeId, { sortOrder: newSortOrder })
           }
         }),
-      )
-      .pipe(
-        translateConstraints(nodeConstraints),
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
+      ),
+    ).pipe(
+      translateConstraints(nodeConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
   })
 
   return {
@@ -606,15 +604,15 @@ export const make = Effect.fn('Org.make')(function* () {
       nodeId: string,
       as: Principal,
     ) {
-      return yield* readInSnapshot((tx) =>
+      return yield* readInSnapshot(() =>
         Effect.gen(function* () {
           const em = yield* orgEntityManager()
-          const readScope = yield* resolveScope(tx, tenantId, as, 'org.tree.read')
+          const readScope = yield* resolveScope(tenantId, as, 'org.tree.read')
           const node = yield* oneNode(em, tenantId, nodeId).pipe(Effect.orDie)
           // not-found and not-covered answer the same on purpose: a caller
           // must not learn that a node they cannot see exists
           if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
-          const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
+          const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
           return withFlags(node, manageScope)
         }),
       )
@@ -625,10 +623,10 @@ export const make = Effect.fn('Org.make')(function* () {
       nodeId: string | undefined,
       as: Principal,
     ) {
-      return yield* readInSnapshot((tx) =>
+      return yield* readInSnapshot(() =>
         Effect.gen(function* () {
-          const readScope = yield* resolveScope(tx, tenantId, as, 'org.tree.read')
-          const manageScope = yield* resolveScope(tx, tenantId, as, 'org.tree.manage')
+          const readScope = yield* resolveScope(tenantId, as, 'org.tree.read')
+          const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
           const em = yield* orgEntityManager()
           const branch = (path: string) => subtree(em, tenantId, path).pipe(Effect.orDie)
 
@@ -709,7 +707,7 @@ export const make = Effect.fn('Org.make')(function* () {
       fields: { name?: string; sortOrder?: number },
       as: Principal,
     ) {
-      yield* writeAtRoot(tenantId, as, (tx) =>
+      yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
           const em = yield* orgEntityManager()
@@ -722,7 +720,7 @@ export const make = Effect.fn('Org.make')(function* () {
       typeId: string,
       as: Principal,
     ) {
-      yield* writeAtRoot(tenantId, as, (tx) =>
+      yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
           const em = yield* orgEntityManager()
@@ -755,7 +753,7 @@ export const make = Effect.fn('Org.make')(function* () {
       childTypeId: string,
       as: Principal,
     ) {
-      yield* writeAtRoot(tenantId, as, (tx) =>
+      yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           if (parentTypeId === childTypeId) return yield* new RuleInvalid()
           const em = yield* orgEntityManager()
@@ -775,7 +773,7 @@ export const make = Effect.fn('Org.make')(function* () {
       childTypeId: string,
       as: Principal,
     ) {
-      yield* writeAtRoot(tenantId, as, (tx) =>
+      yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           const em = yield* orgEntityManager()
           if (!(yield* ruleExists(em, tenantId, parentTypeId, childTypeId))) {

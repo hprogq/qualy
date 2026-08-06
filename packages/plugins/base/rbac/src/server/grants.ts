@@ -1,5 +1,12 @@
 import { Effect } from 'effect'
-import { LegacySql, kyselyOf, query, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import {
+  kyselyOf,
+  query,
+  transaction,
+  withDatabase,
+  type Orm,
+  type QueryFailed,
+} from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
@@ -326,30 +333,28 @@ const deleteGrant = (em: RbacEntityManager, tenantId: string, grantId: string) =
 export const make = Effect.fn('Rbac.grants.make')(function* (
   authorityFor: (actor: Principal) => Authority,
 ) {
-  const database = yield* LegacySql
   const withDb = yield* withDatabase
 
-  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
   /**
-   * What a raw statement can fail with before the write wrapper handles it.
+   * What a statement can fail with before the write wrapper handles it.
    *
    * Named so the helper below can be annotated. Without the annotation the
    * error union here grew past what inference will carry, and TypeScript
    * widened the whole handler layer's requirement to `unknown` instead of
    * reporting anything at the site that caused it.
    */
-  type SqlFailure = ErrorOf<ReturnType<Tx['execute']>>
+  type SqlFailure = QueryFailed
 
-  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
-    database
-      .transaction((tx) =>
+  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
           const em = yield* rbacEntityManager()
           yield* lockTenant(em, tenantId)
-          return yield* body(tx)
+          return yield* body()
         }),
-      )
-      .pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      ),
+    ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
   /**
    * Authority over the grant itself: which grants the caller may touch.
@@ -387,13 +392,12 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
    * and it must not be a route to becoming superuser.
    */
   const mayAdministerRole: (
-    tx: Tx,
     actor: Principal,
     tenantId: string,
     roleId: string,
   ) => Effect.Effect<void, RoleNotFound | TenantAdminRequired | SqlFailure, Orm> = Effect.fn(
     'Rbac.grants.mayAdministerRole',
-  )(function* (tx: Tx, actor: Principal, tenantId: string, roleId: string) {
+  )(function* (actor: Principal, tenantId: string, roleId: string) {
     const em = yield* rbacEntityManager()
     const role = yield* roleSystemKey(em, tenantId, roleId)
     if (!role) return yield* new RoleNotFound()
@@ -405,7 +409,6 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
 
   /** whether this role can be held by this person, here */
   const eligible = Effect.fn('Rbac.grants.eligible')(function* (
-    tx: Tx,
     tenantId: string,
     input: { userId: string; roleId: string; target: GrantTarget },
   ) {
@@ -454,7 +457,6 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
 
   /** the permissions a role carries, as the escalation guard measures them */
   const carriedBy = Effect.fn('Rbac.grants.carriedBy')(function* (
-    tx: Tx,
     tenantId: string,
     roleId: string,
   ) {
@@ -509,44 +511,42 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     )
     const offered: { id: string; code: string; name: string; kind: 'tenant' | 'org' }[] = []
     for (const role of candidates) {
-      const verdict = yield* database
-        .transaction((tx) =>
-          Effect.gen(function* () {
-            yield* eligible(tx, tenantId, {
-              userId: request.userId,
-              roleId: role.id,
-              target: request.target,
-            })
-            yield* mayAdministerRole(tx, actor, tenantId, role.id)
-            yield* assertMayGrantRole(
-              authorityFor(actor),
-              yield* carriedBy(tx, tenantId, role.id),
-              request.target,
-            )
-            return true
-          }),
-        )
-        .pipe(
-          Effect.catchTag(
-            [
-              'GRANT_NOT_ELIGIBLE',
-              'GRANT_ESCALATION_REFUSED',
-              // in the oRPC refusal set too: a role the caller may not
-              // administer is one they cannot be offered. ACCESS_DENIED is not
-              // listed because nothing in this probe raises it any more - the
-              // grant-reach check belongs to the write, not to the offer - and
-              // naming a tag the union does not contain collapses the whole
-              // expression to unknown instead of reporting anything.
-              'TENANT_ADMIN_REQUIRED',
-              // the candidate came from the projection a moment ago, so this
-              // is a concurrent deletion: it is not offerable, which is an
-              // answer rather than a fault
-              'ROLE_NOT_FOUND',
-            ],
-            () => Effect.succeed(false),
-          ),
-          Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-        )
+      const verdict = yield* transaction(
+        Effect.gen(function* () {
+          yield* eligible(tenantId, {
+            userId: request.userId,
+            roleId: role.id,
+            target: request.target,
+          })
+          yield* mayAdministerRole(actor, tenantId, role.id)
+          yield* assertMayGrantRole(
+            authorityFor(actor),
+            yield* carriedBy(tenantId, role.id),
+            request.target,
+          )
+          return true
+        }),
+      ).pipe(
+        Effect.catchTag(
+          [
+            'GRANT_NOT_ELIGIBLE',
+            'GRANT_ESCALATION_REFUSED',
+            // in the oRPC refusal set too: a role the caller may not
+            // administer is one they cannot be offered. ACCESS_DENIED is not
+            // listed because nothing in this probe raises it any more - the
+            // grant-reach check belongs to the write, not to the offer - and
+            // naming a tag the union does not contain collapses the whole
+            // expression to unknown instead of reporting anything.
+            'TENANT_ADMIN_REQUIRED',
+            // the candidate came from the projection a moment ago, so this
+            // is a concurrent deletion: it is not offerable, which is an
+            // answer rather than a fault
+            'ROLE_NOT_FOUND',
+          ],
+          () => Effect.succeed(false),
+        ),
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      )
       if (verdict) {
         offered.push({ id: role.id, code: role.code, name: role.name, kind: role.kind })
       }
@@ -580,14 +580,14 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       // delete declaring the failure would be a lie the endpoint has to carry.
       // It also has to precede the wrapper's die, since a translator is a
       // failure handler and cannot see a defect.
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
           yield* mayAdministerGrantsAt(actor, input.target)
-          yield* mayAdministerRole(tx, actor, tenantId, input.roleId)
-          yield* eligible(tx, tenantId, input)
+          yield* mayAdministerRole(actor, tenantId, input.roleId)
+          yield* eligible(tenantId, input)
           yield* assertMayGrantRole(
             authorityFor(actor),
-            yield* carriedBy(tx, tenantId, input.roleId),
+            yield* carriedBy(tenantId, input.roleId),
             input.target,
           )
           const anchor =
@@ -613,7 +613,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       actor: Principal,
       keepsAdministrator: (tenantId: string) => Effect.Effect<void, LastAdministrator>,
     ) {
-      yield* write(tenantId, (tx) =>
+      yield* write(tenantId, () =>
         Effect.gen(function* () {
           const em = yield* rbacEntityManager()
           const grant = yield* oneGrant(em, tenantId, grantId)
@@ -627,7 +627,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
                   coverage: grant.coverage!,
                 }
           yield* mayAdministerGrantsAt(actor, target)
-          yield* mayAdministerRole(tx, actor, tenantId, grant.roleId)
+          yield* mayAdministerRole(actor, tenantId, grant.roleId)
           yield* deleteGrant(em, tenantId, grantId)
           // checked against the state the removal actually leaves behind
           yield* keepsAdministrator(tenantId)

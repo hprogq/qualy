@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect'
-import { LegacySql, kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { sql } from 'kysely'
 import {
   lockTenant,
@@ -440,26 +440,26 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
   authorityFor: (actor: Principal) => Authority,
   keepsAdministrator: (tenantId: string) => Effect.Effect<void, LastAdministrator>,
 ) {
-  const database = yield* LegacySql
+  // this layer's database, closed over: the transaction supplies it to its
+  // body, and this supplies it to the transaction, so the service keeps
+  // declaring no requirements of its own
+  const withDb = yield* withDatabase
 
-  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
-
-  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
-    database
-      .transaction((tx) =>
+  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
           const em = yield* rbacEntityManager()
           yield* lockTenant(em, tenantId)
-          return yield* body(tx)
+          return yield* body()
         }),
-      )
-      .pipe(
-        translateConstraints(roleConstraints),
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
+      ),
+    ).pipe(
+      translateConstraints(roleConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
 
   const lockRole = Effect.fn('Rbac.roles.lock')(function* (
-    tx: Tx,
     tenantId: string,
     roleId: string,
     expectedVersion?: number,
@@ -590,9 +590,9 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       fields: { name?: string; description?: string | null; assignable?: boolean },
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
           // the administrator role keeps its assignability: making it
           // unassignable is a lockout by another name
           if (role.systemKey !== null && fields.assignable === false) {
@@ -613,9 +613,9 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const authority = authorityFor(actor)
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.systemKey !== null && status === 'disabled') {
             return yield* new RoleIsSystem()
           }
@@ -677,9 +677,9 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const authority = authorityFor(actor)
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.permissionMode === 'all-active') return yield* new RoleIsSystem()
           const wanted = [...new Set(codes)]
 
@@ -740,9 +740,9 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       sets: { userTypeIds: readonly string[]; orgTypeIds: readonly string[] },
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
           // the canonical administrator is grantable to whoever the tenant
           // designates; everything else declares who may hold it
           if (role.systemKey !== null) return yield* new RoleIsSystem()
@@ -800,9 +800,9 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       roleId: string,
       expectedVersion: number,
     ) {
-      yield* write(tenantId, (tx) =>
+      yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const role = yield* lockRole(tx, tenantId, roleId, expectedVersion)
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.systemKey !== null) return yield* new RoleIsSystem()
           const em = yield* rbacEntityManager()
           const grants = yield* countGrantsOfRole(em, tenantId, role.id)

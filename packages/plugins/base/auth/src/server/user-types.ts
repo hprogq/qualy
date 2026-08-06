@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { LegacySql, kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
@@ -274,15 +274,12 @@ const pruneAllowedOrgTypes = (
   })
 
 export const make = Effect.fn('Iam.userTypes.make')(function* () {
-  const database = yield* LegacySql
   const rbac = yield* Rbac
   // the writes get their database from the transaction they open; a plain read
   // opens nothing, so it is supplied here rather than left in the caller's
   // requirements - what this builds is a service, and a service that demands
   // the orm has handed the orm to everybody who calls it
   const withDb = yield* withDatabase
-
-  type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0]
 
   /** the type, with the version the caller expected still holding */
   const guard = Effect.fn('Iam.userTypes.guard')(function* (
@@ -301,19 +298,19 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     return row
   })
 
-  const write = <A, E, R>(tenantId: string, body: (tx: Tx) => Effect.Effect<A, E, R>) =>
-    database
-      .transaction((tx) =>
+  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
         Effect.gen(function* () {
           const em = yield* authEntityManager()
           yield* lockTenant(em, tenantId)
-          return yield* body(tx)
+          return yield* body()
         }),
-      )
-      .pipe(
-        translateConstraints(userTypeConstraints),
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
+      ),
+    ).pipe(
+      translateConstraints(userTypeConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
 
   return {
     /**
@@ -523,7 +520,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       userTypeId: string,
       expectedVersion: number,
     ) {
-      return yield* write(tenantId, (tx) =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
           const type = yield* guard(tenantId, userTypeId, expectedVersion)
           if (type.isSystem || type.code === SYSTEM_ACCOUNT_USER_TYPE) {

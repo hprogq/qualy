@@ -5,7 +5,8 @@ import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
-import { Database, LegacySql, type Orm } from '@qualy/plugin-database/server'
+import { Database, kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
+import { rbacEntityManager } from '../src/server/db.ts'
 import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access, layer as rbacLayer } from '../src/server/index.ts'
@@ -265,27 +266,41 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const rbac = yield* Rbac
-          // the caller opens its transaction the way auth does, which is what
-          // decides whether the check lands on the same connection
-          const database = yield* LegacySql
+          const disable = Effect.gen(function* () {
+            const em = yield* rbacEntityManager()
+            yield* Effect.promise(() =>
+              kyselyOf(em)
+                .updateTable('User')
+                .set({ enabled: false })
+                .where('id', '=', f.user)
+                .execute(),
+            )
+          })
           const before = yield* Effect.result(rbac.assertTenantKeepsAdministrator(f.tenant))
           // disable the only administrator inside a transaction, then ask:
-          // the check has to see the write that has not committed yet
+          // the check has to see the write that has not committed yet. The
+          // caller opens its transaction the way auth does, which is what
+          // decides whether the check lands on the same connection.
           const after = yield* Effect.result(
-            database.transaction((tx) =>
+            transaction(
               Effect.gen(function* () {
-                yield* tx.execute(sql`update users set enabled = false where id = ${f.user}`)
+                yield* disable
                 yield* rbac.assertTenantKeepsAdministrator(f.tenant)
               }),
             ),
           )
-          const stillEnabled = (yield* database.execute(
-            sql`select enabled from users where id = ${f.user}`,
-          )) as unknown as { rows: { enabled: boolean }[] }
+          const em = yield* rbacEntityManager()
+          const stillEnabled = yield* Effect.promise(() =>
+            kyselyOf(em)
+              .selectFrom('User')
+              .select('enabled')
+              .where('id', '=', f.user)
+              .executeTakeFirstOrThrow(),
+          )
           return {
             beforeOk: before._tag === 'Success',
             refused: after._tag === 'Failure',
-            rolledBack: stillEnabled.rows[0]!.enabled,
+            rolledBack: stillEnabled.enabled,
           }
         }),
       )

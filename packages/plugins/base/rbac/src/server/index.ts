@@ -7,7 +7,7 @@ import {
   type RbacShape,
 } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
-import { LegacySql, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
@@ -60,7 +60,6 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
 export const make = Effect.fn('Rbac.make')(function* () {
-  const database = yield* LegacySql
   const declared = yield* PermissionCatalog
   // this layer's database, closed over: what it builds is a service, and a
   // service that demands the orm has handed the orm to every caller
