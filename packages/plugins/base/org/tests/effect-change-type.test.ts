@@ -1,3 +1,4 @@
+import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
@@ -52,6 +53,7 @@ const stack = (url: string) =>
         databaseFor(url, { entities: closure }),
         Layer.succeed(PermissionCatalog, catalog),
         loginDriversLayer,
+        uiLayer,
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({

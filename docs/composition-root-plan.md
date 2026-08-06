@@ -111,7 +111,7 @@ export class LoginDrivers extends Context.Service<
   `login-drivers.gen.ts`、宿主 `loginDriversLayer`。
 - 重复 driver id → die(纪律 2)。
 
-## 4. Ui 注册表(cordis `ctx.ui.addPage` 的回归)
+## 4. Ui 注册表(cordis `ctx.ui.addPage` 的回归)—— **已实施 2026-08-06**
 
 `@qualy/plugin-ui-registry/server` 定义注册表,方法名与领域对齐 —— 不是一个笼统的
 `register`:
@@ -275,9 +275,18 @@ Readiness。**宿主零 `@qualy/plugin-*` 导入。**
    **发现的洞**:把 auth-local 的注册删掉,全套 336 例照绿 —— 从来没有任何测试断言 local 登录
    方式真的被提供(生成器结构性地保证了它,所以没人写)。补了一例:真实 pluginLayers 起服务、
    seed 一行 provider,断言 `/auth/login-methods` 含 local 且 component 正确;删注册即红。
-3. **Ui 注册表**:Ui 服务四方法 + UiManifest 请求期读 + 各插件 layer 注册,删
-   `UiCatalog`/`gen-ui`/`ui.gen`。验收:manifest 投影用例、browser 套件、重复 id die 用例;
-   component-keys 门禁改读 `ui.ts` 的 surface 声明。
+3. ~~**Ui 注册表**~~ **已完成**:`Ui` 四方法(addPage / registerLayout / contribute / fillSlot)
+   加批量的 `registerSurfaces`,UiManifest 改请求期读,`UiCatalog`/`gen-ui.ts`/`ui.gen.ts` 删除。
+   实施中三处与方案不同:
+   ①**component-keys 门禁不需要改** —— 它读的是 client 的 `components` 映射,从来不经 `ui.gen`,
+   方案里那条顾虑是多余的;
+   ②注册表必须走**无环子路径** `@qualy/plugin-ui-registry/server/registry`:ui-registry 的
+   server 入口引用 auth 的 session-contract,贡献方再引用它就成环,TS 把一侧解析成 `any`
+   (与 `server/authorizer`、`auth/server/session-contract` 同一前例);
+   ③layout-default 从此需要一个 runtime entry(它确实向运行时贡献布局实现),+1 文件、-2 仓库文件。
+   **又一个洞**:删掉 ping 或 layout-default 的注册,336 例照绿 —— 与 login driver 同型。补了一例
+   断言真实 manifest 含 ping 的页面与 admin-shell 实现(删任一注册即红),外加三例重复声明拒绝
+   (页面 id / 路径 / 布局契约),那是被删掉的生成器原来守的三条。
 4. **`runtime.config` 面 + auth/web 搬家**。验收:typecheck(生成文件字面量对上参数类型)。
 5. **database config 搬家**(含生产禁 fallback)。验收:`NODE_ENV=production` 缺
    `DATABASE_URL` 拒启(新用例)。

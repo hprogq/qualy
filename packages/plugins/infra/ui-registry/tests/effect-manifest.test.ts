@@ -6,14 +6,15 @@ import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   ADMIN_SHELL,
-  BLANK_SHELL,
   AUTHENTICATED,
+  BLANK_SHELL,
   PUBLIC,
-  defineSurfaces,
   definePage,
+  defineSurfaces,
   headerActions,
   permissionOf,
   primaryNavigation,
+  type UiSurfaces,
 } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
@@ -21,7 +22,8 @@ import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentViewer, Viewer } from '@qualy/plugin-auth/server/session-contract'
 import { appApiHandlers } from '../src/server/index.ts'
 import { UiAuthorizer } from '../src/server/authorizer.ts'
-import { UiCatalog, UiManifest, layer as manifestLayer } from '../src/server/manifest.ts'
+import { UiManifest, layer as manifestLayer } from '../src/server/manifest.ts'
+import { registerSurfaces, uiLayer } from '../src/server/registry.ts'
 import { appApiGroup } from '../src/api.ts'
 
 // The manifest is an authorized projection, and this is where that is stated.
@@ -38,6 +40,14 @@ const publicPage = definePage({ id: 'test/public', path: '/public' })
 const memberPage = definePage({ id: 'test/member', path: '/member' })
 const gatedPage = definePage({ id: 'test/gated', path: '/gated' })
 const orphanPage = definePage({ id: 'test/orphan', path: '/orphan' })
+
+/** one plugin's worth of surfaces, since the registry takes them one at a time */
+const merged = (all: readonly UiSurfaces[]): UiSurfaces => ({
+  pages: all.flatMap((surface) => surface.pages ?? []),
+  layouts: all.flatMap((surface) => surface.layouts ?? []),
+  collections: all.flatMap((surface) => surface.collections ?? []),
+  slots: all.flatMap((surface) => surface.slots ?? []),
+})
 
 const surfaces = [
   defineSurfaces({
@@ -101,7 +111,7 @@ const build = (principal: Principal | undefined, held: readonly string[]) =>
         manifestLayer.pipe(
           Layer.provideMerge(
             Layer.mergeAll(
-              Layer.succeed(UiCatalog, surfaces),
+              registerSurfaces(merged(surfaces)).pipe(Layer.provideMerge(uiLayer)),
               Layer.succeed(UiAuthorizer, {
                 permissionsFor: () => Effect.succeed(new Set(held)),
               }),
@@ -136,7 +146,11 @@ beforeAll(async () => {
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)),
   ).pipe(
-    Layer.provide(manifestLayer.pipe(Layer.provide(Layer.succeed(UiCatalog, surfaces)))),
+    Layer.provide(
+      manifestLayer.pipe(
+        Layer.provide(registerSurfaces(merged(surfaces)).pipe(Layer.provideMerge(uiLayer))),
+      ),
+    ),
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(UiAuthorizer, {
@@ -257,5 +271,43 @@ describe('the manifest a viewer receives', () => {
     expect(
       (member.collections[primaryNavigation.key] as { id: string }[]).map((item) => item.id),
     ).toEqual(['test/public/nav', 'test/member/nav'])
+  })
+})
+
+// The three claims a generated catalog used to reject before anything ran.
+// They are rejected at boot now, which is where they were always going to be
+// caught: a registration is a line of code, and no generator sees it.
+describe('a claim made twice', () => {
+  const page = definePage({ id: 'probe/page', path: '/probe' })
+  const other = definePage({ id: 'probe/other', path: '/probe' })
+  const build = (surfaces: UiSurfaces) =>
+    Effect.runPromiseExit(
+      Effect.scoped(Layer.build(registerSurfaces(surfaces).pipe(Layer.provideMerge(uiLayer)))),
+    )
+
+  it('refuses one page id claimed by two registrations', async () => {
+    const declaration = { page, component: 'probe/P', layout: ADMIN_SHELL, visibility: PUBLIC }
+    const exit = await build({ pages: [declaration, declaration] })
+    expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it('refuses one path claimed by two pages', async () => {
+    const exit = await build({
+      pages: [
+        { page, component: 'probe/P', layout: ADMIN_SHELL, visibility: PUBLIC },
+        { page: other, component: 'probe/O', layout: ADMIN_SHELL, visibility: PUBLIC },
+      ],
+    })
+    expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it('refuses one layout contract claimed by two providers', async () => {
+    const exit = await build({
+      layouts: [
+        { contract: ADMIN_SHELL, provider: 'a/shell', component: 'a/Shell' },
+        { contract: ADMIN_SHELL, provider: 'b/shell', component: 'b/Shell' },
+      ],
+    })
+    expect(Exit.isFailure(exit)).toBe(true)
   })
 })

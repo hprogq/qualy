@@ -1,3 +1,5 @@
+import { registerSurfaces, type Ui } from '@qualy/plugin-ui-registry/server/registry'
+import { surfaces } from '../ui.ts'
 import { Config, Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
@@ -39,11 +41,5 @@ export const pingApiHandlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
   }),
 )
 
-/**
- * What this plugin contributes beyond its API.
- *
- * Nothing, for now. The generated runtime module imports `layer` from every
- * plugin that declares a runtime entry, and a plugin that only serves requests
- * still has to say so.
- */
-export const layer = Layer.empty
+/** the screen this plugin puts in the shell; its api is the group above */
+export const layer: Layer.Layer<never, never, Ui> = registerSurfaces(surfaces)

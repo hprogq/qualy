@@ -1,3 +1,4 @@
+import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
@@ -28,6 +29,7 @@ const stack = (url: string, permissions: readonly ActivePermission[]) =>
   rbacLayer.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
+        uiLayer,
         databaseFor(url, { entities: closure }),
         Layer.succeed(PermissionCatalog, permissions),
       ),

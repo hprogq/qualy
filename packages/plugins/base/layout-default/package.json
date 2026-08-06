@@ -8,6 +8,7 @@
   "exports": {
     "./client": "./client/index.ts",
     "./ui": "./src/ui.ts",
+    "./server": "./src/server/index.ts",
     "./package.json": "./package.json"
   },
   "peerDependencies": {
@@ -19,9 +20,18 @@
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
+    "effect": "catalog:",
     "react-router": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:"
+  },
+  "qualy": {
+    "runtime": {
+      "entry": "./server",
+      "dependsOn": [
+        "@qualy/plugin-ui-registry"
+      ]
+    }
   }
 }

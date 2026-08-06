@@ -1,3 +1,4 @@
+import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'

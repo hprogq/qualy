@@ -1,3 +1,5 @@
+import { registerSurfaces, type Ui } from '@qualy/plugin-ui-registry/server/registry'
+import { surfaces } from '../ui.ts'
 import { Context, Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
@@ -794,7 +796,10 @@ export const make = Effect.fn('Org.make')(function* () {
  * It requires both peers and provides nothing to them, which is the direction
  * that keeps the graph acyclic.
  */
-export const layer: Layer.Layer<Org, never, Orm | Rbac | Placement> = Layer.effect(Org, make())
+export const layer: Layer.Layer<Org, never, Orm | Rbac | Placement | Ui> = Layer.effect(
+  Org,
+  make(),
+).pipe(Layer.merge(registerSurfaces(surfaces)))
 
 // --- api ---
 

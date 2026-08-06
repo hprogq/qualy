@@ -1239,3 +1239,30 @@ auth 用 `provideMerge(loginDriversLayer)` 把注册表连同自己一起发布 
 方式真的被提供。生成器时代它是结构性成立的,所以没人写断言;而注册是一行代码,一行代码可以
 被删掉。补了一例(真实 pluginLayers 起服务 + seed 一行 provider,断言 `/auth/login-methods`
 含 local 且 component 正确),删注册即红。
+
+### 阶段 2.6 第 3 步完成:Ui 注册表(`ctx.ui.addPage` 回归)
+
+`@qualy/plugin-ui-registry/server/registry` 提供 `Ui`,四个领域方法(`addPage` / `registerLayout` /
+`contribute` / `fillSlot`)加批量的 `registerSurfaces`。UiManifest 改为**请求期**读注册表再投影
+(原来构建期 flatten,那是实现选择不是必要)。ui-registry 用 `provideMerge(uiLayer)` 把注册表
+连同 manifest 一起发布,贡献方在自己 layer 里注册。删除 `UiCatalog`、`gen-ui.ts`、`ui.gen.ts`、
+宿主 `uiCatalogLayer`。
+
+三处与方案不同:
+
+1. **component-keys 门禁不用改** —— 它读的是 client 的 `components` 映射,从来不经 `ui.gen`。
+   方案里那条顾虑是多余的。
+2. 注册表必须放**无环子路径**:ui-registry 的 server 入口引用 auth 的 session-contract,贡献方
+   再引用 server 入口就成环,TS 把一侧解析成 `any`,错误信息还落在 main.ts 上、离原因很远。
+   拆 `./server/registry`(只依赖 effect + ui-contract)解决,与既有的 `server/authorizer`、
+   `auth/server/session-contract` 同一前例。
+3. layout-default 从此有 runtime entry —— 它确实向运行时贡献布局实现,之前只靠 `./ui` 被生成器
+   扫到。+1 个插件文件,-2 个仓库文件。
+
+**又一个洞,与 login driver 同型**:删掉 ping 或 layout-default 的界面注册,336 例全绿。补了一例
+断言真实 manifest 含 ping 的页面和 admin-shell 的实现(删任一注册即红),外加三例重复声明拒绝
+(页面 id / 路径 / 布局契约)—— 那正是被删掉的 `gen-ui.ts` 原来守的三条,现在在 boot 期守,
+而 boot 本来就是它最终会被抓到的地方。
+
+**教训**:排错时用 `head -4` 截错误列表,把真正的 `TS2304: Cannot find name 'Ui'` 截掉了,
+在无关的 `any` 上绕了很久。错误列表不要截。

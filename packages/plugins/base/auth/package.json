@@ -34,7 +34,8 @@
       "entry": "./server",
       "dependsOn": [
         "@qualy/plugin-database",
-        "@qualy/plugin-rbac"
+        "@qualy/plugin-rbac",
+        "@qualy/plugin-ui-registry"
       ],
       "api": "./api"
     }

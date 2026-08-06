@@ -3,16 +3,21 @@ import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentViewer } from '@qualy/plugin-auth/server/session-contract'
 import { appApiGroup } from '../api.ts'
-import { UiCatalog, UiManifest, layer as manifestLayer } from './manifest.ts'
+import { UiManifest, layer as manifestLayer } from './manifest.ts'
+import { Ui, uiLayer } from './registry.ts'
 
 // The registry as a layer: a projection over declarations, plus the one live
 // service it genuinely needs.
 
 export { UiAuthorizer, denyAll } from './authorizer.ts'
-export { UiCatalog, UiManifest } from './manifest.ts'
+export { UiManifest } from './manifest.ts'
+export { Ui, registerSurfaces } from './registry.ts'
 export type { Manifest } from './manifest.ts'
 
-export const layer: Layer.Layer<UiManifest, never, UiCatalog> = manifestLayer
+// The registry travels with the manifest that reads it: a plugin has to have
+// somewhere to put a page before the manifest exists, which is what
+// `provideMerge` gives it - supplying the registry and publishing it at once.
+export const layer: Layer.Layer<UiManifest | Ui> = manifestLayer.pipe(Layer.provideMerge(uiLayer))
 
 // see QUALY_API_ID: implemented against a local api so this plugin does not
 // import the aggregate it is part of

@@ -30,7 +30,8 @@
     "runtime": {
       "entry": "./server",
       "dependsOn": [
-        "@qualy/plugin-database"
+        "@qualy/plugin-database",
+        "@qualy/plugin-ui-registry"
       ],
       "api": "./api"
     }

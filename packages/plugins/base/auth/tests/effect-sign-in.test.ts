@@ -1,3 +1,4 @@
+import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer, Scope } from 'effect'

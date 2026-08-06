@@ -11,6 +11,7 @@ import {
 } from '@qualy/ui-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { UiAuthorizer } from './authorizer.ts'
+import { Ui } from './registry.ts'
 
 // The manifest is an authorized projection.
 //
@@ -19,11 +20,6 @@ import { UiAuthorizer } from './authorizer.ts'
 // authorized on its own, but a viewer must not learn that a capability, its
 // route or its component even exists. Internal declarations, visibility and
 // permission codes among them, never leave.
-
-/** the surfaces this assembly serves, resolved from the manifest */
-export class UiCatalog extends Context.Service<UiCatalog, readonly UiSurfaces[]>()(
-  '@qualy/plugin-ui-registry/UiCatalog',
-) {}
 
 export interface ManifestLayout {
   readonly contract: string
@@ -51,43 +47,48 @@ const sorted = <T extends { order?: number; id: string }>(items: readonly T[]) =
   [...items].sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.id.localeCompare(b.id))
 
 export const make = Effect.fn('Ui.manifest.make')(function* () {
-  const catalog = yield* UiCatalog
+  // the registry handle, not its contents: a plugin registers while its own
+  // layer is built, and this one is built before some of them
+  const registry = yield* Ui
 
-  const pages = catalog.flatMap((surface) => surface.pages ?? [])
-  const layouts = catalog.flatMap((surface) => surface.layouts ?? [])
-  const slots = catalog.flatMap((surface) => surface.slots ?? [])
-  // a page's navigation entry is sugar for a collection item that inherits the
-  // page's visibility, so the two cannot drift into disagreeing about who may
-  // see them
-  const collections = [
-    ...catalog.flatMap((surface) => surface.collections ?? []),
-    ...pages.flatMap((page) => {
-      const navigation = page.navigation
-      if (!navigation) return []
-      const id = `${page.page.id}/nav` as NamespacedId
-      return [
-        {
-          key: primaryNavigation.key,
-          id,
-          // Absent keys are omitted rather than set to undefined. A key whose
-          // value is undefined is still a key, and it is not a JSON value, so
-          // encoding the response fails on it. zod and JSON.stringify both
-          // swallowed that, which is why the oRPC path never noticed.
-          value: {
+  const collect = Effect.fn('Ui.manifest.collect')(function* () {
+    const surfaces = yield* registry.surfaces
+    const pages = surfaces.pages ?? []
+    const layouts = surfaces.layouts ?? []
+    const slots = surfaces.slots ?? []
+    // a page's navigation entry is sugar for a collection item that inherits
+    // the page's visibility, so the two cannot drift into disagreeing about
+    // who may see them
+    const collections = [
+      ...(surfaces.collections ?? []),
+      ...pages.flatMap((page) => {
+        const navigation = page.navigation
+        if (!navigation) return []
+        const id = `${page.page.id}/nav` as NamespacedId
+        return [
+          {
+            key: primaryNavigation.key,
             id,
-            label: navigation.label,
-            target: { kind: 'page' as const, pageId: page.page.id },
-            ...(navigation.icon === undefined ? {} : { icon: navigation.icon }),
-            ...(navigation.order === undefined ? {} : { order: navigation.order }),
-          } satisfies NavigationItem,
-          visibility: page.visibility,
-          order: navigation.order,
-        },
-      ]
-    }),
-  ]
+            // Absent keys are omitted rather than set to undefined. A key whose
+            // value is undefined is still a key, and it is not a JSON value, so
+            // encoding the response fails on it. zod and JSON.stringify both
+            // swallowed that, which is why the oRPC path never noticed.
+            value: {
+              id,
+              label: navigation.label,
+              target: { kind: 'page' as const, pageId: page.page.id },
+              ...(navigation.icon === undefined ? {} : { icon: navigation.icon }),
+              ...(navigation.order === undefined ? {} : { order: navigation.order }),
+            } satisfies NavigationItem,
+            visibility: page.visibility,
+            order: navigation.order,
+          },
+        ]
+      }),
+    ]
+    return { pages, layouts, slots, collections }
+  })
 
-  const byContract = new Map(layouts.map((layout) => [layout.contract, layout]))
   const visible = (visibility: UiVisibility, viewer: ViewerAccess) =>
     isVisibleTo(visibility, viewer)
 
@@ -111,6 +112,8 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
   return {
     build: Effect.fn('Ui.manifest.build')(function* (principal?: Principal) {
       const viewer = yield* viewerAccess(principal)
+      const { pages, layouts, slots, collections } = yield* collect()
+      const byContract = new Map(layouts.map((layout) => [layout.contract, layout]))
 
       const shown = pages.filter((page) => {
         if (!visible(page.visibility, viewer)) return false
@@ -179,4 +182,4 @@ export class UiManifest extends Context.Service<
   Effect.Success<ReturnType<typeof make>>
 >()('@qualy/plugin-ui-registry/UiManifest') {}
 
-export const layer: Layer.Layer<UiManifest, never, UiCatalog> = Layer.effect(UiManifest, make())
+export const layer: Layer.Layer<UiManifest, never, Ui> = Layer.effect(UiManifest, make())

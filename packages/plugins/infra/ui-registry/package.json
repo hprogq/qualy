@@ -9,6 +9,7 @@
     "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
     "./server/authorizer": "./src/server/authorizer.ts",
+    "./server/registry": "./src/server/registry.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

@@ -1,3 +1,5 @@
+import { registerSurfaces, type Ui } from '@qualy/plugin-ui-registry/server/registry'
+import { surfaces } from '../ui.ts'
 import { Context, Effect, Layer } from 'effect'
 import {
   AccessDenied,
@@ -374,7 +376,7 @@ export class Access extends Context.Service<
  * Two tags from one construction: the port peers hold, and rbac's own
  * administration surface, which no peer reaches through a tag.
  */
-export const layer: Layer.Layer<Rbac | Access | UiAuthorizer, never, Orm | PermissionCatalog> =
+export const layer: Layer.Layer<Rbac | Access | UiAuthorizer, never, Orm | PermissionCatalog | Ui> =
   Layer.effectContext(
     Effect.gen(function* () {
       const { grants, roles, diagnostics, grantScopeFor, ...shape } = yield* make()
@@ -398,7 +400,7 @@ export const layer: Layer.Layer<Rbac | Access | UiAuthorizer, never, Orm | Permi
         }),
       )
     }),
-  )
+  ).pipe(Layer.merge(registerSurfaces(surfaces)))
 
 // --- api ---
 

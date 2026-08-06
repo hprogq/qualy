@@ -23,7 +23,8 @@
       "entry": "./server",
       "api": "./api",
       "dependsOn": [
-        "@qualy/plugin-database"
+        "@qualy/plugin-database",
+        "@qualy/plugin-ui-registry"
       ]
     }
   },

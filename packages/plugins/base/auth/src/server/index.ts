@@ -1,3 +1,5 @@
+import { registerSurfaces, type Ui } from '@qualy/plugin-ui-registry/server/registry'
+import { surfaces } from '../ui.ts'
 import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
@@ -93,8 +95,8 @@ const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac> = Layer.effectContex
 export const layer: Layer.Layer<
   Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions | LoginDrivers,
   never,
-  Orm | Rbac | AuthConfig
-> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer).pipe(
+  Orm | Rbac | AuthConfig | Ui
+> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer, registerSurfaces(surfaces)).pipe(
   // The registry travels with its consumer. auth is the only thing that reads
   // it, and a driver plugin needs somewhere to register before auth is built -
   // which `provideMerge` gives it, by publishing the registry as well as

@@ -13,8 +13,6 @@ import { entities } from '../entities.gen.ts'
 import { pluginLayers } from '../runtime.gen.ts'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { permissionCatalog } from '../permissions.gen.ts'
-import { UiCatalog } from '@qualy/plugin-ui-registry/server'
-import { uiSurfaces } from '../ui.gen.ts'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { makeClient } from '@qualy/api-client/effect'
@@ -62,7 +60,6 @@ const shell = (url: string) =>
         readinessLayer,
         Layer.succeed(Entities, entities),
         Layer.succeed(PermissionCatalog, permissionCatalog),
-        Layer.succeed(UiCatalog, uiSurfaces),
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({
@@ -138,6 +135,37 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
         mode: 'component',
         component: 'auth-local/LoginMethod',
       })
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await db.dispose()
+    }
+  })
+
+  // Same shape as the login method above, and the same reason: a plugin's
+  // screens reach the shell because its layer registers them, and a line of
+  // code can be deleted. A generated catalog made this structurally true, so
+  // nobody wrote it down; removing ping's registration left every test green.
+  it('serves the screens of every plugin that registered any', async () => {
+    const db = await createTestContext('effect-api-manifest')
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
+      const response = await fetch(`${base}${QUALY_API_PREFIX}/app/manifest`)
+      expect(response.status).toBe(200)
+      const manifest = (await response.json()) as {
+        pages: readonly { id: string; path: string; component: string; layout: string }[]
+        layouts: readonly { contract: string }[]
+      }
+      // ping's page is public, so an anonymous request sees it; a page whose
+      // layout nobody implements is dropped, so this also proves the layout
+      // plugin registered its own contract implementation
+      expect(manifest.pages).toContainEqual({
+        id: 'ping/page',
+        path: '/ping',
+        component: 'ping/PingPage',
+        layout: 'admin-shell/v1',
+      })
+      expect(manifest.layouts.map((layout) => layout.contract)).toContain('admin-shell/v1')
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()

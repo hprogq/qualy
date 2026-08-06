@@ -28,9 +28,10 @@
     "runtime": {
       "entry": "./server",
       "dependsOn": [
+        "@qualy/plugin-auth",
         "@qualy/plugin-database",
         "@qualy/plugin-rbac",
-        "@qualy/plugin-auth"
+        "@qualy/plugin-ui-registry"
       ],
       "api": "./api"
     }
