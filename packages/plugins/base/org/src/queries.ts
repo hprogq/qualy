@@ -9,31 +9,9 @@ import { sql, type SQL } from 'drizzle-orm'
 
 export const NODE_COLUMNS = sql`id, parent_id, org_type_id, code, name, path::text as path, depth, sort_order`
 
-/**
- * Serializes every structural write of one tenant.
- *
- * rbac's assignment writes and auth's identity writes take the same lock, so
- * the three plugins cannot interleave a retype with a grant or a transfer.
- */
-export const lockTenantQuery = (tenantId: string): SQL =>
-  sql`select 1 from tenants where id = ${tenantId} for update`
-
 export const nodeQuery = (tenantId: string, nodeId: string): SQL => sql`
   select ${NODE_COLUMNS} from org_nodes
   where tenant_id = ${tenantId} and id = ${nodeId}`
-
-export const typeQuery = (tenantId: string, typeId: string): SQL => sql`
-  select id, code, name, sort_order from org_types
-  where tenant_id = ${tenantId} and id = ${typeId}`
-
-export const ruleExistsQuery = (
-  tenantId: string,
-  parentTypeId: string,
-  childTypeId: string,
-): SQL => sql`
-  select 1 from org_type_rules
-  where tenant_id = ${tenantId}
-    and parent_type_id = ${parentTypeId} and child_type_id = ${childTypeId}`
 
 /** children whose own type the new parent type would not permit */
 export const incompatibleChildTypesQuery = (
@@ -78,109 +56,6 @@ export const deleteNodeQuery = (tenantId: string, nodeId: string): SQL =>
 export const rootQuery = (tenantId: string): SQL => sql`
   select ${NODE_COLUMNS} from org_nodes
   where tenant_id = ${tenantId} and parent_id is null`
-
-export const listTypesQuery = (tenantId: string): SQL => sql`
-  select id, code, name, sort_order from org_types
-  where tenant_id = ${tenantId}
-  order by sort_order, name`
-
-export const countTypesQuery = (tenantId: string, typeIds: readonly string[]): SQL => sql`
-  select count(*) as count from org_types
-  where tenant_id = ${tenantId}
-    and id = any(string_to_array(${typeIds.join(',')}, ',')::uuid[])`
-
-export const insertTypeQuery = (input: {
-  tenantId: string
-  code: string
-  name: string
-  sortOrder: number
-}): SQL => sql`
-  insert into org_types (tenant_id, code, name, sort_order)
-  values (${input.tenantId}, ${input.code}, ${input.name}, ${input.sortOrder})
-  returning id, code, name, sort_order`
-
-export const updateTypeQuery = (
-  tenantId: string,
-  typeId: string,
-  fields: { name?: string; sortOrder?: number },
-): SQL => sql`
-  update org_types set
-    name = coalesce(${fields.name ?? null}, name),
-    sort_order = coalesce(${fields.sortOrder ?? null}, sort_order),
-    updated_at = now()
-  where tenant_id = ${tenantId} and id = ${typeId}`
-
-export const typeHasNodesQuery = (tenantId: string, typeId: string): SQL => sql`
-  select 1 from org_nodes
-  where tenant_id = ${tenantId} and org_type_id = ${typeId} limit 1`
-
-export const typeHasRulesQuery = (tenantId: string, typeId: string): SQL => sql`
-  select 1 from org_type_rules
-  where tenant_id = ${tenantId}
-    and (parent_type_id = ${typeId} or child_type_id = ${typeId}) limit 1`
-
-export const deleteTypeQuery = (tenantId: string, typeId: string): SQL =>
-  sql`delete from org_types where tenant_id = ${tenantId} and id = ${typeId}`
-
-export const listRulesQuery = (tenantId: string): SQL => sql`
-  select r.parent_type_id, r.child_type_id
-  from org_type_rules r
-  join org_types p on p.tenant_id = r.tenant_id and p.id = r.parent_type_id
-  join org_types c on c.tenant_id = r.tenant_id and c.id = r.child_type_id
-  where r.tenant_id = ${tenantId}
-  order by p.sort_order, p.name, c.sort_order, c.name`
-
-/**
- * Whether adding parent -> child would close a cycle.
- *
- * It would exactly when parent is already reachable from child by walking
- * existing rules downward, so the rule graph stays a dag.
- */
-export const ruleWouldCycleQuery = (
-  tenantId: string,
-  parentTypeId: string,
-  childTypeId: string,
-): SQL => sql`
-  with recursive reach as (
-    select child_type_id from org_type_rules
-    where tenant_id = ${tenantId} and parent_type_id = ${childTypeId}
-    union
-    select r.child_type_id from org_type_rules r
-    join reach on r.parent_type_id = reach.child_type_id
-    where r.tenant_id = ${tenantId}
-  )
-  select 1 from reach where child_type_id = ${parentTypeId} limit 1`
-
-export const insertRuleQuery = (input: {
-  tenantId: string
-  parentTypeId: string
-  childTypeId: string
-}): SQL => sql`
-  insert into org_type_rules (tenant_id, parent_type_id, child_type_id)
-  values (${input.tenantId}, ${input.parentTypeId}, ${input.childTypeId})`
-
-/** a rule is in use when an actual parent-child node pair depends on it */
-export const ruleInUseQuery = (
-  tenantId: string,
-  parentTypeId: string,
-  childTypeId: string,
-): SQL => sql`
-  select 1
-  from org_nodes child
-  join org_nodes parent on parent.tenant_id = child.tenant_id and parent.id = child.parent_id
-  where child.tenant_id = ${tenantId}
-    and parent.org_type_id = ${parentTypeId}
-    and child.org_type_id = ${childTypeId}
-  limit 1`
-
-export const deleteRuleQuery = (
-  tenantId: string,
-  parentTypeId: string,
-  childTypeId: string,
-): SQL => sql`
-  delete from org_type_rules
-  where tenant_id = ${tenantId}
-    and parent_type_id = ${parentTypeId} and child_type_id = ${childTypeId}`
 
 /**
  * The snapshot a read projection runs in.

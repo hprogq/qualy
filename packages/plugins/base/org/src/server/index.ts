@@ -4,7 +4,25 @@ import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'
 import { Placement } from '@qualy/auth-contract'
-import { LegacySql, type Orm } from '@qualy/plugin-database/server'
+import { LegacySql, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import {
+  countTypes,
+  deleteRule,
+  deleteType,
+  insertRule,
+  insertType,
+  listRules,
+  listTypes,
+  lockTenant,
+  oneType,
+  orgEntityManager,
+  ruleExists,
+  ruleInUse,
+  ruleWouldCycle,
+  typeHasNodes,
+  typeHasRules,
+  updateType,
+} from './db.ts'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import {
   AssignmentIncompatible,
@@ -44,32 +62,17 @@ import {
   type ResolvedScope,
 } from '../coverage.ts'
 import {
-  countTypesQuery,
   deleteNodeQuery,
-  deleteRuleQuery,
-  deleteTypeQuery,
   hasChildrenQuery,
-  insertRuleQuery,
-  insertTypeQuery,
-  listRulesQuery,
-  listTypesQuery,
   insertNodeQuery,
   moveSubtreeQuery,
   nodesByIdQuery,
   readSnapshotQuery,
   rootQuery,
-  ruleInUseQuery,
   subtreeQuery,
-  ruleWouldCycleQuery,
-  typeHasNodesQuery,
-  typeHasRulesQuery,
-  updateTypeQuery,
   incompatibleChildTypesQuery,
-  lockTenantQuery,
   nodeQuery,
-  ruleExistsQuery,
   setNodeTypeQuery,
-  typeQuery,
   updateNodeFieldsQuery,
 } from '../queries.ts'
 
@@ -127,16 +130,16 @@ export interface NodeView {
   subtreeManageable: boolean
 }
 
-export interface TypeRow extends Record<string, unknown> {
+export interface TypeRow {
   id: string
   code: string
   name: string
-  sort_order: number
+  sortOrder: number
 }
 
-export interface RuleRow extends Record<string, unknown> {
-  parent_type_id: string
-  child_type_id: string
+export interface RuleRow {
+  parentTypeId: string
+  childTypeId: string
 }
 
 export class Org extends Context.Service<
@@ -235,6 +238,9 @@ export class Org extends Context.Service<
 
 export const make = Effect.fn('Org.make')(function* () {
   const database = yield* LegacySql
+  // a read opens no transaction, so it has nothing to take a database from;
+  // supplying it here keeps the requirement off everybody who calls
+  const withDb = yield* withDatabase
   const rbac = yield* Rbac
   const placement = yield* Placement
 
@@ -252,7 +258,8 @@ export const make = Effect.fn('Org.make')(function* () {
         Effect.gen(function* () {
           // first statement, always: it serializes this tenant's structural
           // writes against rbac's and auth's
-          yield* tx.execute(lockTenantQuery(tenantId))
+          const em = yield* orgEntityManager()
+          yield* lockTenant(em, tenantId)
 
           const node = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, nodeId)))[0]
           if (!node) return yield* new NodeNotFound()
@@ -262,15 +269,12 @@ export const make = Effect.fn('Org.make')(function* () {
           yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
 
           if (node.org_type_id === newTypeId) return
-          const type = rows<{ id: string }>(yield* tx.execute(typeQuery(tenantId, newTypeId)))[0]
+          const type = yield* oneType(em, tenantId, newTypeId)
           if (!type) return yield* new TypeNotFound()
 
           if (node.parent_id) {
             const parent = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, node.parent_id)))[0]!
-            const allowed = rows(
-              yield* tx.execute(ruleExistsQuery(tenantId, parent.org_type_id, newTypeId)),
-            )
-            if (allowed.length === 0) {
+            if (!(yield* ruleExists(em, tenantId, parent.org_type_id, newTypeId))) {
               return yield* new RuleViolation({
                 reason: 'the new type is not allowed under the parent type',
               })
@@ -312,11 +316,11 @@ export const make = Effect.fn('Org.make')(function* () {
 
   // the shape every structural write shares: lock the tenant, find the node,
   // re-decide authorization on the locked connection, then write
-  const write = <A, E>(
+  const write = <A, E, R>(
     tenantId: string,
     nodeId: string,
     as: Principal,
-    body: (tx: Tx, node: NodeRow) => Effect.Effect<A, E>,
+    body: (tx: Tx, node: NodeRow) => Effect.Effect<A, E, R>,
   ) =>
     // Refuse before taking the lock. The check inside the transaction is the
     // authoritative one, because a concurrent move can re-anchor the target
@@ -326,7 +330,8 @@ export const make = Effect.fn('Org.make')(function* () {
       Effect.andThen(
         database.transaction((tx) =>
           Effect.gen(function* () {
-            yield* tx.execute(lockTenantQuery(tenantId))
+            const em = yield* orgEntityManager()
+            yield* lockTenant(em, tenantId)
             const node = rows<NodeRow>(yield* tx.execute(nodeQuery(tenantId, nodeId)))[0]
             if (!node) return yield* new NodeNotFound()
             // re-decided under the lock: the pre-check ran before it, and the
@@ -381,15 +386,16 @@ export const make = Effect.fn('Org.make')(function* () {
     yield* rbac.requireAt(as, 'org.tree.manage', root.id)
   })
 
-  const writeAtRoot = <A, E>(
+  const writeAtRoot = <A, E, R>(
     tenantId: string,
     as: Principal,
-    body: (tx: Tx) => Effect.Effect<A, E>,
+    body: (tx: Tx) => Effect.Effect<A, E, R>,
   ) =>
     database
       .transaction((tx) =>
         Effect.gen(function* () {
-          yield* tx.execute(lockTenantQuery(tenantId))
+          const em = yield* orgEntityManager()
+          yield* lockTenant(em, tenantId)
           yield* atRoot(tenantId, as)
           return yield* body(tx)
         }),
@@ -404,11 +410,11 @@ export const make = Effect.fn('Org.make')(function* () {
 
   // a read: no constraint can fire, so dying here keeps the caller's error
   // type narrow without hiding anything translatable
-  const typeOf = (tx: Tx, tenantId: string, typeId: string) =>
-    tx.execute(typeQuery(tenantId, typeId)).pipe(
-      Effect.orDie,
-      Effect.map((result) => rows<TypeRow>(result)[0]),
-    )
+  const typeOf = (tenantId: string, typeId: string) =>
+    Effect.gen(function* () {
+      const em = yield* orgEntityManager()
+      return yield* oneType(em, tenantId, typeId).pipe(Effect.orDie)
+    })
 
   // Anchors resolved against node paths, on the caller's connection.
   //
@@ -495,16 +501,13 @@ export const make = Effect.fn('Org.make')(function* () {
     // authority over the parent, because creating a child mutates the parent
     return yield* write(tenantId, input.parentId, as, (tx, parent) =>
       Effect.gen(function* () {
-        const type = rows<TypeRow>(
-          yield* tx.execute(typeQuery(tenantId, input.orgTypeId)).pipe(Effect.orDie),
-        )[0]
+        const em = yield* orgEntityManager()
+        const type = yield* oneType(em, tenantId, input.orgTypeId).pipe(Effect.orDie)
         if (!type) return yield* new TypeNotFound()
-        const allowed = rows(
-          yield* tx
-            .execute(ruleExistsQuery(tenantId, parent.org_type_id, input.orgTypeId))
-            .pipe(Effect.orDie),
+        const allowed = yield* ruleExists(em, tenantId, parent.org_type_id, input.orgTypeId).pipe(
+          Effect.orDie,
         )
-        if (allowed.length === 0) {
+        if (!allowed) {
           return yield* new RuleViolation({
             reason: 'parent-child type combination is not allowed by the rules',
           })
@@ -546,7 +549,8 @@ export const make = Effect.fn('Org.make')(function* () {
     return yield* database
       .transaction((tx) =>
         Effect.gen(function* () {
-          yield* tx.execute(lockTenantQuery(tenantId))
+          const em = yield* orgEntityManager()
+          yield* lockTenant(em, tenantId)
           if (nodeId === newParentId) {
             return yield* new InvalidMove({ reason: 'a node cannot become its own parent' })
           }
@@ -573,10 +577,7 @@ export const make = Effect.fn('Org.make')(function* () {
           if (newParent.path === node.path || newParent.path.startsWith(`${node.path}.`)) {
             return yield* new InvalidMove({ reason: 'a node cannot move into its own subtree' })
           }
-          const allowed = rows(
-            yield* tx.execute(ruleExistsQuery(tenantId, newParent.org_type_id, node.org_type_id)),
-          )
-          if (allowed.length === 0) {
+          if (!(yield* ruleExists(em, tenantId, newParent.org_type_id, node.org_type_id))) {
             return yield* new RuleViolation({
               reason: 'parent-child type combination is not allowed by the rules',
             })
@@ -693,28 +694,31 @@ export const make = Effect.fn('Org.make')(function* () {
 
     // type and rule metadata is tenant-global, so reading it needs the
     // permission held anywhere in the tenant rather than at a specific node
-    listTypes: Effect.fn('Org.listTypes')(function* (tenantId: string, as: Principal) {
-      if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
-        return yield* new AccessDenied({ reason: 'cannot read the organization' })
-      }
-      return rows<TypeRow>(yield* database.execute(listTypesQuery(tenantId)).pipe(Effect.orDie))
-    }),
+    listTypes: (tenantId: string, as: Principal) =>
+      withDb(
+        Effect.gen(function* () {
+          if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
+            return yield* new AccessDenied({ reason: 'cannot read the organization' })
+          }
+          const em = yield* orgEntityManager()
+          return yield* listTypes(em, tenantId).pipe(Effect.orDie)
+        }).pipe(Effect.withSpan('Org.listTypes')),
+      ),
     createType: Effect.fn('Org.createType')(function* (
       tenantId: string,
       input: { code: string; name: string; sortOrder?: number },
       as: Principal,
     ) {
-      return yield* writeAtRoot(tenantId, as, (tx) =>
-        tx
-          .execute(
-            insertTypeQuery({
-              tenantId,
-              code: input.code,
-              name: input.name,
-              sortOrder: input.sortOrder ?? 0,
-            }),
-          )
-          .pipe(Effect.map((result) => rows<TypeRow>(result)[0]!)),
+      return yield* writeAtRoot(tenantId, as, () =>
+        Effect.gen(function* () {
+          const em = yield* orgEntityManager()
+          return yield* insertType(em, {
+            tenantId,
+            code: input.code,
+            name: input.name,
+            sortOrder: input.sortOrder ?? 0,
+          })
+        }),
       )
     }),
     updateType: Effect.fn('Org.updateType')(function* (
@@ -725,8 +729,9 @@ export const make = Effect.fn('Org.make')(function* () {
     ) {
       yield* writeAtRoot(tenantId, as, (tx) =>
         Effect.gen(function* () {
-          if (!(yield* typeOf(tx, tenantId, typeId))) return yield* new TypeNotFound()
-          yield* tx.execute(updateTypeQuery(tenantId, typeId, fields))
+          if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
+          const em = yield* orgEntityManager()
+          yield* updateType(em, tenantId, typeId, fields)
         }),
       )
     }),
@@ -737,25 +742,29 @@ export const make = Effect.fn('Org.make')(function* () {
     ) {
       yield* writeAtRoot(tenantId, as, (tx) =>
         Effect.gen(function* () {
-          if (!(yield* typeOf(tx, tenantId, typeId))) return yield* new TypeNotFound()
-          const used = rows(yield* tx.execute(typeHasNodesQuery(tenantId, typeId)))
-          if (used.length > 0)
+          if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
+          const em = yield* orgEntityManager()
+          if (yield* typeHasNodes(em, tenantId, typeId)) {
             return yield* new TypeInUse({ reason: 'nodes still use this org type' })
-          const ruled = rows(yield* tx.execute(typeHasRulesQuery(tenantId, typeId)))
-          if (ruled.length > 0) {
+          }
+          if (yield* typeHasRules(em, tenantId, typeId)) {
             return yield* new TypeInUse({ reason: 'rules still reference this org type' })
           }
-          yield* tx.execute(deleteTypeQuery(tenantId, typeId))
+          yield* deleteType(em, tenantId, typeId)
         }),
       )
     }),
 
-    listRules: Effect.fn('Org.listRules')(function* (tenantId: string, as: Principal) {
-      if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
-        return yield* new AccessDenied({ reason: 'cannot read the organization' })
-      }
-      return rows<RuleRow>(yield* database.execute(listRulesQuery(tenantId)).pipe(Effect.orDie))
-    }),
+    listRules: (tenantId: string, as: Principal) =>
+      withDb(
+        Effect.gen(function* () {
+          if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
+            return yield* new AccessDenied({ reason: 'cannot read the organization' })
+          }
+          const em = yield* orgEntityManager()
+          return yield* listRules(em, tenantId).pipe(Effect.orDie)
+        }).pipe(Effect.withSpan('Org.listRules')),
+      ),
     // idempotent by design: the pair identifies the rule, so repeating the
     // request converges on the same state instead of reporting a conflict
     putRule: Effect.fn('Org.putRule')(function* (
@@ -767,19 +776,14 @@ export const make = Effect.fn('Org.make')(function* () {
       yield* writeAtRoot(tenantId, as, (tx) =>
         Effect.gen(function* () {
           if (parentTypeId === childTypeId) return yield* new RuleInvalid()
-          const existing = rows(
-            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)),
-          )
-          if (existing.length > 0) return
-          const counted = rows<{ count: string }>(
-            yield* tx.execute(countTypesQuery(tenantId, [parentTypeId, childTypeId])),
-          )
-          if (Number(counted[0]?.count ?? 0) !== 2) return yield* new TypeNotFound()
-          const cycles = rows(
-            yield* tx.execute(ruleWouldCycleQuery(tenantId, parentTypeId, childTypeId)),
-          )
-          if (cycles.length > 0) return yield* new RuleCycle()
-          yield* tx.execute(insertRuleQuery({ tenantId, parentTypeId, childTypeId }))
+          const em = yield* orgEntityManager()
+          if (yield* ruleExists(em, tenantId, parentTypeId, childTypeId)) return
+          const counted = yield* countTypes(em, tenantId, [parentTypeId, childTypeId])
+          if (counted !== 2) return yield* new TypeNotFound()
+          if (yield* ruleWouldCycle(em, tenantId, parentTypeId, childTypeId)) {
+            return yield* new RuleCycle()
+          }
+          yield* insertRule(em, { tenantId, parentTypeId, childTypeId })
         }),
       )
     }),
@@ -791,13 +795,13 @@ export const make = Effect.fn('Org.make')(function* () {
     ) {
       yield* writeAtRoot(tenantId, as, (tx) =>
         Effect.gen(function* () {
-          const existing = rows(
-            yield* tx.execute(ruleExistsQuery(tenantId, parentTypeId, childTypeId)),
-          )
-          if (existing.length === 0) return yield* new RuleNotFound()
-          const used = rows(yield* tx.execute(ruleInUseQuery(tenantId, parentTypeId, childTypeId)))
-          if (used.length > 0) return yield* new RuleInUse()
-          yield* tx.execute(deleteRuleQuery(tenantId, parentTypeId, childTypeId))
+          const em = yield* orgEntityManager()
+          if (!(yield* ruleExists(em, tenantId, parentTypeId, childTypeId))) {
+            return yield* new RuleNotFound()
+          }
+          if (yield* ruleInUse(em, tenantId, parentTypeId, childTypeId))
+            return yield* new RuleInUse()
+          yield* deleteRule(em, tenantId, parentTypeId, childTypeId)
         }),
       )
     }),
@@ -815,13 +819,11 @@ export const layer: Layer.Layer<Org, never, Orm | Rbac | Placement> = Layer.effe
 // --- api ---
 
 // Rows leave the database in snake_case; the contract describes camelCase.
-// Mapping at the boundary rather than renaming the columns keeps the SQL
-// readable and keeps both runtimes describing a record the same way.
 const toTypeDto = (row: TypeRow) => ({
   id: row.id,
   code: row.code,
   name: row.name,
-  sortOrder: row.sort_order,
+  sortOrder: row.sortOrder,
 })
 
 const toNodeDto = (node: NodeView) => ({
@@ -837,8 +839,8 @@ const toNodeDto = (node: NodeView) => ({
 })
 
 const toRuleDto = (row: RuleRow) => ({
-  parentTypeId: row.parent_type_id,
-  childTypeId: row.child_type_id,
+  parentTypeId: row.parentTypeId,
+  childTypeId: row.childTypeId,
 })
 
 // The local API exists so this plugin implements its group without importing
