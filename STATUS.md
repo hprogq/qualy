@@ -1121,3 +1121,26 @@ handler 在 group 建立时取它即可;当时的编译错误是 `ping` 已经�
 **错误码格式已裁决:保持 SCREAMING_SNAKE**。四层命名各司其职,不合并:
 class `NodeNotFound` / schema identifier `OrgNodeNotFound` / 协议码 `ORG_NODE_NOT_FOUND` /
 message id `org/error/node-not-found`。
+
+### 已有数据库遇上被压缩的 lineage:`qualy database adopt`
+
+lineage 压成一条之后,任何已存在的数据库都会「不被认识」:新账本是空的,那条初始迁移要重新建表,
+于是 `relation "auth_providers" already exists`。开发库就是这么起不来的。
+
+`pnpm qualy database adopt` 是这件事的答案,而且**先验后写**:把目标库与「实体+复合外键+baseline
+建成的库」逐对象比对,不一致就拒绝并把差异逐条列出来,一致才把 lineage 记成已应用(只写账本、
+不跑任何 SQL)。第一次跑就拦下来了 —— 差异是旧的 `cordis_meta` 账本 schema,它确实不属于
+任何插件声明的 schema。删掉那个退役账本(一张表、15 行,指向的迁移都已不存在)后认领成功。
+
+顺带把 `structuralDiff` 拆出 `diffAgainstDeclared(subjectUrl, ...)`,adopt 与 generate 共用同一个
+比较,并修掉审计第 6 条的一半:scratch 库删不掉时,只有在主体已经拿到答案的情况下才抛
+AggregateError,否则原始失败不会被清理失败盖掉。
+
+### codegen 进了 main,dev 只剩一个进程
+
+`pnpm dev` 不再前置 `tsx scripts/gen.ts`。`apps/server/src/main.ts` 在导入任何 `.gen.ts` 之前
+自己跑一遍(仅非 production,动态 import),日志走应用同一个 logger。顺序是关键:`runtime.ts`
+改成 codegen 之后再动态 import,否则进程会冻在生成前的那份上;`manifestPath` 因此挪进
+`src/manifest.ts`(config.ts 静态 import 了三个由清单派生的生成物)。
+
+生成器只报写了什么。九行 `unchanged, skipped` 只说明「codegen 跑过」,而调用方本来就知道。
