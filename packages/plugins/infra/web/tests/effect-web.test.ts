@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Scope } from 'effect'
+import { Effect, Exit, Layer, Logger, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer } from '@qualy/api-kit/node'
-import { WebConfig, routes } from '../src/server/index.ts'
+import { WebConfig, routes, viteLogger } from '../src/server/index.ts'
 
 // The boundary between the api and the browser shell.
 //
@@ -118,5 +118,55 @@ describe('the shell against the api mount', () => {
       expect(response.status, `${path} should not be answered by the shell`).toBe(404)
       expect(response.headers.get('content-type') ?? '').not.toContain('text/html')
     }
+  })
+})
+
+// Vite calls its logger synchronously from its own work, so the adapter cannot
+// yield*. What matters is that a line still arrives at the application's
+// logger, with its level intact - otherwise the dev output is two formats
+// again and nobody notices until they are reading it.
+describe("vite's logger, adapted", () => {
+  const captured = async (use: (logger: Awaited<ReturnType<typeof build>>) => void) => {
+    const lines: string[] = []
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const logger = yield* viteLogger
+        use(logger)
+        // the forked drain runs on the next turn; closing the scope after it
+        // has is what this yield buys
+        yield* Effect.sleep(10)
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Logger.layer([
+            Logger.make(({ logLevel, message }) => lines.push(`${logLevel}:${String(message)}`)),
+          ]),
+        ),
+      ),
+    )
+    return lines
+  }
+  const build = () => Effect.runPromise(Effect.scoped(viteLogger))
+
+  it('carries each level through to the application logger', async () => {
+    expect(
+      await captured((logger) => {
+        logger.info('mounted')
+        logger.warn('careful')
+        logger.error('broken')
+      }),
+    ).toEqual(['Info:mounted', 'Warn:careful', 'Error:broken'])
+  })
+
+  it('says a repeated warning once, and remembers that it warned', async () => {
+    let logger: Awaited<ReturnType<typeof build>>
+    const lines = await captured((made) => {
+      logger = made
+      expect(made.hasWarned).toBe(false)
+      made.warnOnce('same')
+      made.warnOnce('same')
+    })
+    expect(lines).toEqual(['Warn:same'])
+    expect(logger!.hasWarned).toBe(true)
   })
 })

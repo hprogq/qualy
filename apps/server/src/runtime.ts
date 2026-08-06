@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Logger } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
@@ -94,6 +94,10 @@ const server = Layer.unwrap(
  */
 export const application = server.pipe(
   Layer.provide(pluginLayers),
+  // One logger for everything the process says, colours included. The default
+  // one prints the same layout without them, and a dev terminal that tells an
+  // error from a request at a glance is worth the one line.
+  Layer.provide(Logger.layer([Logger.consolePretty({ colors: 'auto' })])),
   Layer.provide(
     Layer.mergeAll(
       // The entity set is handed to the plugin that owns the connection, not
