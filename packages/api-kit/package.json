@@ -10,10 +10,12 @@
     "./readiness": "./src/readiness.ts",
     "./schema": "./src/schema.ts",
     "./node": "./src/node.ts",
-    "./assembled": "./src/assembled.ts"
+    "./assembled": "./src/assembled.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
+    "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:"
   }
 }

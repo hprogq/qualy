@@ -11,12 +11,14 @@
     "./api": "./src/api.ts",
     "./server/authorizer": "./src/server/authorizer.ts",
     "./server/registry": "./src/server/registry.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./plugin": "./src/plugin.ts"
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "effect": "catalog:",

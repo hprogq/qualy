@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",
+    "@effect/platform-node": "catalog:",
     "@qualy/api": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
@@ -19,7 +20,10 @@
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
+    "@qualy/plugin-ping": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
     "@vitejs/plugin-react": "catalog:",

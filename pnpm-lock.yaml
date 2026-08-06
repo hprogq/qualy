@@ -144,6 +144,9 @@ importers:
       '@effect/language-service':
         specifier: 'catalog:'
         version: 0.87.1
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1)
       '@qualy/api':
         specifier: workspace:*
         version: link:packages/api
@@ -165,9 +168,18 @@ importers:
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:packages/plugins/infra/database
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:packages/plugin-kit
       '@qualy/plugin-org':
         specifier: workspace:*
         version: link:packages/plugins/base/org
+      '@qualy/plugin-ping':
+        specifier: workspace:*
+        version: link:packages/plugins/demo/ping
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/ui-registry
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -398,6 +410,9 @@ importers:
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1)
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../plugin-kit
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
@@ -424,6 +439,12 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+
+  packages/plugin-kit:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
 
   packages/plugins/base/auth:
     dependencies:
@@ -717,6 +738,9 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../i18n-contract
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../plugin-kit
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
@@ -760,6 +784,9 @@ importers:
       '@qualy/assembly-contract':
         specifier: workspace:*
         version: link:../../../assembly-contract
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../plugin-kit
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
@@ -794,6 +821,9 @@ importers:
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../../base/auth
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../plugin-kit
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../rbac-contract

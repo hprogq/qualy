@@ -1540,3 +1540,33 @@ group 并进 entry 后 pluginLayers 出现 R∩Out 重叠,而 `provide(x, x)` �
 
 **验收**:typecheck 11 工程零错;node 361 / browser 13;真实启动:登录 → roles 200、manifest 7 页、
 ping 200、openapi.json 200,日志零 `[E]`。apps/server 下 .gen.ts 从 4 个变 3 个。
+
+### M1:插件描述器原型落地(docs/plugin-descriptor-plan.md)
+
+审计(docs/assembly-new.md)采纳,计划文档落盘并经用户裁决:M1 原型先行、M2 分批不一次切完、
+@qualy/api 保留到 M4。本轮 M1 完成:
+
+**`@qualy/plugin-kit` 内核**:Plugin / Feature / ExtensionPoint 三概念 + 三相
+(prepare / afterServices / boot)。关键类型两处:①`AnyLayer = Layer<never, any, any>` ——
+**Layer 对输出是逆变的**(provide 消费输出),萬能接受位在 never 不在 any;②`Plugin.service`
+的 requires 是真实 Tag 数组,作 layer R 的上界,插件多要一个服务在**自己**的 typecheck 报错
+—— 无 codegen 下保住依赖诚实性的关键。原型装配器 `assemble()`:按相编译扩展点、服务按列表序
+provideMerge(Tag 拓扑留给批 5)、"贡献无人解释"按 CLI 同款规则点名硬拒。
+
+**三个 Feature 构造器**在各能力自己的包(开放世界,内核零能力知识):
+`Postgres.entities/provider`(@qualy/plugin-database/plugin)、`ReactUi.surfaces/provider`
+(@qualy/plugin-ui-registry/plugin)、`Api.group/provider`(@qualy/api-kit/plugin)。
+Api.group 收**已构建的 group layer**而非工厂 —— Layer 本身就是延迟值,上游推断原样保留,
+类型擦除只在 provider 的聚合循环里(`HttpApiGroup.Constraint` 是上游 `add` 自己的参数约束)。
+
+**ping 描述器 + 桥**:default export = `Plugin.define(id, Postgres.entities(..),
+ReactUi.surfaces(..), Api.group(..))`;legacy `layer`/`apiHandlers` 导出由**同一批常量**派生,
+两形态无从漂移;宿主照旧走 runtime.gen,主系统零改动。
+
+**审计四点验证**(scripts/tests/descriptor-prototype.test.ts,5 例):①根 default-export 纯数据
+描述器;②`Plugin.contributionsOf` 不构建任何东西取出实体(ping_logs 在列);③页面进目录而 ping
+从未 require Ui(prepared 单独构建即含 ping/page);④handler 在完整服务图之上闭合并真实 served
+(`/api/ping/hello` 200、行入库);外加:贡献无人解释时点名双方硬拒。
+
+**验收**:typecheck 11 工程零错;node 366(+5)/ browser 13;真实启动经桥照常
+(live 200、ping 200,零 [E])。M2 批 1(compat 派生助手)待继续。

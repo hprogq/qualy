@@ -15,13 +15,15 @@
     "./pg-errors": "./src/pg-errors.ts",
     "./testkit": "./src/testkit.ts",
     "./server/constraints": "./src/server/constraints.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./plugin": "./src/plugin.ts"
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
     "@mikro-orm/migrations": "catalog:",
     "@mikro-orm/postgresql": "catalog:",
     "@qualy/assembly-contract": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:",
     "kysely": "catalog:",
     "pg": "catalog:",
