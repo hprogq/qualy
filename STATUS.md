@@ -991,3 +991,20 @@ ltree 的两条(建节点的路径原子写入、`subpath`/`nlevel` 搬子树)�
 **收尾顺序**:①这两个端口 → ②auth 的 `iam/queries.ts` 删除 → ③`LegacySql` shim 删除
 (它现在只用来开事务;七个文件里没有一处 `tx.execute` 是 rbac/org 的了)→
 ④drizzle 表定义 `*/src/db/tables/` 与 drizzle 依赖撤下。
+
+### 三个插件的查询全部在 Kysely 上;查询模块一个不剩
+
+auth 最后两条读 rbac 表的语句改成了 rbac 服务上的端口
+(`rolesStrandedByUserType` / `grantsBlockingUserType`),与 `assertTenantKeepsAdministrator`
+同型 —— 它们在调用方的事务里回答,因为连接在 fiber 里。`auth/src/iam/queries.ts` 随之删除。
+
+反向验证:把 `rolesStrandedByUserType` 的「且没有别的类型」条件改成「且有这个类型」,
+`refuses to delete a type that is the last one a role admits` 立刻红。
+
+**收尾只剩两件,都不改行为**:
+
+1. `LegacySql` shim 删除。所有 `tx.execute` 已经没有了,`database.transaction(...)` 换成
+   `transaction(...)` 即可,但 `write`/`writeAtRoot`/`readInSnapshot` 三个包装器要同时
+   套上 `withDb`(否则 `Orm` 会泄进服务方法的类型)。**试过一次用脚本批量改,括号改乱了,
+   已回滚**;这件事要手改五个文件,不要用正则。
+2. drizzle 表定义 `*/src/db/tables/`、drizzle schema 聚合与 drizzle 依赖撤下。
