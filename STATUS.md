@@ -827,3 +827,29 @@ instrument 而非猜测串行化:
 ```
 
 串行慢 4 倍,所以「串行化」本身也不是免费的修法。**保持 unresolved**。
+
+## 查询改写:前两个 repo 已切,并发现迁移单元不是文件
+
+已切到 Kysely 并各自过了既有测试:
+
+- `auth/src/server/session.ts`(会话中间件,三表 join + 两个计算列)
+- `auth/src/server/sign-in.ts`(登录/登出/登录方式,八条查询)
+
+关系属性顺带按列名改了(`tenant` → `tenantId`、`permission` → `permissionId`):属性名就是
+Kysely 查询里写的名字,而列名由 `joinColumns` 决定,三份 parity gate 不受影响。晚发现就要回头改
+已经写完的查询。
+
+### 阻塞点:一个事务不能横跨两个运行时(已实测)
+
+drizzle 的 `database.transaction` 和 MikroORM 的 `em.begin()` 各从自己的池取连接。
+把 auth 单独切过去,org 在自己的事务里问 auth「这次改类型会不会把人晾着」时,
+auth 会另开一条连接读**已提交**状态 —— 答案看起来完全正常,只是回答的是别的问题。
+
+实测(临时探针,已删):drizzle 事务里插入的行,同一 fiber 里经 `entityManager()` 查得到 `[]`。
+
+因此 org / auth / rbac 是**一个连通分量**,事务核心必须同批切;明细与守护它的测试见
+docs/notes/mikro-orm.md。已切的两个文件都不在事务里,所以是安全的。
+
+**下一步**:剩下的非事务读可以继续逐个搬(随时可提交);事务核心
+(org/index、rbac/index+roles+grants、auth/index+users+user-types)一次切完,
+由 `auth/tests/effect-placement.test.ts:133` 与 rbac 的并发 parity 用例守。

@@ -96,3 +96,33 @@ DDL 默认值仍在(灾备与裸写入路径不受影响),但应用侧被类型�
 `getEntityDeclaration()` 从不检查 references;`DatabaseTable.ts:299` 的预筛丢掉 `index.where`
 而 `:355` 的 `isTrivial` 又把它算进去;`:764` 的 `Array.from(propBaseNames)` 丢索引列顺序。
 本次迁移全部手写实体,不依赖该生成器,所以只记录不处理。
+
+## 迁移单元不是文件,是「一个事务能到达的全部代码」
+
+改写到第三个 repo 时才发现的约束:**一个事务不能横跨两个运行时**。drizzle 的
+`database.transaction` 从它自己的池取连接,MikroORM 的 `em.begin()` 从 MikroORM 的池取。
+两边都工作,但它们是两条连接 —— 于是「在调用方的事务里问」变成「另开一条连接读已提交状态」,
+答案看起来完全正常,只是回答的是别的问题。
+
+这正是 fiber 携带连接的设计要防的那个 bug,现在它会以「迁移到一半」的形态重新出现。
+
+**实测**(临时探针,已删):在 drizzle 事务里 `insert into tenants ... 'acme'`,然后在同一 fiber 里
+经 `entityManager()` + `kyselyOf()` 问同一张表,得到 `[]` —— 不是 `[{slug:'acme'}]`。
+peer 完全没看见调用方的事务。
+
+三个插件因此是**一个连通分量**,必须同批切换:
+
+| 事务持有方                          | 在锁内调用                             | 位置                                                |
+| ----------------------------------- | -------------------------------------- | --------------------------------------------------- |
+| org `changeNodeType`                | `rbac.grantsBlockingOrgType`           | org/src/server/index.ts:303                         |
+| org `changeNodeType`                | `placement.usersBlockingOrgType`(auth) | org/src/server/index.ts:308                         |
+| auth `userTypes.update` / `users.*` | `rbac.assertTenantKeepsAdministrator`  | auth/src/server/user-types.ts:231, users.ts:316/363 |
+
+已有测试守着,不是纸面推理:`auth/tests/effect-placement.test.ts:133`
+(「counts a person the caller has moved but not committed」)在 drizzle 事务里插一个人再问 auth,
+断言 `inside === 2`。auth 单独切到 Kysely 时它会答 1。rbac 侧由
+`effect-parity.test.ts:434/507` 的并发用例守。
+
+**因此顺序是**:先把三个插件里**不在事务内的读**逐个搬走(各自独立、随时可提交),
+剩下的事务核心一次切完。已搬走的 session 中间件与 sign-in 都属于前者
+(sign-in 的 `completeLogin` 是两条独立语句,不在事务里)。
