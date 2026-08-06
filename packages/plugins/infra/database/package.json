@@ -37,7 +37,8 @@
       "entry": "./assembly"
     },
     "runtime": {
-      "entry": "./server"
+      "entry": "./server",
+      "config": true
     }
   }
 }

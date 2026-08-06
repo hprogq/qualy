@@ -14,7 +14,6 @@ import { pluginConfig, pluginLayers } from '../runtime.gen.ts'
 import {
   ServerConfig,
   apiReferenceEnabled,
-  databaseConfigLayer,
   permissionCatalogLayer,
 } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
@@ -104,8 +103,7 @@ export const application = server.pipe(
       // decides, and would find the tables of plugins this assembly leaves
       // out; this way what the ORM knows is what the lock says.
       Layer.succeed(Entities, entities),
-      databaseConfigLayer,
-      permissionCatalogLayer,
+          permissionCatalogLayer,
       // each plugin's own block of the manifest, turned into a service by the
       // plugin that reads it rather than by this file
       pluginConfig,

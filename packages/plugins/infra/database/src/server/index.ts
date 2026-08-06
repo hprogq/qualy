@@ -22,7 +22,8 @@ import { pendingMigrations, runMigrations } from '../migrator.ts'
 // mentioned. Here they are in the layer's error channel, so a composition that
 // does not deal with them does not compile.
 
-export { DatabaseConfig } from './config.ts'
+export { DatabaseConfig, config } from './config.ts'
+export { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
 export {
   Entities,
   QualyNamingStrategy,

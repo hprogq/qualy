@@ -23,7 +23,7 @@ import { QualyNamingStrategy } from './naming.ts'
 // assembly to say what the second one contains, so it belongs to the capability
 // provider; this module is what an application process is allowed to run.
 
-export const MIGRATIONS_FOLDER = 'db/migrations'
+export { MIGRATIONS_FOLDER } from './defaults.ts'
 
 export interface MigrationOptions {
   folder: string

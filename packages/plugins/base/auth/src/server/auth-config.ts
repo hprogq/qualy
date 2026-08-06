@@ -48,7 +48,9 @@ export const config = (
   Layer.effect(
     AuthConfig,
     Effect.gen(function* () {
-      yield* Schema.decodeUnknownEffect(AuthManifestConfig)(manifest)
+      yield* Schema.decodeUnknownEffect(AuthManifestConfig)(manifest, {
+        onExcessProperty: 'error',
+      })
       return AuthConfig.of({
         defaultTenantSlug: yield* Config.string('QUALY_DEFAULT_TENANT').pipe(
           Config.withDefault('default'),

@@ -1,9 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readManifest } from '@qualy/assembly'
 
-// Where the assembly's manifest is, and what it says about the lineage.
+// Where the assembly's manifest is.
 //
 // Its own module, reachable without touching a generated one: the entry point
 // needs the manifest before codegen has run, and `config.ts` imports the
@@ -38,19 +37,4 @@ export const manifestPath = (): string => {
     }
     dir = parent
   }
-}
-
-/**
- * Where the lineage lives, as the manifest declares it.
- *
- * The path is relative to the manifest rather than to the working directory,
- * which is what lets `qualy generate` and this process agree from anywhere.
- */
-export const manifestMigrationsFolder = (): string => {
-  const file = manifestPath()
-  const declared = (readManifest(file).plugins.get('@qualy/plugin-database')?.config ?? {}) as {
-    migrationsFolder?: string
-  }
-  const folder = declared.migrationsFolder ?? 'db/migrations'
-  return path.isAbsolute(folder) ? folder : path.resolve(path.dirname(file), folder)
 }

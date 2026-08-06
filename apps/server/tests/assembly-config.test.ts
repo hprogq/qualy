@@ -2,18 +2,27 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { ConfigProvider, Effect, Redacted } from 'effect'
 import { lockPathFor } from '@qualy/assembly'
-import { LOCAL_FALLBACK } from '@qualy/plugin-database/assembly'
-import { localFallback, manifestMigrationsFolder, manifestPath } from '../src/config.ts'
+import {
+  DatabaseConfig,
+  LOCAL_FALLBACK,
+  MIGRATIONS_FOLDER,
+  config,
+} from '@qualy/plugin-database/server'
+import { manifestPath } from '../src/config.ts'
 
-// Two facts the assembly owns that this process must not decide for itself.
+// Two facts the assembly owns that no process may decide for itself.
 //
 // Both of these were wrong at the same time and neither was visible. The
 // lineage folder was declared in qualy.yml, read by `qualy generate` and
-// `qualy deploy`, and separately hardcoded here - so pointing the manifest
-// somewhere else would have had the CLI write one lineage while the process
-// applied another. Removing the declaration from the manifest entirely broke
-// nothing that any test could see, which is how it came to be removed.
+// `qualy deploy`, and separately hardcoded in the host - so pointing the
+// manifest somewhere else would have had the CLI write one lineage while the
+// process applied another. Removing the declaration from the manifest entirely
+// broke nothing that any test could see, which is how it came to be removed.
+//
+// The plugin resolves it now, from the block the assembly hands it and the
+// manifest's own directory, so these ask the plugin rather than the host.
 //
 // The lock path had the matching problem from the other direction: it was
 // derived from the manifest's DIRECTORY and not its name, so resolving any
@@ -37,47 +46,74 @@ const withManifest = <T>(text: string, run: (file: string) => T): T => {
 
 const manifest = (body: string) => `version: 2\n\napplication:\n  workspace: .\n\nplugins:\n${body}`
 
-describe('what the manifest decides and this process reads', () => {
-  it('takes the lineage folder from the manifest, resolved against it', () => {
-    withManifest(
-      manifest("  '@qualy/plugin-database':\n    config:\n      migrationsFolder: ../elsewhere\n"),
-      (file) => {
-        expect(manifestMigrationsFolder()).toBe(path.resolve(path.dirname(file), '../elsewhere'))
-      },
-    )
+/**
+ * What the plugin makes of a manifest block, without opening a database.
+ *
+ * The environment is supplied rather than mutated: the default provider reads
+ * `process.env` once, so a test that assigns to it after the first read is
+ * asserting about the first read. That cost an hour.
+ */
+const configured = (
+  declared: Record<string, unknown>,
+  manifestDir: string,
+  env: Record<string, string> = {},
+) =>
+  Effect.runPromise(
+    Effect.flatMap(DatabaseConfig, Effect.succeed).pipe(
+      Effect.provide(config(declared, { manifestDir })),
+      Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+    ),
+  )
+
+const HERE = '/somewhere'
+
+describe('what the manifest decides and the database plugin reads', () => {
+  it('takes the lineage folder from the manifest, resolved against it', async () => {
+    const read = await configured({ migrationsFolder: '../elsewhere' }, HERE)
+    expect(read.migrationsFolder).toBe(path.resolve(HERE, '../elsewhere'))
   })
 
-  it('falls back to the same default the CLI uses when the manifest is silent', () => {
-    // a manifest need not say; what it must not do is mean one folder here and
-    // another in `qualy generate`, whose default is 'db/migrations' relative
-    // to the manifest (packages/plugins/infra/database/src/assembly/work.ts)
-    withManifest(manifest("  '@qualy/plugin-database': {}\n"), (file) => {
-      expect(manifestMigrationsFolder()).toBe(path.resolve(path.dirname(file), 'db/migrations'))
-    })
+  it('falls back to the same default the CLI uses when the manifest is silent', async () => {
+    // a manifest need not say; what it must not do is mean one folder in the
+    // process and another in `qualy generate`. There is one definition of the
+    // default now - src/defaults.ts, imported by the plugin and by its
+    // assembly - so this asserts the resolution rather than the agreement.
+    const read = await configured({}, HERE)
+    expect(read.migrationsFolder).toBe(path.resolve(HERE, MIGRATIONS_FOLDER))
   })
 
-  it('honours an absolute declaration as given', () => {
+  it('honours an absolute declaration as given', async () => {
     const absolute = path.join(os.tmpdir(), 'qualy-absolute-lineage')
-    withManifest(
-      manifest(`  '@qualy/plugin-database':\n    config:\n      migrationsFolder: ${absolute}\n`),
-      () => {
-        expect(manifestMigrationsFolder()).toBe(absolute)
-      },
+    expect((await configured({ migrationsFolder: absolute }, HERE)).migrationsFolder).toBe(absolute)
+  })
+
+  it('refuses a manifest block it cannot read', async () => {
+    // the alternative is a key that looks applied and is not, which is the
+    // failure the whole config channel exists to prevent
+    await expect(configured({ url: 'postgres://elsewhere/db' }, HERE)).rejects.toThrow()
+  })
+
+  it('assumes a local database only outside production', async () => {
+    // a production instance that assumes one connects to whatever postgres is
+    // on localhost and, with migrations on, applies the lineage to it
+    expect(Redacted.value((await configured({}, HERE, {})).url)).toBe(LOCAL_FALLBACK)
+    await expect(configured({}, HERE, { NODE_ENV: 'production' })).rejects.toThrow(
+      /DATABASE_URL is not set/,
     )
+    // and it is the absence that decides, not the environment: production with
+    // one configured is the ordinary case
+    expect(
+      Redacted.value(
+        (await configured({}, HERE, { NODE_ENV: 'production', DATABASE_URL: 'postgres://x/y' }))
+          .url,
+      ),
+    ).toBe('postgres://x/y')
   })
 
   it('reads the manifest this process was started with', () => {
     withManifest(manifest("  '@qualy/plugin-database': {}\n"), (file) => {
       expect(manifestPath()).toBe(file)
     })
-  })
-
-  it('agrees with the CLI about where a database is when nothing says', () => {
-    // the same string in two packages: the CLI reaches it through the assembly
-    // subpath and the process must not import that, so equality is asserted
-    // rather than shared. Drift would send `qualy deploy` and the application
-    // to different databases on a machine with no DATABASE_URL set.
-    expect(localFallback).toBe(LOCAL_FALLBACK)
   })
 
   it("names each manifest's lock after it, so two cannot share one", () => {

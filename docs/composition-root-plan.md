@@ -295,8 +295,12 @@ Readiness。**宿主零 `@qualy/plugin-*` 导入。**
    加真实启动 —— `login-methods` 需要 `defaultTenantSlug` 才能找到租户,它回来了就说明 auth 的
    config 导出跑通了。**注意**:测试直接注入 AuthConfig 服务(设计如此),所以 config 导出这条路
    只有真实启动会走到。
-5. **database config 搬家**(含生产禁 fallback)。验收:`NODE_ENV=production` 缺
-   `DATABASE_URL` 拒启(新用例)。
+5. ~~**database config 搬家**~~ **已完成**(含生产禁 fallback)。顺带把 `LOCAL_FALLBACK` 与
+   `MIGRATIONS_FOLDER` 收进零依赖的 `src/defaults.ts`——原来 CLI 侧与运行时侧各一份,靠一条
+   「断言两者相等」的测试守;实现只有一份之后那条测试就不必存在了。三个 config 导出的清单校验
+   一律 `onExcessProperty: 'error'`(默认是 ignore,那正好是「看起来生效、其实没人读」)。
+   **教训**:默认 ConfigProvider 只读一次 `process.env`,测试里改环境变量再跑第二遍读到的还是
+   第一次的值;改成显式 `ConfigProvider.fromEnv({ env })` 供给。
 6. **permissions 升能力**(rbac `./assembly`、resolve 期唯一性、`layerExport`,seed 改读
    contributions,旧键硬拒)。验收:assembly-resolve 加同码冲突用例;seed 测试不变绿。
 7. **entities `layerExport`** + 宿主删 `Entities`。

@@ -61,7 +61,9 @@ export const config = (
   Layer.effect(
     WebConfig,
     Effect.gen(function* () {
-      const declared = yield* Schema.decodeUnknownEffect(WebManifestConfig)(manifest)
+      const declared = yield* Schema.decodeUnknownEffect(WebManifestConfig)(manifest, {
+        onExcessProperty: 'error',
+      })
       const mode = yield* Config.literals(
         ['auto', 'development', 'production'],
         'QUALY_WEB_MODE',

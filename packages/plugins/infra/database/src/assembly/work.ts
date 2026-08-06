@@ -4,10 +4,11 @@ import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import type { DatabaseContribution } from './contribution.ts'
 import { entityContributions, type EntityContribution } from './entities.ts'
 import { asState, type DatabaseState } from './state.ts'
+import { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
 
 // Where this assembly keeps its lineage, and what the lineage is built from.
 
-export const LOCAL_FALLBACK = 'postgres://qualy:qualy@localhost:5432/qualy'
+export { LOCAL_FALLBACK } from '../defaults.ts'
 
 export interface DatabaseWork {
   migrations: string
@@ -39,7 +40,7 @@ export function databaseWork(
       `${context.manifestPath}: @qualy/plugin-database does not read config.${unknown.join(', config.')}${hint}`,
     )
   }
-  const declared = config.migrationsFolder ?? 'db/migrations'
+  const declared = config.migrationsFolder ?? MIGRATIONS_FOLDER
   const migrations = path.isAbsolute(declared)
     ? declared
     : path.resolve(path.dirname(context.manifestPath), declared)

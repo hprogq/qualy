@@ -1283,3 +1283,24 @@ resolve 期原本就有一条「给了 config 但只有 capability provider 会�
 三例新测试 + 真实启动验证。**注意**:业务测试直接注入 AuthConfig 服务(设计如此,方案里写明),
 所以 `config` 导出这条路只有真实启动会走到 —— 用 `login-methods` 验的,它需要 `defaultTenantSlug`
 才能找到租户。
+
+### 阶段 2.6 第 5 步完成:database config 搬家 + 生产禁 fallback
+
+`DatabaseConfig` 由插件自己的 `config` 导出构建:环境变量自己读,`migrationsFolder` 自己按
+`manifestDir` resolve。宿主的 `databaseConfigLayer` 与 `manifestMigrationsFolder` 一并删除。
+
+**审计第 8 条落地**:`NODE_ENV=production` 且没有 `DATABASE_URL` 时 die —— 否则生产实例会连上
+localhost 上碰巧存在的那个 postgres,而且 migrations 默认是 apply,等于往没人打算给它的库里
+写 lineage,开场只有一行没人看的警告。
+
+顺带:`LOCAL_FALLBACK` 与 `MIGRATIONS_FOLDER` 收进零依赖的 `src/defaults.ts`。原来 CLI 侧
+(assembly/work.ts)与运行时侧各一份,靠 assembly-config 里一条「断言两者相等」的测试守着;
+实现只有一份之后,那条测试不必存在,那套测试改成直接问插件的 `config` 导出。
+
+三个 config 导出的清单校验一律 `onExcessProperty: 'error'` —— Effect Schema 默认是 `ignore`,
+而「多写一个键被静默丢掉」正是这条通道要防的失败形态(`url` 尤其:清单是提交物,连接串写进去
+就是版本控制里的凭据)。
+
+**教训**:默认 ConfigProvider 只读一次 `process.env`。测试里先跑一遍、改环境变量、再跑一遍,
+第二遍读到的仍是第一次的值 —— 生产分支因此一直没被走到。改成显式
+`ConfigProvider.layer(ConfigProvider.fromEnv({ env }))` 把环境**供给**进去,而不是改进程的。
