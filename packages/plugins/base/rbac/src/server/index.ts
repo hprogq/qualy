@@ -35,7 +35,8 @@ import {
 import { make as makeRoles } from './roles.ts'
 import { make as makeDiagnostics } from './diagnostics.ts'
 import { ESCALATE, type Authority } from './escalation.ts'
-import { type GrantScope, type RoleRow as RoleProjection } from '../queries.ts'
+import { type GrantScope } from './grants.ts'
+import { type RoleRow as RoleProjection } from './db.ts'
 
 // rbac as an Effect layer, and the root of the graph.
 //
@@ -399,15 +400,15 @@ const toRoleShape = (
   description: role.description,
   kind: role.kind,
   status: role.status,
-  holdsEveryPermission: role.permission_mode === 'all-active',
-  systemKey: role.system_key,
+  holdsEveryPermission: role.permissionMode === 'all-active',
+  systemKey: role.systemKey,
   assignable: role.assignable,
   version: role.version,
-  grantCount: role.grant_count,
+  grantCount: role.grantCount,
   permissions: permissions.active,
   unavailablePermissions: permissions.unavailable,
-  eligibleUserTypeIds: role.allowed_user_types,
-  anchorOrgTypeIds: role.allowed_org_types,
+  eligibleUserTypeIds: role.allowedUserTypes,
+  anchorOrgTypeIds: role.allowedOrgTypes,
 })
 
 const toGrantShape = (row: GrantRow) => ({

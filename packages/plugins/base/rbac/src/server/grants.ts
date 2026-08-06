@@ -16,17 +16,13 @@ import {
   lockTenant,
   orgNodeExists,
   rbacEntityManager,
+  rolePermissionCodes,
+  rolePermissionMode,
+  rolesOfTenant,
   userExists,
   type RbacEntityManager,
 } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
-import {
-  roleProjectionQuery,
-  rolePermissionCodesQuery,
-  rolePermissionModeQuery,
-  type GrantScope,
-  type RoleRow as RoleProjection,
-} from '../queries.ts'
 import { assertMayGrantRole, type Authority } from './escalation.ts'
 
 import {
@@ -76,6 +72,13 @@ interface RoleRow extends Record<string, unknown> {
   permission_mode: string
   status: string
   assignable: boolean
+}
+
+export interface GrantScope {
+  read: AuthorizationScope
+  manage: AuthorizationScope
+  /** a tenant-wide grant has no node, so node coverage cannot decide it */
+  tenantGrants: { read: boolean; manage: boolean }
 }
 
 /**
@@ -455,14 +458,11 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     tenantId: string,
     roleId: string,
   ) {
-    const role = rows<{ permission_mode: string }>(
-      yield* tx.execute(rolePermissionModeQuery(tenantId, roleId)),
-    )[0]
+    const em = yield* rbacEntityManager()
+    const role = yield* rolePermissionMode(em, tenantId, roleId)
     if (!role) return yield* new RoleNotFound()
-    if (role.permission_mode === 'all-active') return { codes: [], allActive: true }
-    const codes = rows<{ code: string }>(
-      yield* tx.execute(rolePermissionCodesQuery(tenantId, roleId)),
-    ).map((row) => row.code)
+    if (role.mode === 'all-active') return { codes: [], allActive: true }
+    const codes = yield* rolePermissionCodes(em, tenantId, roleId)
     return { codes, allActive: false }
   })
 
@@ -504,9 +504,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       if (!there) return yield* new GrantNodeNotFound()
     }
     const wantedKind = request.target.kind === 'tenant' ? 'tenant' : 'org'
-    const candidates = rows<RoleProjection & Record<string, unknown>>(
-      yield* database.execute(roleProjectionQuery(tenantId)).pipe(Effect.orDie),
-    ).filter((role) => role.kind === wantedKind && role.status === 'active' && role.assignable)
+    const candidates = (yield* rolesOfTenant(em, tenantId).pipe(Effect.orDie)).filter(
+      (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
+    )
     const offered: { id: string; code: string; name: string; kind: 'tenant' | 'org' }[] = []
     for (const role of candidates) {
       const verdict = yield* database

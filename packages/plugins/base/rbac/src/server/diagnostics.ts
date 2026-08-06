@@ -1,8 +1,7 @@
 import { Effect } from 'effect'
 import { LegacySql } from '@qualy/plugin-database/server'
 import type { ActivePermission } from '@qualy/rbac-contract'
-import { orgNodeExistsQuery, userExistsQuery } from '../queries.ts'
-import { rbacEntityManager } from './db.ts'
+import { orgNodeExists, rbacEntityManager, userExists } from './db.ts'
 import { explainRows } from './authorization.ts'
 import { GrantNodeNotFound, GrantUserNotFound } from './grants.ts'
 import { PermissionNotFound } from './roles.ts'
@@ -56,18 +55,18 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
     userId: string,
     orgNodeId: string | undefined,
   ) {
-    const user = rows(yield* database.execute(userExistsQuery(tenantId, userId)).pipe(Effect.orDie))
-    if (user.length === 0) return yield* new GrantUserNotFound()
+    const em = yield* rbacEntityManager()
+    if (!(yield* userExists(em, tenantId, userId).pipe(Effect.orDie))) {
+      return yield* new GrantUserNotFound()
+    }
     if (orgNodeId !== undefined) {
-      const node = rows(
-        yield* database.execute(orgNodeExistsQuery(tenantId, orgNodeId)).pipe(Effect.orDie),
-      )
       // an unknown node has no authority to explain, and answering as though
       // it did would disagree with canAt, which refuses it
-      if (node.length === 0) return yield* new GrantNodeNotFound()
+      if (!(yield* orgNodeExists(em, tenantId, orgNodeId).pipe(Effect.orDie))) {
+        return yield* new GrantNodeNotFound()
+      }
     }
     const catalog = catalogOf()
-    const em = yield* rbacEntityManager()
     const found = yield* explainRows(em, tenantId, userId, orgNodeId).pipe(Effect.orDie)
 
     const out = new Map<
