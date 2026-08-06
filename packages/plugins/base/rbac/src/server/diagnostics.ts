@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
+import { orgNodeExists, userExists } from './db.ts'
 
 import type { ActivePermission } from '@qualy/rbac-contract'
-import { orgNodeExists, rbacEntityManager, userExists } from './db.ts'
 import { explainRows } from './authorization.ts'
 import { GrantNodeNotFound, GrantUserNotFound } from './grants.ts'
 import { PermissionNotFound } from './roles.ts'
@@ -53,19 +53,18 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
     userId: string,
     orgNodeId: string | undefined,
   ) {
-    const em = yield* rbacEntityManager()
-    if (!(yield* userExists(em, tenantId, userId).pipe(Effect.orDie))) {
+    if (!(yield* userExists(tenantId, userId).pipe(Effect.orDie))) {
       return yield* new GrantUserNotFound()
     }
     if (orgNodeId !== undefined) {
       // an unknown node has no authority to explain, and answering as though
       // it did would disagree with canAt, which refuses it
-      if (!(yield* orgNodeExists(em, tenantId, orgNodeId).pipe(Effect.orDie))) {
+      if (!(yield* orgNodeExists(tenantId, orgNodeId).pipe(Effect.orDie))) {
         return yield* new GrantNodeNotFound()
       }
     }
     const catalog = catalogOf()
-    const found = yield* explainRows(em, tenantId, userId, orgNodeId).pipe(Effect.orDie)
+    const found = yield* explainRows(tenantId, userId, orgNodeId).pipe(Effect.orDie)
 
     const out = new Map<
       string,

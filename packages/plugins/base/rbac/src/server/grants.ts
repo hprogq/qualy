@@ -1,7 +1,5 @@
 import { Effect } from 'effect'
 import {
-  kyselyOf,
-  query,
   transaction,
   withDatabase,
   type Orm,
@@ -20,15 +18,14 @@ import {
   type Principal,
 } from '@qualy/rbac-contract'
 import {
+  db,
   admitsOrgType,
   admitsUserType,
   lockTenant,
   orgNodeExists,
-  rbacEntityManager,
   rolePermissionCodes,
   rolePermissionMode,
   rolesOfTenant,
-  type RbacEntityManager,
   userExists,
 } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -113,14 +110,13 @@ const withinScope = (
  * assembled and then filtered returns short pages and a cursor that skips.
  */
 const grantRows = (
-  em: RbacEntityManager,
   tenantId: string,
   filter: { userId?: string; orgNodeId?: string },
   scope: GrantScope | undefined,
   page: { after?: string; limit: number } | undefined,
 ) =>
-  query(() => {
-    let found = kyselyOf(em)
+  db.query((k) => {
+    let found = k
       .selectFrom('RoleGrant as g')
       .innerJoin('User as u', (join) =>
         join.onRef('u.tenantId', '=', 'g.tenantId').onRef('u.id', '=', 'g.userId'),
@@ -186,9 +182,9 @@ const grantRows = (
 
 export type GrantRow = Effect.Success<ReturnType<typeof grantRows>>[number]
 
-const roleForGrant = (em: RbacEntityManager, tenantId: string, roleId: string) =>
-  query(() =>
-    kyselyOf(em)
+const roleForGrant = (tenantId: string, roleId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Role')
       .select((eb) => [
         'id',
@@ -204,9 +200,9 @@ const roleForGrant = (em: RbacEntityManager, tenantId: string, roleId: string) =
       .executeTakeFirst(),
   )
 
-const roleSystemKey = (em: RbacEntityManager, tenantId: string, roleId: string) =>
-  query(() =>
-    kyselyOf(em)
+const roleSystemKey = (tenantId: string, roleId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Role')
       .select('systemKey')
       .where('tenantId', '=', tenantId)
@@ -214,9 +210,9 @@ const roleSystemKey = (em: RbacEntityManager, tenantId: string, roleId: string) 
       .executeTakeFirst(),
   )
 
-const userForGrant = (em: RbacEntityManager, tenantId: string, userId: string) =>
-  query(() =>
-    kyselyOf(em)
+const userForGrant = (tenantId: string, userId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('User')
       .select(['userTypeId', 'enabled'])
       .where('tenantId', '=', tenantId)
@@ -232,36 +228,37 @@ const userForGrant = (em: RbacEntityManager, tenantId: string, userId: string) =
  * as admitting nobody.
  */
 const roleAdmits = (
-  em: RbacEntityManager,
   tenantId: string,
   roleId: string,
   what: { userTypeId: string } | { orgTypeId: string },
 ) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('Role as r')
-      .where('r.tenantId', '=', tenantId)
-      .where('r.id', '=', roleId)
-      .select((eb) => {
-        const role = {
-          tenantId: eb.ref('r.tenantId'),
-          id: eb.ref('r.id'),
-          eligibilityMode: eb.ref('r.eligibilityMode'),
-          anchorMode: eb.ref('r.anchorMode'),
-        }
-        return (
-          'userTypeId' in what
-            ? admitsUserType(role, eb.val(what.userTypeId))
-            : admitsOrgType(role, eb.val(what.orgTypeId))
-        ).as('admitted')
-      })
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row?.admitted === true))
+  db
+    .query((k) =>
+      k
+        .selectFrom('Role as r')
+        .where('r.tenantId', '=', tenantId)
+        .where('r.id', '=', roleId)
+        .select((eb) => {
+          const role = {
+            tenantId: eb.ref('r.tenantId'),
+            id: eb.ref('r.id'),
+            eligibilityMode: eb.ref('r.eligibilityMode'),
+            anchorMode: eb.ref('r.anchorMode'),
+          }
+          return (
+            'userTypeId' in what
+              ? admitsUserType(role, eb.val(what.userTypeId))
+              : admitsOrgType(role, eb.val(what.orgTypeId))
+          ).as('admitted')
+        })
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.admitted === true))
 
 /** the node type a grant would anchor on, which decides whether the role may */
-const orgNodeType = (em: RbacEntityManager, tenantId: string, orgNodeId: string) =>
-  query(() =>
-    kyselyOf(em)
+const orgNodeType = (tenantId: string, orgNodeId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('OrgNode')
       .select(['id', 'orgTypeId'])
       .where('tenantId', '=', tenantId)
@@ -270,37 +267,34 @@ const orgNodeType = (em: RbacEntityManager, tenantId: string, orgNodeId: string)
   )
 
 /** whether the actor themselves holds the canonical administrator role */
-const holdsCanonicalAdmin = (
-  em: RbacEntityManager,
-  tenantId: string,
-  userId: string,
-  canonicalKey: string,
-) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('RoleGrant as g')
-      .innerJoin('Role as r', (join) =>
-        join
-          .onRef('r.tenantId', '=', 'g.tenantId')
-          .onRef('r.id', '=', 'g.roleId')
-          .on('r.systemKey', '=', canonicalKey)
-          .on('r.status', '=', 'active'),
-      )
-      .innerJoin('User as u', (join) =>
-        join
-          .onRef('u.tenantId', '=', 'g.tenantId')
-          .onRef('u.id', '=', 'g.userId')
-          .on('u.enabled', '=', true),
-      )
-      .where('g.tenantId', '=', tenantId)
-      .where('g.userId', '=', userId)
-      .select('g.id')
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row !== undefined))
+const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrant as g')
+        .innerJoin('Role as r', (join) =>
+          join
+            .onRef('r.tenantId', '=', 'g.tenantId')
+            .onRef('r.id', '=', 'g.roleId')
+            .on('r.systemKey', '=', canonicalKey)
+            .on('r.status', '=', 'active'),
+        )
+        .innerJoin('User as u', (join) =>
+          join
+            .onRef('u.tenantId', '=', 'g.tenantId')
+            .onRef('u.id', '=', 'g.userId')
+            .on('u.enabled', '=', true),
+        )
+        .where('g.tenantId', '=', tenantId)
+        .where('g.userId', '=', userId)
+        .select('g.id')
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
 
-const oneGrant = (em: RbacEntityManager, tenantId: string, grantId: string) =>
-  query(() =>
-    kyselyOf(em)
+const oneGrant = (tenantId: string, grantId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('RoleGrant')
       .select((eb) => [
         'roleId',
@@ -312,27 +306,18 @@ const oneGrant = (em: RbacEntityManager, tenantId: string, grantId: string) =>
       .executeTakeFirst(),
   )
 
-const insertGrant = (
-  em: RbacEntityManager,
-  input: {
-    tenantId: string
-    userId: string
-    roleId: string
-    orgNodeId: string | null
-    coverage: 'self' | 'subtree' | null
-  },
-) =>
-  query(() =>
-    kyselyOf(em).insertInto('RoleGrant').values(input).returning('id').executeTakeFirstOrThrow(),
-  )
+const insertGrant = (input: {
+  tenantId: string
+  userId: string
+  roleId: string
+  orgNodeId: string | null
+  coverage: 'self' | 'subtree' | null
+}) =>
+  db.query((k) => k.insertInto('RoleGrant').values(input).returning('id').executeTakeFirstOrThrow())
 
-const deleteGrant = (em: RbacEntityManager, tenantId: string, grantId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .deleteFrom('RoleGrant')
-      .where('tenantId', '=', tenantId)
-      .where('id', '=', grantId)
-      .execute(),
+const deleteGrant = (tenantId: string, grantId: string) =>
+  db.query((k) =>
+    k.deleteFrom('RoleGrant').where('tenantId', '=', tenantId).where('id', '=', grantId).execute(),
   )
 
 export const make = Effect.fn('Rbac.grants.make')(function* (
@@ -354,8 +339,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     withDb(
       transaction(
         Effect.gen(function* () {
-          const em = yield* rbacEntityManager()
-          yield* lockTenant(em, tenantId)
+          yield* lockTenant(tenantId)
           return yield* body()
         }),
       ),
@@ -403,11 +387,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
   ) => Effect.Effect<void, RoleNotFound | TenantAdminRequired | SqlFailure, Orm> = Effect.fn(
     'Rbac.grants.mayAdministerRole',
   )(function* (actor: Principal, tenantId: string, roleId: string) {
-    const em = yield* rbacEntityManager()
-    const role = yield* roleSystemKey(em, tenantId, roleId)
+    const role = yield* roleSystemKey(tenantId, roleId)
     if (!role) return yield* new RoleNotFound()
     if (role.systemKey !== CANONICAL_ADMIN_ROLE) return
-    if (!(yield* holdsCanonicalAdmin(em, tenantId, actor.userId, CANONICAL_ADMIN_ROLE))) {
+    if (!(yield* holdsCanonicalAdmin(tenantId, actor.userId, CANONICAL_ADMIN_ROLE))) {
       return yield* new TenantAdminRequired()
     }
   })
@@ -417,14 +400,13 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     tenantId: string,
     input: { userId: string; roleId: string; target: GrantTarget },
   ) {
-    const em = yield* rbacEntityManager()
-    const role = yield* roleForGrant(em, tenantId, input.roleId)
+    const role = yield* roleForGrant(tenantId, input.roleId)
     if (!role) return yield* new RoleNotFound()
     if (role.status !== 'active' || !role.assignable) {
       return yield* new GrantNotEligible({ reason: 'role-unassignable' })
     }
 
-    const user = yield* userForGrant(em, tenantId, input.userId)
+    const user = yield* userForGrant(tenantId, input.userId)
     if (!user) return yield* new GrantUserNotFound()
     if (!user.enabled) return yield* new GrantNotEligible({ reason: 'user-disabled' })
 
@@ -436,7 +418,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // by having a system key, which would exempt every system role added
     // later.
     if (!isCanonicalTenantAdmin(role)) {
-      if (!(yield* roleAdmits(em, tenantId, role.id, { userTypeId: user.userTypeId }))) {
+      if (!(yield* roleAdmits(tenantId, role.id, { userTypeId: user.userTypeId }))) {
         return yield* new GrantNotEligible({ reason: 'user-type' })
       }
     }
@@ -452,9 +434,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     if (input.target.kind !== 'org-node') {
       return yield* new GrantNotEligible({ reason: 'org-role-unanchored' })
     }
-    const node = yield* orgNodeType(em, tenantId, input.target.orgNodeId)
+    const node = yield* orgNodeType(tenantId, input.target.orgNodeId)
     if (!node) return yield* new GrantNodeNotFound()
-    if (!(yield* roleAdmits(em, tenantId, role.id, { orgTypeId: node.orgTypeId }))) {
+    if (!(yield* roleAdmits(tenantId, role.id, { orgTypeId: node.orgTypeId }))) {
       return yield* new GrantNotEligible({ reason: 'org-type' })
     }
     return role
@@ -465,11 +447,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     tenantId: string,
     roleId: string,
   ) {
-    const em = yield* rbacEntityManager()
-    const role = yield* rolePermissionMode(em, tenantId, roleId)
+    const role = yield* rolePermissionMode(tenantId, roleId)
     if (!role) return yield* new RoleNotFound()
     if (role.mode === 'all-active') return { codes: [], allActive: true }
-    const codes = yield* rolePermissionCodes(em, tenantId, roleId)
+    const codes = yield* rolePermissionCodes(tenantId, roleId)
     return { codes, allActive: false }
   })
 
@@ -502,16 +483,15 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // gets told so. Per-candidate probing treats every refusal alike, and a
     // mistyped id used to come back as "no role can be offered here", which
     // reads as a permission answer rather than a missing record.
-    const em = yield* rbacEntityManager()
-    if (!(yield* userExists(em, tenantId, request.userId).pipe(Effect.orDie))) {
+    if (!(yield* userExists(tenantId, request.userId).pipe(Effect.orDie))) {
       return yield* new GrantUserNotFound()
     }
     if (request.target.kind === 'org-node') {
-      const there = yield* orgNodeExists(em, tenantId, request.target.orgNodeId).pipe(Effect.orDie)
+      const there = yield* orgNodeExists(tenantId, request.target.orgNodeId).pipe(Effect.orDie)
       if (!there) return yield* new GrantNodeNotFound()
     }
     const wantedKind = request.target.kind === 'tenant' ? 'tenant' : 'org'
-    const candidates = (yield* rolesOfTenant(em, tenantId).pipe(Effect.orDie)).filter(
+    const candidates = (yield* rolesOfTenant(tenantId).pipe(Effect.orDie)).filter(
       (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
     )
     const offered: { id: string; code: string; name: string; kind: 'tenant' | 'org' }[] = []
@@ -569,8 +549,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     ) =>
       withDb(
         Effect.gen(function* () {
-          const em = yield* rbacEntityManager()
-          return yield* grantRows(em, tenantId, filter, scope, page).pipe(Effect.orDie)
+          return yield* grantRows(tenantId, filter, scope, page).pipe(Effect.orDie)
         }),
       ),
 
@@ -599,8 +578,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
             input.target.kind === 'org-node'
               ? { nodeId: input.target.orgNodeId, coverage: input.target.coverage }
               : { nodeId: null, coverage: null }
-          const em = yield* rbacEntityManager()
-          const created = yield* insertGrant(em, {
+          const created = yield* insertGrant({
             tenantId,
             userId: input.userId,
             roleId: input.roleId,
@@ -620,8 +598,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     ) {
       yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const em = yield* rbacEntityManager()
-          const grant = yield* oneGrant(em, tenantId, grantId)
+          const grant = yield* oneGrant(tenantId, grantId)
           if (!grant) return yield* new GrantNotFound()
           const target: GrantTarget =
             grant.orgNodeId === null
@@ -633,7 +610,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
                 }
           yield* mayAdministerGrantsAt(actor, target)
           yield* mayAdministerRole(actor, tenantId, grant.roleId)
-          yield* deleteGrant(em, tenantId, grantId)
+          yield* deleteGrant(tenantId, grantId)
           // checked against the state the removal actually leaves behind
           yield* keepsAdministrator(tenantId)
         }),

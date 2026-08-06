@@ -1,9 +1,4 @@
-import {
-  entityManager,
-  kyselyOf,
-  query,
-  type ClosureEntityManager,
-} from '@qualy/plugin-database/server'
+import { Postgres, type ScopedKysely } from '@qualy/plugin-database/plugin'
 import { sql } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities } from '../db/entities.ts'
@@ -18,10 +13,10 @@ import { entities } from '../db/entities.ts'
 
 const closure = [...orgEntities, ...entities] as const
 
-export type AuthEntityManager = ClosureEntityManager<typeof closure>
+export const db = Postgres.scope(closure)
 
-/** a manager for auth's tables, joining an open transaction if there is one */
-export const authEntityManager = () => entityManager<typeof closure>()
+/** the builder fragment helpers receive, inside a query's callback */
+export type Db = ScopedKysely<typeof closure>
 
 /**
  * The tenant row, held for the rest of the transaction.
@@ -30,9 +25,9 @@ export const authEntityManager = () => entityManager<typeof closure>()
  * the same tenant serialize here, so the checks each of them runs afterwards
  * are decided against a state nobody else is moving.
  */
-export const lockTenant = (em: AuthEntityManager, tenantId: string) =>
-  query(() =>
-    kyselyOf(em)
+export const lockTenant = (tenantId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Tenant')
       .select(sql<number>`1`.as('locked'))
       .where('id', '=', tenantId)
@@ -47,9 +42,9 @@ export const lockTenant = (em: AuthEntityManager, tenantId: string) =>
  * people screen decide by it, and a second copy is a second answer to "may
  * this type be handed out".
  */
-export const userTypeGuard = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
-  query(() =>
-    kyselyOf(em)
+export const userTypeGuard = (tenantId: string, userTypeId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('UserType')
       .select(['id', 'code', 'enabled', 'isSystem', 'version'])
       .where('tenantId', '=', tenantId)

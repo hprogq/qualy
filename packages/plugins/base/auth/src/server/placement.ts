@@ -1,7 +1,6 @@
 import { Effect } from 'effect'
-import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
-import { authEntityManager, type AuthEntityManager } from './db.ts'
+import { db, type Db } from './db.ts'
 
 // The placement rule, owned in one place because four callers decide by it and
 // both plugins that can break it consult it.
@@ -52,8 +51,8 @@ export const placementLegal = (
   end`
 
 /** every person, joined to the type that rules them and the node they stand at */
-const standing = (em: AuthEntityManager) =>
-  kyselyOf(em)
+const standing = (k: Db) =>
+  k
     .selectFrom('User as u')
     .innerJoin('UserType as t', (join) =>
       join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
@@ -79,65 +78,51 @@ type Against = { readonly at: 'standing' } | { readonly at: 'type'; readonly id:
  * A count rather than a list: which people they are is not the caller's
  * business, only that the change would strand them.
  */
-const countStranded = (
-  em: AuthEntityManager,
-  narrow: (query: Standing) => Standing,
-  against: Against,
-) =>
-  query(() =>
-    narrow(standing(em))
-      .select(sql<number>`count(*)::int`.as('count'))
-      .where((eb) =>
-        eb.not(
-          placementLegal(
-            {
-              isSystem: eb.ref('t.isSystem'),
-              placementMode: eb.ref('t.placementMode'),
-              tenantId: eb.ref('t.tenantId'),
-              id: eb.ref('t.id'),
-            },
-            against.at === 'standing' ? eb.ref('n.orgTypeId') : sql<string>`${against.id}::uuid`,
-            sql<boolean>`${eb.ref('n.parentId')} is null`,
+const countStranded = (narrow: (query: Standing) => Standing, against: Against) =>
+  db
+    .query((k) =>
+      narrow(standing(k))
+        .select(sql<number>`count(*)::int`.as('count'))
+        .where((eb) =>
+          eb.not(
+            placementLegal(
+              {
+                isSystem: eb.ref('t.isSystem'),
+                placementMode: eb.ref('t.placementMode'),
+                tenantId: eb.ref('t.tenantId'),
+                id: eb.ref('t.id'),
+              },
+              against.at === 'standing' ? eb.ref('n.orgTypeId') : sql<string>`${against.id}::uuid`,
+              sql<boolean>`${eb.ref('n.parentId')} is null`,
+            ),
           ),
-        ),
-      )
-      .executeTakeFirst(),
-  ).pipe(
-    Effect.orDie,
-    Effect.map((row) => row?.count ?? 0),
-  )
+        )
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => row?.count ?? 0),
+    )
 
 /** the people a node retype would strand, which is what org asks before it retypes */
 export const usersBlockingOrgType = (tenantId: string, orgNodeId: string, orgTypeId: string) =>
-  Effect.gen(function* () {
-    const em = yield* authEntityManager()
-    return yield* countStranded(
-      em,
-      (found) =>
-        found.where('u.tenantId', '=', tenantId).where('u.primaryOrgNodeId', '=', orgNodeId),
-      { at: 'type', id: orgTypeId },
-    )
-  })
+  countStranded(
+    (found) => found.where('u.tenantId', '=', tenantId).where('u.primaryOrgNodeId', '=', orgNodeId),
+    { at: 'type', id: orgTypeId },
+  )
 
 /** the same predicate every individual write is decided by, asked of every row at once */
 export const placementViolations = (tenantId: string) =>
-  Effect.gen(function* () {
-    const em = yield* authEntityManager()
-    return yield* countStranded(em, (found) => found.where('u.tenantId', '=', tenantId), {
-      at: 'standing',
-    })
+  countStranded((found) => found.where('u.tenantId', '=', tenantId), {
+    at: 'standing',
   })
 
 /** the people this type would leave standing illegally, under the policy as written */
 export const strandedByPolicy = (tenantId: string, userTypeId: string) =>
-  Effect.gen(function* () {
-    const em = yield* authEntityManager()
-    return yield* countStranded(
-      em,
-      (found) => found.where('u.tenantId', '=', tenantId).where('u.userTypeId', '=', userTypeId),
-      { at: 'standing' },
-    )
-  })
+  countStranded(
+    (found) => found.where('u.tenantId', '=', tenantId).where('u.userTypeId', '=', userTypeId),
+    { at: 'standing' },
+  )
 
 /**
  * Whether this kind of person may stand at this node, by the one predicate.
@@ -147,28 +132,29 @@ export const strandedByPolicy = (tenantId: string, userTypeId: string) =>
  */
 export const placementAllowed = (tenantId: string, userTypeId: string, orgNodeId: string) =>
   Effect.gen(function* () {
-    const em = yield* authEntityManager()
-    const row = yield* query(() =>
-      kyselyOf(em)
-        .selectFrom('UserType as t')
-        .innerJoin('OrgNode as n', (join) =>
-          join.onRef('n.tenantId', '=', 't.tenantId').on('n.id', '=', orgNodeId),
-        )
-        .where('t.tenantId', '=', tenantId)
-        .where('t.id', '=', userTypeId)
-        .select((eb) =>
-          placementLegal(
-            {
-              isSystem: eb.ref('t.isSystem'),
-              placementMode: eb.ref('t.placementMode'),
-              tenantId: eb.ref('t.tenantId'),
-              id: eb.ref('t.id'),
-            },
-            eb.ref('n.orgTypeId'),
-            sql<boolean>`${eb.ref('n.parentId')} is null`,
-          ).as('legal'),
-        )
-        .executeTakeFirst(),
-    ).pipe(Effect.orDie)
+    const row = yield* db
+      .query((k) =>
+        k
+          .selectFrom('UserType as t')
+          .innerJoin('OrgNode as n', (join) =>
+            join.onRef('n.tenantId', '=', 't.tenantId').on('n.id', '=', orgNodeId),
+          )
+          .where('t.tenantId', '=', tenantId)
+          .where('t.id', '=', userTypeId)
+          .select((eb) =>
+            placementLegal(
+              {
+                isSystem: eb.ref('t.isSystem'),
+                placementMode: eb.ref('t.placementMode'),
+                tenantId: eb.ref('t.tenantId'),
+                id: eb.ref('t.id'),
+              },
+              eb.ref('n.orgTypeId'),
+              sql<boolean>`${eb.ref('n.parentId')} is null`,
+            ).as('legal'),
+          )
+          .executeTakeFirst(),
+      )
+      .pipe(Effect.orDie)
     return row?.legal
   })

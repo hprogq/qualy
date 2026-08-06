@@ -15,7 +15,7 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
-import { authEntityManager } from '../src/server/db.ts'
+import { db as authDb } from '../src/server/db.ts'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { Placement } from '@qualy/auth-contract'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
@@ -160,17 +160,16 @@ describe.runIf(postgresAvailable).concurrent('the placement port', () => {
           // decides whether the port lands on the same connection
           const inside = yield* transaction(
             Effect.gen(function* () {
-              const em = yield* authEntityManager()
-              const type = yield* Effect.promise(() =>
-                kyselyOf(em)
+              const type = yield* authDb.query((k) =>
+                k
                   .selectFrom('UserType')
                   .select('id')
                   .where('tenantId', '=', f.tenant)
                   .limit(1)
                   .executeTakeFirstOrThrow(),
               )
-              yield* Effect.promise(() =>
-                kyselyOf(em)
+              yield* authDb.query((k) =>
+                k
                   .insertInto('User')
                   .values({
                     tenantId: f.tenant,

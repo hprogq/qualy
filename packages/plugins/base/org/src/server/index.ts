@@ -27,7 +27,6 @@ import {
   setNodeType,
   subtree,
   updateNodeFields,
-  orgEntityManager,
   ruleExists,
   ruleInUse,
   ruleWouldCycle,
@@ -255,10 +254,9 @@ export const make = Effect.fn('Org.make')(function* () {
         Effect.gen(function* () {
           // first statement, always: it serializes this tenant's structural
           // writes against rbac's and auth's
-          const em = yield* orgEntityManager()
-          yield* lockTenant(em, tenantId)
+          yield* lockTenant(tenantId)
 
-          const node = yield* oneNode(em, tenantId, nodeId)
+          const node = yield* oneNode(tenantId, nodeId)
           if (!node) return yield* new NodeNotFound()
 
           // re-decided under the lock rather than trusted from the router: a
@@ -266,19 +264,19 @@ export const make = Effect.fn('Org.make')(function* () {
           yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
 
           if (node.orgTypeId === newTypeId) return
-          const type = yield* oneType(em, tenantId, newTypeId)
+          const type = yield* oneType(tenantId, newTypeId)
           if (!type) return yield* new TypeNotFound()
 
           if (node.parentId) {
-            const parent = (yield* oneNode(em, tenantId, node.parentId))!
-            if (!(yield* ruleExists(em, tenantId, parent.orgTypeId, newTypeId))) {
+            const parent = (yield* oneNode(tenantId, node.parentId))!
+            if (!(yield* ruleExists(tenantId, parent.orgTypeId, newTypeId))) {
               return yield* new RuleViolation({
                 reason: 'the new type is not allowed under the parent type',
               })
             }
           }
 
-          const incompatible = yield* incompatibleChildTypes(em, tenantId, nodeId, newTypeId)
+          const incompatible = yield* incompatibleChildTypes(tenantId, nodeId, newTypeId)
           if (incompatible.length > 0) {
             return yield* new RuleViolation({
               reason: 'existing children are incompatible with the new type',
@@ -298,7 +296,7 @@ export const make = Effect.fn('Org.make')(function* () {
           const stranded = yield* placement.usersBlockingOrgType(tenantId, nodeId, newTypeId)
           if (stranded > 0) return yield* new PlacementBlocked({ userCount: stranded })
 
-          yield* setNodeType(em, tenantId, nodeId, newTypeId)
+          yield* setNodeType(tenantId, nodeId, newTypeId)
         }),
       ),
     ).pipe(
@@ -324,9 +322,8 @@ export const make = Effect.fn('Org.make')(function* () {
         withDb(
           transaction(
             Effect.gen(function* () {
-              const em = yield* orgEntityManager()
-              yield* lockTenant(em, tenantId)
-              const node = yield* oneNode(em, tenantId, nodeId)
+              yield* lockTenant(tenantId)
+              const node = yield* oneNode(tenantId, nodeId)
               if (!node) return yield* new NodeNotFound()
               // re-decided under the lock: the pre-check ran before it, and the
               // target may have been re-anchored since
@@ -349,12 +346,7 @@ export const make = Effect.fn('Org.make')(function* () {
     fields: { name?: string; sortOrder?: number },
     as: Principal,
   ) {
-    yield* write(tenantId, nodeId, as, () =>
-      Effect.gen(function* () {
-        const em = yield* orgEntityManager()
-        yield* updateNodeFields(em, tenantId, nodeId, fields)
-      }),
-    )
+    yield* write(tenantId, nodeId, as, () => updateNodeFields(tenantId, nodeId, fields))
   })
 
   const deleteNode = Effect.fn('Org.deleteNode')(function* (
@@ -365,14 +357,13 @@ export const make = Effect.fn('Org.make')(function* () {
     yield* write(tenantId, nodeId, as, (node) =>
       Effect.gen(function* () {
         if (!node.parentId) return yield* new NodeIsRoot()
-        const em = yield* orgEntityManager()
-        const children = yield* hasChildren(em, tenantId, nodeId)
+        const children = yield* hasChildren(tenantId, nodeId)
         if (children) return yield* new NodeHasChildren()
         // users and assignments still block through their restrict foreign
         // keys. That is not a comment about intent: the write runs under
         // translateConstraints, which turns those constraint names into
         // ORG_NODE_IN_USE rather than letting them become a 500.
-        yield* deleteNodeRow(em, tenantId, nodeId)
+        yield* deleteNodeRow(tenantId, nodeId)
       }),
     )
   })
@@ -380,8 +371,7 @@ export const make = Effect.fn('Org.make')(function* () {
   // types and rules are tenant-wide, so authority is proved at the root rather
   // than at a node: there is no node for a type to be managed at
   const atRoot = Effect.fn('Org.atRoot')(function* (tenantId: string, as: Principal) {
-    const em = yield* orgEntityManager()
-    const root = yield* rootNode(em, tenantId).pipe(Effect.orDie)
+    const root = yield* rootNode(tenantId).pipe(Effect.orDie)
     if (!root) return yield* Effect.die(new Error(`tenant ${tenantId} has no root node`))
     yield* rbac.requireAt(as, 'org.tree.manage', root.id)
   })
@@ -394,8 +384,7 @@ export const make = Effect.fn('Org.make')(function* () {
     withDb(
       transaction(
         Effect.gen(function* () {
-          const em = yield* orgEntityManager()
-          yield* lockTenant(em, tenantId)
+          yield* lockTenant(tenantId)
           yield* atRoot(tenantId, as)
           return yield* body()
         }),
@@ -410,11 +399,7 @@ export const make = Effect.fn('Org.make')(function* () {
 
   // a read: no constraint can fire, so dying here keeps the caller's error
   // type narrow without hiding anything translatable
-  const typeOf = (tenantId: string, typeId: string) =>
-    Effect.gen(function* () {
-      const em = yield* orgEntityManager()
-      return yield* oneType(em, tenantId, typeId).pipe(Effect.orDie)
-    })
+  const typeOf = (tenantId: string, typeId: string) => oneType(tenantId, typeId).pipe(Effect.orDie)
 
   // Anchors resolved against node paths, on the caller's connection.
   //
@@ -447,9 +432,7 @@ export const make = Effect.fn('Org.make')(function* () {
     if (scope.anchors.length === 0) {
       return { tenantWide: false, anchors: [] } satisfies ResolvedScope
     }
-    const em = yield* orgEntityManager()
     const found = yield* nodesById(
-      em,
       tenantId,
       scope.anchors.map((anchor) => anchor.orgNodeId),
     ).pipe(Effect.orDie)
@@ -468,8 +451,7 @@ export const make = Effect.fn('Org.make')(function* () {
     withDb(
       transaction(
         Effect.gen(function* () {
-          const em = yield* orgEntityManager()
-          yield* readSnapshot(em)
+          yield* readSnapshot()
           return yield* body()
         }),
       ),
@@ -497,10 +479,9 @@ export const make = Effect.fn('Org.make')(function* () {
     // authority over the parent, because creating a child mutates the parent
     return yield* write(tenantId, input.parentId, as, (parent) =>
       Effect.gen(function* () {
-        const em = yield* orgEntityManager()
-        const type = yield* oneType(em, tenantId, input.orgTypeId).pipe(Effect.orDie)
+        const type = yield* oneType(tenantId, input.orgTypeId).pipe(Effect.orDie)
         if (!type) return yield* new TypeNotFound()
-        const allowed = yield* ruleExists(em, tenantId, parent.orgTypeId, input.orgTypeId).pipe(
+        const allowed = yield* ruleExists(tenantId, parent.orgTypeId, input.orgTypeId).pipe(
           Effect.orDie,
         )
         if (!allowed) {
@@ -508,7 +489,7 @@ export const make = Effect.fn('Org.make')(function* () {
             reason: 'parent-child type combination is not allowed by the rules',
           })
         }
-        return yield* insertNode(em, {
+        return yield* insertNode({
           tenantId,
           parentId: parent.id,
           parentPath: parent.path,
@@ -541,15 +522,14 @@ export const make = Effect.fn('Org.make')(function* () {
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
-          const em = yield* orgEntityManager()
-          yield* lockTenant(em, tenantId)
+          yield* lockTenant(tenantId)
           if (nodeId === newParentId) {
             return yield* new InvalidMove({ reason: 'a node cannot become its own parent' })
           }
-          const node = yield* oneNode(em, tenantId, nodeId)
+          const node = yield* oneNode(tenantId, nodeId)
           if (!node) return yield* new NodeNotFound()
           if (!node.parentId) return yield* new NodeIsRoot()
-          const newParent = yield* oneNode(em, tenantId, newParentId)
+          const newParent = yield* oneNode(tenantId, newParentId)
           if (!newParent) return yield* new NodeNotFound()
 
           const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
@@ -560,20 +540,20 @@ export const make = Effect.fn('Org.make')(function* () {
           if (newParent.id === node.parentId) {
             // same parent: a reorder, with no structural change to validate
             if (newSortOrder !== undefined) {
-              yield* updateNodeFields(em, tenantId, nodeId, { sortOrder: newSortOrder })
+              yield* updateNodeFields(tenantId, nodeId, { sortOrder: newSortOrder })
             }
             return
           }
           if (newParent.path === node.path || newParent.path.startsWith(`${node.path}.`)) {
             return yield* new InvalidMove({ reason: 'a node cannot move into its own subtree' })
           }
-          if (!(yield* ruleExists(em, tenantId, newParent.orgTypeId, node.orgTypeId))) {
+          if (!(yield* ruleExists(tenantId, newParent.orgTypeId, node.orgTypeId))) {
             return yield* new RuleViolation({
               reason: 'parent-child type combination is not allowed by the rules',
             })
           }
           const newPath = `${newParent.path}.${node.path.split('.').at(-1)}`
-          yield* moveSubtree(em, {
+          yield* moveSubtree({
             tenantId,
             nodeId,
             newParentId,
@@ -582,7 +562,7 @@ export const make = Effect.fn('Org.make')(function* () {
             depthDelta: newParent.depth + 1 - node.depth,
           })
           if (newSortOrder !== undefined) {
-            yield* updateNodeFields(em, tenantId, nodeId, { sortOrder: newSortOrder })
+            yield* updateNodeFields(tenantId, nodeId, { sortOrder: newSortOrder })
           }
         }),
       ),
@@ -606,9 +586,8 @@ export const make = Effect.fn('Org.make')(function* () {
     ) {
       return yield* readInSnapshot(() =>
         Effect.gen(function* () {
-          const em = yield* orgEntityManager()
           const readScope = yield* resolveScope(tenantId, as, 'org.tree.read')
-          const node = yield* oneNode(em, tenantId, nodeId).pipe(Effect.orDie)
+          const node = yield* oneNode(tenantId, nodeId).pipe(Effect.orDie)
           // not-found and not-covered answer the same on purpose: a caller
           // must not learn that a node they cannot see exists
           if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
@@ -627,14 +606,13 @@ export const make = Effect.fn('Org.make')(function* () {
         Effect.gen(function* () {
           const readScope = yield* resolveScope(tenantId, as, 'org.tree.read')
           const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
-          const em = yield* orgEntityManager()
-          const branch = (path: string) => subtree(em, tenantId, path).pipe(Effect.orDie)
+          const branch = (path: string) => subtree(tenantId, path).pipe(Effect.orDie)
 
           let roots: string[] = []
           const nodes = new Map<string, NodeRow>()
 
           if (nodeId !== undefined) {
-            const node = yield* oneNode(em, tenantId, nodeId).pipe(Effect.orDie)
+            const node = yield* oneNode(tenantId, nodeId).pipe(Effect.orDie)
             // not-found and not-covered are indistinguishable on purpose, and
             // the shared answer is a refusal: a client branching on 403 to
             // re-prompt for authorization must keep doing so
@@ -647,7 +625,7 @@ export const make = Effect.fn('Org.make')(function* () {
             const slice = subtreeCoveredBy(readScope, node) ? yield* branch(node.path) : [node]
             for (const each of slice) nodes.set(each.id, each)
           } else if (readScope.tenantWide) {
-            const root = yield* rootNode(em, tenantId).pipe(Effect.orDie)
+            const root = yield* rootNode(tenantId).pipe(Effect.orDie)
             if (root) {
               roots = [root.id]
               for (const each of yield* branch(root.path)) nodes.set(each.id, each)
@@ -658,7 +636,7 @@ export const make = Effect.fn('Org.make')(function* () {
               for (const each of yield* branch(anchor.path)) nodes.set(each.id, each)
             }
             for (const anchor of shape.selves) {
-              const node = yield* oneNode(em, tenantId, anchor.id).pipe(Effect.orDie)
+              const node = yield* oneNode(tenantId, anchor.id).pipe(Effect.orDie)
               if (node) nodes.set(node.id, node)
             }
             roots = forestRoots(shape, (id) => nodes.has(id))
@@ -680,8 +658,7 @@ export const make = Effect.fn('Org.make')(function* () {
           if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
             return yield* new AccessDenied({ reason: 'cannot read the organization' })
           }
-          const em = yield* orgEntityManager()
-          return yield* listTypes(em, tenantId).pipe(Effect.orDie)
+          return yield* listTypes(tenantId).pipe(Effect.orDie)
         }).pipe(Effect.withSpan('Org.listTypes')),
       ),
     createType: Effect.fn('Org.createType')(function* (
@@ -690,14 +667,11 @@ export const make = Effect.fn('Org.make')(function* () {
       as: Principal,
     ) {
       return yield* writeAtRoot(tenantId, as, () =>
-        Effect.gen(function* () {
-          const em = yield* orgEntityManager()
-          return yield* insertType(em, {
-            tenantId,
-            code: input.code,
-            name: input.name,
-            sortOrder: input.sortOrder ?? 0,
-          })
+        insertType({
+          tenantId,
+          code: input.code,
+          name: input.name,
+          sortOrder: input.sortOrder ?? 0,
         }),
       )
     }),
@@ -710,8 +684,7 @@ export const make = Effect.fn('Org.make')(function* () {
       yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
-          const em = yield* orgEntityManager()
-          yield* updateType(em, tenantId, typeId, fields)
+          yield* updateType(tenantId, typeId, fields)
         }),
       )
     }),
@@ -723,14 +696,13 @@ export const make = Effect.fn('Org.make')(function* () {
       yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
-          const em = yield* orgEntityManager()
-          if (yield* typeHasNodes(em, tenantId, typeId)) {
+          if (yield* typeHasNodes(tenantId, typeId)) {
             return yield* new TypeInUse({ reason: 'nodes still use this org type' })
           }
-          if (yield* typeHasRules(em, tenantId, typeId)) {
+          if (yield* typeHasRules(tenantId, typeId)) {
             return yield* new TypeInUse({ reason: 'rules still reference this org type' })
           }
-          yield* deleteType(em, tenantId, typeId)
+          yield* deleteType(tenantId, typeId)
         }),
       )
     }),
@@ -741,8 +713,7 @@ export const make = Effect.fn('Org.make')(function* () {
           if (!(yield* rbac.hasPermission(as, 'org.tree.read'))) {
             return yield* new AccessDenied({ reason: 'cannot read the organization' })
           }
-          const em = yield* orgEntityManager()
-          return yield* listRules(em, tenantId).pipe(Effect.orDie)
+          return yield* listRules(tenantId).pipe(Effect.orDie)
         }).pipe(Effect.withSpan('Org.listRules')),
       ),
     // idempotent by design: the pair identifies the rule, so repeating the
@@ -756,14 +727,13 @@ export const make = Effect.fn('Org.make')(function* () {
       yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           if (parentTypeId === childTypeId) return yield* new RuleInvalid()
-          const em = yield* orgEntityManager()
-          if (yield* ruleExists(em, tenantId, parentTypeId, childTypeId)) return
-          const counted = yield* countTypes(em, tenantId, [parentTypeId, childTypeId])
+          if (yield* ruleExists(tenantId, parentTypeId, childTypeId)) return
+          const counted = yield* countTypes(tenantId, [parentTypeId, childTypeId])
           if (counted !== 2) return yield* new TypeNotFound()
-          if (yield* ruleWouldCycle(em, tenantId, parentTypeId, childTypeId)) {
+          if (yield* ruleWouldCycle(tenantId, parentTypeId, childTypeId)) {
             return yield* new RuleCycle()
           }
-          yield* insertRule(em, { tenantId, parentTypeId, childTypeId })
+          yield* insertRule({ tenantId, parentTypeId, childTypeId })
         }),
       )
     }),
@@ -775,13 +745,11 @@ export const make = Effect.fn('Org.make')(function* () {
     ) {
       yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
-          const em = yield* orgEntityManager()
-          if (!(yield* ruleExists(em, tenantId, parentTypeId, childTypeId))) {
+          if (!(yield* ruleExists(tenantId, parentTypeId, childTypeId))) {
             return yield* new RuleNotFound()
           }
-          if (yield* ruleInUse(em, tenantId, parentTypeId, childTypeId))
-            return yield* new RuleInUse()
-          yield* deleteRule(em, tenantId, parentTypeId, childTypeId)
+          if (yield* ruleInUse(tenantId, parentTypeId, childTypeId)) return yield* new RuleInUse()
+          yield* deleteRule(tenantId, parentTypeId, childTypeId)
         }),
       )
     }),

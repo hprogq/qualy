@@ -1,10 +1,5 @@
 import { Effect } from 'effect'
-import {
-  entityManager,
-  kyselyOf,
-  query,
-  type ClosureEntityManager,
-} from '@qualy/plugin-database/server'
+import { Postgres, type ScopedKysely } from '@qualy/plugin-database/plugin'
 import { sql, type Expression } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
@@ -20,15 +15,15 @@ import { entities } from '../db/entities.ts'
 
 const closure = [...orgEntities, ...authEntities, ...entities] as const
 
-export type RbacEntityManager = ClosureEntityManager<typeof closure>
+export const db = Postgres.scope(closure)
 
-/** a manager for rbac's tables, joining an open transaction if there is one */
-export const rbacEntityManager = () => entityManager<typeof closure>()
+/** the builder fragment helpers receive, inside a query's callback */
+export type Db = ScopedKysely<typeof closure>
 
 /** the same row org and auth lock, so the three cannot interleave */
-export const lockTenant = (em: RbacEntityManager, tenantId: string) =>
-  query(() =>
-    kyselyOf(em)
+export const lockTenant = (tenantId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Tenant')
       .select(sql<number>`1`.as('locked'))
       .where('id', '=', tenantId)
@@ -36,25 +31,29 @@ export const lockTenant = (em: RbacEntityManager, tenantId: string) =>
       .execute(),
   )
 
-export const userExists = (em: RbacEntityManager, tenantId: string, userId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('User')
-      .select('id')
-      .where('tenantId', '=', tenantId)
-      .where('id', '=', userId)
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row !== undefined))
+export const userExists = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', userId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
 
-export const orgNodeExists = (em: RbacEntityManager, tenantId: string, orgNodeId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('OrgNode')
-      .select('id')
-      .where('tenantId', '=', tenantId)
-      .where('id', '=', orgNodeId)
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row !== undefined))
+export const orgNodeExists = (tenantId: string, orgNodeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('OrgNode')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', orgNodeId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
 
 /**
  * One role or all of a tenant's, with the sets a role screen needs.
@@ -105,8 +104,8 @@ export const admitsOrgType = (role: RoleEligibilityRef, orgTypeId: Expression<st
     where t.tenant_id = ${role.tenantId} and t.role_id = ${role.id}
       and t.org_type_id = ${orgTypeId}))`
 
-const roleProjection = (em: RbacEntityManager, tenantId: string) =>
-  kyselyOf(em)
+const roleProjection = (k: Db, tenantId: string) =>
+  k
     .selectFrom('Role as r')
     .select((eb) => [
       'r.id',
@@ -143,30 +142,32 @@ const roleProjection = (em: RbacEntityManager, tenantId: string) =>
     .orderBy('r.kind')
     .orderBy('r.code')
 
-export const rolesOfTenant = (em: RbacEntityManager, tenantId: string) =>
-  query(() => roleProjection(em, tenantId).execute())
+export const rolesOfTenant = (tenantId: string) =>
+  db.query((k) => roleProjection(k, tenantId).execute())
 
-export const oneRoleProjected = (em: RbacEntityManager, tenantId: string, roleId: string) =>
-  query(() => roleProjection(em, tenantId).where('r.id', '=', roleId).executeTakeFirst())
+export const oneRoleProjected = (tenantId: string, roleId: string) =>
+  db.query((k) => roleProjection(k, tenantId).where('r.id', '=', roleId).executeTakeFirst())
 
 /** what the projection returns, read off the query rather than restated */
 export type RoleRow = Effect.Success<ReturnType<typeof rolesOfTenant>>[number]
 
 /** the codes a role currently carries */
-export const rolePermissionCodes = (em: RbacEntityManager, tenantId: string, roleId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('RolePermission as rp')
-      .innerJoin('Permission as p', 'p.id', 'rp.permissionId')
-      .where('rp.tenantId', '=', tenantId)
-      .where('rp.roleId', '=', roleId)
-      .select('p.code')
-      .execute(),
-  ).pipe(Effect.map((rows) => rows.map((row) => row.code)))
+export const rolePermissionCodes = (tenantId: string, roleId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RolePermission as rp')
+        .innerJoin('Permission as p', 'p.id', 'rp.permissionId')
+        .where('rp.tenantId', '=', tenantId)
+        .where('rp.roleId', '=', roleId)
+        .select('p.code')
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.code)))
 
-export const rolePermissionMode = (em: RbacEntityManager, tenantId: string, roleId: string) =>
-  query(() =>
-    kyselyOf(em)
+export const rolePermissionMode = (tenantId: string, roleId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Role')
       .select((eb) => eb.ref('permissionMode').$castTo<'explicit' | 'all-active'>().as('mode'))
       .where('tenantId', '=', tenantId)

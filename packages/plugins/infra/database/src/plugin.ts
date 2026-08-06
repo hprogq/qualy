@@ -48,7 +48,7 @@ export const Postgres = {
 }
 
 /** the kysely a scope's queries are written against */
-type ScopedKysely<T extends readonly unknown[]> = ReturnType<
+export type ScopedKysely<T extends readonly unknown[]> = ReturnType<
   typeof kyselyOf<ClosureEntityManager<T>>
 >
 

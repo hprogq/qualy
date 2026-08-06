@@ -2,8 +2,8 @@ import { Duration, Effect, Layer, Redacted } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import type { HttpServerRequest } from 'effect/unstable/http'
 import { kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { db } from './db.ts'
 import { sql } from 'kysely'
-import { authEntityManager, type AuthEntityManager } from './db.ts'
 import { AuthConfig } from './auth-config.ts'
 import {
   AuthRequired,
@@ -50,9 +50,9 @@ import { hashSessionToken } from '../session.ts'
  * TENANT. Checking `t.enabled` and forgetting `n.enabled` leaves a disabled
  * tenant's sessions working, which is what this expression got wrong once.
  */
-const sessionByToken = (em: AuthEntityManager, tokenHash: string) =>
-  query(() =>
-    kyselyOf(em)
+const sessionByToken = (tokenHash: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Session as s')
       .innerJoin('User as u', (join) =>
         join.onRef('u.tenantId', '=', 's.tenantId').onRef('u.id', '=', 's.userId'),
@@ -76,13 +76,13 @@ const sessionByToken = (em: AuthEntityManager, tokenHash: string) =>
       .executeTakeFirst(),
   )
 
-const deleteSession = (em: AuthEntityManager, id: string) =>
-  query(() => kyselyOf(em).deleteFrom('Session').where('id', '=', id).execute())
+const deleteSession = (id: string) =>
+  db.query((k) => k.deleteFrom('Session').where('id', '=', id).execute())
 
 /** lastUsedAt is only written when it has gone stale, to keep reads from writing */
-const touchSession = (em: AuthEntityManager, id: string) =>
-  query(() =>
-    kyselyOf(em)
+const touchSession = (id: string) =>
+  db.query((k) =>
+    k
       .updateTable('Session')
       .set({ lastUsedAt: sql<Date>`now()` })
       .where('id', '=', id)
@@ -126,11 +126,10 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
   clear: () => Effect.Effect<void, never, HttpServerRequest.HttpServerRequest>,
   token: string,
 ) {
-  const em = yield* authEntityManager()
-  const session = yield* sessionByToken(em, hashSessionToken(token)).pipe(Effect.orDie)
+  const session = yield* sessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
   if (!session) return { state: 'absent' as const }
   if (session.expired) {
-    yield* deleteSession(em, session.id).pipe(Effect.orDie)
+    yield* deleteSession(session.id).pipe(Effect.orDie)
     yield* clear()
     return { state: 'expired' as const }
   }
@@ -141,7 +140,7 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
     return { state: 'absent' as const }
   }
   if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
-    yield* touchSession(em, session.id).pipe(Effect.orDie)
+    yield* touchSession(session.id).pipe(Effect.orDie)
   }
   return {
     state: 'valid' as const,
@@ -194,15 +193,13 @@ export const layer = Layer.effect(
       session: (httpEffect, { credential }) =>
         withDb(
           Effect.gen(function* () {
-            const em = yield* authEntityManager()
             const session = yield* sessionByToken(
-              em,
               hashSessionToken(Redacted.value(credential)),
             ).pipe(Effect.orDie)
             // an unknown token and no token are the same answer
             if (!session) return yield* new AuthRequired()
             if (session.expired) {
-              yield* deleteSession(em, session.id).pipe(Effect.orDie)
+              yield* deleteSession(session.id).pipe(Effect.orDie)
               yield* clear()
               return yield* new SessionExpired()
             }
@@ -214,7 +211,7 @@ export const layer = Layer.effect(
             }
 
             if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
-              yield* touchSession(em, session.id).pipe(Effect.orDie)
+              yield* touchSession(session.id).pipe(Effect.orDie)
             }
 
             return yield* Effect.provideService(httpEffect, CurrentUser, {

@@ -1,10 +1,10 @@
 import { Effect } from 'effect'
 import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
+import { db, lockTenant, userTypeGuard, type Db } from './db.ts'
 import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
-import { authEntityManager, lockTenant, userTypeGuard, type AuthEntityManager } from './db.ts'
 import { strandedByPolicy } from './placement.ts'
 import {
   RecoveryChannelRequired,
@@ -47,8 +47,8 @@ const uniqueUuids = (ids: readonly string[]): string[] | undefined => {
  * The allowed org types come along because they are the whole of what a type
  * decides: a type confers no authority, only where its holders may stand.
  */
-const userTypeProjection = (em: AuthEntityManager) =>
-  kyselyOf(em)
+const userTypeProjection = (k: Db) =>
+  k
     .selectFrom('UserType as t')
     .select((eb) => [
       't.id',
@@ -74,12 +74,12 @@ const userTypeProjection = (em: AuthEntityManager) =>
     .orderBy('t.sortOrder')
     .orderBy('t.code')
 
-const userTypesOfTenant = (em: AuthEntityManager, tenantId: string) =>
-  query(() => userTypeProjection(em).where('t.tenantId', '=', tenantId).execute())
+const userTypesOfTenant = (tenantId: string) =>
+  db.query((k) => userTypeProjection(k).where('t.tenantId', '=', tenantId).execute())
 
-const oneUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
-  query(() =>
-    userTypeProjection(em)
+const oneUserType = (tenantId: string, userTypeId: string) =>
+  db.query((k) =>
+    userTypeProjection(k)
       .where('t.tenantId', '=', tenantId)
       .where('t.id', '=', userTypeId)
       .executeTakeFirst(),
@@ -89,9 +89,9 @@ const oneUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string
 export type UserTypeRow = NonNullable<Effect.Success<ReturnType<typeof oneUserType>>>
 
 /** the type's own row, locked, with what a policy edit needs to decide */
-const lockUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
-  query(() =>
-    kyselyOf(em)
+const lockUserType = (tenantId: string, userTypeId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('UserType')
       .select(['id', 'version', 'isSystem', 'placementMode'])
       .where('tenantId', '=', tenantId)
@@ -100,38 +100,34 @@ const lockUserType = (em: AuthEntityManager, tenantId: string, userTypeId: strin
       .executeTakeFirst(),
   )
 
-const countUsersOfType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('User')
-      .select(sql<number>`count(*)::int`.as('count'))
-      .where('tenantId', '=', tenantId)
-      .where('userTypeId', '=', userTypeId)
-      .executeTakeFirst(),
-  ).pipe(
-    Effect.orDie,
-    Effect.map((row) => row?.count ?? 0),
-  )
+const countUsersOfType = (tenantId: string, userTypeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User')
+        .select(sql<number>`count(*)::int`.as('count'))
+        .where('tenantId', '=', tenantId)
+        .where('userTypeId', '=', userTypeId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => row?.count ?? 0),
+    )
 
-const insertUserType = (
-  em: AuthEntityManager,
-  input: {
-    tenantId: string
-    code: string
-    name: string
-    description: string | null
-    allowLocalLogin: boolean
-    allowSsoLogin: boolean
-    sortOrder: number
-    placementMode: 'unrestricted' | 'allow-list'
-  },
-) =>
-  query(() =>
-    kyselyOf(em).insertInto('UserType').values(input).returning('id').executeTakeFirstOrThrow(),
-  )
+const insertUserType = (input: {
+  tenantId: string
+  code: string
+  name: string
+  description: string | null
+  allowLocalLogin: boolean
+  allowSsoLogin: boolean
+  sortOrder: number
+  placementMode: 'unrestricted' | 'allow-list'
+}) =>
+  db.query((k) => k.insertInto('UserType').values(input).returning('id').executeTakeFirstOrThrow())
 
 const updateUserType = (
-  em: AuthEntityManager,
   tenantId: string,
   userTypeId: string,
   fields: {
@@ -142,8 +138,8 @@ const updateUserType = (
     sortOrder?: number
   },
 ) =>
-  query(() =>
-    kyselyOf(em)
+  db.query((k) =>
+    k
       .updateTable('UserType')
       // only what the caller stated: a field left out keeps its value, and a
       // description explicitly set to null is a caller clearing it rather than
@@ -164,14 +160,9 @@ const updateUserType = (
       .execute(),
   )
 
-const setUserTypeEnabled = (
-  em: AuthEntityManager,
-  tenantId: string,
-  userTypeId: string,
-  enabled: boolean,
-) =>
-  query(() =>
-    kyselyOf(em)
+const setUserTypeEnabled = (tenantId: string, userTypeId: string, enabled: boolean) =>
+  db.query((k) =>
+    k
       .updateTable('UserType')
       .set((eb) => ({ enabled, version: eb('version', '+', 1), updatedAt: sql<Date>`now()` }))
       .where('tenantId', '=', tenantId)
@@ -180,13 +171,12 @@ const setUserTypeEnabled = (
   )
 
 const setPlacementMode = (
-  em: AuthEntityManager,
   tenantId: string,
   userTypeId: string,
   mode: 'unrestricted' | 'allow-list',
 ) =>
-  query(() =>
-    kyselyOf(em)
+  db.query((k) =>
+    k
       .updateTable('UserType')
       .set((eb) => ({
         placementMode: mode,
@@ -198,9 +188,9 @@ const setPlacementMode = (
       .execute(),
   )
 
-const deleteUserType = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
-  query(() =>
-    kyselyOf(em)
+const deleteUserType = (tenantId: string, userTypeId: string) =>
+  db.query((k) =>
+    k
       .deleteFrom('UserType')
       .where('tenantId', '=', tenantId)
       .where('id', '=', userTypeId)
@@ -213,9 +203,9 @@ const deleteUserType = (em: AuthEntityManager, tenantId: string, userTypeId: str
  * Its own endpoint rather than the role screen's, so stating where a kind of
  * person may stand needs no permission over roles.
  */
-const orgTypeOptions = (em: AuthEntityManager, tenantId: string) =>
-  query(() =>
-    kyselyOf(em)
+const orgTypeOptions = (tenantId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('OrgType')
       .select(['id', 'code', 'name'])
       .where('tenantId', '=', tenantId)
@@ -223,19 +213,21 @@ const orgTypeOptions = (em: AuthEntityManager, tenantId: string) =>
       .execute(),
   )
 
-const countOrgTypes = (em: AuthEntityManager, tenantId: string, ids: readonly string[]) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('OrgType')
-      .select(sql<number>`count(*)::int`.as('count'))
-      .where('tenantId', '=', tenantId)
-      .where('id', 'in', ids)
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row?.count ?? 0))
+const countOrgTypes = (tenantId: string, ids: readonly string[]) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('OrgType')
+        .select(sql<number>`count(*)::int`.as('count'))
+        .where('tenantId', '=', tenantId)
+        .where('id', 'in', ids)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.count ?? 0))
 
-const currentAllowedOrgTypes = (em: AuthEntityManager, tenantId: string, userTypeId: string) =>
-  query(() =>
-    kyselyOf(em)
+const currentAllowedOrgTypes = (tenantId: string, userTypeId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('UserTypeAllowedOrgType')
       .select('orgTypeId')
       .where('tenantId', '=', tenantId)
@@ -243,14 +235,9 @@ const currentAllowedOrgTypes = (em: AuthEntityManager, tenantId: string, userTyp
       .execute(),
   )
 
-const addAllowedOrgTypes = (
-  em: AuthEntityManager,
-  tenantId: string,
-  userTypeId: string,
-  ids: readonly string[],
-) =>
-  query(() =>
-    kyselyOf(em)
+const addAllowedOrgTypes = (tenantId: string, userTypeId: string, ids: readonly string[]) =>
+  db.query((k) =>
+    k
       .insertInto('UserTypeAllowedOrgType')
       .values(ids.map((orgTypeId) => ({ tenantId, userTypeId, orgTypeId })))
       .onConflict((conflict) => conflict.doNothing())
@@ -258,14 +245,9 @@ const addAllowedOrgTypes = (
   )
 
 /** everything this type allows that the new list does not */
-const pruneAllowedOrgTypes = (
-  em: AuthEntityManager,
-  tenantId: string,
-  userTypeId: string,
-  keep: readonly string[],
-) =>
-  query(() => {
-    const rest = kyselyOf(em)
+const pruneAllowedOrgTypes = (tenantId: string, userTypeId: string, keep: readonly string[]) =>
+  db.query((k) => {
+    const rest = k
       .deleteFrom('UserTypeAllowedOrgType')
       .where('tenantId', '=', tenantId)
       .where('userTypeId', '=', userTypeId)
@@ -287,8 +269,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     userTypeId: string,
     expectedVersion: number,
   ) {
-    const em = yield* authEntityManager()
-    const row = yield* userTypeGuard(em, tenantId, userTypeId).pipe(Effect.orDie)
+    const row = yield* userTypeGuard(tenantId, userTypeId).pipe(Effect.orDie)
     if (!row) return yield* new UserTypeNotFound()
     if (row.version !== expectedVersion) {
       // the current version travels with the refusal so a client can re-read
@@ -302,8 +283,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     withDb(
       transaction(
         Effect.gen(function* () {
-          const em = yield* authEntityManager()
-          yield* lockTenant(em, tenantId)
+          yield* lockTenant(tenantId)
           return yield* body()
         }),
       ),
@@ -335,9 +315,8 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const em = yield* authEntityManager()
           const policy = input.placementPolicy
-          const { id } = yield* insertUserType(em, {
+          const { id } = yield* insertUserType({
             tenantId,
             code: input.code,
             name: input.name,
@@ -351,9 +330,9 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
             const wanted = uniqueUuids(policy.orgTypeIds)
             if (!wanted) return yield* new UserTypeOrgTypeNotFound()
             if (wanted.length > 0) {
-              const found = yield* countOrgTypes(em, tenantId, wanted)
+              const found = yield* countOrgTypes(tenantId, wanted)
               if (found !== wanted.length) return yield* new UserTypeOrgTypeNotFound()
-              yield* addAllowedOrgTypes(em, tenantId, id, wanted)
+              yield* addAllowedOrgTypes(tenantId, id, wanted)
             }
           }
           return id
@@ -370,24 +349,21 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     orgTypeOptions: (tenantId: string) =>
       withDb(
         Effect.gen(function* () {
-          const em = yield* authEntityManager()
-          return yield* orgTypeOptions(em, tenantId).pipe(Effect.orDie)
+          return yield* orgTypeOptions(tenantId).pipe(Effect.orDie)
         }).pipe(Effect.withSpan('Iam.userTypes.orgTypeOptions')),
       ),
 
     list: (tenantId: string) =>
       withDb(
         Effect.gen(function* () {
-          const em = yield* authEntityManager()
-          return yield* userTypesOfTenant(em, tenantId).pipe(Effect.orDie)
+          return yield* userTypesOfTenant(tenantId).pipe(Effect.orDie)
         }).pipe(Effect.withSpan('Iam.userTypes.list')),
       ),
 
     get: (tenantId: string, userTypeId: string) =>
       withDb(
         Effect.gen(function* () {
-          const em = yield* authEntityManager()
-          const row = yield* oneUserType(em, tenantId, userTypeId).pipe(Effect.orDie)
+          const row = yield* oneUserType(tenantId, userTypeId).pipe(Effect.orDie)
           if (!row) return yield* new UserTypeNotFound()
           return row
         }).pipe(Effect.withSpan('Iam.userTypes.get')),
@@ -415,8 +391,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           if (fields.allowLocalLogin === false && type.code === SYSTEM_ACCOUNT_USER_TYPE) {
             return yield* new RecoveryChannelRequired()
           }
-          const em = yield* authEntityManager()
-          yield* updateUserType(em, tenantId, type.id, fields)
+          yield* updateUserType(tenantId, type.id, fields)
           // closing a sign-in channel can lock a tenant out just as surely as
           // disabling the people who use it, and this runs after the write so
           // it reads the state being committed rather than predicting it
@@ -440,16 +415,15 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           // asking for the state it is already in is not an edit, so it
           // neither spends a version nor invalidates another edit in flight
           if (type.enabled === enabled) return type.version
-          const em = yield* authEntityManager()
           if (!enabled) {
             // Disabling a type people still hold is refused outright. It used
             // to be allowed and did two wrong things at once: it revoked
             // sign-in for every holder without ending a single session, so
             // re-enabling handed those sessions straight back.
-            const inUse = yield* countUsersOfType(em, tenantId, type.id)
+            const inUse = yield* countUsersOfType(tenantId, type.id)
             if (inUse > 0) return yield* new UserTypeInUse({ userCount: inUse })
           }
-          yield* setUserTypeEnabled(em, tenantId, type.id, enabled)
+          yield* setUserTypeEnabled(tenantId, type.id, enabled)
           return type.version + 1
         }),
       )
@@ -474,8 +448,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
 
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const em = yield* authEntityManager()
-          const type = yield* lockUserType(em, tenantId, userTypeId)
+          const type = yield* lockUserType(tenantId, userTypeId)
           if (!type) return yield* new UserTypeNotFound()
           // every other part of a system type is frozen; this one was the way in
           if (type.isSystem) return yield* new UserTypeIsSystem()
@@ -484,11 +457,11 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           }
 
           if (wanted.length > 0) {
-            const found = yield* countOrgTypes(em, tenantId, wanted)
+            const found = yield* countOrgTypes(tenantId, wanted)
             if (found !== wanted.length) return yield* new UserTypeOrgTypeNotFound()
           }
 
-          const current = (yield* currentAllowedOrgTypes(em, tenantId, type.id)).map(
+          const current = (yield* currentAllowedOrgTypes(tenantId, type.id)).map(
             (row) => row.orgTypeId,
           )
           // an unchanged policy is not an edit, so it spends no version and
@@ -499,11 +472,11 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
             wanted.every((id) => current.includes(id))
           if (unchanged) return type.version
 
-          yield* pruneAllowedOrgTypes(em, tenantId, type.id, wanted)
+          yield* pruneAllowedOrgTypes(tenantId, type.id, wanted)
           if (wanted.length > 0) {
-            yield* addAllowedOrgTypes(em, tenantId, type.id, wanted)
+            yield* addAllowedOrgTypes(tenantId, type.id, wanted)
           }
-          yield* setPlacementMode(em, tenantId, type.id, policy.mode)
+          yield* setPlacementMode(tenantId, type.id, policy.mode)
 
           // After the write, against the state that would result, and
           // UNCONDITIONALLY. The old code only looked when the new list was
@@ -526,8 +499,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           if (type.isSystem || type.code === SYSTEM_ACCOUNT_USER_TYPE) {
             return yield* new UserTypeIsSystem()
           }
-          const em = yield* authEntityManager()
-          const inUse = yield* countUsersOfType(em, tenantId, type.id)
+          const inUse = yield* countUsersOfType(tenantId, type.id)
           if (inUse > 0) return yield* new UserTypeInUse({ userCount: inUse })
           // eligibility rows cascade with the type, which would silently empty
           // a role's allowed set and leave that role assignable to nobody.
@@ -535,7 +507,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           // answers on this transaction because the connection is in the fiber
           const stranded = yield* rbac.rolesStrandedByUserType(tenantId, type.id)
           if (stranded > 0) return yield* new UserTypeLastForRole({ roleCount: stranded })
-          yield* deleteUserType(em, tenantId, type.id)
+          yield* deleteUserType(tenantId, type.id)
         }),
       )
     }),

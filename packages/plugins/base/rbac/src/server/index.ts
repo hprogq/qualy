@@ -18,7 +18,6 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
 import { make as makeGrants, type GrantRow } from './grants.ts'
-import { rbacEntityManager } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
 import {
   administratorSurvivors,
@@ -92,9 +91,8 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
         // than overwritten: live grants already assume the old meaning, and a
         // changed meaning needs a new code. Failing here stops the boot
         // instead of an instance authorizing against a half-synced table.
-        const em = yield* rbacEntityManager()
-        yield* upsertPermission(em, permission).pipe(Effect.orDie)
-        const stored = yield* permissionRow(em, permission.code).pipe(Effect.orDie)
+        yield* upsertPermission(permission).pipe(Effect.orDie)
+        const stored = yield* permissionRow(permission.code).pipe(Effect.orDie)
         if (
           !stored ||
           stored.plugin !== permission.plugin ||
@@ -107,7 +105,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
             ),
           )
         }
-        yield* refreshPermissionText(em, permission).pipe(Effect.orDie)
+        yield* refreshPermissionText(permission).pipe(Effect.orDie)
         catalog.set(permission.code, permission)
       }
     }),
@@ -122,15 +120,13 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       principal: Principal,
       definition: ActivePermission,
     ) {
-      const em = yield* rbacEntityManager()
-      return yield* hasTenantPermissionQuery(em, principal, definition).pipe(Effect.orDie)
+      return yield* hasTenantPermissionQuery(principal, definition).pipe(Effect.orDie)
     }),
   )
 
   const scopeOf = bound(
     Effect.fn('Rbac.scopeOf')(function* (principal: Principal, definition: ActivePermission) {
-      const em = yield* rbacEntityManager()
-      return yield* authorizedScope(em, principal, definition).pipe(Effect.orDie)
+      return yield* authorizedScope(principal, definition).pipe(Effect.orDie)
     }),
   )
 
@@ -146,8 +142,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       principal: Principal,
       target: { orgNodeId: string } | 'anywhere' | undefined,
     ) {
-      const em = yield* rbacEntityManager()
-      const found = yield* effectiveRowsQuery(em, principal, target).pipe(Effect.orDie)
+      const found = yield* effectiveRowsQuery(principal, target).pipe(Effect.orDie)
       const kept: { definition: ActivePermission; roleKind: 'tenant' | 'org' }[] = []
       for (const row of found) {
         const definition = catalog.get(row.code)
@@ -162,8 +157,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
   /** the strongest reach the principal has for each code at one node */
   const reachAt = bound(
     Effect.fn('Rbac.reachAt')(function* (principal: Principal, orgNodeId: string) {
-      const em = yield* rbacEntityManager()
-      const found = yield* reachAtQuery(em, principal, orgNodeId).pipe(Effect.orDie)
+      const found = yield* reachAtQuery(principal, orgNodeId).pipe(Effect.orDie)
       const reach = new Map<string, Reach>()
       for (const row of found) {
         const definition = catalog.get(row.code)
@@ -190,8 +184,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
           new Error(`canAt() got a tenant permission ${code}, use require()`),
         )
       }
-      const em = yield* rbacEntityManager()
-      return yield* canAtQuery(em, principal, definition, targetOrgNodeId).pipe(Effect.orDie)
+      return yield* canAtQuery(principal, definition, targetOrgNodeId).pipe(Effect.orDie)
     }),
   )
 
@@ -294,14 +287,12 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     }),
     grantsBlockingOrgType: bound(
       Effect.fn('Rbac.grantsBlockingOrgType')(function* (tenantId, orgNodeId, orgTypeId) {
-        const em = yield* rbacEntityManager()
-        return yield* grantsBlockingOrgType(em, tenantId, orgNodeId, orgTypeId).pipe(Effect.orDie)
+        return yield* grantsBlockingOrgType(tenantId, orgNodeId, orgTypeId).pipe(Effect.orDie)
       }),
     ),
     rolesStrandedByUserType: bound(
       Effect.fn('Rbac.rolesStrandedByUserType')(function* (tenantId: string, userTypeId: string) {
-        const em = yield* rbacEntityManager()
-        return yield* rolesStrandedByUserType(em, tenantId, userTypeId).pipe(Effect.orDie)
+        return yield* rolesStrandedByUserType(tenantId, userTypeId).pipe(Effect.orDie)
       }),
     ),
     grantsBlockingUserType: bound(
@@ -310,8 +301,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
         userId: string,
         userTypeId: string,
       ) {
-        const em = yield* rbacEntityManager()
-        return yield* grantsBlockingUserType(em, tenantId, userId, userTypeId).pipe(Effect.orDie)
+        return yield* grantsBlockingUserType(tenantId, userId, userTypeId).pipe(Effect.orDie)
       }),
     ),
     assertTenantKeepsAdministrator: bound(
@@ -319,10 +309,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
         // runs on the caller's connection because the connection is in the
         // fiber, which is what lets it read the final state of the caller's
         // transaction rather than a prediction of it
-        const em = yield* rbacEntityManager()
-        const role = yield* lockAdministratorRole(em, tenantId, CANONICAL_ADMIN_ROLE).pipe(
-          Effect.orDie,
-        )
+        const role = yield* lockAdministratorRole(tenantId, CANONICAL_ADMIN_ROLE).pipe(Effect.orDie)
         // fail closed: carrying on here would let every admin-reducing write
         // through on exactly the tenants least able to survive one
         if (!role) {
@@ -332,7 +319,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
             ),
           )
         }
-        const survivors = yield* administratorSurvivors(em, tenantId, role.id).pipe(Effect.orDie)
+        const survivors = yield* administratorSurvivors(tenantId, role.id).pipe(Effect.orDie)
         if (survivors === 0) return yield* new LastAdministrator()
       }),
     ),

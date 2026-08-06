@@ -23,7 +23,7 @@ import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { placementLegal } from '../src/server/placement.ts'
-import { authEntityManager } from '../src/server/db.ts'
+import { db } from '../src/server/db.ts'
 import { sql as ksql } from 'kysely'
 
 // The identity behaviours the cordis suite asserted and the Effect suite did
@@ -65,9 +65,8 @@ const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Orm | O
 /** the rule the writes decide by, asked of one person through a caller's own query */
 const legalFor = (userId: string) =>
   Effect.gen(function* () {
-    const em = yield* authEntityManager()
-    const row = yield* Effect.promise(() =>
-      kyselyOf(em)
+    const row = yield* db.query((k) =>
+      k
         .selectFrom('User as u')
         .innerJoin('UserType as t', 't.id', 'u.userTypeId')
         .innerJoin('OrgNode as n', 'n.id', 'u.primaryOrgNodeId')

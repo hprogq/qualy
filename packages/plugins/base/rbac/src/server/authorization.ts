@@ -1,8 +1,8 @@
 import { Effect } from 'effect'
+import { db, type Db, admitsUserType } from './db.ts'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
 import { canonicalTenantAdmin, type ActivePermission, type Principal } from '@qualy/rbac-contract'
-import { admitsUserType, rbacEntityManager, type RbacEntityManager } from './db.ts'
 
 // The authorization SQL.
 //
@@ -96,8 +96,8 @@ const reaches = (
  * Two copies of "which grants does this person hold" is the drift this file
  * exists to prevent.
  */
-const held = (em: RbacEntityManager, tenantId: string, userId: string) =>
-  kyselyOf(em).with('held', (db) =>
+const held = (k: Db, tenantId: string, userId: string) =>
+  k.with('held', (db) =>
     db
       .selectFrom('RoleGrant as g')
       .innerJoin('User as u', (join) =>
@@ -122,135 +122,127 @@ const held = (em: RbacEntityManager, tenantId: string, userId: string) =>
       ]),
   )
 
-const forPrincipal = (em: RbacEntityManager, principal: Principal) =>
-  held(em, principal.tenantId, principal.userId)
+const forPrincipal = (k: Db, principal: Principal) => held(k, principal.tenantId, principal.userId)
 
 /** a tenant capability comes only from a tenant role: an org role is anchored somewhere */
-export const hasTenantPermission = (
-  em: RbacEntityManager,
-  principal: Principal,
-  def: ActivePermission,
-) =>
-  query(() =>
-    forPrincipal(em, principal)
-      .selectFrom('held')
-      .innerJoin('Role as r', (join) =>
-        join
-          .on('r.tenantId', '=', principal.tenantId)
-          .onRef('r.id', '=', 'held.roleId')
-          .on('r.status', '=', 'active')
-          .on('r.kind', '=', 'tenant'),
-      )
-      .where((eb) =>
-        carries(
-          {
-            id: eb.ref('r.id'),
-            tenantId: eb.ref('r.tenantId'),
-            permissionMode: eb.ref('r.permissionMode'),
-          },
-          def,
-        ),
-      )
-      .select(sql<number>`1`.as('one'))
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row !== undefined))
+export const hasTenantPermission = (principal: Principal, def: ActivePermission) =>
+  db
+    .query((k) =>
+      forPrincipal(k, principal)
+        .selectFrom('held')
+        .innerJoin('Role as r', (join) =>
+          join
+            .on('r.tenantId', '=', principal.tenantId)
+            .onRef('r.id', '=', 'held.roleId')
+            .on('r.status', '=', 'active')
+            .on('r.kind', '=', 'tenant'),
+        )
+        .where((eb) =>
+          carries(
+            {
+              id: eb.ref('r.id'),
+              tenantId: eb.ref('r.tenantId'),
+              permissionMode: eb.ref('r.permissionMode'),
+            },
+            def,
+          ),
+        )
+        .select(sql<number>`1`.as('one'))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
 
-export const canAt = (
-  em: RbacEntityManager,
-  principal: Principal,
-  def: ActivePermission,
-  targetOrgNodeId: string,
-) =>
-  query(() =>
-    forPrincipal(em, principal)
-      .selectFrom('held')
-      .innerJoin('Role as r', (join) =>
-        join
-          .on('r.tenantId', '=', principal.tenantId)
-          .onRef('r.id', '=', 'held.roleId')
-          .on('r.status', '=', 'active'),
-      )
-      // inner, not left: a node that does not exist is never authorized, and
-      // the administrator branch would otherwise answer yes for one
-      .innerJoin('OrgNode as target', (join) =>
-        join.on('target.tenantId', '=', principal.tenantId).on('target.id', '=', targetOrgNodeId),
-      )
-      .leftJoin('OrgNode as anchor', (join) =>
-        join
-          .on('anchor.tenantId', '=', principal.tenantId)
-          .onRef('anchor.id', '=', 'held.orgNodeId'),
-      )
-      .where((eb) =>
-        carries(
-          {
-            id: eb.ref('r.id'),
-            tenantId: eb.ref('r.tenantId'),
-            permissionMode: eb.ref('r.permissionMode'),
-          },
-          def,
-        ),
-      )
-      .where((eb) =>
-        reaches(
-          {
-            id: eb.ref('r.id'),
-            tenantId: eb.ref('r.tenantId'),
-            permissionMode: eb.ref('r.permissionMode'),
-          },
-          { coverage: eb.ref('held.coverage'), orgNodeId: eb.ref('held.orgNodeId') },
-          { target: eb.ref('target.path'), anchor: eb.ref('anchor.path') },
-          targetOrgNodeId,
-        ),
-      )
-      .select(sql<number>`1`.as('one'))
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row !== undefined))
+export const canAt = (principal: Principal, def: ActivePermission, targetOrgNodeId: string) =>
+  db
+    .query((k) =>
+      forPrincipal(k, principal)
+        .selectFrom('held')
+        .innerJoin('Role as r', (join) =>
+          join
+            .on('r.tenantId', '=', principal.tenantId)
+            .onRef('r.id', '=', 'held.roleId')
+            .on('r.status', '=', 'active'),
+        )
+        // inner, not left: a node that does not exist is never authorized, and
+        // the administrator branch would otherwise answer yes for one
+        .innerJoin('OrgNode as target', (join) =>
+          join.on('target.tenantId', '=', principal.tenantId).on('target.id', '=', targetOrgNodeId),
+        )
+        .leftJoin('OrgNode as anchor', (join) =>
+          join
+            .on('anchor.tenantId', '=', principal.tenantId)
+            .onRef('anchor.id', '=', 'held.orgNodeId'),
+        )
+        .where((eb) =>
+          carries(
+            {
+              id: eb.ref('r.id'),
+              tenantId: eb.ref('r.tenantId'),
+              permissionMode: eb.ref('r.permissionMode'),
+            },
+            def,
+          ),
+        )
+        .where((eb) =>
+          reaches(
+            {
+              id: eb.ref('r.id'),
+              tenantId: eb.ref('r.tenantId'),
+              permissionMode: eb.ref('r.permissionMode'),
+            },
+            { coverage: eb.ref('held.coverage'), orgNodeId: eb.ref('held.orgNodeId') },
+            { target: eb.ref('target.path'), anchor: eb.ref('anchor.path') },
+            targetOrgNodeId,
+          ),
+        )
+        .select(sql<number>`1`.as('one'))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
 
 /** how far one org-node permission reaches for this principal */
-export const authorizedScope = (
-  em: RbacEntityManager,
-  principal: Principal,
-  def: ActivePermission,
-) =>
-  query(() =>
-    forPrincipal(em, principal)
-      .selectFrom('held')
-      .innerJoin('Role as r', (join) =>
-        join
-          .on('r.tenantId', '=', principal.tenantId)
-          .onRef('r.id', '=', 'held.roleId')
-          .on('r.status', '=', 'active'),
-      )
-      .where((eb) =>
-        carries(
-          {
+export const authorizedScope = (principal: Principal, def: ActivePermission) =>
+  db
+    .query((k) =>
+      forPrincipal(k, principal)
+        .selectFrom('held')
+        .innerJoin('Role as r', (join) =>
+          join
+            .on('r.tenantId', '=', principal.tenantId)
+            .onRef('r.id', '=', 'held.roleId')
+            .on('r.status', '=', 'active'),
+        )
+        .where((eb) =>
+          carries(
+            {
+              id: eb.ref('r.id'),
+              tenantId: eb.ref('r.tenantId'),
+              permissionMode: eb.ref('r.permissionMode'),
+            },
+            def,
+          ),
+        )
+        .select((eb) => [
+          reachesEveryNode({
             id: eb.ref('r.id'),
             tenantId: eb.ref('r.tenantId'),
             permissionMode: eb.ref('r.permissionMode'),
-          },
-          def,
-        ),
-      )
-      .select((eb) => [
-        reachesEveryNode({
-          id: eb.ref('r.id'),
-          tenantId: eb.ref('r.tenantId'),
-          permissionMode: eb.ref('r.permissionMode'),
-        }).as('everyNode'),
-        'held.orgNodeId',
-        'held.coverage',
-      ])
-      .distinct()
-      .execute(),
-  ).pipe(
-    // the shape every caller folds into, so none of them invents its own
-    Effect.map((rows) => ({
-      tenantWide: rows.some((row) => row.everyNode),
-      anchors: rows
-        .filter((row) => row.orgNodeId !== null && row.coverage !== null)
-        .map((row) => ({ orgNodeId: row.orgNodeId!, coverage: row.coverage! })),
-    })),
-  )
+          }).as('everyNode'),
+          'held.orgNodeId',
+          'held.coverage',
+        ])
+        .distinct()
+        .execute(),
+    )
+    .pipe(
+      // the shape every caller folds into, so none of them invents its own
+      Effect.map((rows) => ({
+        tenantWide: rows.some((row) => row.everyNode),
+        anchors: rows
+          .filter((row) => row.orgNodeId !== null && row.coverage !== null)
+          .map((row) => ({ orgNodeId: row.orgNodeId!, coverage: row.coverage! })),
+      })),
+    )
 
 /**
  * Every permission a principal effectively holds, for one of three questions.
@@ -262,13 +254,12 @@ export const authorizedScope = (
  * though it applies nowhere else.
  */
 export const effectiveRows = (
-  em: RbacEntityManager,
   principal: Principal,
   target: { orgNodeId: string } | 'anywhere' | undefined,
 ) =>
-  query(() => {
+  db.query((k) => {
     const at = typeof target === 'object' ? target : undefined
-    return forPrincipal(em, principal)
+    return forPrincipal(k, principal)
       .selectFrom('held')
       .innerJoin('Role as r', (join) =>
         join
@@ -323,9 +314,9 @@ export const effectiveRows = (
  * A bind guard needs more than "do they hold it here": granting subtree
  * coverage from a self anchor would hand out more than the actor has.
  */
-export const reachAt = (em: RbacEntityManager, principal: Principal, orgNodeId: string) =>
-  query(() =>
-    forPrincipal(em, principal)
+export const reachAt = (principal: Principal, orgNodeId: string) =>
+  db.query((k) =>
+    forPrincipal(k, principal)
       .selectFrom('held')
       .innerJoin('Role as r', (join) =>
         join
@@ -387,14 +378,9 @@ export const reachAt = (em: RbacEntityManager, principal: Principal, orgNodeId: 
  * The reach predicate is the one the decision uses, not a second copy: an
  * explanation that disagrees with the answer is worse than no explanation.
  */
-export const explainRows = (
-  em: RbacEntityManager,
-  tenantId: string,
-  userId: string,
-  orgNodeId: string | undefined,
-) =>
-  query(() =>
-    held(em, tenantId, userId)
+export const explainRows = (tenantId: string, userId: string, orgNodeId: string | undefined) =>
+  db.query((k) =>
+    held(k, tenantId, userId)
       .selectFrom('held')
       .innerJoin('Role as r', (join) =>
         join
@@ -451,35 +437,39 @@ export const explainRows = (
   )
 
 /** holders of the administrator role who could still sign in */
-export const administratorSurvivors = (em: RbacEntityManager, tenantId: string, roleId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('RoleGrant as g')
-      .innerJoin('Role as r', (join) =>
-        join
-          .onRef('r.tenantId', '=', 'g.tenantId')
-          .onRef('r.id', '=', 'g.roleId')
-          .on('r.status', '=', 'active'),
-      )
-      .innerJoin('User as u', (join) =>
-        join.onRef('u.tenantId', '=', 'g.tenantId').onRef('u.id', '=', 'g.userId'),
-      )
-      .innerJoin('UserType as t', (join) =>
-        join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
-      )
-      .where('g.tenantId', '=', tenantId)
-      .where('g.roleId', '=', roleId)
-      // An administrator who could actually sign in today. The sign-in channel
-      // flags are part of it because a type that opens neither is what every
-      // driver refuses. Bound identities deliberately are not: whether a user
-      // needs one before their first sign-in is driver knowledge, so requiring
-      // one here would state something the core cannot know.
-      .where('u.enabled', '=', true)
-      .where('t.enabled', '=', true)
-      .where((eb) => eb.or([eb('t.allowLocalLogin', '=', true), eb('t.allowSsoLogin', '=', true)]))
-      .select(sql<number>`count(distinct g.user_id)::int`.as('count'))
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row?.count ?? 0))
+export const administratorSurvivors = (tenantId: string, roleId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrant as g')
+        .innerJoin('Role as r', (join) =>
+          join
+            .onRef('r.tenantId', '=', 'g.tenantId')
+            .onRef('r.id', '=', 'g.roleId')
+            .on('r.status', '=', 'active'),
+        )
+        .innerJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'g.tenantId').onRef('u.id', '=', 'g.userId'),
+        )
+        .innerJoin('UserType as t', (join) =>
+          join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
+        )
+        .where('g.tenantId', '=', tenantId)
+        .where('g.roleId', '=', roleId)
+        // An administrator who could actually sign in today. The sign-in channel
+        // flags are part of it because a type that opens neither is what every
+        // driver refuses. Bound identities deliberately are not: whether a user
+        // needs one before their first sign-in is driver knowledge, so requiring
+        // one here would state something the core cannot know.
+        .where('u.enabled', '=', true)
+        .where('t.enabled', '=', true)
+        .where((eb) =>
+          eb.or([eb('t.allowLocalLogin', '=', true), eb('t.allowSsoLogin', '=', true)]),
+        )
+        .select(sql<number>`count(distinct g.user_id)::int`.as('count'))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.count ?? 0))
 
 /**
  * The canonical administrator role, locked.
@@ -491,9 +481,9 @@ export const administratorSurvivors = (em: RbacEntityManager, tenantId: string, 
  * administrator role any more, and counting its holders would let the last
  * real administrator be removed.
  */
-export const lockAdministratorRole = (em: RbacEntityManager, tenantId: string, systemKey: string) =>
-  query(() =>
-    kyselyOf(em)
+export const lockAdministratorRole = (tenantId: string, systemKey: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Role')
       .select('id')
       .where('tenantId', '=', tenantId)
@@ -506,49 +496,46 @@ export const lockAdministratorRole = (em: RbacEntityManager, tenantId: string, s
   )
 
 /** role codes of org-kind grants at the node whose role forbids the given org type */
-export const grantsBlockingOrgType = (
-  em: RbacEntityManager,
-  tenantId: string,
-  orgNodeId: string,
-  orgTypeId: string,
-) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('RoleGrant as g')
-      .innerJoin('Role as r', (join) =>
-        join
-          .onRef('r.tenantId', '=', 'g.tenantId')
-          .onRef('r.id', '=', 'g.roleId')
-          .on('r.kind', '=', 'org'),
-      )
-      .where('g.tenantId', '=', tenantId)
-      .where('g.orgNodeId', '=', orgNodeId)
-      .where((eb) =>
-        eb.not(
-          eb.exists(
-            eb
-              .selectFrom('RoleAllowedOrgType as t')
-              .select(sql<number>`1`.as('one'))
-              .whereRef('t.tenantId', '=', 'g.tenantId')
-              .whereRef('t.roleId', '=', 'g.roleId')
-              .where('t.orgTypeId', '=', orgTypeId),
+export const grantsBlockingOrgType = (tenantId: string, orgNodeId: string, orgTypeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrant as g')
+        .innerJoin('Role as r', (join) =>
+          join
+            .onRef('r.tenantId', '=', 'g.tenantId')
+            .onRef('r.id', '=', 'g.roleId')
+            .on('r.kind', '=', 'org'),
+        )
+        .where('g.tenantId', '=', tenantId)
+        .where('g.orgNodeId', '=', orgNodeId)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('RoleAllowedOrgType as t')
+                .select(sql<number>`1`.as('one'))
+                .whereRef('t.tenantId', '=', 'g.tenantId')
+                .whereRef('t.roleId', '=', 'g.roleId')
+                .where('t.orgTypeId', '=', orgTypeId),
+            ),
           ),
-        ),
-      )
-      .select('r.code')
-      .distinct()
-      .orderBy('r.code')
-      .execute(),
-  ).pipe(Effect.map((rows) => rows.map((row) => row.code)))
+        )
+        .select('r.code')
+        .distinct()
+        .orderBy('r.code')
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.code)))
 
 /** how far a grant reaches, ordered so a wider one can be compared to a narrower */
 export const REACH_RANK = { self: 0, subtree: 1, tenant: 2 } as const
 export type Reach = keyof typeof REACH_RANK
 
 /** the catalog's row, inserted if absent; the stored row stays the single truth */
-export const upsertPermission = (em: RbacEntityManager, permission: ActivePermission) =>
-  query(() =>
-    kyselyOf(em)
+export const upsertPermission = (permission: ActivePermission) =>
+  db.query((k) =>
+    k
       .insertInto('Permission')
       .values({
         code: permission.code,
@@ -562,9 +549,9 @@ export const upsertPermission = (em: RbacEntityManager, permission: ActivePermis
       .execute(),
   )
 
-export const permissionRow = (em: RbacEntityManager, code: string) =>
-  query(() =>
-    kyselyOf(em)
+export const permissionRow = (code: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Permission')
       .select(['plugin', 'targetKind'])
       .where('code', '=', code)
@@ -572,9 +559,9 @@ export const permissionRow = (em: RbacEntityManager, code: string) =>
   )
 
 /** display text follows the declaration freely, because it decides nothing */
-export const refreshPermissionText = (em: RbacEntityManager, permission: ActivePermission) =>
-  query(() =>
-    kyselyOf(em)
+export const refreshPermissionText = (permission: ActivePermission) =>
+  db.query((k) =>
+    k
       .updateTable('Permission')
       .set({
         name: permission.name,
@@ -592,41 +579,39 @@ export const refreshPermissionText = (em: RbacEntityManager, permission: ActiveP
  * A role that admits this type and no other has nobody left who may hold it,
  * which is the inert state the lifecycle exists to prevent.
  */
-export const rolesStrandedByUserType = (
-  em: RbacEntityManager,
-  tenantId: string,
-  userTypeId: string,
-) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('Role as r')
-      .where('r.tenantId', '=', tenantId)
-      .where('r.eligibilityMode', '=', 'allow-list')
-      .where((eb) =>
-        eb.exists(
-          eb
-            .selectFrom('RoleAllowedUserType as t')
-            .select('t.userTypeId')
-            .whereRef('t.tenantId', '=', 'r.tenantId')
-            .whereRef('t.roleId', '=', 'r.id')
-            .where('t.userTypeId', '=', userTypeId),
-        ),
-      )
-      .where((eb) =>
-        eb.not(
+export const rolesStrandedByUserType = (tenantId: string, userTypeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Role as r')
+        .where('r.tenantId', '=', tenantId)
+        .where('r.eligibilityMode', '=', 'allow-list')
+        .where((eb) =>
           eb.exists(
             eb
               .selectFrom('RoleAllowedUserType as t')
               .select('t.userTypeId')
               .whereRef('t.tenantId', '=', 'r.tenantId')
               .whereRef('t.roleId', '=', 'r.id')
-              .where('t.userTypeId', '!=', userTypeId),
+              .where('t.userTypeId', '=', userTypeId),
           ),
-        ),
-      )
-      .select(sql<number>`count(*)::int`.as('count'))
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row?.count ?? 0))
+        )
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('RoleAllowedUserType as t')
+                .select('t.userTypeId')
+                .whereRef('t.tenantId', '=', 'r.tenantId')
+                .whereRef('t.roleId', '=', 'r.id')
+                .where('t.userTypeId', '!=', userTypeId),
+            ),
+          ),
+        )
+        .select(sql<number>`count(*)::int`.as('count'))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.count ?? 0))
 
 /**
  * Grants the new user type would not be eligible for.
@@ -635,55 +620,52 @@ export const rolesStrandedByUserType = (
  * too: narrowing this to org roles would let a retype strand a tenant grant
  * instead of refusing.
  */
-export const grantsBlockingUserType = (
-  em: RbacEntityManager,
-  tenantId: string,
-  userId: string,
-  userTypeId: string,
-) =>
-  query(() =>
-    kyselyOf(em)
-      .selectFrom('RoleGrant as g')
-      .where('g.tenantId', '=', tenantId)
-      .where('g.userId', '=', userId)
-      .innerJoin('Role as r', (join) =>
-        join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
-      )
-      // a role that admits every user type cannot be invalidated by a retype
-      .where((eb) =>
-        eb.not(
-          admitsUserType(
-            {
-              tenantId: eb.ref('g.tenantId'),
-              id: eb.ref('g.roleId'),
-              eligibilityMode: eb.ref('r.eligibilityMode'),
-              anchorMode: eb.ref('r.anchorMode'),
-            },
-            eb.val(userTypeId),
-          ),
-        ),
-      )
-      // the canonical administrator is exempt: its authority does not come
-      // from eligibility, and it is recognised by shape rather than by having
-      // a system key, which would exempt every system role added later
-      .where((eb) =>
-        eb.exists(
-          eb
-            .selectFrom('Role as r')
-            .select('r.id')
-            .whereRef('r.tenantId', '=', 'g.tenantId')
-            .whereRef('r.id', '=', 'g.roleId')
-            .where((inner) =>
-              inner.not(
-                canonicalTenantAdmin({
-                  systemKey: inner.ref('r.systemKey'),
-                  permissionMode: inner.ref('r.permissionMode'),
-                  kind: inner.ref('r.kind'),
-                }),
-              ),
+export const grantsBlockingUserType = (tenantId: string, userId: string, userTypeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrant as g')
+        .where('g.tenantId', '=', tenantId)
+        .where('g.userId', '=', userId)
+        .innerJoin('Role as r', (join) =>
+          join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
+        )
+        // a role that admits every user type cannot be invalidated by a retype
+        .where((eb) =>
+          eb.not(
+            admitsUserType(
+              {
+                tenantId: eb.ref('g.tenantId'),
+                id: eb.ref('g.roleId'),
+                eligibilityMode: eb.ref('r.eligibilityMode'),
+                anchorMode: eb.ref('r.anchorMode'),
+              },
+              eb.val(userTypeId),
             ),
-        ),
-      )
-      .select(sql<number>`count(*)::int`.as('count'))
-      .executeTakeFirst(),
-  ).pipe(Effect.map((row) => row?.count ?? 0))
+          ),
+        )
+        // the canonical administrator is exempt: its authority does not come
+        // from eligibility, and it is recognised by shape rather than by having
+        // a system key, which would exempt every system role added later
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('Role as r')
+              .select('r.id')
+              .whereRef('r.tenantId', '=', 'g.tenantId')
+              .whereRef('r.id', '=', 'g.roleId')
+              .where((inner) =>
+                inner.not(
+                  canonicalTenantAdmin({
+                    systemKey: inner.ref('r.systemKey'),
+                    permissionMode: inner.ref('r.permissionMode'),
+                    kind: inner.ref('r.kind'),
+                  }),
+                ),
+              ),
+          ),
+        )
+        .select(sql<number>`count(*)::int`.as('count'))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.count ?? 0))

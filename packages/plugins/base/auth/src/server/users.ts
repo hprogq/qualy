@@ -1,10 +1,10 @@
 import { Effect } from 'effect'
 import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
+import { db, type Db, lockTenant, userTypeGuard } from './db.ts'
 import { sql } from 'kysely'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
-import { authEntityManager, lockTenant, userTypeGuard, type AuthEntityManager } from './db.ts'
 import { placementAllowed } from './placement.ts'
 import {
   GrantIncompatible,
@@ -29,9 +29,9 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
 /** the user with the system flag their type carries, which several guards read */
-const userGuard = (em: AuthEntityManager, tenantId: string, userId: string) =>
-  query(() =>
-    kyselyOf(em)
+const userGuard = (tenantId: string, userId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('User as u')
       .innerJoin('UserType as t', (join) =>
         join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
@@ -42,9 +42,9 @@ const userGuard = (em: AuthEntityManager, tenantId: string, userId: string) =>
       .executeTakeFirst(),
   )
 
-const orgNodeExists = (em: AuthEntityManager, tenantId: string, orgNodeId: string) =>
-  query(() =>
-    kyselyOf(em)
+const orgNodeExists = (tenantId: string, orgNodeId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('OrgNode')
       .select('id')
       .where('tenantId', '=', tenantId)
@@ -58,8 +58,8 @@ const orgNodeExists = (em: AuthEntityManager, tenantId: string, orgNodeId: strin
  * One builder for the list and the single read, so the two cannot disagree
  * about which columns a caller is shown or when the row counts as manageable.
  */
-const people = (em: AuthEntityManager, manage: AuthorizationScope) =>
-  kyselyOf(em)
+const people = (k: Db, manage: AuthorizationScope) =>
+  k
     .selectFrom('User as u')
     .innerJoin('UserType as t', (join) =>
       join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
@@ -96,7 +96,6 @@ const people = (em: AuthEntityManager, manage: AuthorizationScope) =>
  * here, not an error.
  */
 const listUsers = (
-  em: AuthEntityManager,
   tenantId: string,
   scopes: { read: AuthorizationScope; manage: AuthorizationScope },
   input: {
@@ -107,8 +106,8 @@ const listUsers = (
     limit: number
   },
 ) =>
-  query(() => {
-    let found = people(em, scopes.manage)
+  db.query((k) => {
+    let found = people(k, scopes.manage)
       .innerJoin('OrgNode as requested', (join) =>
         join
           .onRef('requested.tenantId', '=', 'u.tenantId')
@@ -159,13 +158,12 @@ export type UserProjection = Effect.Success<ReturnType<typeof listUsers>>[number
 
 /** one user, visible only through the caller's read scope */
 const oneUser = (
-  em: AuthEntityManager,
   tenantId: string,
   userId: string,
   scopes: { read: AuthorizationScope; manage: AuthorizationScope },
 ) =>
-  query(() =>
-    people(em, scopes.manage)
+  db.query((k) =>
+    people(k, scopes.manage)
       .where('u.tenantId', '=', tenantId)
       .where('u.id', '=', userId)
       .where((eb) =>
@@ -187,14 +185,13 @@ const oneUser = (
  * anchor made those unreachable.
  */
 const placeableNodes = (
-  em: AuthEntityManager,
   tenantId: string,
   scopes: { read: AuthorizationScope; manage: AuthorizationScope },
   search: string | undefined,
   limit: number,
 ) =>
-  query(() => {
-    let found = kyselyOf(em)
+  db.query((k) => {
+    let found = k
       .selectFrom('OrgNode as n')
       .select((eb) => [
         'n.id',
@@ -229,9 +226,9 @@ const placeableNodes = (
  * round trip. A system type is provisioned rather than assigned, so it never
  * appears.
  */
-const assignableUserTypes = (em: AuthEntityManager, tenantId: string) =>
-  query(() =>
-    kyselyOf(em)
+const assignableUserTypes = (tenantId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('UserType as t')
       .select((eb) => [
         't.id',
@@ -251,28 +248,21 @@ const assignableUserTypes = (em: AuthEntityManager, tenantId: string) =>
       .execute(),
   )
 
-const insertUser = (
-  em: AuthEntityManager,
-  input: {
-    tenantId: string
-    displayName: string
-    userTypeId: string
-    primaryOrgNodeId: string
-    businessNo: string | null
-  },
-) =>
-  query(() =>
-    kyselyOf(em).insertInto('User').values(input).returning('id').executeTakeFirstOrThrow(),
-  )
+const insertUser = (input: {
+  tenantId: string
+  displayName: string
+  userTypeId: string
+  primaryOrgNodeId: string
+  businessNo: string | null
+}) => db.query((k) => k.insertInto('User').values(input).returning('id').executeTakeFirstOrThrow())
 
 const updateUser = (
-  em: AuthEntityManager,
   tenantId: string,
   userId: string,
   fields: { displayName?: string; userTypeId?: string; businessNo?: string },
 ) =>
-  query(() =>
-    kyselyOf(em)
+  db.query((k) =>
+    k
       .updateTable('User')
       .set({
         ...(fields.displayName === undefined ? {} : { displayName: fields.displayName }),
@@ -285,14 +275,9 @@ const updateUser = (
       .execute(),
   )
 
-const setUserPlacement = (
-  em: AuthEntityManager,
-  tenantId: string,
-  userId: string,
-  primaryOrgNodeId: string,
-) =>
-  query(() =>
-    kyselyOf(em)
+const setUserPlacement = (tenantId: string, userId: string, primaryOrgNodeId: string) =>
+  db.query((k) =>
+    k
       .updateTable('User')
       .set({ primaryOrgNodeId, updatedAt: sql<Date>`now()` })
       .where('tenantId', '=', tenantId)
@@ -300,14 +285,9 @@ const setUserPlacement = (
       .execute(),
   )
 
-const setUserEnabled = (
-  em: AuthEntityManager,
-  tenantId: string,
-  userId: string,
-  enabled: boolean,
-) =>
-  query(() =>
-    kyselyOf(em)
+const setUserEnabled = (tenantId: string, userId: string, enabled: boolean) =>
+  db.query((k) =>
+    k
       .updateTable('User')
       .set({ enabled, updatedAt: sql<Date>`now()` })
       .where('tenantId', '=', tenantId)
@@ -316,13 +296,9 @@ const setUserEnabled = (
   )
 
 /** a disabled user loses access now, not when their session happens to expire */
-const deleteUserSessions = (em: AuthEntityManager, tenantId: string, userId: string) =>
-  query(() =>
-    kyselyOf(em)
-      .deleteFrom('Session')
-      .where('tenantId', '=', tenantId)
-      .where('userId', '=', userId)
-      .execute(),
+const deleteUserSessions = (tenantId: string, userId: string) =>
+  db.query((k) =>
+    k.deleteFrom('Session').where('tenantId', '=', tenantId).where('userId', '=', userId).execute(),
   )
 
 type TypeRow = NonNullable<Effect.Success<ReturnType<typeof userTypeGuard>>>
@@ -337,8 +313,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     withDb(
       transaction(
         Effect.gen(function* () {
-          const em = yield* authEntityManager()
-          yield* lockTenant(em, tenantId)
+          yield* lockTenant(tenantId)
           return yield* body()
         }),
       ),
@@ -355,8 +330,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
   })
 
   const requireUser = Effect.fn('Iam.users.require')(function* (tenantId: string, userId: string) {
-    const em = yield* authEntityManager()
-    const row = yield* userGuard(em, tenantId, userId)
+    const row = yield* userGuard(tenantId, userId)
     if (!row) return yield* new UserNotFound()
     return row
   })
@@ -365,8 +339,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     tenantId: string,
     userTypeId: string,
   ) {
-    const em = yield* authEntityManager()
-    const row = yield* userTypeGuard(em, tenantId, userTypeId)
+    const row = yield* userTypeGuard(tenantId, userTypeId)
     if (!row) return yield* new UserTypeNotFound()
     return row
   })
@@ -394,8 +367,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     tenantId: string,
     orgNodeId: string,
   ) {
-    const em = yield* authEntityManager()
-    if (!(yield* orgNodeExists(em, tenantId, orgNodeId))) {
+    if (!(yield* orgNodeExists(tenantId, orgNodeId))) {
       return yield* new UserPlacementNotFound()
     }
   })
@@ -438,16 +410,14 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       ) {
         const held = yield* scopes(principal)
         if (!readable(held)) return []
-        const em = yield* authEntityManager()
-        return yield* listUsers(em, principal.tenantId, held, input).pipe(Effect.orDie)
+        return yield* listUsers(principal.tenantId, held, input).pipe(Effect.orDie)
       }),
     ),
 
     get: bound(
       Effect.fn('Iam.users.get')(function* (principal: Principal, userId: string) {
         const held = yield* scopes(principal)
-        const em = yield* authEntityManager()
-        const row = yield* oneUser(em, principal.tenantId, userId, held).pipe(Effect.orDie)
+        const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
         // not-found and not-readable are indistinguishable on purpose
         if (!row) return yield* new UserNotFound()
         return row
@@ -469,11 +439,10 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       ) {
         const held = yield* scopes(principal)
         if (!readable(held)) return { nodes: [], truncated: false, userTypes: [] }
-        const em = yield* authEntityManager()
-        const nodes = yield* placeableNodes(em, principal.tenantId, held, search, limit).pipe(
+        const nodes = yield* placeableNodes(principal.tenantId, held, search, limit).pipe(
           Effect.orDie,
         )
-        const userTypes = yield* assignableUserTypes(em, principal.tenantId).pipe(Effect.orDie)
+        const userTypes = yield* assignableUserTypes(principal.tenantId).pipe(Effect.orDie)
         return {
           nodes: nodes.slice(0, limit).map((row) => ({
             orgNodeId: row.id,
@@ -517,8 +486,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           yield* mayAssignType(type)
           yield* requireOrgNode(tenantId, input.primaryOrgNodeId)
           yield* requirePlacement(tenantId, type.id, input.primaryOrgNodeId)
-          const em = yield* authEntityManager()
-          const created = yield* insertUser(em, {
+          const created = yield* insertUser({
             tenantId,
             displayName: input.displayName,
             userTypeId: type.id,
@@ -563,8 +531,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             const blocking = yield* rbac.grantsBlockingUserType(tenantId, user.id, type.id)
             if (blocking > 0) return yield* new GrantIncompatible({ grantCount: blocking })
           }
-          const em = yield* authEntityManager()
-          yield* updateUser(em, tenantId, user.id, fields)
+          yield* updateUser(tenantId, user.id, fields)
           // a type change can move the last administrator onto a type that
           // cannot sign in at all
           if (changingType) yield* rbac.assertTenantKeepsAdministrator(tenantId)
@@ -593,8 +560,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           yield* requireOrgNode(tenantId, primaryOrgNodeId)
           // a transfer may not put someone where their kind of person may not be
           yield* requirePlacement(tenantId, user.userTypeId, primaryOrgNodeId)
-          const em = yield* authEntityManager()
-          yield* setUserPlacement(em, tenantId, user.id, primaryOrgNodeId)
+          yield* setUserPlacement(tenantId, user.id, primaryOrgNodeId)
         }),
       )
     }),
@@ -610,12 +576,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           const user = yield* requireUser(tenantId, userId)
           if (!enabled && user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId)
-          const em = yield* authEntityManager()
-          yield* setUserEnabled(em, tenantId, user.id, enabled)
+          yield* setUserEnabled(tenantId, user.id, enabled)
           if (!enabled) {
             // a disabled user loses access now, not when their session
             // happens to expire
-            yield* deleteUserSessions(em, tenantId, user.id)
+            yield* deleteUserSessions(tenantId, user.id)
             yield* rbac.assertTenantKeepsAdministrator(tenantId)
           }
         }),

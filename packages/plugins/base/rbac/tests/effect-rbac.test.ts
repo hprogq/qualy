@@ -11,8 +11,8 @@ import {
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
-import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
-import { rbacEntityManager } from '../src/server/db.ts'
+import { transaction, type Orm } from '@qualy/plugin-database/server'
+import { db as rbacDb } from '../src/server/db.ts'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
@@ -269,13 +269,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const f = yield* seed()
           const rbac = yield* Rbac
           const disable = Effect.gen(function* () {
-            const em = yield* rbacEntityManager()
-            yield* Effect.promise(() =>
-              kyselyOf(em)
-                .updateTable('User')
-                .set({ enabled: false })
-                .where('id', '=', f.user)
-                .execute(),
+            yield* rbacDb.query((k) =>
+              k.updateTable('User').set({ enabled: false }).where('id', '=', f.user).execute(),
             )
           })
           const before = yield* Effect.result(rbac.assertTenantKeepsAdministrator(f.tenant))
@@ -291,9 +286,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               }),
             ),
           )
-          const em = yield* rbacEntityManager()
-          const stillEnabled = yield* Effect.promise(() =>
-            kyselyOf(em)
+          const stillEnabled = yield* rbacDb.query((k) =>
+            k
               .selectFrom('User')
               .select('enabled')
               .where('id', '=', f.user)

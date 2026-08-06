@@ -2,6 +2,7 @@ import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { kyselyOf, query, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { db } from './db.ts'
 import { sql } from 'kysely'
 import {
   LoginDrivers,
@@ -10,7 +11,6 @@ import {
   type LoginSessionsShape,
   type SignedInUser,
 } from '@qualy/auth-contract/login'
-import { authEntityManager, type AuthEntityManager } from './db.ts'
 import { createSessionToken, hashSessionToken } from '../session.ts'
 import { AuthConfig } from './auth-config.ts'
 
@@ -29,9 +29,9 @@ import { sessionCookieName, sessionSecurity } from './session.ts'
  * A lapsed tenant is not a tenant one may sign in to, so the liveness test
  * travels with the lookup rather than being a second thing to remember.
  */
-const activeTenantBySlug = (em: AuthEntityManager, slug: string) =>
-  query(() =>
-    kyselyOf(em)
+const activeTenantBySlug = (slug: string) =>
+  db.query((k) =>
+    k
       .selectFrom('Tenant')
       .select('id')
       .where('slug', '=', slug)
@@ -41,9 +41,9 @@ const activeTenantBySlug = (em: AuthEntityManager, slug: string) =>
   )
 
 /** the enabled providers of one tenant, in the order a screen shows them */
-const loginProviders = (em: AuthEntityManager, tenantId: string) =>
-  query(() =>
-    kyselyOf(em)
+const loginProviders = (tenantId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('AuthProvider')
       .select(['code', 'type', 'name'])
       .where('tenantId', '=', tenantId)
@@ -59,14 +59,9 @@ const loginProviders = (em: AuthEntityManager, tenantId: string) =>
  * The type is part of the predicate so a row belonging to one driver cannot be
  * driven through another driver's route.
  */
-const providerByCode = (
-  em: AuthEntityManager,
-  tenantId: string,
-  providerCode: string,
-  expectedType: string,
-) =>
-  query(() =>
-    kyselyOf(em)
+const providerByCode = (tenantId: string, providerCode: string, expectedType: string) =>
+  db.query((k) =>
+    k
       .selectFrom('AuthProvider')
       .select('id')
       .where('tenantId', '=', tenantId)
@@ -77,14 +72,9 @@ const providerByCode = (
   )
 
 /** an identity with what the core needs to decide whether it may be used */
-const identityByIdentifier = (
-  em: AuthEntityManager,
-  tenantId: string,
-  providerId: string,
-  identifier: string,
-) =>
-  query(() =>
-    kyselyOf(em)
+const identityByIdentifier = (tenantId: string, providerId: string, identifier: string) =>
+  db.query((k) =>
+    k
       .selectFrom('UserIdentity as i')
       .innerJoin('User as u', (join) =>
         join.onRef('u.tenantId', '=', 'i.tenantId').onRef('u.id', '=', 'i.userId'),
@@ -99,9 +89,9 @@ const identityByIdentifier = (
       .executeTakeFirst(),
   )
 
-const touchIdentity = (em: AuthEntityManager, identityId: string) =>
-  query(() =>
-    kyselyOf(em)
+const touchIdentity = (identityId: string) =>
+  db.query((k) =>
+    k
       .updateTable('UserIdentity')
       .set({ lastUsedAt: sql<Date>`now()` })
       .where('id', '=', identityId)
@@ -115,9 +105,9 @@ const touchIdentity = (em: AuthEntityManager, identityId: string) =>
  * predicate: a row that survives disabling would let a session outlive the
  * account it belongs to.
  */
-const signedInUser = (em: AuthEntityManager, tenantId: string, userId: string) =>
-  query(() =>
-    kyselyOf(em)
+const signedInUser = (tenantId: string, userId: string) =>
+  db.query((k) =>
+    k
       .selectFrom('User as u')
       .innerJoin('UserType as t', (join) =>
         join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
@@ -151,19 +141,16 @@ const signedInUser = (em: AuthEntityManager, tenantId: string, userId: string) =
       .executeTakeFirst(),
   )
 
-const insertSession = (
-  em: AuthEntityManager,
-  input: {
-    tenantId: string
-    userId: string
-    tokenHash: string
-    ttlSeconds: number
-    loginIp?: string
-    userAgent?: string
-  },
-) =>
-  query(() =>
-    kyselyOf(em)
+const insertSession = (input: {
+  tenantId: string
+  userId: string
+  tokenHash: string
+  ttlSeconds: number
+  loginIp?: string
+  userAgent?: string
+}) =>
+  db.query((k) =>
+    k
       .insertInto('Session')
       .values({
         tenantId: input.tenantId,
@@ -184,8 +171,8 @@ const insertSession = (
  * can do without a resolved principal, which is why it cannot go through the
  * principal to find its row.
  */
-const revokeSessionByToken = (em: AuthEntityManager, tokenHash: string) =>
-  query(() => kyselyOf(em).deleteFrom('Session').where('tokenHash', '=', tokenHash).execute())
+const revokeSessionByToken = (tokenHash: string) =>
+  db.query((k) => k.deleteFrom('Session').where('tokenHash', '=', tokenHash).execute())
 
 /**
  * A driver's redirect target, kept same-origin.
@@ -243,13 +230,11 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       withDb(fn(...args))
 
   const defaultTenant = Effect.fn('Auth.signIn.tenant')(function* () {
-    const em = yield* authEntityManager()
-    return yield* activeTenantBySlug(em, config.defaultTenantSlug).pipe(Effect.orDie)
+    return yield* activeTenantBySlug(config.defaultTenantSlug).pipe(Effect.orDie)
   })
 
   const loadUser = Effect.fn('Auth.signIn.loadUser')(function* (tenantId: string, userId: string) {
-    const em = yield* authEntityManager()
-    const row = yield* signedInUser(em, tenantId, userId).pipe(Effect.orDie)
+    const row = yield* signedInUser(tenantId, userId).pipe(Effect.orDie)
     return row ? toSignedInUser(row) : undefined
   })
 
@@ -276,9 +261,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         if (!tenant) return undefined
         // a driver nobody loaded proves nothing, so its rows are not routes
         if (!(yield* drivers.forType(input.expectedType))) return undefined
-        const em = yield* authEntityManager()
         const provider = yield* providerByCode(
-          em,
           tenant.id,
           input.providerCode,
           input.expectedType,
@@ -293,9 +276,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         providerId: string
         identifier: string
       }) {
-        const em = yield* authEntityManager()
         const row = yield* identityByIdentifier(
-          em,
           input.tenantId,
           input.providerId,
           input.identifier,
@@ -322,9 +303,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         const user = yield* loadUser(input.tenantId, input.userId)
         if (!user) return undefined
         const request = yield* HttpServerRequest.HttpServerRequest
-        const em = yield* authEntityManager()
         const { token, tokenHash } = createSessionToken()
-        yield* insertSession(em, {
+        yield* insertSession({
           tenantId: input.tenantId,
           userId: input.userId,
           tokenHash,
@@ -333,7 +313,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           userAgent: request.headers['user-agent'],
         }).pipe(Effect.orDie)
         if (input.identityId) {
-          yield* touchIdentity(em, input.identityId).pipe(Effect.orDie)
+          yield* touchIdentity(input.identityId).pipe(Effect.orDie)
         }
         yield* setCookie(token, config.sessionTtlSeconds)
         return user
@@ -355,8 +335,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       Effect.fn('Auth.signIn.loginMethods')(function* () {
         const tenant = yield* defaultTenant()
         if (!tenant) return [] as readonly LoginMethod[]
-        const em = yield* authEntityManager()
-        const providers = yield* loginProviders(em, tenant.id).pipe(Effect.orDie)
+        const providers = yield* loginProviders(tenant.id).pipe(Effect.orDie)
         const methods: LoginMethod[] = []
         for (const provider of providers) {
           const driver = yield* drivers.forType(provider.type)
@@ -400,8 +379,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
         const token = request.cookies[sessionCookieName]
         if (token) {
-          const em = yield* authEntityManager()
-          yield* revokeSessionByToken(em, hashSessionToken(token)).pipe(Effect.orDie)
+          yield* revokeSessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
         }
         yield* setCookie('', 0)
       }),

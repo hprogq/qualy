@@ -1689,3 +1689,22 @@ ping 200,零 [E]。
 
 **M3b-2 待做**:contributions(database entitiesEntry/baselineDir/dependsOn、permissions entry)
 迁描述器,lock 记 feature 投影,seed 改读描述器,retained 集语义不变。
+
+### Postgres.scope 清扫:org/auth/rbac 全量
+
+127 处 `entityManager/kyselyOf/query` 调用点归零:每插件的 `server/db.ts` 改为
+`export const db = Postgres.scope(closure)` + `type Db = ScopedKysely<...>`;查询助手全部
+去掉 `em` 首参(`db.query((k) => k.selectFrom...)`,ambient manager 在事务内自动加入——
+这本来就是端口层已有的保证,`em` 线程化只是 cordis 时代的管道残留);builder 片段助手
+(nodeColumns/people/standing/roleProjection/held/forPrincipal 等)改收 `k: Db` 首参。
+
+**语义确认**:事务内行为完全不变(TransactionManager ambient);事务外从"一个 em 连发多条"
+变"每条各自 fork"——这些是 Kysely 裸查询,不碰 identity map,自动提交语义等价。
+关键测试全绿:锁内复核、`counts a person the caller has moved but not committed`
+(未提交状态跨服务可见)、并发撤销单胜。**一次真实差异抓获**:auth 的 placement 测试里
+本地 `const db = createTestContext(...)` 与导入的 scope `db` 同名遮蔽,改 `authDb` 别名——
+遮蔽会让 `db.query` 撞上 testkit 的 SQL-string 签名,编译器当场拒绝。
+
+**验收**:typecheck 11 工程零错;node 359(org 37 / auth 47 / rbac 31 全绿)/ browser 13;
+真实启动:roles/org tree 200、manifest 7 页(`/api/iam/users` 的 400 为清扫前既有的
+入参校验行为,对照验证过),零 [E]。
