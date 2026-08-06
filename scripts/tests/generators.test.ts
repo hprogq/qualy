@@ -3,17 +3,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createWorkspace } from '@qualy/assembly/testkit'
+import { createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
 
 const pluginsPath = 'apps/web/src/plugins.gen.ts'
 const apiPath = 'packages/api/src/api.gen.ts'
 const apiHandlersPath = 'apps/server/api-handlers.gen.ts'
-const catalogPath = 'apps/server/permissions.gen.ts'
+
 // A capability's module lands where the manifest says its host lives, so a
 // throwaway manifest that names no workspace gets it beside itself. The old
 // generator wrote one hardcoded path whatever the manifest said, which is the
 // bug that would have shipped a second assembly's catalog into this one.
-const scratchCatalogPath = 'permissions.gen.ts'
 
 // Every run in this file generates into its own tree.
 //
@@ -50,7 +49,7 @@ describe('generator determinism', () => {
 
   it('produces byte-identical output on repeated runs', () => {
     gen()
-    const generated = [pluginsPath, apiPath, apiHandlersPath, catalogPath]
+    const generated = [pluginsPath, apiPath, apiHandlersPath]
     const before = generated.map((file) => read(file))
     // silence is the signal now: a generator that rewrote an identical file
     // would say so, and a second run that says nothing wrote nothing
@@ -116,28 +115,15 @@ describe('generator determinism', () => {
     expect(new Set(groups).size).toBe(groups.length)
   })
 
-  // The catalog decides what an assembly can authorize, so which plugins it
-  // counts is a security property rather than a packaging detail.
-  //
-  // Two of these replace runtime-registry tests whose enforcement point moved
-  // here. rbac used to drop a contributor's codes when that plugin's fiber
-  // unloaded, and used to reject a code claimed twice. Nothing unloads under a
-  // static assembly, so "currently served" becomes "in the lock" and "rejected
-  // at registration" becomes "refused during generation". The invariants
-  // survive; deleting their assertions instead of relocating them is how a
-  // static assembly quietly loses a guarantee.
-  it('serves the codes of the plugins in the manifest', () => {
-    gen()
-    const catalog = read(catalogPath)
-    expect(catalog).toContain("from '@qualy/plugin-org/permissions'")
-    expect(catalog).toContain("from '@qualy/plugin-rbac/permissions'")
-    expect(catalog).toContain("plugin: 'org'")
-  })
-
-  it('drops a disabled plugin, because its codes must stop authorizing', () => {
-    // the seed aggregation deliberately keeps disabled plugins so their rows
-    // survive being switched off. This one must not: a disabled plugin that
-    // kept its codes would keep authorizing against a surface nobody serves.
+  // Which plugins the permission catalog counts is a security property. The
+  // catalog itself is declared at boot now - each active plugin's layer is in
+  // the generated runtime, and declaring is part of building it - so what is
+  // left to assert here is the half resolution still owns: the active set,
+  // recorded in the lock, with disabled plugins out of it. A disabled plugin
+  // whose codes kept authorizing would be authorizing against a surface
+  // nobody serves; its layer never builds, so it never declares, and this
+  // pins the resolution-level record of the same fact.
+  it('drops a disabled plugin from the permission set, and keeps its tables', async () => {
     const workspace = createWorkspace(
       [
         '@qualy/plugin-database',
@@ -149,46 +135,17 @@ describe('generator determinism', () => {
       { disabled: ['@qualy/plugin-org'] },
     )
     try {
-      gen(`--yml ${workspace.manifestPath}`)
-      const catalog = read(scratchCatalogPath)
-      expect(catalog).not.toContain('@qualy/plugin-org/permissions')
-      expect(catalog).not.toContain("plugin: 'org'")
-      // rbac is still selected, so this is a real difference rather than an
-      // empty file that would pass the assertion above for the wrong reason
-      expect(catalog).toContain('@qualy/plugin-rbac/permissions')
+      const resolution = await resolveWorkspace(workspace)
+      const permissions = resolution.capabilities.get('permissions')?.state as { order: string[] }
+      expect(permissions.order).not.toContain('@qualy/plugin-org')
+      expect(permissions.order).toContain('@qualy/plugin-rbac')
+      // the database capability answers the same question the other way:
+      // switching a plugin off must not lose data, so its tables stay
+      const database = resolution.capabilities.get('database')?.state as { order: string[] }
+      expect(database.order).toContain('@qualy/plugin-org')
     } finally {
       workspace.dispose()
     }
-  })
-
-  it('keeps counting a disabled plugin under --all, because that flag is the seed', () => {
-    // --all reaches every generator from one argv. This one has to ignore it,
-    // or `pnpm build` would quietly widen what the release can authorize.
-    const workspace = createWorkspace(
-      [
-        '@qualy/plugin-database',
-        '@qualy/plugin-ui-registry',
-        '@qualy/plugin-org',
-        '@qualy/plugin-auth',
-        '@qualy/plugin-rbac',
-      ],
-      { disabled: ['@qualy/plugin-org'] },
-    )
-    try {
-      gen(`--yml ${workspace.manifestPath} --all`)
-      const catalog = read(scratchCatalogPath)
-      expect(catalog).not.toContain("plugin: 'org'")
-    } finally {
-      workspace.dispose()
-    }
-  })
-
-  it('gives every code exactly one owner', () => {
-    gen()
-    const catalog = read(catalogPath)
-    const owners = [...catalog.matchAll(/plugin: '(\w+)'/g)].map((match) => match[1])
-    expect(owners.length).toBeGreaterThan(0)
-    expect(new Set(owners).size).toBe(owners.length)
   })
 
   it('gives --all no say over what the server assembles', () => {
@@ -199,7 +156,7 @@ describe('generator determinism', () => {
     // same either way or a release would serve and authorize things the
     // manifest switched off.
     gen()
-    const serverSide = [apiPath, apiHandlersPath, catalogPath, 'apps/server/runtime.gen.ts']
+    const serverSide = [apiPath, apiHandlersPath, 'apps/server/runtime.gen.ts']
     const active = serverSide.map((file) => read(file))
     gen('--all')
     for (const [index, file] of serverSide.entries()) {

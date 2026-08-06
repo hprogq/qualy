@@ -1,3 +1,4 @@
+import { booted } from '@qualy/rbac-contract/testkit'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -11,8 +12,6 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
 import { authEntityManager } from '../src/server/db.ts'
-import { PermissionCatalog } from '@qualy/rbac-contract/effect'
-import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { Placement } from '@qualy/auth-contract'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
@@ -26,26 +25,25 @@ import { Iam, layer as authLayer } from '../src/server/index.ts'
 // And that it joins the caller's transaction, which is what lets org ask the
 // question about a retype it has written but not committed.
 
-const catalog: readonly ActivePermission[] = []
-
 const stack = (url: string) =>
-  authLayer.pipe(
-    // auth needs rbac now: closing a sign-in channel has to ask whether the
-    // tenant keeps an administrator who can still use one
-    Layer.provideMerge(rbacLayer),
-    Layer.provideMerge(
-      Layer.mergeAll(
-        databaseFor(url, { entities: authClosure }),
-        Layer.succeed(PermissionCatalog, catalog),
-        loginDriversLayer,
-        uiLayer,
-        Layer.succeed(
-          AuthConfig,
-          AuthConfig.of({
-            defaultTenantSlug: 'default',
-            sessionTtlSeconds: 604_800,
-            secureCookies: false,
-          }),
+  booted(
+    authLayer.pipe(
+      // auth needs rbac now: closing a sign-in channel has to ask whether the
+      // tenant keeps an administrator who can still use one
+      Layer.provideMerge(rbacLayer),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          databaseFor(url, { entities: authClosure }),
+          loginDriversLayer,
+          uiLayer,
+          Layer.succeed(
+            AuthConfig,
+            AuthConfig.of({
+              defaultTenantSlug: 'default',
+              sessionTtlSeconds: 604_800,
+              secureCookies: false,
+            }),
+          ),
         ),
       ),
     ),

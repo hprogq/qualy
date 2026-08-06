@@ -5,6 +5,7 @@ import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { NodeServer } from '@qualy/api-kit/node'
+import { assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { qualyApi } from '@qualy/api'
 import { apiHandlers } from '../api-handlers.gen.ts'
@@ -79,13 +80,26 @@ const server = Layer.unwrap(
  * `pluginLayers` is generated from the lock, so what an assembly contains is
  * decided by resolution and checked by the compiler: a plugin whose package is
  * missing fails the build rather than the boot.
+ *
+ * The barrier between the plugins and the port is what makes boot-time
+ * registries readable: a plugin registers work to run "once every layer is
+ * built" - rbac mirroring the permission catalog its contributors declared -
+ * and the server layer is built after the barrier, so the port never accepts
+ * a request against a half-assembled application. `Layer.provide` builds its
+ * argument first whether or not anything is consumed, and layers are
+ * memoized, so `pluginLayers` here and below is one build.
  */
+const booted = assembledBarrier.pipe(Layer.provide(pluginLayers))
+
 export const application = server.pipe(
+  Layer.provide(booted),
   Layer.provide(pluginLayers),
   // the registry a plugin puts its own probe into, and the health handler
   // reads: it belongs to the server base, not to whoever happens to own a
   // resource in this assembly
   Layer.provideMerge(readinessLayer),
+  // the boot hooks those plugins registered, run by `booted` above
+  Layer.provideMerge(assembledLayer),
   // One logger for everything the process says, colours included. The default
   // one prints the same layout without them, and a dev terminal that tells an
   // error from a request at a glance is worth the one line.

@@ -1,3 +1,4 @@
+import { booted } from '@qualy/rbac-contract/testkit'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
@@ -8,11 +9,9 @@ import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { DatabaseConfig, Entities } from '@qualy/plugin-database/server'
-import { PermissionCatalog } from '@qualy/rbac-contract/effect'
 import { entities } from '../entities.gen.ts'
 import { pluginLayers } from '../runtime.gen.ts'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
-import { permissionCatalog } from '../permissions.gen.ts'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { qualyApi } from '@qualy/api'
 import { makeClient } from '@qualy/api-client/effect'
@@ -42,8 +41,9 @@ const shell = (url: string) =>
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     // the same shape as the composition root: handlers get their services from
     // the generated plugin layers rather than from a hand-built subset, so a
-    // plugin that starts requiring something is caught here too
-    Layer.provide(pluginLayers),
+    // plugin that starts requiring something is caught here too - booted,
+    // because production serves only after the assembled barrier has run
+    Layer.provide(booted(pluginLayers)),
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(
@@ -59,7 +59,6 @@ const shell = (url: string) =>
         // a plugin that started shipping entities
         readinessLayer,
         Layer.succeed(Entities, entities),
-        Layer.succeed(PermissionCatalog, permissionCatalog),
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({

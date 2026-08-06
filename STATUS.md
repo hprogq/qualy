@@ -1460,3 +1460,31 @@ check-chunks                     org/OrgPage、ping/PingPage、rbac/RolesPage ch
 
 真实启动 `PORT=3061 pnpm dev`:`/health/live` 200、`/health/ready` 200、`/api/app/manifest` 200、
 `/api/auth/login-methods` 返回 local、未知路由 404,日志零 `[E]`。
+
+### permissions 回到注册形态:assembled 屏障
+
+用户裁定:装配完成前不放行接口,permissions 就能像 ui 一样在启动期注册。实施后发现旧论证的两半
+都不成立:①「registry 会被空读」——只在**构建期**读才成立,读挪到屏障(全部 layer 建完、端口未绑)
+就没有窗口;②「seed 需要静态目录」——seed 从来读的是 `qualy.contributions.permissions`(package.json
+声明),根本没消费过 permissions.gen.ts。
+
+**Assembled 屏障**(`@qualy/api-kit/assembled`):与 Readiness 同形的注册表 + `assembledBarrier`。
+宿主 `server.pipe(Layer.provide(booted))` —— **实查上游** `Layer.ts:1329-1348` `provideWith` 是
+`flatMap(that.build, ...)`,被 provide 的层无条件先建完,memoMap 贯穿所以 pluginLayers 只建一次。
+hook 失败 = 启动失败,端口不绑。
+
+**Permissions registry**(`@qualy/rbac-contract/effect`):rbac 提供(读者拥有注册表,与 Ui 同理),
+贡献方 `declarePermissions('org', permissions)` 在自己 layer 里声明,重复码在声明时硬失败并点名双方。
+rbac 的镜像循环原样搬进 boot hook。org/auth 各加一行。permissions.gen.ts 与 rbac assembly 的
+modules() 删除;resolve 保留(active 集入 lock、源码级重复扫描作早期答案、entry 与 exports 等同校验)。
+
+**测试台**:`@qualy/rbac-contract/testkit` 增 `booted(services, {catalog?})` —— 按生产顺序组
+registry→服务→声明→屏障。10 个 harness 换装;**真实插件自声明后,fixture 重复声明真实码立刻被
+registry 拒掉**(die),照做修剪:auth/org 的 fixture 目录整个删除,rbac 的只留它自己不声明的码。
+fixture 里 `on conflict do update set plugin = excluded.plugin` 会改写镜像行的 owner、被 catalog
+钉住检查判掉,全部改为保留镜像行的 no-op upsert。
+
+**验收**:361→358 node(删 3 条 gen 目录用例、加 1 条 resolution 态用例 + 3 条屏障单元),13 browser,
+typecheck 11 工程零错;真实启动:登录 → `/api/iam/roles` 200、admin manifest 7 页、permissions 表
+16 行 owners auth(4)/org(2)/rbac(10)。**伪造验证**:注释掉 `Layer.provide(booted)` 重启,同一调用
+403、manifest 缩到 2 页(fail closed)——屏障是承重的。

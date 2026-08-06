@@ -1,3 +1,4 @@
+import { booted } from '@qualy/rbac-contract/testkit'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -13,7 +14,7 @@ import { type Orm } from '@qualy/plugin-database/server'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
-import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
+import { Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access, layer as rbacLayer } from '../src/server/index.ts'
 
@@ -29,33 +30,23 @@ import { Access, layer as rbacLayer } from '../src/server/index.ts'
 // the claim rather than take it.
 
 const catalog: readonly ActivePermission[] = [
+  // only what the built layer does not declare itself: rbac's own codes now
+  // arrive from its layer, and re-declaring one here would be the collision
+  // the registry exists to refuse
   { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
-  { code: 'iam.role.manage', name: 'roles', target: 'tenant', plugin: 'iam' },
-  { code: 'iam.grant.read', name: 'read grants', target: 'org-node', plugin: 'iam' },
-  // a code the catalog does not serve authorizes nothing, so an actor who
-  // administers grants has to hold codes the catalog actually declares
-  { code: 'iam.grant.manage', name: 'manage grants', target: 'org-node', plugin: 'iam' },
-  {
-    code: 'iam.tenant-grant.manage',
-    name: 'manage tenant grants',
-    target: 'tenant',
-    plugin: 'iam',
-  },
+  { code: 'iam.user.read', name: 'users', target: 'tenant', plugin: 'iam' },
 ]
 
 // what the orm must know for a query to name a table
 const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
 
 const stack = (url: string) =>
-  rbacLayer.pipe(
-    Layer.provideMerge(
-      Layer.mergeAll(
-        uiLayer,
-        databaseFor(url, { entities: closure }),
-        Layer.succeed(PermissionCatalog, catalog),
-      ),
+  booted(
+    rbacLayer.pipe(
+      Layer.provideMerge(Layer.mergeAll(uiLayer, databaseFor(url, { entities: closure }))),
     ),
+    { catalog },
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm>) =>
@@ -138,7 +129,7 @@ const seed = Effect.fn('seed')(function* () {
       yield* runSql(sql`
         insert into permissions (code, plugin, name, target_kind)
         values ('org.tree.manage', 'org', 'manage', 'org-node')
-        on conflict (code) do update set plugin = excluded.plugin returning id`),
+        on conflict (code) do update set code = excluded.code returning id`),
     ).id
     yield* runSql(sql`
       insert into role_permissions (tenant_id, role_id, permission_id)
@@ -561,7 +552,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis suite covered', ()
             yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('iam.grant.read', 'iam', 'read grants', 'org-node')
-              on conflict (code) do update set plugin = excluded.plugin returning id`),
+              on conflict (code) do update set code = excluded.code returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)

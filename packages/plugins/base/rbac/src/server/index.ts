@@ -4,11 +4,12 @@ import { Context, Effect, Layer } from 'effect'
 import {
   AccessDenied,
   LastAdministrator,
-  PermissionCatalog,
+  Permissions,
   Rbac,
   type RbacShape,
 } from '@qualy/rbac-contract/effect'
-import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import type { ActivePermission, PermissionDefinition, Principal } from '@qualy/rbac-contract'
+import { Assembled } from '@qualy/api-kit/assembled'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
@@ -18,6 +19,7 @@ import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
+import { permissions as ownPermissions } from '../permissions.ts'
 import { make as makeGrants, type GrantRow } from './grants.ts'
 import { rbacEntityManager } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -49,9 +51,12 @@ import { type RoleRow as RoleProjection } from './db.ts'
 // those reads into a call on Auth or Org is the single change that would make
 // the graph genuinely cyclic, and no incident asks for it.
 //
-// The catalog arrives rather than being collected. Contributors used to push
-// their codes in from their own constructors, which a static graph cannot
-// express, so the host resolves it from the manifest and hands it over.
+// The catalog is collected, again. Contributors declare their codes while
+// their own layers are built - they build on top of this one, so this layer
+// provides the registry they declare into and reads it at the assembled
+// barrier, after every layer and before the port binds. What made the cordis
+// shape inexpressible was reading DURING construction; reading at the barrier
+// is the same order requests observe, with the window closed.
 //
 // No handle parameter anywhere. A call made inside a caller's transaction joins
 // it because the connection travels in the fiber, so the authorization checks
@@ -61,8 +66,9 @@ import { type RoleRow as RoleProjection } from './db.ts'
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
-export const make = Effect.fn('Rbac.make')(function* () {
-  const declared = yield* PermissionCatalog
+export const make = Effect.fn('Rbac.make')(function* (registry: {
+  declared: Effect.Effect<readonly ActivePermission[]>
+}) {
   // this layer's database, closed over: what it builds is a service, and a
   // service that demands the orm has handed the orm to every caller
   const withDb = yield* withDatabase
@@ -77,40 +83,41 @@ export const make = Effect.fn('Rbac.make')(function* () {
   // it, because the authorization statements join that table: a code the
   // declaration knows and the table does not authorizes nothing.
   //
-  // Ownership and calling convention are the stable semantics, so a stored row
-  // that disagrees with the declaration is refused rather than overwritten:
-  // live grants already assume the old meaning, and a changed meaning needs a
-  // new code. Doing this while the layer is built means drift stops the
-  // assembly instead of an instance authorizing against a half-synced table.
+  // Mirrored at the assembled barrier rather than while this layer is built:
+  // contributors declare their codes while THEIR layers are built, and they
+  // build on top of this one. The barrier is after every layer and before the
+  // port binds, so the order requests observe is unchanged - a complete table,
+  // or no server. A stable container rather than a reassigned field, filled
+  // once the declarations are complete.
   const catalog = new Map<string, ActivePermission>()
-  for (const permission of declared) {
-    // Resolution refuses two plugins declaring one code, but it has to answer
-    // by reading source: it may not import plugin modules, because it also runs
-    // at startup where nothing can compile TypeScript. This is the same
-    // question asked of the catalog itself, and without it a code that got past
-    // that scan would be mirrored twice and quietly mean whichever came last.
-    const claimed = catalog.get(permission.code)
-    if (claimed) {
-      return yield* Effect.die(
-        new Error(
-          `permission ${permission.code} is declared by both ${claimed.plugin} and ${permission.plugin}`,
-        ),
-      )
-    }
-    const em = yield* rbacEntityManager()
-    yield* upsertPermission(em, permission).pipe(Effect.orDie)
-    const stored = yield* permissionRow(em, permission.code).pipe(Effect.orDie)
-    if (!stored || stored.plugin !== permission.plugin || stored.targetKind !== permission.target) {
-      return yield* Effect.die(
-        new Error(
-          `permission ${permission.code} conflicts with its stored row; changed ownership or ` +
-            'calling convention needs a new code',
-        ),
-      )
-    }
-    yield* refreshPermissionText(em, permission).pipe(Effect.orDie)
-    catalog.set(permission.code, permission)
-  }
+  const mirror = withDb(
+    Effect.gen(function* () {
+      for (const permission of yield* registry.declared) {
+        // Ownership and calling convention are the stable semantics, so a
+        // stored row that disagrees with the declaration is refused rather
+        // than overwritten: live grants already assume the old meaning, and a
+        // changed meaning needs a new code. Failing here stops the boot
+        // instead of an instance authorizing against a half-synced table.
+        const em = yield* rbacEntityManager()
+        yield* upsertPermission(em, permission).pipe(Effect.orDie)
+        const stored = yield* permissionRow(em, permission.code).pipe(Effect.orDie)
+        if (
+          !stored ||
+          stored.plugin !== permission.plugin ||
+          stored.targetKind !== permission.target
+        ) {
+          return yield* Effect.die(
+            new Error(
+              `permission ${permission.code} conflicts with its stored row; changed ownership or ` +
+                'calling convention needs a new code',
+            ),
+          )
+        }
+        yield* refreshPermissionText(em, permission).pipe(Effect.orDie)
+        catalog.set(permission.code, permission)
+      }
+    }),
+  )
 
   // a code the catalog does not serve authorizes nothing, whatever a stored
   // row says
@@ -362,7 +369,7 @@ export const make = Effect.fn('Rbac.make')(function* () {
     }),
   }
   shapeRef = shape
-  return { ...shape, grants, roles, diagnostics, grantScopeFor }
+  return { ...shape, grants, roles, diagnostics, grantScopeFor, mirror }
 })
 
 /**
@@ -384,36 +391,79 @@ export class Access extends Context.Service<
 >()('@qualy/plugin-rbac/Access') {}
 
 /**
+ * The registry contributors declare their codes into.
+ *
+ * A Map in a closure, like every registry here. `declare` is scoped so a
+ * plugin that goes away takes its codes with it, and a code claimed twice
+ * refuses the build naming both owners - the boot-time answer to the question
+ * resolution can only ask of source text.
+ */
+const makePermissionRegistry = () => {
+  const declared = new Map<string, ActivePermission>()
+  return Permissions.of({
+    declare: (owner: string, permissions: readonly PermissionDefinition[]) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          for (const permission of permissions) {
+            const previous = declared.get(permission.code)
+            if (previous) {
+              throw new Error(
+                `permission ${permission.code} is declared by both ${previous.plugin} and ${owner}`,
+              )
+            }
+            declared.set(permission.code, { ...permission, plugin: owner })
+          }
+        }),
+        () =>
+          Effect.sync(() => {
+            for (const permission of permissions) declared.delete(permission.code)
+          }),
+      ).pipe(Effect.orDie, Effect.asVoid),
+    declared: Effect.sync(() => [...declared.values()]),
+  })
+}
+
+/**
  * What this plugin contributes.
  *
  * Two tags from one construction: the port peers hold, and rbac's own
  * administration surface, which no peer reaches through a tag.
  */
-export const layer: Layer.Layer<Rbac | Access | UiAuthorizer, never, Orm | PermissionCatalog | Ui> =
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const { grants, roles, diagnostics, grantScopeFor, ...shape } = yield* make()
-      return Context.empty().pipe(
-        Context.add(Rbac, shape),
-        Context.add(Access, { grants, roles, diagnostics, grantScopeFor }),
-        // The one live registration the shell needs: which codes a viewer holds
-        // anywhere in their tenant. It is published from here because rbac is
-        // the only thing that can answer it, and it is a required service, so an
-        // assembly that serves a manifest without one fails to build rather than
-        // quietly showing every signed-in viewer nothing but public pages.
-        Context.add(UiAuthorizer, {
-          permissionsFor: (principal) =>
-            shape
-              .getProfile(principal)
-              .pipe(
-                Effect.map(
-                  (profile) => new Set([...profile.tenantPermissions, ...profile.orgPermissions]),
-                ),
+export const layer: Layer.Layer<
+  Rbac | Access | UiAuthorizer | Permissions,
+  never,
+  Orm | Ui | Assembled
+> = Layer.effectContext(
+  Effect.gen(function* () {
+    const registry = makePermissionRegistry()
+    const { grants, roles, diagnostics, grantScopeFor, mirror, ...shape } = yield* make(registry)
+    // the mirror runs once every contributor has declared; a failure there
+    // stops the boot, which is the same outcome mirroring at construction had
+    const assembled = yield* Assembled
+    yield* assembled.register({ name: 'rbac/permission-catalog', run: mirror })
+    yield* registry.declare('rbac', ownPermissions)
+    return Context.empty().pipe(
+      Context.add(Permissions, registry),
+      Context.add(Rbac, shape),
+      Context.add(Access, { grants, roles, diagnostics, grantScopeFor }),
+      // The one live registration the shell needs: which codes a viewer holds
+      // anywhere in their tenant. It is published from here because rbac is
+      // the only thing that can answer it, and it is a required service, so an
+      // assembly that serves a manifest without one fails to build rather than
+      // quietly showing every signed-in viewer nothing but public pages.
+      Context.add(UiAuthorizer, {
+        permissionsFor: (principal) =>
+          shape
+            .getProfile(principal)
+            .pipe(
+              Effect.map(
+                (profile) => new Set([...profile.tenantPermissions, ...profile.orgPermissions]),
               ),
-        }),
-      )
-    }),
-  ).pipe(Layer.merge(registerSurfaces(surfaces)))
+            ),
+      }),
+    )
+  }),
+).pipe(Layer.merge(registerSurfaces(surfaces)))
 
 // --- api ---
 

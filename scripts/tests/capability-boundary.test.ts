@@ -212,14 +212,12 @@ describe('a plugin that takes configuration', () => {
         await resolveWorkspace(authorized),
         'runtime.gen.ts',
       )
-      expect(withCapability).toContain(
-        "import { permissionCatalogLayer } from './permissions.gen.ts'",
-      )
+      expect(withCapability).toContain("import { entitiesLayer } from './entities.gen.ts'")
       expect(withCapability).toContain('export const capabilityLayers')
 
       const without = renderRuntimeModule(await resolveWorkspace(bare), 'runtime.gen.ts')
       expect(without).not.toContain('capabilityLayers')
-      expect(without).not.toContain('permissions')
+      expect(without).not.toContain('entities')
     } finally {
       bare.dispose()
       authorized.dispose()

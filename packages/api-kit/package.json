@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./readiness": "./src/readiness.ts",
     "./schema": "./src/schema.ts",
-    "./node": "./src/node.ts"
+    "./node": "./src/node.ts",
+    "./assembled": "./src/assembled.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

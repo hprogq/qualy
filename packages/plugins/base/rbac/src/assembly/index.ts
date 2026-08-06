@@ -4,21 +4,18 @@ import { defineCapabilityProvider, type ContributionInput } from '@qualy/assembl
 
 // Everything the assembly knows about permissions lives behind this one
 // module, and it disappears with rbac: an assembly with no authorization
-// resolves no catalog and generates no module naming one.
+// resolves no catalog.
 //
-// Permissions are a capability rather than a registry, and the reason is a
-// timing fact rather than a preference. rbac mirrors the declared catalog into
-// the permissions table while its own layer is built, because every
-// authorization statement joins that table; the plugins that declare codes are
-// built ON TOP of rbac, so a registry they pushed into would be read empty.
-// The seed needs the same catalog without starting an application, which a
-// registry cannot offer at all.
+// It generates nothing. The running catalog is declared at boot - each plugin
+// registers its codes while its layer is built, and rbac mirrors the complete
+// set at the assembled barrier - so what is left for the assembly is what only
+// the assembly can do: refuse a broken declaration at `qualy resolve`, before
+// anything has booted, and record who declares codes in the lock. The seed
+// still reads the declared modules through `qualy.contributions.permissions`,
+// because it writes permission rows without starting an application.
 //
 // Importing this module must stay free of side effects: it runs inside the
 // CLI, which has agreed to open nothing.
-
-/** where the host finds the aggregate, relative to its own workspace */
-export const PERMISSIONS_MODULE = 'permissions.gen.ts'
 
 export interface PermissionsContribution {
   /** the module whose `permissions` export is this plugin's catalog */
@@ -29,21 +26,6 @@ export interface PermissionsState {
   /** the plugins that declare codes, in a stable order */
   order: string[]
 }
-
-const asState = (value: unknown): PermissionsState => {
-  const order = (value as PermissionsState | undefined)?.order
-  return { order: Array.isArray(order) ? order.filter((id) => typeof id === 'string') : [] }
-}
-
-/** the plugin's short name, which is what a stored row records as its owner */
-const ownerOf = (pluginId: string) =>
-  pluginId
-    .split('/')
-    .pop()!
-    .replace(/^plugin-/, '')
-
-const localName = (pluginId: string) =>
-  `${ownerOf(pluginId).replace(/[^a-zA-Z0-9]+(.)/g, (_match, next: string) => next.toUpperCase())}Permissions`
 
 export function parsePermissionsContribution(input: ContributionInput): PermissionsContribution {
   const where = `${input.pluginId}: qualy.contributions.permissions`
@@ -74,11 +56,11 @@ const exportTarget = (value: unknown): string | undefined => {
 }
 
 /**
- * The declaring module, checked against the subpath the host will import.
+ * The declaring module, checked against the subpath the seed will import.
  *
- * Cross-plugin references and the seed reach the catalog through
- * `exports['./permissions']`, so a declaration pointing somewhere else would
- * mean two modules, two arrays and two answers to what a code means.
+ * The seed reaches the catalog through `exports['./permissions']`, and the
+ * running plugin declares the same module at boot, so a declaration pointing
+ * somewhere else would mean two modules and two answers to what a code means.
  */
 const catalogFile = (
   packageDir: string,
@@ -101,12 +83,11 @@ const catalogFile = (
 /**
  * A code claimed twice has no owner.
  *
- * Authorization would answer with whichever definition was registered last,
- * and both plugins would look correct in isolation. Read from source rather
- * than by importing: resolution also runs at startup, where nothing can compile
- * a plugin's TypeScript, so it reads files and never loads plugin code. That
- * makes this an early answer rather than the authoritative one - rbac asks the
- * same question of the catalog it actually mirrors.
+ * The authoritative check is at boot, where rbac's registry refuses the
+ * second declaration with both plugins named. This one is the early answer:
+ * it runs at `qualy resolve`, which may not import plugin code - it also runs
+ * at startup, where nothing can compile TypeScript - so it reads source text
+ * and accepts that a determined declaration can evade it.
  */
 function assertNoDuplicateCodes(files: readonly { pluginId: string; file: string }[]): void {
   const owners = new Map<string, string>()
@@ -137,11 +118,22 @@ export default defineCapabilityProvider<PermissionsContribution, PermissionsStat
   // code that still authorizes against a surface nobody serves is a permission
   // granted for nothing. The two capabilities answer the same question
   // differently, which is why each answers it for itself.
-  resolve: (context) => ({
-    order: [...context.contributions.keys()]
+  resolve: (context) => {
+    const order = [...context.contributions.keys()]
       .filter((pluginId) => context.plugins.get(pluginId)?.state === 'active')
-      .sort(),
-  }),
+      .sort()
+    assertNoDuplicateCodes(
+      order.map((pluginId) => ({
+        pluginId,
+        file: catalogFile(
+          context.resolvePackageDir(pluginId),
+          pluginId,
+          context.contributions.get(pluginId)!,
+        ),
+      })),
+    )
+    return { order }
+  },
 
   // A catalog is a declaration, not a resource: a plugin that leaves takes its
   // codes with it, and the rows its codes named are rbac's to reconcile.
@@ -151,49 +143,6 @@ export default defineCapabilityProvider<PermissionsContribution, PermissionsStat
     nextState.order.length > 0
       ? nextState.order.map((id) => `+ ${id}`)
       : ['no plugin declares permissions'],
-
-  modules: (context) => {
-    const state = asState(context.state)
-    const declaring = state.order.flatMap((pluginId) => {
-      const contribution = context.contributions.get(pluginId)
-      if (!contribution) return []
-      const packageDir = context.resolvePackageDir(pluginId)
-      return [{ pluginId, file: catalogFile(packageDir, pluginId, contribution) }]
-    })
-    assertNoDuplicateCodes(declaring)
-
-    const imports = declaring.map(
-      (entry) =>
-        `import { permissions as ${localName(entry.pluginId)} } from '${entry.pluginId}/permissions'`,
-    )
-    const spread = declaring.map(
-      (entry) =>
-        `  ...${localName(entry.pluginId)}.map((definition) => ({ ...definition, plugin: '${ownerOf(entry.pluginId)}' })),`,
-    )
-    return [
-      {
-        path: PERMISSIONS_MODULE,
-        // the module carries the layer rather than the array: the tag belongs
-        // to a contract package, and a host that named it would be naming a
-        // service that does not exist in an assembly without authorization
-        layerExport: 'permissionCatalogLayer',
-        content: [
-          "import { Layer } from 'effect'",
-          "import type { ActivePermission } from '@qualy/rbac-contract'",
-          "import { PermissionCatalog } from '@qualy/rbac-contract/effect'",
-          ...imports,
-          '',
-          '/** every permission this assembly serves, owned by the plugin that declared it */',
-          declaring.length > 0
-            ? `export const permissionCatalog: readonly ActivePermission[] = [\n${spread.join('\n')}\n]`
-            : 'export const permissionCatalog: readonly ActivePermission[] = []',
-          '',
-          '/** the catalog as the service rbac reads it from */',
-          'export const permissionCatalogLayer = Layer.succeed(PermissionCatalog, permissionCatalog)',
-        ].join('\n'),
-      },
-    ]
-  },
 })
 
 export type { PermissionsContribution as Contribution, PermissionsState as State }

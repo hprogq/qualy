@@ -37,7 +37,10 @@ export async function verifyAssembly(
   const runtimeModulePath = fileURLToPath(new URL('../runtime.gen.ts', import.meta.url))
   if (!fs.existsSync(runtimeModulePath)) {
     problems.push(`${runtimeModulePath} is missing; run \`pnpm gen\``)
-  } else if (fs.readFileSync(runtimeModulePath, 'utf8') !== renderRuntimeModule(resolution, runtimeModulePath)) {
+  } else if (
+    fs.readFileSync(runtimeModulePath, 'utf8') !==
+    renderRuntimeModule(resolution, runtimeModulePath)
+  ) {
     problems.push(`${runtimeModulePath} is not what this manifest generates`)
   }
   if (problems.length === 0) return runtimeModulePath

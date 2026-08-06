@@ -1,3 +1,4 @@
+import { booted } from '@qualy/rbac-contract/testkit'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -12,8 +13,7 @@ import { entities as orgEntities } from '../src/db/entities.ts'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { type Orm } from '@qualy/plugin-database/server'
-import { PermissionCatalog } from '@qualy/rbac-contract/effect'
-import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import type { Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { layer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
@@ -26,32 +26,28 @@ import { Org, layer as orgLayer } from '../src/server/index.ts'
 // tests that were actually exercising much of that SQL. Each one names the
 // cordis test it comes from.
 
-const catalog: readonly ActivePermission[] = [
-  { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
-  { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
-]
-
 // what the orm must know for a query to name a table: this suite runs auth and
 // rbac alongside org, so their tables are part of what the assembly serves
 const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
 
 const stack = (url: string) =>
-  orgLayer.pipe(
-    Layer.provideMerge(authLayer),
-    Layer.provideMerge(rbacLayer),
-    Layer.provideMerge(
-      Layer.mergeAll(
-        databaseFor(url, { entities: closure }),
-        Layer.succeed(PermissionCatalog, catalog),
-        loginDriversLayer,
-        uiLayer,
-        Layer.succeed(
-          AuthConfig,
-          AuthConfig.of({
-            defaultTenantSlug: 'default',
-            sessionTtlSeconds: 604_800,
-            secureCookies: false,
-          }),
+  booted(
+    orgLayer.pipe(
+      Layer.provideMerge(authLayer),
+      Layer.provideMerge(rbacLayer),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          databaseFor(url, { entities: closure }),
+          loginDriversLayer,
+          uiLayer,
+          Layer.succeed(
+            AuthConfig,
+            AuthConfig.of({
+              defaultTenantSlug: 'default',
+              sessionTtlSeconds: 604_800,
+              secureCookies: false,
+            }),
+          ),
         ),
       ),
     ),
@@ -372,7 +368,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
             yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('org.tree.manage','org','manage','org-node')
-              on conflict (code) do update set plugin = excluded.plugin returning id`),
+              on conflict (code) do update set code = excluded.code returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
@@ -384,7 +380,7 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
             yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('org.tree.read','org','read','org-node')
-              on conflict (code) do update set plugin = excluded.plugin returning id`),
+              on conflict (code) do update set code = excluded.code returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)

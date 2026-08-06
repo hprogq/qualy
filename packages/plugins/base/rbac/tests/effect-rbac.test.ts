@@ -13,7 +13,8 @@ import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
 import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
 import { rbacEntityManager } from '../src/server/db.ts'
-import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
+import { Rbac } from '@qualy/rbac-contract/effect'
+import { booted } from '@qualy/rbac-contract/testkit'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access, layer as rbacLayer } from '../src/server/index.ts'
 
@@ -26,38 +27,25 @@ import { Access, layer as rbacLayer } from '../src/server/index.ts'
 // bug: it would look like an answer.
 
 const catalog: readonly ActivePermission[] = [
+  // only what the built layer does not declare itself: rbac's own codes now
+  // arrive from its layer, and re-declaring one here would be the collision
+  // the registry exists to refuse
   { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
   { code: 'iam.user.read', name: 'users', target: 'tenant', plugin: 'iam' },
-  // a code the catalog does not serve authorizes nothing, so the grant
-  // administration permission has to be declared for anyone to hold it
-  {
-    code: 'iam.tenant-grant.manage',
-    name: 'manage tenant grants',
-    target: 'tenant',
-    plugin: 'iam',
-  },
-  { code: 'iam.grant.manage', name: 'manage grants', target: 'org-node', plugin: 'iam' },
-  // reading grants is its own permission: being unable to see what you may
-  // revoke is not a narrower permission, it is a broken screen
-  { code: 'iam.grant.read', name: 'read grants', target: 'org-node', plugin: 'iam' },
-  { code: 'iam.tenant-grant.read', name: 'read tenant grants', target: 'tenant', plugin: 'iam' },
 ]
 
 // what the orm must know for a query to name a table
 const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
 
 const stack = (url: string) =>
-  rbacLayer.pipe(
-    // provideMerge rather than provide: the tests write fixtures through the
-    // same Database the layer uses, so it has to stay available above
-    Layer.provideMerge(
-      Layer.mergeAll(
-        uiLayer,
-        databaseFor(url, { entities: closure }),
-        Layer.succeed(PermissionCatalog, catalog),
-      ),
+  booted(
+    rbacLayer.pipe(
+      // provideMerge rather than provide: the tests write fixtures through the
+      // same Database the layer uses, so it has to stay available above
+      Layer.provideMerge(Layer.mergeAll(uiLayer, databaseFor(url, { entities: closure }))),
     ),
+    { catalog },
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm | Orm>) =>
@@ -135,7 +123,7 @@ const seed = Effect.fn('seed')(function* () {
     yield* runSql(sql`
       insert into permissions (code, plugin, name, target_kind)
       values ('org.tree.manage', 'org', 'manage', 'org-node')
-      on conflict (code) do update set plugin = excluded.plugin returning id`),
+      on conflict (code) do update set code = excluded.code returning id`),
   ).id
   yield* runSql(sql`
     insert into role_permissions (tenant_id, role_id, permission_id)
@@ -422,7 +410,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('iam.tenant-grant.manage','iam','manage tenant grants','tenant')
-              on conflict (code) do update set plugin = excluded.plugin returning id`),
+              on conflict (code) do update set code = excluded.code returning id`),
           ).id
           const role = one<{ id: string }>(
             yield* runSql(sql`
@@ -555,7 +543,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             yield* runSql(sql`
               insert into permissions (code, plugin, name, target_kind)
               values ('iam.grant.manage','iam','manage grants','org-node')
-              on conflict (code) do update set plugin = excluded.plugin returning id`),
+              on conflict (code) do update set code = excluded.code returning id`),
           ).id
           const granterRole = one<{ id: string }>(
             yield* runSql(sql`

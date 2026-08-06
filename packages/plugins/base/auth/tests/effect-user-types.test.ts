@@ -1,3 +1,4 @@
+import { booted } from '@qualy/rbac-contract/testkit'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -10,8 +11,6 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { type Orm } from '@qualy/plugin-database/server'
-import { PermissionCatalog } from '@qualy/rbac-contract/effect'
-import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
@@ -24,24 +23,23 @@ import { Iam, layer as authLayer } from '../src/server/index.ts'
 // but what it keeps possible: a tenant that can still administer itself, and a
 // role that still admits somebody. Both of those fail quietly.
 
-const catalog: readonly ActivePermission[] = []
-
 const stack = (url: string) =>
-  authLayer.pipe(
-    Layer.provideMerge(rbacLayer),
-    Layer.provideMerge(
-      Layer.mergeAll(
-        databaseFor(url, { entities: authClosure }),
-        Layer.succeed(PermissionCatalog, catalog),
-        loginDriversLayer,
-        uiLayer,
-        Layer.succeed(
-          AuthConfig,
-          AuthConfig.of({
-            defaultTenantSlug: 'default',
-            sessionTtlSeconds: 604_800,
-            secureCookies: false,
-          }),
+  booted(
+    authLayer.pipe(
+      Layer.provideMerge(rbacLayer),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          databaseFor(url, { entities: authClosure }),
+          loginDriversLayer,
+          uiLayer,
+          Layer.succeed(
+            AuthConfig,
+            AuthConfig.of({
+              defaultTenantSlug: 'default',
+              sessionTtlSeconds: 604_800,
+              secureCookies: false,
+            }),
+          ),
         ),
       ),
     ),

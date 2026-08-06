@@ -5,6 +5,7 @@ import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'
+import { permissions } from '../permissions.ts'
 import { Placement } from '@qualy/auth-contract'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import {
@@ -37,7 +38,7 @@ import {
   typeHasRules,
   updateType,
 } from './db.ts'
-import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
+import { AccessDenied, Permissions, Rbac, declarePermissions } from '@qualy/rbac-contract/effect'
 import {
   AssignmentIncompatible,
   NodeNotFound,
@@ -796,10 +797,13 @@ export const make = Effect.fn('Org.make')(function* () {
  * It requires both peers and provides nothing to them, which is the direction
  * that keeps the graph acyclic.
  */
-export const layer: Layer.Layer<Org, never, Orm | Rbac | Placement | Ui> = Layer.effect(
-  Org,
-  make(),
-).pipe(Layer.merge(registerSurfaces(surfaces)))
+export const layer: Layer.Layer<Org, never, Orm | Rbac | Placement | Ui | Permissions> =
+  Layer.effect(Org, make()).pipe(
+    Layer.merge(registerSurfaces(surfaces)),
+    // the codes this domain defines, declared the way a page is: while this
+    // layer is built, into the registry rbac reads at the assembled barrier
+    Layer.merge(declarePermissions('org', permissions)),
+  )
 
 // --- api ---
 

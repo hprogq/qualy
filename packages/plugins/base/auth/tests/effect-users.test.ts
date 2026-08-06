@@ -1,3 +1,4 @@
+import { booted } from '@qualy/rbac-contract/testkit'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -10,8 +11,7 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { type Orm } from '@qualy/plugin-database/server'
-import { PermissionCatalog } from '@qualy/rbac-contract/effect'
-import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import type { Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
@@ -24,29 +24,23 @@ import { Iam, layer as authLayer } from '../src/server/index.ts'
 // thinking of: a transfer touches two nodes, and a retype touches the grants
 // the person already holds.
 
-const catalog: readonly ActivePermission[] = [
-  { code: 'auth.user.manage', name: 'manage users', target: 'org-node', plugin: 'auth' },
-  // reading is its own permission: a read-only administrator gets a screen
-  // without buttons rather than buttons that answer 403
-  { code: 'auth.user.read', name: 'read users', target: 'org-node', plugin: 'auth' },
-]
-
 const stack = (url: string) =>
-  authLayer.pipe(
-    Layer.provideMerge(rbacLayer),
-    Layer.provideMerge(
-      Layer.mergeAll(
-        databaseFor(url, { entities: authClosure }),
-        Layer.succeed(PermissionCatalog, catalog),
-        loginDriversLayer,
-        uiLayer,
-        Layer.succeed(
-          AuthConfig,
-          AuthConfig.of({
-            defaultTenantSlug: 'default',
-            sessionTtlSeconds: 604_800,
-            secureCookies: false,
-          }),
+  booted(
+    authLayer.pipe(
+      Layer.provideMerge(rbacLayer),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          databaseFor(url, { entities: authClosure }),
+          loginDriversLayer,
+          uiLayer,
+          Layer.succeed(
+            AuthConfig,
+            AuthConfig.of({
+              defaultTenantSlug: 'default',
+              sessionTtlSeconds: 604_800,
+              secureCookies: false,
+            }),
+          ),
         ),
       ),
     ),
@@ -107,7 +101,7 @@ const seed = Effect.fn('seed')(function* () {
     yield* runSql(sql`
       insert into permissions (code, plugin, name, target_kind)
       values ('auth.user.manage', 'auth', 'manage users', 'org-node')
-      on conflict (code) do update set plugin = excluded.plugin returning id`),
+      on conflict (code) do update set code = excluded.code returning id`),
   ).id
   yield* runSql(sql`
     insert into role_permissions (tenant_id, role_id, permission_id)
@@ -129,7 +123,7 @@ const seed = Effect.fn('seed')(function* () {
     yield* runSql(sql`
       insert into permissions (code, plugin, name, target_kind)
       values ('auth.user.read', 'auth', 'read users', 'org-node')
-      on conflict (code) do update set plugin = excluded.plugin returning id`),
+      on conflict (code) do update set code = excluded.code returning id`),
   ).id
   yield* runSql(sql`
     insert into role_permissions (tenant_id, role_id, permission_id)

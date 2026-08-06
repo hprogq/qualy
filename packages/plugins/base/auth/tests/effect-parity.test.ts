@@ -1,3 +1,4 @@
+import { booted } from '@qualy/rbac-contract/testkit'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -10,8 +11,8 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { kyselyOf, type Orm } from '@qualy/plugin-database/server'
-import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
-import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import { Rbac } from '@qualy/rbac-contract/effect'
+import type { Principal } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Iam, layer as authLayer } from '../src/server/index.ts'
@@ -23,27 +24,23 @@ import { sql as ksql } from 'kysely'
 // The identity behaviours the cordis suite asserted and the Effect suite did
 // not. Each names the cordis test it comes from.
 
-const catalog: readonly ActivePermission[] = [
-  { code: 'auth.user.read', name: 'read users', target: 'org-node', plugin: 'auth' },
-  { code: 'auth.user.manage', name: 'manage users', target: 'org-node', plugin: 'auth' },
-]
-
 const stack = (url: string) =>
-  authLayer.pipe(
-    Layer.provideMerge(rbacLayer),
-    Layer.provideMerge(
-      Layer.mergeAll(
-        databaseFor(url, { entities: authClosure }),
-        Layer.succeed(PermissionCatalog, catalog),
-        loginDriversLayer,
-        uiLayer,
-        Layer.succeed(
-          AuthConfig,
-          AuthConfig.of({
-            defaultTenantSlug: 'default',
-            sessionTtlSeconds: 604_800,
-            secureCookies: false,
-          }),
+  booted(
+    authLayer.pipe(
+      Layer.provideMerge(rbacLayer),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          databaseFor(url, { entities: authClosure }),
+          loginDriversLayer,
+          uiLayer,
+          Layer.succeed(
+            AuthConfig,
+            AuthConfig.of({
+              defaultTenantSlug: 'default',
+              sessionTtlSeconds: 604_800,
+              secureCookies: false,
+            }),
+          ),
         ),
       ),
     ),

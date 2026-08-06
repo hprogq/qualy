@@ -6,7 +6,8 @@ import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
-import { PermissionCatalog, Rbac } from '@qualy/rbac-contract/effect'
+import { Rbac } from '@qualy/rbac-contract/effect'
+import { booted } from '@qualy/rbac-contract/testkit'
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { layer as rbacLayer } from '../src/server/index.ts'
 
@@ -26,14 +27,11 @@ const catalog = (target: 'tenant' | 'org-node'): readonly ActivePermission[] => 
 const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
 
 const stack = (url: string, permissions: readonly ActivePermission[]) =>
-  rbacLayer.pipe(
-    Layer.provideMerge(
-      Layer.mergeAll(
-        uiLayer,
-        databaseFor(url, { entities: closure }),
-        Layer.succeed(PermissionCatalog, permissions),
-      ),
+  booted(
+    rbacLayer.pipe(
+      Layer.provideMerge(Layer.mergeAll(uiLayer, databaseFor(url, { entities: closure }))),
     ),
+    { catalog: permissions },
   )
 
 describe.runIf(postgresAvailable).concurrent('the stored permission row', () => {

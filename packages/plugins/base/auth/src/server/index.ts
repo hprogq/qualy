@@ -13,10 +13,11 @@ import {
   readQueryCursor,
 } from '@qualy/api-kit'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
-import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
+import { AccessDenied, Permissions, Rbac, declarePermissions } from '@qualy/rbac-contract/effect'
 
 import { placementViolations, usersBlockingOrgType } from './placement.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
+import { permissions } from '../permissions.ts'
 import { loginDriversLayer, LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, CurrentUser } from './session.ts'
@@ -97,8 +98,17 @@ export { config } from './auth-config.ts'
 export const layer: Layer.Layer<
   Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions | LoginDrivers,
   never,
-  Orm | Rbac | AuthConfig | Ui
-> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer, registerSurfaces(surfaces)).pipe(
+  Orm | Rbac | AuthConfig | Ui | Permissions
+> = Layer.mergeAll(
+  tags,
+  sessionLayer,
+  viewerLayer,
+  signInLayer,
+  registerSurfaces(surfaces),
+  // the identity domain's own codes, into the registry rbac reads at the
+  // assembled barrier
+  declarePermissions('auth', permissions),
+).pipe(
   // The registry travels with its consumer. auth is the only thing that reads
   // it, and a driver plugin needs somewhere to register before auth is built -
   // which `provideMerge` gives it, by publishing the registry as well as
