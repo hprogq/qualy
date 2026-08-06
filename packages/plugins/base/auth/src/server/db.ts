@@ -1,4 +1,10 @@
-import { entityManager, type ClosureEntityManager } from '@qualy/plugin-database/server'
+import {
+  entityManager,
+  kyselyOf,
+  query,
+  type ClosureEntityManager,
+} from '@qualy/plugin-database/server'
+import { sql } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities } from '../db/entities.ts'
 
@@ -16,3 +22,20 @@ export type AuthEntityManager = ClosureEntityManager<typeof closure>
 
 /** a manager for auth's tables, joining an open transaction if there is one */
 export const authEntityManager = () => entityManager<typeof closure>()
+
+/**
+ * The tenant row, held for the rest of the transaction.
+ *
+ * The first statement of every structural write: two callers racing to change
+ * the same tenant serialize here, so the checks each of them runs afterwards
+ * are decided against a state nobody else is moving.
+ */
+export const lockTenant = (em: AuthEntityManager, tenantId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Tenant')
+      .select(sql<number>`1`.as('locked'))
+      .where('id', '=', tenantId)
+      .forUpdate()
+      .execute(),
+  )

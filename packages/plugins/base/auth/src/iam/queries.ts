@@ -3,68 +3,9 @@ import { scopeCoverage, type AuthorizationScope } from '@qualy/rbac-contract'
 
 // --- user types ---
 
-/**
- * A user type as an administrator sees it.
- *
- * The allowed org types come along because they are the whole of what a type
- * decides: a type confers no authority, only where its holders may stand.
- */
-export const userTypeProjection = (where: SQL): SQL => sql`
-  select t.id, t.code, t.name, t.description, t.allow_local_login, t.allow_sso_login,
-    t.enabled, t.is_system, t.sort_order, t.version, t.placement_mode,
-    (select count(*)::int from users u where u.tenant_id = t.tenant_id and u.user_type_id = t.id)
-      as user_count,
-    coalesce(
-      (select array_agg(a.org_type_id::text)
-       from user_type_allowed_org_types a
-       where a.tenant_id = t.tenant_id and a.user_type_id = t.id),
-      '{}') as allowed_org_types
-  from user_types t
-  where ${where}
-  order by t.sort_order, t.code`
-
-export const userTypesOfTenant = (tenantId: string): SQL =>
-  userTypeProjection(sql`t.tenant_id = ${tenantId}`)
-
-export const oneUserType = (tenantId: string, userTypeId: string): SQL =>
-  userTypeProjection(sql`t.tenant_id = ${tenantId} and t.id = ${userTypeId}`)
-
 /** the columns a guard needs, without the projection's aggregates */
 export const userTypeGuardQuery = (tenantId: string, userTypeId: string): SQL => sql`
   select id, code, enabled, is_system, version from user_types
-  where tenant_id = ${tenantId} and id = ${userTypeId}`
-
-export const countUsersOfTypeQuery = (tenantId: string, userTypeId: string): SQL => sql`
-  select count(*)::int as count from users
-  where tenant_id = ${tenantId} and user_type_id = ${userTypeId}`
-
-export const setUserTypeEnabledQuery = (
-  tenantId: string,
-  userTypeId: string,
-  enabled: boolean,
-): SQL => sql`
-  update user_types set enabled = ${enabled}, version = version + 1, updated_at = now()
-  where tenant_id = ${tenantId} and id = ${userTypeId}`
-
-export const updateUserTypeQuery = (
-  tenantId: string,
-  userTypeId: string,
-  fields: {
-    name?: string
-    description?: string | null
-    allowLocalLogin?: boolean
-    allowSsoLogin?: boolean
-    sortOrder?: number
-  },
-): SQL => sql`
-  update user_types set
-    name = coalesce(${fields.name ?? null}, name),
-    description = ${fields.description === undefined ? sql`description` : fields.description},
-    allow_local_login = coalesce(${fields.allowLocalLogin ?? null}, allow_local_login),
-    allow_sso_login = coalesce(${fields.allowSsoLogin ?? null}, allow_sso_login),
-    sort_order = coalesce(${fields.sortOrder ?? null}, sort_order),
-    version = version + 1,
-    updated_at = now()
   where tenant_id = ${tenantId} and id = ${userTypeId}`
 
 export const lockTenantQuery = (tenantId: string): SQL =>
@@ -89,69 +30,7 @@ export const rolesStrandedByUserTypeQuery = (tenantId: string, userTypeId: strin
                     where t.tenant_id = r.tenant_id and t.role_id = r.id
                       and t.user_type_id <> ${userTypeId})`
 
-export const deleteUserTypeQuery = (tenantId: string, userTypeId: string): SQL =>
-  sql`delete from user_types where tenant_id = ${tenantId} and id = ${userTypeId}`
-
 // --- placement policy ---
-
-/**
- * A validated literal uuid array.
- *
- * The ids are interpolated rather than parameterised because `= any(...)` and
- * `unnest(...)` need an array literal, so each one is checked against the uuid
- * shape first. A malformed id is refused as a missing org type rather than
- * reaching the database.
- */
-export const uuidArrayLiteral = (
-  ids: readonly string[],
-): { sql: string; ids: string[] } | undefined => {
-  const unique = [...new Set(ids)]
-  const shaped = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  if (unique.some((id) => !shaped.test(id))) return undefined
-  return {
-    sql: unique.length === 0 ? `'{}'::uuid[]` : `array['${unique.join("','")}']::uuid[]`,
-    ids: unique,
-  }
-}
-
-/** the type's own row, locked, with what a policy edit needs to decide */
-export const lockUserTypeQuery = (tenantId: string, userTypeId: string): SQL => sql`
-  select id, version, is_system, placement_mode from user_types
-  where tenant_id = ${tenantId} and id = ${userTypeId} for update`
-
-export const countOrgTypesQuery = (tenantId: string, list: string): SQL => sql`
-  select count(*)::int as count from org_types
-  where tenant_id = ${tenantId} and id = any(${sql.raw(list)})`
-
-export const currentAllowedOrgTypesQuery = (tenantId: string, userTypeId: string): SQL => sql`
-  select org_type_id from user_type_allowed_org_types
-  where tenant_id = ${tenantId} and user_type_id = ${userTypeId}`
-
-export const pruneAllowedOrgTypesQuery = (
-  tenantId: string,
-  userTypeId: string,
-  list: string,
-): SQL => sql`
-  delete from user_type_allowed_org_types
-  where tenant_id = ${tenantId} and user_type_id = ${userTypeId}
-    and org_type_id <> all(${sql.raw(list)})`
-
-export const addAllowedOrgTypesQuery = (
-  tenantId: string,
-  userTypeId: string,
-  list: string,
-): SQL => sql`
-  insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
-  select ${tenantId}, ${userTypeId}, id from unnest(${sql.raw(list)}) as id
-  on conflict do nothing`
-
-export const setPlacementModeQuery = (
-  tenantId: string,
-  userTypeId: string,
-  mode: string,
-): SQL => sql`
-  update user_types set placement_mode = ${mode}, version = version + 1, updated_at = now()
-  where tenant_id = ${tenantId} and id = ${userTypeId}`
 
 // --- users ---
 
@@ -347,38 +226,3 @@ export const assignableUserTypesQuery = (tenantId: string): SQL => sql`
   from user_types t
   where t.tenant_id = ${tenantId} and t.enabled and not t.is_system
   order by t.sort_order, t.code`
-
-/**
- * The org types a user type screen picks from.
- *
- * Its own endpoint rather than the role screen's, so stating where a kind of
- * person may stand needs no permission over roles.
- */
-export const orgTypeOptionsQuery = (tenantId: string): SQL => sql`
-  select id, code, name from org_types
-  where tenant_id = ${tenantId} order by name`
-
-export const insertUserTypeQuery = (input: {
-  tenantId: string
-  code: string
-  name: string
-  description: string | null
-  allowLocalLogin: boolean
-  allowSsoLogin: boolean
-  sortOrder: number
-  placementMode: 'unrestricted' | 'allow-list'
-}): SQL => sql`
-  insert into user_types (tenant_id, code, name, description, allow_local_login,
-    allow_sso_login, sort_order, placement_mode)
-  values (${input.tenantId}, ${input.code}, ${input.name}, ${input.description},
-    ${input.allowLocalLogin}, ${input.allowSsoLogin},
-    ${input.sortOrder}, ${input.placementMode})
-  returning id`
-
-export const seedAllowedOrgTypesQuery = (
-  tenantId: string,
-  userTypeId: string,
-  list: string,
-): SQL => sql`
-  insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
-  select ${tenantId}, ${userTypeId}, id from unnest(${sql.raw(list)}) as id`

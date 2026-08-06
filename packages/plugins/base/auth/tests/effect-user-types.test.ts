@@ -197,6 +197,34 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
     }
   })
 
+  it('leaves out of an edit whatever the caller left out', async () => {
+    const db = await createTestContext('effect-ut-partial')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          yield* iam.userTypes.update(f.tenant, f.staff, { description: 'the one to keep' }, 1)
+          // a patch naming only the name must not clear the description, and
+          // naming description: null must clear it. Both are the same absent
+          // value in json, so only the presence of the key can tell them apart
+          yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Renamed' }, 2)
+          const kept = yield* iam.userTypes.get(f.tenant, f.staff)
+          yield* iam.userTypes.update(f.tenant, f.staff, { description: null }, 3)
+          const cleared = yield* iam.userTypes.get(f.tenant, f.staff)
+          return { kept: kept.description, name: kept.name, cleared: cleared.description }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.kept).toBe('the one to keep')
+      expect(answer.name).toBe('Renamed')
+      expect(answer.cleared).toBeNull()
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('treats asking for the state it is already in as not an edit', async () => {
     const db = await createTestContext('effect-ut-noop')
     try {

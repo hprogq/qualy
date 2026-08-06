@@ -108,24 +108,24 @@ export const layer: Layer.Layer<
  * an administrator the recovery account may stand anywhere while every write
  * refused anything but the root.
  */
-const placementModeOf = (row: { is_system: boolean; placement_mode: string }) =>
-  row.is_system ? ('tenant-root' as const) : (row.placement_mode as 'unrestricted' | 'allow-list')
+const placementModeOf = (row: { isSystem: boolean; placementMode: string }) =>
+  row.isSystem ? ('tenant-root' as const) : (row.placementMode as 'unrestricted' | 'allow-list')
 
 const toUserTypeDto = (row: UserTypeRow) => ({
   id: row.id,
   code: row.code,
   name: row.name,
   description: row.description,
-  allowLocalLogin: row.allow_local_login,
-  allowSsoLogin: row.allow_sso_login,
+  allowLocalLogin: row.allowLocalLogin,
+  allowSsoLogin: row.allowSsoLogin,
   status: row.enabled ? ('active' as const) : ('disabled' as const),
-  isSystem: row.is_system,
-  sortOrder: row.sort_order,
+  isSystem: row.isSystem,
+  sortOrder: row.sortOrder,
   version: row.version,
-  userCount: row.user_count,
+  userCount: row.userCount,
   placementPolicy:
     placementModeOf(row) === 'allow-list'
-      ? { mode: 'allow-list' as const, orgTypeIds: row.allowed_org_types }
+      ? { mode: 'allow-list' as const, orgTypeIds: row.allowedOrgTypes }
       : { mode: placementModeOf(row) as 'unrestricted' | 'tenant-root' },
 })
 
@@ -398,7 +398,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const type = yield* iam.userTypes.get(principal.tenantId, params.userTypeId)
         const mode = placementModeOf(type)
         return {
-          policy: mode === 'allow-list' ? { mode, orgTypeIds: type.allowed_org_types } : { mode },
+          policy: mode === 'allow-list' ? { mode, orgTypeIds: type.allowedOrgTypes } : { mode },
           version: type.version,
         }
       }),
