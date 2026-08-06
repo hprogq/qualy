@@ -12,10 +12,11 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { layer as rbacLayer } from '@qualy/plugin-rbac'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
-import { Iam, layer as authLayer } from '../src/server/index.ts'
+import { Iam } from '../src/server/index.ts'
+import { layer as authLayer } from '../src/index.ts'
 
 // People, and who may administer them.
 //

@@ -9,7 +9,7 @@ import { entities as rbacEntities } from '../src/db/entities.ts'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { booted } from '@qualy/rbac-contract/testkit'
 import type { ActivePermission } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '../src/server/index.ts'
+import { layer as rbacLayer } from '../src/index.ts'
 
 // A stored permission row is the single truth about what a code means.
 //

@@ -47,7 +47,10 @@ const typecheckAlone = (dir: string) => {
     JSON.stringify({
       extends: './tsconfig.base.json',
       compilerOptions: { noEmit: true },
+      // the server-side program only: browser code lives in src/client and
+      // typechecks under the plugin's own client project, with DOM and jsx
       include: [`${dir}/src/**/*.ts`],
+      exclude: [`${dir}/src/client`],
     }),
   )
   try {

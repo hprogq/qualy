@@ -35,7 +35,7 @@ for (const entry of (await readEntries({ all: false })).filter((e) =>
     .replace(/^plugin-/, '')
   const alias = `${owner.replace(/[^a-zA-Z0-9]+(.)/g, (_m, c: string) => c.toUpperCase())}Routes`
   imports.push(
-    `import { routes as ${alias} } from '${entry.name}/${runtimeEntry.replace(/^\.\//, '')}'`,
+    `import { routes as ${alias} } from '${runtimeEntry === '.' ? entry.name : `${entry.name}/${runtimeEntry.replace(/^\.\//, '')}`}'`,
   )
   layers.push(`  ${alias},`)
 }

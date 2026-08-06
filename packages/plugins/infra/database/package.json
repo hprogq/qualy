@@ -8,6 +8,7 @@
     "./src/testkit.ts"
   ],
   "exports": {
+    ".": "./src/index.ts",
     "./assembly": "./src/assembly/index.ts",
     "./server": "./src/server/index.ts",
     "./migrator": "./src/migrator.ts",
@@ -37,7 +38,7 @@
       "entry": "./assembly"
     },
     "runtime": {
-      "entry": "./server",
+      "entry": ".",
       "config": true
     }
   }

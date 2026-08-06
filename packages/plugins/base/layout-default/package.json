@@ -6,9 +6,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./client": "./client/index.ts",
-    "./ui": "./src/ui.ts",
-    "./server": "./src/server/index.ts",
+    ".": "./src/index.ts",
+    "./client": "./src/client/index.ts",
     "./package.json": "./package.json"
   },
   "peerDependencies": {
@@ -28,7 +27,7 @@
   },
   "qualy": {
     "runtime": {
-      "entry": "./server",
+      "entry": ".",
       "dependsOn": [
         "@qualy/plugin-ui-registry"
       ]

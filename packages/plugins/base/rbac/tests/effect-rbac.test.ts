@@ -16,7 +16,8 @@ import { rbacEntityManager } from '../src/server/db.ts'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { booted } from '@qualy/rbac-contract/testkit'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
-import { Access, layer as rbacLayer } from '../src/server/index.ts'
+import { Access } from '../src/server/index.ts'
+import { layer as rbacLayer } from '../src/index.ts'
 
 // rbac under Effect, answering against a real database.
 //

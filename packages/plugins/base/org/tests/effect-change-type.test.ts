@@ -14,11 +14,12 @@ import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
-import { layer as authLayer } from '@qualy/plugin-auth/server'
+import { layer as rbacLayer } from '@qualy/plugin-rbac'
+import { layer as authLayer } from '@qualy/plugin-auth'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
-import { Org, layer as orgLayer } from '../src/server/index.ts'
+import { Org } from '../src/server/index.ts'
+import { layer as orgLayer } from '../src/index.ts'
 
 // The slice the whole milestone rests on.
 //

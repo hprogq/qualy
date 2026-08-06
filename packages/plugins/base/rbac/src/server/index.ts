@@ -1,5 +1,4 @@
-import { registerSurfaces, type Ui } from '@qualy/plugin-ui-registry/server/registry'
-import { surfaces } from '../ui.ts'
+import type { Ui } from '@qualy/plugin-ui-registry/server/registry'
 import { Context, Effect, Layer } from 'effect'
 import {
   AccessDenied,
@@ -429,7 +428,8 @@ const makePermissionRegistry = () => {
  * Two tags from one construction: the port peers hold, and rbac's own
  * administration surface, which no peer reaches through a tag.
  */
-export const layer: Layer.Layer<
+/** the service alone; the entry composes it with the screen it registers */
+export const serviceLayer: Layer.Layer<
   Rbac | Access | UiAuthorizer | Permissions,
   never,
   Orm | Ui | Assembled
@@ -463,7 +463,7 @@ export const layer: Layer.Layer<
       }),
     )
   }),
-).pipe(Layer.merge(registerSurfaces(surfaces)))
+)
 
 // --- api ---
 

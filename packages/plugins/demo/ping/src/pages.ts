@@ -1,0 +1,9 @@
+import { definePage } from '@qualy/ui-contract'
+
+// This plugin's page identities: id and path, nothing else.
+//
+// A leaf module with no framework in it, because both sides import it - the
+// entry registers the page on the server, and any plugin's browser code may
+// link to it through PageLink without spelling the path.
+
+export const pingPage = definePage({ id: 'ping/page', path: '/ping' })

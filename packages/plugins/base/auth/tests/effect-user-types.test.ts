@@ -11,11 +11,12 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { type Orm } from '@qualy/plugin-database/server'
-import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { layer as rbacLayer } from '@qualy/plugin-rbac'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
-import { Iam, layer as authLayer } from '../src/server/index.ts'
+import { Iam } from '../src/server/index.ts'
+import { layer as authLayer } from '../src/index.ts'
 
 // User types under Effect.
 //

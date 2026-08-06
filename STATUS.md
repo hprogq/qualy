@@ -1488,3 +1488,31 @@ fixture 里 `on conflict do update set plugin = excluded.plugin` 会改写镜像
 typecheck 11 工程零错;真实启动:登录 → `/api/iam/roles` 200、admin manifest 7 页、permissions 表
 16 行 owners auth(4)/org(2)/rbac(10)。**伪造验证**:注释掉 `Layer.provide(booted)` 重启,同一调用
 403、manifest 缩到 2 页(fail closed)——屏障是承重的。
+
+### 插件形态收口:入口 src/index.ts、client 进 src、ui.ts 拆分
+
+用户裁定三件事,全部落地:
+
+**① 入口是 `src/index.ts`**(`exports["."]`、`qualy.runtime.entry: "."`,三个生成器补 `'.'` → 包名
+的 specifier 规则)。入口是组合根:引入能力并注册,别无其他。ping/auth-local/layout-default 整个
+服务端就在入口里;auth/org/rbac 的入口做注册组合(`serviceLayer` + `registerSurfaces` +
+`declarePermissions` + handlers 再导出),service 本体仍在 `src/server/`(988/781/445 行的内部拆分
+是下一步,规则本来就有)。**不是 barrel**:`./db` `./permissions` `./api` `./pages` `./client`
+仍是叶子子路径——四类消费者要的子集互斥,一个全量 index 会把 effect 拖进浏览器、把 React 拖进 CLI。
+
+**② `ui.ts` 拆掉**:页面身份(`definePage`)进 `src/pages.ts`(浏览器要跨插件 import 它,
+UserMenu 对 loginPage 就是),surfaces 直接写在入口的 `registerSurfaces` 调用处——实测它只有
+本插件入口一个消费者。`./ui` 子路径删除。
+
+**③ `client/` 搬进 `src/client/`**。根 tsconfig 与 plugin-isolation 门禁 exclude `src/client`
+(Node 类型的工程不看浏览器代码,各 client 自带 tsconfig 照旧被 typecheck 脚本发现)。
+
+**顺带清理**:auth-local 孤儿 `login-driver.ts`(生成器删掉后没人 import)、宿主 runtime.ts 里
+重复的注释块与多余的 mergeAll(Effect LSP 的 TS37 顺手修掉)。
+
+**验收**:typecheck 11 工程零错;node 361 / browser 13 全绿;`pnpm build` + check-chunks 四个
+chunk 全在;`resolve --frozen-lockfile` 干净;真实启动(PORT=3064):登录 → roles 200、manifest
+7 页、`/api/ping/hello` 200、`/ping` 外壳 200,日志零 `[E]`。
+
+**未做,记触发条件**:①组件键仍是 `component: 'ping/PingPage'`,可由 page id 派生省一个名字——
+等下一轮 UI 触碰时一起;②auth/org/rbac 的 server/index.ts 内部拆分(handlers/service 分文件)。

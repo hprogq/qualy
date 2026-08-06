@@ -59,7 +59,8 @@ for (const entry of await readEntries({ all: false })) {
     )
   }
   const apiSpecifier = `${entry.name}/${api.replace(/^\.\//, '')}`
-  const entrySpecifier = `${entry.name}/${runtimeEntry.replace(/^\.\//, '')}`
+  const entrySpecifier =
+    runtimeEntry === '.' ? entry.name : `${entry.name}/${runtimeEntry.replace(/^\.\//, '')}`
   const module = (await import(resolvePluginModuleUrl(apiSpecifier))) as Record<string, unknown>
   const exportNames = Object.keys(module)
     .filter((name) => name.endsWith('ApiGroup'))

@@ -16,7 +16,8 @@ import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '../src/db/entities.ts'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
-import { Access, layer as rbacLayer } from '../src/server/index.ts'
+import { Access } from '../src/server/index.ts'
+import { layer as rbacLayer } from '../src/index.ts'
 
 // The behaviours the cordis suite asserted and the Effect suite did not.
 //

@@ -6,10 +6,11 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    ".": "./src/index.ts",
+    "./pages": "./src/pages.ts",
     "./db": "./src/db/entities.ts",
-    "./client": "./client/index.ts",
+    "./client": "./src/client/index.ts",
     "./permissions": "./src/permissions.ts",
-    "./ui": "./src/ui.ts",
     "./constants": "./src/constants.ts",
     "./server": "./src/server/index.ts",
     "./server/session": "./src/server/session.ts",
@@ -31,7 +32,7 @@
       }
     },
     "runtime": {
-      "entry": "./server",
+      "entry": ".",
       "dependsOn": [
         "@qualy/plugin-database",
         "@qualy/plugin-rbac",

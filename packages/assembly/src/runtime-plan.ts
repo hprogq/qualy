@@ -39,7 +39,10 @@ export const runtimeLayers = (resolution: Resolution): RuntimeLayer[] =>
     return [
       {
         id,
-        specifier: `${id}/${runtime.entry.replace(/^\.\//, '')}`,
+        // '.' means the package root: the plugin IS its entry, which is the
+        // convention; a subpath entry stays expressible for the ones whose
+        // root belongs to something else
+        specifier: runtime.entry === '.' ? id : `${id}/${runtime.entry.replace(/^\.\//, '')}`,
         dependsOn: runtime.dependsOn,
         // Only when the plugin said it takes one. A manifest block for a
         // plugin that reads none is a setting nothing consumes, which is the

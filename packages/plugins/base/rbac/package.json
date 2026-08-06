@@ -6,10 +6,11 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    ".": "./src/index.ts",
+    "./pages": "./src/pages.ts",
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
-    "./ui": "./src/ui.ts",
-    "./client": "./client/index.ts",
+    "./client": "./src/client/index.ts",
     "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
     "./package.json": "./package.json",
@@ -29,7 +30,7 @@
       }
     },
     "runtime": {
-      "entry": "./server",
+      "entry": ".",
       "dependsOn": [
         "@qualy/plugin-database",
         "@qualy/plugin-ui-registry"

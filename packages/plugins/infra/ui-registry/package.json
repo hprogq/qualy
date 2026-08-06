@@ -6,6 +6,7 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    ".": "./src/index.ts",
     "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
     "./server/authorizer": "./src/server/authorizer.ts",
@@ -27,7 +28,7 @@
   },
   "qualy": {
     "runtime": {
-      "entry": "./server",
+      "entry": ".",
       "api": "./api"
     }
   }

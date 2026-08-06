@@ -12,11 +12,12 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
 import { authEntityManager } from '../src/server/db.ts'
-import { layer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { layer as rbacLayer } from '@qualy/plugin-rbac'
 import { Placement } from '@qualy/auth-contract'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
-import { Iam, layer as authLayer } from '../src/server/index.ts'
+import { Iam } from '../src/server/index.ts'
+import { layer as authLayer } from '../src/index.ts'
 
 // The port org holds, and the only call org makes into auth.
 //

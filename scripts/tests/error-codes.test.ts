@@ -12,10 +12,10 @@ import * as auth from '../../packages/plugins/base/auth/src/server/errors.ts'
 import * as org from '../../packages/plugins/base/org/src/server/errors.ts'
 import * as rbac from '../../packages/plugins/base/rbac/src/server/errors.ts'
 import * as authLocal from '../../packages/plugins/base/auth-local/src/api.ts'
-import { errorMessages as authMessages } from '../../packages/plugins/base/auth/client/i18n.ts'
-import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/client/i18n.ts'
-import { errorMessages as orgMessages } from '../../packages/plugins/base/org/client/i18n.ts'
-import { errorMessages as rbacMessages } from '../../packages/plugins/base/rbac/client/i18n.ts'
+import { errorMessages as authMessages } from '../../packages/plugins/base/auth/src/client/i18n.ts'
+import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/src/client/i18n.ts'
+import { errorMessages as orgMessages } from '../../packages/plugins/base/org/src/client/i18n.ts'
+import { errorMessages as rbacMessages } from '../../packages/plugins/base/rbac/src/client/i18n.ts'
 
 // The rules about error codes that no single package can enforce.
 //

@@ -104,16 +104,12 @@ export const application = server.pipe(
   // one prints the same layout without them, and a dev terminal that tells an
   // error from a request at a glance is worth the one line.
   Layer.provide(Logger.layer([Logger.consolePretty({ colors: 'auto' })])),
-  Layer.provide(
-    Layer.mergeAll(
-      // each plugin's own block of the manifest, turned into a service by the
-      // plugin that reads it rather than by this file
-      pluginConfig,
-      // and what the capabilities derived: a service this host never names,
-      // which is what lets an assembly without that capability build at all
-      capabilityLayers,
-      // and what the capabilities derived: a service this host never names,
-      // which is what lets an assembly without that capability build at all
-    ),
-  ),
+  // each plugin's own block of the manifest, turned into a service by the
+  // plugin that reads it rather than by this file
+  Layer.provide(pluginConfig),
+  // and what the capabilities derived: a service this host never names, which
+  // is what lets an assembly without that capability build at all. Below the
+  // config, because a config layer may one day read a derived service, never
+  // the other way around.
+  Layer.provide(capabilityLayers),
 )
