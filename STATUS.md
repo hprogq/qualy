@@ -970,3 +970,24 @@ eligibility 的替换不再拿表名和列名当字符串参数。它原先那�
 **剩余**:org(`src/queries.ts` 252 行 + `server/index.ts` 1001 行),以及
 auth 里那两条读 rbac 表的语句(应改成 rbac 服务上的端口)。rbac 的 `LegacySql`
 现在只用来开事务、不再执行任何语句,org 切完后可以一并换成 `transaction()`。
+
+### org 也切完:三个插件的查询模块全部删除
+
+`org/src/queries.ts` 与 `rbac/src/queries.ts` 都已删除,auth 的 `iam/queries.ts` 只剩两条。
+ltree 的两条(建节点的路径原子写入、`subpath`/`nlevel` 搬子树)仍然写成 SQL —— 那不是
+构造器能表达的东西 —— 但它们现在是 org 里仅有的 SQL 文本,返回的行也和别处一样命名。
+`NodeRow` / `NodeView` 去掉 snake_case,边界映射函数存在的理由随之消失。
+
+### 只剩两条语句还在旧运行时上
+
+都在 auth,都读 rbac 的表:
+
+- `rolesStrandedByUserTypeQuery`(删用户类型时:哪些角色会变得没人能拿)
+- `grantsBlockingUserTypeQuery`(改用户类型时:哪些授权会失效)
+
+它们不在 auth 的实体闭包里,**也不应该在** —— 这两个问题属于 rbac。正确形态是 rbac 服务上的
+两个端口,和 `assertTenantKeepsAdministrator`、`grantsBlockingOrgType` 同型。
+
+**收尾顺序**:①这两个端口 → ②auth 的 `iam/queries.ts` 删除 → ③`LegacySql` shim 删除
+(它现在只用来开事务;七个文件里没有一处 `tx.execute` 是 rbac/org 的了)→
+④drizzle 表定义 `*/src/db/tables/` 与 drizzle 依赖撤下。
