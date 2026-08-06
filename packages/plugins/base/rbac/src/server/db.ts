@@ -1,4 +1,11 @@
-import { entityManager, type ClosureEntityManager } from '@qualy/plugin-database/server'
+import { Effect } from 'effect'
+import {
+  entityManager,
+  kyselyOf,
+  query,
+  type ClosureEntityManager,
+} from '@qualy/plugin-database/server'
+import { sql } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities } from '../db/entities.ts'
@@ -17,3 +24,34 @@ export type RbacEntityManager = ClosureEntityManager<typeof closure>
 
 /** a manager for rbac's tables, joining an open transaction if there is one */
 export const rbacEntityManager = () => entityManager<typeof closure>()
+
+/** the same row org and auth lock, so the three cannot interleave */
+export const lockTenant = (em: RbacEntityManager, tenantId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('Tenant')
+      .select(sql<number>`1`.as('locked'))
+      .where('id', '=', tenantId)
+      .forUpdate()
+      .execute(),
+  )
+
+export const userExists = (em: RbacEntityManager, tenantId: string, userId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('User')
+      .select('id')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userId)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row !== undefined))
+
+export const orgNodeExists = (em: RbacEntityManager, tenantId: string, orgNodeId: string) =>
+  query(() =>
+    kyselyOf(em)
+      .selectFrom('OrgNode')
+      .select('id')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', orgNodeId)
+      .executeTakeFirst(),
+  ).pipe(Effect.map((row) => row !== undefined))

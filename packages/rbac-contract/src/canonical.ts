@@ -13,14 +13,14 @@ import { sql, type SQL } from 'drizzle-orm'
 export const CANONICAL_ADMIN_ROLE = 'tenant-admin'
 
 export interface CanonicalAdminShape {
-  system_key: string | null
-  permission_mode: string
+  systemKey: string | null
+  permissionMode: string
   kind: string
 }
 
 export const isCanonicalTenantAdmin = (role: CanonicalAdminShape): boolean =>
-  role.system_key === CANONICAL_ADMIN_ROLE &&
-  role.permission_mode === 'all-active' &&
+  role.systemKey === CANONICAL_ADMIN_ROLE &&
+  role.permissionMode === 'all-active' &&
   role.kind === 'tenant'
 
 // the same test in sql, for the queries that decide over a set of rows
