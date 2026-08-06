@@ -1438,3 +1438,25 @@ repos/effect/packages/effect/src/Cause.ts:761-840。
 (org 的 `CREATE EXTENSION ltree`),它已经有显式锚点断言;没有任何插件用 baseline 插数据行,
 按冻结元规则不为不存在的东西建探针。触发条件:第一条带 `INSERT ... ON CONFLICT DO NOTHING`
 的 baseline 片段落地。
+
+### 本轮验收(2026-08-06)
+
+GitHub Actions 这天在故障中:本轮三个提交的 run 连续三次 **cancelled**,`steps: []`,每次排队整
+15 分钟一步都没跑起来(`gh api .../attempts/3/jobs` 实录)。上一条提交 33f4d10 用同一份 workflow
+是 success,所以不是配置问题,是拿不到 runner。**因此把 CI 的每一条命令在本地逐条跑了一遍**:
+
+```
+pnpm install --frozen-lockfile   Already up to date            (删掉 api-contract 之后 lock 一致)
+pnpm qualy resolve --frozen-lockfile   qualy.lock.json is up to date
+pnpm typecheck                   11 个工程零错误
+pnpm qualy database check        database: lineage ok
+pnpm qualy generate              database: nothing to generate + git status 干净
+pnpm qualy database drop-guard   drop guard ok (2 file(s) scanned)
+pnpm test                        58 files / 361 passed
+pnpm test:browser                13 passed
+pnpm build                       built in 501ms + staged assets ok
+check-chunks                     org/OrgPage、ping/PingPage、rbac/RolesPage chunk present
+```
+
+真实启动 `PORT=3061 pnpm dev`:`/health/live` 200、`/health/ready` 200、`/api/app/manifest` 200、
+`/api/auth/login-methods` 返回 local、未知路由 404,日志零 `[E]`。
