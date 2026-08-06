@@ -15,9 +15,11 @@ import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
 import { rbacEntityManager } from '../src/server/db.ts'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { booted } from '@qualy/rbac-contract/testkit'
+import { compileCatalog } from '@qualy/rbac-contract/plugin'
+import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access } from '../src/server/index.ts'
-import { layer as rbacLayer } from '../src/index.ts'
+import { serviceLayer as rbacLayer } from '../src/server/index.ts'
 
 // rbac under Effect, answering against a real database.
 //
@@ -28,9 +30,9 @@ import { layer as rbacLayer } from '../src/index.ts'
 // bug: it would look like an answer.
 
 const catalog: readonly ActivePermission[] = [
-  // only what the built layer does not declare itself: rbac's own codes now
-  // arrive from its layer, and re-declaring one here would be the collision
-  // the registry exists to refuse
+  // rbac's real declarations plus the codes these fixtures grant: the catalog
+  // is a prepare-phase value now, so the harness states the whole of it
+  ...compileCatalog([{ owner: 'rbac', permissions: rbacPermissions }]),
   { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
   { code: 'iam.user.read', name: 'users', target: 'tenant', plugin: 'iam' },

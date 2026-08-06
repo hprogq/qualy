@@ -1,4 +1,8 @@
 import { booted } from '@qualy/rbac-contract/testkit'
+import { compileCatalog } from '@qualy/rbac-contract/plugin'
+import { permissions as orgPermissions } from '@qualy/plugin-org/permissions'
+import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
+import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -13,10 +17,10 @@ import {
 import { kyselyOf, type Orm } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '@qualy/plugin-rbac'
+import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Iam } from '../src/server/index.ts'
-import { layer as authLayer } from '../src/index.ts'
+import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { placementLegal } from '../src/server/placement.ts'
 import { authEntityManager } from '../src/server/db.ts'
@@ -24,6 +28,13 @@ import { sql as ksql } from 'kysely'
 
 // The identity behaviours the cordis suite asserted and the Effect suite did
 // not. Each names the cordis test it comes from.
+
+// the same declarations production compiles, stamped the same way
+const catalog = compileCatalog([
+  { owner: 'org', permissions: orgPermissions },
+  { owner: 'auth', permissions: authPermissions },
+  { owner: 'rbac', permissions: rbacPermissions },
+])
 
 const stack = (url: string) =>
   booted(
@@ -45,6 +56,7 @@ const stack = (url: string) =>
         ),
       ),
     ),
+    { catalog },
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Orm | Orm>) =>

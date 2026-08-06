@@ -2,7 +2,7 @@ import { Effect, Layer } from 'effect'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import type { LoginDriver } from '@qualy/auth-contract/login'
-import { Login, legacyDriverLayer } from '@qualy/auth-contract/plugin'
+import { Login } from '@qualy/auth-contract/plugin'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { LoginSessions } from '@qualy/auth-contract/login'
@@ -90,8 +90,6 @@ const plugin = Plugin.define(
 
 export default plugin
 
-// legacy bridge until the descriptor assembler takes over the host; the
-// handlers stay a direct export because their precise type is load-bearing
-// in the generated composition
+// the handler layer stays a named export beside the descriptor: tests build
+// the single group from it, and a value export costs nothing
 export const apiHandlers = handlers
-export const layer = legacyDriverLayer(plugin)

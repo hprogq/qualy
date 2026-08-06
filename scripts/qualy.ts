@@ -8,14 +8,13 @@ import {
   lockFromResolution,
   lockPathFor,
   readLock,
-  renderRuntimeModule,
   resolveAssembly,
   writeLock,
   type AssemblyLock,
   type Resolution,
 } from '@qualy/assembly'
 import { DEFAULT_MANIFEST } from './lib/read-entries.ts'
-import { RUNTIME_MODULE, generatedPath } from './lib/paths.ts'
+import { generatedPath } from './lib/paths.ts'
 
 // deploy and the capability commands reach real systems, and the connection
 // details for them live in .env exactly as they do for `pnpm dev`
@@ -68,14 +67,9 @@ const resolve = async (): Promise<{
 
 /** every reason this tree is not the one the lock describes */
 const drift = (previous: AssemblyLock | undefined, resolution: Resolution): string[] => {
+  // there is no generated composition to drift any more: the host assembles
+  // at boot from this same resolution, so the lock is the whole story
   const reasons = lockDrift(previous, resolution)
-  const modulePath = generatedPath(RUNTIME_MODULE)
-  if (!fs.existsSync(modulePath)) reasons.push(`${relative(modulePath)} is missing`)
-  else if (fs.readFileSync(modulePath, 'utf8') !== renderRuntimeModule(resolution, modulePath)) {
-    reasons.push(`${relative(modulePath)} is not what this manifest generates`)
-  }
-  // the modules capabilities derive are as much a part of this tree as the one
-  // the core derives, and a plugin joining or leaving changes both
   const read = (module: string) => {
     const file = generatedPath(module)
     return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : undefined

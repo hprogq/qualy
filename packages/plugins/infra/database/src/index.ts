@@ -15,6 +15,5 @@ const plugin = Plugin.define(
 
 export default plugin
 
-// legacy bridge until the descriptor assembler takes over the host: the
-// layer and the config channel the generated runtime module composes
-export { config, layer } from './server/index.ts'
+/** the manifest block channel; the assembler calls it with this plugin's block */
+export { config } from './server/index.ts'

@@ -11,7 +11,6 @@ import {
   renderManifest,
   readLock,
   renderLock,
-  renderRuntimeModule,
   runtimeLayers,
   resolveAssembly,
   writeLock,
@@ -44,7 +43,6 @@ const commit = async (manifestPath: string) => {
 
 // where a host would write the module; only its directory matters, for the
 // relative anchor back to the manifest
-const MODULE_PATH = 'runtime.gen.ts'
 
 describe('manifest', () => {
   const parse = (text: string) => () => parseManifest(text, 'qualy.yml')
@@ -459,36 +457,34 @@ describe('frozen lockfile', () => {
   })
 })
 
-describe('runtime module', () => {
-  it('imports a layer for every plugin that ships one', async () => {
-    // the module is what the host composes, so a plugin missing from it is a
-    // plugin the manifest selected and the process never runs
+describe('runtime plan', () => {
+  it('plans a layer for every plugin that ships one', async () => {
+    // the plan is what the boot-time assembler walks, so a plugin missing
+    // from it is a plugin the manifest selected and the process never runs
     const workspace = createWorkspace(INFRA)
     try {
       const resolution = await resolve(workspace.manifestPath)
-      const module = renderRuntimeModule(resolution, MODULE_PATH)
-      expect(module).toBe(renderRuntimeModule(await resolve(workspace.manifestPath), MODULE_PATH))
-      // asked of the plugin rather than spelled here: which subpath carries a
-      // layer is the plugin's declaration, and writing it into the assertion
-      // turned renaming that subpath into a failure of the generator
       const specifiers = runtimeLayers(resolution).map((layer) => layer.specifier)
       expect(specifiers.length).toBe(INFRA.length)
-      for (const specifier of specifiers) expect(module).toContain(`from '${specifier}'`)
+      // deterministic: two resolutions of one manifest plan the same walk
+      expect(runtimeLayers(await resolve(workspace.manifestPath)).map((l) => l.specifier)).toEqual(
+        specifiers,
+      )
     } finally {
       workspace.dispose()
     }
   })
 
   it('leaves out what is not running', async () => {
-    // switched off with nothing depending on it: the module is the running
+    // switched off with nothing depending on it: the plan is the running
     // assembly, and a disabled plugin's layer would still be composed
     const workspace = createWorkspace([...INFRA, '@qualy/plugin-ping'], {
       disabled: ['@qualy/plugin-ping'],
     })
     try {
-      expect(renderRuntimeModule(await resolve(workspace.manifestPath), MODULE_PATH)).not.toContain(
-        'plugin-ping',
-      )
+      expect(
+        runtimeLayers(await resolve(workspace.manifestPath)).map((layer) => layer.id),
+      ).not.toContain('@qualy/plugin-ping')
     } finally {
       workspace.dispose()
     }

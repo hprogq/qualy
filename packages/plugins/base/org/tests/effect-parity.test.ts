@@ -1,4 +1,8 @@
 import { booted } from '@qualy/rbac-contract/testkit'
+import { compileCatalog } from '@qualy/rbac-contract/plugin'
+import { permissions as orgPermissions } from '@qualy/plugin-org/permissions'
+import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
+import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -14,12 +18,12 @@ import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
-import { layer as rbacLayer } from '@qualy/plugin-rbac'
-import { layer as authLayer } from '@qualy/plugin-auth'
+import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Org } from '../src/server/index.ts'
-import { layer as orgLayer } from '../src/index.ts'
+import { serviceLayer as orgLayer } from '../src/server/index.ts'
 
 // The tree behaviours the cordis suite asserted and the Effect suite did not.
 //
@@ -30,6 +34,13 @@ import { layer as orgLayer } from '../src/index.ts'
 // what the orm must know for a query to name a table: this suite runs auth and
 // rbac alongside org, so their tables are part of what the assembly serves
 const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+
+// the same declarations production compiles, stamped the same way
+const catalog = compileCatalog([
+  { owner: 'org', permissions: orgPermissions },
+  { owner: 'auth', permissions: authPermissions },
+  { owner: 'rbac', permissions: rbacPermissions },
+])
 
 const stack = (url: string) =>
   booted(
@@ -52,6 +63,7 @@ const stack = (url: string) =>
         ),
       ),
     ),
+    { catalog },
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Org | Orm>) =>

@@ -102,5 +102,4 @@ writeGenerated(
   ].join('\n'),
 )
 
-
 export {}

@@ -9,7 +9,7 @@ import {
 import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
 import { collectBaseline } from './baseline.ts'
 import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
-import { ENTITIES_MODULE, entityContributions, renderEntityModule } from './entities.ts'
+import { entityContributions } from './entities.ts'
 import { diffAgainstDeclared, loadEntityModules } from './diff.ts'
 import { blankMigration, generateDatabase, guardDestructive } from './generate.ts'
 import { adoptMigrations, runMigrations } from '../migrator.ts'
@@ -52,21 +52,6 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
       ...[...before].filter((id) => !after.has(id)).map((id) => `- ${id}`),
     ].sort()
     return lines.length > 0 ? lines : [`${nextState.order.length} plugin(s) own objects`]
-  },
-
-  // The host imports one tuple, not one import per plugin, and the tuple is
-  // what carries table names into the query builder. Derived on every codegen
-  // rather than committed: it is a function of the plugin set, and a stale one
-  // types queries against a schema this assembly does not have.
-  modules: (context) => {
-    const contributions = entityContributions(context, asState(context.state))
-    return [
-      {
-        path: ENTITIES_MODULE,
-        layerExport: 'entitiesLayer',
-        content: renderEntityModule(contributions),
-      },
-    ]
   },
 
   generate: generateDatabase,

@@ -62,12 +62,9 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     const { runMigrations, MIGRATIONS_FOLDER } = (await import(
       resolvePluginModuleUrl('@qualy/plugin-database/migrator')
     )) as typeof import('../../packages/plugins/infra/database/src/migrator.ts')
-    // the aggregate the host runs on, so the lineage is applied against the
-    // same metadata the application would use
-    const { entities } = (await import('../../apps/server/entities.gen.ts')) as unknown as {
-      entities: Parameters<typeof runMigrations>[1]['entities']
-    }
-    await runMigrations(url.href, { folder: MIGRATIONS_FOLDER, entities })
+    // the lineage is plain sql; the orm the migrator opens needs no entity
+    // metadata to apply it, which is also how a deployment job runs it
+    await runMigrations(url.href, { folder: MIGRATIONS_FOLDER, entities: [] })
   })
 
   afterAll(async () => {

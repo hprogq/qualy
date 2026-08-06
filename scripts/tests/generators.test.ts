@@ -150,7 +150,7 @@ describe('generator determinism', () => {
     // same either way or a release would serve and authorize things the
     // manifest switched off.
     gen()
-    const serverSide = [apiPath, 'apps/server/runtime.gen.ts']
+    const serverSide = [apiPath]
     const active = serverSide.map((file) => read(file))
     gen('--all')
     for (const [index, file] of serverSide.entries()) {

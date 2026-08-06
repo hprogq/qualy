@@ -7,7 +7,7 @@ import {
   capabilityWork,
   lockPathFor,
   readLock,
-  renderRuntimeModule,
+  runtimeLayers,
 } from '@qualy/assembly'
 import { commitLock, createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
 
@@ -120,7 +120,10 @@ describe('a second capability, beside the database', () => {
         capabilityModules(resolution)
           .map((module) => module.path)
           .sort(),
-      ).toEqual(['cache.gen.ts', 'entities.gen.ts'])
+        // the database capability generates no module any more - the running
+        // set is the descriptor assembler's; the mechanism itself stays, and
+        // the synthetic capability proves it
+      ).toEqual(['cache.gen.ts'])
     } finally {
       workspace.dispose()
     }
@@ -175,63 +178,23 @@ describe('a plugin that takes configuration', () => {
     exports: { './server': './server.js' },
   }
 
-  it('is handed its own block, as a literal the compiler can check', async () => {
+  it('is handed its own block, and only a configured plugin carries one', async () => {
     const workspace = createWorkspace(['@fake/plugin-tuned'], {
       synthetic: [configurable],
       configs: { '@fake/plugin-tuned': { volume: 11 } },
     })
     try {
-      const module = renderRuntimeModule(await resolveWorkspace(workspace), 'runtime.gen.ts')
-      expect(module).toContain(
-        "import { layer as pluginTuned, config as pluginTunedConfig } from '@fake/plugin-tuned/server'",
-      )
-      expect(module).toContain('pluginTunedConfig({"volume":11}, { manifestDir })')
-      // anchored at the module, so a plugin resolves a path from the manifest
-      // rather than from wherever the process happened to start
-      expect(module).toContain('const manifestDir = fileURLToPath')
-    } finally {
-      workspace.dispose()
-    }
-  })
-
-  it('merges a service a capability generated, and mentions none when there is no capability', async () => {
-    // the second half is what makes the whole design work: a tag lives in a
-    // contract package, and a host that named it would be naming a service
-    // that does not exist in an assembly without the capability that provides
-    // it. The generated module names it instead, and is not generated.
-    const bare = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-layout-default'])
-    const authorized = createWorkspace([
-      '@qualy/plugin-database',
-      '@qualy/plugin-ui-registry',
-      '@qualy/plugin-org',
-      '@qualy/plugin-auth',
-      '@qualy/plugin-rbac',
-    ])
-    try {
-      const withCapability = renderRuntimeModule(
-        await resolveWorkspace(authorized),
-        'runtime.gen.ts',
-      )
-      expect(withCapability).toContain("import { entitiesLayer } from './entities.gen.ts'")
-      expect(withCapability).toContain('export const capabilityLayers')
-
-      const without = renderRuntimeModule(await resolveWorkspace(bare), 'runtime.gen.ts')
-      expect(without).not.toContain('capabilityLayers')
-      expect(without).not.toContain('entities')
-    } finally {
-      bare.dispose()
-      authorized.dispose()
-    }
-  })
-
-  it('says nothing about config when no plugin takes any', async () => {
-    // layout-default ships a runtime entry and reads nothing from the manifest,
-    // which is the ordinary case: configuration is the exception
-    const workspace = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-layout-default'])
-    try {
-      const module = renderRuntimeModule(await resolveWorkspace(workspace), 'runtime.gen.ts')
-      expect(module).not.toContain('pluginConfig')
-      expect(module).not.toContain('manifestDir')
+      // what the boot-time assembler walks: the block travels on the plan,
+      // and the plugin's own config export decides what it means
+      const plan = runtimeLayers(await resolveWorkspace(workspace))
+      expect(plan).toEqual([
+        {
+          id: '@fake/plugin-tuned',
+          specifier: '@fake/plugin-tuned/server',
+          dependsOn: [],
+          config: { volume: 11 },
+        },
+      ])
     } finally {
       workspace.dispose()
     }
@@ -276,7 +239,12 @@ describe('the composition root', () => {
       .filter((entry): entry is string => typeof entry === 'string' && entry.endsWith('.ts'))
       .flatMap((entry) => {
         const source = fs.readFileSync(path.join(host, entry), 'utf8')
-        return source.includes("from '@qualy/plugin-") ? [entry] : []
+        // the descriptor kernel is a library like api-kit, not a plugin; the
+        // rule is about naming what an assembly may not contain
+        const imports = [...source.matchAll(/from '(@qualy\/plugin-[^']+)'/g)]
+          .map((match) => match[1]!)
+          .filter((specifier) => !specifier.startsWith('@qualy/plugin-kit'))
+        return imports.length > 0 ? [entry] : []
       })
     expect(offenders).toEqual([])
   })

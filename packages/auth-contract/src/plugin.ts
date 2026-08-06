@@ -1,11 +1,6 @@
 import { Layer } from 'effect'
-import {
-  ExtensionPoint,
-  Plugin,
-  type PluginDescriptor,
-  type PluginFeature,
-} from '@qualy/plugin-kit'
-import { LoginDrivers, registerLoginDriver, type LoginDriver } from './login.ts'
+import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
+import { loginDriversLayer, registerLoginDriver, type LoginDriver } from './login.ts'
 
 // The sign-in capability's face in the descriptor model. A driver's
 // presentation is pure data and its proof lives in an api handler, so
@@ -22,19 +17,16 @@ export const Login = {
   /** declares how this plugin's sign-in method is presented and typed */
   driver: (driver: LoginDriver): PluginFeature =>
     Plugin.contribute(LoginDriverDeclarations, driver),
-}
 
-/**
- * The legacy bridge, until the descriptor assembler takes over the host
- * (docs/plugin-descriptor-plan.md, batch 5): the runtime registration this
- * declaration used to be, derived from the descriptor so the two shapes
- * cannot drift. Precisely typed, because the generated composition's types
- * are load-bearing until cutover.
- */
-export const legacyDriverLayer = (
-  plugin: PluginDescriptor,
-): Layer.Layer<never, never, LoginDrivers> =>
-  Layer.mergeAll(
-    Layer.empty,
-    ...Plugin.contributionsOf(plugin, LoginDriverDeclarations).map(registerLoginDriver),
-  )
+  /**
+   * The owner's interpretation: the registry, already populated before any
+   * service layer builds - so auth reads a finished set instead of providing
+   * a channel its drivers reach back through.
+   */
+  provider: Plugin.provideExtension(LoginDriverDeclarations, {
+    compile: (drivers) =>
+      Layer.mergeAll(Layer.empty, ...drivers.map(registerLoginDriver)).pipe(
+        Layer.provideMerge(loginDriversLayer),
+      ),
+  }),
+}

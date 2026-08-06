@@ -13,8 +13,9 @@ import { manifestPath } from './manifest.ts'
 // its own source at boot.
 //
 // The order is the reason `runtime.ts` is imported below rather than at the
-// top: it reaches the generated modules, and importing it first would freeze
-// this process on whatever they said before codegen ran.
+// top: assembling imports every plugin module, and importing first would
+// freeze this process on whatever the generated client artifacts said before
+// codegen ran.
 const prepare = Effect.gen(function* () {
   if (process.env.NODE_ENV !== 'production') {
     const { generateAllQuietly } = yield* Effect.promise(() => import('../../../scripts/gen.ts'))
@@ -22,19 +23,23 @@ const prepare = Effect.gen(function* () {
       yield* Effect.logInfo(line)
     }
   }
-  // Start validates and starts; it never repairs. The generated modules this
-  // process imports are derived from the manifest and the lock, so an instance
-  // whose layers, routes or permission catalog do not match the reviewed lock
-  // is running an assembly nobody approved. Production refuses; development
-  // warns, because editing the manifest and restarting is the whole loop.
+  // Start validates and starts; it never repairs. The descriptors this
+  // process imports are selected by the resolution, so an instance whose
+  // manifest does not match the reviewed lock is running an assembly nobody
+  // approved. Production refuses; development warns, because editing the
+  // manifest and restarting is the whole loop.
   const warnings: string[] = []
-  yield* Effect.promise(() => verifyAssembly(manifestPath(), (message) => warnings.push(message)))
+  const resolution = yield* Effect.promise(() =>
+    verifyAssembly(manifestPath(), (message) => warnings.push(message)),
+  )
   for (const warning of warnings) yield* Effect.logWarning(warning)
+  return resolution
 })
 
-await Effect.runPromise(prepare)
+const resolution = await Effect.runPromise(prepare)
 
-const { application } = await import('./runtime.ts')
+const { makeApplication } = await import('./runtime.ts')
+const application = await makeApplication(resolution)
 
 // The entry point.
 //

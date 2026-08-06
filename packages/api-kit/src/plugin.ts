@@ -61,7 +61,7 @@ export const Api = {
    * the same value, where the host's exposure decision says so.
    */
   provider: (options?: {
-    readonly documentation?: Effect.Effect<ApiDocumentation>
+    readonly documentation?: Effect.Effect<ApiDocumentation, unknown>
   }): PluginFeature =>
     Plugin.provideExtension(ApiGroups, {
       compile: (contributions) => {

@@ -1,9 +1,8 @@
-import { Context, Effect, Layer, Schema, Scope } from 'effect'
+import { Context, Effect, Schema } from 'effect'
 import type {
   AccessProfile,
   ActivePermission,
   AuthorizationScope,
-  PermissionDefinition,
   PermissionTarget,
   Principal,
 } from './index.ts'
@@ -20,55 +19,19 @@ import type {
 // `effect` has no business in that bundle.
 
 /**
- * Where a plugin puts the permissions it defines, while its layer is built.
+ * Every permission this assembly serves, complete before any layer builds.
  *
- * This is the cordis `definePermissions` back, and what makes it expressible
- * in a static graph is the host's assembled barrier: contributors build on
- * top of rbac - they need its services - so rbac cannot read a complete set
- * during its own construction. It reads at the barrier instead, after every
- * layer has been built and before the port binds, so no request can observe
- * the window in which the catalog is still filling.
- *
- * Provided by rbac, like `Ui` is provided by the registry that reads it: the
- * reader owns the registry, and an assembly without authorization has neither
- * the service nor anyone asking for it.
+ * A prepare-phase value: the assembler compiles every plugin's declaration
+ * before it builds a single service, so rbac - and everything above it - is
+ * handed a finished catalog and is downstream of nobody. This replaced a
+ * boot-time registry which replaced an earlier value; what settled it is the
+ * descriptor model making the declarations collectable without running
+ * anything, which the registry existed to work around.
  */
-export class Permissions extends Context.Service<
-  Permissions,
-  {
-    /**
-     * Claims these codes for as long as the declaring layer lives.
-     *
-     * The same code declared twice has no owner - authorization would answer
-     * with whichever definition arrived last - so a duplicate refuses the
-     * build and names both plugins.
-     */
-    readonly declare: (
-      owner: string,
-      permissions: readonly PermissionDefinition[],
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** everything declared so far; complete only at the assembled barrier */
-    readonly declared: Effect.Effect<readonly ActivePermission[]>
-  }
->()('@qualy/rbac-contract/Permissions') {}
-
-/**
- * One plugin's catalog, as a layer for its composition root.
- *
- * The owner is the plugin's short name - the value a stored permission row
- * records - and the seed derives the same name from the package id, so the
- * two writers of that column cannot disagree.
- */
-export const declarePermissions = (
-  owner: string,
-  permissions: readonly PermissionDefinition[],
-): Layer.Layer<never, never, Permissions> =>
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* Permissions
-      yield* registry.declare(owner, permissions)
-    }),
-  )
+export class PermissionCatalog extends Context.Service<
+  PermissionCatalog,
+  readonly ActivePermission[]
+>()('@qualy/rbac-contract/PermissionCatalog') {}
 
 /** the principal is not allowed to do this, wherever the check was made */
 export class AccessDenied extends Schema.TaggedErrorClass<AccessDenied>()(

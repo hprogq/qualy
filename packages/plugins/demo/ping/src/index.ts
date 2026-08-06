@@ -4,7 +4,7 @@ import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { Postgres } from '@qualy/plugin-database/plugin'
-import { ReactUi, legacySurfaceLayer } from '@qualy/plugin-ui-registry/plugin'
+import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
 import { ADMIN_SHELL, PUBLIC, defineSurfaces } from '@qualy/ui-contract'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
@@ -67,11 +67,3 @@ const plugin = Plugin.define(
 )
 
 export default plugin
-
-// Legacy bridge, until the descriptor assembler takes over the host
-// (docs/plugin-descriptor-plan.md, batch 5). The registration layer derives
-// from the descriptor; the handlers stay a direct export because their
-// precise type - middleware and request markers - is load-bearing in the
-// generated composition, and the descriptor stores them erased.
-export const apiHandlers = handlers
-export const layer = legacySurfaceLayer(plugin)

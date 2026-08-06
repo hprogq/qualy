@@ -1,7 +1,7 @@
 import { Layer } from 'effect'
 import type { UiSurfaces } from '@qualy/ui-contract'
-import { ExtensionPoint, Plugin, type PluginDescriptor, type PluginFeature } from '@qualy/plugin-kit'
-import { registerSurfaces, uiLayer, type Ui } from './server/registry.ts'
+import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
+import { registerSurfaces, uiLayer } from './server/registry.ts'
 
 // The shell's face in the descriptor model.
 //
@@ -36,16 +36,3 @@ export const ReactUi = {
       ),
   }),
 }
-
-/**
- * The legacy bridge, until the descriptor assembler takes over the host
- * (docs/plugin-descriptor-plan.md, batch 5): the runtime-registration layer
- * this plugin's declarations used to be, derived from the descriptor so the
- * two shapes cannot drift. Precisely typed on purpose - the generated runtime
- * module still composes these, and its types are load-bearing until cutover.
- */
-export const legacySurfaceLayer = (plugin: PluginDescriptor): Layer.Layer<never, never, Ui> =>
-  Layer.mergeAll(
-    Layer.empty,
-    ...Plugin.contributionsOf(plugin, UiSurfaceDeclarations).map(registerSurfaces),
-  )

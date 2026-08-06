@@ -1,4 +1,6 @@
 import { booted } from '@qualy/rbac-contract/testkit'
+import { compileCatalog } from '@qualy/rbac-contract/plugin'
+import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -17,7 +19,7 @@ import { entities as rbacEntities } from '../src/db/entities.ts'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access } from '../src/server/index.ts'
-import { layer as rbacLayer } from '../src/index.ts'
+import { serviceLayer as rbacLayer } from '../src/server/index.ts'
 
 // The behaviours the cordis suite asserted and the Effect suite did not.
 //
@@ -31,9 +33,9 @@ import { layer as rbacLayer } from '../src/index.ts'
 // the claim rather than take it.
 
 const catalog: readonly ActivePermission[] = [
-  // only what the built layer does not declare itself: rbac's own codes now
-  // arrive from its layer, and re-declaring one here would be the collision
-  // the registry exists to refuse
+  // rbac's real declarations plus the codes these fixtures grant: the catalog
+  // is a prepare-phase value now, so the harness states the whole of it
+  ...compileCatalog([{ owner: 'rbac', permissions: rbacPermissions }]),
   { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
   { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
   { code: 'iam.user.read', name: 'users', target: 'tenant', plugin: 'iam' },

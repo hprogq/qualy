@@ -1592,3 +1592,45 @@ ReactUi.surfaces(..), Api.group(..))`;legacy `layer`/`apiHandlers` 导出由**�
 
 **验收**:typecheck 11 工程零错;node 366 / browser 13;真实启动:登录 → roles 200、
 manifest 7 页、ping 200,日志零 [E]。
+
+### M2 批 5:宿主切换完成,服务端 codegen 归零
+
+apps/server 下再无任何 .gen.ts。`pnpm gen` 只剩浏览器产物(@qualy/api 类型聚合 + plugins.gen
+chunk 表)。三个提交:5a 能力面(14b0805)、5b 本体、文档。
+
+**装配流程(已是生产路径)**:main.ts 跑 verify(lockDrift,生成物检查随文件一起消失)拿到
+resolution → `makeApplication(resolution)` → `loadAssembly` 按 `runtimeLevels` 展平的依赖序
+动态 import 各插件 default 描述器、给 configured 插件调 `config(block, {manifestDir})` →
+`assemble()` 三相:prepare 编译目录(Entities / PermissionCatalog / LoginDrivers / Ui 全为
+**构建前就完整的值**)→ 服务按序 provideMerge → afterServices 在完整服务之上闭合
+(运行时 HttpApi 聚合 + raw routes)→ Assembled 屏障(rbac 镜像)→ 绑端口。
+宿主自己也是描述器(`@qualy/app`:Api.provider 带文档曝光决策 + routesProvider)。
+
+**审计预言兑现**:auth→Ui 的构建期边消失(页面是 prepare 数据),permissions 注册表退回目录值
+(`compileCatalog` 重复码点名硬拒,harness 直接 `Layer.succeed(PermissionCatalog, ...)`——
+绕了一圈回到原点,但这次是描述器在喂它)。上一轮的屏障保留且只干真正的启动后工作。
+
+**类型账**:插件侧零 cast;擦除集中三点(Api.provider 聚合循环、装配器 AnyLayer、宿主
+makeApplication 返回处一次 narrow)。整装配的编译期闭合让位给 boot 校验——已伪造验证:
+注释掉 rbac 描述器里的 `Access.provider`,启动即
+`@qualy/plugin-rbac, @qualy/plugin-auth, @qualy/plugin-org contribute(s) to
+@qualy/rbac-contract/permissions, which no selected plugin provides`,点名双方。
+
+**保留与瘦身**:qualy CLI 的 drift 检查只剩 lock(+ 机制上仍支持 capability modules,
+由合成能力用例守);database assembly 删掉 modules()/renderEntityModule,retained 集语义
+原样(entityContributions 按 lock 供 generate/deploy;seed 传空实体——lineage 是纯 SQL);
+runtime-plan 只剩拓扑(runtimeLayers/runtimeLevels),render 半边删除。
+
+**测试台**:harness 改 `serviceLayer` + `booted({catalog})`(catalog = `compileCatalog`
+的真实声明,与生产同一编译函数);effect-api 直接跑生产 `loadAssembly`(滤掉 web 免 vite);
+entities.test 收缩为碰撞与加载校验(生成模块用例退役,其语义由 assembly.test 的 retained/
+依赖图用例覆盖)。
+
+**验收**:typecheck 11 工程零错;node 356 / browser 13;`pnpm build` + 四 chunk;
+`resolve --frozen-lockfile` 干净;真实启动(装配器路径):登录 → roles 200、manifest 7 页、
+openapi/docs/外壳/ready 全 200,零 [E]。
+
+**遗留(记触发条件)**:①org/auth/rbac 服务端内部的 entityManager/kyselyOf 调用点换
+`Postgres.scope`(纯清扫);②M3 CLI 统一(resolve 改读描述器、qualy run 动态命令、
+作废"resolve 不 import 插件代码"并改 CLAUDE);③CLAUDE 插件形态节需按描述器模型重写
+(与 M3 一起,避免改两次)。

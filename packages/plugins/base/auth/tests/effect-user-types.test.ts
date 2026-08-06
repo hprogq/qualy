@@ -1,4 +1,8 @@
 import { booted } from '@qualy/rbac-contract/testkit'
+import { compileCatalog } from '@qualy/rbac-contract/plugin'
+import { permissions as orgPermissions } from '@qualy/plugin-org/permissions'
+import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
+import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -11,18 +15,25 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { type Orm } from '@qualy/plugin-database/server'
-import { layer as rbacLayer } from '@qualy/plugin-rbac'
+import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
-import { layer as authLayer } from '../src/index.ts'
+import { serviceLayer as authLayer } from '../src/server/index.ts'
 
 // User types under Effect.
 //
 // A type carries no authority, so what is worth testing is not what it grants
 // but what it keeps possible: a tenant that can still administer itself, and a
 // role that still admits somebody. Both of those fail quietly.
+
+// the same declarations production compiles, stamped the same way
+const catalog = compileCatalog([
+  { owner: 'org', permissions: orgPermissions },
+  { owner: 'auth', permissions: authPermissions },
+  { owner: 'rbac', permissions: rbacPermissions },
+])
 
 const stack = (url: string) =>
   booted(
@@ -44,6 +55,7 @@ const stack = (url: string) =>
         ),
       ),
     ),
+    { catalog },
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Orm>) =>

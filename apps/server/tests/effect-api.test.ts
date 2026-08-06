@@ -1,48 +1,78 @@
-import { booted } from '@qualy/rbac-contract/testkit'
+import { assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder, HttpApiClient, HttpApiScalar, OpenApi } from 'effect/unstable/httpapi'
+import { HttpApiBuilder, HttpApiClient, OpenApi } from 'effect/unstable/httpapi'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
-import { DatabaseConfig, Entities } from '@qualy/plugin-database/server'
-import { entities } from '../entities.gen.ts'
-import { apiHandlers, pluginLayers } from '../runtime.gen.ts'
+import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { Api } from '@qualy/api-kit/plugin'
+import { Plugin } from '@qualy/plugin-kit'
+import { readLock, lockPathFor, resolveAssembly } from '@qualy/assembly'
 import { qualyApi } from '@qualy/api'
 import { makeClient } from '@qualy/api-client/effect'
+import { loadAssembly } from '../src/assembly.ts'
+import { manifestPath } from '../src/manifest.ts'
 import { healthApi, healthHandlers } from '../src/health.ts'
 
-// M3: a plugin's endpoints reaching the aggregate.
+// M3: a plugin's endpoints reaching the aggregate - now the runtime one.
 //
-// The plugin never imports the aggregate, and the aggregate is generated from
-// what resolution selected, so the property under test is that the two meet at
-// all: a group defined in one package, implemented in another, and served by a
-// third that only knows the generated list.
+// The plugin never imports the aggregate; the assembler builds it at boot
+// from the descriptors the resolution selected. The property under test is
+// that the two meet at all: a group defined in one package, implemented in
+// another, and served by a host that only knows the lock. The typed client
+// still comes from the generated definitions, which is what proves the
+// runtime aggregate serves what the static one describes.
 
 const port = 3198
 const base = `http://127.0.0.1:${port}`
 
 const spec = `${QUALY_API_PREFIX}/openapi.json` as const
 
-const shell = (url: string) =>
-  HttpRouter.serve(
-    // the same shape as the composition root: the generated aggregate of
-    // every entry's handlers, composed above the plugin services
-    Layer.mergeAll(
-      HttpApiBuilder.layer(qualyApi, { openapiPath: spec }).pipe(Layer.provide(apiHandlers)),
-      HttpApiScalar.layer(qualyApi, { path: `${QUALY_API_PREFIX}/docs` }),
-      HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
-    ),
-  ).pipe(
-    // booted, because production serves only after the assembled barrier ran
-    Layer.provide(booted(pluginLayers)),
-    Layer.provide(NodeHttpServer.layer(createServer, { port })),
+// the production assembler over the production resolution, minus the web
+// plugin: its raw routes would mount vite, which this suite is not about
+const assembled = await (async () => {
+  const manifest = manifestPath()
+  const resolution = await resolveAssembly({
+    manifestPath: manifest,
+    previousLock: readLock(lockPathFor(manifest)),
+  })
+  resolution.runtimePlugins = resolution.runtimePlugins.filter((id) => id !== '@qualy/plugin-web')
+  return loadAssembly(resolution, {
+    host: [
+      Plugin.define(
+        '@qualy/app-test',
+        Api.provider({
+          documentation: Effect.succeed({
+            spec,
+            reference: `${QUALY_API_PREFIX}/docs`,
+          }),
+        }),
+        Api.routesProvider,
+      ),
+    ],
+  })
+})()
 
+const shell = (url: string) => {
+  const { prepared, services, above } = assembled
+  const routes = Layer.mergeAll(
+    above,
+    HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
+  )
+  const booted = assembledBarrier.pipe(Layer.provide(services), Layer.provide(prepared))
+  return HttpRouter.serve(routes.pipe(Layer.provide(services), Layer.provide(prepared))).pipe(
+    Layer.provide(booted),
+    Layer.provide(services),
+    Layer.provide(prepared),
+    Layer.provide(NodeHttpServer.layer(createServer, { port })),
+    Layer.provideMerge(readinessLayer),
+    Layer.provideMerge(assembledLayer),
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(
@@ -53,11 +83,6 @@ const shell = (url: string) =>
             migrationsFolder: new URL('../../../db/migrations', import.meta.url).pathname,
           }),
         ),
-        // the aggregate the host provides, for the same reason the plugin
-        // layers are the generated ones: a hand-built subset would not notice
-        // a plugin that started shipping entities
-        readinessLayer,
-        Layer.succeed(Entities, entities),
         Layer.succeed(
           AuthConfig,
           AuthConfig.of({
@@ -68,7 +93,8 @@ const shell = (url: string) =>
         ),
       ),
     ),
-  )
+  ) as unknown as Layer.Layer<never>
+}
 
 describe.runIf(postgresAvailable)('the generated api aggregate', () => {
   it('serves a plugin group at its frozen path and records the call', async () => {

@@ -2,8 +2,9 @@ import { Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Postgres } from '@qualy/plugin-database/plugin'
-import { ReactUi, legacySurfaceLayer } from '@qualy/plugin-ui-registry/plugin'
-import { Access, legacyPermissionLayer } from '@qualy/rbac-contract/plugin'
+import { Login } from '@qualy/auth-contract/plugin'
+import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
+import { Access } from '@qualy/rbac-contract/plugin'
 import {
   ADMIN_SHELL,
   BLANK_SHELL,
@@ -65,6 +66,8 @@ const plugin = Plugin.define(
     }),
   ),
   Access.permissions('auth', permissions),
+  // auth owns the sign-in registry: drivers declare, this interprets
+  Login.provider,
   Api.group(identityApiGroup, identityApiHandlers),
   Api.group(sessionApiGroup, sessionApiHandlers),
   Plugin.layer(serviceLayer),
@@ -72,15 +75,8 @@ const plugin = Plugin.define(
 
 export default plugin
 
-// legacy bridge until the descriptor assembler takes over the host; the
-// handlers stay direct exports because their precise type is load-bearing in
-// the generated composition
 export { config } from './server/auth-config.ts'
 
-/** both groups, under the one name every entry exports its handlers as */
+// the handler layers stay named exports beside the descriptor: tests build
+// single groups from them, and a value export costs nothing
 export const apiHandlers = Layer.mergeAll(identityApiHandlers, sessionApiHandlers)
-
-export const layer = serviceLayer.pipe(
-  Layer.merge(legacySurfaceLayer(plugin)),
-  Layer.merge(legacyPermissionLayer(plugin)),
-)

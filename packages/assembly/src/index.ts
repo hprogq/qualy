@@ -1,5 +1,5 @@
 export { topoSort, CycleError, type TopoResult } from './graph.ts'
-export { runtimeLevels, type RuntimeLayer } from './runtime-plan.ts'
+export { runtimeLayers, runtimeLevels, type RuntimeLayer } from './runtime-plan.ts'
 export { canonicalHash, shortId } from './hash.ts'
 export {
   MANIFEST_VERSION,
@@ -39,5 +39,4 @@ export {
   type LockedCapability,
   type LockedPlugin,
 } from './lock.ts'
-export { renderRuntimeModule, runtimeLayers, writeRuntimeModule } from './runtime-plan.ts'
 export { capabilityContext, capabilityWork, type CapabilityWork } from './work.ts'

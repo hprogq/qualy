@@ -1,9 +1,8 @@
-import { Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Postgres } from '@qualy/plugin-database/plugin'
-import { ReactUi, legacySurfaceLayer } from '@qualy/plugin-ui-registry/plugin'
-import { Access, legacyPermissionLayer } from '@qualy/rbac-contract/plugin'
+import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
+import { Access } from '@qualy/rbac-contract/plugin'
 import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
@@ -33,19 +32,14 @@ const plugin = Plugin.define(
     }),
   ),
   Access.permissions('rbac', permissions),
+  // rbac owns the catalog: contributors declare, this compiles the value
+  Access.provider,
   Api.group(accessApiGroup, accessApiHandlers),
   Plugin.layer(serviceLayer),
 )
 
 export default plugin
 
-// legacy bridge until the descriptor assembler takes over the host; the
-// handlers stay a direct export because their precise type is load-bearing
-// in the generated composition
+// the handler layers stay named exports beside the descriptor: tests build
+// single groups from them, and a value export costs nothing
 export { accessApiHandlers as apiHandlers } from './server/index.ts'
-
-// provideMerge, not merge: the permission bridge declares into the registry
-// this very service provides, so the declarations build above it
-export const layer = Layer.mergeAll(legacySurfaceLayer(plugin), legacyPermissionLayer(plugin)).pipe(
-  Layer.provideMerge(serviceLayer),
-)

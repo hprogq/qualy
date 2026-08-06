@@ -1,7 +1,8 @@
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { Placement } from '@qualy/auth-contract'
-import { AccessDenied, Permissions, Rbac } from '../src/effect.ts'
+import { AccessDenied, Rbac } from '../src/effect.ts'
+import { compileCatalog } from '../src/plugin.ts'
 import type { ActivePermission } from '../src/index.ts'
 
 // The point of the port packages, stated as a test.
@@ -67,27 +68,19 @@ describe('the port packages', () => {
     expect((reason as { error?: { _tag?: string } }).error?._tag).toBe('ACCESS_DENIED')
   })
 
-  it('carries a declaration through the registry with its owner stamped', async () => {
-    // a stub registry with the contract's shape: what a contributor sees is
-    // declare-and-done, and what the reader sees carries the owner
-    const declared: ActivePermission[] = []
-    const registry = Permissions.of({
-      declare: (owner, permissions) =>
-        Effect.sync(() => {
-          for (const permission of permissions) declared.push({ ...permission, plugin: owner })
-        }),
-      declared: Effect.sync(() => declared),
-    })
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const permissions = yield* Permissions
-        yield* permissions.declare('org', [
-          { code: 'org.tree.read', name: 'read', target: 'org-node' },
-        ])
-      }).pipe(Effect.provide(Layer.succeed(Permissions, registry)), Effect.scoped),
-    )
-    expect(declared.map(({ code, plugin }) => ({ code, plugin }))).toEqual([
+  it('compiles declarations into a catalog with owners stamped, refusing duplicates', () => {
+    const catalog = compileCatalog([
+      { owner: 'org', permissions: [{ code: 'org.tree.read', name: 'read', target: 'org-node' }] },
+    ])
+    expect(catalog.map(({ code, plugin }) => ({ code, plugin }))).toEqual([
       { code: 'org.tree.read', plugin: 'org' },
     ])
+    // a code claimed twice has no owner; compilation names both sides
+    expect(() =>
+      compileCatalog([
+        { owner: 'org', permissions: [{ code: 'x.y', name: 'a', target: 'tenant' }] },
+        { owner: 'auth', permissions: [{ code: 'x.y', name: 'b', target: 'tenant' }] },
+      ]),
+    ).toThrow(/x\.y is declared by both org and auth/)
   })
 })

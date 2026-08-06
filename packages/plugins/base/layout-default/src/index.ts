@@ -1,5 +1,5 @@
 import { Plugin } from '@qualy/plugin-kit'
-import { ReactUi, legacySurfaceLayer } from '@qualy/plugin-ui-registry/plugin'
+import { ReactUi } from '@qualy/plugin-ui-registry/plugin'
 import { ADMIN_SHELL, BLANK_SHELL, defineSurfaces } from '@qualy/ui-contract'
 
 // A layout plugin ships one thing: implementations behind layout contracts.
@@ -27,6 +27,3 @@ const plugin = Plugin.define(
 )
 
 export default plugin
-
-// legacy bridge until the descriptor assembler takes over the host
-export const layer = legacySurfaceLayer(plugin)

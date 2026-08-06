@@ -18,5 +18,6 @@ const plugin = Plugin.define(
 
 export default plugin
 
-// legacy bridge until the descriptor assembler takes over the host
-export { appApiHandlers as apiHandlers, layer } from './server/index.ts'
+// the handler layer stays a named export beside the descriptor: tests build
+// the single group from it, and a value export costs nothing
+export { appApiHandlers as apiHandlers } from './server/index.ts'

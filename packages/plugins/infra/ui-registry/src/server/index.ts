@@ -14,10 +14,10 @@ export { UiManifest } from './manifest.ts'
 export { Ui, registerSurfaces } from './registry.ts'
 export type { Manifest } from './manifest.ts'
 
-// The registry travels with the manifest that reads it: a plugin has to have
-// somewhere to put a page before the manifest exists, which is what
-// `provideMerge` gives it - supplying the registry and publishing it at once.
-export const layer: Layer.Layer<UiManifest | Ui> = manifestLayer.pipe(Layer.provideMerge(uiLayer))
+// The registry arrives from the prepare phase, already populated: pages are
+// declarations the assembler collected before any service existed, so this
+// service only projects them per request.
+export const layer: Layer.Layer<UiManifest, never, Ui> = manifestLayer
 
 // see QUALY_API_ID: implemented against a local api so this plugin does not
 // import the aggregate it is part of

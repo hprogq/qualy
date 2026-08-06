@@ -47,10 +47,11 @@ ping 的 layer/apiHandlers 导出由描述器共享的常量派生(桥),主系�
 - 批 2:layout-default、auth-local(小插件)。
 - 批 3:ui-registry、database(能力插件自己的描述器 + 扩展点正式化)。
 - 批 4:auth、org、rbac(大插件)。
-- 批 5(宿主切换,最大的一批):装配器接管 apps/server,杀 runtime.gen / entities.gen /
-  routes.gen;ui 目录与权限目录退回 prepare 期值(屏障只留 boot hook);
-  `Postgres.scope(entities)` 句柄收掉 withDatabase/entityManager/kyselyOf/query 四层样板;
-  删 compat 助手;测试台换装配器。
+- ~~批 5(宿主切换)~~ **已完成 2026-08-07**:装配器接管 apps/server(src/assembly.ts 走
+  verify 后的 resolution 动态 import 描述器),runtime.gen / entities.gen / routes.gen 全部消失;
+  PermissionCatalog / LoginDrivers / Ui 均为 prepare 期编译值,屏障只剩 rbac 镜像等 boot hook;
+  `Postgres.scope` 已在 ping 验证(全插件调用点清扫另记);compat 助手删除;
+  测试台换装(harness 用 serviceLayer + compileCatalog 的真实目录)。
 - 每批过门禁:typecheck、node+browser 套件、真实启动。
 
 **M3 CLI 统一**:resolve/lock 改读描述器(lock 记 feature 投影,retained 语义不变);

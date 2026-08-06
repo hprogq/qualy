@@ -1,12 +1,10 @@
-import fs from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import {
   frozenLockfile,
   lockDrift,
   lockPathFor,
   readLock,
-  renderRuntimeModule,
   resolveAssembly,
+  type Resolution,
 } from '@qualy/assembly'
 
 // Start validates and starts; it never repairs.
@@ -19,31 +17,18 @@ import {
 // qualy.yml and restarting is the whole loop there.
 
 /**
- * The generated entry list the loader will read, having checked it still
- * describes the manifest and the lock.
+ * The resolution the assembler will load from, having checked the manifest
+ * still matches the reviewed lock. There is no generated composition module
+ * to check any more: what boots IS this resolution, imported at boot.
  */
 export async function verifyAssembly(
   manifestPath: string,
   warn: (message: string) => void,
-): Promise<string> {
+): Promise<Resolution> {
   const previousLock = readLock(lockPathFor(manifestPath))
   const resolution = await resolveAssembly({ manifestPath, previousLock })
   const problems = lockDrift(previousLock, resolution)
-  // The module THIS process imports, not one derived from the manifest path.
-  // The import in ./effect/runtime.ts is static, so QUALY_CONFIG pointing at
-  // another directory does not move it; deriving the path from the manifest
-  // checked a file the process would never load, and reported an assembly as
-  // verified while running a different one.
-  const runtimeModulePath = fileURLToPath(new URL('../runtime.gen.ts', import.meta.url))
-  if (!fs.existsSync(runtimeModulePath)) {
-    problems.push(`${runtimeModulePath} is missing; run \`pnpm gen\``)
-  } else if (
-    fs.readFileSync(runtimeModulePath, 'utf8') !==
-    renderRuntimeModule(resolution, runtimeModulePath)
-  ) {
-    problems.push(`${runtimeModulePath} is not what this manifest generates`)
-  }
-  if (problems.length === 0) return runtimeModulePath
+  if (problems.length === 0) return resolution
 
   const summary = `assembly is out of date:\n  ${problems.join('\n  ')}`
   if (frozenLockfile()) {
@@ -52,5 +37,5 @@ export async function verifyAssembly(
     )
   }
   warn(`${summary}; starting anyway because this is not a frozen-lockfile environment`)
-  return runtimeModulePath
+  return resolution
 }
