@@ -552,6 +552,78 @@ describe('the modules capabilities derive', () => {
   })
 })
 
+describe('descriptor-sourced contributions', () => {
+  // A capability that implements contributionFromDescriptor reads the plugin
+  // module, and the package.json spelling of the same key stops being a second
+  // source. Asserted with a capability this repository does not have, same as
+  // above: the core pipes values it cannot read.
+  const provider: SyntheticPackage = {
+    id: '@fake/plugin-caps',
+    qualy: { capabilityProvider: { key: 'caps', entry: './provider' } },
+    exports: { './provider': './provider.js' },
+    files: {
+      'provider.js': [
+        'export default {',
+        "  key: 'caps',",
+        "  parseContribution: () => { throw new Error('unreachable: the core refuses first') },",
+        '  contributionFromDescriptor: ({ descriptor }) => {',
+        "    const declared = descriptor.features.filter((f) => f._tag === 'Contribute' && f.point.id === 'caps-point')",
+        '    return declared.length > 0 ? { values: declared.map((f) => f.value) } : undefined',
+        '  },',
+        '  resolve: (context) => ({ order: [...context.contributions.keys()].sort() }),',
+        '}',
+      ].join('\n'),
+    },
+  }
+
+  it('reads them from the plugin module, and records them in the lock', async () => {
+    const declaring: SyntheticPackage = {
+      id: '@fake/plugin-declaring',
+      files: {
+        'index.js': [
+          'export default {',
+          "  _tag: 'Plugin', id: '@fake/plugin-declaring', dependsOn: [],",
+          "  features: [{ _tag: 'Contribute', point: { id: 'caps-point' }, value: 'widget' }],",
+          '}',
+        ].join('\n'),
+      },
+    }
+    const workspace = createWorkspace([provider.id, declaring.id], {
+      synthetic: [provider, declaring],
+    })
+    try {
+      const resolution = await resolve(workspace.manifestPath)
+      expect(resolution.plugins.get('@fake/plugin-declaring')!.contributions).toEqual({
+        caps: { values: ['widget'] },
+      })
+      // silent features contribute nothing, rather than an empty entry
+      expect(resolution.plugins.get('@fake/plugin-caps')!.contributions).toEqual({})
+      expect(resolution.capabilities.get('caps')!.state).toEqual({
+        order: ['@fake/plugin-declaring'],
+      })
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  it('refuses the package.json declaration the hook replaced', async () => {
+    // one source, not a fallback chain: a stale package.json declaration would
+    // either shadow the descriptor or silently lose to it
+    const stale: SyntheticPackage = {
+      id: '@fake/plugin-stale',
+      qualy: { contributions: { caps: { entry: 'index.js' } } },
+    }
+    const workspace = createWorkspace([provider.id, stale.id], { synthetic: [provider, stale] })
+    try {
+      await expect(resolve(workspace.manifestPath)).rejects.toThrow(
+        /@fake\/plugin-stale declares qualy\.contributions\.caps in package\.json, but capability caps reads contributions from the plugin descriptor now/,
+      )
+    } finally {
+      workspace.dispose()
+    }
+  })
+})
+
 describe('the manifest this repository ships', () => {
   it('has a lock that matches it', async () => {
     // the committed lock is what a deployment runs with; a stale one turns

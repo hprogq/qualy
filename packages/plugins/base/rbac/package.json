@@ -24,9 +24,6 @@
           "@qualy/plugin-auth"
         ],
         "entitiesEntry": "src/db/entities.ts"
-      },
-      "permissions": {
-        "entry": "src/permissions.ts"
       }
     },
     "capabilityProvider": {

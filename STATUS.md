@@ -1689,6 +1689,9 @@ ping 200,零 [E]。
 
 **M3b-2 待做**:contributions(database entitiesEntry/baselineDir/dependsOn、permissions entry)
 迁描述器,lock 记 feature 投影,seed 改读描述器,retained 集语义不变。
+→ 已再切两刀:2a(permissions,见下)已完成;2b(database + capabilityProvider feature 化
+
+- LOCKFILE_VERSION 升级)单独成轮。
 
 ### Postgres.scope 清扫:org/auth/rbac 全量
 
@@ -1708,3 +1711,48 @@ ping 200,零 [E]。
 **验收**:typecheck 11 工程零错;node 359(org 37 / auth 47 / rbac 31 全绿)/ browser 13;
 真实启动:roles/org tree 200、manifest 7 页(`/api/iam/users` 的 400 为清扫前既有的
 入参校验行为,对照验证过),零 [E]。
+
+### 能力面命名:Db 与 Ui(2026-08-07,用户裁决)
+
+`Postgres.*` → `Db.*`、`ReactUi.*` → `Ui.*`(25deb47)。Postgres 夸大了声明方
+(defineEntity 是 orm 通用的,仓库其余地方都叫 database),ReactUi 低估了契约
+(surface 声明是框架中立数据,React 只住在 client 注册表)。扩展点 id 不变
+(`@qualy/plugin-database/entities`、`@qualy/plugin-ui-registry/surfaces`),
+只动构造器命名空间。验收:typecheck 零错、node 361 + browser 13、真实启动干净。
+
+### M3b-2a:permissions 迁描述器,seed 统一(2026-08-07)
+
+**契约钩子**:`AssemblyCapabilityProvider` 增可选 `contributionFromDescriptor({pluginId,
+descriptor})`——钩子存在即该能力**单源读描述器**,同键的 package.json 声明按 orphaned
+硬拒(「reads contributions from the plugin descriptor now」),不做回退链。resolve 的
+描述器循环从 active 扩到**全部 accounted 插件**(disabled/detached 的声明仍塑造装配,
+包已由 uninstalled 检查保证在盘)。
+
+**permissions 换轨**(首个使用者):rbac assembly provider 经
+`Plugin.contributionsOf(descriptor, PermissionDeclarations)` 读声明,一插件一 owner
+(多 owner 硬拒);lock 的 contribution 从 `{entry}` 变 `{owner, codes[]}`——评审 diff
+直接看到码面(auth 4 / org 2 / rbac 10)。resolve 期查重改用运行时同一个
+`compileCatalog`(早答案与权威答案是同一个函数);正则源码扫描、catalogFile、
+exports["./permissions"] 一致性检查、`resolvePackageDir` 依赖全删。
+`qualy.contributions.permissions` 从 auth/org/rbac 的 package.json 删除。
+lock 只变内容不变版本(contribution 形状归 provider 所有,resolutionHash 自然翻新)。
+
+**seed 统一**:scripts/lib/permission-entries.ts 改读描述器(readEntries all →
+import default → `contributionsOf`),owner 直接来自声明本身(不再从包名派生);
+PermissionDeclarations 经宿主解析动态 import(根故意不依赖 rbac-contract)。
+exports 等价检查随"两个模块两个答案"的风险一起消失——现在只有描述器一个源。
+
+**测试**:assembly-resolve 增 describe「descriptor-sourced contributions」——合成能力
+(核心读不懂的 caps 键)验证①描述器贡献进 lock、静默 feature 不产生空条目、state 见到
+贡献集;②package.json 残留声明被点名硬拒。
+
+**验收(实际执行)**:`pnpm typecheck` 零错(11 工程);`pnpm test` 60 文件 361 全绿
+(assembly-resolve 36、seed permissions:16 走描述器路径);`pnpm test:browser` 13;
+`pnpm qualy resolve` 重写 lock 后 `--frozen-lockfile` 干净;真实启动 `/health/ready` 200、
+`/api/iam/roles` 401(未认证 fail-closed)。
+
+**M3b-2b 待做**:database 走同一钩子(`Db.entities` 携值 + dependsOn +
+compositeForeignKeys、`Db.baseline` feature、entitiesEntry/loadEntityModules 路径机械死、
+lock 投影 `{tables, baseline shas, dependsOn}` + LOCKFILE_VERSION 升级);
+`qualy.capabilityProvider` → `Plugin.capability(key, lazyLoad)` feature;
+metadata.ts 声明解析删除;retained 语义不变。

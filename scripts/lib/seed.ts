@@ -22,19 +22,14 @@ const passwordModule = async () =>
 
 type PermissionRow = import('../../packages/rbac-contract/src/index.ts').PermissionDefinition
 
-// permission catalogs are discovered through package metadata
-// (qualy.contributions.permissions.entry) so the seed never enumerates plugin names; the
-// same modules feed the runtime registry
+// permission catalogs are discovered through plugin descriptors
+// (Access.permissions) so the seed never enumerates plugin names; the same
+// declarations feed the runtime catalog, owner name included
 async function permissionCatalog(): Promise<{ plugin: string; rows: readonly PermissionRow[] }[]> {
-  return Promise.all(
-    (await resolvePermissionCatalogs()).map(async (ref) => {
-      const module = (await import(ref.moduleUrl)) as { permissions?: readonly PermissionRow[] }
-      if (!module.permissions) {
-        throw new Error(`${ref.plugin}: the permissions module must export "permissions"`)
-      }
-      return { plugin: ref.plugin, rows: module.permissions }
-    }),
-  )
+  return (await resolvePermissionCatalogs()).map((catalog) => ({
+    plugin: catalog.owner,
+    rows: catalog.permissions,
+  }))
 }
 
 const TENANT_ADMIN_ROLE = { code: 'tenant-admin', name: '租户管理员' }

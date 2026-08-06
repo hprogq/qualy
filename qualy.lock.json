@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:9a81c728fab3b6f92537b47b30ad6f9fc5e73ae55b1a7dc8e9a7e2f85a19e332",
-  "resolutionHash": "sha256:721292769a6d43e4866bae762e651d190583b75a226af094778b5f4eac3d3b08",
+  "resolutionHash": "sha256:0b89fd13e047a551e0d6dd28939440119cdd57e2983396f49e3fbe66c0dc5c0a",
   "plugins": {
     "@qualy/plugin-auth": {
       "version": "0.0.0",
@@ -14,7 +14,13 @@
           ]
         },
         "permissions": {
-          "entry": "src/permissions.ts"
+          "owner": "auth",
+          "codes": [
+            "auth.user-type.manage",
+            "auth.user-type.read",
+            "auth.user.manage",
+            "auth.user.read"
+          ]
         }
       }
     },
@@ -40,7 +46,11 @@
           "dependsOn": []
         },
         "permissions": {
-          "entry": "src/permissions.ts"
+          "owner": "org",
+          "codes": [
+            "org.tree.manage",
+            "org.tree.read"
+          ]
         }
       }
     },
@@ -66,7 +76,19 @@
           ]
         },
         "permissions": {
-          "entry": "src/permissions.ts"
+          "owner": "rbac",
+          "codes": [
+            "iam.authorization.inspect",
+            "iam.grant.manage",
+            "iam.grant.read",
+            "iam.org-role.bind",
+            "iam.role.escalate",
+            "iam.role.manage",
+            "iam.role.read",
+            "iam.tenant-grant.manage",
+            "iam.tenant-grant.read",
+            "iam.tenant-role.bind"
+          ]
         }
       }
     },

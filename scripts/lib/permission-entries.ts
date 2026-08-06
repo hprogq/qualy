@@ -1,46 +1,40 @@
-import fs from 'node:fs'
-import path from 'node:path'
+import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
 import { readEntries } from './read-entries.ts'
-import { resolvePackageDir, resolvePluginModuleUrl } from './packages.ts'
+import { resolvePluginModuleUrl } from './packages.ts'
 
-// The seed reads the same declaration the permissions capability resolves,
-// `qualy.contributions.permissions.entry`. Declared, never probed: undeclared
-// means no catalog, declared but inconsistent is a hard failure, and the entry
-// has to be the same file as the package's ./permissions export so the running
-// assembly and the seed can never consume two modules.
+// The seed reads the same declarations the permissions capability resolves and
+// the running assembly compiles: the Access.permissions features on each
+// plugin's descriptor. Declared, never probed - a descriptor without the
+// feature has no catalog.
 //
-// It reads the declaration directly rather than the lock because the seed runs
+// It reads descriptors directly rather than the lock because the seed runs
 // against a database whose plugins may be disabled, and a disabled plugin's
 // rows must survive being switched off.
-export interface PermissionCatalogRef {
-  plugin: string
-  moduleUrl: string
-}
 
-export async function resolvePermissionCatalogs(): Promise<PermissionCatalogRef[]> {
-  const catalogs = new Map<string, PermissionCatalogRef>()
+export type PermissionCatalog =
+  import('../../packages/rbac-contract/src/plugin.ts').PermissionDeclaration
+
+// the extension point lives in a package the repository root deliberately does
+// not depend on, so it resolves through the host like the plugins themselves
+const declarationsPoint = async () =>
+  (
+    (await import(
+      resolvePluginModuleUrl('@qualy/rbac-contract/plugin')
+    )) as typeof import('../../packages/rbac-contract/src/plugin.ts')
+  ).PermissionDeclarations
+
+export async function resolvePermissionCatalogs(): Promise<PermissionCatalog[]> {
+  const point = await declarationsPoint()
+  const catalogs: PermissionCatalog[] = []
+  const seen = new Set<string>()
   for (const entry of await readEntries({ all: true })) {
-    if (!entry.name.startsWith('@qualy/') || catalogs.has(entry.name)) continue
-    const packageDir = resolvePackageDir(entry.name)
-    const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
-      exports?: Record<string, unknown>
-      qualy?: { contributions?: { permissions?: { entry?: string } } }
+    if (!entry.name.startsWith('@qualy/') || seen.has(entry.name)) continue
+    seen.add(entry.name)
+    const module = (await import(resolvePluginModuleUrl(entry.name))) as { default?: unknown }
+    if (!isPluginDescriptor(module.default)) {
+      throw new Error(`${entry.name} does not default-export a plugin descriptor`)
     }
-    const declared = pkg.qualy?.contributions?.permissions?.entry
-    if (!declared) continue
-    const exported = pkg.exports?.['./permissions']
-    if (typeof exported !== 'string' || path.normalize(exported) !== path.normalize(declared)) {
-      throw new Error(
-        `${entry.name}: qualy.contributions.permissions.entry and exports["./permissions"] must point at the same file`,
-      )
-    }
-    catalogs.set(entry.name, {
-      plugin: entry.name
-        .split('/')
-        .pop()!
-        .replace(/^plugin-/, ''),
-      moduleUrl: resolvePluginModuleUrl(`${entry.name}/permissions`),
-    })
+    catalogs.push(...Plugin.contributionsOf(module.default, point))
   }
-  return [...catalogs.values()]
+  return catalogs
 }

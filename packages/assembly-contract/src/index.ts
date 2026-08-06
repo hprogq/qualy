@@ -125,6 +125,20 @@ export interface AssemblyCapabilityProvider<Contribution = unknown, State = unkn
   parseContribution(input: ContributionInput): Contribution
 
   /**
+   * The same declaration, read from the plugin's descriptor instead.
+   *
+   * When present, this capability's contributions come from descriptors and a
+   * package.json declaration for its key is refused - one source, not a
+   * fallback chain. The descriptor is untyped here because this package
+   * depends on nothing; the provider knows what it is. Returning undefined
+   * means the plugin contributes nothing to this capability.
+   */
+  contributionFromDescriptor?(input: {
+    pluginId: string
+    descriptor: unknown
+  }): Contribution | undefined
+
+  /**
    * Turn every contribution into this capability's lock state. Runs during
    * `qualy resolve`, which never touches an external system.
    */

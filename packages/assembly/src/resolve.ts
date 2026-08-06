@@ -202,6 +202,13 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
         )
         continue
       }
+      if (loaded.provider.contributionFromDescriptor) {
+        // one source, not a fallback chain: this capability reads descriptors
+        orphaned.push(
+          `${id} declares qualy.contributions.${key} in package.json, but capability ${key} reads contributions from the plugin descriptor now`,
+        )
+        continue
+      }
       const parsed = loaded.provider.parseContribution({
         pluginId: id,
         packageRoot: entry.dir,
@@ -226,12 +233,27 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
   // missing descriptor.
   const descriptors = new Map<string, PluginDescriptor>()
   const misconfigured: string[] = []
-  for (const id of runtimePlugins) {
+  // every accounted plugin, not just the running set: a disabled or detached
+  // plugin's declarations still shape the assembly - that is what retained
+  // means - and its package is installed by the uninstalled-check above
+  for (const id of states.keys()) {
     const module = (await import(resolver.resolveModuleUrl(id))) as { default?: unknown }
     if (!isPluginDescriptor(module.default)) {
       throw new Error(`${id} does not default-export a plugin descriptor`)
     }
     descriptors.set(id, module.default)
+    // Descriptor-sourced contributions, for the capabilities that read them.
+    for (const [key, loaded] of providers) {
+      if (!loaded.provider.contributionFromDescriptor) continue
+      const parsed = loaded.provider.contributionFromDescriptor({
+        pluginId: id,
+        descriptor: module.default,
+      })
+      if (parsed === undefined) continue
+      const perKey = contributions.get(key) ?? new Map<string, unknown>()
+      perKey.set(id, parsed)
+      contributions.set(key, perKey)
+    }
     // A config block reaches exactly two kinds of plugin: a capability
     // provider, as providerConfig during work phases; and one whose
     // descriptor carries a config channel. On any other plugin nothing reads
