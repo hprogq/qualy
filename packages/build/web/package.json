@@ -1,0 +1,24 @@
+{
+  "name": "@qualy/web-build",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    "./vite": "./src/vite.ts",
+    "./collect": "./src/collect.ts",
+    "./stage": "./src/stage.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/assembly": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/ui-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "catalog:"
+  }
+}

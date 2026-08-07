@@ -1,9 +1,9 @@
 # dependencies
 node_modules/
 
-# build outputs
+# build outputs (anchored: packages/build/ is source, not output)
 dist/
-build/
+/build/
 out/
 *.tsbuildinfo
 
