@@ -27,6 +27,7 @@
   "devDependencies": {
     "@qualy/assembly": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/web-build": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

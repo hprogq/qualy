@@ -1,13 +1,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { manifestPath } from '../lib/manifest.ts'
 import { describe, expect, it } from 'vitest'
 import type { MessageCatalog, MessageDescriptor } from '@qualy/i18n-contract'
 import { supportedLocales } from '@qualy/i18n-contract'
 import { pathToFileURL } from 'node:url'
 import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
 import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
-import { readEntries } from '../lib/read-entries.ts'
-import { resolvePackageDir, resolvePluginModuleUrl } from '../lib/packages.ts'
+import { readEntries } from '@qualy/assembly/host'
+import { resolvePackageDir, resolvePluginModuleUrl } from '@qualy/assembly/host'
 
 // every message a plugin declares must exist in each locale it ships, and a
 // catalog must not carry keys nobody declares. Without this, a missing
@@ -30,16 +31,16 @@ interface ClientModule {
 
 const declaredCatalogs = async () => {
   const found: { name: string; module: string }[] = []
-  for (const entry of await readEntries({ all: true })) {
+  for (const entry of await readEntries({ manifestPath: manifestPath(), all: true })) {
     if (!entry.name.startsWith('@qualy/')) continue
-    const descriptor = ((await import(resolvePluginModuleUrl(entry.name))) as { default?: unknown })
+    const descriptor = ((await import(resolvePluginModuleUrl(entry.name, manifestPath()))) as { default?: unknown })
       .default
     if (!isPluginDescriptor(descriptor)) continue
     const declared = Plugin.contributionsOf(descriptor, I18nCatalogs)
     if (declared.length === 0) continue
     found.push({
       name: entry.name,
-      module: path.resolve(resolvePackageDir(entry.name), 'src', declared[0]!.module),
+      module: path.resolve(resolvePackageDir(entry.name, manifestPath()), 'src', declared[0]!.module),
     })
   }
   return found
@@ -55,7 +56,7 @@ describe('plugin message catalogs', () => {
       return
     }
     const declared = new Set(module.catalogs.messages.map((descriptor) => descriptor.id))
-    const descriptor = ((await import(resolvePluginModuleUrl(name))) as { default?: unknown })
+    const descriptor = ((await import(resolvePluginModuleUrl(name, manifestPath()))) as { default?: unknown })
       .default
     if (isPluginDescriptor(descriptor)) {
       for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {

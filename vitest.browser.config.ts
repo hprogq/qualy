@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
-import { qualyPlugins } from './scripts/lib/vite-qualy-plugins.ts'
+import { qualyPlugins } from '@qualy/web-build/vite'
 
 // Component tests run in a real browser rather than a simulated dom. What
 // this project's screens actually get wrong lives in the gap between the

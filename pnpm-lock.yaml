@@ -156,6 +156,9 @@ importers:
       '@qualy/assembly-contract':
         specifier: workspace:*
         version: link:packages/assembly-contract
+      '@qualy/cli':
+        specifier: workspace:*
+        version: link:apps/cli
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:packages/i18n-contract
@@ -177,6 +180,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:packages/plugins/infra/ui-registry
+      '@qualy/web-build':
+        specifier: workspace:*
+        version: link:packages/build/web
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -219,6 +225,15 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+
+  apps/cli:
+    dependencies:
+      '@qualy/assembly':
+        specifier: workspace:*
+        version: link:../../packages/assembly
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../packages/plugin-kit
 
   apps/server:
     dependencies:
@@ -332,6 +347,9 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../packages/i18n-contract
+      '@qualy/web-build':
+        specifier: workspace:*
+        version: link:../../packages/build/web
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.3(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -397,6 +415,31 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+
+  packages/build/web:
+    dependencies:
+      '@qualy/assembly':
+        specifier: workspace:*
+        version: link:../../assembly
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../auth-contract
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../i18n-contract
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../plugin-kit
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../plugins/infra/ui-registry
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../ui-contract
+    devDependencies:
+      vite:
+        specifier: 'catalog:'
+        version: 8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
 
   packages/i18n-contract:
     dependencies:

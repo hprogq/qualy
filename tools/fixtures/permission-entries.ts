@@ -1,6 +1,6 @@
 import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
-import { readEntries } from './read-entries.ts'
-import { resolvePluginModuleUrl } from './packages.ts'
+import { readEntries, resolvePluginModuleUrl } from '@qualy/assembly/host'
+import { manifestPath } from '../lib/manifest.ts'
 
 // The seed reads the same declarations the permissions capability resolves and
 // the running assembly compiles: the Access.permissions features on each
@@ -19,7 +19,7 @@ export type PermissionCatalog =
 const declarationsPoint = async () =>
   (
     (await import(
-      resolvePluginModuleUrl('@qualy/rbac-contract/plugin')
+      resolvePluginModuleUrl('@qualy/rbac-contract/plugin', manifestPath())
     )) as typeof import('../../packages/rbac-contract/src/plugin.ts')
   ).PermissionDeclarations
 
@@ -27,10 +27,10 @@ export async function resolvePermissionCatalogs(): Promise<PermissionCatalog[]> 
   const point = await declarationsPoint()
   const catalogs: PermissionCatalog[] = []
   const seen = new Set<string>()
-  for (const entry of await readEntries({ all: true })) {
+  for (const entry of await readEntries({ manifestPath: manifestPath(), all: true })) {
     if (!entry.name.startsWith('@qualy/') || seen.has(entry.name)) continue
     seen.add(entry.name)
-    const module = (await import(resolvePluginModuleUrl(entry.name))) as { default?: unknown }
+    const module = (await import(resolvePluginModuleUrl(entry.name, manifestPath()))) as { default?: unknown }
     if (!isPluginDescriptor(module.default)) {
       throw new Error(`${entry.name} does not default-export a plugin descriptor`)
     }

@@ -1,7 +1,7 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
-import { qualyPlugins } from '../../scripts/lib/vite-qualy-plugins.ts'
+import { qualyPlugins } from '@qualy/web-build/vite'
 
 export default defineConfig({
   plugins: [qualyPlugins(), react(), tailwindcss()],

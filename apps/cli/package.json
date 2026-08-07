@@ -1,0 +1,11 @@
+{
+  "name": "@qualy/cli",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "dependencies": {
+    "@qualy/assembly": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*"
+  }
+}

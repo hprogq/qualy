@@ -9,7 +9,7 @@ import path from 'node:path'
 // It happened, and it did not look like a port: it looked like a login test
 // that could not reach its own server.
 
-const roots = ['packages', 'apps', 'scripts']
+const roots = ['packages', 'apps', 'tools']
 
 const walk = (dir: string): string[] =>
   fs.existsSync(dir)

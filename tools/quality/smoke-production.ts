@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { repoRoot } from './lib/paths.ts'
+import { repoRoot } from '../lib/manifest.ts'
 
 // The production boot, actually booted - through the same runner `pnpm
 // start` uses, so the command people deploy with is the path being tested.
@@ -23,7 +23,7 @@ const server = spawn(
     '--env-file-if-exists=.env',
     '--import',
     'tsx',
-    path.join(repoRoot, 'scripts/run-server.ts'),
+    path.join(repoRoot, 'apps/server/src/run.ts'),
     'production',
   ],
   {

@@ -48,14 +48,14 @@ const OWNS_CONNECTIONS = 'packages/plugins/infra/database'
 // directory-wide exemption would quietly cover whatever is added next to
 // them.
 const SCRIPTS_MAY_CONNECT = new Set([
-  'scripts/seed.ts',
-  'scripts/lib/seed.ts',
-  'scripts/tests/seed.test.ts',
+  'tools/fixtures/seed-cli.ts',
+  'tools/fixtures/seed.ts',
+  'tools/tests/seed.test.ts',
   // boots the real production entry, which refuses to assume a database; the
   // script hands the spawned process the compose stack's url
-  'scripts/smoke-production.ts',
+  'tools/quality/smoke-production.ts',
   // this file states the patterns, so it contains all of them
-  'scripts/tests/test-layers.test.ts',
+  'tools/tests/test-layers.test.ts',
 ])
 
 // Pinned to the file, because these are the suites the rule was written for.
@@ -206,9 +206,9 @@ describe('test layering', () => {
     expect(offenders).toEqual([])
   })
 
-  it('keeps it out of scripts that are not calling a PoolClient interface', () => {
+  it('keeps it out of tools that are not calling a PoolClient interface', () => {
     const offenders = breaches(
-      walk('scripts').filter((file) => !SCRIPTS_MAY_CONNECT.has(posix(file))),
+      walk('tools').filter((file) => !SCRIPTS_MAY_CONNECT.has(posix(file))),
       OWNERSHIP,
     )
     expect(offenders).toEqual([])

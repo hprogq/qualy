@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg'
+import { resolvePluginModuleUrl } from '@qualy/assembly/host'
+import { manifestPath } from '../lib/manifest.ts'
 import { resolvePermissionCatalogs } from './permission-entries.ts'
-import { resolvePluginModuleUrl } from './packages.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '@qualy/plugin-auth/constants'
 
 // tenant bootstrap in layers with different convergence semantics:
@@ -17,7 +18,7 @@ import { SYSTEM_ACCOUNT_USER_TYPE } from '@qualy/plugin-auth/constants'
 
 const passwordModule = async () =>
   (await import(
-    resolvePluginModuleUrl('@qualy/plugin-auth-local/password')
+    resolvePluginModuleUrl('@qualy/plugin-auth-local/password', manifestPath())
   )) as typeof import('../../packages/plugins/base/auth-local/src/password.ts')
 
 type PermissionRow = import('../../packages/rbac-contract/src/index.ts').PermissionDefinition

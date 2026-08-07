@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { REPOS, VENDORED, catalogVersion, checkVendored, readVendorLock } from '../vendor-sync.ts'
+import { REPOS, VENDORED, catalogVersion, checkVendored, readVendorLock } from '../repo/vendor-sync.ts'
 
 // The vendored sources exist so that anything reasoning about Effect reads the
 // code that actually runs. That only holds while they are the same version as
@@ -92,7 +92,7 @@ describe('vendored upstream sources', () => {
 
   it('is never imported by this repository', () => {
     // it is documentation that happens to compile, not a dependency
-    const offenders = [...walk('packages'), ...walk('apps'), ...walk('scripts')].flatMap((file) =>
+    const offenders = [...walk('packages'), ...walk('apps'), ...walk('tools')].flatMap((file) =>
       fs
         .readFileSync(file, 'utf8')
         .split('\n')

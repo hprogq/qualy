@@ -1,15 +1,16 @@
+import { manifestPath } from '../lib/manifest.ts'
 import { describe, expect, it } from 'vitest'
 import { HttpApi, OpenApi, type HttpApiGroup } from 'effect/unstable/httpapi'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { ApiGroups } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { runtimeLayers, runtimeLevels } from '@qualy/assembly'
-import { currentResolution } from '../lib/read-entries.ts'
+import { currentResolution } from '@qualy/assembly/host'
 import { FROZEN_ROUTES } from './support/frozen-routes.ts'
 
 // the same aggregate the runtime serves, built the same way: descriptors in
 // dependency order, every Api.group feature added to one api
-const resolution = await currentResolution()
+const resolution = await currentResolution(manifestPath())
 let aggregate = HttpApi.make(QUALY_API_ID) as unknown as HttpApi.HttpApi<
   string,
   HttpApiGroup.Constraint

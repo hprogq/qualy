@@ -1,8 +1,9 @@
+import { manifestPath } from '../lib/manifest.ts'
 import { randomUUID } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { seed } from '../lib/seed.ts'
-import { resolvePluginModuleUrl } from '../lib/packages.ts'
+import { seed } from '../fixtures/seed.ts'
+import { resolvePluginModuleUrl } from '@qualy/assembly/host'
 
 const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
 
@@ -60,7 +61,7 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     url.pathname = `/${dbName}`
     pool = quietPool({ connectionString: url.href })
     const { runMigrations, MIGRATIONS_FOLDER } = (await import(
-      resolvePluginModuleUrl('@qualy/plugin-database/migrator')
+      resolvePluginModuleUrl('@qualy/plugin-database/migrator', manifestPath())
     )) as typeof import('../../packages/plugins/infra/database/src/migrator.ts')
     // the lineage is plain sql; the orm the migrator opens needs no entity
     // metadata to apply it, which is also how a deployment job runs it
@@ -136,7 +137,7 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     )
     expect(after.rows[0].credential_hash).not.toBe(before.rows[0].credential_hash)
     const { verifyPassword } = (await import(
-      resolvePluginModuleUrl('@qualy/plugin-auth-local/password')
+      resolvePluginModuleUrl('@qualy/plugin-auth-local/password', manifestPath())
     )) as typeof import('../../packages/plugins/base/auth-local/src/password.ts')
     expect(await verifyPassword(after.rows[0].credential_hash, 'a-brand-new-password-1')).toBe(true)
   })

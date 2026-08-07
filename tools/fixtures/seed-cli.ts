@@ -2,7 +2,7 @@
 // transaction, so any failure aborts without partial writes. Credentials come
 // only from environment variables and are never logged.
 import { Pool } from 'pg'
-import { seed } from './lib/seed.ts'
+import { seed } from './seed.ts'
 
 try {
   process.loadEnvFile()

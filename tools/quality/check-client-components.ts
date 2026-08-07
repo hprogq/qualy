@@ -3,8 +3,8 @@ import path from 'node:path'
 import ts from 'typescript'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
 import { UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
-import { currentResolution } from './read-entries.ts'
-import { resolvePackageDir, resolvePluginModuleUrl } from './packages.ts'
+import { currentResolution, resolvePackageDir, resolvePluginModuleUrl } from '@qualy/assembly/host'
+import { manifestPath } from '../lib/manifest.ts'
 
 // Ui.react("./client/X.tsx") is a string, and TypeScript resolves modules
 // only at real import sites - so on its own, a typo'd path or a module whose
@@ -46,7 +46,7 @@ const collectDriverReferences = async (
   descriptor: PluginDescriptor,
 ): Promise<Reference[]> => {
   const { LoginDriverDeclarations } = (await import(
-    resolvePluginModuleUrl('@qualy/auth-contract/plugin')
+    resolvePluginModuleUrl('@qualy/auth-contract/plugin', manifestPath())
   )) as typeof import('../../packages/auth-contract/src/plugin.ts')
   return Plugin.contributionsOf(descriptor, LoginDriverDeclarations).flatMap((driver) =>
     driver.presentation.mode === 'component'
@@ -140,7 +140,7 @@ function checkPlugin(packageDir: string, references: readonly Reference[]): stri
 
 /** every broken component reference across the active assembly */
 export async function checkClientComponents(): Promise<string[]> {
-  const resolution = await currentResolution()
+  const resolution = await currentResolution(manifestPath())
   const byPackage = new Map<string, Reference[]>()
   for (const id of resolution.runtimePlugins) {
     const descriptor = resolution.descriptors.get(id)
@@ -150,7 +150,7 @@ export async function checkClientComponents(): Promise<string[]> {
       ...(await collectDriverReferences(id, descriptor)),
     ]
     if (references.length === 0) continue
-    const dir = resolvePackageDir(id)
+    const dir = resolvePackageDir(id, manifestPath())
     byPackage.set(dir, [...(byPackage.get(dir) ?? []), ...references])
   }
   const failures: string[] = []

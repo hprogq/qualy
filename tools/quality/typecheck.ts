@@ -46,7 +46,7 @@ for (const project of projects) {
 // the compiler cannot resolve a module named by a string in Ui.react(...);
 // this asks it to, against each plugin's own client program
 console.log('typecheck client component references')
-const { checkClientComponents } = await import('./lib/check-client-components.ts')
+const { checkClientComponents } = await import('./check-client-components.ts')
 const broken = await checkClientComponents()
 for (const failure of broken) console.error(failure)
 if (broken.length > 0) failed.push('client component references')

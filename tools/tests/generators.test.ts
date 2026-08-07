@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
-import { buildPluginModuleSource } from '../lib/web-plugins.ts'
+import { buildPluginModuleSource } from '@qualy/web-build/collect'
 
 // There is no generator left: the browser aggregate is a virtual module the
 // Vite plugin computes from the verified resolution, and the typed clients

@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { isPluginDescriptor } from '@qualy/plugin-kit'
 import { collectCliCommands } from '@qualy/plugin-kit/cli'
-import { resolvePluginModuleUrl } from './lib/packages.ts'
+import { resolvePluginModuleUrl } from '@qualy/assembly/host'
 import {
   capabilityContext,
   capabilityModules,
@@ -18,8 +19,7 @@ import {
   type Resolution,
   runtimeLayers,
 } from '@qualy/assembly'
-import { DEFAULT_MANIFEST } from './lib/read-entries.ts'
-import { generatedPath } from './lib/paths.ts'
+
 
 // deploy and the capability commands reach real systems, and the connection
 // details for them live in .env exactly as they do for `pnpm dev`
@@ -56,7 +56,11 @@ const option = (name: string) => {
   return at >= 0 ? argv[at + 1] : undefined
 }
 
-const manifestPath = path.resolve(option('yml') ?? DEFAULT_MANIFEST)
+// the CLI is this repository's; an explicit --yml still points anywhere
+const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..')
+const manifestPath = option('yml')
+  ? path.resolve(option('yml')!)
+  : path.join(repoRoot, 'qualy.yml')
 const lockPath = lockPathFor(manifestPath)
 
 const die = (message: string): never => {
@@ -79,8 +83,11 @@ const drift = (previous: AssemblyLock | undefined, resolution: Resolution): stri
   // there is no generated composition to drift any more: the host assembles
   // at boot from this same resolution, so the lock is the whole story
   const reasons = lockDrift(previous, resolution)
+  // capability-derived modules land relative to the manifest, like every
+  // other generated artifact; QUALY_GEN_OUT redirects a test run's tree
   const read = (module: string) => {
-    const file = generatedPath(module)
+    const root = process.env.QUALY_GEN_OUT ?? path.dirname(manifestPath)
+    const file = path.resolve(root, module)
     return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : undefined
   }
   reasons.push(...moduleDrift(capabilityModules(resolution), read))
@@ -256,7 +263,9 @@ async function descriptorCommands(resolution: Resolution) {
   for (const entry of runtimeLayers(resolution)) {
     // resolved through the host package, like every other plugin import the
     // scripts make: the repo root deliberately depends on no business plugin
-    const module = (await import(resolvePluginModuleUrl(entry.specifier))) as { default?: unknown }
+    const module = (await import(resolvePluginModuleUrl(entry.specifier, manifestPath))) as {
+      default?: unknown
+    }
     if (isPluginDescriptor(module.default)) descriptors.push(module.default)
   }
   return collectCliCommands(descriptors, RESERVED)

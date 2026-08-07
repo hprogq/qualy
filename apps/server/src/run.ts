@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
-import { repoRoot } from './lib/paths.ts'
+import { fileURLToPath } from 'node:url'
 
 // The two ways this server runs, as explicit commands.
 //
@@ -31,4 +31,4 @@ if (mode === 'production') {
   process.env.QUALY_MIGRATIONS ??= 'off'
 }
 
-await import(pathToFileURL(path.join(repoRoot, 'apps/server/src/main.ts')).href)
+await import(pathToFileURL(path.resolve(fileURLToPath(new URL('.', import.meta.url)), 'main.ts')).href)

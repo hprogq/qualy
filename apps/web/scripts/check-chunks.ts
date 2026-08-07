@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { collectWebPlugins } from '../../../scripts/lib/web-plugins.ts'
+import { collectWebPlugins } from '@qualy/web-build/collect'
 
 // tree-shaking sentinel: every registered component must be an independent
 // chunk in the web build; `--expect-absent <name>` additionally asserts a
