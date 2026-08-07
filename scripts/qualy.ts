@@ -194,34 +194,46 @@ async function main(): Promise<void> {
   if (!key || !name || key.startsWith('-')) die(USAGE)
   const resolution = await resolveCurrent(`run ${key} ${name}`)
 
-  // Descriptor commands first: the namespace table already refused every
-  // collision, including with capability keys, so first-match is the only
-  // match. Capability lifecycle commands stay reachable under their key.
+  // One noun, one command set. A namespace's commands are the union of what
+  // the descriptor declares and what the capability provider of the same name
+  // ships - `qualy database migrate` and `qualy database check` are one
+  // namespace to the caller, and the alias reaches both. A name both sides
+  // claim is refused rather than resolved by lookup order.
   const { namespaces, commands } = await descriptorCommands(resolution)
-  const namespace = namespaces.get(key!)
-  if (namespace) {
-    const entry = commands.get(`${namespace} ${name}`)
-    if (!entry) die(`namespace ${namespace} has no command ${name}`)
-    const implementation = await entry!.command.load()
+  const namespace = namespaces.get(key!) ?? key!
+  const entry = commands.get(`${namespace} ${name}`)
+  const provider = resolution.providers.get(namespace)?.provider
+  if (entry && provider?.commands?.[name!]) {
+    die(
+      `command ${namespace} ${name} is declared by both ${entry.plugin}'s descriptor and the ${namespace} capability provider`,
+    )
+  }
+  if (entry) {
+    const implementation = await entry.command.load()
     await implementation.run({
       args,
       capability:
-        entry!.command.context === 'capability'
-          ? capabilityContext(resolution, capabilityKeyOf(resolution, entry!.plugin), args)
+        entry.command.context === 'capability'
+          ? capabilityContext(resolution, capabilityKeyOf(resolution, entry.plugin), args)
           : undefined,
     })
     return
   }
 
-  const capability = capabilityWork(resolution).find((entry) => entry.key === key)
-  if (!capability) {
-    const available = [...resolution.capabilities.keys(), ...namespaces.keys()].join(', ')
-    die(`no capability or namespace ${key} in this assembly; available: ${available || '(none)'}`)
+  const capability = capabilityWork(resolution).find((work) => work.key === namespace)
+  if (capability) {
+    if (await capability.command(name!, args)) return
+    die(`namespace ${namespace} has no command ${name}`)
     return
   }
-  if (!(await capability.command(name!, args))) {
-    die(`capability ${key} has no command ${name}`)
+  if (namespaces.get(key!)) {
+    die(`namespace ${namespace} has no command ${name}`)
+    return
   }
+  const available = [...new Set([...resolution.capabilities.keys(), ...namespaces.keys()])].join(
+    ', ',
+  )
+  die(`no capability or namespace ${key} in this assembly; available: ${available || '(none)'}`)
 }
 
 /** the capability a plugin provides, for commands that asked for its work context */
