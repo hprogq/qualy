@@ -19,7 +19,7 @@ pnpm qualy deploy   # 应用数据库迁移(生产 start 默认不迁移,避免�
 pnpm start          # production:静态资源 + 指纹校验,frozen lock,拒绝 vite
 ```
 
-`pnpm start` 经 scripts/run-server.ts 强制 production 语义;单机想让启动顺带迁移,显式 `QUALY_MIGRATIONS=apply`。
+`pnpm start` 经 apps/server/src/run.ts 强制 production 语义;单机想让启动顺带迁移,显式 `QUALY_MIGRATIONS=apply`。
 
 ## 日志
 

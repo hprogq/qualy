@@ -120,7 +120,7 @@ PermissionDeclarations)` 读声明,lock 记 `{owner, codes}`(评审 diff 直接�
   package.json 声明按 orphaned 硬拒;test-layers 的 provider 入口门禁改从
   `Plugin.capability` 声明发现。
 
-**M4(未裁决)**:每插件自持 typed client,删 @qualy/api 与全局 api-client,前端全量换装。
+~~M4~~ **已完成 2026-08-07**:每插件自持 typed client,@qualy/api 与全局 api-client 已删(见文末)。
 
 ## 装配流程(终态)
 
@@ -172,3 +172,36 @@ web 插件 production 拒绝错配/无指纹)+ `scripts/smoke-production.ts` 生
 必需 props),红绿已验;`Ui.vue`/`Ui.svelte` 是未来的兄弟构造器,renderer 字段已开放。
 缓建:IDE language-service 即时诊断(触发:API 稳定后);slot/layout 的 props 契约级
 断言(触发:第一个带 props 契约漂移事故)。
+
+## M4 + 预装配收官(2026-08-07,审计第四轮)
+
+**M4(typed client 下放)**:每插件 `src/client/api.ts` 导出 `Api.local(...groups)`
+(auth 聚合含 rbac 的 accessApiGroup,页面按其真实调用面声明);组件经 web-runtime 的
+`useApi(xApi)` / `useApiQuery(xApi)` 消费(WeakMap 缓存 client 与 query utils),错误型
+`ApiResult<typeof xApi, 'group', 'endpoint'>`。@qualy/api(gen-api 类型聚合)与
+@qualy/api-client 包删除;api-client 的 effect client/query 原语并入
+`@qualy/web-runtime/api`。测试 stub 经 `RuntimeProvider clientFor` 注入,类型仍受真
+client 面约束(`ClientOf<typeof authApi> & ClientOf<typeof accessApi>`)。
+
+**i18n 预装配**:client/index.ts 与 client/i18n.ts 的运行时聚合改为构建期——描述器
+`Ui.i18n('./client/i18n.ts')`(external 相)声明聚合模块,virtual module 静态 import
+其 catalogs/errorMessages;catalogs.test 按声明发现。至此**仓库零 codegen**
+(唯一生成物 = db/migrations 的 SQL;virtual:qualy/plugins 是 vite 期现算,物化在
+apps/web/.qualy/,gitignored)。
+
+**`./api` 与 `src/api.ts` 保留理由(审计遗留判断)**:它不再是生成器钩子,而是
+HttpApiGroup 契约叶子——服务端实现(Api.group)与浏览器 typed client(Api.local)
+共用的单一声明点,也是跨插件聚合(auth 引 rbac 组)的 import 面;删它等于把契约
+内联进 server 实现,client 将 import 服务端代码。
+
+**物理重组**:packages/ 分类为 core(plugin-kit/assembly/api-kit)、contracts、
+web(runtime/i18n/ui)、build/web(@qualy/web-build:vite 插件、collect、stage);
+CLI → apps/cli,runner → apps/server/src/run.ts,其余脚本 → tools/
+(fixtures/quality/repo/tests/lib)。包名全部不变,只动物理路径。experiments/ 删除。
+
+**冷缓存双 React 定案**:vitest browser root 从仓库根改为 apps/web(拥有 react 的包,
+dedupe 与 @vitejs/plugin-react 的 optimizeDeps 此前从根解析 react 全部静默失败);
+生成模块的 import 从绝对文件路径改为相对 `.qualy/` 的相对路径(绝对路径在 vite 是
+root 相对 URL,扫描器与 dev server 均不跟进),并加静态 import 的 scan 孪生文件
+(聚合本体是动态 import,扫描器不跟);依赖自此全部在首扫期发现,中途 re-optimize
+reload(冷缓存 7 测挂)消失,冷跑两次 + 热跑 13/13。

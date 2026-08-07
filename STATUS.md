@@ -1916,3 +1916,40 @@ React 组件、**页面组件 `ComponentType<{}>`(零必需 props——shell 无
 换轨首跑一次红、缓存落定后连跑复测两侧全绿);`pnpm build` + chunk 哨兵 + 生产 smoke
 (shutdown clean);dev 真启动 manifest/login-methods wire 与旧格式逐字节一致、零 ERROR;
 frozen lock 干净(descriptor 内联声明不改 lock 面)。
+
+### M4 + i18n 预装配 + 物理重组:零 codegen 收官(2026-08-07,审计第四轮)
+
+**M4(161b26b)**:每插件 `src/client/api.ts` = `Api.local(...groups)`;组件经
+`useApi`/`useApiQuery`(web-runtime,WeakMap 缓存)消费;@qualy/api 与 api-client 包删,
+effect client/query 原语并入 `@qualy/web-runtime/api`;浏览器测试 stub 经
+`RuntimeProvider clientFor`,类型仍受真 client 面约束。**i18n 预装配(0fdfdf9)**:
+`Ui.i18n('./client/i18n.ts')` 声明聚合模块,virtual module 静态 import catalogs/
+errorMessages,client/index.ts 全灭。至此仓库唯一生成物是 db/migrations 的 SQL。
+
+**搬迁(917dbcf)+ 物理重组(52bc0ee)**:experiments/ 删;CLI → apps/cli;runner →
+apps/server/src/run.ts;vite 链 → packages/build/web(@qualy/web-build);其余脚本 →
+tools/{fixtures,quality,repo,tests,lib};packages/ 分类 core/contracts/web/build/plugins。
+**包名全部不变**,workspace globs、根 tsconfig include、web 侧 extends 深度、门禁路径表
+(test-layers/error-codes/vendor/ports/seed)随迁;assembly 的宿主解析收进
+`@qualy/assembly/host`(manifestPath 全显式);CI smoke 路径修正 tools/quality/。
+
+**冷缓存双 React 定案(52bc0ee)**:三个叠加根因——①vitest browser root 在仓库根,
+根 package.json 无 react,dedupe 与 @vitejs/plugin-react 注入的 optimizeDeps.include
+从根解析全部静默失败(pnpm 隔离)→ root 改 apps/web;②生成模块用绝对文件路径 import,
+vite 语义里是 root 相对 URL,dep 扫描器与 dev server 都不跟进 → collect 改产相对
+`.qualy/` 的相对路径(fromDir 参数);③聚合本体是动态 import(chunk 分割边界),
+扫描器不跟动态 import → 新增静态 import 的 scan 孪生文件一并喂给 optimizeDeps.entries。
+`@radix-ui/react-label`(仅被插件组件引用的依赖)自此在首扫期发现,「optimized
+dependencies changed. reloading」中途重载(7 测挂的直接死因)消失。物化位置从
+`node_modules/.qualy` 挪到 `apps/web/.qualy/`(entries glob 忽略 node_modules)。
+
+**文档**:CLAUDE.md 全面改写(cordis/oRPC 纪律随 ADR 0003 作废并移除;新目录布局、
+零 codegen、Effect API 纪律、页面 id 导航、日志、dev/start 收录);
+plugin-descriptor-plan.md 记 M4 收官与 `./api` 保留理由;README 修 runner 路径。
+
+**验收(实际执行)**:typecheck 零错(11 工程 + client 工程 + 组件引用检查器);
+node 369 全绿(61 文件);browser 13/13 **冷缓存两次 + 热一次**(此前冷跑必挂 7);
+`resolve --frozen-lockfile` 干净;`pnpm build` + chunk 哨兵前提的 stage 成功;
+`pnpm qualy deploy`(migrations up to date)+ 生产 smoke 全绿(ready/live/壳/manifest/
+哈希资源/SIGTERM exit 0);`pnpm dev` 真启动 root 200 + manifest 200 + 优雅退出 0;
+`pnpm qualy list` 正常。**下一步**:测评业务纵切(评估记录见前节)。
