@@ -1788,3 +1788,50 @@ test-layers 的 provider 入口门禁改从 `Plugin.capability` 声明发现(仍
 
 **M3b 至此收口**。package.json 对装配的残余:仅 `qualy.contributions`(无钩子能力)。
 下一个未裁决项:M4(每插件自持 typed client,删 @qualy/api 与全局 api-client)。
+
+### 审计修复轮:内核收紧、前端去 codegen、生产可信边界(2026-08-07)
+
+外部审计(M3b-1/M3b-2 两份)驱动,六个独立绿的 commit:
+
+**f7744d0 内核**:`Plugin.service` 的 requires 拓扑真实落地(键重复提供/缺提供/成环在
+assemble 期点名硬拒,keyed services 按真实 Tag 排序,`Plugin.layer` 保列表序垫底);
+`boot` 相从 `ExtensionPhase` 删除(零使用者,不编译的相位只会静默吞贡献,一次性工作归
+Assembled 屏障);descriptor.id ≠ 包 id 硬拒,descriptor import 失败包裹插件名;
+ExtensionPoint 同 id 异形硬拒;provider compile 收 `Contributed<T>`(ui 重复页面、api
+同组码都点名双方插件);prepare 相 compile 类型上强制零 requirement——**重载而非条件
+类型**,实测上下文归型会把未解析的条件宽化到约束从而放行(红绿探针验证)。
+
+**7d35534 常量**:`Api.local(group, ...)` 收走 api 聚合身份,插件/测试不再拼
+QUALY_API_ID/PREFIX(六个插件文件 + 两个测试);其余跨插件常量核查为契约词汇,非债务。
+
+**4d007f1 CLI(用户报的 CI 红)**:`qualy database check` 曾被描述器命名空间遮蔽——
+命名空间命令 = 描述器命令 ∪ 同名能力命令,别名同达,同名双声明硬拒。
+
+**e8bc669 virtual module**:`plugins.gen.ts` 死,`virtual:qualy/plugins` 由
+scripts/lib/vite-qualy-plugins.ts 提供(collector 保留全部冲突检查;物化到
+apps/web/node_modules/.qualy——**必须是可读文件**:纯内存 id 让 esbuild 依赖扫描
+爬不进,react 分裂成预打包+源码两份,hook 崩溃实测);dev/build/浏览器测试同一逻辑,
+build 取超集;main.ts 零前端生成,gen-api 由 Vite buildStart 拥有;scripts 锚定仓库根
+(vite build 从 apps/web 跑);**strip-types 兼容成为现实约束**——resolve/Vite 配置让裸
+node 以 strip-only 加载 workspace TS,五处参数属性全改普通字段。
+
+**ff6c497 指纹 + 生产 smoke**:stage 写 `.qualy-assembly.json`(resolutionHash,dotfile
+不外发),宿主提供 `AssemblyInfo`(api-kit/assembled),web 插件 production 拒绝错配与
+无指纹(篡改指纹实测:boot 拒绝并点名两个哈希);`scripts/smoke-production.ts` 真启动
+NODE_ENV=production(ready/live/壳/manifest/哈希资源 + SIGTERM 退出 0)进 CI——
+它首跑就抓到真实约束:生产不假设 DATABASE_URL。
+
+**cc5c25a OpenAPI 全量对比**:`OpenApi.fromApi(qualyApi)` 与运行时 `/openapi.json`
+深比较(上游原样服务同一生成器输出,HttpApiBuilder.ts:103 实查;仅 tag 序归一)。
+首跑即红:两侧加组顺序不同,匿名 schema 命名(Objects_1 等)随遍历序漂移——gen-api 改走
+`runtimeLevels` 同一依赖序、从描述器 `Api.group` 读组,并把「有 ./api 导出无声明 /
+有声明无导出 / 导出值被换绑」三类漂移变成硬失败。顺带结构性修掉 vite logger 排水
+测试的定时赌(等行数不等时钟)。
+
+**验收(实际执行)**:typecheck 零错;node 373 全绿(assemble-kernel 6 新增、web 指纹 7、
+document equality 6);browser 13;`resolve --frozen-lockfile` 干净;`pnpm build` +
+chunk sentinel + 生产 smoke 全绿(shutdown clean, exit 0);dev 真启动 ready=200 零 [E];
+`qualy database check`/`db check`/`db migrate`/`bogus thing` 四路分发验证。
+
+**缓建(带触发条件,见 plan 文档同节)**:描述器纯度静态扫描;prepare 相互依赖建模;
+跨组同路径碰撞检查。

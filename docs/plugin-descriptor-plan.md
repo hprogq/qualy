@@ -23,7 +23,11 @@ auth 构建期不再需要 Ui,请求期 ui-registry handler → auth 的边不�
 
 ## 保留的边界(不做的部分)
 
-- **浏览器 chunk 注册表**(apps/web 的 plugins.gen)保留:Vite 必须在构建期看到 import 图。
+- ~~浏览器 chunk 注册表(apps/web 的 plugins.gen)保留~~ **2026-08-07 改判**:Vite 必须在
+  构建期看到 import 图这一半仍然成立,但磁盘文件不必——`virtual:qualy/plugins` 由
+  Vite 插件按已验证装配现算(物化进 node_modules 缓存,dev/build/浏览器测试同一逻辑),
+  服务端 main.ts 不再生成任何前端源码;冲突检查(组件键/目录命名空间/消息 id/错误码)
+  原样保留在 collector 里。
 - **@qualy/api 全局类型聚合**保留到 M4 再议:前端整个建立在全局 typed client 上,
   换每插件自持 client 是独立一轮前端改造(2026-08-07 用户裁决)。
 - **database 的 assembly 只瘦声明解析半边**:structural diff、baseline、drop guard、adopt、
@@ -131,3 +135,29 @@ qualy.yml + lock → 动态 import 各插件 default 描述器
 
 类型擦除集中两点,均在装配器内部:运行时 HttpApi 聚合的 `add(group as never)`、
 组合后 Layer 的 `Layer<any>`。插件侧零 cast。
+
+## 审计修复轮(2026-08-07,M3b-2 审计驱动)
+
+内核四点:①`Plugin.service` 拓扑真实落地(键重复/缺提供/成环 assemble 期点名硬拒,
+requires 即排序依据;`Plugin.layer` 保列表序垫底,是不导出 key 的基础设施逃生口);
+②`boot` 相从 `ExtensionPhase` 删除(零使用者;装配器不编译的相位只会静默吞贡献,
+启动后一次性工作归 Assembled 屏障);③descriptor.id 必须等于包 id,import 失败包裹插件名;
+④ExtensionPoint 同 id 异形(phase/capability)硬拒;provider 的 compile 收
+`Contributed<T>{pluginId, value}`(重复页面/组同码点名双方);prepare 相 compile 类型上
+强制零 requirement(重载而非条件类型——上下文归型会把未解析条件宽化到约束,实测)。
+
+一致性三件:⑤前端产物指纹(stage 写 `.qualy-assembly.json`,宿主提供 `AssemblyInfo`,
+web 插件 production 拒绝错配/无指纹)+ `scripts/smoke-production.ts` 生产真启动进 CI;
+⑥静态 `qualyApi` 与运行时 `/openapi.json` **全量**深比较——首跑即抓到匿名 schema 命名因
+加组顺序漂移,gen-api 改走运行时同一依赖序并从描述器读组,`./api` 导出与 `Api.group`
+声明双向核对;⑦CLI 分发:命名空间命令 = 描述器命令 ∪ 同名能力命令(别名同达,同名硬拒),
+修复 CI 的 `qualy database check`。
+
+常量:api 聚合身份收进 api-kit(`Api.local(group, ...)`),六处插件与两处测试的
+`QUALY_API_ID`/`QUALY_API_PREFIX` 拼写清零;其余跨插件常量核查为契约词汇
+(ADMIN_SHELL/PUBLIC 等),非债务。
+
+**缓建(带触发条件)**:描述器纯度静态扫描(effect LSP 已抓悬空 effect,import 错误已
+包裹;触发:第一个第三方插件或首次纯度事故);prepare 相互依赖建模(现为并行 mergeAll,
+类型已禁 requirement;触发:第一个需要读别的 prepare 结果的 provider);跨组同路径同方法
+碰撞检查(组标识符已一键一主;触发:首次真实撞路径)。
