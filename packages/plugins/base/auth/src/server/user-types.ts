@@ -348,16 +348,15 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
      */
     orgTypeOptions: (tenantId: string) =>
       withDb(
-        Effect.gen(function* () {
-          return yield* orgTypeOptions(tenantId).pipe(Effect.orDie)
-        }).pipe(Effect.withSpan('Iam.userTypes.orgTypeOptions')),
+        orgTypeOptions(tenantId).pipe(
+          Effect.orDie,
+          Effect.withSpan('Iam.userTypes.orgTypeOptions'),
+        ),
       ),
 
     list: (tenantId: string) =>
       withDb(
-        Effect.gen(function* () {
-          return yield* userTypesOfTenant(tenantId).pipe(Effect.orDie)
-        }).pipe(Effect.withSpan('Iam.userTypes.list')),
+        userTypesOfTenant(tenantId).pipe(Effect.orDie, Effect.withSpan('Iam.userTypes.list')),
       ),
 
     get: (tenantId: string, userTypeId: string) =>

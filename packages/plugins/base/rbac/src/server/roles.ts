@@ -489,10 +489,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     return row
   })
 
-  const codesOf = (tenantId: string, roleId: string) =>
-    Effect.gen(function* () {
-      return yield* rolePermissionCodes(tenantId, roleId)
-    })
+  const codesOf = (tenantId: string, roleId: string) => rolePermissionCodes(tenantId, roleId)
 
   /**
    * Everything a usable role needs, checked at the moment it becomes usable.

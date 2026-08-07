@@ -268,11 +268,9 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const rbac = yield* Rbac
-          const disable = Effect.gen(function* () {
-            yield* rbacDb.query((k) =>
-              k.updateTable('User').set({ enabled: false }).where('id', '=', f.user).execute(),
-            )
-          })
+          const disable = rbacDb.query((k) =>
+            k.updateTable('User').set({ enabled: false }).where('id', '=', f.user).execute(),
+          )
           const before = yield* Effect.result(rbac.assertTenantKeepsAdministrator(f.tenant))
           // disable the only administrator inside a transaction, then ask:
           // the check has to see the write that has not committed yet. The

@@ -547,11 +547,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       scope: GrantScope,
       page?: { after?: string; limit: number },
     ) =>
-      withDb(
-        Effect.gen(function* () {
-          return yield* grantRows(tenantId, filter, scope, page).pipe(Effect.orDie)
-        }),
-      ),
+      withDb(grantRows(tenantId, filter, scope, page).pipe(Effect.orDie)),
 
     options,
     grant: Effect.fn('Rbac.grants.grant')(function* (
