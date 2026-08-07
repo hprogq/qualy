@@ -231,6 +231,33 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
     }
   })
 
+  it('serves the exact document the static aggregate describes', async () => {
+    // Two discovery mechanisms, one contract: gen-api finds groups through
+    // exports['./api'], the runtime aggregates Api.group features. The full
+    // document has to match - not just the path list - or a drifted schema
+    // surfaces as a browser decoding failure instead of a red gate here.
+    // Upstream serves OpenApi.fromApi(api) verbatim (HttpApiBuilder.ts), so
+    // the comparison is between the same generator run on both aggregates;
+    // only the tag order reflects addition order and is normalised.
+    const db = await createTestContext('effect-api-document')
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
+      type Document = { tags?: { name: string }[] } & Record<string, unknown>
+      const served = (await (await fetch(`${base}${spec}`)).json()) as Document
+      // the JSON round trip drops undefined the same way serving does
+      const statically = JSON.parse(JSON.stringify(OpenApi.fromApi(qualyApi))) as Document
+      const sortTags = (document: Document): Document => ({
+        ...document,
+        tags: [...(document.tags ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+      })
+      expect(sortTags(served)).toEqual(sortTags(statically))
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await db.dispose()
+    }
+  })
+
   it('serves exactly the paths its document advertises', async () => {
     // the prefix has to be applied to the plugin's local api and to the
     // aggregate, because routes come from the first and the document from the

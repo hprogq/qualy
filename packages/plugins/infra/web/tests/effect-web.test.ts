@@ -168,15 +168,23 @@ describe('the shell against the api mount', () => {
 // logger, with its level intact - otherwise the dev output is two formats
 // again and nobody notices until they are reading it.
 describe("vite's logger, adapted", () => {
-  const captured = async (use: (logger: Awaited<ReturnType<typeof build>>) => void) => {
+  const captured = async (
+    expected: number,
+    use: (logger: Awaited<ReturnType<typeof build>>) => void,
+  ) => {
     const lines: string[] = []
     await Effect.runPromise(
       Effect.gen(function* () {
         const logger = yield* viteLogger
         use(logger)
-        // the forked drain runs on the next turn; closing the scope after it
-        // has is what this yield buys
-        yield* Effect.sleep(10)
+        // the forked drain runs on its own fiber; a fixed sleep raced the
+        // scheduler under a loaded suite, so wait for the lines themselves,
+        // then one settle tick so an unexpected extra line still shows up
+        const deadline = Date.now() + 5_000
+        while (lines.length < expected && Date.now() < deadline) {
+          yield* Effect.sleep(5)
+        }
+        yield* Effect.sleep(20)
       }).pipe(
         Effect.scoped,
         Effect.provide(
@@ -192,7 +200,7 @@ describe("vite's logger, adapted", () => {
 
   it('carries each level through to the application logger', async () => {
     expect(
-      await captured((logger) => {
+      await captured(3, (logger) => {
         logger.info('mounted')
         logger.warn('careful')
         logger.error('broken')
@@ -202,7 +210,7 @@ describe("vite's logger, adapted", () => {
 
   it('says a repeated warning once, and remembers that it warned', async () => {
     let logger: Awaited<ReturnType<typeof build>>
-    const lines = await captured((made) => {
+    const lines = await captured(1, (made) => {
       logger = made
       expect(made.hasWarned).toBe(false)
       made.warnOnce('same')
