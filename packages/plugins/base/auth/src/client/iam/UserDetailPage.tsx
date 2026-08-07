@@ -9,15 +9,16 @@ import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
 import { UserGrants } from './UserGrants.tsx'
+import { authApi } from '../api.ts'
 
 // One person: their profile, where they stand, whether they may sign in, and
 // which roles they hold. The id comes from the route, typed by the page
 // reference that declared the `:userId` segment.
 export default function UserDetailPage() {
   const { userId } = usePageRouteParams('userId')
-  const api = useApi()
+  const api = useApi(authApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

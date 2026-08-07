@@ -8,13 +8,14 @@ import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
+import { authApi } from '../api.ts'
 
 // Users are administered where they stand, so the screen is anchored on one
 // of the caller's own authorization anchors. The anchor, the scope and the
 // search term live in the query string: this is exactly the state someone
 // wants back after a reload or in a link sent to a colleague.
 export default function UsersPage() {
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const [anchor, setAnchor] = usePageQueryState('anchor')
   const [scope, setScope] = usePageQueryState('scope', 'subtree')

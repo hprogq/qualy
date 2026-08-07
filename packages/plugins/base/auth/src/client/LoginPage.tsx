@@ -10,12 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@qualy/ui/card'
 import { Spinner } from '@qualy/ui/spinner'
 import type { LoginMethod } from '@qualy/auth-contract/login'
 import { authMessages as m } from './i18n.ts'
+import { authApi } from './api.ts'
 
 // single login page: the method list and the selected driver renderer are
 // both states of /login (?method=<code>), never separate pages. Drivers own
 // their presentation; this shell never guesses driver routes.
 export default function LoginPage() {
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const { format } = useI18n()
   const startSession = useSessionTransition()
   const [searchParams, setSearchParams] = useSearchParams()

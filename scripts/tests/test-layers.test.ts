@@ -291,10 +291,10 @@ describe('test layering', () => {
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
       'packages/api-client/src/effect/query.ts',
-      // the browser's composition root, and it runs exactly one effect:
-      // building the client. Everything after that is handed to the runtime
-      // above rather than run in a component.
-      'apps/web/src/App.tsx',
+      // the browser's client factory: builds one typed client per api
+      // definition, synchronously and memoised - the runSync that used to
+      // live in the composition root, moved to where the definitions arrive
+      'packages/web-runtime/src/index.tsx',
     ]
     // A comment is not a call. The pattern matches the name anywhere in the
     // file, so prose explaining why a boundary is where it is would otherwise

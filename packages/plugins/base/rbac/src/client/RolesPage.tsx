@@ -6,13 +6,14 @@ import { AsyncSection, Panel } from '@qualy/ui/admin'
 import { rbacMessages as m } from './i18n.ts'
 import { RoleEditor } from './RoleEditor.tsx'
 import { NewRoleForm } from './NewRoleForm.tsx'
+import { accessApi } from './api.ts'
 
 // Roles and what they may hold. The selected role lives in the query string
 // rather than in component state, so a role is linkable and survives a
 // reload; there is no separate route because this catalog is small enough
 // that master and detail belong on one screen.
 export default function RolesPage() {
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(accessApi)
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('role')
 

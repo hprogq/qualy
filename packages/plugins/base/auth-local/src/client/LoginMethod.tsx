@@ -6,11 +6,12 @@ import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import type { LoginMethodRendererProps } from '@qualy/auth-contract/login'
 import { localMessages as m } from './i18n.ts'
+import { authLocalApi } from './api.ts'
 
 // embedded credential renderer: the auth core's login shell owns the page,
 // this form only proves the user against one local provider instance
 export default function LocalLoginMethod({ method, onAuthenticated }: LoginMethodRendererProps) {
-  const api = useApi()
+  const api = useApi(authLocalApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
   const [identifier, setIdentifier] = useState('')

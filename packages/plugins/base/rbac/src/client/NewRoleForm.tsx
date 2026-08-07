@@ -6,6 +6,7 @@ import { Feedback, Field, Panel, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { rbacMessages as m } from './i18n.ts'
+import { accessApi } from './api.ts'
 
 // Creation carries identity only: a role starts as a draft and is configured
 // in the editor, where completeness is checked when it is activated. The form
@@ -16,9 +17,9 @@ import { rbacMessages as m } from './i18n.ts'
 // whether the duty applies tenant-wide or is anchored to a node, and with it
 // which capabilities the role may hold.
 export function NewRoleForm({ onCreated }: { onCreated: (roleId: string) => void }) {
-  const api = useApi()
+  const api = useApi(accessApi)
   const run = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(accessApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

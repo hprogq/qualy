@@ -9,17 +9,18 @@ import { AsyncSection, CheckboxGroup, ConfirmDialog, Feedback, Field, Panel } fr
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { rbacMessages as m } from './i18n.ts'
+import { accessApi } from './api.ts'
 
 // Everything one role owns, edited in place. Each section saves on its own
 // because the api treats them as separate subresources; one "save
 // everything" button would have to guess which of them actually changed.
 /** the row as the api answers it, not a copy that can drift from it */
-export type RoleRow = ApiResult<'access', 'listRoles'>['roles'][number]
+export type RoleRow = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'][number]
 
 export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: boolean }) {
-  const api = useApi()
+  const api = useApi(accessApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(accessApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

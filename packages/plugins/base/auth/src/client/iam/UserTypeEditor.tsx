@@ -9,12 +9,13 @@ import { AsyncSection, CheckboxGroup, ConfirmDialog, Feedback, Field, Panel } fr
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
+import { authApi } from '../api.ts'
 
 // Everything a user type owns: display, sign-in policy and the tenant-wide
 // permissions it carries. Disabling a type that people still hold is refused
 // by the api, so the control says so up front rather than after a round trip.
 /** the row as the api answers it, not a copy that can drift from it */
-export type UserTypeRow = ApiResult<'identity', 'listUserTypes'>['userTypes'][number]
+export type UserTypeRow = ApiResult<typeof authApi, 'identity', 'listUserTypes'>['userTypes'][number]
 
 export function UserTypeEditor({
   userType,
@@ -23,9 +24,9 @@ export function UserTypeEditor({
   userType: UserTypeRow
   canManage: boolean
 }) {
-  const api = useApi()
+  const api = useApi(authApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

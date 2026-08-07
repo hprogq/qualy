@@ -37,9 +37,6 @@ jobs:
           node-version: 24.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # the loader entry list is generated and gitignored, so it has to exist
-      # before the frozen check can compare against it
-      - run: pnpm gen
       - name: assembly lock must describe this tree
         run: pnpm qualy resolve --frozen-lockfile
       - run: pnpm typecheck

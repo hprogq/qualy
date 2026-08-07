@@ -6,6 +6,7 @@ import { Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
+import { authApi } from '../api.ts'
 
 export function NewUserForm({
   orgNodeId,
@@ -14,9 +15,9 @@ export function NewUserForm({
   orgNodeId: string
   userTypes: readonly { id: string; code: string; name: string }[]
 }) {
-  const api = useApi()
+  const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

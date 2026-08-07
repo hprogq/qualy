@@ -16,7 +16,8 @@
     "./api": "./src/api.ts",
     "./server/sign-in": "./src/server/sign-in.ts",
     "./server/session-contract": "./src/server/session-contract.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client/api": "./src/client/api.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

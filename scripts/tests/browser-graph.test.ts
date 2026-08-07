@@ -30,13 +30,17 @@ const NODE_ONLY = [
 ]
 
 describe('what the browser bundle is allowed to reach', () => {
-  it('builds the api definition without pulling in anything node-only', async () => {
+  it('builds a plugin client api without pulling in anything node-only', async () => {
     const externals: string[] = []
     await build({
       logLevel: 'silent',
       build: {
         write: false,
-        lib: { entry: 'packages/api/src/index.ts', formats: ['es'], fileName: 'probe' },
+        lib: {
+          entry: 'packages/plugins/base/auth/src/client/api.ts',
+          formats: ['es'],
+          fileName: 'probe',
+        },
         rollupOptions: {
           // Nothing is external: the browser has no module resolution to
           // fall back on, so anything the graph reaches has to be bundled or

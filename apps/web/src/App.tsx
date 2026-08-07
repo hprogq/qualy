@@ -1,7 +1,5 @@
 import { lazy, useMemo, type ComponentType } from 'react'
 import { BrowserRouter, Link } from 'react-router'
-import { Effect } from 'effect'
-import { makeClient } from '@qualy/api-client/effect'
 import { primaryNavigation } from '@qualy/ui-contract'
 import {
   ManifestRoutes,
@@ -17,11 +15,8 @@ import { Button } from '@qualy/ui/button'
 import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { catalogs, components, errorMessages } from 'virtual:qualy/plugins'
 
-// The one place the browser runs an effect, and it runs exactly one: building
-// the client. Everything after this hands effects to TanStack through the query
-// utils, which is what keeps each endpoint's failure type alive instead of
-// flattening it into Error at the first runPromise.
-const client = Effect.runSync(makeClient())
+// There is no global client to build: each plugin derives its own from the
+// api definitions it calls, through the runtime's per-definition cache.
 const registry: ComponentRegistry = Object.fromEntries(
   Object.entries(components).map(([name, thunk]) => [
     name,
@@ -34,7 +29,7 @@ export default function App() {
   // states are localized, so the shell never renders untranslated copy
   return (
     <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
-      <RuntimeProvider client={client} registry={registry}>
+      <RuntimeProvider registry={registry}>
         <BrowserRouter>
           <ManifestRouter />
         </BrowserRouter>

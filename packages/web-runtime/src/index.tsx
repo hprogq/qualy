@@ -9,7 +9,7 @@ import {
   type LazyExoticComponent,
   type ReactNode,
 } from 'react'
-import type { Effect } from 'effect'
+import { Effect } from 'effect'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type {
   PageParams,
@@ -22,8 +22,11 @@ import { Button } from '@qualy/ui/button'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
-import type { QualyClient } from '@qualy/api-client/effect'
-import { createQueryUtils, runMutation } from '@qualy/api-client/effect/query'
+import { clientFor, type ClientOf } from '@qualy/api-client/effect'
+import { createQueryUtils, runMutation, type QueryUtils } from '@qualy/api-client/effect/query'
+import { Api } from '@qualy/api-kit/plugin'
+import { appApiGroup } from '@qualy/plugin-ui-registry/api'
+import type { HttpApi } from 'effect/unstable/httpapi'
 import type { NamespacedId } from '@qualy/ui-contract'
 import {
   buildPageHref,
@@ -52,19 +55,40 @@ export {
 } from './route-builder.tsx'
 export { PageLink } from './links.tsx'
 
-// the manifest as the api declares it, read off the derived client so a shape
-// change is a compile error in every page rather than a runtime surprise
-export type Manifest = Effect.Success<ReturnType<QualyClient['app']['getManifest']>>
+// The shell's own api: the manifest endpoint, imported as the contract leaf
+// it is. The runtime holds no global client - each plugin derives one from
+// the definitions it calls - and this is simply the runtime doing the same
+// for the one endpoint the runtime itself calls.
+const appApi = Api.local(appApiGroup)
+export type Manifest = Effect.Success<ReturnType<ClientOf<typeof appApi>['app']['getManifest']>>
 // heterogeneous by design: each page or renderer declares its own props,
 // consumers pass whatever the target component expects
 export type ComponentRegistry = Record<string, LazyExoticComponent<ComponentType<any>>>
 
-const buildQueryUtils = (client: QualyClient) => createQueryUtils(client)
-export type ApiQueryUtils = ReturnType<typeof buildQueryUtils>
+/**
+ * Builds the typed client for an api definition.
+ *
+ * The seam tests replace: production derives a real client per definition
+ * (memoised by the definition's identity - plugins declare theirs as module
+ * constants); a harness answers with a stub tree instead, at the same place
+ * a transport would differ.
+ */
+export type ClientProvider = (api: HttpApi.Constraint) => unknown
+
+const defaultClientFor: ClientProvider = (() => {
+  const cache = new WeakMap<object, unknown>()
+  return (api: HttpApi.Constraint) => {
+    const cached = cache.get(api)
+    if (cached) return cached
+    const client = Effect.runSync(clientFor(api as Parameters<typeof clientFor>[0]))
+    cache.set(api, client)
+    return client
+  }
+})()
 
 export interface Runtime {
-  client: QualyClient
-  orpc: ApiQueryUtils
+  clientFor: ClientProvider
+  utilsFor: (api: HttpApi.Constraint) => unknown
   manifest: Manifest
   registry: ComponentRegistry
 }
@@ -72,19 +96,33 @@ export interface Runtime {
 const RuntimeContext = createContext<Runtime | null>(null)
 
 export interface RuntimeProviderProps {
-  client: QualyClient
+  /** replaced by harnesses; production derives real clients per definition */
+  clientFor?: ClientProvider
   registry: ComponentRegistry
   children: ReactNode
 }
 
 // the runtime owns the manifest lifecycle: loading renders nothing, failure
 // renders a retry prompt instead of a permanently blank shell
-export function RuntimeProvider({ client, registry, children }: RuntimeProviderProps) {
+export function RuntimeProvider({ clientFor: provided, registry, children }: RuntimeProviderProps) {
   const [queryClient] = useState(() => new QueryClient())
-  const [orpc] = useState(() => buildQueryUtils(client))
+  const [runtime] = useState(() => {
+    const provider = provided ?? defaultClientFor
+    const utils = new WeakMap<object, unknown>()
+    return {
+      clientFor: provider,
+      utilsFor: (api: HttpApi.Constraint) => {
+        const cached = utils.get(api)
+        if (cached) return cached
+        const built = createQueryUtils(provider(api) as Record<string, never>)
+        utils.set(api, built)
+        return built
+      },
+    }
+  })
   return (
     <QueryClientProvider client={queryClient}>
-      <RuntimeLoader client={client} orpc={orpc} registry={registry}>
+      <RuntimeLoader clientFor={runtime.clientFor} utilsFor={runtime.utilsFor} registry={registry}>
         {children}
       </RuntimeLoader>
     </QueryClientProvider>
@@ -92,12 +130,13 @@ export function RuntimeProvider({ client, registry, children }: RuntimeProviderP
 }
 
 function RuntimeLoader({
-  client,
-  orpc,
+  clientFor,
+  utilsFor,
   registry,
   children,
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
   const { format } = useI18n()
+  const orpc = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
   const manifest = useQuery(orpc.app.getManifest.queryOptions())
   if (manifest.isPending) return <LoadingScreen />
   if (manifest.isError) {
@@ -111,7 +150,7 @@ function RuntimeLoader({
     )
   }
   return (
-    <RuntimeContext.Provider value={{ client, orpc, registry, manifest: manifest.data }}>
+    <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest: manifest.data }}>
       {children}
     </RuntimeContext.Provider>
   )
@@ -155,7 +194,10 @@ export function useRuntime(): Runtime {
   return runtime
 }
 
-export const useApi = () => useRuntime().client
+/** the typed client for an api definition a plugin declares as a constant */
+export function useApi<Api extends HttpApi.Constraint>(api: Api): ClientOf<Api> {
+  return useRuntime().clientFor(api) as ClientOf<Api>
+}
 
 /**
  * Turns one call into a promise, for a mutation.
@@ -169,7 +211,10 @@ export const useRunApi = () => runMutation()
 // resolve one registered component by its namespaced key ('plugin/Component');
 // undefined means the owning plugin is not part of this build
 export const useComponent = (name: string) => useRuntime().registry[name]
-export const useApiQuery = () => useRuntime().orpc
+/** query utilities for an api definition, memoised per definition */
+export function useApiQuery<Api extends HttpApi.Constraint>(api: Api): QueryUtils<ClientOf<Api>> {
+  return useRuntime().utilsFor(api) as QueryUtils<ClientOf<Api>>
+}
 export const useManifest = () => useRuntime().manifest
 
 // the manifest entry for a page reference, or undefined when the viewer

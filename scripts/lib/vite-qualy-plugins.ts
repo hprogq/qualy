@@ -1,7 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Plugin } from 'vite'
-import { generateAllQuietly } from '../gen.ts'
 import { repoRoot } from './paths.ts'
 import { buildPluginModuleSource } from './web-plugins.ts'
 
@@ -31,9 +30,6 @@ export const qualyPlugins = (): Plugin => {
       all = config.command === 'build'
     },
     async buildStart() {
-      // the typed client aggregate is the web build's own input; generating
-      // it here keeps every frontend artifact owned by the frontend toolchain
-      for (const line of await generateAllQuietly()) this.info(line)
       fs.mkdirSync(path.dirname(cacheFile), { recursive: true })
       fs.writeFileSync(cacheFile, await buildPluginModuleSource({ all }))
     },

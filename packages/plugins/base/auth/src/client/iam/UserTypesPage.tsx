@@ -6,12 +6,13 @@ import { AsyncSection, Panel } from '@qualy/ui/admin'
 import { iamMessages as m } from '../i18n.ts'
 import { UserTypeEditor } from './UserTypeEditor.tsx'
 import { NewUserTypeForm } from './NewUserTypeForm.tsx'
+import { authApi } from '../api.ts'
 
 // User types: the sign-in policy and tenant-wide grants of a class of
 // people. A handful of rows, so the selected one is edited on the same
 // screen; the selection lives in the query string so it stays linkable.
 export default function UserTypesPage() {
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('type')
 

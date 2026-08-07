@@ -13,7 +13,8 @@
     "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
     "./package.json": "./package.json",
-    "./assembly": "./src/assembly/index.ts"
+    "./assembly": "./src/assembly/index.ts",
+    "./client/api": "./src/client/api.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

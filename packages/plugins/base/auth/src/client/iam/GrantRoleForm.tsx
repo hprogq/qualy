@@ -5,6 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
+import { authApi } from '../api.ts'
 
 // Giving somebody a role, which is two questions in one form: what the role is
 // and where it applies.
@@ -25,9 +26,9 @@ export function GrantRoleForm({
   /** the org tree this caller may anchor a grant in, from the user options */
   nodes: readonly { orgNodeId: string; name: string; depth: number; manageable: boolean }[]
 }) {
-  const api = useApi()
+  const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

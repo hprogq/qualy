@@ -7,15 +7,16 @@ import { AsyncSection, CheckboxGroup, Feedback, Field, Panel } from '@qualy/ui/a
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
+import { authApi } from '../api.ts'
 
 // A type is created complete, placement policy included. A type created
 // without one constrains nothing while looking configured, and the window
 // before somebody remembers to set it is exactly when a person gets placed
 // where that kind of person should never be.
 export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string) => void }) {
-  const api = useApi()
+  const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

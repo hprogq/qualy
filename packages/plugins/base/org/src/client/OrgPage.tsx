@@ -13,17 +13,18 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import type { ApiResult } from '@qualy/api-client/effect'
 
 // the rows as the api answers them, not a copy that can drift from it
-type OrgTreeNodeDto = ApiResult<'org', 'getTree'>['nodes'][number]
-type OrgTypeDto = ApiResult<'org', 'listTypes'>['types'][number]
+type OrgTreeNodeDto = ApiResult<typeof orgApi, 'org', 'getTree'>['nodes'][number]
+type OrgTypeDto = ApiResult<typeof orgApi, 'org', 'listTypes'>['types'][number]
 import { orgMessages as m } from './i18n.ts'
+import { orgApi } from './api.ts'
 
 // minimal org management: tree with selection, node crud, parent-selector
 // move and basic type/rule administration. Mutation controls only render on
 // nodes the server marked manageable; the server enforces regardless.
 export default function OrgPage() {
-  const api = useApi()
+  const api = useApi(orgApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(orgApi)
   const { format, formatError } = useI18n()
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<string | null>(null)

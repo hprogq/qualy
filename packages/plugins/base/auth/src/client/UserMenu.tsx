@@ -4,14 +4,15 @@ import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { authMessages as m } from './i18n.ts'
+import { authApi } from './api.ts'
 
 // header-actions contribution: shows the signed-in user and a sign-out
 // button, a sign-in link for anonymous visitors, and says so plainly when
 // the session state simply cannot be determined
 export default function UserMenu() {
-  const api = useApi()
+  const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
   const [signOutError, setSignOutError] = useState<string | null>(null)

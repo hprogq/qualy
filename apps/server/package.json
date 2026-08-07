@@ -6,7 +6,6 @@
   "type": "module",
   "dependencies": {
     "@effect/platform-node": "catalog:",
-    "@qualy/api": "workspace:*",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",

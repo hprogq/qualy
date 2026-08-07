@@ -81,7 +81,6 @@ if (pluginManifest.exports?.['./client']) declareIn('apps/web/package.json')
 
 execSync('pnpm install', { stdio: 'inherit' })
 execSync('pnpm exec tsx scripts/qualy.ts resolve', { stdio: 'inherit' })
-execSync('pnpm exec tsx scripts/gen.ts', { stdio: 'inherit' })
 console.log(
   `${name} added; declare what it contributes on its descriptor (Db.entities, Ui.surfaces, ...)`,
 )

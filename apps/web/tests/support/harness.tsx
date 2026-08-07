@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
 import { RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
 import { Effect } from 'effect'
-import type { QualyClient } from '@qualy/api-client/effect'
+
 import { catalogs, errorMessages } from 'virtual:qualy/plugins'
 
 // The harness lives in the host's own test folder, not in a package export.
@@ -34,7 +34,8 @@ export const emptyManifest = (): FakeManifest => ({
 //
 // A stub value becomes a succeeding effect; a stub function is used as given,
 // so a test that wants to fail returns `Effect.fail(...)` itself.
-export function fakeClient(stubs: Record<string, Record<string, unknown>>): QualyClient {
+/** a stub tree the runtime hands every plugin, whatever api it asks for */
+export function fakeClient(stubs: Record<string, Record<string, unknown>>): FakeClient {
   const namespaces: Record<string, Record<string, unknown>> = {}
   for (const [namespace, methods] of Object.entries(stubs)) {
     const entries: Record<string, unknown> = {}
@@ -43,8 +44,10 @@ export function fakeClient(stubs: Record<string, Record<string, unknown>>): Qual
     }
     namespaces[namespace] = entries
   }
-  return namespaces as unknown as QualyClient
+  return namespaces
 }
+
+export type FakeClient = Record<string, Record<string, unknown>>
 
 /**
  * A failure shaped the way the derived client surfaces one.
@@ -68,7 +71,7 @@ export function renderScreen({
   // says so through the same stored preference a user's toggle writes
   locale = 'zh-CN',
 }: {
-  client: QualyClient
+  client: FakeClient
   registry?: ComponentRegistry
   children: ReactNode
   route?: string
@@ -78,7 +81,7 @@ export function renderScreen({
   localStorage.setItem('qualy.locale', locale)
   return render(
     <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-      <RuntimeProvider client={client} registry={registry ?? {}}>
+      <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
         <MemoryRouter initialEntries={[route]}>
           {path ? <RouteHost path={path}>{children}</RouteHost> : children}
         </MemoryRouter>

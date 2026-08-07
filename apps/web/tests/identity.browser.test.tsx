@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import type { QualyClient } from '@qualy/api-client/effect'
-import type { ApiResult } from '@qualy/api-client/effect'
+import type { ApiResult, ClientOf } from '@qualy/api-client/effect'
+import type { authApi } from '@qualy/plugin-auth/client/api'
+import type { accessApi } from '@qualy/plugin-rbac/client/api'
 
 // the rows as the api answers them: a fixture typed from a hand-written copy
 // kept compiling after the api's own shape moved
-type UserTypeDto = ApiResult<'identity', 'listUserTypes'>['userTypes'][number]
-type RoleDto = ApiResult<'access', 'listRoles'>['roles'][number]
-type UserDto = ApiResult<'identity', 'getUser'>['user']
+type UserTypeDto = ApiResult<typeof authApi, 'identity', 'listUserTypes'>['userTypes'][number]
+type RoleDto = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'][number]
+type UserDto = ApiResult<typeof authApi, 'identity', 'getUser'>['user']
 import { components } from 'virtual:qualy/plugins'
 import { Effect } from 'effect'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -88,11 +89,12 @@ const orgTypeOptions = [
   { id: DEPARTMENT_TYPE_ID, code: 'department', name: '系' },
 ]
 
-// keys are checked against the real client, so a procedure that is renamed
-// on the server takes this file down with it rather than leaving a stub
-// nobody calls and a screen reading undefined
-type Stubs<Namespace extends keyof QualyClient> = Partial<
-  Record<keyof QualyClient[Namespace], (...args: never[]) => unknown>
+// keys are checked against the real clients these screens derive, so a
+// procedure that is renamed on the server takes this file down with it
+// rather than leaving a stub nobody calls and a screen reading undefined
+type Clients = ClientOf<typeof authApi> & ClientOf<typeof accessApi>
+type Stubs<Namespace extends keyof Clients> = Partial<
+  Record<keyof Clients[Namespace], (...args: never[]) => unknown>
 >
 
 // Defaults per namespace, overridden one method at a time: a test that only

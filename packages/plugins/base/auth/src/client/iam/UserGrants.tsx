@@ -7,6 +7,7 @@ import { AsyncSection, Feedback, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
 import { GrantRoleForm } from './GrantRoleForm.tsx'
+import { authApi } from '../api.ts'
 
 // The grants one person holds. The api replaces the whole set in one
 // transaction, so this screen sends the set it wants rather than a sequence
@@ -23,9 +24,9 @@ export function UserGrants({
   /** the org tree this caller may anchor a new grant in */
   nodes: readonly { orgNodeId: string; name: string; depth: number; manageable: boolean }[]
 }) {
-  const api = useApi()
+  const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery()
+  const orpc = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)

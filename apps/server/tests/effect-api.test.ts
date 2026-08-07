@@ -3,7 +3,7 @@ import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder, HttpApiClient, OpenApi } from 'effect/unstable/httpapi'
+import { HttpApiBuilder, HttpApiClient } from 'effect/unstable/httpapi'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
@@ -14,8 +14,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { readLock, lockPathFor, resolveAssembly } from '@qualy/assembly'
-import { qualyApi } from '@qualy/api'
-import { makeClient } from '@qualy/api-client/effect'
+import { clientFor } from '@qualy/api-client/effect'
 import { loadAssembly } from '../src/assembly.ts'
 import { manifestPath } from '../src/manifest.ts'
 import { healthApi, healthHandlers } from '../src/health.ts'
@@ -202,11 +201,13 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
     try {
       await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
 
-      // what the browser does, through the same builder it uses: baseUrl is an
-      // ORIGIN. The mount lives in the definition, so every declared path is
-      // already the full path.
+      // what the browser does, through the same builder it uses: a client
+      // derived from the plugin's own definition. baseUrl is an ORIGIN - the
+      // mount lives in the definition, so every declared path is the full one.
+      const { pingApiGroup } = await import('@qualy/plugin-ping/api')
+      const pingApi = Api.local(pingApiGroup)
       const call = Effect.gen(function* () {
-        const client = yield* makeClient(base)
+        const client = yield* clientFor(pingApi, base)
         return yield* client.ping.hello({ query: { name: 'grace' } })
       })
 
@@ -225,33 +226,6 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       // blank page, four layers from the line that caused it.
       const doubled = await fetch(`${base}${QUALY_API_PREFIX}${QUALY_API_PREFIX}/ping/hello`)
       expect(doubled.status).toBe(404)
-    } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-      await db.dispose()
-    }
-  })
-
-  it('serves the exact document the static aggregate describes', async () => {
-    // Two discovery mechanisms, one contract: gen-api finds groups through
-    // exports['./api'], the runtime aggregates Api.group features. The full
-    // document has to match - not just the path list - or a drifted schema
-    // surfaces as a browser decoding failure instead of a red gate here.
-    // Upstream serves OpenApi.fromApi(api) verbatim (HttpApiBuilder.ts), so
-    // the comparison is between the same generator run on both aggregates;
-    // only the tag order reflects addition order and is normalised.
-    const db = await createTestContext('effect-api-document')
-    const scope = await Effect.runPromise(Scope.make())
-    try {
-      await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
-      type Document = { tags?: { name: string }[] } & Record<string, unknown>
-      const served = (await (await fetch(`${base}${spec}`)).json()) as Document
-      // the JSON round trip drops undefined the same way serving does
-      const statically = JSON.parse(JSON.stringify(OpenApi.fromApi(qualyApi))) as Document
-      const sortTags = (document: Document): Document => ({
-        ...document,
-        tags: [...(document.tags ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-      })
-      expect(sortTags(served)).toEqual(sortTags(statically))
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
