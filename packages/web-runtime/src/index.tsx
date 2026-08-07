@@ -24,6 +24,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import type { QualyClient } from '@qualy/api-client/effect'
 import { createQueryUtils, runMutation } from '@qualy/api-client/effect/query'
+import type { NamespacedId } from '@qualy/ui-contract'
 import {
   buildPageHref,
   sessionDestinationHref,
@@ -127,7 +128,7 @@ export function useSessionTransition() {
   const manifest = useManifest()
   return useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
-      void navigate(sessionDestinationHref(options.destination), {
+      void navigate(sessionDestinationHref(options.destination, manifest.pages), {
         replace: options.replace ?? true,
       })
       // resetQueries, not clear: clear evicts the cache entries but leaves
@@ -180,23 +181,19 @@ export const useManifest = () => useRuntime().manifest
 declare const process: { env?: Record<string, string | undefined> } | undefined
 const isDev = () => typeof process === 'undefined' || process.env?.['NODE_ENV'] !== 'production'
 
-export function useManifestPage(page: PageRef) {
+export function useManifestPage(page: NamespacedId) {
   const manifest = useManifest()
-  const entry = manifest.pages.find((candidate) => candidate.id === page.id)
-  if (isDev() && entry && entry.path !== page.path) {
-    throw new Error(
-      `page ${page.id} is mounted at ${entry.path} but this build references ${page.path}`,
-    )
-  }
-  return entry
+  return manifest.pages.find((candidate) => candidate.id === page)
 }
 
-export const usePageAvailable = (page: PageRef) => useManifestPage(page) !== undefined
+export const usePageAvailable = (page: NamespacedId) => useManifestPage(page) !== undefined
 
-// the url of a page, or undefined when it is not part of this manifest
-export function usePageHref(page: PageRef, options?: PageHrefOptions): string | undefined {
+// The url of a page, or undefined when it is not part of this manifest.
+// Client code names a page by id; the path is the manifest's alone, so a
+// browser bundle can never disagree with the server about where a page is.
+export function usePageHref(page: NamespacedId, options?: PageHrefOptions): string | undefined {
   const entry = useManifestPage(page)
-  return entry ? buildPageHref(page, options) : undefined
+  return entry ? buildPageHref(entry, options) : undefined
 }
 
 // navigate by naming a page instead of repeating its path; navigating to a
@@ -206,19 +203,15 @@ export function usePageNavigate() {
   const navigate = useNavigate()
   const manifest = useManifest()
   return useCallback(
-    <const Ref extends PageRef>(
-      page: Ref,
-      options: Omit<PageHrefOptions, 'params'> &
-        ParamsOption<Ref> & { replace?: boolean } = {} as never,
-    ) => {
-      const available = manifest.pages.some((candidate) => candidate.id === page.id)
-      if (!available) {
-        const message = `cannot navigate to ${page.id}: not visible in the current manifest`
+    (page: NamespacedId, options: PageHrefOptions & { replace?: boolean } = {}) => {
+      const entry = manifest.pages.find((candidate) => candidate.id === page)
+      if (!entry) {
+        const message = `cannot navigate to ${page}: not visible in the current manifest`
         if (isDev()) throw new Error(message)
         console.error(`[qualy] ${message}`)
         return
       }
-      void navigate(buildPageHref(page, options), { replace: options.replace })
+      void navigate(buildPageHref(entry, options), { replace: options.replace })
     },
     [navigate, manifest],
   )
@@ -249,12 +242,23 @@ export function usePageQueryState(key: string, fallback = ''): [string, (next: s
   return [value, set]
 }
 
-// the `:name` segments of the route this page is mounted at. Typed by the
-// page reference, so a screen reads the parameters its own declaration
-// promises rather than whatever the router happens to have matched.
-export function usePageRouteParams<const Ref extends PageRef>(page: Ref): PageParams<Ref> {
+// The named `:name` segments of the route this screen is mounted at. The
+// caller says which names it expects, and a missing one is a loud failure:
+// a screen quietly reading undefined out of the router is a link bug that
+// would otherwise surface as a broken api call three layers later.
+export function usePageRouteParams<const Name extends string>(
+  ...names: readonly Name[]
+): Record<Name, string> {
   const params = useParams()
-  return params as PageParams<Ref>
+  const out = {} as Record<Name, string>
+  for (const name of names) {
+    const value = params[name]
+    if (value === undefined) {
+      throw new Error(`the current route provides no :${name} parameter`)
+    }
+    out[name] = value
+  }
+  return out
 }
 
 // items of a collection surface, already authorized and path-resolved by

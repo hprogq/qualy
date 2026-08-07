@@ -4,11 +4,11 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
-import { ADMIN_SHELL, PUBLIC, defineSurfaces } from '@qualy/ui-contract'
+import { ADMIN_SHELL, PUBLIC } from '@qualy/ui-contract'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
-import { pingNavigationLabel, pingPage } from './ui.ts'
+import { message } from '@qualy/i18n-contract'
 
 // The plugin, as one description: a table, a screen, an api group. The
 // default export is the whole of it - what the descriptor assembler loads -
@@ -18,19 +18,6 @@ import { pingNavigationLabel, pingPage } from './ui.ts'
 const local = Api.local(pingApiGroup)
 
 const db = Db.scope([...entities] as const)
-
-const surfaces = defineSurfaces({
-  pages: [
-    {
-      page: pingPage,
-      component: 'ping/PingPage',
-      layout: ADMIN_SHELL,
-      // the demo endpoint is deliberately open; a real plugin would gate this
-      visibility: PUBLIC,
-      navigation: { label: pingNavigationLabel, order: 10 },
-    },
-  ],
-})
 
 const handlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
   Effect.gen(function* () {
@@ -58,7 +45,15 @@ const plugin = Plugin.define(
   '@qualy/plugin-ping',
   { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
   Db.entities(entities),
-  Ui.surfaces(surfaces),
+  Ui.page({
+    id: 'ping/page',
+    path: '/ping',
+    component: Ui.react('./client/PingPage.tsx'),
+    layout: ADMIN_SHELL,
+    // the demo endpoint is deliberately open; a real plugin would gate this
+    visibility: PUBLIC,
+    navigation: { label: message('ping/navigation/ping', 'Ping'), order: 10 },
+  }),
   Api.group(pingApiGroup, handlers),
 )
 

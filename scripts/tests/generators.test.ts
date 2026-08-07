@@ -71,7 +71,7 @@ describe('generator determinism', () => {
       // the chunk registry is a virtual module now; the same rule holds for
       // the source the Vite plugin serves
       expect(await buildPluginModuleSource({ ymlPath: workspace.manifestPath })).not.toContain(
-        'pingComponents',
+        'ping/PingPage',
       )
       // a disabled plugin loses its routes, so both halves of the aggregate
       // have to forget it together
@@ -79,7 +79,7 @@ describe('generator determinism', () => {
 
       expect(
         await buildPluginModuleSource({ all: true, ymlPath: workspace.manifestPath }),
-      ).toContain('pingComponents')
+      ).toContain('ping/PingPage')
       // but NOT the server's route graph. all means "the superset" for a
       // client contract and a web bundle, where an unreachable component costs
       // bytes. Here it would mean a disabled plugin's endpoints are served,

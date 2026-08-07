@@ -1,3 +1,4 @@
+import { componentKey } from '@qualy/ui-contract'
 import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
@@ -338,9 +339,15 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         const providers = yield* loginProviders(tenant.id).pipe(Effect.orDie)
         const methods: LoginMethod[] = []
         for (const provider of providers) {
-          const driver = yield* drivers.forType(provider.type)
-          if (!driver) continue
-          let presentation: LoginPresentation = driver.describe({ code: provider.code })
+          const found = yield* drivers.forType(provider.type)
+          if (!found) continue
+          const declared = found.driver.presentation
+          // the declaration names a module; the wire carries the derived
+          // registry key, the same one the browser registry is built under
+          let presentation: LoginPresentation =
+            declared.mode === 'component'
+              ? { mode: 'component', component: componentKey(found.owner, declared.component) }
+              : { mode: 'redirect', href: declared.href({ code: provider.code }) }
           if (presentation.mode === 'redirect') {
             const path = sameOriginPath(presentation.href)
             if (!path) {

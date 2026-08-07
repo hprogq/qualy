@@ -5,7 +5,6 @@ import {
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
 import type * as authErrors from '../server/errors.ts'
-import { iamMessages as navLabels } from '../ui.ts'
 
 // the interpolating messages declare their placeholders
 const userCountMessage = defineMessage<{ count: number }>()({
@@ -60,8 +59,6 @@ const i18n = definePluginMessages({
     },
     signIn: { id: 'auth/action/sign-in', defaultMessage: 'Sign in' },
     signOut: { id: 'auth/action/sign-out', defaultMessage: 'Sign out' },
-    usersNav: navLabels.usersNav,
-    userTypesNav: navLabels.userTypesNav,
 
     usersTitle: { id: 'auth/users/title', defaultMessage: 'Users' },
     usersHint: {

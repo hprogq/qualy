@@ -3,10 +3,10 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
-import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
+import { message } from '@qualy/i18n-contract'
+import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
-import { orgNavigationLabel, orgPage } from './ui.ts'
 import { permissions } from './permissions.ts'
 import { orgApiHandlers, serviceLayer } from './server/index.ts'
 
@@ -24,19 +24,14 @@ const plugin = Plugin.define(
     ],
   },
   Db.entities(entities, { compositeForeignKeys, baselineDir: 'db/baseline' }),
-  Ui.surfaces(
-    defineSurfaces({
-      pages: [
-        {
-          page: orgPage,
-          component: 'org/OrgPage',
-          layout: ADMIN_SHELL,
-          visibility: permissionOf('org.tree.read'),
-          navigation: { label: orgNavigationLabel, order: 20 },
-        },
-      ],
-    }),
-  ),
+  Ui.page({
+    id: 'org/page',
+    path: '/admin/org',
+    component: Ui.react('./client/OrgPage.tsx'),
+    layout: ADMIN_SHELL,
+    visibility: permissionOf('org.tree.read'),
+    navigation: { label: message('org/navigation/organization', 'Organization'), order: 20 },
+  }),
   Access.permissions('org', permissions),
   Api.group(orgApiGroup, orgApiHandlers),
   Plugin.layer(serviceLayer),

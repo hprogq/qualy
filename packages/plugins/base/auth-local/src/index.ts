@@ -2,6 +2,7 @@ import { Effect, Layer } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import type { LoginDriver } from '@qualy/auth-contract/login'
 import { Login } from '@qualy/auth-contract/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { LoginSessions } from '@qualy/auth-contract/login'
@@ -22,7 +23,7 @@ import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from '.
  */
 const driver: LoginDriver = {
   type: 'local',
-  describe: () => ({ mode: 'component', component: 'auth-local/LoginMethod' }),
+  presentation: { mode: 'component', component: Ui.react('./client/LoginMethod.tsx') },
 }
 
 /**

@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { loginPage } from '@qualy/plugin-auth/ui'
 import { authMessages as m } from './i18n.ts'
 
 // header-actions contribution: shows the signed-in user and a sign-out
@@ -25,7 +24,7 @@ export default function UserMenu() {
     if (isAuthenticationError(me.error)) {
       return (
         <Button variant="outline" size="sm" asChild>
-          <PageLink page={loginPage}>{format(m.signIn)}</PageLink>
+          <PageLink page="auth/login">{format(m.signIn)}</PageLink>
         </Button>
       )
     }
@@ -52,7 +51,7 @@ export default function UserMenu() {
           // a failed request leaves the identity intact and must say so
           // instead of pretending to have signed the user out
           void run(api.auth.endSession())
-            .then(() => endSession({ destination: { kind: 'page', page: loginPage } }))
+            .then(() => endSession({ destination: { kind: 'page', page: 'auth/login' } }))
             .catch((error: unknown) => setSignOutError(formatError(error)))
         }}
       >

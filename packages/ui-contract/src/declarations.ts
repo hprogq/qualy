@@ -1,4 +1,5 @@
 import type { UiText } from '@qualy/i18n-contract'
+import type { ClientComponentRef } from './components.ts'
 import type { NamespacedId } from './ids.ts'
 import type { LayoutContractId } from './surfaces.ts'
 import type { PageRef } from './pages.ts'
@@ -26,7 +27,7 @@ import type { UiVisibility } from './visibility.ts'
  */
 export interface PageDeclaration {
   readonly page: PageRef
-  readonly component: string
+  readonly component: ClientComponentRef
   readonly layout: LayoutContractId
   readonly visibility: UiVisibility
   /**
@@ -42,7 +43,7 @@ export interface PageDeclaration {
 export interface LayoutDeclaration {
   readonly contract: LayoutContractId
   readonly provider: NamespacedId
-  readonly component: string
+  readonly component: ClientComponentRef
 }
 
 export interface CollectionDeclaration {
@@ -56,7 +57,7 @@ export interface CollectionDeclaration {
 export interface SlotDeclaration {
   readonly key: string
   readonly id: NamespacedId
-  readonly component: string
+  readonly component: ClientComponentRef
   readonly visibility: UiVisibility
   readonly order?: number
 }

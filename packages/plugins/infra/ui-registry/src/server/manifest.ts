@@ -1,11 +1,11 @@
 import { Context, Effect, Layer } from 'effect'
 import {
+  componentKey,
   isVisibleTo,
   primaryNavigation,
   type NamespacedId,
   type NavigationItem,
   type ResolvedNavigationItem,
-  type UiSurfaces,
   type UiVisibility,
   type ViewerAccess,
 } from '@qualy/ui-contract'
@@ -53,15 +53,15 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
 
   const collect = Effect.fn('Ui.manifest.collect')(function* () {
     const surfaces = yield* registry.surfaces
-    const pages = surfaces.pages ?? []
-    const layouts = surfaces.layouts ?? []
-    const slots = surfaces.slots ?? []
+    const pages = surfaces.pages
+    const layouts = surfaces.layouts
+    const slots = surfaces.slots
     // a page's navigation entry is sugar for a collection item that inherits
     // the page's visibility, so the two cannot drift into disagreeing about
     // who may see them
     const collections = [
-      ...(surfaces.collections ?? []),
-      ...pages.flatMap((page) => {
+      ...surfaces.collections,
+      ...pages.flatMap(({ declaration: page }) => {
         const navigation = page.navigation
         if (!navigation) return []
         const id = `${page.page.id}/nav` as NamespacedId
@@ -113,22 +113,23 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
     build: Effect.fn('Ui.manifest.build')(function* (principal?: Principal) {
       const viewer = yield* viewerAccess(principal)
       const { pages, layouts, slots, collections } = yield* collect()
-      const byContract = new Map(layouts.map((layout) => [layout.contract, layout]))
+      const byContract = new Map(layouts.map((layout) => [layout.declaration.contract, layout]))
 
-      const shown = pages.filter((page) => {
+      const shown = pages.filter(({ declaration: page }) => {
         if (!visible(page.visibility, viewer)) return false
         if (byContract.has(page.layout)) return true
         return false
       })
       const dropped = pages.filter(
-        (page) => visible(page.visibility, viewer) && !byContract.has(page.layout),
+        ({ declaration: page }) =>
+          visible(page.visibility, viewer) && !byContract.has(page.layout),
       )
-      for (const page of dropped) {
+      for (const { declaration: page } of dropped) {
         yield* Effect.logWarning(
           `page ${page.page.id} dropped: no provider for layout ${page.layout}`,
         )
       }
-      const shownById = new Map(shown.map((page) => [page.page.id, page]))
+      const shownById = new Map(shown.map((page) => [page.declaration.page.id, page]))
 
       const projectedCollections: Record<string, unknown[]> = {}
       for (const item of sorted(collections.filter((item) => visible(item.visibility, viewer)))) {
@@ -142,33 +143,51 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
             if (!page) continue
             value = {
               ...navigation,
-              target: { kind: 'page', pageId: page.page.id, path: page.page.path },
+              target: {
+                kind: 'page',
+                pageId: page.declaration.page.id,
+                path: page.declaration.page.path,
+              },
             } satisfies ResolvedNavigationItem
           }
         }
         ;(projectedCollections[item.key] ??= []).push(value)
       }
 
+      // The component that crosses the wire is the derived registry key,
+      // computed from the declaring plugin and the module reference - the
+      // same derivation the build used to key the browser registry, so the
+      // two cannot disagree. The reference itself never leaves the server.
       const projectedSlots: Record<string, { id: string; component: string; order: number }[]> = {}
-      for (const slot of sorted(slots.filter((slot) => visible(slot.visibility, viewer)))) {
-        ;(projectedSlots[slot.key] ??= []).push({
-          id: slot.id,
-          component: slot.component,
-          order: slot.order ?? 99,
+      const visibleSlots = slots.filter((slot) => visible(slot.declaration.visibility, viewer))
+      for (const slot of [...visibleSlots].sort(
+        (a, b) =>
+          (a.declaration.order ?? 99) - (b.declaration.order ?? 99) ||
+          a.declaration.id.localeCompare(b.declaration.id),
+      )) {
+        ;(projectedSlots[slot.declaration.key] ??= []).push({
+          id: slot.declaration.id,
+          component: componentKey(slot.owner, slot.declaration.component),
+          order: slot.declaration.order ?? 99,
         })
       }
 
       // only the layouts the surviving pages actually need
-      const used = new Set(shown.map((page) => page.layout))
+      const used = new Set(shown.map((page) => page.declaration.layout))
       return {
         layouts: layouts
-          .filter((layout) => used.has(layout.contract))
-          .sort((a, b) => a.contract.localeCompare(b.contract)),
+          .filter((layout) => used.has(layout.declaration.contract))
+          .sort((a, b) => a.declaration.contract.localeCompare(b.declaration.contract))
+          .map((layout) => ({
+            contract: layout.declaration.contract,
+            provider: layout.declaration.provider,
+            component: componentKey(layout.owner, layout.declaration.component),
+          })),
         pages: shown.map((page) => ({
-          id: page.page.id,
-          path: page.page.path,
-          component: page.component,
-          layout: page.layout,
+          id: page.declaration.page.id,
+          path: page.declaration.page.path,
+          component: componentKey(page.owner, page.declaration.component),
+          layout: page.declaration.layout,
         })),
         collections: projectedCollections,
         slots: projectedSlots,

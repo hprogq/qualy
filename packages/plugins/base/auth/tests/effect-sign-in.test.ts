@@ -13,6 +13,7 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { reactComponent } from '@qualy/ui-contract'
 import { Api } from '@qualy/api-kit/plugin'
 import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
@@ -122,10 +123,16 @@ beforeAll(async () => {
       Layer.mergeAll(
         infra,
         authConfig,
-        registerLoginDriver({
-          type: 'local',
-          describe: () => ({ mode: 'component', component: 'auth-local/LoginMethod' }),
-        }).pipe(Layer.provideMerge(loginDriversLayer)),
+        registerLoginDriver(
+          {
+            type: 'local',
+            presentation: {
+              mode: 'component',
+              component: reactComponent('./client/LoginMethod.tsx'),
+            },
+          },
+          '@qualy/plugin-auth-local',
+        ).pipe(Layer.provideMerge(loginDriversLayer)),
       ),
     ),
   )

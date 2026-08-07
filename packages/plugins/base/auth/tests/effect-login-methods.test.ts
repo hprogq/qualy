@@ -30,8 +30,10 @@ import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
 const drivers: readonly LoginDriver[] = [
   {
     type: 'redirecting',
-    describe: (provider) =>
-      ({ mode: 'redirect', href: HREFS[provider.code] ?? '/fallback' }) as const,
+    presentation: {
+      mode: 'redirect',
+      href: (provider) => HREFS[provider.code] ?? '/fallback',
+    },
   },
 ]
 
@@ -50,7 +52,7 @@ const stack = (url: string) =>
         // the registrations need the registry, so it is provided to them and
         // published in the same move
         drivers
-          .map(registerLoginDriver)
+          .map((driver) => registerLoginDriver(driver))
           .reduce(
             (all, one) => Layer.merge(all, one),
             Layer.empty as Layer.Layer<never, never, LoginDrivers>,

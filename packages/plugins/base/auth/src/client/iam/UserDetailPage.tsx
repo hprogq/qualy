@@ -7,7 +7,6 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { userDetailPage, usersPage } from '../../ui.ts'
 import { iamMessages as m } from '../i18n.ts'
 import { UserGrants } from './UserGrants.tsx'
 
@@ -15,7 +14,7 @@ import { UserGrants } from './UserGrants.tsx'
 // which roles they hold. The id comes from the route, typed by the page
 // reference that declared the `:userId` segment.
 export default function UserDetailPage() {
-  const { userId } = usePageRouteParams(userDetailPage)
+  const { userId } = usePageRouteParams('userId')
   const api = useApi()
   const runApi = useRunApi()
   const orpc = useApiQuery()
@@ -97,7 +96,7 @@ export default function UserDetailPage() {
   return (
     <div className="space-y-4 p-4">
       <p className="text-sm">
-        <PageLink page={usersPage}>{format(m.backToUsers)}</PageLink>
+        <PageLink page="auth/users">{format(m.backToUsers)}</PageLink>
       </p>
       <AsyncSection
         pending={user.isPending}

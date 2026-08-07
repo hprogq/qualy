@@ -41,14 +41,16 @@ describe('page hrefs', () => {
 // the regression this pins: signing in used to leave the browser on the
 // login page, because a transition without a destination navigated nowhere
 describe('session transitions', () => {
-  const loginPage = definePage({ id: 'auth/login', path: '/login' })
+  const pages = [{ id: 'auth/login', path: '/login' }]
 
   it('always resolves a destination to navigate to', () => {
     // signing in goes to the host root, which picks the first page the new
     // manifest actually authorizes
-    expect(sessionDestinationHref({ kind: 'home' })).toBe('/')
-    // signing out names the login page instead of spelling out its path
-    expect(sessionDestinationHref({ kind: 'page', page: loginPage })).toBe('/login')
+    expect(sessionDestinationHref({ kind: 'home' }, pages)).toBe('/')
+    // signing out names the login page by id; the path is the manifest's
+    expect(sessionDestinationHref({ kind: 'page', page: 'auth/login' }, pages)).toBe('/login')
+    // a destination the current manifest cannot resolve falls back to home
+    expect(sessionDestinationHref({ kind: 'page', page: 'auth/gone' }, pages)).toBe('/')
   })
 
   // This used to assert only that the cache was emptied, which the previous

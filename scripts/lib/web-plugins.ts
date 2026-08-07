@@ -1,33 +1,63 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { validateComponentKeys } from './component-keys.ts'
+import { pathToFileURL } from 'node:url'
 import { commonErrorCodes } from '@qualy/i18n-contract'
-import { readEntries } from './read-entries.ts'
+import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
+import { UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
+import { currentResolution, readEntries } from './read-entries.ts'
 import { repoRoot } from './paths.ts'
 import { resolvePackageDir, resolvePluginModuleUrl } from './packages.ts'
 
 // The browser's plugin aggregate, as a module SOURCE rather than a file.
 //
-// Vite has to see a statically analysable import for every module that may
-// enter the browser, so the aggregation itself cannot disappear - but nothing
-// says it has to land in the working tree. The Vite plugin serves this source
-// as `virtual:qualy/plugins`, dev and build alike, and the server never
-// generates frontend code again.
+// Components come from the descriptors: every Ui.page / Ui.layout / Ui.slot
+// and login driver declares a ClientComponentRef, and this collector turns
+// each into a statically analysable import under its derived registry key -
+// the same `componentKey` the manifest projects, so the wire and the bundle
+// cannot disagree. Localisation assets still come from the ./client entry,
+// which is what that entry is for now that the registry left it.
 //
-// The registry follows the ACTIVE set: a disabled plugin's thunks never enter
-// the module graph, so its chunks tree-shake away; release builds pass `all`
-// for the superset. A plugin exposes components by declaring
-// exports["./client"], whose module must export a `components` thunk table
-// (no top-level side effects). Every localization identity is claimed exactly
-// once here, because an object spread would let a later plugin silently
-// shadow an earlier one.
+// The registry follows the ACTIVE set: a disabled plugin's modules never
+// enter the graph, so its chunks tree-shake away; release builds pass `all`
+// for the superset. Every identity - registry key, catalog namespace,
+// message id, error code - is claimed exactly once here, because an object
+// spread would let a later plugin silently shadow an earlier one.
 
 export interface WebPluginEntry {
   name: string
-  /** the "<plugin>/<Component>" keys its client module registers */
-  componentKeys: string[]
+  /** derived registry key to the module file it loads */
+  components: Record<string, string>
   hasCatalogs: boolean
   hasErrorMessages: boolean
+}
+
+// contract packages the repository root deliberately does not depend on
+// resolve through the host, like the plugins themselves
+type UiContract = typeof import('../../packages/ui-contract/src/index.ts')
+type AuthContractPlugin = typeof import('../../packages/auth-contract/src/plugin.ts')
+type ClientComponentRef = import('../../packages/ui-contract/src/index.ts').ClientComponentRef
+
+const contracts = async () => ({
+  ui: (await import(resolvePluginModuleUrl('@qualy/ui-contract'))) as UiContract,
+  login: (await import(
+    resolvePluginModuleUrl('@qualy/auth-contract/plugin')
+  )) as AuthContractPlugin,
+})
+
+const componentRefs = (
+  descriptor: PluginDescriptor,
+  points: Awaited<ReturnType<typeof contracts>>,
+): ClientComponentRef[] => {
+  const refs: ClientComponentRef[] = []
+  for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {
+    for (const page of surfaces.pages ?? []) refs.push(page.component)
+    for (const layout of surfaces.layouts ?? []) refs.push(layout.component)
+    for (const slot of surfaces.slots ?? []) refs.push(slot.component)
+  }
+  for (const driver of Plugin.contributionsOf(descriptor, points.login.LoginDriverDeclarations)) {
+    if (driver.presentation.mode === 'component') refs.push(driver.presentation.component)
+  }
+  return refs
 }
 
 export async function collectWebPlugins(
@@ -43,7 +73,10 @@ export async function collectWebPlugins(
     ),
   )
 
+  const resolution = await currentResolution({ ymlPath: options.ymlPath })
+  const points = await contracts()
   const found: WebPluginEntry[] = []
+  const claimedKeys = new Map<string, string>()
   const claimedNamespaces = new Map<string, string>()
   const claimedMessageIds = new Map<string, string>()
   const claimedErrorCodes = new Map<string, string>()
@@ -56,56 +89,71 @@ export async function collectWebPlugins(
 
   for (const entry of await readEntries({ all: options.all ?? false, ymlPath: options.ymlPath })) {
     if (!entry.name.startsWith('@qualy/')) continue
+    const descriptor = resolution.descriptors.get(entry.name)
+    if (!isPluginDescriptor(descriptor)) continue
     const packageDir = resolvePackageDir(entry.name, options.ymlPath)
-    const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
-      exports?: Record<string, unknown>
+
+    const components: Record<string, string> = {}
+    for (const ref of componentRefs(descriptor, points)) {
+      const key = points.ui.componentKey(entry.name, ref)
+      // relative to src/, where the descriptor that declared it lives
+      const file = path.resolve(packageDir, 'src', ref.module)
+      if (!file.startsWith(packageDir + path.sep) || !fs.existsSync(file)) {
+        throw new Error(`${entry.name}: component module ${ref.module} does not exist`)
+      }
+      claim(claimedKeys, key, entry.name, 'component key')
+      components[key] = file
     }
-    if (!pkg.exports?.['./client']) continue
-    if (!webDeps.has(entry.name)) {
+    if (Object.keys(components).length > 0 && !webDeps.has(entry.name)) {
       throw new Error(
         `${entry.name} contributes components but apps/web does not declare it; run pnpm plugin:add`,
       )
     }
-    // enforce the "<plugin>/<Component>" key namespace at collection time,
-    // so merged registries can never silently shadow one another
-    const module = (await import(resolvePluginModuleUrl(`${entry.name}/client`))) as {
-      components?: Record<string, unknown>
-      catalogs?: unknown
-      errorMessages?: unknown
-    }
-    const componentKeys = Object.keys(module.components ?? {})
-    validateComponentKeys(entry.name, componentKeys)
+
     // localization assets are optional per plugin: a plugin without user
     // facing text ships neither, and the host aggregates whatever exists
-    if (module.catalogs) {
-      const catalogs = module.catalogs as {
-        namespace: string
-        messages: readonly { id: string }[]
+    const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
+      exports?: Record<string, unknown>
+    }
+    let hasCatalogs = false
+    let hasErrorMessages = false
+    if (pkg.exports?.['./client']) {
+      const module = (await import(resolvePluginModuleUrl(`${entry.name}/client`))) as {
+        catalogs?: unknown
+        errorMessages?: unknown
       }
-      claim(claimedNamespaces, catalogs.namespace, entry.name, 'catalog namespace')
-      for (const declared of catalogs.messages) {
-        if (!declared.id.startsWith(`${catalogs.namespace}/`)) {
-          throw new Error(
-            `${entry.name}: message ${declared.id} is outside its namespace ${catalogs.namespace}/`,
-          )
+      if (module.catalogs) {
+        const catalogs = module.catalogs as {
+          namespace: string
+          messages: readonly { id: string }[]
         }
-        claim(claimedMessageIds, declared.id, entry.name, 'message id')
+        claim(claimedNamespaces, catalogs.namespace, entry.name, 'catalog namespace')
+        for (const declared of catalogs.messages) {
+          if (!declared.id.startsWith(`${catalogs.namespace}/`)) {
+            throw new Error(
+              `${entry.name}: message ${declared.id} is outside its namespace ${catalogs.namespace}/`,
+            )
+          }
+          claim(claimedMessageIds, declared.id, entry.name, 'message id')
+        }
+        hasCatalogs = true
+      }
+      if (module.errorMessages) {
+        for (const code of Object.keys(module.errorMessages as Record<string, unknown>)) {
+          if (COMMON_ERROR_CODES.has(code)) {
+            throw new Error(
+              `${entry.name}: ${code} is a common error code and cannot be overridden`,
+            )
+          }
+          claim(claimedErrorCodes, code, entry.name, 'error code')
+        }
+        hasErrorMessages = true
       }
     }
-    if (module.errorMessages) {
-      for (const code of Object.keys(module.errorMessages as Record<string, unknown>)) {
-        if (COMMON_ERROR_CODES.has(code)) {
-          throw new Error(`${entry.name}: ${code} is a common error code and cannot be overridden`)
-        }
-        claim(claimedErrorCodes, code, entry.name, 'error code')
-      }
+
+    if (Object.keys(components).length > 0 || hasCatalogs || hasErrorMessages) {
+      found.push({ name: entry.name, components, hasCatalogs, hasErrorMessages })
     }
-    found.push({
-      name: entry.name,
-      componentKeys,
-      hasCatalogs: Boolean(module.catalogs),
-      hasErrorMessages: Boolean(module.errorMessages),
-    })
   }
   return found
 }
@@ -115,13 +163,17 @@ export async function buildPluginModuleSource(
   options: { all?: boolean; ymlPath?: string } = {},
 ): Promise<string> {
   const imports: string[] = []
-  const spreads: string[] = []
+  const componentEntries: string[] = []
   const catalogEntries: string[] = []
   const errorSpreads: string[] = []
   for (const entry of await collectWebPlugins(options)) {
     const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
-    imports.push(`import { components as ${ns}Components } from '${entry.name}/client'`)
-    spreads.push(`  ...${ns}Components,`)
+    for (const [key, file] of Object.entries(entry.components)) {
+      // a real dynamic import per key: the edge Vite splits chunks on
+      componentEntries.push(
+        `  ${JSON.stringify(key)}: () => import(${JSON.stringify(pathToFileURL(file).pathname)}),`,
+      )
+    }
     if (entry.hasCatalogs) {
       imports.push(`import { catalogs as ${ns}Catalogs } from '${entry.name}/client'`)
       catalogEntries.push(`  ${ns}Catalogs,`)
@@ -135,7 +187,7 @@ export async function buildPluginModuleSource(
     ...imports,
     '',
     'export const components = {',
-    ...spreads,
+    ...componentEntries,
     '}',
     '',
     'export const catalogs = [',

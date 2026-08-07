@@ -1875,3 +1875,44 @@ QUALY_MIGRATIONS 缺省 off——迁移归 `pnpm qualy deploy`,单机显式 appl
 不进 hash);browser 13(复跑两次);`resolve --frozen-lockfile` 干净(logging 改动
 零 lock 变化);dev 真启动:全部来源命名着色、访问日志仅 api 行;FORCE_COLOR 验证
 chalk 染色链路;`pnpm build` + `pnpm start` 路径生产 smoke 全绿(shutdown clean)。
+
+### Ui.page 单点声明:组件引用取代注册表样板(2026-08-07,审计采纳 + 用户裁决)
+
+**模型**:页面 = 描述器里一次 `Ui.page({id, path, component, layout, visibility, navigation})`;
+组件是 `Ui.react('./client/X.tsx')` 产出的 **ClientComponentRef**(renderer/module/export
+纯数据,路径相对 src/)——**不是 React 值**(审计论证:React 值会把浏览器模块图拖进
+Node、函数不可序列化、把 Ui 锁死在 React;模块引用只多几个字符,换来 CLI 可读、HMR、
+code-splitting、多框架开放)。布局/槽位同理(`Ui.layout`/`Ui.slot`),登录方式的
+`presentation.component` 同理(redirect 的 href 保持按 provider 的函数——
+effect-login-methods 测试证明该变化是真实需求,静态化被测试当场否决)。
+
+**键派生**:注册表键 `<plugin>/<Basename>` 由 `componentKey(pluginId, ref)` 单函数派生,
+manifest 投影(registry 全面记 owner)、virtual module、chunk 哨兵、login-methods 四处
+同源——**wire 与旧手写键逐字节一致**(真实启动比对过 manifest 与 login-methods),
+浏览器测试键位零变化;validateComponentKeys 与其测试删除(派生键不可能违例)。
+
+**客户端一律按 id**(用户裁决:「注册处用真组件,组件内用 id」):`PageLink page="auth/login"`、
+`usePageNavigate()(id)`、session destination 按 id 经 **manifest** 解析路径(路径单源于
+描述器;不可解析回退 home);`usePageRouteParams('userId')` 按名取参缺失即抛。
+**同插件内组件互引是普通 import,不走 id**(用户追问后定案:id 只服务跨 manifest 边界)。
+
+**删除**:四个 ui.ts(上一轮刚立即废——被本轮更优方案取代)、六个 client/index.ts 的
+components 表(入口只剩 catalogs/errorMessages;layout-default 整个 client 入口与
+exports['./client'] 删除)、'<plugin>/<Component>' 手写键、web-runtime 的
+PageRef 泛型参数机械(PathParam/ParamsOption 保留但运行时不再依赖)。
+
+**类型门禁**(审计方案第一层):`pnpm typecheck` 新增组件引用检查器
+(scripts/lib/check-client-components.ts)——对每个 active 插件用**它自己的 client
+tsconfig** 建 Program + 内存虚拟断言文件:模块存在、不逃逸包、default export 是
+React 组件、**页面组件 `ComponentType<{}>`(零必需 props——shell 无 props 挂载)**。
+红绿实测:拼错路径报「does not exist」,页面加必需 prop 报不可赋值并点名插件+模块+kind。
+标准 TS 无法两全(`typeof import` 污染 program 边界 / loader 拿不到路径),字符串 +
+检查器是审计推荐的平衡;IDE language-service 层留待 API 稳定(缓建)。
+
+**catalogs 门禁**:declared 集 = 客户端 catalog ∪ 描述器导航文案(`message` 内联进
+`Ui.page` 后,translation 不再因声明移动而成孤儿);运行时 en 兜底走 wire 的 UiText。
+
+**验收(实际执行)**:typecheck 零错(含新检查器);node 376 全绿;browser 13(冷缓存
+换轨首跑一次红、缓存落定后连跑复测两侧全绿);`pnpm build` + chunk 哨兵 + 生产 smoke
+(shutdown clean);dev 真启动 manifest/login-methods wire 与旧格式逐字节一致、零 ERROR;
+frozen lock 干净(descriptor 内联声明不改 lock 面)。

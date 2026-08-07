@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Scope } from 'effect'
 import type { HttpServerRequest } from 'effect/unstable/http/HttpServerRequest'
+import type { ClientComponentRef } from '@qualy/ui-contract'
 
 // The login surface a driver plugin needs, and the registry of drivers itself.
 //
@@ -19,6 +20,18 @@ export type LoginPresentation =
   /** a same-origin path; an absolute url is dropped rather than followed */
   | { readonly mode: 'redirect'; readonly href: string }
 
+/**
+ * The same statement as a declaration. A component is a module REFERENCE,
+ * static so the build can collect it without running anything - the wire key
+ * is derived from the declaring plugin and this reference by the methods
+ * endpoint, the same derivation the manifest and the build use. A redirect
+ * href stays a function of the provider row, because an SSO entry point is
+ * per provider and never enters a browser bundle.
+ */
+export type LoginPresentationDeclaration =
+  | { readonly mode: 'component'; readonly component: ClientComponentRef }
+  | { readonly mode: 'redirect'; readonly href: (provider: { readonly code: string }) => string }
+
 /** props every embedded credential renderer receives from the login shell */
 export interface LoginMethodRendererProps {
   method: LoginMethod & { mode: 'component' }
@@ -34,7 +47,7 @@ export type LoginMethod = {
 
 export interface LoginDriver {
   readonly type: string
-  readonly describe: (provider: { readonly code: string }) => LoginPresentation
+  readonly presentation: LoginPresentationDeclaration
 }
 
 /** every login driver this assembly serves, as its drivers registered them */
@@ -47,9 +60,14 @@ export class LoginDrivers extends Context.Service<
      * Scoped, so a plugin that goes away takes its driver with it rather than
      * leaving the sign-in screen offering a way in that nothing implements.
      */
-    readonly register: (driver: LoginDriver) => Effect.Effect<void, never, Scope.Scope>
-    /** the driver for a provider type, or none if no plugin implements it */
-    readonly forType: (type: string) => Effect.Effect<LoginDriver | undefined>
+    readonly register: (
+      driver: LoginDriver,
+      owner?: string,
+    ) => Effect.Effect<void, never, Scope.Scope>
+    /** the driver and its declaring plugin, or none if no plugin implements it */
+    readonly forType: (
+      type: string,
+    ) => Effect.Effect<{ driver: LoginDriver; owner: string } | undefined>
   }
 >()('@qualy/auth-contract/LoginDrivers') {}
 
@@ -60,9 +78,9 @@ export class LoginDrivers extends Context.Service<
  * mutates the container, and every reader holds the same one.
  */
 export const loginDriversLayer: Layer.Layer<LoginDrivers> = Layer.sync(LoginDrivers, () => {
-  const drivers = new Map<string, LoginDriver>()
+  const drivers = new Map<string, { driver: LoginDriver; owner: string }>()
   return LoginDrivers.of({
-    register: (driver) =>
+    register: (driver, owner) =>
       Effect.acquireRelease(
         Effect.sync(() => {
           // Two plugins claiming one provider type would leave whichever
@@ -72,7 +90,7 @@ export const loginDriversLayer: Layer.Layer<LoginDrivers> = Layer.sync(LoginDriv
           if (drivers.has(driver.type)) {
             throw new Error(`login driver type ${driver.type} is registered twice`)
           }
-          drivers.set(driver.type, driver)
+          drivers.set(driver.type, { driver, owner: owner ?? 'an unnamed contributor' })
         }),
         () => Effect.sync(() => drivers.delete(driver.type)),
       ).pipe(Effect.orDie, Effect.asVoid),
@@ -84,8 +102,11 @@ export const loginDriversLayer: Layer.Layer<LoginDrivers> = Layer.sync(LoginDriv
  * A layer that contributes one driver, which is a whole driver plugin's
  * contribution to the running application.
  */
-export const registerLoginDriver = (driver: LoginDriver): Layer.Layer<never, never, LoginDrivers> =>
-  Layer.effectDiscard(Effect.flatMap(LoginDrivers, (drivers) => drivers.register(driver)))
+export const registerLoginDriver = (
+  driver: LoginDriver,
+  owner?: string,
+): Layer.Layer<never, never, LoginDrivers> =>
+  Layer.effectDiscard(Effect.flatMap(LoginDrivers, (drivers) => drivers.register(driver, owner)))
 
 export interface ResolvedProvider {
   readonly tenantId: string

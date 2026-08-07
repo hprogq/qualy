@@ -9,8 +9,8 @@ import { collectWebPlugins } from '../../../scripts/lib/web-plugins.ts'
 // NOTE: relies on the bundler's default [name]-[hash] chunk naming;
 // configuring manualChunks/chunkFileNames would silently break this.
 
-const componentKeys = (await collectWebPlugins({ all: true })).flatMap(
-  (entry) => entry.componentKeys,
+const componentKeys = (await collectWebPlugins({ all: true })).flatMap((entry) =>
+  Object.keys(entry.components),
 )
 
 const distDir = new URL('../dist/assets', import.meta.url).pathname

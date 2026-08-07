@@ -15,6 +15,7 @@ import {
   permissionOf,
   primaryNavigation,
   type UiSurfaces,
+  reactComponent,
 } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
@@ -52,29 +53,29 @@ const merged = (all: readonly UiSurfaces[]): UiSurfaces => ({
 const surfaces = [
   defineSurfaces({
     layouts: [
-      { contract: ADMIN_SHELL, provider: 'test/admin', component: 'test/AdminShell' },
-      { contract: BLANK_SHELL, provider: 'test/blank', component: 'test/BlankShell' },
+      { contract: ADMIN_SHELL, provider: 'test/admin', component: reactComponent('./client/AdminShell.tsx') },
+      { contract: BLANK_SHELL, provider: 'test/blank', component: reactComponent('./client/BlankShell.tsx') },
     ],
   }),
   defineSurfaces({
     pages: [
       {
         page: publicPage,
-        component: 'test/PublicPage',
+        component: reactComponent('./client/PublicPage.tsx'),
         layout: BLANK_SHELL,
         visibility: PUBLIC,
         navigation: { label, order: 1 },
       },
       {
         page: memberPage,
-        component: 'test/MemberPage',
+        component: reactComponent('./client/MemberPage.tsx'),
         layout: ADMIN_SHELL,
         visibility: AUTHENTICATED,
         navigation: { label, order: 2 },
       },
       {
         page: gatedPage,
-        component: 'test/GatedPage',
+        component: reactComponent('./client/GatedPage.tsx'),
         layout: ADMIN_SHELL,
         visibility: permissionOf('test.thing.read'),
         navigation: { label, order: 3 },
@@ -82,7 +83,7 @@ const surfaces = [
       // no provider ships this contract, so the page cannot be framed
       {
         page: orphanPage,
-        component: 'test/OrphanPage',
+        component: reactComponent('./client/OrphanPage.tsx'),
         layout: 'nobody/ships-this',
         visibility: PUBLIC,
       },
@@ -91,7 +92,7 @@ const surfaces = [
       {
         key: headerActions.key,
         id: 'test/menu',
-        component: 'test/Menu',
+        component: reactComponent('./client/Menu.tsx'),
         visibility: AUTHENTICATED,
         order: 10,
       },
@@ -226,8 +227,9 @@ describe('the manifest a viewer receives', () => {
     // component. A viewer must not learn the capability exists.
     expect(JSON.stringify(manifest)).not.toContain('Gated')
     expect(JSON.stringify(manifest)).not.toContain('/gated')
+    // the wire carries the derived registry key, never the reference
     expect(manifest.slots[headerActions.key]).toEqual([
-      { id: 'test/menu', component: 'test/Menu', order: 10 },
+      { id: 'test/menu', component: 'an unnamed contributor/Menu', order: 10 },
     ])
   })
 
@@ -286,7 +288,7 @@ describe('a claim made twice', () => {
     )
 
   it('refuses one page id claimed by two registrations', async () => {
-    const declaration = { page, component: 'probe/P', layout: ADMIN_SHELL, visibility: PUBLIC }
+    const declaration = { page, component: reactComponent('./client/P.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC }
     const exit = await build({ pages: [declaration, declaration] })
     expect(Exit.isFailure(exit)).toBe(true)
   })
@@ -294,7 +296,7 @@ describe('a claim made twice', () => {
   it('names both plugins when they claim one page id', async () => {
     // the assembler tells the registry who declared what; the refusal must
     // say which two plugins collided, not just which id
-    const declaration = { page, component: 'probe/P', layout: ADMIN_SHELL, visibility: PUBLIC }
+    const declaration = { page, component: reactComponent('./client/P.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC }
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         Layer.build(
@@ -315,8 +317,8 @@ describe('a claim made twice', () => {
   it('refuses one path claimed by two pages', async () => {
     const exit = await build({
       pages: [
-        { page, component: 'probe/P', layout: ADMIN_SHELL, visibility: PUBLIC },
-        { page: other, component: 'probe/O', layout: ADMIN_SHELL, visibility: PUBLIC },
+        { page, component: reactComponent('./client/P.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC },
+        { page: other, component: reactComponent('./client/O.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC },
       ],
     })
     expect(Exit.isFailure(exit)).toBe(true)
@@ -325,8 +327,8 @@ describe('a claim made twice', () => {
   it('refuses one layout contract claimed by two providers', async () => {
     const exit = await build({
       layouts: [
-        { contract: ADMIN_SHELL, provider: 'a/shell', component: 'a/Shell' },
-        { contract: ADMIN_SHELL, provider: 'b/shell', component: 'b/Shell' },
+        { contract: ADMIN_SHELL, provider: 'a/shell', component: reactComponent('./client/Shell.tsx') },
+        { contract: ADMIN_SHELL, provider: 'b/shell', component: reactComponent('./client/Shell.tsx') },
       ],
     })
     expect(Exit.isFailure(exit)).toBe(true)

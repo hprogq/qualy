@@ -25,8 +25,9 @@ export const Login = {
    */
   provider: Plugin.provideExtension(LoginDriverDeclarations, {
     compile: (drivers) =>
-      Layer.mergeAll(Layer.empty, ...drivers.map((driver) => registerLoginDriver(driver.value))).pipe(
-        Layer.provideMerge(loginDriversLayer),
-      ),
+      Layer.mergeAll(
+        Layer.empty,
+        ...drivers.map((driver) => registerLoginDriver(driver.value, driver.pluginId)),
+      ).pipe(Layer.provideMerge(loginDriversLayer)),
   }),
 }

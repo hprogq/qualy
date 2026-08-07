@@ -76,7 +76,7 @@ describe('the descriptor prototype', () => {
         }),
       ),
     )
-    expect((surfaces.pages ?? []).map((page) => page.page.id)).toEqual(['ping/page'])
+    expect(surfaces.pages.map((page) => page.declaration.page.id)).toEqual(['ping/page'])
   })
 
   it('refuses a contribution nobody interprets, naming both sides', () => {

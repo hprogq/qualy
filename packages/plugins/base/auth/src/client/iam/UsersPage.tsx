@@ -6,7 +6,6 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
-import { userDetailPage } from '../../ui.ts'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
 
@@ -110,7 +109,7 @@ export default function UsersPage() {
                   <li key={user.id} className="flex items-center justify-between gap-4 py-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium">
-                        <PageLink page={userDetailPage} params={{ userId: user.id }}>
+                        <PageLink page="auth/user-detail" params={{ userId: user.id }}>
                           {user.displayName}
                         </PageLink>
                         {user.businessNo && (

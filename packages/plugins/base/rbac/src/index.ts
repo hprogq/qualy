@@ -3,10 +3,10 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
-import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
+import { message } from '@qualy/i18n-contract'
+import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
-import { rbacNavigation, rolesPage } from './ui.ts'
 import { permissions } from './permissions.ts'
 import { accessApiHandlers, serviceLayer } from './server/index.ts'
 
@@ -21,19 +21,14 @@ const plugin = Plugin.define(
     compositeForeignKeys,
     dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
   }),
-  Ui.surfaces(
-    defineSurfaces({
-      pages: [
-        {
-          page: rolesPage,
-          component: 'rbac/RolesPage',
-          layout: ADMIN_SHELL,
-          visibility: permissionOf('iam.role.read'),
-          navigation: { label: rbacNavigation.rolesNav, order: 32 },
-        },
-      ],
-    }),
-  ),
+  Ui.page({
+    id: 'rbac/roles',
+    path: '/admin/roles',
+    component: Ui.react('./client/RolesPage.tsx'),
+    layout: ADMIN_SHELL,
+    visibility: permissionOf('iam.role.read'),
+    navigation: { label: message('rbac/navigation/roles', 'Roles'), order: 32 },
+  }),
   Access.permissions('rbac', permissions),
   // rbac owns the catalog: contributors declare, this compiles the value
   Access.provider,

@@ -5,7 +5,6 @@ import {
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
 import type * as orgErrors from '../server/errors.ts'
-import { orgNavigationLabel } from '../ui.ts'
 
 // everything the org plugin says to a human, declared once: page copy plus
 // a translation for every error its contract can raise. English lives in
@@ -31,7 +30,6 @@ const assignmentIncompatible = defineMessage<{ assignmentCount: number }>()({
 const i18n = definePluginMessages({
   namespace: 'org',
   messages: {
-    navigation: orgNavigationLabel,
     loadFailedTitle: {
       id: 'org/state/load-failed',
       defaultMessage: 'Could not load organization data',

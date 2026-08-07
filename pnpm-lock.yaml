@@ -445,6 +445,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../plugin-kit
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../ui-contract
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103

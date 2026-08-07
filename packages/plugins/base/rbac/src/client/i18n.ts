@@ -7,7 +7,6 @@ import {
 } from '@qualy/i18n-contract'
 import type * as rbacErrors from '../server/errors.ts'
 import type * as invariantErrors from '@qualy/rbac-contract/effect'
-import { rbacNavigation } from '../ui.ts'
 
 const assignmentCountMessage = defineMessage<{ count: number }>()({
   id: 'rbac/roles/assignment-count',
@@ -56,7 +55,6 @@ const notEligibleMessage = defineMessage<{ reason: string }>()({
 const i18n = definePluginMessages({
   namespace: 'rbac',
   messages: {
-    rolesNav: rbacNavigation.rolesNav,
     rolesTitle: { id: 'rbac/roles/title', defaultMessage: 'Roles' },
     rolesHint: {
       id: 'rbac/roles/hint',
