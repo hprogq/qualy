@@ -16,10 +16,10 @@ import {
 import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
-import { iamMessages } from './iam/messages.ts'
+import { iamMessages } from './ui.ts'
 import { permissions } from './permissions.ts'
 import { identityApiHandlers, serviceLayer, sessionApiHandlers } from './server/index.ts'
-import { loginPage, userDetailPage, userTypesPage, usersPage } from './pages.ts'
+import { loginPage, userDetailPage, userTypesPage, usersPage } from './ui.ts'
 
 // The plugin, as one description: identity itself, its tables, four screens,
 // a header slot, its permission codes, and its two api groups.

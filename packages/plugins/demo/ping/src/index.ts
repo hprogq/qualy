@@ -8,8 +8,7 @@ import { ADMIN_SHELL, PUBLIC, defineSurfaces } from '@qualy/ui-contract'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
-import { pingNavigationLabel } from './messages.ts'
-import { pingPage } from './pages.ts'
+import { pingNavigationLabel, pingPage } from './ui.ts'
 
 // The plugin, as one description: a table, a screen, an api group. The
 // default export is the whole of it - what the descriptor assembler loads -

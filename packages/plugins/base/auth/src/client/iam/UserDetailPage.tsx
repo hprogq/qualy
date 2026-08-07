@@ -7,7 +7,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { userDetailPage, usersPage } from '../../pages.ts'
+import { userDetailPage, usersPage } from '../../ui.ts'
 import { iamMessages as m } from '../i18n.ts'
 import { UserGrants } from './UserGrants.tsx'
 

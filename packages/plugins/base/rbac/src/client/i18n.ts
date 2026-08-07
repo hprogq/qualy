@@ -7,7 +7,7 @@ import {
 } from '@qualy/i18n-contract'
 import type * as rbacErrors from '../server/errors.ts'
 import type * as invariantErrors from '@qualy/rbac-contract/effect'
-import { rbacNavigation } from '../messages.ts'
+import { rbacNavigation } from '../ui.ts'
 
 const assignmentCountMessage = defineMessage<{ count: number }>()({
   id: 'rbac/roles/assignment-count',

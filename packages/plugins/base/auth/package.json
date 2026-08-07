@@ -7,7 +7,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./pages": "./src/pages.ts",
+    "./ui": "./src/ui.ts",
     "./db": "./src/db/entities.ts",
     "./client": "./src/client/index.ts",
     "./permissions": "./src/permissions.ts",

@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { loginPage } from '@qualy/plugin-auth/pages'
+import { loginPage } from '@qualy/plugin-auth/ui'
 import { authMessages as m } from './i18n.ts'
 
 // header-actions contribution: shows the signed-in user and a sign-out

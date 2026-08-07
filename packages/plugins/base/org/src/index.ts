@@ -6,10 +6,9 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
-import { orgNavigationLabel } from './messages.ts'
+import { orgNavigationLabel, orgPage } from './ui.ts'
 import { permissions } from './permissions.ts'
 import { orgApiHandlers, serviceLayer } from './server/index.ts'
-import { orgPage } from './pages.ts'
 
 // The plugin, as one description: its tables, one screen, its permission
 // codes, its api group, and the service the rest of the assembly calls.

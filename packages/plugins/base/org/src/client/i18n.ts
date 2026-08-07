@@ -5,7 +5,7 @@ import {
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
 import type * as orgErrors from '../server/errors.ts'
-import { orgNavigationLabel } from '../messages.ts'
+import { orgNavigationLabel } from '../ui.ts'
 
 // everything the org plugin says to a human, declared once: page copy plus
 // a translation for every error its contract can raise. English lives in

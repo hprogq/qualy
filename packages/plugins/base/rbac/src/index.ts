@@ -6,10 +6,9 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { ADMIN_SHELL, defineSurfaces, permissionOf } from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
-import { rbacNavigation } from './messages.ts'
+import { rbacNavigation, rolesPage } from './ui.ts'
 import { permissions } from './permissions.ts'
 import { accessApiHandlers, serviceLayer } from './server/index.ts'
-import { rolesPage } from './pages.ts'
 
 // The plugin, as one description: authorization itself, its tables, its own
 // codes - declared like any contributor's, into the registry its service

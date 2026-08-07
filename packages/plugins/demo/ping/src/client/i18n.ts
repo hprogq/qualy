@@ -1,5 +1,5 @@
 import { definePluginMessages } from '@qualy/i18n-contract'
-import { pingNavigationLabel } from '../messages.ts'
+import { pingNavigationLabel } from '../ui.ts'
 
 const i18n = definePluginMessages({
   namespace: 'ping',

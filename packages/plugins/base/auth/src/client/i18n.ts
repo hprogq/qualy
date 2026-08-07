@@ -5,7 +5,7 @@ import {
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
 import type * as authErrors from '../server/errors.ts'
-import { iamMessages as navLabels } from '../iam/messages.ts'
+import { iamMessages as navLabels } from '../ui.ts'
 
 // the interpolating messages declare their placeholders
 const userCountMessage = defineMessage<{ count: number }>()({

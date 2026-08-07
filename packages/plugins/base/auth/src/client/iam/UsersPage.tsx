@@ -6,7 +6,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Field, Panel } from '@qualy/ui/admin'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
-import { userDetailPage } from '../../pages.ts'
+import { userDetailPage } from '../../ui.ts'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
 
