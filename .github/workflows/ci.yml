@@ -71,6 +71,12 @@ jobs:
       # production boot is the trust boundary now. Staged assets carry the
       # assembly's resolutionHash and the process refuses a mismatch, so this
       # also proves the bundle and the assembly agree.
+      # a production start applies nothing; the lineage lands the way a
+      # deployment lands it, then the boot is asserted against the result
+      - name: deploy the lineage
+        env:
+          DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
+        run: pnpm qualy deploy
       - name: production boot serves the staged assembly
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy

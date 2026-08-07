@@ -42,7 +42,7 @@
   "scripts": {
     "build": "tsx scripts/gen.ts && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",
     "db:reset": "docker compose down -v && docker compose up -d --wait && tsx scripts/qualy.ts deploy",
-    "dev": "node --env-file-if-exists=.env --import tsx apps/server/src/main.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx scripts/run-server.ts development",
     "format": "prettier --write .",
     "gen": "tsx scripts/gen.ts",
     "plugin:add": "tsx scripts/plugin-add.ts",
@@ -55,6 +55,7 @@
     "typecheck": "tsx scripts/gen.ts && tsx scripts/typecheck.ts",
     "vendor:update": "tsx scripts/vendor-sync.ts update",
     "vendor:restore": "tsx scripts/vendor-sync.ts restore",
-    "vendor:check": "tsx scripts/vendor-sync.ts check"
+    "vendor:check": "tsx scripts/vendor-sync.ts check",
+    "start": "node --env-file-if-exists=.env --import tsx scripts/run-server.ts production"
   }
 }

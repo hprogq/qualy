@@ -3,30 +3,38 @@ import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { repoRoot } from './lib/paths.ts'
 
-// The production boot, actually booted.
+// The production boot, actually booted - through the same runner `pnpm
+// start` uses, so the command people deploy with is the path being tested.
 //
 // The descriptor model gave up the compile-time proof that the composition
 // closes; the boot is the check now, so a boot nobody runs under production
-// settings is a trust boundary nobody guards. This starts the real entry with
-// NODE_ENV=production against the staged assets and the committed lock,
-// asserts the process serves - liveness, readiness, the browser shell, the
-// manifest endpoint, one hashed asset - and then asserts it can also STOP:
-// SIGTERM has to run the finalizers and exit zero.
+// settings is a trust boundary nobody guards. This starts the real entry
+// against the staged assets and the committed lock, asserts the process
+// serves - liveness, readiness, the browser shell, the manifest endpoint,
+// one hashed asset - and then asserts it can also STOP: SIGTERM has to run
+// the finalizers and exit zero.
 
 const PORT = process.env.SMOKE_PORT ?? '3197'
 const base = `http://127.0.0.1:${PORT}`
 
 const server = spawn(
   process.execPath,
-  ['--env-file-if-exists=.env', '--import', 'tsx', path.join(repoRoot, 'apps/server/src/main.ts')],
+  [
+    '--env-file-if-exists=.env',
+    '--import',
+    'tsx',
+    path.join(repoRoot, 'scripts/run-server.ts'),
+    'production',
+  ],
   {
     cwd: repoRoot,
     env: {
       ...process.env,
-      NODE_ENV: 'production',
       PORT,
       // production refuses to assume a database; the smoke falls back to the
-      // compose stack's url, the same one development assumes
+      // compose stack's url, the same one development assumes. Migrations
+      // follow the runner's production default (off): the lineage was applied
+      // by `pnpm qualy deploy`, exactly as a deployment would have.
       DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
