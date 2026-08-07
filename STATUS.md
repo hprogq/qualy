@@ -1835,3 +1835,43 @@ chunk sentinel + 生产 smoke 全绿(shutdown clean, exit 0);dev 真启动 ready
 
 **缓建(带触发条件,见 plan 文档同节)**:描述器纯度静态扫描;prepare 相互依赖建模;
 跨组同路径碰撞检查。
+
+### 日志体验、运行命令二分、ui.ts 合并(2026-08-07,用户反馈驱动)
+
+**报错定性**:终端的 `InterruptError: All fibers interrupted without error` 是被中断请求
+(浏览器取消导航、499、vite ws 断开)被上游 `HttpMiddleware.logger` 按失败退出打印 cause,
+无害但形似错误;刷屏主因是 dev 下每个 vite 模块请求产生 4-5 行 INFO(实测一次页面加载
+1500+ 行)。
+
+**日志系统(961c9db)**:①qualy.yml `application.logging` 为提交的默认值,**不进
+manifestHash**(core 只携带不解释,调级别不触发 resolve;assembly-resolve 测试守),
+`QUALY_LOG_LEVEL/QUALY_LOG_FORMAT/QUALY_ACCESS_LOG` 最高优先(LOG_LEVEL 兼容别名,
+级别别名 verbose/notice/silent);②logger 在 main.ts 根部安装,verify 阶段同格式;
+③pretty 格式 `时间 级别 来源 消息`——来源 = `source` 日志注解,装配器用
+`Layer.fromBuild` 包装每个插件层(构建 fiber 及其 fork 继承注解,memoMap 不破),
+api group/raw routes 按贡献者注解(vite 挂载日志正确显示 [web]);首现顺序取稳定色,
+chalk 探测染色能力(用户建议采纳),同显示名必同色(曾实测 `@qualy/app` 与默认 `app`
+显示同名却异色,配色改按显示名取);fiber id 只留 json 格式;④访问日志自研并关掉上游:
+5xx=Error、429=Warn、4xx=Info、成功=access.level(dev Debug/prod Info),**499/纯中断
+=Debug**(上游 `causeResponseStripped` 提取已发响应,实测 499 与残余中断原因并存也要
+降级),mode off|api|all 默认 api,exclude 默认健康探针——dev 默认输出从 1500+ 行降到
+个位数;⑤vite logger 三处缺陷修复:WeakSet 实现 hasErrorLogged(此前恒 false 会引来
+重复错误)、error 计入 hasWarned、行注解 web:vite。
+
+**运行命令(787d04e)**:`pnpm dev` / `pnpm start` 都经 scripts/run-server.ts(跨平台设
+NODE_ENV;矛盾的 NODE_ENV 拒绝;production 拒绝 QUALY_WEB_MODE=development,
+QUALY_MIGRATIONS 缺省 off——迁移归 `pnpm qualy deploy`,单机显式 apply)。生产 smoke
+改走同一 runner(部署命令即被测路径),CI 在 smoke 前先 deploy lineage。命名裁决:
+按 npm 生态惯例取 dev/start(next/vite/nest 同款),不用 serve 或 start:prod。
+
+**ui.ts 合并(106d899,用户裁决 D)**:pages.ts + messages.ts(auth 含 iam/messages.ts)
+合并为 `src/ui.ts`——同类文件:两个编译世界共同 import 的框架中立叶子(描述器注册页面
+与导航文案,浏览器代码链接同一身份、catalog 门禁对照同一声明);子路径 `./pages` →
+`./ui`,仓库内消费方全部迁移,无兼容别名;locales 留在 client/(后端 i18n 触发条件
+到来时再一次廉价搬迁)。README 全面刷新(cordis/oRPC/Drizzle 已死的技术栈描述、
+生产三步 build → deploy → start、日志配置)。
+
+**验收(实际执行)**:typecheck 零错;node 377 全绿(新增 logging 12 + manifest logging
+不进 hash);browser 13(复跑两次);`resolve --frozen-lockfile` 干净(logging 改动
+零 lock 变化);dev 真启动:全部来源命名着色、访问日志仅 api 行;FORCE_COLOR 验证
+chalk 染色链路;`pnpm build` + `pnpm start` 路径生产 smoke 全绿(shutdown clean)。
