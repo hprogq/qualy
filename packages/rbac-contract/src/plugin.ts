@@ -54,6 +54,10 @@ export const Access = {
 
   /** the owner's interpretation: the finished catalog, before any layer builds */
   provider: Plugin.provideExtension(PermissionDeclarations, {
-    compile: (declarations) => Layer.succeed(PermissionCatalog, compileCatalog(declarations)),
+    compile: (declarations) =>
+      Layer.succeed(
+        PermissionCatalog,
+        compileCatalog(declarations.map((declaration) => declaration.value)),
+      ),
   }),
 }

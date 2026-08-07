@@ -74,7 +74,7 @@ export const Db = {
     compile: (contributions) =>
       Layer.succeed(
         Entities,
-        contributions.flatMap((declaration) => declaration.entities),
+        contributions.flatMap((declaration) => declaration.value.entities),
       ),
   }),
 

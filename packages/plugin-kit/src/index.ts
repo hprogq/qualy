@@ -35,25 +35,32 @@ export type IdentifierOf<K> = K extends Context.Key<infer Identifier, any> ? Ide
 /**
  * When a contribution channel is interpreted.
  *
- * `prepare` compiles before any service layer is built, so its result can be
- * a plain value every layer may depend on - entities, catalogs, contracts.
- * `afterServices` compiles above the complete service graph, which is where
- * http handlers must close: their middleware is implemented by other plugins,
- * and upstream types make that a real requirement rather than a phantom one.
- * `boot` runs once after everything is built and before the port binds - the
- * assembled barrier's job, unchanged.
+ * `prepare` compiles before any service layer is built, so its result must be
+ * a plain value every layer may depend on - entities, catalogs, contracts -
+ * and its layer may require nothing, which `Plugin.provideExtension` enforces
+ * at the provider's own compile. `afterServices` compiles above the complete
+ * service graph, which is where http handlers must close: their middleware is
+ * implemented by other plugins, and upstream types make that a real
+ * requirement rather than a phantom one.
  *
  * `external` is for channels a different host interprets - cli commands are
  * read by the command runner, not by the process serving requests - so the
  * layer assembler collects nothing from them and demands no provider: its
  * completeness rule speaks only for the graph it builds.
+ *
+ * There is deliberately no `boot` phase: once-after-everything work registers
+ * with the Assembled barrier from inside a plugin's own layer. A phase the
+ * assembler would not compile would swallow contributions silently.
  */
-export type ExtensionPhase = 'prepare' | 'afterServices' | 'boot' | 'external'
+export type ExtensionPhase = 'prepare' | 'afterServices' | 'external'
 
-export interface ExtensionPoint<in out Contribution> {
+export interface ExtensionPoint<
+  in out Contribution,
+  out Phase extends ExtensionPhase = ExtensionPhase,
+> {
   readonly _tag: 'ExtensionPoint'
   readonly id: string
-  readonly phase: ExtensionPhase
+  readonly phase: Phase
   /**
    * The assembly capability that owns this channel, if one does.
    *
@@ -68,17 +75,53 @@ export interface ExtensionPoint<in out Contribution> {
   readonly Contribution?: Contribution
 }
 
+// One overload per phase: the contribution type is passed explicitly, and a
+// call with any explicit type argument stops inferring the rest - a single
+// signature would widen the phase back to the union and lose the typing the
+// phase exists to carry.
+const makePoint = (
+  id: string,
+  options: { readonly phase: ExtensionPhase; readonly capability?: string },
+): ExtensionPoint<unknown> => ({
+  _tag: 'ExtensionPoint',
+  id,
+  phase: options.phase,
+  ...(options.capability === undefined ? {} : { capability: options.capability }),
+})
+
 export const ExtensionPoint = {
-  make: <Contribution>(
-    id: string,
-    options: { readonly phase: ExtensionPhase; readonly capability?: string },
-  ): ExtensionPoint<Contribution> => ({
-    _tag: 'ExtensionPoint',
-    id,
-    phase: options.phase,
-    ...(options.capability === undefined ? {} : { capability: options.capability }),
-  }),
+  make: makePoint as {
+    <Contribution>(
+      id: string,
+      options: { readonly phase: 'prepare'; readonly capability?: string },
+    ): ExtensionPoint<Contribution, 'prepare'>
+    <Contribution>(
+      id: string,
+      options: { readonly phase: 'afterServices'; readonly capability?: string },
+    ): ExtensionPoint<Contribution, 'afterServices'>
+    <Contribution>(
+      id: string,
+      options: { readonly phase: 'external'; readonly capability?: string },
+    ): ExtensionPoint<Contribution, 'external'>
+  },
 }
+
+/** one plugin's contribution, with the plugin that made it */
+export interface Contributed<Contribution> {
+  readonly pluginId: string
+  readonly value: Contribution
+}
+
+/**
+ * What a prepare-phase provider may compile to: a layer that requires
+ * nothing.
+ *
+ * Prepare layers are merged in parallel before any service exists, so one
+ * that quietly required a runtime service would build against an empty world
+ * - refused here, in the provider's own typecheck, rather than discovered as
+ * a missing service at boot.
+ */
+export type PrepareLayer = Layer.Layer<never, any, never>
 
 /** one plugin's value pushed into a channel */
 export interface Contribute {
@@ -98,7 +141,7 @@ export interface Contribute {
 export interface ProvideExtension {
   readonly _tag: 'ProvideExtension'
   readonly point: ExtensionPoint<unknown>
-  readonly compile: (contributions: readonly unknown[]) => AnyLayer
+  readonly compile: (contributions: readonly Contributed<unknown>[]) => AnyLayer
 }
 
 /**
@@ -194,20 +237,39 @@ export const Plugin = {
   },
 
   contribute: <Contribution>(
-    point: ExtensionPoint<Contribution>,
+    point: ExtensionPoint<Contribution, ExtensionPhase>,
     value: Contribution,
   ): PluginFeature => ({ _tag: 'Contribute', point: point as ExtensionPoint<unknown>, value }),
 
-  provideExtension: <Contribution>(
-    point: ExtensionPoint<Contribution>,
+  // Overloads rather than a conditional return type: a conditional that
+  // still depends on the type parameter is deferred while the callback is
+  // contextually typed, and a deferred conditional checks against its
+  // constraint - which admits AnyLayer and lets a requiring layer through.
+  // With overloads a prepare point can only match the strict signature.
+  provideExtension: (<Contribution>(
+    point: ExtensionPoint<Contribution, ExtensionPhase>,
     options: {
-      readonly compile: (contributions: readonly Contribution[]) => AnyLayer
+      readonly compile: (contributions: readonly Contributed<Contribution>[]) => AnyLayer
     },
   ): PluginFeature => ({
     _tag: 'ProvideExtension',
     point: point as ExtensionPoint<unknown>,
     compile: options.compile as ProvideExtension['compile'],
-  }),
+  })) as {
+    /** a prepare-phase provider compiles to a value layer that requires nothing */
+    <Contribution>(
+      point: ExtensionPoint<Contribution, 'prepare'>,
+      options: {
+        readonly compile: (contributions: readonly Contributed<Contribution>[]) => PrepareLayer
+      },
+    ): PluginFeature
+    <Contribution>(
+      point: ExtensionPoint<Contribution, 'afterServices' | 'external'>,
+      options: {
+        readonly compile: (contributions: readonly Contributed<Contribution>[]) => AnyLayer
+      },
+    ): PluginFeature
+  },
 
   service: <Key extends AnyKey, const Requires extends readonly AnyKey[], E>(
     key: Key,
@@ -235,7 +297,7 @@ export const Plugin = {
   /** the values a descriptor pushed into one channel, without building anything */
   contributionsOf: <Contribution>(
     descriptor: PluginDescriptor,
-    point: ExtensionPoint<Contribution>,
+    point: ExtensionPoint<Contribution, ExtensionPhase>,
   ): Contribution[] =>
     descriptor.features
       .filter(

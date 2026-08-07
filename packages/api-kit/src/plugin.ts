@@ -65,17 +65,31 @@ export const Api = {
   }): PluginFeature =>
     Plugin.provideExtension(ApiGroups, {
       compile: (contributions) => {
+        // A group identifier claimed twice would resolve to whichever handler
+        // layer merged last; upstream's aggregate has no reason to know two
+        // plugins were involved, so the refusal happens here, naming both.
+        const owners = new Map<string, string>()
+        for (const contribution of contributions) {
+          const identifier = contribution.value.group.identifier
+          const previous = owners.get(identifier)
+          if (previous) {
+            throw new Error(
+              `api group ${identifier} is declared by both ${previous} and ${contribution.pluginId}`,
+            )
+          }
+          owners.set(identifier, contribution.pluginId)
+        }
         let api = HttpApi.make(QUALY_API_ID) as unknown as HttpApiType.HttpApi<
           string,
           HttpApiGroup.Constraint
         >
         for (const contribution of contributions) {
-          api = api.add(contribution.group)
+          api = api.add(contribution.value.group)
         }
         const runtime = api.prefix(QUALY_API_PREFIX)
         const handlers = Layer.mergeAll(
           Layer.empty,
-          ...contributions.map((entry) => entry.handlers),
+          ...contributions.map((entry) => entry.value.handlers),
         )
         return Layer.unwrap(
           Effect.map(options?.documentation ?? Effect.succeed<ApiDocumentation>({}), (docs) =>
@@ -92,6 +106,7 @@ export const Api = {
 
   /** the raw-routes interpretation: registration order carries no meaning */
   routesProvider: Plugin.provideExtension(RawRoutes, {
-    compile: (contributions) => Layer.mergeAll(Layer.empty, ...contributions),
+    compile: (contributions) =>
+      Layer.mergeAll(Layer.empty, ...contributions.map((entry) => entry.value)),
   }),
 }

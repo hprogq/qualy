@@ -233,6 +233,26 @@ describe('resolution', () => {
     }
   })
 
+  it('refuses a descriptor that calls itself something else', async () => {
+    // everything downstream is keyed by the package id while errors speak the
+    // descriptor's; a mismatch would let the two vocabularies drift mid-sentence
+    const liar: SyntheticPackage = {
+      id: '@fake/plugin-liar',
+      files: {
+        'index.js':
+          "export default { _tag: 'Plugin', id: '@fake/plugin-somebody-else', dependsOn: [], features: [] }\n",
+      },
+    }
+    const workspace = createWorkspace(['@fake/plugin-liar'], { synthetic: [liar] })
+    try {
+      await expect(resolve(workspace.manifestPath)).rejects.toThrow(
+        /@fake\/plugin-liar default-exports a descriptor that calls itself @fake\/plugin-somebody-else/,
+      )
+    } finally {
+      workspace.dispose()
+    }
+  })
+
   it('refuses two plugins claiming one capability', async () => {
     // the load thunks never run: the conflict is settled from the declarations
     const claiming = (id: string): SyntheticPackage => ({

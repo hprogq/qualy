@@ -31,8 +31,11 @@ export const Ui = {
    */
   provider: Plugin.provideExtension(UiSurfaceDeclarations, {
     compile: (contributions) =>
-      Layer.mergeAll(Layer.empty, ...contributions.map(registerSurfaces)).pipe(
-        Layer.provideMerge(uiLayer),
-      ),
+      Layer.mergeAll(
+        Layer.empty,
+        ...contributions.map((contribution) =>
+          registerSurfaces(contribution.value, contribution.pluginId),
+        ),
+      ).pipe(Layer.provideMerge(uiLayer)),
   }),
 }

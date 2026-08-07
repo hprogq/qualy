@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Scope } from 'effect'
+import { Cause, Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
@@ -289,6 +289,27 @@ describe('a claim made twice', () => {
     const declaration = { page, component: 'probe/P', layout: ADMIN_SHELL, visibility: PUBLIC }
     const exit = await build({ pages: [declaration, declaration] })
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it('names both plugins when they claim one page id', async () => {
+    // the assembler tells the registry who declared what; the refusal must
+    // say which two plugins collided, not just which id
+    const declaration = { page, component: 'probe/P', layout: ADMIN_SHELL, visibility: PUBLIC }
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Layer.build(
+          Layer.mergeAll(
+            registerSurfaces({ pages: [declaration] }, '@fake/plugin-first'),
+            registerSurfaces({ pages: [declaration] }, '@fake/plugin-second'),
+          ).pipe(Layer.provideMerge(uiLayer)),
+        ),
+      ),
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    const defect = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+    expect(String(defect)).toMatch(
+      /page probe\/page is declared by both @fake\/plugin-(first|second) and @fake\/plugin-(first|second)/,
+    )
   })
 
   it('refuses one path claimed by two pages', async () => {

@@ -120,9 +120,20 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
   // descriptor.
   const candidateDescriptors = new Map<string, PluginDescriptor>()
   for (const id of candidates.keys()) {
-    const module = (await import(resolver.resolveModuleUrl(id))) as { default?: unknown }
+    let module: { default?: unknown }
+    try {
+      module = (await import(resolver.resolveModuleUrl(id))) as { default?: unknown }
+    } catch (error) {
+      throw new Error(`failed to load the descriptor of ${id}`, { cause: error })
+    }
     if (!isPluginDescriptor(module.default)) {
       throw new Error(`${id} does not default-export a plugin descriptor`)
+    }
+    if (module.default.id !== id) {
+      // everything downstream is keyed by the package id, while errors and
+      // extension ownership speak the descriptor's; a mismatch would let the
+      // two vocabularies drift apart mid-sentence
+      throw new Error(`${id} default-exports a descriptor that calls itself ${module.default.id}`)
     }
     candidateDescriptors.set(id, module.default)
   }
