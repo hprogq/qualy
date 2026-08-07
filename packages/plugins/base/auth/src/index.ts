@@ -29,6 +29,7 @@ const plugin = Plugin.define(
     config,
   },
   Db.entities(entities, { compositeForeignKeys, dependsOn: ['@qualy/plugin-org'] }),
+  Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'auth/login',
     path: '/login',

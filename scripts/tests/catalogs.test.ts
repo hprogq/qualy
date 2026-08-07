@@ -3,8 +3,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { MessageCatalog, MessageDescriptor } from '@qualy/i18n-contract'
 import { supportedLocales } from '@qualy/i18n-contract'
+import { pathToFileURL } from 'node:url'
 import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
-import { UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
+import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
 import { readEntries } from '../lib/read-entries.ts'
 import { resolvePackageDir, resolvePluginModuleUrl } from '../lib/packages.ts'
 
@@ -27,17 +28,27 @@ interface ClientModule {
   errorMessages?: Record<string, { message: MessageDescriptor }>
 }
 
-const clientPlugins = (await readEntries({ all: true })).flatMap((entry) => {
-  if (!entry.name.startsWith('@qualy/')) return []
-  const pkg = JSON.parse(
-    fs.readFileSync(path.join(resolvePackageDir(entry.name), 'package.json'), 'utf8'),
-  ) as { exports?: Record<string, unknown> }
-  return pkg.exports?.['./client'] ? [entry.name] : []
-})
+const declaredCatalogs = async () => {
+  const found: { name: string; module: string }[] = []
+  for (const entry of await readEntries({ all: true })) {
+    if (!entry.name.startsWith('@qualy/')) continue
+    const descriptor = ((await import(resolvePluginModuleUrl(entry.name))) as { default?: unknown })
+      .default
+    if (!isPluginDescriptor(descriptor)) continue
+    const declared = Plugin.contributionsOf(descriptor, I18nCatalogs)
+    if (declared.length === 0) continue
+    found.push({
+      name: entry.name,
+      module: path.resolve(resolvePackageDir(entry.name), 'src', declared[0]!.module),
+    })
+  }
+  return found
+}
+const clientPlugins = await declaredCatalogs()
 
 describe('plugin message catalogs', () => {
-  it.each(clientPlugins)('%s ships a complete catalog for every locale', async (name) => {
-    const module = (await import(resolvePluginModuleUrl(`${name}/client`))) as ClientModule
+  it.each(clientPlugins)('$name ships a complete catalog for every locale', async ({ name, module: file }) => {
+    const module = (await import(pathToFileURL(file).href)) as ClientModule
     if (!module.catalogs) {
       // valid only for a plugin with no user-facing text at all
       expect(module.errorMessages).toBeUndefined()

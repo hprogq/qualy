@@ -24,6 +24,7 @@ const plugin = Plugin.define(
     ],
   },
   Db.entities(entities, { compositeForeignKeys, baselineDir: 'db/baseline' }),
+  Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'org/page',
     path: '/admin/org',

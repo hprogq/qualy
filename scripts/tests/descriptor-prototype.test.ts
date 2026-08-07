@@ -36,7 +36,7 @@ describe('the descriptor prototype', () => {
     // nothing - every feature is a value
     expect(isPluginDescriptor(pingPlugin)).toBe(true)
     expect(pingPlugin.id).toBe('@qualy/plugin-ping')
-    expect(pingPlugin.features.length).toBe(3)
+    expect(pingPlugin.features.length).toBe(4)
   })
 
   it('yields its entities to a reader that builds nothing', () => {

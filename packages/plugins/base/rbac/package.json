@@ -9,7 +9,6 @@
     ".": "./src/index.ts",
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
-    "./client": "./src/client/index.ts",
     "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
     "./package.json": "./package.json",

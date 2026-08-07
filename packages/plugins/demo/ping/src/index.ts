@@ -45,6 +45,7 @@ const plugin = Plugin.define(
   '@qualy/plugin-ping',
   { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
   Db.entities(entities),
+  Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'ping/page',
     path: '/ping',

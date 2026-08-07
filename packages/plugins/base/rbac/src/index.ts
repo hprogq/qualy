@@ -21,6 +21,7 @@ const plugin = Plugin.define(
     compositeForeignKeys,
     dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
   }),
+  Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'rbac/roles',
     path: '/admin/roles',

@@ -83,6 +83,7 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
 const plugin = Plugin.define(
   '@qualy/plugin-auth-local',
   { dependsOn: ['@qualy/plugin-auth'] },
+  Ui.i18n('./client/i18n.ts'),
   Login.driver(driver),
   Api.group(authLocalApiGroup, handlers),
 )

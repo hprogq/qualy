@@ -8,7 +8,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./db": "./src/db/entities.ts",
-    "./client": "./src/client/index.ts",
     "./permissions": "./src/permissions.ts",
     "./constants": "./src/constants.ts",
     "./server": "./src/server/index.ts",

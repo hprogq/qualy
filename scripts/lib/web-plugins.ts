@@ -3,7 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { commonErrorCodes } from '@qualy/i18n-contract'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
-import { UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
+import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
 import { currentResolution, readEntries } from './read-entries.ts'
 import { repoRoot } from './paths.ts'
 import { resolvePackageDir, resolvePluginModuleUrl } from './packages.ts'
@@ -27,6 +27,8 @@ export interface WebPluginEntry {
   name: string
   /** derived registry key to the module file it loads */
   components: Record<string, string>
+  /** the declared localisation module, absolute, when the plugin ships one */
+  i18nModule?: string
   hasCatalogs: boolean
   hasErrorMessages: boolean
 }
@@ -111,14 +113,20 @@ export async function collectWebPlugins(
     }
 
     // localization assets are optional per plugin: a plugin without user
-    // facing text ships neither, and the host aggregates whatever exists
-    const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
-      exports?: Record<string, unknown>
+    // facing text declares no module, and the host aggregates whatever exists
+    const declaredI18n = Plugin.contributionsOf(descriptor, I18nCatalogs)
+    if (declaredI18n.length > 1) {
+      throw new Error(`${entry.name} declares Ui.i18n twice; one module carries everything`)
     }
     let hasCatalogs = false
     let hasErrorMessages = false
-    if (pkg.exports?.['./client']) {
-      const module = (await import(resolvePluginModuleUrl(`${entry.name}/client`))) as {
+    let i18nModule: string | undefined
+    if (declaredI18n.length === 1) {
+      i18nModule = path.resolve(packageDir, 'src', declaredI18n[0]!.module)
+      if (!i18nModule.startsWith(packageDir + path.sep) || !fs.existsSync(i18nModule)) {
+        throw new Error(`${entry.name}: i18n module ${declaredI18n[0]!.module} does not exist`)
+      }
+      const module = (await import(pathToFileURL(i18nModule).href)) as {
         catalogs?: unknown
         errorMessages?: unknown
       }
@@ -149,10 +157,19 @@ export async function collectWebPlugins(
         }
         hasErrorMessages = true
       }
+      if (!module.catalogs && !module.errorMessages) {
+        throw new Error(`${entry.name}: the declared i18n module exports no catalogs`)
+      }
     }
 
     if (Object.keys(components).length > 0 || hasCatalogs || hasErrorMessages) {
-      found.push({ name: entry.name, components, hasCatalogs, hasErrorMessages })
+      found.push({
+        name: entry.name,
+        components,
+        ...(i18nModule === undefined ? {} : { i18nModule }),
+        hasCatalogs,
+        hasErrorMessages,
+      })
     }
   }
   return found
@@ -175,11 +192,15 @@ export async function buildPluginModuleSource(
       )
     }
     if (entry.hasCatalogs) {
-      imports.push(`import { catalogs as ${ns}Catalogs } from '${entry.name}/client'`)
+      imports.push(
+        `import { catalogs as ${ns}Catalogs } from ${JSON.stringify(pathToFileURL(entry.i18nModule!).pathname)}`,
+      )
       catalogEntries.push(`  ${ns}Catalogs,`)
     }
     if (entry.hasErrorMessages) {
-      imports.push(`import { errorMessages as ${ns}ErrorMessages } from '${entry.name}/client'`)
+      imports.push(
+        `import { errorMessages as ${ns}ErrorMessages } from ${JSON.stringify(pathToFileURL(entry.i18nModule!).pathname)}`,
+      )
       errorSpreads.push(`  ...${ns}ErrorMessages,`)
     }
   }
