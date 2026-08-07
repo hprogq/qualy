@@ -40,7 +40,7 @@
     "zod": "catalog:"
   },
   "scripts": {
-    "build": "tsx scripts/gen.ts --all && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",
+    "build": "tsx scripts/gen.ts && pnpm --filter @qualy/web-app build && tsx scripts/stage-web-assets.ts",
     "db:reset": "docker compose down -v && docker compose up -d --wait && tsx scripts/qualy.ts deploy",
     "dev": "node --env-file-if-exists=.env --import tsx apps/server/src/main.ts",
     "format": "prettier --write .",

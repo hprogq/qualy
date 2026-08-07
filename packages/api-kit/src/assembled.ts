@@ -62,11 +62,15 @@ export const assembledLayer: Layer.Layer<Assembled> = Layer.sync(Assembled, () =
 
 export class BootHookFailed extends Error {
   readonly _tag = 'BootHookFailed'
-  constructor(
-    readonly hook: string,
-    override readonly cause: unknown,
-  ) {
-    super(`boot hook ${hook} failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+  // a plain field, not a parameter property: strip-only node loads this
+  // source when resolution imports descriptors, and refuses syntax with
+  // runtime semantics
+  readonly hook: string
+  constructor(hook: string, cause: unknown) {
+    super(`boot hook ${hook} failed: ${cause instanceof Error ? cause.message : String(cause)}`, {
+      cause,
+    })
+    this.hook = hook
   }
 }
 

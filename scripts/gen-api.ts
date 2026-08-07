@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { writeGenerated } from './lib/codegen.ts'
+import { repoRoot } from './lib/paths.ts'
 import { readEntries } from './lib/read-entries.ts'
 import { resolvePackageDir, resolvePluginModuleUrl } from './lib/packages.ts'
 
@@ -29,7 +30,7 @@ import { resolvePackageDir, resolvePluginModuleUrl } from './lib/packages.ts'
 const apiDeps = new Set(
   Object.keys(
     (
-      JSON.parse(fs.readFileSync('packages/api/package.json', 'utf8')) as {
+      JSON.parse(fs.readFileSync(path.join(repoRoot, 'packages/api/package.json'), 'utf8')) as {
         dependencies?: Record<string, string>
       }
     ).dependencies ?? {},

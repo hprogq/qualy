@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { lockPathFor, readLock, resolveAssembly, type Resolution } from '@qualy/assembly'
+import { repoRoot } from './paths.ts'
 
 // What the manifest SELECTED, which is the question codegen asks: contracts,
 // components, message catalogs and permission catalogs all belong to plugins
@@ -21,12 +22,13 @@ export interface Entry {
 export const DEFAULT_MANIFEST = 'qualy.yml'
 
 // --yml <path> points the generators at an alternate manifest; tests use
-// throwaway workspaces so they never mutate the working one
+// throwaway workspaces so they never mutate the working one. An explicit path
+// is the caller's and stays relative to their working directory; the default
+// anchors to the repository, because the Vite build runs these from apps/web
 export const manifestPath = (ymlPath?: string) => {
   const flag = process.argv.indexOf('--yml')
-  return path.resolve(
-    ymlPath ?? (flag >= 0 ? process.argv[flag + 1] : undefined) ?? DEFAULT_MANIFEST,
-  )
+  const given = ymlPath ?? (flag >= 0 ? process.argv[flag + 1] : undefined)
+  return given ? path.resolve(given) : path.join(repoRoot, DEFAULT_MANIFEST)
 }
 
 // resolution walks every plugin package and imports every capability

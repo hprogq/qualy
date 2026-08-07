@@ -8,7 +8,7 @@ import type { ApiResult } from '@qualy/api-client/effect'
 type UserTypeDto = ApiResult<'identity', 'listUserTypes'>['userTypes'][number]
 type RoleDto = ApiResult<'access', 'listRoles'>['roles'][number]
 type UserDto = ApiResult<'identity', 'getUser'>['user']
-import { components } from '../src/plugins.gen.ts'
+import { components } from 'virtual:qualy/plugins'
 import { Effect } from 'effect'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 

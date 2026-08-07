@@ -5,7 +5,7 @@ import { I18nProvider } from '@qualy/web-i18n'
 import { RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
 import { Effect } from 'effect'
 import type { QualyClient } from '@qualy/api-client/effect'
-import { catalogs, errorMessages } from '../../src/plugins.gen.ts'
+import { catalogs, errorMessages } from 'virtual:qualy/plugins'
 
 // The harness lives in the host's own test folder, not in a package export.
 // A screen needs a client, a manifest, a locale and a router to exist at

@@ -142,8 +142,12 @@ export const withDatabase: Effect.Effect<
 
 export class QueryFailed extends Error {
   readonly _tag = 'QueryFailed'
-  constructor(override readonly cause: unknown) {
-    super(`a database query failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+  // no parameter property: strip-only node loads this source when resolution
+  // imports descriptors, and refuses syntax with runtime semantics
+  constructor(cause: unknown) {
+    super(`a database query failed: ${cause instanceof Error ? cause.message : String(cause)}`, {
+      cause,
+    })
   }
 }
 
@@ -192,8 +196,10 @@ export const kyselyOf = <T extends PostgresEntityManager>(em: T) =>
  */
 export class DatabaseStartupFailed extends Error {
   readonly _tag = 'DatabaseStartupFailed'
-  constructor(override readonly cause: unknown) {
-    super(`could not open the database: ${cause instanceof Error ? cause.message : String(cause)}`)
+  constructor(cause: unknown) {
+    super(`could not open the database: ${cause instanceof Error ? cause.message : String(cause)}`, {
+      cause,
+    })
   }
 }
 

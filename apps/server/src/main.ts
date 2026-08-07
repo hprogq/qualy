@@ -4,25 +4,11 @@ import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
 
 // Everything this process does before it is an application, and everything it
-// says while doing it, through one logger.
-//
-// Codegen used to be a separate command in front of `pnpm dev`, which meant a
-// developer read two log formats from two processes for one start. It runs
-// here instead - but only in development, and only through a dynamic import,
-// because a deployment generates at build time and must not be able to rewrite
-// its own source at boot.
-//
-// The order is the reason `runtime.ts` is imported below rather than at the
-// top: assembling imports every plugin module, and importing first would
-// freeze this process on whatever the generated client artifacts said before
-// codegen ran.
+// says while doing it, through one logger. This process generates nothing:
+// frontend artifacts are the frontend toolchain's - the Vite plugin serves
+// the chunk registry and regenerates the typed client - and a server that
+// could rewrite sources at boot would be a server that repairs.
 const prepare = Effect.gen(function* () {
-  if (process.env.NODE_ENV !== 'production') {
-    const { generateAllQuietly } = yield* Effect.promise(() => import('../../../scripts/gen.ts'))
-    for (const line of yield* Effect.promise(generateAllQuietly)) {
-      yield* Effect.logInfo(line)
-    }
-  }
   // Start validates and starts; it never repairs. The descriptors this
   // process imports are selected by the resolution, so an instance whose
   // manifest does not match the reviewed lock is running an assembly nobody

@@ -4,8 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
+import { buildPluginModuleSource } from '../lib/web-plugins.ts'
 
-const pluginsPath = 'apps/web/src/plugins.gen.ts'
 const apiPath = 'packages/api/src/api.gen.ts'
 
 // A capability's module lands where the manifest says its host lives, so a
@@ -48,7 +48,7 @@ describe('generator determinism', () => {
 
   it('produces byte-identical output on repeated runs', () => {
     gen()
-    const generated = [pluginsPath, apiPath]
+    const generated = [apiPath]
     const before = generated.map((file) => read(file))
     // silence is the signal now: a generator that rewrote an identical file
     // would say so, and a second run that says nothing wrote nothing
@@ -59,7 +59,7 @@ describe('generator determinism', () => {
     }
   })
 
-  it('drops disabled plugins from the active set but keeps them under --all', () => {
+  it('drops disabled plugins from the active set but keeps them under --all', async () => {
     // ping owns tables, so the selection has to include the capability that
     // accepts them or resolution refuses the manifest
     const workspace = createWorkspace(
@@ -68,19 +68,25 @@ describe('generator determinism', () => {
     )
     try {
       gen(`--yml ${workspace.manifestPath}`)
-      expect(read(pluginsPath)).not.toContain('pingComponents')
+      // the chunk registry is a virtual module now; the same rule holds for
+      // the source the Vite plugin serves
+      expect(await buildPluginModuleSource({ ymlPath: workspace.manifestPath })).not.toContain(
+        'pingComponents',
+      )
       // a disabled plugin loses its routes, so both halves of the aggregate
       // have to forget it together
       expect(read(apiPath)).not.toContain('pingApiGroup')
 
-      gen(`--yml ${workspace.manifestPath} --all`)
-      expect(read(pluginsPath)).toContain('pingComponents')
-      // but NOT the server's route graph. --all means "the superset" for a
+      expect(
+        await buildPluginModuleSource({ all: true, ymlPath: workspace.manifestPath }),
+      ).toContain('pingComponents')
+      // but NOT the server's route graph. all means "the superset" for a
       // client contract and a web bundle, where an unreachable component costs
       // bytes. Here it would mean a disabled plugin's endpoints are served,
       // because its dependencies are still present and its handler still works
+      gen(`--yml ${workspace.manifestPath} --all`)
       expect(read(apiPath)).not.toContain('pingApiGroup')
-      // the handlers aggregate lives in the runtime module now, which follows
+      // the handlers aggregate lives in the runtime composition, which follows
       // the same active set as the layers themselves
     } finally {
       workspace.dispose()

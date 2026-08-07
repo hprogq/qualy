@@ -51,8 +51,13 @@ export function topoSort(
 }
 
 export class CycleError extends Error {
-  constructor(readonly cycle: readonly string[]) {
+  // a plain field, not a parameter property: this package is loaded as
+  // TypeScript source by plain node when the Vite config imports it, and
+  // strip-only mode refuses syntax with runtime semantics
+  readonly cycle: readonly string[]
+  constructor(cycle: readonly string[]) {
     super(`dependency cycle: ${cycle.join(' -> ')}`)
     this.name = 'CycleError'
+    this.cycle = cycle
   }
 }

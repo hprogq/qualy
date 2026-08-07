@@ -15,7 +15,7 @@ import { I18nProvider, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
-import { catalogs, components, errorMessages } from './plugins.gen.ts'
+import { catalogs, components, errorMessages } from 'virtual:qualy/plugins'
 
 // The one place the browser runs an effect, and it runs exactly one: building
 // the client. Everything after this hands effects to TanStack through the query

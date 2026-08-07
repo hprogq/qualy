@@ -88,10 +88,15 @@ const registerProbe: Layer.Layer<never, never, Orm> = Layer.effectDiscard(
 
 export class MigrationsBehind extends Error {
   readonly _tag = 'MigrationsBehind'
-  constructor(readonly pending: number) {
+  // plain fields, not parameter properties: plugin sources are loaded as
+  // TypeScript by plain node when resolution imports descriptors, and
+  // strip-only mode refuses syntax with runtime semantics
+  readonly pending: number
+  constructor(pending: number) {
     super(
       `database is ${pending} migration(s) behind and this process does not apply them; run the migration job (pnpm qualy deploy) before starting`,
     )
+    this.pending = pending
   }
 }
 
@@ -112,11 +117,12 @@ export class MigrationsBehind extends Error {
  */
 export class MigrationFailed extends Error {
   readonly _tag = 'MigrationFailed'
-  constructor(
-    readonly attempted: string,
-    override readonly cause: unknown,
-  ) {
-    super(`could not ${attempted}: ${cause instanceof Error ? cause.message : String(cause)}`)
+  readonly attempted: string
+  constructor(attempted: string, cause: unknown) {
+    super(`could not ${attempted}: ${cause instanceof Error ? cause.message : String(cause)}`, {
+      cause,
+    })
+    this.attempted = attempted
   }
 }
 
