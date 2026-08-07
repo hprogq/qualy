@@ -78,3 +78,29 @@ jobs:
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
         run: pnpm exec tsx tools/quality/smoke-production.ts
+
+  # The component suite, in the one environment that is always cold. Its
+  # whole failure class - dependency scanning, chunk graphs, one react
+  # instance - only ever showed up on a fresh cache, which a developer
+  # machine almost never is. No postgres: components talk to stubbed
+  # clients, so this leg runs parallel to the integration job.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: resolve playwright version
+        id: playwright
+        run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}
+      - name: install chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:browser
