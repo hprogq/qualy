@@ -42,6 +42,12 @@ export interface ApiDocumentation {
   readonly reference?: `/${string}`
 }
 
+/** the layer, rebuilt under its contributor's name for every log it emits */
+const ownedBy = (pluginId: string, layer: AnyLayer): AnyLayer =>
+  Layer.fromBuild((memoMap, scope) =>
+    Effect.annotateLogs(Layer.buildWithMemoMap(layer, memoMap, scope), { source: pluginId }),
+  )
+
 export const Api = {
   /**
    * The local api a plugin implements its group against.
@@ -107,7 +113,9 @@ export const Api = {
         const runtime = api.prefix(QUALY_API_PREFIX)
         const handlers = Layer.mergeAll(
           Layer.empty,
-          ...contributions.map((entry) => entry.value.handlers),
+          // built under the contributor's name, so a handler layer that fails
+          // to close names its plugin rather than a fiber id
+          ...contributions.map((entry) => ownedBy(entry.pluginId, entry.value.handlers)),
         )
         return Layer.unwrap(
           Effect.map(options?.documentation ?? Effect.succeed<ApiDocumentation>({}), (docs) =>
@@ -125,6 +133,12 @@ export const Api = {
   /** the raw-routes interpretation: registration order carries no meaning */
   routesProvider: Plugin.provideExtension(RawRoutes, {
     compile: (contributions) =>
-      Layer.mergeAll(Layer.empty, ...contributions.map((entry) => entry.value)),
+      Layer.mergeAll(
+        Layer.empty,
+        // same rule as the handlers: a route layer speaks under the plugin
+        // that contributed it - the web plugin's vite mount says [web], not
+        // the name of whoever compiled the aggregate
+        ...contributions.map((entry) => ownedBy(entry.pluginId, entry.value)),
+      ),
   }),
 }

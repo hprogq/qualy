@@ -1,4 +1,4 @@
-import { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import type {
   AnyLayer,
   Contributed,
@@ -32,6 +32,20 @@ export interface Assembled {
   /** afterServices compilations (http handlers), built above the services */
   readonly above: AnyLayer
 }
+
+/**
+ * The layer, rebuilt under the plugin's name.
+ *
+ * Log annotations are fiber-scoped and inherited by forked fibers, so
+ * wrapping the BUILD is what makes a plugin's construction logs - and any
+ * background fiber it forks while building - say which plugin is speaking,
+ * instead of a bare fiber id. Memoization is preserved: the wrapper builds
+ * through the same memo map.
+ */
+const owned = (plugin: string, layer: AnyLayer): AnyLayer =>
+  Layer.fromBuild((memoMap, scope) =>
+    Effect.annotateLogs(Layer.buildWithMemoMap(layer, memoMap, scope), { source: plugin }),
+  )
 
 export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
   const providers = new Map<string, { plugin: string; feature: ProvideExtension }>()
@@ -89,7 +103,7 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
           services.push({ plugin: descriptor.id, feature })
           break
         case 'Layer':
-          opaqueLayers.push(feature.layer)
+          opaqueLayers.push(owned(descriptor.id, feature.layer))
           break
         case 'Capability':
           // the CLI's channel: the provider module is imported when the
@@ -114,10 +128,13 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
   const compiled = (phase: ExtensionPhase): AnyLayer[] =>
     [...providers.values()]
       .filter(({ feature }) => feature.point.phase === phase)
-      .map(({ feature }) =>
-        feature.compile(
-          (contributions.get(feature.point.id) ?? []).map(
-            (entry): Contributed<unknown> => ({ pluginId: entry.plugin, value: entry.value }),
+      .map(({ plugin, feature }) =>
+        owned(
+          plugin,
+          feature.compile(
+            (contributions.get(feature.point.id) ?? []).map(
+              (entry): Contributed<unknown> => ({ pluginId: entry.plugin, value: entry.value }),
+            ),
           ),
         ),
       )
@@ -126,7 +143,10 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
     layers.length === 0 ? Layer.empty : Layer.mergeAll(layers[0]!, ...layers.slice(1))
 
   const prepared = merged(compiled('prepare'))
-  const ordered = [...opaqueLayers, ...sortServices(services).map((entry) => entry.feature.layer)]
+  const ordered = [
+    ...opaqueLayers,
+    ...sortServices(services).map((entry) => owned(entry.plugin, entry.feature.layer)),
+  ]
   const serviceGraph = ordered
     .reduce<AnyLayer>((below, layer) => Layer.provideMerge(layer, below), Layer.empty)
     .pipe(Layer.provideMerge(prepared))

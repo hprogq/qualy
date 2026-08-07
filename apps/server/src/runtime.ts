@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Layer, Logger } from 'effect'
+import { Effect, Layer } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
@@ -12,6 +12,8 @@ import { Plugin } from '@qualy/plugin-kit'
 import { lockFromResolution, type Resolution } from '@qualy/assembly'
 import { loadAssembly } from './assembly.ts'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
+import { accessLog } from './access-log.ts'
+import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
 
 // The composition root.
@@ -63,7 +65,10 @@ const nodeServerLayer = Layer.sync(NodeServer, () => createServer())
  * and whether the assembly closes is the boot's answer - dev boots on every
  * run, and CI boots against a real database.
  */
-export async function makeApplication(resolution: Resolution): Promise<Layer.Layer<never>> {
+export async function makeApplication(
+  resolution: Resolution,
+  logging: LoggingSettings,
+): Promise<Layer.Layer<never>> {
   const { prepared, services, above, configs } = loadAssembly(resolution, {
     host: [hostPlugin],
   })
@@ -92,9 +97,12 @@ export async function makeApplication(resolution: Resolution): Promise<Layer.Lay
       // the services are provided inside the serve composition: the router
       // discharges request-time requirements only for layers inside its
       // argument, and requests find their services in the built context
-      return HttpRouter.serve(routes.pipe(Layer.provide(services), Layer.provide(prepared))).pipe(
-        Layer.provide(NodeHttpServer.layer(() => instance, { port: config.port })),
-      )
+      return HttpRouter.serve(routes.pipe(Layer.provide(services), Layer.provide(prepared)), {
+        // the upstream logger prints every response at Info and every failed
+        // exit's cause - interrupted requests included; ours speaks in levels
+        disableLogger: true,
+        middleware: accessLog(logging.access),
+      }).pipe(Layer.provide(NodeHttpServer.layer(() => instance, { port: config.port })))
     }),
   ).pipe(Layer.provideMerge(nodeServerLayer), Layer.provide(ServerConfig.layer))
 
@@ -108,10 +116,7 @@ export async function makeApplication(resolution: Resolution): Promise<Layer.Lay
     Layer.provideMerge(readinessLayer),
     // the boot hooks those plugins registered, run by `booted` above
     Layer.provideMerge(assembledLayer),
-    // One logger for everything the process says, colours included. The
-    // default one prints the same layout without them, and a dev terminal
-    // that tells an error from a request at a glance is worth the one line.
-    Layer.provide(Logger.layer([Logger.consolePretty({ colors: 'auto' })])),
+    // the logger is the root's, installed in main.ts before anything speaks
     // each plugin's own block of the manifest, turned into a service by the
     // plugin that reads it rather than by this file
     Layer.provide(configs),

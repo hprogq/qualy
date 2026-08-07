@@ -116,6 +116,20 @@ describe('manifest', () => {
     expect(hashOf('.')).toBe(hashOf('./'))
   })
 
+  it('carries application.logging without hashing it', () => {
+    // one file, two views: logging is how the process behaves, not what the
+    // assembly is - turning a level up must never read as drift
+    const quiet = parseManifest(
+      'version: 2\napplication:\n  workspace: .\n  logging:\n    level: warn\nplugins: {}\n',
+      'qualy.yml',
+    )
+    const loud = parseManifest(v2('plugins: {}\n'), 'qualy.yml')
+    expect(quiet.logging).toEqual({ level: 'warn' })
+    expect(manifestHash(quiet)).toBe(manifestHash(loud))
+    // and the renderer keeps it, or a rewrite would silently reset the levels
+    expect(parseManifest(renderManifest(quiet), 'again').logging).toEqual({ level: 'warn' })
+  })
+
   it('survives a round trip through the renderer', () => {
     // renderManifest is what rewrites a manifest; dropping the application
     // block would silently turn a hosted assembly into a standalone one

@@ -172,12 +172,16 @@ export const viteLogger = Effect.gen(function* () {
   const lines = yield* Queue.make<Effect.Effect<void>>()
   yield* Effect.forkScoped(Effect.forever(Effect.flatten(Queue.take(lines))))
   const emit = (line: Effect.Effect<void>) => {
-    Queue.offerUnsafe(lines, line)
+    Queue.offerUnsafe(lines, line.pipe(Effect.annotateLogs({ source: 'web:vite' })))
   }
   // vite reads this back to decide whether a run "had warnings", so it is
   // state the adapter owns rather than something it can forward
   const state = { warned: false }
   const seen = new Set<string>()
+  // Vite's own logger remembers which Error values it has printed and asks
+  // through hasErrorLogged before printing again; an adapter that always
+  // answered false invited the same error twice
+  const loggedErrors = new WeakSet<Error>()
   return {
     info: (message: string) => emit(Effect.logInfo(message)),
     warn: (message: string) => {
@@ -190,12 +194,17 @@ export const viteLogger = Effect.gen(function* () {
       state.warned = true
       emit(Effect.logWarning(message))
     },
-    error: (message: string) => emit(Effect.logError(message)),
+    error: (message: string, options?: { error?: Error | null }) => {
+      // upstream's logger counts an error as "warned" too
+      state.warned = true
+      if (options?.error) loggedErrors.add(options.error)
+      emit(Effect.logError(message))
+    },
     // the screen is shared with the application's own output, so clearing it
     // would take that away; vite is started with clearScreen off for the same
     // reason
     clearScreen: () => {},
-    hasErrorLogged: () => false,
+    hasErrorLogged: (error: Error) => loggedErrors.has(error),
     get hasWarned() {
       return state.warned
     },

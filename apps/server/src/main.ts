@@ -1,5 +1,7 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
+import { readManifest } from '@qualy/assembly'
+import { loggingLayer, resolveLogging } from './logging.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
 
@@ -8,6 +10,18 @@ import { manifestPath } from './manifest.ts'
 // frontend artifacts are the frontend toolchain's - the Vite plugin serves
 // the chunk registry and regenerates the typed client - and a server that
 // could rewrite sources at boot would be a server that repairs.
+//
+// The logger comes FIRST, from the manifest's runtime settings plus the
+// environment, and wraps verification as well as the application: a lock
+// drift warning printed by a different logger than everything else was two
+// formats for one process.
+const logging = resolveLogging(
+  readManifest(manifestPath()).logging,
+  process.env,
+  process.env.NODE_ENV === 'production' ? 'production' : 'development',
+)
+const logs = loggingLayer(logging)
+
 const prepare = Effect.gen(function* () {
   // Start validates and starts; it never repairs. The descriptors this
   // process imports are selected by the resolution, so an instance whose
@@ -22,10 +36,10 @@ const prepare = Effect.gen(function* () {
   return resolution
 })
 
-const resolution = await Effect.runPromise(prepare)
+const resolution = await Effect.runPromise(Effect.provide(prepare, logs))
 
 const { makeApplication } = await import('./runtime.ts')
-const application = await makeApplication(resolution)
+const application = await makeApplication(resolution, logging)
 
 // The entry point.
 //
@@ -43,6 +57,7 @@ const launched = Layer.launch(application).pipe(
       ? Effect.logInfo('shutdown complete')
       : Effect.void,
   ),
+  Effect.provide(logs),
 )
 
 /**

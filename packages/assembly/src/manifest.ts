@@ -39,6 +39,16 @@ export interface AssemblyManifest {
    * usually right is the kind that fails once, in someone else's layout.
    */
   workspace: string
+  /**
+   * The application's runtime settings, opaque to the assembly.
+   *
+   * One file, two views: `plugins` and `workspace` say WHAT the assembly is
+   * and are hashed into the lock; this block says how the process behaves -
+   * logging today - and is deliberately NOT part of the hash, so turning a
+   * log level up never requires `qualy resolve` and never reads as drift.
+   * The host interprets it; the core only carries it.
+   */
+  logging: unknown
 }
 
 export const MANIFEST_VERSION = 2
@@ -80,7 +90,9 @@ export function parseManifest(text: string, source: string): AssemblyManifest {
   }
   const app = (application ?? {}) as Record<string, unknown>
   for (const key of Object.keys(app)) {
-    if (key !== 'workspace') fail(source, `application: unknown key ${key}`)
+    if (key !== 'workspace' && key !== 'logging') {
+      fail(source, `application: unknown key ${key}`)
+    }
   }
   if (app.workspace !== undefined && typeof app.workspace !== 'string') {
     fail(source, 'application.workspace must be a path relative to this file')
@@ -117,7 +129,7 @@ export function parseManifest(text: string, source: string): AssemblyManifest {
     }
     plugins.set(id, { enabled: entry.enabled ?? true, config: entry.config })
   }
-  return { version: MANIFEST_VERSION, plugins, source, workspace }
+  return { version: MANIFEST_VERSION, plugins, source, workspace, logging: app.logging }
 }
 
 export function readManifest(file: string): AssemblyManifest {
@@ -173,7 +185,10 @@ export function renderManifest(manifest: AssemblyManifest): string {
   return YAML.stringify(
     {
       version: manifest.version,
-      application: { workspace: manifest.workspace },
+      application: {
+        workspace: manifest.workspace,
+        ...(manifest.logging === undefined ? {} : { logging: manifest.logging }),
+      },
       plugins,
     },
     { lineWidth: 0 },
