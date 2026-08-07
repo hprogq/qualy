@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
@@ -14,7 +15,7 @@ export default defineConfig({
   // declare it - under pnpm isolation that silently fails, and every plugin
   // package loads its own copy: the "Invalid hook call" crash, cold cache only
   root: 'apps/web',
-  plugins: [qualyPlugins(), react()],
+  plugins: [qualyPlugins(), react(), tailwindcss()],
   resolve: {
     // one react instance for the host and every plugin component
     dedupe: ['react', 'react-dom'],

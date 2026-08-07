@@ -25,6 +25,7 @@
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/web-build": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
     "@vitejs/plugin-react": "catalog:",

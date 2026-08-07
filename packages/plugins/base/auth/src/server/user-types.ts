@@ -355,9 +355,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       ),
 
     list: (tenantId: string) =>
-      withDb(
-        userTypesOfTenant(tenantId).pipe(Effect.orDie, Effect.withSpan('Iam.userTypes.list')),
-      ),
+      withDb(userTypesOfTenant(tenantId).pipe(Effect.orDie, Effect.withSpan('Iam.userTypes.list'))),
 
     get: (tenantId: string, userTypeId: string) =>
       withDb(
