@@ -51,6 +51,9 @@ const SCRIPTS_MAY_CONNECT = new Set([
   'scripts/seed.ts',
   'scripts/lib/seed.ts',
   'scripts/tests/seed.test.ts',
+  // boots the real production entry, which refuses to assume a database; the
+  // script hands the spawned process the compose stack's url
+  'scripts/smoke-production.ts',
   // this file states the patterns, so it contains all of them
   'scripts/tests/test-layers.test.ts',
 ])

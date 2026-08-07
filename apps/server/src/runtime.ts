@@ -6,10 +6,10 @@ import { createServer } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
-import { assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
+import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Plugin } from '@qualy/plugin-kit'
-import type { Resolution } from '@qualy/assembly'
+import { lockFromResolution, type Resolution } from '@qualy/assembly'
 import { loadAssembly } from './assembly.ts'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
 import { healthApi, healthHandlers } from './health.ts'
@@ -115,5 +115,13 @@ export async function makeApplication(resolution: Resolution): Promise<Layer.Lay
     // each plugin's own block of the manifest, turned into a service by the
     // plugin that reads it rather than by this file
     Layer.provide(configs),
+    // which assembly this is, for artifacts built outside the process to be
+    // checked against - the same hash the lock records
+    Layer.provide(
+      Layer.succeed(
+        AssemblyInfo,
+        AssemblyInfo.of({ resolutionHash: lockFromResolution(resolution).resolutionHash }),
+      ),
+    ),
   ) as unknown as Layer.Layer<never>
 }

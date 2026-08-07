@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
 import { WebConfig, routes, viteLogger } from '../src/server/index.ts'
 
@@ -35,6 +36,13 @@ const base = `http://127.0.0.1:${port}`
 // build, for no gain.
 const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-assets-'))
 fs.writeFileSync(path.join(assetRoot, 'index.html'), '<!doctype html><title>shell</title>')
+// the fingerprint stage writes, matching the assembly the fake host declares
+const HASH = 'sha256:test'
+fs.writeFileSync(
+  path.join(assetRoot, '.qualy-assembly.json'),
+  JSON.stringify({ resolutionHash: HASH }),
+)
+const assemblyInfo = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH }))
 
 let scope: Scope.Scope
 
@@ -51,6 +59,7 @@ beforeAll(async () => {
       Layer.mergeAll(
         Layer.succeed(WebConfig, WebConfig.of({ mode: 'production', assetRoot })),
         Layer.sync(NodeServer, () => createServer()),
+        assemblyInfo,
       ),
     ),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
@@ -93,6 +102,7 @@ describe('the shell against the api mount', () => {
                 Layer.mergeAll(
                   Layer.succeed(WebConfig, WebConfig.of({ mode: 'production', assetRoot: empty })),
                   Layer.sync(NodeServer, () => createServer()),
+                  assemblyInfo,
                   HttpRouter.layer,
                 ),
               ),
@@ -103,6 +113,38 @@ describe('the shell against the api mount', () => {
       expect(Exit.isFailure(exit)).toBe(true)
     } finally {
       fs.rmSync(empty, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses assets built from a different assembly, and unstamped assets', async () => {
+    // the bundle and the process each name their assembly; a mismatch means
+    // the browser registry and the served api are different selections
+    const buildAt = (root: string, info: Layer.Layer<AssemblyInfo>) =>
+      Effect.runPromiseExit(
+        Effect.scoped(
+          Layer.build(
+            routes.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.succeed(WebConfig, WebConfig.of({ mode: 'production', assetRoot: root })),
+                  Layer.sync(NodeServer, () => createServer()),
+                  info,
+                  HttpRouter.layer,
+                ),
+              ),
+            ),
+          ),
+        ),
+      )
+    const other = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: 'sha256:other' }))
+    expect(Exit.isFailure(await buildAt(assetRoot, other))).toBe(true)
+
+    const unstamped = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-unstamped-'))
+    try {
+      fs.writeFileSync(path.join(unstamped, 'index.html'), '<!doctype html><title>shell</title>')
+      expect(Exit.isFailure(await buildAt(unstamped, assemblyInfo))).toBe(true)
+    } finally {
+      fs.rmSync(unstamped, { recursive: true, force: true })
     }
   })
 

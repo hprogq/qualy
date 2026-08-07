@@ -6,6 +6,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstab
 import sirv from 'sirv'
 import type { Logger as ViteLogger } from 'vite'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer, fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
 
 // The browser application, served by the same process that serves the api.
@@ -126,6 +127,30 @@ const production = Effect.fn('Web.production')(function* (assetRoot: string) {
       }),
     )
   }
+  // The bundle names the assembly it was built from; this process knows the
+  // assembly it runs. Serving assets built from a different one means the
+  // browser registry, the typed client and the served api may each be a
+  // different selection - a mismatch neither half can notice alone, so it is
+  // refused before the port binds.
+  const fingerprintFile = path.join(assetRoot, '.qualy-assembly.json')
+  if (!fs.existsSync(fingerprintFile)) {
+    return yield* Effect.die(
+      new WebUnservable({
+        message: `${assetRoot} carries no .qualy-assembly.json, so nothing says which assembly built it; run 'pnpm build' to stage assets with their fingerprint`,
+      }),
+    )
+  }
+  const staged = JSON.parse(fs.readFileSync(fingerprintFile, 'utf8')) as {
+    resolutionHash?: string
+  }
+  const info = yield* AssemblyInfo
+  if (staged.resolutionHash !== info.resolutionHash) {
+    return yield* Effect.die(
+      new WebUnservable({
+        message: `web assets were built from assembly ${staged.resolutionHash}, but this process runs ${info.resolutionHash}; run 'pnpm build' so the bundle matches the assembly`,
+      }),
+    )
+  }
   yield* Effect.logInfo(`serving web assets from ${assetRoot}`)
   return assets(assetRoot)
 })
@@ -230,7 +255,11 @@ const development = Effect.fn('Web.development')(function* (sourceRoot: string) 
  * whose handler is an effect runs that effect per request, which would have
  * started a Vite server for every navigation.
  */
-export const routes: Layer.Layer<never, never, HttpRouter.HttpRouter | WebConfig | NodeServer> =
+export const routes: Layer.Layer<
+  never,
+  never,
+  HttpRouter.HttpRouter | WebConfig | NodeServer | AssemblyInfo
+> =
   HttpRouter.use(
     Effect.fnUntraced(function* (router) {
       const config = yield* WebConfig

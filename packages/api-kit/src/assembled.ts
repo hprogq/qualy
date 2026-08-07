@@ -17,6 +17,22 @@ import { Context, Effect, Layer, Scope } from 'effect'
 // runs whatever registered. The difference is when - a probe answers every
 // readiness request, a boot hook runs exactly once, before serving.
 
+/**
+ * Which assembly this process runs, as a value any plugin may read.
+ *
+ * The host provides it from the verified lock. What it exists for is
+ * artifacts built OUTSIDE the process: the web plugin's staged bundle carries
+ * the hash of the assembly it was built from, and serving a bundle built
+ * from a different assembly than the one answering its api calls is a
+ * mismatch nothing inside either half can notice.
+ */
+export class AssemblyInfo extends Context.Service<
+  AssemblyInfo,
+  {
+    readonly resolutionHash: string
+  }
+>()('@qualy/api-kit/AssemblyInfo') {}
+
 export interface BootHook {
   /** what this hook completes, which is what a failure names */
   readonly name: string
