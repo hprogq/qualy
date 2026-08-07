@@ -6,13 +6,7 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Login } from '@qualy/auth-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
-import {
-  ADMIN_SHELL,
-  BLANK_SHELL,
-  PUBLIC,
-  headerActions,
-  permissionOf,
-} from '@qualy/ui-contract'
+import { ADMIN_SHELL, BLANK_SHELL, PUBLIC, headerActions, permissionOf } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'

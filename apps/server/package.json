@@ -21,10 +21,9 @@
     "@qualy/plugin-web": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
     "chalk": "^6.0.0",
     "effect": "catalog:"
   },
-  "devDependencies": {
-    "@qualy/api-client": "workspace:*"
-  }
+  "devDependencies": {}
 }

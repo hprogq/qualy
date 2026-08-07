@@ -21,7 +21,7 @@ const passwordModule = async () =>
     resolvePluginModuleUrl('@qualy/plugin-auth-local/password', manifestPath())
   )) as typeof import('../../packages/plugins/base/auth-local/src/password.ts')
 
-type PermissionRow = import('../../packages/rbac-contract/src/index.ts').PermissionDefinition
+type PermissionRow = import('../../packages/contracts/rbac/src/index.ts').PermissionDefinition
 
 // permission catalogs are discovered through plugin descriptors
 // (Access.permissions) so the seed never enumerates plugin names; the same

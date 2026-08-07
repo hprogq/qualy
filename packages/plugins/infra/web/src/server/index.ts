@@ -268,29 +268,28 @@ export const routes: Layer.Layer<
   never,
   never,
   HttpRouter.HttpRouter | WebConfig | NodeServer | AssemblyInfo
-> =
-  HttpRouter.use(
-    Effect.fnUntraced(function* (router) {
-      const config = yield* WebConfig
-      const middleware =
-        config.mode === 'production'
-          ? yield* production(config.assetRoot ?? defaultAssetRoot)
-          : yield* development(config.sourceRoot ?? defaultSourceRoot)
-      yield* router.add(
-        '*',
-        '/*',
-        Effect.gen(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest
-          // An unmatched path inside the api prefix is a 404, never the browser
-          // shell. Serving html there answers 200 to a mistyped endpoint, which
-          // is how a doubled prefix looked like a working request until the
-          // page tried to parse the shell as json.
-          if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
-          return yield* fromConnect(middleware)
-        }),
-      )
-    }),
-  )
+> = HttpRouter.use(
+  Effect.fnUntraced(function* (router) {
+    const config = yield* WebConfig
+    const middleware =
+      config.mode === 'production'
+        ? yield* production(config.assetRoot ?? defaultAssetRoot)
+        : yield* development(config.sourceRoot ?? defaultSourceRoot)
+    yield* router.add(
+      '*',
+      '/*',
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        // An unmatched path inside the api prefix is a 404, never the browser
+        // shell. Serving html there answers 200 to a mistyped endpoint, which
+        // is how a doubled prefix looked like a working request until the
+        // page tried to parse the shell as json.
+        if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
+        return yield* fromConnect(middleware)
+      }),
+    )
+  }),
+)
 
 /**
  * No services, deliberately.

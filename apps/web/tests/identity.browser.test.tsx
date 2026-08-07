@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import type { ApiResult, ClientOf } from '@qualy/api-client/effect'
+import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import type { accessApi } from '@qualy/plugin-rbac/client/api'
 

@@ -25,9 +25,9 @@ function findClientProjects(root: string): string[] {
 
 const projects = [
   '.',
-  'packages/web-runtime',
-  'packages/web-i18n',
-  'packages/ui',
+  'packages/web/runtime',
+  'packages/web/i18n',
+  'packages/web/ui',
   'apps/web',
   ...findClientProjects('packages'),
 ]

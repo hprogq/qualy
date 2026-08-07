@@ -53,8 +53,16 @@ const merged = (all: readonly UiSurfaces[]): UiSurfaces => ({
 const surfaces = [
   defineSurfaces({
     layouts: [
-      { contract: ADMIN_SHELL, provider: 'test/admin', component: reactComponent('./client/AdminShell.tsx') },
-      { contract: BLANK_SHELL, provider: 'test/blank', component: reactComponent('./client/BlankShell.tsx') },
+      {
+        contract: ADMIN_SHELL,
+        provider: 'test/admin',
+        component: reactComponent('./client/AdminShell.tsx'),
+      },
+      {
+        contract: BLANK_SHELL,
+        provider: 'test/blank',
+        component: reactComponent('./client/BlankShell.tsx'),
+      },
     ],
   }),
   defineSurfaces({
@@ -288,7 +296,12 @@ describe('a claim made twice', () => {
     )
 
   it('refuses one page id claimed by two registrations', async () => {
-    const declaration = { page, component: reactComponent('./client/P.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC }
+    const declaration = {
+      page,
+      component: reactComponent('./client/P.tsx'),
+      layout: ADMIN_SHELL,
+      visibility: PUBLIC,
+    }
     const exit = await build({ pages: [declaration, declaration] })
     expect(Exit.isFailure(exit)).toBe(true)
   })
@@ -296,7 +309,12 @@ describe('a claim made twice', () => {
   it('names both plugins when they claim one page id', async () => {
     // the assembler tells the registry who declared what; the refusal must
     // say which two plugins collided, not just which id
-    const declaration = { page, component: reactComponent('./client/P.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC }
+    const declaration = {
+      page,
+      component: reactComponent('./client/P.tsx'),
+      layout: ADMIN_SHELL,
+      visibility: PUBLIC,
+    }
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         Layer.build(
@@ -317,8 +335,18 @@ describe('a claim made twice', () => {
   it('refuses one path claimed by two pages', async () => {
     const exit = await build({
       pages: [
-        { page, component: reactComponent('./client/P.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC },
-        { page: other, component: reactComponent('./client/O.tsx'), layout: ADMIN_SHELL, visibility: PUBLIC },
+        {
+          page,
+          component: reactComponent('./client/P.tsx'),
+          layout: ADMIN_SHELL,
+          visibility: PUBLIC,
+        },
+        {
+          page: other,
+          component: reactComponent('./client/O.tsx'),
+          layout: ADMIN_SHELL,
+          visibility: PUBLIC,
+        },
       ],
     })
     expect(Exit.isFailure(exit)).toBe(true)
@@ -327,8 +355,16 @@ describe('a claim made twice', () => {
   it('refuses one layout contract claimed by two providers', async () => {
     const exit = await build({
       layouts: [
-        { contract: ADMIN_SHELL, provider: 'a/shell', component: reactComponent('./client/Shell.tsx') },
-        { contract: ADMIN_SHELL, provider: 'b/shell', component: reactComponent('./client/Shell.tsx') },
+        {
+          contract: ADMIN_SHELL,
+          provider: 'a/shell',
+          component: reactComponent('./client/Shell.tsx'),
+        },
+        {
+          contract: ADMIN_SHELL,
+          provider: 'b/shell',
+          component: reactComponent('./client/Shell.tsx'),
+        },
       ],
     })
     expect(Exit.isFailure(exit)).toBe(true)

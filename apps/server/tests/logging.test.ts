@@ -34,9 +34,9 @@ describe('logging settings', () => {
       resolveLogging(undefined, { LOG_LEVEL: 'silent', QUALY_LOG_LEVEL: 'notice' }, 'development')
         .level,
     ).toBe('Info')
-    expect(
-      resolveLogging(undefined, { QUALY_ACCESS_LOG: 'off' }, 'development').access.mode,
-    ).toBe('off')
+    expect(resolveLogging(undefined, { QUALY_ACCESS_LOG: 'off' }, 'development').access.mode).toBe(
+      'off',
+    )
   })
 
   it('refuses what it cannot mean', () => {

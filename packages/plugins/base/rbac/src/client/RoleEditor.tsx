@@ -1,4 +1,4 @@
-import type { ApiResult } from '@qualy/api-client/effect'
+import type { ApiResult } from '@qualy/web-runtime/api'
 import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'

@@ -47,7 +47,7 @@ const collectDriverReferences = async (
 ): Promise<Reference[]> => {
   const { LoginDriverDeclarations } = (await import(
     resolvePluginModuleUrl('@qualy/auth-contract/plugin', manifestPath())
-  )) as typeof import('../../packages/auth-contract/src/plugin.ts')
+  )) as typeof import('../../packages/contracts/auth/src/plugin.ts')
   return Plugin.contributionsOf(descriptor, LoginDriverDeclarations).flatMap((driver) =>
     driver.presentation.mode === 'component'
       ? [{ pluginId, kind: 'component' as const, module: driver.presentation.component.module }]
@@ -126,7 +126,8 @@ function checkPlugin(packageDir: string, references: readonly Reference[]): stri
       diagnostic.start === undefined
         ? undefined
         : virtualFile.getLineAndCharacterOfPosition(diagnostic.start).line
-    const at = line === undefined ? undefined : /component(\d+)/.exec(virtualSource.split('\n')[line] ?? '')
+    const at =
+      line === undefined ? undefined : /component(\d+)/.exec(virtualSource.split('\n')[line] ?? '')
     const reference = at ? checkable[Number(at[1])] : undefined
     const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n  ')
     failures.push(

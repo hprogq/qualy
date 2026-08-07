@@ -1,7 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { REPOS, VENDORED, catalogVersion, checkVendored, readVendorLock } from '../repo/vendor-sync.ts'
+import {
+  REPOS,
+  VENDORED,
+  catalogVersion,
+  checkVendored,
+  readVendorLock,
+} from '../repo/vendor-sync.ts'
 
 // The vendored sources exist so that anything reasoning about Effect reads the
 // code that actually runs. That only holds while they are the same version as

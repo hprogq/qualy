@@ -10,16 +10,16 @@
 - pattern 与 vendored 上游冲突 → **停下并报告**,那是版本漂移,不是二选一。
 - 按里程碑逐份建立,不一次性生成。没有真实迁移代码时批量写规则,产出的是理论正确但不合身的东西。
 
-| 文件 | 建立时机 | 状态 |
-| --- | --- | --- |
-| [core-style.md](core-style.md) | 迁移准备 | **已建**(effect 4.0.0-beta.103) |
-| [services-layers.md](services-layers.md) | 迁移准备 | **已建**(effect 4.0.0-beta.103) |
-| errors.md | 数据库 spike 前 | 待建 |
-| drizzle-effect.md | 数据库 spike 前 | 待建 |
-| resources-runtime.md | runtime shell 前 | 待建 |
-| schema.md | HttpApi 切片前 | 待建 |
-| httpapi.md | HttpApi 切片前 | 待建 |
-| frontend-client.md | 前端切换前 | 待建 |
-| testing.md | 测试迁移前 | 待建 |
+| 文件                                     | 建立时机         | 状态                            |
+| ---------------------------------------- | ---------------- | ------------------------------- |
+| [core-style.md](core-style.md)           | 迁移准备         | **已建**(effect 4.0.0-beta.103) |
+| [services-layers.md](services-layers.md) | 迁移准备         | **已建**(effect 4.0.0-beta.103) |
+| errors.md                                | 数据库 spike 前  | 待建                            |
+| drizzle-effect.md                        | 数据库 spike 前  | 待建                            |
+| resources-runtime.md                     | runtime shell 前 | 待建                            |
+| schema.md                                | HttpApi 切片前   | 待建                            |
+| httpapi.md                               | HttpApi 切片前   | 待建                            |
+| frontend-client.md                       | 前端切换前       | 待建                            |
+| testing.md                               | 测试迁移前       | 待建                            |
 
 模板见 [_TEMPLATE.md](_TEMPLATE.md)。

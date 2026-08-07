@@ -46,11 +46,11 @@ packageVersion + tag + **精确 commit + 内容 hash**,`pnpm vendor:restore` 因
 
 因此有三个动作,职责不重叠:
 
-| 命令 | 做什么 | 写 lock 吗 |
-| --- | --- | --- |
-| `pnpm vendor:update` | 按 catalog 版本找 tag、clone、剥离、算内容 hash | **写** |
-| `pnpm vendor:restore` | 按 **lock 里的 commit** fetch、剥离、校验内容 hash | 不写 |
-| `pnpm vendor:check` | 只看本地树:版本、内容 hash、该剥的有没有剥干净 | 不写 |
+| 命令                  | 做什么                                             | 写 lock 吗 |
+| --------------------- | -------------------------------------------------- | ---------- |
+| `pnpm vendor:update`  | 按 catalog 版本找 tag、clone、剥离、算内容 hash    | **写**     |
+| `pnpm vendor:restore` | 按 **lock 里的 commit** fetch、剥离、校验内容 hash | 不写       |
+| `pnpm vendor:check`   | 只看本地树:版本、内容 hash、该剥的有没有剥干净     | 不写       |
 
 `restore` 走 commit 而不是 tag:tag 可以被移动,经 tag 恢复会悄悄给回另一棵树。
 

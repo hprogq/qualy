@@ -16,9 +16,7 @@
             "UserType",
             "UserTypeAllowedOrgType"
           ],
-          "dependsOn": [
-            "@qualy/plugin-org"
-          ]
+          "dependsOn": ["@qualy/plugin-org"]
         },
         "permissions": {
           "owner": "auth",
@@ -48,21 +46,13 @@
       "state": "active",
       "contributions": {
         "database": {
-          "entities": [
-            "OrgNode",
-            "OrgType",
-            "OrgTypeRule",
-            "Tenant"
-          ],
+          "entities": ["OrgNode", "OrgType", "OrgTypeRule", "Tenant"],
           "baselineDir": "db/baseline",
           "dependsOn": []
         },
         "permissions": {
           "owner": "org",
-          "codes": [
-            "org.tree.manage",
-            "org.tree.read"
-          ]
+          "codes": ["org.tree.manage", "org.tree.read"]
         }
       }
     },
@@ -71,9 +61,7 @@
       "state": "active",
       "contributions": {
         "database": {
-          "entities": [
-            "PingLog"
-          ],
+          "entities": ["PingLog"],
           "dependsOn": []
         }
       }
@@ -91,10 +79,7 @@
             "RoleGrant",
             "RolePermission"
           ],
-          "dependsOn": [
-            "@qualy/plugin-auth",
-            "@qualy/plugin-org"
-          ]
+          "dependsOn": ["@qualy/plugin-auth", "@qualy/plugin-org"]
         },
         "permissions": {
           "owner": "rbac",
@@ -137,11 +122,7 @@
     "permissions": {
       "provider": "@qualy/plugin-rbac",
       "state": {
-        "order": [
-          "@qualy/plugin-auth",
-          "@qualy/plugin-org",
-          "@qualy/plugin-rbac"
-        ]
+        "order": ["@qualy/plugin-auth", "@qualy/plugin-org", "@qualy/plugin-rbac"]
       }
     }
   },

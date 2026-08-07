@@ -57,8 +57,7 @@ export function buildPageHref(page: PageEntry, options: PageHrefOptions = {}): s
 // place a literal path is legitimate, and it lives in the runtime rather
 // than in any plugin.
 export type SessionDestination =
-  | { kind: 'home' }
-  | { kind: 'page'; page: NamespacedId; params?: Record<string, string> }
+  { kind: 'home' } | { kind: 'page'; page: NamespacedId; params?: Record<string, string> }
 
 /**
  * Resolved against the pages the CURRENT manifest still shows. Signing out

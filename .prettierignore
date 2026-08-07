@@ -8,3 +8,4 @@ cordis.gen.yml
 
 # vendored upstream sources: read-only reference, never formatted or linted
 repos/
+apps/web/.qualy/

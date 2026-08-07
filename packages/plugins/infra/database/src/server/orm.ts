@@ -197,9 +197,12 @@ export const kyselyOf = <T extends PostgresEntityManager>(em: T) =>
 export class DatabaseStartupFailed extends Error {
   readonly _tag = 'DatabaseStartupFailed'
   constructor(cause: unknown) {
-    super(`could not open the database: ${cause instanceof Error ? cause.message : String(cause)}`, {
-      cause,
-    })
+    super(
+      `could not open the database: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+      },
+    )
   }
 }
 

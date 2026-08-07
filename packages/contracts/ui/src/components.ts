@@ -53,6 +53,9 @@ export const isClientComponentRef = (value: unknown): value is ClientComponentRe
  */
 export const componentKey = (pluginId: string, ref: ClientComponentRef): string => {
   const plugin = pluginId.replace(/^@[^/]+\//, '').replace(/^plugin-/, '')
-  const base = ref.module.split('/').pop()!.replace(/\.[^.]+$/, '')
+  const base = ref.module
+    .split('/')
+    .pop()!
+    .replace(/\.[^.]+$/, '')
   return `${plugin}/${base}`
 }

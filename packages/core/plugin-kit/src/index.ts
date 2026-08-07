@@ -187,11 +187,7 @@ export interface CapabilityFeature {
 }
 
 export type PluginFeature =
-  | Contribute
-  | ProvideExtension
-  | ServiceFeature
-  | LayerFeature
-  | CapabilityFeature
+  Contribute | ProvideExtension | ServiceFeature | LayerFeature | CapabilityFeature
 
 /** the manifest-block channel; present exactly when the plugin takes configuration */
 export type ConfigChannel = (block: unknown, context: { readonly manifestDir: string }) => AnyLayer

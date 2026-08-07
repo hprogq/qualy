@@ -20,7 +20,6 @@ import {
   runtimeLayers,
 } from '@qualy/assembly'
 
-
 // deploy and the capability commands reach real systems, and the connection
 // details for them live in .env exactly as they do for `pnpm dev`
 try {
@@ -58,9 +57,7 @@ const option = (name: string) => {
 
 // the CLI is this repository's; an explicit --yml still points anywhere
 const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..')
-const manifestPath = option('yml')
-  ? path.resolve(option('yml')!)
-  : path.join(repoRoot, 'qualy.yml')
+const manifestPath = option('yml') ? path.resolve(option('yml')!) : path.join(repoRoot, 'qualy.yml')
 const lockPath = lockPathFor(manifestPath)
 
 const die = (message: string): never => {

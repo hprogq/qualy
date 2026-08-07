@@ -9,14 +9,14 @@ be described to two audiences: the project needs to know why the local code
 looks the way it does (that is `docs/notes/`), and upstream needs a report that
 stands on its own with no knowledge of this repository.
 
-| draft                                                                                                   | status    | what depends on it here                                                         |
-| ------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------- |
-| [mikro-orm-1-kysely-generated-columns](mikro-orm-1-kysely-generated-columns.md)                         | **fixed in 7.1.11** | nothing; the patch hunk is gone                                    |
-| [mikro-orm-2-entity-generator-drops-checks](mikro-orm-2-entity-generator-drops-checks.md)               | **fixed in 7.1.11** | nothing; the entities were written by hand because of it           |
-| [mikro-orm-3-entity-generator-drops-partial-index](mikro-orm-3-entity-generator-drops-partial-index.md) | **fixed in 7.1.11** | nothing; same                                                      |
-| [mikro-orm-4-entity-generator-index-column-order](mikro-orm-4-entity-generator-index-column-order.md)   | **fixed in 7.1.11** | nothing; same                                                      |
-| [mikro-orm-5-check-cast-strip-unbalances-parens](mikro-orm-5-check-cast-strip-unbalances-parens.md)     | filed     | `patches/@mikro-orm__sql@7.1.11.patch` — delete the hunk when it is released    |
-| [mikro-orm-6-index-access-method-dropped](mikro-orm-6-index-access-method-dropped.md)                   | filed     | the same patch — delete the hunk when it is released                            |
+| draft                                                                                                   | status              | what depends on it here                                                      |
+| ------------------------------------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------- |
+| [mikro-orm-1-kysely-generated-columns](mikro-orm-1-kysely-generated-columns.md)                         | **fixed in 7.1.11** | nothing; the patch hunk is gone                                              |
+| [mikro-orm-2-entity-generator-drops-checks](mikro-orm-2-entity-generator-drops-checks.md)               | **fixed in 7.1.11** | nothing; the entities were written by hand because of it                     |
+| [mikro-orm-3-entity-generator-drops-partial-index](mikro-orm-3-entity-generator-drops-partial-index.md) | **fixed in 7.1.11** | nothing; same                                                                |
+| [mikro-orm-4-entity-generator-index-column-order](mikro-orm-4-entity-generator-index-column-order.md)   | **fixed in 7.1.11** | nothing; same                                                                |
+| [mikro-orm-5-check-cast-strip-unbalances-parens](mikro-orm-5-check-cast-strip-unbalances-parens.md)     | filed               | `patches/@mikro-orm__sql@7.1.11.patch` — delete the hunk when it is released |
+| [mikro-orm-6-index-access-method-dropped](mikro-orm-6-index-access-method-dropped.md)                   | filed               | the same patch — delete the hunk when it is released                         |
 
 Drafts 1 to 4 were filed and are **fixed in 7.1.11**; draft 1's patch hunk is
 deleted, and 2 to 4 never had one (they are reasons the entity generator was not

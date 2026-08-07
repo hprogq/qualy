@@ -10,7 +10,7 @@ import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { Spinner } from '@qualy/ui/spinner'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import type { ApiResult } from '@qualy/api-client/effect'
+import type { ApiResult } from '@qualy/web-runtime/api'
 
 // the rows as the api answers them, not a copy that can drift from it
 type OrgTreeNodeDto = ApiResult<typeof orgApi, 'org', 'getTree'>['nodes'][number]

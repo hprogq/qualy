@@ -22,9 +22,7 @@ const strip = (url: string): string => {
 // the settings speak LogLevel, which admits None (say nothing) and All
 // (say everything); logWithLevel speaks Severity, which admits neither
 const successLog = (level: LogLevel.LogLevel, message: string): Effect.Effect<void> =>
-  level === 'None'
-    ? Effect.void
-    : Effect.logWithLevel(level === 'All' ? 'Trace' : level)(message)
+  level === 'None' ? Effect.void : Effect.logWithLevel(level === 'All' ? 'Trace' : level)(message)
 
 const insideApi = (path: string): boolean =>
   path === QUALY_API_PREFIX || path.startsWith(`${QUALY_API_PREFIX}/`)

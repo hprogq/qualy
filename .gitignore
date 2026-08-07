@@ -66,5 +66,8 @@ apps/web/tests/__screenshots__/
 # resolved runtime entry list, generated from qualy.yml
 cordis.gen.yml
 
+# materialised plugin aggregate, rewritten by the vite plugin on every start
+apps/web/.qualy/
+
 # scratch fixtures written by the effect diagnostics gate
 .effect-diagnostics-*/

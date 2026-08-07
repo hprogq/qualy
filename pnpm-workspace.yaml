@@ -1,5 +1,7 @@
 packages:
-  - packages/*
+  - packages/core/*
+  - packages/contracts/*
+  - packages/web/*
   - packages/build/*
   - packages/plugins/*/*
   - apps/*

@@ -29,13 +29,19 @@
 `Effect.Service` 全部并进它。类型参数在前、id 字符串在后(与 v3 相反)。id 用「包名 + 子路径 + 名字」。
 
 ```ts
-export class Database extends Context.Service<Database, {
-  query(sql: string): Effect.Effect<ReadonlyArray<unknown>, DatabaseError>
-}>()('@qualy/plugin-database/Database') {
-  static readonly layer = Layer.effect(Database, Effect.gen(function* () {
-    // ...
-    return Database.of({ query })
-  }))
+export class Database extends Context.Service<
+  Database,
+  {
+    query(sql: string): Effect.Effect<ReadonlyArray<unknown>, DatabaseError>
+  }
+>()('@qualy/plugin-database/Database') {
+  static readonly layer = Layer.effect(
+    Database,
+    Effect.gen(function* () {
+      // ...
+      return Database.of({ query })
+    }),
+  )
 }
 ```
 

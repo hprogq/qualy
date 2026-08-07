@@ -101,7 +101,7 @@ const breaches = (
 // identifier, not a dependency, not a filename convention. A regex is a blunt
 // gate, but the failure it prevents is subtle, and the last time this boundary
 // existed only as prose the core grew a databaseOrder field.
-const CORE = ['packages/assembly/src', 'packages/assembly-contract/src']
+const CORE = ['packages/core/assembly/src', 'packages/contracts/assembly/src']
 const DATABASE_WORDS =
   /\bdrizzle|\bpostgres|\bmigration|\bschemaEntry|\bbaselineDir|\bdatabaseOrder|qualy\.database\b/i
 // Comments explain the boundary and have to be free to name what is on the
@@ -128,7 +128,7 @@ describe('assembly core', () => {
 
   it('does not depend on a database package', () => {
     const forbidden = ['drizzle-orm', 'drizzle-kit', 'pg', '@types/pg']
-    const offenders = ['packages/assembly', 'packages/assembly-contract'].flatMap((dir) => {
+    const offenders = ['packages/core/assembly', 'packages/contracts/assembly'].flatMap((dir) => {
       const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
         dependencies?: Record<string, string>
         devDependencies?: Record<string, string>
@@ -290,11 +290,13 @@ describe('test layering', () => {
       'apps/server/src/main.ts',
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
-      'packages/api-client/src/effect/query.ts',
+      // the browser's single runtime: pages hand it effects rather than
+      // running them, which is what carries E across into the query's TError
+      'packages/web/runtime/src/api-query.ts',
       // the browser's client factory: builds one typed client per api
       // definition, synchronously and memoised - the runSync that used to
       // live in the composition root, moved to where the definitions arrive
-      'packages/web-runtime/src/index.tsx',
+      'packages/web/runtime/src/index.tsx',
     ]
     // A comment is not a call. The pattern matches the name anywhere in the
     // file, so prose explaining why a boundary is where it is would otherwise

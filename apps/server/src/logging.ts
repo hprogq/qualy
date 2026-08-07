@@ -103,7 +103,8 @@ export function resolveLogging(
         : block.level !== undefined
           ? level(block.level, `${where}.level`)
           : 'Info',
-    format: declaredFormat === 'auto' ? (mode === 'production' ? 'json' : 'pretty') : declaredFormat,
+    format:
+      declaredFormat === 'auto' ? (mode === 'production' ? 'json' : 'pretty') : declaredFormat,
     access: {
       mode: declaredMode,
       level:

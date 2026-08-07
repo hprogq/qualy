@@ -51,8 +51,9 @@ export interface SyntheticPackage {
 }
 
 // anchored at this module rather than at the cwd, so a suite run from
-// anywhere links the same packages
-const HOST = fileURLToPath(new URL('../../app/', import.meta.url))
+// anywhere links the same packages - through the real host's dependencies,
+// the same resolution the product uses
+const HOST = fileURLToPath(new URL('../../../../apps/server/', import.meta.url))
 
 export const renderManifestText = (
   plugins: readonly string[],

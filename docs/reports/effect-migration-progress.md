@@ -9,22 +9,22 @@
 
 ## 1. 进度总览
 
-| 里程碑 | 内容 | 状态 |
-| --- | --- | --- |
-| M0 / M0.5 | 依赖栈、effect 与 drizzle 源码 vendoring、agent 指令剥离 | `e4ca3d5` |
-| M1a | 数据库切片实测 | `3f2fac8` `076bfea` |
-| M1b | HTTP 切片实测 | `13c8016` |
-| — | Effect LSP 进 tsc,并用会失败的 fixture 守住 patch 还在 | `3d3f7a1` |
-| M2 | 应用外壳(健康探针、配置、组合根、优雅关闭) | `b989041` |
-| — | cookie 会话 + middleware,**ADR 0003 放行条件全部满足** | `603f7ad` |
-| M3 | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client | `4cacac6` |
-| M4 前置 | 拓扑分层装配、环的说法纠错、插件孤立编译门禁、事务实测 | `cb11091` `58ff9c2` `ab95aa1` `85b6f9b` `9fd2d03` `fb4bf88` |
-| M4 CUT 1 | 权限目录改为装配期聚合 | `90e66e0` |
-| M4 CUT 2/3 | 端口包:`rbac-contract/effect` + 新建 `@qualy/auth-contract` | `6fb2217` |
-| M4 CUT 5 | UiAuthorizer 改必需服务 | `3755442` |
-| M4 审计整改 | 见第 8 节:4 个 P0 + 架构门禁 | `13a1b93` `08217f0` `7d7152b` `1d788aa` |
-| **M4 剩余** | rbac / auth / org 三个 Effect layer、API group | **未开始** |
-| M5 / M6 / M7 | 其余插件、前端切换、原子切换删 cordis 与 oRPC | 未开始 |
+| 里程碑       | 内容                                                        | 状态                                                        |
+| ------------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
+| M0 / M0.5    | 依赖栈、effect 与 drizzle 源码 vendoring、agent 指令剥离    | `e4ca3d5`                                                   |
+| M1a          | 数据库切片实测                                              | `3f2fac8` `076bfea`                                         |
+| M1b          | HTTP 切片实测                                               | `13c8016`                                                   |
+| —            | Effect LSP 进 tsc,并用会失败的 fixture 守住 patch 还在      | `3d3f7a1`                                                   |
+| M2           | 应用外壳(健康探针、配置、组合根、优雅关闭)                  | `b989041`                                                   |
+| —            | cookie 会话 + middleware,**ADR 0003 放行条件全部满足**      | `603f7ad`                                                   |
+| M3           | `@qualy/api` 包边界 + ping 迁 HttpApi + 类型化 client       | `4cacac6`                                                   |
+| M4 前置      | 拓扑分层装配、环的说法纠错、插件孤立编译门禁、事务实测      | `cb11091` `58ff9c2` `ab95aa1` `85b6f9b` `9fd2d03` `fb4bf88` |
+| M4 CUT 1     | 权限目录改为装配期聚合                                      | `90e66e0`                                                   |
+| M4 CUT 2/3   | 端口包:`rbac-contract/effect` + 新建 `@qualy/auth-contract` | `6fb2217`                                                   |
+| M4 CUT 5     | UiAuthorizer 改必需服务                                     | `3755442`                                                   |
+| M4 审计整改  | 见第 8 节:4 个 P0 + 架构门禁                                | `13a1b93` `08217f0` `7d7152b` `1d788aa`                     |
+| **M4 剩余**  | rbac / auth / org 三个 Effect layer、API group              | **未开始**                                                  |
+| M5 / M6 / M7 | 其余插件、前端切换、原子切换删 cordis 与 oRPC               | 未开始                                                      |
 
 **M4 的定位**:只**增加** Effect 路径,不删 cordis 任何东西。PermissionRegistry、oRPC router、
 `server.enrich` 全部活到 M7。两套运行时并存期间,权限目录已经改为**两边读同一份 entry 模块**。
@@ -84,11 +84,11 @@ unused** —— 证明烂不成同义反复。刻意不要授权走显式的 `de
 
 ## 3. 沿途修掉的真问题
 
-| 问题 | 性质 | commit |
-| --- | --- | --- |
-| org 调 `ctx.auth.iam.*` 却零导入 auth,单独编译直接报错(ping、auth-local 同病) | 类型只在「有同伴」时存在,tag 化后无法忠实迁移 | `ab95aa1` |
-| 迁移计划里「org ↔ rbac 已成环」是错的 | 照着不存在的问题做设计 | `58ff9c2` |
-| 生成的运行时装配用 `mergeAll`,M4 一定编译不过 | 潜在,尚未触发 | `cb11091` |
+| 问题                                                                             | 性质                                           | commit    |
+| -------------------------------------------------------------------------------- | ---------------------------------------------- | --------- |
+| org 调 `ctx.auth.iam.*` 却零导入 auth,单独编译直接报错(ping、auth-local 同病)    | 类型只在「有同伴」时存在,tag 化后无法忠实迁移  | `ab95aa1` |
+| 迁移计划里「org ↔ rbac 已成环」是错的                                            | 照着不存在的问题做设计                         | `58ff9c2` |
+| 生成的运行时装配用 `mergeAll`,M4 一定编译不过                                    | 潜在,尚未触发                                  | `cb11091` |
 | CLAUDE.md 把 `scopeCoverage(scope, alias)` 写成 `anchorCoverage(anchors, alias)` | 签名差异有实质影响(`tenantWide` 只在 scope 上) | `90e66e0` |
 
 新增门禁 `scripts/tests/plugin-isolation.test.ts`:逐插件单独编译,反向验过去掉导入即红。

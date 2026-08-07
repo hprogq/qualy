@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 // by path rather than by package name: these are the files the completeness
 // case walks, and a subpath export would let one drift from the other
-import { commonErrorMessages } from '../../packages/web-i18n/src/format.ts'
-import * as apiKit from '../../packages/api-kit/src/schema.ts'
+import { commonErrorMessages } from '../../packages/web/i18n/src/format.ts'
+import * as apiKit from '../../packages/core/api-kit/src/schema.ts'
 import * as session from '../../packages/plugins/base/auth/src/server/session-contract.ts'
-import * as shared from '../../packages/rbac-contract/src/effect.ts'
+import * as shared from '../../packages/contracts/rbac/src/effect.ts'
 import * as auth from '../../packages/plugins/base/auth/src/server/errors.ts'
 import * as org from '../../packages/plugins/base/org/src/server/errors.ts'
 import * as rbac from '../../packages/plugins/base/rbac/src/server/errors.ts'
@@ -36,7 +36,7 @@ const root = fileURLToPath(new URL('../..', import.meta.url))
 // domain: the browser translates those centrally and a plugin may not claim
 // them.
 const SOURCES = [
-  { module: apiKit, owner: 'common', file: 'packages/api-kit/src/schema.ts' },
+  { module: apiKit, owner: 'common', file: 'packages/core/api-kit/src/schema.ts' },
   {
     module: session,
     owner: 'common',
@@ -45,7 +45,7 @@ const SOURCES = [
   {
     module: shared,
     owner: 'common',
-    file: 'packages/rbac-contract/src/effect.ts',
+    file: 'packages/contracts/rbac/src/effect.ts',
     // A cross-plugin invariant is declared in the contract both sides depend
     // on, and translated once by the plugin that owns the rule. Only the
     // authorization refusal beside it is everybody's.

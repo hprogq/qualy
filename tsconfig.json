@@ -6,17 +6,13 @@
     "apps/cli/src",
     "apps/server/src",
     "apps/server/tests",
-    "packages/*/src",
-    "packages/*/tests",
+    "packages/core/*/src",
+    "packages/core/*/tests",
+    "packages/contracts/*/src",
+    "packages/contracts/*/tests",
     "packages/build/*/src",
     "packages/plugins/*/*/src",
     "packages/plugins/*/*/tests"
   ],
-  "exclude": [
-    "packages/web-runtime",
-    "packages/web-i18n",
-    "packages/ui",
-    "packages/plugins/*/*/src/client",
-    "repos"
-  ]
+  "exclude": ["packages/web", "packages/plugins/*/*/src/client", "repos"]
 }

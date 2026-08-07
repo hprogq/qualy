@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@qualy/api-client": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-layout-default": "workspace:*",

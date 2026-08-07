@@ -9,13 +9,18 @@ import { qualyPlugins } from '@qualy/web-build/vite'
 // chunks and the query string. Everything else — services, contracts,
 // authorization — stays in the node suite, which must not pay for a browser.
 export default defineConfig({
+  // the app that OWNS react. With the repo root here, dedupe and the react
+  // plugin's optimizeDeps resolve react from a package.json that does not
+  // declare it - under pnpm isolation that silently fails, and every plugin
+  // package loads its own copy: the "Invalid hook call" crash, cold cache only
+  root: 'apps/web',
   plugins: [qualyPlugins(), react()],
   resolve: {
     // one react instance for the host and every plugin component
     dedupe: ['react', 'react-dom'],
   },
   test: {
-    include: ['apps/web/tests/**/*.browser.test.tsx'],
+    include: ['tests/**/*.browser.test.tsx'],
     browser: {
       enabled: true,
       provider: playwright(),

@@ -1,4 +1,4 @@
-import type { ApiResult } from '@qualy/api-client/effect'
+import type { ApiResult } from '@qualy/web-runtime/api'
 import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -15,7 +15,11 @@ import { authApi } from '../api.ts'
 // permissions it carries. Disabling a type that people still hold is refused
 // by the api, so the control says so up front rather than after a round trip.
 /** the row as the api answers it, not a copy that can drift from it */
-export type UserTypeRow = ApiResult<typeof authApi, 'identity', 'listUserTypes'>['userTypes'][number]
+export type UserTypeRow = ApiResult<
+  typeof authApi,
+  'identity',
+  'listUserTypes'
+>['userTypes'][number]
 
 export function UserTypeEditor({
   userType,

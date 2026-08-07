@@ -31,4 +31,6 @@ if (mode === 'production') {
   process.env.QUALY_MIGRATIONS ??= 'off'
 }
 
-await import(pathToFileURL(path.resolve(fileURLToPath(new URL('.', import.meta.url)), 'main.ts')).href)
+await import(
+  pathToFileURL(path.resolve(fileURLToPath(new URL('.', import.meta.url)), 'main.ts')).href
+)

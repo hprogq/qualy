@@ -121,8 +121,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
         return false
       })
       const dropped = pages.filter(
-        ({ declaration: page }) =>
-          visible(page.visibility, viewer) && !byContract.has(page.layout),
+        ({ declaration: page }) => visible(page.visibility, viewer) && !byContract.has(page.layout),
       )
       for (const { declaration: page } of dropped) {
         yield* Effect.logWarning(

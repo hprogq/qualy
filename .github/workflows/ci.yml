@@ -77,4 +77,4 @@ jobs:
       - name: production boot serves the staged assembly
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
-        run: pnpm exec tsx scripts/smoke-production.ts
+        run: pnpm exec tsx tools/quality/smoke-production.ts

@@ -1,8 +1,5 @@
 {
   "permissions": {
-    "deny": [
-      "Edit(repos/**)",
-      "Write(repos/**)"
-    ]
+    "deny": ["Edit(repos/**)", "Write(repos/**)"]
   }
 }

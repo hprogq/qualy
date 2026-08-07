@@ -132,9 +132,10 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
         owned(
           plugin,
           feature.compile(
-            (contributions.get(feature.point.id) ?? []).map(
-              (entry): Contributed<unknown> => ({ pluginId: entry.plugin, value: entry.value }),
-            ),
+            (contributions.get(feature.point.id) ?? []).map((entry): Contributed<unknown> => ({
+              pluginId: entry.plugin,
+              value: entry.value,
+            })),
           ),
         ),
       )

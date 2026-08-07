@@ -12,7 +12,7 @@ import { manifestPath } from '../lib/manifest.ts'
 // rows must survive being switched off.
 
 export type PermissionCatalog =
-  import('../../packages/rbac-contract/src/plugin.ts').PermissionDeclaration
+  import('../../packages/contracts/rbac/src/plugin.ts').PermissionDeclaration
 
 // the extension point lives in a package the repository root deliberately does
 // not depend on, so it resolves through the host like the plugins themselves
@@ -20,7 +20,7 @@ const declarationsPoint = async () =>
   (
     (await import(
       resolvePluginModuleUrl('@qualy/rbac-contract/plugin', manifestPath())
-    )) as typeof import('../../packages/rbac-contract/src/plugin.ts')
+    )) as typeof import('../../packages/contracts/rbac/src/plugin.ts')
   ).PermissionDeclarations
 
 export async function resolvePermissionCatalogs(): Promise<PermissionCatalog[]> {
@@ -30,7 +30,9 @@ export async function resolvePermissionCatalogs(): Promise<PermissionCatalog[]> 
   for (const entry of await readEntries({ manifestPath: manifestPath(), all: true })) {
     if (!entry.name.startsWith('@qualy/') || seen.has(entry.name)) continue
     seen.add(entry.name)
-    const module = (await import(resolvePluginModuleUrl(entry.name, manifestPath()))) as { default?: unknown }
+    const module = (await import(resolvePluginModuleUrl(entry.name, manifestPath()))) as {
+      default?: unknown
+    }
     if (!isPluginDescriptor(module.default)) {
       throw new Error(`${entry.name} does not default-export a plugin descriptor`)
     }

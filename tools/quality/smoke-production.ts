@@ -52,7 +52,10 @@ const fail = (message: string): never => {
   process.exit(1)
 }
 
-const check = async (route: string, expect: (response: Response) => Promise<string | undefined>) => {
+const check = async (
+  route: string,
+  expect: (response: Response) => Promise<string | undefined>,
+) => {
   const response = await fetch(`${base}${route}`).catch((error: unknown) => error as Error)
   if (response instanceof Error) return fail(`${route}: ${response.message}`)
   const complaint = await expect(response)

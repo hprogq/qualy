@@ -19,7 +19,10 @@ const declaring = (pluginId: string, ...entities: { name: string; tableName?: st
 })
 
 const parse = (declaration: object) =>
-  parseDeclaration('@qualy/plugin-a', '/pkg', { entities: [], ...declaration } as DatabaseDeclaration)
+  parseDeclaration('@qualy/plugin-a', '/pkg', {
+    entities: [],
+    ...declaration,
+  } as DatabaseDeclaration)
 
 describe('entity declarations', () => {
   it('refuses two plugins claiming one table', () => {
