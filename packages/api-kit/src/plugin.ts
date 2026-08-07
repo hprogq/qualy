@@ -43,6 +43,24 @@ export interface ApiDocumentation {
 }
 
 export const Api = {
+  /**
+   * The local api a plugin implements its group against.
+   *
+   * It exists so a plugin builds handlers without importing the aggregate
+   * that will contain them, and it carries the aggregate's identity - the
+   * api id, which brands the handler layer, and the prefix, which places the
+   * routes. Both are the aggregate's business: a plugin that spelled them
+   * would be repeating somebody else's decision, and a typo would surface as
+   * a handler layer the aggregate cannot accept or a route the document does
+   * not describe.
+   */
+  local: <const A extends readonly [HttpApiGroup.Constraint, ...HttpApiGroup.Constraint[]]>(
+    ...groups: A
+  ) =>
+    HttpApi.make(QUALY_API_ID)
+      .add(...groups)
+      .prefix(QUALY_API_PREFIX),
+
   /** declares one group and the handlers behind it */
   group: (group: HttpApiGroup.Constraint, handlers: AnyLayer): PluginFeature =>
     Plugin.contribute(ApiGroups, { group, handlers }),

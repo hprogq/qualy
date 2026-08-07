@@ -12,7 +12,8 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { Api } from '@qualy/api-kit/plugin'
 import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
 import { hashSessionToken } from '../src/session.ts'
@@ -37,10 +38,7 @@ import { authClosure } from './support/closure.ts'
 const port = 3195
 const base = `http://127.0.0.1:${port}${QUALY_API_PREFIX}`
 
-const api = HttpApi.make(QUALY_API_ID)
-  .add(sessionApiGroup)
-  .add(authLocalApiGroup)
-  .prefix(QUALY_API_PREFIX)
+const api = Api.local(sessionApiGroup, authLocalApiGroup)
 
 const password = 'correct horse battery staple'
 

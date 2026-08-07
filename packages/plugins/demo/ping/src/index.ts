@@ -1,6 +1,5 @@
 import { Config, Effect, Layer } from 'effect'
-import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
-import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { Db } from '@qualy/plugin-database/plugin'
@@ -17,10 +16,7 @@ import { pingPage } from './pages.ts'
 // and everything it references is a value, so importing this module runs
 // nothing and opens nothing.
 
-// The local API exists so this plugin can implement its group without
-// importing the aggregate that contains it; see QUALY_API_ID. It carries the
-// same prefix as the aggregate because routes are built from this one.
-const local = HttpApi.make(QUALY_API_ID).add(pingApiGroup).prefix(QUALY_API_PREFIX)
+const local = Api.local(pingApiGroup)
 
 const db = Db.scope([...entities] as const)
 

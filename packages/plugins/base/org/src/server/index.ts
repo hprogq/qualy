@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from 'effect'
-import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
-import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'
 import { Placement } from '@qualy/auth-contract'
@@ -795,11 +795,7 @@ const toRuleDto = (row: RuleRow) => ({
   childTypeId: row.childTypeId,
 })
 
-// The local API exists so this plugin implements its group without importing
-// the aggregate that contains it; see QUALY_API_ID. It carries the same prefix
-// as the aggregate, because routes are built from this one and the document
-// from that one.
-const local = HttpApi.make(QUALY_API_ID).add(orgApiGroup).prefix(QUALY_API_PREFIX)
+const local = Api.local(orgApiGroup)
 
 export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
   handlers

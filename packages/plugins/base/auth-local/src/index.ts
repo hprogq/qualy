@@ -1,6 +1,5 @@
 import { Effect, Layer } from 'effect'
-import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
-import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import type { LoginDriver } from '@qualy/auth-contract/login'
 import { Login } from '@qualy/auth-contract/plugin'
 import { Api } from '@qualy/api-kit/plugin'
@@ -35,9 +34,7 @@ const driver: LoginDriver = {
  * say four lines.
  */
 
-// see QUALY_API_ID: implemented against a local api so this plugin does not
-// import the aggregate it is part of
-const local = HttpApi.make(QUALY_API_ID).add(authLocalApiGroup).prefix(QUALY_API_PREFIX)
+const local = Api.local(authLocalApiGroup)
 
 const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
   handlers.handle(

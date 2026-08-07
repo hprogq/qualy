@@ -10,8 +10,8 @@ import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
-import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
-import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -414,9 +414,7 @@ export const serviceLayer: Layer.Layer<
 
 // --- api ---
 
-// see QUALY_API_ID: implemented against a local api so this plugin does not
-// import the aggregate it is part of
-const local = HttpApi.make(QUALY_API_ID).add(accessApiGroup).prefix(QUALY_API_PREFIX)
+const local = Api.local(accessApiGroup)
 
 /** the projection a role screen reads, assembled from the row and the catalog */
 const toRoleShape = (

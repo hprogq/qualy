@@ -18,7 +18,7 @@ import {
 } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
-import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
+import { Api } from '@qualy/api-kit/plugin'
 import { CurrentViewer, Viewer } from '@qualy/plugin-auth/server/session-contract'
 import { appApiHandlers } from '../src/server/index.ts'
 import { UiAuthorizer } from '../src/server/authorizer.ts'
@@ -134,7 +134,7 @@ const port = 3193
 // would prove that the projection works, which the tests below already do,
 // and would say nothing about how the endpoint gets a principal - which is
 // exactly what was wrong.
-const api = HttpApi.make(QUALY_API_ID).add(appApiGroup).prefix(QUALY_API_PREFIX)
+const api = Api.local(appApiGroup)
 const handlers = appApiHandlers
 
 let scope: Scope.Scope

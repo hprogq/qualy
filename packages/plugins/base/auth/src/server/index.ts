@@ -2,14 +2,9 @@ import { Context, Effect, Layer } from 'effect'
 import { Placement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
-import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
-import {
-  DEFAULT_PAGE_SIZE,
-  QUALY_API_ID,
-  QUALY_API_PREFIX,
-  encodeQueryCursor,
-  readQueryCursor,
-} from '@qualy/api-kit'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
+import { Api } from '@qualy/api-kit/plugin'
 import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 
@@ -131,12 +126,7 @@ const toUserTypeDto = (row: UserTypeRow) => ({
       : { mode: placementModeOf(row) as 'unrestricted' | 'tenant-root' },
 })
 
-// see QUALY_API_ID: implemented against a local api so this plugin does not
-// import the aggregate it is part of
-const local = HttpApi.make(QUALY_API_ID)
-  .add(identityApiGroup)
-  .add(sessionApiGroup)
-  .prefix(QUALY_API_PREFIX)
+const local = Api.local(identityApiGroup, sessionApiGroup)
 
 export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers) =>
   handlers
