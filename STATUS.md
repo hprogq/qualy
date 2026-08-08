@@ -2113,3 +2113,32 @@ M9a 三条断言修正:64MB 以敌意分配测试自证、libm 一致性降为 g
 wasm 工件 hash 入 engine version(库 <1.0 未审计,验证工件而非信任库)。
 裁决记录 §32.20–32.25(含七条 supersession 注记)。**未编码**。审计判语:此十项落完,
 "核心架构冻结、可按里程碑施工"名副其实——采纳,M1 随时开工。
+
+### 第四轮审计:六个边界条件封口 + 五项 P1 + 残留清扫(2026-08-09)
+
+第四轮审计定位准确:已不是架构问题,是六个"单元测试全绿、真实学期跑到边界才爆"的封口。
+12 项全部采纳落库,裁决记录 §32.26-32.34:
+
+**六个 P0**:①publication 边界绑定生命周期(创建时 NULL 合法=未武装,schedule 时绑定,
+actual 后不可改;M1 落 nullable 列无 FK)——恢复"约束挂在武装时刻"的原始语义;
+②**ScoreRun 新鲜度门禁**(Output Validation 重算 manifest hash 比对 + schedule 事务 CAS
+复验;SCHEDULED 前漂移=禁止预告,之后才归"照发+CRITICAL");③**panel 交集规则**
+(可行动集=快照 panel ∩ 当前精确锚点持有者,新任者不进旧 panel,已投票永久有效,
+收件箱 SQL 分叉;恢复三路零新机制,panel 重组留触发条件);④**谓词分裂**
+(wasReleased/isEffective——S2 发布后 S1 仍可读但永不再锚新申诉;effective final 后禁
+retractPreliminary);⑤**排除性锚定行**(rejected/voided 且曾提交的条目在快照里生成
+0.00 行供申诉锚定,完全不进聚合器输入);⑥**S1 后新立不利终局的复议权**(含孪生案:
+复查撤销原通过——申诉窗约束不了窗口关闭后出生的事实;resubmit 在申诉处理期按
+ResourcePolicy 谓词收窄放行,每事实限一轮)。
+
+**五项 P1**:origin 三值(initial|appeal|reopen);ItemRevision 消费不变量(payload 按
+自身版本解码,保存新配置实测 in_review/approved 条目);排名两口径(ties 仅在要求
+rank 时 blocker、partition 查冻结 lineage);retire 历史引用语义(已引用读取永久有效);
+时间语义统一(锚时刻确定即可物化、公示边界 SCHEDULED 后转承诺型)。
+
+**残留清扫 + 两补充**:source/actor 服务端推导升格安全不变量;revisions 仅本人;
+§20 依赖表实名并删 appeal 模块;M5 措辞两段式;(roleId,nodeId) 去重;作废条目终态
+voided(reason=item_voided);巡检 quorum 按可达性公式。M5 验收增至 ⑯ 条。
+
+审计与裁决一致判定:**"核心架构冻结,可按里程碑施工"标签自此成立**,此后分歧应只在
+Effect API/SQL 约束/UI 细节。**未编码**。下一步:M1 第一个 commit。
