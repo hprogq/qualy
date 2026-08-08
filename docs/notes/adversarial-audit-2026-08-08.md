@@ -135,7 +135,7 @@
 - 位置:apps/web/scripts/check-chunks.ts:27
 - 主张:Registry keys are namespaced `<plugin>/<Basename>` and two plugins may legally ship components with the same file basename — collect.ts's claim map only rejects duplicate full keys (collect.ts:84-93), and componentKey namespaces by plugin (packages/contracts/ui/src/components.ts:54-61). But the sentinel drops the namespace (`chunkName = key.split('/').pop()`, check-chunks.ts:23) and asserts presence with `files.some(file => file.startsWith(`${chunkName}-`))` (line 27) against the flat dist/asset…
 - 失败场景:Plugin A and plugin B both declare `./client/SettingsPage.tsx` (valid: keys are `a/SettingsPage` and `b/SettingsPage`, collect passes). A refactor adds a static import of A's SettingsPage from another A module, so rolldown merges it and A no longer gets an independent chunk — the code-splitting property the sentinel exists to guard. CI still prints 'a/SettingsPage: chunk present' because B's Setti…
-- 反驳者判定:certain(Aggravator beyond the reported scenario: the flat assets dir also contains non-component chunks (i18n-*, zh-CN-*, api-*, admin-*, card-*, messages-*, etc.), so a future component named e.g. api.tsx or…)
+- 反驳者判定:certain(Aggravator beyond the reported scenario: the flat assets dir also contains non-component chunks (i18n-_, zh-CN-_, api-_, admin-_, card-_, messages-_, etc.), so a future component named e.g. api.tsx or…)
 
 ### [low · database] Testkit template protection is a no-op: `datallowconn = true` where the comment (and correctness) require `false`
 
@@ -206,4 +206,3 @@ Cross-process and multi-instance concurrency assumptions: no reviewer exercised 
 Platform/tenant operations plane: the entire tenant lifecycle (create, disable, extend expiresAt, re-enable) has no application surface. tools/tests/support/frozen-routes.ts contains no tenant routes, insertInto('Tenant') exists only in tools/fixtures/seed.ts and tests, yet tenant enabled/expiry is enforced at every session resolve (packages/plugins/base/auth/src/server/session.ts lines 71-74), so an expired or disabled default tenant locks out every principal including tenant-admin with no in-product recovery. The only available tool is raw psql, which bypasses all the app-enforced cross-plug…
 
 为什么要紧:Day-2 administration was outside every reviewer's dimension, but it is where the invariant architecture is weakest: the moment an operator must touch tenants they are forced into the one write path (hand SQL) that the carefully single-sourced invariants cannot see, and the resulting corruption (for example a system-account off the root node, or a placement violation) is precisely what the audited …
-

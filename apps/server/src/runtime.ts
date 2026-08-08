@@ -2,7 +2,7 @@ import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
@@ -21,8 +21,9 @@ import { healthApi, healthHandlers } from './health.ts'
 // Everything the process owns hangs off one layer, so shutting down is
 // closing one scope rather than a cascade of disposers whose order was a
 // property of the manifest. The port is bound by a layer built after the
-// barrier and the routes, so an instance either serves a working assembly or
-// never listens at all: there is no partially assembled state to observe.
+// barrier, so an instance never serves a partially assembled application: the
+// bind itself happens a moment earlier, inside the platform layer, and answers
+// 503 until the routes exist (see nodeServerLayer).
 //
 // The plugins arrive as descriptors, imported by the assembler from the
 // verified resolution - there is no generated composition module any more,
@@ -54,8 +55,37 @@ const hostPlugin = Plugin.define(
  * exposes an address and a serve function, not the instance. Owning the
  * instance is what lets Vite attach to it in development, which is how its
  * hot-reload websocket ends up on this process's port instead of a second one.
+ *
+ * It also lets the port answer during the build window. Upstream binds inside
+ * `NodeHttpServer.make` but attaches the request handler later, in `serve`,
+ * after the whole route layer - in development, the entire Vite dev server -
+ * has been built. A request landing in between reached a server with no
+ * 'request' listener at all: accepted, parsed, never answered, and the browser
+ * tab simply hung. Worse, the connection never went idle, so a route layer
+ * that then failed to build left the un-timeboxed close finalizer waiting on
+ * it. This listener is registered before the bind and answers 503 until the
+ * real handler exists; it retires itself the moment that handler appears,
+ * which is safe because Node runs 'request' listeners in registration order.
  */
-const nodeServerLayer = Layer.sync(NodeServer, () => createServer())
+const nodeServerLayer = Layer.sync(NodeServer, () => {
+  const server = createServer()
+  const starting = (_request: IncomingMessage, response: ServerResponse) => {
+    if (server.listenerCount('request') > 1) {
+      server.off('request', starting)
+      return
+    }
+    response.writeHead(503, {
+      'content-type': 'text/plain; charset=utf-8',
+      'retry-after': '1',
+      // the assembly is still building; a kept-alive connection would
+      // outlive this state and delay the close finalizer
+      connection: 'close',
+    })
+    response.end('qualy is starting\n')
+  }
+  server.on('request', starting)
+  return server
+})
 
 /**
  * The whole application, from a verified resolution.

@@ -184,9 +184,11 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
     >
     const source = typeof annotations.source === 'string' ? annotations.source : 'app'
     const minimum = settings.sources[source]
-    // level order runs Fatal -> Trace; a record BELOW the source's minimum is
-    // one whose level is greater in that order
-    if (minimum !== undefined && LogLevel.isGreaterThan(options.logLevel, minimum)) return
+    // Severity ascends Trace(0) -> Fatal(50000), with None above everything and
+    // All below it, so a record is below the minimum when the MINIMUM is the
+    // greater of the two - the direction upstream's own gate uses
+    // (LogLevel.isEnabled, repos/effect/packages/effect/src/LogLevel.ts:384).
+    if (minimum !== undefined && LogLevel.isGreaterThan(minimum, options.logLevel)) return
 
     const parts = Array.isArray(options.message) ? options.message : [options.message]
     const message = parts.map(text).join(' ')

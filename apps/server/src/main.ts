@@ -61,6 +61,45 @@ const launched = Layer.launch(application).pipe(
 )
 
 /**
+ * The escalation path out of a shutdown that will not finish.
+ *
+ * `runMain` interrupts the root fiber on a signal and then waits for every
+ * finalizer, and several of them are unbounded waits on the outside world - a
+ * pg pool closing against a dead network, an http server draining a connection
+ * that never goes idle. A second signal reaches upstream's handler as another
+ * interrupt of an already-interrupting fiber, which is a no-op, so without
+ * this the operator's only remaining move is SIGKILL by hand.
+ *
+ * These listeners run BESIDE upstream's: the graceful path is untouched and
+ * still the one that normally wins. The first signal starts a deadline longer
+ * than the http drain (20s upstream) so a healthy shutdown is never truncated;
+ * the second gives up immediately. Both exit 128+signo, the shell's way of
+ * saying a signal ended this, which is honest for a shutdown that did not
+ * complete - unlike the graceful exit 0 the teardown below reports.
+ */
+const forceExitAfter = Number(process.env.QUALY_SHUTDOWN_TIMEOUT ?? 30) * 1000
+let stopping = false
+for (const [signal, code] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+] as const) {
+  process.on(signal, () => {
+    if (stopping) {
+      console.error(`${signal} again: giving up on the graceful shutdown`)
+      process.exit(code)
+    }
+    stopping = true
+    if (forceExitAfter > 0) {
+      // unref: this timer must never be the reason the process stays alive
+      setTimeout(() => {
+        console.error(`shutdown did not finish within ${forceExitAfter}ms, exiting`)
+        process.exit(code)
+      }, forceExitAfter).unref()
+    }
+  })
+}
+
+/**
  * A requested shutdown is a normal outcome, not a failure.
  *
  * The default teardown answers 130 for an interruption-only exit, which is the
