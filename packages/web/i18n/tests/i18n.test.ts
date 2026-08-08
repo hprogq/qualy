@@ -8,6 +8,7 @@ import { commonMessages } from '../src/messages.ts'
 import {
   commonErrorMessages,
   formatApiError,
+  isTransportError,
   networkErrorMessage,
   unexpectedErrorMessage,
   type MessageFormatter,
@@ -65,6 +66,17 @@ describe('web i18n runtime', () => {
     expect(formatApiError(new TypeError('fetch failed'), formatter)).toBe(
       formatter.format(networkErrorMessage),
     )
+    // and what a screen actually receives is the http client's wrapper, not
+    // the fetch's own TypeError: the runtime turns every browser call into an
+    // effect, and this shape is what its failure squashes to
+    const unreachable = Object.assign(new Error('Transport error'), {
+      _tag: 'HttpClientError',
+      reason: { _tag: 'TransportError' },
+    })
+    expect(isTransportError(unreachable)).toBe(true)
+    expect(formatApiError(unreachable, formatter)).toBe(formatter.format(networkErrorMessage))
+    // a refusal that DID reach the server is not a transport failure
+    expect(isTransportError(apiError('ACCESS_DENIED'))).toBe(false)
     // common codes are owned by the runtime
     expect(formatApiError(apiError('ACCESS_DENIED'), formatter)).toBe('你没有执行该操作的权限。')
     // a plugin registry wins over the common map and projects typed data

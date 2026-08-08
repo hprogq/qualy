@@ -20,9 +20,16 @@ import { buildPluginModuleSource, buildPluginScanSource } from './collect.ts'
 // the aggregate that declares every one of them.
 export const qualyPlugins = (): Plugin => {
   const virtualId = 'virtual:qualy/plugins'
-  const cacheFile = path.join(repoRoot, 'apps/web/.qualy/plugins.ts')
-  const scanFile = path.join(repoRoot, 'apps/web/.qualy/scan.ts')
+  // One file per SET, not one file per path. dev and the browser runner write
+  // the active set; a release build writes the superset - to the same names,
+  // once, so a `pnpm build` in a second terminal rewrote the file sitting in
+  // the running dev server's module graph and it started serving the superset
+  // after a full reload nobody asked for.
   let all = false
+  const at = (name: string) =>
+    path.join(repoRoot, 'apps/web/.qualy', all ? `${name}.all.ts` : `${name}.ts`)
+  let cacheFile = at('plugins')
+  let scanFile = at('scan')
   return {
     name: 'qualy-plugins',
     async config(_config, environment) {
@@ -30,6 +37,8 @@ export const qualyPlugins = (): Plugin => {
       // release build carries the superset, so toggling a plugin on does not
       // require rebuilding the assets
       all = environment.command === 'build'
+      cacheFile = at('plugins')
+      scanFile = at('scan')
       // The cache is written HERE, before the dependency scanner runs, and
       // only when its content changed: a mid-run rewrite bumps the mtime and
       // the optimizer answers with a reload that killed seven browser tests;

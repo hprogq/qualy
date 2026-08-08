@@ -83,9 +83,20 @@ function asApiError(error: unknown): ApiErrorShape | undefined {
   }
 }
 
-// a failed fetch never reaches the server, so there is no code to key on
+// A failed fetch never reaches the server, so there is no code to key on.
+//
+// What arrives is not the fetch's own TypeError: the api runtime goes through
+// Effect's http client, which wraps it as an HttpClientError whose `reason`
+// says which stage failed. Checking only for TypeError therefore matched
+// nothing a screen actually sees, and every unreachable server rendered as
+// the generic "something went wrong" - the one distinction these helpers
+// exist to make. The bare forms stay for callers outside that runtime.
 function isNetworkError(error: unknown): boolean {
-  return error instanceof TypeError || (error instanceof Error && error.name === 'AbortError')
+  if (error instanceof TypeError) return true
+  if (error instanceof Error && error.name === 'AbortError') return true
+  const candidate = error as { _tag?: unknown; reason?: { _tag?: unknown } } | null
+  if (!candidate || typeof candidate !== 'object') return false
+  return candidate._tag === 'HttpClientError' && candidate.reason?._tag === 'TransportError'
 }
 
 // The codes every plugin's endpoints can answer with, because they come from

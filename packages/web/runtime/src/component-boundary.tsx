@@ -46,13 +46,23 @@ export function PluginComponent({
   componentId,
   kind,
   component: Resolved,
+  props,
   loading,
   fallback,
   missing,
 }: {
   componentId: string
   kind: PluginComponentKind
-  component: ComponentType | undefined
+  component: ComponentType<Record<string, unknown>> | undefined
+  /**
+   * What the contribution is rendered with.
+   *
+   * Separate from the component because React reconciles by TYPE identity: a
+   * caller that closed over its arguments in a fresh arrow per render made
+   * every re-render a remount, so a slot's contributions lost their state and
+   * refetched. The type stays the registry's, and only these change.
+   */
+  props?: Record<string, unknown>
   loading: ReactNode
   fallback: (retry: () => void) => ReactNode
   missing: ReactNode
@@ -67,7 +77,7 @@ export function PluginComponent({
   return (
     <PluginComponentBoundary componentId={componentId} kind={kind} fallback={fallback}>
       <Suspense fallback={loading}>
-        <Resolved />
+        <Resolved {...(props ?? {})} />
       </Suspense>
     </PluginComponentBoundary>
   )

@@ -328,13 +328,14 @@ export function UiSlot({ token, context }: { token: UiSlotToken; context?: unkno
     <>
       {items.map((item) => {
         const Renderer = registry[item.component] as
-          ComponentType<{ context?: unknown }> | undefined
+          ComponentType<Record<string, unknown>> | undefined
         return (
           <PluginComponent
             key={item.id}
             componentId={item.component}
             kind="slot"
-            component={Renderer ? () => <Renderer context={context} /> : undefined}
+            component={Renderer}
+            props={{ context }}
             loading={null}
             fallback={() => null}
             missing={null}

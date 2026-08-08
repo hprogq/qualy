@@ -72,7 +72,7 @@ export function buildManifestRoutes({
       <PluginComponent
         componentId={layout.component}
         kind="layout"
-        component={registry[layout.component] as ComponentType | undefined}
+        component={registry[layout.component] as ComponentType<Record<string, unknown>> | undefined}
         loading={slots.layoutLoading}
         fallback={slots.layoutError}
         missing={slots.componentMissing(layout.component)}
@@ -85,7 +85,9 @@ export function buildManifestRoutes({
           <PluginComponent
             componentId={page.component}
             kind="page"
-            component={registry[page.component] as ComponentType | undefined}
+            component={
+              registry[page.component] as ComponentType<Record<string, unknown>> | undefined
+            }
             loading={slots.pageLoading}
             fallback={slots.pageError}
             missing={slots.componentMissing(page.component)}
