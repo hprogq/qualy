@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { UiSlot } from '@qualy/web-runtime'
@@ -40,7 +40,8 @@ describe('a slot contribution', () => {
       client: fakeClient({
         app: { getManifest: { ...emptyManifest(), slots: { 'test/slot': [contribution] } } },
       }),
-      registry: { 'test/Counter': Counter },
+      // the registry holds what the aggregate puts there: lazy components
+      registry: { 'test/Counter': lazy(async () => ({ default: Counter })) },
       children: <Host />,
     })
 

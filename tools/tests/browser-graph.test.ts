@@ -52,40 +52,41 @@ describe('what the browser bundle is allowed to reach', () => {
     expect(clientApis.length).toBeGreaterThan(0)
   })
 
-  it.for(clientApis)(
-    'builds %s without pulling in anything node-only',
-    async (entry) => {
-      const externals: string[] = []
-      await build({
-        logLevel: 'silent',
-        build: {
-          write: false,
-          lib: {
-            entry,
-            formats: ['es'],
-            fileName: 'probe',
-          },
-          rollupOptions: {
-            // Nothing is external: the browser has no module resolution to
-            // fall back on, so anything the graph reaches has to be bundled or
-            // named here as a failure. Marking node builtins external is
-            // exactly how this went unnoticed in the dev server, which
-            // externalizes them with a warning and carries on.
-            external: (id) => {
-              if (NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
-                externals.push(id)
-                return true
-              }
-              return false
-            },
+  for (const entry of clientApis) probe(entry)
+})
+
+/** one bundling probe per entry, so discovery alone covers a new plugin */
+function probe(entry: string) {
+  it(`builds ${entry} without pulling in anything node-only`, async () => {
+    const externals: string[] = []
+    await build({
+      logLevel: 'silent',
+      build: {
+        write: false,
+        lib: {
+          entry,
+          formats: ['es'],
+          fileName: 'probe',
+        },
+        rollupOptions: {
+          // Nothing is external: the browser has no module resolution to
+          // fall back on, so anything the graph reaches has to be bundled or
+          // named here as a failure. Marking node builtins external is
+          // exactly how this went unnoticed in the dev server, which
+          // externalizes them with a warning and carries on.
+          external: (id) => {
+            if (NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
+              externals.push(id)
+              return true
+            }
+            return false
           },
         },
-      })
-      expect(
-        [...new Set(externals)].sort(),
-        'the api definition reached a node-only module; an error class or a middleware is declared in the same file as the service that uses it',
-      ).toEqual([])
-    },
-    120_000,
-  )
-})
+      },
+    })
+    expect(
+      [...new Set(externals)].sort(),
+      'the api definition reached a node-only module; an error class or a middleware is declared in the same file as the service that uses it',
+    ).toEqual([])
+  }, 120_000)
+}

@@ -1953,3 +1953,60 @@ node 369 全绿(61 文件);browser 13/13 **冷缓存两次 + 热一次**(此前�
 `pnpm qualy deploy`(migrations up to date)+ 生产 smoke 全绿(ready/live/壳/manifest/
 哈希资源/SIGTERM exit 0);`pnpm dev` 真启动 root 200 + manifest 200 + 优雅退出 0;
 `pnpm qualy list` 正常。**下一步**:测评业务纵切(评估记录见前节)。
+
+### 对抗审计与修复(2026-08-08)
+
+**审计**:8 维度审查者(authz / assembly / effect / web / database / api / gates /
+landmines)并行找问题,每条发现单独派对抗性怀疑者反驳(存疑默认毙掉),末尾盲区批评家;
+33 agent。**确认 23 条、反驳 1 条**,清单落 docs/notes/adversarial-audit-2026-08-08.md。
+
+**已修 20 条,七笔提交**(每条都有测试,多数红绿双验):
+
+- `369a1e0` server:①**每源日志最小级别判反了**(上游 `isEnabled` 是
+  `!isGreaterThan(minimum, record)`,我们参数写反,于是丢掉比阈值更严重的记录、留下噪音,
+  且 `Logger.layer` 替换默认 logger 集 = 丢掉的错误无处可寻;'off' 反而静音不了);
+  ②端口在路由层建成前就 listen(upstream 在 `make` 里 bind、在 `serve` 里才挂 handler),
+  窗口期请求被解析但**永不应答**,连接还卡住无超时的 close finalizer → 我们自己拥有
+  server 实例,窗口期答 503 并自退;③二次信号无效(upstream 只是再中断一次已在中断的
+  fiber)→ 超时(默认 30s,长于 20s drain)+ 二次信号立即放弃,均 128+signo。
+- `17717cd` api:deleteRoleGrant 把声明过的 409 `orDie` 成 500;cursor 的 uuid 段
+  未校形状 → 篡改的游标以 cast error 变 500(改为按位声明 `['text','uuid']`);
+  update 对"原值重存"照样 +1 version,把并发的真实编辑挤成冲突。
+- `c5b6ae0` assembly:①**provider 随插件离场**(此前从上一份 lock 召回的 provider
+  答完"无需保留"仍留在 lock,generate/deploy 继续对已移除插件的外部系统做事);
+  ②module 契约只有比较方没有写入方(第一个声明 module 的能力会把整条 CLI 锁死在
+  "运行 resolve"却什么都不写的死循环)→ resolve 补写;③boot 静态拉进 migrator/
+  SchemaComparator/pg/child_process → 各相位自己动态 import,加静态闭包门禁;
+  ④drop-guard --base-ref 把 git 的仓库相对路径按 cwd 解析,非根目录下扫描 0 个文件
+  却报成功。
+- `0bc8ef6` db:①**Migrator.init 会 CREATE DATABASE**(typo 的 DATABASE_URL 让
+  "只校验不修复"的 boot 建出野库,随后 lineage 干净跑完、应用绿着起空库);
+  ②adopt 用结构 diff 认证等价,而它看不见扩展/函数/种子行(baseline 片段的全部内容),
+  写完账本后这些永远不再补 → 改为先跑幂等片段;adopt 此前**零测试**,补两条;
+  ③testkit 模板保护把 datallowconn 设成 `true`(默认值,等于没设)。
+- `cbbcded` web:isTransportError 对真实传输失败恒 false(浏览器拿到的是
+  HttpClientError 包装,不是 fetch 的 TypeError);UiSlot 每次渲染新建包装组件 →
+  React 按类型协调 = 每次重挂载,状态丢失+重新请求;`.qualy` 聚合两套集合共用一对文件
+  (并行 build 会改掉 dev server 正在用的模块);chunk 哨兵按裸 basename 前缀匹配,
+  跨插件同名时互相顶包。
+- `91d526d` 门禁自身:run* 规则只枚举了 12 个中的 5 个(所有 `*With` 与 runCallback
+  静默通过);vendor 的 repos/ import 扫描卡在深度 4,重组后 213 个文件里 81 个没被读;
+  catalog 完整性对"整个 locale 缺失"直接 skip(零翻译的插件真空通过);
+  浏览器 bundle 探针只覆盖硬编码的 auth 一个插件 → 按发现遍历全部五个。
+- `37e5abe` plugin:add 重组后失效(仍调已删除的 scripts/qualy.ts,改完两个 manifest
+  且 install 之后才崩;apps/web 依赖的判据是早已不存在的 `./client` 导出)→ 修好并加
+  "脚本执行的文件必须存在"门禁(命令串与常量两种形态都覆盖);qualy.lock.json 进
+  .prettierignore(CLI 拥有其字节,格式化会让每次 resolve 都产生 diff)。
+
+**未修 3 条**(low,记录在案):`.qualy` 并发已按每集合分文件解决其主因;剩余为
+诊断类描述,触发条件写在审计清单里。**盲区**(批评家,均属未审计区域而非缺陷):
+认证滥用与会话生命周期(登录无节流/无锁定、无请求体上限、无密码重置、过期 session
+无清理)、备份与恢复(compose 声明了 pg_backups 卷但无人写入,db:reset 一并销毁)、
+部署形态(无 Dockerfile/runbook,生产即 tsx 跑 workspace TS)、可观测性(付了 span
+成本却无 exporter,/health/ready 逐个探针无超时)、多进程/多副本(迁移互斥已按触发表
+推迟,但无人看守触发条件)、租户运维面(租户生命周期无任何应用入口,过期即全员锁死)。
+
+**验收(实际执行)**:typecheck 零错;node **386** 全绿(62 文件,新增 8 条测试);
+browser 15/15(**冷缓存**);`pnpm build` + chunk 哨兵;`qualy deploy` + 生产 smoke
+(shutdown clean);`resolve --frozen-lockfile` 干净;`pnpm dev` 真启动 + 窗口期 503
+实测 + SIGTERM 优雅退出;超时/二次信号强退分别实测(exit 143)。
