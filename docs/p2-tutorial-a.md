@@ -1,6 +1,6 @@
 # Qualy 综合素质测评域 · 完整设计与实施规范
 
-> 版本 2.0（合并定稿）· 2026-08-08 · 状态：**核心架构冻结，可按里程碑施工**
+> 版本 2.1（合并定稿 + Formula 沙箱增补）· 2026-08-08 · 状态：**核心架构冻结，可按里程碑施工**
 > 读者：在本仓库工作的 Claude Code。
 > 本文档合并并取代此前两份综测设计文档；建议入库路径 `docs/assessment-design.md`，§7 的五条原则另抄一份进 `docs/adr/`。
 
@@ -17,7 +17,7 @@
 
 ## 1. 这个项目在做什么
 
-**综合素质测评（简称"综测"）**是我校每学期对每位学生进行的一次量化评价，实行 100 分制：
+**综合素质测评（简称"综测"）**是中国高校每学期对每位学生进行的一次量化评价，实行 100 分制：
 
 ```text
 品德行为表现 15 分   = 基础分 9（教师评价 8 + 学生互评 1）+ 奖扣分
@@ -313,7 +313,8 @@ draft ──submit──▶ in_review ──approve@normalTerminal──▶ appr
 
 **数据库存事实，计分器存规则。** 不为"人人默认 8 分"预创建几千行记录——`calc(无评价事实) → 8` 是规则。`calcParticipant(participant, 规则配置@revision, 已确认事实, 外部事实版本) → Breakdown` 是**纯函数、全系统唯一实现**，服务实时预览、试算、正式 ScoreRun 三处；确定性、可回放。
 
-- **v1 计算器**：`fixed`（通过即 +3）、`lookup`（1–2 个枚举字段查配置矩阵：科研表）、`range`（审核人在 [min,max] 内定值）、`decrement`（名次递减：base − step×(名次−1)，集体减半；随竞赛实例落地）。
+- **内置计算器（M4）**：`fixed`（通过即 +3）、`lookup`（1–2 个枚举字段查配置矩阵：科研表）、`range`（审核人在 [min,max] 内定值）、`decrement`（名次递减：base − step×(名次−1)，集体减半；随竞赛实例落地）。计算器与聚合器经 core 的 registry ExtensionPoint **`assessment.calculator`** 解析（prepare 相编目录，core 自身贡献内置项）——为 M9 的 custom 计分器留出即插即用的缝，同时保证内置集合永久冻结在最小规模：一切校本逻辑走 custom，不往内核加计算器。
+- **custom 计分器/聚合器（Formula 插件，M9）**：管理员或 AI 生成的**纯函数**在 QuickJS-WASM 沙箱内执行。执行契约（缺一不可）：① 输入为单一 JSON（实例配置 + 该生该题的已确认 entries + 声明的外部事实快照），输出为 JSON `{score, lines?: [{label, value}]}`（lines 并入 Breakdown，保住可解释性）；② 确定性——无 `Date.now`（时间源冻结为 run 时间戳）、无 `Math.random`、无网络/IO/异步/import，宿主零对象暴露；③ 中断句柄 + 内存上限 + 输出尺寸上限；④ TS 源码与编译后 JS 双存，**JS 工件的 sha256 进 ScoreRun input_manifest**——§16 不变量①对 custom 同样成立；⑤ **边界 = 单题内部**：不得跨题读数据、不得在函数内做组合封顶（ADR-5，组合永远归 ScoreGroup）；⑥ 失败语义：超时/越权/异常 → 整个 run FAILED 并定位到 (item, participant, input)，确定性保证可复现，**禁止静默给零分**。
 - **v1 聚合器**：`sum`、`max`、`countTier`（1 项 0.5 / 2 项 0.8 / 3 项 1）。
 - **组树自底向上**：entry → item 聚合 → 子组 cap → 父组 cap → 总分。Breakdown 逐行保留截断过程（"教官/国旗班组合封顶 −1.00"）——学生必须能看懂"分是怎么来的"，这是砍申诉量最有效的投资。
 - **计分不变量（修正版，属性测试必须按此实现）**——因存在负分事实（扣分条目），"撤销任一条目总分单调不增"这类全局单调不变量**不成立，禁止使用**。正确集合：① 相同冻结输入 → 逐字节相同 Breakdown；② 任何 group 终值 ≤ cap（cap 幂等）；③ 移除一条**正分**已确认事实，在无特殊规则时其对应原始贡献不得增加；④ 移除一条**负分**事实，其对应原始贡献不得进一步降低；⑤ countTier 若要求单调，先校验 tier 配置本身单调。不要写超出业务模型保证范围的 property test。
@@ -334,7 +335,7 @@ Phase 回答"现在允许干什么"，Publication 回答"正式对外公布了�
 → ⑨ 到点 PUBLISHED（记录 published_at；调度晚几十秒不移动 appeal_deadline）
 ```
 
-- **Preflight 项与出路**：待审 primary n（审完 / 管理员裁决 void）、escalated 在途 n、BLOCKED n（补任命 / 转派）、未完成 EvaluationTask n（M7：补录 / 转派 / 作废+理由）、ScoreRun 覆盖全部 active participant、题目/组树配置完整（引用驱动已装配、calculator 参数合法）、roster 完整性问题（缺 anchor / 重复 / 未裁决的显式纳入）。**实时组织树 diff 不在其中**（§9）。blocker>0 不能生成可发布快照；管理员不是点"忽略错误继续"，而是把每个业务对象推进到明确终态。正式公示中**不允许出现"张三 83.2（复核中）"**。
+- **Preflight 项与出路**：待审 primary n（审完 / 管理员裁决 void）、escalated 在途 n、BLOCKED n（补任命 / 转派）、未完成 EvaluationTask n（M7：补录 / 转派 / 作废+理由）、ScoreRun 覆盖全部 active participant、题目/组树配置完整（引用驱动已装配、calculator 参数合法、**custom 计分器版本已发布且测试通过**）、roster 完整性问题（缺 anchor / 重复 / 未裁决的显式纳入）。**实时组织树 diff 不在其中**（§9）。blocker>0 不能生成可发布快照；管理员不是点"忽略错误继续"，而是把每个业务对象推进到明确终态。正式公示中**不允许出现"张三 83.2（复核中）"**。
 - **SCHEDULED 即冻结**：批次打 `input_frozen_by_publication_id` 标记；修改审核决定、新增有效 revision、改计分配置、改申诉裁决等一切影响该快照的写路径检查标记并拒绝（错误码 `PUBLICATION_SCHEDULED_FROZEN`，提示"存在已预告公示，请先取消预告"）。取消 = SCHEDULED→CANCELLED→修正→重算→重新准备。**已向学生承诺 9:00 公布，就不允许 9:00 因后台复检失败而不公布**——所以复检发生在 SCHEDULED 之前，发布本身是纯机械动作。
 - **发布编排（领域代码显式写死）**：`publishPreliminary() = publish(S1) + advancePhase(申诉期) + 申诉期结束边界 planned_at := 表单所填 appeal_deadline`（发布表单按实际发布时刻提供 "+3 个工作日" 辅助计算器，落库仍是普通 timestamptz，管理员可手改；**v1 不建 BusinessCalendar**）。`publishFinal() = publish(S2) + advancePhase(结果确认) + supersede(S1 状态)`（S1 内容永远可查）。同一事务完成。不建设 "任意事件 → 任意阶段" 通用规则引擎。
 - **排名只存在于正式 Publication**：ranking_policy = `{partitionNodeType?(年级/学院…，分区键取 participant.anchor_path 对应祖先；缺省=整批次), tieBreak: 总分→品德→学业→文体, 纳入范围}`；仍并列 → 标记 unresolved tie 交学院裁决并记录原因，**禁止用 user_id/created_at 静默破除并列**。批次范围 ≠ 排名范围。填报期无任何实时排名。
@@ -352,7 +353,7 @@ Batch 终态。Gate：final Publication 已 PUBLISHED + 全部 Appeal 终态 + �
 
 ```text
 packages/plugins/
-├── assessment/ core | evidence | appraisal
+├── assessment/ core | evidence | appraisal | formula
 ├── data/       grades | dormitory
 └── infra/      storage
 ```
@@ -369,6 +370,7 @@ packages/plugins/
 | @qualy/plugin-grades               | 成绩事实域（即使没有综测也成立）                                   | db,server,ui,org           | M6       |
 | @qualy/plugin-assessment-appraisal | 教师评价/学生互评（任务型 interaction，非 Entry Form）             | assessment                 | M7       |
 | @qualy/plugin-dormitory            | 寝室事实域（生命周期跨批次）                                       | db,server,ui,org           | M8       |
+| @qualy/plugin-assessment-formula   | custom 计分沙箱 + AI 生成流水线（`assessment.calculator` 驱动）    | assessment                 | M9       |
 
 ---
 
@@ -456,28 +458,32 @@ packages/plugins/
 
 **M8 — Dormitory（独立事实域，最后做）**：room / occupancy(daterange) / inspection_batch / inspection_score / dorm_leader_claim（多人自称→CONFLICT 人工裁决，**不做 first-write-wins**）。综测消费：管理员配置纳入哪些查寝批次（或按日期规则自动纳入），系统按 occupancy 区间自动判定——**学生不得自选批次或时点**（cherry-picking 封死），只能对数据发起异议；未入住/无成绩三态 `FULL | ZERO | NOT_APPLICABLE`（第三态对总分的影响由组规则配置）；口径（检查日在住/全期在住/区间加权）待政策确认（§30）。
 
+**M9 — Formula 插件（custom 计分沙箱 + AI 生成流水线；毕设主特性）**：硬前置仅 M4（registry 缝）；**建议排序 M5 → M9 → M6–M8**——先保住完整学期流程的底盘，紧接着上主特性，领域数据插件殿后。
+交付：`@qualy/plugin-assessment-formula` 向 `assessment.calculator` 贡献 custom 计算器与聚合器；**quickjs-emscripten** 运行时（纯 WASM 零原生依赖、中断句柄 + 内存上限、冻结时间源、禁 random/网络/IO/异步、宿主零暴露、按代码 hash 缓存编译产物）；TS 源 + 编译 JS + sha256 双存；**分层 AI 生成流水线**：细则文本 → ① 优先生成**内置计算器的声明式配置**（教务人员可人工复核，覆盖多数条款）→ ② 无法声明式表达时降级生成 TS 纯函数 **+ 配套测试用例**（AI 从规则文本产出，含边界情形）→ 沙箱跑测试 → 抽样真实学生试算 diff → **人工显式发布**（进入 item config，自动受 §9 配置冻结与 BatchConfigRevision 约束）。
+验收：① 同 hash 同冻结输入逐字节一致（不变量①对 custom 成立）；② 无限循环/超内存被中断，run FAILED 且带 (item, participant, input) 定位、可复现；③ 沙箱内访问 Date.now / Math.random / 网络全部抛错；④ 未发布或测试未过的 custom 版本被 preflight 拦截；⑤ 回归基准：用 custom aggregator 复刻"1项0.5/2项0.8/3项1"，与内置 countTier 结果逐字节一致；⑥ 已有提交的批次修改 custom 代码被强制走 BatchConfigRevision；⑦ 端到端演示：粘贴一条真实细则 → 产出配置或代码+测试 → 通过 → 发布 → 试算出分。
+
 ---
 
 # 第五部分 · 边界与纪律
 
 ## 27. 明确禁止的过度设计（无真实需求不得建设；触发即先更新本文档）
 
-| 禁止项                                        | 何时解禁                                            |
-| --------------------------------------------- | --------------------------------------------------- |
-| 万能 BPMN / DAG workflow / 通用规则表达式引擎 | 永不（受限链 + 三 quorum 已覆盖政策全集）           |
-| 完整 Event Sourcing（replay 重建状态）        | 永不（事件=审计，投影=真相）                        |
-| BusinessCalendar                              | "+N 工作日"前端辅助计算器被证明不够时               |
-| QuickJS/沙箱自定义公式                        | 出现四种参数化计算器无法表达的真实细则条款          |
-| Score cache / Redis / BullMQ / 分布式调度锁   | 单实例 fiber 扫描出现真实瓶颈或多副本部署           |
-| S3 provider / 预签名 URL / CDN / 缩略图       | 部署形态需要时                                      |
-| 跨学期补差 / 累计限额 / 月度结算              | 学院新版细则确认保留该机制                          |
-| 通知中心（邮件/站内信体系）                   | v1 = preflight 面板 + 收件箱角标 + BLOCKED 告警列表 |
-| 实时全员排名 / 动态正式公示                   | 永不（ADR-1）                                       |
-| 月度考勤台账 UI / 学生自报扣分                | 本校无此流程；source=import + 负分已留口            |
+| 禁止项                                                                     | 何时解禁                                                                                             |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 万能 BPMN / DAG workflow / 通用规则表达式引擎                              | 永不（受限链 + 三 quorum 已覆盖政策全集）                                                            |
+| 完整 Event Sourcing（replay 重建状态）                                     | 永不（事件=审计，投影=真相）                                                                         |
+| BusinessCalendar                                                           | "+N 工作日"前端辅助计算器被证明不够时                                                                |
+| ~~QuickJS/沙箱自定义公式~~ **已解禁**：作为通用产品需求与毕设主特性排入 M9 | 但沙箱内以下事项**永久禁止**：非确定性 API、网络/IO、跨题目数据访问、函数内做组级组合（见 §16 契约） |
+| Score cache / Redis / BullMQ / 分布式调度锁                                | 单实例 fiber 扫描出现真实瓶颈或多副本部署                                                            |
+| S3 provider / 预签名 URL / CDN / 缩略图                                    | 部署形态需要时                                                                                       |
+| 跨学期补差 / 累计限额 / 月度结算                                           | 学院新版细则确认保留该机制（届时优先评估用 custom aggregator + 声明式外部事实表达，避免动内核）      |
+| 通知中心（邮件/站内信体系）                                                | v1 = preflight 面板 + 收件箱角标 + BLOCKED 告警列表                                                  |
+| 实时全员排名 / 动态正式公示                                                | 永不（ADR-1）                                                                                        |
+| 月度考勤台账 UI / 学生自报扣分                                             | 本校无此流程；source=import + 负分已留口                                                             |
 
 ## 28. 明确禁止的错误简化
 
-Entry 内容直接 UPDATE；班委 impersonate 学生；Publication 做成实时查询；审核任务永久绑定具体用户（single/any 必须实时解析）；组织变化自动删 Roster；dormitory 缺失静默转人工；学生自由挑查寝批次/时点；权限交集波及 auth.login 等全局权限（必须 phaseControlled 白名单）；把 escalation 当 appeal；每条政策一个 plugin；用 user_id/created_at 静默破除排名并列；靠前端查询代替 source_claim 数据库唯一约束。
+Entry 内容直接 UPDATE；班委 impersonate 学生；Publication 做成实时查询；审核任务永久绑定具体用户（single/any 必须实时解析）；组织变化自动删 Roster；dormitory 缺失静默转人工；学生自由挑查寝批次/时点；权限交集波及 auth.login 等全局权限（必须 phaseControlled 白名单）；把 escalation 当 appeal；每条政策一个 plugin；用 user_id/created_at 静默破除排名并列；靠前端查询代替 source_claim 数据库唯一约束；AI 生成的计分代码未经测试与人工显式发布直接生效；custom 函数失败时静默给零分。
 
 ## 29. 施工时先问的五个问题
 

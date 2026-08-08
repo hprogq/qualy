@@ -208,3 +208,27 @@ export async function diffAgainstDeclared(
     }
   })
 }
+
+/**
+ * Run the baseline fragments against a real database, in migration order.
+ *
+ * For `adopt`, whose structural comparison cannot see what fragments create.
+ * Safe to run on a database that already has them because a fragment is
+ * required to state its current shape idempotently - that requirement is what
+ * lets the same file be compiled into a migration and replayed here.
+ */
+export async function applyBaseline(
+  url: string,
+  baseline: readonly BaselineFragment[],
+): Promise<void> {
+  const orm = await open(url, [])
+  try {
+    for (const want of ['pre-structure', 'post-structure'] as const) {
+      for (const fragment of baseline.filter((entry) => entry.phase === want)) {
+        await orm.schema.execute(fragment.sql)
+      }
+    }
+  } finally {
+    await orm.close()
+  }
+}

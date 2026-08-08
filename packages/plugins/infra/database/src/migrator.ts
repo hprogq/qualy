@@ -3,6 +3,7 @@ import path from 'node:path'
 import { Migration, Migrator } from '@mikro-orm/migrations'
 import type { EntitySchema, MigrationObject } from '@mikro-orm/core'
 import { MikroORM } from '@mikro-orm/postgresql'
+import { Client } from 'pg'
 import { QualyNamingStrategy } from './naming.ts'
 
 // Applying the committed lineage, and nothing else.
@@ -66,6 +67,38 @@ export function migrationsIn(folder: string): MigrationObject[] {
 }
 
 /**
+ * The database has to be there already.
+ *
+ * `Migrator.init()` calls `ensureDatabase()` unconditionally, and that CREATES
+ * the database through the management connection when it is missing - so a
+ * typo in DATABASE_URL turned every entry point here into a server-mutating
+ * write, including the boot path whose whole contract is to validate and
+ * refuse. Worse than the stray database is what follows: the lineage applies
+ * cleanly to it, the application comes up green and empty, and nothing ever
+ * says the name was wrong. Every scratch database in this repository is
+ * created explicitly by the code that owns it, so nothing needs the implicit
+ * creation and refusing costs one query.
+ */
+async function assertDatabaseExists(url: string): Promise<void> {
+  const target = new URL(url)
+  const name = decodeURIComponent(target.pathname.replace(/^\//, ''))
+  const management = new URL(url)
+  management.pathname = '/postgres'
+  const client = new Client({ connectionString: management.href })
+  try {
+    await client.connect()
+    const found = await client.query('select 1 from pg_database where datname = $1', [name])
+    if (found.rowCount === 0) {
+      throw new Error(
+        `there is no database named ${name} on ${target.host}. Check DATABASE_URL; create it deliberately if it really is new.`,
+      )
+    }
+  } finally {
+    await client.end().catch(() => {})
+  }
+}
+
+/**
  * A connection with a migrator on it, closed whatever happens to the body.
  *
  * Migrations run before anything else exists, so this opens its own ORM rather
@@ -78,6 +111,7 @@ export async function withMigrator<A>(
   options: MigrationOptions,
   body: (migrator: Migrator) => Promise<A>,
 ): Promise<A> {
+  await assertDatabaseExists(url)
   const orm = await MikroORM.init({
     entities: [...options.entities] as EntitySchema[],
     clientUrl: url,

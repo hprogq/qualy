@@ -184,9 +184,15 @@ const ensureTemplate = async (admin: Pool, folder: string): Promise<string> => {
       // renamed only once it is complete, so a crashed build never becomes a
       // template that other tests copy
       await client.query(`alter database "${building}" rename to "${name}"`)
-      // a template must not be written to, and postgres refuses to copy one
-      // that has connections, so it is marked and left alone
-      await client.query(`update pg_database set datallowconn = true where datname = $1`, [name])
+      // A template must not be written to, and postgres refuses to COPY one
+      // that has connections - so refusing connections outright is both the
+      // protection and the way every parallel suite can keep copying it.
+      // This said `true`, which is the default every database already has, so
+      // the guard it documents did not exist: one psql tab left open on the
+      // template made every concurrent scratch creation fail with 55006, and
+      // one stray write would have been copied into every scratch database
+      // until the lineage hash changed. template0 is marked the same way.
+      await client.query(`update pg_database set datallowconn = false where datname = $1`, [name])
     }
     return name
   } finally {

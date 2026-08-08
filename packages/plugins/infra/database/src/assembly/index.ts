@@ -129,6 +129,26 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
           `database: this database is not the schema this assembly declares, so adopting the lineage would record something untrue. It differs by:\n  ${difference.up.join('\n  ')}`,
         )
       }
+
+      // The structural diff is blind to everything a baseline fragment exists
+      // for: extensions, functions and seed rows are not in a DatabaseSchema,
+      // so "the tables match" says nothing about them. Recording the lineage
+      // makes their absence permanent - the compiled fragments never run
+      // again, and generate reads its markers from the migration files rather
+      // than from the database, so every gate stays green over a missing
+      // canonical role or a stale function body. Fragments are required to be
+      // idempotent, which is exactly what makes running them here the honest
+      // move: after this the database holds what the lineage would have given
+      // it, instead of a ledger claiming it does.
+      const fragments = collectBaseline(context, state)
+      if (fragments.length > 0) {
+        const { applyBaseline } = await import('./diff.ts')
+        await applyBaseline(work.url, fragments)
+        console.log(
+          `database: applied ${fragments.length} baseline fragment(s) the schema comparison cannot see`,
+        )
+      }
+
       const adopted = await adoptMigrations(work.url, {
         folder: work.migrations,
         entities: work.modules.flatMap((module) => [...module.entities]),

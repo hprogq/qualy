@@ -44,6 +44,19 @@ const AUTHORIZED = ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rb
 
 // where a throwaway assembly keeps its lineage: the same declaration the
 // runtime reads, so generation and application cannot mean different folders
+const LEDGER = 'mikro_orm_migrations'
+
+/** the variable a deployment addresses its database with, for one call */
+const withDatabaseUrl = async <A>(url: string, body: () => Promise<A>): Promise<A> => {
+  const before = process.env.DATABASE_URL
+  process.env.DATABASE_URL = url
+  try {
+    return await body()
+  } finally {
+    if (before === undefined) delete process.env.DATABASE_URL
+    else process.env.DATABASE_URL = before
+  }
+}
 const MIGRATIONS = 'migrations'
 const workspaceFor = (plugins: readonly string[], options: { disabled?: readonly string[] } = {}) =>
   createWorkspace(plugins, {
@@ -397,6 +410,63 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
         .join('\n')
       expect(sql).not.toMatch(/DROP TABLE/i)
     } finally {
+      workspace.dispose()
+    }
+  })
+})
+
+// Adopting a database means recording a lineage as applied without running it,
+// so the only thing standing between it and a permanently wrong ledger is what
+// the command checks first. It had no coverage at all.
+describe.runIf(postgresAvailable)('adopting an existing database', () => {
+  it('carries the baseline objects the structural comparison cannot see', async () => {
+    const workspace = workspaceFor([...INFRA, ...AUTHORIZED])
+    await generateFromNothing(workspace)
+    // a database built by the lineage, then stripped of exactly what a
+    // fragment guarantees: structurally identical, semantically missing the
+    // extension its own column type depends on
+    const db = await createTestContext('assembly-adopt', {
+      migrationsFolder: migrationsOf(workspace),
+    })
+    try {
+      await db.query(`delete from ${LEDGER}`)
+      // the work context reads the target from the environment, the way a
+      // deployment addresses one database with one variable
+      const work = await withDatabaseUrl(db.url, () => context(workspace))
+      await withDatabaseUrl(db.url, () => provider.commands!.adopt!(work))
+
+      const ledger = await db.row<{ count: number }>(`select count(*)::int as count from ${LEDGER}`)
+      expect(ledger.count).toBeGreaterThan(0)
+      // the fragment ran rather than being assumed: ltree is what org's
+      // baseline exists for, and nothing structural would have noticed
+      const extension = await db.row<{ count: number }>(
+        `select count(*)::int as count from pg_extension where extname = 'ltree'`,
+      )
+      expect(extension.count).toBe(1)
+    } finally {
+      await db.dispose()
+      workspace.dispose()
+    }
+  })
+
+  it('refuses a database whose structure is not the one this assembly declares', async () => {
+    const workspace = workspaceFor([...INFRA, ...AUTHORIZED])
+    await generateFromNothing(workspace)
+    const db = await createTestContext('assembly-adopt-differs', {
+      migrationsFolder: migrationsOf(workspace),
+    })
+    try {
+      await db.query(`delete from ${LEDGER}`)
+      await db.query('alter table org_nodes drop column name')
+      const work = await withDatabaseUrl(db.url, () => context(workspace))
+      await expect(withDatabaseUrl(db.url, () => provider.commands!.adopt!(work))).rejects.toThrow(
+        /is not the schema/,
+      )
+      // and it wrote nothing: a refused adoption must leave the ledger empty
+      const ledger = await db.row<{ count: number }>(`select count(*)::int as count from ${LEDGER}`)
+      expect(ledger.count).toBe(0)
+    } finally {
+      await db.dispose()
       workspace.dispose()
     }
   })
