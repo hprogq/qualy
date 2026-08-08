@@ -4,7 +4,7 @@
 > 读者：在本仓库工作的 Claude Code。
 > 本文档合并并取代此前两份综测设计文档；建议入库路径 `docs/assessment-design.md`，§7 的五条原则另抄一份进 `docs/adr/`。
 
-该版本有部分纰漏，补充文档见 `docs/p2-tutorial-a-supplement-1.md`。
+该版本有部分纰漏，补充文档见 `docs/p2-tutorial-a-supplement-1.md`，请阅读本文件后阅读补充文件。
 
 ## 阅读说明
 

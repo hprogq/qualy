@@ -101,6 +101,15 @@ export type CatalogFor<Messages extends Record<string, MessageDescriptor>> = {
 export type SupportedLocale = 'zh-CN' | 'en-US'
 export const supportedLocales: readonly SupportedLocale[] = ['zh-CN', 'en-US']
 export const defaultLocale: SupportedLocale = 'zh-CN'
+/**
+ * The locale each descriptor's `defaultMessage` already speaks.
+ *
+ * It is the one locale a plugin may ship no catalog for. Every other one is
+ * required, which the type cannot say - `locales` is partial by design, so a
+ * plugin shipping nothing at all typechecked and, until the gate learned this
+ * distinction, passed a completeness check that skipped whatever was absent.
+ */
+export const fallbackLocale: SupportedLocale = 'en-US'
 
 // what a plugin's client module may export as `catalogs`: its namespace and
 // lazy per-locale catalogs (only non-english catalogs are required; the

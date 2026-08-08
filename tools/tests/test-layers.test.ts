@@ -312,7 +312,11 @@ describe('test layering', () => {
       .filter((file) => !RUNS_EFFECTS.includes(posix(file)))
     const offenders = breaches(production, [
       {
-        pattern: /Effect\.run(?:Promise|Sync|Fork|PromiseExit|SyncExit)\b/,
+        // every runner, named or not: upstream ships twelve (each of the
+        // five plus runCallback, each with a *With variant), and an
+        // enumeration matched five of them. A rule with a list to keep in
+        // sync is a rule that stops holding at the next upstream release.
+        pattern: /Effect\.run[A-Z]/,
         why: 'runs an effect outside an entry point',
         skipLine: commented,
       },

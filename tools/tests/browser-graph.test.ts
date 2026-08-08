@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { build } from 'vite'
 
@@ -29,37 +31,61 @@ const NODE_ONLY = [
   'sirv',
 ]
 
+// Every plugin that ships one, discovered rather than listed: the incident
+// was in a chain each plugin has its own copy of, and a probe naming one
+// plugin proves nothing about the next one somebody writes.
+const clientApis = fs
+  .readdirSync('packages/plugins', { withFileTypes: true })
+  .filter((group) => group.isDirectory())
+  .flatMap((group) =>
+    fs
+      .readdirSync(path.join('packages/plugins', group.name), { withFileTypes: true })
+      .filter((plugin) => plugin.isDirectory())
+      .map((plugin) => path.join('packages/plugins', group.name, plugin.name, 'src/client/api.ts')),
+  )
+  .filter((entry) => fs.existsSync(entry))
+
 describe('what the browser bundle is allowed to reach', () => {
-  it('builds a plugin client api without pulling in anything node-only', async () => {
-    const externals: string[] = []
-    await build({
-      logLevel: 'silent',
-      build: {
-        write: false,
-        lib: {
-          entry: 'packages/plugins/base/auth/src/client/api.ts',
-          formats: ['es'],
-          fileName: 'probe',
-        },
-        rollupOptions: {
-          // Nothing is external: the browser has no module resolution to
-          // fall back on, so anything the graph reaches has to be bundled or
-          // named here as a failure. Marking node builtins external is
-          // exactly how this went unnoticed in the dev server, which
-          // externalizes them with a warning and carries on.
-          external: (id) => {
-            if (NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
-              externals.push(id)
-              return true
-            }
-            return false
+  // the discovery itself has to have found something: an empty list would
+  // report every plugin as clean
+  it('found the client apis to probe', () => {
+    expect(clientApis.length).toBeGreaterThan(0)
+  })
+
+  it.for(clientApis)(
+    'builds %s without pulling in anything node-only',
+    async (entry) => {
+      const externals: string[] = []
+      await build({
+        logLevel: 'silent',
+        build: {
+          write: false,
+          lib: {
+            entry,
+            formats: ['es'],
+            fileName: 'probe',
+          },
+          rollupOptions: {
+            // Nothing is external: the browser has no module resolution to
+            // fall back on, so anything the graph reaches has to be bundled or
+            // named here as a failure. Marking node builtins external is
+            // exactly how this went unnoticed in the dev server, which
+            // externalizes them with a warning and carries on.
+            external: (id) => {
+              if (NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
+                externals.push(id)
+                return true
+              }
+              return false
+            },
           },
         },
-      },
-    })
-    expect(
-      [...new Set(externals)].sort(),
-      'the api definition reached a node-only module; an error class or a middleware is declared in the same file as the service that uses it',
-    ).toEqual([])
-  }, 120_000)
+      })
+      expect(
+        [...new Set(externals)].sort(),
+        'the api definition reached a node-only module; an error class or a middleware is declared in the same file as the service that uses it',
+      ).toEqual([])
+    },
+    120_000,
+  )
 })

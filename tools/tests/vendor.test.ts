@@ -15,15 +15,19 @@ import {
 // bump that forgets `pnpm vendor:update` leaves the tree describing an API that
 // is no longer there, which is worse than having no vendored source at all.
 
-const walk = (dir: string, depth = 0): string[] =>
-  depth > 4 || !fs.existsSync(dir)
+// No depth cap. There used to be one, and the reorganisation moved plugin
+// sources past it: everything under packages/plugins/<group>/<name>/src/<dir>
+// stopped being read, so 81 of 213 files were exempt from a gate that reported
+// success. Pruning the two directories that would make this expensive is what
+// keeps it cheap; a limit expressed in depth is a limit nobody re-checks when
+// the tree moves.
+const walk = (dir: string): string[] =>
+  !fs.existsSync(dir)
     ? []
     : fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
         const full = path.join(dir, entry.name)
         if (entry.isDirectory()) {
-          return entry.name === 'node_modules' || entry.name === 'repos'
-            ? []
-            : walk(full, depth + 1)
+          return entry.name === 'node_modules' || entry.name === 'repos' ? [] : walk(full)
         }
         return /\.tsx?$/.test(entry.name) ? [full] : []
       })

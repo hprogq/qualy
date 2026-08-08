@@ -3,7 +3,7 @@ import path from 'node:path'
 import { manifestPath } from '../lib/manifest.ts'
 import { describe, expect, it } from 'vitest'
 import type { MessageCatalog, MessageDescriptor } from '@qualy/i18n-contract'
-import { supportedLocales } from '@qualy/i18n-contract'
+import { fallbackLocale, supportedLocales } from '@qualy/i18n-contract'
 import { pathToFileURL } from 'node:url'
 import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
 import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
@@ -80,7 +80,17 @@ describe('plugin message catalogs', () => {
       expect([...declared].filter((id) => !id.startsWith(`${namespace}/`))).toEqual([])
       for (const locale of supportedLocales) {
         const load = module.catalogs.locales[locale]
-        if (!load) continue
+        // Only the fallback locale may be absent - its text is each
+        // descriptor's defaultMessage. Skipping every absent locale meant a
+        // plugin that shipped no translations at all was complete by
+        // vacuity, which is the one case this gate exists to catch.
+        if (!load) {
+          expect({ locale, shipped: locale === fallbackLocale || declared.size === 0 }).toEqual({
+            locale,
+            shipped: true,
+          })
+          continue
+        }
         const catalog = ((await load()) as { default: MessageCatalog }).default
         const translated = new Set(Object.keys(catalog))
         const missing = [...declared].filter((id) => !translated.has(id))
