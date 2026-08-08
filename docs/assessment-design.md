@@ -153,13 +153,20 @@ AssessmentBatch（聚合根）
 
 - **材料日期用 `daterange` 左闭右开**（`[2026-03-01, 2026-09-01)`）：证书只有日期没有时间，彻底避开 23:59:59.999 与时区噪音。daterange 自定义类型**仿照 org 插件 `src/db/ltree.ts` 先例**实现。题型可继续缩窄：合法日期 = `batch.material_range ∩ item.dateConstraint`。阶段等流程时间一律 `timestamptz`，按 batch.timezone 展示。
 - scope 为单一子树；v1 不做不连续多 scope。description_md 是管理员业务数据，i18n 上属 **literal**，不进 message catalog。
-- **配置冻结规则**（服务层强制）：无提交时题目/审核链/计分/组树自由改；出现提交后冻结，修改必须走 `BatchConfigRevision`（revision+1、理由、影响面确认：受影响学生数、需重算），审计留痕；阶段计划时间与说明文本任何时候可改但审计；材料范围修改前做 impact check（列出将越界的既有条目）。
+- **配置生命周期是分级的，不是"出现提交后冻结"**（裁决 §32.8——配置错误恰恰是被填报过程发现的，把修改做成重流程等于逼管理员绕过系统）：
+  - 批次 **draft**：随便改，零仪式。
+  - **激活后、S1 前、无 SCHEDULED**：自由编辑；每次保存追加一条配置事件（操作人、前后 diff、可选理由），保存时给影响提示（"本题已有 37 人提交"）作**确认对话框**而非审批流程；在途 ReviewInstance 保持已快照的链不受影响，链条改动可选"同时重新路由在途条目"（默认关）。
+  - 存在 **SCHEDULED** 公示：冻结，拒绝写入，先取消预告（§17）。
+  - **归档后**：只读。
+  - **理由必填按操作类型挂，不按阶段挂**：题目作废必填；active 批次上任何**计分语义变更**（calculator/参数/聚合器/cap/换组）必填；装饰性修改（标题、说明、字段 label）理由可选——S2 与 S1 的规则性差异说明素材由此而来。
+  - **"改了必须可重算"是现有快照体系的免费推论**：批次上单调递增的 config_revision 进 ScoreRun 的 input_manifest，配置一改旧 run 的 manifest 落后，preflight 自动判"试算已过期需重跑"，零新机制。`BatchConfigRevision` 因此降级为 **append-only 配置事件日志 + 单调计数器**，不是审批实体。
+  - 材料范围修改前做 impact check（列出将越界的既有条目）。
 
 **BatchParticipant**：`batch_id, user_id(唯一对), assessment_anchor_node_id, anchor_path(ltree 快照), user_type_id, status(active|excluded), included_at, excluded_at?`。
 
 - 批次激活时**同步生成**（单条 `INSERT…SELECT` 按 scope 子树 + 用户类型过滤，事务内完成，不上队列）。
-- **锚点是一切审核解析的唯一起点**；不从用户实时全部 membership 推断。本系统单归属，无多锚裁决；未来出现双学位等歧义在 enrollment 层解决，禁止改 org 全局约束。
-- **永不自动增删**：组织树变化后提供差异面板（新迁入/已迁出/锚点变更），管理员决定是否应用；"填报截止前自动纳入新迁入"可作低风险开关。已迁出者置 `excluded` 保留全部历史（Entry/Review/Score/Publication/Appeal 的业务归属不能悬空）；显式移出时管理员当场决定其条目去向。锚点变更只影响此后新提交条目的路由，在途条目保持已快照的链。
+- **锚点是批次自治的边界，不是在途条目的稳定器**（表述修正，裁决 §32.7）：在途条目的稳定靠 ReviewInstance 提交时快照的**有效链**——链钉死的是节点，实时解析的是"该节点此刻谁持有角色"，所以学生转走后旧链照常由**原节点**的现任审核（有意为之：否则任何转移都会把在途条目甩进可能无人的新链）。roster 的 `assessment_anchor_node_id + anchor_path` 买的是**此后**的语义：新提交与申诉按冻结锚点路由（学期中转走的学生在原单位完成本学期综测，材料不会出现在新学院毫无上下文的收件箱）、排名分区确定（partition key 取锚点祖先）、行政录入的管辖判定稳定、以及管理员的控制杆——转移不静默改变批次行为，而是进 diff 面板显式应用，应用时当场校验新链（"新锚点下班长一级无人，应用后该生 3 道在审题将 BLOCKED，确认？"）。anchor_path 是附加保险：防批次进行中组织树重构波及。成员资格已用快照（excluded 保历史），位置若实时会得到嵌合体语义——两者是"谁、以什么位置参加本批次"这同一事实的两半。可配糖："该生**首次提交前**锚点变更自动同步"（低风险开关）；首提之后必须走 diff 面板。不从用户实时 membership 推断；本系统单归属，未来双学位歧义在 enrollment 层解决，禁止改 org 全局约束。
+- **永不自动增删，转入转出对称**（裁决 §32.7）：组织树变化后 diff 面板列出新迁入（未纳入）/已迁出（仍在册）/锚点变更，管理员显式应用。**转入不自动纳入**——转出不自动删 + 转入自动加 = 每次学期中转移都制造**双重参与**（同一学期两个批次同时算分、公示、排名），而"这学期他在哪边评"是政策与两院协调问题，且系统只能看见自己（对方学院可能不用本系统，跨批次查重只覆盖子集），纳入判断的 owner 是人。系统辅助：纳入时查该 user 在其他未归档批次的 active 记录并警告；当场校验新锚点下的有效链。"填报截止前自动纳入"开关保留但**默认关**，且加"其他批次无 active 记录"守卫。scope 内未纳入的学生打开批次页显示"你尚未被纳入本批次，如有疑问联系学院"。已迁出者置 `excluded` 保留全部历史（Entry/Review/Score/Publication/Appeal 的业务归属不能悬空）；显式移出时管理员当场决定其条目去向。锚点变更只影响此后新提交条目的路由，在途条目保持已快照的链。
 - **实时组织树与 roster 的差异不是公示 blocker**——快照的意义就是隔离漂移。只有真正的 roster 完整性问题才 block：participant 缺 anchor、重复行、管理员已明确要求纳入但未裁决的新生。
 - 花名册是一切的分母：计分迭代对象、评价任务完整性基准、公示覆盖范围。无任何提交的学生也在计分与公示中（基础分由规则给出，**不为默认分预创建记录**——事实落表、规则进引擎）。
 
@@ -167,17 +174,34 @@ AssessmentBatch（聚合根）
 
 管理员思考的是"现在什么阶段、这个阶段能干什么"，不是一堆能力窗口的集合运算——所以 **Phase = 有名称的业务状态 + 权限 Profile + 进入方式**，是配置与用户认知的主模型。公示不是阶段（§17）。
 
-**batch_phases**：`batch_id, ordinal(唯一对), phase_key(kind), display_name, entry_trigger(scheduled|manual), planned_entry_at?, actual_entry_at?, permission_profile(jsonb: code[]), source_template_id?, source_template_version?`。
+**batch_phases**：`batch_id, ordinal(唯一对), phase_key(kind), display_name, entry_trigger(scheduled|manual), planned_entry_at?, actual_entry_at?, permission_profile(jsonb: code[]), source_template_id?, source_template_version?`。配套两张 join 表 `phase_item_scopes(phase_id, item_id)` 与 `phase_participant_scopes(phase_id, participant_id)`（补充期的作用范围，§11；两者同为空 = 普通阶段）。
 
-- **不存 start/end**。区间 = `[本阶段 actual_entry_at, 下一阶段 actual_entry_at)`，天然无重叠无隐式空洞；末阶段 `[start, ∞)`。批次冗余 current_phase_id 作查询投影。
-- **planned 与 actual 分离，历史永不改写**：未发生的 planned_entry_at 可改（审计 + 可选通知学生"截止延长至…"）；`actual_entry_at` 一旦产生**永久不可修改**。要"重开填报"就在序列中**插入新阶段**（补充填报期，套用与正式填报期相同的模板）——历史于是能被准确讲述：9.1–9.5 正式填报、9.5–9.7 审核整理、9.7–9.9 补充填报。
-- 触发只有 `scheduled | manual` 两种。**禁止**建设 condition / expression / event rule / cron 通用引擎；公示驱动的两次切换是领域代码里显式编排的 manual transition（§17）。
-- **phase_events**（append-only）：计划修改与实际切换全部落审计事件（kind, phase_id, planned_at/actual_at, actor, reason）。
-- **调度器**：core layer 内 fork 一根 Effect fiber，每分钟幂等扫描 ① `entry_trigger='scheduled' AND planned_entry_at<=now() AND actual_entry_at IS NULL` 的下一边界 → advance；② due 的 SCHEDULED publication → publish。单实例假设（与迁移器同款表述），动作幂等可重入。**不引入 Redis/BullMQ/分布式锁**。
-- **PhaseTemplate**：租户级预设（阶段名/顺序/权限 Profile/时间偏移/trigger）。应用 = **复制**并记 source_template_id/version（仅审计溯源），绝不运行时继承；改模板不影响既有批次。
-- 手动切换 `advancePhase(to, reason?)` 走 `assessment.batch.manage`；跳过 guard 的强制切换要求 `assessment.batch.force_advance` + 必填理由。
+- **不存 start/end**。区间 = `[本阶段 actual_entry_at, 下一阶段 actual_entry_at)`，派生而非存储——空隙和重叠在这个表达下写不出来；末阶段 `[start, ∞)`。批次冗余 current_phase_id 作查询投影。
+- **actual_entry_at = 语义生效时刻**（裁决 §32.10）：scheduled 边界触发时写入的是 **planned 值**——阶段在法律意义上于计划时刻开始，哪怕调度 fiber 晚了 47 秒才扫到；机器执行时刻另记 `phase_events.processed_at`。manual 边界的 actual = 动作事务时间。这与 Publication 的 `publish_at`（承诺）/`published_at`（执行）是同一个模式，两处对称。**planned 与 actual 分离，历史永不改写**：未发生的 planned 可改（审计 + 可选通知学生）；actual 一旦产生永久不可修改。要"重开填报"就在序列中插入新阶段（补充填报期）——历史于是能被准确讲述。
+- **PhaseGate 按时钟判定，不按物化状态**：`effectivePhase(now)` 在当前物化阶段基础上向后看——下一边界是 scheduled 且 planned 已过即视为已进入（连续多个都过了就循环推进），物化只是追认。"9.5 00:00 截止"精确到秒兑现，与调度延迟彻底解耦（调度器宕机七分钟也说得清 00:03 提交的那条算不算数）。
+- **时间线是队列，只有队头被武装**：调度器只看"当前阶段之后的第一个边界"——scheduled 且到点 → 推进；manual → 等待领域动作，**它后面的任何 scheduled 时间都不会被触发**。下游时间只有三种形态：① **硬计划**（绝对时间、自动生效）——只允许出现在"队头到第一个未发生的 manual 边界"的连续前缀上（校验强制），学期初能定死的日历段属于此类；② **偏移量**——挂在事件边界之后的段在模板里存**时长**（申诉期 = 发布后 +1 天 / +3 工作日），事件发生那一刻才物化成绝对时间；③ **预计**——纯展示的软时间（"第一次公示：约 9 月 10 日"），不武装、不生效、可随便改。物化下游时间时若早于上游 actual → 拒绝并要求重设，不静默压缩阶段。
+- **边界分两类**：**承诺型**（面向学生的 deadline：填报截止、申诉截止）到点必然生效、一秒不差，绝不因内部状态延迟——这是对用户的信用；**里程碑型**（面向流程：审核结束、公示发布、归档）guard 优先于时钟——到点但 guard 红 → 告警给人，绝不强行切。公示 preflight 是这一原则的第一个实例，审核期结束是第二个。
+- **审核期怎么结束**（一个 manual 边界的三个旋钮，裁决 §32.11）：提审关闭后待审数单调递减（`count(review_instances where state in (active, blocked))`，blocked 计入；插入 scoped 补充期会让计数回升——显式动作，回升即预期），"全部审完"因此是稳定谓词。① **手动按钮（默认）**：batch-admin 常驻"剩余 n 条在审"计数器（分列 在审/疑点上行/卡死），归零时"结束审核期"点亮，未归零时变为"强制结束"（force-advance + 必填理由）；动作内断言当前 profile 的 entry.submit 已关闭且无 active 补充期。② **计划时间 = SLA（可选）**：给该 manual 边界填 planned——不自动切，只做逾期检测（到点未归零 → 批次告警 + 滞留清单）。③ **归零自动切（可选开关）**`auto_advance_on_review_completion`：骑在巡检上（§14），归零即 advance——硬编码的领域条件，与 publishPreliminary 同一性质，**不是**通用条件引擎。推荐默认：手动 + SLA——"结账"是值得人类按下的按钮，它同时是对"可以进入公示准备"的确认。
+- **phase_events**（append-only）：计划修改与实际切换全部落审计事件（kind, phase_id, planned_at / actual_at, processed_at, actor, reason）。
+- **调度器**：core layer 内 fork 一根 Effect fiber，每分钟幂等扫描 ① 队头 scheduled 边界 ② due 的 SCHEDULED publication；另挂五分钟档的监护巡检（§14）。单实例假设（与迁移器同款表述），动作幂等可重入。**不引入 Redis/BullMQ/分布式锁**。
+- **PhaseTemplate**：租户级预设（阶段名/顺序/权限 Profile/**时间形态：硬计划锚点或偏移时长**/trigger）。应用 = **复制**并记 source_template_id/version（仅审计溯源），绝不运行时继承；改模板不影响既有批次。
+- 手动切换 `advancePhase(to, reason?)` 走 `assessment.batch.manage`；跳过 guard 的强制切换要求 `assessment.batch.force-advance` + 必填理由。插入阶段只能插在当前阶段之后（ordinal 事务内重排，外部无引用），权限 profile 可直接套用模板段。
 
-**默认阶段序列**：`预填报(scheduled) → 正式填报(scheduled) → 审核整理 →[publishPreliminary] 申诉(结束边界 scheduled=申诉截止) → 申诉处理 →[publishFinal] 结果确认 → 归档(terminal)`。**没有"公示期"**。审核整理期的存在理由：提交截止 ≠ 审核截止；申诉处理期同理：申诉截止 = 不受理新申诉，存量申诉继续裁决。
+**默认阶段序列**（含公示创建期）：
+
+```text
+预填报        scheduled  硬计划
+正式填报      scheduled  硬计划
+审核整理      scheduled  硬计划（承诺型截止：提交关闭，审核继续清尾）
+公示创建      manual    "结束审核"（里程碑型；guard=待审归零，可挂 SLA / 自动切）
+申诉          由 SCHEDULED Publication 发布驱动进入；显示时间直接取 publication.publish_at
+              （单一事实源，不复制进 planned，杜绝两处不同步）
+申诉处理      scheduled  发布时刻按模板偏移物化（承诺型截止：申诉关闭，存量继续裁决）
+结果确认      由 publishFinal 驱动进入（里程碑型）
+归档          manual    terminal（里程碑型）
+```
+
+**没有"公示期"**（公示不是阶段），但有**公示创建期**：它给学生"审核已完成、公示准备中"的明确信号；`publishPreliminary` 的 guard 检查当前处于此阶段——先结账、再 preflight、再预告，向导式一条流。时间线渲染的取值优先级一次定死：`actual（已发生）> 队头 scheduled 的 planned（确定）> 关联 publication 的 publish_at（已预告）> 预计（约）> 待定`——任何时刻的时间线都是诚实的：日历段确定，事件段随事件逐格点亮。
 
 ## 11. 三层授权
 
@@ -191,6 +215,10 @@ authorize(principal, code, resource) =
 **PhaseGate**：权限目录元数据增加 `phaseControlled?: boolean`（对 rbac 契约的**加法**修改，默认 false，向后兼容）。判定：`!phaseControlled → true；否则 code ∈ currentPhase.permission_profile`，**fail closed**——未来新增的受控权限在旧 Profile 中缺席即拒绝。阶段编辑器只展示 phaseControlled=true 的权限；`auth.login / org.* / iam.* / assessment.batch.manage` 永远不出现在阶段配置里。PhaseGate 只限制、绝不授予：阶段开放 review.process 不会让无审核 RBAC 的学生获得审核权。
 
 **ResourcePolicy** 即条目/申诉状态机的动作 guard：正式填报期 + RBAC 允许 entry.edit，但条目 IN_REVIEW → 仍拒绝。
+
+**scoped 补充期**（裁决 §32.11 的配套）：PhaseGate 签名为 `allows(phase, code, ctx?)`——仅对 entry 动作族（create/edit/submit/withdraw/record）检查 `ctx.itemId ∈ phase_item_scopes` 与 `ctx.participantId ∈ phase_participant_scopes`（空集 = 不限）；`review.process` 与 appeal 族**永不受 scope 限制**——新交上来的东西总得有人审。item-scope 服务"改题/新增题后开补充提交期，只对被改的题操作"；participant-scope 服务"审核期后才被纳入的转入生，单独开补充期，全班不受影响"。UI：scoped 阶段下填报中心只点亮范围内的题，其余锁定注明"本阶段仅开放：…"；范围外学生时间线显示"补充提交（仅限指定题目/人员）"。
+
+**authorize 返回结构化拒因，不是布尔**：三层再叠 scope 之后拒因已有六七种，"已过提交截止 / 本阶段仅开放部分题目 / 条目审核中不可编辑 / 该题已作废"是完全不同的用户体验——拒因枚举一次定义，全端复用。
 
 **权限目录**（`./permissions` 纯常量，`Access.permissions` 上车）：
 
@@ -244,6 +272,8 @@ interface AssessmentItemTypeDriver {
 ```
 
 **AssessmentItem（实例）**：`batch_id, item_type, title, description, config(jsonb, 驱动校验), score_group_id, review_policy(jsonb), appeal_policy(jsonb?), max_entries, sort_order, status, config_revision`。**ScoreGroup**：`batch_id, parent_group_id?, name, cap?, sort_order`，树形嵌套；默认树 = 品德(15) / 学业(75) / 文体(10)，文体下 基础(3)/干部(3)/活动(4)；教官与国旗班两题挂 cap=3 子组（ADR-5 示范）。
+
+**题目生命周期**（裁决 §32.8）：批次 draft 期**只删不作废**（零仪式——没人见过它）；激活后**只作废不删**，作废必填理由（记操作人/时间）。作废语义：填报中心灰卡"本题已作废"（**零条目的作废题直接隐藏**——没人交互过的题灰卡是纯噪音），ResourcePolicy 拒绝新建；在途 ReviewInstance 以终态事件 `cancelled_item_voided` 结束（state 离开 active，拉模型下收件箱自然清空——零遍历零通知）；已有条目保留原状态 + 横幅"该题目已作废"；计分跳过 voided 题但 breakdown 保留一行"本题已作废，不计分"（学生 S1 拿过这题的分、S2 没了，必须看得懂为什么）。**作废事务内释放 source_claims**（该题条目占用的行删除，事件表留审计）——否则"配错作废重建"的新题会被旧占用把学生重报全部拦死；恢复作废反向重占，冲突即恢复失败并提示先处理新题的占用；恢复不复活已终结的审核实例，学生在阶段允许时重新提交。管理端决策指引：**能改则改，改不了才作废重建**——只是分值/参数错 → 原地编辑（config_revision 递增让旧 run 自动过期，零折腾）；字段结构错、题本身立错 → 作废 + "作废并替换"便捷动作（克隆配置为新题、同组、新 id），**不做条目迁移**——payload schema 都变了，迁移只会制造脏数据，学生在补充期重交。
 
 **多条目是统一形态**：一切题型天然多条目，`max_entries=1` 只是配置。允许超出组上限继续填报（撤销缓冲 + "不确定哪张证书能过全交上去"）；封顶只作用于计分层，UI 明示"已通过 5.5 → 按上限 4 计入"。
 
@@ -310,7 +340,11 @@ draft ──submit──▶ in_review ──approve@normalTerminal──▶ appr
 
 - **RoleAt**：从冻结锚点向上找**最近的指定 nodeType 节点**，只在该节点解析 roleKeys 持有者——学院节点上误授的"班长"不会被找到。**NearestRole** 沿链找最近持有者，仅用于辅导员类角色。Quorum 三型 `any | all | atLeast(n)` 覆盖或签/会签/N-of-M；**禁止**任意 DAG / 条件表达式 / ScriptTask。
 - **ReviewInstance（独立投影实体，不塞回 entries）**：`entry_id, revision_id(受审版本), effective_chain(jsonb 快照: 各 stage 的 selector+解析节点+quorum+被跳过stage及原因+normalTerminal 映射), mode(normal|escalated), current_stage_index, state(active|blocked|completed), outcome?, current_role_keys(text[]), current_node_path(ltree)`。有效链在提交时按 ADR-4 计算并快照（含解释链路，写入首个事件）；普通节点**不保存具体 reviewer id**。
-- **收件箱 = 拉模型**：按 `(state='active', current_node_path, current_role_keys)` 与我的 RBAC 授予（含 subtree coverage，ltree `<@`，GiST 索引）实时 join，keyset 分页。换届即时生效；`reassign` 保留给管理员（事件留痕），通常不需要。
+- **收件箱 = 拉模型**：按 `(state='active', current_node_path, current_role_keys)` 与我的 RBAC 授予（含 subtree coverage，ltree `<@`，GiST 索引）实时 join，keyset 分页。换届即时生效；`reassign` 保留给管理员（事件留痕），通常不需要。**不转投递模型**（裁决 §32.9）：投递不解决空缺（分配那一刻同样可能无人可派），却新增换届迁移、逐 assignee 自审回避、"任务昨天属于 B 今天属于 C"的审计怪相；拉查询是索引 join，一所学校几万活跃实例毫无压力；通知定向在发送时刻现场解析接收人即可，不需要落库。
+- **到站检查**（ADR 0007 强化）：条目**每次进入一个 stage**——提交、通过流转、上提——都当场解析该 stage 的审核人集合，为空立即 `state=blocked, reason=ASSIGNEE_NOT_FOUND` 并进管理告警。不只在提交时查。
+- **监护巡检是唯一被信任的正确性机制，不做写路径钩子**（裁决 §32.9）：改变解析结果的来源太多（授予/撤销角色、组织树重构、锚点变更、review_policy 编辑、用户类型变化），钩子挂不全就是隐性卡死，挂全了等于把巡检碎片化撒进十个写路径；且依赖方向不允许——rbac 不该知道 assessment 的存在。巡检挂在调度 fiber 的五分钟档：把 active 实例按 `(role, node_path)` 去重（一个批次最多几十上百组），逐组重解析——原本有人现在空 → blocked + 告警；原本 blocked 现在有人 → **自动转回 active** + 事件。**双向自愈**：补任命一个班长，卡住的条目自己活过来，零迁移。幂等可重入；与人工操作的并发用条件更新守卫（`UPDATE … WHERE state='blocked'`），三方竞态无害。
+- **告警是派生视图，不是实体**：告警面板 = `state='blocked'` 实例按 (batch, role, node, reason) 分组的投影，实例恢复即消失，不存在"删除告警"这个动作。即时性走读路径的显式动作：面板每张卡带"立即复查"按钮（对该组的 scoped 巡检）——管理员补完任命点一下秒级恢复，不点五分钟内也自愈。
+- **滞留水位**（同一次巡检顺手做）：实例同 stage 停留超 N 天 → 不 block，进 batch-admin 审核异常面板（"软件2401 班长处 12 条滞留 5 天"）——运营上更常见的卡死不是没人，是有人不干活。preflight 的 BLOCKED 计数继续作公示前兜底。学生侧对这一切保持中性文案"等待审核中"——组织配置问题是管理员的事。
 - **计票节点**：进入时快照 panel（review_stage_panels），投票入 review_votes（append-only）；成员角色变更触发可达性重校验，不可达 → BLOCKED 告警。**任一成员 escalate 即短路当前 stage**（保留已产生的意见），不许"2 人已同意、第 3 人有疑问"卡死会签。
 - **动作与文案解耦**：底层 outcome 枚举 `APPROVE | REJECT | ESCALATE | RECOMMEND_APPROVE | RECOMMEND_REJECT | COMMENT`。普通模式 stage：approve/reject/escalate；escalated 模式中间 stage：comment/recommend_*/escalate，**仅 terminal 可 approve/reject**。前端文案（通过/驳回/不确定，向上提审）走 i18n message。N-of-M 场景下"几票 reject 算驳回"**没有冻结规则，禁止自行发明**（§30）。
 - **审核决定不带分值**（裁决 §32.4）。全链任何人（含终点）只有 approve / reject（+建议）/ escalate 三个动作，decision 事件里没有分数字段。需要人定值的条款（见义勇为 1–6、三等功额外加分、建议采纳 1–2）一律是 **administrative 题目**：值由录入者写进条目 payload，按配置的 `[min,max]` 在**创建时**校验，越界当场拒绝。于是"审核只裁真伪、定价永远来自配置或录入事实"成为不变量，收件箱里也不再有数值输入框。
@@ -351,8 +385,8 @@ Phase 回答"现在允许干什么"，Publication 回答"正式对外公布了�
 ```
 
 - **Preflight 项与出路**：待审 primary n（审完 / 管理员裁决 void）、escalated 在途 n、BLOCKED n（补任命 / 转派）、未完成 EvaluationTask n（M7：补录 / 转派 / 作废+理由）、ScoreRun 覆盖全部 active participant、题目/组树配置完整（引用驱动已装配、calculator 参数合法、**custom 计分器版本已发布且测试通过**）、roster 完整性问题（缺 anchor / 重复 / 未裁决的显式纳入）。**实时组织树 diff 不在其中**（§9）。blocker>0 不能生成可发布快照；管理员不是点"忽略错误继续"，而是把每个业务对象推进到明确终态。正式公示中**不允许出现"张三 83.2（复核中）"**。
-- **SCHEDULED 即冻结**：批次打 `input_frozen_by_publication_id` 标记；修改审核决定、新增有效 revision、改计分配置、改申诉裁决等一切影响该快照的写路径检查标记并拒绝（错误码 `PUBLICATION_SCHEDULED_FROZEN`，提示"存在已预告公示，请先取消预告"）。取消 = SCHEDULED→CANCELLED→修正→重算→重新准备。**已向学生承诺 9:00 公布，就不允许 9:00 因后台复检失败而不公布**——所以复检发生在 SCHEDULED 之前，发布本身是纯机械动作。
-- **发布编排（领域代码显式写死）**：`publishPreliminary() = publish(S1) + advancePhase(申诉期) + 申诉期结束边界 planned_at := 表单所填 appeal_deadline`（发布表单按实际发布时刻提供 "+3 个工作日" 辅助计算器，落库仍是普通 timestamptz，管理员可手改；**v1 不建 BusinessCalendar**）。`publishFinal() = publish(S2) + advancePhase(结果确认) + supersede(S1 状态)`（S1 内容永远可查）。同一事务完成。不建设 "任意事件 → 任意阶段" 通用规则引擎。
+- **SCHEDULED 即冻结**（集合精确化，裁决 §32.12）：批次打 `input_frozen_by_publication_id` 标记；**拒绝**——审核决定、提交送审、对非草稿条目追加 revision、题目配置修改（含作废）、roster 变更、申诉裁决；**放行纯草稿编辑**（从未提交过的 draft 不构成任何可见分歧，冻结它只是折磨学生）。错误码 `PUBLICATION_SCHEDULED_FROZEN`，提示"存在已预告公示，请先取消预告"。取消预告需 `publication.manage` + 理由，时间线回落"待定"；取消 = SCHEDULED→CANCELLED→修正→重算→重新准备。**发布时刻断言**（纵深防御）：publish 执行前比对当前 config_revision 与各决定计数仍等于 input_manifest 值——按设计不可能不等，不等说明冻结守卫有洞 → 中止 + 告警，绝不带病发布。**已向学生承诺 9:00 公布，就不允许 9:00 因后台复检失败而不公布**——复检发生在 SCHEDULED 之前，发布本身是纯机械动作。
+- **发布编排（领域代码显式写死）**：`publishPreliminary` 的 guard 检查当前处于**公示创建期**（§10：先结账、再 preflight、再预告）。`publishPreliminary() = publish(S1) + advancePhase(申诉期) + 申诉期结束边界 planned_at := 表单所填 appeal_deadline`（发布表单按实际发布时刻提供 "+3 个工作日" 辅助计算器，落库仍是普通 timestamptz，管理员可手改；**v1 不建 BusinessCalendar**）。`publishFinal() = publish(S2) + advancePhase(结果确认) + supersede(S1 状态)`（S1 内容永远可查）。同一事务完成。不建设 "任意事件 → 任意阶段" 通用规则引擎。
 - **排名只存在于正式 Publication**：ranking_policy = `{partitionNodeType?(年级/学院…，分区键取 participant.anchor_path 对应祖先；缺省=整批次), tieBreak: 总分→品德→学业→文体, 纳入范围}`；仍并列 → 标记 unresolved tie 交学院裁决并记录原因，**禁止用 user_id/created_at 静默破除并列**。批次范围 ≠ 排名范围。填报期无任何实时排名。
 - **可见性三权分立**：view_self（恒可）、view_peers（租户配置）、ranking.view。默认：S1 `{own:✓, peers:按配置, rank:×}`；S2 `{own:✓, peers:按配置, rank:✓}`。
 
@@ -379,7 +413,11 @@ packages/plugins/
 sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业务数据）。**归置决策不适用
 "复杂度由需求触发"元规则**——归置没有推迟收益，功能建设才有。
 
-**何时新建 Plugin（满足其一）**：独立数据生命周期 / 可独立启停 / 是某 ExtensionPoint 的驱动。否则一律 assessment/core 内部 module（batch/ phase/ roster/ item/ entry/ review/ appeal/ scoring/ publication/ archive/；index.ts 保持组合根 facade）。**不拆** eval-batch/flow/scoring/publication 四件套——共享实体、共享事务、生命周期同步、强外键耦合，拆开只制造 contract 仪式。
+**何时新建 Plugin（满足其一）**：独立数据生命周期 / 可独立启停 / 是某 ExtensionPoint 的驱动。否则一律 assessment/core 内部 module（batch/ phase/ roster/ item/ entry/ review/ appeal/ scoring/ publication/ archive/；index.ts 保持组合根 facade）。**不拆** eval-batch/flow/scoring/publication 四件套——共享实体、共享事务、生命周期同步、强外键耦合，拆开只制造 contract 仪式。批次的"耦合"是聚合的本质：publish 与 advancePhase 同事务、作废与终结审核释放 claim 同事务——这些事务边界就是插件边界不该穿过的地方（仓库先例：auth 的 users/user-types/sign-in/session/placement、rbac 的 roles/grants/diagnostics 都是单插件内部模块）。
+
+**不抽通用工作流/时间线能力**：审核链引擎与 Phase 模型今天只有一个消费者，词汇（锚点、花名册、批次）全是综测的——现在抽成通用能力就是在造 §27 禁止的 BPMN。触发条件：第二个真实领域需要受限审核链时，先按 infra 四判据评估（届时它大概率仍不满足"零业务语义"）。Publication/打印/归档是纯综测语义，永不外抽。扩展缝已经够用：题型走 `assessment.item-type`，计分走 `assessment.calculator`，附件/沙箱/LLM 走 infra 服务。
+
+**grades 集成方向（M6 届时定，两候选记录在此）**：assessment 不依赖 grades 插件不变；候选 A（倾向）——grades 暴露零依赖契约叶 `@qualy/grades-contract`（服务 key + `getStudentTermGrades` 类型），grades 插件提供服务，assessment core 的 derived 驱动经契约可选消费（配置引用了未装配能力 → 硬失败，复用既有规则），仿 auth 依赖 rbac-contract 而非 rbac 的先例；候选 B——grades 反向 dependsOn assessment 并贡献驱动。A 保住"grades 独立成立"，B 保住"core 零 grades 知识"，届时按谁的代价小定。
 
 依赖：core → db/server/ui/org/rbac/auth（+M2 storage）。**assessment 不依赖 grades/dormitory**——反向通过驱动/contract 消费；没有 grades 时纯材料型综测照常运行。题目实例引用了未装配能力（evidenceSource=dormitory 而插件未启用）→ 配置校验/装配期**硬失败**，由管理员显式改配置；**禁止静默降级为人工模式**。
 
@@ -405,7 +443,7 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 ## 21. 表清单与 ownership（最终归属；按里程碑分批建，不一次建全）
 
-- **assessment/core**：`assessment_batches`（daterange、timezone、current_phase_id）；`batch_phases`（(batch,ordinal) 唯一，actual_entry_at 不可回改）；`phase_events`（append-only：计划修改+实际切换）；`phase_templates`；`batch_participants`（(batch,user) 唯一、anchor_path ltree）；`batch_config_revisions`；`score_groups`（自引用）；`assessment_items`；`entries`（轻量）；`entry_revisions`（不可变，(entry,revision_no) 唯一）；`entry_revision_attachments`（关系表）；`source_claims`（(tenant,namespace,scope_key,normalized_key) 唯一）；`review_instances`（收件箱索引：(tenant,state,current_node_path) + GiST）；`review_stage_panels`；`review_votes`；`review_events`；`appeal_cases` / `appeal_stage_panels` / `appeal_events` / `appeal_attachments`；`score_runs`；`score_results`；`publications`；`publication_rows`（自包含物化，READY 后不可改）。
+- **assessment/core**：`assessment_batches`（daterange、timezone、current_phase_id）；`batch_phases`（(batch,ordinal) 唯一，actual_entry_at 不可回改）；`phase_events`（append-only：计划修改+实际切换，含 processed_at）；`phase_item_scopes` / `phase_participant_scopes`（补充期作用范围，空=不限）；`phase_templates`；`batch_participants`（(batch,user) 唯一、anchor_path ltree）；`batch_config_revisions`（append-only 配置事件日志；批次上另有单调 config_revision 计数）；`score_groups`（自引用）；`assessment_items`；`entries`（轻量）；`entry_revisions`（不可变，(entry,revision_no) 唯一）；`entry_revision_attachments`（关系表）；`source_claims`（(tenant,namespace,scope_key,normalized_key) 唯一）；`review_instances`（收件箱索引：(tenant,state,current_node_path) + GiST）；`review_stage_panels`；`review_votes`；`review_events`；`appeal_cases` / `appeal_stage_panels` / `appeal_events` / `appeal_attachments`；`score_runs`；`score_results`；`publications`；`publication_rows`（自包含物化，READY 后不可改）。
 - **storage**：`attachments`。grades / dormitory 的表在 M6/M8 设计时追加到本文档。
 - 全表遵守仓库既有形态：uuidv7 主键库侧默认、timestamptz、复合租户外键 `(tenant_id, id)`、跨插件取表走 dependsOn + 实体闭包、迁移 `pnpm qualy generate`（destructive 走 drop-guard）。ltree/daterange 自定义类型仿 org 先例。
 
@@ -443,7 +481,9 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 ## 24. 测试重点（不变量优先于 CRUD 覆盖）
 
-- **Phase**：phaseControlled fail closed；scheduled transition 幂等；actual_entry_at 不可回改；PhaseGate 只能收窄 RBAC。
+- **Phase**：phaseControlled fail closed；scheduled transition 幂等；actual_entry_at 不可回改；PhaseGate 只能收窄 RBAC。**时间模型**：effectivePhase 按时钟精确到秒（调度停机不影响截止判定，物化只是追认）；队头武装——manual 边界之后的 scheduled 绝不自燃；硬计划越过未发生的 manual 边界被校验拒绝；偏移在事件时刻物化，早于上游 actual 被拒；scoped 阶段只放行范围内的 entry 动作，review/appeal 不受限。
+- **配置生命周期**：active 批次自由编辑落配置事件；config_revision 递增使旧 ScoreRun 过期（preflight 判"试算需重跑"）；作废终结在途实例、释放 source_claims、breakdown 留痕；恢复作废遇占用冲突失败；SCHEDULED 冻结集合逐项拒绝、纯草稿放行；发布时刻断言中止带病发布。
+- **巡检**：双向自愈（撤角色 → blocked，补任命 → 自动 active）；与手工操作并发安全（条件更新）；"立即复查"scoped 生效；滞留进面板不 block；到站检查覆盖提交/流转/上提三个入口。
 - **Review**：普通路径恒为疑点链前缀；禁止自审；职位空缺不自动上浮；terminal 必须存在；voter panel 分母稳定；single 换届实时生效；escalate 短路会签。
 - **Entry**：Revision append-only；审核锚定具体 revision；proxy 的 actor/subject 不混淆。
 - **Scoring**：§16 修正版五条不变量；正负分场景分别按语义测试；**禁止**"撤销任一条目总分单调不增"这类错误全局不变量。
@@ -459,16 +499,16 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 # 第四部分 · 里程碑（垂直切片，每步端到端可演示）
 
 **M1 — Batch + Phase + Roster + PhaseGate（运行时骨架）**
-交付：§9–§11 全部（批次 CRUD、daterange、阶段序列/模板/phase_events、调度 fiber、花名册生成与 diff、phaseControlled 元数据、PhaseGate、学生时间线、batch-admin 基础页）。不做 Entry/附件/复杂审核/计分/公示。
-验收：① 模板建批次，阶段编辑器只显示受控权限；② scheduled 到点自动切换且幂等（重扫无重复事件）；③ 改未来 planned 成功并审计，改 actual 被拒；④ manual/force 切换落审计带 reason；⑤ 花名册单 SQL 生成；diff 三类差异可应用；excluded 不删数据、组织变化不使 roster 漂移；⑥ 权限矩阵逐格验证（预填报可 edit 不可 submit；审核整理关提交、review 继续；归档期写动作全 403）；⑦ createTestContext 覆盖 gate 判定与切换幂等。
+交付：§9–§11 全部（批次 CRUD、daterange、阶段序列/模板/phase_events(+processed_at)、**队列武装模型与三种时间形态、effectivePhase 时钟判定**、phase_item/participant_scopes 与插入阶段、配置事件日志、调度 fiber、花名册生成与 diff（转入转出对称）、phaseControlled 元数据、PhaseGate(+ctx)、结构化拒因、学生时间线（取值优先级）、batch-admin 基础页）。不做 Entry/附件/复杂审核/计分/公示。
+验收：① 模板建批次，阶段编辑器只显示受控权限；② scheduled 到点自动切换且幂等（重扫无重复事件），actual 写 planned 值、processed_at 另记；③ 改未来 planned 成功并审计，改 actual 被拒；④ manual/force 切换落审计带 reason；⑤ 花名册单 SQL 生成；diff 三类差异可应用；excluded 不删数据、组织变化不使 roster 漂移；转入默认不纳入、纳入时双重参与警告；⑥ 权限矩阵逐格验证（预填报可 edit 不可 submit；审核整理关提交、review 继续；归档期写动作全 403）；⑦ createTestContext 覆盖 gate 判定与切换幂等；⑧ **队头武装**：manual 边界之后的 scheduled 到点不自燃，硬计划越过 manual 被拒；⑨ **effectivePhase**：物化延迟不影响 gate 判定（时钟说了算）；⑩ scoped 阶段：范围外 entry 动作拒绝且拒因可辨，review 不受限。
 
 **M2 — Storage + Evidence 最小闭环（第一条可演示业务）**
 交付：storage 四接口 + 本地 provider + authorizer；item-type 扩展点 + evidence 驱动（text/date/attachment）；Entry/Revision/关系表附件；题目的 `entrySource`（student | administrative）与行政录入路径；单 stage 审核 approve/reject；**驳回附修改建议**（建议稿 + 必填文字意见，学生端只读、不可套用/复制）；实例：退役复学（student）+ 一条扣分题（administrative）。
-验收：学生传证明→草稿→提交→审核通过→"我的成绩"显示 +3；SUBMITTED 后 edit 被 ResourcePolicy 拒；**他人对 student 题目的写入一律 403**（不是权限不足，是这条路不存在）；行政录入的扣分条目 actor≠subject、学生端可见录入者与时间；驳回带建议 → 学生自己改 → 新 revision → 重提，建议随决定事件留痕。**到此必须是可演示系统，不是基础设施。**
+验收：学生传证明→草稿→提交→审核通过→"我的成绩"显示 +3；SUBMITTED 后 edit 被 ResourcePolicy 拒；**他人对 student 题目的写入一律 403**（不是权限不足，是这条路不存在）；行政录入的扣分条目 actor≠subject、学生端可见录入者与时间；驳回带建议 → 学生自己改 → 新 revision → 重提，建议随决定事件留痕；**作废**：激活后的题只能作废（必填理由）、在途实例以 cancelled_item_voided 终结、灰卡与横幅按有无条目区分、draft 批次只删不作废。**到此必须是可演示系统，不是基础设施。**
 
 **M3 — Review 完整体（最难的人工审核问题）**
 交付：§14 全部（完整链+normalTerminal、RoleAt/NearestRole、ADR-4 三分、quorum 三型+panel、escalation、拉式收件箱、reassign、事件+投影）；source_claims；event_pick/enum_with_other/pattern 字段。实例：献血。
-验收：① 献血全链跑通；② 同编码第二条：提交软提示、审核通过被唯一约束拒绝；③ 班长换届收件箱即时增减；④ 专业直属生跳过 class stage 且事件含解释；⑤ class 有节点无班长 → BLOCKED 进管理告警；⑥ 班长提交自己的条目自审剔除生效；⑦ atLeast(2)：panel 快照、成员撤角色触发可达性告警、任一 escalate 短路、仅 terminal 可 reject。
+验收：① 献血全链跑通；② 同编码第二条：提交软提示、审核通过被唯一约束拒绝；③ 班长换届收件箱即时增减；④ 专业直属生跳过 class stage 且事件含解释；⑤ class 有节点无班长 → BLOCKED 进管理告警；⑥ 班长提交自己的条目自审剔除生效；⑦ atLeast(2)：panel 快照、成员撤角色触发可达性告警、任一 escalate 短路、仅 terminal 可 reject；⑧ **巡检双向自愈**：撤销唯一班长角色 → 五分钟档转 blocked + 告警，补任命 → 自动回 active，"立即复查"秒级生效；⑨ **到站检查**：流转/上提进入空 stage 当场 blocked；⑩ 作废释放 source_claims：作废重建后同编码可重报，恢复作废遇新占用失败；⑪ 滞留水位进审核异常面板。
 
 **M4 — Scoring（从审核系统升级为综测系统）**
 交付：§16 全部（calcParticipant、fixed/lookup/range/decrement、sum/max/countTier、组树嵌套 cap、Breakdown、my-result 实时预览、trial ScoreRun 输入冻结、修正版不变量属性测试）。实例：教官+国旗班。
@@ -476,7 +516,7 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 **M5 — Publication + Appeal + Archive（完整可用于一个学期）**
 交付：§15/§17/§18 全部（preflight、READY→SCHEDULED 冻结与错误码、rows 自包含物化、publishPreliminary/publishFinal 同事务编排、+N 工作日辅助计算器（纯前端）、分区排名+tieBreak+unresolved tie、可见性、AppealPolicy 后缀默认、归档与打印源）。
-验收：① 有待审条目无法生成可发布快照，每个 blocker 出路可操作（含 admin void）；② SCHEDULED 后对批次输入写被 `PUBLICATION_SCHEDULED_FROZEN` 拒、取消后恢复；③ 到点自动 PUBLISHED、published_at 落库、同事务入申诉期、申诉截止=表单值且不随调度抖动移动；④ 对 S1 行申诉→中间节点仅 escalate→terminal CORRECT→产生新输入；⑤ S2 吸收更正、rank 冻结、tieBreak 品德→学业→文体、并列标 unresolved；⑥ S1 在 S2 后原样可查；⑦ 归档 gate + 打印与 S2 逐字节一致。
+验收：① 有待审条目无法生成可发布快照，每个 blocker 出路可操作（含 admin void）；② SCHEDULED 后冻结集合逐项被 `PUBLICATION_SCHEDULED_FROZEN` 拒、纯草稿编辑放行、取消后恢复；②′ **发布时刻断言**：人为制造 manifest 漂移 → publish 中止 + 告警；②″ publishPreliminary 在非公示创建期被 guard 拒；申诉期显示时间取 publication.publish_at 单源；③ 到点自动 PUBLISHED、published_at 落库、同事务入申诉期、申诉截止=表单值且不随调度抖动移动；④ 对 S1 行申诉→中间节点仅 escalate→terminal CORRECT→产生新输入；⑤ S2 吸收更正、rank 冻结、tieBreak 品德→学业→文体、并列标 unresolved；⑥ S1 在 S2 后原样可查；⑦ 归档 gate + 打印与 S2 逐字节一致。
 **M5 完成 = 纯材料型综测系统整体可投产**（学生填报→多级审核→计分→两次公示→申诉→归档），Grades/Appraisal/Dormitory 均为增量。
 
 **M6 — Grades（成绩事实域 + 派生题型）**：grades 只存事实（term / course / course_nature(必修|必选|公选) / credit / grade_record(attempt 序, 首考标记) / import_batch / 错误行 / 修订历史），保留**课程行级**（规则要问"全部必修是否 ≥85""不及格几门"）；对外唯一窄接口 `getStudentTermGrades(studentId, termId)`。综测侧 `interaction:'derived'` 驱动实现：加权基础分×75%（剔公选、取首考）、全 85/80 加分、必修必选不及格扣分——**"值多少分"永远写在 assessment 侧**。重导入纠错 → 关联批次未发布的 ScoreRun 需重跑。实施前补详细设计到本文档。
@@ -622,3 +662,15 @@ decision 事件不携带分值。需要人定值的条款一律是 administrativ
 的学生也要有一个综测成绩，"取消评奖评优资格"属于奖学金评定系统（与综测并列的另一套，v1 不做）；
 弄虚作假扣 5 分就是一条普通的行政扣分条目。第九条的"月度小结 + 学期平均"不做，其等价能力是
 "预填报期可以提前一个学期开"（Phase 模型天然支持，把 `planned_entry_at` 设早即可，零新机制）。
+
+**32.7 花名册与锚点**（M1 细节裁决，2026-08-09）。转入与转出对称走 diff 面板，**不自动纳入**——双重参与（同一学期两个批次同时算分公示）必须由人协调；"填报截止前自动纳入"开关默认关且加"他批次无 active 记录"守卫。锚点两列保留，但理由修正：在途条目的稳定靠链快照（钉节点、实时解析人），roster 锚点服务**此后**的路由/排名分区/行政管辖与管理员控制杆；anchor_path 防组织树重构；糖开关"首次提交前锚点变更自动同步"。
+
+**32.8 配置生命周期与题目作废**（M1 细节裁决）。"出现提交后冻结"废除，改为分级：draft 自由、active 自由+配置事件+影响确认对话框、SCHEDULED 冻结、归档只读。理由必填**按操作类型**挂（作废；active 批次计分语义变更），不按阶段挂。激活后只作废不删、draft 只删不作废；作废终结在途审核（cancelled_item_voided）、**事务内释放 source_claims**、breakdown 留"不计分"行；零条目作废题学生端隐藏；"作废并替换"克隆配置不迁条目。BatchConfigRevision 降级为 append-only 事件日志 + 单调计数；可重算由 input_manifest 含 config_revision 免费保证。
+
+**32.9 卡死发现**（M1 细节裁决）。拉模型保留，不转投递（投递不解决空缺，新增迁移/回避/审计成本）；**巡检是唯一正确性机制，不做写路径钩子**（挂不全=隐性卡死，挂全=碎片化；rbac 不该知道 assessment）；告警是派生视图非实体，没有"删除告警"；即时性走面板"立即复查"按钮（scoped 巡检）；滞留水位管"有人不干活"；学生侧中性文案"等待审核中"。
+
+**32.10 时间模型**（M1 细节裁决）。actual_entry_at 保留且定义为**语义生效时刻**（scheduled 边界写 planned 值；机器执行时刻另记 phase_events.processed_at，与 publish_at/published_at 同模式）；PhaseGate 按 effectivePhase(now) 时钟判定，物化只是追认；**时间线是队列，只武装队头**——manual 边界之后的 scheduled 绝不触发；下游时间三形态：硬计划（只许在队头到首个未发生 manual 边界的前缀上）/ 偏移量（事件发生时物化）/ 预计（纯展示）；物化早于上游 actual 拒绝。边界二分：承诺型到点必然生效，里程碑型 guard 优先于时钟。
+
+**32.11 审核期结束与公示创建期**（M1 细节裁决）。一个 manual 边界三个旋钮：手动按钮（默认，待审归零点亮，未归零变强制结束）+ SLA 计划时间（只告警不自动切）+ 归零自动切开关（骑巡检的硬编码领域条件）；提审关闭后待审数单调递减是稳定谓词。默认模板新增**公示创建期**，publishPreliminary 的 guard 检查处于该阶段；申诉期显示时间单源取 publication.publish_at，不复制进 planned。scoped 补充期用 phase_item_scopes / phase_participant_scopes 两张 join 表，只限 entry 动作族，review/appeal 不受限。
+
+**32.12 SCHEDULED 冻结集合**（M1 细节裁决）。精确拒绝集：审核决定、提交送审、非草稿条目追加 revision、题目配置修改（含作废）、roster 变更、申诉裁决；纯草稿编辑放行。发布时刻断言 manifest 一致，不等即中止告警；取消预告需 publication.manage + 理由。
