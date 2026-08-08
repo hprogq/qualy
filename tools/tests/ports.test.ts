@@ -51,3 +51,43 @@ describe('the ports test servers listen on', () => {
     expect(offenders).toEqual([])
   })
 })
+
+// Scripts name paths, and this repository has moved its paths twice. The last
+// move left `pnpm plugin:add` - the mandated way to add a plugin - invoking a
+// CLI that no longer existed, after it had already edited two manifests and
+// installed, and nothing was red until somebody ran it.
+const glob = (dir: string): string[] =>
+  fs.existsSync(dir)
+    ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : glob(full)
+        return /\.(ts|yml|yaml|json)$/.test(entry.name) ? [full] : []
+      })
+    : []
+
+describe('what the scripts point at', () => {
+  // what a command string EXECUTES, which is the thing that moves and the
+  // thing whose absence is only discovered by running it. Paths a script
+  // computes from a root it was handed are that script's business.
+  const executed = (source: string): string[] => [
+    ...[...source.matchAll(/(?:tsx|node)\s+([\w./-]+\.tsx?)/g)].map((match) => match[1]!),
+    // and the same target held in a constant, which is where it moved to
+    // after the first repair
+    ...[...source.matchAll(/'((?:apps|packages|tools)\/[\w./-]+\.tsx?)'/g)].map(
+      (match) => match[1]!,
+    ),
+  ]
+
+  const sources = ['package.json', ...glob('tools'), ...glob('.github/workflows')]
+
+  it('names files that exist', () => {
+    const missing: string[] = []
+    for (const source of new Set(sources)) {
+      if (!fs.existsSync(source) || fs.statSync(source).isDirectory()) continue
+      for (const referenced of executed(fs.readFileSync(source, 'utf8'))) {
+        if (!fs.existsSync(referenced)) missing.push(`${source} -> ${referenced}`)
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})

@@ -9,3 +9,6 @@ cordis.gen.yml
 # vendored upstream sources: read-only reference, never formatted or linted
 repos/
 apps/web/.qualy/
+
+# the assembly CLI owns these bytes; formatting them makes every resolve a diff
+qualy.lock.json

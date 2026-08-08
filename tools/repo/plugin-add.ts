@@ -2,8 +2,16 @@ import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-// convenience scaffold for a new workspace plugin: root workspace dependency
-// plus qualy.yml entry, then install
+// convenience scaffold for a new workspace plugin: host workspace dependency
+// plus qualy.yml entry, then install and resolve.
+//
+// Every path here is a path this repository moved once already, and the last
+// move left this script running a CLI that no longer existed - after it had
+// edited two manifests and installed. Re-running it on a plugin it has
+// already added is safe, which is what makes that recoverable.
+
+/** the assembly CLI, as `pnpm qualy` invokes it */
+const CLI = 'apps/cli/src/main.ts'
 
 const name = process.argv[2]
 if (!name?.startsWith('@qualy/plugin-')) {
@@ -64,8 +72,12 @@ const pluginManifest = (() => {
   return {}
 })()
 
-// aggregators own their inputs: contract consumers and component consumers
-// must declare the plugin, the generators hard-fail otherwise
+// Aggregators own their inputs: the browser collector hard-fails on a plugin
+// that contributes components without apps/web declaring it. A brand new
+// plugin declares no component yet, so the signal available here is whether it
+// ships browser code at all - and running this command again on an existing
+// plugin is what fixes up the dependency later, which is exactly what the
+// collector's own error tells the author to do.
 const pluginName: string = name
 function declareIn(manifestPath: string) {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
@@ -76,11 +88,13 @@ function declareIn(manifestPath: string) {
   )
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
 }
-if (pluginManifest.exports?.['./contract']) declareIn('packages/api-client/package.json')
-if (pluginManifest.exports?.['./client']) declareIn('apps/web/package.json')
+const shipsBrowserCode = Object.keys(pluginManifest.exports ?? {}).some((entry) =>
+  entry.startsWith('./client'),
+)
+if (shipsBrowserCode) declareIn('apps/web/package.json')
 
 execSync('pnpm install', { stdio: 'inherit' })
-execSync('pnpm exec tsx scripts/qualy.ts resolve', { stdio: 'inherit' })
+execSync(`pnpm exec tsx ${CLI} resolve`, { stdio: 'inherit' })
 console.log(
   `${name} added; declare what it contributes on its descriptor (Db.entities, Ui.surfaces, ...)`,
 )
