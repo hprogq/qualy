@@ -212,7 +212,11 @@ authorize(principal, code, resource) =
   ∧ ResourcePolicy.allows(resource.state, action)      # 对象状态机 guard
 ```
 
-**PhaseGate**：权限目录元数据增加 `phaseControlled?: boolean`（对 rbac 契约的**加法**修改，默认 false，向后兼容）。判定：`!phaseControlled → true；否则 code ∈ currentPhase.permission_profile`，**fail closed**——未来新增的受控权限在旧 Profile 中缺席即拒绝。阶段编辑器只展示 phaseControlled=true 的权限；`auth.login / org.* / iam.* / assessment.batch.manage` 永远不出现在阶段配置里。PhaseGate 只限制、绝不授予：阶段开放 review.process 不会让无审核 RBAC 的学生获得审核权。
+**PhaseGate**：**rbac 原封不动，零改动**（裁决 §32.13）。曾考虑给权限目录加 `phaseControlled?: boolean` 元数据，被分层反对否决——`phaseControlled` 是 PhaseGate 的词汇，PhaseGate 住在 assessment；`PermissionDefinition` 的契约注释本就写明"刻意不放别人的关切"（哪个通道可携带、谁默认持有都被刻意排除），往里加上层旗标恰好违反这个契约自己文档化的原则。而且事实基础是：**所有被门控的权限全部是 `assessment.*` 自己的码**——"哪些码受门控"这份注册表是门的属性，不是权限定义的属性。
+
+实现落在 assessment 自己的 `src/permissions.ts` 叶子（照 org 先例）：权限声明 `Access.permissions` 照常上车（纯 rbac 契约形状），旁边同文件导出 `PHASE_GATED: Set<string>` 白名单——成员 = 下表 ✓ 列，一字不多。启动断言集合 ⊆ 本插件声明的码（防手滑）。判定：`PHASE_GATED.has(code) ? code ∈ currentPhase.permission_profile : true`，**fail closed** 语义不变——新增受控权限在旧 Profile 缺席即拒绝。阶段编辑器的数据源就是这个集合（code + name 同文件可取）。
+
+由此获得一个**结构性安全升级**：原方案里任何插件理论上都能给任意权限打旗（需要额外校验拦"给 auth.login 打旗"），现在 `auth.login / org.* / iam.*` 在结构上就不可能出现在阶段编辑器——它们不在 assessment 的集合里，不需要任何校验去拦。PhaseGate 只限制、绝不授予：阶段开放 review.process 不会让无审核 RBAC 的学生获得审核权。未来某驱动插件要新增受门控权限时，给 `ItemTypeDriver` 加 `gatedPermissions?: readonly string[]`，prepare 相与题型目录一起并入集合——与驱动注册题型同一条机制，现在不建。
 
 **ResourcePolicy** 即条目/申诉状态机的动作 guard：正式填报期 + RBAC 允许 entry.edit，但条目 IN_REVIEW → 仍拒绝。
 
@@ -237,7 +241,8 @@ authorize(principal, code, resource) =
 | assessment.ranking.view                            | ✓               | 看排名                                                                 |
 
 **权限码用连字符分段**（`force-advance`、`view-self`），与仓库既有 `iam.tenant-role.bind` 一致；
-段内下划线是本设计稿的写法，落库时统一（裁决 §32.3）。
+段内下划线是本设计稿的写法，落库时统一（裁决 §32.3）。表中 phaseControlled 列的 ✓ 即
+**PHASE_GATED 集合成员**——它是 assessment 自有的白名单，不是 rbac 字段（裁决 §32.13）。
 
 **默认阶段权限矩阵**（全是 permission_profile 配置，零特判代码）：
 
@@ -481,7 +486,7 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 ## 24. 测试重点（不变量优先于 CRUD 覆盖）
 
-- **Phase**：phaseControlled fail closed；scheduled transition 幂等；actual_entry_at 不可回改；PhaseGate 只能收窄 RBAC。**时间模型**：effectivePhase 按时钟精确到秒（调度停机不影响截止判定，物化只是追认）；队头武装——manual 边界之后的 scheduled 绝不自燃；硬计划越过未发生的 manual 边界被校验拒绝；偏移在事件时刻物化，早于上游 actual 被拒；scoped 阶段只放行范围内的 entry 动作，review/appeal 不受限。
+- **Phase**：PHASE_GATED fail closed（集合内缺席于 Profile 即拒，集合外恒放行）；scheduled transition 幂等；actual_entry_at 不可回改；PhaseGate 只能收窄 RBAC。**时间模型**：effectivePhase 按时钟精确到秒（调度停机不影响截止判定，物化只是追认）；队头武装——manual 边界之后的 scheduled 绝不自燃；硬计划越过未发生的 manual 边界被校验拒绝；偏移在事件时刻物化，早于上游 actual 被拒；scoped 阶段只放行范围内的 entry 动作，review/appeal 不受限。
 - **配置生命周期**：active 批次自由编辑落配置事件；config_revision 递增使旧 ScoreRun 过期（preflight 判"试算需重跑"）；作废终结在途实例、释放 source_claims、breakdown 留痕；恢复作废遇占用冲突失败；SCHEDULED 冻结集合逐项拒绝、纯草稿放行；发布时刻断言中止带病发布。
 - **巡检**：双向自愈（撤角色 → blocked，补任命 → 自动 active）；与手工操作并发安全（条件更新）；"立即复查"scoped 生效；滞留进面板不 block；到站检查覆盖提交/流转/上提三个入口。
 - **Review**：普通路径恒为疑点链前缀；禁止自审；职位空缺不自动上浮；terminal 必须存在；voter panel 分母稳定；single 换届实时生效；escalate 短路会签。
@@ -492,14 +497,14 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 ## 25. 工程接口点（详规以 CLAUDE.md 为准）
 
-实现前必读：CLAUDE.md → docs/effect-migration.md 相关节 → STATUS.md → 当前插件描述器实现 → rbac contract → org ltree 实现 → database 插件封装。描述器上车：表 `Db.entities`（+baselineDir 幂等片段装 extension/自定义类型）；权限 `Access.permissions`（phaseControlled 为**加法**元数据，落 rbac 契约包，默认 false）；API `src/api.ts` HttpApiGroup + `Api.group`，域错误 `src/server/errors.ts` 入全局错误码门禁；页面 `Ui.page` / `Ui.react` / collection；扩展点按 plugin-kit ExtensionPoint（prepare 相）。**Effect v4 是 beta：HttpApi / multipart / Schedule / Fiber / Layer / Schema 一律实查 `repos/` 同版本源码，禁止凭 v3 记忆编码**；三处必查点：multipart 上传、fiber 定时扫描、daterange 类型映射。keyset 分页、租户纪律（tenantId 只来自 session/配置/服务端关联对象）、frozen-routes 与 error-codes 同笔更新——逐条适用。
+实现前必读：CLAUDE.md → docs/effect-migration.md 相关节 → STATUS.md → 当前插件描述器实现 → rbac contract → org ltree 实现 → database 插件封装。描述器上车：表 `Db.entities`（+baselineDir 幂等片段装 extension/自定义类型）；权限 `Access.permissions`（纯 rbac 契约形状，**零扩展**；PHASE_GATED 门控白名单是 assessment 自有数据，与权限声明同文件，见 §11）；API `src/api.ts` HttpApiGroup + `Api.group`，域错误 `src/server/errors.ts` 入全局错误码门禁；页面 `Ui.page` / `Ui.react` / collection；扩展点按 plugin-kit ExtensionPoint（prepare 相）。**Effect v4 是 beta：HttpApi / multipart / Schedule / Fiber / Layer / Schema 一律实查 `repos/` 同版本源码，禁止凭 v3 记忆编码**；三处必查点：multipart 上传、fiber 定时扫描、daterange 类型映射。keyset 分页、租户纪律（tenantId 只来自 session/配置/服务端关联对象）、frozen-routes 与 error-codes 同笔更新——逐条适用。
 
 ---
 
 # 第四部分 · 里程碑（垂直切片，每步端到端可演示）
 
 **M1 — Batch + Phase + Roster + PhaseGate（运行时骨架）**
-交付：§9–§11 全部（批次 CRUD、daterange、阶段序列/模板/phase_events(+processed_at)、**队列武装模型与三种时间形态、effectivePhase 时钟判定**、phase_item/participant_scopes 与插入阶段、配置事件日志、调度 fiber、花名册生成与 diff（转入转出对称）、phaseControlled 元数据、PhaseGate(+ctx)、结构化拒因、学生时间线（取值优先级）、batch-admin 基础页）。不做 Entry/附件/复杂审核/计分/公示。
+交付：§9–§11 全部（批次 CRUD、daterange、阶段序列/模板/phase_events(+processed_at)、**队列武装模型与三种时间形态、effectivePhase 时钟判定**、phase_item/participant_scopes 与插入阶段、配置事件日志、调度 fiber、花名册生成与 diff（转入转出对称）、permissions.ts（权限声明 + PHASE_GATED 同文件）、PhaseGate(+ctx)、结构化拒因、学生时间线（取值优先级）、batch-admin 基础页）。不做 Entry/附件/复杂审核/计分/公示。
 验收：① 模板建批次，阶段编辑器只显示受控权限；② scheduled 到点自动切换且幂等（重扫无重复事件），actual 写 planned 值、processed_at 另记；③ 改未来 planned 成功并审计，改 actual 被拒；④ manual/force 切换落审计带 reason；⑤ 花名册单 SQL 生成；diff 三类差异可应用；excluded 不删数据、组织变化不使 roster 漂移；转入默认不纳入、纳入时双重参与警告；⑥ 权限矩阵逐格验证（预填报可 edit 不可 submit；审核整理关提交、review 继续；归档期写动作全 403）；⑦ createTestContext 覆盖 gate 判定与切换幂等；⑧ **队头武装**：manual 边界之后的 scheduled 到点不自燃，硬计划越过 manual 被拒；⑨ **effectivePhase**：物化延迟不影响 gate 判定（时钟说了算）；⑩ scoped 阶段：范围外 entry 动作拒绝且拒因可辨，review 不受限。
 
 **M2 — Storage + Evidence 最小闭环（第一条可演示业务）**
@@ -597,11 +602,13 @@ BatchConfigRevision；⑦ 端到端演示：粘贴一条真实细则 → 产出�
 
 ## 28. 明确禁止的错误简化
 
-Entry 内容直接 UPDATE；任何形式的替学生填报或替学生修改（impersonate、代录、一键套用审核人的修改建议）；Publication 做成实时查询；审核任务永久绑定具体用户（single/any 必须实时解析）；组织变化自动删 Roster；dormitory 缺失静默转人工；学生自由挑查寝批次/时点；权限交集波及 auth.login 等全局权限（必须 phaseControlled 白名单）；把 escalation 当 appeal；每条政策一个 plugin；用 user_id/created_at 静默破除排名并列；靠前端查询代替 source_claim 数据库唯一约束；AI 生成的计分代码未经测试与人工显式发布直接生效；custom 函数失败时静默给零分。
+Entry 内容直接 UPDATE；任何形式的替学生填报或替学生修改（impersonate、代录、一键套用审核人的修改建议）；Publication 做成实时查询；审核任务永久绑定具体用户（single/any 必须实时解析）；组织变化自动删 Roster；dormitory 缺失静默转人工；学生自由挑查寝批次/时点；权限交集波及 auth.login 等全局权限（PHASE_GATED 白名单在结构上排除它们）；把 escalation 当 appeal；每条政策一个 plugin；用 user_id/created_at 静默破除排名并列；靠前端查询代替 source_claim 数据库唯一约束；AI 生成的计分代码未经测试与人工显式发布直接生效；custom 函数失败时静默给零分。
 
 ## 29. 施工时先问的五个问题
 
 遇到新能力，按序自问：**① 事实还是规则？** 事实落库，规则进配置/scorer。**② 历史结构还是实时身份？** 结构快照，身份动态解析。**③ 正式结果还是当前预览？** 预览动态，正式 immutable。**④ 业务状态还是权限？** 资格→RBAC，时间开放→PhaseGate，对象能否操作→ResourcePolicy。**⑤ 独立领域还是 core 内部职责？** 独立生命周期→Plugin，强耦合→core module。绝大多数架构疑问会被这五问直接消解。
+
+另有一条针对"要不要往基础插件加东西"的判据（裁决 §32.13）：**字段/查询归谁，看它的词汇属于谁。** holders 反查（"谁在节点 N 持有角色 R"）——role、node、grant 全是 rbac 自己的词汇，加在 rbac 是纯下行的只读 API，合法；`phaseControlled`——phase 是 assessment 的词汇，下层契约要理解自己的字段就得先理解上层概念，这是概念性循环依赖，哪怕 import 图上没有环。
 
 ## 30. 未冻结的业务问题（遇到必须问用户，禁止猜）
 
@@ -674,3 +681,5 @@ decision 事件不携带分值。需要人定值的条款一律是 administrativ
 **32.11 审核期结束与公示创建期**（M1 细节裁决）。一个 manual 边界三个旋钮：手动按钮（默认，待审归零点亮，未归零变强制结束）+ SLA 计划时间（只告警不自动切）+ 归零自动切开关（骑巡检的硬编码领域条件）；提审关闭后待审数单调递减是稳定谓词。默认模板新增**公示创建期**，publishPreliminary 的 guard 检查处于该阶段；申诉期显示时间单源取 publication.publish_at，不复制进 planned。scoped 补充期用 phase_item_scopes / phase_participant_scopes 两张 join 表，只限 entry 动作族，review/appeal 不受限。
 
 **32.12 SCHEDULED 冻结集合**（M1 细节裁决）。精确拒绝集：审核决定、提交送审、非草稿条目追加 revision、题目配置修改（含作废）、roster 变更、申诉裁决；纯草稿编辑放行。发布时刻断言 manifest 一致，不等即中止告警；取消预告需 publication.manage + 理由。
+
+**32.13 rbac 零改动，PHASE_GATED 归 assessment**（2026-08-09，用户分层反对推出的修正——取代"权限目录加 phaseControlled 加法元数据"的早先结论）。理由链：被门控的权限百分之百是 `assessment.*` 自己的码，"哪些码受门控"是门的属性不是权限定义的属性；`PermissionDefinition` 契约注释明文"刻意不放别人的关切"，往里加上层旗标违反契约自己的原则；下层契约要理解自己的字段就得先理解上层概念 = 概念性循环依赖。落点：assessment 的 `src/permissions.ts` 同文件承载权限声明与 `PHASE_GATED` 白名单（成员 = §11 表 ✓ 列），启动断言集合 ⊆ 自声明码；结构性安全升级——全局权限在结构上进不了阶段编辑器，无需校验去拦。**升级路径写档不建**：当 rbac 自身或跨域工具必须统一承载多个域的权限元数据时（如未来的跨域权限治理页），`PermissionDefinition` 加 opaque `meta?: Readonly<Record<string, unknown>>`，键强制命名空间化（`assessment:phase-gated`），rbac 只存不读不解释。附带判据（进 §29）：**字段/查询归谁，看它的词汇属于谁**——holders 反查是 rbac 词汇的只读下行 API，合法；驱动新增受门控权限的槽位是 `ItemTypeDriver.gatedPermissions?`，与题型注册同机制，现在不建。注意：该轮对话的示例代码含裁决前词汇（entry.proxy、view_peers、review.escalate 等目录外码），**以 §11 冻结目录为准**，PHASE_GATED 成员即 ✓ 列。
