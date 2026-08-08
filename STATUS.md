@@ -2068,3 +2068,26 @@ meta 能力"降级为写档的升级路径(触发条件:跨域权限治理需求
 **字段/查询归谁看词汇属于谁**。设计文档 §11/§24/§25/§26/§28/§29 就地改写,
 裁决记 §32.13;并入时以 §11 冻结目录为准(对话示例码表含裁决前词汇,未采用)。
 M1 前置的 rbac 工作归零,第一个 commit 即 plugin:add + 自家 permissions.ts。**未编码**。
+
+### 第二轮外部审计 24 项 + 四项拍板落库(2026-08-09)
+
+外部审计精准打在版本/时间/数值/发布后修正语义四处;裁决(约 19 采纳、4 修正实现、1 改判、
+1 已满足)连同用户四项拍板全部并入 assessment-design.md,新增 ADR 0009、修订 ADR 0005。
+
+**四项拍板**:①申诉统一为"轮"(review_instances + round_no/origin/initiator,appeal 四表
+与 appeal.* 权限点取消,申诉窗=三个 phase 开关组合,原链越过 normalTerminal 续爬,发起权
+entry.resubmit / review.reopen);②一票驳回(quorum 只管 APPROVE,三补条:即刻终结留票、
+竞态先落库、escalated 终点 panel 的 reject 仍一票;rejectionQuorum 留档);③行政条目按性质
+分流(proxy 代录=创建代理走完整链、record=trusted 不建实例四约束,单调谓词无条件成立,
+S1 后新录行政事实经 S2 preflight 显式确认;撤回按时间分流案);④精度=1e-4 定点整数 +
+HALF_AWAY_FROM_ZERO + 行级 2dp 量化 + 排名用展示精度("逐行相加恒等"属性不变量)。
+
+**主要新增**:S1 后评分语义冻结 + Publication RETRACTED(ADR 0009,纠错=撤回重发可申诉的
+preliminary;发布断言分裂:外部漂移照发+CRITICAL、内部损坏中止);ItemRevision 不可变版本
+实体(EntryRevision/ScoreRun 精确引用);anchor_lineage jsonb 冻结逐级 (nodeId,nodeTypeId);
+effectivePublished 惰性物化(取消预告仅限 publish_at 前);BreakdownLine lineId+provenance
+(申诉锚 = publication+participant+line);claim 生命周期全表(归档不释放);reassign v1 删除;
+core dependsOn storage(M2 起);附件三态+内容安全基线;ranking_tie_resolutions;
+uuid 统一到实例列;内置计算器 id@version;LLM 隐私红线;One Batch = One Rule Set;
+公示创建期矩阵全 ×;withdraw 取消实例回 draft(独立 withdrawn 状态删除);M7 标题去网格。
+裁决记录 §32.14–32.19,权限目录/矩阵/路由预案/表清单/里程碑验收同步改写。**未编码**。

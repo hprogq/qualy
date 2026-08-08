@@ -30,5 +30,15 @@
 
 - 两个流程的词汇对用户是分开的,不需要在同一个界面里解释「上提」和「上提复核」的区别。
 - 申诉可以在主链早已完成之后发生,不必让主链状态机长出一个「已完成但还能再动」的状态。
-- 代价是两套相似的表与投影。这个代价是明知故犯的:合并它们等于让公示后的争议去修改公示前的
-  记录,而那正是 ADR 0004 禁止的事。
+
+## 修订(2026-08-09):概念仍分,存储统一为「轮」
+
+原文的代价条款(两套近乎镜像的表与投影)被后续设计消解:申诉期的行为其实是三个 phase 开关的
+组合——开放对终态条目的重新提审、开放疑点上提、关闭非链尾驳回——独立的 AppealCase 在这一
+组合下失去了存在理由。定稿:**escalation 是审核员在一轮内部的向上流转;申诉/复查是对已定结果
+发起的新一轮**——`review_instances` 增加 `round_no / origin('initial'|'appeal') /
+initiator('participant'|'staff') / publication_id? / anchor_line_id? / re_entry_stage_index`,
+appeal_cases 等四表与 appeal.* 权限点取消。申诉轮不需要新链:在同一条已快照的链上越过
+normalTerminal 继续。原则四条动机全部保留——锚定不可变对象(轮携带 publication 引用)、
+词汇分离(按 origin 换文案)、仅终点可驳(phase 开关)、审计可分(按 initiator/origin 统计)。
+详见 docs/assessment-design.md §15 与 §32.14。
