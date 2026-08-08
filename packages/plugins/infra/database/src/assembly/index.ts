@@ -8,11 +8,6 @@ import {
   type DatabaseContribution,
 } from './contribution.ts'
 import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
-import { collectBaseline } from './baseline.ts'
-import { allMigrationFiles, changedMigrationFiles } from './drop-guard.ts'
-import { diffAgainstDeclared } from './diff.ts'
-import { blankMigration, generateDatabase, guardDestructive } from './generate.ts'
-import { adoptMigrations, runMigrations } from '../migrator.ts'
 import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 
 // Everything the assembly knows about databases lives behind this one module.
@@ -28,6 +23,13 @@ import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 // Importing this module must stay free of side effects. It runs inside the
 // CLI, where there is no cordis context to attach to and nothing has agreed to
 // open a connection yet. Connections belong inside deploy and the commands.
+//
+// It must also stay CHEAP, because one import of it is not confined to the
+// CLI: boot resolves the assembly to check it against the lock, and parsing a
+// contribution is this provider's answer, so every start imports this file.
+// The schema comparator, the migrator and pg are none of boot's business, so
+// each phase imports its own machinery when it runs - which also keeps a
+// broken import in generation-only code out of the production start path.
 
 const arg = (args: readonly string[], name: string) => {
   const at = args.indexOf(`--${name}`)
@@ -69,9 +71,13 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     return lines.length > 0 ? lines : [`${nextState.order.length} plugin(s) own objects`]
   },
 
-  generate: generateDatabase,
+  generate: async (context) => {
+    const { generateDatabase } = await import('./generate.ts')
+    return generateDatabase(context)
+  },
 
   deploy: async (context) => {
+    const { runMigrations } = await import('../migrator.ts')
     const work = databaseWork(context)
     const { applied, elapsed } = await runMigrations(work.url, {
       folder: work.migrations,
@@ -96,6 +102,7 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     // an empty migration for SQL that records one historical step, as opposed
     // to a baseline fragment, which states a plugin's current shape
     custom: async (context) => {
+      const { blankMigration } = await import('./generate.ts')
       const work = databaseWork(context)
       const file = blankMigration(work.migrations, arg(context.args, 'name'))
       console.log(`database: ${path.relative(process.cwd(), file)}`)
@@ -106,6 +113,9 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     // it. Refused unless the schema actually matches, because a ledger written
     // over a database that differs hides the difference rather than closing it.
     adopt: async (context) => {
+      const [{ diffAgainstDeclared }, { collectBaseline }, { adoptMigrations }] = await Promise.all(
+        [import('./diff.ts'), import('./baseline.ts'), import('../migrator.ts')],
+      )
       const work = databaseWork(context)
       const state = asState(context.state)
       const difference = await diffAgainstDeclared(
@@ -131,6 +141,8 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     },
 
     'drop-guard': async (context) => {
+      const [{ allMigrationFiles, changedMigrationFiles }, { guardDestructive }] =
+        await Promise.all([import('./drop-guard.ts'), import('./generate.ts')])
       const work = databaseWork(context)
       const baseRef = arg(context.args, 'base-ref')
       if (baseRef) {

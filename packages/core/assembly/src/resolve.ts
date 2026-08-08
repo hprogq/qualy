@@ -203,6 +203,18 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     )
   }
 
+  // A provider whose plugin the assembly no longer accounts for releases its
+  // capability here. The recalled candidates exist so a removed provider can
+  // still ANSWER the retention question above; one that answered "nothing to
+  // keep" must now leave with its plugin, or the lock re-records the
+  // capability forever and generate/deploy keep running work - reaching the
+  // external systems the capability manages - for an assembly that does not
+  // contain it. Contributions from plugins still present fail below as
+  // orphaned, which is the refusal that says "put the provider back".
+  for (const [key, loaded] of [...providers]) {
+    if (!states.has(loaded.pluginId)) providers.delete(key)
+  }
+
   const runtimePlugins = [...states]
     .filter(([, state]) => state === 'active')
     .map(([id]) => id)

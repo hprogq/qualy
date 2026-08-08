@@ -13,7 +13,12 @@ import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import provider, { type DatabaseContribution, type DatabaseState } from '../src/assembly/index.ts'
 import { collectBaseline, compiledBaseline, pendingBaseline } from '../src/assembly/baseline.ts'
 import { declaredEntityModules } from '../src/assembly/entities.ts'
-import { allMigrationFiles, scanDestructive } from '../src/assembly/drop-guard.ts'
+import { execFileSync } from 'node:child_process'
+import {
+  allMigrationFiles,
+  changedMigrationFiles,
+  scanDestructive,
+} from '../src/assembly/drop-guard.ts'
 import { guardDestructive } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
 
@@ -245,6 +250,41 @@ describe('drop guard', () => {
       expect(() => guardDestructive([destructive])).toThrow(/destructive statements detected/)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // The CLI is anchored at its own location and works from any directory, so
+  // this one has to as well. git prints repository-relative paths whatever the
+  // cwd is; resolving those against process.cwd() dropped every changed file
+  // the moment the command ran from a subdirectory, and a guard that scans
+  // nothing reports success - the one failure mode this gate must not have.
+  it('finds the migrations a ref changed from any working directory', () => {
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-guard-git-')))
+    const cwd = process.cwd()
+    try {
+      const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' })
+      git('init', '-q')
+      git('config', 'user.email', 'test@example.invalid')
+      git('config', 'user.name', 'test')
+      const migrations = path.join(repo, 'db', 'migrations')
+      fs.mkdirSync(migrations, { recursive: true })
+      fs.writeFileSync(path.join(migrations, '0001_base.sql'), 'CREATE TABLE a (id uuid);\n')
+      git('add', '.')
+      git('commit', '-qm', 'base')
+      fs.writeFileSync(path.join(migrations, '0002_drop.sql'), 'DROP TABLE a;\n')
+      git('add', '.')
+      git('commit', '-qm', 'destructive')
+
+      const deep = path.join(repo, 'db')
+      for (const from of [repo, deep, cwd]) {
+        process.chdir(from)
+        const changed = changedMigrationFiles(migrations, 'HEAD~1')
+        expect(changed.map((file) => path.basename(file))).toEqual(['0002_drop.sql'])
+        expect(() => guardDestructive(changed)).toThrow(/destructive statements detected/)
+      }
+    } finally {
+      process.chdir(cwd)
+      fs.rmSync(repo, { recursive: true, force: true })
     }
   })
 })

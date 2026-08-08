@@ -54,11 +54,21 @@ export function allMigrationFiles(migrations: string): string[] {
 export function changedMigrationFiles(migrations: string, baseRef: string): string[] {
   // argv rather than a shell string: the migrations path is absolute now, and
   // a checkout under a directory with a space in it would split in two
-  const diff = execFileSync('git', ['diff', '--name-only', `${baseRef}...HEAD`, '--', migrations], {
-    encoding: 'utf8',
-  })
-  return diff
-    .split('\n')
-    .filter((file) => file.endsWith('.sql'))
-    .filter((file) => fs.existsSync(file))
+  const run = (args: readonly string[]) =>
+    execFileSync('git', [...args], { cwd: migrations, encoding: 'utf8' }).trim()
+  const diff = run(['diff', '--name-only', `${baseRef}...HEAD`, '--', migrations])
+  // git prints repository-relative paths whatever the cwd is, so they are
+  // resolved against the repository rather than against process.cwd(). Doing
+  // it the other way round dropped every file the moment this ran from
+  // anywhere but the repository root - and a guard that scans nothing reports
+  // success, which is the one failure a destructive-SQL gate must not have.
+  const root = run(['rev-parse', '--show-toplevel'])
+  return (
+    diff
+      .split('\n')
+      .filter((file) => file.endsWith('.sql'))
+      .map((file) => path.resolve(root, file))
+      // deletions are in the diff and have nothing left to scan
+      .filter((file) => fs.existsSync(file))
+  )
 }

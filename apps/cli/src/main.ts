@@ -14,6 +14,7 @@ import {
   lockPathFor,
   readLock,
   resolveAssembly,
+  writeAtomic,
   writeLock,
   type AssemblyLock,
   type Resolution,
@@ -120,6 +121,16 @@ async function main(): Promise<void> {
           ? `${relative(lockPath)} written`
           : `${relative(lockPath)} unchanged`,
       )
+      // The other half of the module contract. The frozen gate above compares
+      // these files, so the non-frozen resolve must be what writes them - with
+      // no writer, the first capability to declare a module would brick every
+      // gated command with a drift error whose prescribed fix is this very
+      // command, changing nothing.
+      const out = process.env.QUALY_GEN_OUT ?? path.dirname(manifestPath)
+      for (const module of capabilityModules(resolution)) {
+        const file = path.resolve(out, module.path)
+        if (writeAtomic(file, module.content)) console.log(`${relative(file)} written`)
+      }
     }
     for (const plugin of resolution.plugins.values()) {
       if (plugin.state === 'active') continue

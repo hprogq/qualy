@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -154,6 +155,70 @@ describe('a second capability, beside the database', () => {
     }
   })
 
+  // The module contract has two callers and both must exist: the frozen gate
+  // compares these files, and `qualy resolve` writes them. With only the gate,
+  // the first capability to declare a module bricked every gated command with
+  // a drift error whose prescribed fix - run resolve - changed nothing.
+  it('resolve writes the modules the frozen gate will demand', async () => {
+    const workspace = createWorkspace(['@fake/plugin-cache', '@fake/plugin-sessions'], {
+      synthetic: [cachePlugin, cacheUser('@fake/plugin-sessions', 'sessions')],
+    })
+    try {
+      const cli = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../apps/cli/src/main.ts',
+      )
+      const ran = spawnSync(
+        process.execPath,
+        ['--import', 'tsx', cli, 'resolve', '--yml', workspace.manifestPath],
+        { encoding: 'utf8' },
+      )
+      expect(ran.status, ran.stderr).toBe(0)
+      const generated = path.join(workspace.dir, 'cache.gen.ts')
+      expect(fs.readFileSync(generated, 'utf8')).toBe('export const channels = ["sessions"]\n')
+
+      // and the gate the write exists for is satisfied by the written tree
+      const frozen = spawnSync(
+        process.execPath,
+        ['--import', 'tsx', cli, 'resolve', '--frozen-lockfile', '--yml', workspace.manifestPath],
+        { encoding: 'utf8' },
+      )
+      expect(frozen.status, frozen.stderr).toBe(0)
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  // The recalled candidates let a removed provider ANSWER the retention
+  // question; they must not let it stay. A provider that answered "nothing to
+  // keep" once re-recorded its capability on every resolve, so generate and
+  // deploy kept running the removed plugin's work - reaching the external
+  // systems it manages - for an assembly that no longer contained it.
+  it('releases a capability whose provider left retaining nothing', async () => {
+    const workspace = createWorkspace([...INFRA, '@fake/plugin-cache', '@fake/plugin-sessions'], {
+      synthetic: [cachePlugin, cacheUser('@fake/plugin-sessions', 'sessions')],
+    })
+    try {
+      await commitLock(workspace)
+      expect(readLock(lockPathFor(workspace.manifestPath))!.capabilities).toHaveProperty('cache')
+
+      // the contributor leaves with the provider: a contributor left behind
+      // is the orphaned-contribution refusal, not this case
+      workspace.writeManifest([...INFRA])
+      await commitLock(workspace)
+      const lock = readLock(lockPathFor(workspace.manifestPath))!
+      expect(lock.capabilities).not.toHaveProperty('cache')
+      expect(lock.plugins).not.toHaveProperty('@fake/plugin-cache')
+
+      // and the release is stable: the resolve after it finds no ghost either
+      const resolution = await resolveWorkspace(workspace)
+      expect([...resolution.providers.keys()]).toEqual(['database'])
+      expect(capabilityWork(resolution).map((entry) => entry.key)).toEqual(['database'])
+    } finally {
+      workspace.dispose()
+    }
+  })
+
   it('refuses a contribution to a capability this assembly does not have', async () => {
     // the plugin declares a channel but nothing provides `cache`, so it would
     // contribute nothing and its inject gate would leave it silently inert
@@ -242,5 +307,56 @@ describe('the composition root', () => {
         return imports.length > 0 ? [entry] : []
       })
     expect(offenders).toEqual([])
+  })
+})
+
+// What a capability costs to LOAD.
+//
+// The provider module is imported wherever a contribution has to be parsed,
+// and that is not only the CLI: boot resolves the assembly to check it against
+// the lock. The heavy machinery - the migrator, the schema comparator, pg,
+// child_process - belongs to phases that only the CLI runs, so it must be
+// reached by dynamic import inside those phases. Statically imported, every
+// production start pays for a generation toolchain it will never run, and a
+// broken import in generation-only code becomes a boot failure.
+describe('what importing a capability provider costs', () => {
+  const staticImportsOf = (file: string): string[] => {
+    const source = fs.readFileSync(file, 'utf8')
+    // Static forms that survive to runtime. `await import(...)` inside a
+    // phase is the point of the exercise, and `import type` is erased.
+    const specifiers: string[] = []
+    for (const match of source.matchAll(
+      /^\s*(import|export)(\s+type)?([^;\n]*?)from\s*'([^']+)'/gm,
+    )) {
+      if (match[2] || /^\s*\{\s*type\s/.test(match[3]!)) continue
+      specifiers.push(match[4]!)
+    }
+    for (const match of source.matchAll(/^\s*import\s*'([^']+)'/gm)) specifiers.push(match[1]!)
+    return specifiers
+  }
+
+  it('the database provider reaches no orm, driver or subprocess until a phase runs', () => {
+    const entry = fileURLToPath(
+      new URL('../../packages/plugins/infra/database/src/assembly/index.ts', import.meta.url),
+    )
+    const seen = new Set<string>()
+    const heavy: string[] = []
+    const walk = (file: string) => {
+      if (seen.has(file)) return
+      seen.add(file)
+      for (const specifier of staticImportsOf(file)) {
+        if (specifier.startsWith('.')) {
+          walk(path.resolve(path.dirname(file), specifier))
+          continue
+        }
+        if (/^(@mikro-orm\/|pg$|node:child_process$)/.test(specifier)) {
+          heavy.push(`${path.relative(process.cwd(), file)} imports ${specifier}`)
+        }
+      }
+    }
+    walk(entry)
+    expect(heavy).toEqual([])
+    // and the walk actually walked: a broken resolver would pass vacuously
+    expect(seen.size).toBeGreaterThan(3)
   })
 })
