@@ -1,3 +1,7 @@
+已并入 docs/assessment-design.md(权威版;冲突以 a 系列与裁决为准),本文只作来源存档,不再更新。
+
+---
+
 # Qualy 综合素质测评域实施设计
 
 > 面向：Claude Code  

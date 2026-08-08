@@ -2010,3 +2010,34 @@ landmines)并行找问题,每条发现单独派对抗性怀疑者反驳(存疑�
 browser 15/15(**冷缓存**);`pnpm build` + chunk 哨兵;`qualy deploy` + 生产 smoke
 (shutdown clean);`resolve --frozen-lockfile` 干净;`pnpm dev` 真启动 + 窗口期 503
 实测 + SIGTERM 优雅退出;超时/二次信号强退分别实测(exit 143)。
+
+### P2 领域文档落库(2026-08-08)
+
+**docs/assessment-design.md 成为综测领域唯一权威文档**:合并设计稿 v2.1 + 沙箱归属增补 01 +
+两轮用户裁决。三份来源文件(p2-tutorial-a / -a-v2_1 / -a-supplement-1 / -b)首行标注"已并入,
+只作来源存档",不再更新。五条领域 ADR 抄进 docs/adr/0004-0008。CLAUDE.md 加指针
+(开场读物 + 禁止项 + "两者冲突停下来报告")。
+
+**本轮并入的新内容**(来自 v2.1 与增补 01):①**M9 Formula 主特性**——custom 计分器/聚合器经
+`assessment.calculator` registry ExtensionPoint 即插即用,内置集合(fixed/lookup/range/decrement +
+sum/max/countTier)永久冻结在最小规模,一切校本逻辑走 custom;QuickJS 因此从 §27 禁令表解禁,
+但沙箱内非确定性 API、网络/IO、跨题访问、函数内做组级组合**永久禁止**。②**三层拆分**:
+`plugins/infra/sandbox`(机制层,零表零 API 零 UI、租户盲)/ `plugins/assessment/formula`(驱动层)/
+`assessment/core`(语义层);另加薄 `plugins/infra/llm`。**infra 成员资格成文**(零业务语义 +
+零自有业务数据 + 装配即治理开关有独立意义;跨领域消费只是加分项),且**归置决策不适用"复杂度由
+需求触发"元规则**——归置没有推迟收益。③装配即信任边界:不装 sandbox 而装 formula = dependsOn
+硬失败,两者都不装 = 该能力物理不存在,落在 ADR 0001 上。
+
+**裁决记录在 §32**(与设计稿不同之处,逐条):①**只有自己能改自己的材料**——取消班委代录、
+管理员在线 Excel 录入、M7 批量网格;行政事实(扣分/低频特殊加分)走 `entrySource: administrative`
+的独立路径,学生无入口也不需同意(救济渠道是申诉);②**修改建议是参考不是替换**——驳回时可在
+学生内容上改出建议稿并在图片上圈画,学生端只读、**不可一键套用/复制**(合规风险),因此不存在
+"待学生确认"状态、不需要定时器与通知;③接口修正——权限码连字符、dependsOn 写真实插件 id、
+selector 引 uuid、**PhaseGate 只活在批次上下文内**(同一学生可同时在多个 active 批次,如保研综测
+与学期综测并行,页面可见性没有唯一"当前阶段");④**审核不定分**——decision 事件无分值字段,
+需人定值的条款一律 administrative 题目、创建时按 [min,max] 校验,并加配置校验"range 只能挂
+administrative";⑤花名册用户类型集合是 batch 级配置;⑥政策口径——大项 floor 0、同一事项 max 聚合、
+一票否决/弄虚作假不建模为资格标记(即使被否决也要有成绩,资格属未来的奖学金系统)、月度小结的
+等价能力是"预填报期提前一学期开"(Phase 天然支持,零新机制)。
+
+**下一步**:M1(Batch + Phase + Roster + PhaseGate 运行时骨架),按 §26 M1 七条验收。

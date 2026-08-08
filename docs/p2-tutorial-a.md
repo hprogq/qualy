@@ -1,1 +1,1 @@
-已过时，请阅读 docs/p2-tutorial-a-v2_1.md
+已并入 docs/assessment-design.md(权威版)。

@@ -1,3 +1,7 @@
+已并入 docs/assessment-design.md(权威版),本文只作来源存档,不再更新。
+
+---
+
 # 增补 01 · Sandbox 的归属：infra 化拆分
 
 > 性质：对 `docs/assessment-design.md` v2.1 的**增补文件**，独立成篇、不改原文。
