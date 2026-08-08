@@ -2091,3 +2091,25 @@ core dependsOn storage(M2 起);附件三态+内容安全基线;ranking_tie_resol
 uuid 统一到实例列;内置计算器 id@version;LLM 隐私红线;One Batch = One Rule Set;
 公示创建期矩阵全 ×;withdraw 取消实例回 draft(独立 withdrawn 状态删除);M7 标题去网格。
 裁决记录 §32.14–32.19,权限目录/矩阵/路由预案/表清单/里程碑验收同步改写。**未编码**。
+
+### 第三轮审计:十项主修 + 八项 P1 + M9 断言修正落库(2026-08-09)
+
+第三轮审计不再动架构,专挑模型交界处最后没说死的状态,其中两项是真 bug(负分域 max 反向、
+preflight/排名/物化顺序不可能同时成立)。十项主修全落:①proxy 四处叠层矛盾清除,冻结为
+**原子代录**(创建+提交一个动作,无代理草稿,自身即窗口,预填报 ×);②时间形态落列
+(entry_trigger 加 'publication',entry_offset/estimated_entry_at/opens_publication_id,
+武装前缀精化);③发布**两段式**(schedule 不 advance,effective 段 actual:=publish_at 同事务,
+可惰性物化);④行政条目首轮链通则(item_revision.review_policy + 冻结 lineage 现场解析快照,
+administrative 题必须配救济链);⑤同 entry 单开轮 DB 约束 + **轮期间终态保持**(推翻"分数悬置");
+⑥轮证据挂 review_event_attachments(同时补上驳回圈画图的 FK 落点),修订权三分;
+⑦聚合器补 min(负数域"扣最高"=min)+ floor 默认 null 仅大项显式 0(推翻默认 0);
+⑧preflight 二段式(Input/Output Validation,tie 裁决锚 score_run_id 后一次性物化 rows);
+⑨retract 阶段编排定稿(进申诉处理性质阶段清轮,向后插新公示创建期,冻结绑定"存在未被
+retract 的 preliminary",ADR 0009 更新);⑩M2 最小 scorer 内核前移(+3 是真竖切)。
+八项 P1:成绩异议题(none@1 + 申诉期 scoped create)、lineId 确定性生成 + label 冻结、
+删"重新路由"开关、自审冲突集含代录 actor、**收件箱改锚点精确等值 join**(推翻 subtree <@)、
+normalizer 版本入 claim、storage authorizer 补 subject、correctedFinal 留触发条件。
+M9a 三条断言修正:64MB 以敌意分配测试自证、libm 一致性降为 golden replay 待验目标、
+wasm 工件 hash 入 engine version(库 <1.0 未审计,验证工件而非信任库)。
+裁决记录 §32.20–32.25(含七条 supersession 注记)。**未编码**。审计判语:此十项落完,
+"核心架构冻结、可按里程碑施工"名副其实——采纳,M1 随时开工。
