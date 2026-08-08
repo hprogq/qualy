@@ -241,7 +241,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const scope = query.scope ?? 'subtree'
         // the cursor belongs to this anchor, scope and search and no other
         const fingerprint = `users:${query.orgNodeId}:${scope}:${query.search ?? ''}`
-        const key = readQueryCursor(query.cursor, fingerprint, 2)
+        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* iam.users.list(principal, {
           orgNodeId: query.orgNodeId,

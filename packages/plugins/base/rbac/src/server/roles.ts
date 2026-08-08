@@ -221,6 +221,10 @@ const lockRoleRow = (tenantId: string, roleId: string) =>
         'systemKey',
         'assignable',
         'version',
+        // the editable columns travel with the lock so an update that changes
+        // nothing can be recognised before it bumps the version
+        'name',
+        'description',
         eb.ref('kind').$castTo<'tenant' | 'org'>().as('kind'),
         eb.ref('status').$castTo<'draft' | 'active' | 'disabled'>().as('status'),
         eb.ref('permissionMode').$castTo<'explicit' | 'all-active'>().as('permissionMode'),
@@ -609,6 +613,14 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           if (role.systemKey !== null && fields.assignable === false) {
             return yield* new RoleIsSystem()
           }
+          // a request that changes nothing must not invalidate every open
+          // editor: the version is optimistic concurrency, and bumping it for
+          // a re-saved unchanged form refuses a concurrent genuine edit
+          const same =
+            (fields.name === undefined || fields.name === role.name) &&
+            (fields.description === undefined || fields.description === role.description) &&
+            (fields.assignable === undefined || fields.assignable === role.assignable)
+          if (same) return role.version
           yield* updateRole(tenantId, role.id, fields)
           return role.version + 1
         }),

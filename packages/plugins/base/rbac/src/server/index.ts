@@ -570,7 +570,7 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         // the cursor belongs to this filter and no other
         const fingerprint = `grants:${query.orgNodeId ?? ''}`
-        const key = readQueryCursor(query.cursor, fingerprint, 1)
+        const key = readQueryCursor(query.cursor, fingerprint, ['uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* access.grants.list(
           principal.tenantId,
@@ -767,8 +767,10 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const access = yield* Access
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
+        // not orDie: revoking the last administrator's grant is a declared 409
+        // on this endpoint, and a defect would answer 500 with no code
         yield* access.grants.revoke(principal.tenantId, params.grantId, principal, (tenantId) =>
-          rbac.assertTenantKeepsAdministrator(tenantId).pipe(Effect.orDie),
+          rbac.assertTenantKeepsAdministrator(tenantId),
         )
         return { ok: true as const }
       }),

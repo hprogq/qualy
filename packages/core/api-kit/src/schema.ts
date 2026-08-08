@@ -99,13 +99,15 @@ export const boundedInt = (min: number, max: number) =>
 export const expectedVersion = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
 
 /**
- * Refuses a patch that changes nothing.
+ * Refuses a patch that names no field at all.
  *
- * A no-op patch is a mistake, not a free request: every one of these bodies
- * carries an optimistic-concurrency version, and the statements behind them
- * bump it unconditionally. Accepting `{version: 3}` therefore commits version
- * 4, and a concurrent administrator's genuine edit against version 3 is then
- * refused although nothing changed.
+ * This is as far as a schema can see: whether a stated value differs from the
+ * stored one is a question only the write path can answer, holding the locked
+ * row. It answers it - an update whose every stated field already matches
+ * returns the current version untouched - because these bodies carry an
+ * optimistic-concurrency version and the statements behind them bump it
+ * unconditionally, so a re-saved unchanged form would commit a new version and
+ * refuse a concurrent administrator's genuine edit against the old one.
  */
 export const changed = <Fields extends Schema.Struct.Fields>(
   fields: Fields,

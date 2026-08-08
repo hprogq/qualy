@@ -80,6 +80,18 @@ export function encodeQueryCursor(
 }
 
 /**
+ * What a key column holds, so a tampered cursor is refused rather than sent.
+ *
+ * A cursor is client-held, so its parts are attacker-controlled strings. A
+ * part naming a uuid column has to be checked HERE: passed through, it reaches
+ * postgres as `id > 'x'`, which raises a cast error the query path turns into
+ * a defect - a 500 for what is a malformed request.
+ */
+export type CursorPart = 'text' | 'uuid'
+
+const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
  * A cursor read without deciding what an unusable one means.
  *
  * Undefined for "no cursor", the key for a usable one, and null for one that
@@ -90,7 +102,7 @@ export function encodeQueryCursor(
 export function readQueryCursor(
   cursor: string | undefined,
   queryFingerprint: string,
-  arity: number,
+  shape: readonly CursorPart[],
 ): string[] | undefined | null {
   if (cursor === undefined) return undefined
   let parsed: unknown
@@ -101,7 +113,13 @@ export function readQueryCursor(
   }
   const payload = parsed as { v?: unknown; q?: unknown; k?: unknown } | null
   if (!payload || payload.v !== 1 || payload.q !== queryFingerprint) return null
-  if (!Array.isArray(payload.k) || payload.k.length !== arity) return null
-  if (!payload.k.every((part) => typeof part === 'string')) return null
+  if (!Array.isArray(payload.k) || payload.k.length !== shape.length) return null
+  if (
+    !payload.k.every(
+      (part, at) => typeof part === 'string' && (shape[at] !== 'uuid' || UUID_SHAPED.test(part)),
+    )
+  ) {
+    return null
+  }
   return payload.k as string[]
 }

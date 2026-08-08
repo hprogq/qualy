@@ -145,6 +145,39 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
     }
   })
 
+  // The version is optimistic concurrency, so bumping it is a claim that the
+  // stored value moved. A form re-saved with every field at its current value
+  // makes no such claim, and used to invalidate every editor holding the old
+  // version - the exact spurious conflict the version exists to prevent.
+  it('leaves the version alone when a patch states only values already stored', async () => {
+    const db = await createTestContext('effect-ut-noop')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const named = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, 1)
+          const resaved = yield* iam.userTypes.update(
+            f.tenant,
+            f.staff,
+            { name: 'Staff!', allowLocalLogin: true },
+            named,
+          )
+          // and a caller still holding that version can still make a real edit
+          const real = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff?' }, resaved)
+          return { named, resaved, real }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.named).toBe(2)
+      expect(answer.resaved).toBe(2)
+      expect(answer.real).toBe(3)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('keeps password sign-in on the type a tenant recovers itself with', async () => {
     const db = await createTestContext('effect-ut-recovery')
     try {

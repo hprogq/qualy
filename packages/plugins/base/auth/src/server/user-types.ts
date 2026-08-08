@@ -388,6 +388,17 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           if (fields.allowLocalLogin === false && type.code === SYSTEM_ACCOUNT_USER_TYPE) {
             return yield* new RecoveryChannelRequired()
           }
+          // a request that changes nothing must not invalidate every open
+          // editor: the version is optimistic concurrency, and bumping it for
+          // a re-saved unchanged form refuses a concurrent genuine edit
+          const same =
+            (fields.name === undefined || fields.name === type.name) &&
+            (fields.description === undefined || fields.description === type.description) &&
+            (fields.allowLocalLogin === undefined ||
+              fields.allowLocalLogin === type.allowLocalLogin) &&
+            (fields.allowSsoLogin === undefined || fields.allowSsoLogin === type.allowSsoLogin) &&
+            (fields.sortOrder === undefined || fields.sortOrder === type.sortOrder)
+          if (same) return type.version
           yield* updateUserType(tenantId, type.id, fields)
           // closing a sign-in channel can lock a tenant out just as surely as
           // disabling the people who use it, and this runs after the write so
