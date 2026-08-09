@@ -17,6 +17,7 @@ import {
   BatchNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
+  BatchScopeLocked,
   BatchStatusInvalid,
   PhaseNotFound,
   PlanInvalid,
@@ -79,6 +80,8 @@ const phaseView = Schema.Struct({
   estimatedEntryAt: Schema.NullOr(Schema.String),
   opensPublicationId: Schema.NullOr(Schema.String),
   permissionProfile: Schema.Array(Schema.String),
+  itemScope: Schema.Array(Schema.String),
+  participantScope: Schema.Array(Schema.String),
   sourceTemplateId: Schema.NullOr(Schema.String),
   sourceTemplateVersion: Schema.NullOr(Schema.Number),
 })
@@ -88,6 +91,8 @@ const phaseView = Schema.Struct({
  * editable fields, without one it is an insertion at its position. Entry
  * actuals and publication bindings are deliberately absent - the first is
  * written only by transitions, the second only by the publication workflow.
+ * The two scopes are the supplementary-phase allowances; empty or absent
+ * means unrestricted.
  */
 const phaseSpec = Schema.Struct({
   id: Schema.optional(id),
@@ -98,6 +103,8 @@ const phaseSpec = Schema.Struct({
   entryOffset: Schema.optional(Schema.NullOr(entryOffset)),
   estimatedEntryAt: Schema.optional(Schema.NullOr(isoInstant)),
   permissionProfile: Schema.optional(Schema.Array(Schema.String)),
+  itemScope: Schema.optional(Schema.Array(id)),
+  participantScope: Schema.optional(Schema.Array(id)),
 })
 
 const planWarning = Schema.Struct({
@@ -160,15 +167,24 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         {
           name: Schema.optional(trimmedName(255)),
           descriptionMd: Schema.optional(Schema.NullOr(boundedText(65536))),
+          // repointable while the batch is a draft; a roster freezes it
+          scopeNodeId: Schema.optional(id),
           materialRange: Schema.optional(materialRange),
           timezone: Schema.optional(trimmedName(63)),
           userTypeIds: Schema.optional(Schema.Array(id)),
           reason: Schema.optional(boundedText(500)),
         },
-        ['name', 'descriptionMd', 'materialRange', 'timezone', 'userTypeIds'],
+        ['name', 'descriptionMd', 'scopeNodeId', 'materialRange', 'timezone', 'userTypeIds'],
       ),
       success: Schema.Struct({ batch: batchView }),
-      error: [BatchNotFound, BatchReadOnly, BatchReferenceInvalid, AccessDenied, BadRequest],
+      error: [
+        BatchNotFound,
+        BatchReadOnly,
+        BatchScopeLocked,
+        BatchReferenceInvalid,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

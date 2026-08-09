@@ -37,6 +37,13 @@ export class BatchReadOnly extends Schema.TaggedErrorClass<BatchReadOnly>()(
   { httpApiStatus: 409, identifier: 'AssessmentBatchReadOnly' },
 ) {}
 
+/** once a roster exists, where the batch points is not an ordinary field */
+export class BatchScopeLocked extends Schema.TaggedErrorClass<BatchScopeLocked>()(
+  'ASSESSMENT_BATCH_SCOPE_LOCKED',
+  {},
+  { httpApiStatus: 409, identifier: 'AssessmentBatchScopeLocked' },
+) {}
+
 export class BatchStatusInvalid extends Schema.TaggedErrorClass<BatchStatusInvalid>()(
   'ASSESSMENT_BATCH_STATUS_INVALID',
   { from: Schema.String, to: Schema.String },
@@ -86,6 +93,9 @@ export class AdvanceInvalid extends Schema.TaggedErrorClass<AdvanceInvalid>()(
       'target-not-next',
       'force-required',
       'reason-required',
+      // a publication boundary enters when its publication becomes effective,
+      // and through nothing else; force is not a way around that invariant
+      'publication-boundary',
     ]),
   },
   { httpApiStatus: 422, identifier: 'AssessmentAdvanceInvalid' },
@@ -103,7 +113,8 @@ export const batchConstraints: Record<string, () => BatchReferenceInvalid> = {
 }
 
 export type CreateBatchError = BatchReferenceInvalid | AccessDenied
-export type UpdateBatchError = BatchNotFound | BatchReadOnly | BatchReferenceInvalid | AccessDenied
+export type UpdateBatchError =
+  BatchNotFound | BatchReadOnly | BatchScopeLocked | BatchReferenceInvalid | AccessDenied
 export type SetBatchStatusError =
   BatchNotFound | BatchStatusInvalid | BatchNoUserTypes | PlanInvalid | AccessDenied
 export type ReplacePlanError =

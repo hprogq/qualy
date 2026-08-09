@@ -2298,3 +2298,55 @@ participant 限、review 不受限;facade 三层:未持码 layer=rbac、持码�
 scheduled 边界,actual:=planned、processed_at:=now,幂等可重入,单实例声明照迁移器抄;
 集成测试时钟控制验 ②⑧⑨)。实查点:Effect v4 fiber/Schedule/Layer 作用域。
 s3 备注:验收⑩的端到端(真实 entry 动作)按计划留 M2,本会话为 gate 层合成 code+ctx 测。
+
+### M1 会话 11(s3 修补)· 封 phase 服务不变量(2026-08-09)
+
+用户逐项评审 s1–s3 后判定:整体通过,但两个 P0 领域语义错误 + 五个完整性缺口须在 s4 前
+以独立小会话修掉,P2 两条按"不预防性建设"纪律留档。全部照裁决落地:
+
+- **P0① config_revision 生命周期反转修正**:原实现 draft/no-op 也 bump、active 计划编辑
+  反而不记。改为统一入口 `recordConfigChange`——**draft 零仪式**(不 bump 不记事件)、
+  **active 实际发生变化才 bump + 追加事件**、archived 上游已拒;`updateBatch` 与 active
+  `replacePlan`(diff = `{phasePlan: {edited, inserted}}`)同源,M2/M4 的 item/group
+  配置沿用同一门。
+- **P0② publication 边界永不可 force advance**:`advancePhase` 三分——manual 正常、
+  scheduled 走 force+reason+force-advance 权限、**publication 一律拒**(新拒因
+  `publication-boundary`):其进入只能由所绑公示 effectivePublished 驱动
+  (actual := publish_at),M5 的公示服务走内部物化函数,不走公共 advance。
+  "force 是对时钟的权威,不是对不变量的权威"。
+- **P1③ offset 物化后冻结**:引擎新拒因 `offset-with-planned`——planned 非空时
+  set-offset(含清空)一律拒,物化后的 offset 是 provenance;planned 先清空则释放可编辑
+  (working plan 顺序演进天然支持);整计划/插入/模板对 planned+offset 并存同拒
+  (顺带修了 reviewInsertion 伪 phase 丢 planned/offset 导致 combo 检查失明的洞)。
+- **P1④ 模板结构档补全**:`reviewPlan(specs, null)` 不再连带跳过结构规则——
+  hard-plan-beyond-event-boundary、planned-out-of-order、combo 在无钟档**照常执行**,
+  只豁免 planned-not-in-future(十月存九月模板合法,但"manual 后接绝对时间"的模板
+  在任何月份都无法应用,存都不该存进去)。
+- **P1⑤ scoped 写入口**:`phaseSpec`/`phaseView` 增 `itemScope`/`participantScope`
+  (幂等替换,空=不限);服务负责维护(writePlanOrder 统一写、active 记 'scope-changed'
+  事件并计入配置变更);**participantScope 成员必须 ∈ 本批次 roster**(FK 只保租户,
+  同批次由服务把线,拒因 `participant-not-in-batch`;draft 无 roster 天然拒);
+  模板禁携 scope(`scope-in-template`);ended 阶段改 scope 拒(name-only 规则延伸);
+  测试改为**经服务写入**,不再裸 SQL。
+- **P1⑥ draft scope 可改**:PATCH 增 `scopeNodeId`——draft 放行(requireAt 新节点 +
+  同事务重冻 scopePath),active 拒(新错误码 `ASSESSMENT_BATCH_SCOPE_LOCKED`,
+  i18n 双语同笔);激活 roster 取重指向后的 scope(实测)。
+- **P1⑦ 激活重验时钟**:`setBatchStatus(active)` 对整计划跑 reviewPlan(结构+时钟)——
+  搁置过期的 draft(planned 已过)拒绝激活(`planned-not-in-future`),不产生
+  "phase 语义开始时间早于批次存在"的历史;不做"晚激活自动追认"例外(文档无此规则)。
+
+**P2 留档不修**(按数据层冻结元规则):①`current_phase_id` 与 `phase_participant_scopes`
+的 FK 只保证同租户不保证同批次(service 写路径不制造,首次需要 aggregate 级复合 FK 时再定);
+②模板权限用 `hasPermission(batch.manage)`——某学院管理员可管全租户共享模板,是否收紧
+属产品口径,设计文档未写死,留待裁决。
+
+**验收(实际执行)**:引擎新增 3 用例(offset 冻结与释放、reviewPlan 无钟档仍拒结构违规
+×2);服务套件 **12 用例**全绿——config 生命周期四段(draft 0 事件/active 变化
+revision 1+diff/no-op 不动/计划编辑 revision 2+phasePlan diff)、publication 边界
+force+reason 仍拒且拒因准确、offset 物化后改动拒 `offset-with-planned`、模板存
+"manual 后绝对时间"在保存时即拒(且无 future 拒因)、scope 经服务写入后 gate 六格判定
+不变+陌生 participant 拒、draft 重指向 scope_path='r.b' 且 roster 来自新 scope+active
+锁定、搁置 1.4s 的 draft 激活拒。`pnpm typecheck` 零错;`pnpm test` 全仓
+**69 文件 441 全绿**;`resolve --frozen-lockfile` up to date。
+
+**下一步**:s4 调度 fiber(不变)。

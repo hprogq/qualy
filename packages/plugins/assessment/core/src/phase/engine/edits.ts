@@ -30,6 +30,7 @@ export type EditRefusalReason =
   | 'planned-out-of-order'
   | 'offset-not-positive'
   | 'offset-on-non-scheduled-phase'
+  | 'offset-with-planned'
   | 'binding-on-non-publication-phase'
   | 'binding-immutable-after-entry'
   | 'profile-code-not-gated'
@@ -172,7 +173,9 @@ const eventGateBefore = (
 const plannedRefusals = (
   plan: PhasePlan,
   publications: PublicationLookup,
-  now: EpochMillis,
+  // null runs the structural rules without the clock: a template's dates are
+  // judged against time when a batch applies them, but its shape never is
+  now: EpochMillis | null,
   view: PlanView,
   index: number,
   planned: EpochMillis | null,
@@ -185,7 +188,9 @@ const plannedRefusals = (
   }
   if (planned === null) return []
   const refusals: EditRefusal[] = []
-  if (planned <= now) refusals.push({ reason: 'planned-not-in-future', phaseId: phase.id })
+  if (now !== null && planned <= now) {
+    refusals.push({ reason: 'planned-not-in-future', phaseId: phase.id })
+  }
   if (phase.entryTrigger === 'scheduled') {
     const gate = eventGateBefore(plan, publications, view, index)
     if (gate !== null) {
@@ -219,6 +224,11 @@ const offsetRefusals = (phase: PhaseSnapshot, offset: EntryOffset | null): EditR
     return [{ reason: 'offset-on-non-scheduled-phase', phaseId: phase.id }]
   }
   if (offset === null) return []
+  // an offset next to a plan has no legal origin: before materialization the
+  // plan does not exist yet, and after it the offset is frozen provenance
+  if (phase.plannedEntryAt !== null) {
+    return [{ reason: 'offset-with-planned', phaseId: phase.id }]
+  }
   const parts = [offset.days ?? 0, offset.hours ?? 0, offset.minutes ?? 0]
   if (parts.some((part) => !Number.isFinite(part) || part < 0) || offsetMillis(offset) <= 0) {
     return [{ reason: 'offset-not-positive', phaseId: phase.id }]
@@ -270,6 +280,11 @@ export function reviewPlanEdit(
     }
     case 'set-offset': {
       if (entered) return refuse([{ reason: 'phase-already-entered', phaseId: phase.id }])
+      // a materialized offset is provenance: the plan it produced is the
+      // editable thing now, the spec that produced it is history
+      if (phase.plannedEntryAt !== null) {
+        return refuse([{ reason: 'offset-with-planned', phaseId: phase.id }])
+      }
       return refuse(offsetRefusals(phase, edit.entryOffset))
     }
     case 'set-estimated':
@@ -323,9 +338,9 @@ export function reviewInsertion(
     phaseKey: spec.phaseKey,
     displayName: spec.displayName,
     entryTrigger: spec.entryTrigger,
-    plannedEntryAt: null,
+    plannedEntryAt: spec.plannedEntryAt ?? null,
     actualEntryAt: null,
-    entryOffset: null,
+    entryOffset: spec.entryOffset ?? null,
     estimatedEntryAt: spec.estimatedEntryAt ?? null,
     opensPublicationId: null,
     permissionProfile: spec.permissionProfile ?? [],
@@ -385,10 +400,11 @@ export function reviewPlanShape(plan: PhasePlan): EditReview {
  * A whole plan of unentered specs, reviewed at once - what a draft rewrite or
  * a template application submits.
  *
- * With `now` the clock rules apply too: planned instants must be future,
- * ordered, and on the prefix before the first event gate. With `now` null
- * only the structural rules run - a template is data, and refusing to save
- * one in October because it names September would make templates rot.
+ * The structural rules always run: a publication boundary carrying a plan, a
+ * hard plan beyond an event gate, out-of-order commitments, an offset beside
+ * a plan - those are wrong in any month, and a template that stores them can
+ * never be applied. Only the clock rule is gated on `now`: with null, a
+ * template saved in October may keep its September dates.
  */
 export function reviewPlan(specs: readonly NewPhaseSpec[], now: EpochMillis | null): EditReview {
   const plan: PhaseSnapshot[] = specs.map((spec, index) => ({
@@ -418,13 +434,13 @@ export function reviewPlan(specs: readonly NewPhaseSpec[], now: EpochMillis | nu
       refusals.push({ reason: 'display-name-blank', phaseId: null, ...at(index) })
     }
     if (phase.plannedEntryAt !== null) {
-      const planned =
-        now !== null
-          ? plannedRefusals(plan, publications, now, view, index, phase.plannedEntryAt)
-          : phase.entryTrigger === 'publication'
-            ? [{ reason: 'planned-on-publication-phase' as const, phaseId: phase.id }]
-            : []
-      refusals.push(...planned.map((r) => ({ ...r, phaseId: null, ...at(index) })))
+      refusals.push(
+        ...plannedRefusals(plan, publications, now, view, index, phase.plannedEntryAt).map((r) => ({
+          ...r,
+          phaseId: null,
+          ...at(index),
+        })),
+      )
     }
     if (phase.entryOffset !== null) {
       refusals.push(

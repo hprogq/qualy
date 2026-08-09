@@ -34,6 +34,7 @@ import {
   BatchNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
+  BatchScopeLocked,
   BatchStatusInvalid,
   PhaseNotFound,
   PlanInvalid,
@@ -48,6 +49,7 @@ import {
   type UpdateBatchError,
 } from './errors.ts'
 import {
+  batchParticipantIds,
   bumpConfigRevision,
   deletePhases,
   deleteTemplateRow,
@@ -67,6 +69,8 @@ import {
   oneTemplate,
   phaseScopes,
   replaceBatchUserTypes,
+  replacePhaseScopes,
+  scopesForBatch,
   setCurrentPhase,
   setPhaseActual,
   updateBatchFields,
@@ -106,6 +110,15 @@ export interface BatchDetail {
 /** one phase as a plan write states it; instants already parsed to epoch ms */
 export interface PhaseSpecInput extends NewPhaseSpec {
   readonly id?: string
+  /** supplementary-phase allowances; empty or absent means unrestricted */
+  readonly itemScope?: readonly string[]
+  readonly participantScope?: readonly string[]
+}
+
+/** a phase row with its allowances, as the plan endpoints serve it */
+export interface PlanPhase extends PhaseRow {
+  readonly itemScope: readonly string[]
+  readonly participantScope: readonly string[]
 }
 
 /**
@@ -132,11 +145,16 @@ export interface CreateBatchInput {
 export interface UpdateBatchInput {
   readonly name?: string
   readonly descriptionMd?: string | null
+  readonly scopeNodeId?: string
   readonly materialRange?: MaterialRange
   readonly timezone?: string
   readonly userTypeIds?: readonly string[]
   readonly reason?: string
 }
+
+/** an allowance as a set: order and repetition carry no meaning */
+const normalScope = (ids: readonly string[] | undefined): readonly string[] =>
+  [...new Set(ids ?? [])].sort()
 
 export type ActionDecision =
   | { readonly allowed: true }
@@ -219,14 +237,14 @@ export class Assessment extends Context.Service<
       tenantId: string,
       batchId: string,
       as: Principal,
-    ) => Effect.Effect<readonly PhaseRow[], BatchNotFound | AccessDenied>
+    ) => Effect.Effect<readonly PlanPhase[], BatchNotFound | AccessDenied>
     readonly replacePlan: (
       tenantId: string,
       batchId: string,
       body: { fromTemplateId?: string; specs?: readonly PhaseSpecInput[] },
       as: Principal,
     ) => Effect.Effect<
-      { phases: readonly PhaseRow[]; warnings: readonly EditWarning[] },
+      { phases: readonly PlanPhase[]; warnings: readonly EditWarning[] },
       ReplacePlanError
     >
     readonly advancePhase: (
@@ -234,7 +252,7 @@ export class Assessment extends Context.Service<
       batchId: string,
       input: { to: string; force?: boolean; reason?: string },
       as: Principal,
-    ) => Effect.Effect<readonly PhaseRow[], AdvancePhaseError>
+    ) => Effect.Effect<readonly PlanPhase[], AdvancePhaseError>
     readonly timeline: (
       tenantId: string,
       batchId: string,
@@ -309,6 +327,41 @@ export const make = Effect.fn('Assessment.make')(function* () {
       userTypeIds,
       createdAt: batch.createdAt,
     }))
+
+  /** the plan with its allowances, as every plan endpoint answers it */
+  const readPlan = (tenantId: string, batchId: string) =>
+    Effect.gen(function* () {
+      const rows = yield* listPhaseRows(tenantId, batchId)
+      const scopes = yield* scopesForBatch(tenantId, batchId)
+      return rows.map((row): PlanPhase => ({
+        ...row,
+        itemScope: scopes.items
+          .filter((entry) => entry.phaseId === row.id)
+          .map((entry) => entry.itemId),
+        participantScope: scopes.participants
+          .filter((entry) => entry.phaseId === row.id)
+          .map((entry) => entry.participantId),
+      }))
+    })
+
+  /**
+   * The one door configuration changes leave through (§9): a draft changes
+   * with zero ceremony, an active batch appends one config event per actual
+   * change and moves the monotonic counter a stale score run is detected by.
+   */
+  const recordConfigChange = (
+    tenantId: string,
+    batchId: string,
+    status: string,
+    diff: Record<string, unknown>,
+    actorId: string | null,
+    reason: string | null,
+  ) =>
+    Effect.gen(function* () {
+      if (status !== 'active' || Object.keys(diff).length === 0) return
+      const revision = yield* bumpConfigRevision(tenantId, batchId)
+      yield* insertConfigEvent({ tenantId, batchId, revision, actorId, diff, reason })
+    })
 
   /**
    * Ratifies clock-crossed boundaries and catches the projection up.
@@ -399,13 +452,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
   /**
    * Rewrites the plan to the submitted order: retained rows park their
    * ordinals out of the way first, so the unique (batch, ordinal) index never
-   * sees a transient collision, then every slot is finalized left to right.
+   * sees a transient collision, then every slot is finalized left to right,
+   * allowances included. Returns each slot's phase id.
    */
   const writePlanOrder = (
     tenantId: string,
     batchId: string,
     specs: readonly PhaseSpecInput[],
-    existingById: ReadonlyMap<string, PhaseRow>,
+    existingById: ReadonlyMap<string, PlanPhase>,
     options: { events: boolean; actorId: string | null; provenance?: TemplateRow },
   ) =>
     Effect.gen(function* () {
@@ -416,8 +470,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
           yield* updatePhaseFields(tenantId, spec.id, { ordinal: PARK + parked++ })
         }
       }
+      const ids: string[] = []
       for (const [index, spec] of specs.entries()) {
         const existing = spec.id !== undefined ? existingById.get(spec.id) : undefined
+        const itemScope = normalScope(spec.itemScope)
+        const participantScope = normalScope(spec.participantScope)
         if (existing) {
           const edits = options.events ? fieldEditsOf(existing, spec) : []
           yield* updatePhaseFields(tenantId, existing.id, {
@@ -430,6 +487,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
             estimatedEntryAt: spec.estimatedEntryAt ?? null,
             permissionProfile: spec.permissionProfile ?? [],
           })
+          const scopesChanged =
+            JSON.stringify(itemScope) !== JSON.stringify(existing.itemScope) ||
+            JSON.stringify(participantScope) !== JSON.stringify(existing.participantScope)
+          if (scopesChanged) {
+            yield* replacePhaseScopes(tenantId, existing.id, {
+              items: itemScope,
+              participants: participantScope,
+            })
+          }
           for (const edit of edits) {
             const event = editEvent(edit)
             yield* insertPhaseEvent({
@@ -440,6 +506,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
               actorId: options.actorId,
             })
           }
+          if (scopesChanged && options.events) {
+            yield* insertPhaseEvent({
+              tenantId,
+              phaseId: existing.id,
+              kind: 'scope-changed',
+              actorId: options.actorId,
+            })
+          }
+          ids.push(existing.id)
         } else {
           const phaseId = yield* insertPhase({
             tenantId,
@@ -459,6 +534,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 }
               : {}),
           })
+          if (itemScope.length > 0 || participantScope.length > 0) {
+            yield* replacePhaseScopes(tenantId, phaseId, {
+              items: itemScope,
+              participants: participantScope,
+            })
+          }
           if (options.events) {
             yield* insertPhaseEvent({
               tenantId,
@@ -467,9 +548,49 @@ export const make = Effect.fn('Assessment.make')(function* () {
               actorId: options.actorId,
             })
           }
+          ids.push(phaseId)
         }
       }
+      return ids
     })
+
+  /** a tenant-level template cannot name batch-local rows */
+  const templateScopeRefusals = (specs: readonly PhaseSpecInput[]): PlanRefusal[] =>
+    specs.flatMap((spec, index) =>
+      (spec.itemScope?.length ?? 0) > 0 || (spec.participantScope?.length ?? 0) > 0
+        ? [{ reason: 'scope-in-template', phaseId: null, index }]
+        : [],
+    )
+
+  /** allowance rules the engine has no vocabulary for */
+  const scopeRefusals = (
+    specs: readonly PhaseSpecInput[],
+    existingById: ReadonlyMap<string, PlanPhase>,
+    participants: ReadonlySet<string>,
+    endedIds: ReadonlySet<string>,
+  ): PlanRefusal[] => {
+    const refusals: PlanRefusal[] = []
+    for (const [index, spec] of specs.entries()) {
+      const participantScope = normalScope(spec.participantScope)
+      for (const participantId of participantScope) {
+        // the allowance names this batch's roster rows and nothing else -
+        // the foreign key only knows the tenant, so the service holds the line
+        if (!participants.has(participantId)) {
+          refusals.push({ reason: 'participant-not-in-batch', phaseId: spec.id ?? null, index })
+        }
+      }
+      if (spec.id !== undefined && endedIds.has(spec.id)) {
+        const existing = existingById.get(spec.id)!
+        if (
+          JSON.stringify(normalScope(spec.itemScope)) !== JSON.stringify(existing.itemScope) ||
+          JSON.stringify(participantScope) !== JSON.stringify(existing.participantScope)
+        ) {
+          refusals.push({ reason: 'ended-phase-name-only', phaseId: spec.id, index })
+        }
+      }
+    }
+    return refusals
+  }
 
   /** the current phase's profile and scopes, null before any phase is in effect */
   const gateView = (tenantId: string, batch: BatchRow, now: EpochMillis) =>
@@ -594,9 +715,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
               diff.userTypeIds = [beforeTypes, nextTypes]
             }
 
+            // the scope is repointable exactly while no roster depends on it
+            let scopeMove: { scopeNodeId: string; scopePath: string } | undefined
+            if (input.scopeNodeId !== undefined && input.scopeNodeId !== before.scopeNodeId) {
+              if (locked.status !== 'draft') return yield* new BatchScopeLocked()
+              yield* rbac.requireAt(as, MANAGE, input.scopeNodeId)
+              const node = yield* oneOrgNode(tenantId, input.scopeNodeId)
+              if (!node) return yield* new BatchReferenceInvalid({ reference: 'scope-node' })
+              scopeMove = { scopeNodeId: node.id, scopePath: node.path }
+              diff.scopeNodeId = [before.scopeNodeId, node.id]
+            }
+
             yield* updateBatchFields(tenantId, batchId, {
               ...(input.name !== undefined ? { name: input.name } : {}),
               ...(input.descriptionMd !== undefined ? { descriptionMd: input.descriptionMd } : {}),
+              ...(scopeMove !== undefined ? scopeMove : {}),
               ...(input.materialRange !== undefined
                 ? {
                     materialStart: input.materialRange.start,
@@ -609,17 +742,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
               yield* replaceBatchUserTypes(tenantId, batchId, nextTypes)
             }
 
-            // every save is one config event; the counter is what lets a
-            // stale score run be detected, so it moves on every save
-            const revision = yield* bumpConfigRevision(tenantId, batchId)
-            yield* insertConfigEvent({
+            yield* recordConfigChange(
               tenantId,
               batchId,
-              revision,
-              actorId: as.userId,
+              locked.status as string,
               diff,
-              reason: input.reason ?? null,
-            })
+              as.userId,
+              input.reason ?? null,
+            )
 
             const batch = yield* oneBatch(tenantId, batchId)
             return yield* readDetail(tenantId, batch!)
@@ -645,15 +775,29 @@ export const make = Effect.fn('Assessment.make')(function* () {
               if (from !== 'draft') return yield* new BatchStatusInvalid({ from, to })
               const userTypes = yield* listBatchUserTypes(tenantId, batchId)
               if (userTypes.length === 0) return yield* new BatchNoUserTypes()
-              const plan = toSnapshots(yield* listPhaseRows(tenantId, batchId))
-              if (plan.length === 0) {
+              const rows = yield* listPhaseRows(tenantId, batchId)
+              if (rows.length === 0) {
                 return yield* new PlanInvalid({
                   refusals: [{ reason: 'plan-empty', phaseId: null }],
                 })
               }
-              const shape = reviewPlanShape(plan)
-              if (shape.refusals.length > 0) {
-                return yield* new PlanInvalid({ refusals: shape.refusals })
+              // the whole plan, revalidated against the activation clock: a
+              // draft saved with future dates may have gone stale on the
+              // shelf, and a phase must not begin before its batch exists
+              const review = reviewPlan(
+                rows.map((row) => ({
+                  phaseKey: row.phaseKey,
+                  displayName: row.displayName,
+                  entryTrigger: row.entryTrigger,
+                  plannedEntryAt: row.plannedEntryAt,
+                  entryOffset: row.entryOffset,
+                  estimatedEntryAt: row.estimatedEntryAt,
+                  permissionProfile: row.permissionProfile,
+                })),
+                now,
+              )
+              if (review.refusals.length > 0) {
+                return yield* new PlanInvalid({ refusals: review.refusals })
               }
               // the roster in one statement, frozen as of this transaction
               yield* generateRoster(tenantId, batchId, locked.scopeNodeId as string)
@@ -681,7 +825,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
       yield* rbac.requireAt(as, MANAGE, batch.scopeNodeId)
-      return yield* dieQuery(withDb(listPhaseRows(tenantId, batchId)))
+      return yield* dieQuery(withDb(readPlan(tenantId, batchId)))
     }),
 
     replacePlan: Effect.fn('Assessment.replacePlan')(function* (tenantId, batchId, body, as) {
@@ -693,8 +837,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
             yield* rbac.requireAt(as, MANAGE, locked.scopeNodeId as string)
             if (locked.status === 'archived') return yield* new BatchReadOnly()
             const draft = locked.status === 'draft'
-            const rows = yield* listPhaseRows(tenantId, batchId)
+            const rows = yield* readPlan(tenantId, batchId)
             const existingById = new Map(rows.map((row) => [row.id, row]))
+            const participants = yield* batchParticipantIds(tenantId, batchId)
             const now = Date.now()
             const actorId = as.userId
 
@@ -719,7 +864,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 actorId,
                 provenance: template,
               })
-              const phases = yield* listPhaseRows(tenantId, batchId)
+              const phases = yield* readPlan(tenantId, batchId)
               return { phases, warnings: review.warnings }
             }
 
@@ -737,8 +882,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
               // a draft plan is replaced as a whole: ids are kept where
               // given, rows absent from the submission go away
               const review = reviewPlan(specs.map(specToEngine), now)
-              if (review.refusals.length > 0) {
-                return yield* new PlanInvalid({ refusals: review.refusals })
+              const scoped = scopeRefusals(specs, existingById, participants, new Set())
+              if (review.refusals.length + scoped.length > 0) {
+                return yield* new PlanInvalid({ refusals: [...review.refusals, ...scoped] })
               }
               const submitted = new Set(
                 specs.flatMap((spec) => (spec.id !== undefined ? [spec.id] : [])),
@@ -752,7 +898,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 events: false,
                 actorId,
               })
-              const phases = yield* listPhaseRows(tenantId, batchId)
+              const phases = yield* readPlan(tenantId, batchId)
               return { phases, warnings: review.warnings }
             }
 
@@ -775,6 +921,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
               refusals.push({ reason: 'reorder-not-allowed', phaseId: null })
             }
             if (refusals.length > 0) return yield* new PlanInvalid({ refusals })
+
+            const effective = effectiveState(toSnapshots(rows), NO_PUBLICATIONS, now)
+            const endedIds = new Set(
+              rows.filter((_, index) => index < effective.index).map((row) => row.id),
+            )
+            refusals.push(...scopeRefusals(specs, existingById, participants, endedIds))
 
             let working = toSnapshots(rows)
             for (const [index, spec] of specs.entries()) {
@@ -824,7 +976,34 @@ export const make = Effect.fn('Assessment.make')(function* () {
               events: true,
               actorId,
             })
-            const phases = yield* listPhaseRows(tenantId, batchId)
+
+            // a plan change on an active batch is a configuration change:
+            // one event, one counter move, same door as every other config
+            const editedIds = specs.flatMap((spec) => {
+              if (spec.id === undefined) return []
+              const existing = existingById.get(spec.id)!
+              const fieldsChanged = fieldEditsOf(existing, spec).length > 0
+              const scopesChanged =
+                JSON.stringify(normalScope(spec.itemScope)) !==
+                  JSON.stringify(existing.itemScope) ||
+                JSON.stringify(normalScope(spec.participantScope)) !==
+                  JSON.stringify(existing.participantScope)
+              return fieldsChanged || scopesChanged ? [spec.id] : []
+            })
+            const insertedKeys = specs.flatMap((spec) =>
+              spec.id === undefined ? [spec.phaseKey] : [],
+            )
+            if (editedIds.length + insertedKeys.length > 0) {
+              yield* recordConfigChange(
+                tenantId,
+                batchId,
+                locked.status as string,
+                { phasePlan: { edited: editedIds, inserted: insertedKeys } },
+                actorId,
+                null,
+              )
+            }
+            const phases = yield* readPlan(tenantId, batchId)
             return { phases, warnings }
           }),
         ),
@@ -852,9 +1031,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (targetIndex !== state.index + 1) {
               return yield* new AdvanceInvalid({ reason: 'target-not-next' })
             }
-            // entering a scheduled or publication boundary by hand overrides
-            // its own trigger; that is the forced path, and it must say why
-            if (target.entryTrigger !== 'manual' && input.force !== true) {
+            // a publication boundary enters when its publication becomes
+            // effective, and through nothing else - force is authority over
+            // the clock, not over the invariant. The publication workflow
+            // owns that entry (its actual is the publish instant).
+            if (target.entryTrigger === 'publication') {
+              return yield* new AdvanceInvalid({ reason: 'publication-boundary' })
+            }
+            // entering a scheduled boundary by hand overrides its own clock;
+            // that is the forced path, and it must say why
+            if (target.entryTrigger === 'scheduled' && input.force !== true) {
               return yield* new AdvanceInvalid({ reason: 'force-required' })
             }
             if (input.force === true) {
@@ -889,7 +1075,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 plannedAt: update.plannedEntryAt,
               })
             }
-            return yield* listPhaseRows(tenantId, batchId)
+            return yield* readPlan(tenantId, batchId)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -940,10 +1126,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     createTemplate: Effect.fn('Assessment.createTemplate')(function* (tenantId, input, as) {
       yield* templatePermission(as)
-      // structural review only: a template is data, and its absolute dates
-      // are judged against the clock when a batch applies it, not when saved
+      // structural rules only; the clock is judged at application. Scopes
+      // name batch-local rows, so a tenant-level template cannot carry them.
       const review = reviewPlan(input.phases.map(specToEngine), null)
-      if (review.refusals.length > 0) return yield* new PlanInvalid({ refusals: review.refusals })
+      const scoped = templateScopeRefusals(input.phases)
+      if (review.refusals.length + scoped.length > 0) {
+        return yield* new PlanInvalid({ refusals: [...review.refusals, ...scoped] })
+      }
       return yield* withDb(
         insertTemplate({ tenantId, name: input.name, phases: input.phases }),
       ).pipe(
@@ -957,8 +1146,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
         yield* templatePermission(as)
         if (input.phases !== undefined) {
           const review = reviewPlan(input.phases.map(specToEngine), null)
-          if (review.refusals.length > 0) {
-            return yield* new PlanInvalid({ refusals: review.refusals })
+          const scoped = templateScopeRefusals(input.phases)
+          if (review.refusals.length + scoped.length > 0) {
+            return yield* new PlanInvalid({ refusals: [...review.refusals, ...scoped] })
           }
         }
         const updated = yield* withDb(updateTemplateRow(tenantId, templateId, input)).pipe(
@@ -1008,7 +1198,7 @@ const toBatchDto = (detail: BatchDetail) => ({
   createdAt: new Date(detail.createdAt).toISOString(),
 })
 
-const toPhaseDto = (row: PhaseRow) => ({
+const toPhaseDto = (row: PlanPhase) => ({
   id: row.id,
   ordinal: row.ordinal,
   phaseKey: row.phaseKey,
@@ -1020,6 +1210,8 @@ const toPhaseDto = (row: PhaseRow) => ({
   estimatedEntryAt: isoOf(row.estimatedEntryAt),
   opensPublicationId: row.opensPublicationId,
   permissionProfile: row.permissionProfile,
+  itemScope: row.itemScope,
+  participantScope: row.participantScope,
   sourceTemplateId: row.sourceTemplateId,
   sourceTemplateVersion: row.sourceTemplateVersion,
 })
@@ -1039,6 +1231,8 @@ interface WirePhaseSpec {
   readonly entryOffset?: EntryOffset | null
   readonly estimatedEntryAt?: string | null
   readonly permissionProfile?: readonly string[]
+  readonly itemScope?: readonly string[]
+  readonly participantScope?: readonly string[]
 }
 
 const parseSpec = (spec: WirePhaseSpec) =>
@@ -1053,6 +1247,8 @@ const parseSpec = (spec: WirePhaseSpec) =>
       estimatedEntryAt:
         spec.estimatedEntryAt == null ? null : yield* parseInstant(spec.estimatedEntryAt),
       permissionProfile: spec.permissionProfile ?? [],
+      ...(spec.itemScope !== undefined ? { itemScope: spec.itemScope } : {}),
+      ...(spec.participantScope !== undefined ? { participantScope: spec.participantScope } : {}),
     }
     return parsed
   })

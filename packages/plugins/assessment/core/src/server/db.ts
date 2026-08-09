@@ -187,6 +187,8 @@ export const updateBatchFields = (
   fields: {
     name?: string
     descriptionMd?: string | null
+    scopeNodeId?: string
+    scopePath?: string
     materialStart?: string
     materialEnd?: string
     timezone?: string
@@ -199,6 +201,9 @@ export const updateBatchFields = (
       .set({
         ...(fields.name !== undefined ? { name: fields.name } : {}),
         ...(fields.descriptionMd !== undefined ? { descriptionMd: fields.descriptionMd } : {}),
+        ...(fields.scopeNodeId !== undefined
+          ? { scopeNodeId: fields.scopeNodeId, scopePath: fields.scopePath }
+          : {}),
         ...(fields.materialStart !== undefined
           ? {
               materialRange: sql`daterange(${fields.materialStart}::date, ${fields.materialEnd}::date)`,
@@ -498,6 +503,97 @@ export const insertPhaseEvent = (input: {
       } as never)
       .execute(),
   )
+
+/** every scope row of a batch's phases, for the plan read */
+export const scopesForBatch = (tenantId: string, batchId: string) =>
+  Effect.all({
+    items: db
+      .query((k) =>
+        k
+          .selectFrom('PhaseItemScope')
+          .innerJoin('BatchPhase', (join) =>
+            join
+              .onRef('BatchPhase.id', '=', 'PhaseItemScope.phaseId')
+              .onRef('BatchPhase.tenantId', '=', 'PhaseItemScope.tenantId'),
+          )
+          .select(['PhaseItemScope.phaseId', 'PhaseItemScope.itemId'])
+          .where('PhaseItemScope.tenantId', '=', tenantId)
+          .where('BatchPhase.batchId', '=', batchId)
+          .orderBy('PhaseItemScope.itemId')
+          .execute(),
+      )
+      .pipe(Effect.map((found) => found as { phaseId: string; itemId: string }[])),
+    participants: db
+      .query((k) =>
+        k
+          .selectFrom('PhaseParticipantScope')
+          .innerJoin('BatchPhase', (join) =>
+            join
+              .onRef('BatchPhase.id', '=', 'PhaseParticipantScope.phaseId')
+              .onRef('BatchPhase.tenantId', '=', 'PhaseParticipantScope.tenantId'),
+          )
+          .select(['PhaseParticipantScope.phaseId', 'PhaseParticipantScope.participantId'])
+          .where('PhaseParticipantScope.tenantId', '=', tenantId)
+          .where('BatchPhase.batchId', '=', batchId)
+          .orderBy('PhaseParticipantScope.participantId')
+          .execute(),
+      )
+      .pipe(Effect.map((found) => found as { phaseId: string; participantId: string }[])),
+  })
+
+/** idempotent replacement of one phase's two allowances */
+export const replacePhaseScopes = (
+  tenantId: string,
+  phaseId: string,
+  scopes: { items: readonly string[]; participants: readonly string[] },
+) =>
+  Effect.gen(function* () {
+    yield* db.query((k) =>
+      k
+        .deleteFrom('PhaseItemScope')
+        .where('tenantId', '=', tenantId)
+        .where('phaseId', '=', phaseId)
+        .execute(),
+    )
+    yield* db.query((k) =>
+      k
+        .deleteFrom('PhaseParticipantScope')
+        .where('tenantId', '=', tenantId)
+        .where('phaseId', '=', phaseId)
+        .execute(),
+    )
+    if (scopes.items.length > 0) {
+      yield* db.query((k) =>
+        k
+          .insertInto('PhaseItemScope')
+          .values(scopes.items.map((itemId) => ({ tenantId, phaseId, itemId })))
+          .execute(),
+      )
+    }
+    if (scopes.participants.length > 0) {
+      yield* db.query((k) =>
+        k
+          .insertInto('PhaseParticipantScope')
+          .values(
+            scopes.participants.map((participantId) => ({ tenantId, phaseId, participantId })),
+          )
+          .execute(),
+      )
+    }
+  })
+
+/** the participant rows of a batch, for validating a participant allowance */
+export const batchParticipantIds = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchParticipant')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .execute(),
+    )
+    .pipe(Effect.map((found) => new Set(found.map((row) => row.id as string))))
 
 /** the two allowances of one phase, for the gate */
 export const phaseScopes = (tenantId: string, phaseId: string) =>

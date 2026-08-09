@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   planInsertion,
   reviewInsertion,
+  reviewPlan,
   reviewPlanEdit,
   reviewPlanShape,
   type PlanEdit,
@@ -194,6 +195,32 @@ describe('boundaries only in the future, and in order', () => {
 })
 
 describe('offsets', () => {
+  it('freeze once a plan exists: materialization turns the spec into provenance', () => {
+    const plan = normalizePlan([
+      phase({ ordinal: 0, entryTrigger: 'manual', actualEntryAt: T0 }),
+      phase({ ordinal: 1, entryOffset: { days: 3 }, plannedEntryAt: T('2026-09-09T12:00:00Z') }),
+      phase({ ordinal: 2, entryTrigger: 'manual' }),
+    ])
+    // neither changing nor clearing the spec behind a materialized plan
+    for (const entryOffset of [{ days: 5 }, null]) {
+      expect(
+        reviewPlanEdit(plan, NO_PUBS, NOW, { kind: 'set-offset', phaseId: 'p1', entryOffset })
+          .refusals,
+      ).toEqual([{ reason: 'offset-with-planned', phaseId: 'p1' }])
+    }
+    // clearing the plan first releases the offset for editing
+    const cleared = normalizePlan(
+      plan.map((p) => (p.id === 'p1' ? { ...p, plannedEntryAt: null } : p)),
+    )
+    expect(
+      reviewPlanEdit(cleared, NO_PUBS, NOW, {
+        kind: 'set-offset',
+        phaseId: 'p1',
+        entryOffset: { days: 5 },
+      }).refusals,
+    ).toEqual([])
+  })
+
   it('belong to scheduled phases and must be positive', () => {
     expect(
       reasonsOf(undefined, { kind: 'set-offset', phaseId: 'p4', entryOffset: { days: 1 } }),
@@ -357,5 +384,60 @@ describe('plan shape', () => {
     expect(reviewPlanShape(runaway).refusals).toEqual([
       { reason: 'terminal-must-be-manual', phaseId: 'p1' },
     ])
+  })
+})
+
+describe('reviewPlan', () => {
+  const spec = (
+    over: Partial<Parameters<typeof reviewPlan>[0][number]> & { phaseKey: string },
+  ) => ({
+    displayName: over.phaseKey,
+    entryTrigger: 'manual' as const,
+    ...over,
+  })
+
+  it('holds a timeless review to every structural rule, only skipping the clock', () => {
+    const specs = [
+      spec({ phaseKey: 'prep' }),
+      // a hard plan beyond a manual boundary is wrong in any month
+      spec({
+        phaseKey: 'entry',
+        entryTrigger: 'scheduled',
+        plannedEntryAt: T('2020-09-01T00:00:00Z'),
+      }),
+      spec({ phaseKey: 'archive' }),
+    ]
+    const timeless = reviewPlan(specs, null).refusals.map((r) => r.reason)
+    expect(timeless).toContain('hard-plan-beyond-event-boundary')
+    // the date being in the past is exactly what a stored template may say
+    expect(timeless).not.toContain('planned-not-in-future')
+    // with a clock the same plan also fails the future rule
+    expect(reviewPlan(specs, NOW).refusals.map((r) => r.reason)).toContain('planned-not-in-future')
+  })
+
+  it('keeps commitments ordered and refuses an offset beside a plan, clock or not', () => {
+    const disordered = reviewPlan(
+      [
+        spec({ phaseKey: 'late', entryTrigger: 'scheduled', plannedEntryAt: T2 }),
+        spec({ phaseKey: 'early', entryTrigger: 'scheduled', plannedEntryAt: T1 }),
+        spec({ phaseKey: 'archive' }),
+      ],
+      null,
+    )
+    expect(disordered.refusals.map((r) => r.reason)).toContain('planned-out-of-order')
+
+    const combo = reviewPlan(
+      [
+        spec({
+          phaseKey: 'entry',
+          entryTrigger: 'scheduled',
+          plannedEntryAt: T1,
+          entryOffset: { days: 1 },
+        }),
+        spec({ phaseKey: 'archive' }),
+      ],
+      null,
+    )
+    expect(combo.refusals.map((r) => r.reason)).toContain('offset-with-planned')
   })
 })

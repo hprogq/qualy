@@ -351,6 +351,22 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             select kind from phase_events where phase_id = ${plan[1]!.id} and kind = 'planned-changed'`),
         )
 
+        // the materialized offset is provenance now; changing it is refused
+        const offsetLocked = yield* Effect.exit(
+          assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            {
+              specs: specs.map((s) =>
+                s.id === plan[1]!.id
+                  ? { ...s, plannedEntryAt: moved, entryOffset: { hours: 3 } }
+                  : s,
+              ),
+            },
+            f.principal,
+          ),
+        )
+
         // the entered phase's time fields are history
         const refused = yield* Effect.exit(
           assessment.replacePlan(
@@ -364,20 +380,24 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             f.principal,
           ),
         )
-        return { audited, refused, materialized }
+        return { audited, refused, offsetLocked, materialized }
       }),
     )
-    const { audited, refused, materialized } = ok(exit)
+    const { audited, refused, offsetLocked, materialized } = ok(exit)
     expect(materialized).toHaveLength(1)
     expect(audited).toHaveLength(1)
+    const refusalsIn = (exit2: typeof refused) =>
+      reasonsOf(exit2)
+        .flatMap(
+          (entry) =>
+            (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ??
+            [],
+        )
+        .map((entry) => entry.reason)
+    expect(tagOf(offsetLocked)).toBe('ASSESSMENT_PLAN_INVALID')
+    expect(refusalsIn(offsetLocked)).toContain('offset-with-planned')
     expect(tagOf(refused)).toBe('ASSESSMENT_PLAN_INVALID')
-    const refusal = reasonsOf(refused)
-      .flatMap(
-        (entry) =>
-          (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
-      )
-      .map((entry) => entry.reason)
-    expect(refusal).toContain('phase-already-entered')
+    expect(refusalsIn(refused)).toContain('phase-already-entered')
   })
 
   it('advances manually, demands force and a reason for early boundaries, and archives at the terminal', async () => {
@@ -570,6 +590,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
 
+        // the roster rows are inputs here, read only; the allowance itself is
+        // written through the service, the way the phase editor will
         const participants = rowsOf<{ id: string; user_id: string }>(
           yield* runSql(
             sql`select id, user_id from batch_participants where batch_id = ${batch.id}`,
@@ -578,16 +600,38 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const p1 = participants.find((row) => row.user_id === f.s1)!.id
         const p2 = participants.find((row) => row.user_id === f.s2)!.id
         const itemA = randomUUID()
-        yield* runSql(sql`
-          insert into phase_item_scopes (tenant_id, phase_id, item_id)
-          values (${f.tenant}, ${plan[0]!.id}, ${itemA})`)
-        yield* runSql(sql`
-          insert into phase_participant_scopes (tenant_id, phase_id, participant_id)
-          values (${f.tenant}, ${plan[0]!.id}, ${p1})`)
+        const stranger = yield* Effect.exit(
+          assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            {
+              specs: plan.map((row) =>
+                row.phaseKey === 'supplementary'
+                  ? { ...toSpec(row), participantScope: [randomUUID()] }
+                  : toSpec(row),
+              ),
+            },
+            f.principal,
+          ),
+        )
+        const scoped = yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: plan.map((row) =>
+              row.phaseKey === 'supplementary'
+                ? { ...toSpec(row), itemScope: [itemA], participantScope: [p1] }
+                : toSpec(row),
+            ),
+          },
+          f.principal,
+        )
 
         const gate = (code: string, ctx?: { itemId?: string; participantId?: string }) =>
           assessment.gate(f.tenant, batch.id, code, ctx)
         return {
+          stranger,
+          scoped,
           inScope: yield* gate('assessment.entry.create', { itemId: itemA, participantId: p1 }),
           wrongItem: yield* gate('assessment.entry.create', {
             itemId: randomUUID(),
@@ -600,10 +644,17 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           resubmitCrossItem: yield* gate('assessment.entry.resubmit', { participantId: p1 }),
           resubmitBlocked: yield* gate('assessment.entry.resubmit', { participantId: p2 }),
           review: yield* gate('assessment.review.process'),
+          itemA,
+          p1,
         }
       }),
     )
     const decisions = ok(exit)
+    // an allowance naming a stranger's row is refused before anything writes
+    expect(tagOf(decisions.stranger)).toBe('ASSESSMENT_PLAN_INVALID')
+    const supplementary = decisions.scoped.phases.find((row) => row.phaseKey === 'supplementary')!
+    expect(supplementary.itemScope).toEqual([decisions.itemA])
+    expect(supplementary.participantScope).toEqual([decisions.p1])
     expect(decisions.inScope).toEqual({ allowed: true })
     expect(decisions.wrongItem).toEqual({ allowed: false, reason: 'item-out-of-scope' })
     expect(decisions.wrongParticipant).toEqual({
@@ -617,6 +668,151 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
       reason: 'participant-out-of-scope',
     })
     expect(decisions.review).toEqual({ allowed: true })
+  })
+
+  it('never force-advances a publication boundary: its entry belongs to the publication', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('pubgate')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Publication boundary',
+            scopeNodeId: f.root,
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({ phaseKey: 'publication-prep' }),
+              phase({ phaseKey: 'appeal', entryTrigger: 'publication' }),
+              phase({ phaseKey: 'archive' }),
+            ],
+          },
+          f.principal,
+        )
+        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        return yield* Effect.exit(
+          assessment.advancePhase(
+            f.tenant,
+            batch.id,
+            { to: plan[1]!.id, force: true, reason: 'no, this must not work' },
+            f.principal,
+          ),
+        )
+      }),
+    )
+    const refused = ok(exit)
+    expect(tagOf(refused)).toBe('ASSESSMENT_ADVANCE_INVALID')
+    expect(
+      reasonsOf(refused).map((entry) => (entry.error as { reason?: string } | undefined)?.reason),
+    ).toEqual(['publication-boundary'])
+  })
+
+  it('revalidates the plan against the clock at activation', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('stale')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Stale',
+            scopeNodeId: f.root,
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({
+                phaseKey: 'entry',
+                entryTrigger: 'scheduled',
+                plannedEntryAt: Date.now() + 1_200,
+              }),
+              phase({ phaseKey: 'archive' }),
+            ],
+          },
+          f.principal,
+        )
+        // the draft sits on the shelf past its own first boundary
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1_400)))
+        return yield* Effect.exit(
+          assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal),
+        )
+      }),
+    )
+    const refused = ok(exit)
+    expect(tagOf(refused)).toBe('ASSESSMENT_PLAN_INVALID')
+    expect(
+      reasonsOf(refused).flatMap(
+        (entry) =>
+          (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
+      ),
+    ).toContainEqual(expect.objectContaining({ reason: 'planned-not-in-future' }))
+  })
+
+  it('repoints a draft scope and refreezes its path, and locks it once active', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('repoint')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Repoint',
+            scopeNodeId: f.gradeA,
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        const moved = yield* assessment.updateBatch(
+          f.tenant,
+          batch.id,
+          { scopeNodeId: f.gradeB },
+          f.principal,
+        )
+        const frozen = one<{ scope_path: string }>(
+          yield* runSql(sql`select scope_path from assessment_batches where id = ${batch.id}`),
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'archive' })] },
+          f.principal,
+        )
+        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+        const roster = rowsOf<{ user_id: string }>(
+          yield* runSql(sql`select user_id from batch_participants where batch_id = ${batch.id}`),
+        )
+        const locked = yield* Effect.exit(
+          assessment.updateBatch(f.tenant, batch.id, { scopeNodeId: f.gradeA }, f.principal),
+        )
+        return { moved, frozen, roster, locked, f }
+      }),
+    )
+    const { moved, frozen, roster, locked, f } = ok(exit)
+    expect(moved.scopeNodeId).toBe(f.gradeB)
+    expect(frozen.scope_path).toBe('r.b')
+    // the roster came from the repointed scope
+    expect(roster.map((row) => row.user_id)).toEqual([f.s3])
+    expect(tagOf(locked)).toBe('ASSESSMENT_BATCH_SCOPE_LOCKED')
   })
 
   it('composes rbac, the gate and the policy slot in the authorize facade', async () => {
@@ -722,25 +918,76 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        const updated = yield* assessment.updateBatch(
+        // a draft changes with zero ceremony: no counter, no event
+        const drafted = yield* assessment.updateBatch(
           f.tenant,
           batch.id,
-          { name: 'Renamed', userTypeIds: [f.studentType], reason: 'scope settled' },
+          { name: 'Renamed', userTypeIds: [f.studentType], reason: 'still drafting' },
           f.principal,
         )
-        const event = one<{ revision: number; reason: string; diff: Record<string, unknown> }>(
-          yield* runSql(sql`
-            select revision, reason, diff from batch_config_revisions where batch_id = ${batch.id}`),
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.submit'] }),
+              phase({ phaseKey: 'archive' }),
+            ],
+          },
+          f.principal,
         )
-        return { updated, event }
+        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+
+        // active: an actual change is one event and one counter move
+        const changed = yield* assessment.updateBatch(
+          f.tenant,
+          batch.id,
+          { name: 'Renamed again', reason: 'college asked' },
+          f.principal,
+        )
+        // a no-op save moves nothing
+        const noop = yield* assessment.updateBatch(
+          f.tenant,
+          batch.id,
+          { name: 'Renamed again' },
+          f.principal,
+        )
+        // and a plan change on an active batch is a config change too
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: plan.map((row) =>
+              row.phaseKey === 'entry'
+                ? { ...toSpec(row), permissionProfile: ['assessment.entry.create'] }
+                : toSpec(row),
+            ),
+          },
+          f.principal,
+        )
+        const events = rowsOf<{
+          revision: number
+          reason: string | null
+          diff: Record<string, unknown>
+        }>(
+          yield* runSql(sql`
+            select revision, reason, diff from batch_config_revisions
+            where batch_id = ${batch.id} order by revision`),
+        )
+        const finished = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
+        return { drafted, changed, noop, events, finished }
       }),
     )
-    const { updated, event } = ok(exit)
-    expect(updated.configRevision).toBe(1)
-    expect(updated.name).toBe('Renamed')
-    expect(event.revision).toBe(1)
-    expect(event.reason).toBe('scope settled')
-    expect(Object.keys(event.diff).sort()).toEqual(['name', 'userTypeIds'])
+    const { drafted, changed, noop, events, finished } = ok(exit)
+    expect(drafted.configRevision).toBe(0)
+    expect(changed.configRevision).toBe(1)
+    expect(noop.configRevision).toBe(1)
+    expect(finished.configRevision).toBe(2)
+    expect(events).toHaveLength(2)
+    expect(events[0]!.reason).toBe('college asked')
+    expect(Object.keys(events[0]!.diff)).toEqual(['name'])
+    expect(Object.keys(events[1]!.diff)).toEqual(['phasePlan'])
   })
 
   it('holds templates to their structural rules and versions their edits', async () => {
@@ -776,19 +1023,59 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             f.principal,
           ),
         )
+        // a tenant-level template cannot carry batch-local allowances, and a
+        // hard plan beyond a manual boundary is structural, not seasonal
+        const scoped = yield* Effect.exit(
+          assessment.createTemplate(
+            f.tenant,
+            {
+              name: 'scoped',
+              phases: [
+                phase({ phaseKey: 'entry', itemScope: [randomUUID()] }),
+                phase({ phaseKey: 'archive' }),
+              ],
+            },
+            f.principal,
+          ),
+        )
+        const beyondGate = yield* Effect.exit(
+          assessment.createTemplate(
+            f.tenant,
+            {
+              name: 'beyond-gate',
+              phases: [
+                phase({ phaseKey: 'prep' }),
+                phase({
+                  phaseKey: 'entry',
+                  entryTrigger: 'scheduled',
+                  plannedEntryAt: Date.now() - HOUR,
+                }),
+                phase({ phaseKey: 'archive' }),
+              ],
+            },
+            f.principal,
+          ),
+        )
         const versioned = yield* assessment.updateTemplate(
           f.tenant,
           created.id,
           { phases: [phase({ phaseKey: 'archive' })] },
           f.principal,
         )
-        return { created, duplicate, runaway, versioned }
+        return { created, duplicate, runaway, scoped, beyondGate, versioned }
       }),
     )
-    const { created, duplicate, runaway, versioned } = ok(exit)
+    const { created, duplicate, runaway, scoped, beyondGate, versioned } = ok(exit)
     expect(created.version).toBe(1)
     expect(tagOf(duplicate)).toBe('ASSESSMENT_TEMPLATE_CONFLICT')
     expect(tagOf(runaway)).toBe('ASSESSMENT_PLAN_INVALID')
+    expect(tagOf(scoped)).toBe('ASSESSMENT_PLAN_INVALID')
+    const beyondReasons = reasonsOf(beyondGate).flatMap(
+      (entry) =>
+        (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
+    )
+    expect(beyondReasons.map((entry) => entry.reason)).toContain('hard-plan-beyond-event-boundary')
+    expect(beyondReasons.map((entry) => entry.reason)).not.toContain('planned-not-in-future')
     expect(versioned.version).toBe(2)
   })
 })

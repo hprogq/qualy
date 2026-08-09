@@ -35,6 +35,10 @@ const i18n = definePluginMessages({
       id: 'assessment/error/batch-read-only',
       defaultMessage: 'This batch is archived and can no longer be changed.',
     },
+    ASSESSMENT_BATCH_SCOPE_LOCKED: {
+      id: 'assessment/error/batch-scope-locked',
+      defaultMessage: 'The batch scope cannot change once the batch is active.',
+    },
     ASSESSMENT_BATCH_STATUS_INVALID: {
       id: 'assessment/error/batch-status-invalid',
       defaultMessage: 'The batch cannot move to that status from where it is.',

@@ -6,6 +6,7 @@ export default {
   'assessment/error/template-not-found': '未找到该阶段模板。',
   'assessment/error/template-conflict': '已存在同名的阶段模板。',
   'assessment/error/batch-read-only': '该批次已归档，不能再修改。',
+  'assessment/error/batch-scope-locked': '批次激活后不能再修改组织范围。',
   'assessment/error/batch-status-invalid': '批次当前状态不允许这样切换。',
   'assessment/error/batch-no-user-types': '激活批次前请先选择至少一个用户类型。',
   'assessment/error/batch-reference-invalid': '所选组织范围或用户类型不存在。',
