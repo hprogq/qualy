@@ -2,7 +2,10 @@ import { Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
+import { message } from '@qualy/i18n-contract'
+import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
@@ -30,6 +33,15 @@ const plugin = Plugin.define(
     dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac'],
   }),
   Access.permissions('assessment', permissions),
+  Ui.i18n('./client/i18n.ts'),
+  Ui.page({
+    id: 'assessment/batches',
+    path: '/assessment/batches',
+    component: Ui.react('./client/BatchAdminPage.tsx'),
+    layout: ADMIN_SHELL,
+    visibility: permissionOf('assessment.batch.manage'),
+    navigation: { label: message('assessment/navigation/batches', 'Assessment'), order: 40 },
+  }),
   Api.group(assessmentApiGroup, assessmentApiHandlers),
   Plugin.layer(serviceLayer),
   // provided the service rather than merged with it: the fiber consumes the

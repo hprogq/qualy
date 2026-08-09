@@ -415,6 +415,35 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     ).middleware(Authenticated),
   )
   .add(
+    // The options a batch form needs, served from this domain: an
+    // administrator holds assessment.batch.manage and should not have to
+    // hold org and iam read permissions to fill in a form (§22).
+    HttpApiEndpoint.get('listScopeOptions', '/assessment/scope-options', {
+      success: Schema.Struct({
+        nodes: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            name: Schema.String,
+            path: Schema.String,
+            depth: Schema.Number,
+            orgTypeId: Schema.String,
+          }),
+        ),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listUserTypeOptions', '/assessment/user-type-options', {
+      success: Schema.Struct({
+        userTypes: Schema.Array(
+          Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
+        ),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.get('listTemplates', '/assessment/phase-templates', {
       query: Schema.Struct({ ...pageQuery }),
       success: pageOf(templateView),

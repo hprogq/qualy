@@ -86,12 +86,14 @@ import {
   replaceBatchUserTypes,
   replacePhaseScopes,
   scopeNodeRows,
+  scopeOptions as scopeOptionRows,
   scopesForBatch,
   setCurrentPhase,
   setParticipantStatus,
   setPhaseActual,
   updateBatchFields,
   userLivePosition,
+  userTypeOptions as userTypeOptionRows,
   updatePhaseFields,
   updateTemplateRow,
   type BatchRow,
@@ -197,6 +199,9 @@ export interface SweepReport {
  * drains instead of holding one transaction open across a whole tenant.
  */
 const SWEEP_BATCH_LIMIT = 200
+
+/** how many nodes a scope picker is willing to render at once */
+const SCOPE_OPTION_LIMIT = 500
 
 /** one level of the lineage being frozen, with who could act there today */
 export interface ChainPreviewStep {
@@ -413,6 +418,17 @@ export class Assessment extends Context.Service<
       { participant: ParticipantRow; chainPreview: readonly ChainPreviewStep[] },
       BatchNotFound | BatchReadOnly | ParticipantNotFound | ParticipantInvalid | AccessDenied
     >
+    readonly scopeOptions: (
+      tenantId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      readonly { id: string; name: string; path: string; depth: number; orgTypeId: string }[],
+      AccessDenied
+    >
+    readonly userTypeOptions: (
+      tenantId: string,
+      as: Principal,
+    ) => Effect.Effect<readonly { id: string; code: string; name: string }[], AccessDenied>
     /**
      * Ratifies every boundary the clock has crossed, across tenants.
      *
@@ -1569,6 +1585,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
+    scopeOptions: Effect.fn('Assessment.scopeOptions')(function* (tenantId, as) {
+      // no separate permission: what a batch may face is what this caller may
+      // manage, so the authorization scope IS the option list
+      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+      yield* templatePermission(as)
+      return yield* dieQuery(withDb(scopeOptionRows(tenantId, held, SCOPE_OPTION_LIMIT)))
+    }),
+
+    userTypeOptions: Effect.fn('Assessment.userTypeOptions')(function* (tenantId, as) {
+      yield* templatePermission(as)
+      return yield* dieQuery(withDb(userTypeOptionRows(tenantId)))
+    }),
+
     sweepDueBoundaries: Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis
       // One candidate query, then one transaction per batch. Sweeping every
@@ -1987,6 +2016,22 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           participant: toParticipantDto(applied.participant),
           chainPreview: applied.chainPreview,
         }
+      }),
+    )
+    .handle(
+      'listScopeOptions',
+      Effect.fn('assessment.listScopeOptions.handler')(function* () {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return { nodes: yield* assessment.scopeOptions(principal.tenantId, principal) }
+      }),
+    )
+    .handle(
+      'listUserTypeOptions',
+      Effect.fn('assessment.listUserTypeOptions.handler')(function* () {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return { userTypes: yield* assessment.userTypeOptions(principal.tenantId, principal) }
       }),
     )
     .handle(

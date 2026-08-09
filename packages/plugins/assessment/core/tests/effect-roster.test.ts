@@ -199,8 +199,7 @@ const seed = (slug: string) =>
     }
   })
 
-type Seeded =
-  ReturnType<typeof seed> extends Effect.Effect<infer A, infer _E, infer _R> ? A : never
+type Seeded = ReturnType<typeof seed> extends Effect.Effect<infer A, infer _E, infer _R> ? A : never
 
 const activateBatch = (
   f: Seeded,

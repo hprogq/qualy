@@ -1272,3 +1272,50 @@ export const roleHoldersAt = (tenantId: string, nodeIds: readonly string[]) =>
               ),
           ),
         )
+
+// --- options for the batch form ---
+//
+// Served from this domain rather than by sending the screen to org and auth
+// (§22): a batch administrator holds assessment.batch.manage and nothing
+// else, so the options a batch form needs are read with that permission or
+// they are not readable at all.
+
+export const scopeOptions = (tenantId: string, held: AuthorizationScope, limit: number) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('OrgNode')
+        .select(['id', 'name', 'depth', 'orgTypeId'])
+        .select([sql<string>`org_nodes.path::text`.as('path')])
+        .where('tenantId', '=', tenantId)
+        .where((eb) =>
+          scopeCoverage(held, {
+            id: eb.ref('OrgNode.id'),
+            tenantId: eb.ref('OrgNode.tenantId'),
+            path: eb.ref('OrgNode.path'),
+          }),
+        )
+        .orderBy(sql`org_nodes.path`)
+        .limit(limit)
+        .execute(),
+    )
+    .pipe(
+      Effect.map(
+        (found) =>
+          found as { id: string; name: string; path: string; depth: number; orgTypeId: string }[],
+      ),
+    )
+
+export const userTypeOptions = (tenantId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('UserType')
+        .select(['id', 'code', 'name'])
+        .where('tenantId', '=', tenantId)
+        .where('enabled', '=', true)
+        .orderBy('sortOrder')
+        .orderBy('name')
+        .execute(),
+    )
+    .pipe(Effect.map((found) => found as { id: string; code: string; name: string }[]))

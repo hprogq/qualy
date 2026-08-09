@@ -2491,3 +2491,49 @@ batch-not-active、重复 → already-included)+ 成功纳入冻结三级 lineag
 **下一步**:s6 batch-admin 页(M1 最重前端会话:批次表单、阶段时间线编辑器、权限矩阵
 编辑器(数据源 PHASE_GATED)、roster+diff 面板;Ui.page + i18n catalog + 浏览器测试;
 超时切分线在"阶段编辑器"与"roster 面板"之间)。
+
+### M1 会话 15(s6)· batch-admin 页(2026-08-09)
+
+M1 最重的前端会话,四个面板一次做完(未触发"阶段编辑器/roster 面板"切分线)。
+
+- **§22 跨域选项纪律先补服务端**:批次表单要选组织单位与用户类型,但"禁止逼页面持有
+  其他域读权限"——于是加两个 **assessment 自己的 options 端点**
+  (`GET /assessment/scope-options`:调用者对 batch.manage 的授权范围**就是**可选单位集,
+  scopeCoverage 下推 SQL;`GET /assessment/user-type-options`),管理员只需
+  assessment.batch.manage 即可填完表单,不必再持 org.tree.read。frozen-routes +2。
+- **权限矩阵的数据源是 PHASE_GATED 本身**(§32.13 的结构性安全在 UI 上兑现):
+  `permissions.ts` 把白名单改成字面量元组 `PHASE_GATED_CODES`(PHASE_GATED 由它派生),
+  矩阵组件遍历该元组、标签用**以该元组为键的映射**——新增受控码若无译文**直接编译失败**;
+  其他插件的权限**在结构上进不了这个列表**,不需要任何校验去拦。
+- **阶段时间线编辑器**:一行一形态——已进入显示时刻(只读)、publication 边界显示"待定"、
+  有 offset 显示时长(已物化则禁用并注明)、其余显示日期时间输入(manual 边界的标签是
+  "目标日期"并注明"手动阶段永远不会自己开始",与承诺型区分);插入阶段、模板套用
+  (仅 draft 可用,服务端复制)、advance(manual 直接开始,scheduled 走"提前开始"+理由)。
+  **不重写规则**:提交整份计划,把引擎拒因**按 index 渲染回对应行**,行级拒因显示在该阶段
+  卡片里,计划级拒因显示在面板顶部。
+- **拒因映射表编译期完备**:`refusals.ts` 以 `Record<EditRefusalReason | ServiceRefusalReason,
+  MessageDescriptor>` 为类型——引擎新增拒因而无句子即编译失败(type-only import 引擎类型,
+  运行时零成本)。
+- **roster + diff 面板**:五类各配一个动作(新迁入→纳入并显示"同时参加 X"警告、已迁出→移出、
+  锚点变更→应用新位置、类型变更→提示是否仍在纳入类型内、scope 完整性→列出缺失单位),
+  draft 批次显示"花名册在激活时生成"。
+- **i18n**:130 条文案 + zh-CN 全量(含 navigation label、11 条权限标签、26 条拒因句子);
+  组件内**零裸中文**;`Ui.i18n` 与 `Ui.page`(visibility=permissionOf('assessment.batch.manage'),
+  ADMIN_SHELL,导航 order 40)上车;apps/web 加插件依赖(收集器对未声明输入硬失败)。
+
+**验收①(浏览器实测,新增 6 例)**:①**阶段编辑器只显示受控权限**——按阶段行 scope 查询,
+断言恰 **11 个复选框**且"登录/管理组织架构/管理测评批次/查看角色"**均不存在**;
+②模板套用只发 `fromTemplateId`(复制归服务端,溯源由服务端写)、active 批次该控件禁用;
+③引擎拒因 `hard-plan-beyond-event-boundary` 以**中文句子**出现在对应阶段行;
+④三种时间形态各自渲染正确的控件(计划时间 vs 偏移天数);⑤diff 两类各自触发正确的 API
+(纳入带 userId、应用锚点带 participantId)且"同时参加：英语学院综测"可见;
+⑥draft 批次显示花名册尚未生成。过程中修掉自己两个测试错误(复选框计数把新建表单的也算进去
+——改为按阶段行 scope;同一 `it` 里渲染两次页面导致按钮重复——拆成两个用例)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错(含新 client 工程与组件引用检查器);
+`pnpm test` **72 文件 451 全绿**;`pnpm test:browser` **4 文件 22 全绿**(冷跑);
+`pnpm build` 组件收集 + chunk 哨兵通过、产物 staged;`resolve --frozen-lockfile` up to date;
+`pnpm dev` READY 1s、未登录 `scope-options → 401`、`/assessment/batches` 页面壳 200。
+
+**下一步**:s7 学生时间线页 + M1 全量验收收口(取值优先级渲染、"待定"文案红线、拒因到 UI
+文案映射,然后 ①–⑩ 全部真跑一遍并把输出摘录进 STATUS,M1 收口提交)。

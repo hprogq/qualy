@@ -65,6 +65,8 @@ export const FROZEN_ROUTES = [
   'GET /assessment/batches/{batchId}/roster-diff',
   'PUT /assessment/batches/{batchId}/participants/{participantId}/status',
   'PUT /assessment/batches/{batchId}/participants/{participantId}/anchor',
+  'GET /assessment/scope-options',
+  'GET /assessment/user-type-options',
   'GET /assessment/phase-templates',
   'POST /assessment/phase-templates',
   'PATCH /assessment/phase-templates/{templateId}',

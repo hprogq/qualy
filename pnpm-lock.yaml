@@ -303,6 +303,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@qualy/plugin-assessment':
+        specifier: workspace:*
+        version: link:../../packages/plugins/assessment/core
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../../packages/plugins/base/auth
@@ -504,16 +507,37 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
+      '@qualy/ui':
+        specifier: workspace:*
+        version: link:../../../web/ui
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/ui
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../../web/i18n
+      '@qualy/web-runtime':
+        specifier: workspace:*
+        version: link:../../../web/runtime
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.101.4(react@19.2.8)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
       kysely:
         specifier: 'catalog:'
         version: 0.29.4
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
     devDependencies:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
 
   packages/plugins/base/auth:
     dependencies:

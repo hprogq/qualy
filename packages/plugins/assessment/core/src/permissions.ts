@@ -94,13 +94,15 @@ export const permissions = [
 ] as const satisfies readonly PermissionDefinition[]
 
 /**
- * The codes a phase's permission profile can open or withhold.
+ * The codes a phase's permission profile can open or withhold, in the order
+ * the phase editor lists them.
  *
  * Anything outside this set passes the gate unconditionally; anything inside
- * it fails closed when absent from the current profile. The phase editor
- * lists exactly this set.
+ * it fails closed when absent from the current profile. A tuple rather than a
+ * bare set because the editor's label map is keyed by it: a code added here
+ * without a translation stops compiling.
  */
-export const PHASE_GATED: ReadonlySet<string> = new Set([
+export const PHASE_GATED_CODES = [
   'assessment.entry.create',
   'assessment.entry.edit',
   'assessment.entry.submit',
@@ -112,7 +114,11 @@ export const PHASE_GATED: ReadonlySet<string> = new Set([
   'assessment.review.reopen',
   'assessment.result.view-peers',
   'assessment.ranking.view',
-])
+] as const
+
+export type PhaseGatedCode = (typeof PHASE_GATED_CODES)[number]
+
+export const PHASE_GATED: ReadonlySet<string> = new Set(PHASE_GATED_CODES)
 
 const declared = new Set<string>(permissions.map((definition) => definition.code))
 for (const code of PHASE_GATED) {

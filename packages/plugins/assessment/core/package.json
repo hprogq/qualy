@@ -10,6 +10,7 @@
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
     "./api": "./src/api.ts",
+    "./client/api": "./src/client/api.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
@@ -22,10 +23,19 @@
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/ui": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
+    "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
     "kysely": "catalog:"
   },
   "devDependencies": {
-    "@qualy/plugin-ui-registry": "workspace:*"
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@types/react": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
   }
 }
