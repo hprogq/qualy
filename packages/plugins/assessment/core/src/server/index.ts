@@ -68,6 +68,7 @@ import {
   insertPhaseEvent,
   insertTemplate,
   listBatchUserTypes,
+  countBatches,
   listBatchesPage,
   listParticipantsPage,
   listPhaseRows,
@@ -127,6 +128,7 @@ export interface BatchDetail {
   readonly anchorAutoSync: boolean
   readonly currentPhaseId: string | null
   readonly userTypeIds: readonly string[]
+  readonly participantCount: number
   readonly createdAt: EpochMillis
 }
 
@@ -289,11 +291,17 @@ export class Assessment extends Context.Service<
       tenantId: string,
       filter: {
         status?: 'draft' | 'active' | 'archived'
+        q?: string
         after?: { createdAt: EpochMillis; id: string }
         limit: number
       },
       as: Principal,
     ) => Effect.Effect<readonly BatchRow[]>
+    readonly countBatches: (
+      tenantId: string,
+      filter: { status?: 'draft' | 'active' | 'archived'; q?: string },
+      as: Principal,
+    ) => Effect.Effect<number>
     readonly getBatch: (
       tenantId: string,
       batchId: string,
@@ -476,6 +484,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       anchorAutoSync: batch.anchorAutoSync,
       currentPhaseId: batch.currentPhaseId,
       userTypeIds,
+      participantCount: batch.participantCount,
       createdAt: batch.createdAt,
     }))
 
@@ -928,6 +937,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
     listBatches: Effect.fn('Assessment.listBatches')(function* (tenantId, filter, as) {
       const held = yield* rbac.listAuthorizedScope(as, MANAGE)
       return yield* dieQuery(withDb(listBatchesPage(tenantId, held, filter)))
+    }),
+
+    countBatches: Effect.fn('Assessment.countBatches')(function* (tenantId, filter, as) {
+      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+      return yield* dieQuery(withDb(countBatches(tenantId, held, filter)))
     }),
 
     getBatch: Effect.fn('Assessment.getBatch')(function* (tenantId, batchId, as) {
@@ -1685,6 +1699,7 @@ const toBatchDto = (detail: BatchDetail) => ({
   anchorAutoSync: detail.anchorAutoSync,
   currentPhaseId: detail.currentPhaseId,
   userTypeIds: detail.userTypeIds,
+  participantCount: detail.participantCount,
   createdAt: new Date(detail.createdAt).toISOString(),
 })
 
@@ -1787,7 +1802,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.batches:${query.status ?? ''}`
+        const fingerprint = `assessment.batches:${query.status ?? ''}:${query.q ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const after =
@@ -1797,19 +1812,32 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal.tenantId,
           {
             ...(query.status !== undefined ? { status: query.status } : {}),
+            ...(query.q !== undefined ? { q: query.q } : {}),
             ...(after !== undefined ? { after } : {}),
             limit: limit + 1,
+          },
+          principal,
+        )
+        // the page and how many rows the filter matches: this list is walked
+        // by page number, so it has to know how many pages there are
+        const total = yield* assessment.countBatches(
+          principal.tenantId,
+          {
+            ...(query.status !== undefined ? { status: query.status } : {}),
+            ...(query.q !== undefined ? { q: query.q } : {}),
           },
           principal,
         )
         const page = found.slice(0, limit)
         const last = page[page.length - 1]
         return {
+          total,
           items: page.map((row) => ({
             id: row.id,
             name: row.name,
             descriptionMd: row.descriptionMd,
             scopeNodeIds: row.scopeNodeIds,
+            participantCount: row.participantCount,
             materialRange: parseRange(row.materialRange),
             timezone: row.timezone,
             status: row.status as 'draft' | 'active' | 'archived',

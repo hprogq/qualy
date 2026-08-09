@@ -29,6 +29,21 @@ export const pageOf = <T, E>(item: Schema.Codec<T, E, never, never>) =>
   Schema.Struct({ items: Schema.Array(item), nextCursor: Schema.NullOr(Schema.String) })
 
 /**
+ * A page that also carries how many rows match the filter.
+ *
+ * Keyset paging needs no total to work, so this is not the default: the count
+ * is a second query, and most lists are read forwards until they end. A list a
+ * person navigates by page number is the case that has to know, and it pays
+ * for the count knowingly.
+ */
+export const countedPageOf = <T, E>(item: Schema.Codec<T, E, never, never>) =>
+  Schema.Struct({
+    items: Schema.Array(item),
+    nextCursor: Schema.NullOr(Schema.String),
+    total: Schema.Number,
+  })
+
+/**
  * A cursor that cannot be read here.
  *
  * The tag is the code oRPC already puts on the wire for this, deliberately:

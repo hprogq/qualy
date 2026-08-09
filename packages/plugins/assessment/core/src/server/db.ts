@@ -67,6 +67,8 @@ export interface BatchRow {
   configRevision: number
   anchorAutoSync: boolean
   currentPhaseId: string | null
+  /** people currently on the roster; zero until the batch is activated */
+  participantCount: number
   createdAt: number
 }
 
@@ -95,10 +97,20 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
       sql<string>`material_range::text`.as('materialRange'),
       epoch('created_at').as('createdAt'),
       scopeNodeIdsOf.as('scopeNodeIds'),
+      sql<string>`(
+        select count(*) from batch_participants bp
+        where bp.tenant_id = assessment_batches.tenant_id
+          and bp.batch_id = assessment_batches.id
+          and bp.status = 'active'
+      )`.as('participantCount'),
     ])
 
 const toBatchRow = (row: Record<string, unknown>): BatchRow =>
-  ({ ...row, createdAt: msOf(row.createdAt) }) as BatchRow
+  ({
+    ...row,
+    createdAt: msOf(row.createdAt),
+    participantCount: Number(row.participantCount ?? 0),
+  }) as BatchRow
 
 export const oneBatch = (tenantId: string, batchId: string) =>
   db
@@ -117,31 +129,75 @@ export const oneBatch = (tenantId: string, batchId: string) =>
  * filtered. A dangling scope row defines nobody, so it neither blocks nor
  * grants visibility here; it surfaces as an integrity warning instead.
  */
+/**
+ * A batch is readable when every unit it faces is inside the caller's reach;
+ * the list and its count ask the same question, so they ask it in one place.
+ */
+const withinReach = (held: AuthorizationScope) =>
+  sql<boolean>`not exists (
+    select 1 from batch_scope_nodes bsn
+    join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
+    where bsn.tenant_id = assessment_batches.tenant_id
+      and bsn.batch_id = assessment_batches.id
+      and not ${scopeCoverage(held, {
+        id: sql.ref('scope.id') as never,
+        tenantId: sql.ref('scope.tenant_id') as never,
+        path: sql.ref('scope.path') as never,
+      })}
+  )`
+
+/** the filters the list and its count share, beyond the keyset window */
+const batchFilters = <Q extends { where: (...args: never[]) => Q }>(
+  query: Q,
+  filter: { status?: string; q?: string },
+): Q => {
+  let found = query
+  if (filter.status !== undefined) {
+    found = found.where(...(['status', '=', filter.status] as never[]))
+  }
+  if (filter.q !== undefined) {
+    // a plain substring match; wildcards in the input stay literal
+    const escaped = filter.q.replace(/[\\%_]/g, (match) => `\\${match}`)
+    found = found.where(...(['name', 'ilike', `%${escaped}%`] as never[]))
+  }
+  return found
+}
+
+/** how many batches match, for a list a person navigates by page number */
+export const countBatches = (
+  tenantId: string,
+  held: AuthorizationScope,
+  filter: { status?: string; q?: string },
+) =>
+  db
+    .query((k) =>
+      batchFilters(
+        k
+          .selectFrom('AssessmentBatch')
+          .select(({ fn }) => fn.countAll<string>().as('total'))
+          .where('tenantId', '=', tenantId)
+          .where(withinReach(held)),
+        filter,
+      ).executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => Number(row.total)))
+
 export const listBatchesPage = (
   tenantId: string,
   held: AuthorizationScope,
-  filter: { status?: string; after?: { createdAt: number; id: string }; limit: number },
+  filter: {
+    status?: string
+    q?: string
+    after?: { createdAt: number; id: string }
+    limit: number
+  },
 ) =>
   db
     .query((k) => {
-      let query = batchSelection(k)
-        .where('tenantId', '=', tenantId)
-        .where(
-          sql<boolean>`not exists (
-            select 1 from batch_scope_nodes bsn
-            join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
-            where bsn.tenant_id = assessment_batches.tenant_id
-              and bsn.batch_id = assessment_batches.id
-              and not ${scopeCoverage(held, {
-                id: sql.ref('scope.id') as never,
-                tenantId: sql.ref('scope.tenant_id') as never,
-                path: sql.ref('scope.path') as never,
-              })}
-          )`,
-        )
-      if (filter.status !== undefined) {
-        query = query.where('status', '=', filter.status)
-      }
+      let query = batchFilters(
+        batchSelection(k).where('tenantId', '=', tenantId).where(withinReach(held)),
+        filter,
+      )
       if (filter.after !== undefined) {
         query = query.where(
           sql<boolean>`(assessment_batches.created_at, assessment_batches.id)

@@ -6,6 +6,7 @@ import {
   changed,
   kebabCode,
   pageQuery,
+  countedPageOf,
   pageOf,
   trimmedName,
 } from '@qualy/api-kit/schema'
@@ -56,6 +57,7 @@ const batchListView = Schema.Struct({
   name: Schema.String,
   descriptionMd: Schema.NullOr(Schema.String),
   scopeNodeIds: Schema.Array(Schema.String),
+  participantCount: Schema.Number,
   materialRange,
   timezone: Schema.String,
   status: batchStatus,
@@ -69,6 +71,7 @@ const batchListView = Schema.Struct({
 const batchView = Schema.Struct({
   ...batchListView.fields,
   userTypeIds: Schema.Array(Schema.String),
+  participantCount: Schema.Number,
 })
 
 const phaseView = Schema.Struct({
@@ -214,8 +217,12 @@ const templateView = Schema.Struct({
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     HttpApiEndpoint.get('listBatches', '/assessment/batches', {
-      query: Schema.Struct({ ...pageQuery, status: Schema.optional(batchStatus) }),
-      success: pageOf(batchListView),
+      query: Schema.Struct({
+        ...pageQuery,
+        status: Schema.optional(batchStatus),
+        q: Schema.optional(boundedText(100)),
+      }),
+      success: countedPageOf(batchListView),
       error: [AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
