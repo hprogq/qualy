@@ -2189,3 +2189,49 @@ permissions 表 `assessment=15`、SIGTERM shutdown complete。
 **下一步**:s2 纯函数时间引擎(`src/phase/engine/`,零 IO):effectivePhase(now)、
 武装前缀、偏移物化、插入重排、七条编辑校验器、时间线派生;红绿直接照 §24 时间条目写,
 撑不住就按"判定类/编辑类"一切为二,绝不把引擎写进 service 层。
+
+### M1 会话 9(s2)· 纯函数时间引擎(2026-08-09)
+
+`src/phase/engine/` 四模块,零 IO、零 Effect(纯 TS,本会话无需实查 repos/):
+时间用 EpochMillis(number),plan/publication 快照与 now 全部显式入参,毫秒级可测。
+
+- **types.ts**:PhaseSnapshot / PhasePlan / EntryOffset(days/hours/minutes 时长规格)/
+  PublicationRef+Lookup(**绑定的公示缺席于快照 = 抛错**,不静默"待定"——否则漏取数据会
+  悄悄取消一个已承诺的日期)。
+- **queue.ts(判定类)**:`normalizePlan`(排序+拒绝重复 ordinal 与 actual 断档);
+  `effectiveState(plan, pubs, now)`——照 §10 从已物化前缀向后走,scheduled 过 planned、
+  publication 边界所绑公示 isEffective(PUBLISHED 或 due-SCHEDULED)即视为已进入,连续
+  推进;pending 携带**语义时刻**(scheduled 写 planned、publication 写 publish_at,
+  永不写 now),即 s4 调度器的待追认清单,应用后重扫为空(幂等);`armedPrefix`——穿
+  scheduled 与已绑 SCHEDULED 公示的边界,止于 manual/未绑/未物化 planned;**manual 的
+  planned 是 SLA,永不自燃**。
+- **materialize.ts**:§32.34 逐字落地——锚的语义时刻已确定(上游 actual,或 SCHEDULED
+  公示的 publish_at)才物化,**一步深**(物化出的 planned 仍是 plan,不再作为下游的锚);
+  非正 offset 到物化即抛(不静默压缩阶段);`clearDerivedPlansBelow` 只清 offset 派生的
+  planned(cancel/retract 回待定),手设硬计划不动。
+- **edits.ts(编辑类)**:结构化拒因 17 种 + lint 1 种,`reviewPlanEdit / reviewInsertion /
+  planInsertion / reviewPlanShape`。七条校验器落点:①归档收尾 = 插入不得在 terminal 之后
+  + `terminal-must-be-manual`;②绑定生命周期 = 仅 publication 边界、未进入可绑/重绑/解绑、
+  **时钟判定已进入即不可改**(§32.26);③硬计划不越"事件门"——未发生 manual **与未武装
+  publication 边界同判**(armed prefix 定义推论,已武装的不拦,文档措辞只点名 manual,
+  按同理由扩展并记录);④已结束仅名称(profile 在 ended 拒、current 放行——SCHEDULED
+  冻结归 s3 服务层);⑤actual 不可改(编辑通道整体拒绝);⑥边界只许未来 + 承诺时刻沿
+  队列单调(planned 与上游 actual/planned/publish_at、下游承诺互相排序,SLA 不参与排序
+  但同守未来);⑦proxy✓submit× lint(warning 不阻断);profile ⊆ PHASE_GATED 硬拒
+  (`profile-code-not-gated`)。"已进入"一律按 effectiveState 时钟判定——**调度器没追认的
+  边界也是历史**。
+- **timeline.ts**:取值优先级一次定死 entered > planned(确定)> announced(公示
+  publish_at 单源)> estimated(约)> pending(待定);manual 的 SLA 不外显。
+
+**验收(实际执行)**:引擎四测试文件 **31 用例**全绿(queue 9 / edits 15 /
+materialize 5 / timeline 2),覆盖 §24 时间条目:时钟精确到毫秒且 actual 记 planned 值
+(迟到 47s 不影响)、物化前后同答案、manual 后 scheduled 不自燃、publication 边界按
+承诺进入并穿透推进、重扫幂等、硬计划越门被拒(manual 与未绑 publication 两分支)、
+偏移事件时刻物化 + SCHEDULED 提前物化 + 锚未定不动、绑定生命周期三态、乱序/过去
+planned 被拒、插入重排 ordinal 序列、时间线全优先级。写测试先行,首轮 30/31——唯一红
+是测试预期把"armed prefix 穿过已绑公示边界"写窄了,按 §10 定义改预期(引擎对)。
+`pnpm typecheck` 零错;`pnpm test` **67 文件 422 全绿**(前 391 + 引擎 31)。
+
+**下一步**:s3 服务层 + API + PhaseGate(批次 CRUD、阶段计划编辑接引擎、advancePhase、
+激活生成花名册、PhaseGate(+ctx) 与 authorize facade、frozen-routes 与 error-codes 同笔);
+Effect HttpApi 与服务写法先实查 repos/。
