@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import {
   headerActions,
@@ -10,6 +10,8 @@ import {
 import { UiSlot, useUiCollection } from '@qualy/web-runtime'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
 import { cn } from '@qualy/ui/cn'
+import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -29,7 +31,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { layoutMessages as m } from './i18n.ts'
-import { LocalePicker } from './LocalePicker.tsx'
 
 // admin-shell/v1 provider, in the inset style: the sidebar sits directly on
 // the muted canvas and the page lives in a raised card beside it, which
@@ -124,7 +125,11 @@ export default function AdminShell() {
   const groups = useUiCollection(navigationGroups)
   const { format } = useI18n()
   const location = useLocation()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const isMobile = useIsMobile()
+  // the rail is a column on a desktop and an overlay on a phone, so it starts
+  // open on one and closed on the other - and follows the viewport across
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobile)
+  useEffect(() => setSidebarOpen(!isMobile), [isMobile])
 
   const registered = new Set(groups.map((group) => group.id))
   const byGroupOrder = (a: { order?: number }, b: { order?: number }) =>
@@ -169,62 +174,76 @@ export default function AdminShell() {
     (part): part is NonNullable<typeof part> => part !== undefined,
   )
 
+  const rail = (
+    <div className="flex h-full w-full flex-col">
+      <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+        <span
+          aria-hidden
+          className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground"
+        >
+          Q
+        </span>
+        <span className="text-sm font-semibold">Qualy</span>
+      </div>
+      <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 py-1">
+        {loose.length > 0 && (
+          <ul className="space-y-0.5">
+            {loose.map((item) => (
+              <NavEntry key={item.id} item={item} />
+            ))}
+          </ul>
+        )}
+        {sections.map((section) => (
+          <section key={section.id}>
+            <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+              <LocalizedText value={section.label} />
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {section.items.map((item) => (
+                <NavEntry key={item.id} item={item} />
+              ))}
+              {section.clusters.map((cluster) => (
+                <NavCluster
+                  key={cluster.id}
+                  label={<LocalizedText value={cluster.label} />}
+                  icon={clusterIconOf(cluster.icon)}
+                  defaultOpen
+                  items={cluster.items}
+                />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </nav>
+      <div className="p-3">
+        <UiSlot token={sidebarUser} />
+      </div>
+    </div>
+  )
+
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-muted/40">
-      {/* collapse slides the rail out under the root's clipping instead of
-          clipping inside it, so popovers may still escape the rail */}
-      <aside
-        className={cn(
-          'h-full w-60 shrink-0 transition-[margin-left] duration-200 ease-linear',
-          sidebarOpen ? 'ml-0' : '-ml-60',
-        )}
-      >
-        <div className="flex h-full w-60 flex-col">
-          <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
-            <span
-              aria-hidden
-              className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground"
-            >
-              Q
-            </span>
-            <span className="text-sm font-semibold">Qualy</span>
-          </div>
-          <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 py-1">
-            {loose.length > 0 && (
-              <ul className="space-y-0.5">
-                {loose.map((item) => (
-                  <NavEntry key={item.id} item={item} />
-                ))}
-              </ul>
-            )}
-            {sections.map((section) => (
-              <section key={section.id}>
-                <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
-                  <LocalizedText value={section.label} />
-                </p>
-                <ul className="flex flex-col gap-0.5">
-                  {section.items.map((item) => (
-                    <NavEntry key={item.id} item={item} />
-                  ))}
-                  {section.clusters.map((cluster) => (
-                    <NavCluster
-                      key={cluster.id}
-                      label={<LocalizedText value={cluster.label} />}
-                      icon={clusterIconOf(cluster.icon)}
-                      defaultOpen
-                      items={cluster.items}
-                    />
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </nav>
-          <div className="p-3">
-            <UiSlot token={sidebarUser} />
-          </div>
-        </div>
-      </aside>
-
+      {/* on a phone the rail is an overlay: there is no room to hold a column
+          open beside the page, and the same button opens it */}
+      {isMobile ? (
+        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+          <SheetContent side="left" className="w-72 p-0">
+            <SheetTitle className="sr-only">Qualy</SheetTitle>
+            {rail}
+          </SheetContent>
+        </Sheet>
+      ) : (
+        // collapse slides the rail out under the root's clipping instead of
+        // clipping inside it, so popovers may still escape the rail
+        <aside
+          className={cn(
+            'h-full w-60 shrink-0 transition-[margin-left] duration-200 ease-linear',
+            sidebarOpen ? 'ml-0' : '-ml-60',
+          )}
+        >
+          {rail}
+        </aside>
+      )}
       <div className="h-full min-w-0 flex-1 p-2">
         <div className="flex h-full flex-col overflow-hidden rounded-xl bg-background shadow-sm">
           <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4">
@@ -241,11 +260,15 @@ export default function AdminShell() {
               {here && (
                 <Breadcrumb>
                   <BreadcrumbList>
+                    {/* the separator is a list item of its own: nesting one
+                        inside a crumb is invalid html and React says so */}
                     {trail.map((part) => (
-                      <BreadcrumbItem key={part.id} className="max-sm:hidden">
-                        <LocalizedText value={part.label} />
-                        <BreadcrumbSeparator />
-                      </BreadcrumbItem>
+                      <Fragment key={part.id}>
+                        <BreadcrumbItem className="max-sm:hidden">
+                          <LocalizedText value={part.label} />
+                        </BreadcrumbItem>
+                        <BreadcrumbSeparator className="max-sm:hidden" />
+                      </Fragment>
                     ))}
                     <BreadcrumbItem>
                       <BreadcrumbPage>
@@ -257,7 +280,6 @@ export default function AdminShell() {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <LocalePicker />
               <UiSlot token={headerActions} />
             </div>
           </header>

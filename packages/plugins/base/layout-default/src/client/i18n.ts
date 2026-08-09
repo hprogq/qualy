@@ -11,10 +11,6 @@ const i18n = definePluginMessages({
       id: 'layout/shell/toggle-sidebar',
       defaultMessage: 'Toggle sidebar',
     },
-    language: {
-      id: 'layout/shell/language',
-      defaultMessage: 'Interface language',
-    },
   },
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),
