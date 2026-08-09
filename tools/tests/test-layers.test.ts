@@ -78,6 +78,13 @@ const OWNERSHIP: readonly { pattern: RegExp; why: string }[] = [
   { pattern: /create database|drop database/i, why: 'manages database lifetime' },
 ]
 
+// A migration with a data step needs an upgrade suite: build the shape it
+// upgrades FROM, run the remainder of the lineage over live rows, assert.
+// That requires running migrations - and only that, which is why the
+// exemption is one rule for one filename, not a directory pass.
+const MIGRATION_UPGRADE = /\/tests\/migration-upgrade\.test\.ts$/
+const RUNS_LINEAGE = OWNERSHIP.find((rule) => rule.why === 'runs the migration lineage itself')!
+
 const breaches = (
   files: readonly string[],
   rules: readonly { pattern: RegExp; why: string; skipLine?: (line: string) => boolean }[],
@@ -199,10 +206,18 @@ describe('test layering', () => {
   })
 
   it('keeps the database lifecycle out of every package but the one that owns it', () => {
-    const offenders = breaches(
-      walk('packages').filter((file) => !posix(file).startsWith(`${OWNS_CONNECTIONS}/`)),
-      OWNERSHIP,
-    )
+    const files = walk('packages').filter((file) => !posix(file).startsWith(`${OWNS_CONNECTIONS}/`))
+    const offenders = [
+      ...breaches(
+        files.filter((file) => !MIGRATION_UPGRADE.test(posix(file))),
+        OWNERSHIP,
+      ),
+      // an upgrade suite may run the lineage; everything else still applies
+      ...breaches(
+        files.filter((file) => MIGRATION_UPGRADE.test(posix(file))),
+        OWNERSHIP.filter((rule) => rule !== RUNS_LINEAGE),
+      ),
+    ]
     expect(offenders).toEqual([])
   })
 

@@ -57,10 +57,13 @@ export class BatchNoUserTypes extends Schema.TaggedErrorClass<BatchNoUserTypes>(
   { httpApiStatus: 422, identifier: 'AssessmentBatchNoUserTypes' },
 ) {}
 
-/** the scope node or a user type does not exist in this tenant */
+/** what a batch's references can be refused for: a named node or type that
+ * does not exist here, an empty scope, or a nested selection (an ancestor
+ * and its descendant both named - union semantics make it harmless, and
+ * precisely therefore confusing, so it is refused outright) */
 export class BatchReferenceInvalid extends Schema.TaggedErrorClass<BatchReferenceInvalid>()(
   'ASSESSMENT_BATCH_REFERENCE_INVALID',
-  { reference: Schema.Literals(['scope-node', 'user-type']) },
+  { reference: Schema.Literals(['scope-node', 'user-type', 'scope-empty', 'scope-nested']) },
   { httpApiStatus: 422, identifier: 'AssessmentBatchReferenceInvalid' },
 ) {}
 

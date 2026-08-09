@@ -53,7 +53,7 @@ const batchListView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   descriptionMd: Schema.NullOr(Schema.String),
-  scopeNodeId: Schema.String,
+  scopeNodeIds: Schema.Array(Schema.String),
   materialRange,
   timezone: Schema.String,
   status: batchStatus,
@@ -144,7 +144,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: Schema.Struct({
         name: trimmedName(255),
         descriptionMd: Schema.optional(boundedText(65536)),
-        scopeNodeId: id,
+        scopeNodeIds: Schema.Array(id),
         materialRange,
         timezone: Schema.optional(trimmedName(63)),
         userTypeIds: Schema.Array(id),
@@ -168,13 +168,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           name: Schema.optional(trimmedName(255)),
           descriptionMd: Schema.optional(Schema.NullOr(boundedText(65536))),
           // repointable while the batch is a draft; a roster freezes it
-          scopeNodeId: Schema.optional(id),
+          scopeNodeIds: Schema.optional(Schema.Array(id)),
           materialRange: Schema.optional(materialRange),
           timezone: Schema.optional(trimmedName(63)),
           userTypeIds: Schema.optional(Schema.Array(id)),
           reason: Schema.optional(boundedText(500)),
         },
-        ['name', 'descriptionMd', 'scopeNodeId', 'materialRange', 'timezone', 'userTypeIds'],
+        ['name', 'descriptionMd', 'scopeNodeIds', 'materialRange', 'timezone', 'userTypeIds'],
       ),
       success: Schema.Struct({ batch: batchView }),
       error: [

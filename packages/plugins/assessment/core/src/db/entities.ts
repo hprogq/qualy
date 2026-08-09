@@ -32,9 +32,10 @@ const tenantKeyOf = (foreignKeyName: string) => () =>
     .foreignKeyName(foreignKeyName)
     .deleteRule('cascade')
 
-// One batch = one rule set over one org subtree. The scope node is referenced
-// and its path snapshotted; participants freeze their own anchors, so the
-// batch-level snapshot only serves scope display and jurisdiction checks.
+// One batch = one rule set over a set of organizational units. The scope
+// lives in batch_scope_nodes below: the population's definition, referencing
+// living units; participants freeze their own anchors, so nothing about the
+// batch row itself is a snapshot.
 export const AssessmentBatch = defineEntity({
   name: 'AssessmentBatch',
   tableName: 'assessment_batches',
@@ -44,8 +45,6 @@ export const AssessmentBatch = defineEntity({
     name: p.string().length(255),
     // administrator-authored markdown; business data, not a message catalog key
     descriptionMd: p.text().nullable(),
-    scopeNodeId: p.uuid(),
-    scopePath: p.string().type('ltree'),
     // material dates are half-open [start, end): certificates carry dates, not
     // instants, so a date range avoids 23:59:59.999 and timezone noise
     materialRange: p.string().type('daterange'),
@@ -85,11 +84,31 @@ export const AssessmentBatch = defineEntity({
       expression:
         'create index idx_assessment_batches_tenant_status on assessment_batches (tenant_id, status)',
     },
-    // referencing side of the scope-node foreign key; postgres never indexes it
+  ],
+})
+
+// The units a batch faces - its population's definition, as a set. Rows
+// reference living org units by id and nothing else: the unit's current
+// position resolves at read time, so a class moved elsewhere in the tree
+// stays in scope. Deliberately no foreign key to org_nodes - a deleted unit
+// must surface as a scope-integrity warning on the diff panel rather than
+// vanish with its row or block the deletion; the service validates tenant
+// and existence at write.
+export const BatchScopeNode = defineEntity({
+  name: 'BatchScopeNode',
+  tableName: 'batch_scope_nodes',
+  properties: {
+    tenantId: tenantKeyOf('batch_scope_nodes_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid().primary(),
+    nodeId: p.uuid().primary(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    // backs "which batches face this unit", the drift detector's direction
     {
-      name: 'idx_assessment_batches_tenant_scope_node',
+      name: 'idx_batch_scope_nodes_tenant_node',
       expression:
-        'create index idx_assessment_batches_tenant_scope_node on assessment_batches (tenant_id, scope_node_id)',
+        'create index idx_batch_scope_nodes_tenant_node on batch_scope_nodes (tenant_id, node_id)',
     },
   ],
 })
@@ -380,10 +399,10 @@ export const BatchConfigRevision = defineEntity({
  * not block deleting a draft batch's phases.
  */
 export const compositeForeignKeys = [
-  `alter table assessment_batches add constraint fk_assessment_batches_scope_node
-     foreign key (tenant_id, scope_node_id) references org_nodes (tenant_id, id) on delete restrict`,
   `alter table assessment_batches add constraint fk_assessment_batches_current_phase
      foreign key (tenant_id, current_phase_id) references batch_phases (tenant_id, id) on delete set null (current_phase_id)`,
+  `alter table batch_scope_nodes add constraint fk_batch_scope_nodes_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_user_types add constraint fk_batch_user_types_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_user_types add constraint fk_batch_user_types_type
@@ -412,6 +431,7 @@ export const compositeForeignKeys = [
 
 export const entities = [
   AssessmentBatch,
+  BatchScopeNode,
   BatchUserType,
   BatchPhase,
   PhaseEvent,

@@ -45,7 +45,7 @@ export const lockBatch = (tenantId: string, batchId: string) =>
     .query((k) =>
       k
         .selectFrom('AssessmentBatch')
-        .select(['id', 'status', 'scopeNodeId', 'configRevision'])
+        .select(['id', 'status', 'configRevision'])
         .where('tenantId', '=', tenantId)
         .where('id', '=', batchId)
         .forUpdate()
@@ -57,7 +57,8 @@ export interface BatchRow {
   id: string
   name: string
   descriptionMd: string | null
-  scopeNodeId: string
+  /** the configured set, dangling ids included: this is the intent */
+  scopeNodeIds: readonly string[]
   materialRange: string
   timezone: string
   status: string
@@ -66,6 +67,14 @@ export interface BatchRow {
   createdAt: number
 }
 
+/** the batch's scope as the row carries it on the wire-facing reads */
+const scopeNodeIdsOf = sql<readonly string[]>`coalesce(
+  (select jsonb_agg(bsn.node_id order by bsn.node_id)
+     from batch_scope_nodes bsn
+    where bsn.tenant_id = assessment_batches.tenant_id
+      and bsn.batch_id = assessment_batches.id),
+  '[]'::jsonb)`
+
 const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
   k
     .selectFrom('AssessmentBatch')
@@ -73,7 +82,6 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
       'id',
       'name',
       'descriptionMd',
-      'scopeNodeId',
       'timezone',
       'status',
       'configRevision',
@@ -82,6 +90,7 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
     .select([
       sql<string>`material_range::text`.as('materialRange'),
       epoch('created_at').as('createdAt'),
+      scopeNodeIdsOf.as('scopeNodeIds'),
     ])
 
 const toBatchRow = (row: Record<string, unknown>): BatchRow =>
@@ -98,9 +107,11 @@ export const oneBatch = (tenantId: string, batchId: string) =>
     .pipe(Effect.map((row) => (row === undefined ? null : toBatchRow(row as never))))
 
 /**
- * One page of the batches whose scope node the caller's grants reach,
- * newest first. The authorization scope is pushed into the statement: the
- * database intersects, nothing is fetched and filtered.
+ * One page of the batches every one of whose existing scope nodes the
+ * caller's grants reach, newest first. The authorization scope is pushed
+ * into the statement: the database intersects, nothing is fetched and
+ * filtered. A dangling scope row defines nobody, so it neither blocks nor
+ * grants visibility here; it surfaces as an integrity warning instead.
  */
 export const listBatchesPage = (
   tenantId: string,
@@ -109,37 +120,23 @@ export const listBatchesPage = (
 ) =>
   db
     .query((k) => {
-      let query = k
-        .selectFrom('AssessmentBatch')
-        .innerJoin('OrgNode as n', (join) =>
-          join
-            .onRef('n.id', '=', 'AssessmentBatch.scopeNodeId')
-            .onRef('n.tenantId', '=', 'AssessmentBatch.tenantId'),
-        )
-        .select([
-          'AssessmentBatch.id',
-          'AssessmentBatch.name',
-          'AssessmentBatch.descriptionMd',
-          'AssessmentBatch.scopeNodeId',
-          'AssessmentBatch.timezone',
-          'AssessmentBatch.status',
-          'AssessmentBatch.configRevision',
-          'AssessmentBatch.currentPhaseId',
-        ])
-        .select([
-          sql<string>`assessment_batches.material_range::text`.as('materialRange'),
-          epoch('assessment_batches.created_at').as('createdAt'),
-        ])
-        .where('AssessmentBatch.tenantId', '=', tenantId)
-        .where((eb) =>
-          scopeCoverage(held, {
-            id: eb.ref('n.id'),
-            tenantId: eb.ref('n.tenantId'),
-            path: eb.ref('n.path'),
-          }),
+      let query = batchSelection(k)
+        .where('tenantId', '=', tenantId)
+        .where(
+          sql<boolean>`not exists (
+            select 1 from batch_scope_nodes bsn
+            join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
+            where bsn.tenant_id = assessment_batches.tenant_id
+              and bsn.batch_id = assessment_batches.id
+              and not ${scopeCoverage(held, {
+                id: sql.ref('scope.id') as never,
+                tenantId: sql.ref('scope.tenant_id') as never,
+                path: sql.ref('scope.path') as never,
+              })}
+          )`,
         )
       if (filter.status !== undefined) {
-        query = query.where('AssessmentBatch.status', '=', filter.status)
+        query = query.where('status', '=', filter.status)
       }
       if (filter.after !== undefined) {
         query = query.where(
@@ -147,11 +144,7 @@ export const listBatchesPage = (
             < (${instant(filter.after.createdAt)}, ${filter.after.id}::uuid)`,
         )
       }
-      return query
-        .orderBy('AssessmentBatch.createdAt', 'desc')
-        .orderBy('AssessmentBatch.id', 'desc')
-        .limit(filter.limit)
-        .execute()
+      return query.orderBy('createdAt', 'desc').orderBy('id', 'desc').limit(filter.limit).execute()
     })
     .pipe(Effect.map((found) => (found as unknown as Record<string, unknown>[]).map(toBatchRow)))
 
@@ -159,8 +152,6 @@ export const insertBatch = (input: {
   tenantId: string
   name: string
   descriptionMd: string | null
-  scopeNodeId: string
-  scopePath: string
   materialStart: string
   materialEnd: string
   timezone?: string
@@ -172,8 +163,6 @@ export const insertBatch = (input: {
         tenantId: input.tenantId,
         name: input.name,
         descriptionMd: input.descriptionMd,
-        scopeNodeId: input.scopeNodeId,
-        scopePath: input.scopePath,
         materialRange: sql`daterange(${input.materialStart}::date, ${input.materialEnd}::date)`,
         ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
       } as never)
@@ -181,14 +170,69 @@ export const insertBatch = (input: {
       .executeTakeFirstOrThrow(),
   )
 
+/** idempotent replacement of the population definition */
+export const replaceBatchScopeNodes = (
+  tenantId: string,
+  batchId: string,
+  nodeIds: readonly string[],
+) =>
+  Effect.gen(function* () {
+    yield* db.query((k) =>
+      k
+        .deleteFrom('BatchScopeNode')
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .execute(),
+    )
+    if (nodeIds.length === 0) return
+    yield* db.query((k) =>
+      k
+        .insertInto('BatchScopeNode')
+        .values(nodeIds.map((nodeId) => ({ tenantId, batchId, nodeId })))
+        .execute(),
+    )
+  })
+
+/** the scope rows that still name a living unit, with where those units are now */
+export const scopeNodeRows = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchScopeNode')
+        .innerJoin('OrgNode as n', (join) =>
+          join
+            .onRef('n.id', '=', 'BatchScopeNode.nodeId')
+            .onRef('n.tenantId', '=', 'BatchScopeNode.tenantId'),
+        )
+        .select(['n.id', 'n.path'])
+        .where('BatchScopeNode.tenantId', '=', tenantId)
+        .where('BatchScopeNode.batchId', '=', batchId)
+        .orderBy('n.id')
+        .execute(),
+    )
+    .pipe(Effect.map((found) => found as { id: string; path: string }[]))
+
+/** the named nodes that exist in this tenant, for validating a selection */
+export const nodesByIds = (tenantId: string, nodeIds: readonly string[]) =>
+  nodeIds.length === 0
+    ? Effect.succeed([] as { id: string; path: string }[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('OrgNode')
+            .select(['id', 'path'])
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', nodeIds)
+            .execute(),
+        )
+        .pipe(Effect.map((found) => found as { id: string; path: string }[]))
+
 export const updateBatchFields = (
   tenantId: string,
   batchId: string,
   fields: {
     name?: string
     descriptionMd?: string | null
-    scopeNodeId?: string
-    scopePath?: string
     materialStart?: string
     materialEnd?: string
     timezone?: string
@@ -201,9 +245,6 @@ export const updateBatchFields = (
       .set({
         ...(fields.name !== undefined ? { name: fields.name } : {}),
         ...(fields.descriptionMd !== undefined ? { descriptionMd: fields.descriptionMd } : {}),
-        ...(fields.scopeNodeId !== undefined
-          ? { scopeNodeId: fields.scopeNodeId, scopePath: fields.scopePath }
-          : {}),
         ...(fields.materialStart !== undefined
           ? {
               materialRange: sql`daterange(${fields.materialStart}::date, ${fields.materialEnd}::date)`,
@@ -624,12 +665,13 @@ export const phaseScopes = (tenantId: string, phaseId: string) =>
 
 /**
  * The roster, generated by one statement at activation: every enabled user
- * of an enrolled type standing in the scope subtree, with the anchor path and
- * the (nodeId, nodeTypeId) lineage frozen from the live tree as of this
- * transaction. Conflicts do not exist by construction - activation runs once,
- * on a locked batch.
+ * of an enrolled type standing under any of the batch's living scope nodes,
+ * with the anchor path and the (nodeId, nodeTypeId) lineage frozen from the
+ * live tree as of this transaction. EXISTS over the scope set: a nested
+ * selection is refused at write, so subtrees are disjoint, and a dangling
+ * scope row simply matches nothing.
  */
-export const generateRoster = (tenantId: string, batchId: string, scopeNodeId: string) =>
+export const generateRoster = (tenantId: string, batchId: string) =>
   db
     .query((k) =>
       sql`
@@ -648,14 +690,19 @@ export const generateRoster = (tenantId: string, batchId: string, scopeNodeId: s
           u.user_type_id
         from users u
         join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-        join org_nodes scope on scope.tenant_id = ${tenantId}::uuid and scope.id = ${scopeNodeId}::uuid
         join batch_user_types enrolled
           on enrolled.tenant_id = u.tenant_id
          and enrolled.batch_id = ${batchId}::uuid
          and enrolled.user_type_id = u.user_type_id
         where u.tenant_id = ${tenantId}::uuid
           and u.enabled
-          and n.path <@ scope.path
+          and exists (
+            select 1 from batch_scope_nodes bsn
+            join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
+            where bsn.tenant_id = u.tenant_id
+              and bsn.batch_id = ${batchId}::uuid
+              and n.path <@ scope.path
+          )
       `.execute(k),
     )
     .pipe(

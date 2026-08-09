@@ -51,15 +51,21 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
     return { tenantId, orgTypeId, nodeId, userTypeId, userId }
   }
 
-  const createBatch = async (f: Awaited<ReturnType<typeof createFixture>>, name: string) =>
-    (
+  const createBatch = async (f: Awaited<ReturnType<typeof createFixture>>, name: string) => {
+    const batchId = (
       await db.row<{ id: string }>(
-        `insert into assessment_batches (tenant_id, name, scope_node_id, scope_path, material_range)
-         values ($1, $2, $3, (select path from org_nodes where id = $3), daterange('2026-03-01', '2026-09-01'))
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, $2, daterange('2026-03-01', '2026-09-01'))
          returning id`,
-        [f.tenantId, name, f.nodeId],
+        [f.tenantId, name],
       )
     ).id
+    await db.query(
+      `insert into batch_scope_nodes (tenant_id, batch_id, node_id) values ($1, $2, $3)`,
+      [f.tenantId, batchId, f.nodeId],
+    )
+    return batchId
+  }
 
   beforeAll(async () => {
     db = await createTestContext('assessment-schema')
@@ -195,16 +201,9 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
     const a = await createFixture('xta')
     const b = await createFixture('xtb')
 
-    // a batch of tenant A scoped to tenant B's node
-    expect(
-      await pgCode(
-        db.query(
-          `insert into assessment_batches (tenant_id, name, scope_node_id, scope_path, material_range)
-           values ($1, 'Intruder', $2, 'xtb', daterange('2026-03-01', '2026-09-01'))`,
-          [a.tenantId, b.nodeId],
-        ),
-      ),
-    ).toBe('23503')
+    // scope rows deliberately carry no node foreign key (a deleted unit must
+    // warn, not block), so their tenant discipline is the service's; the
+    // roster's references below are where the database itself holds the line
 
     // a roster row anchored on another tenant's node
     const batchId = await createBatch(a, 'Own batch')

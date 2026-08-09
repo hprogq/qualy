@@ -2350,3 +2350,45 @@ force+reason 仍拒且拒因准确、offset 物化后改动拒 `offset-with-plan
 **69 文件 441 全绿**;`resolve --frozen-lockfile` up to date。
 
 **下一步**:s4 调度 fiber(不变)。
+
+### M1 会话 12 · batch scope 升级为节点集合(2026-08-09)
+
+用户提出"scope 是否该改成导入模式 + 每分钟检测锚点漂移",裁决:**scope 保留并升级为
+节点集合,导入模式否决**(裁决 §32.35,§9/§21/§27 就地改写)。核心论证:scope 是
+**人群的定义(intent)**,roster 是**人群的事实**——导入模式做完一次性动作后系统不再
+知道批次面向谁,**新迁入检测失明**(转入生无行可 diff、无定义可判);定义落库才使
+"新迁入 = 任一 scope 子树内 ∧ 类型匹配 ∧ 不在 roster"可计算,并承载管辖判定与
+"你尚未被纳入"定向文案。"只许 1/2/3 班"证明的是表达力不够,不是概念错了。
+
+- **schema**:`batch_scope_nodes(tenant_id, batch_id, node_id)` 替代 batches 上的
+  scope_node_id + scope_path 两列(快照列取消——要冻结的是 roster 不是 intent);
+  **node_id 刻意无外键**——节点删除应成为 diff 面板的 scope 完整性警告而非被阻塞或
+  静默消失,租户与存在性由服务在写入时把线。**破坏性迁移**
+  `20260809085658_batch-scope-node-set.sql`:建表 + FK → **INSERT…SELECT 把既有批次的
+  单节点搬进 join 表** → 再 drop 两列(`ALLOW_DESTRUCTIVE=1` 生成,文件带
+  `-- destructive: approved`)。**仓库首个迁移升级测试**落地
+  (tests/migration-upgrade.test.ts):部分 lineage 建旧库形态 → 插入带 scope 列的活
+  batch → 跑全量 lineage(账本只补差)→ 断言 join 行搬到、两列消失;test-layers 门禁
+  为"迁移升级测试"开出**单文件名单规则豁免**(只豁免 migrator import,pg/Pool 等
+  其余规则照抓)。
+- **服务与 API**:`scopeNodeIds` 集合贯穿 create/PATCH/detail/list(list 的管辖过滤 =
+  `NOT EXISTS(未覆盖的存活 scope 节点)`下推 SQL;悬空节点定义不了任何人,不阻塞也不
+  放行,只出警告);`requireScopeReach` = 对每个存活 scope 节点 requireAt(全悬空的退化
+  情形回退 hasPermission,注释说明);激活 roster 单条 SQL 改 `EXISTS` 于节点集合并集
+  (嵌套已拒 ⇒ 子树两两不相交,无重复行);校验三拒因:`scope-empty` / `scope-node`
+  (含跨租户,不存在即拒)/ `scope-nested`(祖先后代同选,并集语义无害但必然困惑,
+  直接拒);draft 可改 active 锁(沿用 ASSESSMENT_BATCH_SCOPE_LOCKED)。
+- **检测节律**:漂移检测 **on-read 派生**(面板/徽标现算),否决"每分钟扫描"——漂移有
+  请求驱动的天然发现路径且不阻塞在途流程(与审核卡死必须巡检的判据对比写进 §9);
+  巡检摘要加 diff 计数留 §27 触发条件。三层冻结梯度成文:实时层(树/角色持有人)/
+  批次层(roster 位置+谱系)/轮层(链快照)——位置冻结、人员实时、类型冻结。
+
+**验收(实际执行)**:升级测试 1/1(旧形态→迁移→join 行在、列消失);"1/2/3 班"实测
+——scope=[class1, class3](跨 grade 两班)激活后 roster 恰为两班学生,同 grade 未选的
+class2 排除;嵌套选择拒 `scope-nested`、空集拒 `scope-empty`;draft 重指向 [gradeB]
+后 roster 来自新 scope,active 改 scope 仍锁;scoped gate/config 生命周期/advance 等
+12 服务用例全数迁移到集合形态后照绿。`pnpm typecheck` 零错;`pnpm test` 全仓
+**70 文件 442 全绿**;`resolve --frozen-lockfile` up to date(实体指纹变更经 resolve
+收编)。
+
+**下一步**:s4 调度 fiber(不变);s5 diff 面板按 §32.35 增 scope 完整性警告类。

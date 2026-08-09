@@ -64,12 +64,14 @@ import {
   listPhaseRows,
   listTemplatesPage,
   lockBatch,
+  nodesByIds,
   oneBatch,
-  oneOrgNode,
   oneTemplate,
   phaseScopes,
+  replaceBatchScopeNodes,
   replaceBatchUserTypes,
   replacePhaseScopes,
+  scopeNodeRows,
   scopesForBatch,
   setCurrentPhase,
   setPhaseActual,
@@ -97,7 +99,7 @@ export interface BatchDetail {
   readonly id: string
   readonly name: string
   readonly descriptionMd: string | null
-  readonly scopeNodeId: string
+  readonly scopeNodeIds: readonly string[]
   readonly materialRange: MaterialRange
   readonly timezone: string
   readonly status: 'draft' | 'active' | 'archived'
@@ -136,7 +138,7 @@ export interface PlanRefusal {
 export interface CreateBatchInput {
   readonly name: string
   readonly descriptionMd?: string
-  readonly scopeNodeId: string
+  readonly scopeNodeIds: readonly string[]
   readonly materialRange: MaterialRange
   readonly timezone?: string
   readonly userTypeIds: readonly string[]
@@ -145,7 +147,7 @@ export interface CreateBatchInput {
 export interface UpdateBatchInput {
   readonly name?: string
   readonly descriptionMd?: string | null
-  readonly scopeNodeId?: string
+  readonly scopeNodeIds?: readonly string[]
   readonly materialRange?: MaterialRange
   readonly timezone?: string
   readonly userTypeIds?: readonly string[]
@@ -318,7 +320,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       id: batch.id,
       name: batch.name,
       descriptionMd: batch.descriptionMd,
-      scopeNodeId: batch.scopeNodeId,
+      scopeNodeIds: batch.scopeNodeIds,
       materialRange: parseRange(batch.materialRange),
       timezone: batch.timezone,
       status: batch.status as BatchDetail['status'],
@@ -632,24 +634,66 @@ export const make = Effect.fn('Assessment.make')(function* () {
         : Effect.fail(new AccessDenied({ reason: 'cannot manage assessment batches' })),
     )
 
+  /** the selection as a validated, deduplicated set of living units */
+  const validateScopeSelection = (tenantId: string, ids: readonly string[]) =>
+    Effect.gen(function* () {
+      const wanted = [...new Set(ids)].sort()
+      if (wanted.length === 0) {
+        return yield* new BatchReferenceInvalid({ reference: 'scope-empty' })
+      }
+      const nodes = yield* nodesByIds(tenantId, wanted)
+      if (nodes.length !== wanted.length) {
+        return yield* new BatchReferenceInvalid({ reference: 'scope-node' })
+      }
+      // union semantics make a nested pair harmless and, precisely therefore,
+      // confusing; refused rather than silently collapsed
+      for (const a of nodes) {
+        for (const b of nodes) {
+          if (a.id !== b.id && (b.path === a.path || b.path.startsWith(`${a.path}.`))) {
+            return yield* new BatchReferenceInvalid({ reference: 'scope-nested' })
+          }
+        }
+      }
+      return nodes
+    })
+
+  /**
+   * Manage authority over every living scope node. A dangling row defines
+   * nobody, so it anchors no requirement; if none survive, the fallback is
+   * holding the permission at all rather than opening the batch wide.
+   */
+  const requireScopeReach = (as: Principal, nodes: readonly { id: string }[]) =>
+    Effect.gen(function* () {
+      if (nodes.length === 0) {
+        const held = yield* rbac.hasPermission(as, MANAGE)
+        if (!held) {
+          return yield* new AccessDenied({ reason: 'cannot manage assessment batches' })
+        }
+        return
+      }
+      for (const node of nodes) yield* rbac.requireAt(as, MANAGE, node.id)
+    })
+
   return Assessment.of({
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
-      yield* rbac.requireAt(as, MANAGE, input.scopeNodeId)
-      const node = yield* dieQuery(withDb(oneOrgNode(tenantId, input.scopeNodeId)))
-      if (!node) return yield* new BatchReferenceInvalid({ reference: 'scope-node' })
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            const nodes = yield* validateScopeSelection(tenantId, input.scopeNodeIds)
+            for (const node of nodes) yield* rbac.requireAt(as, MANAGE, node.id)
             const created = yield* insertBatch({
               tenantId,
               name: input.name,
               descriptionMd: input.descriptionMd ?? null,
-              scopeNodeId: input.scopeNodeId,
-              scopePath: node.path,
               materialStart: input.materialRange.start,
               materialEnd: input.materialRange.end,
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
             })
+            yield* replaceBatchScopeNodes(
+              tenantId,
+              created.id as string,
+              nodes.map((node) => node.id),
+            )
             yield* replaceBatchUserTypes(tenantId, created.id as string, [
               ...new Set(input.userTypeIds),
             ])
@@ -671,7 +715,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     getBatch: Effect.fn('Assessment.getBatch')(function* (tenantId, batchId, as) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
-      yield* rbac.requireAt(as, MANAGE, batch.scopeNodeId)
+      yield* requireScopeReach(as, yield* dieQuery(withDb(scopeNodeRows(tenantId, batchId))))
       return yield* dieQuery(withDb(readDetail(tenantId, batch)))
     }),
 
@@ -681,7 +725,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           Effect.gen(function* () {
             const locked = yield* lockBatch(tenantId, batchId)
             if (!locked) return yield* new BatchNotFound()
-            yield* rbac.requireAt(as, MANAGE, locked.scopeNodeId as string)
+            yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
             if (locked.status === 'archived') return yield* new BatchReadOnly()
 
             const before = (yield* oneBatch(tenantId, batchId))!
@@ -716,20 +760,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }
 
             // the scope is repointable exactly while no roster depends on it
-            let scopeMove: { scopeNodeId: string; scopePath: string } | undefined
-            if (input.scopeNodeId !== undefined && input.scopeNodeId !== before.scopeNodeId) {
-              if (locked.status !== 'draft') return yield* new BatchScopeLocked()
-              yield* rbac.requireAt(as, MANAGE, input.scopeNodeId)
-              const node = yield* oneOrgNode(tenantId, input.scopeNodeId)
-              if (!node) return yield* new BatchReferenceInvalid({ reference: 'scope-node' })
-              scopeMove = { scopeNodeId: node.id, scopePath: node.path }
-              diff.scopeNodeId = [before.scopeNodeId, node.id]
+            let scopeMove: readonly string[] | undefined
+            if (input.scopeNodeIds !== undefined) {
+              const next = [...new Set(input.scopeNodeIds)].sort()
+              if (JSON.stringify(next) !== JSON.stringify(before.scopeNodeIds)) {
+                if (locked.status !== 'draft') return yield* new BatchScopeLocked()
+                const nodes = yield* validateScopeSelection(tenantId, next)
+                for (const node of nodes) yield* rbac.requireAt(as, MANAGE, node.id)
+                scopeMove = next
+                diff.scopeNodeIds = [before.scopeNodeIds, next]
+              }
             }
 
             yield* updateBatchFields(tenantId, batchId, {
               ...(input.name !== undefined ? { name: input.name } : {}),
               ...(input.descriptionMd !== undefined ? { descriptionMd: input.descriptionMd } : {}),
-              ...(scopeMove !== undefined ? scopeMove : {}),
               ...(input.materialRange !== undefined
                 ? {
                     materialStart: input.materialRange.start,
@@ -738,6 +783,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 : {}),
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
             })
+            if (scopeMove !== undefined) {
+              yield* replaceBatchScopeNodes(tenantId, batchId, scopeMove)
+            }
             if (nextTypes !== undefined) {
               yield* replaceBatchUserTypes(tenantId, batchId, nextTypes)
             }
@@ -767,7 +815,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           Effect.gen(function* () {
             const locked = yield* lockBatch(tenantId, batchId)
             if (!locked) return yield* new BatchNotFound()
-            yield* rbac.requireAt(as, MANAGE, locked.scopeNodeId as string)
+            yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
             const from = locked.status as string
             const now = Date.now()
 
@@ -800,7 +848,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 return yield* new PlanInvalid({ refusals: review.refusals })
               }
               // the roster in one statement, frozen as of this transaction
-              yield* generateRoster(tenantId, batchId, locked.scopeNodeId as string)
+              yield* generateRoster(tenantId, batchId)
               yield* updateBatchFields(tenantId, batchId, { status: 'active' })
             } else {
               if (from !== 'active') return yield* new BatchStatusInvalid({ from, to })
@@ -824,7 +872,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     getPlan: Effect.fn('Assessment.getPlan')(function* (tenantId, batchId, as) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
-      yield* rbac.requireAt(as, MANAGE, batch.scopeNodeId)
+      yield* requireScopeReach(as, yield* dieQuery(withDb(scopeNodeRows(tenantId, batchId))))
       return yield* dieQuery(withDb(readPlan(tenantId, batchId)))
     }),
 
@@ -834,7 +882,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           Effect.gen(function* () {
             const locked = yield* lockBatch(tenantId, batchId)
             if (!locked) return yield* new BatchNotFound()
-            yield* rbac.requireAt(as, MANAGE, locked.scopeNodeId as string)
+            yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
             if (locked.status === 'archived') return yield* new BatchReadOnly()
             const draft = locked.status === 'draft'
             const rows = yield* readPlan(tenantId, batchId)
@@ -1016,7 +1064,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           Effect.gen(function* () {
             const locked = yield* lockBatch(tenantId, batchId)
             if (!locked) return yield* new BatchNotFound()
-            yield* rbac.requireAt(as, MANAGE, locked.scopeNodeId as string)
+            yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
             if (locked.status !== 'active') {
               return yield* new AdvanceInvalid({ reason: 'batch-not-active' })
             }
@@ -1044,7 +1092,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
               return yield* new AdvanceInvalid({ reason: 'force-required' })
             }
             if (input.force === true) {
-              yield* rbac.requireAt(as, FORCE_ADVANCE, locked.scopeNodeId as string)
+              for (const node of yield* scopeNodeRows(tenantId, batchId)) {
+                yield* rbac.requireAt(as, FORCE_ADVANCE, node.id)
+              }
               if (input.reason === undefined || input.reason.trim() === '') {
                 return yield* new AdvanceInvalid({ reason: 'reason-required' })
               }
@@ -1188,7 +1238,7 @@ const toBatchDto = (detail: BatchDetail) => ({
   id: detail.id,
   name: detail.name,
   descriptionMd: detail.descriptionMd,
-  scopeNodeId: detail.scopeNodeId,
+  scopeNodeIds: detail.scopeNodeIds,
   materialRange: detail.materialRange,
   timezone: detail.timezone,
   status: detail.status,
@@ -1304,7 +1354,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             id: row.id,
             name: row.name,
             descriptionMd: row.descriptionMd,
-            scopeNodeId: row.scopeNodeId,
+            scopeNodeIds: row.scopeNodeIds,
             materialRange: parseRange(row.materialRange),
             timezone: row.timezone,
             status: row.status as 'draft' | 'active' | 'archived',
@@ -1334,7 +1384,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             ...(payload.descriptionMd !== undefined
               ? { descriptionMd: payload.descriptionMd }
               : {}),
-            scopeNodeId: payload.scopeNodeId,
+            scopeNodeIds: payload.scopeNodeIds,
             materialRange: payload.materialRange,
             ...(payload.timezone !== undefined ? { timezone: payload.timezone } : {}),
             userTypeIds: payload.userTypeIds,

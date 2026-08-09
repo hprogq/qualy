@@ -149,10 +149,10 @@ AssessmentBatch（聚合根）
 
 ## 9. Batch 与 Roster
 
-**AssessmentBatch**：`name, description_md, scope_node(+path 快照), material_range(daterange), timezone(默认 'Asia/Shanghai'), status(draft|active|archived), config_revision, current_phase_id(投影)`。
+**AssessmentBatch**：`name, description_md, material_range(daterange), timezone(默认 'Asia/Shanghai'), status(draft|active|archived), config_revision, current_phase_id(投影)`；scope 落在配套表 `batch_scope_nodes(batch_id, node_id)`——**节点集合，不是单一子树**（裁决 §32.35）。
 
 - **材料日期用 `daterange` 左闭右开**（`[2026-03-01, 2026-09-01)`）：证书只有日期没有时间，彻底避开 23:59:59.999 与时区噪音。daterange 自定义类型**仿照 org 插件 `src/db/ltree.ts` 先例**实现。题型可继续缩窄：合法日期 = `batch.material_range ∩ item.dateConstraint`。阶段等流程时间一律 `timestamptz`，按 batch.timezone 展示。
-- scope 为单一子树；v1 不做不连续多 scope。description_md 是管理员业务数据，i18n 上属 **literal**，不进 message catalog。
+- **scope = 人群的定义（intent），roster = 人群的事实**（裁决 §32.35，"纯导入模式"否决——导入完成后系统不再知道批次面向谁，**新迁入检测因此失明**：转入生既不在花名册也不在任何落库定义里，无从发现）。scope 是**节点集合**（`batch_scope_nodes`，"只允许 1/2/3 班填报"= 一个批次三个节点，~~v1 不做不连续多 scope~~ 撤销）；只存 node_id，**路径实时解析**——引用的是"这些组织单位"，单位挪动批次跟着单位走，原 scope_path 快照列取消（要冻结的是 roster，不是 intent）。刻意**不带 org_nodes 外键**：节点被删除 → diff 面板出 **scope 完整性警告**，生成与新迁入检测跳过该节点，roster 既有成员因 lineage 冻结不受影响。校验：同租户；**拒绝互为祖先后代的选择**（并集语义下嵌套无害但必然困惑管理员）；集合非空。管辖判定随之泛化：创建与管理批次要求操作者的 batch.manage reach **覆盖每个 scope 节点**。draft 期 scope 可改（active 锁定——roster 已依赖它）。范围外手工纳入（借读生等锚点不在任何 scope 子树内者）v1 不做，触发条件记 §27。新迁入谓词 = 在任一 scope 子树内 ∧ 类型匹配 ∧ 不在 roster。description_md 是管理员业务数据，i18n 上属 **literal**，不进 message catalog。
 - **One Batch = One Rule Set**（不变量，裁决 §32.19）：一个批次内所有 participant 共用同一套 Item / ScoreGroup / 评分规则。软件学院与英语学院细则不同 → **开两个批次**，而不是在一个全校批次里加 item 适用性 DSL 或按院覆盖计分——那会让系统复杂度翻倍。未来真需要学校统一管理多个子批次时再建 `AssessmentCampaign` 上层编排（触发条件记 §27），绝不现在做。
 - **配置生命周期是分级的，不是"出现提交后冻结"**（裁决 §32.8——配置错误恰恰是被填报过程发现的，把修改做成重流程等于逼管理员绕过系统）：
   - 批次 **draft**：随便改，零仪式。
@@ -166,9 +166,9 @@ AssessmentBatch（聚合根）
 
 **BatchParticipant**：`batch_id, user_id(唯一对), assessment_anchor_node_id, anchor_path(ltree 快照), user_type_id, status(active|excluded), included_at, excluded_at?`。
 
-- 批次激活时**同步生成**（单条 `INSERT…SELECT` 按 scope 子树 + 用户类型过滤，事务内完成，不上队列）。
+- 批次激活时**同步生成**（单条 `INSERT…SELECT`，EXISTS 于 scope 节点集合的并集 + 用户类型过滤，事务内完成，不上队列；嵌套选择已在写入时拒绝，子树两两不相交）。
 - **锚点是批次自治的边界，不是在途条目的稳定器**（表述修正，裁决 §32.7）：在途条目的稳定靠 ReviewInstance 提交时快照的**有效链**——链钉死的是节点，实时解析的是"该节点此刻谁持有角色"，所以学生转走后旧链照常由**原节点**的现任审核（有意为之：否则任何转移都会把在途条目甩进可能无人的新链）。roster 的 `assessment_anchor_node_id + anchor_path` 买的是**此后**的语义：新提交与申诉按冻结锚点路由（学期中转走的学生在原单位完成本学期综测，材料不会出现在新学院毫无上下文的收件箱）、排名分区确定（partition key 取锚点祖先）、行政录入的管辖判定稳定、以及管理员的控制杆——转移不静默改变批次行为，而是进 diff 面板显式应用，应用时当场校验新链（"新锚点下班长一级无人，应用后**该生此后的新提交**将 BLOCKED，确认？"——在途条目保持已快照链不受影响）。仅有 anchor_path 还不够（第二轮审计 P0）：ltree 冻结了 ID 链，但没冻结**每一级当时的节点类型**，而 org 的节点类型变更是仓库的真实设计面——类型漂移后 `RoleAt(nodeType)` 会解析错位。所以 participant 另存 **anchor_lineage jsonb**：`[{nodeId, nodeTypeId}]` 自锚点到根逐级冻结，`RoleAt` 从 lineage 找节点、再在该冻结节点上实时解析角色持有人——组织语境 frozen、持有人 live，这才完整兑现 ADR 0006。存 jsonb 不建独立表：快照的本义是与活数据脱钩，独立表配 FK 反而把冻结数据重新拴回可能被删的活节点，且 lineage 永远整条读取、不按层查询。anchor_path 保留，继续服务子树范围判断（管辖 canAt、diff）。成员资格已用快照（excluded 保历史），位置若实时会得到嵌合体语义——两者是"谁、以什么位置参加本批次"这同一事实的两半。可配糖："该生**首次提交前**锚点变更自动同步"（低风险开关）；首提之后必须走 diff 面板。不从用户实时 membership 推断；本系统单归属，未来双学位歧义在 enrollment 层解决，禁止改 org 全局约束。
-- **永不自动增删，转入转出对称**（裁决 §32.7）：组织树变化后 diff 面板列出新迁入（未纳入）/已迁出（仍在册）/锚点变更/**用户类型或资格变更**，管理员显式应用。**转入不自动纳入**——转出不自动删 + 转入自动加 = 每次学期中转移都制造**双重参与**（同一学期两个批次同时算分、公示、排名），而"这学期他在哪边评"是政策与两院协调问题，且系统只能看见自己（对方学院可能不用本系统，跨批次查重只覆盖子集），纳入判断的 owner 是人。系统辅助：纳入时查该 user 在其他未归档批次的 active 记录并警告；当场校验新锚点下的有效链。"填报截止前自动纳入"开关保留但**默认关**，且加"其他批次无 active 记录"守卫。scope 内未纳入的学生打开批次页显示"你尚未被纳入本批次，如有疑问联系学院"。已迁出者置 `excluded` 保留全部历史（Entry/Review/Score/Publication/Appeal 的业务归属不能悬空）；显式移出时管理员当场决定其条目去向。锚点变更只影响此后新提交条目的路由，在途条目保持已快照的链。
+- **永不自动增删，转入转出对称**（裁决 §32.7）：组织树变化后 diff 面板列出新迁入（未纳入）/已迁出（仍在册）/锚点变更/**用户类型或资格变更**，外加 **scope 完整性警告**（scope 行指向已删除节点），管理员显式应用。**漂移检测 on-read 派生**（面板打开现算、徽标同源），不进巡检也不用每分钟扫——漂移有天然的请求驱动发现路径（转入生自己会打开批次页，管理员会开面板）且不阻塞任何在途流程；真需要主动提醒时在五分钟巡检摘要里加一个 diff 计数（触发条件留档，现在不做）。**转入不自动纳入**——转出不自动删 + 转入自动加 = 每次学期中转移都制造**双重参与**（同一学期两个批次同时算分、公示、排名），而"这学期他在哪边评"是政策与两院协调问题，且系统只能看见自己（对方学院可能不用本系统，跨批次查重只覆盖子集），纳入判断的 owner 是人。系统辅助：纳入时查该 user 在其他未归档批次的 active 记录并警告；当场校验新锚点下的有效链。"填报截止前自动纳入"开关保留但**默认关**，且加"其他批次无 active 记录"守卫。scope 内未纳入的学生打开批次页显示"你尚未被纳入本批次，如有疑问联系学院"。已迁出者置 `excluded` 保留全部历史（Entry/Review/Score/Publication/Appeal 的业务归属不能悬空）；显式移出时管理员当场决定其条目去向。锚点变更只影响此后新提交条目的路由，在途条目保持已快照的链。
 - **实时组织树与 roster 的差异不是公示 blocker**——快照的意义就是隔离漂移。只有真正的 roster 完整性问题才 block：participant 缺 anchor、重复行、管理员已明确要求纳入但未裁决的新生。
 - 花名册是一切的分母：计分迭代对象、评价任务完整性基准、公示覆盖范围。无任何提交的学生也在计分与公示中（基础分由规则给出，**不为默认分预创建记录**——事实落表、规则进引擎）。
 
@@ -556,7 +556,7 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 ## 21. 表清单与 ownership（最终归属；按里程碑分批建，不一次建全）
 
-- **assessment/core**：`assessment_batches`（daterange、timezone、current_phase_id、config_revision 计数）；`batch_user_types`（batch 级用户类型集合，join 表）；`batch_phases`（(batch,ordinal) 唯一，actual_entry_at 不可回改）；`phase_events`（append-only，含 processed_at）；`phase_item_scopes` / `phase_participant_scopes`（补充期作用范围，空=不限）；`phase_templates`；`batch_participants`（(batch,user) 唯一、anchor_path ltree、**anchor_lineage jsonb**）；`batch_config_revisions`（append-only 配置事件日志）；`score_groups`（自引用，cap/floor）；`assessment_items`（轻量身份 + current_revision_id）；`assessment_item_revisions`（**不可变**，(item,revision_no) 唯一）；`entries`（轻量）；`entry_revisions`（不可变，(entry,revision_no) 唯一，**含 item_revision_id**）；`entry_revision_attachments`（关系表）；`source_claims`（(tenant,namespace,scope_key,normalized_key) 唯一，durable ledger）；`review_instances`（**含轮列** round_no/origin/initiator/publication_id/anchor_line_id；收件箱索引：(tenant,state,current_node_path) + GiST）；`review_stage_panels`；`review_votes`；`review_events`；`review_event_attachments`（轮证据与驳回圈画图）；`score_runs`（input_manifest 含各题 item_revision、engine 版本）；`score_results`；`publications`（含 retracted 态）；`publication_rows`（自包含物化，BreakdownLine 带 lineId+provenance，READY 后不可改）；`ranking_tie_resolutions`。**没有 appeal\_\* 表**（§15）。
+- **assessment/core**：`assessment_batches`（daterange、timezone、current_phase_id、config_revision 计数）；`batch_scope_nodes`（scope 节点集合，**node_id 无外键**——删除出警告不阻塞，路径实时解析）；`batch_user_types`（batch 级用户类型集合，join 表）；`batch_phases`（(batch,ordinal) 唯一，actual_entry_at 不可回改）；`phase_events`（append-only，含 processed_at）；`phase_item_scopes` / `phase_participant_scopes`（补充期作用范围，空=不限）；`phase_templates`；`batch_participants`（(batch,user) 唯一、anchor_path ltree、**anchor_lineage jsonb**）；`batch_config_revisions`（append-only 配置事件日志）；`score_groups`（自引用，cap/floor）；`assessment_items`（轻量身份 + current_revision_id）；`assessment_item_revisions`（**不可变**，(item,revision_no) 唯一）；`entries`（轻量）；`entry_revisions`（不可变，(entry,revision_no) 唯一，**含 item_revision_id**）；`entry_revision_attachments`（关系表）；`source_claims`（(tenant,namespace,scope_key,normalized_key) 唯一，durable ledger）；`review_instances`（**含轮列** round_no/origin/initiator/publication_id/anchor_line_id；收件箱索引：(tenant,state,current_node_path) + GiST）；`review_stage_panels`；`review_votes`；`review_events`；`review_event_attachments`（轮证据与驳回圈画图）；`score_runs`（input_manifest 含各题 item_revision、engine 版本）；`score_results`；`publications`（含 retracted 态）；`publication_rows`（自包含物化，BreakdownLine 带 lineId+provenance，READY 后不可改）；`ranking_tie_resolutions`。**没有 appeal\_\* 表**（§15）。
 - **storage**：`attachments`（status staged|bound|retired、bound_at）。grades / dormitory 的表在 M6/M8 设计时追加到本文档。
 - 全表遵守仓库既有形态：uuidv7 主键库侧默认、timestamptz、复合租户外键 `(tenant_id, id)`、跨插件取表走 dependsOn + 实体闭包、迁移 `pnpm qualy generate`（destructive 走 drop-guard）。ltree/daterange 自定义类型仿 org 先例。
 
@@ -723,6 +723,8 @@ BatchConfigRevision；⑦ 端到端演示：粘贴一条真实细则 → 产出�
 | reviewer override（指定人审单一实例）                                      | 出现"不能正式授予角色、但需要此人审这一个实例"的真实场景                                             |
 | AssessmentCampaign（多子批次统一编排）                                     | 学校真要统一管理多个不同细则的子批次时（One Batch = One Rule Set 不变）                              |
 | 重新路由在途条目                                                           | 真实需求出现时，实现 = 取消旧实例 + 开新实例（绝不改已快照链）                                       |
+| 范围外手工纳入（锚点不在任何 scope 子树内的借读/挂读生参评）               | 真实出现该需求时（lineage 审核链本可跑通，代价是污染"scope 内未纳入"的文案语义）                     |
+| 漂移主动提醒（巡检摘要加 roster diff 计数）                                | 运营中确需主动提醒时（一行代码；v1 漂移检测 on-read 派生已足够）                                     |
 | correctedFinal（final 后归档前的纠错出口）                                 | 真实发生 final 后错误时，按 retract 对称设计：旧 final 保留、corrected final supersedes              |
 | panel 重组（重新快照计票成员）                                             | 真实批次出现 panel 不可达且原成员无法恢复任职（旧票是否计入新分母届时设计）                          |
 
@@ -849,5 +851,7 @@ decision 事件不携带分值。需要人定值的条款一律是 administrativ
 **32.32 origin 三值**（2026-08-09，第四轮）。`initial | appeal | reopen`；约束 appeal→participant、reopen→staff；驳回重提是 initial 新轮；审核整理期 reopen 不再硬穿 appeal 词汇。
 
 **32.33 ItemRevision 消费不变量**（2026-08-09，第四轮）。payload 永远按自身 item_revision 的 form_config 解码（渲染/导出/打印/审核详情）；ScoreRun 按选定 scoring ItemRevision；保存新配置实测 {in_review, approved} 条目 current revision，消费不了拒绝并引导作废+替换；draft/rejected 经新表单重入。不建 schema 兼容引擎。
+
+**32.35 batch scope 升级为节点集合，导入模式否决**（2026-08-09，用户提问后裁决）。~~"scope 为单一子树，v1 不做不连续多 scope"~~作废：scope = `batch_scope_nodes` 节点集合（"只许 1/2/3 班"= 三个节点），只存 node_id、路径实时解析，~~batch 上的 scope_node_id + scope_path 快照列~~取消——**scope 是人群的定义（intent），roster 是人群的事实**，要冻结的是后者。"改成导入模式"否决：导入后系统不再存人群定义，**新迁入检测失明**（转入生无行可 diff、无定义可判），而定义落库才使"新迁入 = 任一 scope 子树内 ∧ 类型匹配 ∧ 不在 roster"可计算，并承载管辖判定（manage reach 覆盖每个节点）与"你尚未被纳入"定向文案。node_id 刻意无外键：节点删除 → scope 完整性警告（diff 面板新类），生成与检测跳过，roster 靠 lineage 不受影响。校验：同租户、拒绝嵌套选择、集合非空；draft 可改 active 锁。范围外手工纳入与巡检 diff 计数留 §27。漂移检测 on-read 派生，不做每分钟扫描（漂移有请求驱动的天然发现路径且不阻塞在途）。三层冻结梯度成文：实时层（树结构、角色持有人）/批次层（roster：位置+谱系冻结）/轮层（链快照，管理员应用锚点变更也不动）——位置冻结、人员实时、类型冻结。
 
 **32.34 第四轮其余采纳汇总**（2026-08-09）。排名两口径（ties 仅在要求物化 rank 时 blocker、S1 默认 rank NULL；partition 祖先查冻结 lineage 禁查 live）；retire 历史引用语义（禁新增引用+入口隐藏，已引用读取永久有效，物理删除非 v1）；时间语义统一（锚的语义时刻一旦确定即可物化——SCHEDULED 的 publish_at 在 schedule 时确定；公示边界 SCHEDULED 前是 guard 里程碑、后转承诺型）；**source/actor 全部服务端推导**（安全不变量，客户端永不提交 source）；残留清扫（§6/§9 提示语/§20 依赖与模块表/§22 revisions 仅本人/§24 scoped 措辞/M5 两段式措辞/(roleId,nodeId) 去重）；作废条目终态 voided(reason=item_voided)；巡检 quorum 按可达性公式。

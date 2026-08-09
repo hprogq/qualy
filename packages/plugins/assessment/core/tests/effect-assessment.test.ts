@@ -203,7 +203,9 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: '2026 spring',
-            scopeNodeId: f.gradeA,
+            // two classes from different grades: the "classes 1 and 3 report,
+            // class 2 does not" shape a single subtree cannot express
+            scopeNodeIds: [f.class1, f.class3],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -256,9 +258,9 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     // provenance lands with the copy
     expect(applied.phases.map((row) => row.sourceTemplateVersion)).toEqual([1, 1, 1])
     expect(activated.status).toBe('active')
-    // enrolled students in scope only: the other grade, the teacher and the
-    // disabled account stay out
-    expect(roster.map((row) => row.user_id).sort()).toEqual([f.s1, f.s2].sort())
+    // enrolled students under any scope node only: the unselected class, the
+    // teacher and the disabled account stay out
+    expect(roster.map((row) => row.user_id).sort()).toEqual([f.s1, f.s3].sort())
     const s1Row = roster.find((row) => row.user_id === f.s1)!
     expect(s1Row.anchor_lineage).toEqual([
       { nodeId: f.class1, nodeTypeId: f.classType },
@@ -277,7 +279,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Empty',
-            scopeNodeId: f.root,
+            scopeNodeIds: [f.root],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [],
           },
@@ -305,7 +307,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Edits',
-            scopeNodeId: f.root,
+            scopeNodeIds: [f.root],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -410,7 +412,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Advance',
-            scopeNodeId: f.root,
+            scopeNodeIds: [f.root],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -491,7 +493,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Ratify',
-            scopeNodeId: f.root,
+            scopeNodeIds: [f.root],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -561,7 +563,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Scoped',
-            scopeNodeId: f.gradeA,
+            scopeNodeIds: [f.gradeA],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -680,7 +682,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Publication boundary',
-            scopeNodeId: f.root,
+            scopeNodeIds: [f.root],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -728,7 +730,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Stale',
-            scopeNodeId: f.root,
+            scopeNodeIds: [f.root],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -766,7 +768,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     ).toContainEqual(expect.objectContaining({ reason: 'planned-not-in-future' }))
   })
 
-  it('repoints a draft scope and refreezes its path, and locks it once active', async () => {
+  it('repoints a draft scope, refuses bad selections, and locks the set once active', async () => {
     const exit = await run(
       db.url,
       Effect.gen(function* () {
@@ -776,20 +778,29 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Repoint',
-            scopeNodeId: f.gradeA,
+            scopeNodeIds: [f.gradeA],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
           f.principal,
         )
+        // an ancestor and its descendant in one selection, and an empty one
+        const nested = yield* Effect.exit(
+          assessment.updateBatch(
+            f.tenant,
+            batch.id,
+            { scopeNodeIds: [f.gradeA, f.class1] },
+            f.principal,
+          ),
+        )
+        const emptied = yield* Effect.exit(
+          assessment.updateBatch(f.tenant, batch.id, { scopeNodeIds: [] }, f.principal),
+        )
         const moved = yield* assessment.updateBatch(
           f.tenant,
           batch.id,
-          { scopeNodeId: f.gradeB },
+          { scopeNodeIds: [f.gradeB] },
           f.principal,
-        )
-        const frozen = one<{ scope_path: string }>(
-          yield* runSql(sql`select scope_path from assessment_batches where id = ${batch.id}`),
         )
         yield* assessment.replacePlan(
           f.tenant,
@@ -802,14 +813,20 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           yield* runSql(sql`select user_id from batch_participants where batch_id = ${batch.id}`),
         )
         const locked = yield* Effect.exit(
-          assessment.updateBatch(f.tenant, batch.id, { scopeNodeId: f.gradeA }, f.principal),
+          assessment.updateBatch(f.tenant, batch.id, { scopeNodeIds: [f.gradeA] }, f.principal),
         )
-        return { moved, frozen, roster, locked, f }
+        return { nested, emptied, moved, roster, locked, f }
       }),
     )
-    const { moved, frozen, roster, locked, f } = ok(exit)
-    expect(moved.scopeNodeId).toBe(f.gradeB)
-    expect(frozen.scope_path).toBe('r.b')
+    const { nested, emptied, moved, roster, locked, f } = ok(exit)
+    expect(tagOf(nested)).toBe('ASSESSMENT_BATCH_REFERENCE_INVALID')
+    expect(
+      reasonsOf(nested).map((entry) => (entry.error as { reference?: string }).reference),
+    ).toEqual(['scope-nested'])
+    expect(
+      reasonsOf(emptied).map((entry) => (entry.error as { reference?: string }).reference),
+    ).toEqual(['scope-empty'])
+    expect(moved.scopeNodeIds).toEqual([f.gradeB])
     // the roster came from the repointed scope
     expect(roster.map((row) => row.user_id)).toEqual([f.s3])
     expect(tagOf(locked)).toBe('ASSESSMENT_BATCH_SCOPE_LOCKED')
@@ -825,7 +842,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Facade',
-            scopeNodeId: f.gradeA,
+            scopeNodeIds: [f.gradeA],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [f.studentType],
           },
@@ -912,7 +929,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.tenant,
           {
             name: 'Config',
-            scopeNodeId: f.root,
+            scopeNodeIds: [f.root],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
             userTypeIds: [],
           },
