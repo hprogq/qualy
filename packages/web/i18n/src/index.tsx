@@ -208,7 +208,7 @@ export function LocalizedText({ value }: { value: UiText }) {
 }
 
 export const localeNames: Record<SupportedLocale, string> = {
-  'zh-CN': '中文',
+  'zh-CN': '简体中文',
   'en-US': 'English',
 }
 

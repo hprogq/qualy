@@ -4,6 +4,7 @@ import { primaryNavigation } from '@qualy/ui-contract'
 import {
   ManifestRoutes,
   RuntimeProvider,
+  ThemeProvider,
   useManifest,
   useUiCollection,
   type ComponentRegistry,
@@ -29,11 +30,13 @@ export default function App() {
   // states are localized, so the shell never renders untranslated copy
   return (
     <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
-      <RuntimeProvider registry={registry}>
-        <BrowserRouter>
-          <ManifestRouter />
-        </BrowserRouter>
-      </RuntimeProvider>
+      <ThemeProvider>
+        <RuntimeProvider registry={registry}>
+          <BrowserRouter>
+            <ManifestRouter />
+          </BrowserRouter>
+        </RuntimeProvider>
+      </ThemeProvider>
     </I18nProvider>
   )
 }

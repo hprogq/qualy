@@ -54,6 +54,7 @@ export {
   type RouteSlots,
 } from './route-builder.tsx'
 export { PageLink } from './links.tsx'
+export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
 
 // The shell's own api: the manifest endpoint, imported as the contract leaf
 // it is. The runtime holds no global client - each plugin derives one from
