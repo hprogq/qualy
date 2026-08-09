@@ -4,17 +4,19 @@ import { sql } from 'kysely'
 import { scopeCoverage, type AuthorizationScope } from '@qualy/rbac-contract'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { entities } from '../db/entities.ts'
 
-// What assessment's queries may reach: its own tables plus org's and auth's,
-// because the roster freezes org positions and enrolls auth users, and the
-// descriptor declares database dependencies on both.
+// What assessment's queries may reach: its own tables plus org's, auth's and
+// rbac's, because the roster freezes org positions, enrolls auth users, and
+// the chain precheck (and later, stage membership) joins role grants; the
+// descriptor declares database dependencies on all three.
 //
 // Instants cross this boundary as epoch milliseconds, extracted in sql: the
 // engine reasons in numbers, and the driver's string format for timestamptz
 // is not a contract worth parsing.
 
-const closure = [...orgEntities, ...authEntities, ...entities] as const
+const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...entities] as const
 
 export const db = Db.scope(closure)
 
@@ -63,6 +65,7 @@ export interface BatchRow {
   timezone: string
   status: string
   configRevision: number
+  anchorAutoSync: boolean
   currentPhaseId: string | null
   createdAt: number
 }
@@ -85,6 +88,7 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
       'timezone',
       'status',
       'configRevision',
+      'anchorAutoSync',
       'currentPhaseId',
     ])
     .select([
@@ -155,6 +159,7 @@ export const insertBatch = (input: {
   materialStart: string
   materialEnd: string
   timezone?: string
+  anchorAutoSync?: boolean
 }) =>
   db.query((k) =>
     k
@@ -165,6 +170,7 @@ export const insertBatch = (input: {
         descriptionMd: input.descriptionMd,
         materialRange: sql`daterange(${input.materialStart}::date, ${input.materialEnd}::date)`,
         ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+        ...(input.anchorAutoSync !== undefined ? { anchorAutoSync: input.anchorAutoSync } : {}),
       } as never)
       .returning('id')
       .executeTakeFirstOrThrow(),
@@ -236,6 +242,7 @@ export const updateBatchFields = (
     materialStart?: string
     materialEnd?: string
     timezone?: string
+    anchorAutoSync?: boolean
     status?: string
   },
 ) =>
@@ -251,6 +258,7 @@ export const updateBatchFields = (
             }
           : {}),
         ...(fields.timezone !== undefined ? { timezone: fields.timezone } : {}),
+        ...(fields.anchorAutoSync !== undefined ? { anchorAutoSync: fields.anchorAutoSync } : {}),
         ...(fields.status !== undefined ? { status: fields.status } : {}),
         updatedAt: sql`now()`,
       } as never)
@@ -851,3 +859,416 @@ export const batchesWithDueBoundaries = (now: number, limit: number) =>
         .execute(),
     )
     .pipe(Effect.map((found) => found as { tenantId: string; id: string }[]))
+
+// --- roster management ---
+//
+// The diff queries below are derived views, computed on read: the roster
+// never moves on its own, so these answer "what has drifted" and a person
+// applies or ignores each line. Every one compares the frozen snapshot
+// against the live tree through the living scope set.
+
+/** membership in the living scope, as a fragment both sides of the diff use */
+const inScope = (batchId: string, tenantRef: string, pathRef: string) => sql<boolean>`exists (
+  select 1 from batch_scope_nodes bsn
+  join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
+  where bsn.tenant_id = ${sql.ref(tenantRef)}
+    and bsn.batch_id = ${batchId}::uuid
+    and ${sql.ref(pathRef)} <@ scope.path
+)`
+
+export interface ParticipantRow {
+  id: string
+  userId: string
+  displayName: string
+  businessNo: string | null
+  userTypeId: string
+  anchorNodeId: string
+  anchorPath: string
+  anchorLineage: readonly { nodeId: string; nodeTypeId: string }[]
+  status: string
+  includedAt: number
+  excludedAt: number | null
+}
+
+const participantSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
+  k
+    .selectFrom('BatchParticipant')
+    .innerJoin('User as u', (join) =>
+      join
+        .onRef('u.id', '=', 'BatchParticipant.userId')
+        .onRef('u.tenantId', '=', 'BatchParticipant.tenantId'),
+    )
+    .select([
+      'BatchParticipant.id',
+      'BatchParticipant.userId',
+      'BatchParticipant.userTypeId',
+      'BatchParticipant.anchorLineage',
+      'BatchParticipant.status',
+      'u.displayName',
+      'u.businessNo',
+    ])
+    .select([
+      sql<string>`batch_participants.assessment_anchor_node_id`.as('anchorNodeId'),
+      sql<string>`batch_participants.anchor_path::text`.as('anchorPath'),
+      epoch('batch_participants.included_at').as('includedAt'),
+      epoch('batch_participants.excluded_at').as('excludedAt'),
+    ])
+
+const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
+  ({
+    ...row,
+    includedAt: msOf(row.includedAt),
+    excludedAt: msOf(row.excludedAt),
+  }) as ParticipantRow
+
+export const listParticipantsPage = (
+  tenantId: string,
+  batchId: string,
+  filter: { status?: string; after?: { path: string; id: string }; limit: number },
+) =>
+  db
+    .query((k) => {
+      let query = participantSelection(k)
+        .where('BatchParticipant.tenantId', '=', tenantId)
+        .where('BatchParticipant.batchId', '=', batchId)
+      if (filter.status !== undefined) {
+        query = query.where('BatchParticipant.status', '=', filter.status)
+      }
+      if (filter.after !== undefined) {
+        query = query.where(
+          sql<boolean>`(batch_participants.anchor_path::text, batch_participants.id)
+            > (${filter.after.path}, ${filter.after.id}::uuid)`,
+        )
+      }
+      return query
+        .orderBy(sql`batch_participants.anchor_path`)
+        .orderBy('BatchParticipant.id')
+        .limit(filter.limit)
+        .execute()
+    })
+    .pipe(
+      Effect.map((found) => (found as unknown as Record<string, unknown>[]).map(toParticipantRow)),
+    )
+
+/** the row for one person in one batch, whatever its status */
+export const participantByUser = (tenantId: string, batchId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchParticipant')
+        .select(['id', 'status'])
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .where('userId', '=', userId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row ?? null) as { id: string; status: string } | null))
+
+export const oneParticipant = (tenantId: string, batchId: string, participantId: string) =>
+  db
+    .query((k) =>
+      participantSelection(k)
+        .where('BatchParticipant.tenantId', '=', tenantId)
+        .where('BatchParticipant.batchId', '=', batchId)
+        .where('BatchParticipant.id', '=', participantId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined ? null : toParticipantRow(row as Record<string, unknown>),
+      ),
+    )
+
+/** where a person stands right now, and as what */
+export const userLivePosition = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User')
+        .innerJoin('OrgNode as n', (join) =>
+          join
+            .onRef('n.id', '=', 'User.primaryOrgNodeId')
+            .onRef('n.tenantId', '=', 'User.tenantId'),
+        )
+        .select(['User.id', 'User.enabled', 'User.userTypeId'])
+        .select([sql<string>`n.id`.as('nodeId'), sql<string>`n.path::text`.as('nodePath')])
+        .where('User.tenantId', '=', tenantId)
+        .where('User.id', '=', userId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map(
+        (row) =>
+          (row ?? null) as {
+            id: string
+            enabled: boolean
+            userTypeId: string
+            nodeId: string
+            nodePath: string
+          } | null,
+      ),
+    )
+
+/** whether this live position falls under any living scope node of the batch */
+export const positionInScope = (tenantId: string, batchId: string, nodePath: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchScopeNode')
+        .innerJoin('OrgNode as scope', (join) =>
+          join
+            .onRef('scope.id', '=', 'BatchScopeNode.nodeId')
+            .onRef('scope.tenantId', '=', 'BatchScopeNode.tenantId'),
+        )
+        .select('BatchScopeNode.nodeId')
+        .where('BatchScopeNode.tenantId', '=', tenantId)
+        .where('BatchScopeNode.batchId', '=', batchId)
+        .where(sql<boolean>`${nodePath}::ltree <@ scope.path`)
+        .limit(1)
+        .execute(),
+    )
+    .pipe(Effect.map((found) => found.length > 0))
+
+/** the other non-archived batches where this person already participates */
+export const activeElsewhere = (tenantId: string, userId: string, excludingBatchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchParticipant')
+        .innerJoin('AssessmentBatch as b', (join) =>
+          join
+            .onRef('b.id', '=', 'BatchParticipant.batchId')
+            .onRef('b.tenantId', '=', 'BatchParticipant.tenantId'),
+        )
+        .select([sql<string>`b.id`.as('batchId'), sql<string>`b.name`.as('name')])
+        .where('BatchParticipant.tenantId', '=', tenantId)
+        .where('BatchParticipant.userId', '=', userId)
+        .where('BatchParticipant.status', '=', 'active')
+        .where('BatchParticipant.batchId', '!=', excludingBatchId)
+        .where('b.status', '!=', 'archived')
+        .orderBy('b.id')
+        .execute(),
+    )
+    .pipe(Effect.map((found) => found as { batchId: string; name: string }[]))
+
+/**
+ * The frozen snapshot for one person, taken now: one insert, the same shape
+ * activation uses, scoped to a single user. Returns nothing when the user is
+ * missing - eligibility and scope are the service's questions, asked first.
+ */
+export const insertParticipant = (tenantId: string, batchId: string, userId: string) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        insert into batch_participants
+          (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage, user_type_id)
+        select
+          u.tenant_id,
+          ${batchId}::uuid,
+          u.id,
+          u.primary_org_node_id,
+          n.path,
+          (select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
+                            order by a.depth desc)
+             from org_nodes a
+            where a.tenant_id = u.tenant_id and a.path @> n.path),
+          u.user_type_id
+        from users u
+        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+        where u.tenant_id = ${tenantId}::uuid and u.id = ${userId}::uuid
+        returning id
+      `.execute(k),
+    )
+    .pipe(Effect.map((result) => (result.rows[0] ?? null) as { id: string } | null))
+
+/** re-freezes one participant's snapshot - anchor, lineage and type - from live */
+export const refreshParticipantSnapshot = (tenantId: string, participantId: string) =>
+  db.query((k) =>
+    sql`
+      update batch_participants p
+      set assessment_anchor_node_id = u.primary_org_node_id,
+          anchor_path = n.path,
+          anchor_lineage =
+            (select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
+                              order by a.depth desc)
+               from org_nodes a
+              where a.tenant_id = u.tenant_id and a.path @> n.path),
+          user_type_id = u.user_type_id,
+          updated_at = now()
+      from users u
+      join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+      where p.tenant_id = ${tenantId}::uuid
+        and p.id = ${participantId}::uuid
+        and u.tenant_id = p.tenant_id
+        and u.id = p.user_id
+    `.execute(k),
+  )
+
+export const setParticipantStatus = (
+  tenantId: string,
+  participantId: string,
+  to: 'active' | 'excluded',
+  nowMs: number,
+) =>
+  db.query((k) =>
+    k
+      .updateTable('BatchParticipant')
+      .set(
+        to === 'excluded'
+          ? ({ status: 'excluded', excludedAt: instant(nowMs), updatedAt: sql`now()` } as never)
+          : ({
+              status: 'active',
+              excludedAt: null,
+              includedAt: instant(nowMs),
+              updatedAt: sql`now()`,
+            } as never),
+      )
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', participantId)
+      .execute(),
+  )
+
+// --- the roster diff, class by class ---
+
+export interface NewArrivalRow {
+  userId: string
+  displayName: string
+  businessNo: string | null
+  userTypeId: string
+  nodeId: string
+  nodePath: string
+  activeElsewhere: readonly { batchId: string; name: string }[]
+}
+
+export const diffNewArrivals = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      sql<NewArrivalRow>`
+        select
+          u.id as "userId",
+          u.display_name as "displayName",
+          u.business_no as "businessNo",
+          u.user_type_id as "userTypeId",
+          n.id as "nodeId",
+          n.path::text as "nodePath",
+          coalesce(
+            (select jsonb_agg(jsonb_build_object('batchId', b2.id, 'name', b2.name) order by b2.id)
+               from batch_participants p2
+               join assessment_batches b2 on b2.tenant_id = p2.tenant_id and b2.id = p2.batch_id
+              where p2.tenant_id = u.tenant_id and p2.user_id = u.id
+                and p2.status = 'active' and p2.batch_id <> ${batchId}::uuid
+                and b2.status <> 'archived'),
+            '[]'::jsonb) as "activeElsewhere"
+        from users u
+        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+        join batch_user_types enrolled
+          on enrolled.tenant_id = u.tenant_id
+         and enrolled.batch_id = ${batchId}::uuid
+         and enrolled.user_type_id = u.user_type_id
+        where u.tenant_id = ${tenantId}::uuid
+          and u.enabled
+          and ${inScope(batchId, 'u.tenant_id', 'n.path')}
+          and not exists (
+            select 1 from batch_participants p
+            where p.tenant_id = u.tenant_id and p.batch_id = ${batchId}::uuid and p.user_id = u.id)
+        order by n.path, u.id
+      `.execute(k),
+    )
+    .pipe(Effect.map((result) => result.rows as NewArrivalRow[]))
+
+export interface DriftRow {
+  participantId: string
+  userId: string
+  displayName: string
+  frozenNodeId: string
+  frozenPath: string
+  frozenUserTypeId: string
+  liveNodeId: string
+  livePath: string
+  liveUserTypeId: string
+}
+
+/** every active participant whose live position or type differs from the frozen one */
+export const diffDriftedParticipants = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      sql<DriftRow & { inScope: boolean }>`
+        select
+          p.id as "participantId",
+          u.id as "userId",
+          u.display_name as "displayName",
+          p.assessment_anchor_node_id as "frozenNodeId",
+          p.anchor_path::text as "frozenPath",
+          p.user_type_id as "frozenUserTypeId",
+          n.id as "liveNodeId",
+          n.path::text as "livePath",
+          u.user_type_id as "liveUserTypeId",
+          ${inScope(batchId, 'u.tenant_id', 'n.path')} as "inScope"
+        from batch_participants p
+        join users u on u.tenant_id = p.tenant_id and u.id = p.user_id
+        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+        where p.tenant_id = ${tenantId}::uuid
+          and p.batch_id = ${batchId}::uuid
+          and p.status = 'active'
+          and (n.id <> p.assessment_anchor_node_id
+               or n.path <> p.anchor_path
+               or u.user_type_id <> p.user_type_id
+               or not ${inScope(batchId, 'u.tenant_id', 'n.path')})
+        order by p.anchor_path, p.id
+      `.execute(k),
+    )
+    .pipe(Effect.map((result) => result.rows as (DriftRow & { inScope: boolean })[]))
+
+/** scope rows whose unit no longer exists: the definition itself has a hole */
+export const diffScopeIntegrity = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchScopeNode')
+        .leftJoin('OrgNode as n', (join) =>
+          join
+            .onRef('n.id', '=', 'BatchScopeNode.nodeId')
+            .onRef('n.tenantId', '=', 'BatchScopeNode.tenantId'),
+        )
+        .select('BatchScopeNode.nodeId')
+        .where('BatchScopeNode.tenantId', '=', tenantId)
+        .where('BatchScopeNode.batchId', '=', batchId)
+        .where('n.id', 'is', null)
+        .orderBy('BatchScopeNode.nodeId')
+        .execute(),
+    )
+    .pipe(Effect.map((found) => found.map((row) => row.nodeId as string)))
+
+/**
+ * How many people hold any role anchored exactly at each of these nodes.
+ *
+ * The degraded stand-in for chain validation until review policies exist
+ * (M3): it cannot know which roles matter, so it reports whether each level
+ * of a lineage has anyone at all. Exact-anchor on purpose - the same
+ * membership rule stage resolution will use.
+ */
+export const roleHoldersAt = (tenantId: string, nodeIds: readonly string[]) =>
+  nodeIds.length === 0
+    ? Effect.succeed(new Map<string, number>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('RoleGrant')
+            .select(['orgNodeId'])
+            .select([sql<number>`count(distinct user_id)::int`.as('holders')])
+            .where('tenantId', '=', tenantId)
+            .where('orgNodeId', 'in', nodeIds)
+            .groupBy('orgNodeId')
+            .execute(),
+        )
+        .pipe(
+          Effect.map(
+            (found) =>
+              new Map(
+                (found as { orgNodeId: string; holders: number }[]).map((row) => [
+                  row.orgNodeId,
+                  row.holders,
+                ]),
+              ),
+          ),
+        )

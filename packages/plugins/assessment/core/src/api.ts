@@ -15,6 +15,8 @@ import {
   AdvanceInvalid,
   BatchNoUserTypes,
   BatchNotFound,
+  ParticipantInvalid,
+  ParticipantNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
   BatchScopeLocked,
@@ -58,6 +60,7 @@ const batchListView = Schema.Struct({
   timezone: Schema.String,
   status: batchStatus,
   configRevision: Schema.Number,
+  anchorAutoSync: Schema.Boolean,
   currentPhaseId: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
 })
@@ -124,6 +127,80 @@ const timelineEntry = Schema.Struct({
   }),
 })
 
+const lineageStep = Schema.Struct({ nodeId: Schema.String, nodeTypeId: Schema.String })
+
+const participantView = Schema.Struct({
+  id: Schema.String,
+  userId: Schema.String,
+  displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  userTypeId: Schema.String,
+  anchorNodeId: Schema.String,
+  anchorPath: Schema.String,
+  anchorLineage: Schema.Array(lineageStep),
+  status: Schema.Literals(['active', 'excluded']),
+  includedAt: Schema.String,
+  excludedAt: Schema.NullOr(Schema.String),
+})
+
+/**
+ * The degraded chain preview (M3 wires real review policies): for each level
+ * of the lineage being frozen, how many people hold any role anchored
+ * exactly there. Zero is the number an administrator wants shouted.
+ */
+const chainPreview = Schema.Array(
+  Schema.Struct({
+    nodeId: Schema.String,
+    nodeTypeId: Schema.String,
+    holders: Schema.Number,
+  }),
+)
+
+const otherBatch = Schema.Struct({ batchId: Schema.String, name: Schema.String })
+
+const rosterDiff = Schema.Struct({
+  newArrivals: Schema.Array(
+    Schema.Struct({
+      userId: Schema.String,
+      displayName: Schema.String,
+      businessNo: Schema.NullOr(Schema.String),
+      userTypeId: Schema.String,
+      nodeId: Schema.String,
+      nodePath: Schema.String,
+      activeElsewhere: Schema.Array(otherBatch),
+    }),
+  ),
+  departed: Schema.Array(
+    Schema.Struct({
+      participantId: Schema.String,
+      userId: Schema.String,
+      displayName: Schema.String,
+      frozenPath: Schema.String,
+      livePath: Schema.String,
+    }),
+  ),
+  anchorChanged: Schema.Array(
+    Schema.Struct({
+      participantId: Schema.String,
+      userId: Schema.String,
+      displayName: Schema.String,
+      from: Schema.Struct({ nodeId: Schema.String, path: Schema.String }),
+      to: Schema.Struct({ nodeId: Schema.String, path: Schema.String }),
+    }),
+  ),
+  userTypeChanged: Schema.Array(
+    Schema.Struct({
+      participantId: Schema.String,
+      userId: Schema.String,
+      displayName: Schema.String,
+      from: Schema.String,
+      to: Schema.String,
+      toEnrolled: Schema.Boolean,
+    }),
+  ),
+  scopeIntegrity: Schema.Array(Schema.Struct({ nodeId: Schema.String })),
+})
+
 const templateView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -148,6 +225,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         materialRange,
         timezone: Schema.optional(trimmedName(63)),
         userTypeIds: Schema.Array(id),
+        anchorAutoSync: Schema.optional(Schema.Boolean),
       }),
       success: Schema.Struct({ batch: batchView }),
       error: [AccessDenied, BatchReferenceInvalid, BadRequest],
@@ -172,9 +250,18 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           materialRange: Schema.optional(materialRange),
           timezone: Schema.optional(trimmedName(63)),
           userTypeIds: Schema.optional(Schema.Array(id)),
+          anchorAutoSync: Schema.optional(Schema.Boolean),
           reason: Schema.optional(boundedText(500)),
         },
-        ['name', 'descriptionMd', 'scopeNodeIds', 'materialRange', 'timezone', 'userTypeIds'],
+        [
+          'name',
+          'descriptionMd',
+          'scopeNodeIds',
+          'materialRange',
+          'timezone',
+          'userTypeIds',
+          'anchorAutoSync',
+        ],
       ),
       success: Schema.Struct({ batch: batchView }),
       error: [
@@ -251,6 +338,81 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: Schema.Struct({ timeline: Schema.Array(timelineEntry) }),
       error: [BatchNotFound],
     }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listParticipants', '/assessment/batches/:batchId/participants', {
+      params: Schema.Struct({ batchId: id }),
+      query: Schema.Struct({
+        ...pageQuery,
+        status: Schema.optional(Schema.Literals(['active', 'excluded'])),
+      }),
+      success: pageOf(participantView),
+      error: [BatchNotFound, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // inclusion is explicit, never automatic: the diff lists who could join,
+    // a person decides. The response carries the double-participation warning
+    // and the chain preview the decision needs.
+    HttpApiEndpoint.post('includeParticipant', '/assessment/batches/:batchId/participants', {
+      params: Schema.Struct({ batchId: id }),
+      payload: Schema.Struct({ userId: id }),
+      success: Schema.Struct({
+        participant: participantView,
+        activeElsewhere: Schema.Array(otherBatch),
+        chainPreview,
+      }),
+      error: [BatchNotFound, BatchReadOnly, ParticipantInvalid, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the on-read derivation (§32.35): opening the panel computes it, the
+    // badge counts the same rows, nothing is stored
+    HttpApiEndpoint.get('getRosterDiff', '/assessment/batches/:batchId/roster-diff', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({ diff: rosterDiff }),
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // exclusion keeps the row and everything hanging off it; re-inclusion is
+    // the same door in the other direction
+    HttpApiEndpoint.put(
+      'setParticipantStatus',
+      '/assessment/batches/:batchId/participants/:participantId/status',
+      {
+        params: Schema.Struct({ batchId: id, participantId: id }),
+        payload: Schema.Struct({ status: Schema.Literals(['active', 'excluded']) }),
+        success: Schema.Struct({ participant: participantView }),
+        error: [
+          BatchNotFound,
+          BatchReadOnly,
+          ParticipantNotFound,
+          ParticipantInvalid,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // applying an anchor change refreezes the whole snapshot - position,
+    // lineage and type - from where the person lives now; in-flight work
+    // keeps its snapshotted chain untouched
+    HttpApiEndpoint.put(
+      'applyParticipantAnchor',
+      '/assessment/batches/:batchId/participants/:participantId/anchor',
+      {
+        params: Schema.Struct({ batchId: id, participantId: id }),
+        success: Schema.Struct({ participant: participantView, chainPreview }),
+        error: [
+          BatchNotFound,
+          BatchReadOnly,
+          ParticipantNotFound,
+          ParticipantInvalid,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.get('listTemplates', '/assessment/phase-templates', {

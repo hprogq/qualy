@@ -23,6 +23,14 @@ const i18n = definePluginMessages({
       id: 'assessment/error/phase-not-found',
       defaultMessage: 'That phase does not exist in this batch.',
     },
+    ASSESSMENT_PARTICIPANT_NOT_FOUND: {
+      id: 'assessment/error/participant-not-found',
+      defaultMessage: 'That person is not on this batch roster.',
+    },
+    ASSESSMENT_PARTICIPANT_INVALID: {
+      id: 'assessment/error/participant-invalid',
+      defaultMessage: 'The roster change was refused; check the reported reason.',
+    },
     ASSESSMENT_TEMPLATE_NOT_FOUND: {
       id: 'assessment/error/template-not-found',
       defaultMessage: 'Phase template not found.',

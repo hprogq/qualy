@@ -27,7 +27,7 @@ const plugin = Plugin.define(
   },
   Db.entities(entities, {
     compositeForeignKeys,
-    dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
+    dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac'],
   }),
   Access.permissions('assessment', permissions),
   Api.group(assessmentApiGroup, assessmentApiHandlers),

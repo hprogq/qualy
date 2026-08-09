@@ -2439,3 +2439,55 @@ TestClock 的 adjust 先推进时间再唤醒睡眠者,所以落在 adjust 区�
 
 **下一步**:s5 花名册 diff 与对称转入转出(四类差异 + §32.35 的 scope 完整性警告类、
 纳入动作的双重参与警告、显式移出与 excluded、锚点变更应用、"首提前自动同步"开关落配置位)。
+
+### M1 会话 14(s5)· 花名册 diff 与对称转入转出(2026-08-09)
+
+roster 的管理面。中心原则照 §32.7/§32.35 落实:**diff 是 on-read 派生视图,花名册永不
+自行移动,每个变更都是人的显式动作**。
+
+- **diff 五类**(`GET …/roster-diff`,面板打开现算、徽标同源、零存储):新迁入(未纳入,
+  每行携带 **activeElsewhere**——该生在其他未归档批次的 active 记录,双重参与的决策辅助)、
+  已迁出仍在册(live 位置不在任何存活 scope 节点下)、锚点变更(域内挪动:live 节点或
+  路径 ≠ 冻结值)、用户类型变更(带 `toEnrolled`——新类型是否仍在批次集合内)、
+  **scope 完整性警告**(scope 行指向已删除节点,§32.35 新类)。漂移行可同时出现在锚点与
+  类型两类(各说一个维度);出了 scope 的只进"已迁出"(锚点/类型类过滤 inScope——出域者
+  的补救是移出,不是把锚点改到域外)。draft/archived 批次返回全空(漂移是活批次的问题)。
+- **纳入**(`POST …/participants`,转入默认不纳入——diff 只列出,人来点):守卫链 =
+  批次 active → 用户存在 → enabled ∧ 类型 ∈ batch_user_types → live 位置 ∈ scope
+  (**范围外手工纳入按 §27 拒绝**,不留后门)→ 无既有行;通过后**单条 INSERT…SELECT**
+  现场冻结快照(与激活同形,单人版)。响应带 activeElsewhere 警告(是辅助不是拒绝——
+  两院协调是人的问题)与 **chainPreview**:M1 的降级链预检——对新 lineage 逐级数
+  "恰锚定于该节点的任意角色持有人"(锚点精确匹配,与 M3 stage 成员资格同口径;真正的
+  按 review_policy 解析 M3 接全,已注明)。
+- **移出与恢复**(`PUT …/participants/{pid}/status`):excluded 保留整行与全部历史
+  (实测行数不变),diff 对已移出者闭嘴(决定已做,不再唠叨);重纳入同一扇门反向走,
+  幂等(重复置同状态收敛为 no-op)。
+- **锚点应用**(`PUT …/participants/{pid}/anchor`):**整个冻结快照一体重冻**——位置、
+  谱系、类型是"谁、站在哪、以什么身份参加"这同一事实的三面,服务端从 live 现算
+  (无客户端输入);excluded 拒 `participant-not-active`,出域拒 `user-out-of-scope`;
+  在途链快照(M3)不受影响,注明。
+- **"首提前自动同步"开关**:`anchor_auto_sync` 列落 assessment_batches(追加迁移
+  `20260809100142`,非破坏),create/PATCH/detail 贯通,active 改动走统一配置事件门
+  (diff 键实测);M2 有了"首次提交"才生效,列上注释说明。
+- **闭包扩到 rbac**:链预检(及 M3 收件箱)join role_grants——按"跨插件取表 = dependsOn
+  + 实体并入闭包"纪律,`Db.entities` schema 依赖加 @qualy/plugin-rbac,db 闭包并入其六表
+  (§29 判据:holders 反查是 rbac 词汇的只读下行,M1 先以直查降级实现,M3 若 rbac 提供
+  正式 holders API 再切)。
+- 错误码 +2(PARTICIPANT_NOT_FOUND / PARTICIPANT_INVALID 六拒因,i18n 双语同笔);
+  frozen-routes +5;participants 列表 keyset(anchor_path, id)。
+
+**验收⑤(实际执行,全部真跑)**:diff 大场景——两批次两 scope,一个学期的全部变动
+(s3 迁入 A、s2 迁出 A、s4 域内换班、s1 改类型、scope 叶节点被删)一次读出五类,且
+**A/B 两侧对称**(s2 同时是 A 的已迁出与 B 的新迁入,activeElsewhere 互指对方批次名);
+变动风暴后冻结快照逐字节不变、roster 成员不变(转入默认不纳入);纳入六拒因逐一
+(teacher/disabled → not-eligible、域外 → out-of-scope、陌生 uuid → not-found、draft →
+batch-not-active、重复 → already-included)+ 成功纳入冻结三级 lineage + activeElsewhere
++ chainPreview [1,0,0](class1 有一名角色持有人);移出行数恒 3、重复移出收敛、diff 停止
+报告、重纳入恢复;锚点应用重冻三面 + 预览计数 + 应用后 anchorChanged 清空 + 两拒因;
+开关 create true → PATCH false 落配置事件。`pnpm typecheck` 零错;`pnpm test` 全仓
+**72 文件 449 全绿**;`resolve --frozen-lockfile` up to date;`pnpm dev` READY 2s、
+未登录 `GET …/roster-diff → 401`、SIGTERM 干净退出。
+
+**下一步**:s6 batch-admin 页(M1 最重前端会话:批次表单、阶段时间线编辑器、权限矩阵
+编辑器(数据源 PHASE_GATED)、roster+diff 面板;Ui.page + i18n catalog + 浏览器测试;
+超时切分线在"阶段编辑器"与"roster 面板"之间)。

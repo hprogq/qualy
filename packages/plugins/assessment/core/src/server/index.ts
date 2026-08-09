@@ -36,6 +36,8 @@ import {
   BatchReferenceInvalid,
   BatchScopeLocked,
   BatchStatusInvalid,
+  ParticipantInvalid,
+  ParticipantNotFound,
   PhaseNotFound,
   PlanInvalid,
   TemplateConflict,
@@ -49,37 +51,52 @@ import {
   type UpdateBatchError,
 } from './errors.ts'
 import {
+  activeElsewhere,
   batchParticipantIds,
   batchesWithDueBoundaries,
   bumpConfigRevision,
   deletePhases,
   deleteTemplateRow,
+  diffDriftedParticipants,
+  diffNewArrivals,
+  diffScopeIntegrity,
   generateRoster,
   insertBatch,
+  insertParticipant,
   insertConfigEvent,
   insertPhase,
   insertPhaseEvent,
   insertTemplate,
   listBatchUserTypes,
   listBatchesPage,
+  listParticipantsPage,
   listPhaseRows,
   listTemplatesPage,
   lockBatch,
   nodesByIds,
   oneBatch,
+  oneParticipant,
   oneTemplate,
+  participantByUser,
   phaseScopes,
+  positionInScope,
+  refreshParticipantSnapshot,
+  roleHoldersAt,
   replaceBatchScopeNodes,
   replaceBatchUserTypes,
   replacePhaseScopes,
   scopeNodeRows,
   scopesForBatch,
   setCurrentPhase,
+  setParticipantStatus,
   setPhaseActual,
   updateBatchFields,
+  userLivePosition,
   updatePhaseFields,
   updateTemplateRow,
   type BatchRow,
+  type NewArrivalRow,
+  type ParticipantRow,
   type PhaseRow,
   type TemplateRow,
 } from './db.ts'
@@ -105,6 +122,7 @@ export interface BatchDetail {
   readonly timezone: string
   readonly status: 'draft' | 'active' | 'archived'
   readonly configRevision: number
+  readonly anchorAutoSync: boolean
   readonly currentPhaseId: string | null
   readonly userTypeIds: readonly string[]
   readonly createdAt: EpochMillis
@@ -143,6 +161,7 @@ export interface CreateBatchInput {
   readonly materialRange: MaterialRange
   readonly timezone?: string
   readonly userTypeIds: readonly string[]
+  readonly anchorAutoSync?: boolean
 }
 
 export interface UpdateBatchInput {
@@ -152,6 +171,7 @@ export interface UpdateBatchInput {
   readonly materialRange?: MaterialRange
   readonly timezone?: string
   readonly userTypeIds?: readonly string[]
+  readonly anchorAutoSync?: boolean
   readonly reason?: string
 }
 
@@ -177,6 +197,41 @@ export interface SweepReport {
  * drains instead of holding one transaction open across a whole tenant.
  */
 const SWEEP_BATCH_LIMIT = 200
+
+/** one level of the lineage being frozen, with who could act there today */
+export interface ChainPreviewStep {
+  readonly nodeId: string
+  readonly nodeTypeId: string
+  /** people holding any role anchored exactly here; real chains arrive M3 */
+  readonly holders: number
+}
+
+export interface RosterDiff {
+  readonly newArrivals: readonly (NewArrivalRow & Record<never, never>)[]
+  readonly departed: readonly {
+    participantId: string
+    userId: string
+    displayName: string
+    frozenPath: string
+    livePath: string
+  }[]
+  readonly anchorChanged: readonly {
+    participantId: string
+    userId: string
+    displayName: string
+    from: { nodeId: string; path: string }
+    to: { nodeId: string; path: string }
+  }[]
+  readonly userTypeChanged: readonly {
+    participantId: string
+    userId: string
+    displayName: string
+    from: string
+    to: string
+    toEnrolled: boolean
+  }[]
+  readonly scopeIntegrity: readonly { nodeId: string }[]
+}
 
 const MANAGE = 'assessment.batch.manage'
 const FORCE_ADVANCE = 'assessment.batch.force-advance'
@@ -311,6 +366,53 @@ export class Assessment extends Context.Service<
       templateId: string,
       as: Principal,
     ) => Effect.Effect<void, AccessDenied | TemplateNotFound>
+    readonly listParticipants: (
+      tenantId: string,
+      batchId: string,
+      filter: {
+        status?: 'active' | 'excluded'
+        after?: { path: string; id: string }
+        limit: number
+      },
+      as: Principal,
+    ) => Effect.Effect<readonly ParticipantRow[], BatchNotFound | AccessDenied>
+    readonly includeParticipant: (
+      tenantId: string,
+      batchId: string,
+      userId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        participant: ParticipantRow
+        activeElsewhere: readonly { batchId: string; name: string }[]
+        chainPreview: readonly ChainPreviewStep[]
+      },
+      BatchNotFound | BatchReadOnly | ParticipantInvalid | AccessDenied
+    >
+    readonly rosterDiff: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<RosterDiff, BatchNotFound | AccessDenied>
+    readonly setParticipantStatus: (
+      tenantId: string,
+      batchId: string,
+      participantId: string,
+      to: 'active' | 'excluded',
+      as: Principal,
+    ) => Effect.Effect<
+      ParticipantRow,
+      BatchNotFound | BatchReadOnly | ParticipantNotFound | ParticipantInvalid | AccessDenied
+    >
+    readonly applyParticipantAnchor: (
+      tenantId: string,
+      batchId: string,
+      participantId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      { participant: ParticipantRow; chainPreview: readonly ChainPreviewStep[] },
+      BatchNotFound | BatchReadOnly | ParticipantNotFound | ParticipantInvalid | AccessDenied
+    >
     /**
      * Ratifies every boundary the clock has crossed, across tenants.
      *
@@ -351,6 +453,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       timezone: batch.timezone,
       status: batch.status as BatchDetail['status'],
       configRevision: batch.configRevision,
+      anchorAutoSync: batch.anchorAutoSync,
       currentPhaseId: batch.currentPhaseId,
       userTypeIds,
       createdAt: batch.createdAt,
@@ -675,6 +778,38 @@ export const make = Effect.fn('Assessment.make')(function* () {
       ...(ctx !== undefined ? { ctx } : {}),
     })
 
+  /** the degraded chain check: who could act at each frozen level, today */
+  const chainPreviewOf = (
+    tenantId: string,
+    lineage: readonly { nodeId: string; nodeTypeId: string }[],
+  ) =>
+    Effect.map(
+      roleHoldersAt(
+        tenantId,
+        lineage.map((step) => step.nodeId),
+      ),
+      (holders) =>
+        lineage.map((step): ChainPreviewStep => ({
+          nodeId: step.nodeId,
+          nodeTypeId: step.nodeTypeId,
+          holders: holders.get(step.nodeId) ?? 0,
+        })),
+    )
+
+  /** the shared guards of every roster write, inside its transaction */
+  const rosterWriteGuards = (tenantId: string, batchId: string, as: Principal) =>
+    Effect.gen(function* () {
+      const locked = yield* lockBatch(tenantId, batchId)
+      if (!locked) return yield* new BatchNotFound()
+      yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
+      if (locked.status === 'archived') return yield* new BatchReadOnly()
+      // a draft has no roster to manage: activation is what creates one
+      if (locked.status !== 'active') {
+        return yield* new ParticipantInvalid({ reason: 'batch-not-active' })
+      }
+      return locked
+    })
+
   const templatePermission = (as: Principal) =>
     Effect.flatMap(rbac.hasPermission(as, MANAGE), (held) =>
       held
@@ -736,6 +871,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
               materialStart: input.materialRange.start,
               materialEnd: input.materialRange.end,
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+              ...(input.anchorAutoSync !== undefined
+                ? { anchorAutoSync: input.anchorAutoSync }
+                : {}),
             })
             yield* replaceBatchScopeNodes(
               tenantId,
@@ -789,6 +927,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (input.timezone !== undefined && input.timezone !== before.timezone) {
               diff.timezone = [before.timezone, input.timezone]
             }
+            if (
+              input.anchorAutoSync !== undefined &&
+              input.anchorAutoSync !== before.anchorAutoSync
+            ) {
+              diff.anchorAutoSync = [before.anchorAutoSync, input.anchorAutoSync]
+            }
             if (input.materialRange !== undefined) {
               const current = parseRange(before.materialRange)
               if (
@@ -830,6 +974,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   }
                 : {}),
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+              ...(input.anchorAutoSync !== undefined
+                ? { anchorAutoSync: input.anchorAutoSync }
+                : {}),
             })
             if (scopeMove !== undefined) {
               yield* replaceBatchScopeNodes(tenantId, batchId, scopeMove)
@@ -1266,6 +1413,162 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (!deleted) return yield* new TemplateNotFound()
     }),
 
+    listParticipants: Effect.fn('Assessment.listParticipants')(
+      function* (tenantId, batchId, filter, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        yield* requireScopeReach(as, yield* dieQuery(withDb(scopeNodeRows(tenantId, batchId))))
+        return yield* dieQuery(withDb(listParticipantsPage(tenantId, batchId, filter)))
+      },
+    ),
+
+    includeParticipant: Effect.fn('Assessment.includeParticipant')(
+      function* (tenantId, batchId, userId, as) {
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              yield* rosterWriteGuards(tenantId, batchId, as)
+              const user = yield* userLivePosition(tenantId, userId)
+              if (!user) return yield* new ParticipantInvalid({ reason: 'user-not-found' })
+              const types = yield* listBatchUserTypes(tenantId, batchId)
+              if (!user.enabled || !types.includes(user.userTypeId)) {
+                return yield* new ParticipantInvalid({ reason: 'user-not-eligible' })
+              }
+              // out-of-scope inclusion is a deferred capability (§27), not a door
+              if (!(yield* positionInScope(tenantId, batchId, user.nodePath))) {
+                return yield* new ParticipantInvalid({ reason: 'user-out-of-scope' })
+              }
+              if ((yield* participantByUser(tenantId, batchId, userId)) !== null) {
+                return yield* new ParticipantInvalid({ reason: 'already-included' })
+              }
+              const inserted = yield* insertParticipant(tenantId, batchId, userId)
+              const participant = (yield* oneParticipant(tenantId, batchId, inserted!.id))!
+              return {
+                participant,
+                // the decision aid, not a refusal: whether to double-enroll is
+                // a question for the two colleges, so the system only says so
+                activeElsewhere: yield* activeElsewhere(tenantId, userId, batchId),
+                chainPreview: yield* chainPreviewOf(tenantId, participant.anchorLineage),
+              }
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      },
+    ),
+
+    rosterDiff: Effect.fn('Assessment.rosterDiff')(function* (tenantId, batchId, as) {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return yield* new BatchNotFound()
+      yield* requireScopeReach(as, yield* dieQuery(withDb(scopeNodeRows(tenantId, batchId))))
+      const empty: RosterDiff = {
+        newArrivals: [],
+        departed: [],
+        anchorChanged: [],
+        userTypeChanged: [],
+        scopeIntegrity: [],
+      }
+      // a draft has no roster and an archive holds still; drift is a question
+      // about a living batch
+      if (batch.status !== 'active') return empty
+      const [arrivals, drifted, missing, types] = yield* Effect.all([
+        dieQuery(withDb(diffNewArrivals(tenantId, batchId))),
+        dieQuery(withDb(diffDriftedParticipants(tenantId, batchId))),
+        dieQuery(withDb(diffScopeIntegrity(tenantId, batchId))),
+        dieQuery(withDb(listBatchUserTypes(tenantId, batchId))),
+      ])
+      return {
+        newArrivals: arrivals,
+        departed: drifted
+          .filter((row) => !row.inScope)
+          .map((row) => ({
+            participantId: row.participantId,
+            userId: row.userId,
+            displayName: row.displayName,
+            frozenPath: row.frozenPath,
+            livePath: row.livePath,
+          })),
+        anchorChanged: drifted
+          .filter(
+            (row) =>
+              row.inScope &&
+              (row.liveNodeId !== row.frozenNodeId || row.livePath !== row.frozenPath),
+          )
+          .map((row) => ({
+            participantId: row.participantId,
+            userId: row.userId,
+            displayName: row.displayName,
+            from: { nodeId: row.frozenNodeId, path: row.frozenPath },
+            to: { nodeId: row.liveNodeId, path: row.livePath },
+          })),
+        userTypeChanged: drifted
+          .filter((row) => row.inScope && row.liveUserTypeId !== row.frozenUserTypeId)
+          .map((row) => ({
+            participantId: row.participantId,
+            userId: row.userId,
+            displayName: row.displayName,
+            from: row.frozenUserTypeId,
+            to: row.liveUserTypeId,
+            toEnrolled: types.includes(row.liveUserTypeId),
+          })),
+        scopeIntegrity: missing.map((nodeId) => ({ nodeId })),
+      }
+    }),
+
+    setParticipantStatus: Effect.fn('Assessment.setParticipantStatus')(
+      function* (tenantId, batchId, participantId, to, as) {
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              yield* rosterWriteGuards(tenantId, batchId, as)
+              const existing = yield* oneParticipant(tenantId, batchId, participantId)
+              if (!existing) return yield* new ParticipantNotFound()
+              // an idempotent replacement: saying what already holds changes nothing
+              if (existing.status === to) return existing
+              yield* setParticipantStatus(
+                tenantId,
+                participantId,
+                to,
+                yield* Clock.currentTimeMillis,
+              )
+              return (yield* oneParticipant(tenantId, batchId, participantId))!
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      },
+    ),
+
+    applyParticipantAnchor: Effect.fn('Assessment.applyParticipantAnchor')(
+      function* (tenantId, batchId, participantId, as) {
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              yield* rosterWriteGuards(tenantId, batchId, as)
+              const existing = yield* oneParticipant(tenantId, batchId, participantId)
+              if (!existing) return yield* new ParticipantNotFound()
+              if (existing.status !== 'active') {
+                return yield* new ParticipantInvalid({ reason: 'participant-not-active' })
+              }
+              const live = yield* userLivePosition(tenantId, existing.userId)
+              if (!live || !(yield* positionInScope(tenantId, batchId, live.nodePath))) {
+                // moved beyond the scope: the remedy is exclusion, not an
+                // anchor pointing outside the population definition
+                return yield* new ParticipantInvalid({ reason: 'user-out-of-scope' })
+              }
+              // the whole frozen snapshot moves together - position, lineage
+              // and type are one fact: who participates, standing where, as
+              // what. In-flight review chains (M3) keep their own snapshots.
+              yield* refreshParticipantSnapshot(tenantId, participantId)
+              const participant = (yield* oneParticipant(tenantId, batchId, participantId))!
+              return {
+                participant,
+                chainPreview: yield* chainPreviewOf(tenantId, participant.anchorLineage),
+              }
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      },
+    ),
+
     sweepDueBoundaries: Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis
       // One candidate query, then one transaction per batch. Sweeping every
@@ -1318,6 +1621,7 @@ const toBatchDto = (detail: BatchDetail) => ({
   timezone: detail.timezone,
   status: detail.status,
   configRevision: detail.configRevision,
+  anchorAutoSync: detail.anchorAutoSync,
   currentPhaseId: detail.currentPhaseId,
   userTypeIds: detail.userTypeIds,
   createdAt: new Date(detail.createdAt).toISOString(),
@@ -1339,6 +1643,20 @@ const toPhaseDto = (row: PlanPhase) => ({
   participantScope: row.participantScope,
   sourceTemplateId: row.sourceTemplateId,
   sourceTemplateVersion: row.sourceTemplateVersion,
+})
+
+const toParticipantDto = (row: ParticipantRow) => ({
+  id: row.id,
+  userId: row.userId,
+  displayName: row.displayName,
+  businessNo: row.businessNo,
+  userTypeId: row.userTypeId,
+  anchorNodeId: row.anchorNodeId,
+  anchorPath: row.anchorPath,
+  anchorLineage: row.anchorLineage,
+  status: row.status as 'active' | 'excluded',
+  includedAt: new Date(row.includedAt).toISOString(),
+  excludedAt: isoOf(row.excludedAt),
 })
 
 const toWarningDto = (warning: EditWarning) => ({
@@ -1434,6 +1752,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             timezone: row.timezone,
             status: row.status as 'draft' | 'active' | 'archived',
             configRevision: row.configRevision,
+            anchorAutoSync: row.anchorAutoSync,
             currentPhaseId: row.currentPhaseId,
             createdAt: new Date(row.createdAt).toISOString(),
           })),
@@ -1578,6 +1897,95 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               at: 'at' in entry.entry ? isoOf(entry.entry.at) : null,
             },
           })),
+        }
+      }),
+    )
+    .handle(
+      'listParticipants',
+      Effect.fn('assessment.listParticipants.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}`
+        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* assessment.listParticipants(
+          principal.tenantId,
+          params.batchId,
+          {
+            ...(query.status !== undefined ? { status: query.status } : {}),
+            ...(key !== undefined ? { after: { path: key[0]!, id: key[1]! } } : {}),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          items: page.map(toParticipantDto),
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [last.anchorPath, last.id])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'includeParticipant',
+      Effect.fn('assessment.includeParticipant.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const included = yield* assessment.includeParticipant(
+          principal.tenantId,
+          params.batchId,
+          payload.userId,
+          principal,
+        )
+        return {
+          participant: toParticipantDto(included.participant),
+          activeElsewhere: included.activeElsewhere,
+          chainPreview: included.chainPreview,
+        }
+      }),
+    )
+    .handle(
+      'getRosterDiff',
+      Effect.fn('assessment.getRosterDiff.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const diff = yield* assessment.rosterDiff(principal.tenantId, params.batchId, principal)
+        return { diff }
+      }),
+    )
+    .handle(
+      'setParticipantStatus',
+      Effect.fn('assessment.setParticipantStatus.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const participant = yield* assessment.setParticipantStatus(
+          principal.tenantId,
+          params.batchId,
+          params.participantId,
+          payload.status,
+          principal,
+        )
+        return { participant: toParticipantDto(participant) }
+      }),
+    )
+    .handle(
+      'applyParticipantAnchor',
+      Effect.fn('assessment.applyParticipantAnchor.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const applied = yield* assessment.applyParticipantAnchor(
+          principal.tenantId,
+          params.batchId,
+          params.participantId,
+          principal,
+        )
+        return {
+          participant: toParticipantDto(applied.participant),
+          chainPreview: applied.chainPreview,
         }
       }),
     )

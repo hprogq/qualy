@@ -18,6 +18,32 @@ export class PhaseNotFound extends Schema.TaggedErrorClass<PhaseNotFound>()(
   { httpApiStatus: 404, identifier: 'AssessmentPhaseNotFound' },
 ) {}
 
+export class ParticipantNotFound extends Schema.TaggedErrorClass<ParticipantNotFound>()(
+  'ASSESSMENT_PARTICIPANT_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentParticipantNotFound' },
+) {}
+
+/**
+ * What a roster action can be refused for. Out-of-scope inclusion is refused
+ * outright rather than warned about: manual inclusion beyond the scope is a
+ * deferred capability (§27), not a loophole.
+ */
+export class ParticipantInvalid extends Schema.TaggedErrorClass<ParticipantInvalid>()(
+  'ASSESSMENT_PARTICIPANT_INVALID',
+  {
+    reason: Schema.Literals([
+      'batch-not-active',
+      'user-not-found',
+      'user-not-eligible',
+      'user-out-of-scope',
+      'already-included',
+      'participant-not-active',
+    ]),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentParticipantInvalid' },
+) {}
+
 export class TemplateNotFound extends Schema.TaggedErrorClass<TemplateNotFound>()(
   'ASSESSMENT_TEMPLATE_NOT_FOUND',
   {},

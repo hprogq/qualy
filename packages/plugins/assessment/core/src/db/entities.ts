@@ -54,6 +54,10 @@ export const AssessmentBatch = defineEntity({
     // monotonic counter behind the append-only config event log; a ScoreRun
     // freezes the value it read, which is what makes stale runs detectable
     configRevision: p.integer().default(0),
+    // the low-risk sugar switch (§9): a participant who has not submitted
+    // anything yet may have an anchor change synced without the diff panel.
+    // A config slot only until entries exist to define "first submission".
+    anchorAutoSync: p.boolean().default(false),
     // projection of the phase queue, never authoritative
     currentPhaseId: p.uuid().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),

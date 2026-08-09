@@ -3,6 +3,8 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 export default {
   'assessment/error/batch-not-found': '未找到该测评批次。',
   'assessment/error/phase-not-found': '该批次中不存在这个阶段。',
+  'assessment/error/participant-not-found': '该人员不在本批次花名册中。',
+  'assessment/error/participant-invalid': '花名册操作被拒绝，请查看具体原因。',
   'assessment/error/template-not-found': '未找到该阶段模板。',
   'assessment/error/template-conflict': '已存在同名的阶段模板。',
   'assessment/error/batch-read-only': '该批次已归档，不能再修改。',
