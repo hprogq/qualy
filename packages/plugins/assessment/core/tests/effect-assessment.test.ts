@@ -402,6 +402,58 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(refusalsIn(refused)).toContain('phase-already-entered')
   })
 
+  it('grows a running plan past its last phase, even when that phase runs', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('append')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Append',
+            scopeNodeIds: [f.root],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        // the trap case: one phase, activated, and that phase is in progress -
+        // "current" and "last" are the same row
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.submit'] })] },
+          f.principal,
+        )
+        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+        let plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              ...plan.map(toSpec),
+              phase({
+                phaseKey: 'review',
+                entryTrigger: 'scheduled',
+                plannedEntryAt: Date.now() + 2 * HOUR,
+              }),
+            ],
+          },
+          f.principal,
+        )
+        return yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+      }),
+    )
+    const grown = ok(exit)
+    expect(grown.map((row) => row.phaseKey)).toEqual(['entry', 'review'])
+    expect(grown[0]!.actualEntryAt).not.toBeNull()
+    expect(grown[1]!.entryTrigger).toBe('scheduled')
+  })
+
   it('advances manually, demands force and a reason for early boundaries, and archives at the terminal', async () => {
     const exit = await run(
       db.url,
@@ -1161,10 +1213,40 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const misapplied = yield* Effect.exit(
           assessment.replacePlan(f.tenant, batch.id, { fromTemplateId: profile.id }, f.principal),
         )
-        return { profile, timed, timelines, profiles, misapplied }
+        // the list search matches a name substring, pushed into the query
+        yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'unrelated spring round',
+            scopeNodeIds: [f.class3],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        const searched = yield* assessment.listBatches(
+          f.tenant,
+          { q: 'kind', limit: 10 },
+          f.principal,
+        )
+        // the count answers the same filter as the page, which is what makes
+        // "page 2 of 5" true rather than decorative
+        const searchedTotal = yield* assessment.countBatches(f.tenant, { q: 'kind' }, f.principal)
+        const allTotal = yield* assessment.countBatches(f.tenant, {}, f.principal)
+        return {
+          profile,
+          timed,
+          timelines,
+          profiles,
+          misapplied,
+          searched,
+          searchedTotal,
+          allTotal,
+        }
       }),
     )
-    const { profile, timed, timelines, profiles, misapplied } = ok(exit)
+    const { profile, timed, timelines, profiles, misapplied, searched, searchedTotal, allTotal } =
+      ok(exit)
     expect(profile.kind).toBe('phase')
     const timedReasons = reasonsOf(timed).flatMap(
       (entry) =>
@@ -1178,5 +1260,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
     )
     expect(misappliedReasons.map((entry) => entry.reason)).toContain('template-not-a-timeline')
+    expect(searched.map((row) => row.name)).toEqual(['kinds'])
+    expect(searchedTotal).toBe(1)
+    expect(allTotal).toBe(2)
   })
 })

@@ -187,7 +187,7 @@ AssessmentBatch（聚合根）
 - **phase_events**（append-only）：计划修改与实际切换全部落审计事件（kind, phase_id, planned_at / actual_at, processed_at, actor, reason）。
 - **调度器**：core layer 内 fork 一根 Effect fiber，每分钟幂等扫描 ① 队头 scheduled 边界 ② due 的 SCHEDULED publication；另挂五分钟档的监护巡检（§14）。单实例假设（与迁移器同款表述），动作幂等可重入。**不引入 Redis/BullMQ/分布式锁**。
 - **PhaseTemplate**：租户级预设（阶段名/顺序/权限 Profile/**时间形态：硬计划锚点或偏移时长**/trigger）。应用 = **复制**并记 source_template_id/version（仅审计溯源），绝不运行时继承；改模板不影响既有批次。
-- 手动切换 `advancePhase(to, reason?)` 走 `assessment.batch.manage`；跳过 guard 的强制切换要求 `assessment.batch.force-advance` + 必填理由。插入阶段只能插在当前阶段之后（ordinal 事务内重排，外部无引用），权限 profile 可直接套用模板段。
+- 手动切换 `advancePhase(to, reason?)` 走 `assessment.batch.manage`；跳过 guard 的强制切换要求 `assessment.batch.force-advance` + 必填理由。插入阶段只能插在当前阶段之后（ordinal 事务内重排，外部无引用），**允许插到序列末尾**（裁决 §32.37）；权限 profile 可直接套用模板段。
 
 **默认阶段序列**（含公示创建期）：
 
@@ -855,5 +855,7 @@ decision 事件不携带分值。需要人定值的条款一律是 administrativ
 **32.35 batch scope 升级为节点集合，导入模式否决**（2026-08-09，用户提问后裁决）。~~"scope 为单一子树，v1 不做不连续多 scope"~~作废：scope = `batch_scope_nodes` 节点集合（"只许 1/2/3 班"= 三个节点），只存 node_id、路径实时解析，~~batch 上的 scope_node_id + scope_path 快照列~~取消——**scope 是人群的定义（intent），roster 是人群的事实**，要冻结的是后者。"改成导入模式"否决：导入后系统不再存人群定义，**新迁入检测失明**（转入生无行可 diff、无定义可判），而定义落库才使"新迁入 = 任一 scope 子树内 ∧ 类型匹配 ∧ 不在 roster"可计算，并承载管辖判定（manage reach 覆盖每个节点）与"你尚未被纳入"定向文案。node_id 刻意无外键：节点删除 → scope 完整性警告（diff 面板新类），生成与检测跳过，roster 靠 lineage 不受影响。校验：同租户、拒绝嵌套选择、集合非空；draft 可改 active 锁。范围外手工纳入与巡检 diff 计数留 §27。漂移检测 on-read 派生，不做每分钟扫描（漂移有请求驱动的天然发现路径且不阻塞在途）。三层冻结梯度成文：实时层（树结构、角色持有人）/批次层（roster：位置+谱系冻结）/轮层（链快照，管理员应用锚点变更也不动）——位置冻结、人员实时、类型冻结。
 
 **32.36 模板分立为时间线与阶段预设两 kind**（2026-08-09，用户对 batch-admin 首版评审后裁决）。§14 的单一 PhaseTemplate 拆成同表两 kind：**timeline** = 完整阶段序列（原语义不变，应用 = 草稿期整体替换 + 复制 + source_template_id/version 溯源）；**phase** = 单阶段预设，只描述"一个阶段的名称与权限选项"（§14 早有伏笔："权限 profile 可直接套用模板段"），**不携带任何时间与 trigger 语义**（存储惯例：单条目、manual、时间全空，服务端 `phase-template-shape` 拒因把关），应用 = 编辑器内把名称与 profile 复制进目标行（客户端起点填充，无溯源——它不是计划的来源，只是打字的捷径）。两个选择器各查各的 kind（listTemplates ?kind=）；`fromTemplateId` 只接受 timeline（`template-not-a-timeline` 拒因）。**模板在任何一层都不是必经之路**：批次可从零逐个添加阶段、可套时间线、加完阶段后可再对单行套预设，三者独立。
+
+**32.37 进行中批次允许向末尾追加阶段**（2026-08-10，用户实测踩陷阱后裁决）。~~引擎的 `insert-after-terminal` 拒因（"末位阶段之后不能再插"）~~删除：它是实现自造的位置规则，本文只裁决过"插入只能在当前阶段之后"（§14），且"末位 = 收尾"是纯位置推定——phaseKey 无语义标记，用户从未选择过收尾阶段。陷阱形态：单阶段计划激活并进入后，"当前"与"末位"重合，两条位置规则把可插位置挤成空集，计划永久冻结，本文钦点的工作流（插补充填报期 §9、插审核整理阶段 §十、retract 向后插公示创建期 §32.22）全部不可达。裁决：末尾追加合法；"收尾必须是人的决定"的落点是**归档 status 变更及其 gate**（必须已走到末位阶段、归档后只读），不是末位序号；"末阶段必须 manual"（`terminal-must-be-manual`）保持现作用域——模板与整计划评审（草稿保存/激活），增量插入不复检，搭建期计划暂以 scheduled 收尾无害（时钟触发后批次停在末阶段等人归档）。
 
 **32.34 第四轮其余采纳汇总**（2026-08-09）。排名两口径（ties 仅在要求物化 rank 时 blocker、S1 默认 rank NULL；partition 祖先查冻结 lineage 禁查 live）；retire 历史引用语义（禁新增引用+入口隐藏，已引用读取永久有效，物理删除非 v1）；时间语义统一（锚的语义时刻一旦确定即可物化——SCHEDULED 的 publish_at 在 schedule 时确定；公示边界 SCHEDULED 前是 guard 里程碑、后转承诺型）；**source/actor 全部服务端推导**（安全不变量，客户端永不提交 source）；残留清扫（§6/§9 提示语/§20 依赖与模块表/§22 revisions 仅本人/§24 scoped 措辞/M5 两段式措辞/(roleId,nodeId) 去重）；作废条目终态 voided(reason=item_voided)；巡检 quorum 按可达性公式。

@@ -48,7 +48,6 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'binding-immutable-after-entry': m['refusal.binding-immutable-after-entry'],
   'profile-code-not-gated': m['refusal.profile-code-not-gated'],
   'insert-not-after-current': m['refusal.insert-not-after-current'],
-  'insert-after-terminal': m['refusal.insert-after-terminal'],
   'terminal-must-be-manual': m['refusal.terminal-must-be-manual'],
   'plan-empty': m['refusal.plan-empty'],
   'template-requires-draft': m['refusal.template-requires-draft'],

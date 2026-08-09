@@ -35,7 +35,6 @@ export type EditRefusalReason =
   | 'binding-immutable-after-entry'
   | 'profile-code-not-gated'
   | 'insert-not-after-current'
-  | 'insert-after-terminal'
   | 'terminal-must-be-manual'
 
 export interface EditRefusal {
@@ -307,9 +306,9 @@ export function reviewPlanEdit(
 }
 
 /**
- * Where a new phase may land: strictly after the phase in effect, and never
- * after the terminal one - the plan ends with the archive phase, and nothing
- * comes after the archive.
+ * Where a new phase may land: strictly after the phase in effect. The end of
+ * the plan is not sacred - a running batch may grow, and what closes a batch
+ * is the archive status change with its own gate, not the last ordinal.
  */
 export function reviewInsertion(
   plan: PhasePlan,
@@ -322,9 +321,6 @@ export function reviewInsertion(
   const refusals: EditRefusal[] = []
   if (position <= view.effectiveIndex) {
     refusals.push({ reason: 'insert-not-after-current', phaseId: null })
-  }
-  if (plan.length > 0 && position >= plan.length) {
-    refusals.push({ reason: 'insert-after-terminal', phaseId: null })
   }
   if (spec.displayName.trim() === '') {
     refusals.push({ reason: 'display-name-blank', phaseId: null })

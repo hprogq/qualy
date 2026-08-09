@@ -323,14 +323,18 @@ describe('insertion', () => {
     entryTrigger: 'scheduled' as const,
   }
 
-  it('lands strictly after the current phase and never after the terminal', () => {
+  it('lands strictly after the current phase, including at the very end', () => {
     expect(
       reviewInsertion(midFlight(), NO_PUBS, NOW, 2, spec).refusals.map((r) => r.reason),
     ).toEqual(['insert-not-after-current'])
-    expect(
-      reviewInsertion(midFlight(), NO_PUBS, NOW, 8, spec).refusals.map((r) => r.reason),
-    ).toEqual(['insert-after-terminal'])
     expect(reviewInsertion(midFlight(), NO_PUBS, NOW, 3, spec).refusals).toEqual([])
+    // appending is how a live batch grows; closing it is the archive gate's job
+    expect(reviewInsertion(midFlight(), NO_PUBS, NOW, 8, spec).refusals).toEqual([])
+  })
+
+  it('accepts the append on a one-phase plan whose only phase runs', () => {
+    const solo = midFlight().slice(0, 1)
+    expect(reviewInsertion(solo, NO_PUBS, NOW, 1, spec).refusals).toEqual([])
   })
 
   it("holds the new phase's fields to the same rules, at its position", () => {
