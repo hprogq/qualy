@@ -232,6 +232,106 @@ export function RadioGroup({
   )
 }
 
+// Native <dialog> mechanics shared by every overlay here: open/close follows
+// the prop, escape asks the owner instead of closing behind its back, and a
+// click on the backdrop counts as cancel.
+function useNativeDialog(open: boolean, onCancel: () => void) {
+  const ref = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const dialog = ref.current
+    if (!dialog) return
+    if (open && !dialog.open) dialog.showModal()
+    if (!open && dialog.open) dialog.close()
+  }, [open])
+  return {
+    ref,
+    onCancel: (event: { preventDefault: () => void }) => {
+      event.preventDefault()
+      onCancel()
+    },
+    onClick: (event: { target: unknown; currentTarget: unknown }) => {
+      if (event.target === event.currentTarget) onCancel()
+    },
+  }
+}
+
+// A centred modal for a short task - creating something, answering a
+// question with a form. Content and buttons arrive as children/footer so the
+// dialog itself stays text-free.
+export function FormDialog({
+  open,
+  title,
+  description,
+  onClose,
+  children,
+  footer,
+}: {
+  open: boolean
+  title: string
+  description?: string
+  onClose: () => void
+  children: ReactNode
+  footer?: ReactNode
+}) {
+  const dialog = useNativeDialog(open, onClose)
+  return (
+    <dialog
+      ref={dialog.ref}
+      className="m-auto w-full max-w-lg rounded-lg border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-black/40"
+      aria-label={title}
+      onCancel={dialog.onCancel}
+      onClick={dialog.onClick}
+    >
+      <div className="flex max-h-[85dvh] flex-col">
+        <header className="space-y-1 border-b px-5 py-4">
+          <h2 className="text-base font-semibold">{title}</h2>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        </header>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">{children}</div>
+        {footer && <footer className="flex justify-end gap-2 border-t px-5 py-3">{footer}</footer>}
+      </div>
+    </dialog>
+  )
+}
+
+// A panel docked to the right edge for editing one thing in place while the
+// list behind stays visible in spirit: inspect, change, close.
+export function SidePanel({
+  open,
+  title,
+  description,
+  onClose,
+  children,
+  footer,
+}: {
+  open: boolean
+  title: string
+  description?: string
+  onClose: () => void
+  children: ReactNode
+  footer?: ReactNode
+}) {
+  const dialog = useNativeDialog(open, onClose)
+  return (
+    <dialog
+      ref={dialog.ref}
+      className="fixed inset-y-0 right-0 m-0 h-dvh max-h-none w-full max-w-xl border-l bg-card p-0 text-card-foreground shadow-lg backdrop:bg-black/40"
+      aria-label={title}
+      onCancel={dialog.onCancel}
+      onClick={dialog.onClick}
+    >
+      <div className="flex h-full flex-col">
+        <header className="space-y-1 border-b px-5 py-4">
+          <h2 className="text-base font-semibold">{title}</h2>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        </header>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">{children}</div>
+        {footer && <footer className="flex justify-end gap-2 border-t px-5 py-3">{footer}</footer>}
+      </div>
+    </dialog>
+  )
+}
+
 // A real modal instead of window.confirm: it can say how much damage the
 // action does, it localizes, and a browser test can read and drive it.
 // Native <dialog> gives focus trapping and escape handling without a
@@ -255,21 +355,12 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const ref = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const dialog = ref.current
-    if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
-  }, [open])
+  const dialog = useNativeDialog(open, onCancel)
   return (
     <dialog
-      ref={ref}
-      className="rounded-lg border bg-card p-0 text-card-foreground backdrop:bg-black/40"
-      onCancel={(event) => {
-        event.preventDefault()
-        onCancel()
-      }}
+      ref={dialog.ref}
+      className="m-auto rounded-lg border bg-card p-0 text-card-foreground backdrop:bg-black/40"
+      onCancel={dialog.onCancel}
     >
       <div className="max-w-sm space-y-4 p-5">
         <h2 className="text-base font-semibold">{title}</h2>
