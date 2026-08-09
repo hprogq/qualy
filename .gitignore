@@ -71,3 +71,8 @@ apps/web/.qualy/
 
 # scratch fixtures written by the effect diagnostics gate
 .effect-diagnostics-*/
+
+# agent tooling installed locally, not part of the repository
+.claude/
+.agents/
+skills-lock.json
