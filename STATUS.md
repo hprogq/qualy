@@ -2161,15 +2161,15 @@ Effect API/SQL 约束/UI 细节。**未编码**。下一步:M1 第一个 commit�
   config_revision 计数、current_phase_id 投影)、batch_user_types、batch_phases
   (entry_trigger 三值 + entry_offset jsonb + estimated_entry_at +
   **opens_publication_id 裸 uuid 可空**——绑定检查 `trigger='publication' OR IS NULL`
-  + 部分唯一保一一对应,§32.26;source_template\_\* 落列无 FK,溯源存续)、phase_events
-  (+processed_at;actor 无 FK,审计存续于账号删除)、phase_templates、phase_item_scopes
-  (item 裸 uuid,M2 补 FK)、phase_participant_scopes、batch_participants(anchor_path
-  ltree GiST + **anchor_lineage jsonb** 逐级 (nodeId,nodeTypeId)、(batch,user) 唯一)、
-  batch_config_revisions(append-only + revision 唯一对)。全表 uuidv7 库侧默认、
-  timestamptz、复合租户 FK((tenant_id,id) 目标索引齐备)。**删除规则=数据保留政策**:
-  批次自有行随批次 cascade;roster 指向的 users/org_nodes/user_types 一律 restrict
-  (有综测历史的主体不可删,实测 23001);current_phase_id 用 PG15+ 列级
-  `set null (current_phase_id)`(普通 SET NULL 会把 tenant_id 一起置空)。
+  - 部分唯一保一一对应,§32.26;source_template\_\* 落列无 FK,溯源存续)、phase_events
+    (+processed_at;actor 无 FK,审计存续于账号删除)、phase_templates、phase_item_scopes
+    (item 裸 uuid,M2 补 FK)、phase_participant_scopes、batch_participants(anchor_path
+    ltree GiST + **anchor_lineage jsonb** 逐级 (nodeId,nodeTypeId)、(batch,user) 唯一)、
+    batch_config_revisions(append-only + revision 唯一对)。全表 uuidv7 库侧默认、
+    timestamptz、复合租户 FK((tenant_id,id) 目标索引齐备)。**删除规则=数据保留政策**:
+    批次自有行随批次 cascade;roster 指向的 users/org_nodes/user_types 一律 restrict
+    (有综测历史的主体不可删,实测 23001);current_phase_id 用 PG15+ 列级
+    `set null (current_phase_id)`(普通 SET NULL 会把 tenant_id 一起置空)。
 - daterange/ltree 均按 org 先例 `p.string().type(...)` 列类型覆写(不是 custom type
   class);无新 baseline 片段——ltree 扩展已在 initial lineage,daterange 是内建类型。
 
@@ -2210,16 +2210,16 @@ permissions 表 `assessment=15`、SIGTERM shutdown complete。
   非正 offset 到物化即抛(不静默压缩阶段);`clearDerivedPlansBelow` 只清 offset 派生的
   planned(cancel/retract 回待定),手设硬计划不动。
 - **edits.ts(编辑类)**:结构化拒因 17 种 + lint 1 种,`reviewPlanEdit / reviewInsertion /
-  planInsertion / reviewPlanShape`。七条校验器落点:①归档收尾 = 插入不得在 terminal 之后
-  + `terminal-must-be-manual`;②绑定生命周期 = 仅 publication 边界、未进入可绑/重绑/解绑、
-  **时钟判定已进入即不可改**(§32.26);③硬计划不越"事件门"——未发生 manual **与未武装
-  publication 边界同判**(armed prefix 定义推论,已武装的不拦,文档措辞只点名 manual,
-  按同理由扩展并记录);④已结束仅名称(profile 在 ended 拒、current 放行——SCHEDULED
-  冻结归 s3 服务层);⑤actual 不可改(编辑通道整体拒绝);⑥边界只许未来 + 承诺时刻沿
-  队列单调(planned 与上游 actual/planned/publish_at、下游承诺互相排序,SLA 不参与排序
-  但同守未来);⑦proxy✓submit× lint(warning 不阻断);profile ⊆ PHASE_GATED 硬拒
-  (`profile-code-not-gated`)。"已进入"一律按 effectiveState 时钟判定——**调度器没追认的
-  边界也是历史**。
+planInsertion / reviewPlanShape`。七条校验器落点:①归档收尾 = 插入不得在 terminal 之后
+  - `terminal-must-be-manual`;②绑定生命周期 = 仅 publication 边界、未进入可绑/重绑/解绑、
+    **时钟判定已进入即不可改**(§32.26);③硬计划不越"事件门"——未发生 manual **与未武装
+    publication 边界同判**(armed prefix 定义推论,已武装的不拦,文档措辞只点名 manual,
+    按同理由扩展并记录);④已结束仅名称(profile 在 ended 拒、current 放行——SCHEDULED
+    冻结归 s3 服务层);⑤actual 不可改(编辑通道整体拒绝);⑥边界只许未来 + 承诺时刻沿
+    队列单调(planned 与上游 actual/planned/publish_at、下游承诺互相排序,SLA 不参与排序
+    但同守未来);⑦proxy✓submit× lint(warning 不阻断);profile ⊆ PHASE_GATED 硬拒
+    (`profile-code-not-gated`)。"已进入"一律按 effectiveState 时钟判定——**调度器没追认的
+    边界也是历史**。
 - **timeline.ts**:取值优先级一次定死 entered > planned(确定)> announced(公示
   publish_at 单源)> estimated(约)> pending(待定);manual 的 SLA 不外显。
 
@@ -2249,8 +2249,8 @@ translateConstraints/scopeCoverage 全部照抄形态);`Schema.Literals/Union` �
   keyset(cursor 指纹校验 + ISO 复验)。**错误 10 码**入全局门禁(error-codes 同笔),
   `ASSESSMENT_PLAN_INVALID` 携带引擎结构化拒因数组(reason/phaseId/blockingPhaseId/
   code/index),不是句子。错误码强制翻译 ⇒ s3 就带**最小 client i18n**(仅 errorMessages
-  + zh-CN locale + client tsconfig;Ui.i18n 声明留给 s6 有页面时上车,catalogs 门禁按声明
-  发现故不误报)。
+  - zh-CN locale + client tsconfig;Ui.i18n 声明留给 s6 有页面时上车,catalogs 门禁按声明
+    发现故不误报)。
 - **服务层**(Context.Service `Assessment`,serviceLayer: Orm+Rbac):每写锁批次行;
   "已进入"一律 effectiveState 时钟判定(调度器没追认的边界也是历史);`ratifyPending`
   共享给 advance/归档(s4 调度器同款,幂等:actual 只落一次)。计划编辑:draft=整体替换
@@ -2470,9 +2470,9 @@ roster 的管理面。中心原则照 §32.7/§32.35 落实:**diff 是 on-read �
   `20260809100142`,非破坏),create/PATCH/detail 贯通,active 改动走统一配置事件门
   (diff 键实测);M2 有了"首次提交"才生效,列上注释说明。
 - **闭包扩到 rbac**:链预检(及 M3 收件箱)join role_grants——按"跨插件取表 = dependsOn
-  + 实体并入闭包"纪律,`Db.entities` schema 依赖加 @qualy/plugin-rbac,db 闭包并入其六表
-  (§29 判据:holders 反查是 rbac 词汇的只读下行,M1 先以直查降级实现,M3 若 rbac 提供
-  正式 holders API 再切)。
+  - 实体并入闭包"纪律,`Db.entities` schema 依赖加 @qualy/plugin-rbac,db 闭包并入其六表
+    (§29 判据:holders 反查是 rbac 词汇的只读下行,M1 先以直查降级实现,M3 若 rbac 提供
+    正式 holders API 再切)。
 - 错误码 +2(PARTICIPANT_NOT_FOUND / PARTICIPANT_INVALID 六拒因,i18n 双语同笔);
   frozen-routes +5;participants 列表 keyset(anchor_path, id)。
 
@@ -2482,11 +2482,12 @@ roster 的管理面。中心原则照 §32.7/§32.35 落实:**diff 是 on-read �
 变动风暴后冻结快照逐字节不变、roster 成员不变(转入默认不纳入);纳入六拒因逐一
 (teacher/disabled → not-eligible、域外 → out-of-scope、陌生 uuid → not-found、draft →
 batch-not-active、重复 → already-included)+ 成功纳入冻结三级 lineage + activeElsewhere
-+ chainPreview [1,0,0](class1 有一名角色持有人);移出行数恒 3、重复移出收敛、diff 停止
-报告、重纳入恢复;锚点应用重冻三面 + 预览计数 + 应用后 anchorChanged 清空 + 两拒因;
-开关 create true → PATCH false 落配置事件。`pnpm typecheck` 零错;`pnpm test` 全仓
-**72 文件 449 全绿**;`resolve --frozen-lockfile` up to date;`pnpm dev` READY 2s、
-未登录 `GET …/roster-diff → 401`、SIGTERM 干净退出。
+
+- chainPreview [1,0,0](class1 有一名角色持有人);移出行数恒 3、重复移出收敛、diff 停止
+  报告、重纳入恢复;锚点应用重冻三面 + 预览计数 + 应用后 anchorChanged 清空 + 两拒因;
+  开关 create true → PATCH false 落配置事件。`pnpm typecheck` 零错;`pnpm test` 全仓
+  **72 文件 449 全绿**;`resolve --frozen-lockfile` up to date;`pnpm dev` READY 2s、
+  未登录 `GET …/roster-diff → 401`、SIGTERM 干净退出。
 
 **下一步**:s6 batch-admin 页(M1 最重前端会话:批次表单、阶段时间线编辑器、权限矩阵
 编辑器(数据源 PHASE_GATED)、roster+diff 面板;Ui.page + i18n catalog + 浏览器测试;
@@ -2512,7 +2513,7 @@ M1 最重的前端会话,四个面板一次做完(未触发"阶段编辑器/rost
   **不重写规则**:提交整份计划,把引擎拒因**按 index 渲染回对应行**,行级拒因显示在该阶段
   卡片里,计划级拒因显示在面板顶部。
 - **拒因映射表编译期完备**:`refusals.ts` 以 `Record<EditRefusalReason | ServiceRefusalReason,
-  MessageDescriptor>` 为类型——引擎新增拒因而无句子即编译失败(type-only import 引擎类型,
+MessageDescriptor>` 为类型——引擎新增拒因而无句子即编译失败(type-only import 引擎类型,
   运行时零成本)。
 - **roster + diff 面板**:五类各配一个动作(新迁入→纳入并显示"同时参加 X"警告、已迁出→移出、
   锚点变更→应用新位置、类型变更→提示是否仍在纳入类型内、scope 完整性→列出缺失单位),
@@ -2537,3 +2538,50 @@ M1 最重的前端会话,四个面板一次做完(未触发"阶段编辑器/rost
 
 **下一步**:s7 学生时间线页 + M1 全量验收收口(取值优先级渲染、"待定"文案红线、拒因到 UI
 文案映射,然后 ①–⑩ 全部真跑一遍并把输出摘录进 STATUS,M1 收口提交)。
+
+### M1 会话 16 · batch-admin 页返工(2026-08-09,用户评审裁决)
+
+用户对 s6 首版三项批评:布局是 Card 顺序堆叠没法用;模板模型错了(阶段模板与时间线模板
+是分开的两种东西且都不是必经之路);文案暴露内部术语。三项全部返工。
+
+- **模板分立(裁决记 §32.36)**:`phase_templates` 加 `kind`('timeline' | 'phase',
+  迁移 20260809111511,check 约束,默认 'timeline' 保存量行)。timeline = 完整阶段序列,
+  语义不变;**phase = 单阶段预设**,只有名称与权限选项、无时间无 trigger(存储惯例单条目
+  manual 全空时间,服务端 `phase-template-shape` 拒因把关;`fromTemplateId` 遇 phase kind
+  拒 `template-not-a-timeline`)。listTemplates 加 `?kind=` 过滤,两个选择器各查各的。
+  应用语义分层:时间线 = 草稿期服务端整体替换(带溯源);预设 = 编辑器内复制名称+profile
+  进目标行(起点填充,无溯源)。**三条路互相独立**:从零逐个加阶段 / 套时间线 / 单行套预设。
+- **@qualy/ui 补足组合原语(零新依赖,房风:主题 token、原生 `<dialog>`)**:badge / table /
+  tabs(手写 WAI-ARIA tablist,roving focus + 方向键)/ select(styled native);admin.tsx
+  抽 `useNativeDialog` 共用机制,新增 **FormDialog**(居中模态)与 **SidePanel**(右侧
+  侧拉),ConfirmDialog 改用同一机制。全部只用 shadcn 主题变量,不自定义颜色。
+- **布局重做**:列表页 = 页头 + 表格(名称/状态 Badge/材料区间/单位数),行点击进详情;
+  新建批次在 **FormDialog**;详情页 = 返回链接 + 标题行(名称 + 状态 Badge + 元信息 +
+  激活/归档,两者都过 **ConfirmDialog** 说明后果)+ **Tabs**(阶段安排 | 参评人员)。
+  阶段列表一行一句话(第几个、名称、何时开始、开放几项操作),**全部编辑控件收进
+  SidePanel**:名称、开始方式(RadioGroup 三选)、时间形态(scheduled 内再选"具体日期 vs
+  跟上一阶段算天数",已换算的只读并说明)、预设填充、权限矩阵;移除阶段过 ConfirmDialog。
+  advance:manual 行"开始这个阶段"过确认框,scheduled 行"提前开始"进 FormDialog 理由必填。
+  roster tab = 变动分区(各带计数 Badge + 逐条动作)+ 参评人员表格。
+- **文案全量重写(en + zh-CN,~150 条)**:面向第一次见到产品的人,零内部术语——"物化"→
+  "这段间隔换算成了上面的开始时间";trigger→"它怎么开始?";publication→"成绩公示时开始";
+  advance force→"提前开始(会连同你的理由一起记录)";roster→"参评名单";diff 五类各配
+  一句"这些人是谁、你该做什么"的说明。拒因句子全部改写成可执行的建议
+  (hard-plan-beyond-event-boundary → "前面还有阶段没定下日期……改用'上一阶段开始后第几天'")。
+- **侧边栏问题实证(用户中途报告"侧边栏没有测评批次")**:起 dev、登录种子管理员、拉
+  manifest——`admin-shell/navigation-primary` **含** `assessment/batches/nav`(order 40),
+  AdminShell 对 collection 无条件全渲染,当前代码无缺陷。成因是用户的 dev 后端进程仍在跑
+  s6 描述器落地前的代码(manifest 由后端算,Vite 热更不覆盖):**重启 `pnpm dev` 重新登录
+  即可见**。
+- **测试**:node 新增"keeps timeline and phase templates apart"(phase kind 建/带时间拒/
+  两 kind 过滤互斥/fromTemplateId 误用拒),浏览器套件按新交互全部重写为 9 例:表格进出详情、
+  **零模板从头建阶段**(空态双路径文案)、面板矩阵恰 11 码且外部权限不存在、预设填入(名称+
+  勾选变化且仍可改)、时间线按 id 服务端套用、active 不再提供时间线、拒因句子出现在面板、
+  提前开始理由必填(空理由按钮禁用)、roster 草稿说明 + 两类变动各触发正确 API。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **72 文件 452 全绿**(两轮,首轮
+一例未复现 flake 二轮起干净);`pnpm test:browser` **4 文件 25 全绿**;`pnpm build` 通过、
+产物 staged;`resolve --frozen-lockfile` up to date;dev 实测 manifest 导航条目在。
+
+**下一步**:s7 不变(学生时间线页 + M1 ①–⑩ 全量真跑收口)。阶段/时间线模板的管理界面
+(建/改/删模板本身)尚无 UI,按需求触发再建。

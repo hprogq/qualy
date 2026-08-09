@@ -734,11 +734,12 @@ export const oneOrgNode = (tenantId: string, nodeId: string) =>
 export interface TemplateRow {
   id: string
   name: string
+  kind: string
   version: number
   phases: readonly Record<string, unknown>[]
 }
 
-const templateColumns = ['id', 'name', 'version', 'phases'] as const
+const templateColumns = ['id', 'name', 'kind', 'version', 'phases'] as const
 
 export const oneTemplate = (tenantId: string, templateId: string) =>
   db
@@ -754,7 +755,7 @@ export const oneTemplate = (tenantId: string, templateId: string) =>
 
 export const listTemplatesPage = (
   tenantId: string,
-  filter: { after?: { name: string; id: string }; limit: number },
+  filter: { kind?: string; after?: { name: string; id: string }; limit: number },
 ) =>
   db
     .query((k) => {
@@ -762,6 +763,9 @@ export const listTemplatesPage = (
         .selectFrom('PhaseTemplate')
         .select(templateColumns)
         .where('tenantId', '=', tenantId)
+      if (filter.kind !== undefined) {
+        query = query.where('kind', '=', filter.kind)
+      }
       if (filter.after !== undefined) {
         query = query.where(
           sql<boolean>`(phase_templates.name, phase_templates.id) > (${filter.after.name}, ${filter.after.id}::uuid)`,
@@ -774,6 +778,7 @@ export const listTemplatesPage = (
 export const insertTemplate = (input: {
   tenantId: string
   name: string
+  kind: string
   phases: readonly unknown[]
 }) =>
   db
@@ -783,6 +788,7 @@ export const insertTemplate = (input: {
         .values({
           tenantId: input.tenantId,
           name: input.name,
+          kind: input.kind,
           phases: jsonb(input.phases),
         } as never)
         .returning(templateColumns)

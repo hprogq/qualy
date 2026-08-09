@@ -2,20 +2,28 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { CheckboxGroup, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { CheckboxGroup, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 
-// Creating a batch: what it faces, who it enrolls, and which dates the
-// materials may carry.
+// Creating a batch, in a dialog: what to call it, which dates the materials
+// may carry, which units take part and who inside them.
 //
-// The units and the user types come from this domain's own options endpoints
-// rather than from org and iam, so an administrator needs assessment
-// permissions and nothing else to fill this in. Everything else about the
-// batch is edited afterwards, while it is still a draft.
-export function NewBatchForm({ onCreated }: { onCreated: (batchId: string) => void }) {
+// The units and the user types come from this domain's own options endpoints,
+// so an administrator needs assessment permissions and nothing else to fill
+// this in. Everything else about the batch is shaped afterwards, while it is
+// still a draft.
+export function NewBatchDialog({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreated: (batchId: string) => void
+}) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
@@ -47,6 +55,10 @@ export function NewBatchForm({ onCreated }: { onCreated: (batchId: string) => vo
     onMutate: () => setFailure(null),
     onSuccess: async (result: { batch: { id: string } }) => {
       setName('')
+      setFrom('')
+      setUntil('')
+      setScopeNodeIds([])
+      setUserTypeIds([])
       await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
       onCreated(result.batch.id)
     },
@@ -61,67 +73,81 @@ export function NewBatchForm({ onCreated }: { onCreated: (batchId: string) => vo
     userTypeIds.length > 0
 
   return (
-    <Panel title={format(m.newBatch)} description={format(m.newBatchHint)}>
+    <FormDialog
+      open={open}
+      title={format(m.newBatch)}
+      description={format(m.newBatchHint)}
+      onClose={onClose}
+      footer={
+        <>
+          <Button size="sm" variant="outline" onClick={onClose}>
+            {format(m.cancel)}
+          </Button>
+          <Button size="sm" disabled={create.isPending || !ready} onClick={() => create.mutate()}>
+            {format(m.create)}
+          </Button>
+        </>
+      }
+    >
       <Feedback message={failure} />
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault()
-          create.mutate()
-        }}
-      >
-        <Field label={format(m.nameLabel)}>
-          {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
+      <Field label={format(m.nameLabel)}>
+        {(id) => (
+          <Input
+            id={id}
+            value={name}
+            placeholder={format(m.namePlaceholder)}
+            onChange={(event) => setName(event.target.value)}
+          />
+        )}
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={format(m.materialFrom)}>
+          {(id) => (
+            <Input
+              id={id}
+              type="date"
+              value={from}
+              onChange={(event) => setFrom(event.target.value)}
+            />
+          )}
         </Field>
-        <div className="flex flex-wrap items-end gap-2">
-          <Field label={format(m.materialFrom)}>
-            {(id) => (
-              <Input
-                id={id}
-                type="date"
-                value={from}
-                onChange={(event) => setFrom(event.target.value)}
-              />
-            )}
-          </Field>
-          <Field label={format(m.materialTo)} hint={format(m.materialHint)}>
-            {(id) => (
-              <Input
-                id={id}
-                type="date"
-                value={until}
-                onChange={(event) => setUntil(event.target.value)}
-              />
-            )}
-          </Field>
+        <Field label={format(m.materialTo)}>
+          {(id) => (
+            <Input
+              id={id}
+              type="date"
+              value={until}
+              onChange={(event) => setUntil(event.target.value)}
+            />
+          )}
+        </Field>
+      </div>
+      <p className="text-xs text-muted-foreground">{format(m.materialHint)}</p>
+      <div className="space-y-1">
+        <div className="max-h-48 overflow-y-auto rounded-md border p-3">
+          <CheckboxGroup
+            legend={format(m.scopeLegend)}
+            options={(nodes.data?.nodes ?? []).map((node) => ({
+              value: node.id,
+              label: node.name,
+            }))}
+            selected={scopeNodeIds}
+            onChange={setScopeNodeIds}
+            emptyLabel={format(m.scopeEmpty)}
+          />
         </div>
-        <CheckboxGroup
-          legend={format(m.scopeLegend)}
-          options={(nodes.data?.nodes ?? []).map((node) => ({
-            value: node.id,
-            label: node.name,
-            hint: node.path,
-          }))}
-          selected={scopeNodeIds}
-          onChange={setScopeNodeIds}
-          emptyLabel={format(m.scopeEmpty)}
-        />
         <p className="text-xs text-muted-foreground">{format(m.scopeHint)}</p>
-        <CheckboxGroup
-          legend={format(m.userTypesLegend)}
-          options={(userTypes.data?.userTypes ?? []).map((type) => ({
-            value: type.id,
-            label: type.name,
-            hint: type.code,
-          }))}
-          selected={userTypeIds}
-          onChange={setUserTypeIds}
-          emptyLabel={format(m.userTypesEmpty)}
-        />
-        <Button size="sm" type="submit" disabled={create.isPending || !ready}>
-          {format(m.create)}
-        </Button>
-      </form>
-    </Panel>
+      </div>
+      <CheckboxGroup
+        legend={format(m.userTypesLegend)}
+        options={(userTypes.data?.userTypes ?? []).map((type) => ({
+          value: type.id,
+          label: type.name,
+        }))}
+        selected={userTypeIds}
+        onChange={setUserTypeIds}
+        emptyLabel={format(m.userTypesEmpty)}
+      />
+    </FormDialog>
   )
 }

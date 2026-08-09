@@ -3,20 +3,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Feedback, Panel } from '@qualy/ui/admin'
+import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
+import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
-import { NewBatchForm } from './NewBatchForm.tsx'
+import { NewBatchDialog } from './NewBatchForm.tsx'
 import { PhaseTimelineEditor } from './PhaseTimelineEditor.tsx'
 import { RosterPanel } from './RosterPanel.tsx'
 import { refusalMessage, refusalsOf } from './refusals.ts'
 
-// A batch, whole: what it is, when its phases run, and who is on it.
+// The batches: a table of them, and one batch opened at a time.
 //
-// Master and detail share one screen because the list is short and the work
-// is always about one batch at a time; which batch is in the query string, so
-// a colleague can be sent the link to the one being discussed.
+// The list is the whole page until a row is chosen; the chosen batch takes
+// over with its stages and its participants in tabs. Which batch is open
+// lives in the query string, so a colleague can be sent the link to the one
+// being discussed. Creation happens in a dialog on top of the list.
 export default function BatchAdminPage() {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -24,6 +28,9 @@ export default function BatchAdminPage() {
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('batch')
+  const [creating, setCreating] = useState(false)
+  const [confirming, setConfirming] = useState<'activate' | 'archive' | null>(null)
+  const [tab, setTab] = useState('phases')
   const [failure, setFailure] = useState<string | null>(null)
 
   const batches = useQuery(query.assessment.listBatches.queryOptions({ query: {} }))
@@ -41,9 +48,13 @@ export default function BatchAdminPage() {
         }),
       ),
     onMutate: () => setFailure(null),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: query.assessment.key() }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+      setConfirming(null)
+    },
     onError: (error: unknown) => {
-      // activation refuses with the plan's own reasons; anything else is a
+      setConfirming(null)
+      // activation answers with the plan's own reasons; anything else is a
       // sentence the error catalog already has
       const refusals = refusalsOf(error)
       setFailure(
@@ -59,16 +70,37 @@ export default function BatchAdminPage() {
     },
   })
 
-  const statusLabel = (status: 'draft' | 'active' | 'archived') =>
-    format(
-      status === 'draft' ? m.statusDraft : status === 'active' ? m.statusActive : m.statusArchived,
+  const statusBadge = (status: 'draft' | 'active' | 'archived') =>
+    status === 'draft' ? (
+      <Badge variant="outline">{format(m.statusDraft)}</Badge>
+    ) : status === 'active' ? (
+      <Badge>{format(m.statusActive)}</Badge>
+    ) : (
+      <Badge variant="secondary">{format(m.statusArchived)}</Badge>
     )
 
-  const batch = detail.data?.batch
+  const open = (batchId: string) => {
+    setFailure(null)
+    setTab('phases')
+    setSelected(batchId)
+  }
 
-  return (
-    <div className="space-y-4 p-4">
-      <Panel title={format(m.batchesTitle)} description={format(m.batchesHint)}>
+  const batch = selected !== '' ? detail.data?.batch : undefined
+  const rows = batches.data?.items ?? []
+
+  // ------------------------------------------------------------------
+  // the list, until a batch is chosen
+  if (selected === '') {
+    return (
+      <div className="mx-auto w-full max-w-5xl space-y-6 p-6">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold">{format(m.batchesTitle)}</h1>
+            <p className="text-sm text-muted-foreground">{format(m.batchesHint)}</p>
+          </div>
+          <Button onClick={() => setCreating(true)}>{format(m.newBatch)}</Button>
+        </header>
+
         <AsyncSection
           pending={batches.isPending}
           error={batches.isError ? formatError(batches.error) : null}
@@ -76,76 +108,147 @@ export default function BatchAdminPage() {
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void batches.refetch()}
         >
-          {(batches.data?.items ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">{format(m.batchesEmpty)}</p>
+          {rows.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-10 text-center">
+              <p className="text-sm text-muted-foreground">{format(m.batchesEmpty)}</p>
+            </div>
           ) : (
-            <ul className="divide-y">
-              {(batches.data?.items ?? []).map((row) => (
-                <li key={row.id}>
-                  <button
-                    type="button"
-                    aria-current={row.id === selected}
-                    className="flex w-full flex-col items-start gap-0.5 py-2 text-left hover:bg-muted/50"
-                    onClick={() => setSelected(row.id === selected ? '' : row.id)}
-                  >
-                    <span className="text-sm font-medium">
-                      {row.name}
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {statusLabel(row.status)}
-                      </span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {row.materialRange.start} – {row.materialRange.end}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{format(m.columnName)}</TableHead>
+                    <TableHead>{format(m.columnStatus)}</TableHead>
+                    <TableHead>{format(m.columnMaterialRange)}</TableHead>
+                    <TableHead>{format(m.columnUnits)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow key={row.id} className="cursor-pointer" onClick={() => open(row.id)}>
+                      <TableCell className="font-medium">
+                        <button type="button" className="text-left" onClick={() => open(row.id)}>
+                          {row.name}
+                        </button>
+                      </TableCell>
+                      <TableCell>{statusBadge(row.status)}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {row.materialRange.start} – {row.materialRange.end}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {format(m.unitsCount, { count: row.scopeNodeIds.length })}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </AsyncSection>
-      </Panel>
 
-      {batch && (
-        <>
-          <Panel
-            title={batch.name}
-            description={statusLabel(batch.status)}
-            actions={
+        <NewBatchDialog
+          open={creating}
+          onClose={() => setCreating(false)}
+          onCreated={(batchId) => {
+            setCreating(false)
+            open(batchId)
+          }}
+        />
+      </div>
+    )
+  }
+
+  // ------------------------------------------------------------------
+  // one batch, opened
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-6 p-6">
+      <Button size="sm" variant="ghost" onClick={() => setSelected('')}>
+        ← {format(m.backToList)}
+      </Button>
+
+      <AsyncSection
+        pending={detail.isPending}
+        error={detail.isError ? formatError(detail.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void detail.refetch()}
+      >
+        {batch && (
+          <div className="space-y-6">
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-semibold">{batch.name}</h1>
+                  {statusBadge(batch.status)}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {format(m.columnMaterialRange)}: {batch.materialRange.start} –{' '}
+                  {batch.materialRange.end}
+                  {' · '}
+                  {format(m.unitsCount, { count: batch.scopeNodeIds.length })}
+                </p>
+              </div>
               <div className="flex gap-2">
                 {batch.status === 'draft' && (
-                  <Button
-                    size="sm"
-                    disabled={setStatus.isPending}
-                    onClick={() => setStatus.mutate('active')}
-                  >
+                  <Button disabled={setStatus.isPending} onClick={() => setConfirming('activate')}>
                     {format(m.activate)}
                   </Button>
                 )}
                 {batch.status === 'active' && (
                   <Button
-                    size="sm"
                     variant="outline"
                     disabled={setStatus.isPending}
-                    onClick={() => setStatus.mutate('archived')}
+                    onClick={() => setConfirming('archive')}
                   >
                     {format(m.archive)}
                   </Button>
                 )}
               </div>
-            }
-          >
+            </header>
+
             <Feedback message={failure} />
-            <p className="text-xs text-muted-foreground">
-              {batch.status === 'draft' ? format(m.activateHint) : format(m.rosterHint)}
-            </p>
-          </Panel>
+            {batch.status === 'draft' && (
+              <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {format(m.draftBanner)}
+              </p>
+            )}
 
-          <PhaseTimelineEditor batch={batch} />
-          <RosterPanel batch={batch} />
-        </>
-      )}
+            <Tabs value={tab} onValueChange={setTab}>
+              <TabsList>
+                <TabsTrigger value="phases">{format(m.tabPhases)}</TabsTrigger>
+                <TabsTrigger value="roster">{format(m.tabRoster)}</TabsTrigger>
+              </TabsList>
+              <TabsContent value="phases">
+                <PhaseTimelineEditor batch={batch} />
+              </TabsContent>
+              <TabsContent value="roster">
+                <RosterPanel batch={batch} />
+              </TabsContent>
+            </Tabs>
 
-      <NewBatchForm onCreated={setSelected} />
+            <ConfirmDialog
+              open={confirming === 'activate'}
+              title={format(m.activateConfirmTitle)}
+              description={format(m.activateConfirmBody)}
+              confirmLabel={format(m.activate)}
+              cancelLabel={format(m.cancel)}
+              pending={setStatus.isPending}
+              onConfirm={() => setStatus.mutate('active')}
+              onCancel={() => setConfirming(null)}
+            />
+            <ConfirmDialog
+              open={confirming === 'archive'}
+              title={format(m.archiveConfirmTitle)}
+              description={format(m.archiveConfirmBody)}
+              confirmLabel={format(m.archive)}
+              cancelLabel={format(m.cancel)}
+              pending={setStatus.isPending}
+              onConfirm={() => setStatus.mutate('archived')}
+              onCancel={() => setConfirming(null)}
+            />
+          </div>
+        )}
+      </AsyncSection>
     </div>
   )
 }

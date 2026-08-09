@@ -17,6 +17,8 @@ import { assessmentMessages as m } from './i18n.ts'
 type ServiceRefusalReason =
   | 'plan-empty'
   | 'template-requires-draft'
+  | 'template-not-a-timeline'
+  | 'phase-template-shape'
   | 'phase-removed'
   | 'reorder-not-allowed'
   | 'phase-key-immutable'
@@ -50,6 +52,8 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'terminal-must-be-manual': m['refusal.terminal-must-be-manual'],
   'plan-empty': m['refusal.plan-empty'],
   'template-requires-draft': m['refusal.template-requires-draft'],
+  'template-not-a-timeline': m['refusal.template-not-a-timeline'],
+  'phase-template-shape': m['refusal.phase-template-shape'],
   'phase-removed': m['refusal.phase-removed'],
   'reorder-not-allowed': m['refusal.reorder-not-allowed'],
   'phase-key-immutable': m['refusal.phase-key-immutable'],

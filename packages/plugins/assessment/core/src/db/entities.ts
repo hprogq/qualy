@@ -236,7 +236,10 @@ export const PhaseEvent = defineEntity({
   ],
 })
 
-// tenant-level phase sequence presets; application copies, never inherits
+// Tenant-level presets, in two kinds that share a table but not a meaning:
+// a 'timeline' is a whole phase sequence a draft batch can start from, while
+// a 'phase' describes one phase's options (name and what it opens) and is
+// applied to a single row of a plan. Application copies, never inherits.
 export const PhaseTemplate = defineEntity({
   name: 'PhaseTemplate',
   tableName: 'phase_templates',
@@ -244,6 +247,7 @@ export const PhaseTemplate = defineEntity({
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('phase_templates_tenant_id_tenants_id_fkey'),
     name: p.string().length(100),
+    kind: p.string().length(16).default('timeline'),
     version: p.integer().default(1),
     phases: p.json<readonly Record<string, unknown>[]>().defaultRaw(`'[]'`),
     createdAt: p.datetime().defaultRaw('now()'),
@@ -251,6 +255,7 @@ export const PhaseTemplate = defineEntity({
   },
   checks: [
     { name: 'chk_phase_templates_name_not_blank', expression: `btrim(name) <> ''` },
+    { name: 'chk_phase_templates_kind', expression: `kind IN ('timeline', 'phase')` },
     { name: 'chk_phase_templates_version_positive', expression: 'version >= 1' },
   ],
   indexes: [

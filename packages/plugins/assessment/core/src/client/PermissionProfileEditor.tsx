@@ -13,11 +13,13 @@ import { assessmentMessages as m } from './i18n.ts'
 // compile.
 export function PermissionProfileEditor({
   legend,
+  hint,
   profile,
   disabled,
   onChange,
 }: {
   legend: string
+  hint?: string
   profile: readonly string[]
   disabled?: boolean
   onChange: (next: string[]) => void
@@ -25,13 +27,16 @@ export function PermissionProfileEditor({
   const { format } = useI18n()
   const label = (code: PhaseGatedCode) => format(m[`permission.${code}`])
   return (
-    <CheckboxGroup
-      legend={legend}
-      options={PHASE_GATED_CODES.map((code) => ({ value: code, label: label(code) }))}
-      selected={profile}
-      onChange={onChange}
-      {...(disabled !== undefined ? { disabled } : {})}
-      emptyLabel=""
-    />
+    <div className="space-y-2">
+      <CheckboxGroup
+        legend={legend}
+        options={PHASE_GATED_CODES.map((code) => ({ value: code, label: label(code) }))}
+        selected={profile}
+        onChange={onChange}
+        {...(disabled !== undefined ? { disabled } : {})}
+        emptyLabel=""
+      />
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
   )
 }

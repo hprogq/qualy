@@ -1095,4 +1095,88 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(beyondReasons.map((entry) => entry.reason)).not.toContain('planned-not-in-future')
     expect(versioned.version).toBe(2)
   })
+
+  it('keeps timeline and phase templates apart', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('template-kinds')
+        const assessment = yield* Assessment
+        // a phase template is one phase's options: a name and a profile, no
+        // times, no trigger of its own (manual by convention)
+        const profile = yield* assessment.createTemplate(
+          f.tenant,
+          {
+            name: 'entry defaults',
+            kind: 'phase',
+            phases: [phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.submit'] })],
+          },
+          f.principal,
+        )
+        const timed = yield* Effect.exit(
+          assessment.createTemplate(
+            f.tenant,
+            {
+              name: 'timed phase',
+              kind: 'phase',
+              phases: [
+                phase({
+                  phaseKey: 'entry',
+                  entryTrigger: 'scheduled',
+                  plannedEntryAt: Date.now() + HOUR,
+                }),
+                phase({ phaseKey: 'archive' }),
+              ],
+            },
+            f.principal,
+          ),
+        )
+        const timeline = yield* assessment.createTemplate(
+          f.tenant,
+          { name: 'whole plan', phases: [phase({ phaseKey: 'archive' })] },
+          f.principal,
+        )
+        // the timeline picker must not see phase templates, and vice versa
+        const timelines = yield* assessment.listTemplates(
+          f.tenant,
+          { kind: 'timeline', limit: 10 },
+          f.principal,
+        )
+        const profiles = yield* assessment.listTemplates(
+          f.tenant,
+          { kind: 'phase', limit: 10 },
+          f.principal,
+        )
+        // a phase template is not a plan, so it cannot replace one
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'kinds',
+            scopeNodeIds: [f.class1],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        const misapplied = yield* Effect.exit(
+          assessment.replacePlan(f.tenant, batch.id, { fromTemplateId: profile.id }, f.principal),
+        )
+        return { profile, timed, timelines, profiles, misapplied }
+      }),
+    )
+    const { profile, timed, timelines, profiles, misapplied } = ok(exit)
+    expect(profile.kind).toBe('phase')
+    const timedReasons = reasonsOf(timed).flatMap(
+      (entry) =>
+        (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
+    )
+    expect(timedReasons.map((entry) => entry.reason)).toContain('phase-template-shape')
+    expect(timelines.map((row) => row.name)).toEqual(['whole plan'])
+    expect(profiles.map((row) => row.name)).toEqual(['entry defaults'])
+    const misappliedReasons = reasonsOf(misapplied).flatMap(
+      (entry) =>
+        (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
+    )
+    expect(misappliedReasons.map((entry) => entry.reason)).toContain('template-not-a-timeline')
+  })
 })

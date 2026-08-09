@@ -1,46 +1,61 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Feedback, Field, Panel } from '@qualy/ui/admin'
+import {
+  AsyncSection,
+  ConfirmDialog,
+  Feedback,
+  Field,
+  FormDialog,
+  RadioGroup,
+  SidePanel,
+} from '@qualy/ui/admin'
+import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
+import { NativeSelect } from '@qualy/ui/select'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 import { PermissionProfileEditor } from './PermissionProfileEditor.tsx'
 import { refusalMessage, refusalsOf } from './refusals.ts'
 
-// The phase plan, as an administrator edits it.
+// The stage plan: a readable list, and a side panel that edits one stage at
+// a time.
 //
-// The screen's whole job is to show which of the three time shapes a phase
-// has and to let only the legal one be edited: a fixed date where the queue
-// can promise one, a duration where it can only be measured from an event,
-// and a display-only estimate anywhere. It does not re-implement the rules -
-// it submits the plan and renders what the engine refused, which is why a
-// refusal reads as a sentence about this phase rather than a form that
-// silently forbids a field.
+// The list states plainly when each stage runs; every form control lives in
+// the panel, which submits the whole plan on save and shows what was refused
+// as sentences. Templates come in two flavours and neither is ever required:
+// a timeline replaces a draft's whole plan, a stage preset fills in one
+// stage's name and actions inside the panel. A plan can just as well be built
+// from nothing, one stage at a time.
 
 type PhaseDto = ApiResult<typeof assessmentApi, 'assessment', 'getPhases'>['phases'][number]
 type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']
 
-/** the editable half of a phase, as this screen holds it while typing */
+/** the editable half of one stage, as the panel holds it while typing */
 interface Draft {
   id?: string
   phaseKey: string
   displayName: string
   entryTrigger: PhaseDto['entryTrigger']
   plannedEntryAt: string | null
-  entryOffset: { days?: number; hours?: number } | null
+  entryOffset: PhaseDto['entryOffset']
   estimatedEntryAt: string | null
   permissionProfile: readonly string[]
   itemScope: readonly string[]
   participantScope: readonly string[]
-  actualEntryAt: string | null
 }
 
-const toDraft = (phase: PhaseDto): Draft => ({
+interface PanelState {
+  index: number
+  isNew: boolean
+  draft: Draft
+}
+
+const specOf = (phase: PhaseDto): Draft => ({
   id: phase.id,
   phaseKey: phase.phaseKey,
   displayName: phase.displayName,
@@ -51,11 +66,18 @@ const toDraft = (phase: PhaseDto): Draft => ({
   permissionProfile: phase.permissionProfile,
   itemScope: phase.itemScope,
   participantScope: phase.participantScope,
-  actualEntryAt: phase.actualEntryAt,
 })
 
+/** a key no other stage in the plan uses yet */
+const freshKey = (taken: readonly { phaseKey: string }[]) => {
+  const used = new Set(taken.map((spec) => spec.phaseKey))
+  let n = taken.length + 1
+  while (used.has(`stage-${n}`)) n += 1
+  return `stage-${n}`
+}
+
 // `datetime-local` speaks local wall time without a zone; the api speaks
-// instants. Both conversions live here so no other component has to know.
+// instants. Both conversions live here so nothing else has to know.
 const toLocalInput = (iso: string | null): string => {
   if (iso === null) return ''
   const at = new Date(iso)
@@ -65,6 +87,9 @@ const toLocalInput = (iso: string | null): string => {
 
 const fromLocalInput = (value: string): string | null =>
   value === '' ? null : new Date(value).toISOString()
+
+const timeOf = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
@@ -76,113 +101,139 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const phases = useQuery(
     query.assessment.getPhases.queryOptions({ params: { batchId: batch.id } }),
   )
-  const templates = useQuery(query.assessment.listTemplates.queryOptions({ query: {} }))
-
-  const [drafts, setDrafts] = useState<readonly Draft[] | null>(null)
-  const [failure, setFailure] = useState<string | null>(null)
-  const [refusals, setRefusals] = useState<readonly { reason: string; index?: number }[]>([])
-  const [templateId, setTemplateId] = useState('')
-  const [reason, setReason] = useState('')
-
-  const server = phases.data?.phases ?? []
-  const editing = drafts ?? server.map(toDraft)
-  const readOnly = batch.status === 'archived'
-  const draftBatch = batch.status === 'draft'
-
-  // which phase the clock says is current, from the entries the server
-  // materialized; the badge follows the same rule the gate does
-  const currentIndex = useMemo(
-    () => server.reduce((found, phase, at) => (phase.actualEntryAt !== null ? at : found), -1),
-    [server],
+  const timelines = useQuery(
+    query.assessment.listTemplates.queryOptions({ query: { kind: 'timeline' } }),
+  )
+  const presets = useQuery(
+    query.assessment.listTemplates.queryOptions({ query: { kind: 'phase' } }),
   )
 
-  const invalidate = async () => {
-    await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
-    setDrafts(null)
+  // which overlay is open; the panel holds the one stage being edited
+  const [panel, setPanel] = useState<PanelState | null>(null)
+  const [timelineDialog, setTimelineDialog] = useState(false)
+  const [timelineId, setTimelineId] = useState('')
+  const [presetId, setPresetId] = useState('')
+  const [removing, setRemoving] = useState(false)
+  const [starting, setStarting] = useState<{ id: string; name: string; force: boolean } | null>(
+    null,
+  )
+  const [reason, setReason] = useState('')
+  const [failure, setFailure] = useState<string | null>(null)
+  const [refused, setRefused] = useState<readonly string[]>([])
+
+  const server = phases.data?.phases ?? []
+  const readOnly = batch.status === 'archived'
+  const active = batch.status === 'active'
+  const currentIndex = server.reduce(
+    (found, phase, at) => (phase.actualEntryAt !== null ? at : found),
+    -1,
+  )
+
+  const clear = () => {
+    setFailure(null)
+    setRefused([])
   }
 
   const failed = (error: unknown) => {
-    const found = refusalsOf(error)
-    setRefusals(found)
-    setFailure(found.length > 0 ? null : formatError(error))
+    const sentences = refusalsOf(error).map((refusal) => {
+      const sentence = refusalMessage(refusal.reason)
+      return sentence ? format(sentence) : refusal.reason
+    })
+    setRefused(sentences)
+    setFailure(sentences.length > 0 ? null : formatError(error))
   }
 
+  const settle = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+
   const savePlan = useMutation({
-    mutationFn: (next: readonly Draft[]) =>
+    mutationFn: (specs: readonly Draft[]) =>
       run(
         api.assessment.putPhases({
           params: { batchId: batch.id },
           payload: {
-            phases: next.map((draft) => ({
-              ...(draft.id !== undefined ? { id: draft.id } : {}),
-              phaseKey: draft.phaseKey,
-              displayName: draft.displayName,
-              entryTrigger: draft.entryTrigger,
-              plannedEntryAt: draft.plannedEntryAt,
-              entryOffset: draft.entryOffset,
-              estimatedEntryAt: draft.estimatedEntryAt,
-              permissionProfile: draft.permissionProfile,
-              itemScope: draft.itemScope,
-              participantScope: draft.participantScope,
+            phases: specs.map((spec) => ({
+              ...(spec.id !== undefined ? { id: spec.id } : {}),
+              phaseKey: spec.phaseKey,
+              displayName: spec.displayName,
+              entryTrigger: spec.entryTrigger,
+              plannedEntryAt: spec.plannedEntryAt,
+              entryOffset: spec.entryOffset,
+              estimatedEntryAt: spec.estimatedEntryAt,
+              permissionProfile: spec.permissionProfile,
+              itemScope: spec.itemScope,
+              participantScope: spec.participantScope,
             })),
           },
         }),
       ),
-    onMutate: () => {
-      setFailure(null)
-      setRefusals([])
+    onMutate: clear,
+    onSuccess: async () => {
+      await settle()
+      setPanel(null)
+      setRemoving(false)
     },
-    onSuccess: invalidate,
     onError: failed,
   })
 
-  const applyTemplate = useMutation({
-    mutationFn: () =>
+  const applyTimeline = useMutation({
+    mutationFn: (templateId: string) =>
       run(
         api.assessment.putPhases({
           params: { batchId: batch.id },
           payload: { fromTemplateId: templateId },
         }),
       ),
-    onMutate: () => {
-      setFailure(null)
-      setRefusals([])
+    onMutate: clear,
+    onSuccess: async () => {
+      await settle()
+      setTimelineDialog(false)
+      setTimelineId('')
     },
-    onSuccess: invalidate,
     onError: failed,
   })
 
   const advance = useMutation({
-    mutationFn: (input: { to: string; force: boolean }) =>
+    mutationFn: (input: { to: string; force: boolean; reason: string }) =>
       run(
         api.assessment.advancePhase({
           params: { batchId: batch.id },
           payload: {
             to: input.to,
-            ...(input.force ? { force: true, reason } : {}),
+            ...(input.force ? { force: true, reason: input.reason } : {}),
           },
         }),
       ),
-    onMutate: () => {
-      setFailure(null)
-      setRefusals([])
-    },
+    onMutate: clear,
     onSuccess: async () => {
+      await settle()
+      setStarting(null)
       setReason('')
-      await invalidate()
     },
-    onError: failed,
+    onError: (error: unknown) => {
+      setStarting(null)
+      setFailure(formatError(error))
+    },
   })
 
-  const edit = (at: number, change: Partial<Draft>) =>
-    setDrafts(editing.map((draft, index) => (index === at ? { ...draft, ...change } : draft)))
+  const openEditor = (index: number) => {
+    clear()
+    setPresetId('')
+    setPanel({ index, isNew: false, draft: specOf(server[index]!) })
+  }
 
-  const insertAfter = (at: number) =>
-    setDrafts([
-      ...editing.slice(0, at + 1),
-      {
-        phaseKey: 'supplementary-entry',
-        displayName: format(m.insertPhase),
+  const openNew = () => {
+    clear()
+    setPresetId('')
+    const specs = server.map(specOf)
+    // while the batch runs, the only legal place is right after the stage
+    // happening now; a draft simply grows at the end
+    const index = active ? currentIndex + 1 : specs.length
+    setPanel({
+      index,
+      isNew: true,
+      draft: {
+        phaseKey: freshKey(specs),
+        displayName: format(m.newPhaseName),
         entryTrigger: 'manual',
         plannedEntryAt: null,
         entryOffset: null,
@@ -190,62 +241,280 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         permissionProfile: [],
         itemScope: [],
         participantScope: [],
-        actualEntryAt: null,
       },
-      ...editing.slice(at + 1),
-    ])
+    })
+  }
 
-  // a refusal about the plan as a whole rather than about one row
-  const planRefusals = refusals.filter((refusal) => refusal.index === undefined)
-  const refusalsAt = (index: number) => refusals.filter((refusal) => refusal.index === index)
+  const saveFromPanel = (state: PanelState) => {
+    const specs = server.map(specOf)
+    if (state.isNew) specs.splice(state.index, 0, state.draft)
+    else specs[state.index] = state.draft
+    savePlan.mutate(specs)
+  }
 
-  return (
-    <Panel
-      title={format(m.phasesTitle)}
-      description={format(m.phasesHint)}
-      actions={
-        <div className="flex items-end gap-2">
-          <Field label={format(m.templateLabel)}>
-            {(id) => (
-              <select
-                id={id}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-                value={templateId}
-                disabled={!draftBatch}
-                onChange={(event) => setTemplateId(event.target.value)}
+  const removeFromPanel = (state: PanelState) => {
+    savePlan.mutate(server.map(specOf).filter((_, at) => at !== state.index))
+  }
+
+  const edit = (change: Partial<Draft>) =>
+    setPanel((current) =>
+      current ? { ...current, draft: { ...current.draft, ...change } } : current,
+    )
+
+  const applyPreset = () => {
+    const preset = (presets.data?.items ?? []).find((row) => row.id === presetId)
+    const spec = preset?.phases[0]
+    if (!spec) return
+    // a preset is a starting point: it fills the name and the actions, and
+    // everything stays editable afterwards
+    edit({ displayName: spec.displayName, permissionProfile: spec.permissionProfile ?? [] })
+  }
+
+  // what one row of the list says about when its stage runs
+  const startLine = (phase: PhaseDto) => {
+    if (phase.actualEntryAt !== null)
+      return format(m.startedAt, { time: timeOf(phase.actualEntryAt) })
+    if (phase.entryTrigger === 'publication') return format(m.publicationStart)
+    if (phase.plannedEntryAt !== null)
+      return format(m.startsAt, { time: timeOf(phase.plannedEntryAt) })
+    if (phase.entryOffset !== null)
+      return format(m.offsetDaysAfter, { days: phase.entryOffset.days ?? 0 })
+    if (phase.entryTrigger === 'manual')
+      return phase.estimatedEntryAt !== null
+        ? format(m.targetAt, { time: timeOf(phase.estimatedEntryAt) })
+        : format(m.manualStart)
+    return format(m.timeUndecided)
+  }
+
+  const panelBody = (state: PanelState) => {
+    const draft = state.draft
+    const entered = !state.isNew && server[state.index]?.actualEntryAt != null
+    const ended = !state.isNew && state.index < currentIndex
+    const triggerFrozen = readOnly || (active && !state.isNew)
+    // an interval that has already produced a calendar time is settled
+    const offsetSettled = draft.entryOffset !== null && draft.plannedEntryAt !== null
+    return (
+      <>
+        {refused.length > 0 && (
+          <Feedback message={`${format(m.planRefusedIntro)} ${refused.join(' ')}`} />
+        )}
+        <Feedback message={failure} />
+
+        <Field label={format(m.displayNameLabel)}>
+          {(id) => (
+            <Input
+              id={id}
+              value={draft.displayName}
+              disabled={readOnly}
+              onChange={(event) => edit({ displayName: event.target.value })}
+            />
+          )}
+        </Field>
+
+        {!readOnly && !entered && (presets.data?.items ?? []).length > 0 && (
+          <fieldset className="space-y-2 rounded-md border p-3">
+            <legend className="px-1 text-sm font-medium">{format(m.phaseTemplateLegend)}</legend>
+            <p className="text-xs text-muted-foreground">{format(m.phaseTemplateHint)}</p>
+            <div className="flex gap-2">
+              <NativeSelect
+                aria-label={format(m.phaseTemplateLegend)}
+                value={presetId}
+                onChange={(event) => setPresetId(event.target.value)}
               >
-                <option value="">{format(m.templateEmpty)}</option>
-                {(templates.data?.items ?? []).map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
+                <option value="">{format(m.phaseTemplateChoose)}</option>
+                {(presets.data?.items ?? []).map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
+              <Button size="sm" variant="outline" disabled={presetId === ''} onClick={applyPreset}>
+                {format(m.phaseTemplateApply)}
+              </Button>
+            </div>
+          </fieldset>
+        )}
+
+        {entered ? (
+          <p className="text-sm">
+            {format(m.startedAt, { time: timeOf(server[state.index]!.actualEntryAt!) })}
+          </p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <RadioGroup
+                legend={format(m.triggerLegend)}
+                name="entry-trigger"
+                options={[
+                  {
+                    value: 'scheduled',
+                    label: format(m.triggerScheduled),
+                    hint: format(m.triggerScheduledHint),
+                  },
+                  {
+                    value: 'manual',
+                    label: format(m.triggerManual),
+                    hint: format(m.triggerManualHint),
+                  },
+                  {
+                    value: 'publication',
+                    label: format(m.triggerPublication),
+                    hint: format(m.triggerPublicationHint),
+                  },
+                ]}
+                selected={draft.entryTrigger}
+                disabled={triggerFrozen}
+                onChange={(next) =>
+                  edit({
+                    entryTrigger: next as Draft['entryTrigger'],
+                    plannedEntryAt: null,
+                    entryOffset: null,
+                  })
+                }
+              />
+              {active && !state.isNew && !readOnly && (
+                <p className="text-xs text-muted-foreground">{format(m.triggerFrozen)}</p>
+              )}
+            </div>
+
+            {draft.entryTrigger === 'scheduled' && offsetSettled && (
+              <>
+                <Field label={format(m.plannedLabel)}>
+                  {(id) => (
+                    <Input
+                      id={id}
+                      type="datetime-local"
+                      value={toLocalInput(draft.plannedEntryAt)}
+                      disabled
+                    />
+                  )}
+                </Field>
+                <p className="text-xs text-muted-foreground">{format(m.offsetFrozen)}</p>
+              </>
             )}
-          </Field>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!draftBatch || templateId === '' || applyTemplate.isPending}
-            onClick={() => applyTemplate.mutate()}
-          >
-            {format(m.templateApply)}
-          </Button>
-        </div>
-      }
-    >
-      <Feedback message={failure} />
-      {planRefusals.length > 0 && (
-        <Feedback
-          message={`${format(m.planRefused)} ${planRefusals
-            .map((refusal) => {
-              const sentence = refusalMessage(refusal.reason)
-              return sentence ? format(sentence) : refusal.reason
-            })
-            .join(' ')}`}
+            {draft.entryTrigger === 'scheduled' && !offsetSettled && (
+              <>
+                <RadioGroup
+                  legend={format(m.timeModeLegend)}
+                  name="time-mode"
+                  options={[
+                    { value: 'date', label: format(m.timeModeDate) },
+                    {
+                      value: 'offset',
+                      label: format(m.timeModeOffset),
+                      hint: format(m.offsetHint),
+                    },
+                  ]}
+                  selected={draft.entryOffset !== null ? 'offset' : 'date'}
+                  disabled={readOnly}
+                  onChange={(next) =>
+                    edit(
+                      next === 'offset'
+                        ? { entryOffset: { days: 1 }, plannedEntryAt: null }
+                        : { entryOffset: null },
+                    )
+                  }
+                />
+                {draft.entryOffset !== null ? (
+                  <Field label={format(m.offsetLabel)}>
+                    {(id) => (
+                      <Input
+                        id={id}
+                        type="number"
+                        min={1}
+                        className="w-28"
+                        value={draft.entryOffset?.days ?? 0}
+                        disabled={readOnly}
+                        onChange={(event) =>
+                          edit({ entryOffset: { days: Number(event.target.value) } })
+                        }
+                      />
+                    )}
+                  </Field>
+                ) : (
+                  <Field label={format(m.plannedLabel)}>
+                    {(id) => (
+                      <Input
+                        id={id}
+                        type="datetime-local"
+                        value={toLocalInput(draft.plannedEntryAt)}
+                        disabled={readOnly}
+                        onChange={(event) =>
+                          edit({ plannedEntryAt: fromLocalInput(event.target.value) })
+                        }
+                      />
+                    )}
+                  </Field>
+                )}
+              </>
+            )}
+
+            {draft.entryTrigger === 'manual' && (
+              <Field label={format(m.plannedSlaLabel)} hint={format(m.plannedSlaHint)}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="datetime-local"
+                    value={toLocalInput(draft.estimatedEntryAt)}
+                    disabled={readOnly}
+                    onChange={(event) =>
+                      edit({ estimatedEntryAt: fromLocalInput(event.target.value) })
+                    }
+                  />
+                )}
+              </Field>
+            )}
+            {draft.entryTrigger === 'scheduled' && (
+              <Field label={format(m.estimatedLabel)} hint={format(m.estimatedHint)}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="datetime-local"
+                    value={toLocalInput(draft.estimatedEntryAt)}
+                    disabled={readOnly}
+                    onChange={(event) =>
+                      edit({ estimatedEntryAt: fromLocalInput(event.target.value) })
+                    }
+                  />
+                )}
+              </Field>
+            )}
+          </>
+        )}
+
+        <PermissionProfileEditor
+          legend={format(m.profileTitle)}
+          hint={format(m.profileHint)}
+          profile={draft.permissionProfile}
+          disabled={readOnly || ended}
+          onChange={(next) => edit({ permissionProfile: next })}
         />
+      </>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">{format(m.phasesHint)}</p>
+        {!readOnly && (
+          <div className="flex shrink-0 gap-2">
+            {batch.status === 'draft' && (
+              <Button size="sm" variant="outline" onClick={() => setTimelineDialog(true)}>
+                {format(m.timelineTemplateApply)}
+              </Button>
+            )}
+            <Button size="sm" onClick={openNew}>
+              {format(m.addPhase)}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {panel === null && <Feedback message={failure} />}
+      {panel === null && refused.length > 0 && (
+        <Feedback message={`${format(m.planRefusedIntro)} ${refused.join(' ')}`} />
       )}
-      {!draftBatch && templateId !== '' && <p className="text-xs">{format(m.templateDraftOnly)}</p>}
 
       <AsyncSection
         pending={phases.isPending}
@@ -254,187 +523,194 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void phases.refetch()}
       >
-        {editing.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{format(m.phasesEmpty)}</p>
+        {server.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-8 text-center">
+            <p className="text-sm text-muted-foreground">{format(m.phasesEmpty)}</p>
+          </div>
         ) : (
-          <ol className="space-y-4">
-            {editing.map((draft, index) => {
-              const entered = draft.actualEntryAt !== null
+          <ol className="divide-y rounded-lg border">
+            {server.map((phase, index) => {
               const ended = index < currentIndex
-              const rowRefusals = refusalsAt(index)
+              const current = index === currentIndex
+              const upNext = active && index === currentIndex + 1
               return (
                 <li
-                  key={draft.id ?? `new-${index}`}
-                  className="space-y-3 rounded-md border p-3"
-                  aria-label={draft.displayName}
+                  key={phase.id}
+                  aria-label={phase.displayName}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Field label={format(m.displayNameLabel)}>
-                      {(id) => (
-                        <Input
-                          id={id}
-                          value={draft.displayName}
-                          disabled={readOnly}
-                          onChange={(event) => edit(index, { displayName: event.target.value })}
-                        />
-                      )}
-                    </Field>
-                    <span className="text-xs text-muted-foreground">
-                      {format(
-                        draft.entryTrigger === 'scheduled'
-                          ? m.triggerScheduled
-                          : draft.entryTrigger === 'manual'
-                            ? m.triggerManual
-                            : m.triggerPublication,
-                      )}
-                    </span>
-                    {index === currentIndex && (
-                      <span className="rounded bg-primary/10 px-2 py-0.5 text-xs">
-                        {format(m.currentBadge)}
-                      </span>
-                    )}
-                    {ended && (
-                      <span className="text-xs text-muted-foreground">{format(m.endedBadge)}</span>
-                    )}
-                  </div>
-
-                  {/* the three time shapes: exactly one is editable per row */}
-                  {entered ? (
-                    <p className="text-sm">
-                      {format(m.enteredLabel)}:{' '}
-                      <time dateTime={draft.actualEntryAt ?? undefined}>
-                        {new Date(draft.actualEntryAt!).toLocaleString()}
-                      </time>
-                    </p>
-                  ) : draft.entryTrigger === 'publication' ? (
-                    <p className="text-sm text-muted-foreground">{format(m.pendingLabel)}</p>
-                  ) : draft.entryOffset !== null ? (
-                    <div className="flex flex-wrap items-end gap-2">
-                      <Field label={format(m.offsetLabel)}>
-                        {(id) => (
-                          <Input
-                            id={id}
-                            type="number"
-                            min={0}
-                            className="w-24"
-                            value={draft.entryOffset?.days ?? 0}
-                            disabled={readOnly || draft.plannedEntryAt !== null}
-                            onChange={(event) =>
-                              edit(index, {
-                                entryOffset: {
-                                  ...draft.entryOffset,
-                                  days: Number(event.target.value),
-                                },
-                              })
-                            }
-                          />
-                        )}
-                      </Field>
-                      <span className="pb-2 text-xs">{format(m.offsetDays)}</span>
-                      {draft.plannedEntryAt !== null && (
-                        <p className="pb-2 text-xs text-muted-foreground">
-                          {format(m.offsetFrozen)}
-                        </p>
-                      )}
+                  <span
+                    className={
+                      current
+                        ? 'flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground'
+                        : 'flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground'
+                    }
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{phase.displayName}</span>
+                      {current && <Badge>{format(m.currentBadge)}</Badge>}
+                      {ended && <Badge variant="secondary">{format(m.endedBadge)}</Badge>}
+                      {upNext && <Badge variant="outline">{format(m.upNextBadge)}</Badge>}
                     </div>
-                  ) : (
-                    <Field
-                      label={format(
-                        draft.entryTrigger === 'manual' ? m.plannedSlaLabel : m.plannedLabel,
-                      )}
-                      {...(draft.entryTrigger === 'manual'
-                        ? { hint: format(m.plannedSlaHint) }
-                        : {})}
-                    >
-                      {(id) => (
-                        <Input
-                          id={id}
-                          type="datetime-local"
-                          value={toLocalInput(draft.plannedEntryAt)}
-                          disabled={readOnly}
-                          onChange={(event) =>
-                            edit(index, { plannedEntryAt: fromLocalInput(event.target.value) })
-                          }
-                        />
-                      )}
-                    </Field>
-                  )}
-
-                  <PermissionProfileEditor
-                    legend={format(m.profileTitle)}
-                    profile={draft.permissionProfile}
-                    disabled={readOnly || ended}
-                    onChange={(next) => edit(index, { permissionProfile: next })}
-                  />
-
-                  {rowRefusals.map((refusal) => {
-                    const sentence = refusalMessage(refusal.reason)
-                    return (
-                      <Feedback
-                        key={refusal.reason}
-                        message={sentence ? format(sentence) : refusal.reason}
-                      />
-                    )
-                  })}
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {!readOnly && (
-                      <Button size="sm" variant="ghost" onClick={() => insertAfter(index)}>
-                        {format(m.insertPhase)}
+                    <p className="text-xs text-muted-foreground">
+                      {startLine(phase)}
+                      {' · '}
+                      {format(m.opensCount, { count: phase.permissionProfile.length })}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {upNext && phase.entryTrigger !== 'publication' && (
+                      <Button
+                        size="sm"
+                        variant={phase.entryTrigger === 'manual' ? 'default' : 'outline'}
+                        onClick={() =>
+                          setStarting({
+                            id: phase.id,
+                            name: phase.displayName,
+                            force: phase.entryTrigger !== 'manual',
+                          })
+                        }
+                      >
+                        {format(phase.entryTrigger === 'manual' ? m.advance : m.advanceForce)}
                       </Button>
                     )}
-                    {batch.status === 'active' && index === currentIndex + 1 && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={advance.isPending || draft.id === undefined}
-                          onClick={() =>
-                            advance.mutate({
-                              to: draft.id!,
-                              force: draft.entryTrigger !== 'manual',
-                            })
-                          }
-                        >
-                          {format(draft.entryTrigger === 'manual' ? m.advance : m.advanceForce)}
-                        </Button>
-                        {draft.entryTrigger !== 'manual' && (
-                          <Field label={format(m.advanceReason)} hint={format(m.advanceForceHint)}>
-                            {(id) => (
-                              <Input
-                                id={id}
-                                value={reason}
-                                onChange={(event) => setReason(event.target.value)}
-                              />
-                            )}
-                          </Field>
-                        )}
-                      </>
-                    )}
+                    <Button size="sm" variant="ghost" onClick={() => openEditor(index)}>
+                      {format(readOnly ? m.viewPhase : m.editPhase)}
+                    </Button>
                   </div>
                 </li>
               )
             })}
           </ol>
         )}
+      </AsyncSection>
 
-        {!readOnly && editing.length > 0 && (
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              disabled={savePlan.isPending}
-              onClick={() => savePlan.mutate(editing)}
-            >
-              {format(m.save)}
-            </Button>
-            {drafts !== null && (
-              <Button size="sm" variant="outline" onClick={() => setDrafts(null)}>
-                {format(m.cancel)}
+      {/* one stage, edited in place */}
+      <SidePanel
+        open={panel !== null}
+        title={panel?.draft.displayName ?? format(m.phasePanelTitle)}
+        description={format(m.phasePanelHint)}
+        onClose={() => setPanel(null)}
+        footer={
+          <>
+            {!readOnly && panel !== null && !panel.isNew && batch.status === 'draft' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mr-auto text-destructive"
+                onClick={() => setRemoving(true)}
+              >
+                {format(m.removePhase)}
               </Button>
             )}
-          </div>
+            <Button size="sm" variant="outline" onClick={() => setPanel(null)}>
+              {format(readOnly ? m.close : m.cancel)}
+            </Button>
+            {!readOnly && panel !== null && (
+              <Button size="sm" disabled={savePlan.isPending} onClick={() => saveFromPanel(panel)}>
+                {format(m.save)}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {panel !== null && panelBody(panel)}
+      </SidePanel>
+
+      {/* a ready-made timeline replaces a draft's whole plan */}
+      <FormDialog
+        open={timelineDialog}
+        title={format(m.timelineTemplateTitle)}
+        description={format(m.timelineTemplateBody)}
+        onClose={() => setTimelineDialog(false)}
+        footer={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setTimelineDialog(false)}>
+              {format(m.cancel)}
+            </Button>
+            <Button
+              size="sm"
+              disabled={timelineId === '' || applyTimeline.isPending}
+              onClick={() => applyTimeline.mutate(timelineId)}
+            >
+              {format(m.timelineTemplateApply)}
+            </Button>
+          </>
+        }
+      >
+        {(timelines.data?.items ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">{format(m.timelineTemplateEmpty)}</p>
+        ) : (
+          <Field label={format(m.timelineTemplateLabel)}>
+            {(id) => (
+              <NativeSelect
+                id={id}
+                value={timelineId}
+                onChange={(event) => setTimelineId(event.target.value)}
+              >
+                <option value="">{format(m.timelineTemplateChoose)}</option>
+                {(timelines.data?.items ?? []).map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            )}
+          </Field>
         )}
-      </AsyncSection>
-    </Panel>
+      </FormDialog>
+
+      {/* starting a stage by hand, with a reason when it jumps its time */}
+      <ConfirmDialog
+        open={starting !== null && !starting.force}
+        title={format(m.confirmStartPhase, { name: starting?.name ?? '' })}
+        confirmLabel={format(m.advance)}
+        cancelLabel={format(m.cancel)}
+        pending={advance.isPending}
+        onConfirm={() => starting && advance.mutate({ to: starting.id, force: false, reason: '' })}
+        onCancel={() => setStarting(null)}
+      />
+      <FormDialog
+        open={starting !== null && starting.force}
+        title={format(m.advanceForceTitle)}
+        description={format(m.advanceForceBody)}
+        onClose={() => setStarting(null)}
+        footer={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setStarting(null)}>
+              {format(m.cancel)}
+            </Button>
+            <Button
+              size="sm"
+              disabled={reason.trim() === '' || advance.isPending}
+              onClick={() =>
+                starting && advance.mutate({ to: starting.id, force: true, reason: reason.trim() })
+              }
+            >
+              {format(m.advanceForce)}
+            </Button>
+          </>
+        }
+      >
+        <Field label={format(m.advanceReason)}>
+          {(id) => (
+            <Input id={id} value={reason} onChange={(event) => setReason(event.target.value)} />
+          )}
+        </Field>
+      </FormDialog>
+
+      <ConfirmDialog
+        open={removing}
+        title={format(m.confirmRemovePhase, { name: panel?.draft.displayName ?? '' })}
+        confirmLabel={format(m.removePhase)}
+        cancelLabel={format(m.cancel)}
+        pending={savePlan.isPending}
+        onConfirm={() => panel && removeFromPanel(panel)}
+        onCancel={() => setRemoving(false)}
+      />
+    </div>
   )
 }

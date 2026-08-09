@@ -349,12 +349,16 @@ export class Assessment extends Context.Service<
     ) => Effect.Effect<ActionDecision, BatchNotFound>
     readonly listTemplates: (
       tenantId: string,
-      filter: { after?: { name: string; id: string }; limit: number },
+      filter: { kind?: 'timeline' | 'phase'; after?: { name: string; id: string }; limit: number },
       as: Principal,
     ) => Effect.Effect<readonly TemplateRow[], AccessDenied>
     readonly createTemplate: (
       tenantId: string,
-      input: { name: string; phases: readonly PhaseSpecInput[] },
+      input: {
+        name: string
+        kind?: 'timeline' | 'phase'
+        phases: readonly PhaseSpecInput[]
+      },
       as: Principal,
     ) => Effect.Effect<TemplateRow, AccessDenied | TemplateConflict | PlanInvalid>
     readonly updateTemplate: (
@@ -730,6 +734,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
         ? [{ reason: 'scope-in-template', phaseId: null, index }]
         : [],
     )
+
+  // A phase template describes one phase's options - its name and what it
+  // opens. When and how a phase starts belongs to the batch that has it, so
+  // the stored spec is exactly one entry, manual by convention, with no times.
+  const phaseTemplateShapeRefusals = (specs: readonly PhaseSpecInput[]): PlanRefusal[] =>
+    specs.length === 1 &&
+    specs[0]!.entryTrigger === 'manual' &&
+    specs[0]!.plannedEntryAt == null &&
+    specs[0]!.entryOffset == null &&
+    specs[0]!.estimatedEntryAt == null
+      ? []
+      : [{ reason: 'phase-template-shape', phaseId: null }]
 
   /** allowance rules the engine has no vocabulary for */
   const scopeRefusals = (
@@ -1112,6 +1128,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
               }
               const template = yield* oneTemplate(tenantId, body.fromTemplateId)
               if (!template) return yield* new TemplateNotFound()
+              // a phase template describes one phase's options, not a plan;
+              // only a timeline may replace the timeline
+              if (template.kind !== 'timeline') {
+                return yield* new PlanInvalid({
+                  refusals: [{ reason: 'template-not-a-timeline', phaseId: null }],
+                })
+              }
               const specs = template.phases as unknown as readonly PhaseSpecInput[]
               const review = reviewPlan(specs.map(specToEngine), now)
               if (review.refusals.length > 0) {
@@ -1389,15 +1412,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     createTemplate: Effect.fn('Assessment.createTemplate')(function* (tenantId, input, as) {
       yield* templatePermission(as)
+      const kind = input.kind ?? 'timeline'
       // structural rules only; the clock is judged at application. Scopes
       // name batch-local rows, so a tenant-level template cannot carry them.
       const review = reviewPlan(input.phases.map(specToEngine), null)
       const scoped = templateScopeRefusals(input.phases)
-      if (review.refusals.length + scoped.length > 0) {
-        return yield* new PlanInvalid({ refusals: [...review.refusals, ...scoped] })
+      const shaped = kind === 'phase' ? phaseTemplateShapeRefusals(input.phases) : []
+      if (review.refusals.length + scoped.length + shaped.length > 0) {
+        return yield* new PlanInvalid({
+          refusals: [...review.refusals, ...scoped, ...shaped],
+        })
       }
       return yield* withDb(
-        insertTemplate({ tenantId, name: input.name, phases: input.phases }),
+        insertTemplate({ tenantId, name: input.name, kind, phases: input.phases }),
       ).pipe(
         translateConstraints(templateConstraints),
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
@@ -1408,10 +1435,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, templateId, input, as) {
         yield* templatePermission(as)
         if (input.phases !== undefined) {
+          const existing = yield* dieQuery(withDb(oneTemplate(tenantId, templateId)))
+          if (!existing) return yield* new TemplateNotFound()
           const review = reviewPlan(input.phases.map(specToEngine), null)
           const scoped = templateScopeRefusals(input.phases)
-          if (review.refusals.length + scoped.length > 0) {
-            return yield* new PlanInvalid({ refusals: [...review.refusals, ...scoped] })
+          const shaped = existing.kind === 'phase' ? phaseTemplateShapeRefusals(input.phases) : []
+          if (review.refusals.length + scoped.length + shaped.length > 0) {
+            return yield* new PlanInvalid({
+              refusals: [...review.refusals, ...scoped, ...shaped],
+            })
           }
         }
         const updated = yield* withDb(updateTemplateRow(tenantId, templateId, input)).pipe(
@@ -1740,6 +1772,7 @@ const specDto = (spec: PhaseSpecInput) => ({
 const templateDto = (row: TemplateRow) => ({
   id: row.id,
   name: row.name,
+  kind: row.kind as 'timeline' | 'phase',
   version: row.version,
   phases: (row.phases as unknown as readonly PhaseSpecInput[]).map(specDto),
 })
@@ -2046,6 +2079,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const found = yield* assessment.listTemplates(
           principal.tenantId,
           {
+            ...(query.kind !== undefined ? { kind: query.kind } : {}),
             ...(key !== undefined ? { after: { name: key[0]!, id: key[1]! } } : {}),
             limit: limit + 1,
           },
@@ -2069,7 +2103,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const principal = yield* CurrentUser
         const template = yield* assessment.createTemplate(
           principal.tenantId,
-          { name: payload.name, phases: yield* Effect.forEach(payload.phases, parseSpec) },
+          {
+            name: payload.name,
+            ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+            phases: yield* Effect.forEach(payload.phases, parseSpec),
+          },
           principal,
         )
         return { template: templateDto(template) }

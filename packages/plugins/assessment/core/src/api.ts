@@ -201,9 +201,12 @@ const rosterDiff = Schema.Struct({
   scopeIntegrity: Schema.Array(Schema.Struct({ nodeId: Schema.String })),
 })
 
+const templateKind = Schema.Literals(['timeline', 'phase'])
+
 const templateView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  kind: templateKind,
   version: Schema.Number,
   phases: Schema.Array(phaseSpec),
 })
@@ -445,7 +448,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('listTemplates', '/assessment/phase-templates', {
-      query: Schema.Struct({ ...pageQuery }),
+      query: Schema.Struct({ ...pageQuery, kind: Schema.optional(templateKind) }),
       success: pageOf(templateView),
       error: [AccessDenied, BadRequest],
     }).middleware(Authenticated),
@@ -454,6 +457,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('createTemplate', '/assessment/phase-templates', {
       payload: Schema.Struct({
         name: trimmedName(100),
+        kind: Schema.optional(templateKind),
         phases: Schema.Array(phaseSpec),
       }),
       success: Schema.Struct({ template: templateView }),
