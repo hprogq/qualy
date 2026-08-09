@@ -28,7 +28,11 @@ const plugin = Plugin.define(
     component: Ui.react('./client/RolesPage.tsx'),
     layout: ADMIN_SHELL,
     visibility: permissionOf('iam.role.read'),
-    navigation: { label: message('rbac/navigation/roles', 'Roles'), order: 32 },
+    navigation: {
+      label: message('rbac/navigation/roles', 'Roles'),
+      order: 32,
+      group: 'org/directory',
+    },
   }),
   Access.permissions('rbac', permissions),
   // rbac owns the catalog: contributors declare, this compiles the value

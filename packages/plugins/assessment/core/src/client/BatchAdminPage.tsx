@@ -6,6 +6,8 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { Reveal } from '@qualy/ui/reveal'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { assessmentMessages as m } from './i18n.ts'
@@ -92,7 +94,7 @@ export default function BatchAdminPage() {
   // the list, until a batch is chosen
   if (selected === '') {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6 p-6">
+      <Reveal className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <h1 className="text-xl font-semibold">{format(m.batchesTitle)}</h1>
@@ -107,6 +109,13 @@ export default function BatchAdminPage() {
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void batches.refetch()}
+          skeleton={
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          }
         >
           {rows.length === 0 ? (
             <div className="rounded-lg border border-dashed p-10 text-center">
@@ -154,15 +163,15 @@ export default function BatchAdminPage() {
             open(batchId)
           }}
         />
-      </div>
+      </Reveal>
     )
   }
 
   // ------------------------------------------------------------------
   // one batch, opened
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 p-6">
-      <Button size="sm" variant="ghost" onClick={() => setSelected('')}>
+    <Reveal className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
+      <Button size="sm" variant="ghost" className="w-fit" onClick={() => setSelected('')}>
         ← {format(m.backToList)}
       </Button>
 
@@ -249,6 +258,6 @@ export default function BatchAdminPage() {
           </div>
         )}
       </AsyncSection>
-    </div>
+    </Reveal>
   )
 }

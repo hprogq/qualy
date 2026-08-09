@@ -9,6 +9,7 @@ import { ADMIN_SHELL, BLANK_SHELL } from '@qualy/ui-contract'
 const plugin = Plugin.define(
   '@qualy/plugin-layout-default',
   { dependsOn: ['@qualy/plugin-ui-registry'] },
+  Ui.i18n('./client/i18n.ts'),
   Ui.layout({
     contract: ADMIN_SHELL,
     provider: 'layout-default/admin',

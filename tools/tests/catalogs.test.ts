@@ -52,6 +52,25 @@ const declaredCatalogs = async () => {
 }
 const clientPlugins = await declaredCatalogs()
 
+/** walks any declaration value and records every UiText message it carries */
+const collectMessageIds = (value: unknown, into: Set<string>): void => {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectMessageIds(entry, into)
+    return
+  }
+  if (value === null || typeof value !== 'object') return
+  const text = value as { kind?: unknown; id?: unknown; defaultMessage?: unknown }
+  if (
+    text.kind === 'message' &&
+    typeof text.id === 'string' &&
+    typeof text.defaultMessage === 'string'
+  ) {
+    into.add(text.id)
+    return
+  }
+  for (const entry of Object.values(value)) collectMessageIds(entry, into)
+}
+
 describe('plugin message catalogs', () => {
   it.each(clientPlugins)(
     '$name ships a complete catalog for every locale',
@@ -67,11 +86,10 @@ describe('plugin message catalogs', () => {
         (await import(resolvePluginModuleUrl(name, manifestPath()))) as { default?: unknown }
       ).default
       if (isPluginDescriptor(descriptor)) {
+        // every translatable message anywhere in the surface declarations:
+        // page navigation labels, collection values (navigation groups, ...)
         for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {
-          for (const page of surfaces.pages ?? []) {
-            const label = page.navigation?.label
-            if (label && label.kind === 'message') declared.add(label.id)
-          }
+          collectMessageIds(surfaces, declared)
         }
       }
       const namespace = module.catalogs.namespace

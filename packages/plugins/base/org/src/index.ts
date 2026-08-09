@@ -4,7 +4,7 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
+import { ADMIN_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
@@ -31,7 +31,40 @@ const plugin = Plugin.define(
     component: Ui.react('./client/OrgPage.tsx'),
     layout: ADMIN_SHELL,
     visibility: permissionOf('org.tree.read'),
-    navigation: { label: message('org/navigation/organization', 'Organization'), order: 20 },
+    navigation: {
+      label: message('org/navigation/organization', 'Organization'),
+      order: 20,
+      group: 'org/directory',
+    },
+  }),
+  // the sidebar sections this domain anchors: a top-level Administration
+  // heading, and inside it one collapsible cluster where auth and rbac also
+  // file their pages by id
+  Ui.surfaces({
+    collections: [
+      {
+        key: navigationGroups.key,
+        id: 'org/admin',
+        value: {
+          id: 'org/admin',
+          label: message('org/nav-group/admin', 'Administration'),
+          order: 10,
+        },
+        visibility: PUBLIC,
+      },
+      {
+        key: navigationGroups.key,
+        id: 'org/directory',
+        value: {
+          id: 'org/directory',
+          label: message('org/nav-group/directory', 'Organization & users'),
+          order: 10,
+          parent: 'org/admin',
+          icon: 'users',
+        },
+        visibility: PUBLIC,
+      },
+    ],
   }),
   Access.permissions('org', permissions),
   Api.group(orgApiGroup, orgApiHandlers),

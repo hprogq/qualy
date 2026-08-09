@@ -51,7 +51,12 @@ export interface PageOptions {
   readonly component: ClientComponentRef
   readonly layout: LayoutContractId
   readonly visibility: UiVisibility
-  readonly navigation?: { readonly label: UiText; readonly icon?: string; readonly order?: number }
+  readonly navigation?: {
+    readonly label: UiText
+    readonly icon?: string
+    readonly order?: number
+    readonly group?: NamespacedId
+  }
 }
 
 /** the feature and the identity it declared, one value */

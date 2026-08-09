@@ -1,7 +1,8 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
-  'assessment/navigation/batches': '综合测评',
+  'assessment/navigation/batches': '批次管理',
+  'assessment/nav-group/main': '综合测评',
 
   'assessment/roster/count': '{count, plural, =0 {还没有参评人员} other {共 # 人}}',
   'assessment/roster/holders': '{count, plural, =0 {该级暂无人可审核} other {该级 # 人可审核}}',
@@ -13,6 +14,8 @@ export default {
   'assessment/phase/opens-count': '{count, plural, =0 {暂未开放任何操作} other {开放 # 项操作}}',
   'assessment/batch/units-count': '{count} 个单位',
   'assessment/roster/also-active': '已在参加：{batches}',
+  'assessment/roster/no-business-no': '未绑定学工号',
+  'assessment/roster/included-at': '{time} 加入名单',
   'assessment/phase/remove-confirm': '把“{name}”从安排中移除吗？',
   'assessment/phase/start-confirm': '现在开始“{name}”吗？',
 
@@ -39,6 +42,9 @@ export default {
   'assessment/batch/user-types': '这些单位里，哪些人参加',
   'assessment/batch/user-types-empty': '暂时没有可选的人员类型。',
   'assessment/action/create': '创建批次',
+  'assessment/action/pick-date': '选择日期',
+  'assessment/action/confirm': '确定',
+  'assessment/batch/choose-units': '选择单位…',
   'assessment/action/save': '保存',
   'assessment/action/cancel': '取消',
   'assessment/action/close': '关闭',

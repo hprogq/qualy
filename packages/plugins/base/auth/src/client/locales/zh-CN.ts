@@ -9,6 +9,7 @@ export default {
   'auth/login/renderer-missing': '该登录方式暂不可用',
   'auth/action/sign-in': '登录',
   'auth/action/sign-out': '退出登录',
+  'auth/session/no-business-no': '未绑定学工号',
   'auth/navigation/users': '用户',
   'auth/navigation/user-types': '用户类型',
 

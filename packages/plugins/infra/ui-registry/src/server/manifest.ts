@@ -79,6 +79,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
               target: { kind: 'page' as const, pageId: page.page.id },
               ...(navigation.icon === undefined ? {} : { icon: navigation.icon }),
               ...(navigation.order === undefined ? {} : { order: navigation.order }),
+              ...(navigation.group === undefined ? {} : { group: navigation.group }),
             } satisfies NavigationItem,
             visibility: page.visibility,
             order: navigation.order,

@@ -6,6 +6,8 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { PersonCell } from '@qualy/ui/person'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { assessmentMessages as m } from './i18n.ts'
@@ -111,6 +113,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void diff.refetch()}
+          skeleton={<Skeleton className="h-10 w-full" />}
         >
           {quiet ? (
             <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
@@ -278,6 +281,13 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void participants.refetch()}
+          skeleton={
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          }
         >
           {rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">{format(m.rosterEmpty)}</p>
@@ -287,7 +297,6 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{format(m.columnParticipant)}</TableHead>
-                    <TableHead>{format(m.columnBusinessNo)}</TableHead>
                     <TableHead>{format(m.columnParticipantStatus)}</TableHead>
                     <TableHead />
                   </TableRow>
@@ -295,9 +304,30 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                 <TableBody>
                   {rows.map((row) => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium">{row.displayName}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {row.businessNo ?? '—'}
+                      <TableCell>
+                        <PersonCell
+                          name={row.displayName}
+                          secondary={row.businessNo ?? format(m.noBusinessNoShort)}
+                        >
+                          <div className="flex flex-col gap-2 text-sm">
+                            <span className="font-medium">{row.displayName}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {row.businessNo ?? format(m.noBusinessNoShort)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {format(m.includedAt, {
+                                time: new Date(row.includedAt).toLocaleDateString(),
+                              })}
+                            </span>
+                            <span>
+                              {row.status === 'excluded' ? (
+                                <Badge variant="secondary">{format(m.excludedBadge)}</Badge>
+                              ) : (
+                                <Badge variant="outline">{format(m.participantActive)}</Badge>
+                              )}
+                            </span>
+                          </div>
+                        </PersonCell>
                       </TableCell>
                       <TableCell>
                         {row.status === 'excluded' ? (

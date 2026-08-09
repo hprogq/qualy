@@ -1,9 +1,41 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { cn } from '../lib/cn.ts'
 import { Alert, AlertDescription } from './alert.tsx'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './alert-dialog.tsx'
 import { Button } from './button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from './card.tsx'
-import { Label } from './label.tsx'
+import { Checkbox } from './checkbox.tsx'
+import { RadioGroup as RadioGroupRoot, RadioGroupItem } from './radio-group.tsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './dialog.tsx'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from './drawer.tsx'
+import {
+  Field as FormField,
+  FieldDescription as FormFieldDescription,
+  FieldLabel as FormFieldLabel,
+} from './field.tsx'
 import { Spinner } from './spinner.tsx'
 
 // The shape every administration screen shares. Text-free like the rest of
@@ -43,6 +75,7 @@ export function AsyncSection({
   loadingLabel,
   retryLabel,
   onRetry,
+  skeleton,
   children,
 }: {
   pending: boolean
@@ -50,9 +83,18 @@ export function AsyncSection({
   loadingLabel: string
   retryLabel: string
   onRetry: () => void
+  /** what the section looks like while it loads; a spinner when absent */
+  skeleton?: ReactNode
   children: ReactNode
 }) {
   if (pending) {
+    if (skeleton) {
+      return (
+        <div role="status" aria-label={loadingLabel}>
+          {skeleton}
+        </div>
+      )
+    }
     return (
       <div className="flex justify-center py-8">
         <Spinner aria-label={loadingLabel} />
@@ -103,11 +145,11 @@ export function Field({
 }) {
   const id = useId()
   return (
-    <div className="space-y-1">
-      <Label htmlFor={id}>{label}</Label>
+    <FormField>
+      <FormFieldLabel htmlFor={id}>{label}</FormFieldLabel>
       {children(id)}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
+      {hint && <FormFieldDescription>{hint}</FormFieldDescription>}
+    </FormField>
   )
 }
 
@@ -143,7 +185,7 @@ export function CheckboxGroup({
     onChange([...next])
   }
   return (
-    <fieldset className="space-y-2" disabled={disabled}>
+    <fieldset className="flex flex-col gap-2" disabled={disabled}>
       <legend className="text-sm font-medium">{legend}</legend>
       {options.length === 0 ? (
         <p className="text-xs text-muted-foreground">{emptyLabel}</p>
@@ -154,15 +196,14 @@ export function CheckboxGroup({
               key={option.value}
               className={cn(
                 'flex items-start gap-2 rounded-md px-2 py-1 text-sm',
-                option.disabled ? 'opacity-50' : 'hover:bg-muted/50',
+                option.disabled || disabled ? 'opacity-50' : 'hover:bg-muted/50',
               )}
             >
-              <input
-                type="checkbox"
-                className="mt-1"
+              <Checkbox
+                className="mt-0.5"
                 checked={chosen.has(option.value)}
-                disabled={option.disabled}
-                onChange={() => toggle(option.value)}
+                disabled={option.disabled ?? disabled}
+                onCheckedChange={() => toggle(option.value)}
               />
               <span className="min-w-0">
                 <span className="block truncate">{option.label}</span>
@@ -199,25 +240,27 @@ export function RadioGroup({
   disabled?: boolean
 }) {
   return (
-    <fieldset className="space-y-2" disabled={disabled}>
+    <fieldset className="flex flex-col gap-2" disabled={disabled}>
       <legend className="text-sm font-medium">{legend}</legend>
-      <div className="grid gap-1 sm:grid-cols-2">
+      <RadioGroupRoot
+        name={name}
+        value={selected}
+        onValueChange={onChange}
+        {...(disabled !== undefined ? { disabled } : {})}
+        className="grid gap-1 sm:grid-cols-2"
+      >
         {options.map((option) => (
           <label
             key={option.value}
             className={cn(
               'flex items-start gap-2 rounded-md px-2 py-1 text-sm',
-              option.disabled ? 'opacity-50' : 'hover:bg-muted/50',
+              option.disabled || disabled ? 'opacity-50' : 'hover:bg-muted/50',
             )}
           >
-            <input
-              type="radio"
-              className="mt-1"
-              name={name}
+            <RadioGroupItem
+              className="mt-0.5"
               value={option.value}
-              checked={selected === option.value}
-              disabled={option.disabled}
-              onChange={() => onChange(option.value)}
+              disabled={option.disabled ?? disabled}
             />
             <span className="min-w-0">
               <span className="block truncate">{option.label}</span>
@@ -227,33 +270,14 @@ export function RadioGroup({
             </span>
           </label>
         ))}
-      </div>
+      </RadioGroupRoot>
     </fieldset>
   )
 }
 
-// Native <dialog> mechanics shared by every overlay here: open/close follows
-// the prop, escape asks the owner instead of closing behind its back, and a
-// click on the backdrop counts as cancel.
-function useNativeDialog(open: boolean, onCancel: () => void) {
-  const ref = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const dialog = ref.current
-    if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
-  }, [open])
-  return {
-    ref,
-    onCancel: (event: { preventDefault: () => void }) => {
-      event.preventDefault()
-      onCancel()
-    },
-    onClick: (event: { target: unknown; currentTarget: unknown }) => {
-      if (event.target === event.currentTarget) onCancel()
-    },
-  }
-}
+// The overlays, over the library primitives: the same prop shape as always
+// (open/title/description/onClose/footer), so a screen never re-states how a
+// modal opens, closes or animates.
 
 // A centred modal for a short task - creating something, answering a
 // question with a form. Content and buttons arrive as children/footer so the
@@ -273,24 +297,17 @@ export function FormDialog({
   children: ReactNode
   footer?: ReactNode
 }) {
-  const dialog = useNativeDialog(open, onClose)
   return (
-    <dialog
-      ref={dialog.ref}
-      className="m-auto w-full max-w-lg rounded-lg border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-black/40"
-      aria-label={title}
-      onCancel={dialog.onCancel}
-      onClick={dialog.onClick}
-    >
-      <div className="flex max-h-[85dvh] flex-col">
-        <header className="space-y-1 border-b px-5 py-4">
-          <h2 className="text-base font-semibold">{title}</h2>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        </header>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <footer className="flex justify-end gap-2 border-t px-5 py-3">{footer}</footer>}
-      </div>
-    </dialog>
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
+        {children}
+        {footer && <DialogFooter>{footer}</DialogFooter>}
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -311,31 +328,24 @@ export function SidePanel({
   children: ReactNode
   footer?: ReactNode
 }) {
-  const dialog = useNativeDialog(open, onClose)
   return (
-    <dialog
-      ref={dialog.ref}
-      className="fixed inset-y-0 right-0 m-0 h-dvh max-h-none w-full max-w-xl border-l bg-card p-0 text-card-foreground shadow-lg backdrop:bg-black/40"
-      aria-label={title}
-      onCancel={dialog.onCancel}
-      onClick={dialog.onClick}
-    >
-      <div className="flex h-full flex-col">
-        <header className="space-y-1 border-b px-5 py-4">
-          <h2 className="text-base font-semibold">{title}</h2>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        </header>
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <footer className="flex justify-end gap-2 border-t px-5 py-3">{footer}</footer>}
-      </div>
-    </dialog>
+    <Drawer direction="right" open={open} onOpenChange={(next) => !next && onClose()}>
+      <DrawerContent className="data-[vaul-drawer-direction=right]:inset-y-2 data-[vaul-drawer-direction=right]:right-2 data-[vaul-drawer-direction=right]:rounded-lg data-[vaul-drawer-direction=right]:sm:max-w-xl">
+        <DrawerHeader>
+          <DrawerTitle>{title}</DrawerTitle>
+          {description && <DrawerDescription>{description}</DrawerDescription>}
+        </DrawerHeader>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex flex-col gap-5">{children}</div>
+        </div>
+        {footer && <DrawerFooter>{footer}</DrawerFooter>}
+      </DrawerContent>
+    </Drawer>
   )
 }
 
 // A real modal instead of window.confirm: it can say how much damage the
 // action does, it localizes, and a browser test can read and drive it.
-// Native <dialog> gives focus trapping and escape handling without a
-// dependency.
 export function ConfirmDialog({
   open,
   title,
@@ -355,25 +365,22 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const dialog = useNativeDialog(open, onCancel)
   return (
-    <dialog
-      ref={dialog.ref}
-      className="m-auto rounded-lg border bg-card p-0 text-card-foreground backdrop:bg-black/40"
-      onCancel={dialog.onCancel}
-    >
-      <div className="max-w-sm space-y-4 p-5">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={pending}>
+    <AlertDialog open={open} onOpenChange={(next) => !next && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel} disabled={pending}>
             {cancelLabel}
-          </Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={pending}>
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} disabled={pending}>
             {confirmLabel}
-          </Button>
-        </div>
-      </div>
-    </dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

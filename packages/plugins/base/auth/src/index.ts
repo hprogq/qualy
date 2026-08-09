@@ -6,7 +6,7 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Login } from '@qualy/auth-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
-import { ADMIN_SHELL, BLANK_SHELL, PUBLIC, headerActions, permissionOf } from '@qualy/ui-contract'
+import { ADMIN_SHELL, BLANK_SHELL, PUBLIC, permissionOf, sidebarUser } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
@@ -37,7 +37,11 @@ const plugin = Plugin.define(
     component: Ui.react('./client/iam/UsersPage.tsx'),
     layout: ADMIN_SHELL,
     visibility: permissionOf('auth.user.read'),
-    navigation: { label: message('auth/navigation/users', 'Users'), order: 30 },
+    navigation: {
+      label: message('auth/navigation/users', 'Users'),
+      order: 30,
+      group: 'org/directory',
+    },
   }),
   // a detail screen is reachable from the list rather than from the
   // navigation, so it declares no entry
@@ -54,15 +58,19 @@ const plugin = Plugin.define(
     component: Ui.react('./client/iam/UserTypesPage.tsx'),
     layout: ADMIN_SHELL,
     visibility: permissionOf('auth.user-type.read'),
-    navigation: { label: message('auth/navigation/user-types', 'User types'), order: 31 },
+    navigation: {
+      label: message('auth/navigation/user-types', 'User types'),
+      order: 31,
+      group: 'org/directory',
+    },
   }),
-  // the menu shows a sign-in link to anonymous visitors, so it is public
+  // the account card in the sidebar footer; it shows a sign-in link to
+  // anonymous visitors, so it is public
   Ui.slot({
-    key: headerActions.key,
+    key: sidebarUser.key,
     id: 'auth/user-menu',
     component: Ui.react('./client/UserMenu.tsx'),
     visibility: PUBLIC,
-    order: 100,
   }),
   Access.permissions('auth', permissions),
   // auth owns the sign-in registry: drivers declare, this interprets

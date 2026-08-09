@@ -1,127 +1,79 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useId,
-  useRef,
-  type ComponentProps,
-  type KeyboardEvent,
-} from 'react'
-import { cn } from '../lib/cn.ts'
+import * as React from 'react'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { Tabs as TabsPrimitive } from 'radix-ui'
 
-// Tabs over native elements, like the dialogs in this package: the WAI-ARIA
-// tabs pattern is small enough to own outright - a tablist with roving focus,
-// arrow-key movement, and panels tied to their tabs by id.
+import { cn } from '../lib/utils.ts'
 
-interface TabsContextValue {
-  value: string
-  onValueChange: (value: string) => void
-  baseId: string
-}
-
-const TabsContext = createContext<TabsContextValue | null>(null)
-
-const useTabs = () => {
-  const context = useContext(TabsContext)
-  if (!context) throw new Error('Tabs components must sit inside <Tabs>')
-  return context
-}
-
-const tabId = (baseId: string, value: string) => `${baseId}-tab-${value}`
-const panelId = (baseId: string, value: string) => `${baseId}-panel-${value}`
-
-export function Tabs({
-  value,
-  onValueChange,
+function Tabs({
   className,
-  children,
+  orientation = 'horizontal',
   ...props
-}: ComponentProps<'div'> & { value: string; onValueChange: (value: string) => void }) {
-  const baseId = useId()
+}: React.ComponentProps<typeof TabsPrimitive.Root>) {
   return (
-    <TabsContext.Provider value={{ value, onValueChange, baseId }}>
-      <div className={cn('flex flex-col gap-4', className)} {...props}>
-        {children}
-      </div>
-    </TabsContext.Provider>
+    <TabsPrimitive.Root
+      data-slot="tabs"
+      data-orientation={orientation}
+      orientation={orientation}
+      className={cn('group/tabs flex gap-2 data-[orientation=horizontal]:flex-col', className)}
+      {...props}
+    />
   )
 }
 
-export function TabsList({ className, children, ...props }: ComponentProps<'div'>) {
-  const ref = useRef<HTMLDivElement>(null)
-  const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-    const tabs = [...(ref.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])]
-    const at = tabs.findIndex((tab) => tab === document.activeElement)
-    if (at === -1 || tabs.length === 0) return
-    event.preventDefault()
-    const next = tabs[(at + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]!
-    next.focus()
-    next.click()
-  }, [])
+const tabsListVariants = cva(
+  'group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-[orientation=horizontal]/tabs:h-9 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none',
+  {
+    variants: {
+      variant: {
+        default: 'bg-muted',
+        line: 'gap-1 bg-transparent',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+    },
+  },
+)
+
+function TabsList({
+  className,
+  variant = 'default',
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.List> & VariantProps<typeof tabsListVariants>) {
   return (
-    <div
-      ref={ref}
-      role="tablist"
-      onKeyDown={onKeyDown}
+    <TabsPrimitive.List
+      data-slot="tabs-list"
+      data-variant={variant}
+      className={cn(tabsListVariants({ variant }), className)}
+      {...props}
+    />
+  )
+}
+
+function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsPrimitive.Trigger
+      data-slot="tabs-trigger"
       className={cn(
-        'inline-flex h-9 w-fit items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground',
+        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        'group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent',
+        'data-[state=active]:bg-background data-[state=active]:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground',
+        'after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:bottom-[-5px] group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-0 group-data-[orientation=vertical]/tabs:after:-right-1 group-data-[orientation=vertical]/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100',
         className,
       )}
       {...props}
-    >
-      {children}
-    </div>
+    />
   )
 }
 
-export function TabsTrigger({
-  value,
-  className,
-  children,
-  ...props
-}: ComponentProps<'button'> & { value: string }) {
-  const tabs = useTabs()
-  const selected = tabs.value === value
+function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
   return (
-    <button
-      type="button"
-      role="tab"
-      id={tabId(tabs.baseId, value)}
-      aria-selected={selected}
-      aria-controls={panelId(tabs.baseId, value)}
-      tabIndex={selected ? 0 : -1}
-      onClick={() => tabs.onValueChange(value)}
-      className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
-        selected ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground',
-        className,
-      )}
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn('flex-1 outline-none', className)}
       {...props}
-    >
-      {children}
-    </button>
+    />
   )
 }
 
-export function TabsContent({
-  value,
-  className,
-  children,
-  ...props
-}: ComponentProps<'div'> & { value: string }) {
-  const tabs = useTabs()
-  if (tabs.value !== value) return null
-  return (
-    <div
-      role="tabpanel"
-      id={panelId(tabs.baseId, value)}
-      aria-labelledby={tabId(tabs.baseId, value)}
-      tabIndex={0}
-      className={cn('outline-none', className)}
-      {...props}
-    >
-      {children}
-    </div>
-  )
-}
+export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }

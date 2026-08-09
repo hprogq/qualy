@@ -36,7 +36,12 @@ export interface PageDeclaration {
    * It inherits the page's visibility and disappears with it, so a page and
    * its menu item cannot drift into disagreeing about who may see them.
    */
-  readonly navigation?: { readonly label: UiText; readonly icon?: string; readonly order?: number }
+  readonly navigation?: {
+    readonly label: UiText
+    readonly icon?: string
+    readonly order?: number
+    readonly group?: NamespacedId
+  }
 }
 
 /** a concrete implementation of a layout contract, shipped by a layout plugin */

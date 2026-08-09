@@ -1,6 +1,8 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'org/nav-group/admin': '管理',
+  'org/nav-group/directory': '组织与用户',
   'org/navigation/organization': '组织架构',
   'org/state/load-failed': '组织数据加载失败',
   'org/state/load-failed-hint': '请检查网络或权限后重试。',

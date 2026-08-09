@@ -2585,3 +2585,43 @@ MessageDescriptor>` 为类型——引擎新增拒因而无句子即编译失败
 
 **下一步**:s7 不变(学生时间线页 + M1 ①–⑩ 全量真跑收口)。阶段/时间线模板的管理界面
 (建/改/删模板本身)尚无 UI,按需求触发再建。
+
+### 界面体系返工(2026-08-09/10,用户逐轮评审驱动)
+
+连续多轮把管理端从"手写组件"迁到真组件库,并把壳与导航契约做成开放注册。
+
+- **@qualy/ui 采纳 shadcn 官方组件栈**:经官方 CLI 拉取 25 个组件源码(dialog/drawer/
+  alert-dialog/select/dropdown-menu/popover/calendar/checkbox/radio-group/collapsible/
+  breadcrumb/field/hover-card/tabs/table/badge/avatar/skeleton/button-group 等,radix base,
+  new-york 风格),NodeNext 约束下对产物做确定性 import 改写(@/ 别名→相对+扩展名);
+  依赖 radix-ui/vaul/react-day-picker/date-fns/lucide-react/tw-animate-css/motion 归 ui 包。
+  适配层(admin.tsx)保 prop API 重建在官方结构上:FormDialog/ConfirmDialog(AlertDialog)/
+  SidePanel(右侧圆角 Drawer),CheckboxGroup/RadioGroup 内部换官方组件;**纪律:组件内部
+  样式零覆盖,只做布局层**(overlay 的 backdrop-blur 是三处组件源码内的一次性全局设计决定)。
+- **导航成为开放契约**:删除 NavGroupId 枚举——ui-contract 只供 navigationGroups
+  collection token(id/label/order/parent/icon),组由业务插件注册(org 注册"管理"与
+  "组织与用户"(users 图标,parent 嵌套成三层),assessment 注册"综合测评"),页面按命名
+  空间化 id 引用,断链回退散项;sidebarUser 槽位由 auth 贡献用户卡。catalogs 门禁升级为
+  对 surfaces 声明深扫任意 UiText(collection 值里的可译文本从此在护栏内)。
+- **壳(AdminShell)**:inset 形态(视口不滚、内容卡内滚)、三层侧栏(小字分区→可折叠簇→
+  页面)、官方 Breadcrumb、收起侧栏(负 margin 滑出,弹层不被裁)、LocalePicker 用官方
+  Select 自适应宽。
+- **会话携带站位**:SignedInUser.primaryOrgNode 加 orgType 与 lineage(ltree 祖先一查),
+  用户卡=姓名/学工号(空则灰字"未绑定学工号")/类型 Badge,菜单右弹带 [节点类型] 谱系路径。
+- **assessment 管理屏**:组织范围换**层级选择器**(TreeSelectDialog,演算抽纯函数
+  tree-selection.ts——勾父覆盖子树、取消子自动拆解为其余兄弟、结果恒为非嵌套集,6 个
+  单测钉死,ui 包 tests/ 入 tsconfig);日期字段换 DatePicker(Popover+Calendar,
+  captionLayout=dropdown,date-fns locale 随界面语言);花名册姓名列 PersonCell
+  (Avatar+HoverCard 详情);各列表 AsyncSection 加 Skeleton 骨架;页面入场 Reveal(motion);
+  新建批次对话框照官方 demo 形态(FieldGroup,官方间距,焦点环不被裁)。导航页更名"批次管理";
+  "管理测评/填报测评"二级簇留待 M2 内容落地(单成员簇只添点击)。
+- **风格试验并回退**:官网紧凑感实查为其 demo 容器的 scaled 变量层(--spacing .2rem 等),
+  搬入后用户嫌密回退;nova 风格(preset b0→registry 路径 radix-nova)整套试穿后同样回退
+  (用户 git add 快照 + git restore 复原)。**定论:new-york 默认密度**;后续微调只动
+  --spacing 一个变量。
+- **.claude/.agents/skills-lock.json 进 .gitignore**(本地 agent 工具链不同步;
+  已跟踪的 .claude/settings.json 维持原状)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **73 文件 459 全绿**(+6 树选择
+演算);`pnpm test:browser` **25 全绿**(radix 化后未改一行断言);`pnpm build` 通过;
+dev 实测截图逐轮核对(三层导航/树选择器/用户卡右弹菜单/日历/blur 弹层)。

@@ -13,6 +13,7 @@
     "react": "catalog:"
   },
   "dependencies": {
+    "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/ui": "workspace:*",
@@ -20,6 +21,7 @@
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "effect": "catalog:",
+    "lucide-react": "^0.552.0",
     "react-router": "catalog:"
   },
   "devDependencies": {

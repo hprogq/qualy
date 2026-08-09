@@ -80,6 +80,11 @@ const confirmStartPhase = defineMessage<{ name: string }>()({
   defaultMessage: 'Start “{name}” now?',
 })
 
+const includedAt = defineMessage<{ time: string }>()({
+  id: 'assessment/roster/included-at',
+  defaultMessage: 'On the list since {time}',
+})
+
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
@@ -142,6 +147,9 @@ const i18n = definePluginMessages({
       defaultMessage: 'No user types are available yet.',
     },
     create: { id: 'assessment/action/create', defaultMessage: 'Create batch' },
+    pickDate: { id: 'assessment/action/pick-date', defaultMessage: 'Pick a date' },
+    confirm: { id: 'assessment/action/confirm', defaultMessage: 'Done' },
+    chooseUnits: { id: 'assessment/batch/choose-units', defaultMessage: 'Choose units…' },
     save: { id: 'assessment/action/save', defaultMessage: 'Save' },
     cancel: { id: 'assessment/action/cancel', defaultMessage: 'Cancel' },
     close: { id: 'assessment/action/close', defaultMessage: 'Close' },
@@ -426,6 +434,11 @@ const i18n = definePluginMessages({
     participantCount,
     holdersCount,
     alsoActiveIn,
+    noBusinessNoShort: {
+      id: 'assessment/roster/no-business-no',
+      defaultMessage: 'No student or staff ID',
+    },
+    includedAt,
 
     // ------------------------------------------------------------------
     // one label per gated code; the matrix is built from PHASE_GATED_CODES,

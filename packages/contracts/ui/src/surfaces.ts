@@ -53,6 +53,22 @@ export function defineUiSlot(options: {
 export type NavigationTarget =
   { kind: 'page'; pageId: NamespacedId } | { kind: 'external'; href: string; newWindow?: boolean }
 
+// A sidebar section is registered, not enumerated: any plugin may declare
+// one through the navigation-groups collection, and entries name it by its
+// namespaced id - the same loose coupling page links use. An entry whose
+// group nobody registered falls back to a loose top-level item, so a broken
+// reference stays visible instead of vanishing.
+export interface NavigationGroup {
+  id: NamespacedId
+  label: UiText
+  order?: number
+  // a group inside another group renders as a collapsible cluster under its
+  // parent section; a top-level group is a plain section heading
+  parent?: NamespacedId
+  // an icon name from the layout's icon set, shown on cluster rows
+  icon?: string
+}
+
 export interface NavigationItem {
   id: NamespacedId
   // never a display string: plugins name a translatable message, the layout
@@ -61,6 +77,9 @@ export interface NavigationItem {
   target: NavigationTarget
   icon?: string
   order?: number
+  // which sidebar section the entry sits in; absent means a loose top-level
+  // entry above the sections
+  group?: NamespacedId
 }
 
 // what the browser receives: a page target has been resolved to the path
@@ -90,6 +109,15 @@ const navigationItemSchema = z.object({
   ]),
   icon: z.string().optional(),
   order: z.number().optional(),
+  group: z.string().regex(NAMESPACED_ID).optional(),
+})
+
+const navigationGroupSchema = z.object({
+  id: z.string().regex(NAMESPACED_ID),
+  label: uiTextSchema,
+  order: z.number().optional(),
+  parent: z.string().regex(NAMESPACED_ID).optional(),
+  icon: z.string().optional(),
 })
 
 export const primaryNavigation = defineUiCollection<NavigationItem, ResolvedNavigationItem>({
@@ -97,7 +125,19 @@ export const primaryNavigation = defineUiCollection<NavigationItem, ResolvedNavi
   schema: navigationItemSchema,
 })
 
+export const navigationGroups = defineUiCollection<NavigationGroup>({
+  key: 'admin-shell/navigation-groups',
+  schema: navigationGroupSchema,
+})
+
 export const headerActions = defineUiSlot({
   key: 'admin-shell/header-actions',
   cardinality: 'many',
+})
+
+// the sidebar footer: whoever owns sessions contributes the signed-in user
+// card here, so the shell can place an account surface it knows nothing about
+export const sidebarUser = defineUiSlot({
+  key: 'admin-shell/sidebar-user',
+  cardinality: 'one',
 })

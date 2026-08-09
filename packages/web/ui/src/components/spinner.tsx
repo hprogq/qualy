@@ -1,24 +1,21 @@
-import type { ComponentProps } from 'react'
-import { cn } from '../lib/cn.ts'
+import * as React from 'react'
+import { Loader2Icon } from 'lucide-react'
 
-// the primitive library carries no localized copy: the accessible label
-// defaults to english and localized callers pass their own
-export function Spinner({ className, 'aria-label': label, ...props }: ComponentProps<'div'>) {
+import { cn } from '../lib/utils.ts'
+
+function Spinner({ className, ...props }: React.ComponentProps<'svg'>) {
   return (
-    <div
+    <Loader2Icon
       role="status"
-      aria-label={label ?? 'Loading'}
-      className={cn(
-        'size-5 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-foreground',
-        className,
-      )}
+      aria-label="Loading"
+      className={cn('size-4 animate-spin', className)}
       {...props}
     />
   )
 }
 
 // fills the viewport; for app-level boot and layout transitions
-export function LoadingScreen() {
+function LoadingScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       <Spinner className="size-8" />
@@ -27,10 +24,12 @@ export function LoadingScreen() {
 }
 
 // fills the content area of a page without claiming the whole viewport
-export function PageLoading() {
+function PageLoading() {
   return (
     <div className="flex items-center justify-center py-24">
       <Spinner className="size-6" />
     </div>
   )
 }
+
+export { Spinner, LoadingScreen, PageLoading }

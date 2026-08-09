@@ -59,6 +59,7 @@ const i18n = definePluginMessages({
     },
     signIn: { id: 'auth/action/sign-in', defaultMessage: 'Sign in' },
     signOut: { id: 'auth/action/sign-out', defaultMessage: 'Sign out' },
+    noBusinessNo: { id: 'auth/session/no-business-no', defaultMessage: 'No student or staff ID' },
 
     usersTitle: { id: 'auth/users/title', defaultMessage: 'Users' },
     usersHint: {

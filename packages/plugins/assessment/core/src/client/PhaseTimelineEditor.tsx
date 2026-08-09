@@ -15,7 +15,8 @@ import {
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/select'
+import { Skeleton } from '@qualy/ui/skeleton'
+import { NativeSelect } from '@qualy/ui/native-select'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
@@ -522,6 +523,13 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void phases.refetch()}
+        skeleton={
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        }
       >
         {server.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
@@ -565,7 +573,6 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                     {upNext && phase.entryTrigger !== 'publication' && (
                       <Button
                         size="sm"
-                        variant={phase.entryTrigger === 'manual' ? 'default' : 'outline'}
                         onClick={() =>
                           setStarting({
                             id: phase.id,
@@ -577,7 +584,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                         {format(phase.entryTrigger === 'manual' ? m.advance : m.advanceForce)}
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => openEditor(index)}>
+                    <Button size="sm" variant="outline" onClick={() => openEditor(index)}>
                       {format(readOnly ? m.viewPhase : m.editPhase)}
                     </Button>
                   </div>
@@ -596,22 +603,21 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         onClose={() => setPanel(null)}
         footer={
           <>
+            {!readOnly && panel !== null && (
+              <Button disabled={savePlan.isPending} onClick={() => saveFromPanel(panel)}>
+                {format(m.save)}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setPanel(null)}>
+              {format(readOnly ? m.close : m.cancel)}
+            </Button>
             {!readOnly && panel !== null && !panel.isNew && batch.status === 'draft' && (
               <Button
-                size="sm"
                 variant="ghost"
-                className="mr-auto text-destructive"
+                className="text-destructive"
                 onClick={() => setRemoving(true)}
               >
                 {format(m.removePhase)}
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => setPanel(null)}>
-              {format(readOnly ? m.close : m.cancel)}
-            </Button>
-            {!readOnly && panel !== null && (
-              <Button size="sm" disabled={savePlan.isPending} onClick={() => saveFromPanel(panel)}>
-                {format(m.save)}
               </Button>
             )}
           </>
@@ -628,11 +634,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         onClose={() => setTimelineDialog(false)}
         footer={
           <>
-            <Button size="sm" variant="outline" onClick={() => setTimelineDialog(false)}>
+            <Button variant="outline" onClick={() => setTimelineDialog(false)}>
               {format(m.cancel)}
             </Button>
             <Button
-              size="sm"
               disabled={timelineId === '' || applyTimeline.isPending}
               onClick={() => applyTimeline.mutate(timelineId)}
             >
@@ -680,11 +685,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         onClose={() => setStarting(null)}
         footer={
           <>
-            <Button size="sm" variant="outline" onClick={() => setStarting(null)}>
+            <Button variant="outline" onClick={() => setStarting(null)}>
               {format(m.cancel)}
             </Button>
             <Button
-              size="sm"
               disabled={reason.trim() === '' || advance.isPending}
               onClick={() =>
                 starting && advance.mutate({ to: starting.id, force: true, reason: reason.trim() })

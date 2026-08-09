@@ -207,7 +207,7 @@ export function LocalizedText({ value }: { value: UiText }) {
   return <>{useI18n().formatText(value)}</>
 }
 
-const localeNames: Record<SupportedLocale, string> = {
+export const localeNames: Record<SupportedLocale, string> = {
   'zh-CN': '中文',
   'en-US': 'English',
 }

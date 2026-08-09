@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useLocale } from '@qualy/web-i18n'
 import { CheckboxGroup, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { FieldGroup } from '@qualy/ui/field'
+import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { DatePicker } from '@qualy/ui/date-picker'
 import { Input } from '@qualy/ui/input'
+import { TreeSelectDialog } from '@qualy/ui/tree-select'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 
@@ -29,6 +33,7 @@ export function NewBatchDialog({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const [locale] = useLocale()
 
   const nodes = useQuery(query.assessment.listScopeOptions.queryOptions({}))
   const userTypes = useQuery(query.assessment.listUserTypeOptions.queryOptions({}))
@@ -38,7 +43,9 @@ export function NewBatchDialog({
   const [until, setUntil] = useState('')
   const [scopeNodeIds, setScopeNodeIds] = useState<string[]>([])
   const [userTypeIds, setUserTypeIds] = useState<string[]>([])
+  const [choosingUnits, setChoosingUnits] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  const nodeById = new Map((nodes.data?.nodes ?? []).map((node) => [node.id, node]))
 
   const create = useMutation({
     mutationFn: () =>
@@ -80,73 +87,100 @@ export function NewBatchDialog({
       onClose={onClose}
       footer={
         <>
-          <Button size="sm" variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             {format(m.cancel)}
           </Button>
-          <Button size="sm" disabled={create.isPending || !ready} onClick={() => create.mutate()}>
+          <Button disabled={create.isPending || !ready} onClick={() => create.mutate()}>
             {format(m.create)}
           </Button>
         </>
       }
     >
       <Feedback message={failure} />
-      <Field label={format(m.nameLabel)}>
-        {(id) => (
-          <Input
-            id={id}
-            value={name}
-            placeholder={format(m.namePlaceholder)}
-            onChange={(event) => setName(event.target.value)}
-          />
-        )}
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={format(m.materialFrom)}>
+      <FieldGroup>
+        <Field label={format(m.nameLabel)}>
           {(id) => (
             <Input
               id={id}
-              type="date"
-              value={from}
-              onChange={(event) => setFrom(event.target.value)}
+              value={name}
+              placeholder={format(m.namePlaceholder)}
+              onChange={(event) => setName(event.target.value)}
             />
           )}
         </Field>
-        <Field label={format(m.materialTo)}>
-          {(id) => (
-            <Input
-              id={id}
-              type="date"
-              value={until}
-              onChange={(event) => setUntil(event.target.value)}
-            />
-          )}
-        </Field>
-      </div>
-      <p className="text-xs text-muted-foreground">{format(m.materialHint)}</p>
-      <div className="space-y-1">
-        <div className="max-h-48 overflow-y-auto rounded-md border p-3">
-          <CheckboxGroup
-            legend={format(m.scopeLegend)}
-            options={(nodes.data?.nodes ?? []).map((node) => ({
-              value: node.id,
-              label: node.name,
-            }))}
-            selected={scopeNodeIds}
-            onChange={setScopeNodeIds}
-            emptyLabel={format(m.scopeEmpty)}
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <Field label={format(m.materialFrom)}>
+            {(id) => (
+              <DatePicker
+                id={id}
+                value={from}
+                onChange={setFrom}
+                placeholder={format(m.pickDate)}
+                localeTag={locale}
+              />
+            )}
+          </Field>
+          <Field label={format(m.materialTo)} hint={format(m.materialHint)}>
+            {(id) => (
+              <DatePicker
+                id={id}
+                value={until}
+                onChange={setUntil}
+                placeholder={format(m.pickDate)}
+                localeTag={locale}
+              />
+            )}
+          </Field>
         </div>
-        <p className="text-xs text-muted-foreground">{format(m.scopeHint)}</p>
-      </div>
-      <CheckboxGroup
-        legend={format(m.userTypesLegend)}
-        options={(userTypes.data?.userTypes ?? []).map((type) => ({
-          value: type.id,
-          label: type.name,
-        }))}
-        selected={userTypeIds}
-        onChange={setUserTypeIds}
-        emptyLabel={format(m.userTypesEmpty)}
+        <Field label={format(m.scopeLegend)} hint={format(m.scopeHint)}>
+          {(id) => (
+            <div className="flex flex-col gap-2">
+              <Button
+                id={id}
+                type="button"
+                variant="outline"
+                className="w-fit"
+                onClick={() => setChoosingUnits(true)}
+              >
+                {format(m.chooseUnits)}
+              </Button>
+              {scopeNodeIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {scopeNodeIds.map((nodeId) => (
+                    <Badge key={nodeId} variant="secondary">
+                      {nodeById.get(nodeId)?.name ?? nodeId}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Field>
+        <CheckboxGroup
+          legend={format(m.userTypesLegend)}
+          options={(userTypes.data?.userTypes ?? []).map((type) => ({
+            value: type.id,
+            label: type.name,
+          }))}
+          selected={userTypeIds}
+          onChange={setUserTypeIds}
+          emptyLabel={format(m.userTypesEmpty)}
+        />
+      </FieldGroup>
+      <TreeSelectDialog
+        open={choosingUnits}
+        onClose={() => setChoosingUnits(false)}
+        onConfirm={(next) => {
+          setScopeNodeIds(next)
+          setChoosingUnits(false)
+        }}
+        title={format(m.chooseUnits)}
+        description={format(m.scopeHint)}
+        confirmLabel={format(m.confirm)}
+        cancelLabel={format(m.cancel)}
+        emptyLabel={format(m.scopeEmpty)}
+        nodes={nodes.data?.nodes ?? []}
+        value={scopeNodeIds}
       />
     </FormDialog>
   )
