@@ -255,6 +255,9 @@ importers:
       '@qualy/auth-contract':
         specifier: workspace:*
         version: link:../../packages/contracts/auth
+      '@qualy/plugin-assessment':
+        specifier: workspace:*
+        version: link:../../packages/plugins/assessment/core
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../../packages/plugins/base/auth
@@ -471,6 +474,24 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+
+  packages/plugins/assessment/core:
+    dependencies:
+      '@mikro-orm/core':
+        specifier: 'catalog:'
+        version: 7.1.11
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../infra/database
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/plugin-org':
+        specifier: workspace:*
+        version: link:../../base/org
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/rbac
 
   packages/plugins/base/auth:
     dependencies:

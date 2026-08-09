@@ -1,8 +1,51 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:9a81c728fab3b6f92537b47b30ad6f9fc5e73ae55b1a7dc8e9a7e2f85a19e332",
-  "resolutionHash": "sha256:7c4b24e79c970a6a1df915c20fca908aa4dc04e26b60082ff9694c13ba63f153",
+  "manifestHash": "sha256:8faf6eae8f9536b7a66a0fb4bdafb27e929f132b84c76bcbe04c617e7d5a78d9",
+  "resolutionHash": "sha256:2dc096e6fc3e7b8bd90694f77364b7261d9c8877471ac6b1ddc87efbc5da6473",
   "plugins": {
+    "@qualy/plugin-assessment": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "entities": [
+            "AssessmentBatch",
+            "BatchConfigRevision",
+            "BatchParticipant",
+            "BatchPhase",
+            "BatchUserType",
+            "PhaseEvent",
+            "PhaseItemScope",
+            "PhaseParticipantScope",
+            "PhaseTemplate"
+          ],
+          "dependsOn": [
+            "@qualy/plugin-auth",
+            "@qualy/plugin-org"
+          ]
+        },
+        "permissions": {
+          "owner": "assessment",
+          "codes": [
+            "assessment.batch.force-advance",
+            "assessment.batch.manage",
+            "assessment.entry.create",
+            "assessment.entry.edit",
+            "assessment.entry.proxy",
+            "assessment.entry.record",
+            "assessment.entry.resubmit",
+            "assessment.entry.submit",
+            "assessment.entry.withdraw",
+            "assessment.publication.manage",
+            "assessment.ranking.view",
+            "assessment.result.view-peers",
+            "assessment.result.view-self",
+            "assessment.review.process",
+            "assessment.review.reopen"
+          ]
+        }
+      }
+    },
     "@qualy/plugin-auth": {
       "version": "0.0.0",
       "state": "active",
@@ -16,7 +59,9 @@
             "UserType",
             "UserTypeAllowedOrgType"
           ],
-          "dependsOn": ["@qualy/plugin-org"]
+          "dependsOn": [
+            "@qualy/plugin-org"
+          ]
         },
         "permissions": {
           "owner": "auth",
@@ -46,13 +91,21 @@
       "state": "active",
       "contributions": {
         "database": {
-          "entities": ["OrgNode", "OrgType", "OrgTypeRule", "Tenant"],
+          "entities": [
+            "OrgNode",
+            "OrgType",
+            "OrgTypeRule",
+            "Tenant"
+          ],
           "baselineDir": "db/baseline",
           "dependsOn": []
         },
         "permissions": {
           "owner": "org",
-          "codes": ["org.tree.manage", "org.tree.read"]
+          "codes": [
+            "org.tree.manage",
+            "org.tree.read"
+          ]
         }
       }
     },
@@ -61,7 +114,9 @@
       "state": "active",
       "contributions": {
         "database": {
-          "entities": ["PingLog"],
+          "entities": [
+            "PingLog"
+          ],
           "dependsOn": []
         }
       }
@@ -79,7 +134,10 @@
             "RoleGrant",
             "RolePermission"
           ],
-          "dependsOn": ["@qualy/plugin-auth", "@qualy/plugin-org"]
+          "dependsOn": [
+            "@qualy/plugin-auth",
+            "@qualy/plugin-org"
+          ]
         },
         "permissions": {
           "owner": "rbac",
@@ -114,6 +172,7 @@
         "order": [
           "@qualy/plugin-org",
           "@qualy/plugin-auth",
+          "@qualy/plugin-assessment",
           "@qualy/plugin-ping",
           "@qualy/plugin-rbac"
         ]
@@ -122,12 +181,18 @@
     "permissions": {
       "provider": "@qualy/plugin-rbac",
       "state": {
-        "order": ["@qualy/plugin-auth", "@qualy/plugin-org", "@qualy/plugin-rbac"]
+        "order": [
+          "@qualy/plugin-assessment",
+          "@qualy/plugin-auth",
+          "@qualy/plugin-org",
+          "@qualy/plugin-rbac"
+        ]
       }
     }
   },
   "runtime": {
     "plugins": [
+      "@qualy/plugin-assessment",
       "@qualy/plugin-auth",
       "@qualy/plugin-auth-local",
       "@qualy/plugin-database",

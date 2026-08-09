@@ -1,0 +1,21 @@
+{
+  "name": "@qualy/plugin-assessment",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./db": "./src/db/entities.ts",
+    "./permissions": "./src/permissions.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@mikro-orm/core": "catalog:",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*"
+  }
+}

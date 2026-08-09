@@ -2142,3 +2142,50 @@ voided(reason=item_voided);巡检 quorum 按可达性公式。M5 验收增至 �
 
 审计与裁决一致判定:**"核心架构冻结,可按里程碑施工"标签自此成立**,此后分歧应只在
 Effect API/SQL 约束/UI 细节。**未编码**。下一步:M1 第一个 commit。
+
+### M1 会话 8(s1)· 骨架与全部表(2026-08-09)
+
+入场基线 tag `p2-base`(d27a6fa,含 docs/m1-tutorial.md 会话拆分计划)。
+`@qualy/plugin-assessment` 落地 `packages/plugins/assessment/core`(workspace glob
+`packages/plugins/*/*` 与根 tsconfig 天然覆盖,零配置改动):
+
+- **描述器**:dependsOn 五个真实插件 id(auth/database/org/rbac/ui-registry);
+  `Db.entities`(schema 依赖 org+auth)+ `Access.permissions('assessment', …)`。
+  s1 无 service/API/UI,index.ts 只是声明。
+- **permissions.ts**(§32.13 落地):§11 冻结目录 15 码;target 按文档标注——管理/代录/
+  record/审核类 `org-node`,自助类(view-self、entry 四动作、resubmit、view-peers、
+  ranking.view)`tenant`;同文件 `PHASE_GATED` 白名单 11 码(=矩阵 ✓ 列,一字不多);
+  **import 期断言集合 ⊆ 自声明码**——红证:scratchpad 副本注入 `assessment.bogus.code`
+  立即 throw(第一次红证 sed 把声明行一起改了导致假绿,已修正只改 Set 行)。
+- **九张表**(§21 全量):assessment_batches(daterange 左闭右开、scope ltree 快照、
+  config_revision 计数、current_phase_id 投影)、batch_user_types、batch_phases
+  (entry_trigger 三值 + entry_offset jsonb + estimated_entry_at +
+  **opens_publication_id 裸 uuid 可空**——绑定检查 `trigger='publication' OR IS NULL`
+  + 部分唯一保一一对应,§32.26;source_template\_\* 落列无 FK,溯源存续)、phase_events
+  (+processed_at;actor 无 FK,审计存续于账号删除)、phase_templates、phase_item_scopes
+  (item 裸 uuid,M2 补 FK)、phase_participant_scopes、batch_participants(anchor_path
+  ltree GiST + **anchor_lineage jsonb** 逐级 (nodeId,nodeTypeId)、(batch,user) 唯一)、
+  batch_config_revisions(append-only + revision 唯一对)。全表 uuidv7 库侧默认、
+  timestamptz、复合租户 FK((tenant_id,id) 目标索引齐备)。**删除规则=数据保留政策**:
+  批次自有行随批次 cascade;roster 指向的 users/org_nodes/user_types 一律 restrict
+  (有综测历史的主体不可删,实测 23001);current_phase_id 用 PG15+ 列级
+  `set null (current_phase_id)`(普通 SET NULL 会把 tenant_id 一起置空)。
+- daterange/ltree 均按 org 先例 `p.string().type(...)` 列类型覆写(不是 custom type
+  class);无新 baseline 片段——ltree 扩展已在 initial lineage,daterange 是内建类型。
+
+**验收(实际执行)**:`pnpm plugin:add` 写 apps/server 依赖 + qualy.yml + lock
+(runtime.plugins 收编,database/permissions 两能力各 1 条贡献);
+`qualy generate --name assessment-batch-phase-roster` →
+`20260809055103_assessment-batch-phase-roster.sql`(9 表 + 全部约束,drop guard ok);
+`qualy deploy` applied 1 migration(129ms);schema.test.ts **4/4**(往返:daterange
+`'[2026-03-01,2026-09-01)'`、lineage jsonb、permission_profile jsonb 回读;约束:
+23514 publication 绑定、23505 ordinal/(batch,user) 重复、23503 跨租户三处、23001
+restrict 三处、批次删除级联清零);`pnpm typecheck` 零错;`pnpm test` **63 文件 391
+全绿**(唯一改动:seed 权限数 16→31,恰证明权限贡献被 seed 单源捡到;clean-room
+parity 覆盖新表——从插件重生的 lineage 与提交件逐对象一致);
+`resolve --frozen-lockfile` up to date;`pnpm dev` 真启动 READY 2s、dev 库
+permissions 表 `assessment=15`、SIGTERM shutdown complete。
+
+**下一步**:s2 纯函数时间引擎(`src/phase/engine/`,零 IO):effectivePhase(now)、
+武装前缀、偏移物化、插入重排、七条编辑校验器、时间线派生;红绿直接照 §24 时间条目写,
+撑不住就按"判定类/编辑类"一切为二,绝不把引擎写进 service 层。
