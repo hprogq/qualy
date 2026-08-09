@@ -9,13 +9,23 @@
     ".": "./src/index.ts",
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
+    "./api": "./src/api.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
-    "@qualy/rbac-contract": "workspace:*"
+    "@qualy/rbac-contract": "workspace:*",
+    "effect": "catalog:",
+    "kysely": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*"
   }
 }

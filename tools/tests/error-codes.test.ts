@@ -12,10 +12,12 @@ import * as auth from '../../packages/plugins/base/auth/src/server/errors.ts'
 import * as org from '../../packages/plugins/base/org/src/server/errors.ts'
 import * as rbac from '../../packages/plugins/base/rbac/src/server/errors.ts'
 import * as authLocal from '../../packages/plugins/base/auth-local/src/api.ts'
+import * as assessment from '../../packages/plugins/assessment/core/src/server/errors.ts'
 import { errorMessages as authMessages } from '../../packages/plugins/base/auth/src/client/i18n.ts'
 import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/src/client/i18n.ts'
 import { errorMessages as orgMessages } from '../../packages/plugins/base/org/src/client/i18n.ts'
 import { errorMessages as rbacMessages } from '../../packages/plugins/base/rbac/src/client/i18n.ts'
+import { errorMessages as assessmentMessages } from '../../packages/plugins/assessment/core/src/client/i18n.ts'
 
 // The rules about error codes that no single package can enforce.
 //
@@ -71,6 +73,11 @@ const SOURCES = [
     owner: '@qualy/plugin-auth-local',
     file: 'packages/plugins/base/auth-local/src/api.ts',
   },
+  {
+    module: assessment,
+    owner: '@qualy/plugin-assessment',
+    file: 'packages/plugins/assessment/core/src/server/errors.ts',
+  },
 ] as const
 
 // The one declaration that is not a wire code. A readiness probe's failure is
@@ -112,6 +119,7 @@ const translations: Record<string, readonly string[]> = {
   '@qualy/plugin-org': Object.keys(orgMessages),
   '@qualy/plugin-rbac': Object.keys(rbacMessages),
   '@qualy/plugin-auth-local': Object.keys(authLocalMessages),
+  '@qualy/plugin-assessment': Object.keys(assessmentMessages),
 }
 
 describe('error codes across the assembly', () => {

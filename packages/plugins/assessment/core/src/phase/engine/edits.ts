@@ -44,6 +44,8 @@ export interface EditRefusal {
   readonly blockingPhaseId?: string
   /** the offending permission code, for profile refusals */
   readonly code?: string
+  /** position in a submitted spec list, for whole-plan reviews */
+  readonly index?: number
 }
 
 export type EditWarningReason = 'proxy-without-submit'
@@ -51,6 +53,8 @@ export type EditWarningReason = 'proxy-without-submit'
 export interface EditWarning {
   readonly reason: EditWarningReason
   readonly phaseId: string | null
+  /** position in a submitted spec list, for whole-plan reviews */
+  readonly index?: number
 }
 
 export interface EditReview {
@@ -375,4 +379,65 @@ export function reviewPlanShape(plan: PhasePlan): EditReview {
     return refuse([{ reason: 'terminal-must-be-manual', phaseId: plan[plan.length - 1]!.id }])
   }
   return ok()
+}
+
+/**
+ * A whole plan of unentered specs, reviewed at once - what a draft rewrite or
+ * a template application submits.
+ *
+ * With `now` the clock rules apply too: planned instants must be future,
+ * ordered, and on the prefix before the first event gate. With `now` null
+ * only the structural rules run - a template is data, and refusing to save
+ * one in October because it names September would make templates rot.
+ */
+export function reviewPlan(specs: readonly NewPhaseSpec[], now: EpochMillis | null): EditReview {
+  const plan: PhaseSnapshot[] = specs.map((spec, index) => ({
+    id: `#${index}`,
+    ordinal: index,
+    phaseKey: spec.phaseKey,
+    displayName: spec.displayName,
+    entryTrigger: spec.entryTrigger,
+    plannedEntryAt: spec.plannedEntryAt ?? null,
+    actualEntryAt: null,
+    entryOffset: spec.entryOffset ?? null,
+    estimatedEntryAt: spec.estimatedEntryAt ?? null,
+    opensPublicationId: null,
+    permissionProfile: spec.permissionProfile ?? [],
+  }))
+  const publications = new Map<string, never>()
+  const view = viewOf(plan, publications, now ?? 0)
+  const at = (index: number) => ({ index })
+
+  const refusals: EditRefusal[] = []
+  const warnings: EditWarning[] = []
+  const shape = reviewPlanShape(plan)
+  refusals.push(...shape.refusals.map((r) => ({ ...r, phaseId: null, ...at(plan.length - 1) })))
+
+  plan.forEach((phase, index) => {
+    if (phase.displayName.trim() === '') {
+      refusals.push({ reason: 'display-name-blank', phaseId: null, ...at(index) })
+    }
+    if (phase.plannedEntryAt !== null) {
+      const planned =
+        now !== null
+          ? plannedRefusals(plan, publications, now, view, index, phase.plannedEntryAt)
+          : phase.entryTrigger === 'publication'
+            ? [{ reason: 'planned-on-publication-phase' as const, phaseId: phase.id }]
+            : []
+      refusals.push(...planned.map((r) => ({ ...r, phaseId: null, ...at(index) })))
+    }
+    if (phase.entryOffset !== null) {
+      refusals.push(
+        ...offsetRefusals(phase, phase.entryOffset).map((r) => ({
+          ...r,
+          phaseId: null,
+          ...at(index),
+        })),
+      )
+    }
+    const profile = profileReview(null, phase.permissionProfile)
+    refusals.push(...profile.refusals.map((r) => ({ ...r, ...at(index) })))
+    warnings.push(...profile.warnings.map((w) => ({ ...w, ...at(index) })))
+  })
+  return { refusals, warnings }
 }

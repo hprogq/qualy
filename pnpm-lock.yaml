@@ -480,6 +480,15 @@ importers:
       '@mikro-orm/core':
         specifier: 'catalog:'
         version: 7.1.11
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/i18n
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../../base/auth
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../infra/database
@@ -492,6 +501,19 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.4
+    devDependencies:
+      '@qualy/plugin-rbac':
+        specifier: workspace:*
+        version: link:../../base/rbac
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../infra/ui-registry
 
   packages/plugins/base/auth:
     dependencies:

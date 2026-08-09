@@ -2235,3 +2235,66 @@ planned 被拒、插入重排 ordinal 序列、时间线全优先级。写测试
 **下一步**:s3 服务层 + API + PhaseGate(批次 CRUD、阶段计划编辑接引擎、advancePhase、
 激活生成花名册、PhaseGate(+ctx) 与 authorize facade、frozen-routes 与 error-codes 同笔);
 Effect HttpApi 与服务写法先实查 repos/。
+
+### M1 会话 10(s3)· 服务层 + API + PhaseGate(2026-08-09)
+
+给引擎接电。证据来源:org/rbac 的 api.ts、server/index.ts、db.ts 是同版本活先例
+(HttpApiGroup/HttpApiBuilder/Context.Service/Effect.fn/withDatabase+transaction/
+translateConstraints/scopeCoverage 全部照抄形态);`Schema.Literals/Union` 在 rbac api.ts
+有同版本用例;v4 Exit/Cause 活结构用 tsx 实探(见下)。未凭记忆引入任何新 Effect API。
+
+- **API 13 端点**(frozen-routes 同笔):batches CRUD + `PUT status`(激活/归档)+
+  `GET/PUT phases`(计划幂等替换:带 id 改、不带 id 插、模板 `fromTemplateId` 服务端
+  复制+溯源)+ `PUT phase`(advance)+ `GET timeline` + phase-templates CRUD。列表全
+  keyset(cursor 指纹校验 + ISO 复验)。**错误 10 码**入全局门禁(error-codes 同笔),
+  `ASSESSMENT_PLAN_INVALID` 携带引擎结构化拒因数组(reason/phaseId/blockingPhaseId/
+  code/index),不是句子。错误码强制翻译 ⇒ s3 就带**最小 client i18n**(仅 errorMessages
+  + zh-CN locale + client tsconfig;Ui.i18n 声明留给 s6 有页面时上车,catalogs 门禁按声明
+  发现故不误报)。
+- **服务层**(Context.Service `Assessment`,serviceLayer: Orm+Rbac):每写锁批次行;
+  "已进入"一律 effectiveState 时钟判定(调度器没追认的边界也是历史);`ratifyPending`
+  共享给 advance/归档(s4 调度器同款,幂等:actual 只落一次)。计划编辑:draft=整体替换
+  (保 id、可删可排序,engine `reviewPlan` 整案校验);active=外科 diff(禁删禁重排、
+  phaseKey/trigger 不可变,逐 field 产 PlanEdit 由引擎按演进中的计划顺序复核,ordinal
+  重排用"停车位 +1e6 两遍写"避开唯一索引瞬时冲突);模板应用仅 draft。advance:先追认
+  再判 next、非 manual 边界要 force+reason(force-advance 权限),事件 kind='entered'
+  带 actor/reason,随后 materializeOffsets 落 planned + 'offset-materialized' 事件。
+  激活 = 单条 INSERT…SELECT 生成花名册(enabled ∧ 类型 ∈ batch_user_types ∧ path <@
+  scope,anchor_lineage 由 `jsonb_agg(… order by depth desc)` 现场冻结)。归档=到达
+  terminal 的 stand-in gate(M5 补公示条件,注明)。updateBatch 每保存必 bump
+  config_revision + 配置事件(diff/actor/reason)。
+- **PhaseGate 纯函数**(src/phase/gate.ts):`PHASE_GATED.has ? code ∈ profile : true`
+  fail closed;item-scope 只限创建族(create/edit/submit/withdraw/proxy/record),
+  participant-scope 限整个 entry 族(含 resubmit),review.process/reopen 永不受限;
+  authorize facade = rbac(M1 为 hasPermission 桩,锚定解析随 entry 到 M2/M3)∧ gate ∧
+  policy 槽位(恒放行,entry 状态机 M2)。
+- **engine 补 `reviewPlan`**(整计划校验):带 now 走全钟档,`now=null` 结构档——模板是
+  数据,十月保存九月模板不该被拒;refusal/warning 增 `index` 指认第几条 spec。
+- **两处实查修正**:①kysely 结果经 MikroORM 实体元数据水合,epoch 别名撞 datetime 属性
+  名被转回 **Date**,引擎 Date+number 变字符串拼接炸 22P02——db.ts 读边界 `msOf` 统一归
+  一化毫秒;②v4 Cause 活对象是 **`cause.reasons[]`**(`{_tag:'Fail',error}`),toJSON 才叫
+  failures(tsx 实探 `Effect.runPromiseExit` 确认),测试助手照此读。另:两个测试计划初稿
+  在 manual 边界后放硬计划被引擎正确拒绝('hard-plan-beyond-event-boundary')——改为
+  offset 形态,顺带把"advance 物化 offset + 审计事件"测进去了。
+
+**验收(实际执行)**:`pnpm typecheck` 零错(含新 client 工程与 Effect LSP);插件套件
+**7 文件 48 用例**全绿——验收③(offset 物化后改未来 planned 成功 + 'planned-changed'
+事件,改已进入阶段拒 'phase-already-entered';actual 无线上表达+引擎双保险)、
+④(manual 切换落 'entered' 事件带 actor;提前进 scheduled 边界:无 force 拒/有 force
+无 reason 拒/force+reason 过且事件记 reason;非 next 拒;terminal 归档后写动作
+ASSESSMENT_BATCH_READ_ONLY)、⑥(gate 矩阵逐格:预填报 create✓submit✗、审核期
+submit✗review✓、公示创建全✗、未门控码恒放行、无阶段 fail closed)、⑦(到点边界
+sleep 后 gate 时钟放行、advance 先追认且 actual==planned 精确相等、'entered' 事件仅一条、
+重复 advance 拒——幂等)、⑩(item/participant 两 scope 合成 ctx 逐格:resubmit 跨题但受
+participant 限、review 不受限;facade 三层:未持码 layer=rbac、持码相闭 layer=gate、
+全开放行);花名册单 SQL(域内两生入册,跨 grade/教师/停用户排除,lineage 锚→根三级
+逐一冻结);模板结构档(terminal-must-be-manual 拒、同名 409、phases 改动 version+1);
+配置事件(revision 1 + diff 键集 + reason)。`pnpm test` 全仓 **69 文件 435 全绿**
+(api parity 现算聚合含 13 新路由、OpenAPI 深比较、error-codes/catalogs/seed 均过);
+`resolve --frozen-lockfile` up to date;`pnpm dev` READY 2s、未登录
+`GET /api/assessment/batches → 401`(Authenticated 中间件生效)、SIGTERM 干净退出。
+
+**下一步**:s4 调度 fiber(Assembled barrier 上 fork 每分钟扫描,推进武装前缀内到点
+scheduled 边界,actual:=planned、processed_at:=now,幂等可重入,单实例声明照迁移器抄;
+集成测试时钟控制验 ②⑧⑨)。实查点:Effect v4 fiber/Schedule/Layer 作用域。
+s3 备注:验收⑩的端到端(真实 entry 动作)按计划留 M2,本会话为 gate 层合成 code+ctx 测。
