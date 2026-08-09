@@ -43,6 +43,7 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
   name: '2026 春季综测',
   descriptionMd: null,
   scopeNodeIds: [NODE_ID],
+  participantCount: 12,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
   status: 'draft',
@@ -119,7 +120,7 @@ const templates = (request: Request) =>
   })
 
 const assessmentStubs = (over: Stubs = {}): Stubs => ({
-  listBatches: () => Effect.succeed({ items: [batch()], nextCursor: null }),
+  listBatches: () => Effect.succeed({ items: [batch()], nextCursor: null, total: 1 }),
   getBatch: () => Effect.succeed({ batch: batch() }),
   getPhases: () => Effect.succeed({ phases: [] }),
   listTemplates: templates,
@@ -127,6 +128,7 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
     Effect.succeed({
       nodes: [{ id: NODE_ID, name: '软件学院', path: 'r.se', depth: 1, orgTypeId: NODE_ID }],
     }),
+  createBatch: () => Effect.succeed({ batch: batch() }),
   listUserTypeOptions: () =>
     Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
   listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
@@ -145,6 +147,62 @@ const screen = (over: Stubs = {}, route = `/assessment/batches?batch=${BATCH_ID}
   })
 
 describe('the batch list', () => {
+  it('searches by name, filters by status and reads the next page', async () => {
+    const seen: Request[] = []
+    const listBatches = vi.fn((request: Request) => {
+      seen.push(request)
+      const cursor = request.query?.['cursor']
+      if (cursor === 'next-page') {
+        return Effect.succeed({
+          items: [batch({ id: 'second', name: '2025 秋季综测' })],
+          nextCursor: null,
+          total: 21,
+        })
+      }
+      return Effect.succeed({ items: [batch()], nextCursor: 'next-page', total: 21 })
+    })
+    screen({ listBatches }, '/assessment/batches')
+
+    // the first page knows where it sits in the whole
+    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+    await expect.element(page.getByText('第 1 / 2 页', { exact: false })).toBeVisible()
+
+    await page.getByRole('button', { name: '下一页' }).click()
+    // the second page replaces the first, reached by the cursor it handed out
+    await expect.element(page.getByText('2025 秋季综测')).toBeVisible()
+    expect(seen.at(-1)?.query).toMatchObject({ cursor: 'next-page' })
+    await expect.element(page.getByText('第 2 / 2 页', { exact: false })).toBeVisible()
+
+    // and going back is the cursor already held, not a re-count
+    await page.getByRole('button', { name: '上一页' }).click()
+    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+
+    // a status choice and a typed name reach the server as query parameters,
+    // and the chosen filter is the one that looks chosen
+    await page.getByRole('radio', { name: '草稿' }).click()
+    await expect.element(page.getByRole('radio', { name: '草稿' })).toBeChecked()
+    await vi.waitFor(() => expect(seen.at(-1)?.query).toMatchObject({ status: 'draft' }))
+    await page.getByRole('textbox', { name: '搜索批次名称' }).fill('春季')
+    await vi.waitFor(() => expect(seen.at(-1)?.query).toMatchObject({ q: '春季' }), {
+      timeout: 3000,
+    })
+  })
+
+  it('tells an empty result apart from an empty list', async () => {
+    screen(
+      { listBatches: () => Effect.succeed({ items: [], nextCursor: null, total: 0 }) },
+      '/assessment/batches',
+    )
+    // nothing has been created yet: the answer is to create one
+    await expect.element(page.getByText('暂无测评批次。')).toBeVisible()
+
+    await page.getByRole('textbox', { name: '搜索批次名称' }).fill('不存在的名字')
+    // now the same emptiness means the filter matched nothing
+    await expect.element(page.getByText('未找到匹配的批次')).toBeVisible()
+    await page.getByRole('button', { name: '清除筛选' }).click()
+    await expect.element(page.getByText('暂无测评批次。')).toBeVisible()
+  })
+
   it('opens a batch from the table and comes back', async () => {
     screen({}, '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
@@ -157,6 +215,39 @@ describe('the batch list', () => {
   })
 })
 
+describe('creating a batch', () => {
+  it('walks two steps and picks units in place', async () => {
+    const createBatch = vi.fn((_request: Request) =>
+      Effect.succeed({ batch: { ...batch(), id: 'created' } }),
+    )
+    screen({ createBatch }, '/assessment/batches')
+
+    await page.getByRole('button', { name: '新建批次' }).click()
+    const dialog = page.getByRole('dialog')
+
+    // the second step is out of reach until the first one is answered
+    await expect.element(dialog.getByRole('button', { name: '下一步' })).toBeDisabled()
+    await dialog.getByRole('textbox', { name: '名称' }).fill('2026 秋季综测')
+    // the calendar names a day by its whole date, so the day is matched inside it
+    await dialog.getByRole('button', { name: '材料时间范围' }).click()
+    await page.getByRole('button', { name: /月10日/ }).first().click()
+    await page.getByRole('button', { name: /月20日/ }).first().click()
+    await dialog.getByRole('button', { name: '下一步' }).click()
+
+    // the units are chosen right here, not in a dialog stacked on this one
+    await expect.element(dialog.getByRole('checkbox', { name: '软件学院' })).toBeVisible()
+    await dialog.getByRole('checkbox', { name: '软件学院' }).click()
+    await dialog.getByRole('checkbox', { name: '学生' }).click()
+    await dialog.getByRole('button', { name: '创建批次' }).click()
+
+    await vi.waitFor(() => expect(createBatch).toHaveBeenCalledTimes(1))
+    const sent = createBatch.mock.calls[0]![0].payload!
+    expect(sent['name']).toBe('2026 秋季综测')
+    expect(sent['scopeNodeIds']).toEqual([NODE_ID])
+    expect(sent['userTypeIds']).toEqual([USER_ID])
+  })
+})
+
 describe('the stage plan', () => {
   it('builds a stage from nothing - no template required anywhere', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
@@ -164,9 +255,7 @@ describe('the stage plan', () => {
 
     // the empty plan offers both roads and demands neither
     await expect
-      .element(
-        page.getByText('还没有阶段。可以从现成的时间线开始，也可以一个一个自己添加，两种都行。'),
-      )
+      .element(page.getByText('暂无阶段。可套用时间线模板，或手动添加阶段。'))
       .toBeVisible()
 
     await page.getByRole('button', { name: '添加阶段' }).click()
@@ -191,6 +280,8 @@ describe('the stage plan', () => {
 
     await page.getByRole('button', { name: '编辑' }).click()
     const panel = page.getByRole('dialog')
+    // what a stage opens is the panel's third step
+    await panel.getByRole('button', { name: '开放操作' }).click()
 
     // the gate's own registry, and nothing else: a stage can open submitting
     // an entry...
@@ -216,8 +307,9 @@ describe('the stage plan', () => {
     await panel.getByLabelText('用预设填充这个阶段').selectOptions('填报阶段预设')
     await panel.getByRole('button', { name: '填入' }).click()
 
-    // it filled the name and ticked the actions - and stays editable
+    // it filled the name, and the actions it carried are ticked a step later
     await expect.element(panel.getByLabelText('阶段名称')).toHaveValue('正式填报')
+    await panel.getByRole('button', { name: '开放操作' }).click()
     await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeChecked()
     await expect.element(panel.getByRole('checkbox', { name: '查看排名' })).not.toBeChecked()
 
@@ -311,7 +403,8 @@ describe('the stage plan', () => {
     )
     screen({
       getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
-      listBatches: () => Effect.succeed({ items: [batch({ status: 'active' })], nextCursor: null }),
+      listBatches: () =>
+        Effect.succeed({ items: [batch({ status: 'active' })], nextCursor: null, total: 1 }),
       advancePhase,
       getPhases: () =>
         Effect.succeed({
@@ -346,7 +439,7 @@ describe('the participants tab', () => {
     screen()
     await page.getByRole('tab', { name: '参评人员' }).click()
     await expect
-      .element(page.getByText('参评名单会在批次激活时按所选单位和人员类型生成。'))
+      .element(page.getByText('参评名单将在批次激活时按所选单位与人员类型生成。'))
       .toBeVisible()
   })
 

@@ -13,6 +13,7 @@ import {
   SidePanel,
 } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
+import { Steps } from '@qualy/ui/steps'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -54,6 +55,8 @@ interface PanelState {
   index: number
   isNew: boolean
   draft: Draft
+  /** which part of the stage is on screen; the header jumps between them */
+  step: number
 }
 
 const specOf = (phase: PhaseDto): Draft => ({
@@ -219,7 +222,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const openEditor = (index: number) => {
     clear()
     setPresetId('')
-    setPanel({ index, isNew: false, draft: specOf(server[index]!) })
+    setPanel({ index, isNew: false, step: 0, draft: specOf(server[index]!) })
   }
 
   const openNew = () => {
@@ -232,9 +235,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     setPanel({
       index,
       isNew: true,
+      step: 0,
       draft: {
         phaseKey: freshKey(specs),
-        displayName: format(m.newPhaseName),
+        displayName: '',
         entryTrigger: 'manual',
         plannedEntryAt: null,
         entryOffset: null,
@@ -247,6 +251,11 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   }
 
   const saveFromPanel = (state: PanelState) => {
+    if (state.draft.displayName.trim() === '') {
+      setRefused([format(m.phaseNameRequired)])
+      setPanel((current) => (current ? { ...current, step: 0 } : current))
+      return
+    }
     const specs = server.map(specOf)
     if (state.isNew) specs.splice(state.index, 0, state.draft)
     else specs[state.index] = state.draft
@@ -271,6 +280,13 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     edit({ displayName: spec.displayName, permissionProfile: spec.permissionProfile ?? [] })
   }
 
+  const triggerLabelOf = (trigger: PhaseDto['entryTrigger']) =>
+    trigger === 'scheduled'
+      ? m.triggerScheduled
+      : trigger === 'manual'
+        ? m.triggerManual
+        : m.triggerPublication
+
   // what one row of the list says about when its stage runs
   const startLine = (phase: PhaseDto) => {
     if (phase.actualEntryAt !== null)
@@ -294,13 +310,24 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     const triggerFrozen = readOnly || (active && !state.isNew)
     // an interval that has already produced a calendar time is settled
     const offsetSettled = draft.entryOffset !== null && draft.plannedEntryAt !== null
-    return (
+    const stepped = (
       <>
+        <Steps
+          steps={[format(m.stepPhaseBasics), format(m.stepPhaseOpens)]}
+          current={state.step}
+          onSelect={(index) =>
+            setPanel((current) => (current ? { ...current, step: index } : current))
+          }
+        />
         {refused.length > 0 && (
           <Feedback message={`${format(m.planRefusedIntro)} ${refused.join(' ')}`} />
         )}
         <Feedback message={failure} />
+      </>
+    )
 
+    const basics = (
+      <>
         <Field label={format(m.displayNameLabel)}>
           {(id) => (
             <Input
@@ -335,17 +362,59 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
             </div>
           </fieldset>
         )}
+      </>
+    )
 
+    const timing = (
+      <>
         {entered ? (
-          <p className="text-sm">
-            {format(m.startedAt, { time: timeOf(server[state.index]!.actualEntryAt!) })}
-          </p>
+          // a started stage still shows what it is and when it began - just
+          // as a record rather than as controls
+          <>
+            <RadioGroup
+              legend={format(m.triggerLegend)}
+              name="entry-trigger-entered"
+              variant="cards"
+              options={[
+                {
+                  value: 'scheduled',
+                  label: format(m.triggerScheduled),
+                  hint: format(m.triggerScheduledHint),
+                },
+                {
+                  value: 'manual',
+                  label: format(m.triggerManual),
+                  hint: format(m.triggerManualHint),
+                },
+                {
+                  value: 'publication',
+                  label: format(m.triggerPublication),
+                  hint: format(m.triggerPublicationHint),
+                },
+              ]}
+              selected={draft.entryTrigger}
+              disabled
+              onChange={() => undefined}
+            />
+            <Field label={format(m.startedLabel)} hint={format(m.startedNotice)}>
+              {(id) => (
+                <Input
+                  id={id}
+                  type="datetime-local"
+                  value={toLocalInput(server[state.index]!.actualEntryAt)}
+                  disabled
+                  readOnly
+                />
+              )}
+            </Field>
+          </>
         ) : (
           <>
             <div className="space-y-2">
               <RadioGroup
                 legend={format(m.triggerLegend)}
                 name="entry-trigger"
+                variant="cards"
                 options={[
                   {
                     value: 'scheduled',
@@ -398,8 +467,13 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                 <RadioGroup
                   legend={format(m.timeModeLegend)}
                   name="time-mode"
+                  variant="cards"
                   options={[
-                    { value: 'date', label: format(m.timeModeDate) },
+                    {
+                      value: 'date',
+                      label: format(m.timeModeDate),
+                      hint: format(m.timeModeDateHint),
+                    },
                     {
                       value: 'offset',
                       label: format(m.timeModeOffset),
@@ -482,14 +556,30 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
             )}
           </>
         )}
+      </>
+    )
 
-        <PermissionProfileEditor
-          legend={format(m.profileTitle)}
-          hint={format(m.profileHint)}
-          profile={draft.permissionProfile}
-          disabled={readOnly || ended}
-          onChange={(next) => edit({ permissionProfile: next })}
-        />
+    const opens = (
+      <PermissionProfileEditor
+        legend={format(m.profileTitle)}
+        hint={format(m.profileHint)}
+        profile={draft.permissionProfile}
+        disabled={readOnly || ended}
+        onChange={(next) => edit({ permissionProfile: next })}
+      />
+    )
+
+    return (
+      <>
+        {stepped}
+        {state.step === 0 ? (
+          <>
+            {basics}
+            {timing}
+          </>
+        ) : (
+          opens
+        )}
       </>
     )
   }
@@ -559,16 +649,19 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{phase.displayName}</span>
+                      <Badge variant="outline">{format(triggerLabelOf(phase.entryTrigger))}</Badge>
                       {current && <Badge>{format(m.currentBadge)}</Badge>}
                       {ended && <Badge variant="secondary">{format(m.endedBadge)}</Badge>}
                       {upNext && <Badge variant="outline">{format(m.upNextBadge)}</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {startLine(phase)}
-                      {' · '}
                       {format(m.opensCount, { count: phase.permissionProfile.length })}
                     </p>
                   </div>
+                  {/* when it runs is the row's other half, not a footnote */}
+                  <p className="shrink-0 text-sm text-muted-foreground max-sm:w-full">
+                    {startLine(phase)}
+                  </p>
                   <div className="flex shrink-0 items-center gap-2">
                     {upNext && phase.entryTrigger !== 'publication' && (
                       <Button
@@ -598,17 +691,11 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       {/* one stage, edited in place */}
       <SidePanel
         open={panel !== null}
-        title={panel?.draft.displayName ?? format(m.phasePanelTitle)}
-        description={format(m.phasePanelHint)}
+        title={panel?.draft.displayName?.trim() || format(m.phasePanelTitle)}
         onClose={() => setPanel(null)}
         footer={
           <>
-            {!readOnly && panel !== null && (
-              <Button disabled={savePlan.isPending} onClick={() => saveFromPanel(panel)}>
-                {format(m.save)}
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setPanel(null)}>
+            <Button variant="ghost" className="mr-auto" onClick={() => setPanel(null)}>
               {format(readOnly ? m.close : m.cancel)}
             </Button>
             {!readOnly && panel !== null && !panel.isNew && batch.status === 'draft' && (
@@ -618,6 +705,26 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                 onClick={() => setRemoving(true)}
               >
                 {format(m.removePhase)}
+              </Button>
+            )}
+            {!readOnly && panel !== null && (
+              <Button
+                variant={panel.step < 1 ? 'outline' : 'default'}
+                disabled={savePlan.isPending}
+                onClick={() => saveFromPanel(panel)}
+              >
+                {format(m.save)}
+              </Button>
+            )}
+            {!readOnly && panel !== null && panel.step < 1 && (
+              <Button
+                onClick={() =>
+                  setPanel((current) =>
+                    current ? { ...current, step: current.step + 1 } : current,
+                  )
+                }
+              >
+                {format(m.next)}
               </Button>
             )}
           </>

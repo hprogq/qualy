@@ -80,6 +80,29 @@ const confirmStartPhase = defineMessage<{ name: string }>()({
   defaultMessage: 'Start “{name}” now?',
 })
 
+// what a batch is, in one line: who it assesses and which materials count
+const batchSummary = defineMessage<{ count: number; from: string; until: string }>()({
+  id: 'assessment/batch/summary',
+  defaultMessage:
+    '{count, plural, one {# participant} other {# participants}}, counting materials from {from} to {until}',
+})
+
+const batchSummaryDraft = defineMessage<{ units: number; from: string; until: string }>()({
+  id: 'assessment/batch/summary-draft',
+  defaultMessage:
+    'Covers {units, plural, one {# unit} other {# units}}, counting materials from {from} to {until}',
+})
+
+const pageOfTotal = defineMessage<{ page: number; pages: number }>()({
+  id: 'assessment/batch/page-of-total',
+  defaultMessage: 'Page {page} of {pages}',
+})
+
+const totalCount = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/total-count',
+  defaultMessage: '{count, plural, one {# item} other {# items}}',
+})
+
 const includedAt = defineMessage<{ time: string }>()({
   id: 'assessment/roster/included-at',
   defaultMessage: 'On the list since {time}',
@@ -93,19 +116,35 @@ const i18n = definePluginMessages({
     batchesTitle: { id: 'assessment/batch/title', defaultMessage: 'Assessment batches' },
     batchesHint: {
       id: 'assessment/batch/hint',
-      defaultMessage:
-        'A batch is one round of assessment: who takes part, which stages it goes through, and when.',
+      defaultMessage: "Manage each assessment round's scope, stage plan and roster.",
     },
     batchesEmpty: {
       id: 'assessment/batch/empty',
-      defaultMessage: 'No batches yet. Create the first one to get started.',
+      defaultMessage: 'No assessment batches yet.',
     },
     newBatch: { id: 'assessment/batch/new', defaultMessage: 'New batch' },
-    newBatchHint: {
-      id: 'assessment/batch/new-hint',
-      defaultMessage:
-        'The batch starts as a draft you can shape freely. Nothing is visible to students until you activate it.',
+    batchesEmptyHint: {
+      id: 'assessment/batch/empty-hint',
+      defaultMessage: 'Create a batch to manage its scope, stages and roster here.',
     },
+    searchPlaceholder: {
+      id: 'assessment/batch/search',
+      defaultMessage: 'Search by name',
+    },
+    filterStatus: { id: 'assessment/batch/filter-status', defaultMessage: 'Status' },
+    filterAll: { id: 'assessment/batch/filter-all', defaultMessage: 'All' },
+    noMatchTitle: { id: 'assessment/batch/no-match', defaultMessage: 'No matching batches' },
+    noMatchHint: {
+      id: 'assessment/batch/no-match-hint',
+      defaultMessage: 'Try a different keyword or clear the status filter.',
+    },
+    clearFilters: { id: 'assessment/batch/clear-filters', defaultMessage: 'Clear filters' },
+    previousPage: { id: 'assessment/action/previous-page', defaultMessage: 'Previous' },
+    nextPage: { id: 'assessment/action/next-page', defaultMessage: 'Next' },
+    pageOfTotal,
+    totalCount,
+    batchSummary,
+    batchSummaryDraft,
     backToList: { id: 'assessment/batch/back', defaultMessage: 'All batches' },
     columnName: { id: 'assessment/batch/column-name', defaultMessage: 'Name' },
     columnStatus: { id: 'assessment/batch/column-status', defaultMessage: 'Status' },
@@ -113,7 +152,11 @@ const i18n = definePluginMessages({
       id: 'assessment/batch/column-material-range',
       defaultMessage: 'Materials accepted',
     },
-    columnUnits: { id: 'assessment/batch/column-units', defaultMessage: 'Who it covers' },
+    columnParticipants: {
+      id: 'assessment/batch/column-participants',
+      defaultMessage: 'Participants',
+    },
+    columnCreatedAt: { id: 'assessment/batch/column-created-at', defaultMessage: 'Created' },
 
     // the batch form
     nameLabel: { id: 'assessment/batch/name', defaultMessage: 'Name' },
@@ -121,35 +164,31 @@ const i18n = definePluginMessages({
       id: 'assessment/batch/name-placeholder',
       defaultMessage: 'e.g. 2026 spring assessment',
     },
-    materialFrom: { id: 'assessment/batch/material-from', defaultMessage: 'Count materials from' },
-    materialTo: { id: 'assessment/batch/material-to', defaultMessage: 'until' },
-    materialHint: {
-      id: 'assessment/batch/material-hint',
-      defaultMessage:
-        'Only things that happened between these dates count. The end date itself is not included.',
+    materialRange: {
+      id: 'assessment/batch/material-range',
+      defaultMessage: 'Material period',
     },
-    scopeLegend: { id: 'assessment/batch/scope', defaultMessage: 'Which units take part' },
-    scopeHint: {
-      id: 'assessment/batch/scope-hint',
-      defaultMessage:
-        'Everyone in the selected units is assessed together under the same rules. Pick each unit directly; do not also pick a unit that contains one you already picked.',
-    },
+    pickDateRange: { id: 'assessment/action/pick-date-range', defaultMessage: 'Select a period' },
+    stepBasics: { id: 'assessment/batch/step-basics', defaultMessage: 'Details' },
+    stepPhaseBasics: { id: 'assessment/phase/step-basics', defaultMessage: 'Details' },
+    stepPhaseOpens: { id: 'assessment/phase/step-opens', defaultMessage: 'Actions' },
+    stepScope: { id: 'assessment/batch/step-scope', defaultMessage: 'Coverage' },
+    back: { id: 'assessment/action/back', defaultMessage: 'Back' },
+    next: { id: 'assessment/action/next', defaultMessage: 'Next' },
+    scopeLegend: { id: 'assessment/batch/scope', defaultMessage: 'Participating units' },
     scopeEmpty: {
       id: 'assessment/batch/scope-empty',
-      defaultMessage: 'There are no units you can manage, so a batch cannot be created from here.',
+      defaultMessage: 'No units available to manage.',
     },
     userTypesLegend: {
       id: 'assessment/batch/user-types',
-      defaultMessage: 'Who in those units is assessed',
+      defaultMessage: 'Participant types',
     },
     userTypesEmpty: {
       id: 'assessment/batch/user-types-empty',
-      defaultMessage: 'No user types are available yet.',
+      defaultMessage: 'No user types available.',
     },
     create: { id: 'assessment/action/create', defaultMessage: 'Create batch' },
-    pickDate: { id: 'assessment/action/pick-date', defaultMessage: 'Pick a date' },
-    confirm: { id: 'assessment/action/confirm', defaultMessage: 'Done' },
-    chooseUnits: { id: 'assessment/batch/choose-units', defaultMessage: 'Choose units…' },
     save: { id: 'assessment/action/save', defaultMessage: 'Save' },
     cancel: { id: 'assessment/action/cancel', defaultMessage: 'Cancel' },
     close: { id: 'assessment/action/close', defaultMessage: 'Close' },
@@ -166,7 +205,7 @@ const i18n = definePluginMessages({
     activateConfirmBody: {
       id: 'assessment/action/activate-confirm-body',
       defaultMessage:
-        'The list of participants is drawn up from the selected units, and the units can no longer be changed. Stages then start according to the plan.',
+        'Activation generates the roster from the selected units; the units are then fixed and stages start as planned.',
     },
     archive: { id: 'assessment/action/archive', defaultMessage: 'Archive' },
     archiveConfirmTitle: {
@@ -176,12 +215,12 @@ const i18n = definePluginMessages({
     archiveConfirmBody: {
       id: 'assessment/action/archive-confirm-body',
       defaultMessage:
-        'An archived batch is closed for good: results stay visible, but nothing can be changed any more.',
+        'Archiving locks the batch for good: results stay visible, nothing can be changed.',
     },
     draftBanner: {
       id: 'assessment/batch/draft-banner',
       defaultMessage:
-        'This batch is still a draft. Set up its stages below, then activate it when everything is ready.',
+        'This batch is not active yet. Finish the stage plan, then activate it to generate the roster.',
     },
 
     // ------------------------------------------------------------------
@@ -191,91 +230,89 @@ const i18n = definePluginMessages({
     phasesHint: {
       id: 'assessment/phase/hint',
       defaultMessage:
-        'The batch moves through these stages in order. Each stage decides what participants can do while it lasts.',
+        'The batch advances stage by stage; each stage controls which actions are open.',
     },
     phasesEmpty: {
       id: 'assessment/phase/empty',
-      defaultMessage:
-        'No stages yet. Start from a ready-made timeline, or add stages one by one - both work.',
+      defaultMessage: 'No stages yet. Apply a timeline template or add stages manually.',
     },
     addPhase: { id: 'assessment/phase/add', defaultMessage: 'Add a stage' },
     editPhase: { id: 'assessment/phase/edit', defaultMessage: 'Edit' },
     viewPhase: { id: 'assessment/phase/view', defaultMessage: 'View' },
-    newPhaseName: { id: 'assessment/phase/new-name', defaultMessage: 'New stage' },
-    phasePanelTitle: { id: 'assessment/phase/panel-title', defaultMessage: 'Stage details' },
-    phasePanelHint: {
-      id: 'assessment/phase/panel-hint',
-      defaultMessage: 'Changes are saved to the whole plan when you press Save.',
+    phaseNameRequired: {
+      id: 'assessment/phase/name-required',
+      defaultMessage: 'Give the stage a name.',
     },
+    phasePanelTitle: { id: 'assessment/phase/panel-title', defaultMessage: 'Stage details' },
     removePhase: { id: 'assessment/phase/remove', defaultMessage: 'Remove stage' },
     confirmRemovePhase,
 
     // how a stage starts
     displayNameLabel: { id: 'assessment/phase/display-name', defaultMessage: 'Stage name' },
-    triggerLegend: { id: 'assessment/phase/trigger', defaultMessage: 'How does it start?' },
+    triggerLegend: { id: 'assessment/phase/trigger', defaultMessage: 'How it starts' },
     triggerScheduled: {
       id: 'assessment/phase/trigger-scheduled',
-      defaultMessage: 'At a set time',
+      defaultMessage: 'On a schedule',
     },
     triggerScheduledHint: {
       id: 'assessment/phase/trigger-scheduled-hint',
-      defaultMessage: 'Starts by itself, even if nobody is at a computer.',
+      defaultMessage: 'Begins automatically at the time you set.',
     },
-    triggerManual: { id: 'assessment/phase/trigger-manual', defaultMessage: 'By hand' },
+    triggerManual: { id: 'assessment/phase/trigger-manual', defaultMessage: 'Manually' },
     triggerManualHint: {
       id: 'assessment/phase/trigger-manual-hint',
-      defaultMessage: 'Waits until someone presses Start.',
+      defaultMessage: 'Waits for an administrator to start it.',
     },
     triggerPublication: {
       id: 'assessment/phase/trigger-publication',
-      defaultMessage: 'When results are published',
+      defaultMessage: 'With the results',
     },
     triggerPublicationHint: {
       id: 'assessment/phase/trigger-publication-hint',
-      defaultMessage: 'Follows the publication of results; it has no time of its own.',
+      defaultMessage: 'Begins when results are published; no time of its own.',
     },
     triggerFrozen: {
       id: 'assessment/phase/trigger-frozen',
-      defaultMessage: 'How a stage starts is fixed once the batch is in progress.',
+      defaultMessage: 'The start mode is fixed while the batch is active.',
     },
     plannedLabel: { id: 'assessment/phase/planned', defaultMessage: 'Starts on' },
-    timeModeLegend: { id: 'assessment/phase/time-mode', defaultMessage: 'When?' },
-    timeModeDate: { id: 'assessment/phase/time-mode-date', defaultMessage: 'On a set date' },
+    timeModeLegend: { id: 'assessment/phase/time-mode', defaultMessage: 'Start time' },
+    timeModeDate: { id: 'assessment/phase/time-mode-date', defaultMessage: 'Fixed date' },
+    timeModeDateHint: {
+      id: 'assessment/phase/time-mode-date-hint',
+      defaultMessage: 'Starts at the time you set.',
+    },
     timeModeOffset: {
       id: 'assessment/phase/time-mode-offset',
-      defaultMessage: 'A number of days after the previous stage',
+      defaultMessage: 'Relative to the previous stage',
     },
     plannedSlaLabel: {
       id: 'assessment/phase/planned-sla',
-      defaultMessage: 'Aim to start by (optional)',
+      defaultMessage: 'Target start time',
     },
     plannedSlaHint: {
       id: 'assessment/phase/planned-sla-hint',
-      defaultMessage:
-        'A reminder for yourselves. The stage still waits for someone to press Start.',
+      defaultMessage: 'Optional, for reference only; the stage still starts manually.',
     },
     offsetLabel: {
       id: 'assessment/phase/offset',
-      defaultMessage: 'Days after the previous stage begins',
+      defaultMessage: 'Days after',
     },
     offsetHint: {
       id: 'assessment/phase/offset-hint',
-      defaultMessage:
-        'Use this when the exact date depends on when the previous stage happens - for example, objections open one day after results are out.',
+      defaultMessage: 'Counted from when the previous stage actually starts.',
     },
     offsetFrozen: {
       id: 'assessment/phase/offset-frozen',
-      defaultMessage:
-        'The previous stage is now on the calendar, so this interval has become the start time above and can no longer be edited.',
+      defaultMessage: 'The previous stage is settled; this interval has become a fixed start time.',
     },
     estimatedLabel: {
       id: 'assessment/phase/estimated',
-      defaultMessage: 'Shown to participants as (optional)',
+      defaultMessage: 'Time shown to participants',
     },
     estimatedHint: {
       id: 'assessment/phase/estimated-hint',
-      defaultMessage:
-        'A rough date participants see, such as “around September 10”. It changes nothing by itself.',
+      defaultMessage: 'Optional, display only; it does not affect the schedule.',
     },
     timeUndecided: { id: 'assessment/phase/time-undecided', defaultMessage: 'Time not set yet' },
     waitingLabel: { id: 'assessment/phase/waiting', defaultMessage: 'Waiting to start' },
@@ -289,6 +326,11 @@ const i18n = definePluginMessages({
     upNextBadge: { id: 'assessment/phase/up-next', defaultMessage: 'Up next' },
     startsAt,
     startedAt,
+    startedLabel: { id: 'assessment/phase/started-label', defaultMessage: 'Started at' },
+    startedNotice: {
+      id: 'assessment/phase/started-notice',
+      defaultMessage: 'This stage has started; how and when it starts can no longer be changed.',
+    },
     targetAt,
     estimatedAt,
     offsetDaysAfter,
@@ -305,13 +347,12 @@ const i18n = definePluginMessages({
     },
     advanceForceBody: {
       id: 'assessment/phase/advance-force-body',
-      defaultMessage:
-        'This stage has a set start time that has not arrived yet. Starting it early is recorded together with your reason.',
+      defaultMessage: 'The set start time has not arrived; starting early records your reason.',
     },
     advanceReason: { id: 'assessment/phase/advance-reason', defaultMessage: 'Reason' },
     planRefusedIntro: {
       id: 'assessment/phase/plan-refused',
-      defaultMessage: 'The plan could not be saved:',
+      defaultMessage: 'Could not save the stage settings:',
     },
 
     // templates - two different things, both optional
@@ -326,7 +367,7 @@ const i18n = definePluginMessages({
     timelineTemplateBody: {
       id: 'assessment/template/timeline-body',
       defaultMessage:
-        'A timeline is a prepared sequence of stages. Applying one replaces the stages this batch has now - you can still edit everything afterwards.',
+        'Applying a timeline replaces the whole current stage plan; everything stays editable afterwards.',
     },
     timelineTemplateLabel: {
       id: 'assessment/template/timeline-label',
@@ -334,7 +375,7 @@ const i18n = definePluginMessages({
     },
     timelineTemplateEmpty: {
       id: 'assessment/template/timeline-empty',
-      defaultMessage: 'No ready-made timelines yet. You can build the stages by hand instead.',
+      defaultMessage: 'No timeline templates yet; stages can be added manually.',
     },
     timelineTemplateChoose: {
       id: 'assessment/template/timeline-choose',
@@ -346,8 +387,7 @@ const i18n = definePluginMessages({
     },
     phaseTemplateHint: {
       id: 'assessment/template/phase-hint',
-      defaultMessage:
-        'A preset fills in the name and the actions below. Your own adjustments stay yours - applying it is just a starting point.',
+      defaultMessage: 'Fills in the stage name and actions from a preset; edit freely afterwards.',
     },
     phaseTemplateChoose: {
       id: 'assessment/template/phase-choose',
@@ -358,12 +398,11 @@ const i18n = definePluginMessages({
     // what a stage opens
     profileTitle: {
       id: 'assessment/profile/title',
-      defaultMessage: 'While this stage lasts, participants can…',
+      defaultMessage: 'Actions open during this stage',
     },
     profileHint: {
       id: 'assessment/profile/hint',
-      defaultMessage:
-        'Ticking a box opens that action during this stage for people whose role already allows it. Everything else about their roles is unaffected.',
+      defaultMessage: 'Applies to this stage only; role permissions are unchanged.',
     },
 
     // ------------------------------------------------------------------
@@ -371,16 +410,16 @@ const i18n = definePluginMessages({
     rosterHint: {
       id: 'assessment/roster/hint',
       defaultMessage:
-        'The list was drawn up when the batch was activated. If the organization changes afterwards, the changes appear below as suggestions and you decide each one.',
+        'Generated at activation; organizational changes appear below as suggestions and never move the roster on their own.',
     },
     rosterEmpty: {
       id: 'assessment/roster/empty',
-      defaultMessage: 'Nobody is on the list yet.',
+      defaultMessage: 'No participants yet.',
     },
     rosterDraft: {
       id: 'assessment/roster/draft',
       defaultMessage:
-        'The list of participants is drawn up when the batch is activated - based on the units and user types chosen for it.',
+        'The roster is generated at activation from the selected units and user types.',
     },
     columnParticipant: { id: 'assessment/roster/column-name', defaultMessage: 'Name' },
     columnBusinessNo: { id: 'assessment/roster/column-no', defaultMessage: 'ID number' },
@@ -396,32 +435,32 @@ const i18n = definePluginMessages({
     },
     diffEmpty: {
       id: 'assessment/roster/diff-empty',
-      defaultMessage: 'The list matches the organization. Nothing needs your attention.',
+      defaultMessage: 'The roster matches the organization; nothing to review.',
     },
     diffArrivals: { id: 'assessment/roster/arrivals', defaultMessage: 'New in these units' },
     diffArrivalsHint: {
       id: 'assessment/roster/arrivals-hint',
       defaultMessage:
-        'These people joined the units after the list was drawn up. Add the ones who should take part here.',
+        'People who joined the selected units after the roster was generated; add them to include them in this batch.',
     },
     diffDeparted: { id: 'assessment/roster/departed', defaultMessage: 'No longer in these units' },
     diffDepartedHint: {
       id: 'assessment/roster/departed-hint',
       defaultMessage:
-        'These people have left the units but are still on the list. Remove the ones who should finish elsewhere - nothing they submitted is lost.',
+        'People who left the selected units but remain on the roster; removing them keeps everything they submitted.',
     },
     diffAnchor: { id: 'assessment/roster/anchor-changed', defaultMessage: 'Moved to another unit' },
     diffAnchorHint: {
       id: 'assessment/roster/anchor-changed-hint',
       defaultMessage:
-        'These people are still taking part but now sit somewhere else. Applying the move means their submissions are reviewed by the new unit.',
+        'People who moved to another unit within scope; applying the move hands review to the new unit.',
     },
     diffUserType: { id: 'assessment/roster/type-changed', defaultMessage: 'Changed user type' },
     diffScope: { id: 'assessment/roster/scope-integrity', defaultMessage: 'Units that are gone' },
     diffScopeHint: {
       id: 'assessment/roster/scope-integrity-hint',
       defaultMessage:
-        'These units were selected for the batch but no longer exist in the organization. Nobody joins through them until the batch is pointed elsewhere.',
+        'Units that were removed from the organization; they enroll nobody until the scope is adjusted.',
     },
     include: { id: 'assessment/roster/include', defaultMessage: 'Add to this batch' },
     exclude: { id: 'assessment/roster/exclude', defaultMessage: 'Remove' },
@@ -441,6 +480,66 @@ const i18n = definePluginMessages({
     includedAt,
 
     // ------------------------------------------------------------------
+    // the three families the gate itself distinguishes
+    permissionGroupEntry: {
+      id: 'assessment/permission-group/entry',
+      defaultMessage: 'Filling in',
+    },
+    permissionGroupReview: {
+      id: 'assessment/permission-group/review',
+      defaultMessage: 'Reviewing',
+    },
+    permissionGroupResult: {
+      id: 'assessment/permission-group/result',
+      defaultMessage: 'Results',
+    },
+
+    // one sentence per gated code: what opening it lets a participant do
+    'permission-hint.assessment.entry.create': {
+      id: 'assessment/permission-hint/entry-create',
+      defaultMessage: 'Start new entries against the items open in this batch.',
+    },
+    'permission-hint.assessment.entry.edit': {
+      id: 'assessment/permission-hint/entry-edit',
+      defaultMessage: 'Change entries that have not been submitted yet.',
+    },
+    'permission-hint.assessment.entry.submit': {
+      id: 'assessment/permission-hint/entry-submit',
+      defaultMessage: 'Hand a draft entry over for review.',
+    },
+    'permission-hint.assessment.entry.withdraw': {
+      id: 'assessment/permission-hint/entry-withdraw',
+      defaultMessage: 'Take a submitted entry back while it is still unreviewed.',
+    },
+    'permission-hint.assessment.entry.proxy': {
+      id: 'assessment/permission-hint/entry-proxy',
+      defaultMessage: 'Submit on a student behalf; the entry stays theirs.',
+    },
+    'permission-hint.assessment.entry.record': {
+      id: 'assessment/permission-hint/entry-record',
+      defaultMessage: 'Record findings the institution establishes itself.',
+    },
+    'permission-hint.assessment.entry.resubmit': {
+      id: 'assessment/permission-hint/entry-resubmit',
+      defaultMessage: 'Contest an entry that has already been settled.',
+    },
+    'permission-hint.assessment.review.process': {
+      id: 'assessment/permission-hint/review-process',
+      defaultMessage: 'Approve, reject or return submitted entries.',
+    },
+    'permission-hint.assessment.review.reopen': {
+      id: 'assessment/permission-hint/review-reopen',
+      defaultMessage: 'Reopen a review that was already concluded.',
+    },
+    'permission-hint.assessment.result.view-peers': {
+      id: 'assessment/permission-hint/result-view-peers',
+      defaultMessage: 'See the results of other participants.',
+    },
+    'permission-hint.assessment.ranking.view': {
+      id: 'assessment/permission-hint/ranking-view',
+      defaultMessage: 'See the ranking of the batch.',
+    },
+
     // one label per gated code; the matrix is built from PHASE_GATED_CODES,
     // so a code without a label here does not compile
     'permission.assessment.entry.create': {
@@ -558,10 +657,6 @@ const i18n = definePluginMessages({
       defaultMessage:
         'While the batch is running, a new stage can only go in after the one happening now.',
     },
-    'refusal.insert-after-terminal': {
-      id: 'assessment/refusal/insert-after-terminal',
-      defaultMessage: 'Nothing can come after the closing stage.',
-    },
     'refusal.terminal-must-be-manual': {
       id: 'assessment/refusal/terminal-must-be-manual',
       defaultMessage:
@@ -630,7 +725,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_PARTICIPANT_INVALID: {
       id: 'assessment/error/participant-invalid',
-      defaultMessage: 'That change to the participants could not be made.',
+      defaultMessage: 'Could not update the participant list.',
     },
     ASSESSMENT_TEMPLATE_NOT_FOUND: {
       id: 'assessment/error/template-not-found',
@@ -663,7 +758,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_PLAN_INVALID: {
       id: 'assessment/error/plan-invalid',
-      defaultMessage: 'The stage plan could not be saved. Look over the problems listed.',
+      defaultMessage: 'Could not save the stage settings. Fix the problems listed and try again.',
     },
     ASSESSMENT_ADVANCE_INVALID: {
       id: 'assessment/error/advance-invalid',
