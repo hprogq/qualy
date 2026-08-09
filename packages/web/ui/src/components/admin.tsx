@@ -24,17 +24,19 @@ import {
   DialogTitle,
 } from './dialog.tsx'
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from './drawer.tsx'
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from './sheet.tsx'
 import {
   Field as FormField,
+  FieldContent as FormFieldContent,
   FieldDescription as FormFieldDescription,
   FieldLabel as FormFieldLabel,
+  FieldTitle as FormFieldTitle,
 } from './field.tsx'
 import { Spinner } from './spinner.tsx'
 
@@ -231,6 +233,7 @@ export function RadioGroup({
   selected,
   onChange,
   disabled,
+  variant = 'list',
 }: {
   legend: string
   name: string
@@ -238,7 +241,41 @@ export function RadioGroup({
   selected: string
   onChange: (next: string) => void
   disabled?: boolean
+  /** 'cards' gives each option a full-width target, for a few real choices */
+  variant?: 'list' | 'cards'
 }) {
+  if (variant === 'cards') {
+    return (
+      <fieldset className="flex flex-col gap-2" disabled={disabled}>
+        {/* a legend is not part of the flow box, so its spacing is its own */}
+        <legend className="mb-2 text-sm font-medium">{legend}</legend>
+        <RadioGroupRoot
+          name={name}
+          value={selected}
+          onValueChange={onChange}
+          {...(disabled !== undefined ? { disabled } : {})}
+          className="grid gap-2"
+        >
+          {options.map((option) => (
+            <FormFieldLabel key={option.value}>
+              {/* a card is one choice, not a paragraph with a control beside
+                  it: the same has- modifier the variant uses, so this wins */}
+              <FormField
+                orientation="horizontal"
+                className="has-[>[data-slot=field-content]]:items-center"
+              >
+                <FormFieldContent>
+                  <FormFieldTitle>{option.label}</FormFieldTitle>
+                  {option.hint && <FormFieldDescription>{option.hint}</FormFieldDescription>}
+                </FormFieldContent>
+                <RadioGroupItem value={option.value} disabled={option.disabled ?? disabled} />
+              </FormField>
+            </FormFieldLabel>
+          ))}
+        </RadioGroupRoot>
+      </fieldset>
+    )
+  }
   return (
     <fieldset className="flex flex-col gap-2" disabled={disabled}>
       <legend className="text-sm font-medium">{legend}</legend>
@@ -329,18 +366,18 @@ export function SidePanel({
   footer?: ReactNode
 }) {
   return (
-    <Drawer direction="right" open={open} onOpenChange={(next) => !next && onClose()}>
-      <DrawerContent className="data-[vaul-drawer-direction=right]:inset-y-2 data-[vaul-drawer-direction=right]:right-2 data-[vaul-drawer-direction=right]:rounded-lg data-[vaul-drawer-direction=right]:sm:max-w-xl">
-        <DrawerHeader>
-          <DrawerTitle>{title}</DrawerTitle>
-          {description && <DrawerDescription>{description}</DrawerDescription>}
-        </DrawerHeader>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="flex flex-col gap-5">{children}</div>
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent side="right" className="sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle>{title}</SheetTitle>
+          {description && <SheetDescription>{description}</SheetDescription>}
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-4">
+          <div className="flex flex-col gap-5 pb-4">{children}</div>
         </div>
-        {footer && <DrawerFooter>{footer}</DrawerFooter>}
-      </DrawerContent>
-    </Drawer>
+        {footer && <SheetFooter className="flex-row justify-end">{footer}</SheetFooter>}
+      </SheetContent>
+    </Sheet>
   )
 }
 

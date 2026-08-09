@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '../lib/cn.ts'
 import {
@@ -12,7 +12,6 @@ import {
 import { Button } from './button.tsx'
 import { Checkbox } from './checkbox.tsx'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsible.tsx'
-import { FormDialog } from './admin.tsx'
 
 // A picker over a node hierarchy whose result is a minimal non-nested set:
 // ticking a node covers its whole subtree, and unticking one child of a
@@ -22,67 +21,36 @@ import { FormDialog } from './admin.tsx'
 
 export type TreeSelectNode = TreeSelectionNode
 
-export function TreeSelectDialog({
-  open,
-  onClose,
-  onConfirm,
-  title,
-  description,
-  confirmLabel,
-  cancelLabel,
-  emptyLabel,
-  nodes,
+export function TreeSelect({
   value,
+  onChange,
+  nodes,
+  emptyLabel,
+  className,
 }: {
-  open: boolean
-  onClose: () => void
-  onConfirm: (next: string[]) => void
-  title: string
-  description?: string
-  confirmLabel: string
-  cancelLabel: string
-  emptyLabel: string
-  nodes: readonly TreeSelectNode[]
   value: readonly string[]
+  onChange: (next: string[]) => void
+  nodes: readonly TreeSelectNode[]
+  emptyLabel: string
+  className?: string
 }) {
-  const [selection, setSelection] = useState<ReadonlySet<string>>(new Set(value))
-  useEffect(() => {
-    if (open) setSelection(new Set(value))
-  }, [open, value])
-
   const shape = shapeOf(nodes)
-
+  const selection = new Set(value)
+  if (shape.roots.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+  }
   return (
-    <FormDialog
-      open={open}
-      title={title}
-      {...(description !== undefined ? { description } : {})}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>
-            {cancelLabel}
-          </Button>
-          <Button onClick={() => onConfirm([...selection])}>{confirmLabel}</Button>
-        </>
-      }
-    >
-      {shape.roots.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
-      ) : (
-        <ul className="flex flex-col gap-0.5">
-          {shape.roots.map((root) => (
-            <TreeRow
-              key={root.id}
-              node={root}
-              shape={shape}
-              selection={selection}
-              onToggle={(node) => setSelection(toggleNode(shape, selection, node))}
-            />
-          ))}
-        </ul>
-      )}
-    </FormDialog>
+    <ul className={cn('flex flex-col gap-0.5', className)}>
+      {shape.roots.map((root) => (
+        <TreeRow
+          key={root.id}
+          node={root}
+          shape={shape}
+          selection={selection}
+          onToggle={(node) => onChange([...toggleNode(shape, selection, node)])}
+        />
+      ))}
+    </ul>
   )
 }
 
@@ -101,7 +69,7 @@ function TreeRow({
   const checked = coverOf(shape, selection, node) !== undefined
   const indeterminate = !checked && hasSelectedDescendant(shape, selection, node)
 
-  const row = (trigger?: boolean) => (
+  const row = (trigger: boolean) => (
     <div className="flex items-center gap-1">
       {trigger ? (
         <CollapsibleTrigger asChild>
@@ -115,11 +83,7 @@ function TreeRow({
       ) : (
         <span aria-hidden className="size-8 shrink-0" />
       )}
-      <label
-        className={cn(
-          'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50',
-        )}
-      >
+      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
         <Checkbox
           checked={indeterminate ? 'indeterminate' : checked}
           onCheckedChange={() => onToggle(node)}
