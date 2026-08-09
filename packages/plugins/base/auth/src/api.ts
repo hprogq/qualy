@@ -418,6 +418,8 @@ const signedInUser = Schema.Struct({
     id: Schema.String,
     code: Schema.NullOr(Schema.String),
     name: Schema.String,
+    orgType: Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
+    lineage: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
   }),
   tenant: Schema.Struct({ id: Schema.String, slug: Schema.String, name: Schema.String }),
 })

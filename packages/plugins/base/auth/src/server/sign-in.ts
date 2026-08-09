@@ -116,6 +116,9 @@ const signedInUser = (tenantId: string, userId: string) =>
       .innerJoin('OrgNode as n', (join) =>
         join.onRef('n.tenantId', '=', 'u.tenantId').onRef('n.id', '=', 'u.primaryOrgNodeId'),
       )
+      .innerJoin('OrgType as ot', (join) =>
+        join.onRef('ot.tenantId', '=', 'n.tenantId').onRef('ot.id', '=', 'n.orgTypeId'),
+      )
       .innerJoin('Tenant as e', 'e.id', 'u.tenantId')
       .where('u.tenantId', '=', tenantId)
       .where('u.id', '=', userId)
@@ -135,6 +138,10 @@ const signedInUser = (tenantId: string, userId: string) =>
         'n.id as orgNodeId',
         'n.code as orgNodeCode',
         'n.name as orgNodeName',
+        sql<string>`n.path`.as('orgNodePath'),
+        'ot.id as orgTypeId',
+        'ot.code as orgTypeCode',
+        'ot.name as orgTypeName',
         'e.id as tenantId',
         'e.slug as tenantSlug',
         'e.name as tenantName',
@@ -202,14 +209,35 @@ export type LoginMethod = {
   readonly name: string
 } & LoginPresentation
 
+/** the standing itself: every ancestor of the node, root first, node last */
+const lineageOf = (tenantId: string, path: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('OrgNode')
+      .select(['id', 'name'])
+      .where('tenantId', '=', tenantId)
+      .where(sql<boolean>`path @> ${path}::ltree`)
+      .orderBy('depth')
+      .execute(),
+  )
+
 type SignedInRow = NonNullable<Effect.Success<ReturnType<typeof signedInUser>>>
 
-const toSignedInUser = (row: SignedInRow): SignedInUser => ({
+const toSignedInUser = (
+  row: SignedInRow,
+  lineage: readonly { id: string; name: string }[],
+): SignedInUser => ({
   id: row.id,
   displayName: row.displayName,
   businessNo: row.businessNo,
   userType: { id: row.userTypeId, code: row.userTypeCode, name: row.userTypeName },
-  primaryOrgNode: { id: row.orgNodeId, code: row.orgNodeCode, name: row.orgNodeName },
+  primaryOrgNode: {
+    id: row.orgNodeId,
+    code: row.orgNodeCode,
+    name: row.orgNodeName,
+    orgType: { id: row.orgTypeId, code: row.orgTypeCode, name: row.orgTypeName },
+    lineage,
+  },
   tenant: { id: row.tenantId, slug: row.tenantSlug, name: row.tenantName },
 })
 
@@ -236,7 +264,9 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
 
   const loadUser = Effect.fn('Auth.signIn.loadUser')(function* (tenantId: string, userId: string) {
     const row = yield* signedInUser(tenantId, userId).pipe(Effect.orDie)
-    return row ? toSignedInUser(row) : undefined
+    if (!row) return undefined
+    const lineage = yield* lineageOf(tenantId, row.orgNodePath).pipe(Effect.orDie)
+    return toSignedInUser(row, lineage)
   })
 
   // maxAge is a Duration, not seconds: a bare number is read as MILLISECONDS,

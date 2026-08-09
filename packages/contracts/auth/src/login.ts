@@ -122,6 +122,9 @@ export interface SignedInUser {
     readonly id: string
     readonly code: string | null
     readonly name: string
+    readonly orgType: { readonly id: string; readonly code: string; readonly name: string }
+    /** root first, the node itself last; where this person stands, spelled out */
+    readonly lineage: readonly { readonly id: string; readonly name: string }[]
   }
   readonly tenant: { readonly id: string; readonly slug: string; readonly name: string }
 }
