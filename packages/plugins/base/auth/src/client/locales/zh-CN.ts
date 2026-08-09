@@ -10,6 +10,11 @@ export default {
   'auth/action/sign-in': '登录',
   'auth/action/sign-out': '退出登录',
   'auth/session/no-business-no': '未绑定学工号',
+  'auth/preference/appearance': '外观',
+  'auth/preference/language': '语言',
+  'auth/preference/theme-light': '浅色',
+  'auth/preference/theme-dark': '深色',
+  'auth/preference/theme-system': '跟随系统',
   'auth/navigation/users': '用户',
   'auth/navigation/user-types': '用户类型',
 

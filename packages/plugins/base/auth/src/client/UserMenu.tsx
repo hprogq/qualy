@@ -1,7 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
-import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
+import { useState, type ReactNode } from 'react'
+import {
+  PageLink,
+  useApi,
+  useApiQuery,
+  useRunApi,
+  useSessionTransition,
+  useTheme,
+  type ThemeChoice,
+} from '@qualy/web-runtime'
+import { isAuthenticationError, localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -10,9 +19,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
+import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
+import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
 
@@ -39,16 +55,13 @@ const initialsOf = (name: string): string => {
     : characters.slice(0, 2).join('')
 }
 
-/** the standing, without the root the brand already names */
-const standingOf = (lineage: readonly { name: string }[]): string =>
-  (lineage.length > 1 ? lineage.slice(1) : lineage).map((step) => step.name).join(' / ')
-
 export default function UserMenu() {
   const api = useApi(authApi)
   const run = useRunApi()
   const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
+  const [locale, setLocale] = useLocale()
   const [signOutError, setSignOutError] = useState<string | null>(null)
   const me = useQuery({ ...orpc.auth.getSession.queryOptions(), retry: false })
 
@@ -111,15 +124,42 @@ export default function UserMenu() {
             {identity}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {/* where they stand: the unit's kind, then the path down to it */}
-          <DropdownMenuLabel className="flex items-center gap-2 font-normal">
-            <Badge variant="outline" className="shrink-0">
-              {user.primaryOrgNode.orgType.name}
-            </Badge>
-            <span className="truncate text-xs text-muted-foreground">
-              {standingOf(user.primaryOrgNode.lineage)}
-            </span>
+          {/* where they stand, level by level: the tenant names each level, so
+              a student reads "College / Class" and a system account reads the
+              single level it sits at */}
+          <DropdownMenuLabel className="flex flex-col gap-1 font-normal">
+            {user.primaryOrgNode.lineage.map((step) => (
+              <span key={step.id} className="flex items-baseline justify-between gap-3 text-xs">
+                <span className="shrink-0 text-muted-foreground">{step.typeName}</span>
+                <span className="truncate">{step.name}</span>
+              </span>
+            ))}
           </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {/* appearance and language are personal preferences, so they live
+              with the account rather than in the page chrome. Both are held
+              by the browser: nothing about them reaches the server. */}
+          <PreferenceRow label={format(m.appearance)}>
+            <ThemeChoicePicker />
+          </PreferenceRow>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <span className="flex-1">{format(m.language)}</span>
+              <span className="text-muted-foreground">{localeNames[locale]}</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuRadioGroup
+                value={locale}
+                onValueChange={(next) => setLocale(next as SupportedLocale)}
+              >
+                {supportedLocales.map((candidate) => (
+                  <DropdownMenuRadioItem key={candidate} value={candidate}>
+                    {localeNames[candidate]}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -143,5 +183,42 @@ export default function UserMenu() {
         </span>
       )}
     </div>
+  )
+}
+
+/** a labelled row of choices inside the menu; not a menu item, so picking
+    one adjusts the preference instead of dismissing the menu */
+function PreferenceRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function ThemeChoicePicker() {
+  const { choice, setChoice } = useTheme()
+  const { format } = useI18n()
+  const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
+    { value: 'light', label: format(m.themeLight), icon: SunIcon },
+    { value: 'dark', label: format(m.themeDark), icon: MoonIcon },
+    { value: 'system', label: format(m.themeSystem), icon: MonitorIcon },
+  ]
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      value={choice}
+      aria-label={format(m.appearance)}
+      onValueChange={(next) => next !== '' && setChoice(next as ThemeChoice)}
+    >
+      {options.map((option) => (
+        <ToggleGroupItem key={option.value} value={option.value} aria-label={option.label}>
+          <option.icon />
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   )
 }

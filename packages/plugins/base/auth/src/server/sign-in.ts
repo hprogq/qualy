@@ -213,11 +213,14 @@ export type LoginMethod = {
 const lineageOf = (tenantId: string, path: string) =>
   db.query((k) =>
     k
-      .selectFrom('OrgNode')
-      .select(['id', 'name'])
-      .where('tenantId', '=', tenantId)
-      .where(sql<boolean>`path @> ${path}::ltree`)
-      .orderBy('depth')
+      .selectFrom('OrgNode as n')
+      .innerJoin('OrgType as t', (join) =>
+        join.onRef('t.tenantId', '=', 'n.tenantId').onRef('t.id', '=', 'n.orgTypeId'),
+      )
+      .select(['n.id', 'n.name', 't.name as typeName'])
+      .where('n.tenantId', '=', tenantId)
+      .where(sql<boolean>`n.path @> ${path}::ltree`)
+      .orderBy('n.depth')
       .execute(),
   )
 
@@ -225,7 +228,7 @@ type SignedInRow = NonNullable<Effect.Success<ReturnType<typeof signedInUser>>>
 
 const toSignedInUser = (
   row: SignedInRow,
-  lineage: readonly { id: string; name: string }[],
+  lineage: readonly { id: string; name: string; typeName: string }[],
 ): SignedInUser => ({
   id: row.id,
   displayName: row.displayName,

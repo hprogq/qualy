@@ -60,6 +60,11 @@ const i18n = definePluginMessages({
     signIn: { id: 'auth/action/sign-in', defaultMessage: 'Sign in' },
     signOut: { id: 'auth/action/sign-out', defaultMessage: 'Sign out' },
     noBusinessNo: { id: 'auth/session/no-business-no', defaultMessage: 'No student or staff ID' },
+    appearance: { id: 'auth/preference/appearance', defaultMessage: 'Appearance' },
+    language: { id: 'auth/preference/language', defaultMessage: 'Language' },
+    themeLight: { id: 'auth/preference/theme-light', defaultMessage: 'Light' },
+    themeDark: { id: 'auth/preference/theme-dark', defaultMessage: 'Dark' },
+    themeSystem: { id: 'auth/preference/theme-system', defaultMessage: 'System' },
 
     usersTitle: { id: 'auth/users/title', defaultMessage: 'Users' },
     usersHint: {

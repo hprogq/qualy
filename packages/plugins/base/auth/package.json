@@ -38,6 +38,7 @@
     "cookie": "catalog:",
     "effect": "catalog:",
     "kysely": "catalog:",
+    "lucide-react": "^0.552.0",
     "react-router": "catalog:",
     "zod": "catalog:"
   },

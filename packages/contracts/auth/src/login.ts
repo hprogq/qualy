@@ -123,8 +123,16 @@ export interface SignedInUser {
     readonly code: string | null
     readonly name: string
     readonly orgType: { readonly id: string; readonly code: string; readonly name: string }
-    /** root first, the node itself last; where this person stands, spelled out */
-    readonly lineage: readonly { readonly id: string; readonly name: string }[]
+    /**
+     * Root first, the node itself last: where this person stands, spelled out
+     * level by level. Each step carries what that level is called - "College",
+     * "Class" - so a screen can label it without knowing the tenant's tree.
+     */
+    readonly lineage: readonly {
+      readonly id: string
+      readonly name: string
+      readonly typeName: string
+    }[]
   }
   readonly tenant: { readonly id: string; readonly slug: string; readonly name: string }
 }
