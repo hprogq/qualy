@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from 'effect'
+import { Clock, Context, Effect, Layer } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -50,6 +50,7 @@ import {
 } from './errors.ts'
 import {
   batchParticipantIds,
+  batchesWithDueBoundaries,
   bumpConfigRevision,
   deletePhases,
   deleteTemplateRow,
@@ -161,6 +162,21 @@ const normalScope = (ids: readonly string[] | undefined): readonly string[] =>
 export type ActionDecision =
   | { readonly allowed: true }
   | { readonly allowed: false; readonly layer: 'rbac' | 'gate' | 'policy'; readonly reason: string }
+
+/** what one sweep of the clock-crossed boundaries did */
+export interface SweepReport {
+  /** batches the candidate query offered */
+  readonly scanned: number
+  /** boundaries this sweep was the one to write down */
+  readonly ratified: number
+}
+
+/**
+ * How many batches one sweep will take. A ceiling rather than a page: the
+ * next sweep is a minute away and picks up whatever is left, so a backlog
+ * drains instead of holding one transaction open across a whole tenant.
+ */
+const SWEEP_BATCH_LIMIT = 200
 
 const MANAGE = 'assessment.batch.manage'
 const FORCE_ADVANCE = 'assessment.batch.force-advance'
@@ -295,6 +311,16 @@ export class Assessment extends Context.Service<
       templateId: string,
       as: Principal,
     ) => Effect.Effect<void, AccessDenied | TemplateNotFound>
+    /**
+     * Ratifies every boundary the clock has crossed, across tenants.
+     *
+     * The scheduler's whole job, as a service method so the fiber owns only
+     * cadence. It acts as the system rather than for a principal: no
+     * authorization is consulted because nothing is being decided - the
+     * boundaries already took effect when the clock passed them, and this
+     * writes down what is already true.
+     */
+    readonly sweepDueBoundaries: Effect.Effect<SweepReport>
   }
 >()('@qualy/plugin-assessment/Assessment') {}
 
@@ -372,9 +398,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const ratifyPending = (tenantId: string, batchId: string, plan: PhasePlan, now: EpochMillis) =>
     Effect.gen(function* () {
       const state = effectiveState(plan, NO_PUBLICATIONS, now)
+      let ratified = 0
       for (const pending of state.pending) {
+        // the write is conditional on the actual still being null, so a
+        // concurrent ratifier converges instead of writing history twice;
+        // only the call that won reports the boundary
         const wrote = yield* setPhaseActual(tenantId, pending.phaseId, pending.actualEntryAt)
         if (wrote) {
+          ratified++
           yield* insertPhaseEvent({
             tenantId,
             phaseId: pending.phaseId,
@@ -387,7 +418,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (state.pending.length > 0 && state.phase !== null) {
         yield* setCurrentPhase(tenantId, batchId, state.phase.id)
       }
-      return state
+      // a boundary that fired is a determined anchor, so the offsets below it
+      // become plans - the same step a manual advance takes, here so that
+      // every way a boundary can fire materializes alike
+      if (ratified > 0) {
+        const advanced = toSnapshots(yield* listPhaseRows(tenantId, batchId))
+        for (const update of materializeOffsets(advanced, NO_PUBLICATIONS)) {
+          yield* updatePhaseFields(tenantId, update.phaseId, {
+            plannedEntryAt: update.plannedEntryAt,
+          })
+          yield* insertPhaseEvent({
+            tenantId,
+            phaseId: update.phaseId,
+            kind: 'offset-materialized',
+            plannedAt: update.plannedEntryAt,
+          })
+        }
+      }
+      return { state, ratified }
     })
 
   const fieldEditsOf = (existing: PhaseRow, spec: PhaseSpecInput): PlanEdit[] => {
@@ -817,7 +865,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (!locked) return yield* new BatchNotFound()
             yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
             const from = locked.status as string
-            const now = Date.now()
+            const now = yield* Clock.currentTimeMillis
 
             if (to === 'active') {
               if (from !== 'draft') return yield* new BatchStatusInvalid({ from, to })
@@ -855,7 +903,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               const plan = toSnapshots(yield* listPhaseRows(tenantId, batchId))
               // stand-in for the archive gate: the batch must have reached
               // its terminal phase; publication conditions arrive with them
-              const state = yield* ratifyPending(tenantId, batchId, plan, now)
+              const { state } = yield* ratifyPending(tenantId, batchId, plan, now)
               if (state.index !== plan.length - 1) {
                 return yield* new BatchStatusInvalid({ from, to })
               }
@@ -888,7 +936,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const rows = yield* readPlan(tenantId, batchId)
             const existingById = new Map(rows.map((row) => [row.id, row]))
             const participants = yield* batchParticipantIds(tenantId, batchId)
-            const now = Date.now()
+            const now = yield* Clock.currentTimeMillis
             const actorId = as.userId
 
             if (body.fromTemplateId !== undefined) {
@@ -1068,14 +1116,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (locked.status !== 'active') {
               return yield* new AdvanceInvalid({ reason: 'batch-not-active' })
             }
-            const now = Date.now()
+            const now = yield* Clock.currentTimeMillis
             const plan = toSnapshots(yield* listPhaseRows(tenantId, batchId))
             const targetIndex = plan.findIndex((phase) => phase.id === input.to)
             if (targetIndex === -1) return yield* new PhaseNotFound()
             const target = plan[targetIndex]!
 
             // the clock's crossings are ratified first, so "next" means next
-            const state = yield* ratifyPending(tenantId, batchId, plan, now)
+            const { state } = yield* ratifyPending(tenantId, batchId, plan, now)
             if (targetIndex !== state.index + 1) {
               return yield* new AdvanceInvalid({ reason: 'target-not-next' })
             }
@@ -1135,13 +1183,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
       const plan = toSnapshots(yield* dieQuery(withDb(listPhaseRows(tenantId, batchId))))
-      return deriveTimeline(plan, NO_PUBLICATIONS, Date.now())
+      return deriveTimeline(plan, NO_PUBLICATIONS, yield* Clock.currentTimeMillis)
     }),
 
     gate: Effect.fn('Assessment.gate')(function* (tenantId, batchId, code, ctx) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
-      const view = yield* dieQuery(withDb(gateView(tenantId, batch, Date.now())))
+      const now = yield* Clock.currentTimeMillis
+      const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
       return decide(view, code, ctx)
     }),
 
@@ -1157,7 +1206,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // Layer two: the phase gate.
         const batch = yield* dieQuery(withDb(oneBatch(principal.tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        const view = yield* dieQuery(withDb(gateView(principal.tenantId, batch, Date.now())))
+        const now = yield* Clock.currentTimeMillis
+        const view = yield* dieQuery(withDb(gateView(principal.tenantId, batch, now)))
         const decision = decide(view, code, ctx)
         if (!decision.allowed) {
           return { allowed: false, layer: 'gate', reason: decision.reason } as const
@@ -1215,6 +1265,31 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const deleted = yield* dieQuery(withDb(deleteTemplateRow(tenantId, templateId)))
       if (!deleted) return yield* new TemplateNotFound()
     }),
+
+    sweepDueBoundaries: Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      // One candidate query, then one transaction per batch. Sweeping every
+      // due batch in a single transaction would hold a lock across tenants
+      // for as long as the slowest one takes; per batch, a failure costs that
+      // batch this minute and nothing else.
+      const candidates = yield* dieQuery(withDb(batchesWithDueBoundaries(now, SWEEP_BATCH_LIMIT)))
+      let ratified = 0
+      for (const candidate of candidates) {
+        ratified += yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              const locked = yield* lockBatch(candidate.tenantId, candidate.id)
+              // gone or no longer active since the candidate query read it
+              if (!locked || locked.status !== 'active') return 0
+              const plan = toSnapshots(yield* listPhaseRows(candidate.tenantId, candidate.id))
+              const swept = yield* ratifyPending(candidate.tenantId, candidate.id, plan, now)
+              return swept.ratified
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      }
+      return { scanned: candidates.length, ratified }
+    }).pipe(Effect.withSpan('Assessment.sweepDueBoundaries')),
   })
 })
 

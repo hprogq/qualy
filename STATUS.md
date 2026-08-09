@@ -2392,3 +2392,50 @@ class2 排除;嵌套选择拒 `scope-nested`、空集拒 `scope-empty`;draft 重
 收编)。
 
 **下一步**:s4 调度 fiber(不变);s5 diff 面板按 §32.35 增 scope 完整性警告类。
+
+### M1 会话 13(s4)· 调度 fiber(2026-08-09)
+
+**实查上游**(effect 4.0.0-beta.103,路径逐一读过):`repos/effect/packages/effect/src/Effect.ts`
+(forkIn:8482、forkScoped:8525、repeat:7511、provideService:6225、scope:6343)、
+`Schedule.ts`(fixed:933——带 runningBehind 追平;spaced:1198)、`Clock.ts`
+(currentTimeMillis:265)、`testing/TestClock.ts`(layer:411、adjust:482、setTime:519、
+withLive:555、Options 只有 warningDelay:167)。未凭记忆用任何 API。
+
+- **服务改读 Effect 时钟**:`Date.now()` 全部换成 `Clock.currentTimeMillis`(6 处)。这是
+  TestClock 能真正控制判定的前提,也让"现在几点"成为可注入事实而非环境。
+- **候选查询**(db.ts,**刻意跨租户**):`batchesWithDueBoundaries(now, limit)`——调度器以
+  系统身份行事而非替某 principal,故不 tenant-scoped。它是**候选**查询,允许超集(谓词只取
+  "active 批次存在未进入、planned 已过的 scheduled 阶段"),真正谁跨界由引擎在各自事务里定;
+  **不允许欠集**,所以谓词取"跨界必然蕴含"的最弱条件,武装前缀(前面挡着 manual)由引擎判。
+- **服务 `sweepDueBoundaries`**:一次候选查询 + **逐批次一个事务**(锁行→读计划→ratifyPending),
+  返回 `{scanned, ratified}`;单事务横扫全部批次会把锁跨租户握住,逐批次则一次失败只赔上那个
+  批次这一分钟。`ratifyPending` 顺带补齐:①返回本次真正写下的条数(写入条件是 actual 仍为 null,
+  并发者收敛为 0);②**边界落地即物化下游 offset**(此前只有手动 advance 会物化,调度器路径漏了
+  ——同一句"边界发生 = 锚点确定"现在两条路径共用)。SWEEP_BATCH_LIMIT=200 是天花板不是分页,
+  下一分钟自然续扫。
+- **fiber**(`src/phase/scheduler.ts`,全文件 ~70 行):`Effect.repeat(sweep, Schedule.fixed('1 minute'))`
+  ——fixed 而非 spaced(节律是墙上时钟的一分钟,不是"上次跑完后一分钟");**在屏障上 fork、
+  forkIn 到本层 scope**(屏障:后台 fiber 不该在装配还没建完时开始写;层 scope:关停即随 scope
+  一起中断,SIGTERM 不必挂超时);boot hook 无 requirement,故 Assessment 在注册处用
+  `Effect.provideService` 绑定;`Effect.catchCause` 兜住失败与缺陷——**一次坏事务不许结束循环**,
+  下一分钟就是重试的好时机。单实例声明照迁移器口径写进注释:两个进程也不会写坏(条件写入),
+  只是没人需要,所以不买锁。
+- 描述器上车:`Plugin.layer(schedulerLayer.pipe(Layer.provide(serviceLayer)))`——fiber 消费服务、
+  不导出任何 tag,不进别人的图。
+
+**验收(实际执行)**:scheduler 套件 2 用例 ——①**时钟决定/物化只是记账**(不起 fiber:越过边界后
+gate 已放行而 actual 仍为 null,这条在没有任何扫描者能竞态的地方断言)+ 起 fiber 后
+**actual == planned**(不是 now)、processed 严格晚于 actual、事件恰一条、current_phase_id 投影
+更新;②**十分钟空转**不重复写(幂等)且 manual 之后的 scheduled/offset 阶段**不自燃、不物化**;
+③**跨租户一次扫两个租户**(scanned 2 / ratified 2)、二次扫 0/0、draft 批次不动。
+过程中修掉自己的两个测试错误:计划末位放 scheduled 被引擎按 terminal-must-be-manual 拒(引擎再次
+抓到测试违规)、`'4 minutes 30 seconds'` 不是 v4 合法 Duration(单单位)。**并修掉一个真 flake**:
+TestClock 的 adjust 先推进时间再唤醒睡眠者,所以落在 adjust 区间内的 tick 会观察到区间**末端**
+时刻——原测试"tick 之前 actual 仍为 null"因此在全量并发下不成立;改为把两个命题拆开各自确定
+(无 fiber 段断言时钟语义,有 fiber 段用 `TestClock.withLive` 轮询等待真实事务落地,超时即响亮失败)。
+`pnpm typecheck` 零错;`pnpm test` 全仓 **71 文件 444 全绿**(连跑两轮确认 flake 已消);
+`pnpm dev` 真启动 READY 2s,debug 日志实见 `boot hook: assessment/phase-scheduler` →
+`phase scheduler sweeping every 1 minute`,SIGTERM 后 shutdown complete(fiber 随 scope 落幕)。
+
+**下一步**:s5 花名册 diff 与对称转入转出(四类差异 + §32.35 的 scope 完整性警告类、
+纳入动作的双重参与警告、显式移出与 excluded、锚点变更应用、"首提前自动同步"开关落配置位)。

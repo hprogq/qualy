@@ -816,3 +816,38 @@ export const deleteTemplateRow = (tenantId: string, templateId: string) =>
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))
+
+/**
+ * Every batch that may have a boundary the clock has crossed, across tenants.
+ *
+ * The scheduler acts as the system rather than for a principal, so this one
+ * query is deliberately not tenant-scoped. It is a candidate query and may
+ * over-approximate: the engine decides inside each batch's transaction what
+ * actually crosses. It may never under-approximate, which is why the
+ * predicate is the weakest one a crossing implies - an unentered scheduled
+ * phase whose planned instant has passed. The armed-prefix rule (a manual
+ * boundary ahead of it) is the engine's to apply, not this statement's.
+ */
+export const batchesWithDueBoundaries = (now: number, limit: number) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentBatch')
+        .select(['AssessmentBatch.tenantId', 'AssessmentBatch.id'])
+        .where('AssessmentBatch.status', '=', 'active')
+        .where(
+          sql<boolean>`exists (
+            select 1 from batch_phases due
+            where due.tenant_id = assessment_batches.tenant_id
+              and due.batch_id = assessment_batches.id
+              and due.entry_trigger = 'scheduled'
+              and due.actual_entry_at is null
+              and due.planned_entry_at is not null
+              and due.planned_entry_at <= ${instant(now)}
+          )`,
+        )
+        .orderBy('AssessmentBatch.id')
+        .limit(limit)
+        .execute(),
+    )
+    .pipe(Effect.map((found) => found as { tenantId: string; id: string }[]))
