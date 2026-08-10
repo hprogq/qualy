@@ -1,99 +1,88 @@
-import { useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ListOrderedIcon, PlusIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import {
-  AsyncSection,
-  ConfirmDialog,
-  Feedback,
-  Field,
-  FormDialog,
-  RadioGroup,
-  SidePanel,
-} from '@qualy/ui/admin'
-import { Badge } from '@qualy/ui/badge'
-import { Steps } from '@qualy/ui/steps'
+import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Button } from '@qualy/ui/button'
-import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { NativeSelect } from '@qualy/ui/native-select'
-import type { ApiResult } from '@qualy/web-runtime/api'
+import { cn } from '@qualy/ui/cn'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
-import { PermissionProfileEditor } from './PermissionProfileEditor.tsx'
-import { refusalMessage, refusalsOf } from './refusals.ts'
+import { refusalMessage, refusalsOf, type PlanRefusalLike } from './refusals.ts'
+import {
+  countChanges,
+  draftOf,
+  freshDraft,
+  shapeOf,
+  type BatchDto,
+  type PhaseDraft,
+} from './phase/model.ts'
+import { PhaseCard, PhaseRow, type PhaseRowProps } from './phase/PhaseRow.tsx'
+import { PhaseDetailsPanel } from './phase/PhaseDetailsPanel.tsx'
+import { ScheduleDialog, TemplateDialog, UnscheduleDialog } from './phase/PhaseDialogs.tsx'
 
-// The stage plan: a readable list, and a side panel that edits one stage at
-// a time.
+// The stage plan: the ordered list of business states a batch passes through,
+// and the two commands that change it.
 //
-// The list states plainly when each stage runs; every form control lives in
-// the panel, which submits the whole plan on save and shows what was refused
-// as sentences. Templates come in two flavours and neither is ever required:
-// a timeline replaces a draft's whole plan, a stage preset fills in one
-// stage's name and actions inside the panel. A plan can just as well be built
-// from nothing, one stage at a time.
+// Editing what the phases are is a whole-plan write; committing when one
+// begins is a single sub-resource write. They share one ordered list, so they
+// share one screen - but they never share a control, and the plan's shape
+// (model.ts) decides which row offers which. This file is the composition
+// root: queries, mutations and the modes; the row, the panel and the dialogs
+// live next to it.
 
-type PhaseDto = ApiResult<typeof assessmentApi, 'assessment', 'getPhases'>['phases'][number]
-type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']
-
-/** the editable half of one stage, as the panel holds it while typing */
-interface Draft {
-  id?: string
-  phaseKey: string
-  displayName: string
-  entryTrigger: PhaseDto['entryTrigger']
-  plannedEntryAt: string | null
-  entryOffset: PhaseDto['entryOffset']
-  estimatedEntryAt: string | null
-  permissionProfile: readonly string[]
-  itemScope: readonly string[]
-  participantScope: readonly string[]
+/** the gap between two rows, which offers to become a stage when pointed at */
+function SeamRow({
+  label,
+  shown,
+  onPoint,
+  onInsert,
+}: {
+  label: string
+  shown: boolean
+  onPoint: (over: boolean) => void
+  onInsert: () => void
+}) {
+  return (
+    <TableRow className="h-0 border-0 hover:bg-transparent">
+      {/* the strip takes no height of its own: it straddles the seam the two
+          neighbouring rows already draw, so revealing it moves nothing.
+          movement decides what is shown, not :hover - inserting a row moves
+          the strip under a pointer that has not moved, and css would leave it
+          lit until the pointer did */}
+      <TableCell colSpan={4} className="relative h-0 border-0 p-0">
+        <div
+          onMouseMove={() => onPoint(true)}
+          onMouseLeave={() => onPoint(false)}
+          className={cn(
+            'absolute inset-x-0 -top-1.5 z-10 flex h-3 items-center gap-2 px-3 transition-opacity focus-within:opacity-100',
+            shown ? 'opacity-100' : 'opacity-0',
+          )}
+        >
+          <span aria-hidden className="h-px flex-1 bg-border" />
+          <Button
+            variant="outline"
+            className="h-6 gap-1 bg-background px-2 text-xs"
+            onClick={(event) => {
+              // the strip is also held open by focus, and the row it just
+              // added has moved it out from under the pointer
+              event.currentTarget.blur()
+              onInsert()
+            }}
+          >
+            <PlusIcon aria-hidden className="size-3" />
+            {label}
+          </Button>
+          <span aria-hidden className="h-px flex-1 bg-border" />
+        </div>
+      </TableCell>
+    </TableRow>
+  )
 }
-
-interface PanelState {
-  index: number
-  isNew: boolean
-  draft: Draft
-  /** which part of the stage is on screen; the header jumps between them */
-  step: number
-}
-
-const specOf = (phase: PhaseDto): Draft => ({
-  id: phase.id,
-  phaseKey: phase.phaseKey,
-  displayName: phase.displayName,
-  entryTrigger: phase.entryTrigger,
-  plannedEntryAt: phase.plannedEntryAt,
-  entryOffset: phase.entryOffset,
-  estimatedEntryAt: phase.estimatedEntryAt,
-  permissionProfile: phase.permissionProfile,
-  itemScope: phase.itemScope,
-  participantScope: phase.participantScope,
-})
-
-/** a key no other stage in the plan uses yet */
-const freshKey = (taken: readonly { phaseKey: string }[]) => {
-  const used = new Set(taken.map((spec) => spec.phaseKey))
-  let n = taken.length + 1
-  while (used.has(`stage-${n}`)) n += 1
-  return `stage-${n}`
-}
-
-// `datetime-local` speaks local wall time without a zone; the api speaks
-// instants. Both conversions live here so nothing else has to know.
-const toLocalInput = (iso: string | null): string => {
-  if (iso === null) return ''
-  const at = new Date(iso)
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`
-}
-
-const fromLocalInput = (value: string): string | null =>
-  value === '' ? null : new Date(value).toISOString()
-
-const timeOf = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
@@ -112,60 +101,62 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     query.assessment.listTemplates.queryOptions({ query: { kind: 'phase' } }),
   )
 
-  // which overlay is open; the panel holds the one stage being edited
-  const [panel, setPanel] = useState<PanelState | null>(null)
-  const [timelineDialog, setTimelineDialog] = useState(false)
-  const [timelineId, setTimelineId] = useState('')
-  const [presetId, setPresetId] = useState('')
-  const [removing, setRemoving] = useState(false)
-  const [starting, setStarting] = useState<{ id: string; name: string; force: boolean } | null>(
-    null,
-  )
-  const [reason, setReason] = useState('')
-  const [failure, setFailure] = useState<string | null>(null)
-  const [refused, setRefused] = useState<readonly string[]>([])
+  const rows = phases.data?.phases ?? []
+  const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
+  const shape = useMemo(() => shapeOf(rows), [rows])
 
-  const server = phases.data?.phases ?? []
+  const [edited, setEdited] = useState<readonly PhaseDraft[] | null>(null)
+  const drafts = edited ?? serverDrafts
+  const [editing, setEditing] = useState(false)
+  /** the seam a pointer is currently over, if any */
+  const [seamAt, setSeamAt] = useState<number | null>(null)
+  const [actionsAt, setActionsAt] = useState<number | null>(null)
+  const [templateOpen, setTemplateOpen] = useState(false)
+  const [templateId, setTemplateId] = useState('')
+  const [scheduling, setScheduling] = useState<{
+    id: string
+    name: string
+    canStartNow: boolean
+  } | null>(null)
+  const [plannedAt, setPlannedAt] = useState<string | null>(null)
+  const [unscheduling, setUnscheduling] = useState<{ id: string; name: string } | null>(null)
+  const [discarding, setDiscarding] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+  const [planRefusals, setPlanRefusals] = useState<readonly PlanRefusalLike[]>([])
+
+  // one renderer or the other, never both: duplicated controls in the dom
+  // are duplicated for a screen reader too
+  const isMobile = useIsMobile()
   const readOnly = batch.status === 'archived'
-  const active = batch.status === 'active'
-  const currentIndex = server.reduce(
-    (found, phase, at) => (phase.actualEntryAt !== null ? at : found),
-    -1,
-  )
+  const dirty = useMemo(() => countChanges(edited, serverDrafts), [edited, serverDrafts])
 
   const clear = () => {
     setFailure(null)
-    setRefused([])
+    setPlanRefusals([])
   }
-
-  const failed = (error: unknown) => {
-    const sentences = refusalsOf(error).map((refusal) => {
-      const sentence = refusalMessage(refusal.reason)
-      return sentence ? format(sentence) : refusal.reason
-    })
-    setRefused(sentences)
-    setFailure(sentences.length > 0 ? null : formatError(error))
-  }
-
   const settle = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+  const failed = (error: unknown) => {
+    const refusals = refusalsOf(error)
+    setPlanRefusals(refusals)
+    setFailure(refusals.length > 0 ? null : formatError(error))
+  }
+  const sentenceOf = (refusal: PlanRefusalLike) => {
+    const message = refusalMessage(refusal.reason)
+    return message ? format(message) : refusal.reason
+  }
 
   const savePlan = useMutation({
-    mutationFn: (specs: readonly Draft[]) =>
+    mutationFn: (submitted: readonly PhaseDraft[]) =>
       run(
         api.assessment.putPhases({
           params: { batchId: batch.id },
           payload: {
-            phases: specs.map((spec) => ({
-              ...(spec.id !== undefined ? { id: spec.id } : {}),
-              phaseKey: spec.phaseKey,
-              displayName: spec.displayName,
-              entryTrigger: spec.entryTrigger,
-              plannedEntryAt: spec.plannedEntryAt,
-              entryOffset: spec.entryOffset,
-              estimatedEntryAt: spec.estimatedEntryAt,
-              permissionProfile: spec.permissionProfile,
-              itemScope: spec.itemScope,
-              participantScope: spec.participantScope,
+            phases: submitted.map((row) => ({
+              ...(row.id !== undefined ? { id: row.id } : {}),
+              phaseKey: row.phaseKey,
+              displayName: row.displayName,
+              description: row.description,
+              permissionProfile: row.permissionProfile,
             })),
           },
         }),
@@ -173,438 +164,205 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     onMutate: clear,
     onSuccess: async () => {
       await settle()
-      setPanel(null)
-      setRemoving(false)
+      setEdited(null)
+      setEditing(false)
     },
     onError: failed,
   })
 
-  const applyTimeline = useMutation({
-    mutationFn: (templateId: string) =>
+  const addFromTemplate = useMutation({
+    mutationFn: (id: string) =>
       run(
         api.assessment.putPhases({
           params: { batchId: batch.id },
-          payload: { fromTemplateId: templateId },
+          payload: { fromTemplateId: id },
         }),
       ),
     onMutate: clear,
     onSuccess: async () => {
       await settle()
-      setTimelineDialog(false)
-      setTimelineId('')
+      setEdited(null)
+      setTemplateOpen(false)
+      setTemplateId('')
     },
     onError: failed,
   })
 
-  const advance = useMutation({
-    mutationFn: (input: { to: string; force: boolean; reason: string }) =>
+  const schedule = useMutation({
+    mutationFn: (input: { phaseId: string; at: string | null }) =>
       run(
-        api.assessment.advancePhase({
-          params: { batchId: batch.id },
-          payload: {
-            to: input.to,
-            ...(input.force ? { force: true, reason: input.reason } : {}),
-          },
+        api.assessment.schedulePhase({
+          params: { batchId: batch.id, phaseId: input.phaseId },
+          payload: { plannedEntryAt: input.at },
         }),
       ),
     onMutate: clear,
     onSuccess: async () => {
       await settle()
-      setStarting(null)
-      setReason('')
+      setScheduling(null)
+      setUnscheduling(null)
+      setPlannedAt(null)
     },
     onError: (error: unknown) => {
-      setStarting(null)
+      setScheduling(null)
+      setUnscheduling(null)
+      failed(error)
+    },
+  })
+
+  const advance = useMutation({
+    mutationFn: (phaseId: string) =>
+      run(
+        api.assessment.advancePhase({
+          params: { batchId: batch.id },
+          payload: { to: phaseId },
+        }),
+      ),
+    onMutate: clear,
+    onSuccess: async () => {
+      await settle()
+      setScheduling(null)
+    },
+    onError: (error: unknown) => {
+      setScheduling(null)
       setFailure(formatError(error))
     },
   })
 
-  const openEditor = (index: number) => {
-    clear()
-    setPresetId('')
-    setPanel({ index, isNew: false, step: 0, draft: specOf(server[index]!) })
-  }
+  // the one check worth spending a round trip on
+  const blockers = useMemo(
+    (): readonly PlanRefusalLike[] =>
+      drafts.flatMap((row, index) =>
+        row.displayName.trim() === ''
+          ? [{ reason: 'display-name-blank', phaseId: row.id ?? null, index }]
+          : [],
+      ),
+    [drafts],
+  )
 
-  const openNew = () => {
-    clear()
-    setPresetId('')
-    const specs = server.map(specOf)
-    // while the batch runs, the only legal place is right after the stage
-    // happening now; a draft simply grows at the end
-    const index = active ? currentIndex + 1 : specs.length
-    setPanel({
-      index,
-      isNew: true,
-      step: 0,
-      draft: {
-        phaseKey: freshKey(specs),
-        displayName: '',
-        entryTrigger: 'manual',
-        plannedEntryAt: null,
-        entryOffset: null,
-        estimatedEntryAt: null,
-        permissionProfile: [],
-        itemScope: [],
-        participantScope: [],
-      },
-    })
-  }
-
-  const saveFromPanel = (state: PanelState) => {
-    if (state.draft.displayName.trim() === '') {
-      setRefused([format(m.phaseNameRequired)])
-      setPanel((current) => (current ? { ...current, step: 0 } : current))
+  const saveAll = () => {
+    if (blockers.length > 0) {
+      setPlanRefusals(blockers)
       return
     }
-    const specs = server.map(specOf)
-    if (state.isNew) specs.splice(state.index, 0, state.draft)
-    else specs[state.index] = state.draft
-    savePlan.mutate(specs)
+    savePlan.mutate(drafts)
   }
 
-  const removeFromPanel = (state: PanelState) => {
-    savePlan.mutate(server.map(specOf).filter((_, at) => at !== state.index))
+  const addPhase = () => insertAt(drafts.length)
+
+  const insertAt = (index: number) => {
+    clear()
+    setEdited([...drafts.slice(0, index), freshDraft(drafts), ...drafts.slice(index)])
+    setEditing(true)
   }
 
-  const edit = (change: Partial<Draft>) =>
-    setPanel((current) =>
-      current ? { ...current, draft: { ...current.draft, ...change } } : current,
-    )
-
-  const applyPreset = () => {
-    const preset = (presets.data?.items ?? []).find((row) => row.id === presetId)
-    const spec = preset?.phases[0]
-    if (!spec) return
-    // a preset is a starting point: it fills the name and the actions, and
-    // everything stays editable afterwards
-    edit({ displayName: spec.displayName, permissionProfile: spec.permissionProfile ?? [] })
+  const move = (index: number, by: number) => {
+    const to = index + by
+    if (to < shape.scheduled || to >= drafts.length) return
+    const next = [...drafts]
+    const [row] = next.splice(index, 1)
+    next.splice(to, 0, row!)
+    clear()
+    setEdited(next)
   }
 
-  const triggerLabelOf = (trigger: PhaseDto['entryTrigger']) =>
-    trigger === 'scheduled'
-      ? m.triggerScheduled
-      : trigger === 'manual'
-        ? m.triggerManual
-        : m.triggerPublication
+  const setDraftAt = (index: number, next: PhaseDraft) =>
+    setEdited(drafts.map((row, at) => (at === index ? next : row)))
 
-  // what one row of the list says about when its stage runs
-  const startLine = (phase: PhaseDto) => {
-    if (phase.actualEntryAt !== null)
-      return format(m.startedAt, { time: timeOf(phase.actualEntryAt) })
-    if (phase.entryTrigger === 'publication') return format(m.publicationStart)
-    if (phase.plannedEntryAt !== null)
-      return format(m.startsAt, { time: timeOf(phase.plannedEntryAt) })
-    if (phase.entryOffset !== null)
-      return format(m.offsetDaysAfter, { days: phase.entryOffset.days ?? 0 })
-    if (phase.entryTrigger === 'manual')
-      return phase.estimatedEntryAt !== null
-        ? format(m.targetAt, { time: timeOf(phase.estimatedEntryAt) })
-        : format(m.manualStart)
-    return format(m.timeUndecided)
-  }
-
-  const panelBody = (state: PanelState) => {
-    const draft = state.draft
-    const entered = !state.isNew && server[state.index]?.actualEntryAt != null
-    const ended = !state.isNew && state.index < currentIndex
-    const triggerFrozen = readOnly || (active && !state.isNew)
-    // an interval that has already produced a calendar time is settled
-    const offsetSettled = draft.entryOffset !== null && draft.plannedEntryAt !== null
-    const stepped = (
-      <>
-        <Steps
-          steps={[format(m.stepPhaseBasics), format(m.stepPhaseOpens)]}
-          current={state.step}
-          onSelect={(index) =>
-            setPanel((current) => (current ? { ...current, step: index } : current))
-          }
-        />
-        {refused.length > 0 && (
-          <Feedback message={`${format(m.planRefusedIntro)} ${refused.join(' ')}`} />
-        )}
-        <Feedback message={failure} />
-      </>
+  const refusalsFor = (row: PhaseDraft, index: number) =>
+    planRefusals.filter(
+      (refusal) =>
+        (refusal.phaseId != null && refusal.phaseId === row.id) ||
+        (refusal.phaseId == null && refusal.index === index),
     )
+  // a refusal naming a row the draft no longer has - a removal the server
+  // would not take - has nowhere to land, so it is said at the top instead
+  const shownIds = new Set(drafts.flatMap((row) => (row.id !== undefined ? [row.id] : [])))
+  const generalRefusals = planRefusals.filter(
+    (refusal) =>
+      (refusal.phaseId == null && refusal.index === undefined) ||
+      (refusal.phaseId != null && !shownIds.has(refusal.phaseId)),
+  )
+  const named = (row: PhaseDraft) => row.displayName || format(m.unnamedSegment)
 
-    const basics = (
-      <>
-        <Field label={format(m.displayNameLabel)}>
-          {(id) => (
-            <Input
-              id={id}
-              value={draft.displayName}
-              disabled={readOnly}
-              onChange={(event) => edit({ displayName: event.target.value })}
-            />
-          )}
-        </Field>
-
-        {!readOnly && !entered && (presets.data?.items ?? []).length > 0 && (
-          <fieldset className="space-y-2 rounded-md border p-3">
-            <legend className="px-1 text-sm font-medium">{format(m.phaseTemplateLegend)}</legend>
-            <p className="text-xs text-muted-foreground">{format(m.phaseTemplateHint)}</p>
-            <div className="flex gap-2">
-              <NativeSelect
-                aria-label={format(m.phaseTemplateLegend)}
-                value={presetId}
-                onChange={(event) => setPresetId(event.target.value)}
-              >
-                <option value="">{format(m.phaseTemplateChoose)}</option>
-                {(presets.data?.items ?? []).map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.name}
-                  </option>
-                ))}
-              </NativeSelect>
-              <Button size="sm" variant="outline" disabled={presetId === ''} onClick={applyPreset}>
-                {format(m.phaseTemplateApply)}
-              </Button>
-            </div>
-          </fieldset>
-        )}
-      </>
-    )
-
-    const timing = (
-      <>
-        {entered ? (
-          // a started stage still shows what it is and when it began - just
-          // as a record rather than as controls
-          <>
-            <RadioGroup
-              legend={format(m.triggerLegend)}
-              name="entry-trigger-entered"
-              variant="cards"
-              options={[
-                {
-                  value: 'scheduled',
-                  label: format(m.triggerScheduled),
-                  hint: format(m.triggerScheduledHint),
-                },
-                {
-                  value: 'manual',
-                  label: format(m.triggerManual),
-                  hint: format(m.triggerManualHint),
-                },
-                {
-                  value: 'publication',
-                  label: format(m.triggerPublication),
-                  hint: format(m.triggerPublicationHint),
-                },
-              ]}
-              selected={draft.entryTrigger}
-              disabled
-              onChange={() => undefined}
-            />
-            <Field label={format(m.startedLabel)} hint={format(m.startedNotice)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  type="datetime-local"
-                  value={toLocalInput(server[state.index]!.actualEntryAt)}
-                  disabled
-                  readOnly
-                />
-              )}
-            </Field>
-          </>
-        ) : (
-          <>
-            <div className="space-y-2">
-              <RadioGroup
-                legend={format(m.triggerLegend)}
-                name="entry-trigger"
-                variant="cards"
-                options={[
-                  {
-                    value: 'scheduled',
-                    label: format(m.triggerScheduled),
-                    hint: format(m.triggerScheduledHint),
-                  },
-                  {
-                    value: 'manual',
-                    label: format(m.triggerManual),
-                    hint: format(m.triggerManualHint),
-                  },
-                  {
-                    value: 'publication',
-                    label: format(m.triggerPublication),
-                    hint: format(m.triggerPublicationHint),
-                  },
-                ]}
-                selected={draft.entryTrigger}
-                disabled={triggerFrozen}
-                onChange={(next) =>
-                  edit({
-                    entryTrigger: next as Draft['entryTrigger'],
-                    plannedEntryAt: null,
-                    entryOffset: null,
-                  })
-                }
-              />
-              {active && !state.isNew && !readOnly && (
-                <p className="text-xs text-muted-foreground">{format(m.triggerFrozen)}</p>
-              )}
-            </div>
-
-            {draft.entryTrigger === 'scheduled' && offsetSettled && (
-              <>
-                <Field label={format(m.plannedLabel)}>
-                  {(id) => (
-                    <Input
-                      id={id}
-                      type="datetime-local"
-                      value={toLocalInput(draft.plannedEntryAt)}
-                      disabled
-                    />
-                  )}
-                </Field>
-                <p className="text-xs text-muted-foreground">{format(m.offsetFrozen)}</p>
-              </>
-            )}
-            {draft.entryTrigger === 'scheduled' && !offsetSettled && (
-              <>
-                <RadioGroup
-                  legend={format(m.timeModeLegend)}
-                  name="time-mode"
-                  variant="cards"
-                  options={[
-                    {
-                      value: 'date',
-                      label: format(m.timeModeDate),
-                      hint: format(m.timeModeDateHint),
-                    },
-                    {
-                      value: 'offset',
-                      label: format(m.timeModeOffset),
-                      hint: format(m.offsetHint),
-                    },
-                  ]}
-                  selected={draft.entryOffset !== null ? 'offset' : 'date'}
-                  disabled={readOnly}
-                  onChange={(next) =>
-                    edit(
-                      next === 'offset'
-                        ? { entryOffset: { days: 1 }, plannedEntryAt: null }
-                        : { entryOffset: null },
-                    )
-                  }
-                />
-                {draft.entryOffset !== null ? (
-                  <Field label={format(m.offsetLabel)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        type="number"
-                        min={1}
-                        className="w-28"
-                        value={draft.entryOffset?.days ?? 0}
-                        disabled={readOnly}
-                        onChange={(event) =>
-                          edit({ entryOffset: { days: Number(event.target.value) } })
-                        }
-                      />
-                    )}
-                  </Field>
-                ) : (
-                  <Field label={format(m.plannedLabel)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        type="datetime-local"
-                        value={toLocalInput(draft.plannedEntryAt)}
-                        disabled={readOnly}
-                        onChange={(event) =>
-                          edit({ plannedEntryAt: fromLocalInput(event.target.value) })
-                        }
-                      />
-                    )}
-                  </Field>
-                )}
-              </>
-            )}
-
-            {draft.entryTrigger === 'manual' && (
-              <Field label={format(m.plannedSlaLabel)} hint={format(m.plannedSlaHint)}>
-                {(id) => (
-                  <Input
-                    id={id}
-                    type="datetime-local"
-                    value={toLocalInput(draft.estimatedEntryAt)}
-                    disabled={readOnly}
-                    onChange={(event) =>
-                      edit({ estimatedEntryAt: fromLocalInput(event.target.value) })
-                    }
-                  />
-                )}
-              </Field>
-            )}
-            {draft.entryTrigger === 'scheduled' && (
-              <Field label={format(m.estimatedLabel)} hint={format(m.estimatedHint)}>
-                {(id) => (
-                  <Input
-                    id={id}
-                    type="datetime-local"
-                    value={toLocalInput(draft.estimatedEntryAt)}
-                    disabled={readOnly}
-                    onChange={(event) =>
-                      edit({ estimatedEntryAt: fromLocalInput(event.target.value) })
-                    }
-                  />
-                )}
-              </Field>
-            )}
-          </>
-        )}
-      </>
-    )
-
-    const opens = (
-      <PermissionProfileEditor
-        legend={format(m.profileTitle)}
-        hint={format(m.profileHint)}
-        profile={draft.permissionProfile}
-        disabled={readOnly || ended}
-        onChange={(next) => edit({ permissionProfile: next })}
-      />
-    )
-
-    return (
-      <>
-        {stepped}
-        {state.step === 0 ? (
-          <>
-            {basics}
-            {timing}
-          </>
-        ) : (
-          opens
-        )}
-      </>
-    )
-  }
+  const rowProps = (row: PhaseDraft, index: number): PhaseRowProps => ({
+    draft: row,
+    phase: row.id !== undefined ? rows.find((r) => r.id === row.id) : undefined,
+    index,
+    shape,
+    total: drafts.length,
+    editing,
+    readOnly,
+    refusals: refusalsFor(row, index),
+    sentenceOf,
+    onOpens: () => setActionsAt(index),
+    onDetails: () => setActionsAt(index),
+    onSchedule: () => {
+      setPlannedAt(null)
+      setScheduling({
+        id: row.id!,
+        name: named(row),
+        // entering now only means anything at the very front of the queue
+        canStartNow: index === shape.entered,
+      })
+    },
+    onUnschedule: () => setUnscheduling({ id: row.id!, name: named(row) }),
+    onMove: (by) => move(index, by),
+    onRemove: () => {
+      clear()
+      setEdited(drafts.filter((_, at) => at !== index))
+    },
+  })
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{format(m.phasesHint)}</p>
-        {!readOnly && (
-          <div className="flex shrink-0 gap-2">
-            {batch.status === 'draft' && (
-              <Button size="sm" variant="outline" onClick={() => setTimelineDialog(true)}>
-                {format(m.timelineTemplateApply)}
+        <div className="flex shrink-0 items-center gap-2">
+          {editing && dirty > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {format(m.pendingShort, { count: dirty })}
+            </span>
+          )}
+          {!readOnly && editing && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setTemplateOpen(true)}>
+                {format(m.templateAdd)}
               </Button>
-            )}
-            <Button size="sm" onClick={openNew}>
-              {format(m.addPhase)}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={savePlan.isPending}
+                onClick={() => (dirty > 0 ? setDiscarding(true) : setEditing(false))}
+              >
+                {format(m.cancel)}
+              </Button>
+              <Button size="sm" disabled={savePlan.isPending} onClick={saveAll}>
+                {format(m.saveShort)}
+              </Button>
+            </>
+          )}
+          {!readOnly && !editing && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                clear()
+                setEditing(true)
+              }}
+            >
+              <ListOrderedIcon aria-hidden />
+              {format(m.enterEditing)}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {panel === null && <Feedback message={failure} />}
-      {panel === null && refused.length > 0 && (
-        <Feedback message={`${format(m.planRefusedIntro)} ${refused.join(' ')}`} />
+      <Feedback message={failure} />
+      {generalRefusals.length > 0 && (
+        <Feedback
+          message={`${format(m.planRefusedIntro)} ${generalRefusals.map(sentenceOf).join(' ')}`}
+        />
       )}
 
       <AsyncSection
@@ -615,212 +373,185 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         onRetry={() => void phases.refetch()}
         skeleton={
           <div className="flex flex-col gap-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
           </div>
         }
       >
-        {server.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center">
+        {drafts.length === 0 ? (
+          <div className="space-y-4 rounded-lg border border-dashed p-8 text-center">
             <p className="text-sm text-muted-foreground">{format(m.phasesEmpty)}</p>
+            {!readOnly && (
+              <div className="flex justify-center gap-2">
+                <Button size="sm" onClick={addPhase}>
+                  {format(m.addPhase)}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setTemplateOpen(true)}>
+                  {format(m.templateAdd)}
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
-          <ol className="divide-y rounded-lg border">
-            {server.map((phase, index) => {
-              const ended = index < currentIndex
-              const current = index === currentIndex
-              const upNext = active && index === currentIndex + 1
-              return (
-                <li
-                  key={phase.id}
-                  aria-label={phase.displayName}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
-                >
-                  <span
-                    className={
-                      current
-                        ? 'flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground'
-                        : 'flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground'
-                    }
-                  >
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium">{phase.displayName}</span>
-                      <Badge variant="outline">{format(triggerLabelOf(phase.entryTrigger))}</Badge>
-                      {current && <Badge>{format(m.currentBadge)}</Badge>}
-                      {ended && <Badge variant="secondary">{format(m.endedBadge)}</Badge>}
-                      {upNext && <Badge variant="outline">{format(m.upNextBadge)}</Badge>}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {format(m.opensCount, { count: phase.permissionProfile.length })}
-                    </p>
-                  </div>
-                  {/* when it runs is the row's other half, not a footnote */}
-                  <p className="shrink-0 text-sm text-muted-foreground max-sm:w-full">
-                    {startLine(phase)}
-                  </p>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {upNext && phase.entryTrigger !== 'publication' && (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          setStarting({
-                            id: phase.id,
-                            name: phase.displayName,
-                            force: phase.entryTrigger !== 'manual',
-                          })
-                        }
-                      >
-                        {format(phase.entryTrigger === 'manual' ? m.advance : m.advanceForce)}
-                      </Button>
+          <div className="space-y-2">
+            {/* a table where there are columns to be had, stacked cards where
+                there are not - the same four facts either way */}
+            {!isMobile && (
+              <div className="overflow-hidden rounded-lg border">
+                {/* fixed tracks, so a long stage name cannot take the width
+                  the other columns need */}
+                <Table className="table-fixed">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[26%]">{format(m.colStage)}</TableHead>
+                      <TableHead className="w-[26%]">{format(m.colOpens)}</TableHead>
+                      <TableHead className="w-[26%]">{format(m.colPlannedStart)}</TableHead>
+                      <TableHead className="w-[22%] text-right">{format(m.colStatus)}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {drafts.map((row, index) => (
+                      <Fragment key={row.id ?? `new-${row.phaseKey}`}>
+                        {index === shape.scheduled && index > 0 && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell
+                              colSpan={4}
+                              className="border-b-0 bg-muted/30 py-1 text-center text-xs text-muted-foreground"
+                            >
+                              {format(m.unscheduledFrom)}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {editing && !readOnly && index > shape.scheduled && (
+                          <SeamRow
+                            label={format(m.insertHere)}
+                            shown={seamAt === index}
+                            onPoint={(over) => setSeamAt(over ? index : null)}
+                            onInsert={() => {
+                              setSeamAt(null)
+                              insertAt(index)
+                            }}
+                          />
+                        )}
+                        <PhaseRow {...rowProps(row, index)} />
+                      </Fragment>
+                    ))}
+                    {editing && !readOnly && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={4} className="p-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="w-full text-muted-foreground"
+                            onClick={addPhase}
+                          >
+                            <PlusIcon aria-hidden />
+                            {format(m.addPhase)}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     )}
-                    <Button size="sm" variant="outline" onClick={() => openEditor(index)}>
-                      {format(readOnly ? m.viewPhase : m.editPhase)}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {isMobile && (
+              <ol className="space-y-2">
+                {drafts.map((row, index) => (
+                  <Fragment key={row.id ?? `new-${row.phaseKey}`}>
+                    {index === shape.scheduled && index > 0 && (
+                      <li className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
+                        <span aria-hidden className="h-px flex-1 bg-border" />
+                        {format(m.unscheduledFrom)}
+                        <span aria-hidden className="h-px flex-1 bg-border" />
+                      </li>
+                    )}
+                    <PhaseCard {...rowProps(row, index)} />
+                    {editing && !readOnly && index >= shape.scheduled && (
+                      <li>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-full text-xs text-muted-foreground"
+                          onClick={() => insertAt(index + 1)}
+                        >
+                          <PlusIcon aria-hidden className="size-3" />
+                          {format(m.insertHere)}
+                        </Button>
+                      </li>
+                    )}
+                  </Fragment>
+                ))}
+                {editing && !readOnly && (
+                  <li>
+                    <Button size="sm" variant="outline" className="w-full" onClick={addPhase}>
+                      <PlusIcon aria-hidden />
+                      {format(m.addPhase)}
                     </Button>
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
+                  </li>
+                )}
+              </ol>
+            )}
+          </div>
         )}
       </AsyncSection>
 
-      {/* one stage, edited in place */}
-      <SidePanel
-        open={panel !== null}
-        title={panel?.draft.displayName?.trim() || format(m.phasePanelTitle)}
-        onClose={() => setPanel(null)}
-        footer={
-          <>
-            <Button variant="ghost" className="mr-auto" onClick={() => setPanel(null)}>
-              {format(readOnly ? m.close : m.cancel)}
-            </Button>
-            {!readOnly && panel !== null && !panel.isNew && batch.status === 'draft' && (
-              <Button
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => setRemoving(true)}
-              >
-                {format(m.removePhase)}
-              </Button>
-            )}
-            {!readOnly && panel !== null && (
-              <Button
-                variant={panel.step < 1 ? 'outline' : 'default'}
-                disabled={savePlan.isPending}
-                onClick={() => saveFromPanel(panel)}
-              >
-                {format(m.save)}
-              </Button>
-            )}
-            {!readOnly && panel !== null && panel.step < 1 && (
-              <Button
-                onClick={() =>
-                  setPanel((current) =>
-                    current ? { ...current, step: current.step + 1 } : current,
-                  )
-                }
-              >
-                {format(m.next)}
-              </Button>
-            )}
-          </>
-        }
-      >
-        {panel !== null && panelBody(panel)}
-      </SidePanel>
-
-      {/* a ready-made timeline replaces a draft's whole plan */}
-      <FormDialog
-        open={timelineDialog}
-        title={format(m.timelineTemplateTitle)}
-        description={format(m.timelineTemplateBody)}
-        onClose={() => setTimelineDialog(false)}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setTimelineDialog(false)}>
-              {format(m.cancel)}
-            </Button>
-            <Button
-              disabled={timelineId === '' || applyTimeline.isPending}
-              onClick={() => applyTimeline.mutate(timelineId)}
-            >
-              {format(m.timelineTemplateApply)}
-            </Button>
-          </>
-        }
-      >
-        {(timelines.data?.items ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">{format(m.timelineTemplateEmpty)}</p>
-        ) : (
-          <Field label={format(m.timelineTemplateLabel)}>
-            {(id) => (
-              <NativeSelect
-                id={id}
-                value={timelineId}
-                onChange={(event) => setTimelineId(event.target.value)}
-              >
-                <option value="">{format(m.timelineTemplateChoose)}</option>
-                {(timelines.data?.items ?? []).map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            )}
-          </Field>
-        )}
-      </FormDialog>
-
-      {/* starting a stage by hand, with a reason when it jumps its time */}
-      <ConfirmDialog
-        open={starting !== null && !starting.force}
-        title={format(m.confirmStartPhase, { name: starting?.name ?? '' })}
-        confirmLabel={format(m.advance)}
-        cancelLabel={format(m.cancel)}
-        pending={advance.isPending}
-        onConfirm={() => starting && advance.mutate({ to: starting.id, force: false, reason: '' })}
-        onCancel={() => setStarting(null)}
+      <PhaseDetailsPanel
+        draft={actionsAt !== null ? drafts[actionsAt] : undefined}
+        presets={presets.data?.items ?? []}
+        readOnly={readOnly}
+        frozen={actionsAt !== null && actionsAt < shape.currentIndex}
+        onDraft={(next) => {
+          if (actionsAt === null) return
+          setDraftAt(actionsAt, next)
+          setEditing(true)
+        }}
+        onClose={() => setActionsAt(null)}
       />
-      <FormDialog
-        open={starting !== null && starting.force}
-        title={format(m.advanceForceTitle)}
-        description={format(m.advanceForceBody)}
-        onClose={() => setStarting(null)}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setStarting(null)}>
-              {format(m.cancel)}
-            </Button>
-            <Button
-              disabled={reason.trim() === '' || advance.isPending}
-              onClick={() =>
-                starting && advance.mutate({ to: starting.id, force: true, reason: reason.trim() })
-              }
-            >
-              {format(m.advanceForce)}
-            </Button>
-          </>
-        }
-      >
-        <Field label={format(m.advanceReason)}>
-          {(id) => (
-            <Input id={id} value={reason} onChange={(event) => setReason(event.target.value)} />
-          )}
-        </Field>
-      </FormDialog>
+
+      <ScheduleDialog
+        open={scheduling !== null}
+        name={scheduling?.name ?? ''}
+        canStartNow={scheduling?.canStartNow ?? false}
+        value={plannedAt}
+        pending={schedule.isPending || advance.isPending}
+        onChange={setPlannedAt}
+        onCancel={() => setScheduling(null)}
+        onSchedule={() => scheduling && schedule.mutate({ phaseId: scheduling.id, at: plannedAt })}
+        onStartNow={() => scheduling && advance.mutate(scheduling.id)}
+      />
+      <UnscheduleDialog
+        open={unscheduling !== null}
+        name={unscheduling?.name ?? ''}
+        pending={schedule.isPending}
+        onCancel={() => setUnscheduling(null)}
+        onConfirm={() => unscheduling && schedule.mutate({ phaseId: unscheduling.id, at: null })}
+      />
+      <TemplateDialog
+        open={templateOpen}
+        templates={timelines.data?.items ?? []}
+        value={templateId}
+        pending={addFromTemplate.isPending}
+        onChange={setTemplateId}
+        onCancel={() => setTemplateOpen(false)}
+        onConfirm={() => addFromTemplate.mutate(templateId)}
+      />
 
       <ConfirmDialog
-        open={removing}
-        title={format(m.confirmRemovePhase, { name: panel?.draft.displayName ?? '' })}
-        confirmLabel={format(m.removePhase)}
+        open={discarding}
+        title={format(m.discardTitle, { count: dirty })}
+        confirmLabel={format(m.discardEdits)}
         cancelLabel={format(m.cancel)}
-        pending={savePlan.isPending}
-        onConfirm={() => panel && removeFromPanel(panel)}
-        onCancel={() => setRemoving(false)}
+        tone="destructive"
+        onConfirm={() => {
+          clear()
+          setEdited(null)
+          setEditing(false)
+          setDiscarding(false)
+        }}
+        onCancel={() => setDiscarding(false)}
       />
     </div>
   )

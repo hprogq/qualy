@@ -1,18 +1,17 @@
 import { PHASE_GATED } from '../../permissions.ts'
-import { boundPublication, effectiveState } from './queue.ts'
-import {
-  offsetMillis,
-  type EntryOffset,
-  type EntryTrigger,
-  type EpochMillis,
-  type PhasePlan,
-  type PhaseSnapshot,
-  type PublicationLookup,
-} from './types.ts'
+import { effectiveState, isScheduled, scheduledIndex } from './queue.ts'
+import type { EpochMillis, PhasePlan, PhaseSnapshot } from './types.ts'
 
 // The plan editing rules, as structured verdicts rather than booleans: the
 // service refuses with these reasons and the ui explains them, so the enum is
 // defined once here and consumed everywhere.
+//
+// The whole rule set now rests on one shape, which §32.41 fixes: a plan is an
+// entered prefix, then a scheduled prefix, then an unscheduled suffix. Time
+// is committed from the top down and withdrawn from the bottom up; structure
+// is free in the suffix and frozen once a phase has a time. Everything an
+// administrator may or may not do follows from where a phase sits in that
+// shape, which is a sentence a screen can say out loud.
 //
 // "Entered" is decided by the clock (effectiveState), not by materialization:
 // a boundary the scheduler has not ratified yet is still history, and history
@@ -24,18 +23,16 @@ export type EditRefusalReason =
   | 'phase-already-entered'
   | 'ended-phase-name-only'
   | 'display-name-blank'
-  | 'planned-on-publication-phase'
-  | 'hard-plan-beyond-event-boundary'
   | 'planned-not-in-future'
   | 'planned-out-of-order'
-  | 'offset-not-positive'
-  | 'offset-on-non-scheduled-phase'
-  | 'offset-with-planned'
-  | 'binding-on-non-publication-phase'
-  | 'binding-immutable-after-entry'
   | 'profile-code-not-gated'
+  /** a phase may only be scheduled when every phase before it already is */
+  | 'schedule-out-of-order'
+  /** and unscheduled only from the tail of what is scheduled */
+  | 'unschedule-not-from-tail'
+  /** structure is frozen once a phase carries a time */
+  | 'scheduled-phase-immutable'
   | 'insert-not-after-current'
-  | 'terminal-must-be-manual'
 
 export interface EditRefusal {
   readonly reason: EditRefusalReason
@@ -64,20 +61,11 @@ export interface EditReview {
 
 export type PlanEdit =
   | { readonly kind: 'rename'; readonly phaseId: string; readonly displayName: string }
+  | { readonly kind: 'describe'; readonly phaseId: string; readonly description: string }
   | {
       readonly kind: 'set-planned'
       readonly phaseId: string
       readonly plannedEntryAt: EpochMillis | null
-    }
-  | {
-      readonly kind: 'set-offset'
-      readonly phaseId: string
-      readonly entryOffset: EntryOffset | null
-    }
-  | {
-      readonly kind: 'set-estimated'
-      readonly phaseId: string
-      readonly estimatedEntryAt: EpochMillis | null
     }
   | { readonly kind: 'set-actual'; readonly phaseId: string; readonly actualEntryAt: EpochMillis }
   | {
@@ -85,20 +73,12 @@ export type PlanEdit =
       readonly phaseId: string
       readonly permissionProfile: readonly string[]
     }
-  | {
-      readonly kind: 'bind-publication'
-      readonly phaseId: string
-      readonly publicationId: string | null
-    }
 
-/** what a plan insertion states; it is born unbound and unentered by shape */
+/** what a plan insertion states; it is born unscheduled and unentered */
 export interface NewPhaseSpec {
   readonly phaseKey: string
   readonly displayName: string
-  readonly entryTrigger: EntryTrigger
-  readonly plannedEntryAt?: EpochMillis | null
-  readonly entryOffset?: EntryOffset | null
-  readonly estimatedEntryAt?: EpochMillis | null
+  readonly description?: string
   readonly permissionProfile?: readonly string[]
 }
 
@@ -112,8 +92,8 @@ interface PlanView {
   readonly enteredAt: ReadonlyMap<string, EpochMillis>
 }
 
-const viewOf = (plan: PhasePlan, publications: PublicationLookup, now: EpochMillis): PlanView => {
-  const state = effectiveState(plan, publications, now)
+const viewOf = (plan: PhasePlan, now: EpochMillis): PlanView => {
+  const state = effectiveState(plan, now)
   const enteredAt = new Map<string, EpochMillis>()
   for (const phase of plan) {
     if (phase.actualEntryAt !== null) enteredAt.set(phase.id, phase.actualEntryAt)
@@ -122,145 +102,59 @@ const viewOf = (plan: PhasePlan, publications: PublicationLookup, now: EpochMill
   return { effectiveIndex: state.index, enteredAt }
 }
 
-/**
- * The instant a phase is committed to enter at, if any: its (possibly
- * pending) entry, a scheduled plan, or an armed publication's promise. A
- * manual boundary's planned time is an SLA and commits nothing.
- */
-const committedInstant = (
-  phase: PhaseSnapshot,
-  publications: PublicationLookup,
-  view: PlanView,
-): EpochMillis | null => {
-  const entered = view.enteredAt.get(phase.id)
-  if (entered !== undefined) return entered
-  if (phase.entryTrigger === 'scheduled') return phase.plannedEntryAt
-  if (phase.entryTrigger === 'publication') {
-    const ref = boundPublication(phase, publications)
-    if (ref !== null && (ref.status === 'scheduled' || ref.status === 'published')) {
-      return ref.publishAt
-    }
-  }
-  return null
-}
-
-/**
- * A hard plan is a promise that fires by itself, so it may not sit beyond a
- * boundary that still needs an event: an unfired manual one, or a publication
- * one without a committed instant. §10 words the rule for the manual case;
- * an unarmed publication boundary withholds a date for exactly the same
- * reason, so it blocks the same way.
- */
-const eventGateBefore = (
-  plan: PhasePlan,
-  publications: PublicationLookup,
-  view: PlanView,
-  index: number,
-): PhaseSnapshot | null => {
-  for (let i = 0; i < index; i++) {
-    const phase = plan[i]!
-    if (view.enteredAt.has(phase.id)) continue
-    if (phase.entryTrigger === 'manual') return phase
-    if (phase.entryTrigger === 'publication') {
-      const ref = boundPublication(phase, publications)
-      if (ref === null || (ref.status !== 'scheduled' && ref.status !== 'published')) return phase
-    }
-  }
-  return null
-}
-
-const plannedRefusals = (
-  plan: PhasePlan,
-  publications: PublicationLookup,
-  // null runs the structural rules without the clock: a template's dates are
-  // judged against time when a batch applies them, but its shape never is
-  now: EpochMillis | null,
-  view: PlanView,
-  index: number,
-  planned: EpochMillis | null,
-): EditRefusal[] => {
-  const phase = plan[index]!
-  if (phase.entryTrigger === 'publication') {
-    // the display time of a publication boundary has a single source, the
-    // publication's own publish_at; a copy here could only fall out of sync
-    return [{ reason: 'planned-on-publication-phase', phaseId: phase.id }]
-  }
-  if (planned === null) return []
-  const refusals: EditRefusal[] = []
-  if (now !== null && planned <= now) {
-    refusals.push({ reason: 'planned-not-in-future', phaseId: phase.id })
-  }
-  if (phase.entryTrigger === 'scheduled') {
-    const gate = eventGateBefore(plan, publications, view, index)
-    if (gate !== null) {
-      refusals.push({
-        reason: 'hard-plan-beyond-event-boundary',
-        phaseId: phase.id,
-        blockingPhaseId: gate.id,
-      })
-    }
-    // boundaries fire in queue order, so committed instants must be ordered:
-    // a plan earlier than an upstream commitment or later than a downstream
-    // one would derive an empty or negative interval
-    for (let i = 0; i < plan.length; i++) {
-      if (i === index) continue
-      const other = committedInstant(plan[i]!, publications, view)
-      if (other === null) continue
-      if ((i < index && other >= planned) || (i > index && other <= planned)) {
-        refusals.push({
-          reason: 'planned-out-of-order',
-          phaseId: phase.id,
-          blockingPhaseId: plan[i]!.id,
-        })
-      }
-    }
-  }
-  return refusals
-}
-
-const offsetRefusals = (phase: PhaseSnapshot, offset: EntryOffset | null): EditRefusal[] => {
-  if (phase.entryTrigger !== 'scheduled') {
-    return [{ reason: 'offset-on-non-scheduled-phase', phaseId: phase.id }]
-  }
-  if (offset === null) return []
-  // an offset next to a plan has no legal origin: before materialization the
-  // plan does not exist yet, and after it the offset is frozen provenance
-  if (phase.plannedEntryAt !== null) {
-    return [{ reason: 'offset-with-planned', phaseId: phase.id }]
-  }
-  const parts = [offset.days ?? 0, offset.hours ?? 0, offset.minutes ?? 0]
-  if (parts.some((part) => !Number.isFinite(part) || part < 0) || offsetMillis(offset) <= 0) {
-    return [{ reason: 'offset-not-positive', phaseId: phase.id }]
-  }
-  return []
-}
-
-const profileReview = (phaseId: string | null, profile: readonly string[]): EditReview => {
+/** the codes a phase may open: the gate's own registry, nothing else */
+function profileReview(phaseId: string | null, profile: readonly string[]): EditReview {
   const refusals: EditRefusal[] = []
   for (const code of profile) {
-    // the phase editor's vocabulary is exactly the gate's registry; a code
-    // outside it is a configuration error, not a wider grant
-    if (!PHASE_GATED.has(code)) refusals.push({ reason: 'profile-code-not-gated', phaseId, code })
+    if (!PHASE_GATED.has(code)) {
+      refusals.push({ reason: 'profile-code-not-gated', phaseId, code })
+    }
   }
   const warnings: EditWarning[] = []
+  // recording on a student's behalf without letting anything be submitted is
+  // a profile that opens a door into a room with no exit
   if (profile.includes('assessment.entry.proxy') && !profile.includes('assessment.entry.submit')) {
-    // proxy is submitting on a student's behalf; a phase where they could
-    // not submit themselves is suspect enough to say so, not enough to block
     warnings.push({ reason: 'proxy-without-submit', phaseId })
   }
   return { refusals, warnings }
 }
 
-export function reviewPlanEdit(
+/**
+ * A planned instant must be in the future and must not overtake the phase
+ * before it. Nothing else constrains it: with the prefix invariant in place,
+ * every earlier phase already has a time to compare against.
+ */
+function plannedRefusals(
   plan: PhasePlan,
-  publications: PublicationLookup,
+  view: PlanView,
+  index: number,
+  planned: EpochMillis,
   now: EpochMillis,
-  edit: PlanEdit,
-): EditReview {
+): readonly EditRefusal[] {
+  const refusals: EditRefusal[] = []
+  const phase = plan[index]
+  const phaseId = phase?.id ?? null
+  if (planned <= now) refusals.push({ reason: 'planned-not-in-future', phaseId })
+  const before = index > 0 ? plan[index - 1] : undefined
+  if (before !== undefined) {
+    const at = view.enteredAt.get(before.id) ?? before.plannedEntryAt
+    if (at !== null && at !== undefined && planned <= at) {
+      refusals.push({ reason: 'planned-out-of-order', phaseId, blockingPhaseId: before.id })
+    }
+  }
+  const after = plan[index + 1]
+  if (after?.plannedEntryAt != null && after.plannedEntryAt <= planned) {
+    refusals.push({ reason: 'planned-out-of-order', phaseId, blockingPhaseId: after.id })
+  }
+  return refusals
+}
+
+/** one edit against the plan it would change */
+export function reviewPlanEdit(plan: PhasePlan, now: EpochMillis, edit: PlanEdit): EditReview {
   const index = plan.findIndex((phase) => phase.id === edit.phaseId)
-  if (index === -1) return refuse([{ reason: 'phase-not-found', phaseId: edit.phaseId }])
-  const phase = plan[index]!
-  const view = viewOf(plan, publications, now)
+  const phase = plan[index]
+  if (phase === undefined) return refuse([{ reason: 'phase-not-found', phaseId: edit.phaseId }])
+  const view = viewOf(plan, now)
   const entered = view.enteredAt.has(phase.id)
   const ended = index < view.effectiveIndex
 
@@ -269,34 +163,26 @@ export function reviewPlanEdit(
       return edit.displayName.trim() === ''
         ? refuse([{ reason: 'display-name-blank', phaseId: phase.id }])
         : ok()
+    case 'describe':
+      // a description is prose about a phase, editable for as long as the
+      // phase is worth describing
+      return ok()
     case 'set-actual':
-      // actuals are written by transitions and by nothing else; the past is
-      // not an editable field
       return refuse([{ reason: 'actual-immutable', phaseId: phase.id }])
     case 'set-planned': {
       if (entered) return refuse([{ reason: 'phase-already-entered', phaseId: phase.id }])
-      return refuse(plannedRefusals(plan, publications, now, view, index, edit.plannedEntryAt))
-    }
-    case 'set-offset': {
-      if (entered) return refuse([{ reason: 'phase-already-entered', phaseId: phase.id }])
-      // a materialized offset is provenance: the plan it produced is the
-      // editable thing now, the spec that produced it is history
-      if (phase.plannedEntryAt !== null) {
-        return refuse([{ reason: 'offset-with-planned', phaseId: phase.id }])
+      if (edit.plannedEntryAt === null) {
+        // withdrawing time is only legal at the tail of what is scheduled
+        return index === scheduledIndex(plan)
+          ? ok()
+          : refuse([{ reason: 'unschedule-not-from-tail', phaseId: phase.id }])
       }
-      return refuse(offsetRefusals(phase, edit.entryOffset))
-    }
-    case 'set-estimated':
-      return entered ? refuse([{ reason: 'phase-already-entered', phaseId: phase.id }]) : ok()
-    case 'bind-publication': {
-      if (phase.entryTrigger !== 'publication') {
-        return refuse([{ reason: 'binding-on-non-publication-phase', phaseId: phase.id }])
+      // committing time is only legal at the head of what is not
+      if (!isScheduled(phase) && index !== scheduledIndex(plan) + 1) {
+        return refuse([{ reason: 'schedule-out-of-order', phaseId: phase.id }])
       }
-      // rebinding while unentered is legitimate (§32.26); once the boundary
-      // fired, which publication opened it is a historical fact
-      return entered
-        ? refuse([{ reason: 'binding-immutable-after-entry', phaseId: phase.id }])
-        : ok()
+      const refusals = plannedRefusals(plan, view, index, edit.plannedEntryAt, now)
+      return refusals.length > 0 ? refuse(refusals) : ok()
     }
     case 'set-profile': {
       if (ended) return refuse([{ reason: 'ended-phase-name-only', phaseId: phase.id }])
@@ -306,62 +192,32 @@ export function reviewPlanEdit(
 }
 
 /**
- * Where a new phase may land: strictly after the phase in effect. The end of
- * the plan is not sacred - a running batch may grow, and what closes a batch
- * is the archive status change with its own gate, not the last ordinal.
+ * Where a new phase may land: in the unscheduled suffix, which is the only
+ * part of a plan that has promised nothing yet. A phase that already carries
+ * a time has been announced, and announcements do not get reordered.
  */
 export function reviewInsertion(
   plan: PhasePlan,
-  publications: PublicationLookup,
   now: EpochMillis,
   position: number,
   spec: NewPhaseSpec,
 ): EditReview {
-  const view = viewOf(plan, publications, now)
+  const view = viewOf(plan, now)
   const refusals: EditRefusal[] = []
   if (position <= view.effectiveIndex) {
     refusals.push({ reason: 'insert-not-after-current', phaseId: null })
+  }
+  if (position <= scheduledIndex(plan)) {
+    refusals.push({ reason: 'scheduled-phase-immutable', phaseId: null })
   }
   if (spec.displayName.trim() === '') {
     refusals.push({ reason: 'display-name-blank', phaseId: null })
   }
   if (refusals.length > 0) return refuse(refusals)
-
-  // field rules are the edit rules, asked against the plan as it would be
-  const inserted: PhaseSnapshot = {
-    id: '__inserted__',
-    ordinal: Number.NaN,
-    phaseKey: spec.phaseKey,
-    displayName: spec.displayName,
-    entryTrigger: spec.entryTrigger,
-    plannedEntryAt: spec.plannedEntryAt ?? null,
-    actualEntryAt: null,
-    entryOffset: spec.entryOffset ?? null,
-    estimatedEntryAt: spec.estimatedEntryAt ?? null,
-    opensPublicationId: null,
-    permissionProfile: spec.permissionProfile ?? [],
-  }
-  const hypothetical = [...plan.slice(0, position), inserted, ...plan.slice(position)]
-  if (spec.plannedEntryAt != null) {
-    refusals.push(
-      ...plannedRefusals(hypothetical, publications, now, view, position, spec.plannedEntryAt).map(
-        (refusal) => ({ ...refusal, phaseId: null }),
-      ),
-    )
-  }
-  if (spec.entryOffset != null) {
-    refusals.push(
-      ...offsetRefusals(inserted, spec.entryOffset).map((refusal) => ({
-        ...refusal,
-        phaseId: null,
-      })),
-    )
-  }
-  const profile = profileReview(null, spec.permissionProfile ?? [])
-  refusals.push(...profile.refusals)
-  return { refusals, warnings: profile.warnings }
+  return profileReview(null, spec.permissionProfile ?? [])
 }
 
+/** the ordinal arithmetic of an insertion the review already accepted */
 export interface InsertionPlacement {
   /** the ordinal the new phase takes */
   readonly ordinal: number
@@ -369,7 +225,6 @@ export interface InsertionPlacement {
   readonly shifted: readonly { readonly phaseId: string; readonly ordinal: number }[]
 }
 
-/** the ordinal arithmetic of an insertion the review already accepted */
 export function planInsertion(plan: PhasePlan, position: number): InsertionPlacement {
   const at = plan[position]
   const ordinal =
@@ -382,74 +237,41 @@ export function planInsertion(plan: PhasePlan, position: number): InsertionPlace
   }
 }
 
-/** plan-level shape a template or activation must satisfy */
-export function reviewPlanShape(plan: PhasePlan): EditReview {
-  if (plan.length > 0 && plan[plan.length - 1]!.entryTrigger !== 'manual') {
-    // the archive close-out is a human decision; a plan whose last boundary
-    // can fire on its own has no terminal at all
-    return refuse([{ reason: 'terminal-must-be-manual', phaseId: plan[plan.length - 1]!.id }])
-  }
-  return ok()
-}
-
 /**
- * A whole plan of unentered specs, reviewed at once - what a draft rewrite or
- * a template application submits.
- *
- * The structural rules always run: a publication boundary carrying a plan, a
- * hard plan beyond an event gate, out-of-order commitments, an offset beside
- * a plan - those are wrong in any month, and a template that stores them can
- * never be applied. Only the clock rule is gated on `now`: with null, a
- * template saved in October may keep its September dates.
+ * A whole plan of specs, reviewed at once - what a draft rewrite or a
+ * template append submits. Times are not part of a spec list: a plan arrives
+ * as structure, and every instant on it is committed afterwards, one phase at
+ * a time.
  */
-export function reviewPlan(specs: readonly NewPhaseSpec[], now: EpochMillis | null): EditReview {
-  const plan: PhaseSnapshot[] = specs.map((spec, index) => ({
-    id: `#${index}`,
-    ordinal: index,
-    phaseKey: spec.phaseKey,
-    displayName: spec.displayName,
-    entryTrigger: spec.entryTrigger,
-    plannedEntryAt: spec.plannedEntryAt ?? null,
-    actualEntryAt: null,
-    entryOffset: spec.entryOffset ?? null,
-    estimatedEntryAt: spec.estimatedEntryAt ?? null,
-    opensPublicationId: null,
-    permissionProfile: spec.permissionProfile ?? [],
-  }))
-  const publications = new Map<string, never>()
-  const view = viewOf(plan, publications, now ?? 0)
-  const at = (index: number) => ({ index })
-
+export function reviewPlan(specs: readonly NewPhaseSpec[]): EditReview {
   const refusals: EditRefusal[] = []
   const warnings: EditWarning[] = []
-  const shape = reviewPlanShape(plan)
-  refusals.push(...shape.refusals.map((r) => ({ ...r, phaseId: null, ...at(plan.length - 1) })))
-
-  plan.forEach((phase, index) => {
-    if (phase.displayName.trim() === '') {
-      refusals.push({ reason: 'display-name-blank', phaseId: null, ...at(index) })
+  specs.forEach((spec, index) => {
+    if (spec.displayName.trim() === '') {
+      refusals.push({ reason: 'display-name-blank', phaseId: null, index })
     }
-    if (phase.plannedEntryAt !== null) {
-      refusals.push(
-        ...plannedRefusals(plan, publications, now, view, index, phase.plannedEntryAt).map((r) => ({
-          ...r,
-          phaseId: null,
-          ...at(index),
-        })),
-      )
-    }
-    if (phase.entryOffset !== null) {
-      refusals.push(
-        ...offsetRefusals(phase, phase.entryOffset).map((r) => ({
-          ...r,
-          phaseId: null,
-          ...at(index),
-        })),
-      )
-    }
-    const profile = profileReview(null, phase.permissionProfile)
-    refusals.push(...profile.refusals.map((r) => ({ ...r, ...at(index) })))
-    warnings.push(...profile.warnings.map((w) => ({ ...w, ...at(index) })))
+    const profile = profileReview(null, spec.permissionProfile ?? [])
+    refusals.push(...profile.refusals.map((refusal) => ({ ...refusal, index })))
+    warnings.push(...profile.warnings.map((warning) => ({ ...warning, index })))
   })
   return { refusals, warnings }
+}
+
+/** the plan as it becomes after an accepted edit; callers keep the order */
+export function applyToPlan(plan: PhasePlan, edit: PlanEdit): PhasePlan {
+  return plan.map((phase): PhaseSnapshot => {
+    if (phase.id !== edit.phaseId) return phase
+    switch (edit.kind) {
+      case 'rename':
+        return { ...phase, displayName: edit.displayName }
+      case 'describe':
+        return { ...phase, description: edit.description }
+      case 'set-planned':
+        return { ...phase, plannedEntryAt: edit.plannedEntryAt }
+      case 'set-actual':
+        return { ...phase, actualEntryAt: edit.actualEntryAt }
+      case 'set-profile':
+        return { ...phase, permissionProfile: edit.permissionProfile }
+    }
+  })
 }

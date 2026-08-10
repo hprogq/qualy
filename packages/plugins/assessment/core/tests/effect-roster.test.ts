@@ -77,7 +77,6 @@ const rowsOf = <T>(result: unknown) => (result as { rows: T[] }).rows
 
 const phase = (over: Partial<PhaseSpecInput> & { phaseKey: string }): PhaseSpecInput => ({
   displayName: over.phaseKey,
-  entryTrigger: 'manual',
   permissionProfile: [],
   ...over,
 })

@@ -469,6 +469,7 @@ export default function BatchAdminPage() {
                 confirmLabel={format(m.archive)}
                 cancelLabel={format(m.cancel)}
                 pending={setStatus.isPending}
+                tone="destructive"
                 onConfirm={() => setStatus.mutate('archived')}
                 onCancel={() => setConfirming(null)}
               />

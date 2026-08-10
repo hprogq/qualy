@@ -13,20 +13,13 @@ import {
   reviewInsertion,
   reviewPlan,
   reviewPlanEdit,
-  reviewPlanShape,
   type EditWarning,
   type NewPhaseSpec,
   type PlanEdit,
 } from '../phase/engine/edits.ts'
-import { materializeOffsets } from '../phase/engine/materialize.ts'
 import { effectiveState, normalizePlan } from '../phase/engine/queue.ts'
 import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
-import type {
-  EntryOffset,
-  EpochMillis,
-  PhasePlan,
-  PublicationLookup,
-} from '../phase/engine/types.ts'
+import type { EpochMillis, PhasePlan } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
 import {
   AdvanceInvalid,
@@ -45,6 +38,7 @@ import {
   batchConstraints,
   templateConstraints,
   type AdvancePhaseError,
+  type SchedulePhaseError,
   type CreateBatchError,
   type ReplacePlanError,
   type SetBatchStatusError,
@@ -107,9 +101,6 @@ import {
 // The assessment service: the engine's answers, wired to rows. Every write
 // serializes on its batch row, "entered" is decided by the clock, and the
 // engine's structured refusals go to the wire as they are.
-
-/** publications do not exist yet; a bound boundary in the database is corrupt */
-const NO_PUBLICATIONS: PublicationLookup = new Map()
 
 export interface MaterialRange {
   readonly start: string
@@ -259,12 +250,9 @@ const toSnapshots = (rows: readonly PhaseRow[]): PhasePlan =>
       ordinal: row.ordinal,
       phaseKey: row.phaseKey,
       displayName: row.displayName,
-      entryTrigger: row.entryTrigger,
+      description: row.description,
       plannedEntryAt: row.plannedEntryAt,
       actualEntryAt: row.actualEntryAt,
-      entryOffset: row.entryOffset,
-      estimatedEntryAt: row.estimatedEntryAt,
-      opensPublicationId: row.opensPublicationId,
       permissionProfile: row.permissionProfile,
     })),
   )
@@ -272,10 +260,7 @@ const toSnapshots = (rows: readonly PhaseRow[]): PhasePlan =>
 const specToEngine = (spec: PhaseSpecInput): NewPhaseSpec => ({
   phaseKey: spec.phaseKey,
   displayName: spec.displayName,
-  entryTrigger: spec.entryTrigger,
-  plannedEntryAt: spec.plannedEntryAt ?? null,
-  entryOffset: spec.entryOffset ?? null,
-  estimatedEntryAt: spec.estimatedEntryAt ?? null,
+  description: spec.description ?? '',
   permissionProfile: spec.permissionProfile ?? [],
 })
 
@@ -339,6 +324,13 @@ export class Assessment extends Context.Service<
       input: { to: string; force?: boolean; reason?: string },
       as: Principal,
     ) => Effect.Effect<readonly PlanPhase[], AdvancePhaseError>
+    readonly schedulePhase: (
+      tenantId: string,
+      batchId: string,
+      phaseId: string,
+      plannedEntryAt: EpochMillis | null,
+      as: Principal,
+    ) => Effect.Effect<readonly PlanPhase[], SchedulePhaseError>
     readonly timeline: (
       tenantId: string,
       batchId: string,
@@ -529,7 +521,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
    */
   const ratifyPending = (tenantId: string, batchId: string, plan: PhasePlan, now: EpochMillis) =>
     Effect.gen(function* () {
-      const state = effectiveState(plan, NO_PUBLICATIONS, now)
+      const state = effectiveState(plan, now)
       let ratified = 0
       for (const pending of state.pending) {
         // the write is conditional on the actual still being null, so a
@@ -550,23 +542,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (state.pending.length > 0 && state.phase !== null) {
         yield* setCurrentPhase(tenantId, batchId, state.phase.id)
       }
-      // a boundary that fired is a determined anchor, so the offsets below it
-      // become plans - the same step a manual advance takes, here so that
-      // every way a boundary can fire materializes alike
-      if (ratified > 0) {
-        const advanced = toSnapshots(yield* listPhaseRows(tenantId, batchId))
-        for (const update of materializeOffsets(advanced, NO_PUBLICATIONS)) {
-          yield* updatePhaseFields(tenantId, update.phaseId, {
-            plannedEntryAt: update.plannedEntryAt,
-          })
-          yield* insertPhaseEvent({
-            tenantId,
-            phaseId: update.phaseId,
-            kind: 'offset-materialized',
-            plannedAt: update.plannedEntryAt,
-          })
-        }
-      }
       return { state, ratified }
     })
 
@@ -575,17 +550,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
     if (spec.displayName !== existing.displayName) {
       edits.push({ kind: 'rename', phaseId: existing.id, displayName: spec.displayName })
     }
-    const planned = spec.plannedEntryAt ?? null
-    if (planned !== existing.plannedEntryAt) {
-      edits.push({ kind: 'set-planned', phaseId: existing.id, plannedEntryAt: planned })
-    }
-    const offset = spec.entryOffset ?? null
-    if (JSON.stringify(offset) !== JSON.stringify(existing.entryOffset)) {
-      edits.push({ kind: 'set-offset', phaseId: existing.id, entryOffset: offset })
-    }
-    const estimated = spec.estimatedEntryAt ?? null
-    if (estimated !== existing.estimatedEntryAt) {
-      edits.push({ kind: 'set-estimated', phaseId: existing.id, estimatedEntryAt: estimated })
+    const description = spec.description ?? ''
+    if (description !== existing.description) {
+      edits.push({ kind: 'describe', phaseId: existing.id, description })
     }
     const profile = spec.permissionProfile ?? []
     if (JSON.stringify(profile) !== JSON.stringify(existing.permissionProfile)) {
@@ -600,10 +567,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
         return { kind: 'renamed' }
       case 'set-planned':
         return { kind: 'planned-changed', plannedAt: edit.plannedEntryAt }
-      case 'set-offset':
-        return { kind: 'offset-changed' }
-      case 'set-estimated':
-        return { kind: 'estimated-changed' }
+      case 'describe':
+        return { kind: 'described' }
       case 'set-profile':
         return { kind: 'profile-changed' }
       default:
@@ -620,10 +585,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
           return { ...phase, displayName: edit.displayName }
         case 'set-planned':
           return { ...phase, plannedEntryAt: edit.plannedEntryAt }
-        case 'set-offset':
-          return { ...phase, entryOffset: edit.entryOffset }
-        case 'set-estimated':
-          return { ...phase, estimatedEntryAt: edit.estimatedEntryAt }
+        case 'describe':
+          return { ...phase, description: edit.description }
         case 'set-profile':
           return { ...phase, permissionProfile: edit.permissionProfile }
         default:
@@ -663,10 +626,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             ordinal: index,
             displayName: spec.displayName,
             phaseKey: spec.phaseKey,
-            entryTrigger: spec.entryTrigger,
-            plannedEntryAt: spec.plannedEntryAt ?? null,
-            entryOffset: (spec.entryOffset ?? null) as Record<string, unknown> | null,
-            estimatedEntryAt: spec.estimatedEntryAt ?? null,
+            description: spec.description ?? '',
             permissionProfile: spec.permissionProfile ?? [],
           })
           const scopesChanged =
@@ -704,10 +664,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             ordinal: index,
             phaseKey: spec.phaseKey,
             displayName: spec.displayName,
-            entryTrigger: spec.entryTrigger,
-            plannedEntryAt: spec.plannedEntryAt ?? null,
-            entryOffset: (spec.entryOffset ?? null) as Record<string, unknown> | null,
-            estimatedEntryAt: spec.estimatedEntryAt ?? null,
+            description: spec.description ?? '',
             permissionProfile: spec.permissionProfile ?? [],
             ...(options.provenance
               ? {
@@ -748,13 +705,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   // opens. When and how a phase starts belongs to the batch that has it, so
   // the stored spec is exactly one entry, manual by convention, with no times.
   const phaseTemplateShapeRefusals = (specs: readonly PhaseSpecInput[]): PlanRefusal[] =>
-    specs.length === 1 &&
-    specs[0]!.entryTrigger === 'manual' &&
-    specs[0]!.plannedEntryAt == null &&
-    specs[0]!.entryOffset == null &&
-    specs[0]!.estimatedEntryAt == null
-      ? []
-      : [{ reason: 'phase-template-shape', phaseId: null }]
+    specs.length === 1 ? [] : [{ reason: 'phase-template-shape', phaseId: null }]
 
   /** allowance rules the engine has no vocabulary for */
   const scopeRefusals = (
@@ -790,7 +741,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const gateView = (tenantId: string, batch: BatchRow, now: EpochMillis) =>
     Effect.gen(function* () {
       const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
-      const state = effectiveState(plan, NO_PUBLICATIONS, now)
+      const state = effectiveState(plan, now)
       // a draft batch has no phase in effect whatever its rows say; an
       // archived one still answers by its terminal profile
       if (batch.status === 'draft' || state.phase === null) return null
@@ -1073,21 +1024,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
               // the whole plan, revalidated against the activation clock: a
               // draft saved with future dates may have gone stale on the
               // shelf, and a phase must not begin before its batch exists
-              const review = reviewPlan(
-                rows.map((row) => ({
-                  phaseKey: row.phaseKey,
-                  displayName: row.displayName,
-                  entryTrigger: row.entryTrigger,
-                  plannedEntryAt: row.plannedEntryAt,
-                  entryOffset: row.entryOffset,
-                  estimatedEntryAt: row.estimatedEntryAt,
-                  permissionProfile: row.permissionProfile,
-                })),
-                now,
-              )
-              if (review.refusals.length > 0) {
-                return yield* new PlanInvalid({ refusals: review.refusals })
-              }
+              // activating says the plan is the plan; when each phase
+              // begins is committed afterwards, one at a time, and a batch
+              // with nothing scheduled simply has not started (32.41)
               // the roster in one statement, frozen as of this transaction
               yield* generateRoster(tenantId, batchId)
               yield* updateBatchFields(tenantId, batchId, { status: 'active' })
@@ -1149,13 +1088,22 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   refusals: [{ reason: 'template-not-a-timeline', phaseId: null }],
                 })
               }
-              const specs = template.phases as unknown as readonly PhaseSpecInput[]
-              const review = reviewPlan(specs.map(specToEngine), now)
+              // a timeline template adds its phases to the end of the plan,
+              // unscheduled: it says which business states usually follow one
+              // another, never when this batch reaches them (32.41)
+              const added = template.phases as unknown as readonly PhaseSpecInput[]
+              const review = reviewPlan(added.map(specToEngine))
               if (review.refusals.length > 0) {
                 return yield* new PlanInvalid({ refusals: review.refusals })
               }
-              yield* deletePhases(tenantId, batchId, [...existingById.keys()])
-              yield* writePlanOrder(tenantId, batchId, specs, new Map(), {
+              const kept = rows.map((row): PhaseSpecInput => ({
+                id: row.id,
+                phaseKey: row.phaseKey,
+                displayName: row.displayName,
+                description: row.description,
+                permissionProfile: row.permissionProfile,
+              }))
+              yield* writePlanOrder(tenantId, batchId, [...kept, ...added], existingById, {
                 events: false,
                 actorId,
                 provenance: template,
@@ -1177,7 +1125,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (draft) {
               // a draft plan is replaced as a whole: ids are kept where
               // given, rows absent from the submission go away
-              const review = reviewPlan(specs.map(specToEngine), now)
+              const review = reviewPlan(specs.map(specToEngine))
               const scoped = scopeRefusals(specs, existingById, participants, new Set())
               if (review.refusals.length + scoped.length > 0) {
                 return yield* new PlanInvalid({ refusals: [...review.refusals, ...scoped] })
@@ -1205,20 +1153,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const refusals: PlanRefusal[] = []
             const warnings: EditWarning[] = []
             const submittedIds = specs.flatMap((spec) => (spec.id !== undefined ? [spec.id] : []))
-            for (const row of rows) {
+            // structure is free where nothing has been promised: the phases
+            // that carry a time keep their order and their existence, and the
+            // unscheduled suffix behind them may be rewritten at will (32.41)
+            const committed = rows.filter(
+              (row) => row.actualEntryAt !== null || row.plannedEntryAt !== null,
+            )
+            for (const row of committed) {
               if (!submittedIds.includes(row.id)) {
                 refusals.push({ reason: 'phase-removed', phaseId: row.id })
               }
             }
+            const committedIds = committed.map((row) => row.id)
             if (
-              JSON.stringify(submittedIds) !==
-              JSON.stringify(rows.map((row) => row.id).filter((id) => submittedIds.includes(id)))
+              JSON.stringify(submittedIds.filter((id) => committedIds.includes(id))) !==
+              JSON.stringify(committedIds)
             ) {
               refusals.push({ reason: 'reorder-not-allowed', phaseId: null })
             }
             if (refusals.length > 0) return yield* new PlanInvalid({ refusals })
 
-            const effective = effectiveState(toSnapshots(rows), NO_PUBLICATIONS, now)
+            const effective = effectiveState(toSnapshots(rows), now)
             const endedIds = new Set(
               rows.filter((_, index) => index < effective.index).map((row) => row.id),
             )
@@ -1231,18 +1186,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 if (spec.phaseKey !== existing.phaseKey) {
                   refusals.push({ reason: 'phase-key-immutable', phaseId: spec.id })
                 }
-                if (spec.entryTrigger !== existing.entryTrigger) {
-                  refusals.push({ reason: 'trigger-immutable', phaseId: spec.id })
-                }
                 for (const edit of fieldEditsOf(existing, spec)) {
-                  const review = reviewPlanEdit(working, NO_PUBLICATIONS, now, edit)
+                  const review = reviewPlanEdit(working, now, edit)
                   refusals.push(...review.refusals)
                   warnings.push(...review.warnings)
                   if (review.refusals.length === 0) working = applyToPlan(working, edit)
                 }
               } else {
                 const engineSpec = specToEngine(spec)
-                const review = reviewInsertion(working, NO_PUBLICATIONS, now, index, engineSpec)
+                const review = reviewInsertion(working, now, index, engineSpec)
                 refusals.push(...review.refusals.map((refusal) => ({ ...refusal, index })))
                 warnings.push(...review.warnings.map((warning) => ({ ...warning, index })))
                 if (review.refusals.length === 0) {
@@ -1253,12 +1205,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                       ordinal: index,
                       phaseKey: engineSpec.phaseKey,
                       displayName: engineSpec.displayName,
-                      entryTrigger: engineSpec.entryTrigger,
-                      plannedEntryAt: engineSpec.plannedEntryAt ?? null,
+                      description: engineSpec.description ?? '',
+                      plannedEntryAt: null,
                       actualEntryAt: null,
-                      entryOffset: engineSpec.entryOffset ?? null,
-                      estimatedEntryAt: engineSpec.estimatedEntryAt ?? null,
-                      opensPublicationId: null,
                       permissionProfile: engineSpec.permissionProfile ?? [],
                     },
                     ...working.slice(index),
@@ -1268,6 +1217,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }
             if (refusals.length > 0) return yield* new PlanInvalid({ refusals })
 
+            // rows dropped from the unscheduled suffix go away, the way they
+            // do in a draft: nothing was promised about them
+            const kept = new Set(submittedIds)
+            yield* deletePhases(
+              tenantId,
+              batchId,
+              rows.flatMap((row) => (kept.has(row.id) ? [] : [row.id])),
+            )
             yield* writePlanOrder(tenantId, batchId, specs, existingById, {
               events: true,
               actorId,
@@ -1306,6 +1263,60 @@ export const make = Effect.fn('Assessment.make')(function* () {
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
     }),
 
+    /**
+     * Commits or withdraws one phase's time. The plan's shape does the
+     * deciding: a time may only be committed to the first phase that has
+     * none, and only withdrawn from the last that has one - so the plan is
+     * always an entered prefix, a scheduled prefix and an unscheduled
+     * suffix, which is a sentence a screen can say out loud (32.41).
+     */
+    schedulePhase: Effect.fn('Assessment.schedulePhase')(
+      function* (tenantId, batchId, phaseId, plannedEntryAt, as) {
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              const locked = yield* lockBatch(tenantId, batchId)
+              if (!locked) return yield* new BatchNotFound()
+              yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
+              if (locked.status === 'archived') return yield* new BatchReadOnly()
+              const now = yield* Clock.currentTimeMillis
+              const plan = toSnapshots(yield* listPhaseRows(tenantId, batchId))
+              if (!plan.some((phase) => phase.id === phaseId)) return yield* new PhaseNotFound()
+              // the clock first, so a boundary that already fired is history
+              // rather than something still being scheduled
+              yield* ratifyPending(tenantId, batchId, plan, now)
+              const current = toSnapshots(yield* listPhaseRows(tenantId, batchId))
+              const review = reviewPlanEdit(current, now, {
+                kind: 'set-planned',
+                phaseId,
+                plannedEntryAt,
+              })
+              if (review.refusals.length > 0) {
+                return yield* new PlanInvalid({ refusals: review.refusals })
+              }
+              yield* updatePhaseFields(tenantId, phaseId, { plannedEntryAt })
+              yield* insertPhaseEvent({
+                tenantId,
+                phaseId,
+                kind: plannedEntryAt === null ? 'unscheduled' : 'scheduled',
+                plannedAt: plannedEntryAt,
+                actorId: as.userId,
+              })
+              yield* recordConfigChange(
+                tenantId,
+                batchId,
+                locked.status as string,
+                { phaseSchedule: { phaseId, plannedEntryAt } },
+                as.userId,
+                null,
+              )
+              return yield* readPlan(tenantId, batchId)
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      },
+    ),
+
     advancePhase: Effect.fn('Assessment.advancePhase')(function* (tenantId, batchId, input, as) {
       return yield* withDb(
         transaction(
@@ -1327,16 +1338,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (targetIndex !== state.index + 1) {
               return yield* new AdvanceInvalid({ reason: 'target-not-next' })
             }
-            // a publication boundary enters when its publication becomes
-            // effective, and through nothing else - force is authority over
-            // the clock, not over the invariant. The publication workflow
-            // owns that entry (its actual is the publish instant).
-            if (target.entryTrigger === 'publication') {
-              return yield* new AdvanceInvalid({ reason: 'publication-boundary' })
-            }
-            // entering a scheduled boundary by hand overrides its own clock;
-            // that is the forced path, and it must say why
-            if (target.entryTrigger === 'scheduled' && input.force !== true) {
+            // entering a phase that has a time by hand overrides its own
+            // clock; that is the forced path, and it must say why. An
+            // unscheduled phase has promised nobody anything, so entering it
+            // now is simply how a batch is moved along
+            if (target.plannedEntryAt !== null && input.force !== true) {
               return yield* new AdvanceInvalid({ reason: 'force-required' })
             }
             if (input.force === true) {
@@ -1360,19 +1366,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
             })
             yield* setCurrentPhase(tenantId, batchId, target.id)
 
-            // the fresh actual is a determined anchor; offsets below become plans
-            const advanced = toSnapshots(yield* listPhaseRows(tenantId, batchId))
-            for (const update of materializeOffsets(advanced, NO_PUBLICATIONS)) {
-              yield* updatePhaseFields(tenantId, update.phaseId, {
-                plannedEntryAt: update.plannedEntryAt,
-              })
-              yield* insertPhaseEvent({
-                tenantId,
-                phaseId: update.phaseId,
-                kind: 'offset-materialized',
-                plannedAt: update.plannedEntryAt,
-              })
-            }
             return yield* readPlan(tenantId, batchId)
           }),
         ),
@@ -1383,7 +1376,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
       const plan = toSnapshots(yield* dieQuery(withDb(listPhaseRows(tenantId, batchId))))
-      return deriveTimeline(plan, NO_PUBLICATIONS, yield* Clock.currentTimeMillis)
+      return deriveTimeline(plan, yield* Clock.currentTimeMillis)
     }),
 
     gate: Effect.fn('Assessment.gate')(function* (tenantId, batchId, code, ctx) {
@@ -1429,7 +1422,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const kind = input.kind ?? 'timeline'
       // structural rules only; the clock is judged at application. Scopes
       // name batch-local rows, so a tenant-level template cannot carry them.
-      const review = reviewPlan(input.phases.map(specToEngine), null)
+      const review = reviewPlan(input.phases.map(specToEngine))
       const scoped = templateScopeRefusals(input.phases)
       const shaped = kind === 'phase' ? phaseTemplateShapeRefusals(input.phases) : []
       if (review.refusals.length + scoped.length + shaped.length > 0) {
@@ -1451,7 +1444,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         if (input.phases !== undefined) {
           const existing = yield* dieQuery(withDb(oneTemplate(tenantId, templateId)))
           if (!existing) return yield* new TemplateNotFound()
-          const review = reviewPlan(input.phases.map(specToEngine), null)
+          const review = reviewPlan(input.phases.map(specToEngine))
           const scoped = templateScopeRefusals(input.phases)
           const shaped = existing.kind === 'phase' ? phaseTemplateShapeRefusals(input.phases) : []
           if (review.refusals.length + scoped.length + shaped.length > 0) {
@@ -1708,12 +1701,9 @@ const toPhaseDto = (row: PlanPhase) => ({
   ordinal: row.ordinal,
   phaseKey: row.phaseKey,
   displayName: row.displayName,
-  entryTrigger: row.entryTrigger,
+  description: row.description,
   plannedEntryAt: isoOf(row.plannedEntryAt),
   actualEntryAt: isoOf(row.actualEntryAt),
-  entryOffset: row.entryOffset,
-  estimatedEntryAt: isoOf(row.estimatedEntryAt),
-  opensPublicationId: row.opensPublicationId,
   permissionProfile: row.permissionProfile,
   itemScope: row.itemScope,
   participantScope: row.participantScope,
@@ -1745,10 +1735,7 @@ interface WirePhaseSpec {
   readonly id?: string
   readonly phaseKey: string
   readonly displayName: string
-  readonly entryTrigger: 'scheduled' | 'manual' | 'publication'
-  readonly plannedEntryAt?: string | null
-  readonly entryOffset?: EntryOffset | null
-  readonly estimatedEntryAt?: string | null
+  readonly description?: string
   readonly permissionProfile?: readonly string[]
   readonly itemScope?: readonly string[]
   readonly participantScope?: readonly string[]
@@ -1760,11 +1747,7 @@ const parseSpec = (spec: WirePhaseSpec) =>
       ...(spec.id !== undefined ? { id: spec.id } : {}),
       phaseKey: spec.phaseKey,
       displayName: spec.displayName,
-      entryTrigger: spec.entryTrigger,
-      plannedEntryAt: spec.plannedEntryAt == null ? null : yield* parseInstant(spec.plannedEntryAt),
-      entryOffset: spec.entryOffset ?? null,
-      estimatedEntryAt:
-        spec.estimatedEntryAt == null ? null : yield* parseInstant(spec.estimatedEntryAt),
+      description: spec.description ?? '',
       permissionProfile: spec.permissionProfile ?? [],
       ...(spec.itemScope !== undefined ? { itemScope: spec.itemScope } : {}),
       ...(spec.participantScope !== undefined ? { participantScope: spec.participantScope } : {}),
@@ -1777,10 +1760,7 @@ const specDto = (spec: PhaseSpecInput) => ({
   ...(spec.id !== undefined ? { id: spec.id } : {}),
   phaseKey: spec.phaseKey,
   displayName: spec.displayName,
-  entryTrigger: spec.entryTrigger,
-  plannedEntryAt: spec.plannedEntryAt == null ? null : isoOf(spec.plannedEntryAt),
-  entryOffset: spec.entryOffset ?? null,
-  estimatedEntryAt: spec.estimatedEntryAt == null ? null : isoOf(spec.estimatedEntryAt),
+  description: spec.description ?? '',
   permissionProfile: spec.permissionProfile ?? [],
 })
 
@@ -1957,6 +1937,23 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
+      'schedulePhase',
+      Effect.fn('assessment.schedulePhase.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const at =
+          payload.plannedEntryAt === null ? null : yield* parseInstant(payload.plannedEntryAt)
+        const phases = yield* assessment.schedulePhase(
+          principal.tenantId,
+          params.batchId,
+          params.phaseId,
+          at,
+          principal,
+        )
+        return { phases: phases.map(toPhaseDto) }
+      }),
+    )
+    .handle(
       'advancePhase',
       Effect.fn('assessment.advancePhase.handler')(function* ({ params, payload }) {
         const assessment = yield* Assessment
@@ -1981,6 +1978,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             phaseId: entry.phaseId,
             phaseKey: entry.phaseKey,
             displayName: entry.displayName,
+            description: entry.description,
             status: entry.status,
             entry: {
               kind: entry.entry.kind,

@@ -165,7 +165,6 @@ const seed = (slug: string) =>
 
 const phase = (over: Partial<PhaseSpecInput> & { phaseKey: string }): PhaseSpecInput => ({
   displayName: over.phaseKey,
-  entryTrigger: 'manual',
   permissionProfile: [],
   ...over,
 })
@@ -174,10 +173,7 @@ const toSpec = (row: PhaseRow): PhaseSpecInput => ({
   id: row.id,
   phaseKey: row.phaseKey,
   displayName: row.displayName,
-  entryTrigger: row.entryTrigger,
-  plannedEntryAt: row.plannedEntryAt,
-  entryOffset: row.entryOffset,
-  estimatedEntryAt: row.estimatedEntryAt,
+  description: row.description,
   permissionProfile: row.permissionProfile,
 })
 
@@ -218,8 +214,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             phases: [
               phase({
                 phaseKey: 'entry',
-                entryTrigger: 'scheduled',
-                plannedEntryAt: Date.now() + HOUR,
                 permissionProfile: ['assessment.entry.create', 'assessment.entry.submit'],
               }),
               phase({ phaseKey: 'review', permissionProfile: ['assessment.review.process'] }),
@@ -297,7 +291,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(tagOf(exit)).toBe('ASSESSMENT_BATCH_NO_USER_TYPES')
   })
 
-  it('edits a future plan with an audit trail and locks entered history', async () => {
+  it('commits times from the top down, withdraws them from the bottom up', async () => {
     const exit = await run(
       db.url,
       Effect.gen(function* () {
@@ -319,87 +313,62 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           {
             specs: [
               phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.submit'] }),
-              // beyond a manual boundary a hard plan is forbidden; the offset
-              // becomes a plan when the boundary fires
-              phase({ phaseKey: 'review', entryTrigger: 'scheduled', entryOffset: { hours: 2 } }),
+              phase({ phaseKey: 'review' }),
               phase({ phaseKey: 'archive' }),
             ],
           },
           f.principal,
         )
         yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
-        let plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
-        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
-        plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
-        // advancing determined the anchor: the offset materialized, audited
-        const materialized = rowsOf<{ kind: string }>(
-          yield* runSql(sql`
-            select kind from phase_events
-            where phase_id = ${plan[1]!.id} and kind = 'offset-materialized'`),
-        )
-        if (plan[1]!.plannedEntryAt === null) return yield* Effect.die('offset did not materialize')
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
 
-        // a future boundary moves, and the move is audited
-        const moved = Date.now() + 3 * HOUR
-        const specs = plan.map(toSpec)
-        yield* assessment.replacePlan(
+        // the second phase cannot take a time while the first has none
+        const outOfOrder = yield* Effect.exit(
+          assessment.schedulePhase(f.tenant, batch.id, plan[1]!.id, Date.now() + HOUR, f.principal),
+        )
+        // in order, it is accepted, and the audit says so
+        yield* assessment.schedulePhase(
           f.tenant,
           batch.id,
-          { specs: specs.map((s) => (s.id === plan[1]!.id ? { ...s, plannedEntryAt: moved } : s)) },
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[1]!.id,
+          Date.now() + 3 * HOUR,
           f.principal,
         )
         const audited = rowsOf<{ kind: string }>(
           yield* runSql(sql`
-            select kind from phase_events where phase_id = ${plan[1]!.id} and kind = 'planned-changed'`),
+            select kind from phase_events where phase_id = ${plan[0]!.id} and kind = 'scheduled'`),
         )
 
-        // the materialized offset is provenance now; changing it is refused
-        const offsetLocked = yield* Effect.exit(
-          assessment.replacePlan(
-            f.tenant,
-            batch.id,
-            {
-              specs: specs.map((s) =>
-                s.id === plan[1]!.id
-                  ? { ...s, plannedEntryAt: moved, entryOffset: { hours: 3 } }
-                  : s,
-              ),
-            },
-            f.principal,
-          ),
+        // and a time comes back off the end, never out of the middle
+        const middle = yield* Effect.exit(
+          assessment.schedulePhase(f.tenant, batch.id, plan[0]!.id, null, f.principal),
         )
-
-        // the entered phase's time fields are history
-        const refused = yield* Effect.exit(
-          assessment.replacePlan(
-            f.tenant,
-            batch.id,
-            {
-              specs: specs.map((s) =>
-                s.id === plan[0]!.id ? { ...s, plannedEntryAt: Date.now() + HOUR } : s,
-              ),
-            },
-            f.principal,
-          ),
-        )
-        return { audited, refused, offsetLocked, materialized }
+        yield* assessment.schedulePhase(f.tenant, batch.id, plan[1]!.id, null, f.principal)
+        const after = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        return { outOfOrder, audited, middle, after }
       }),
     )
-    const { audited, refused, offsetLocked, materialized } = ok(exit)
-    expect(materialized).toHaveLength(1)
-    expect(audited).toHaveLength(1)
-    const refusalsIn = (exit2: typeof refused) =>
-      reasonsOf(exit2)
+    const { outOfOrder, audited, middle, after } = ok(exit)
+    const refusalsIn = (result: typeof outOfOrder) =>
+      reasonsOf(result)
         .flatMap(
           (entry) =>
             (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ??
             [],
         )
         .map((entry) => entry.reason)
-    expect(tagOf(offsetLocked)).toBe('ASSESSMENT_PLAN_INVALID')
-    expect(refusalsIn(offsetLocked)).toContain('offset-with-planned')
-    expect(tagOf(refused)).toBe('ASSESSMENT_PLAN_INVALID')
-    expect(refusalsIn(refused)).toContain('phase-already-entered')
+    expect(refusalsIn(outOfOrder)).toContain('schedule-out-of-order')
+    expect(audited).toHaveLength(1)
+    expect(refusalsIn(middle)).toContain('unschedule-not-from-tail')
+    expect(after.map((row) => row.plannedEntryAt)).toEqual([after[0]!.plannedEntryAt, null, null])
+    expect(after[0]!.plannedEntryAt).not.toBeNull()
   })
 
   it('grows a running plan past its last phase, even when that phase runs', async () => {
@@ -438,8 +407,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
               ...plan.map(toSpec),
               phase({
                 phaseKey: 'review',
-                entryTrigger: 'scheduled',
-                plannedEntryAt: Date.now() + 2 * HOUR,
               }),
             ],
           },
@@ -451,7 +418,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     const grown = ok(exit)
     expect(grown.map((row) => row.phaseKey)).toEqual(['entry', 'review'])
     expect(grown[0]!.actualEntryAt).not.toBeNull()
-    expect(grown[1]!.entryTrigger).toBe('scheduled')
+    expect(grown[1]!.plannedEntryAt).toBeNull()
   })
 
   it('advances manually, demands force and a reason for early boundaries, and archives at the terminal', async () => {
@@ -476,7 +443,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           {
             specs: [
               phase({ phaseKey: 'entry' }),
-              phase({ phaseKey: 'review', entryTrigger: 'scheduled', entryOffset: { hours: 2 } }),
+              phase({ phaseKey: 'review' }),
               phase({ phaseKey: 'archive' }),
             ],
           },
@@ -484,10 +451,20 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         )
         yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // an unscheduled phase promised nobody a time, so entering it by
+        // hand is simply how a batch is moved along
         yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
 
         const wrongTarget = yield* Effect.exit(
           assessment.advancePhase(f.tenant, batch.id, { to: plan[2]!.id }, f.principal),
+        )
+        // once a phase has a time, entering it early overrides that promise
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[1]!.id,
+          Date.now() + 3 * HOUR,
+          f.principal,
         )
         const unforced = yield* Effect.exit(
           assessment.advancePhase(f.tenant, batch.id, { to: plan[1]!.id }, f.principal),
@@ -559,8 +536,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             specs: [
               phase({
                 phaseKey: 'entry',
-                entryTrigger: 'scheduled',
-                plannedEntryAt: planned,
                 permissionProfile: ['assessment.entry.submit'],
               }),
               phase({ phaseKey: 'archive', permissionProfile: ['assessment.review.process'] }),
@@ -570,6 +545,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         )
         yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(f.tenant, batch.id, plan[0]!.id, planned, f.principal)
 
         // before the boundary: no phase in effect, the gate fails closed
         const before = yield* assessment.gate(f.tenant, batch.id, 'assessment.entry.submit')
@@ -724,55 +700,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(decisions.review).toEqual({ allowed: true })
   })
 
-  it('never force-advances a publication boundary: its entry belongs to the publication', async () => {
-    const exit = await run(
-      db.url,
-      Effect.gen(function* () {
-        const f = yield* seed('pubgate')
-        const assessment = yield* Assessment
-        const batch = yield* assessment.createBatch(
-          f.tenant,
-          {
-            name: 'Publication boundary',
-            scopeNodeIds: [f.root],
-            materialRange: { start: '2026-03-01', end: '2026-09-01' },
-            userTypeIds: [f.studentType],
-          },
-          f.principal,
-        )
-        yield* assessment.replacePlan(
-          f.tenant,
-          batch.id,
-          {
-            specs: [
-              phase({ phaseKey: 'publication-prep' }),
-              phase({ phaseKey: 'appeal', entryTrigger: 'publication' }),
-              phase({ phaseKey: 'archive' }),
-            ],
-          },
-          f.principal,
-        )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
-        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
-        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
-        return yield* Effect.exit(
-          assessment.advancePhase(
-            f.tenant,
-            batch.id,
-            { to: plan[1]!.id, force: true, reason: 'no, this must not work' },
-            f.principal,
-          ),
-        )
-      }),
-    )
-    const refused = ok(exit)
-    expect(tagOf(refused)).toBe('ASSESSMENT_ADVANCE_INVALID')
-    expect(
-      reasonsOf(refused).map((entry) => (entry.error as { reason?: string } | undefined)?.reason),
-    ).toEqual(['publication-boundary'])
-  })
-
-  it('revalidates the plan against the clock at activation', async () => {
+  it('activates a plan that has no times yet, and shows nobody a batch that has not begun', async () => {
     const exit = await run(
       db.url,
       Effect.gen(function* () {
@@ -791,33 +719,23 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         yield* assessment.replacePlan(
           f.tenant,
           batch.id,
-          {
-            specs: [
-              phase({
-                phaseKey: 'entry',
-                entryTrigger: 'scheduled',
-                plannedEntryAt: Date.now() + 1_200,
-              }),
-              phase({ phaseKey: 'archive' }),
-            ],
-          },
+          { specs: [phase({ phaseKey: 'entry' })] },
           f.principal,
         )
-        // the draft sits on the shelf past its own first boundary
-        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1_400)))
-        return yield* Effect.exit(
-          assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal),
+        // structure is enough to activate: when it begins is decided after
+        const activated = yield* assessment.setBatchStatus(
+          f.tenant,
+          batch.id,
+          'active',
+          f.principal,
         )
+        return activated
       }),
     )
-    const refused = ok(exit)
-    expect(tagOf(refused)).toBe('ASSESSMENT_PLAN_INVALID')
-    expect(
-      reasonsOf(refused).flatMap(
-        (entry) =>
-          (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
-      ),
-    ).toContainEqual(expect.objectContaining({ reason: 'planned-not-in-future' }))
+    const activated = ok(exit)
+    expect(activated.status).toBe('active')
+    // nothing is running, so the batch has not begun for anyone
+    expect(activated.currentPhaseId).toBeNull()
   })
 
   it('repoints a draft scope, refuses bad selections, and locks the set once active', async () => {
@@ -1076,24 +994,15 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const duplicate = yield* Effect.exit(
           assessment.createTemplate(f.tenant, { name: 'default', phases: [] }, f.principal),
         )
+        // a template names business states, so a phase still needs a name
         const runaway = yield* Effect.exit(
           assessment.createTemplate(
             f.tenant,
-            {
-              name: 'runaway',
-              phases: [
-                phase({
-                  phaseKey: 'entry',
-                  entryTrigger: 'scheduled',
-                  plannedEntryAt: Date.now() + HOUR,
-                }),
-              ],
-            },
+            { name: 'runaway', phases: [phase({ phaseKey: 'entry', displayName: '  ' })] },
             f.principal,
           ),
         )
-        // a tenant-level template cannot carry batch-local allowances, and a
-        // hard plan beyond a manual boundary is structural, not seasonal
+        // a tenant-level template cannot carry batch-local allowances
         const scoped = yield* Effect.exit(
           assessment.createTemplate(
             f.tenant,
@@ -1107,44 +1016,20 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             f.principal,
           ),
         )
-        const beyondGate = yield* Effect.exit(
-          assessment.createTemplate(
-            f.tenant,
-            {
-              name: 'beyond-gate',
-              phases: [
-                phase({ phaseKey: 'prep' }),
-                phase({
-                  phaseKey: 'entry',
-                  entryTrigger: 'scheduled',
-                  plannedEntryAt: Date.now() - HOUR,
-                }),
-                phase({ phaseKey: 'archive' }),
-              ],
-            },
-            f.principal,
-          ),
-        )
         const versioned = yield* assessment.updateTemplate(
           f.tenant,
           created.id,
           { phases: [phase({ phaseKey: 'archive' })] },
           f.principal,
         )
-        return { created, duplicate, runaway, scoped, beyondGate, versioned }
+        return { created, duplicate, runaway, scoped, versioned }
       }),
     )
-    const { created, duplicate, runaway, scoped, beyondGate, versioned } = ok(exit)
+    const { created, duplicate, runaway, scoped, versioned } = ok(exit)
     expect(created.version).toBe(1)
     expect(tagOf(duplicate)).toBe('ASSESSMENT_TEMPLATE_CONFLICT')
     expect(tagOf(runaway)).toBe('ASSESSMENT_PLAN_INVALID')
     expect(tagOf(scoped)).toBe('ASSESSMENT_PLAN_INVALID')
-    const beyondReasons = reasonsOf(beyondGate).flatMap(
-      (entry) =>
-        (entry.error as { refusals?: readonly { reason: string }[] } | undefined)?.refusals ?? [],
-    )
-    expect(beyondReasons.map((entry) => entry.reason)).toContain('hard-plan-beyond-event-boundary')
-    expect(beyondReasons.map((entry) => entry.reason)).not.toContain('planned-not-in-future')
     expect(versioned.version).toBe(2)
   })
 
@@ -1174,8 +1059,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
               phases: [
                 phase({
                   phaseKey: 'entry',
-                  entryTrigger: 'scheduled',
-                  plannedEntryAt: Date.now() + HOUR,
                 }),
                 phase({ phaseKey: 'archive' }),
               ],

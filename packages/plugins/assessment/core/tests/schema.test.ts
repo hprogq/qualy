@@ -91,27 +91,27 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
     expect(batch.config_revision).toBe(0)
     expect(batch.current_phase_id).toBeNull()
 
-    // a scheduled boundary with a plan, then an unarmed publication boundary:
-    // NULL opens_publication_id is the legitimate freshly-created state
+    // a scheduled phase, then one with no time at all: a phase either has a
+    // planned instant or is simply not scheduled yet
     const phaseId = (
       await db.row<{ id: string }>(
-        `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name, entry_trigger, planned_entry_at, permission_profile)
-         values ($1, $2, 0, 'entry', '正式填报', 'scheduled', '2026-03-01T00:00:00+08:00', '["assessment.entry.submit"]')
+        `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name, description, planned_entry_at, permission_profile)
+         values ($1, $2, 0, 'entry', '正式填报', '学生提交材料', '2026-03-01T00:00:00+08:00', '["assessment.entry.submit"]')
          returning id`,
         [f.tenantId, batchId],
       )
     ).id
     await db.query(
-      `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name, entry_trigger)
-       values ($1, $2, 1, 'appeal', '申诉', 'publication')`,
+      `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name)
+       values ($1, $2, 1, 'appeal', '申诉')`,
       [f.tenantId, batchId],
     )
     const phase = await db.row<Record<string, unknown>>(
-      `select actual_entry_at, opens_publication_id, permission_profile from batch_phases where id = $1`,
+      `select actual_entry_at, description, permission_profile from batch_phases where id = $1`,
       [phaseId],
     )
     expect(phase.actual_entry_at).toBeNull()
-    expect(phase.opens_publication_id).toBeNull()
+    expect(phase.description).toBe('学生提交材料')
     expect(phase.permission_profile).toEqual(['assessment.entry.submit'])
 
     // the projection accepts a phase of the same tenant
@@ -159,28 +159,28 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
     const f = await createFixture('chk')
     const batchId = await createBatch(f, 'Constraint probes')
 
-    // a publication binding on a scheduled boundary is a contradiction
+    // a phase must be named
     expect(
       await pgCode(
         db.query(
-          `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name, entry_trigger, opens_publication_id)
-           values ($1, $2, 0, 'entry', 'Entry', 'scheduled', uuidv7())`,
+          `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name)
+           values ($1, $2, 0, 'entry', '   ')`,
           [f.tenantId, batchId],
         ),
       ),
     ).toBe('23514')
 
     await db.query(
-      `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name, entry_trigger)
-       values ($1, $2, 0, 'entry', 'Entry', 'manual')`,
+      `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name)
+       values ($1, $2, 0, 'entry', 'Entry')`,
       [f.tenantId, batchId],
     )
     // one ordinal, one phase
     expect(
       await pgCode(
         db.query(
-          `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name, entry_trigger)
-           values ($1, $2, 0, 'review', 'Review', 'manual')`,
+          `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name)
+           values ($1, $2, 0, 'review', 'Review')`,
           [f.tenantId, batchId],
         ),
       ),

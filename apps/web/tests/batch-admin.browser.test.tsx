@@ -58,12 +58,9 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
 const phase = (over: Partial<PhaseDto> & { id: string; phaseKey: string }): PhaseDto => ({
   ordinal: 0,
   displayName: over.phaseKey,
-  entryTrigger: 'manual',
+  description: '',
   plannedEntryAt: null,
   actualEntryAt: null,
-  entryOffset: null,
-  estimatedEntryAt: null,
-  opensPublicationId: null,
   permissionProfile: [],
   itemScope: [],
   participantScope: [],
@@ -95,11 +92,8 @@ const templates = (request: Request) =>
               phases: [
                 {
                   phaseKey: 'entry',
-                  displayName: '正式填报',
-                  entryTrigger: 'manual' as const,
-                  plannedEntryAt: null,
-                  entryOffset: null,
-                  estimatedEntryAt: null,
+                  displayName: '正式填报' as const,
+                  description: '',
                   permissionProfile: ['assessment.entry.create', 'assessment.entry.submit'],
                   itemScope: [],
                   participantScope: [],
@@ -230,8 +224,14 @@ describe('creating a batch', () => {
     await dialog.getByRole('textbox', { name: '名称' }).fill('2026 秋季综测')
     // the calendar names a day by its whole date, so the day is matched inside it
     await dialog.getByRole('button', { name: '材料时间范围' }).click()
-    await page.getByRole('button', { name: /月10日/ }).first().click()
-    await page.getByRole('button', { name: /月20日/ }).first().click()
+    await page
+      .getByRole('button', { name: /月10日/ })
+      .first()
+      .click()
+    await page
+      .getByRole('button', { name: /月20日/ })
+      .first()
+      .click()
     await dialog.getByRole('button', { name: '下一步' }).click()
 
     // the units are chosen right here, not in a dialog stacked on this one
@@ -249,17 +249,34 @@ describe('creating a batch', () => {
 })
 
 describe('the stage plan', () => {
-  it('builds a stage from nothing - no template required anywhere', async () => {
+  const twoPhases = (over: { planned?: string | null; entered?: string | null } = {}) => ({
+    phases: [
+      phase({
+        id: ENTRY_PHASE_ID,
+        phaseKey: 'entry',
+        displayName: '正式填报',
+        ...(over.entered !== undefined ? { actualEntryAt: over.entered } : {}),
+        ...(over.planned !== undefined ? { plannedEntryAt: over.planned } : {}),
+      }),
+      phase({ id: REVIEW_PHASE_ID, phaseKey: 'review', ordinal: 1, displayName: '审核整理' }),
+    ],
+  })
+
+  it('builds a stage from nothing, and sends structure without any time', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
     screen({ putPhases })
 
-    // the empty plan offers both roads and demands neither
     await expect
-      .element(page.getByText('暂无阶段。可套用时间线模板，或手动添加阶段。'))
+      .element(page.getByText('批次内未添加任何阶段。推荐您导入时间线模板，或手动添加阶段。'))
       .toBeVisible()
 
-    await page.getByRole('button', { name: '添加阶段' }).click()
-    await page.getByLabelText('阶段名称').fill('正式填报')
+    await page.getByRole('button', { name: '新增阶段', exact: true }).click()
+    // a phase is named where a name has room to be read
+    await page.getByRole('button', { name: '编辑详情' }).click()
+    const details = page.getByRole('dialog')
+    await details.getByLabelText('阶段名称').fill('正式填报')
+    await details.getByRole('button', { name: '完成' }).click()
+    expect(putPhases).not.toHaveBeenCalled()
     await page.getByRole('button', { name: '保存' }).click()
 
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
@@ -267,53 +284,88 @@ describe('the stage plan', () => {
     expect(sent.params).toMatchObject({ batchId: BATCH_ID })
     const plan = sent.payload!['phases'] as readonly Record<string, unknown>[]
     expect(plan).toHaveLength(1)
-    expect(plan[0]).toMatchObject({ displayName: '正式填报', entryTrigger: 'manual' })
+    expect(plan[0]).toMatchObject({ displayName: '正式填报', description: '' })
+    // a plan write says what the phases are, never when they happen
+    expect(plan[0]).not.toHaveProperty('plannedEntryAt')
+  })
+
+  it('offers a time to one stage at a time, from the top down', async () => {
+    const schedulePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
+    screen({ schedulePhase, getPhases: () => Effect.succeed(twoPhases()) })
+
+    // the first unscheduled stage is the only one that can take a time
+    await expect.element(page.getByRole('button', { name: '去排期' })).toBeVisible()
+    expect(page.getByRole('button', { name: '去排期' }).elements()).toHaveLength(1)
+    await expect.element(page.getByText('请先为上一阶段排期')).toBeVisible()
+  })
+
+  it('withdraws a time from the last stage that has one', async () => {
+    const schedulePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
+    screen({
+      schedulePhase,
+      getPhases: () => Effect.succeed(twoPhases({ planned: '2027-09-05T16:00:00.000Z' })),
+    })
+
+    await page.getByRole('button', { name: '取消排期' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '取消排期' }).click()
+
+    await vi.waitFor(() => expect(schedulePhase).toHaveBeenCalledTimes(1))
+    expect(schedulePhase.mock.calls[0]![0]).toMatchObject({
+      params: { batchId: BATCH_ID, phaseId: ENTRY_PHASE_ID },
+      payload: { plannedEntryAt: null },
+    })
+  })
+
+  it('enters the stage at the front of the queue on the spot', async () => {
+    const advancePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
+    screen({
+      advancePhase,
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+      listBatches: () =>
+        Effect.succeed({ items: [batch({ status: 'active' })], nextCursor: null, total: 1 }),
+      getPhases: () => Effect.succeed(twoPhases()),
+    })
+
+    // starting now lives with scheduling: they are the same decision
+    await page.getByRole('button', { name: '去排期' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('radio', { name: /立即开始/ }).click()
+    await dialog.getByRole('button', { name: '立即开始' }).click()
+
+    await vi.waitFor(() => expect(advancePhase).toHaveBeenCalledTimes(1))
+    expect(advancePhase.mock.calls[0]![0]).toMatchObject({
+      payload: { to: ENTRY_PHASE_ID },
+    })
   })
 
   it('offers only the permissions a stage may govern', async () => {
-    screen({
-      getPhases: () =>
-        Effect.succeed({
-          phases: [phase({ id: ENTRY_PHASE_ID, phaseKey: 'entry', displayName: '正式填报' })],
-        }),
-    })
+    screen({ getPhases: () => Effect.succeed(twoPhases()) })
 
-    await page.getByRole('button', { name: '编辑' }).click()
+    await page.getByRole('button', { name: '编辑详情' }).first().click()
     const panel = page.getByRole('dialog')
-    // what a stage opens is the panel's third step
-    await panel.getByRole('button', { name: '开放操作' }).click()
 
-    // the gate's own registry, and nothing else: a stage can open submitting
-    // an entry...
+    // the gate's own registry, and nothing else
     await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeVisible()
     await expect.element(panel.getByRole('checkbox', { name: '审核提交的内容' })).toBeVisible()
-    // ...but signing in, managing the organization or managing the batch
-    // itself are not things a stage governs, so they cannot be listed here
     for (const absent of ['登录', '管理组织架构', '管理测评批次', '查看角色']) {
       await expect.element(panel.getByRole('checkbox', { name: absent })).not.toBeInTheDocument()
     }
-    // exactly the eleven gated codes, which is the whole of the registry
     expect(panel.getByRole('checkbox').elements()).toHaveLength(11)
   })
 
   it('fills one stage from a stage preset, as a starting point only', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
-    screen({ putPhases })
+    screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
 
-    await page.getByRole('button', { name: '添加阶段' }).click()
+    await page.getByRole('button', { name: '编辑详情' }).first().click()
     const panel = page.getByRole('dialog')
-
-    // the preset picker sees stage presets and nothing else
-    await panel.getByLabelText('用预设填充这个阶段').selectOptions('填报阶段预设')
+    await panel.getByLabelText('应用时间线模板').selectOptions('填报阶段预设')
     await panel.getByRole('button', { name: '填入' }).click()
-
-    // it filled the name, and the actions it carried are ticked a step later
-    await expect.element(panel.getByLabelText('阶段名称')).toHaveValue('正式填报')
-    await panel.getByRole('button', { name: '开放操作' }).click()
     await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeChecked()
     await expect.element(panel.getByRole('checkbox', { name: '查看排名' })).not.toBeChecked()
+    await panel.getByRole('button', { name: '完成' }).click()
 
-    await panel.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存' }).click()
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
     const plan = putPhases.mock.calls[0]![0].payload!['phases'] as readonly Record<
       string,
@@ -325,112 +377,42 @@ describe('the stage plan', () => {
     })
   })
 
-  it('applies a timeline by id, server-side, only while a draft', async () => {
+  it('adds a timeline template to the end, server-side', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
-    screen({ putPhases })
+    screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
 
-    await page.getByRole('button', { name: '从时间线开始' }).click()
+    await page.getByRole('button', { name: '编辑阶段' }).click()
+    await page.getByRole('button', { name: '从模板添加' }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByLabelText('时间线').selectOptions('常规四阶段')
-    await dialog.getByRole('button', { name: '从时间线开始' }).click()
+    await dialog.getByRole('button', { name: '从模板添加' }).click()
 
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
-    // the screen names the timeline and lets the server copy it, so the
-    // provenance the plan records is the server's to write
+    // the server copies the template, so the provenance it records is its own
     expect(putPhases.mock.calls[0]![0]).toMatchObject({
       params: { batchId: BATCH_ID },
       payload: { fromTemplateId: TIMELINE_ID },
     })
   })
 
-  it('does not offer timelines once the batch is running', async () => {
+  it('says what was refused, next to the stage it names', async () => {
     screen({
-      getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
-      getPhases: () =>
-        Effect.succeed({
-          phases: [phase({ id: ENTRY_PHASE_ID, phaseKey: 'entry', displayName: '正式填报' })],
-        }),
-    })
-    // applying one replaces a plan people already live in, so the road is
-    // closed entirely rather than refused on submit
-    await expect.element(page.getByText('正式填报')).toBeVisible()
-    await expect.element(page.getByRole('button', { name: '从时间线开始' })).not.toBeInTheDocument()
-    // adding a single stage stays possible
-    await expect.element(page.getByRole('button', { name: '添加阶段' })).toBeVisible()
-  })
-
-  it('says what was refused, as a sentence in the panel', async () => {
-    screen({
-      getPhases: () =>
-        Effect.succeed({
-          phases: [
-            phase({ id: ENTRY_PHASE_ID, phaseKey: 'entry', displayName: '正式填报' }),
-            phase({
-              id: REVIEW_PHASE_ID,
-              phaseKey: 'review',
-              ordinal: 1,
-              displayName: '审核整理',
-              entryTrigger: 'scheduled',
-            }),
-          ],
-        }),
+      getPhases: () => Effect.succeed(twoPhases()),
       putPhases: () =>
         Effect.fail(
           Object.assign(new Error('ASSESSMENT_PLAN_INVALID'), {
             _tag: 'ASSESSMENT_PLAN_INVALID',
-            refusals: [
-              { reason: 'hard-plan-beyond-event-boundary', phaseId: REVIEW_PHASE_ID, index: 1 },
-            ],
+            refusals: [{ reason: 'scheduled-phase-immutable', phaseId: REVIEW_PHASE_ID }],
           }),
         ),
     })
 
-    await page.getByRole('button', { name: '编辑' }).nth(1).click()
-    await page.getByRole('dialog').getByRole('button', { name: '保存' }).click()
-    await expect
-      .element(
-        page.getByText(
-          '前面还有阶段没定下日期，它后面的阶段承诺不了具体时间；改用“上一阶段开始后第几天”。',
-          { exact: false },
-        ),
-      )
-      .toBeVisible()
-  })
-
-  it('starting a scheduled stage early demands a written reason', async () => {
-    const advancePhase = vi.fn((_request: Request) =>
-      Effect.succeed({ phases: [], effective: null }),
-    )
-    screen({
-      getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
-      listBatches: () =>
-        Effect.succeed({ items: [batch({ status: 'active' })], nextCursor: null, total: 1 }),
-      advancePhase,
-      getPhases: () =>
-        Effect.succeed({
-          phases: [
-            phase({
-              id: ENTRY_PHASE_ID,
-              phaseKey: 'entry',
-              displayName: '正式填报',
-              entryTrigger: 'scheduled',
-              plannedEntryAt: '2027-09-05T16:00:00.000Z',
-            }),
-          ],
-        }),
-    })
-
-    await page.getByRole('button', { name: '提前开始' }).click()
-    const dialog = page.getByRole('dialog')
-    // no reason, no way forward
-    await expect.element(dialog.getByRole('button', { name: '提前开始' })).toBeDisabled()
-    await dialog.getByLabelText('理由').fill('评审组要求提前')
-    await dialog.getByRole('button', { name: '提前开始' }).click()
-
-    await vi.waitFor(() => expect(advancePhase).toHaveBeenCalledTimes(1))
-    expect(advancePhase.mock.calls[0]![0]).toMatchObject({
-      payload: { to: ENTRY_PHASE_ID, force: true, reason: '评审组要求提前' },
-    })
+    await page.getByRole('button', { name: '编辑详情' }).nth(1).click()
+    const panel = page.getByRole('dialog')
+    await panel.getByLabelText('阶段名称').fill('审核整理期')
+    await panel.getByRole('button', { name: '完成' }).click()
+    await page.getByRole('button', { name: '保存' }).click()
+    await expect.element(page.getByText('已排期的阶段不能移动或删除。')).toBeVisible()
   })
 })
 
@@ -439,7 +421,7 @@ describe('the participants tab', () => {
     screen()
     await page.getByRole('tab', { name: '参评人员' }).click()
     await expect
-      .element(page.getByText('参评名单将在批次激活时按所选单位与人员类型生成。'))
+      .element(page.getByText('批次激活时，参评名单会根据批次设置自动生成。'))
       .toBeVisible()
   })
 

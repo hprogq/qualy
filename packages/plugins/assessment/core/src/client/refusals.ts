@@ -22,7 +22,6 @@ type ServiceRefusalReason =
   | 'phase-removed'
   | 'reorder-not-allowed'
   | 'phase-key-immutable'
-  | 'trigger-immutable'
   | 'scope-in-template'
   | 'participant-not-in-batch'
 
@@ -37,18 +36,13 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'phase-already-entered': m['refusal.phase-already-entered'],
   'ended-phase-name-only': m['refusal.ended-phase-name-only'],
   'display-name-blank': m['refusal.display-name-blank'],
-  'planned-on-publication-phase': m['refusal.planned-on-publication-phase'],
-  'hard-plan-beyond-event-boundary': m['refusal.hard-plan-beyond-event-boundary'],
   'planned-not-in-future': m['refusal.planned-not-in-future'],
   'planned-out-of-order': m['refusal.planned-out-of-order'],
-  'offset-not-positive': m['refusal.offset-not-positive'],
-  'offset-on-non-scheduled-phase': m['refusal.offset-on-non-scheduled-phase'],
-  'offset-with-planned': m['refusal.offset-with-planned'],
-  'binding-on-non-publication-phase': m['refusal.binding-on-non-publication-phase'],
-  'binding-immutable-after-entry': m['refusal.binding-immutable-after-entry'],
   'profile-code-not-gated': m['refusal.profile-code-not-gated'],
   'insert-not-after-current': m['refusal.insert-not-after-current'],
-  'terminal-must-be-manual': m['refusal.terminal-must-be-manual'],
+  'schedule-out-of-order': m['refusal.schedule-out-of-order'],
+  'unschedule-not-from-tail': m['refusal.unschedule-not-from-tail'],
+  'scheduled-phase-immutable': m['refusal.scheduled-phase-immutable'],
   'plan-empty': m['refusal.plan-empty'],
   'template-requires-draft': m['refusal.template-requires-draft'],
   'template-not-a-timeline': m['refusal.template-not-a-timeline'],
@@ -56,7 +50,6 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'phase-removed': m['refusal.phase-removed'],
   'reorder-not-allowed': m['refusal.reorder-not-allowed'],
   'phase-key-immutable': m['refusal.phase-key-immutable'],
-  'trigger-immutable': m['refusal.trigger-immutable'],
   'scope-in-template': m['refusal.scope-in-template'],
   'participant-not-in-batch': m['refusal.participant-not-in-batch'],
 }

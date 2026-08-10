@@ -92,7 +92,6 @@ const DUE_AT = 5 * MINUTE + 30_000
 
 const phase = (over: Partial<PhaseSpecInput> & { phaseKey: string }): PhaseSpecInput => ({
   displayName: over.phaseKey,
-  entryTrigger: 'manual',
   permissionProfile: [],
   ...over,
 })
@@ -177,14 +176,12 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
               // so is written at 6m.
               phase({
                 phaseKey: 'entry',
-                entryTrigger: 'scheduled',
-                plannedEntryAt: start + DUE_AT,
                 permissionProfile: ['assessment.entry.submit'],
               }),
               // a review wrap-up that only a human ends...
               phase({ phaseKey: 'review', permissionProfile: ['assessment.review.process'] }),
               // ...so this one must not self-ignite, however far the clock goes
-              phase({ phaseKey: 'appeal', entryTrigger: 'scheduled', entryOffset: { days: 1 } }),
+              phase({ phaseKey: 'appeal' }),
               phase({ phaseKey: 'archive' }),
             ],
           },
@@ -192,6 +189,15 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
         )
         yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // the entry boundary is the only one committed to a time; everything
+        // behind it stays unscheduled and therefore cannot self-ignite
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          start + DUE_AT,
+          f.principal,
+        )
 
         // First, with no fiber running at all: one minute in, nothing is due.
         yield* TestClock.adjust('1 minute')
@@ -296,8 +302,6 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
               specs: [
                 phase({
                   phaseKey: 'entry',
-                  entryTrigger: 'scheduled',
-                  plannedEntryAt: start + MINUTE,
                 }),
                 phase({ phaseKey: 'archive' }),
               ],
@@ -305,6 +309,14 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
             f.principal,
           )
           yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+          const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+          yield* assessment.schedulePhase(
+            f.tenant,
+            batch.id,
+            plan[0]!.id,
+            start + 60_000,
+            f.principal,
+          )
           return { f, batch }
         })
         // two tenants, so the sweep has to be the system rather than a caller
@@ -329,8 +341,6 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
             specs: [
               phase({
                 phaseKey: 'entry',
-                entryTrigger: 'scheduled',
-                plannedEntryAt: start + MINUTE,
               }),
               phase({ phaseKey: 'archive' }),
             ],

@@ -43,13 +43,6 @@ const isoDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
 
 const materialRange = Schema.Struct({ start: isoDate, end: isoDate })
 
-const entryOffset = Schema.Struct({
-  days: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
-  hours: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
-  minutes: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
-})
-
-const entryTrigger = Schema.Literals(['scheduled', 'manual', 'publication'])
 const batchStatus = Schema.Literals(['draft', 'active', 'archived'])
 
 const batchListView = Schema.Struct({
@@ -79,12 +72,9 @@ const phaseView = Schema.Struct({
   ordinal: Schema.Number,
   phaseKey: Schema.String,
   displayName: Schema.String,
-  entryTrigger,
+  description: Schema.String,
   plannedEntryAt: Schema.NullOr(Schema.String),
   actualEntryAt: Schema.NullOr(Schema.String),
-  entryOffset: Schema.NullOr(entryOffset),
-  estimatedEntryAt: Schema.NullOr(Schema.String),
-  opensPublicationId: Schema.NullOr(Schema.String),
   permissionProfile: Schema.Array(Schema.String),
   itemScope: Schema.Array(Schema.String),
   participantScope: Schema.Array(Schema.String),
@@ -94,20 +84,17 @@ const phaseView = Schema.Struct({
 
 /**
  * One phase as a plan write states it: with an id it replaces that phase's
- * editable fields, without one it is an insertion at its position. Entry
- * actuals and publication bindings are deliberately absent - the first is
- * written only by transitions, the second only by the publication workflow.
- * The two scopes are the supplementary-phase allowances; empty or absent
- * means unrestricted.
+ * editable fields, without one it is an insertion at its position. Times are
+ * deliberately absent - a plan write states structure, and when each phase
+ * begins is committed one phase at a time through schedulePhase. The two
+ * scopes are the supplementary-phase allowances; empty or absent means
+ * unrestricted.
  */
 const phaseSpec = Schema.Struct({
   id: Schema.optional(id),
   phaseKey: kebabCode,
   displayName: trimmedName(100),
-  entryTrigger,
-  plannedEntryAt: Schema.optional(Schema.NullOr(isoInstant)),
-  entryOffset: Schema.optional(Schema.NullOr(entryOffset)),
-  estimatedEntryAt: Schema.optional(Schema.NullOr(isoInstant)),
+  description: Schema.optional(boundedText(500)),
   permissionProfile: Schema.optional(Schema.Array(Schema.String)),
   itemScope: Schema.optional(Schema.Array(id)),
   participantScope: Schema.optional(Schema.Array(id)),
@@ -124,8 +111,9 @@ const timelineEntry = Schema.Struct({
   phaseKey: Schema.String,
   displayName: Schema.String,
   status: Schema.Literals(['ended', 'current', 'future']),
+  description: Schema.String,
   entry: Schema.Struct({
-    kind: Schema.Literals(['entered', 'planned', 'announced', 'estimated', 'pending']),
+    kind: Schema.Literals(['entered', 'planned', 'pending']),
     at: Schema.NullOr(Schema.String),
   }),
 })
@@ -300,9 +288,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
-    // the plan as an idempotent replacement: named phases are edited, unnamed
-    // ones inserted, and a template is copied server-side so its provenance
-    // lands with it. Exactly one of the two fields.
+    // the plan's structure as an idempotent replacement: named phases are
+    // edited, unnamed ones inserted, and a timeline template appends its
+    // phases to the end, copied server-side so its provenance lands with
+    // them. Times are not part of it. Exactly one of the two fields.
     HttpApiEndpoint.put('putPhases', '/assessment/batches/:batchId/phases', {
       params: Schema.Struct({ batchId: id }),
       payload: Schema.Struct({
@@ -327,6 +316,17 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         AccessDenied,
         BadRequest,
       ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // when a phase is due to begin, as an idempotent sub-resource: a time
+    // schedules it, null withdraws the schedule. Time is committed from the
+    // top of the plan down and withdrawn from the bottom up (32.41)
+    HttpApiEndpoint.put('schedulePhase', '/assessment/batches/:batchId/phases/:phaseId/schedule', {
+      params: Schema.Struct({ batchId: id, phaseId: id }),
+      payload: Schema.Struct({ plannedEntryAt: Schema.NullOr(isoInstant) }),
+      success: Schema.Struct({ phases: Schema.Array(phaseView) }),
+      error: [BatchNotFound, BatchReadOnly, PhaseNotFound, PlanInvalid, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(

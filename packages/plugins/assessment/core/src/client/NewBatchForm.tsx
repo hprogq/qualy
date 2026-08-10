@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n, useLocale } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { CheckboxGroup, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
@@ -128,6 +129,8 @@ export function NewBatchDialog({
                 onChange={setRange}
                 placeholder={format(m.pickDateRange)}
                 localeTag={locale}
+                monthLabel={format(commonMessages.calendarMonth)}
+                yearLabel={format(commonMessages.calendarYear)}
               />
             )}
           </Field>

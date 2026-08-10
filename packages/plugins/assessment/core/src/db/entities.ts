@@ -150,21 +150,16 @@ export const BatchPhase = defineEntity({
     ordinal: p.integer(),
     phaseKey: p.string().length(63),
     displayName: p.string().length(100),
-    entryTrigger: p.string().length(16),
+    // prose about the phase, shown wherever the phase is: what it is for, or
+    // why it has no time yet. Drives nothing (32.41)
+    description: p.string().length(500).default(''),
+    // the instant it is due to begin, or null while it is unscheduled. There
+    // is no second way to enter a phase: a time or an administrator
     plannedEntryAt: p.datetime().nullable(),
     // the semantic instant the phase began: a scheduled boundary records its
     // planned value however late the scheduler ran (the machine's execution
     // instant goes to phase_events.processed_at); immutable once set
     actualEntryAt: p.datetime().nullable(),
-    // duration spec copied from a template, materialized into planned_entry_at
-    // once its anchoring event's instant is known
-    entryOffset: p.json<Record<string, unknown>>().nullable(),
-    // display-only estimate ("around Sep 10"); never arms anything
-    estimatedEntryAt: p.datetime().nullable(),
-    // Bound at schedulePreliminary, not at creation: NULL is the legitimate
-    // unarmed state of a publication-triggered phase (§32.26). Bare uuid until
-    // the publications table exists; the foreign key is a later ALTER.
-    opensPublicationId: p.uuid().nullable(),
     // permission codes this phase opens, checked against PHASE_GATED
     permissionProfile: p.json<readonly string[]>().defaultRaw(`'[]'`),
     // provenance of a template application; survives template deletion
@@ -177,14 +172,6 @@ export const BatchPhase = defineEntity({
     { name: 'chk_batch_phases_ordinal_non_negative', expression: 'ordinal >= 0' },
     { name: 'chk_batch_phases_phase_key_format', expression: `phase_key ~ ${CODE}` },
     { name: 'chk_batch_phases_display_name_not_blank', expression: `btrim(display_name) <> ''` },
-    {
-      name: 'chk_batch_phases_entry_trigger',
-      expression: `entry_trigger IN ('scheduled', 'manual', 'publication')`,
-    },
-    {
-      name: 'chk_batch_phases_publication_binding',
-      expression: `entry_trigger = 'publication' OR opens_publication_id IS NULL`,
-    },
   ],
   indexes: [
     {
@@ -196,12 +183,6 @@ export const BatchPhase = defineEntity({
       name: 'uq_batch_phases_tenant_batch_ordinal',
       expression:
         'create unique index uq_batch_phases_tenant_batch_ordinal on batch_phases (tenant_id, batch_id, ordinal)',
-    },
-    // one publication opens at most one phase
-    {
-      name: 'uq_batch_phases_opens_publication',
-      expression:
-        'create unique index uq_batch_phases_opens_publication on batch_phases (opens_publication_id) where opens_publication_id is not null',
     },
   ],
 })

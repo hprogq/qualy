@@ -149,3 +149,7 @@ export type SetBatchStatusError =
 export type ReplacePlanError =
   BatchNotFound | BatchReadOnly | TemplateNotFound | PlanInvalid | AccessDenied
 export type AdvancePhaseError = BatchNotFound | PhaseNotFound | AdvanceInvalid | AccessDenied
+
+/** committing or withdrawing a phase's time; the plan's shape decides */
+export type SchedulePhaseError =
+  BatchNotFound | BatchReadOnly | PhaseNotFound | PlanInvalid | AccessDenied

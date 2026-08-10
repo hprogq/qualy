@@ -411,12 +411,9 @@ export interface PhaseRow {
   ordinal: number
   phaseKey: string
   displayName: string
-  entryTrigger: 'scheduled' | 'manual' | 'publication'
+  description: string
   plannedEntryAt: number | null
   actualEntryAt: number | null
-  entryOffset: { days?: number; hours?: number; minutes?: number } | null
-  estimatedEntryAt: number | null
-  opensPublicationId: string | null
   permissionProfile: readonly string[]
   sourceTemplateId: string | null
   sourceTemplateVersion: number | null
@@ -432,9 +429,7 @@ export const listPhaseRows = (tenantId: string, batchId: string) =>
           'ordinal',
           'phaseKey',
           'displayName',
-          'entryTrigger',
-          'entryOffset',
-          'opensPublicationId',
+          'description',
           'permissionProfile',
           'sourceTemplateId',
           'sourceTemplateVersion',
@@ -442,7 +437,6 @@ export const listPhaseRows = (tenantId: string, batchId: string) =>
         .select([
           epoch('planned_entry_at').as('plannedEntryAt'),
           epoch('actual_entry_at').as('actualEntryAt'),
-          epoch('estimated_entry_at').as('estimatedEntryAt'),
         ])
         .where('tenantId', '=', tenantId)
         .where('batchId', '=', batchId)
@@ -457,7 +451,6 @@ export const listPhaseRows = (tenantId: string, batchId: string) =>
               ...row,
               plannedEntryAt: msOf(row.plannedEntryAt),
               actualEntryAt: msOf(row.actualEntryAt),
-              estimatedEntryAt: msOf(row.estimatedEntryAt),
             }) as unknown as PhaseRow,
         ),
       ),
@@ -469,10 +462,7 @@ export const insertPhase = (input: {
   ordinal: number
   phaseKey: string
   displayName: string
-  entryTrigger: string
-  plannedEntryAt: number | null
-  entryOffset: Record<string, unknown> | null
-  estimatedEntryAt: number | null
+  description: string
   permissionProfile: readonly string[]
   sourceTemplateId?: string
   sourceTemplateVersion?: number
@@ -487,11 +477,7 @@ export const insertPhase = (input: {
           ordinal: input.ordinal,
           phaseKey: input.phaseKey,
           displayName: input.displayName,
-          entryTrigger: input.entryTrigger,
-          plannedEntryAt: input.plannedEntryAt === null ? null : instant(input.plannedEntryAt),
-          entryOffset: input.entryOffset === null ? null : jsonb(input.entryOffset),
-          estimatedEntryAt:
-            input.estimatedEntryAt === null ? null : instant(input.estimatedEntryAt),
+          description: input.description,
           permissionProfile: jsonb(input.permissionProfile),
           ...(input.sourceTemplateId !== undefined
             ? {
@@ -511,10 +497,8 @@ export const updatePhaseFields = (
   fields: {
     displayName?: string
     phaseKey?: string
-    entryTrigger?: string
+    description?: string
     plannedEntryAt?: number | null
-    entryOffset?: Record<string, unknown> | null
-    estimatedEntryAt?: number | null
     permissionProfile?: readonly string[]
     ordinal?: number
   },
@@ -525,20 +509,11 @@ export const updatePhaseFields = (
       .set({
         ...(fields.displayName !== undefined ? { displayName: fields.displayName } : {}),
         ...(fields.phaseKey !== undefined ? { phaseKey: fields.phaseKey } : {}),
-        ...(fields.entryTrigger !== undefined ? { entryTrigger: fields.entryTrigger } : {}),
+        ...(fields.description !== undefined ? { description: fields.description } : {}),
         ...(fields.plannedEntryAt !== undefined
           ? {
               plannedEntryAt:
                 fields.plannedEntryAt === null ? null : instant(fields.plannedEntryAt),
-            }
-          : {}),
-        ...(fields.entryOffset !== undefined
-          ? { entryOffset: fields.entryOffset === null ? null : jsonb(fields.entryOffset) }
-          : {}),
-        ...(fields.estimatedEntryAt !== undefined
-          ? {
-              estimatedEntryAt:
-                fields.estimatedEntryAt === null ? null : instant(fields.estimatedEntryAt),
             }
           : {}),
         ...(fields.permissionProfile !== undefined
@@ -910,7 +885,6 @@ export const batchesWithDueBoundaries = (now: number, limit: number) =>
             select 1 from batch_phases due
             where due.tenant_id = assessment_batches.tenant_id
               and due.batch_id = assessment_batches.id
-              and due.entry_trigger = 'scheduled'
               and due.actual_entry_at is null
               and due.planned_entry_at is not null
               and due.planned_entry_at <= ${instant(now)}

@@ -83,7 +83,9 @@ export function PermissionProfileEditor({
           {index > 0 && <FieldSeparator />}
           <FieldSet disabled={disabled}>
             <FieldLegend variant="label">{format(GROUP_LABELS[group.key])}</FieldLegend>
-            <div className="flex flex-col gap-3">
+            {/* two columns where the panel is wide enough: a group of five
+                reads as a list, not as a wall */}
+            <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               {group.codes.map((code) => (
                 <PermissionRow
                   key={code}
