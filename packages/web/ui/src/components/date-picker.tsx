@@ -26,6 +26,8 @@ export function DatePicker({
   onChange,
   placeholder,
   localeTag,
+  monthLabel,
+  yearLabel,
   disabled,
 }: {
   id?: string
@@ -34,6 +36,9 @@ export function DatePicker({
   placeholder?: string
   /** a bcp-47 tag such as zh-CN; calendar and display text follow it */
   localeTag?: string
+  /** names for the caption pickers, read out but never shown */
+  monthLabel?: string
+  yearLabel?: string
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -61,6 +66,10 @@ export function DatePicker({
         <Calendar
           mode="single"
           captionLayout="dropdown"
+          labels={{
+            ...(monthLabel ? { labelMonthDropdown: () => monthLabel } : {}),
+            ...(yearLabel ? { labelYearDropdown: () => yearLabel } : {}),
+          }}
           {...(localeTag && DAY_PICKER_LOCALES[localeTag]
             ? { locale: DAY_PICKER_LOCALES[localeTag] }
             : {})}

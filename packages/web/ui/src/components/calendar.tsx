@@ -1,9 +1,15 @@
 import * as React from 'react'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import { DayPicker, getDefaultClassNames, type DayButton } from 'react-day-picker'
+import {
+  DayPicker,
+  getDefaultClassNames,
+  type DayButton,
+  type Dropdown as DayPickerDropdown,
+} from 'react-day-picker'
 
 import { cn } from '../lib/utils.ts'
 import { Button, buttonVariants } from './button.tsx'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select.tsx'
 
 function Calendar({
   className,
@@ -29,16 +35,16 @@ function Calendar({
         className,
       )}
       captionLayout={captionLayout}
-      formatters={{
-        formatMonthDropdown: (date) => date.toLocaleString('default', { month: 'short' }),
-        ...formatters,
-      }}
+      formatters={formatters}
       classNames={{
         root: cn('w-fit', defaultClassNames.root),
         months: cn('relative flex flex-col gap-4 md:flex-row', defaultClassNames.months),
         month: cn('flex w-full flex-col gap-4', defaultClassNames.month),
         nav: cn(
-          'absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1',
+          // the bar spans the caption row it floats over, so only its buttons
+          // may take clicks - otherwise it swallows every click aimed at the
+          // month and year pickers below it
+          'pointer-events-none absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1 [&>button]:pointer-events-auto',
           defaultClassNames.nav,
         ),
         button_previous: cn(
@@ -59,11 +65,8 @@ function Calendar({
           'flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium',
           defaultClassNames.dropdowns,
         ),
-        dropdown_root: cn(
-          'relative rounded-md border border-input shadow-xs has-focus:border-ring has-focus:ring-[3px] has-focus:ring-ring/50',
-          defaultClassNames.dropdown_root,
-        ),
-        dropdown: cn('absolute inset-0 bg-popover opacity-0', defaultClassNames.dropdown),
+        dropdown_root: cn('relative', defaultClassNames.dropdown_root),
+        dropdown: cn(defaultClassNames.dropdown),
         caption_label: cn(
           'font-medium select-none',
           captionLayout === 'label'
@@ -121,6 +124,7 @@ function Calendar({
           return <ChevronDownIcon className={cn('size-4', className)} {...props} />
         },
         DayButton: CalendarDayButton,
+        Dropdown: CalendarDropdown,
         WeekNumber: ({ children, ...props }) => {
           return (
             <td {...props}>
@@ -134,6 +138,40 @@ function Calendar({
       }}
       {...props}
     />
+  )
+}
+
+// The month and year pickers, over the app's select rather than the library's
+// transparent native one: a native listbox ignores the theme, drops out of
+// dark mode, and looks nothing like every other picker on the page. The
+// library only ever reads `value` off the change event, so a plain object
+// carries the choice back to it.
+function CalendarDropdown({
+  options,
+  value,
+  onChange,
+  disabled,
+  'aria-label': ariaLabel,
+}: React.ComponentProps<typeof DayPickerDropdown>) {
+  return (
+    <Select
+      value={value === undefined ? undefined : String(value)}
+      disabled={disabled}
+      onValueChange={(next) =>
+        onChange?.({ target: { value: next } } as React.ChangeEvent<HTMLSelectElement>)
+      }
+    >
+      <SelectTrigger size="sm" aria-label={ariaLabel} className="font-medium">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options?.map((option) => (
+          <SelectItem key={option.value} value={String(option.value)} disabled={option.disabled}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 

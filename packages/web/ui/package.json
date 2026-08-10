@@ -50,7 +50,10 @@
     "./date-range-picker": "./src/components/date-range-picker.tsx",
     "./sheet": "./src/components/sheet.tsx",
     "./scroll-area": "./src/components/scroll-area.tsx",
-    "./use-mobile": "./src/hooks/use-mobile.ts"
+    "./use-mobile": "./src/hooks/use-mobile.ts",
+    "./date-time-picker": "./src/components/date-time-picker.tsx",
+    "./tooltip": "./src/components/tooltip.tsx",
+    "./textarea": "./src/components/textarea.tsx"
   },
   "peerDependencies": {
     "react": "catalog:"

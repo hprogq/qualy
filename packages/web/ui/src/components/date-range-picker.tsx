@@ -36,6 +36,8 @@ export function DateRangePicker({
   onChange,
   placeholder,
   localeTag,
+  monthLabel,
+  yearLabel,
   disabled,
 }: {
   id?: string
@@ -44,6 +46,9 @@ export function DateRangePicker({
   placeholder?: string
   /** a bcp-47 tag such as zh-CN; calendar and display text follow it */
   localeTag?: string
+  /** names for the caption pickers, read out but never shown */
+  monthLabel?: string
+  yearLabel?: string
   disabled?: boolean
 }) {
   const from = dateOf(value.start)
@@ -71,6 +76,10 @@ export function DateRangePicker({
           mode="range"
           numberOfMonths={2}
           captionLayout="dropdown"
+          labels={{
+            ...(monthLabel ? { labelMonthDropdown: () => monthLabel } : {}),
+            ...(yearLabel ? { labelYearDropdown: () => yearLabel } : {}),
+          }}
           {...(localeTag && DAY_PICKER_LOCALES[localeTag]
             ? { locale: DAY_PICKER_LOCALES[localeTag] }
             : {})}

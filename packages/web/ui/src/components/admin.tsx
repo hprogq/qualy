@@ -17,6 +17,7 @@ import { Checkbox } from './checkbox.tsx'
 import { RadioGroup as RadioGroupRoot, RadioGroupItem } from './radio-group.tsx'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -336,12 +337,12 @@ export function FormDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[calc(100dvh-4rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        {children}
+        <DialogBody>{children}</DialogBody>
         {footer && <DialogFooter>{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>
@@ -390,6 +391,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   pending,
+  tone = 'default',
   onConfirm,
   onCancel,
 }: {
@@ -399,6 +401,8 @@ export function ConfirmDialog({
   confirmLabel: string
   cancelLabel: string
   pending?: boolean
+  /** destructive colours the confirming button, for what cannot be undone */
+  tone?: 'default' | 'destructive'
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -413,7 +417,11 @@ export function ConfirmDialog({
           <AlertDialogCancel onClick={onCancel} disabled={pending}>
             {cancelLabel}
           </AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={pending}>
+          <AlertDialogAction
+            variant={tone === 'destructive' ? 'destructive' : 'default'}
+            onClick={onConfirm}
+            disabled={pending}
+          >
             {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

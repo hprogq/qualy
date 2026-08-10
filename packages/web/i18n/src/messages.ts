@@ -18,6 +18,11 @@ export const commonMessages = {
   back: { id: 'common/action/back', defaultMessage: 'Back' },
   cancel: { id: 'common/action/cancel', defaultMessage: 'Cancel' },
   loading: { id: 'common/state/loading', defaultMessage: 'Loading' },
+  // the calendar's caption pickers, named for whoever cannot see them
+  calendarMonth: { id: 'common/calendar/month', defaultMessage: 'Month' },
+  calendarYear: { id: 'common/calendar/year', defaultMessage: 'Year' },
+  clockHour: { id: 'common/clock/hour', defaultMessage: 'Hour' },
+  clockMinute: { id: 'common/clock/minute', defaultMessage: 'Minute' },
   // a paginated list that is not showing everything says so; the alternative
   // is a silent truncation that reads as "this is all of it"
   moreResults: {
