@@ -1,6 +1,6 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import ts from 'typescript'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
 import { UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
 import { currentResolution, resolvePackageDir, resolvePluginModuleUrl } from '@qualy/assembly/host'
@@ -10,14 +10,23 @@ import { manifestPath } from '../lib/manifest.ts'
 // only at real import sites - so on its own, a typo'd path or a module whose
 // default export is not a component would surface at boot, or worse, when a
 // user opens the page. This check runs inside `pnpm typecheck`: for every
-// component reference on every active descriptor it builds the plugin's own
-// client program - the client tsconfig, with DOM and jsx - plus one virtual
-// assertion file, and lets the compiler answer.
+// component reference on every active descriptor it writes one assertion file
+// into the plugin's own client directory - the client tsconfig, with DOM and
+// jsx, already covers it - runs the compiler over that project, and reads back
+// only the diagnostics that landed on the assertion file.
+//
+// The compiler is the `tsc` binary rather than a compiler API: TypeScript 7 is
+// a native executable and no longer ships the JS `createProgram` surface the
+// in-memory version of this check used.
 //
 // Pages assert `ComponentType<{}>`: the shell mounts them with no props, so
 // a page component with required props is a page nobody can render. Layouts,
 // slots and login methods receive props from their contracts and assert only
 // that the default export is a component at all.
+
+/** transient, and named so a stray copy is obviously not source */
+const ASSERTION_FILE = '__qualy-component-check__.tsx'
+const TSC = path.resolve('node_modules/.bin/tsc')
 
 interface Reference {
   pluginId: string
@@ -74,26 +83,17 @@ function checkPlugin(packageDir: string, references: readonly Reference[]): stri
   }
   if (checkable.length === 0) return failures
 
-  const configPath = path.join(packageDir, 'src/client/tsconfig.json')
-  if (!fs.existsSync(configPath)) {
+  const clientDir = path.join(packageDir, 'src/client')
+  if (!fs.existsSync(path.join(clientDir, 'tsconfig.json'))) {
     failures.push(
       `${checkable[0]!.pluginId}: declares client components but has no src/client/tsconfig.json`,
     )
     return failures
   }
-  const config = ts.getParsedCommandLineOfConfigFile(configPath, undefined, {
-    ...ts.sys,
-    onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
-      throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
-    },
-  })!
 
-  // one virtual file asserts every reference; the compiler host serves it
-  // from memory so nothing is written into the tree
-  const virtualPath = path.join(packageDir, 'src/client/__qualy-component-check__.tsx')
   const lines = ["import type { ComponentType } from 'react'"]
   checkable.forEach((reference, index) => {
-    const specifier = `./${path.relative(path.join(packageDir, 'src/client'), reference.file).split(path.sep).join('/')}`
+    const specifier = `./${path.relative(clientDir, reference.file).split(path.sep).join('/')}`
     lines.push(`import component${index} from '${specifier}'`)
     lines.push(
       reference.kind === 'page'
@@ -102,38 +102,38 @@ function checkPlugin(packageDir: string, references: readonly Reference[]): stri
     )
     lines.push(`void check${index}`)
   })
-  const virtualSource = lines.join('\n')
+  const source = lines.join('\n')
 
-  const host = ts.createCompilerHost(config.options)
-  const readFile = host.readFile.bind(host)
-  const fileExists = host.fileExists.bind(host)
-  host.readFile = (file) => (path.resolve(file) === virtualPath ? virtualSource : readFile(file))
-  host.fileExists = (file) => path.resolve(file) === virtualPath || fileExists(file)
+  const assertions = path.join(clientDir, ASSERTION_FILE)
+  fs.writeFileSync(assertions, `${source}\n`)
+  let output: string
+  try {
+    execFileSync(TSC, ['-p', clientDir, '--noEmit', '--pretty', 'false'], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    })
+    output = ''
+  } catch (error) {
+    const failure = error as { stdout?: string; stderr?: string }
+    output = `${failure.stdout ?? ''}${failure.stderr ?? ''}`
+  } finally {
+    fs.rmSync(assertions, { force: true })
+  }
 
-  const program = ts.createProgram({
-    rootNames: [...config.fileNames, virtualPath],
-    options: { ...config.options, noEmit: true },
-    host,
-  })
-  const virtualFile = program.getSourceFile(virtualPath)!
-  const diagnostics = [
-    ...program.getSyntacticDiagnostics(virtualFile),
-    ...program.getSemanticDiagnostics(virtualFile),
-  ]
-  for (const diagnostic of diagnostics) {
-    // the failing assertion's line points at the reference it checks
-    const line =
-      diagnostic.start === undefined
-        ? undefined
-        : virtualFile.getLineAndCharacterOfPosition(diagnostic.start).line
-    const at =
-      line === undefined ? undefined : /component(\d+)/.exec(virtualSource.split('\n')[line] ?? '')
-    const reference = at ? checkable[Number(at[1])] : undefined
-    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n  ')
+  // the project's own errors are reported by its own typecheck pass; only what
+  // landed on the assertion file says anything about a component reference
+  const relative = path.relative(process.cwd(), assertions)
+  for (const line of output.split('\n')) {
+    if (!line.startsWith(`${relative}(`) && !line.startsWith(`${assertions}(`)) continue
+    const at = /\((\d+),\d+\): [a-z]+ [A-Z]+\d+: (.*)$/.exec(line)
+    if (at === null) continue
+    // the failing assertion's line names the reference it checks
+    const named = /component(\d+)/.exec(source.split('\n')[Number(at[1]) - 1] ?? '')
+    const reference = named ? checkable[Number(named[1])] : undefined
     failures.push(
       reference
-        ? `${reference.pluginId}: ${reference.module} (${reference.kind}) - ${message}`
-        : `component check: ${message}`,
+        ? `${reference.pluginId}: ${reference.module} (${reference.kind}) - ${at[2]}`
+        : `component check: ${at[2]}`,
     )
   }
   return failures

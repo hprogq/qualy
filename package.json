@@ -11,7 +11,7 @@
     "tsx": "catalog:"
   },
   "devDependencies": {
-    "@effect/language-service": "catalog:",
+    "@effect/tsgo": "catalog:",
     "@effect/platform-node": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
@@ -47,7 +47,7 @@
     "dev": "node --env-file-if-exists=.env --import tsx apps/server/src/run.ts development",
     "format": "prettier --write .",
     "plugin:add": "tsx tools/repo/plugin-add.ts",
-    "prepare": "effect-language-service patch",
+    "prepare": "effect-tsgo patch --typescript --no-oxlint",
     "qualy": "tsx apps/cli/src/main.ts",
     "seed": "tsx tools/fixtures/seed-cli.ts",
     "test": "vitest run",

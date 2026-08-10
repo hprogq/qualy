@@ -72,6 +72,10 @@ apps/web/.qualy/
 # scratch fixtures written by the effect diagnostics gate
 .effect-diagnostics-*/
 
+# assertion file the component-reference check writes into a plugin's client
+# directory for the length of one tsc run; only a killed run leaves one behind
+__qualy-component-check__.tsx
+
 # agent tooling installed locally, not part of the repository
 .claude/
 .agents/

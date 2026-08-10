@@ -32,7 +32,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 运行命令二分:`pnpm dev`(development)与 `pnpm start`(production)都经 apps/server/src/run.ts(跨平台设 NODE_ENV,矛盾的环境变量直接拒绝;production 拒绝 QUALY_WEB_MODE=development,QUALY_MIGRATIONS 缺省 off——迁移归 `pnpm qualy deploy`,单机便利可显式 apply)。生产 smoke(tools/quality/smoke-production.ts,CI 必跑)走同一入口:真启动生产装配,断言探针、壳、manifest、哈希资源、SIGTERM 退出 0。
 - 日志:qualy.yml 的 `application.logging` 是提交的默认值(**不进 manifestHash**,调级别不触发 resolve/drift;core 只携带不解释),QUALY_LOG_LEVEL/QUALY_LOG_FORMAT/QUALY_ACCESS_LOG 环境变量最高优先(LOG_LEVEL 兼容别名)。logger 在 main.ts 根部安装;pretty 格式 `时间 级别 [来源] 消息`(来源=`source` 日志注解,首现顺序取稳定色,fiber id 只留 json)。访问日志自研:5xx=Error、429=Warn、4xx=Info、成功=access.level(dev Debug/prod Info),客户端断开(499/纯中断)=Debug,mode off|api|all(默认 api)。插件层经装配器 `Layer.fromBuild` 包装,构建期与其 fork 的后台 fiber 自动携带 `source: <插件id>`。
 - 启动入口 apps/server/src/main.ts:验证 lock 拿 resolution → `loadAssembly` 按 `runtimeLevels` 依赖序动态 import 描述器 → 三相装配 → Assembled 屏障 → 绑端口;SIGINT/SIGTERM 优雅关闭(根 fiber dispose 级联清理、超时与二次信号强退)。
-- 生产源码里的 `Effect.run*` 只允许出现在:应用入口、CLI 边界、前端统一 API runtime、测试边界;service、repo、handler 内部不得自行运行 Effect。@effect/language-service 挂在 tsc 里(patch 过的 typescript),floating effect、layer requirement 泄漏在 `pnpm typecheck` 就会失败,门禁 tools/tests/effect-diagnostics.test.ts 守 patch 本身。
+- 生产源码里的 `Effect.run*` 只允许出现在:应用入口、CLI 边界、前端统一 API runtime、测试边界;service、repo、handler 内部不得自行运行 Effect。Effect 语言服务挂在 tsc 里(TypeScript 7 原生 tsc 经 `@effect/tsgo` patch,插件名仍是 @effect/language-service),floating effect、layer requirement 泄漏在 `pnpm typecheck` 就会失败,门禁 tools/tests/effect-diagnostics.test.ts 守 patch 本身;抑制写 `// @effect-diagnostics-next-line <rule>:off`(不带 effect/ 前缀,必须紧贴代码行)。
 
 ## 装配层(packages/core/assembly + packages/contracts/assembly)
 

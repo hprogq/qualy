@@ -76,18 +76,28 @@ lock 里的 `contentSha256` 是对**剥离后**的树按「路径 + 文件内容
 
 ## Effect LSP 也在 tsc 里跑
 
-`@effect/language-service` 装在根上,`tsconfig.base.json` 挂了插件,并且**打过 `patch`**——
-所以 floating effect、layer requirement 泄漏、scope 违规这些诊断在 `pnpm typecheck` 里就会失败,
+TypeScript 7 是一个原生可执行文件,不再有可以打补丁的 JS `tsc`,也不再导出 `createProgram`
+那套编译器 API(包里只剩 `lib/version.cjs` 与 `typescript/unstable/*`)。因此 Effect 侧的集成
+换成了 **`@effect/tsgo`**:它是 tsgo 的超集(内嵌一份固定版本的 tsgo + Effect 语言服务),
+`prepare` 跑 `effect-tsgo patch --typescript` 把 `@typescript/typescript-<平台>` 里的原生
+`tsc` 换成带 Effect 诊断的那份(原件留作 `tsc.original`),`tsc --version` 会显示
+`7.0.2+effect-tsgo.<版本>`。tsconfig 里的插件名**仍然是** `@effect/language-service`。
+
+于是 floating effect、layer requirement 泄漏、scope 违规这些诊断在 `pnpm typecheck` 里就会失败,
 不只是编辑器里的波浪线。实测能抓到 `Effect.succeed(1)` 这种既不 yield 也不赋值的悬空 Effect。
 
-patch 改的是 `node_modules/typescript`,靠 `prepare` 脚本重放,而**部分安装可能跳过 `prepare`**。
-一个会悄悄失效的门禁比没有门禁更糟,所以 `scripts/tests/effect-diagnostics.test.ts` 会编译一个
-故意写错的 fixture,诊断没出现就失败并告诉你跑 `pnpm exec effect-language-service patch`
-(已实测:把 tsc 换回未打补丁的版本,该测试立刻红)。
+一个会悄悄失效的门禁比没有门禁更糟,所以 `tools/tests/effect-diagnostics.test.ts` 会编译一个
+故意写错的 fixture,诊断没出现就失败并告诉你跑 `pnpm exec effect-tsgo patch --typescript`
+(已实测:未打补丁的原生 tsc 对同一个 fixture 一言不发)。
 
-需要**故意**违反某条诊断时(例如负面类型断言),用 `// @effect-diagnostics effect/<rule>:off`
-就近关掉并写清楚为什么,不要整体关。注意别在散文注释里写出 `@ts-expect-error` 字样——
-TypeScript 会把它当成真指令(踩过)。
+suggestion 级诊断不进 tsc 输出(`tsconfig.base.json` 里 `includeSuggestionsInTsc: false`):
+它们是编辑器里的建议,不是门禁的判定,50 条建议刷屏会把真正的错误埋掉。
+
+需要**故意**违反某条诊断时(例如负面类型断言),用 `// @effect-diagnostics-next-line <rule>:off`
+就近关掉并写清楚为什么,不要整体关。两个实测出来的坑:**规则名不带 `effect/` 前缀**
+(旧 LSP 的 `effect/<rule>` 写法在这里静默失效),而且 `-next-line` 是字面意义的下一行——
+中间夹一行注释(包括 `@ts-expect-error`)就不生效了。行尾注释与块注释形式都不认。
+注意别在散文注释里写出 `@ts-expect-error` 字样——TypeScript 会把它当成真指令(踩过)。
 
 ## 升级
 

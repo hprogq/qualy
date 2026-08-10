@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest'
 // earns its place: a floating effect or a leaked layer requirement becomes a
 // build failure rather than an editor squiggle somebody may not have open.
 //
-// That only works while `node_modules/typescript` stays patched, and the patch
-// is reapplied by a `prepare` script that a partial install can skip. A gate
+// That only works while the native TypeScript binary stays patched with the
+// Effect build, and the patch is reapplied by a `prepare` script that a
+// partial install can skip. A gate
 // that can quietly stop working is worse than no gate, so this compiles a file
 // that is deliberately wrong and fails if nothing complains.
 
@@ -52,7 +53,7 @@ describe('effect diagnostics during tsc', () => {
       const output = typecheck(dir)
       expect(
         output,
-        'tsc reported nothing: node_modules/typescript is no longer patched. Run `pnpm exec effect-language-service patch`.',
+        'tsc reported nothing: the TypeScript binary is no longer patched. Run `pnpm exec effect-tsgo patch`.',
       ).toMatch(/floatingEffect/)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })

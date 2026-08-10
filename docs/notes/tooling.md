@@ -40,3 +40,28 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
 - codegen 不进 cordis core(contract/组件/schema 是 Qualy 应用约定,不是框架概念)。
 - 不按 active 集合动态增删数据库对象(停用不改变 schema 聚合,不变式测试守护)。
 - 共享输出文件单一 owner:插件声明贡献,聚合器拥有 contracts.gen/plugins.gen。
+
+## TypeScript 7(2026-08-11 换装,已实测)
+
+`pnpm typecheck` 从 ~34s 降到 ~9s(12 个 program 全量,root program 单独由 9.5s 降到 2.4s),
+12 个 program 的类型判定与 6.0.3 完全一致(逐个跑过,零差异)。换装的代价与解法:
+
+- **原生 `tsc` 没有 JS 编译器 API**。包里只剩 `lib/version.cjs` 与 `typescript/unstable/*`,
+  `createProgram` / `createCompilerHost` 不复存在。唯一的消费方是组件引用检查器
+  (tools/quality/check-client-components.ts),改成:把断言文件写进插件自己的
+  `src/client/`(client tsconfig 的 include 本来就覆盖它)→ 跑一次 `tsc -p <client>`
+  → 只读回落在该文件上的诊断 → finally 删除。文件名进 .gitignore,只有被 kill 的运行会留下。
+- **Effect 语言服务换成 `@effect/tsgo`**(tsgo 超集,内嵌固定版本 tsgo + Effect LS)。
+  `prepare` 由 `effect-language-service patch` 换成 `effect-tsgo patch --typescript --no-oxlint`,
+  换的是 `@typescript/typescript-<平台>` 里的原生二进制,`tsc --version` 显示
+  `7.0.2+effect-tsgo.0.36.4`。tsconfig 里的插件名不变。
+- **注释抑制的写法变了**:规则名不带 `effect/` 前缀,且 `-next-line` 是字面下一行。
+  旧写法静默失效(实测:带前缀的 `effect/floatingEffect:off` 完全不生效,不报错也不抑制)。
+  仓库里三处抑制:两处改成不需要抑制的写法(负面类型断言改为正面类型断言;
+  `Effect.fail<unknown>` 让失败通道说实话),一处改用新语法。
+- **诊断变严了**:新版规则集在旧代码上找出 1 个 error + 1 个 warning(都是真的),
+  外加 51 条 suggestion。suggestion 经 `includeSuggestionsInTsc: false` 挡在 tsc 输出之外——
+  它们是编辑器建议,不是门禁判定。
+- **版本天花板是上游发布**:`@effect/tsgo` 的平台二进制包按版本单独发布,
+  wrapper 声明了 optionalDependencies 不等于二进制已上传(0.36.4 发布当天,
+  各平台包 404 了约两小时)。升级前先确认 `@effect/tsgo-<平台>@<版本>` 真的能装上。

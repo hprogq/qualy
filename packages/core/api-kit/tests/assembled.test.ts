@@ -45,9 +45,12 @@ describe('the assembled barrier', () => {
   })
 
   it('stops the build, named, when a hook fails', async () => {
-    // untagged on purpose: a hook's failure type is `unknown` by contract
-    // @effect-diagnostics effect/globalErrorInEffectFailure:off
-    const plugins = registering('rbac/permission-catalog', Effect.fail(new Error('no database')))
+    // untagged on purpose: a hook's failure type is `unknown` by contract, and
+    // the channel says so rather than carrying a global Error
+    const plugins = registering(
+      'rbac/permission-catalog',
+      Effect.fail<unknown>(new Error('no database')),
+    )
     let served = false
     const server = Layer.effectDiscard(Effect.sync(() => void (served = true)))
     const application = server.pipe(

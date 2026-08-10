@@ -19,8 +19,8 @@ class ManifestProbe extends Context.Service<
 //
 // A required service turns that into a compile error, and this file proves it
 // rather than asserting it. The negative case is the point: if the requirement
-// were ever erased, the ts-expect-error below would be unused and typecheck
-// would fail, which is what keeps this decision from being quietly undone.
+// were ever erased, the type assertion below would stop compiling, which is
+// what keeps this decision from being quietly undone.
 
 /** something that reads the authorizer, standing in for the manifest */
 const manifestLayer = Layer.effect(
@@ -34,13 +34,13 @@ const manifestLayer = Layer.effect(
 describe('the ui authorizer', () => {
   it('will not let an assembly that needs it be launched without one', () => {
     // the entry point takes an Effect that needs nothing, so an unmet
-    // requirement stops the build rather than the boot
-    // the unmet requirement is the assertion, so both the compiler's complaint
-    // and the Effect diagnostic are silenced here on purpose and nowhere else
-    // @effect-diagnostics-next-line effect/missingEffectContext:off
-    // @ts-expect-error the layer still requires UiAuthorizer, so it cannot run
-    const runnable: Effect.Effect<never, never, never> = Layer.launch(manifestLayer)
-    expect(runnable).toBeDefined()
+    // requirement stops the build rather than the boot. the requirement is
+    // still in this launch's type, and the assignment below is what says so:
+    // erase it and the requirements become never, which nothing is assignable
+    // to, so this line stops compiling
+    const launched = Layer.launch(manifestLayer)
+    const stillRequired: Effect.Services<typeof launched> = undefined as unknown as UiAuthorizer
+    expect(stillRequired).toBeUndefined()
   })
 
   it('launches once a provider is supplied', async () => {

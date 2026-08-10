@@ -2658,3 +2658,121 @@ dev 实测截图逐轮核对(三层导航/树选择器/用户卡右弹菜单/日
 的引擎用例与服务级全链用例);`pnpm test:browser` **28 全绿**;`pnpm vitest run
 tools/tests/catalogs.test.ts` 7 全绿;`pnpm build` 通过;dev 实测:桌面/暗色/手机三档截图,
 并在用户报障的那个批次上端到端复跑"单阶段进行中 → 追加定时阶段"成功。
+
+### 时间线编辑器返工为"段 + 共享边界"编排器(2026-08-10,用户体验批评驱动,裁决 §32.38)
+
+- **plan-model.ts 投影层**(纯函数,5 单测):boundaryViewOf/withBoundary 双向 lens,
+  管理员词汇(定时/顺延/人工确认/随成绩公示)↔ 引擎词汇(trigger+planned/offset/estimated),
+  往返恒等钉死(含小时粒度 offset、已定型 offset、模板写进 planned 的 SLA);编辑器全文
+  不再触碰任何 entry 字段。存储模型零改动(engine/scheduler/api/putPhases 全不动)。
+- **编辑器重写**:顶部等宽非比例总览条(状态着色+切换图标);**左时间线 + 右检查器两栏**——
+  每张段卡并排显示自己的开始/结束/持续/开放项数(两格指向同一切换点、同时高亮),左栏纯只读,
+  全部控件在右栏检查器(独立滚动、sticky,二十余条权限不再撑满视口);首版"边界只渲染在两卡
+  之间"被用户判为不可用(读起止要上下找、信息与按钮交织),故共享改为**只约束编辑不约束显示**;
+  "审核期截止待定"现在就是在边界上选"人工确认",不再需要"创建手动开始的下一阶段"的心算。
+  整线本地草稿一次保存(粘性保存条,N 处修改/放弃/保存编排),refusals 按 phaseId/index
+  下沉到段卡旁;进行中批次把引擎规则画出来:已入口边界带锁与实际时刻、已有阶段切换方式
+  只读、插入点只在当前之后渲染、未保存段带"未保存"徽章可撤。原两步 SidePanel 范式退役。
+- i18n:phase 面板词汇表整体换血(boundary/* plan/* 34 新键,33 死键清除),catalogs 7 绿。
+- 测试:plan-model 5 新;浏览器 28→29(新增共享边界用例:改一次边界,落在下一阶段的 entry 上;
+  局部编辑不发请求、保存一次整案提交)。
+
+- **切换点收敛为轨道上的唯一一行**(第三轮修正):此前"开始/结束两个格子 + 两张卡外框"点击时
+  四处同时点亮,用户判为噪音;**共享改用位置表达**——切换点画在两卡之间的连接轨道上,只此一处
+  可选可点,选中只亮它自己(轨道转主色 + 行内淡入),歧义与高亮把戏一起消失;每张段卡改为
+  一行只读跨度("开始 X → 结束 Y"),读一个阶段仍不必上下找。视角问题随之**不复存在**:
+  只有一个入口,标题恒为"切换点"、副标题"「A」的结束与「B」的开始是同一个切换点"、
+  动作恒为"结束「A」，进入「B」";该动作从检查器底部提到**顶部高亮条**(不必再滚);检查器换内容走 Swap 短转场(motion,160ms),选中切换点时整个检查器换主色底以区分两种对象;锁图标、
+  未保存圆点带 Tooltip 解释(shadcn tooltip);空计划给三句话说明编辑器怎么用;放弃修改改为
+  确认对话框;总览条可点跳转;保存条滑入。**未做**首次遮罩式引导(一次性打断、需要记住
+  已读状态,收益不抵成本;说明就地放在空态里)。
+
+- **一体化工作台**(第四轮修正):检查器此前是"框随内容长"的浮动卡片,切换点配置与权限配置
+  高度悬殊导致右栏忽长忽短,用户判为拼凑;改为**单一容器的 master-detail 工作台**——
+  总览条成为容器头带(border-b),左右两栏 divide-x、**恒定高度**(max(30rem,100dvh-23rem),
+  实测两种选中同高),左栏计划列表自滚动,右栏检查器"固定身份带 + 滚动体"三段式:身份带
+  常驻眉标(阶段 N / 切换点)+标题(「A」→「B」)+副标题与移除按钮,内容在带下滚动,框架永不
+  随内容跳动;检查器整体换色取消(乱源),身份靠眉标与图标表达。总览条 overflow 修复:
+  flex 子项缺 min-w-0,truncate 从未生效,长名撑破容器。
+
+- **竖向 rail 与"现在"锚点**(第五轮,两份外部审计意见筛选后采纳):左栏成为一条贯穿的时间轴——
+  节点(切换点)与段落(阶段)交替挂在同一条线上,已过节点实心主色带锁、未来节点空心虚线,
+  **"现在"是线上的一个脉冲标记**(motion-safe),一眼看到批次走到哪;顶部横向总览条**删除**
+  (与 rail 信息重复,且是 overflow 的来源);**每个时刻只印一次**——卡片不再复述起止(此前
+  同一时刻在节点+上卡+下卡出现三次),改为把**持续时长**提为卡片主信息(排期最该看的数字);
+  节点文案换成自然语言("已于 X 开始"/"X 自动切换"/"「A」开始后第 3 天 · 预计 Y"/
+  "待定 · 由管理员确认后进入"),两套重复词汇表(short*/reason* 与 boundary*)合并为一套;
+  推进动作("就此切换")从检查器移到 rail 节点上,原地可见;插入 + 悬停显现(触屏常显)。
+  **未采纳审计1的"合并检查器、只选阶段"**:那正是用户最初批评的模型(改 A 的截止要去 B 里设),
+  但吸收其内核——阶段检查器顶部以只读方式讲出自己的起止,每端配"设置"跳到对应节点。
+
+- **单栏行三元组**(第六轮,用户重设计 + 两份外部审计逐条裁决,见 §32.39):双栏工作台退役,
+  每行 = 阶段名 + [开始][时长][结束];**只有"结束规则"被编写**,开始是上一行结束的投影、
+  时长仅在"持续时长"规则下才是权威;结束规则四选一显式声明,拒绝"改时长静默把固定时间
+  改写成偏移"——**存承诺语义不存当前算得出的结果**。投影层新增 endRuleOf/withEndRule/
+  startRuleOf/withStartRule/resolveStarts(沿链传播 actual > planned > offset,算不出即 null),
+  5 例新测试。插入改常驻缝(hover 显现),否决"暂态空隙";保存前的便宜校验**锚定到字段**
+  (展开出问题的行 + 红边 + 行内句子 + "暂时无法保存：还有 N 项需要处理"),否决抖动/Sonner。
+
+**门禁(实际执行)**:typecheck 零错;node **471**(+5 投影层);browser **30**(+1:未完成草稿
+就地被拒且不发请求);catalogs 7;build 通过;dev 实测(进行中批次):三格行/共享切换点面板/
+锁定态/插入缝渲染正确,控制台零 error。
+
+### Phase 模型退回三职责(2026-08-11,裁决 §32.41,docs/phase-redesign.md)
+
+按定案全栈重构:**阶段只有"有时间"与"待排期"两种状态**,不再有 trigger/offset/公示绑定。
+
+- **存储**:`batch_phases` 删 `entry_trigger`/`entry_offset`/`estimated_entry_at`/
+  `opens_publication_id`,加 `description`(阶段说明,varchar(500));迁移
+  20260810202600_phase-schedule-model.sql(destructive,已 deploy)。
+- **引擎**:`materialize.ts` 整体退役;`queue.ts` 的 `normalizePlan` 新增「已排期必须成前缀」
+  的腐坏拒绝,新增 `scheduledIndex`/`isScheduled`;`edits.ts` 重写为三条位置规则
+  (schedule-out-of-order / unschedule-not-from-tail / scheduled-phase-immutable),
+  删掉 7 条与 offset/publication/terminal 有关的旧拒因;`timeline.ts` 的取值阶梯从五级
+  收敛为两级(entered > planned > pending)。
+- **服务与 API**:新增 `PUT .../phases/{phaseId}/schedule`(幂等子资源,null 即收回排期,
+  同事务内先追认时钟再判位置);`putPhases` 收敛为纯结构写(不再接受任何时间),
+  timeline 模板从「整体替换」改为「追加到末尾」;**未排期后缀允许增删改序**(此前 active
+  批次一律 `phase-removed` 硬拒,是用户实测踩到的真 bug);激活不再校验时间。
+- **前端**:整屏重写为顺序表,并按职责**拆成 5 个文件**——`PhaseTimelineEditor.tsx`(组合根:
+  查询/变更/模式)、`phase/model.ts`(行草稿 + 计划三区域 `shapeOf`,单点判定谁能排期、
+  谁能收回、谁的结构还能改)、`phase/PhaseRow.tsx`(一行)、`phase/PhaseDialogs.tsx`
+  (排期/取消排期/说明/模板四个对话框)、`phase/PhaseActionsPanel.tsx`(开放操作 Sheet,
+  权限两列)。浏览态是纯文本表格,「编辑阶段」后行内变输入;排期与「立即开始」合并进同一个
+  对话框(立即开始仅在队首可选);计划开始列按状态给不同图标并附相对时间(如"22小时前")。
+  i18n 清掉 120 个死键与 33 条孤儿译文。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **446 全绿**;`pnpm test:browser` **29 全绿**
+(阶段计划 8 例按新语义重写);`tools/tests` 142 全绿;`pnpm build` 通过;dev 实测截图
+(浏览/编辑两态)控制台零 error。
+
+**用户逐轮评审后的收尾**(同日):行高统一为 `h-16`(不再随说明/时间/状态跳动);编辑笔紧贴阶段名
+右侧;首个待排期行的状态列补小字「可安排开始时间」(与下方「请先为上一阶段排期」同形);已排期与
+未排期之间插一条居中细线提示「以下阶段尚未排期」;编辑态在行与行之间给零高度的接缝条,指针移上去
+才浮出「在此添加阶段」——**显隐由 state 而非 `:hover` 决定**,因为插入一行后指针没动、CSS 的悬停态
+会滞留;点击后同时 `blur()`,`focus-within` 才不会把它钉住。移动端卡片改三段式。
+
+### Dialog / AlertDialog 重做(2026-08-11)
+
+按 shadcn base-nova 的结构重排(底层仍是 Radix,没有引入 @base-ui/react):`DialogContent` 改为
+header / body / footer 三段竖向 flex,**只有新增的 `DialogBody` 滚动**,标题与按钮常驻;header
+`px-6 pt-6 pb-4 pr-12`、footer `border-t bg-muted/30`,滚动边界正好落在分隔线上;标题降为
+`text-base`,关闭按钮换成真正的 ghost 图标按钮;遮罩收到 `bg-black/40 backdrop-blur-[2px]`。
+`ConfirmDialog` 新增 `tone="destructive"`(用于批次归档与放弃未保存修改)。消费者只有
+`admin.tsx` 一处,插件页面零改动。
+
+### TypeScript 7 换装(2026-08-11)
+
+`pnpm typecheck` 从 **~34s 降到 ~9s**(root program 单独 9.5s → 2.4s),12 个 program 的类型判定
+与 6.0.3 完全一致(逐个跑过比对)。三处代价与解法:①原生 tsc 不再导出编译器 API,组件引用检查器
+改为「写断言文件进插件 client 目录 → 跑一次 tsc → 只读该文件的诊断 → finally 删除」;②Effect 语言
+服务换成 `@effect/tsgo`(patch 原生二进制,`tsc --version` 显示 `7.0.2+effect-tsgo.0.36.4`,插件名
+不变);③注释抑制语法变了——规则名**不带 `effect/` 前缀**且 `-next-line` 是字面下一行,旧写法静默
+失效。新规则集在旧代码上抓到 1 个真 error(ui-registry 的负面类型断言)与 1 个真 warning(api-kit
+的全局 Error 失败通道),两处都改成不需要抑制的写法;51 条 suggestion 经 `includeSuggestionsInTsc:
+false` 挡在 tsc 输出之外。详见 docs/notes/tooling.md 与 docs/agents/effect-source-policy.md。
+
+**门禁(实际执行)**:`pnpm typecheck` 8.7s 零错;`pnpm test` 446/72 全绿;`pnpm test:browser`
+29 全绿;`pnpm build` 通过;`tsx tools/quality/smoke-production.ts` 五探针全过、SIGTERM 退出 0;
+`pnpm vendor:check` 两棵树匹配;`prettier --check .` 全仓干净。CI 无需改动:`pnpm install
+--frozen-lockfile` 照旧跑根 `prepare` 打补丁,平台二进制 linux-x64/arm64 均已发布。

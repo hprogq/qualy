@@ -91,7 +91,7 @@ describe('vendored upstream sources', () => {
     // part of that lockstep: the language service has its own version line and
     // peers on nothing, so holding it to the runtime's version would only
     // block upgrading either one.
-    const TOOLING = new Set(['@effect/language-service'])
+    const TOOLING = new Set(['@effect/language-service', '@effect/tsgo'])
     const workspace = fs.readFileSync('pnpm-workspace.yaml', 'utf8')
     const versions = [...workspace.matchAll(/^\s*'?(@effect\/[\w-]+|effect)'?:\s*(\S+)\s*$/gm)]
       .map((match) => [match[1]!, match[2]!.replace(/^['"]|['"]$/g, '')] as const)
