@@ -65,3 +65,27 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
 - **版本天花板是上游发布**:`@effect/tsgo` 的平台二进制包按版本单独发布,
   wrapper 声明了 optionalDependencies 不等于二进制已上传(0.36.4 发布当天,
   各平台包 404 了约两小时)。升级前先确认 `@effect/tsgo-<平台>@<版本>` 真的能装上。
+
+## 测试与类型检查提速(2026-08-11,逐条实测)
+
+`pnpm test` 15.8s → **8.9s**,`pnpm typecheck` 8.5s → **3.6s**(热)。三个改动,按收益排序:
+
+1. **本地/CI 的 Postgres 关掉持久化**(`fsync=off`、`synchronous_commit=off`、
+   `full_page_writes=off`):一次全量 15.8s → 11.1s,测试 CPU 时间 155s → 72s——
+   **将近一半的测试时间花在等磁盘确认提交上**。开发库里没有崩溃后需要保留的东西:
+   schema 来自 lineage,行来自 seed。compose 里走 `command`,CI 的 service 容器不接
+   command,改为安装后 `alter system` + `pg_reload_conf()`(三项都是 sighup 级)。
+   **绝不能对任何人还想要的数据库这么做**:崩溃后是不可恢复,而不只是丢最近几笔。
+2. **tsc 带上 `--incremental` 与各自的 `tsBuildInfoFile`**(写在 node_modules/.cache 下,
+   派生物、机器本地、随 install 消失):plugin-isolation 门禁 6.5s → 1.3s,
+   `pnpm typecheck` 8.5s → 3.6s。实测注入一个类型错误,热运行照报不误——缓存按文件版本
+   失效,不会给出假绿。CI 永远是冷的,不受影响。
+3. **仓库遍历统一到 tools/lib/walk.ts**:六个门禁各写了一份 `walk`,规则已经漂移。
+   诊断门禁会在 `apps/server/.effect-diagnostics-*` 里写临时 fixture 再删掉,
+   有的 walk 在「列出目录」与「读文件」之间撞上删除,以 ENOENT 在无关门禁里偶发红——
+   两次。现在只有一条规则:node_modules 与点开头目录不是源码。
+
+**排查过的死路**(别再重来):`create database ... template` 本身很便宜(并发 10 个时每个
+18ms),`strategy = file_copy` 反而慢 4 倍;`--pool=threads` 无差别;`--no-isolate` 省 CPU
+(75s → 52s)但墙钟只快 1.4s,而它把文件间的模块隔离也一起关掉了,不值。
+瓶颈从来不是并行度——是**单个最慢文件**决定墙钟(现在是 assembly.test.ts 的 7.2s)。

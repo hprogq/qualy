@@ -8,6 +8,22 @@ services:
     environment:
       TZ: Asia/Shanghai
       LANG: en_US.utf8
+    # A development database holds nothing that survives a crash: the schema
+    # comes from the lineage and the rows come from the seed. Every test also
+    # commits, hundreds of times per run, and waiting for the disk to confirm
+    # each one is the single most expensive thing about the suite - turning
+    # these three off took a full run from 15.8s to 11.5s.
+    #
+    # Never do this to a database anybody wants to keep: a crash leaves it
+    # unrecoverable rather than merely behind.
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:

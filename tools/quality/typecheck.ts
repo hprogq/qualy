@@ -31,6 +31,19 @@ const projects = [
   'apps/web',
   ...findClientProjects('packages'),
 ]
+// Build info per project, so a second run rechecks what changed rather than
+// every program from scratch - the difference between nine seconds and one.
+// It lives under node_modules because it is derived, machine-local and
+// disposable; the compiler falls back to a full check whenever it cannot use
+// what it finds there.
+const cache = 'node_modules/.cache/qualy-typecheck'
+fs.mkdirSync(cache, { recursive: true })
+const buildInfo = (project: string) =>
+  path.join(
+    cache,
+    `${project.replaceAll(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root'}.tsbuildinfo`,
+  )
+
 // every program runs even after one fails: aborting on the first meant the
 // web-side programs went unchecked whenever the root had an error, so a
 // green run of the earlier projects was never evidence about the later ones
@@ -38,7 +51,10 @@ const failed: string[] = []
 for (const project of projects) {
   console.log(`typecheck ${project}`)
   try {
-    execSync(`./node_modules/.bin/tsc -p ${project} --noEmit`, { stdio: 'inherit' })
+    execSync(
+      `./node_modules/.bin/tsc -p ${project} --noEmit --incremental --tsBuildInfoFile ${buildInfo(project)}`,
+      { stdio: 'inherit' },
+    )
   } catch {
     failed.push(project)
   }

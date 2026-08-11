@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { walkFiles, walkSources } from '../lib/walk.ts'
 
 // Who is allowed to own a database connection.
 //
@@ -17,25 +18,12 @@ import { describe, expect, it } from 'vitest'
 // domain is the database owns the driver, the connection string, database
 // creation, migration execution and teardown.
 
-const walk = (dir: string): string[] =>
-  fs.existsSync(dir)
-    ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : walk(full)
-        return /\.tsx?$/.test(entry.name) ? [full] : []
-      })
-    : []
+const walk = walkSources
 
 const posix = (file: string) => file.split(path.sep).join('/')
 
-const walkManifests = (dir: string): string[] =>
-  fs.existsSync(dir)
-    ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : walkManifests(full)
-        return entry.name === 'package.json' ? [full] : []
-      })
-    : []
+const walkManifests = (dir: string) =>
+  walkFiles(dir).filter((file) => path.basename(file) === 'package.json')
 
 // Found by shape rather than by one directory name, so moving a suite into
 // src/, __tests__/ or spec/ does not walk it out of the rule.
@@ -125,7 +113,7 @@ const codeOnly = (source: string) =>
 
 describe('assembly core', () => {
   it('does not name a capability it is supposed to know nothing about', () => {
-    const offenders = CORE.flatMap(walk).flatMap((file) =>
+    const offenders = CORE.flatMap((dir) => walk(dir)).flatMap((file) =>
       codeOnly(fs.readFileSync(file, 'utf8')).flatMap((line, index) =>
         DATABASE_WORDS.test(line) ? [`${posix(file)}:${index + 1} ${line.trim()}`] : [],
       ),
@@ -192,7 +180,12 @@ describe('capability provider entry', () => {
     ]
     const directories = providerEntries()
     expect(directories.length).toBeGreaterThan(0)
-    expect(breaches(directories.flatMap(walk), forbidden)).toEqual([])
+    expect(
+      breaches(
+        directories.flatMap((dir) => walk(dir)),
+        forbidden,
+      ),
+    ).toEqual([])
   })
 })
 

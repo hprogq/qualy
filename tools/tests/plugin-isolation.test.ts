@@ -40,13 +40,21 @@ afterAll(() => {
   for (const dir of pluginDirs) fs.rmSync(probeFor(dir), { force: true })
 })
 
+// Each probe keeps its own build info, so a second run rechecks what changed
+// instead of the whole program: ten plugins cost 6.5s cold and half a second
+// warm. It lives under node_modules, which is already nobody's to commit and
+// goes away with the install it belongs to.
+const buildInfoFor = (dir: string) =>
+  path.join('node_modules/.cache/qualy-isolation', `${dir.replaceAll('/', '-')}.tsbuildinfo`)
+
 const typecheckAlone = (dir: string) => {
   const probe = probeFor(dir)
+  fs.mkdirSync(path.join(repoRoot, 'node_modules/.cache/qualy-isolation'), { recursive: true })
   fs.writeFileSync(
     probe,
     JSON.stringify({
       extends: './tsconfig.base.json',
-      compilerOptions: { noEmit: true },
+      compilerOptions: { noEmit: true, incremental: true, tsBuildInfoFile: buildInfoFor(dir) },
       // the server-side program only: browser code lives in src/client and
       // typechecks under the plugin's own client project, with DOM and jsx
       include: [`${dir}/src/**/*.ts`],

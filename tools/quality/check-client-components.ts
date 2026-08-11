@@ -27,6 +27,9 @@ import { manifestPath } from '../lib/manifest.ts'
 /** transient, and named so a stray copy is obviously not source */
 const ASSERTION_FILE = '__qualy-component-check__.tsx'
 const TSC = path.resolve('node_modules/.bin/tsc')
+// this program is the plugin's client program plus one generated file, so it
+// keeps its own build info rather than sharing the one `pnpm typecheck` writes
+const CACHE = 'node_modules/.cache/qualy-components'
 
 interface Reference {
   pluginId: string
@@ -106,12 +109,24 @@ function checkPlugin(packageDir: string, references: readonly Reference[]): stri
 
   const assertions = path.join(clientDir, ASSERTION_FILE)
   fs.writeFileSync(assertions, `${source}\n`)
+  fs.mkdirSync(CACHE, { recursive: true })
+  const buildInfo = path.join(CACHE, `${path.basename(packageDir)}.tsbuildinfo`)
   let output: string
   try {
-    execFileSync(TSC, ['-p', clientDir, '--noEmit', '--pretty', 'false'], {
-      encoding: 'utf8',
-      stdio: 'pipe',
-    })
+    execFileSync(
+      TSC,
+      [
+        '-p',
+        clientDir,
+        '--noEmit',
+        '--pretty',
+        'false',
+        '--incremental',
+        '--tsBuildInfoFile',
+        buildInfo,
+      ],
+      { encoding: 'utf8', stdio: 'pipe' },
+    )
     output = ''
   } catch (error) {
     const failure = error as { stdout?: string; stderr?: string }

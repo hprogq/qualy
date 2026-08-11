@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { walkSources } from '../lib/walk.ts'
 
 // Internal navigation names a page reference; a literal route in business
 // code is how a path silently forks from its declaration. The host app and
@@ -10,12 +11,7 @@ const CLIENT_ROOTS = ['packages/plugins']
 const BARE_INTERNAL_PATH =
   /(?:\bto=["'`]\/|\bto=\{["'`]\/|\bnavigate\(\s*["'`]\/|<Navigate\s+to=["'`]\/)/
 
-const walk = (dir: string): string[] =>
-  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : walk(full)
-    return /\.tsx?$/.test(entry.name) ? [full] : []
-  })
+const walk = walkSources
 
 describe('client navigation discipline', () => {
   it('never hardcodes an internal route in plugin client code', () => {

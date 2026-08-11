@@ -8,6 +8,7 @@ import {
   checkVendored,
   readVendorLock,
 } from '../repo/vendor-sync.ts'
+import { walkSources } from '../lib/walk.ts'
 
 // The vendored sources exist so that anything reasoning about Effect reads the
 // code that actually runs. That only holds while they are the same version as
@@ -21,16 +22,7 @@ import {
 // success. Pruning the two directories that would make this expensive is what
 // keeps it cheap; a limit expressed in depth is a limit nobody re-checks when
 // the tree moves.
-const walk = (dir: string): string[] =>
-  !fs.existsSync(dir)
-    ? []
-    : fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) {
-          return entry.name === 'node_modules' || entry.name === 'repos' ? [] : walk(full)
-        }
-        return /\.tsx?$/.test(entry.name) ? [full] : []
-      })
+const walk = (dir: string) => walkSources(dir, ['repos'])
 
 describe('vendored upstream sources', () => {
   const lock = readVendorLock()

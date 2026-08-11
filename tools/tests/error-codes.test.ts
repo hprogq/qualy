@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { walkFiles } from '../lib/walk.ts'
 // by path rather than by package name: these are the files the completeness
 // case walks, and a subpath export would let one drift from the other
 import { commonErrorMessages } from '../../packages/web/i18n/src/format.ts'
@@ -127,13 +128,7 @@ describe('error codes across the assembly', () => {
     // a module that declares failures without being listed here is invisible to
     // every rule below, which is the failure mode of a hand-written list
     const known = new Set<string>([...SOURCES.map((source) => source.file), ...NOT_A_WIRE_CODE])
-    const walk = (dir: string): string[] =>
-      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const at = path.join(dir, entry.name)
-        if (entry.name === 'node_modules' || entry.name === 'tests') return []
-        if (entry.isDirectory()) return walk(at)
-        return entry.name.endsWith('.ts') ? [at] : []
-      })
+    const walk = (dir: string) => walkFiles(dir, ['tests']).filter((file) => file.endsWith('.ts'))
     const declaring = [...walk(path.join(root, 'packages')), ...walk(path.join(root, 'apps'))]
       .filter((file) => fs.readFileSync(file, 'utf8').includes('TaggedErrorClass<'))
       .map((file) => path.relative(root, file))

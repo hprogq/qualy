@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { walkFiles } from '../lib/walk.ts'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -11,15 +12,7 @@ import path from 'node:path'
 
 const roots = ['packages', 'apps', 'tools']
 
-const walk = (dir: string): string[] =>
-  fs.existsSync(dir)
-    ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const full = path.join(dir, entry.name)
-        if (entry.name === 'node_modules' || entry.name === 'dist') return []
-        if (entry.isDirectory()) return walk(full)
-        return entry.isFile() && full.endsWith('.test.ts') ? [full] : []
-      })
-    : []
+const walk = (dir: string) => walkFiles(dir, ['dist']).filter((file) => file.endsWith('.test.ts'))
 
 describe('the ports test servers listen on', () => {
   it('gives each suite one of its own', () => {

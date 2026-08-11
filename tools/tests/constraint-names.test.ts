@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { walkFiles } from '../lib/walk.ts'
 
 // Every constraint a plugin translates has to be one the database actually has.
 //
@@ -17,14 +18,7 @@ import { describe, expect, it } from 'vitest'
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
 
-const walk = (dir: string): string[] =>
-  fs.existsSync(dir)
-    ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : walk(full)
-        return full
-      })
-    : []
+const walk = walkFiles
 
 const lineage = walk(path.join(repoRoot, 'db/migrations'))
   .filter((file) => file.endsWith('.sql'))

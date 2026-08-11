@@ -37,6 +37,18 @@ jobs:
           node-version: 24.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The same trade the compose stack makes, for the same reason: this
+      # database exists for the length of one job and every test commits.
+      # A service container takes no command, so the settings are applied
+      # afterwards - all three are reloadable, no restart involved.
+      - name: a database nobody has to recover
+        env:
+          PGPASSWORD: qualy
+        run: |
+          for setting in fsync=off synchronous_commit=off full_page_writes=off; do
+            psql -h localhost -U qualy -d qualy -c "alter system set ${setting/=/ = }"
+          done
+          psql -h localhost -U qualy -d qualy -c 'select pg_reload_conf()'
       - name: assembly lock must describe this tree
         run: pnpm qualy resolve --frozen-lockfile
       - run: pnpm typecheck

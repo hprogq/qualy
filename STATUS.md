@@ -2772,6 +2772,15 @@ header / body / footer 三段竖向 flex,**只有新增的 `DialogBody` 滚动**
 的全局 Error 失败通道),两处都改成不需要抑制的写法;51 条 suggestion 经 `includeSuggestionsInTsc:
 false` 挡在 tsc 输出之外。详见 docs/notes/tooling.md 与 docs/agents/effect-source-policy.md。
 
+### 测试与类型检查提速(2026-08-11)
+
+`pnpm test` **15.8s → 8.9s**(三次连跑稳定,446 全绿),`pnpm typecheck` **8.5s → 3.6s**(热)。
+①开发与 CI 的 Postgres 关掉 fsync/synchronous_commit/full_page_writes——测试 CPU 时间 155s → 72s,
+近一半原本在等磁盘确认提交;②tsc 全部带 `--incremental` 与各自的 buildinfo(node_modules/.cache),
+plugin-isolation 门禁 6.5s → 1.3s,并实测注入类型错误后热运行照报;③六个门禁各自的仓库遍历合并进
+tools/lib/walk.ts——诊断门禁的临时 fixture 与它们竞态,曾两次以 ENOENT 偶发红。
+死路已记录在 docs/notes/tooling.md(create database 不是瓶颈、threads 池无差别、--no-isolate 不值)。
+
 **门禁(实际执行)**:`pnpm typecheck` 8.7s 零错;`pnpm test` 446/72 全绿;`pnpm test:browser`
 29 全绿;`pnpm build` 通过;`tsx tools/quality/smoke-production.ts` 五探针全过、SIGTERM 退出 0;
 `pnpm vendor:check` 两棵树匹配;`prettier --check .` 全仓干净。CI 无需改动:`pnpm install
