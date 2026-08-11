@@ -35,13 +35,17 @@ const alsoActiveIn = defineMessage<{ batches: string }>()({
 
 const accessSourceCount = defineMessage<{ count: number }>()({
   id: 'assessment/access/source-count',
-  defaultMessage:
-    '{count, plural, =0 {Nobody yet} one {# person} other {# people}} can work on this round',
+  defaultMessage: '{count, plural, =0 {Nobody yet} one {# person} other {# people}}',
 })
 
 const accessRoleAt = defineMessage<{ role: string }>()({
   id: 'assessment/access/role-at',
   defaultMessage: 'as {role}',
+})
+
+const accessSyncSelected = defineMessage<{ count: number }>()({
+  id: 'assessment/access/sync-selected',
+  defaultMessage: '{count, plural, =0 {Nothing selected} other {# selected}}',
 })
 
 const accessDeniedCount = defineMessage<{ count: number }>()({
@@ -287,7 +291,7 @@ const i18n = definePluginMessages({
     reopenBody: {
       id: 'assessment/action/reopen-body',
       defaultMessage:
-        'The stages that ran, the archive and everything already recorded stay as they are. Reopening adds a new stage at the end and starts it now.',
+        'A new stage is added at the end and starts now; earlier stages and their data are unchanged.',
     },
     reopenReason: { id: 'assessment/action/reopen-reason', defaultMessage: 'Why' },
     reopenReasonPlaceholder: {
@@ -311,12 +315,11 @@ const i18n = definePluginMessages({
     archiveConfirmBody: {
       id: 'assessment/action/archive-confirm-body',
       defaultMessage:
-        'Archiving closes the last stage and locks the batch: results stay visible, nothing can be changed. It can be reopened later, with a reason.',
+        'The batch becomes read-only and results stay visible. It can be reopened later, with a reason.',
     },
     draftBanner: {
       id: 'assessment/batch/draft-banner',
-      defaultMessage:
-        'This batch has not started. The roster and the staff who may work on it are ready to check; scheduling the first stage is what starts it.',
+      defaultMessage: 'Not started. Schedule the first stage to start it.',
     },
 
     // ------------------------------------------------------------------
@@ -345,12 +348,11 @@ const i18n = definePluginMessages({
     tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Who may work on it' },
     phasesHint: {
       id: 'assessment/phase/hint',
-      defaultMessage:
-        'The batch advances stage by stage; each stage controls which actions are open.',
+      defaultMessage: 'Arrange the stages of this batch and choose what each one opens.',
     },
     phasesEmpty: {
       id: 'assessment/phase/empty',
-      defaultMessage: 'No stages yet. Apply a timeline template or add stages manually.',
+      defaultMessage: 'No stages yet. Add them from a template, or one at a time.',
     },
     addPhase: { id: 'assessment/phase/add', defaultMessage: 'Add a stage' },
     colStage: { id: 'assessment/plan/col-stage', defaultMessage: 'Stage' },
@@ -492,7 +494,7 @@ const i18n = definePluginMessages({
     rosterHint: {
       id: 'assessment/roster/hint',
       defaultMessage:
-        'Drawn when the batch was created and frozen from then on; organizational changes appear below as suggestions and never move the roster on their own.',
+        'Manage who takes part in this batch, and act on what changed in the organization.',
     },
     rosterEmpty: {
       id: 'assessment/roster/empty',
@@ -500,8 +502,7 @@ const i18n = definePluginMessages({
     },
     rosterDraft: {
       id: 'assessment/roster/draft',
-      defaultMessage:
-        'The roster was drawn from the selected units and participant types when this batch was created.',
+      defaultMessage: 'Check the list before the batch starts; changing its scope redraws it.',
     },
     columnParticipant: { id: 'assessment/roster/column-name', defaultMessage: 'Name' },
     columnParticipantStatus: {
@@ -564,22 +565,21 @@ const i18n = definePluginMessages({
     accessHint: {
       id: 'assessment/access/hint',
       defaultMessage:
-        'What each person may do here was written down when this round accepted it, so a change made elsewhere later does not quietly change this round.',
+        'Manage what each person may do in this batch, or sync with the organization.',
     },
     accessEmpty: {
       id: 'assessment/access/empty',
-      defaultMessage: 'Nobody works on this round yet.',
+      defaultMessage: 'Nobody works on this batch yet.',
     },
     accessEmptyHint: {
       id: 'assessment/access/empty-hint',
-      defaultMessage:
-        'People who hold a role over the units this round covers appear here once the round accepts it.',
+      defaultMessage: 'People who hold a role in the organization appear here once you sync.',
     },
     accessColumnPerson: { id: 'assessment/access/column-person', defaultMessage: 'Person' },
-    accessColumnSources: { id: 'assessment/access/column-sources', defaultMessage: 'Comes from' },
+    accessColumnSources: { id: 'assessment/access/column-sources', defaultMessage: 'Granted by' },
     accessColumnPermissions: {
       id: 'assessment/access/column-permissions',
-      defaultMessage: 'May do here',
+      defaultMessage: 'In this batch',
     },
     accessOriginInherited: {
       id: 'assessment/access/origin-inherited',
@@ -587,7 +587,7 @@ const i18n = definePluginMessages({
     },
     accessOriginExplicit: {
       id: 'assessment/access/origin-explicit',
-      defaultMessage: 'Brought in for this round',
+      defaultMessage: 'Added for this batch',
     },
     accessSourceLapsed: {
       id: 'assessment/access/source-lapsed',
@@ -600,54 +600,67 @@ const i18n = definePluginMessages({
     accessAdjust: { id: 'assessment/access/adjust', defaultMessage: 'Adjust' },
     accessAdjustTitle: {
       id: 'assessment/access/adjust-title',
-      defaultMessage: 'What {name} may do in this round',
+      defaultMessage: 'Adjust what {name} may do in this batch',
     },
     accessAdjustHint: {
       id: 'assessment/access/adjust-hint',
       defaultMessage:
-        'Turning something off applies to this round only, and stays off even if the same authority is granted again elsewhere.',
+        'Turning something off applies to this batch only and leaves their role in the organization unchanged.',
     },
     accessWithheld: { id: 'assessment/access/withheld', defaultMessage: 'Withheld' },
-    accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from this round' },
+    accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from this batch' },
     accessRemoveTitle: {
       id: 'assessment/access/remove-title',
-      defaultMessage: 'Remove {name} from this round?',
+      defaultMessage: 'Remove {name} from this batch?',
     },
     accessRemoveBody: {
       id: 'assessment/access/remove-body',
       defaultMessage:
-        'They were brought in for this round only, so this withdraws the authority entirely. Anything they already did stays as it is.',
+        'They will no longer be able to work on this batch. What they have already done is kept.',
     },
     accessSyncTitle: {
       id: 'assessment/access/sync-title',
-      defaultMessage: 'The organization has moved on',
+      defaultMessage: 'Permissions changed in the organization',
+    },
+    // the bar: what happened, and the one thing to do about it
+    accessSyncPrompt: {
+      id: 'assessment/access/sync-prompt',
+      defaultMessage: 'Permissions changed in the organization. Review the changes to merge them.',
+    },
+    accessSyncLapsedPrompt: {
+      id: 'assessment/access/sync-lapsed-prompt',
+      defaultMessage:
+        'Some permissions were withdrawn in the organization and no longer apply here.',
+    },
+    accessSyncOpen: { id: 'assessment/access/sync-open', defaultMessage: 'Review changes' },
+    accessSyncSelectPage: {
+      id: 'assessment/access/sync-select-page',
+      defaultMessage: 'Select all on this page',
     },
     accessSyncHint: {
       id: 'assessment/access/sync-hint',
-      defaultMessage:
-        'None of this has reached the round yet. Accepting it is a decision, which is why it waits here.',
+      defaultMessage: 'Confirm whether to merge the following changes into this batch.',
     },
     accessSyncNew: { id: 'assessment/access/sync-new', defaultMessage: 'Newly authorized' },
-    accessSyncWidened: { id: 'assessment/access/sync-widened', defaultMessage: 'Can now do more' },
+    accessSyncWidened: { id: 'assessment/access/sync-widened', defaultMessage: 'More permissions' },
     accessSyncLapsed: {
       id: 'assessment/access/sync-lapsed',
       defaultMessage: 'No longer authorized',
     },
     accessSyncLapsedHint: {
       id: 'assessment/access/sync-lapsed-hint',
-      defaultMessage: 'Already in effect: authority taken away elsewhere is gone here immediately.',
+      defaultMessage:
+        'Withdrawn in the organization and already in effect here. Nothing to confirm.',
     },
-    accessSyncApply: {
-      id: 'assessment/access/sync-apply',
-      defaultMessage: 'Accept into this round',
-    },
+    accessSyncApply: { id: 'assessment/access/sync-apply', defaultMessage: 'Accept changes' },
     accessSyncQuiet: {
       id: 'assessment/access/sync-quiet',
-      defaultMessage: 'This round matches the organization.',
+      defaultMessage: 'Nothing to merge from the organization.',
     },
     accessSourceCount,
     accessRoleAt,
     accessDeniedCount,
+    accessSyncSelected,
 
     // ------------------------------------------------------------------
     // the three families the gate itself distinguishes

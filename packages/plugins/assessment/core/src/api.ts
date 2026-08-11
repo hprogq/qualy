@@ -238,17 +238,31 @@ const accessSubjectView = Schema.Struct({
   effective: Schema.Array(Schema.String),
 })
 
-const accessChange = Schema.Struct({
+/**
+ * One difference between the organization and this batch.
+ *
+ * A single row type rather than three lists: the screen offers them for
+ * selection one by one, and a page has to be able to end in the middle of a
+ * kind. `id` is what accepting names - the assignment for a new grant, the
+ * accepted source for a widening.
+ */
+const accessChangeView = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.Literals(['new', 'widened', 'lapsed']),
   userId: Schema.String,
   displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
   roleName: Schema.String,
   permissions: Schema.Array(Schema.String),
 })
 
-const accessSyncPlanView = Schema.Struct({
-  newSources: Schema.Array(Schema.Struct({ ...accessChange.fields, assignmentId: Schema.String })),
-  widened: Schema.Array(Schema.Struct({ ...accessChange.fields, sourceId: Schema.String })),
-  lapsed: Schema.Array(accessChange),
+const accessSyncPageView = Schema.Struct({
+  items: Schema.Array(accessChangeView),
+  nextCursor: Schema.NullOr(Schema.String),
+  // both totals in the first answer: the page that asks whether anything
+  // changed must not have to fetch every change to find out
+  pendingTotal: Schema.Number,
+  lapsedTotal: Schema.Number,
 })
 
 const templateKind = Schema.Literals(['timeline', 'phase'])
@@ -373,15 +387,26 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // what has already lapsed; a preview because widening needs a decision
     HttpApiEndpoint.get('previewAccessSync', '/assessment/batches/:batchId/access/sync', {
       params: Schema.Struct({ batchId: id }),
-      success: accessSyncPlanView,
-      error: [BatchNotFound, AccessDenied],
+      query: Schema.Struct(pageQuery),
+      success: accessSyncPageView,
+      error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(
+    // Only what was chosen, and only as much of it as the organization still
+    // offers: the selection narrows the change, it cannot invent one.
     HttpApiEndpoint.post('applyAccessSync', '/assessment/batches/:batchId/access/sync', {
       params: Schema.Struct({ batchId: id }),
-      payload: Schema.Struct({}),
-      success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
+      payload: Schema.Struct({
+        accept: Schema.Array(
+          Schema.Struct({
+            kind: Schema.Literals(['new', 'widened']),
+            id,
+            permissions: Schema.Array(Schema.String),
+          }),
+        ),
+      }),
+      success: Schema.Struct({ merged: Schema.Number }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )

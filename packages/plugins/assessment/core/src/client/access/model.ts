@@ -9,3 +9,15 @@ export type AccessSubject = ApiResult<
 >['staff'][number]
 
 export type AccessSource = AccessSubject['sources'][number]
+
+/** one difference between the organization and this batch, as a page carries it */
+export type AccessChange = ApiResult<
+  typeof assessmentApi,
+  'assessment',
+  'previewAccessSync'
+>['items'][number]
+
+/** which of them to take, and how much of each */
+export interface AccessSelection {
+  accept: { kind: 'new' | 'widened'; id: string; permissions: readonly string[] }[]
+}

@@ -660,7 +660,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           where p.id = rp.permission_id and rp.role_id = ${role}
             and p.code = 'assessment.entry.proxy'`)
         const afterTenantEdit = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
-        const plan = yield* assessment.previewAccessSync(f.tenant, batch.id, f.principal)
+        const plan = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
 
         // taking one back is this batch's own decision, and it outlives a sync
         yield* assessment.setAccessDeny(
@@ -670,28 +670,59 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.principal,
         )
         const afterDeny = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
-        const afterSync = yield* assessment.applyAccessSync(f.tenant, batch.id, f.principal)
+        // only what was chosen: the widening is taken, and a second change
+        // nobody ticked would stay where it is
+        const merged = yield* assessment.applyAccessSync(
+          f.tenant,
+          batch.id,
+          {
+            accept: plan.items
+              .filter((change) => change.kind === 'widened')
+              .map((change) => ({
+                kind: 'widened' as const,
+                id: change.id,
+                permissions: change.permissions,
+              })),
+          },
+          f.principal,
+        )
+        const afterSync = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
 
         // and revoking the assignment takes everything it carried with it
         yield* runSql(sql`update role_grants set revoked_at = now() where id = ${assignment}`)
         const afterRevoke = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
 
-        return { atCreation, afterTenantEdit, plan, afterDeny, afterSync, afterRevoke, tutor }
+        return {
+          atCreation,
+          afterTenantEdit,
+          plan,
+          afterDeny,
+          merged,
+          afterSync,
+          afterRevoke,
+          tutor,
+        }
       }),
     )
-    const { atCreation, afterTenantEdit, plan, afterDeny, afterSync, afterRevoke, tutor } = ok(exit)
+    const { atCreation, afterTenantEdit, plan, afterDeny, merged, afterSync, afterRevoke, tutor } =
+      ok(exit)
+    const kind = (want: 'new' | 'widened' | 'lapsed') =>
+      plan.items.filter((change) => change.kind === want).flatMap((change) => change.permissions)
     const of = (access: { staff: readonly { userId: string; effective: readonly string[] }[] }) =>
       access.staff.find((row) => row.userId === tutor)?.effective ?? []
 
     expect(of(atCreation)).toEqual(['assessment.entry.proxy', 'assessment.review.process'])
     // withdrawing takes effect at once; widening does not arrive on its own
     expect(of(afterTenantEdit)).toEqual(['assessment.review.process'])
-    expect(plan.widened.flatMap((row) => row.permissions)).toEqual([
-      'assessment.publication.manage',
-    ])
-    expect(plan.lapsed.flatMap((row) => row.permissions)).toEqual(['assessment.entry.proxy'])
+    expect(kind('widened')).toEqual(['assessment.publication.manage'])
+    expect(kind('lapsed')).toEqual(['assessment.entry.proxy'])
+    // a withdrawal is reported but never offered for approval, so the counts
+    // separate the errand that needs a decision from the one that does not
+    expect(plan.pendingTotal).toBe(1)
+    expect(plan.lapsedTotal).toBe(1)
     expect(of(afterDeny)).toEqual([])
     // the synchronisation accepts the new capability, and leaves the refusal
+    expect(merged).toEqual({ merged: 1 })
     expect(of(afterSync)).toEqual(['assessment.publication.manage'])
     expect(of(afterRevoke)).toEqual([])
   })

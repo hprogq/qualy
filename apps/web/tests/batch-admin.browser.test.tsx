@@ -393,7 +393,7 @@ describe('the stage plan', () => {
     screen({ putPhases })
 
     await expect
-      .element(page.getByText('批次内未添加任何阶段。推荐您导入时间线模板，或手动添加阶段。'))
+      .element(page.getByText('暂无阶段。可从模板添加，或手动新增。'))
       .toBeVisible()
 
     await page.getByRole('button', { name: '新增阶段', exact: true }).click()
@@ -543,12 +543,12 @@ describe('the stage plan', () => {
 })
 
 describe('the participants tab', () => {
-  it('says where a draft list came from, rather than that there is none', async () => {
+  it('shows a draft roster as something to check, not as an empty list', async () => {
     screen({}, `/assessment/batches/${BATCH_ID}/participants`)
-    // the roster exists from the moment the batch does, so a draft shows it
-    // with a note saying where it came from
+    // the roster exists from the moment the batch does, so a draft is asked
+    // to be checked rather than told that nothing is there yet
     await expect
-      .element(page.getByText('参评名单已在创建批次时按所选单位与人员类型生成。'))
+      .element(page.getByText('批次开始前可先行核对；调整参评范围会重新生成名单。'))
       .toBeVisible()
   })
 
@@ -664,44 +664,57 @@ describe('who may work on a batch', () => {
     })
   })
 
-  it('waits for a decision on what was gained and states what was lost', async () => {
-    const applyAccessSync = vi.fn(() => Effect.succeed({ staff: [subject()] }))
+  it('merges only what was ticked, and never offers to approve a withdrawal', async () => {
+    const applyAccessSync = vi.fn((_request: Request) => Effect.succeed({ merged: 1 }))
     accessScreen({
       previewAccessSync: () =>
         Effect.succeed({
-          newSources: [
+          items: [
             {
-              assignmentId: ASSIGNMENT_ID,
+              id: ASSIGNMENT_ID,
+              kind: 'new' as const,
               userId: USER_ID,
               displayName: '新来的老师',
+              businessNo: 'T0002',
               roleName: '学院审核员',
-              permissions: ['assessment.review.process'],
+              permissions: ['assessment.review.process', 'assessment.ranking.view'],
             },
-          ],
-          widened: [],
-          lapsed: [
             {
-              userId: USER_ID,
+              id: SOURCE_ID,
+              kind: 'lapsed' as const,
+              userId: PARTICIPANT_ID,
               displayName: '离任的老师',
+              businessNo: null,
               roleName: '学院审核员',
               permissions: ['assessment.ranking.view'],
             },
           ],
+          nextCursor: null,
+          pendingTotal: 1,
+          lapsedTotal: 1,
         }),
       applyAccessSync,
     })
 
-    // gained: a proposal, with the one button that answers it
-    await expect.element(page.getByText('新增授权')).toBeVisible()
-    await expect.element(page.getByText('新来的老师')).toBeVisible()
-    // lost: already true, and said so rather than offered for approval
-    await expect.element(page.getByText('授权已撤销')).toBeVisible()
-    await expect
-      .element(page.getByText('组织侧收回的权限，在本轮同时失效', { exact: false }))
-      .toBeVisible()
+    // the page opens on one line and one action, not on the list
+    await expect.element(page.getByText('组织侧权限发生变动', { exact: false })).toBeVisible()
+    expect(page.getByText('新来的老师').elements()).toHaveLength(0)
 
-    await page.getByRole('button', { name: '接受进本轮' }).click()
+    await page.getByRole('button', { name: '查看变更' }).click()
+    await expect.element(page.getByText('新来的老师')).toBeVisible()
+    // a withdrawal is stated, and carries no checkbox to approve it
+    await expect.element(page.getByText('离任的老师')).toBeVisible()
+    expect(page.getByRole('checkbox').elements()).toHaveLength(2)
+
+    // and nothing is taken until something is ticked
+    await page.getByRole('checkbox', { name: '审核提交的内容' }).click()
+    await page.getByRole('button', { name: '接受变更' }).click()
     await vi.waitFor(() => expect(applyAccessSync).toHaveBeenCalledTimes(1))
+    expect(applyAccessSync.mock.calls[0]![0]).toMatchObject({
+      payload: {
+        accept: [{ kind: 'new', id: ASSIGNMENT_ID, permissions: ['assessment.review.process'] }],
+      },
+    })
   })
 
   it('only offers to remove somebody this round brought in, and asks first', async () => {
@@ -721,15 +734,15 @@ describe('who may work on a batch', () => {
       removeStaff,
     })
 
-    await expect.element(page.getByText('本轮临时')).toBeVisible()
-    // one control, on the row this round is responsible for
-    const remove = page.getByRole('button', { name: '移出本轮' })
+    await expect.element(page.getByText('本批次临时')).toBeVisible()
+    // one control, on the row this batch is responsible for
+    const remove = page.getByRole('button', { name: '移出本批次' })
     await expect.element(remove).toBeVisible()
     await remove.click()
 
     // and it is a question before it is an action
-    await expect.element(page.getByText('把 临时来的 移出本轮？')).toBeVisible()
-    await page.getByRole('alertdialog').getByRole('button', { name: '移出本轮' }).click()
+    await expect.element(page.getByText('将 临时来的 移出本批次？')).toBeVisible()
+    await page.getByRole('alertdialog').getByRole('button', { name: '移出本批次' }).click()
     await vi.waitFor(() => expect(removeStaff).toHaveBeenCalledTimes(1))
     expect(removeStaff.mock.calls[0]![0]).toMatchObject({ params: { sourceId: PARTICIPANT_ID } })
   })

@@ -14,9 +14,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'
+import { AccessSyncDialog } from './AccessSyncDialog.tsx'
 import { AccessSyncNotice } from './AccessSyncNotice.tsx'
 import { inCatalogOrder, permissionLabel } from './permissions.ts'
-import type { AccessSource, AccessSubject } from './model.ts'
+import type { AccessSelection, AccessSource, AccessSubject } from './model.ts'
 
 // Who may work on this round, and on whose authority.
 //
@@ -35,18 +36,30 @@ export function AccessPanel({ batchId }: { batchId: string }) {
   const [failure, setFailure] = useState<string | null>(null)
   const [adjusting, setAdjusting] = useState<string | null>(null)
   const [removing, setRemoving] = useState<{ source: AccessSource; name: string } | null>(null)
+  const [merging, setMerging] = useState(false)
 
   const access = useQuery(query.assessment.listAccess.queryOptions({ params: { batchId } }))
-  const plan = useQuery(query.assessment.previewAccessSync.queryOptions({ params: { batchId } }))
+  // the counts only: what changed is read a page at a time inside the dialog
+  // that offers it, so this page never renders the list
+  const summary = useQuery(
+    query.assessment.previewAccessSync.queryOptions({
+      params: { batchId },
+      query: { limit: '1' },
+    }),
+  )
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   const onError = (error: unknown) => setFailure(formatError(error))
   const onMutate = () => setFailure(null)
 
   const sync = useMutation({
-    mutationFn: () => run(api.assessment.applyAccessSync({ params: { batchId }, payload: {} })),
+    mutationFn: (selection: AccessSelection) =>
+      run(api.assessment.applyAccessSync({ params: { batchId }, payload: selection })),
     onMutate,
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setMerging(false)
+      invalidate()
+    },
     onError,
   })
   const setDeny = useMutation({
@@ -79,9 +92,21 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     <div className="space-y-5">
       <Feedback message={failure} />
 
-      {plan.data && (
-        <AccessSyncNotice plan={plan.data} pending={sync.isPending} onApply={() => sync.mutate()} />
+      {summary.data && (
+        <AccessSyncNotice
+          pendingTotal={summary.data.pendingTotal}
+          lapsedTotal={summary.data.lapsedTotal}
+          onOpen={() => setMerging(true)}
+        />
       )}
+
+      <AccessSyncDialog
+        batchId={batchId}
+        open={merging}
+        pending={sync.isPending}
+        onMerge={(selection) => sync.mutate(selection)}
+        onClose={() => setMerging(false)}
+      />
 
       <section aria-label={format(m.tabAccess)} className="space-y-2">
         <div className="flex items-center justify-between gap-3">

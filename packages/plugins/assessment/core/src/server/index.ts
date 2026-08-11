@@ -229,27 +229,74 @@ export interface BatchAccess {
   readonly staff: readonly AccessSubject[]
 }
 
+/**
+ * One difference between what the organization says and what this batch
+ * accepted.
+ *
+ * `new` and `widened` wait for a decision; `lapsed` has already taken effect
+ * and is reported so a reader knows why somebody lost access. `id` is what
+ * accepting names - the assignment for a new grant, the accepted source for a
+ * widening - and is the source for a lapse, which nobody accepts.
+ */
+export interface AccessChange {
+  readonly id: string
+  readonly kind: 'new' | 'widened' | 'lapsed'
+  readonly userId: string
+  readonly displayName: string
+  readonly businessNo: string | null
+  readonly roleName: string
+  readonly permissions: readonly string[]
+}
+
 /** what a synchronisation would add; withdrawals have already taken effect */
 export interface AccessSyncPlan {
-  readonly newSources: readonly {
-    readonly assignmentId: string
-    readonly userId: string
-    readonly displayName: string
-    readonly roleName: string
-    readonly permissions: readonly string[]
-  }[]
-  readonly widened: readonly {
-    readonly sourceId: string
-    readonly userId: string
-    readonly displayName: string
-    readonly roleName: string
-    readonly permissions: readonly string[]
-  }[]
-  /** what has already stopped working, said so the reader knows why */
-  readonly lapsed: readonly {
-    readonly userId: string
-    readonly displayName: string
-    readonly roleName: string
+  readonly changes: readonly AccessChange[]
+}
+
+/** one page of them, and how many there are of each errand */
+export interface AccessSyncPage {
+  readonly items: readonly AccessChange[]
+  readonly nextCursor: string | null
+  readonly pendingTotal: number
+  readonly lapsedTotal: number
+}
+
+/** the order a page of changes resumes in, as a comparable key */
+const CHANGE_RANK = { new: 0, widened: 1, lapsed: 2 } as const
+
+// every part a string, because that is what a cursor may carry back: a
+// number would be rejected by the reader that validates its own parts
+const changeKey = (change: AccessChange): [string, string, string] => [
+  String(CHANGE_RANK[change.kind]),
+  change.displayName,
+  change.id,
+]
+
+/**
+ * Where the page after a cursor starts.
+ *
+ * The first row strictly past the key rather than the row after the one it
+ * names: a change accepted by somebody else between two pages is gone from
+ * the list, and looking for it by identity would resume at the end.
+ */
+function positionAfter(changes: readonly AccessChange[], key: readonly string[]): number {
+  const rank = Number(key[0])
+  const target = { rank: Number.isNaN(rank) ? 0 : rank, name: key[1] ?? '', id: key[2] ?? '' }
+  const past = ([rankOf, name, id]: [string, string, string]) =>
+    Number(rankOf) !== target.rank
+      ? Number(rankOf) > target.rank
+      : name !== target.name
+        ? name.localeCompare(target.name) > 0
+        : id > target.id
+  const at = changes.findIndex((change) => past(changeKey(change)))
+  return at === -1 ? changes.length : at
+}
+
+/** which changes to take, and how much of each */
+export interface AccessSyncSelection {
+  readonly accept: readonly {
+    readonly kind: 'new' | 'widened'
+    readonly id: string
     readonly permissions: readonly string[]
   }[]
 }
@@ -440,14 +487,16 @@ export class Assessment extends Context.Service<
     readonly previewAccessSync: (
       tenantId: string,
       batchId: string,
+      page: { cursor?: string; limit?: string },
       as: Principal,
-    ) => Effect.Effect<AccessSyncPlan, BatchNotFound | AccessDenied>
-    /** accepts exactly what the preview showed; withdrawals need no accepting */
+    ) => Effect.Effect<AccessSyncPage, BatchNotFound | AccessDenied | BadRequest>
+    /** accepts what was chosen of it; withdrawals need no accepting */
     readonly applyAccessSync: (
       tenantId: string,
       batchId: string,
+      input: AccessSyncSelection,
       as: Principal,
-    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessDenied>
+    ) => Effect.Effect<{ merged: number }, BatchNotFound | AccessDenied>
     /** takes one capability back from a person, whichever source offered it */
     readonly setAccessDeny: (
       tenantId: string,
@@ -1194,21 +1243,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
             ]),
           ]),
         ),
-      )).map((row) => [row.id, row.displayName]),
+      )).map((row) => [row.id, row]),
     )
-    const named = (userId: string) => names.get(userId) ?? ''
+    const named = (userId: string) => names.get(userId)?.displayName ?? ''
+    const business = (userId: string) => names.get(userId)?.businessNo ?? null
 
     const newSources = assignments
       .filter((assignment) => !accepted.has(assignment.assignmentId))
-      .map((assignment) => ({
-        assignmentId: assignment.assignmentId,
+      .map((assignment): AccessChange => ({
+        id: assignment.assignmentId,
+        kind: 'new',
         userId: assignment.userId,
         displayName: named(assignment.userId),
+        businessNo: business(assignment.userId),
         roleName: assignment.roleName,
         permissions: assignment.codes,
       }))
 
-    const widened = assignments.flatMap((assignment) => {
+    const widened = assignments.flatMap((assignment): AccessChange[] => {
       const source = accepted.get(assignment.assignmentId)
       if (!source) return []
       const ceiling = new Set(source.accepted)
@@ -1217,16 +1269,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
         ? []
         : [
             {
-              sourceId: source.id,
+              id: source.id,
+              kind: 'widened',
               userId: source.subjectId,
               displayName: named(source.subjectId),
+              businessNo: business(source.subjectId),
               roleName: assignment.roleName,
               permissions: gained,
             },
           ]
     })
 
-    const lapsed = sources.flatMap((source) => {
+    const lapsed = sources.flatMap((source): AccessChange[] => {
       const assignment = assignments.find((row) => row.assignmentId === source.roleAssignmentId)
       const live = new Set(assignment?.codes ?? [])
       const gone = source.accepted.filter((code) => !live.has(code))
@@ -1234,15 +1288,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
         ? []
         : [
             {
+              id: source.id,
+              kind: 'lapsed',
               userId: source.subjectId,
               displayName: named(source.subjectId),
+              businessNo: business(source.subjectId),
               roleName: assignment?.roleName ?? '',
               permissions: gone,
             },
           ]
     })
 
-    return { newSources, widened, lapsed }
+    // One order for everybody: the page a reader resumes has to be the page
+    // they left, and two runs of the same comparison must agree on it.
+    const rank = { new: 0, widened: 1, lapsed: 2 } as const
+    const changes = [...newSources, ...widened, ...lapsed].sort(
+      (left, right) =>
+        rank[left.kind] - rank[right.kind] ||
+        left.displayName.localeCompare(right.displayName) ||
+        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+    )
+    return { changes }
   })
 
   return Assessment.of({
@@ -1564,37 +1630,78 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* readAccess(tenantId, batchId)
     }),
 
-    previewAccessSync: Effect.fn('Assessment.previewAccessSync')(function* (tenantId, batchId, as) {
-      yield* requireBatchAdministration(tenantId, batchId, as)
-      return yield* planAccessSync(tenantId, batchId)
-    }),
+    previewAccessSync: Effect.fn('Assessment.previewAccessSync')(
+      function* (tenantId, batchId, page, as) {
+        yield* requireBatchAdministration(tenantId, batchId, as)
+        const { changes } = yield* planAccessSync(tenantId, batchId)
+        // the comparison itself is over the whole batch either way - there is
+        // no partial answer to "what differs" - so the page is over its
+        // result, and exists so a screen is not handed ten thousand rows
+        const key = readQueryCursor(page.cursor, `access-sync:${batchId}`, ['text', 'text', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const after = key === undefined ? 0 : positionAfter(changes, key)
+        const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+        const items = changes.slice(after, after + size)
+        const last = items.at(-1)
+        return {
+          items,
+          nextCursor:
+            after + size < changes.length && last !== undefined
+              ? encodeQueryCursor(`access-sync:${batchId}`, changeKey(last))
+              : null,
+          pendingTotal: changes.filter((change) => change.kind !== 'lapsed').length,
+          lapsedTotal: changes.filter((change) => change.kind === 'lapsed').length,
+        }
+      },
+    ),
 
-    applyAccessSync: Effect.fn('Assessment.applyAccessSync')(function* (tenantId, batchId, as) {
-      yield* requireBatchAdministration(tenantId, batchId, as)
-      const assignments = yield* applicableAssignments(tenantId, batchId)
-      return yield* withDb(
-        transaction(
-          Effect.gen(function* () {
-            const plan = yield* planAccessSync(tenantId, batchId)
-            const byId = new Map(assignments.map((row) => [row.assignmentId, row]))
-            yield* acceptAssignments(
-              tenantId,
-              batchId,
-              plan.newSources.flatMap((added) => {
-                const assignment = byId.get(added.assignmentId)
-                return assignment ? [assignment] : []
-              }),
-              'inherited',
-              as.userId,
-            )
-            for (const widened of plan.widened) {
-              yield* acceptPermissions(tenantId, widened.sourceId, widened.permissions)
-            }
-            return yield* readAccess(tenantId, batchId)
-          }),
-        ),
-      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
-    }),
+    applyAccessSync: Effect.fn('Assessment.applyAccessSync')(
+      function* (tenantId, batchId, input, as) {
+        yield* requireBatchAdministration(tenantId, batchId, as)
+        const assignments = yield* applicableAssignments(tenantId, batchId)
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              // recomputed inside the transaction rather than trusted from the
+              // request: the selection says which change and how much of it, and
+              // both are intersected with what the organization offers right now
+              const { changes } = yield* planAccessSync(tenantId, batchId)
+              const offered = new Map(
+                changes
+                  .filter((change) => change.kind !== 'lapsed')
+                  .map((change) => [`${change.kind}/${change.id}`, change]),
+              )
+              const byAssignment = new Map(assignments.map((row) => [row.assignmentId, row]))
+              let merged = 0
+              for (const choice of input.accept) {
+                const change = offered.get(`${choice.kind}/${choice.id}`)
+                if (!change) continue
+                const chosen = new Set(choice.permissions)
+                const permissions = change.permissions.filter((code) => chosen.has(code))
+                if (permissions.length === 0) continue
+                if (choice.kind === 'new') {
+                  const assignment = byAssignment.get(choice.id)
+                  if (!assignment) continue
+                  yield* acceptAccessSource({
+                    tenantId,
+                    batchId,
+                    roleAssignmentId: assignment.assignmentId,
+                    subjectId: assignment.userId,
+                    origin: 'inherited',
+                    permissions,
+                    acceptedBy: as.userId,
+                  })
+                } else {
+                  yield* acceptPermissions(tenantId, choice.id, permissions)
+                }
+                merged += 1
+              }
+              return { merged }
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      },
+    ),
 
     setAccessDeny: Effect.fn('Assessment.setAccessDeny')(function* (tenantId, batchId, input, as) {
       yield* requireBatchAdministration(tenantId, batchId, as)
@@ -2678,18 +2785,28 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
     )
     .handle(
       'previewAccessSync',
-      Effect.fn('assessment.previewAccessSync.handler')(function* ({ params }) {
+      Effect.fn('assessment.previewAccessSync.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.previewAccessSync(principal.tenantId, params.batchId, principal)
+        return yield* assessment.previewAccessSync(
+          principal.tenantId,
+          params.batchId,
+          query,
+          principal,
+        )
       }),
     )
     .handle(
       'applyAccessSync',
-      Effect.fn('assessment.applyAccessSync.handler')(function* ({ params }) {
+      Effect.fn('assessment.applyAccessSync.handler')(function* ({ params, payload }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.applyAccessSync(principal.tenantId, params.batchId, principal)
+        return yield* assessment.applyAccessSync(
+          principal.tenantId,
+          params.batchId,
+          payload,
+          principal,
+        )
       }),
     )
     .handle(
