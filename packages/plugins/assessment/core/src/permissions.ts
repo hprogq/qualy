@@ -28,31 +28,6 @@ export const permissions = [
     target: 'org-node',
   },
   {
-    code: 'assessment.result.view-self',
-    name: '查看本人成绩',
-    target: 'tenant',
-  },
-  {
-    code: 'assessment.entry.create',
-    name: '新增申报条目',
-    target: 'tenant',
-  },
-  {
-    code: 'assessment.entry.edit',
-    name: '编辑申报条目',
-    target: 'tenant',
-  },
-  {
-    code: 'assessment.entry.submit',
-    name: '提交申报条目',
-    target: 'tenant',
-  },
-  {
-    code: 'assessment.entry.withdraw',
-    name: '撤回申报条目',
-    target: 'tenant',
-  },
-  {
     code: 'assessment.entry.proxy',
     name: '代录申报材料',
     description: '替学生提交其本可自行提交的漏报材料，走完整审核链',
@@ -105,11 +80,15 @@ export const permissions = [
 /**
  * What being on the roster is worth.
  *
- * A participant's capabilities come from membership, not from rows: five
- * hundred students times five permissions is two and a half thousand records
- * saying the same thing, and the roster already says it once.
+ * These are actions, not permissions, and deliberately not in the catalog
+ * above: no role grants them and no administrator can. A participant's
+ * capabilities come from being one - the roster is the whole of the answer -
+ * and a role that could hand out "submit an entry" would be claiming to make
+ * somebody a participant in a round they are not in, which it cannot do. The
+ * codes still exist because a phase opens and closes them by name, and
+ * because the resource policy that checks ownership needs something to name.
  */
-export const PARTICIPANT_CODES = [
+export const PARTICIPANT_ACTION_CODES = [
   'assessment.entry.create',
   'assessment.entry.edit',
   'assessment.entry.submit',
@@ -156,13 +135,32 @@ export type PhaseGatedCode = (typeof PHASE_GATED_CODES)[number]
 export const PHASE_GATED: ReadonlySet<string> = new Set(PHASE_GATED_CODES)
 
 const declared = new Set<string>(permissions.map((definition) => definition.code))
-for (const code of [...PARTICIPANT_CODES, ...STAFF_CODES]) {
+
+// Staff capabilities are permissions and have to be in the catalog: a batch
+// accepts them from roles, and a role can only carry what the catalog knows.
+for (const code of STAFF_CODES) {
   if (!declared.has(code)) {
     throw new Error(`assessment: ${code} is not a declared permission`)
   }
 }
+
+// A participant action must NOT be in it. Registering one would put "create an
+// entry" in the role editor, where ticking it promises something the domain
+// refuses to honour - authority over one's own entries comes from the roster,
+// and no grant can add somebody to a round.
+for (const code of PARTICIPANT_ACTION_CODES) {
+  if (declared.has(code)) {
+    throw new Error(
+      `assessment: ${code} is a participant action and must not be an rbac permission`,
+    )
+  }
+}
+
+// The gate spans both: it decides which actions are open now, and has no
+// interest in where the authority for one comes from.
+const gateable = new Set<string>([...declared, ...PARTICIPANT_ACTION_CODES])
 for (const code of PHASE_GATED) {
-  if (!declared.has(code)) {
+  if (!gateable.has(code)) {
     throw new Error(`PHASE_GATED lists '${code}', which @qualy/plugin-assessment does not declare`)
   }
 }

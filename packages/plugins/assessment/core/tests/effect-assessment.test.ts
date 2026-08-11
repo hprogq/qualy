@@ -1168,7 +1168,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(activated.currentPhaseId).toBeNull()
   })
 
-  it('composes rbac, the gate and the policy slot in the authorize facade', async () => {
+  it('composes authority, the gate and the policy slot in the authorize facade', async () => {
     const exit = await run(
       db.url,
       Effect.gen(function* () {
@@ -1229,10 +1229,12 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
       layer: 'gate',
       reason: 'phase-closed',
     })
+    // somebody who is not on the roster is refused by authority, and the
+    // reason says which kind: they were never going to be granted this
     expect(decisions.notHeld).toEqual({
       allowed: false,
-      layer: 'rbac',
-      reason: 'permission-not-held',
+      layer: 'authority',
+      reason: 'not-participant',
     })
   })
 

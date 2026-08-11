@@ -227,22 +227,25 @@ authorize(principal, code, resource) =
 
 **authorize 返回结构化拒因，不是布尔**：三层再叠 scope 之后拒因已有六七种，"已过提交截止 / 本阶段仅开放部分题目 / 条目审核中不可编辑 / 该题已作废"是完全不同的用户体验——拒因枚举一次定义，全端复用。
 
+**两种授权来源，不是一种**（§32.46）：**RBAC 权限目录**（`./permissions`，`Access.permissions` 上车）只收「因职责被委托去操作别人或共享资源」的能力；**参评人操作码**（`PARTICIPANT_ACTION_CODES`，不进目录、不可被任何角色授予）是「对自己的东西做什么」，资格来自在花名册里。两者共用一套 code 命名，因为阶段开关（`permissionProfile`）管的是「此刻开放哪些业务操作」，它不关心某个操作的资格来自角色还是花名册。
+
 **权限目录**（`./permissions` 纯常量，`Access.permissions` 上车）：
 
-| code                                               | phaseControlled | 说明                                                                    |
-| -------------------------------------------------- | --------------- | ----------------------------------------------------------------------- |
-| assessment.batch.manage                            | ×               | 批次/阶段/题目/花名册管理（org-scope）                                  |
-| assessment.batch.force-advance                     | ×               | 强制切换阶段（必填理由）                                                |
-| assessment.publication.manage                      | ×               | 公示全生命周期（含 retract，理由必填）                                  |
-| assessment.result.view-self                        | ×               | 看自己成绩——**任何阶段可进入成绩页**，页面内容随状态变化（预览→S1→S2）  |
-| assessment.entry.create / edit / submit / withdraw | ✓               | 学生填报动作（只对自己的条目）                                          |
-| assessment.entry.proxy                             | ✓               | **代录**：替学生提交其本可自提的材料（subject=学生，走正常审核链，§13） |
-| assessment.entry.record                            | ✓               | **行政认定**：扣分与特殊加分，trusted 直接生效不走审核（§13）           |
-| assessment.entry.resubmit                          | ✓               | 对**终态条目**发起新一轮（申诉窗内即申诉轮，§15）                       |
-| assessment.review.process                          | ✓               | 审核链动作（approve/reject/escalate/投票）                              |
-| assessment.review.reopen                           | ✓               | 工作组主动复查：对已定结果开 staff 轮，直达链条终点（§15）              |
-| assessment.result.view-peers                       | ✓               | 看他人公示（≠ 看排名）                                                  |
-| assessment.ranking.view                            | ✓               | 看排名                                                                  |
+| code                           | phaseControlled | 说明                                                                    |
+| ------------------------------ | --------------- | ----------------------------------------------------------------------- |
+| assessment.batch.manage        | ×               | 批次/阶段/题目/花名册管理（org-scope）                                  |
+| assessment.batch.force-advance | ×               | 强制切换阶段（必填理由）                                                |
+| assessment.publication.manage  | ×               | 公示全生命周期（含 retract，理由必填）                                  |
+| assessment.entry.proxy         | ✓               | **代录**：替学生提交其本可自提的材料（subject=学生，走正常审核链，§13） |
+| assessment.entry.record        | ✓               | **行政认定**：扣分与特殊加分，trusted 直接生效不走审核（§13）           |
+| assessment.entry.resubmit      | ✓               | 对**终态条目**发起新一轮（申诉窗内即申诉轮，§15）                       |
+| assessment.review.process      | ✓               | 审核链动作（approve/reject/escalate/投票）                              |
+| assessment.review.reopen       | ✓               | 工作组主动复查：对已定结果开 staff 轮，直达链条终点（§15）              |
+| assessment.result.view-peers   | ✓               | 看他人公示（≠ 看排名）                                                  |
+| assessment.ranking.view        | ✓               | 看排名                                                                  |
+
+**参评人操作码**（不在上表，也不在 RBAC 目录里）：`assessment.entry.create / edit / submit / withdraw` 与 `assessment.result.view-self`。
+前四个受阶段开关控制，`result.view-self` 不受控（任何阶段都可进成绩页，页面内容随状态变化：预览→S1→S2）。
 
 `assessment.review.reassign` **v1 删除**（拉模型下语义悬空；空缺的正道是补授角色 + 巡检自愈）；
 reviewer override 设计留档，触发条件："出现不能正式授予角色、但需要此人审这一个实例的真实场景"，
@@ -967,3 +970,5 @@ decision 事件不携带分值。需要人定值的条款一律是 administrativ
 **32.44 壳按停留时长分成两个:应用壳与工作区壳**(2026-08-12,用户与审计长谈后定案,docs/ui-redesign.md 全文;§23.1 为结论)。~~单一 `admin-shell/v1` + 一根常驻左侧栏~~作废。它把两个不同的问题塞进同一根栏:「产品有哪些应用」与「我正在做的这件事能做什么」;后果是学生一路背着一根自己打不开任何页面的空侧栏,而管理员的批次功能与全局功能挤在同一层级里互相抢位置。改为按**停留时长**分:①**`app-shell/v1`**——顶部一排应用(测评 / 工作台 / 资源库 / 组织与权限),下面一行是当前应用的分区(小字横排,只在多于一个时出现),**没有常驻侧边栏**:三四个页面的应用不值得为它常年占一列;②**`workspace-shell/v1`**——同一排应用不动,下面是上下文栏(正在操作哪个批次)与导航栏(对它能做什么),进入批次才出现、离开就消失。三层职责因此不重叠:顶栏 = 我在哪个应用,上下文栏 = 我在操作哪个对象,导航栏 = 这个对象能做什么。**契约改名**:`admin-shell/v1` → `app-shell/v1`(连同它的 collection 与 slot 键)——学生读自己的成绩与管理员改配置在同一个壳里,叫 admin 是在悄悄替产品决定它是给谁用的。**两条新机制**(ui-composition.md 同步扩展):① workspace 导航条目的 path 带参数,由壳用当前路由的 params 填充,**填不出来的条目不渲染**(宁可缺,不可指向字面量 `:batchId`);② 上下文栏是 slot `workspace-shell/context`(cardinality one),壳不认识批次,由知道的插件贡献组件、组件自己从路由读参数。导航解析随之从「只认 primaryNavigation」推广为认 `navigationCollections` 列出的每一个导航面。**IA 定案**:四个应用;「资源库」取代「配置中心」(政策、题型、模板是可下放权限的业务资产,不是系统配置),「组织与权限」独立(平台身份与授权基础设施);真正的系统设置进头像菜单,不占一级 Tab。**URL 随之搬家**:`/admin/org|users|user-types|roles` → `/organization/tree|users|user-types|roles`。**页面宽度分三档**(`PageContainer`:default / wide / full),壳不替页面决定宽度。**未建的一律不建入口**:工作台、资源库、批次概览 / 公示管理 / 批次设置、个人与工作两组导航都只写在本文档里,等页面落地再各自贡献——一条通向空页的链接比没有链接更糟(§32.42 同则)。
 
 **32.45 批次授权 = 接受边界:RBAC 通用资源范围 + 批次 Access Baseline**(2026-08-12,用户与审计定案,docs/batch-redesign.md 全文;取代同日早些时候的 direct-grant 草案)。**不做「批次角色」**:角色与角色分配始终是租户/组织层的通用 RBAC 概念,批次只维护自己「接受过什么」。三条链路:①**RBAC 增加通用资源范围**——`role_grants` 加 `resource_namespace/type/id` + `valid_from/valid_until/revoked_at`,插件可把一次分配限定在某个不透明对象(`assessment / batch / <uuid>`)上;RBAC **不认识批次**,没有 batchId 外键、没有 assessment 代码;**带资源范围的分配不参与任何通用判定**(`held` CTE 里 `resource_id is null`),否则「某批次的临时审核员」会变成全租户审核员;分配的 scope 不可原地修改(改 = 撤销 + 新建),否则把「2024级」改成「软件学院」会让旧批次静默扩权。②**Assessment 建 Access Baseline 三表**:`batch_access_sources`(接受了哪条分配,origin inherited|explicit)、`batch_access_source_permissions`(接受时的权限上限,一行一码)、`batch_access_denies`(**subject 级**,不是 source 级——一个人同时是辅导员与年级负责人时,管理员点「禁用审核」的预期就是两条来源都禁用)。③**有效权限**:`(分配当前仍携带的 ∩ 批次接受过的) − 批次 deny`,再 `∪ 花名册赋予参评人的`,再对 `PHASE_GATED` 的码 `∩ 当前阶段开放集`,最后过资源守卫。由此得到本轮最重要的安全性质:**租户收权实时生效,扩权必须显式同步**——撤角色、撤分配、撤权限立刻在所有批次生效;给角色新增权限、给人新分配角色,都**不会**进入已存在的批次,必须在批次里点「同步组织权限」并确认(preview 分三段:新增人员 / 新增权限 / 已失效——已失效只是告知,它早已生效)。**~~batch_direct_grants~~ 不做**:临时工作人员就是一条**限定在本批次的普通 RBAC 分配**,创建时同事务写入 baseline(origin=explicit)并快照当时的权限上限——即使是临时分配也要过接受边界,否则日后有人给共享的「审核员」角色加了公示管理,这个临时人员会突然获得。**委派防提权**:只能授出自己在该节点上持有的权限(`canAt`)、只能在自己管得到的节点上授权,且角色携带的权限必须**全部**属于批次可委派集合(`STAFF_CODES`),否则整条角色不可用——不静默丢弃越权的那几条。**物化时机整体提前到创建批次**(取代 §32.43 的「首次排期时冻结名单」):创建的同一个事务里生成花名册与 baseline,失败则整个批次不存在;草稿期两者都可检查,改动 scope 或人员类型则**重新绘制**;首次排期只做校验与状态推进,「立即开始」因此不再顺手初始化任何东西。**参评人不进 RBAC**:五百人乘五个权限就是两千五百行在重复同一件事,参评能力来自「在花名册里 + 人员类型」,同样受 PhaseGate 约束。词汇上批次内**不出现「角色」**:批次说的是「人员权限」与「接受」。
+
+**32.46 参评人的操作不是 RBAC 权限**(2026-08-12,用户提出「角色设置里还能勾 entry.create,但勾了也没用」,长谈后定案)。~~给用户类型加权限表 `user_type_permissions`~~否决,~~把租户管理员从角色搬到用户类型~~否决:用户类型说的是「这个人是什么人」(学生/老师/临时用户),角色说的是「组织额外委托他承担什么职责」(租户管理员/辅导员/审核员/年级负责人/专业负责人/班长/学委),两者都不该再长出第三套权限聚合器;「管理员」显然是职责不是人的类型,一旦搬进类型,「某老师临时当管理员」「管理员还是不是老师」立刻无解。真正的病因是**把参评人自己的业务能力建模成了 RBAC 权限来源**:`assessment.entry.create` 挂在目录里,于是角色编辑器把它列出来、`setRolePermissions` 允许勾上、租户管理员按 `permission_mode='all-active'` 定义还自动持有——而 `authorizeEntryAction` 对这些码**根本不查角色**,只查「你在不在这个批次的花名册里」。同一个码被 RBAC 宣称「可以授予」,业务层却不承认这种授予来源,这是模型里的两种语义在打架。**裁决:这五个码离开 RBAC 目录**(`entry.create/edit/submit/withdraw`、`result.view-self`),改名 `PARTICIPANT_ACTION_CODES`,`Access.permissions` 不再收它们;角色编辑器因此自然不再列出(它本来就只渲染 `listPermissions()` 的目录),服务端 `setRolePermissions` 也自然拒绝——**不是前端藏起来而 API 仍可偷偷授予**。~~给 `PermissionDefinition` 加 `roleAssignable: false`~~否决:为五个码去污染整个 RBAC 契约,还要顺带处理 all-active、`hasPermission`、`getProfile`、角色完整性检查,不划算。**`PHASE_GATED_CODES` 原样保留**(横跨两类):阶段开关表达的是「此刻开放哪些操作」,与资格来源正交;阶段永远只能**关闭或开放一个主体本来就有资格做的动作,不能凭空赋权**——审核阶段写 `review.process` 不等于全租户都能审核。因此最终关系是 `有效动作 = (参评资格 ∪ 工作人员职责) ∩ 阶段开放集 ∩ 资源守卫`,与「并集后再与阶段求交」的直觉一致,只是参评那一半不再来自一个人为造出来的「学生角色」——五千名学生可以一个 RoleAssignment 都没有,系统照常运转。**拒因分层同步改名**:`ActionDecision.layer` 的 `'rbac'` → `'authority'`,参评人不在名单返回 `not-participant`,工作人员无权返回 `permission-not-held`——把花名册失败伪装成 RBAC 拒绝,会让读它的人去找一条永远不会存在的授权。**数据残留必须清**:迁移 `20260811225407_drop-participant-action-permissions.sql` 删掉 `role_permissions` 里引用这五个码的行与 `permissions` 里的码本身——留着不只是脏数据,`permission_mode='all-active'` 的租户管理员**按定义持有目录里的每一条**,不删就等于它仍在授权;附升级测试(建旧库形态、角色勾上该码、跑迁移、断言只剩该留的)。**产品语言**:`permissionProfile` 字段名与 DTO 暂不改(改名要动 migration/API/前端/测试而没有收益),但界面上说「开放操作」而非「权限」。

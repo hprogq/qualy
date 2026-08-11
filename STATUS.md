@@ -3219,3 +3219,28 @@ fingerprint——不同筛选条件之间沿用游标会静默跳行或重复;`r
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 451/72 全绿;`pnpm test:browser` 39 全绿
 (导入用例新增:类型 Badge 与类型筛选都在、勾上能取消再勾上);`pnpm build` 通过;`prettier --check .` 干净。
+
+### 参评人的操作不是 RBAC 权限(2026-08-12)
+
+裁决见 docs/assessment-design.md §32.46。既不给用户类型加权限表,也不动租户管理员角色——病因不在缺一层,而在
+`assessment.entry.create/edit/submit/withdraw` 与 `result.view-self` 本来就不该是 RBAC 权限:它们挂在目录里,
+角色编辑器就列出来、`setRolePermissions` 就允许勾、租户管理员按 `permission_mode='all-active'` 定义还自动持有,
+而 `authorizeEntryAction` 对这五个码根本不查角色,只查花名册。同一个码 RBAC 说「可以授予」,业务层不认这种来源。
+
+改动很小:五个码离开 `permissions` 数组,改名 `PARTICIPANT_ACTION_CODES`。角色编辑器因此自然不再列出(它只渲染
+`listPermissions()` 的目录),服务端 `setRolePermissions` 自然拒绝——不是前端藏起来而 API 还能偷偷给。
+`PHASE_GATED_CODES` 原样保留并横跨两类:阶段开关表达「此刻开放哪些操作」,与资格来源正交,而且它只能开关
+一个主体本来就有资格做的动作,不能凭空赋权。启动断言相应改成三条:STAFF_CODES 必须在目录里、
+PARTICIPANT_ACTION_CODES 必须**不在**目录里、PHASE_GATED 必须落在两者之并内。
+
+拒因分层跟着改名:`ActionDecision.layer` 的 `'rbac'` → `'authority'`;参评人不在名单返回 `not-participant`,
+工作人员无权仍是 `permission-not-held`。把花名册失败伪装成 RBAC 拒绝,会让读它的人去找一条永远不存在的授权。
+
+**数据残留必须清**,不是脏数据那么简单:`permission_mode='all-active'` 的租户管理员按定义持有目录里的每一条,
+留着就等于它仍在授权。迁移 `20260811225407_drop-participant-action-permissions.sql`(custom,owner 标注,
+destructive: approved)先删 `role_permissions` 的引用行再删 `permissions` 本体;升级测试建旧库形态、给角色勾上
+`entry.submit`、跑迁移、断言角色只剩该留的那条且目录里的码已消失。开发库实测:assessment 目录剩 10 条,
+`entry.%` 的授权行只剩审核员的 `entry.resubmit`(它仍是 staff 权限,本该留)。seed 门禁的权限计数 31 → 26。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **452/72 全绿**(新增迁移升级用例);`pnpm test:browser`
+39 全绿;`pnpm build` 通过;`prettier --check .` 干净。

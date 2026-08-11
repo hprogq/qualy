@@ -22,7 +22,7 @@ import { effectiveState, normalizePlan } from '../phase/engine/queue.ts'
 import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
 import type { EpochMillis, PhasePlan } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
-import { PARTICIPANT_CODES, STAFF_CODES } from '../permissions.ts'
+import { PARTICIPANT_ACTION_CODES, STAFF_CODES } from '../permissions.ts'
 import {
   AccessInvalid,
   AdvanceInvalid,
@@ -373,7 +373,18 @@ const normalScope = (ids: readonly string[] | undefined): readonly string[] =>
 
 export type ActionDecision =
   | { readonly allowed: true }
-  | { readonly allowed: false; readonly layer: 'rbac' | 'gate' | 'policy'; readonly reason: string }
+  | {
+      readonly allowed: false
+      /**
+       * Which of the three questions said no.
+       *
+       * 'authority' rather than 'rbac': a participant refused here never went
+       * near a role, and calling it an rbac refusal sent whoever read it
+       * looking for a grant that was never going to exist.
+       */
+      readonly layer: 'authority' | 'gate' | 'policy'
+      readonly reason: string
+    }
 
 /** what one sweep of the clock-crossed boundaries did */
 export interface SweepReport {
@@ -2333,22 +2344,28 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // Layer one: authority in THIS batch, which is not the same question
         // as authority in the tenant.
         //
-        // A participant needs no grant: being on the roster is what a
-        // participant's capabilities are made of, and five hundred students
-        // times five permissions would be two and a half thousand rows saying
-        // it again. Everybody else holds what this batch accepted from the
-        // tenant and has not taken back, or what this batch granted directly.
+        // A participant needs no grant, and could not be given one: their
+        // actions are not rbac permissions at all. Being on the roster is what
+        // those capabilities are made of. Everybody else holds what this batch
+        // accepted from the tenant and has not taken back, or what this batch
+        // granted directly.
         //
         // Which node it applies to is not asked yet: entries do not exist, so
         // there is no object to locate. When they do, the participant's frozen
         // lineage is what the scopes here get compared against.
-        const held = PARTICIPANT_CODES.includes(code as never)
+        const held = PARTICIPANT_ACTION_CODES.includes(code as never)
           ? (yield* dieQuery(
               withDb(participantByUser(principal.tenantId, batchId, principal.userId)),
             )) !== null
           : (yield* batchAuthority(principal.tenantId, batchId, principal.userId)).has(code)
         if (!held) {
-          return { allowed: false, layer: 'rbac', reason: 'permission-not-held' } as const
+          return {
+            allowed: false,
+            layer: 'authority',
+            reason: PARTICIPANT_ACTION_CODES.includes(code as never)
+              ? 'not-participant'
+              : 'permission-not-held',
+          } as const
         }
         // Layer two: the phase gate.
         const batch = yield* dieQuery(withDb(oneBatch(principal.tenantId, batchId)))

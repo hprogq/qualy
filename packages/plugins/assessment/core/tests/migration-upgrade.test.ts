@@ -72,3 +72,77 @@ describe.runIf(postgresAvailable)('the batch-scope-node-set migration', () => {
     }
   })
 })
+
+// Taking the participant actions out of the rbac catalog leaves rows behind:
+// a role somebody had already ticked "submit an entry" on, and the catalog
+// entries themselves. Replaying the lineage into an empty database proves
+// nothing about either, because neither was ever inserted there.
+
+const CLEANUP = '20260811225407_drop-participant-action-permissions.sql'
+
+describe.runIf(postgresAvailable)('the participant-action cleanup migration', () => {
+  it('takes the codes off the roles that had them, and out of the catalog', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, CLEANUP))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-participant-actions-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file !== CLEANUP) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('participant-action-cleanup', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('cleanup', 'Cleanup') returning id`,
+        )
+      ).id
+      // the world as it was: the code in the catalog, and a role carrying it
+      const permission = (
+        await db.row<{ id: string }>(
+          `insert into permissions (code, plugin, name, target_kind)
+           values ('assessment.entry.submit', 'assessment', 'Submit', 'tenant') returning id`,
+        )
+      ).id
+      const kept = (
+        await db.row<{ id: string }>(
+          `insert into permissions (code, plugin, name, target_kind)
+           values ('assessment.review.process', 'assessment', 'Review', 'org-node') returning id`,
+        )
+      ).id
+      const role = (
+        await db.row<{ id: string }>(
+          `insert into roles (tenant_id, code, name, kind, status, permission_mode)
+           values ($1, 'reviewer', 'Reviewer', 'org', 'active', 'explicit') returning id`,
+          [tenant],
+        )
+      ).id
+      for (const id of [permission, kept]) {
+        await db.query(
+          `insert into role_permissions (tenant_id, role_id, permission_id) values ($1, $2, $3)`,
+          [tenant, role, id],
+        )
+      }
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const codes = await db.query<{ code: string }>(
+        `select p.code from role_permissions rp join permissions p on p.id = rp.permission_id
+          where rp.role_id = $1`,
+        [role],
+      )
+      // the grant is gone, and so is the code nobody may grant any more
+      expect(codes.rows.map((row) => row.code)).toEqual(['assessment.review.process'])
+      // the catalog row is gone too, so the tenant administrator - who holds
+      // every active definition by definition - stops holding this one
+      const left = await db.query<{ code: string }>(
+        `select code from permissions where plugin = 'assessment' order by code`,
+      )
+      expect(left.rows.map((row) => row.code)).toEqual(['assessment.review.process'])
+    } finally {
+      await db.dispose()
+    }
+  })
+})
