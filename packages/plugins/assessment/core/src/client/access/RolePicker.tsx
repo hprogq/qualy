@@ -1,3 +1,4 @@
+import { CheckIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
@@ -40,7 +41,7 @@ export function RolePicker({
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
   }
   return (
-    <ul className="max-h-64 divide-y overflow-auto rounded-md border">
+    <ul role="radiogroup" className="max-h-64 divide-y overflow-auto rounded-md border">
       {roles.map((role) => {
         const refused = role.refusal !== null
         return (
@@ -48,19 +49,35 @@ export function RolePicker({
             <button
               type="button"
               disabled={refused}
-              aria-pressed={value === role.id}
+              role="radio"
+              aria-checked={value === role.id}
               onClick={() => onChange(role.id)}
               className={cn(
-                'flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-left outline-none',
+                'flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none',
                 refused
                   ? 'cursor-not-allowed text-muted-foreground'
                   : 'hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
                 value === role.id && 'bg-accent',
               )}
             >
-              <span className="text-sm">{role.name}</span>
+              {/* the mark keeps its space whether or not it is drawn: a row
+                  that shifts when it is chosen reads as a different row */}
+              <span
+                aria-hidden
+                className={cn(
+                  'flex size-4 shrink-0 items-center justify-center rounded-full border',
+                  value === role.id
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-muted-foreground/40',
+                )}
+              >
+                {value === role.id && <CheckIcon className="size-3" />}
+              </span>
+              <span className={cn('min-w-0 flex-1 text-sm', value === role.id && 'font-medium')}>
+                {role.name}
+              </span>
               {role.refusal !== null && (
-                <Badge variant="outline" className="font-normal">
+                <Badge variant="outline" className="shrink-0 font-normal">
                   {format(REASONS[role.refusal])}
                 </Badge>
               )}
