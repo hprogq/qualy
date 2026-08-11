@@ -201,12 +201,7 @@ const seed = (slug: string) =>
 
 type Seeded = ReturnType<typeof seed> extends Effect.Effect<infer A, infer _E, infer _R> ? A : never
 
-const activateBatch = (
-  f: Seeded,
-  name: string,
-  scopeNodeIds: readonly string[],
-  anchorAutoSync?: boolean,
-) =>
+const activateBatch = (f: Seeded, name: string, scopeNodeIds: readonly string[]) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
     const batch = yield* assessment.createBatch(
@@ -216,7 +211,6 @@ const activateBatch = (
         scopeNodeIds,
         materialRange: { start: '2026-03-01', end: '2026-09-01' },
         userTypeIds: [f.studentType],
-        ...(anchorAutoSync !== undefined ? { anchorAutoSync } : {}),
       },
       f.principal,
     )
@@ -290,7 +284,6 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     // s2 left the scope, s4 moved inside it, s1 changed what they are
     expect(diffA.departed.map((row) => row.userId)).toEqual([f.s2])
     expect(diffA.anchorChanged.map((row) => row.userId)).toEqual([f.s4])
-    expect(diffA.anchorChanged[0]!.to).toEqual({ nodeId: f.class2, path: 'r.a.c2' })
     expect(diffA.userTypeChanged.map((row) => row.userId)).toEqual([f.s1])
     expect(diffA.userTypeChanged[0]!.toEnrolled).toBe(false)
     // the definition itself has a hole where the deleted unit was
@@ -506,17 +499,17 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(reasonIn(outOfScope)).toBe('user-out-of-scope')
   })
 
-  it('carries the anchor auto-sync switch as configuration', async () => {
+  it('records a configuration change as one event that moves the counter', async () => {
     const exit = await run(
       db.url,
       Effect.gen(function* () {
         const f = yield* seed('sugar')
         const assessment = yield* Assessment
-        const batch = yield* activateBatch(f, 'Batch', [f.gradeA], true)
-        const toggled = yield* assessment.updateBatch(
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        const renamed = yield* assessment.updateBatch(
           f.tenant,
           batch.id,
-          { anchorAutoSync: false, reason: 'panel only for now' },
+          { name: 'Batch, renamed', reason: 'the faculty asked' },
           f.principal,
         )
         const event = one<{ diff: Record<string, unknown> }>(
@@ -524,14 +517,12 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
             select diff from batch_config_revisions where batch_id = ${batch.id}
             order by revision desc limit 1`),
         )
-        return { batch, toggled, event }
+        return { renamed, event }
       }),
     )
-    const { batch, toggled, event } = ok(exit)
-    expect(batch.anchorAutoSync).toBe(true)
-    expect(toggled.anchorAutoSync).toBe(false)
-    // a config change like any other: one event, the counter moved
-    expect(Object.keys(event.diff)).toEqual(['anchorAutoSync'])
-    expect(toggled.configRevision).toBe(1)
+    const { renamed, event } = ok(exit)
+    expect(renamed.name).toBe('Batch, renamed')
+    expect(Object.keys(event.diff)).toEqual(['name'])
+    expect(renamed.configRevision).toBe(1)
   })
 })

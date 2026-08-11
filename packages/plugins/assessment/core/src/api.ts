@@ -57,20 +57,27 @@ const batchTimelineEntry = Schema.Struct({
   }),
 })
 
+// What a batch is to whoever is looking at it.
+//
+// Which organizational units it was drawn from is not here. It is a
+// configuration decision, it names parts of the tree the reader may have no
+// business knowing, and no screen needs it to say what this round is or where
+// it has got to - the picker that chose them works from the options endpoint,
+// not from the batch.
 const batchFields = {
   id: Schema.String,
   name: Schema.String,
   descriptionMd: Schema.NullOr(Schema.String),
-  scopeNodeIds: Schema.Array(Schema.String),
   participantCount: Schema.Number,
   materialRange,
   timezone: Schema.String,
   status: batchStatus,
   configRevision: Schema.Number,
-  anchorAutoSync: Schema.Boolean,
   currentPhaseId: Schema.NullOr(Schema.String),
   currentPhaseName: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
+  /** whether this reader may change the batch, rather than only read it */
+  manageable: Schema.Boolean,
 }
 
 /**
@@ -198,8 +205,6 @@ const rosterDiff = Schema.Struct({
       participantId: Schema.String,
       userId: Schema.String,
       displayName: Schema.String,
-      from: Schema.Struct({ nodeId: Schema.String, path: Schema.String }),
-      to: Schema.Struct({ nodeId: Schema.String, path: Schema.String }),
     }),
   ),
   userTypeChanged: Schema.Array(
@@ -298,7 +303,6 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         materialRange,
         timezone: Schema.optional(trimmedName(63)),
         userTypeIds: Schema.Array(id),
-        anchorAutoSync: Schema.optional(Schema.Boolean),
       }),
       success: Schema.Struct({ batch: batchView }),
       error: [AccessDenied, BatchReferenceInvalid, BadRequest],
@@ -323,18 +327,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           materialRange: Schema.optional(materialRange),
           timezone: Schema.optional(trimmedName(63)),
           userTypeIds: Schema.optional(Schema.Array(id)),
-          anchorAutoSync: Schema.optional(Schema.Boolean),
           reason: Schema.optional(boundedText(500)),
         },
-        [
-          'name',
-          'descriptionMd',
-          'scopeNodeIds',
-          'materialRange',
-          'timezone',
-          'userTypeIds',
-          'anchorAutoSync',
-        ],
+        ['name', 'descriptionMd', 'scopeNodeIds', 'materialRange', 'timezone', 'userTypeIds'],
       ),
       success: Schema.Struct({ batch: batchView }),
       error: [
@@ -535,7 +530,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('getTimeline', '/assessment/batches/:batchId/timeline', {
       params: Schema.Struct({ batchId: id }),
       success: Schema.Struct({ timeline: Schema.Array(timelineEntry) }),
-      error: [BatchNotFound],
+      error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
@@ -623,7 +618,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           Schema.Struct({
             id: Schema.String,
             name: Schema.String,
-            path: Schema.String,
+            /** null for a root, or for a node whose parent is out of reach */
+            parentId: Schema.NullOr(Schema.String),
             depth: Schema.Number,
             orgTypeId: Schema.String,
           }),

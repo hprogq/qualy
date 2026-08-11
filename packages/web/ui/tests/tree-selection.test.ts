@@ -1,27 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { shapeOf, toggleNode, type TreeSelectionNode } from '../src/lib/tree-selection.ts'
+import {
+  isAncestor,
+  shapeOf,
+  toggleNode,
+  type TreeSelectionNode,
+} from '../src/lib/tree-selection.ts'
 
 // The picker's whole promise: the selection is always the minimal non-nested
 // set matching what the person sees ticked. The case that motivated these
 // tests: tick a major, untick two of its classes - the result must be the
 // remaining classes, not an empty set.
 
-const node = (id: string, path: string): TreeSelectionNode => ({
+const node = (id: string, parentId: string | null): TreeSelectionNode => ({
   id,
   name: id,
-  path,
-  depth: path.split('.').length - 1,
+  parentId,
 })
 
 const TREE = [
-  node('root', 'r'),
-  node('cs', 'r.cs'),
-  node('c1', 'r.cs.c1'),
-  node('c2', 'r.cs.c2'),
-  node('c3', 'r.cs.c3'),
-  node('c4', 'r.cs.c4'),
-  node('math', 'r.math'),
-  node('m1', 'r.math.m1'),
+  node('root', null),
+  node('cs', 'root'),
+  node('c1', 'cs'),
+  node('c2', 'cs'),
+  node('c3', 'cs'),
+  node('c4', 'cs'),
+  node('math', 'root'),
+  node('m1', 'math'),
 ]
 
 const shape = shapeOf(TREE)
@@ -59,7 +63,7 @@ describe('tree selection', () => {
         for (const a of result) {
           for (const b of result) {
             if (a === b) continue
-            expect(byId.get(b)!.path.startsWith(`${byId.get(a)!.path}.`)).toBe(false)
+            expect(isAncestor(shape, byId.get(a)!, byId.get(b)!)).toBe(false)
           }
         }
       }

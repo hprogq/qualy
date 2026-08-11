@@ -727,6 +727,76 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(of(afterRevoke)).toEqual([])
   })
 
+  it('shows a participant their own running batch and nobody else\u2019s draft', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('visibility')
+        const assessment = yield* Assessment
+        const student: Principal = { tenantId: f.tenant, userId: f.s1, sessionId: 's' }
+
+        const running = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Running',
+            scopeNodeIds: [f.class1],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          running.id,
+          { specs: [phase({ phaseKey: 'entry' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, running.id, f.principal)
+        // scheduling the first stage is what starts a batch
+        yield* assessment.schedulePhase(
+          f.tenant,
+          running.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        // a second one, left as a draft: its people have not been told about it
+        yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Draft',
+            scopeNodeIds: [f.class1],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+
+        const page = { limit: 20 }
+        const asAdmin = yield* assessment.listBatches(f.tenant, page, f.principal)
+        const asStudent = yield* assessment.listBatches(f.tenant, page, student)
+        const stranger: Principal = { tenantId: f.tenant, userId: f.s3, sessionId: 's' }
+        const asStranger = yield* assessment.listBatches(f.tenant, page, stranger)
+        const opened = yield* assessment.getBatch(f.tenant, running.id, student)
+        const refused = yield* Effect.exit(assessment.getBatch(f.tenant, running.id, stranger))
+        return { asAdmin, asStudent, asStranger, opened, refused }
+      }),
+    )
+    const { asAdmin, asStudent, asStranger, opened, refused } = ok(exit)
+    const names = (rows: readonly { name: string }[]) => rows.map((row) => row.name).sort()
+
+    // the administrator sees the round being written as well as the one running
+    expect(names(asAdmin)).toEqual(['Draft', 'Running'])
+    // the student sees the one they are actually in, and reads it without
+    // holding any permission over batches at all
+    expect(names(asStudent)).toEqual(['Running'])
+    expect(asStudent[0]!.manageable).toBe(false)
+    expect(opened.name).toBe('Running')
+    // and somebody in neither sees nothing, by id or otherwise
+    expect(asStranger).toEqual([])
+    expect(tagOf(refused)).toBe('ACCESS_DENIED')
+  })
+
   it('reopens an archived batch into a new phase, and says why in the record', async () => {
     const exit = await run(
       db.url,

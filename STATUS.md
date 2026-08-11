@@ -3033,3 +3033,31 @@ Record<StaffCode, MessageDescriptor>`,新增 staff code 少一条标签就编译
 
 **未做**:添加临时工作人员的选人器(仍缺一条 assessment 自己的 options 端点);`listAccess` 尚未分页
 (与变更列表不同,它只含担任角色的人,量级是几百;真要分页需要把 readAccess 的整表计算改成 SQL 分页)。
+
+### 批次对普通用户开放,以及几处不该下发的数据(2026-08-12)
+
+**谁看得见哪些批次。** 原来整个测评模块都锁在 `assessment.batch.manage` 后面,学生连自己参加的那一轮
+都进不去。现在:批次列表页与批次总览页对 `AUTHENTICATED` 开放,列表内容按人裁——管理员看到自己权限
+够得着的全部(含草稿),其他人只看到**自己确实参与的**(在花名册里,或被接受为工作人员)且**非草稿**的批次
+(草稿是管理员还在写的计划,里面的人还没被告知)。判定下推进 SQL(`visibleTo` = 管理可达 ∪ 参与),
+`getBatch` 与 `getTimeline` 共用同一条规则——`getTimeline` 此前**没有任何授权**,知道 id 就能读,已修。
+阶段安排/参评名单/人员权限三个子页仍是 `permissionOf('assessment.batch.manage')`,manifest 不下发,
+侧栏里就不会出现。批次行带 `manageable`,前端据此不渲染用不了的控件。
+
+**新增批次总览页**(`/assessment/batches/:batchId`,`AUTHENTICATED`),侧栏第一项「总览」,内容暂为占位;
+原来这个地址是重定向到阶段安排的,普通用户会被弹回。列表卡片与批次切换器现在都落到总览页。
+
+**不再下发的数据。** ①`scope-options` 不再返回 ltree `path`,改成 `parentId`——path 是数据库自己的
+子树加速地址,给了浏览器等于把组织结构与命名公开给任何能看到一片叶子的人;`tree-selection.ts` 整体
+改用父引用(roots = 父不在集合里的节点,深度由树算),测试同步改写。②花名册变动里的 `from/to.path`
+直接删掉(前端本来就只显示姓名)。③批次 DTO 不再带 `scopeNodeIds`——配置意图,且点名了读者可能无权
+知道的组织节点;卡片相应不再显示「覆盖 N 个单位」。
+
+**删掉 anchorAutoSync。** 全仓只有写、没有读:它承诺「花名册跟着组织自动走」,而领域定案是花名册
+永不自动移动(组织变动只作为待处理建议列出),两者直接矛盾。列、API、配置修订 diff 一并移除,
+迁移 `20260811200227_drop-anchor-auto-sync.sql`(destructive: approved);原来只断言它能存取的测试
+改成断言「一次配置变更 = 一条事件 + 计数器 +1」。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **451/72 全绿**(新增「参与者只看得到自己那一轮、
+看不到草稿、按 id 也读不到别人的」);`pnpm test:browser` 39 全绿;`pnpm build` 通过;
+`prettier --check .` 干净。

@@ -75,7 +75,7 @@ export function BatchSwitcher({
           <DropdownMenuItem
             key={row.id}
             className="flex items-center gap-2"
-            onSelect={() => navigate('assessment/batch-phases', { params: { batchId: row.id } })}
+            onSelect={() => navigate('assessment/batch', { params: { batchId: row.id } })}
           >
             <span className="min-w-0 flex-1 truncate">{row.name}</span>
             <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />

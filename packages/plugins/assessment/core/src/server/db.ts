@@ -65,13 +65,14 @@ export interface BatchRow {
   timezone: string
   status: string
   configRevision: number
-  anchorAutoSync: boolean
   currentPhaseId: string | null
   /** what that phase is called, so a list can say where a batch has got to */
   currentPhaseName: string | null
   /** people currently on the roster; zero until the batch is activated */
   participantCount: number
   createdAt: number
+  /** whether the reader this row was selected for may administer it */
+  manageable: boolean
 }
 
 /** the batch's scope as the row carries it on the wire-facing reads */
@@ -92,7 +93,6 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
       'timezone',
       'status',
       'configRevision',
-      'anchorAutoSync',
       'currentPhaseId',
     ])
     .select([
@@ -119,12 +119,20 @@ const toBatchRow = (row: Record<string, unknown>): BatchRow =>
     ...row,
     createdAt: msOf(row.createdAt),
     participantCount: Number(row.participantCount ?? 0),
+    manageable: row.manageable === true,
   }) as BatchRow
 
-export const oneBatch = (tenantId: string, batchId: string) =>
+export const oneBatch = (
+  tenantId: string,
+  batchId: string,
+  viewer?: { held: AuthorizationScope },
+) =>
   db
     .query((k) =>
-      batchSelection(k)
+      (viewer === undefined
+        ? batchSelection(k).select(sql<boolean>`false`.as('manageable'))
+        : batchSelection(k).select(withinReach(viewer.held).as('manageable'))
+      )
         .where('tenantId', '=', tenantId)
         .where('id', '=', batchId)
         .executeTakeFirst(),
@@ -155,6 +163,56 @@ const withinReach = (held: AuthorizationScope) =>
       })}
   )`
 
+/**
+ * A batch somebody takes part in, whether or not they administer anything.
+ *
+ * Being on the roster or having been accepted as staff is what makes a batch
+ * theirs to see. Drafts are excluded: a round that has not started is a plan
+ * its administrators are still writing, and the people in it have not been
+ * told about it yet.
+ */
+const takesPart = (userId: string) =>
+  sql<boolean>`(
+    assessment_batches.status <> 'draft'
+    and (
+      exists (
+        select 1 from batch_participants bp
+        where bp.tenant_id = assessment_batches.tenant_id
+          and bp.batch_id = assessment_batches.id
+          and bp.user_id = ${userId}::uuid
+          and bp.status = 'active'
+      )
+      or exists (
+        select 1 from batch_access_sources bas
+        where bas.tenant_id = assessment_batches.tenant_id
+          and bas.batch_id = assessment_batches.id
+          and bas.subject_id = ${userId}::uuid
+      )
+    )
+  )`
+
+/** what one person may see of the batches: what they administer, or what they are in */
+export const visibleTo = (viewer: { held: AuthorizationScope; userId: string }) =>
+  sql<boolean>`(${withinReach(viewer.held)} or ${takesPart(viewer.userId)})`
+
+/** whether one batch is one this person may read at all */
+export const batchVisibleTo = (
+  tenantId: string,
+  batchId: string,
+  viewer: { held: AuthorizationScope; userId: string },
+) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentBatch')
+        .select(sql<boolean>`true`.as('visible'))
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', batchId)
+        .where(visibleTo(viewer))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
 /** the filters the list and its count share, beyond the keyset window */
 const batchFilters = <Q extends { where: (...args: never[]) => Q }>(
   query: Q,
@@ -175,7 +233,7 @@ const batchFilters = <Q extends { where: (...args: never[]) => Q }>(
 /** how many batches match, for a list a person navigates by page number */
 export const countBatches = (
   tenantId: string,
-  held: AuthorizationScope,
+  viewer: { held: AuthorizationScope; userId: string },
   filter: { status?: string; q?: string },
 ) =>
   db
@@ -185,7 +243,7 @@ export const countBatches = (
           .selectFrom('AssessmentBatch')
           .select(({ fn }) => fn.countAll<string>().as('total'))
           .where('tenantId', '=', tenantId)
-          .where(withinReach(held)),
+          .where(visibleTo(viewer)),
         filter,
       ).executeTakeFirstOrThrow(),
     )
@@ -193,7 +251,7 @@ export const countBatches = (
 
 export const listBatchesPage = (
   tenantId: string,
-  held: AuthorizationScope,
+  viewer: { held: AuthorizationScope; userId: string },
   filter: {
     status?: string
     q?: string
@@ -204,7 +262,10 @@ export const listBatchesPage = (
   db
     .query((k) => {
       let query = batchFilters(
-        batchSelection(k).where('tenantId', '=', tenantId).where(withinReach(held)),
+        batchSelection(k)
+          .select(withinReach(viewer.held).as('manageable'))
+          .where('tenantId', '=', tenantId)
+          .where(visibleTo(viewer)),
         filter,
       )
       if (filter.after !== undefined) {
@@ -224,7 +285,6 @@ export const insertBatch = (input: {
   materialStart: string
   materialEnd: string
   timezone?: string
-  anchorAutoSync?: boolean
 }) =>
   db.query((k) =>
     k
@@ -235,7 +295,6 @@ export const insertBatch = (input: {
         descriptionMd: input.descriptionMd,
         materialRange: sql`daterange(${input.materialStart}::date, ${input.materialEnd}::date)`,
         ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
-        ...(input.anchorAutoSync !== undefined ? { anchorAutoSync: input.anchorAutoSync } : {}),
       } as never)
       .returning('id')
       .executeTakeFirstOrThrow(),
@@ -307,7 +366,6 @@ export const updateBatchFields = (
     materialStart?: string
     materialEnd?: string
     timezone?: string
-    anchorAutoSync?: boolean
     status?: string
   },
 ) =>
@@ -323,7 +381,6 @@ export const updateBatchFields = (
             }
           : {}),
         ...(fields.timezone !== undefined ? { timezone: fields.timezone } : {}),
-        ...(fields.anchorAutoSync !== undefined ? { anchorAutoSync: fields.anchorAutoSync } : {}),
         ...(fields.status !== undefined ? { status: fields.status } : {}),
         updatedAt: sql`now()`,
       } as never)
@@ -1642,13 +1699,28 @@ export const roleHoldersAt = (tenantId: string, nodeIds: readonly string[]) =>
 // else, so the options a batch form needs are read with that permission or
 // they are not readable at all.
 
+/**
+ * The units a caller may put a batch in front of, as a tree they can walk.
+ *
+ * The parent is named rather than the materialized path. The path is the
+ * database's own addressing scheme for making subtree queries fast; handing
+ * it to a browser publishes the shape and naming of an organization to
+ * whoever can see a single leaf of it, and the picker needs no more than
+ * which node hangs under which.
+ */
 export const scopeOptions = (tenantId: string, held: AuthorizationScope, limit: number) =>
   db
     .query((k) =>
       k
         .selectFrom('OrgNode')
         .select(['id', 'name', 'depth', 'orgTypeId'])
-        .select([sql<string>`org_nodes.path::text`.as('path')])
+        .select([
+          sql<string | null>`(
+            select parent.id::text from org_nodes parent
+            where parent.tenant_id = org_nodes.tenant_id
+              and parent.path = subpath(org_nodes.path, 0, nlevel(org_nodes.path) - 1)
+          )`.as('parentId'),
+        ])
         .where('tenantId', '=', tenantId)
         .where((eb) =>
           scopeCoverage(held, {
@@ -1664,7 +1736,13 @@ export const scopeOptions = (tenantId: string, held: AuthorizationScope, limit: 
     .pipe(
       Effect.map(
         (found) =>
-          found as { id: string; name: string; path: string; depth: number; orgTypeId: string }[],
+          found as {
+            id: string
+            name: string
+            parentId: string | null
+            depth: number
+            orgTypeId: string
+          }[],
       ),
     )
 

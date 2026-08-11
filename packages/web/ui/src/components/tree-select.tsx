@@ -17,7 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsib
 // ticking a node covers its whole subtree, and unticking one child of a
 // covered subtree splits the cover into the siblings around it (see
 // tree-selection.ts, which owns and tests that arithmetic). The tree arrives
-// flat with materialized paths; all words arrive as props.
+// flat, each node naming its parent; all words arrive as props.
 
 export type TreeSelectNode = TreeSelectionNode
 

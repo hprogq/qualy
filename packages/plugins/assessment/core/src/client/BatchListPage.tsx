@@ -84,7 +84,7 @@ export default function BatchListPage() {
     setCursors((current) => [...current.slice(0, pageIndex + 1), nextCursor])
   }, [nextCursor, pageIndex, cursors])
 
-  const open = (batchId: string) => navigate('assessment/batch-phases', { params: { batchId } })
+  const open = (batchId: string) => navigate('assessment/batch', { params: { batchId } })
 
   const rows = batches.data?.items ?? []
   const total = batches.data?.total ?? 0
@@ -224,7 +224,7 @@ export default function BatchListPage() {
                             >
                               <div className="min-w-0">
                                 <PageLink
-                                  page="assessment/batch-phases"
+                                  page="assessment/batch"
                                   params={{ batchId: row.id }}
                                   className="truncate text-sm font-medium before:absolute before:inset-0 before:content-['']"
                                 >

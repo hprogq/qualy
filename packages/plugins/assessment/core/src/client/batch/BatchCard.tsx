@@ -26,7 +26,6 @@ export interface BatchCardRow {
   status: 'draft' | 'active' | 'archived'
   currentPhaseId: string | null
   currentPhaseName: string | null
-  scopeNodeIds: readonly string[]
   participantCount: number
   materialRange: { start: string; end: string }
   timeline: readonly TimelineLike[]
@@ -97,7 +96,7 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
             also reachable by keyboard and readable out of context */}
         <h3 className="min-w-0 text-base leading-snug font-semibold">
           <PageLink
-            page="assessment/batch-phases"
+            page="assessment/batch"
             params={{ batchId: row.id }}
             className="before:absolute before:inset-0 before:content-['']"
           >
@@ -114,12 +113,7 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
             until: row.materialRange.end,
           })}
         </Fact>
-        <Fact icon={<UsersIcon />}>
-          {/* a draft has no roster yet, so it says what it will be drawn from */}
-          {row.status === 'draft'
-            ? format(m.coversUnits, { count: row.scopeNodeIds.length })
-            : format(m.enrolled, { count: row.participantCount })}
-        </Fact>
+        <Fact icon={<UsersIcon />}>{format(m.enrolled, { count: row.participantCount })}</Fact>
         {row.timeline.length > 0 && (
           <Fact icon={<LayersIcon />}>
             {at === -1

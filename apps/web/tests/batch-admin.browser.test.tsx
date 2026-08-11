@@ -13,6 +13,7 @@ const BatchListPage = (await components['assessment/BatchListPage']!()).default
 const BatchPhasesPage = (await components['assessment/BatchPhasesPage']!()).default
 const BatchParticipantsPage = (await components['assessment/BatchParticipantsPage']!()).default
 const BatchAccessPage = (await components['assessment/BatchAccessPage']!()).default
+const BatchOverviewPage = (await components['assessment/BatchOverviewPage']!()).default
 // the bar the workspace shell puts above its rail: which batch is open, where
 // it stands, and what can be done to it. Mounted here the way the shell
 // mounts it, because half of what these cases drive lives in it.
@@ -53,13 +54,12 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
   id: BATCH_ID,
   name: '2026 春季综测',
   descriptionMd: null,
-  scopeNodeIds: [NODE_ID],
+  manageable: true,
   participantCount: 12,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
   status: 'draft',
   configRevision: 0,
-  anchorAutoSync: false,
   currentPhaseId: null,
   currentPhaseName: null,
   userTypeIds: [],
@@ -183,6 +183,7 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
 // through this, the same way it does in the running application
 const PAGES = [
   { id: 'assessment/batches', path: '/assessment/batches' },
+  { id: 'assessment/batch', path: '/assessment/batches/:batchId' },
   { id: 'assessment/batch-phases', path: '/assessment/batches/:batchId/phases' },
   { id: 'assessment/batch-participants', path: '/assessment/batches/:batchId/participants' },
   { id: 'assessment/batch-access', path: '/assessment/batches/:batchId/access' },
@@ -204,6 +205,7 @@ const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phase
     }),
     routes: [
       { path: '/assessment/batches', element: <BatchListPage /> },
+      { path: '/assessment/batches/:batchId', element: workspace(<BatchOverviewPage />) },
       { path: '/assessment/batches/:batchId/phases', element: workspace(<BatchPhasesPage />) },
       {
         path: '/assessment/batches/:batchId/participants',
@@ -583,8 +585,6 @@ describe('the participants tab', () => {
                   participantId: PARTICIPANT_ID,
                   userId: USER_ID,
                   displayName: '换班生',
-                  from: { nodeId: NODE_ID, path: 'r.se.c1' },
-                  to: { nodeId: NODE_ID, path: 'r.se.c2' },
                 },
               ],
             },

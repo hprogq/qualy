@@ -7,6 +7,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { message } from '@qualy/i18n-contract'
 import {
   APP_SHELL,
+  AUTHENTICATED,
   PUBLIC,
   WORKSPACE_SHELL,
   navigationGroups,
@@ -80,7 +81,9 @@ const plugin = Plugin.define(
     path: '/assessment/batches',
     component: Ui.react('./client/BatchListPage.tsx'),
     layout: APP_SHELL,
-    visibility: permissionOf('assessment.batch.manage'),
+    // the list answers "which rounds are mine", which everybody has an answer
+    // to; what it contains is decided per reader, not per permission
+    visibility: AUTHENTICATED,
     navigation: {
       label: message('assessment/navigation/batches', 'Assessment rounds'),
       order: 10,
@@ -90,12 +93,14 @@ const plugin = Plugin.define(
   // One batch, and its sections. The address names the batch and which of its
   // sections is open, so a reload and a shared link both land where the
   // reader was; the batch on its own sends them to the first section.
+  // Where a batch opens. Whoever takes part in one may read it; everything
+  // that configures it is a section of its own behind the permission.
   Ui.page({
     id: 'assessment/batch',
     path: '/assessment/batches/:batchId',
-    component: Ui.react('./client/BatchPage.tsx'),
+    component: Ui.react('./client/BatchOverviewPage.tsx'),
     layout: WORKSPACE_SHELL,
-    visibility: permissionOf('assessment.batch.manage'),
+    visibility: AUTHENTICATED,
   }),
   Ui.page({
     id: 'assessment/batch-phases',
@@ -123,6 +128,18 @@ const plugin = Plugin.define(
   // knows nothing about batches, and this plugin names no shell of its own.
   Ui.surfaces({
     collections: [
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-overview/rail',
+        value: {
+          id: 'assessment/batch-overview/rail',
+          label: message('assessment/navigation/overview', 'Overview'),
+          target: { kind: 'page', pageId: 'assessment/batch' },
+          order: 0,
+          group: 'assessment/batch-admin',
+        },
+        visibility: AUTHENTICATED,
+      },
       {
         key: workspaceNavigation.key,
         id: 'assessment/batch-phases/rail',
@@ -165,7 +182,7 @@ const plugin = Plugin.define(
         key: workspaceContext.key,
         id: 'assessment/batch-context',
         component: Ui.react('./client/batch/BatchContextBar.tsx'),
-        visibility: permissionOf('assessment.batch.manage'),
+        visibility: AUTHENTICATED,
       },
     ],
   }),

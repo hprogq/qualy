@@ -78,6 +78,7 @@ import {
   insertPhaseEvent,
   insertTemplate,
   listBatchUserTypes,
+  batchVisibleTo,
   countBatches,
   listBatchesPage,
   listParticipantsPage,
@@ -138,7 +139,7 @@ export interface BatchDetail {
   readonly timezone: string
   readonly status: 'draft' | 'active' | 'archived'
   readonly configRevision: number
-  readonly anchorAutoSync: boolean
+  readonly manageable: boolean
   readonly currentPhaseId: string | null
   readonly currentPhaseName: string | null
   readonly userTypeIds: readonly string[]
@@ -179,7 +180,6 @@ export interface CreateBatchInput {
   readonly materialRange: MaterialRange
   readonly timezone?: string
   readonly userTypeIds: readonly string[]
-  readonly anchorAutoSync?: boolean
 }
 
 export interface UpdateBatchInput {
@@ -189,7 +189,6 @@ export interface UpdateBatchInput {
   readonly materialRange?: MaterialRange
   readonly timezone?: string
   readonly userTypeIds?: readonly string[]
-  readonly anchorAutoSync?: boolean
   readonly reason?: string
 }
 
@@ -379,8 +378,6 @@ export interface RosterDiff {
     participantId: string
     userId: string
     displayName: string
-    from: { nodeId: string; path: string }
-    to: { nodeId: string; path: string }
   }[]
   readonly userTypeChanged: readonly {
     participantId: string
@@ -462,6 +459,12 @@ export class Assessment extends Context.Service<
       batchId: string,
       as: Principal,
     ) => Effect.Effect<BatchDetail, BatchNotFound | AccessDenied>
+    /** refuses a batch this person neither administers nor takes part in */
+    readonly assertVisible: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<void, AccessDenied>
     readonly updateBatch: (
       tenantId: string,
       batchId: string,
@@ -659,7 +662,13 @@ export class Assessment extends Context.Service<
       tenantId: string,
       as: Principal,
     ) => Effect.Effect<
-      readonly { id: string; name: string; path: string; depth: number; orgTypeId: string }[],
+      readonly {
+        id: string
+        name: string
+        parentId: string | null
+        depth: number
+        orgTypeId: string
+      }[],
       AccessDenied
     >
     readonly userTypeOptions: (
@@ -706,7 +715,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       timezone: batch.timezone,
       status: batch.status as BatchDetail['status'],
       configRevision: batch.configRevision,
-      anchorAutoSync: batch.anchorAutoSync,
+      manageable: batch.manageable,
       currentPhaseId: batch.currentPhaseId,
       currentPhaseName: batch.currentPhaseName,
       userTypeIds,
@@ -1071,6 +1080,30 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * nobody, so it anchors no requirement; if none survive, the fallback is
    * holding the permission at all rather than opening the batch wide.
    */
+  /**
+   * What this person may see of the batches: everything they administer, plus
+   * everything they are actually in.
+   *
+   * Taking part is not a permission - a student holds none of these codes and
+   * still has a round of their own to look at - so it is answered by the
+   * roster and the accepted staff rather than by the authorization scope.
+   */
+  const viewerOf = (as: Principal) =>
+    Effect.map(rbac.listAuthorizedScope(as, MANAGE), (held) => ({ held, userId: as.userId }))
+
+  /**
+   * Reading one batch, for whoever it is: its administrators, and the people
+   * in it. Anything beyond reading still asks for the permission.
+   */
+  const requireBatchVisible = Effect.fn('Assessment.requireBatchVisible')(function* (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+  ) {
+    const visible = yield* dieQuery(withDb(batchVisibleTo(tenantId, batchId, yield* viewerOf(as))))
+    if (!visible) return yield* new AccessDenied({ reason: 'cannot see this batch' })
+  })
+
   const requireScopeReach = (as: Principal, nodes: readonly { id: string }[]) =>
     Effect.gen(function* () {
       if (nodes.length === 0) {
@@ -1345,9 +1378,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
               materialStart: input.materialRange.start,
               materialEnd: input.materialRange.end,
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
-              ...(input.anchorAutoSync !== undefined
-                ? { anchorAutoSync: input.anchorAutoSync }
-                : {}),
             })
             yield* replaceBatchScopeNodes(
               tenantId,
@@ -1386,8 +1416,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
     }),
 
     listBatches: Effect.fn('Assessment.listBatches')(function* (tenantId, filter, as) {
-      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-      const rows = yield* dieQuery(withDb(listBatchesPage(tenantId, held, filter)))
+      const viewer = yield* viewerOf(as)
+      const rows = yield* dieQuery(withDb(listBatchesPage(tenantId, viewer, filter)))
       // where each batch has got to, derived the same way the batch's own
       // timeline is: a list that says "in progress" and stops there is a list
       // nobody can read without opening every row
@@ -1411,14 +1441,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
     }),
 
     countBatches: Effect.fn('Assessment.countBatches')(function* (tenantId, filter, as) {
-      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-      return yield* dieQuery(withDb(countBatches(tenantId, held, filter)))
+      return yield* dieQuery(withDb(countBatches(tenantId, yield* viewerOf(as), filter)))
     }),
+
+    assertVisible: requireBatchVisible,
 
     getBatch: Effect.fn('Assessment.getBatch')(function* (tenantId, batchId, as) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
-      yield* requireScopeReach(as, yield* dieQuery(withDb(scopeNodeRows(tenantId, batchId))))
+      yield* requireBatchVisible(tenantId, batchId, as)
       return yield* dieQuery(withDb(readDetail(tenantId, batch)))
     }),
 
@@ -1443,12 +1474,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }
             if (input.timezone !== undefined && input.timezone !== before.timezone) {
               diff.timezone = [before.timezone, input.timezone]
-            }
-            if (
-              input.anchorAutoSync !== undefined &&
-              input.anchorAutoSync !== before.anchorAutoSync
-            ) {
-              diff.anchorAutoSync = [before.anchorAutoSync, input.anchorAutoSync]
             }
             if (input.materialRange !== undefined) {
               const current = parseRange(before.materialRange)
@@ -1491,9 +1516,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   }
                 : {}),
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
-              ...(input.anchorAutoSync !== undefined
-                ? { anchorAutoSync: input.anchorAutoSync }
-                : {}),
             })
             if (scopeMove !== undefined) {
               yield* replaceBatchScopeNodes(tenantId, batchId, scopeMove)
@@ -2430,8 +2452,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
             participantId: row.participantId,
             userId: row.userId,
             displayName: row.displayName,
-            from: { nodeId: row.frozenNodeId, path: row.frozenPath },
-            to: { nodeId: row.liveNodeId, path: row.livePath },
           })),
         userTypeChanged: drifted
           .filter((row) => row.inScope && row.liveUserTypeId !== row.frozenUserTypeId)
@@ -2562,12 +2582,11 @@ const toBatchDto = (detail: BatchDetail) => ({
   id: detail.id,
   name: detail.name,
   descriptionMd: detail.descriptionMd,
-  scopeNodeIds: detail.scopeNodeIds,
   materialRange: detail.materialRange,
   timezone: detail.timezone,
   status: detail.status,
   configRevision: detail.configRevision,
-  anchorAutoSync: detail.anchorAutoSync,
+  manageable: detail.manageable,
   currentPhaseId: detail.currentPhaseId,
   currentPhaseName: detail.currentPhaseName,
   userTypeIds: detail.userTypeIds,
@@ -2695,13 +2714,12 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             id: row.id,
             name: row.name,
             descriptionMd: row.descriptionMd,
-            scopeNodeIds: row.scopeNodeIds,
             participantCount: row.participantCount,
             materialRange: parseRange(row.materialRange),
             timezone: row.timezone,
             status: row.status as 'draft' | 'active' | 'archived',
             configRevision: row.configRevision,
-            anchorAutoSync: row.anchorAutoSync,
+            manageable: row.manageable,
             currentPhaseId: row.currentPhaseId,
             currentPhaseName: row.currentPhaseName,
             timeline: row.timeline.map((entry) => ({
@@ -2966,6 +2984,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.getTimeline.handler')(function* ({ params }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
+        // the plan of a batch is readable by whoever the batch is readable
+        // by, which is not the same as whoever knows an id
+        yield* assessment.assertVisible(principal.tenantId, params.batchId, principal)
         const timeline = yield* assessment.timeline(principal.tenantId, params.batchId)
         return {
           timeline: timeline.map((entry) => ({

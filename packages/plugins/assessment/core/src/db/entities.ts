@@ -57,7 +57,6 @@ export const AssessmentBatch = defineEntity({
     // the low-risk sugar switch (§9): a participant who has not submitted
     // anything yet may have an anchor change synced without the diff panel.
     // A config slot only until entries exist to define "first submission".
-    anchorAutoSync: p.boolean().default(false),
     // projection of the phase queue, never authoritative
     currentPhaseId: p.uuid().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),

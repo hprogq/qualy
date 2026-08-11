@@ -345,6 +345,15 @@ const i18n = definePluginMessages({
     endedOn: { id: 'assessment/batch/ended-on', defaultMessage: 'Finished {date}' },
     tabPhases: { id: 'assessment/phase/tab', defaultMessage: 'Stages' },
     tabRoster: { id: 'assessment/roster/tab', defaultMessage: 'Participants' },
+    tabOverview: { id: 'assessment/overview/tab', defaultMessage: 'Overview' },
+    overviewHint: {
+      id: 'assessment/overview/hint',
+      defaultMessage: 'Where this batch stands, and what you can do in it right now.',
+    },
+    overviewPlaceholder: {
+      id: 'assessment/overview/placeholder',
+      defaultMessage: 'Nothing here yet.',
+    },
     tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Who may work on it' },
     phasesHint: {
       id: 'assessment/phase/hint',
