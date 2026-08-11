@@ -10,7 +10,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
@@ -31,6 +31,9 @@ import { OrgTree } from './OrgTree.tsx'
 // screen has no idea a wider organization exists.
 
 const PAGE = 25
+
+// a select cannot hold the empty string as a value, so "any" needs a word
+const ANY = 'any'
 
 export default function PeoplePicker({ context }: { context: PeoplePickerContext }) {
   const query = useApiQuery(authApi)
@@ -98,7 +101,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
     <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
       <div className="min-w-0 space-y-2">
         <p className="text-sm font-medium">{format(m.pickerUnits)}</p>
-        <div className="max-h-80 overflow-auto rounded-md border p-1">
+        <div className="h-[42vh] min-h-64 overflow-auto rounded-md border p-1">
           <OrgTree
             nodes={nodes.map((row) => ({
               id: row.orgNodeId,
@@ -124,19 +127,22 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
             placeholder={format(m.pickerSearch)}
             className="h-8 min-w-40 flex-1"
           />
-          <NativeSelect
-            value={userTypeId}
-            onChange={(event) => setUserTypeId(event.target.value)}
-            className="h-8 w-auto"
-            aria-label={format(m.personUserType)}
+          <Select
+            value={userTypeId === '' ? ANY : userTypeId}
+            onValueChange={(next) => setUserTypeId(next === ANY ? '' : next)}
           >
-            <option value="">{format(m.pickerAnyType)}</option>
-            {(options.data?.userTypes ?? []).map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
-          </NativeSelect>
+            <SelectTrigger size="sm" className="w-auto" aria-label={format(m.personUserType)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>{format(m.pickerAnyType)}</SelectItem>
+              {(options.data?.userTypes ?? []).map((type) => (
+                <SelectItem key={type.id} value={type.id}>
+                  {type.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <ToggleGroup
             type="single"
             value={scope}
@@ -155,17 +161,14 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void people.refetch()}
-          skeleton={
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          }
+          skeleton={<Skeleton className="h-[34vh] min-h-56 w-full" />}
         >
           {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{format(m.pickerNobody)}</p>
+            <p className="flex h-[34vh] min-h-56 items-center justify-center rounded-md border text-sm text-muted-foreground">
+              {format(m.pickerNobody)}
+            </p>
           ) : (
-            <ul className="max-h-64 divide-y overflow-auto rounded-md border">
+            <ul className="h-[34vh] min-h-56 divide-y overflow-auto rounded-md border">
               {rows.map((row) => (
                 <li key={row.id} className="flex items-center gap-3 px-3 py-2">
                   <Checkbox

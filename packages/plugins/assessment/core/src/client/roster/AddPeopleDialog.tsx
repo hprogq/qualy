@@ -45,7 +45,7 @@ export function AddPeopleDialog({
           <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
           <DialogDescription>{format(m.addPeopleHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody>
+        <DialogBody className="min-h-[58vh]">
           <UiSlot
             token={peoplePicker}
             context={{ value: chosen, onChange: setChosen }}

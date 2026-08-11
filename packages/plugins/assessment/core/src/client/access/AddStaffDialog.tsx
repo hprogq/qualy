@@ -98,7 +98,7 @@ export function AddStaffDialog({
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="space-y-5">
+        <DialogBody className="min-h-[58vh] space-y-5">
           <Steps
             steps={STEPS.map((label) => format(label))}
             current={step}

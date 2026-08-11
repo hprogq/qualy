@@ -117,7 +117,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
         )}
       </div>
 
-      <div className="h-64 overflow-auto rounded-md border p-1">
+      <div className="h-[42vh] min-h-64 overflow-auto rounded-md border p-1">
         {loading ? (
           // a fixed height and a skeleton, because the alternative is an
           // empty box that grows to a tree and shoves the dialog around
@@ -125,6 +125,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
             <Skeleton className="h-6 w-2/3" />
             <Skeleton className="h-6 w-1/2" />
             <Skeleton className="h-6 w-3/5" />
+            <Skeleton className="h-6 w-2/5" />
           </div>
         ) : filtering ? (
           matches.length === 0 ? (

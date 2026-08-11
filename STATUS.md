@@ -3274,3 +3274,12 @@ destructive: approved)先删 `role_permissions` 的引用行再删 `permissions`
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **453/72 全绿**;`pnpm test:browser` 39 全绿;
 `pnpm build` 通过;`prettier --check .` 干净。
+
+### 选人类对话框定高(2026-08-12)
+
+三个装着选择器的对话框(从组织导入、添加人员、添加工作人员)的 body 给了 `min-h-[58vh]`,里面的组织树与
+人员列表改成 `h-[42vh] / h-[34vh]` 配一个 `min-h`。这不只是"高一点好看":原来盒子的高度跟着内容走,
+树到达、搜索无结果、翻页各会改一次高度,对话框就跟着上下跳。空态与骨架也一并占满同样的高度,
+所以"没有匹配的人员"不会把对话框压扁。选人器的人员类型筛选顺手也换成了 shadcn `Select`。
+
+**门禁(实际执行)**:`pnpm test` 453/72 全绿;`pnpm test:browser` 39 全绿;`prettier --check .` 干净。
