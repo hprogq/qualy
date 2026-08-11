@@ -120,6 +120,32 @@ const sinceSeconds = defineMessage<{ count: number }>()({
   defaultMessage: 'running for {count}s',
 })
 
+/** how far along the plan is, when the stage names have no room */
+const stagePosition = defineMessage<{ current: number; total: number }>()({
+  id: 'assessment/batch/stage-position',
+  defaultMessage: 'Stage {current} of {total}',
+})
+
+const stageCount = defineMessage<{ total: number }>()({
+  id: 'assessment/batch/stage-count',
+  defaultMessage: '{total, plural, one {# stage} other {# stages}}',
+})
+
+const materialWindow = defineMessage<{ from: string; until: string }>()({
+  id: 'assessment/batch/material-window',
+  defaultMessage: 'Materials {from} to {until}',
+})
+
+const coversUnits = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/covers-units',
+  defaultMessage: '{count, plural, one {# unit} other {# units}}',
+})
+
+const enrolled = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/enrolled',
+  defaultMessage: '{count, plural, one {# participant} other {# participants}}',
+})
+
 const includedAt = defineMessage<{ time: string }>()({
   id: 'assessment/roster/included-at',
   defaultMessage: 'On the list since {time}',
@@ -160,6 +186,11 @@ const i18n = definePluginMessages({
     nextPage: { id: 'assessment/action/next-page', defaultMessage: 'Next' },
     pageOfTotal,
     totalCount,
+    stagePosition,
+    stageCount,
+    materialWindow,
+    coversUnits,
+    enrolled,
     leftDays,
     leftHours,
     leftMinutes,
@@ -282,6 +313,11 @@ const i18n = definePluginMessages({
     currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
     endsUnknown: { id: 'assessment/batch/ends-unknown', defaultMessage: 'No end time set' },
     enterBatch: { id: 'assessment/batch/enter', defaultMessage: 'Open' },
+    configureBatch: { id: 'assessment/batch/configure', defaultMessage: 'Keep setting up' },
+    draftHint: {
+      id: 'assessment/batch/draft-hint',
+      defaultMessage: 'Arrange the stages, then schedule the first one to start it.',
+    },
     groupRunning: { id: 'assessment/batch/group-running', defaultMessage: 'Under way' },
     groupPending: { id: 'assessment/batch/group-pending', defaultMessage: 'Starting soon' },
     groupDraft: { id: 'assessment/batch/group-draft', defaultMessage: 'Drafts' },

@@ -103,7 +103,7 @@ export default function BatchListPage() {
 
   return (
     <Reveal>
-      <PageContainer size="wide" className="flex flex-col gap-5">
+      <PageContainer className="flex flex-col gap-5">
         {/* the application's own landing page, so it introduces itself once
             rather than repeating a banner on every screen below it */}
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -240,7 +240,7 @@ export default function BatchListPage() {
                           ))}
                         </ul>
                       ) : (
-                        <ul className="flex flex-col gap-3">
+                        <ul className="grid items-stretch gap-3 sm:grid-cols-2">
                           {group.rows.map((row) => (
                             <BatchCard key={row.id} row={row} />
                           ))}
