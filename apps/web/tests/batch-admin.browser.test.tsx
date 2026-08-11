@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { lazy, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -14,6 +14,8 @@ const BatchPhasesPage = (await components['assessment/BatchPhasesPage']!()).defa
 const BatchParticipantsPage = (await components['assessment/BatchParticipantsPage']!()).default
 const BatchAccessPage = (await components['assessment/BatchAccessPage']!()).default
 const BatchOverviewPage = (await components['assessment/BatchOverviewPage']!()).default
+// the picker iam contributes, held the way the registry holds one
+const PeopleImportPicker = lazy(components['auth/PeopleImportPicker']!)
 // the bar the workspace shell puts above its rail: which batch is open, where
 // it stands, and what can be done to it. Mounted here the way the shell
 // mounts it, because half of what these cases drive lives in it.
@@ -545,19 +547,60 @@ describe('the participants tab', () => {
 
   it('imports from the organization only after saying how many that is', async () => {
     const importParticipants = vi.fn((_request: Request) => Effect.succeed({ added: 3 }))
-    screen(
-      {
-        getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
-        previewImport: () => Effect.succeed({ candidates: 3 }),
-        importParticipants,
-      },
-      `/assessment/batches/${BATCH_ID}/participants`,
-    )
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              // the picker belongs to iam and arrives through the surface it
+              // contributes to, exactly as it does in the running application
+              slots: {
+                'iam/people-import-picker': [
+                  { id: 'auth/people-import-picker', component: 'auth/PeopleImportPicker' },
+                ],
+              },
+            }),
+        },
+        identity: {
+          getUserOptions: () =>
+            Effect.succeed({
+              truncated: false,
+              nodes: [
+                {
+                  orgNodeId: NODE_ID,
+                  name: '软件学院',
+                  parentId: null,
+                  depth: 1,
+                  orgTypeId: NODE_ID,
+                  manageable: true,
+                },
+              ],
+              userTypes: [{ id: USER_ID, code: 'student', name: '学生', placementPolicy: null }],
+            }),
+        },
+        assessment: assessmentStubs({
+          getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+          previewImport: () => Effect.succeed({ candidates: 3 }),
+          importParticipants,
+        }),
+      }),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/participants',
+          element: workspace(<BatchParticipantsPage />),
+        },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/participants`,
+      registry: { 'auth/PeopleImportPicker': PeopleImportPicker },
+    })
 
     await page.getByRole('button', { name: '从组织导入' }).click()
     // nothing can be imported until something is chosen
     await expect.element(page.getByText('请选择组织单位与人员类型。')).toBeVisible()
-    await page.getByRole('checkbox', { name: '软件学院' }).click()
+    await expect.element(page.getByText('从这些单位取人')).toBeVisible()
+    await page.getByRole('button', { name: '软件学院' }).click()
     await page.getByRole('checkbox', { name: '学生' }).click()
 
     // and the number is said before the button will do anything

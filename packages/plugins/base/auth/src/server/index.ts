@@ -240,13 +240,16 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         const scope = query.scope ?? 'subtree'
         // the cursor belongs to this anchor, scope and search and no other
-        const fingerprint = `users:${query.orgNodeId}:${scope}:${query.search ?? ''}`
+        // every filter is in the fingerprint: a cursor from one question
+        // applied to another silently skips or repeats people
+        const fingerprint = `users:${query.orgNodeId}:${scope}:${query.search ?? ''}:${query.userTypeId ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* iam.users.list(principal, {
           orgNodeId: query.orgNodeId,
           scope,
           search: query.search,
+          userTypeId: query.userTypeId,
           after: key,
           limit: limit + 1,
         })

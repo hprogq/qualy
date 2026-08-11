@@ -36,6 +36,21 @@ const grantIncompatibleMessage = defineMessage<{ grantCount: number }>()({
     '{grantCount, plural, one {# role grant does} other {# role grants do}} not allow this change.',
 })
 
+const pickerChosen = defineMessage<{ count: number }>()({
+  id: 'auth/picker/chosen',
+  defaultMessage: '{count, plural, =0 {Nobody chosen} other {# chosen}}',
+})
+
+const pickerChosenElsewhere = defineMessage<{ count: number }>()({
+  id: 'auth/picker/chosen-elsewhere',
+  defaultMessage: '{count} on other pages',
+})
+
+const pickerRemove = defineMessage<{ name: string }>()({
+  id: 'auth/picker/remove',
+  defaultMessage: 'Remove {name}',
+})
+
 const personRoleSubtree = defineMessage<{ node: string }>()({
   id: 'auth/person/role-subtree',
   defaultMessage: '{node} and everything under it',
@@ -66,6 +81,25 @@ const i18n = definePluginMessages({
     personRoleScoped: { id: 'auth/person/role-scoped', defaultMessage: 'One object only' },
     personRoleSubtree,
     personRoleHere,
+
+    // choosing people, and choosing a slice of the organization instead
+    pickerUnits: { id: 'auth/picker/units', defaultMessage: 'Organization' },
+    pickerNoUnits: { id: 'auth/picker/no-units', defaultMessage: 'No units you can browse.' },
+    pickerExpand: { id: 'auth/picker/expand', defaultMessage: 'Expand' },
+    pickerSearch: { id: 'auth/picker/search', defaultMessage: 'Name or ID' },
+    pickerAnyType: { id: 'auth/picker/any-type', defaultMessage: 'Any type' },
+    pickerScopeSelf: { id: 'auth/picker/scope-self', defaultMessage: 'This unit' },
+    pickerScopeSubtree: { id: 'auth/picker/scope-subtree', defaultMessage: 'And below' },
+    pickerNobody: { id: 'auth/picker/nobody', defaultMessage: 'Nobody here matches.' },
+    pickerAlreadyIn: { id: 'auth/picker/already-in', defaultMessage: 'Already added' },
+    pickerPrevious: { id: 'auth/picker/previous', defaultMessage: 'Previous' },
+    pickerNext: { id: 'auth/picker/next', defaultMessage: 'Next' },
+    importUnits: { id: 'auth/picker/import-units', defaultMessage: 'Units to take people from' },
+    importTypes: { id: 'auth/picker/import-types', defaultMessage: 'Kinds of person' },
+    importNoTypes: { id: 'auth/picker/import-no-types', defaultMessage: 'No types available.' },
+    pickerChosen,
+    pickerChosenElsewhere,
+    pickerRemove,
     methodsFailedTitle: {
       id: 'auth/login/methods-failed',
       defaultMessage: 'Could not load the sign-in methods',

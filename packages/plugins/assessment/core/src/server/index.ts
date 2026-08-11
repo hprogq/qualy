@@ -59,6 +59,7 @@ import {
   insertRosterImport,
   importCandidates,
   rosterImports,
+  reachableNodeNames,
   insertConfigEvent,
   insertPhase,
   insertLifecycleEvent,
@@ -631,8 +632,8 @@ export class Assessment extends Context.Service<
     ) => Effect.Effect<
       readonly {
         id: string
-        orgNodeIds: readonly string[]
-        userTypeIds: readonly string[]
+        units: readonly string[]
+        userTypes: readonly string[]
         importedCount: number
         actorId: string | null
         occurredAt: number
@@ -1391,7 +1392,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const admitted = yield* insertParticipants(
               tenantId,
               batchId,
-              yield* importCandidates(tenantId, batchId, nodeIds, userTypeIds),
+              yield* importCandidates(
+                tenantId,
+                batchId,
+                nodeIds,
+                userTypeIds,
+                yield* rbac.listAuthorizedScope(as, MANAGE),
+              ),
               as.userId,
             )
             yield* insertRosterImport({
@@ -2373,7 +2380,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
         yield* requireRosterReach(as, tenantId, batchId)
         for (const nodeId of selection.orgNodeIds) yield* rbac.requireAt(as, MANAGE, nodeId)
         const candidates = yield* dieQuery(
-          withDb(importCandidates(tenantId, batchId, selection.orgNodeIds, selection.userTypeIds)),
+          withDb(
+            importCandidates(
+              tenantId,
+              batchId,
+              selection.orgNodeIds,
+              selection.userTypeIds,
+              yield* rbac.listAuthorizedScope(as, MANAGE),
+            ),
+          ),
         )
         return { candidates: candidates.length }
       },
@@ -2395,7 +2410,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
               const added = yield* insertParticipants(
                 tenantId,
                 batchId,
-                yield* importCandidates(tenantId, batchId, nodeIds, userTypeIds),
+                yield* importCandidates(
+                  tenantId,
+                  batchId,
+                  nodeIds,
+                  userTypeIds,
+                  yield* rbac.listAuthorizedScope(as, MANAGE),
+                ),
                 as.userId,
               )
               yield* insertRosterImport({
@@ -2417,7 +2438,33 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
       yield* requireRosterReach(as, tenantId, batchId)
-      return yield* dieQuery(withDb(rosterImports(tenantId, batchId)))
+      const rows = yield* dieQuery(withDb(rosterImports(tenantId, batchId)))
+      // ids in, names out, and only the names this reader may see: the record
+      // says what somebody once asked for, not where else the tree goes
+      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+      const [nodes, types] = yield* Effect.all([
+        dieQuery(
+          withDb(
+            reachableNodeNames(tenantId, [...new Set(rows.flatMap((row) => row.orgNodeIds))], held),
+          ),
+        ),
+        dieQuery(withDb(userTypeOptionRows(tenantId))),
+      ])
+      const typeNames = new Map(types.map((type) => [type.id, type.name]))
+      return rows.map((row) => ({
+        id: row.id,
+        units: row.orgNodeIds.flatMap((nodeId) => {
+          const name = nodes.get(nodeId)
+          return name === undefined ? [] : [name]
+        }),
+        userTypes: row.userTypeIds.flatMap((typeId) => {
+          const name = typeNames.get(typeId)
+          return name === undefined ? [] : [name]
+        }),
+        importedCount: row.importedCount,
+        actorId: row.actorId,
+        occurredAt: row.occurredAt,
+      }))
     }),
 
     setParticipantStatus: Effect.fn('Assessment.setParticipantStatus')(

@@ -1038,6 +1038,7 @@ export const importCandidates = (
   batchId: string,
   nodeIds: readonly string[],
   userTypeIds: readonly string[],
+  held: AuthorizationScope,
 ) =>
   db
     .query((k) =>
@@ -1054,6 +1055,15 @@ export const importCandidates = (
                 and scope.id = any(${nodeIds as string[]}::uuid[])
                 and n.path <@ scope.path
            )
+           -- and inside the caller's own reach, not merely under a node they
+           -- may act at: authority at a college held with self coverage does
+           -- not reach the classes beneath it, and asking for the college
+           -- would otherwise have swept them all in
+           and ${scopeCoverage(held, {
+             id: sql.ref('n.id') as never,
+             tenantId: sql.ref('n.tenant_id') as never,
+             path: sql.ref('n.path') as never,
+           })}
            and not exists (
              select 1 from batch_participants bp
               where bp.tenant_id = u.tenant_id
@@ -1126,8 +1136,10 @@ export const insertRosterImport = (input: {
       .values({
         tenantId: input.tenantId,
         batchId: input.batchId,
-        orgNodeIds: JSON.stringify(input.orgNodeIds),
-        userTypeIds: JSON.stringify(input.userTypeIds),
+        // cast explicitly: without it the driver sends the text and postgres
+        // stores a json string rather than the json array it spells
+        orgNodeIds: sql`${JSON.stringify(input.orgNodeIds)}::jsonb`,
+        userTypeIds: sql`${JSON.stringify(input.userTypeIds)}::jsonb`,
         importedCount: input.importedCount,
         actorId: input.actorId,
       } as never)
@@ -1160,6 +1172,34 @@ export const rosterImports = (tenantId: string, batchId: string) =>
           }[],
       ),
     )
+
+/** the names of these units, leaving out the ones this reader cannot reach */
+export const reachableNodeNames = (
+  tenantId: string,
+  nodeIds: readonly string[],
+  held: AuthorizationScope,
+) =>
+  nodeIds.length === 0
+    ? Effect.succeed(new Map<string, string>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('OrgNode')
+            .select(['id', 'name'])
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', nodeIds as string[])
+            .where((eb) =>
+              scopeCoverage(held, {
+                id: eb.ref('OrgNode.id'),
+                tenantId: eb.ref('OrgNode.tenantId'),
+                path: eb.ref('OrgNode.path'),
+              }),
+            )
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) => new Map(rows.map((row) => [row.id as string, row.name as string]))),
+        )
 
 export const oneOrgNode = (tenantId: string, nodeId: string) =>
   db

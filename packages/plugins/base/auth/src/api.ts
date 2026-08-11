@@ -290,6 +290,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
           Schema.Struct({
             orgNodeId: Schema.String,
             name: Schema.String,
+            /** null for a root, or for a node whose parent is out of reach */
+            parentId: Schema.NullOr(Schema.String),
             depth: Schema.Number,
             orgTypeId: Schema.String,
             manageable: Schema.Boolean,
@@ -322,6 +324,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         // an enum says what it means; `subtree=false` never did
         scope: Schema.optional(Schema.Literals(['self', 'subtree'])),
         search: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
+        userTypeId: Schema.optional(id),
         ...pageQuery,
       }),
       success: pageOf(user),

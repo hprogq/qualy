@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery } from '@qualy/web-runtime'
+import { UiSlot, useApiQuery } from '@qualy/web-runtime'
+import { peopleImportPicker } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
-import { CheckboxGroup } from '@qualy/ui/admin'
 import {
   Dialog,
   DialogBody,
@@ -14,17 +14,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
-import { TreeSelect } from '@qualy/ui/tree-select'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 
 // Running the organization query again, once.
 //
 // The same act that filled the roster when the batch was created, offered
-// whenever somebody wants it: pick units and kinds of people, see how many
-// that would add, decide. Nothing is remembered afterwards except that it
-// happened - the roster is the batch's population, and this is one of the
-// two ways somebody puts a name in it.
+// whenever somebody wants it. The selection is made by the picker that owns
+// people; what it would do here is this screen's own answer, and it is said
+// as a number before the button will do anything.
+
+interface Selection {
+  orgNodeIds: readonly string[]
+  userTypeIds: readonly string[]
+}
+
+const EMPTY: Selection = { orgNodeIds: [], userTypeIds: [] }
 
 export function ImportDialog({
   batchId,
@@ -36,27 +41,26 @@ export function ImportDialog({
   batchId: string
   open: boolean
   pending: boolean
-  onImport: (selection: { orgNodeIds: string[]; userTypeIds: string[] }) => void
+  onImport: (selection: Selection) => void
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
-  const [orgNodeIds, setOrgNodeIds] = useState<string[]>([])
-  const [userTypeIds, setUserTypeIds] = useState<string[]>([])
+  const [selection, setSelection] = useState<Selection>(EMPTY)
+  useEffect(() => {
+    if (open) setSelection(EMPTY)
+  }, [open])
 
-  const nodes = useQuery({ ...query.assessment.listScopeOptions.queryOptions({}), enabled: open })
-  const userTypes = useQuery({
-    ...query.assessment.listUserTypeOptions.queryOptions({}),
-    enabled: open,
-  })
-
-  const ready = orgNodeIds.length > 0 && userTypeIds.length > 0
+  const ready = selection.orgNodeIds.length > 0 && selection.userTypeIds.length > 0
   // counted before anybody is added, and counted again by the server when
   // they are: this number is what somebody is agreeing to
   const candidates = useQuery({
     ...query.assessment.previewImport.queryOptions({
       params: { batchId },
-      query: { orgNodeIds, userTypeIds },
+      query: {
+        orgNodeIds: [...selection.orgNodeIds],
+        userTypeIds: [...selection.userTypeIds],
+      },
     }),
     enabled: open && ready,
   })
@@ -68,27 +72,13 @@ export function ImportDialog({
           <DialogTitle>{format(m.importTitle)}</DialogTitle>
           <DialogDescription>{format(m.importHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="space-y-5">
-          <div className="space-y-2">
-            <p className="text-sm font-medium">{format(m.scopeLegend)}</p>
-            <div className="max-h-64 overflow-y-auto rounded-md border p-2">
-              <TreeSelect
-                value={orgNodeIds}
-                onChange={setOrgNodeIds}
-                nodes={nodes.data?.nodes ?? []}
-                emptyLabel={format(m.scopeEmpty)}
-              />
-            </div>
-          </div>
-          <CheckboxGroup
-            legend={format(m.userTypesLegend)}
-            options={(userTypes.data?.userTypes ?? []).map((type) => ({
-              value: type.id,
-              label: type.name,
-            }))}
-            selected={userTypeIds}
-            onChange={setUserTypeIds}
-            emptyLabel={format(m.userTypesEmpty)}
+        <DialogBody>
+          <UiSlot
+            token={peopleImportPicker}
+            context={{ value: selection, onChange: setSelection }}
+            fallback={
+              <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
+            }
           />
         </DialogBody>
         <DialogFooter className="sm:justify-between">
@@ -103,7 +93,7 @@ export function ImportDialog({
             </Button>
             <Button
               disabled={pending || !ready || (candidates.data?.candidates ?? 0) === 0}
-              onClick={() => onImport({ orgNodeIds, userTypeIds })}
+              onClick={() => onImport(selection)}
             >
               {format(m.importConfirm)}
             </Button>

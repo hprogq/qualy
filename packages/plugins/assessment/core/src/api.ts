@@ -541,8 +541,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         imports: Schema.Array(
           Schema.Struct({
             id: Schema.String,
-            orgNodeIds: Schema.Array(Schema.String),
-            userTypeIds: Schema.Array(Schema.String),
+            // named, not identified: what was asked for is readable history,
+            // and a unit the reader may not reach is not named at all
+            units: Schema.Array(Schema.String),
+            userTypes: Schema.Array(Schema.String),
             importedCount: Schema.Number,
             actorId: Schema.NullOr(Schema.String),
             occurredAt: Schema.String,

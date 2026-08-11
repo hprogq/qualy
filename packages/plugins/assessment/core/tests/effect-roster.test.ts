@@ -301,6 +301,66 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(history.map((row) => row.importedCount)).toEqual([1, atCreation.length])
   })
 
+  it('imports only people the caller actually administers', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('reach')
+        const assessment = yield* Assessment
+        // a round nobody has been added to yet, so administering it asks only
+        // for the permission and the question is purely about the import
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Batch',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [] },
+          },
+          f.principal,
+        )
+
+        // a coordinator who administers the grade itself but not the classes
+        // under it: authority at a node is not authority over its subtree
+        const coordinator = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Coordinator', ${f.teacherType}, ${f.gradeA}) returning id`),
+        ).id
+        const role = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode)
+            values (${f.tenant}, 'coord', 'Coordinator', 'org', 'active', 'explicit')
+            returning id`),
+        ).id
+        const permission = one<{ id: string }>(
+          yield* runSql(sql`select id from permissions where code = 'assessment.batch.manage'`),
+        ).id
+        yield* runSql(sql`insert into role_permissions (tenant_id, role_id, permission_id)
+          values (${f.tenant}, ${role}, ${permission})`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${coordinator}, ${role}, ${f.gradeA}, 'self')`)
+        const asCoordinator: Principal = {
+          tenantId: f.tenant,
+          userId: coordinator,
+          sessionId: 's',
+        }
+
+        // the students all stand in classes below the grade, so asking for the
+        // grade must offer none of them
+        const preview = yield* assessment.previewImport(
+          f.tenant,
+          batch.id,
+          { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          asCoordinator,
+        )
+        return { preview }
+      }),
+    )
+    const { preview } = ok(exit)
+    expect(preview).toEqual({ candidates: 0 })
+  })
+
   it('adds people by name, skipping whoever is already taking part', async () => {
     const exit = await run(
       db.url,

@@ -4,6 +4,7 @@ import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { AddPeopleDialog } from './roster/AddPeopleDialog.tsx'
 import { ImportDialog } from './roster/ImportDialog.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -32,6 +33,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const { format, formatError } = useI18n()
   const [failure, setFailure] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const participants = useQuery(
     query.assessment.listParticipants.queryOptions({
@@ -44,16 +46,34 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const onError = (error: unknown) => setFailure(formatError(error))
 
   const importPeople = useMutation({
-    mutationFn: (selection: { orgNodeIds: string[]; userTypeIds: string[] }) =>
+    mutationFn: (selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) =>
       run(
         api.assessment.importParticipants({
           params: { batchId: batch.id },
-          payload: selection,
+          payload: {
+            orgNodeIds: [...selection.orgNodeIds],
+            userTypeIds: [...selection.userTypeIds],
+          },
         }),
       ),
     onMutate: () => setFailure(null),
     onSuccess: () => {
       setImporting(false)
+      invalidate()
+    },
+    onError,
+  })
+  const addPeople = useMutation({
+    mutationFn: (userIds: readonly string[]) =>
+      run(
+        api.assessment.addParticipants({
+          params: { batchId: batch.id },
+          payload: { userIds: [...userIds] },
+        }),
+      ),
+    onMutate: () => setFailure(null),
+    onSuccess: () => {
+      setAdding(false)
       invalidate()
     },
     onError,
@@ -86,9 +106,14 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
             </span>
           </div>
           {batch.manageable && (
-            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-              {format(m.importFromOrganization)}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+                {format(m.importFromOrganization)}
+              </Button>
+              <Button size="sm" onClick={() => setAdding(true)}>
+                {format(m.addPeople)}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -169,6 +194,13 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
           )}
         </AsyncSection>
       </section>
+
+      <AddPeopleDialog
+        open={adding}
+        pending={addPeople.isPending}
+        onAdd={(userIds) => addPeople.mutate(userIds)}
+        onClose={() => setAdding(false)}
+      />
 
       <ImportDialog
         batchId={batch.id}

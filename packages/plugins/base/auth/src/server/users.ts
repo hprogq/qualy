@@ -102,6 +102,8 @@ const listUsers = (
     orgNodeId: string
     scope: 'self' | 'subtree'
     search?: string
+    /** narrows to one kind of person, which is what a picker filters by */
+    userTypeId?: string
     after?: readonly string[]
     limit: number
   },
@@ -130,6 +132,9 @@ const listUsers = (
       .orderBy('u.id')
       .limit(input.limit)
 
+    if (input.userTypeId !== undefined) {
+      found = found.where('u.userTypeId', '=', input.userTypeId)
+    }
     if (input.search !== undefined) {
       const like = `%${input.search}%`
       // through the builder rather than one sql fragment holding an `or`: a
@@ -182,15 +187,27 @@ const oneUser = (
  * The node's own name answers "which class" but never "whose", and a reader
  * meeting an unfamiliar name needs the second more than the first.
  */
-const ancestryOf = (tenantId: string, orgNodeId: string) =>
-  db.query(async (k) =>
-    rows<{ id: string; name: string; depth: number }>(
-      await sql`select a.id, a.name, a.depth
-                  from org_nodes a, org_nodes n
-                 where n.tenant_id = ${tenantId} and n.id = ${orgNodeId}
-                   and a.tenant_id = n.tenant_id and a.path @> n.path
-                 order by a.depth`.execute(k),
-    ),
+const ancestryOf = (tenantId: string, orgNodeId: string, read: AuthorizationScope) =>
+  db.query((k) =>
+    k
+      .selectFrom('OrgNode as a')
+      .innerJoin('OrgNode as n', (join) =>
+        join.onRef('n.tenantId', '=', 'a.tenantId').on('n.id', '=', orgNodeId),
+      )
+      .select(['a.id', 'a.name', 'a.depth'])
+      .where('a.tenantId', '=', tenantId)
+      .where(sql<boolean>`a.path @> n.path`)
+      // trimmed to the reader's own reach: being allowed to read a person is
+      // not being allowed to walk the organization above them
+      .where((eb) =>
+        scopeCoverage(read, {
+          id: eb.ref('a.id'),
+          tenantId: eb.ref('a.tenantId'),
+          path: eb.ref('a.path'),
+        }),
+      )
+      .orderBy('a.depth')
+      .execute(),
   )
 
 /**
@@ -215,6 +232,10 @@ const placeableNodes = (
         'n.name',
         'n.depth',
         'n.orgTypeId',
+        // the parent, not the path: a picker needs the shape of the tree, and
+        // the materialized path is the database's own addressing - handing it
+        // over publishes the shape of an organization to whoever holds a leaf
+        'n.parentId',
         scopeCoverage(scopes.manage, {
           id: eb.ref('n.id'),
           tenantId: eb.ref('n.tenantId'),
@@ -421,6 +442,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           orgNodeId: string
           scope: 'self' | 'subtree'
           search?: string
+          userTypeId?: string
           after?: readonly string[]
           limit: number
         },
@@ -455,7 +477,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         if (!row) return yield* new UserNotFound()
         const rbac = yield* Rbac
         const [orgPath, roles] = yield* Effect.all([
-          ancestryOf(principal.tenantId, row.primaryOrgNodeId).pipe(Effect.orDie),
+          ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
           rbac.listUserRoles(principal.tenantId, userId),
         ])
         return { user: row, orgPath, roles }
@@ -485,6 +507,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           nodes: nodes.slice(0, limit).map((row) => ({
             orgNodeId: row.id,
             name: row.name,
+            // a parent outside the caller's reach is not named: the tree they
+            // are shown starts where their authority does
+            parentId: nodes.some((other) => other.id === row.parentId) ? row.parentId : null,
             depth: row.depth,
             orgTypeId: row.orgTypeId,
             manageable: row.manageable,

@@ -10,6 +10,8 @@ import {
   APP_SHELL,
   BLANK_SHELL,
   PUBLIC,
+  peopleImportPicker,
+  peoplePicker,
   permissionOf,
   personCard,
   sidebarUser,
@@ -86,6 +88,21 @@ const plugin = Plugin.define(
     key: personCard.key,
     id: 'auth/person-card',
     component: Ui.react('./client/iam/PersonCard.tsx'),
+    visibility: permissionOf('auth.user.read'),
+  }),
+  // Choosing people, and choosing a slice of the organization to take people
+  // from. Same permission as reading people anywhere else: a screen that
+  // needs a picker does not get to see more than its reader may.
+  Ui.slot({
+    key: peoplePicker.key,
+    id: 'auth/people-picker',
+    component: Ui.react('./client/iam/PeoplePicker.tsx'),
+    visibility: permissionOf('auth.user.read'),
+  }),
+  Ui.slot({
+    key: peopleImportPicker.key,
+    id: 'auth/people-import-picker',
+    component: Ui.react('./client/iam/PeopleImportPicker.tsx'),
     visibility: permissionOf('auth.user.read'),
   }),
   Access.permissions('auth', permissions),

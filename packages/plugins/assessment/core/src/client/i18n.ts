@@ -28,6 +28,11 @@ const opensCount = defineMessage<{ count: number }>()({
     '{count, plural, =0 {Opens nothing yet} one {Opens # action} other {Opens # actions}}',
 })
 
+const addPeopleConfirm = defineMessage<{ count: number }>()({
+  id: 'assessment/roster/add-confirm',
+  defaultMessage: '{count, plural, =0 {Add} one {Add # person} other {Add # people}}',
+})
+
 const importCandidates = defineMessage<{ count: number }>()({
   id: 'assessment/roster/import-candidates',
   defaultMessage:
@@ -526,6 +531,17 @@ const i18n = definePluginMessages({
     },
     importConfirm: { id: 'assessment/roster/import-confirm', defaultMessage: 'Import' },
     importCandidates,
+    addPeople: { id: 'assessment/roster/add', defaultMessage: 'Add people' },
+    addPeopleTitle: { id: 'assessment/roster/add-title', defaultMessage: 'Add participants' },
+    addPeopleHint: {
+      id: 'assessment/roster/add-hint',
+      defaultMessage: 'Search by name or ID, or browse the organization.',
+    },
+    addPeopleConfirm,
+    pickerUnavailable: {
+      id: 'assessment/roster/picker-unavailable',
+      defaultMessage: 'You cannot browse people in this deployment.',
+    },
     rosterEmpty: {
       id: 'assessment/roster/empty',
       defaultMessage: 'No participants yet.',

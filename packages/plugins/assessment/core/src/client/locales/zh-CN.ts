@@ -183,6 +183,11 @@ export default {
 
   'assessment/roster/hint': '管理本批次的参评人员，或处理组织变动带来的待办建议。',
   'assessment/roster/import': '从组织导入',
+  'assessment/roster/add': '添加人员',
+  'assessment/roster/add-title': '添加参评人员',
+  'assessment/roster/add-hint': '可按姓名或学工号搜索，也可以浏览组织架构。',
+  'assessment/roster/add-confirm': '{count, plural, =0 {添加} other {添加 # 人}}',
+  'assessment/roster/picker-unavailable': '当前账号无法浏览人员。',
   'assessment/roster/import-title': '导入参评人员',
   'assessment/roster/import-hint': '已在名单中的人员会自动跳过。',
   'assessment/roster/import-choose': '请选择组织单位与人员类型。',

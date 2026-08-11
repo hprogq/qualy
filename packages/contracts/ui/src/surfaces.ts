@@ -223,3 +223,44 @@ export interface PersonCardContext {
   displayName: string
   businessNo?: string | null
 }
+
+/**
+ * Choosing people, wherever a screen needs some.
+ *
+ * The plugin that owns people owns the picker: which people a reader may even
+ * see is its question, not the asking screen's, and a screen that built its
+ * own would be a second answer to it. What comes back is user ids - the
+ * organizational tree is a way of finding people, never a thing that gets
+ * selected on their behalf.
+ */
+export const peoplePicker = defineUiSlot({
+  key: 'iam/people-picker',
+  cardinality: 'one',
+})
+
+export interface PeoplePickerContext {
+  /** the ids chosen so far; the picker is controlled by whoever opens it */
+  value: readonly string[]
+  onChange: (userIds: readonly string[]) => void
+  /** at most one person, for the places that admit only one */
+  single?: boolean
+  /** people who cannot be chosen again, with the reason shown beside them */
+  disabled?: readonly string[]
+}
+
+/**
+ * Choosing a slice of the organization instead of naming people one by one.
+ *
+ * Units and kinds of people, which is a query - what it will do is the asking
+ * screen's business, so it says how many people that would be and what the
+ * button is called.
+ */
+export const peopleImportPicker = defineUiSlot({
+  key: 'iam/people-import-picker',
+  cardinality: 'one',
+})
+
+export interface PeopleImportContext {
+  value: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }
+  onChange: (selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) => void
+}
