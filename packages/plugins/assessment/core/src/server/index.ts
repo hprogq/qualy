@@ -60,6 +60,7 @@ import {
   importCandidates,
   rosterImports,
   reachableNodeNames,
+  batchUnits,
   insertConfigEvent,
   insertPhase,
   insertLifecycleEvent,
@@ -1751,16 +1752,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     staffOptions: Effect.fn('Assessment.staffOptions')(function* (tenantId, batchId, request, as) {
       yield* requireBatchAdministration(tenantId, batchId, as)
-      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-      const anchors = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
-      const named = yield* dieQuery(withDb(reachableNodeNames(tenantId, anchors, held)))
-      const nodes = [...named.entries()].map(([nodeId, name]) => ({ id: nodeId, name }))
+      const nodes = yield* dieQuery(
+        withDb(batchUnits(tenantId, batchId, yield* rbac.listAuthorizedScope(as, MANAGE))),
+      )
       if (request.userId === undefined || request.orgNodeId === undefined) {
         return { nodes, roles: [] }
       }
       // the unit has to be one of this round's own, or bringing somebody in
       // would be a way of handing out authority anywhere in the tenant
-      if (!named.has(request.orgNodeId)) return { nodes, roles: [] }
+      if (!nodes.some((node) => node.id === request.orgNodeId)) return { nodes, roles: [] }
       const grantable = yield* rbac.listGrantableRoles({
         tenantId,
         actor: as,
@@ -1807,6 +1807,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
             // not hold, over people they do not already administer.
             if (!(yield* rbac.canAt(as, MANAGE, input.orgNodeId))) {
               return yield* new AccessInvalid({ reason: 'node-out-of-reach' })
+            }
+            // and it has to be a unit this round is actually in, which is the
+            // same rule the options endpoint offers by: otherwise staffing a
+            // batch is a way of granting authority anywhere in the tenant
+            const units = yield* batchUnits(
+              tenantId,
+              batchId,
+              yield* rbac.listAuthorizedScope(as, MANAGE),
+            )
+            if (!units.some((unit) => unit.id === input.orgNodeId)) {
+              return yield* new AccessInvalid({ reason: 'node-out-of-batch' })
             }
             for (const code of carried) {
               if (!(yield* rbac.canAt(as, code, input.orgNodeId))) {

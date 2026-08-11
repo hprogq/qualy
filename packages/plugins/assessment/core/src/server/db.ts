@@ -1173,6 +1173,55 @@ export const rosterImports = (tenantId: string, batchId: string) =>
       ),
     )
 
+/**
+ * The units a batch can be staffed at: where its people stand, and every
+ * unit above them, narrowed to what this caller may manage.
+ *
+ * The anchors alone would be wrong. A round whose people sit in three classes
+ * would need the same reviewer appointed three times, and a college-level one
+ * could not be appointed at all - while the college plainly covers everybody
+ * in it. Going up is safe because the assignment this feeds is confined to
+ * the batch: authority given at the college reaches nothing outside the round.
+ */
+export const batchUnits = (tenantId: string, batchId: string, held: AuthorizationScope) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('OrgNode as unit')
+        .select(['unit.id', 'unit.name', 'unit.depth'])
+        .distinct()
+        .where('unit.tenantId', '=', tenantId)
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('BatchParticipant as bp')
+              .innerJoin('OrgNode as anchor', (join) =>
+                join
+                  .onRef('anchor.tenantId', '=', 'bp.tenantId')
+                  .onRef('anchor.id', '=', 'bp.assessmentAnchorNodeId'),
+              )
+              .select(sql<number>`1`.as('one'))
+              .whereRef('bp.tenantId', '=', 'unit.tenantId')
+              .where('bp.batchId', '=', batchId)
+              .where('bp.status', '=', 'active')
+              .where(sql<boolean>`unit.path @> anchor.path`),
+          ),
+        )
+        .where((eb) =>
+          scopeCoverage(held, {
+            id: eb.ref('unit.id'),
+            tenantId: eb.ref('unit.tenantId'),
+            path: eb.ref('unit.path'),
+          }),
+        )
+        .orderBy('unit.depth')
+        .orderBy('unit.name')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) => rows.map((row) => ({ id: row.id as string, name: row.name as string }))),
+    )
+
 /** the names of these units, leaving out the ones this reader cannot reach */
 export const reachableNodeNames = (
   tenantId: string,

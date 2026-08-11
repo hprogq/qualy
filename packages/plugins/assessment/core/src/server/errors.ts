@@ -161,6 +161,7 @@ export class AccessInvalid extends Schema.TaggedErrorClass<AccessInvalid>()(
       'permission-not-delegatable',
       'permission-not-held',
       'node-out-of-reach',
+      'node-out-of-batch',
       'node-not-found',
       'user-not-found',
       'expiry-in-past',

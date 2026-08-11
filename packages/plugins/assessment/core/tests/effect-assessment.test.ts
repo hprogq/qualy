@@ -777,16 +777,30 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           { userId: teacher, orgNodeId: f.class3 },
           f.principal,
         )
-        return { units, here, elsewhere, reviewer }
+        // and the write refuses it too, not only the list
+        const written = yield* Effect.exit(
+          assessment.addStaff(
+            f.tenant,
+            batch.id,
+            { userId: teacher, roleId: reviewer, orgNodeId: f.class3 },
+            f.principal,
+          ),
+        )
+        return { units, here, elsewhere, reviewer, written }
       }),
     )
-    const { units, here, elsewhere, reviewer } = ok(exit)
-    expect(units.nodes.map((node) => node.name)).toEqual(['Class 1'])
+    const { units, here, elsewhere, reviewer, written } = ok(exit)
+    // where the people stand, and every unit above them: a college reviewer
+    // has to be appointable once rather than class by class
+    expect(units.nodes.map((node) => node.name)).toEqual(['College', 'Grade A', 'Class 1'])
     expect(units.roles).toEqual([])
     // the role carrying batch administration is not on offer: a batch may not
     // hand out the authority that decides who may administer it
     expect(here.roles.map((role) => role.id)).toEqual([reviewer])
     expect(elsewhere.roles).toEqual([])
+    expect(reasonsOf(written).map((entry) => (entry.error as { reason?: string }).reason)).toEqual([
+      'node-out-of-batch',
+    ])
   })
 
   it('shows a participant their own running batch and nobody else\u2019s draft', async () => {
