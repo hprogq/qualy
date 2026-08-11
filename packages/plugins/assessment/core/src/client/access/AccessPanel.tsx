@@ -16,6 +16,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from './AccessSyncDialog.tsx'
+import { AddStaffDialog } from './AddStaffDialog.tsx'
 import { AccessSyncNotice } from './AccessSyncNotice.tsx'
 import { inCatalogOrder, permissionLabel } from './permissions.ts'
 import type { AccessSelection, AccessSource, AccessSubject } from './model.ts'
@@ -38,6 +39,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
   const [adjusting, setAdjusting] = useState<string | null>(null)
   const [removing, setRemoving] = useState<{ source: AccessSource; name: string } | null>(null)
   const [merging, setMerging] = useState(false)
+  const [addingStaff, setAddingStaff] = useState(false)
 
   const access = useQuery(query.assessment.listAccess.queryOptions({ params: { batchId } }))
   // the counts only: what changed is read a page at a time inside the dialog
@@ -96,6 +98,16 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     },
     onError,
   })
+  const addStaff = useMutation({
+    mutationFn: (input: { userId: string; orgNodeId: string; roleId: string }) =>
+      run(api.assessment.addStaff({ params: { batchId }, payload: input })),
+    onMutate,
+    onSuccess: () => {
+      setAddingStaff(false)
+      invalidate()
+    },
+    onError,
+  })
   const remove = useMutation({
     mutationFn: (sourceId: string) =>
       run(api.assessment.removeStaff({ params: { batchId, sourceId } })),
@@ -133,9 +145,14 @@ export function AccessPanel({ batchId }: { batchId: string }) {
       <section aria-label={format(m.tabAccess)} className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">{format(m.tabAccess)}</h3>
-          <span className="text-xs text-muted-foreground">
-            {format(m.accessSourceCount, { count: staff.length })}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              {format(m.accessSourceCount, { count: staff.length })}
+            </span>
+            <Button size="sm" variant="outline" onClick={() => setAddingStaff(true)}>
+              {format(m.addStaff)}
+            </Button>
+          </div>
         </div>
 
         <AsyncSection
@@ -196,6 +213,14 @@ export function AccessPanel({ batchId }: { batchId: string }) {
           onClose={() => setAdjusting(null)}
         />
       )}
+
+      <AddStaffDialog
+        batchId={batchId}
+        open={addingStaff}
+        pending={addStaff.isPending}
+        onAdd={(input) => addStaff.mutate(input)}
+        onClose={() => setAddingStaff(false)}
+      />
 
       <ConfirmDialog
         open={removing !== null}

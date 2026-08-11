@@ -722,6 +722,73 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(of(afterRevoke)).toEqual([])
   })
 
+  it('offers only roles a batch may carry, at units the batch actually covers', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-options')
+        const assessment = yield* Assessment
+        const role = (code: string, codes: readonly string[]) =>
+          Effect.gen(function* () {
+            const id = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                   assignable, eligibility_mode, anchor_mode)
+                values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', true,
+                        'unrestricted', 'unrestricted')
+                returning id`),
+            ).id
+            for (const permission of codes) {
+              yield* runSql(sql`
+                insert into role_permissions (tenant_id, role_id, permission_id)
+                select ${f.tenant}, ${id}, id from permissions where code = ${permission}`)
+            }
+            return id
+          })
+        // one a batch may carry, one that reaches beyond it
+        const reviewer = yield* role('reviewer', ['assessment.review.process'])
+        yield* role('boss', ['assessment.review.process', 'assessment.batch.manage'])
+        const teacher = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Teacher', ${f.teacherType}, ${f.class1}) returning id`),
+        ).id
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Staffing',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const units = yield* assessment.staffOptions(f.tenant, batch.id, {}, f.principal)
+        const here = yield* assessment.staffOptions(
+          f.tenant,
+          batch.id,
+          { userId: teacher, orgNodeId: f.class1 },
+          f.principal,
+        )
+        // a unit this round has nobody in is not a place to hand out authority
+        const elsewhere = yield* assessment.staffOptions(
+          f.tenant,
+          batch.id,
+          { userId: teacher, orgNodeId: f.class3 },
+          f.principal,
+        )
+        return { units, here, elsewhere, reviewer }
+      }),
+    )
+    const { units, here, elsewhere, reviewer } = ok(exit)
+    expect(units.nodes.map((node) => node.name)).toEqual(['Class 1'])
+    expect(units.roles).toEqual([])
+    // the role carrying batch administration is not on offer: a batch may not
+    // hand out the authority that decides who may administer it
+    expect(here.roles.map((role) => role.id)).toEqual([reviewer])
+    expect(elsewhere.roles).toEqual([])
+  })
+
   it('shows a participant their own running batch and nobody else\u2019s draft', async () => {
     const exit = await run(
       db.url,

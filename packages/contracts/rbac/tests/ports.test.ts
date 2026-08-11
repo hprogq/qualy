@@ -41,6 +41,7 @@ const rbacStub = (allowed: boolean) =>
     listAuthorizedScope: () => Effect.succeed({ tenantWide: false, anchors: [] }),
     listApplicableAssignments: () => Effect.succeed([]),
     listUserRoles: () => Effect.succeed([]),
+    listGrantableRoles: () => Effect.succeed([]),
     getRolePermissions: () => Effect.succeed([]),
     createScopedAssignment: () => Effect.succeed('assignment'),
     revokeAssignment: () => Effect.succeed(true),

@@ -142,6 +142,23 @@ export interface RbacShape {
     userId: string,
   ) => Effect.Effect<readonly UserRoleHolding[]>
 
+  /**
+   * Which roles this caller could actually give this person at this place.
+   *
+   * Every candidate goes through the checks the write performs, so a consumer
+   * offering this list cannot promise something the grant then refuses. A
+   * user or node that is not there comes back as an empty list: the write is
+   * still the thing that decides, and a port is no place for the difference
+   * between "nothing on offer" and "no such person".
+   */
+  readonly listGrantableRoles: (input: {
+    tenantId: string
+    actor: Principal
+    userId: string
+    orgNodeId: string
+    coverage?: 'self' | 'subtree'
+  }) => Effect.Effect<readonly { id: string; code: string; name: string }[]>
+
   /** what a role carries right now, which is what an acceptance is measured against */
   readonly getRolePermissions: (
     tenantId: string,

@@ -59,6 +59,7 @@ export const FROZEN_ROUTES = [
   'PUT /assessment/batches/{batchId}/status',
   'GET /assessment/batches/{batchId}/access',
   'POST /assessment/batches/{batchId}/access',
+  'GET /assessment/batches/{batchId}/staff-options',
   'GET /assessment/batches/{batchId}/access/sync',
   'POST /assessment/batches/{batchId}/access/sync',
   'PUT /assessment/batches/{batchId}/access/{userId}/permissions/{permission}',

@@ -331,6 +331,30 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       }))
     }),
 
+    listGrantableRoles: Effect.fn('Rbac.listGrantableRoles')(function* (input) {
+      return yield* bound(() =>
+        grants.options(
+          input.tenantId,
+          {
+            userId: input.userId,
+            target: {
+              kind: 'org-node',
+              orgNodeId: input.orgNodeId,
+              coverage: input.coverage ?? 'subtree',
+            },
+          },
+          input.actor,
+        ),
+      )().pipe(
+        // a request naming somebody who is not there has nothing on offer,
+        // which is what an options list says; the write still decides
+        Effect.catchTags({
+          GRANT_USER_NOT_FOUND: () => Effect.succeed([]),
+          GRANT_NODE_NOT_FOUND: () => Effect.succeed([]),
+        }),
+      )
+    }),
+
     getRolePermissions: Effect.fn('Rbac.getRolePermissions')(function* (tenantId, roleId) {
       const mode = yield* bound(() => rolePermissionMode(tenantId, roleId))().pipe(Effect.orDie)
       // the administrator carries whatever the catalog serves, by definition

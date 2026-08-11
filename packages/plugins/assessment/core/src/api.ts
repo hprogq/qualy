@@ -373,6 +373,24 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     ).middleware(Authenticated),
   )
   .add(
+    // What bringing somebody in can be: the units this round's people stand
+    // in, and - once a person and a unit are named - the roles this caller
+    // could actually give them there. Served from this domain so the screen
+    // needs no authority over the tenant's roles beyond its own.
+    HttpApiEndpoint.get('staffOptions', '/assessment/batches/:batchId/staff-options', {
+      params: Schema.Struct({ batchId: id }),
+      query: Schema.Struct({
+        userId: Schema.optional(id),
+        orgNodeId: Schema.optional(id),
+      }),
+      success: Schema.Struct({
+        nodes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+        roles: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+      }),
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     // somebody brought in for this round: an ordinary assignment confined to
     // this batch, accepted into it in the same breath
     HttpApiEndpoint.post('addStaff', '/assessment/batches/:batchId/access', {

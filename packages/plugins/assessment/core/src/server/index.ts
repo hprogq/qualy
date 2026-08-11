@@ -481,6 +481,19 @@ export class Assessment extends Context.Service<
       input: { userId: string; permission: string; denied: boolean; reason?: string },
       as: Principal,
     ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessInvalid | AccessDenied>
+    /** the units and roles bringing somebody in can name, for this caller */
+    readonly staffOptions: (
+      tenantId: string,
+      batchId: string,
+      request: { userId?: string; orgNodeId?: string },
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        nodes: readonly { id: string; name: string }[]
+        roles: readonly { id: string; name: string }[]
+      },
+      BatchNotFound | AccessDenied
+    >
     /**
      * Somebody brought in for this round: an ordinary role assignment confined
      * to this batch, accepted into it in the same transaction.
@@ -1736,6 +1749,36 @@ export const make = Effect.fn('Assessment.make')(function* () {
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
     }),
 
+    staffOptions: Effect.fn('Assessment.staffOptions')(function* (tenantId, batchId, request, as) {
+      yield* requireBatchAdministration(tenantId, batchId, as)
+      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+      const anchors = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
+      const named = yield* dieQuery(withDb(reachableNodeNames(tenantId, anchors, held)))
+      const nodes = [...named.entries()].map(([nodeId, name]) => ({ id: nodeId, name }))
+      if (request.userId === undefined || request.orgNodeId === undefined) {
+        return { nodes, roles: [] }
+      }
+      // the unit has to be one of this round's own, or bringing somebody in
+      // would be a way of handing out authority anywhere in the tenant
+      if (!named.has(request.orgNodeId)) return { nodes, roles: [] }
+      const grantable = yield* rbac.listGrantableRoles({
+        tenantId,
+        actor: as,
+        userId: request.userId,
+        orgNodeId: request.orgNodeId,
+      })
+      // and only roles a batch may carry at all: the same rule the write
+      // applies, so the list cannot offer what adding them would refuse
+      const roles: { id: string; name: string }[] = []
+      for (const role of grantable) {
+        const carried = yield* rbac.getRolePermissions(tenantId, role.id)
+        if (carried.length === 0) continue
+        if (carried.some((code) => !STAFF_CODES.includes(code as never))) continue
+        roles.push({ id: role.id, name: role.name })
+      }
+      return { nodes, roles }
+    }),
+
     addStaff: Effect.fn('Assessment.addStaff')(function* (tenantId, batchId, input, as) {
       yield* requireBatchAdministration(tenantId, batchId, as)
       const now = yield* Clock.currentTimeMillis
@@ -2836,6 +2879,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
+      }),
+    )
+    .handle(
+      'staffOptions',
+      Effect.fn('assessment.staffOptions.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.staffOptions(principal.tenantId, params.batchId, query, principal)
       }),
     )
     .handle(

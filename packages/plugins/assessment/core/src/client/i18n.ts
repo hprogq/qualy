@@ -703,6 +703,30 @@ const i18n = definePluginMessages({
     accessRoleAt,
     accessDeniedCount,
     accessSyncSelected,
+    addStaff: { id: 'assessment/access/add-staff', defaultMessage: 'Bring somebody in' },
+    addStaffTitle: {
+      id: 'assessment/access/add-staff-title',
+      defaultMessage: 'Bring somebody in for this batch',
+    },
+    addStaffHint: {
+      id: 'assessment/access/add-staff-hint',
+      defaultMessage: 'What they may do applies to this batch only.',
+    },
+    addStaffWhere: { id: 'assessment/access/add-staff-where', defaultMessage: 'Working on' },
+    addStaffAs: { id: 'assessment/access/add-staff-as', defaultMessage: 'As' },
+    addStaffPickUnit: {
+      id: 'assessment/access/add-staff-pick-unit',
+      defaultMessage: 'Choose a unit',
+    },
+    addStaffPickRole: {
+      id: 'assessment/access/add-staff-pick-role',
+      defaultMessage: 'Choose a role',
+    },
+    addStaffNoRoles: {
+      id: 'assessment/access/add-staff-no-roles',
+      defaultMessage: 'No role you can give here',
+    },
+    addStaffConfirm: { id: 'assessment/access/add-staff-confirm', defaultMessage: 'Bring in' },
 
     // ------------------------------------------------------------------
     // the three families the gate itself distinguishes

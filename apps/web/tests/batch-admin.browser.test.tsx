@@ -167,6 +167,7 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
     Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
   listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
   previewImport: () => Effect.succeed({ candidates: 0 }),
+  staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
   listAccess: () => Effect.succeed({ staff: [subject()] }),
   previewAccessSync: () => Effect.succeed(emptyPlan),
   ...over,
