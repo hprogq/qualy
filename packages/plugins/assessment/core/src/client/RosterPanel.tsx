@@ -40,6 +40,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const [excluding, setExcluding] = useState<{ id: string; name: string } | null>(null)
   // which units the reader is looking at; empty means the whole round
   const [units, setUnits] = useState<readonly string[]>([])
+  const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
 
   // keyset paging walked by page, the same way the access list does it
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
@@ -48,7 +49,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
     query.assessment.listParticipants.queryOptions({
       params: { batchId: batch.id },
       query: {
-        ...(units.length > 0 ? { orgNodeIds: [...units] } : {}),
+        ...(units.length > 0 ? { orgNodeIds: [...units], orgScope: unitScope } : {}),
         ...(cursors[at] !== undefined ? { cursor: cursors[at] } : {}),
         limit: String(PAGE_SIZE),
       },
@@ -58,7 +59,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
     // a different question deserves a first page
     setCursors([undefined])
     setAt(0)
-  }, [units])
+  }, [units, unitScope])
   const nextCursor = participants.data?.nextCursor ?? null
   useEffect(() => {
     if (nextCursor === null || cursors[at + 1] === nextCursor) return
@@ -126,14 +127,22 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
     <div className="space-y-5">
       <Feedback message={failure} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <aside className="min-w-0 space-y-2">
           <p className="text-sm font-medium">{format(m.rosterUnits)}</p>
           {/* the same picker every other screen uses, standing in for a
               filter: what it selects is what the list is narrowed to */}
           <UiSlot
             token={orgNodePicker}
-            context={{ value: units, onChange: setUnits }}
+            context={{
+              // one unit, pointed at rather than collected, plus how far down
+              // to look: a filter is not a shopping list
+              single: true,
+              value: units,
+              onChange: setUnits,
+              scope: unitScope,
+              onScopeChange: setUnitScope,
+            }}
             fallback={null}
             loading={<Skeleton className="h-64 w-full" />}
           />

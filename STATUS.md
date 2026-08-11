@@ -3332,3 +3332,18 @@ destructive: approved)先删 `role_permissions` 的引用行再删 `permissions`
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **454/72 全绿**(新增「重新加入恢复同一行」);
 `pnpm test:browser` 39 全绿。
+
+### 名单页的组织树改成单选筛选器(2026-08-12)
+
+名字到第五层就只剩省略号,因为每一级都要摊掉缩进 + 展开钮 + 复选框。而这个位置本来就不需要多选——它是
+筛选器,不是购物车。于是 `OrgNodePickerContext` 增加 `single`(不画复选框、点整行选中、再点取消)与
+`scope`/`onScopeChange`(仅本层 / 含下级),名单页用这一组;导入与添加工作人员仍是多选。左栏顺带从 16rem
+放宽到 22rem。服务端 `listParticipants` 相应增加 `orgScope`,`self` 比对冻结的锚点本身、`subtree` 比对
+`anchor_path <@`,并把它并入 cursor 的 fingerprint。
+
+顺带修两处:①**添加工作人员里按节点类型筛选永远是「没有匹配的单位」**——`batchUnits` 没有回传 `orgTypeId`,
+而类型下拉却因为 react-query 缓存(同一个 `getUserOptions` key 被别的选择器取过)照常渲染,于是任何类型都
+匹配不到;现在批次单位也带上自己的类型。②竖线不再延伸到容器底部(用户看过实际效果后否决),改回随分组结束。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **455/72 全绿**(新增单位筛选的三态断言);
+`pnpm test:browser` 39 全绿;`pnpm build` 通过;`prettier --check .` 干净。

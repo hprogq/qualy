@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
@@ -45,6 +45,15 @@ export function OrgTree({
   onSelect,
   /** a mark beside a node, for pickers that add whole units */
   marked,
+  /** something at the end of a row - what kind of unit it is, say */
+  meta,
+  /**
+   * One flat list instead of a tree.
+   *
+   * What a search or a filter leaves is a set of matches, and the branches
+   * that would lead to them are not part of the answer.
+   */
+  flat,
   className,
 }: {
   nodes: readonly OrgTreeNode[]
@@ -53,11 +62,31 @@ export function OrgTree({
   selected?: string | null
   onSelect: (node: OrgTreeNode) => void
   marked?: ReadonlySet<string>
+  meta?: (node: OrgTreeNode) => ReactNode
+  flat?: boolean
   className?: string
 }) {
   const shape = shapeOf(nodes)
-  if (shape.roots.length === 0) {
+  if (nodes.length === 0) {
     return <p className="p-2 text-sm text-muted-foreground">{emptyLabel}</p>
+  }
+  if (flat === true) {
+    return (
+      <ul className={cn('flex flex-col gap-0.5', className)}>
+        {nodes.map((node) => (
+          <li key={node.id}>
+            <Name
+              node={node}
+              depth={0}
+              selected={selected ?? null}
+              onSelect={onSelect}
+              marked={marked}
+              {...(meta !== undefined ? { meta } : {})}
+            />
+          </li>
+        ))}
+      </ul>
+    )
   }
   return (
     <ul className={cn('flex flex-col gap-0.5', className)}>
@@ -71,9 +100,43 @@ export function OrgTree({
           selected={selected ?? null}
           onSelect={onSelect}
           marked={marked}
+          {...(meta !== undefined ? { meta } : {})}
         />
       ))}
     </ul>
+  )
+}
+
+/** the pressable part of a row: the whole width of it, indent included */
+function Name({
+  node,
+  depth,
+  selected,
+  onSelect,
+  marked,
+  meta,
+}: {
+  node: OrgTreeNode
+  depth: number
+  selected: string | null
+  onSelect: (node: OrgTreeNode) => void
+  marked?: ReadonlySet<string>
+  meta?: (node: OrgTreeNode) => ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
+        selected === node.id && 'bg-accent',
+        marked?.has(node.id) === true && 'font-medium',
+      )}
+      style={{ paddingLeft: `${String(depth * 0.75 + 1.75)}rem` }}
+      onClick={() => onSelect(node)}
+    >
+      <span className="min-w-0 truncate">{node.name}</span>
+      {meta?.(node)}
+    </button>
   )
 }
 
@@ -85,6 +148,7 @@ function Row({
   selected,
   onSelect,
   marked,
+  meta,
 }: {
   node: OrgTreeNode
   shape: Shape
@@ -93,6 +157,7 @@ function Row({
   selected: string | null
   onSelect: (node: OrgTreeNode) => void
   marked?: ReadonlySet<string>
+  meta?: (node: OrgTreeNode) => ReactNode
 }) {
   const children = shape.childrenOf.get(node.id) ?? []
   // the first two levels open, because a tree that starts closed makes the
@@ -108,18 +173,15 @@ function Row({
 
   return (
     <li>
-      <div className={cn('relative rounded-md', selected === node.id && 'bg-accent')}>
-        <button
-          type="button"
-          className={cn(
-            'w-full truncate rounded-md py-1.5 pr-2 text-left text-sm outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
-            marked?.has(node.id) === true && 'font-medium',
-          )}
-          style={{ paddingLeft: `${String(indent + 1.75)}rem` }}
-          onClick={() => onSelect(node)}
-        >
-          {node.name}
-        </button>
+      <div className="relative">
+        <Name
+          node={node}
+          depth={depth}
+          selected={selected}
+          onSelect={onSelect}
+          marked={marked}
+          {...(meta !== undefined ? { meta } : {})}
+        />
         {children.length > 0 && (
           <Button
             size="icon"
@@ -148,6 +210,7 @@ function Row({
               selected={selected}
               onSelect={onSelect}
               marked={marked}
+              {...(meta !== undefined ? { meta } : {})}
             />
           ))}
         </ul>

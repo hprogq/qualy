@@ -278,9 +278,20 @@ export const orgNodePicker = defineUiSlot({
 })
 
 export interface OrgNodePickerContext {
-  /** always a set: picking one unit and picking four is the same errand */
+  /** a set, because picking one unit and picking four is the same errand */
   value: readonly string[]
   onChange: (orgNodeIds: string[]) => void
+  /**
+   * One unit at a time, drawn without checkboxes.
+   *
+   * For pointing at a unit rather than collecting several - narrowing a list,
+   * say. The room a checkbox takes is room a name does not have, and five
+   * levels down a name is what is left of the row.
+   */
+  single?: boolean
+  /** shown as a toggle when given: this unit only, or everything under it */
+  scope?: 'self' | 'subtree'
+  onScopeChange?: (scope: 'self' | 'subtree') => void
   /** when absent, the picker offers everything the reader may administer */
   nodes?: readonly {
     id: string

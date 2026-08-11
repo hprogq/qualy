@@ -1242,7 +1242,7 @@ export const batchUnits = (tenantId: string, batchId: string, held: Authorizatio
     .query((k) =>
       k
         .selectFrom('OrgNode as unit')
-        .select(['unit.id', 'unit.name', 'unit.depth', 'unit.parentId'])
+        .select(['unit.id', 'unit.name', 'unit.depth', 'unit.parentId', 'unit.orgTypeId'])
         .distinct()
         .where('unit.tenantId', '=', tenantId)
         .where((eb) =>
@@ -1281,6 +1281,9 @@ export const batchUnits = (tenantId: string, batchId: string, held: Authorizatio
           // a parent outside this set is not named: the tree a reader is shown
           // starts where the batch, and their own authority, does
           parentId: within.has(row.parentId as string) ? (row.parentId as string) : null,
+          // what kind of unit it is, so a picker fed these can label and
+          // filter by kind the way it does with the whole tree
+          orgTypeId: row.orgTypeId as string,
         }))
       }),
     )
@@ -1527,8 +1530,9 @@ export const listParticipantsPage = (
   batchId: string,
   filter: {
     status?: string
-    /** narrowed to the people frozen at or under these units */
+    /** narrowed to the people frozen at, or under, these units */
     orgNodeIds?: readonly string[]
+    orgScope?: 'self' | 'subtree'
     after?: { path: string; id: string }
     limit: number
   },
@@ -1549,7 +1553,11 @@ export const listParticipantsPage = (
             select 1 from org_nodes scope
              where scope.tenant_id = batch_participants.tenant_id
                and scope.id = any(${filter.orgNodeIds as string[]}::uuid[])
-               and batch_participants.anchor_path <@ scope.path
+               and ${
+                 filter.orgScope === 'self'
+                   ? sql<boolean>`batch_participants.assessment_anchor_node_id = scope.id`
+                   : sql<boolean>`batch_participants.anchor_path <@ scope.path`
+               }
           )`,
         )
       }

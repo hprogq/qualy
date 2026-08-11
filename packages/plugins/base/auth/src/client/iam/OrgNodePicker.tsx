@@ -10,7 +10,9 @@ import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { TreeSelect } from '@qualy/ui/tree-select'
+import { OrgTree } from './OrgTree.tsx'
 import { authApi } from '../api.ts'
 import { authMessages as m } from '../i18n.ts'
 
@@ -97,6 +99,18 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
           placeholder={format(m.nodeSearch)}
           className="h-8 min-w-40 flex-1"
         />
+        {context.scope !== undefined && (
+          <ToggleGroup
+            type="single"
+            value={context.scope}
+            onValueChange={(next) => next && context.onScopeChange?.(next as 'self' | 'subtree')}
+            variant="outline"
+            size="sm"
+          >
+            <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
+            <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
+          </ToggleGroup>
+        )}
         {typeNames.size > 0 && (
           <Select
             value={orgTypeId === '' ? ANY : orgTypeId}
@@ -127,6 +141,19 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
             <Skeleton className="h-6 w-3/5" />
             <Skeleton className="h-6 w-2/5" />
           </div>
+        ) : context.single === true ? (
+          // no checkbox and no cover arithmetic: one unit, clicked, and the
+          // whole row is the target - which is also how a name five levels
+          // down keeps enough width to be read
+          <OrgTree
+            nodes={filtering ? matches : nodes}
+            emptyLabel={format(filtering ? m.nodeNoMatch : m.pickerNoUnits)}
+            expandLabel={format(m.pickerExpand)}
+            selected={context.value[0] ?? null}
+            flat={filtering}
+            meta={badge}
+            onSelect={(node) => context.onChange(context.value[0] === node.id ? [] : [node.id])}
+          />
         ) : filtering ? (
           matches.length === 0 ? (
             <p className="p-2 text-sm text-muted-foreground">{format(m.nodeNoMatch)}</p>

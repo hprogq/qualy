@@ -398,6 +398,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             name: Schema.String,
             /** null for a unit whose parent is not one of this batch's own */
             parentId: Schema.NullOr(Schema.String),
+            orgTypeId: Schema.String,
           }),
         ),
         // refused roles come back too, with why: a screen that says what to
@@ -536,6 +537,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         status: Schema.optional(Schema.Literals(['active', 'excluded'])),
         /** narrowed to the people this round admitted from these units */
         orgNodeIds: Schema.optional(Schema.Array(id)),
+        /** that unit only, or everything under it; under it when absent */
+        orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
       }),
       success: pageOf(participantView),
       error: [BatchNotFound, AccessDenied, BadRequest],

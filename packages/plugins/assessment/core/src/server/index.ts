@@ -506,7 +506,12 @@ export class Assessment extends Context.Service<
       as: Principal,
     ) => Effect.Effect<
       {
-        nodes: readonly { id: string; name: string; parentId: string | null }[]
+        nodes: readonly {
+          id: string
+          name: string
+          parentId: string | null
+          orgTypeId: string
+        }[]
         roles: readonly {
           id: string
           name: string
@@ -620,6 +625,7 @@ export class Assessment extends Context.Service<
       filter: {
         status?: 'active' | 'excluded'
         orgNodeIds?: readonly string[]
+        orgScope?: 'self' | 'subtree'
         after?: { path: string; id: string }
         limit: number
       },
@@ -3133,6 +3139,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           {
             ...(query.status !== undefined ? { status: query.status } : {}),
             ...(units.length > 0 ? { orgNodeIds: units } : {}),
+            ...(query.orgScope !== undefined ? { orgScope: query.orgScope } : {}),
             ...(key !== undefined ? { after: { path: key[0]!, id: key[1]! } } : {}),
             limit: limit + 1,
           },

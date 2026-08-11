@@ -43,14 +43,10 @@ export function TreeSelect({
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
   }
   return (
-    // at least as tall as the box it sits in, so the guide line of the last
-    // open branch runs to the bottom instead of stopping short and leaving a
-    // white strip under it
-    <ul className={cn('flex min-h-full flex-col gap-0.5', className)}>
-      {shape.roots.map((root, at) => (
+    <ul className={cn('flex flex-col gap-0.5', className)}>
+      {shape.roots.map((root) => (
         <TreeRow
           key={root.id}
-          last={at === shape.roots.length - 1}
           node={root}
           shape={shape}
           selection={selection}
@@ -67,15 +63,12 @@ function TreeRow({
   shape,
   selection,
   meta,
-  last,
   onToggle,
 }: {
   node: TreeSelectNode
   shape: TreeShape
   selection: ReadonlySet<string>
   meta?: (node: TreeSelectNode) => ReactNode
-  /** the last row of its group, and so the one whose line reaches the floor */
-  last?: boolean
   onToggle: (node: TreeSelectNode) => void
 }) {
   const children = shape.childrenOf.get(node.id) ?? []
@@ -110,21 +103,22 @@ function TreeRow({
     </div>
   )
 
-  if (children.length === 0) return <li className={cn(last === true && 'flex-1')}>{row(false)}</li>
+  if (children.length === 0) return <li>{row(false)}</li>
   return (
-    <li className={cn('flex flex-col', last === true && 'min-h-0 flex-1')}>
-      <Collapsible defaultOpen className="flex min-h-0 flex-1 flex-col">
+    <li>
+      <Collapsible defaultOpen>
         {row(true)}
-        <CollapsibleContent className="flex min-h-0 flex-1 flex-col">
-          <ul className="ml-3 flex min-h-full flex-1 flex-col gap-0.5 border-l pl-3">
-            {children.map((child, at) => (
+        <CollapsibleContent>
+          {/* the line ends with the group it belongs to; run to the bottom of
+              the box it reads as a rule under an empty half */}
+          <ul className="ml-3 flex flex-col gap-0.5 border-l pl-3">
+            {children.map((child) => (
               <TreeRow
                 key={child.id}
                 node={child}
                 shape={shape}
                 selection={selection}
                 {...(meta !== undefined ? { meta } : {})}
-                last={at === children.length - 1}
                 onToggle={onToggle}
               />
             ))}

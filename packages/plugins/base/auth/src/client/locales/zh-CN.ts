@@ -3,7 +3,7 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 export default {
   'auth/person/open-detail': '查看详情',
   'auth/person/business-no': '学工号',
-  'auth/person/no-business-no': '未绑定',
+  'auth/person/no-business-no': '未绑定学工号',
   'auth/person/user-type': '身份类型',
   'auth/person/status': '状态',
   'auth/person/active': '正常',

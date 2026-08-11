@@ -438,6 +438,38 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(rows[0]!.exclusion_reason).toBeNull()
   })
 
+  it('narrows the list to a unit, and says how far down to look', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('narrow')
+        const assessment = yield* Assessment
+        // the grade covers two classes; the students stand in the classes
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        const page = (orgNodeIds: readonly string[], orgScope?: 'self' | 'subtree') =>
+          assessment.listParticipants(
+            f.tenant,
+            batch.id,
+            { limit: 50, orgNodeIds, ...(orgScope !== undefined ? { orgScope } : {}) },
+            f.principal,
+          )
+        const everywhere = yield* page([])
+        const under = yield* page([f.gradeA], 'subtree')
+        const atTheGrade = yield* page([f.gradeA], 'self')
+        const inOneClass = yield* page([f.class1], 'self')
+        return { everywhere, under, atTheGrade, inOneClass }
+      }),
+    )
+    const { everywhere, under, atTheGrade, inOneClass } = ok(exit)
+    expect(under.map((row) => row.userId).sort()).toEqual(
+      everywhere.map((row) => row.userId).sort(),
+    )
+    // nobody is frozen at the grade itself, which is the point of the toggle
+    expect(atTheGrade).toEqual([])
+    expect(inOneClass.length).toBeGreaterThan(0)
+    expect(inOneClass.length).toBeLessThan(under.length)
+  })
+
   it('takes somebody out without deleting them, and lets them back in', async () => {
     const exit = await run(
       db.url,
