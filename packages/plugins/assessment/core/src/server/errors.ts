@@ -70,9 +70,29 @@ export class BatchScopeLocked extends Schema.TaggedErrorClass<BatchScopeLocked>(
   { httpApiStatus: 409, identifier: 'AssessmentBatchScopeLocked' },
 ) {}
 
+/**
+ * A lifecycle move the batch is not in a position to make.
+ *
+ * `refusal` says which rule stood in the way, because the screen has a
+ * different sentence for each: a batch cannot be archived before it has
+ * reached its last phase, cannot be reopened without saying why, and cannot
+ * be deleted once it has run.
+ */
 export class BatchStatusInvalid extends Schema.TaggedErrorClass<BatchStatusInvalid>()(
   'ASSESSMENT_BATCH_STATUS_INVALID',
-  { from: Schema.String, to: Schema.String },
+  {
+    from: Schema.String,
+    to: Schema.String,
+    refusal: Schema.optional(
+      Schema.Literals([
+        'wrong-status',
+        'last-phase-not-entered',
+        'reason-required',
+        'phase-required',
+        'already-started',
+      ]),
+    ),
+  },
   { httpApiStatus: 409, identifier: 'AssessmentBatchStatusInvalid' },
 ) {}
 
@@ -146,10 +166,19 @@ export type UpdateBatchError =
   BatchNotFound | BatchReadOnly | BatchScopeLocked | BatchReferenceInvalid | AccessDenied
 export type SetBatchStatusError =
   BatchNotFound | BatchStatusInvalid | BatchNoUserTypes | PlanInvalid | AccessDenied
+
+/** removing a draft that never ran; anything else is archived, not deleted */
+export type DeleteBatchError = BatchNotFound | BatchStatusInvalid | AccessDenied
 export type ReplacePlanError =
   BatchNotFound | BatchReadOnly | TemplateNotFound | PlanInvalid | AccessDenied
 export type AdvancePhaseError = BatchNotFound | PhaseNotFound | AdvanceInvalid | AccessDenied
 
-/** committing or withdrawing a phase's time; the plan's shape decides */
+/**
+ * Committing or withdrawing a phase's time; the plan's shape decides.
+ *
+ * The first commitment is also where a batch starts running, so it can be
+ * refused for the reasons starting one used to be: nobody to enroll, or no
+ * plan to run.
+ */
 export type SchedulePhaseError =
-  BatchNotFound | BatchReadOnly | PhaseNotFound | PlanInvalid | AccessDenied
+  BatchNotFound | BatchReadOnly | PhaseNotFound | PlanInvalid | BatchNoUserTypes | AccessDenied

@@ -24,6 +24,7 @@ import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
 import type { PhaseRow } from '../src/server/db.ts'
+import { startBatch } from './support/lifecycle.ts'
 
 // The service against a real database: batch lifecycle with the one-statement
 // roster, plan edits landing as audited events, manual and forced advancement,
@@ -228,12 +229,10 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           { fromTemplateId: template.id },
           f.principal,
         )
-        const activated = yield* assessment.setBatchStatus(
-          f.tenant,
-          batch.id,
-          'active',
-          f.principal,
-        )
+        // committing the first phase is what starts the batch, and what
+        // freezes the roster as of that transaction
+        yield* startBatch(f.tenant, batch.id, f.principal)
+        const activated = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
         const roster = rowsOf<{
           user_id: string
           anchor_path: string
@@ -285,7 +284,16 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           { specs: [phase({ phaseKey: 'archive' })] },
           f.principal,
         )
-        return yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+        // starting is committing the first phase to a time, and a batch that
+        // can enroll nobody may not start
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        return yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
       }),
     )
     expect(tagOf(exit)).toBe('ASSESSMENT_BATCH_NO_USER_TYPES')
@@ -319,7 +327,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
 
         // the second phase cannot take a time while the first has none
@@ -395,8 +402,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           { specs: [phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.submit'] })] },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         let plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // entering the first phase is how a batch starts: no separate act
         yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
         plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         yield* assessment.replacePlan(
@@ -449,7 +456,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         // an unscheduled phase promised nobody a time, so entering it by
         // hand is simply how a batch is moved along
@@ -492,7 +498,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const archived = yield* assessment.setBatchStatus(
           f.tenant,
           batch.id,
-          'archived',
+          { status: 'archived' },
           f.principal,
         )
         const readOnly = yield* Effect.exit(
@@ -510,6 +516,167 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(audit.actor_id).toBe(f.principal.userId)
     expect(archived.status).toBe('archived')
     expect(tagOf(readOnly)).toBe('ASSESSMENT_BATCH_READ_ONLY')
+  })
+
+  it('starts by scheduling, unstarts by withdrawing, and deletes only what never ran', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('lifecycle')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Lifecycle',
+            scopeNodeIds: [f.root],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'archive' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        const rosterSize = () =>
+          runSql<{ count: string }>(
+            sql`select count(*)::text as count from batch_participants where batch_id = ${batch.id}`,
+          ).pipe(Effect.map((rows) => Number(one<{ count: string }>(rows).count)))
+
+        // a draft has promised nothing and enrolled nobody
+        const asDraft = {
+          status: (yield* assessment.getBatch(f.tenant, batch.id, f.principal)).status,
+          roster: yield* rosterSize(),
+        }
+
+        // the first commitment: the batch runs from here, and the roster is
+        // frozen as of this transaction
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        const committed = {
+          status: (yield* assessment.getBatch(f.tenant, batch.id, f.principal)).status,
+          roster: yield* rosterSize(),
+        }
+
+        // and a batch that has started cannot be deleted... except this one
+        // never actually entered a phase, so withdrawing releases the promise
+        const whileCommitted = yield* Effect.exit(
+          assessment.deleteBatch(f.tenant, batch.id, f.principal),
+        )
+        yield* assessment.schedulePhase(f.tenant, batch.id, plan[0]!.id, null, f.principal)
+        const withdrawn = {
+          status: (yield* assessment.getBatch(f.tenant, batch.id, f.principal)).status,
+          roster: yield* rosterSize(),
+        }
+
+        // archiving is refused until the last phase has actually been entered
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        const tooEarly = yield* Effect.exit(
+          assessment.setBatchStatus(f.tenant, batch.id, { status: 'archived' }, f.principal),
+        )
+        // and once something has run, the batch is history rather than setup
+        const afterRunning = yield* Effect.exit(
+          assessment.deleteBatch(f.tenant, batch.id, f.principal),
+        )
+        return { asDraft, committed, whileCommitted, withdrawn, tooEarly, afterRunning, f, batch }
+      }),
+    )
+    const { asDraft, committed, whileCommitted, withdrawn, tooEarly, afterRunning } = ok(exit)
+    expect(asDraft).toEqual({ status: 'draft', roster: 0 })
+    expect(committed.status).toBe('active')
+    expect(committed.roster).toBeGreaterThan(0)
+    expect(tagOf(whileCommitted)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
+    // back to a draft, with the roster it had never really needed
+    expect(withdrawn).toEqual({ status: 'draft', roster: 0 })
+    expect(tagOf(tooEarly)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
+    expect(tagOf(afterRunning)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
+  })
+
+  it('reopens an archived batch into a new phase, and says why in the record', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('reopen')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Reopen',
+            scopeNodeIds: [f.root],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        yield* assessment.setBatchStatus(
+          f.tenant,
+          batch.id,
+          { status: 'archived', reason: 'the year is over' },
+          f.principal,
+        )
+
+        // reopening without saying why is exactly what must not be possible
+        const silent = yield* Effect.exit(
+          assessment.setBatchStatus(
+            f.tenant,
+            batch.id,
+            {
+              status: 'active',
+              reason: '   ',
+              phase: { displayName: 'Supplementary' },
+              plannedEntryAt: null,
+            },
+            f.principal,
+          ),
+        )
+        const reopened = yield* assessment.setBatchStatus(
+          f.tenant,
+          batch.id,
+          {
+            status: 'active',
+            reason: 'materials were missed',
+            phase: { displayName: 'Supplementary submission' },
+            plannedEntryAt: null,
+          },
+          f.principal,
+        )
+        const after = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        const events = rowsOf<{ kind: string; reason: string | null }>(
+          yield* runSql(sql`
+            select kind, reason from batch_lifecycle_events
+            where batch_id = ${batch.id} order by occurred_at`),
+        )
+        return { silent, reopened, after, events, f }
+      }),
+    )
+    const { silent, reopened, after, events } = ok(exit)
+    expect(tagOf(silent)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
+    expect(reopened.status).toBe('active')
+    // the phases that ran are untouched; what reopening adds is a new one,
+    // running from the moment the batch was opened again
+    expect(after).toHaveLength(2)
+    expect(after[0]!.actualEntryAt).not.toBeNull()
+    expect(after[1]!.displayName).toBe('Supplementary submission')
+    expect(after[1]!.actualEntryAt).not.toBeNull()
+    expect(reopened.currentPhaseId).toBe(after[1]!.id)
+    expect(events.map((row) => row.kind)).toEqual(['archived', 'reopened'])
+    expect(events[1]!.reason).toBe('materials were missed')
   })
 
   it('ratifies a due boundary once, with its planned instant, however late', async () => {
@@ -543,7 +710,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         yield* assessment.schedulePhase(f.tenant, batch.id, plan[0]!.id, planned, f.principal)
 
@@ -616,7 +782,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
 
@@ -722,14 +887,9 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           { specs: [phase({ phaseKey: 'entry' })] },
           f.principal,
         )
-        // structure is enough to activate: when it begins is decided after
-        const activated = yield* assessment.setBatchStatus(
-          f.tenant,
-          batch.id,
-          'active',
-          f.principal,
-        )
-        return activated
+        // structure is enough to commit: when it begins is decided after
+        yield* startBatch(f.tenant, batch.id, f.principal)
+        return yield* assessment.getBatch(f.tenant, batch.id, f.principal)
       }),
     )
     const activated = ok(exit)
@@ -778,7 +938,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           { specs: [phase({ phaseKey: 'archive' })] },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+        yield* startBatch(f.tenant, batch.id, f.principal)
         const roster = rowsOf<{ user_id: string }>(
           yield* runSql(sql`select user_id from batch_participants where batch_id = ${batch.id}`),
         )
@@ -829,7 +989,6 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
 
@@ -923,9 +1082,9 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+        yield* startBatch(f.tenant, batch.id, f.principal)
 
-        // active: an actual change is one event and one counter move
+        // running: an actual change is one event and one counter move
         const changed = yield* assessment.updateBatch(
           f.tenant,
           batch.id,

@@ -50,17 +50,28 @@ export default {
   'assessment/action/cancel': '取消',
 
   'assessment/status/draft': '草稿',
+  'assessment/status/pending': '待开始',
   'assessment/status/active': '进行中',
   'assessment/status/archived': '已归档',
-  'assessment/action/activate': '激活',
-  'assessment/action/activate-confirm-title': '激活这个批次吗？',
-  'assessment/action/activate-confirm-body':
-    '激活后将按所选单位生成参评名单，参与单位不可再修改，各阶段按计划开始。',
+  'assessment/action/delete': '删除批次',
+  'assessment/action/delete-confirm-title': '删除这个批次吗？',
+  'assessment/action/delete-confirm-body':
+    '本批次尚未开始，删除只会失去这些配置：阶段、开放的操作与参评范围。',
+  'assessment/action/reopen': '重新开启',
+  'assessment/action/reopen-title': '重新开启这个批次？',
+  'assessment/action/reopen-body':
+    '已走过的阶段、归档记录与既有数据一概不动。重新开启会在末尾新增一个阶段并立即开始。',
+  'assessment/action/reopen-reason': '开启事由',
+  'assessment/action/reopen-reason-placeholder': '例如：发现部分材料漏报，需要开放补充填报',
+  'assessment/action/reopen-phase': '要开启的阶段',
+  'assessment/action/reopen-phase-hint': '这是一个新阶段，不是原阶段重新运行。',
+  'assessment/action/reopen-phase-placeholder': '例如：补充填报期',
   'assessment/action/archive': '归档',
   'assessment/action/archive-confirm-title': '归档这个批次吗？',
   'assessment/action/archive-confirm-body':
-    '归档后批次将永久锁定：结果仍可查看，所有内容不可再修改。',
-  'assessment/batch/draft-banner': '批次尚未激活。完成阶段安排后激活，将按所选范围生成参评名单。',
+    '归档即为末阶段划下终点，批次转为只读：结果仍可查看，内容不可再改。日后可凭事由重新开启。',
+  'assessment/batch/draft-banner':
+    '批次尚未开始。为第一个阶段排期即正式开跑，届时按所选范围冻结参评名单。',
 
   'assessment/batch/sections': '批次内容',
   'assessment/phase/tab': '阶段安排',
@@ -138,9 +149,9 @@ export default {
   'assessment/profile/title': '本阶段开放的操作',
   'assessment/profile/hint': '仅在本阶段生效，不改变角色本身的权限。',
 
-  'assessment/roster/hint': '名单在批次激活时生成；组织变动以待处理建议列出，不会自动调整名单。',
+  'assessment/roster/hint': '名单在批次开跑时冻结；组织变动以待处理建议列出，不会自动调整名单。',
   'assessment/roster/empty': '暂无参评人员。',
-  'assessment/roster/draft': '批次激活时，参评名单会根据批次设置自动生成。',
+  'assessment/roster/draft': '为第一个阶段排期后，参评名单即按批次设置冻结生成。',
   'assessment/roster/column-name': '姓名',
   'assessment/roster/column-status': '状态',
   'assessment/roster/active': '参评中',
@@ -216,7 +227,7 @@ export default {
   'assessment/error/template-not-found': '这个模板已经不存在了。',
   'assessment/error/template-conflict': '已经有同名的模板了。',
   'assessment/error/batch-read-only': '批次已归档，不能再做任何修改。',
-  'assessment/error/batch-scope-locked': '参加的单位在批次激活时就定下了，不能再改。',
+  'assessment/error/batch-scope-locked': '参加的单位在批次开跑时就定下了，不能再改。',
   'assessment/error/batch-status-invalid': '批次现在的状态不能这样切换。',
   'assessment/error/batch-no-user-types': '先选好参评的人员类型（至少一种），再激活批次。',
   'assessment/error/batch-reference-invalid': '所选的单位或人员类型中，有的已经不存在了。',

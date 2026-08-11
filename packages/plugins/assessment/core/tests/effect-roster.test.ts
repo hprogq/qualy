@@ -22,6 +22,7 @@ import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
+import { startBatch } from './support/lifecycle.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
 
 // The roster's management face: the diff is a derived view computed on read,
@@ -225,7 +226,7 @@ const activateBatch = (
       { specs: [phase({ phaseKey: 'archive' })] },
       f.principal,
     )
-    yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
+    yield* startBatch(f.tenant, batch.id, f.principal)
     return batch
   })
 

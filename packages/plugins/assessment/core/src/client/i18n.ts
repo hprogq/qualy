@@ -175,17 +175,41 @@ const i18n = definePluginMessages({
 
     // status and lifecycle
     statusDraft: { id: 'assessment/status/draft', defaultMessage: 'Draft' },
+    // a batch whose first stage has a time but has not arrived yet: running
+    // is a promise it has made, not a state it is in
+    statusPending: { id: 'assessment/status/pending', defaultMessage: 'Starts as scheduled' },
     statusActive: { id: 'assessment/status/active', defaultMessage: 'In progress' },
     statusArchived: { id: 'assessment/status/archived', defaultMessage: 'Archived' },
-    activate: { id: 'assessment/action/activate', defaultMessage: 'Activate' },
-    activateConfirmTitle: {
-      id: 'assessment/action/activate-confirm-title',
-      defaultMessage: 'Activate this batch?',
+    deleteBatch: { id: 'assessment/action/delete', defaultMessage: 'Delete batch' },
+    deleteConfirmTitle: {
+      id: 'assessment/action/delete-confirm-title',
+      defaultMessage: 'Delete this batch?',
     },
-    activateConfirmBody: {
-      id: 'assessment/action/activate-confirm-body',
+    deleteConfirmBody: {
+      id: 'assessment/action/delete-confirm-body',
       defaultMessage:
-        'Activation generates the roster from the selected units; the units are then fixed and stages start as planned.',
+        'Nothing has run yet, so nothing is lost but the setup: the stages, their permissions and the coverage go with it.',
+    },
+    reopen: { id: 'assessment/action/reopen', defaultMessage: 'Reopen batch' },
+    reopenTitle: { id: 'assessment/action/reopen-title', defaultMessage: 'Reopen this batch?' },
+    reopenBody: {
+      id: 'assessment/action/reopen-body',
+      defaultMessage:
+        'The stages that ran, the archive and everything already recorded stay as they are. Reopening adds a new stage at the end and starts it now.',
+    },
+    reopenReason: { id: 'assessment/action/reopen-reason', defaultMessage: 'Why' },
+    reopenReasonPlaceholder: {
+      id: 'assessment/action/reopen-reason-placeholder',
+      defaultMessage: 'e.g. some materials were missed and have to be submitted',
+    },
+    reopenPhaseName: { id: 'assessment/action/reopen-phase', defaultMessage: 'The stage to open' },
+    reopenPhaseHint: {
+      id: 'assessment/action/reopen-phase-hint',
+      defaultMessage: 'A new stage, not the earlier one running again.',
+    },
+    reopenPhasePlaceholder: {
+      id: 'assessment/action/reopen-phase-placeholder',
+      defaultMessage: 'e.g. supplementary submission',
     },
     archive: { id: 'assessment/action/archive', defaultMessage: 'Archive' },
     archiveConfirmTitle: {
@@ -195,12 +219,12 @@ const i18n = definePluginMessages({
     archiveConfirmBody: {
       id: 'assessment/action/archive-confirm-body',
       defaultMessage:
-        'Archiving locks the batch for good: results stay visible, nothing can be changed.',
+        'Archiving closes the last stage and locks the batch: results stay visible, nothing can be changed. It can be reopened later, with a reason.',
     },
     draftBanner: {
       id: 'assessment/batch/draft-banner',
       defaultMessage:
-        'This batch is not active yet. Finish the stage plan, then activate it to generate the roster.',
+        'This batch has not started. Scheduling the first stage starts it and freezes the roster from the selected units.',
     },
 
     // ------------------------------------------------------------------
@@ -357,7 +381,7 @@ const i18n = definePluginMessages({
     rosterHint: {
       id: 'assessment/roster/hint',
       defaultMessage:
-        'Generated at activation; organizational changes appear below as suggestions and never move the roster on their own.',
+        'Frozen when the batch starts; organizational changes appear below as suggestions and never move the roster on their own.',
     },
     rosterEmpty: {
       id: 'assessment/roster/empty',
@@ -366,7 +390,7 @@ const i18n = definePluginMessages({
     rosterDraft: {
       id: 'assessment/roster/draft',
       defaultMessage:
-        'The roster is generated at activation from the selected units and user types.',
+        'The roster is frozen from the selected units and user types when the first stage is scheduled.',
     },
     columnParticipant: { id: 'assessment/roster/column-name', defaultMessage: 'Name' },
     columnParticipantStatus: {
@@ -641,8 +665,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_BATCH_SCOPE_LOCKED: {
       id: 'assessment/error/batch-scope-locked',
-      defaultMessage:
-        'The units taking part were fixed when the batch was activated and cannot change.',
+      defaultMessage: 'The units taking part were fixed when the batch started and cannot change.',
     },
     ASSESSMENT_BATCH_STATUS_INVALID: {
       id: 'assessment/error/batch-status-invalid',

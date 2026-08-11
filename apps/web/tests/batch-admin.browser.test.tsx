@@ -223,6 +223,57 @@ describe('the batch list', () => {
   })
 })
 
+describe('the batch lifecycle', () => {
+  it('offers to delete a draft, and never says the word activate', async () => {
+    const deleteBatch = vi.fn((_request: Request) => Effect.succeed({ deleted: true }))
+    screen({ deleteBatch })
+
+    // a draft has run nothing, so removing it loses only the setup
+    await expect.element(page.getByText('草稿')).toBeVisible()
+    expect(await page.getByRole('button', { name: '激活' }).elements()).toHaveLength(0)
+    await page.getByRole('button', { name: '删除批次' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除批次' }).click()
+    await vi.waitFor(() => expect(deleteBatch).toHaveBeenCalledTimes(1))
+    expect(deleteBatch.mock.calls[0]![0]).toMatchObject({ params: { batchId: BATCH_ID } })
+  })
+
+  it('says a scheduled batch has not begun, rather than calling it under way', async () => {
+    screen({
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: null }) }),
+    })
+    await expect.element(page.getByText('待开始')).toBeVisible()
+  })
+
+  it('reopens an archived batch into a stage, and insists on a reason', async () => {
+    const setBatchStatus = vi.fn((_request: Request) =>
+      Effect.succeed({ batch: batch({ status: 'active' }) }),
+    )
+    screen({
+      getBatch: () =>
+        Effect.succeed({ batch: batch({ status: 'archived', currentPhaseId: ENTRY_PHASE_ID }) }),
+      setBatchStatus,
+    })
+
+    await page.getByRole('button', { name: '重新开启' }).click()
+    const dialog = page.getByRole('dialog')
+    // neither half of it is optional: without both, reopening stays shut
+    await expect.element(dialog.getByRole('button', { name: '重新开启' })).toBeDisabled()
+    await dialog.getByLabelText('开启事由').fill('发现部分材料漏报')
+    await dialog.getByLabelText('要开启的阶段').fill('补充填报期')
+    await dialog.getByRole('button', { name: '重新开启' }).click()
+
+    await vi.waitFor(() => expect(setBatchStatus).toHaveBeenCalledTimes(1))
+    expect(setBatchStatus.mock.calls[0]![0]).toMatchObject({
+      payload: {
+        status: 'active',
+        reason: '发现部分材料漏报',
+        phase: { displayName: '补充填报期' },
+        plannedEntryAt: null,
+      },
+    })
+  })
+})
+
 describe('creating a batch', () => {
   it('walks two steps and picks units in place', async () => {
     const createBatch = vi.fn((_request: Request) =>
@@ -435,7 +486,7 @@ describe('the participants tab', () => {
     screen()
     await page.getByRole('link', { name: '参评人员' }).click()
     await expect
-      .element(page.getByText('批次激活时，参评名单会根据批次设置自动生成。'))
+      .element(page.getByText('为第一个阶段排期后，参评名单即按批次设置冻结生成。'))
       .toBeVisible()
   })
 

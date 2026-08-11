@@ -42,6 +42,7 @@ import {
   type CreateBatchError,
   type ReplacePlanError,
   type SetBatchStatusError,
+  type DeleteBatchError,
   type UpdateBatchError,
 } from './errors.ts'
 import {
@@ -59,6 +60,9 @@ import {
   insertParticipant,
   insertConfigEvent,
   insertPhase,
+  insertLifecycleEvent,
+  discardRoster,
+  deleteBatchRow,
   insertPhaseEvent,
   insertTemplate,
   listBatchUserTypes,
@@ -170,6 +174,32 @@ export interface UpdateBatchInput {
   readonly reason?: string
 }
 
+/** closing a batch that has reached the end of its plan */
+export interface ArchiveInput {
+  readonly status: 'archived'
+  readonly reason?: string
+}
+
+/**
+ * Opening a finished batch again.
+ *
+ * Never a rollback: the archive stands as a fact and the phases that ran keep
+ * their intervals. What reopening does is continue the plan, so it always
+ * brings a new phase with it - the second round of submissions is not the
+ * first one happening again.
+ */
+export interface ReopenInput {
+  readonly status: 'active'
+  readonly reason: string
+  readonly phase: {
+    readonly displayName: string
+    readonly description?: string
+    readonly permissionProfile?: readonly string[]
+  }
+  /** null enters the new phase now; an instant schedules it */
+  readonly plannedEntryAt: EpochMillis | null
+}
+
 /** an allowance as a set: order and repetition carry no meaning */
 const normalScope = (ids: readonly string[] | undefined): readonly string[] =>
   [...new Set(ids ?? [])].sort()
@@ -257,6 +287,14 @@ const toSnapshots = (rows: readonly PhaseRow[]): PhasePlan =>
     })),
   )
 
+/** a key no other phase of this batch uses; the plan's own naming convention */
+const freshPhaseKey = (rows: readonly PhaseRow[]): string => {
+  const used = new Set(rows.map((row) => row.phaseKey))
+  let n = rows.length + 1
+  while (used.has(`stage-${n}`)) n += 1
+  return `stage-${n}`
+}
+
 const specToEngine = (spec: PhaseSpecInput): NewPhaseSpec => ({
   phaseKey: spec.phaseKey,
   displayName: spec.displayName,
@@ -298,12 +336,23 @@ export class Assessment extends Context.Service<
       input: UpdateBatchInput,
       as: Principal,
     ) => Effect.Effect<BatchDetail, UpdateBatchError>
+    /**
+     * Archiving a batch that has reached its last phase, and reopening one
+     * that was archived. Starting is not here: a batch starts by having its
+     * first phase scheduled, which is the same act as promising it will run.
+     */
     readonly setBatchStatus: (
       tenantId: string,
       batchId: string,
-      to: 'active' | 'archived',
+      input: ArchiveInput | ReopenInput,
       as: Principal,
     ) => Effect.Effect<BatchDetail, SetBatchStatusError>
+    /** a draft that never ran, removed with everything configured on it */
+    readonly deleteBatch: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<void, DeleteBatchError>
     readonly getPlan: (
       tenantId: string,
       batchId: string,
@@ -1001,7 +1050,109 @@ export const make = Effect.fn('Assessment.make')(function* () {
       )
     }),
 
-    setBatchStatus: Effect.fn('Assessment.setBatchStatus')(function* (tenantId, batchId, to, as) {
+    setBatchStatus: Effect.fn('Assessment.setBatchStatus')(
+      function* (tenantId, batchId, input, as) {
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              const locked = yield* lockBatch(tenantId, batchId)
+              if (!locked) return yield* new BatchNotFound()
+              yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
+              const from = locked.status as string
+              const to = input.status
+              const now = yield* Clock.currentTimeMillis
+
+              if (input.status === 'archived') {
+                if (from !== 'active') {
+                  return yield* new BatchStatusInvalid({ from, to, refusal: 'wrong-status' })
+                }
+                const plan = toSnapshots(yield* listPhaseRows(tenantId, batchId))
+                // The end of the plan is the end of the batch: the last phase
+                // has no successor to bound it, so archiving is what closes its
+                // interval. Reaching it means having entered it - a time in the
+                // diary is not the same as having got there.
+                const { state } = yield* ratifyPending(tenantId, batchId, plan, now)
+                if (state.index !== plan.length - 1) {
+                  return yield* new BatchStatusInvalid({
+                    from,
+                    to,
+                    refusal: 'last-phase-not-entered',
+                  })
+                }
+                yield* updateBatchFields(tenantId, batchId, { status: 'archived' })
+                yield* insertLifecycleEvent({
+                  tenantId,
+                  batchId,
+                  kind: 'archived',
+                  occurredAt: now,
+                  actorId: as.userId,
+                  reason: input.reason ?? null,
+                })
+              } else {
+                if (from !== 'archived') {
+                  return yield* new BatchStatusInvalid({ from, to, refusal: 'wrong-status' })
+                }
+                if (input.reason.trim() === '') {
+                  return yield* new BatchStatusInvalid({ from, to, refusal: 'reason-required' })
+                }
+                if (input.phase.displayName.trim() === '') {
+                  return yield* new BatchStatusInvalid({ from, to, refusal: 'phase-required' })
+                }
+                const rows = yield* listPhaseRows(tenantId, batchId)
+                const phaseId = yield* insertPhase({
+                  tenantId,
+                  batchId,
+                  ordinal: rows.length,
+                  phaseKey: freshPhaseKey(rows),
+                  displayName: input.phase.displayName.trim(),
+                  description: input.phase.description?.trim() ?? '',
+                  permissionProfile: input.phase.permissionProfile ?? [],
+                })
+                yield* updateBatchFields(tenantId, batchId, { status: 'active' })
+                yield* insertLifecycleEvent({
+                  tenantId,
+                  batchId,
+                  kind: 'reopened',
+                  occurredAt: now,
+                  actorId: as.userId,
+                  reason: input.reason.trim(),
+                })
+                if (input.plannedEntryAt === null) {
+                  // reopening now: the new phase starts where the archive ended
+                  yield* setPhaseActual(tenantId, phaseId, now)
+                  yield* insertPhaseEvent({
+                    tenantId,
+                    phaseId,
+                    kind: 'entered',
+                    actualAt: now,
+                    processedAt: now,
+                    actorId: as.userId,
+                    reason: input.reason.trim(),
+                  })
+                  yield* setCurrentPhase(tenantId, batchId, phaseId)
+                } else {
+                  yield* updatePhaseFields(tenantId, phaseId, {
+                    plannedEntryAt: input.plannedEntryAt,
+                  })
+                  yield* insertPhaseEvent({
+                    tenantId,
+                    phaseId,
+                    kind: 'scheduled',
+                    plannedAt: input.plannedEntryAt,
+                    actorId: as.userId,
+                  })
+                }
+              }
+
+              const batch = yield* oneBatch(tenantId, batchId)
+              return yield* readDetail(tenantId, batch!)
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      },
+    ),
+
+    deleteBatch: Effect.fn('Assessment.deleteBatch')(function* (tenantId, batchId, as) {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
@@ -1009,41 +1160,29 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (!locked) return yield* new BatchNotFound()
             yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
             const from = locked.status as string
-            const now = yield* Clock.currentTimeMillis
-
-            if (to === 'active') {
-              if (from !== 'draft') return yield* new BatchStatusInvalid({ from, to })
-              const userTypes = yield* listBatchUserTypes(tenantId, batchId)
-              if (userTypes.length === 0) return yield* new BatchNoUserTypes()
-              const rows = yield* listPhaseRows(tenantId, batchId)
-              if (rows.length === 0) {
-                return yield* new PlanInvalid({
-                  refusals: [{ reason: 'plan-empty', phaseId: null }],
-                })
-              }
-              // the whole plan, revalidated against the activation clock: a
-              // draft saved with future dates may have gone stale on the
-              // shelf, and a phase must not begin before its batch exists
-              // activating says the plan is the plan; when each phase
-              // begins is committed afterwards, one at a time, and a batch
-              // with nothing scheduled simply has not started (32.41)
-              // the roster in one statement, frozen as of this transaction
-              yield* generateRoster(tenantId, batchId)
-              yield* updateBatchFields(tenantId, batchId, { status: 'active' })
-            } else {
-              if (from !== 'active') return yield* new BatchStatusInvalid({ from, to })
-              const plan = toSnapshots(yield* listPhaseRows(tenantId, batchId))
-              // stand-in for the archive gate: the batch must have reached
-              // its terminal phase; publication conditions arrive with them
-              const { state } = yield* ratifyPending(tenantId, batchId, plan, now)
-              if (state.index !== plan.length - 1) {
-                return yield* new BatchStatusInvalid({ from, to })
-              }
-              yield* updateBatchFields(tenantId, batchId, { status: 'archived' })
+            // Only a draft, which is exactly the batch that never ran: the
+            // first schedule takes it out of draft, and withdrawing that
+            // schedule is how somebody gets back here. Everything on it is
+            // configuration - names, descriptions, permissions, a template
+            // somebody applied - and none of it is anybody's history.
+            if (from !== 'draft') {
+              return yield* new BatchStatusInvalid({
+                from,
+                to: 'deleted',
+                refusal: 'already-started',
+              })
             }
-
-            const batch = yield* oneBatch(tenantId, batchId)
-            return yield* readDetail(tenantId, batch!)
+            const entered = (yield* listPhaseRows(tenantId, batchId)).some(
+              (row) => row.actualEntryAt !== null,
+            )
+            if (entered) {
+              return yield* new BatchStatusInvalid({
+                from,
+                to: 'deleted',
+                refusal: 'already-started',
+              })
+            }
+            yield* deleteBatchRow(tenantId, batchId)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -1294,6 +1433,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
               if (review.refusals.length > 0) {
                 return yield* new PlanInvalid({ refusals: review.refusals })
               }
+              // The first time somebody puts a phase in the diary, the batch
+              // stops being a draft. That commitment is what activation used
+              // to be a separate button for: there has to be somebody to
+              // enroll and a plan to run, and the roster freezes here rather
+              // than at some later moment nobody chose.
+              if (locked.status === 'draft' && plannedEntryAt !== null) {
+                if ((yield* listBatchUserTypes(tenantId, batchId)).length === 0) {
+                  return yield* new BatchNoUserTypes()
+                }
+                yield* generateRoster(tenantId, batchId)
+                yield* updateBatchFields(tenantId, batchId, { status: 'active' })
+              }
               yield* updatePhaseFields(tenantId, phaseId, { plannedEntryAt })
               yield* insertPhaseEvent({
                 tenantId,
@@ -1302,6 +1453,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 plannedAt: plannedEntryAt,
                 actorId: as.userId,
               })
+              // And withdrawing the last of them releases it again. Only a
+              // batch that never actually entered a phase can go back: once
+              // something has happened, it happened.
+              if (plannedEntryAt === null && locked.status === 'active') {
+                const after = yield* listPhaseRows(tenantId, batchId)
+                const running = after.some(
+                  (row) => row.actualEntryAt !== null || row.plannedEntryAt !== null,
+                )
+                if (!running) {
+                  yield* discardRoster(tenantId, batchId)
+                  yield* updateBatchFields(tenantId, batchId, { status: 'draft' })
+                }
+              }
               yield* recordConfigChange(
                 tenantId,
                 batchId,
@@ -1324,7 +1488,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const locked = yield* lockBatch(tenantId, batchId)
             if (!locked) return yield* new BatchNotFound()
             yield* requireScopeReach(as, yield* scopeNodeRows(tenantId, batchId))
-            if (locked.status !== 'active') {
+            if (locked.status === 'archived') {
               return yield* new AdvanceInvalid({ reason: 'batch-not-active' })
             }
             const now = yield* Clock.currentTimeMillis
@@ -1332,6 +1496,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const targetIndex = plan.findIndex((phase) => phase.id === input.to)
             if (targetIndex === -1) return yield* new PhaseNotFound()
             const target = plan[targetIndex]!
+            // Starting the first phase by hand is the other half of the same
+            // commitment a first schedule makes: the batch runs from here, so
+            // it needs somebody to enroll and a roster frozen as of now.
+            if (locked.status === 'draft') {
+              if (targetIndex !== 0) {
+                return yield* new AdvanceInvalid({ reason: 'batch-not-active' })
+              }
+              if ((yield* listBatchUserTypes(tenantId, batchId)).length === 0) {
+                return yield* new AdvanceInvalid({ reason: 'batch-not-active' })
+              }
+              yield* generateRoster(tenantId, batchId)
+              yield* updateBatchFields(tenantId, batchId, { status: 'active' })
+            }
 
             // the clock's crossings are ratified first, so "next" means next
             const { state } = yield* ratifyPending(tenantId, batchId, plan, now)
@@ -1895,10 +2072,30 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const detail = yield* assessment.setBatchStatus(
           principal.tenantId,
           params.batchId,
-          payload.status,
+          payload.status === 'archived'
+            ? {
+                status: 'archived',
+                ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
+              }
+            : {
+                status: 'active',
+                reason: payload.reason,
+                phase: payload.phase,
+                plannedEntryAt:
+                  payload.plannedEntryAt === null ? null : Date.parse(payload.plannedEntryAt),
+              },
           principal,
         )
         return { batch: toBatchDto(detail) }
+      }),
+    )
+    .handle(
+      'deleteBatch',
+      Effect.fn('assessment.deleteBatch.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        yield* assessment.deleteBatch(principal.tenantId, params.batchId, principal)
+        return { deleted: true }
       }),
     )
     .handle(

@@ -584,6 +584,78 @@ export const insertPhaseEvent = (input: {
       .execute(),
   )
 
+export const insertLifecycleEvent = (input: {
+  tenantId: string
+  batchId: string
+  kind: 'archived' | 'reopened'
+  occurredAt: number
+  actorId?: string | null
+  reason?: string | null
+}) =>
+  db.query((k) =>
+    k
+      .insertInto('BatchLifecycleEvent')
+      .values({
+        tenantId: input.tenantId,
+        batchId: input.batchId,
+        kind: input.kind,
+        occurredAt: instant(input.occurredAt),
+        actorId: input.actorId ?? null,
+        reason: input.reason ?? null,
+      } as never)
+      .execute(),
+  )
+
+/** what has happened to a batch as a whole, oldest first */
+export const lifecycleEvents = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchLifecycleEvent')
+        .select(['kind', 'occurredAt', 'actorId', 'reason'])
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .orderBy('occurredAt', 'asc')
+        .execute(),
+    )
+    .pipe(
+      Effect.map(
+        (rows) =>
+          rows as unknown as {
+            kind: string
+            occurredAt: string
+            actorId: string | null
+            reason: string | null
+          }[],
+      ),
+    )
+
+/**
+ * The roster, discarded.
+ *
+ * Only ever called for a batch that never started: the first schedule freezes
+ * a roster, and withdrawing that schedule releases a commitment nobody has
+ * acted on yet. A batch that has entered a phase keeps its roster forever.
+ */
+export const discardRoster = (tenantId: string, batchId: string) =>
+  db.query((k) =>
+    k
+      .deleteFrom('BatchParticipant')
+      .where('tenantId', '=', tenantId)
+      .where('batchId', '=', batchId)
+      .execute(),
+  )
+
+/** a draft nobody ever started, removed with the rows that hang off it */
+export const deleteBatchRow = (tenantId: string, batchId: string) =>
+  db.query((k) =>
+    k
+      .deleteFrom('AssessmentBatch')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', batchId)
+      .execute(),
+  )
+
 /** every scope row of a batch's phases, for the plan read */
 export const scopesForBatch = (tenantId: string, batchId: string) =>
   Effect.all({

@@ -187,7 +187,6 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
           },
           f.principal,
         )
-        yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         // the entry boundary is the only one committed to a time; everything
         // behind it stays unscheduled and therefore cannot self-ignite
@@ -308,7 +307,6 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
             },
             f.principal,
           )
-          yield* assessment.setBatchStatus(f.tenant, batch.id, 'active', f.principal)
           const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
           yield* assessment.schedulePhase(
             f.tenant,

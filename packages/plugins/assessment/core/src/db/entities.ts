@@ -217,6 +217,47 @@ export const PhaseEvent = defineEntity({
   ],
 })
 
+// What happened to the batch as a whole, as facts rather than as a column
+// that can be nulled out.
+//
+// Archiving and reopening are not a flag flipping back and forth: a batch was
+// closed on the 20th and opened again on the 3rd, and the fortnight in
+// between is a real interval that the last phase did not run through. Kept
+// append-only for the same reason phase_events is, and without a foreign key
+// to the actor, so the record outlives the account.
+export const BatchLifecycleEvent = defineEntity({
+  name: 'BatchLifecycleEvent',
+  tableName: 'batch_lifecycle_events',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('batch_lifecycle_events_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    kind: p.string().length(31),
+    occurredAt: p.datetime().defaultRaw('now()'),
+    actorId: p.uuid().nullable(),
+    reason: p.text().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_batch_lifecycle_events_kind',
+      expression: `kind IN ('archived', 'reopened')`,
+    },
+    // reopening a finished batch is the one act nobody may perform silently
+    {
+      name: 'chk_batch_lifecycle_events_reopen_reason',
+      expression: `kind <> 'reopened' OR btrim(coalesce(reason, '')) <> ''`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'idx_batch_lifecycle_events_tenant_batch_occurred',
+      expression:
+        'create index idx_batch_lifecycle_events_tenant_batch_occurred on batch_lifecycle_events (tenant_id, batch_id, occurred_at)',
+    },
+  ],
+})
+
 // Tenant-level presets, in two kinds that share a table but not a meaning:
 // a 'timeline' is a whole phase sequence a draft batch can start from, while
 // a 'phase' describes one phase's options (name and what it opens) and is
@@ -399,6 +440,8 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete restrict`,
   `alter table batch_phases add constraint fk_batch_phases_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_lifecycle_events add constraint fk_batch_lifecycle_events_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table phase_events add constraint fk_phase_events_phase
      foreign key (tenant_id, phase_id) references batch_phases (tenant_id, id) on delete cascade`,
   `alter table phase_item_scopes add constraint fk_phase_item_scopes_phase
@@ -425,6 +468,7 @@ export const entities = [
   BatchUserType,
   BatchPhase,
   PhaseEvent,
+  BatchLifecycleEvent,
   PhaseTemplate,
   PhaseItemScope,
   PhaseParticipantScope,

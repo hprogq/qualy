@@ -217,7 +217,7 @@ export default function BatchListPage() {
                           </PageLink>
                         </TableCell>
                         <TableCell>
-                          <StatusBadge status={row.status} />
+                          <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {row.materialRange.start} – {row.materialRange.end}

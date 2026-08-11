@@ -273,11 +273,40 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // Closing a batch, and opening a closed one again. Starting is not here:
+    // a batch starts by having its first phase scheduled. Reopening always
+    // brings the phase it continues into, because the round that follows an
+    // archive is a new period, not the old one resumed.
     HttpApiEndpoint.put('setBatchStatus', '/assessment/batches/:batchId/status', {
       params: Schema.Struct({ batchId: id }),
-      payload: Schema.Struct({ status: Schema.Literals(['active', 'archived']) }),
+      payload: Schema.Union([
+        Schema.Struct({
+          status: Schema.Literal('archived'),
+          reason: Schema.optional(boundedText(500)),
+        }),
+        Schema.Struct({
+          status: Schema.Literal('active'),
+          reason: boundedText(500),
+          phase: Schema.Struct({
+            displayName: trimmedName(120),
+            description: Schema.optional(boundedText(500)),
+            permissionProfile: Schema.optional(Schema.Array(Schema.String)),
+          }),
+          /** null starts the new phase now; an instant schedules it */
+          plannedEntryAt: Schema.NullOr(isoInstant),
+        }),
+      ]),
       success: Schema.Struct({ batch: batchView }),
       error: [BatchNotFound, BatchStatusInvalid, BatchNoUserTypes, PlanInvalid, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // A draft nobody ever started. Anything that ran is archived, never
+    // deleted: the history is the point.
+    HttpApiEndpoint.delete('deleteBatch', '/assessment/batches/:batchId', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({ deleted: Schema.Boolean }),
+      error: [BatchNotFound, BatchStatusInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
@@ -326,7 +355,17 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ batchId: id, phaseId: id }),
       payload: Schema.Struct({ plannedEntryAt: Schema.NullOr(isoInstant) }),
       success: Schema.Struct({ phases: Schema.Array(phaseView) }),
-      error: [BatchNotFound, BatchReadOnly, PhaseNotFound, PlanInvalid, AccessDenied, BadRequest],
+      error: [
+        BatchNotFound,
+        BatchReadOnly,
+        PhaseNotFound,
+        PlanInvalid,
+        // the first time a phase is given a time, the batch starts running,
+        // and a batch that can enroll nobody may not
+        BatchNoUserTypes,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

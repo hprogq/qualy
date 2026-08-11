@@ -1,7 +1,14 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon } from 'lucide-react'
-import { PageLink, useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
+import { ArrowLeftIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
+import {
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageNavigate,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
@@ -12,6 +19,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { refusalMessage, refusalsOf } from '../refusals.ts'
 import { StatusBadge } from './StatusBadge.tsx'
+import { ReopenDialog } from './ReopenDialog.tsx'
 import type { BatchDto } from '../phase/model.ts'
 
 // Everything a batch shows whichever of its sections is open: who it is,
@@ -52,8 +60,10 @@ export function BatchScreen({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
-  const [confirming, setConfirming] = useState<'activate' | 'archive' | null>(null)
+  const [confirming, setConfirming] = useState<'archive' | 'delete' | null>(null)
+  const [reopening, setReopening] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  const navigate = usePageNavigate()
 
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
@@ -63,9 +73,28 @@ export function BatchScreen({
   })
   const batch = detail.data?.batch
 
-  const setStatus = useMutation({
-    mutationFn: (status: 'active' | 'archived') =>
-      run(api.assessment.setBatchStatus({ params: { batchId }, payload: { status } })),
+  // the plan answers with its own reasons; anything else is a sentence the
+  // error catalog already has
+  const said = (error: unknown) => {
+    const refusals = refusalsOf(error)
+    return refusals.length > 0
+      ? refusals
+          .map((refusal) => {
+            const sentence = refusalMessage(refusal.reason)
+            return sentence ? format(sentence) : refusal.reason
+          })
+          .join(' ')
+      : formatError(error)
+  }
+
+  const archive = useMutation({
+    mutationFn: () =>
+      run(
+        api.assessment.setBatchStatus({
+          params: { batchId },
+          payload: { status: 'archived' },
+        }),
+      ),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -73,19 +102,48 @@ export function BatchScreen({
     },
     onError: (error: unknown) => {
       setConfirming(null)
-      // activation answers with the plan's own reasons; anything else is a
-      // sentence the error catalog already has
-      const refusals = refusalsOf(error)
-      setFailure(
-        refusals.length > 0
-          ? refusals
-              .map((refusal) => {
-                const sentence = refusalMessage(refusal.reason)
-                return sentence ? format(sentence) : refusal.reason
-              })
-              .join(' ')
-          : formatError(error),
-      )
+      setFailure(said(error))
+    },
+  })
+
+  const reopen = useMutation({
+    mutationFn: (input: { reason: string; displayName: string; startNow: boolean }) =>
+      run(
+        api.assessment.setBatchStatus({
+          params: { batchId },
+          payload: {
+            status: 'active',
+            reason: input.reason,
+            phase: { displayName: input.displayName },
+            // a reopening that waits has nothing to wait for yet: the new
+            // phase is scheduled from the plan afterwards
+            plannedEntryAt: null,
+          },
+        }),
+      ),
+    onMutate: () => setFailure(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+      setReopening(false)
+    },
+    onError: (error: unknown) => {
+      setReopening(false)
+      setFailure(said(error))
+    },
+  })
+
+  const remove = useMutation({
+    mutationFn: () => run(api.assessment.deleteBatch({ params: { batchId } })),
+    onMutate: () => setFailure(null),
+    onSuccess: () => {
+      setConfirming(null)
+      // the batch this screen is about no longer exists
+      navigate('assessment/batches', { replace: true })
+      void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+    },
+    onError: (error: unknown) => {
+      setConfirming(null)
+      setFailure(said(error))
     },
   })
 
@@ -116,7 +174,7 @@ export function BatchScreen({
                   <div className="flex flex-col gap-1.5">
                     <div className="flex flex-wrap items-center gap-2.5">
                       <h1 className="text-2xl font-semibold tracking-tight">{batch.name}</h1>
-                      <StatusBadge status={batch.status} />
+                      <StatusBadge status={batch.status} currentPhaseId={batch.currentPhaseId} />
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {/* before activation there is no roster to speak of, so
@@ -134,22 +192,37 @@ export function BatchScreen({
                           })}
                     </p>
                   </div>
+                  {/* A batch is started by scheduling its first phase, not by
+                      a button here: what is left at this level is ending it,
+                      opening it again, and removing one that never ran. */}
                   <div className="flex gap-2">
                     {batch.status === 'draft' && (
                       <Button
-                        disabled={setStatus.isPending}
-                        onClick={() => setConfirming('activate')}
+                        variant="outline"
+                        disabled={remove.isPending}
+                        onClick={() => setConfirming('delete')}
                       >
-                        {format(m.activate)}
+                        <Trash2Icon />
+                        {format(m.deleteBatch)}
                       </Button>
                     )}
                     {batch.status === 'active' && (
                       <Button
                         variant="outline"
-                        disabled={setStatus.isPending}
+                        disabled={archive.isPending}
                         onClick={() => setConfirming('archive')}
                       >
                         {format(m.archive)}
+                      </Button>
+                    )}
+                    {batch.status === 'archived' && (
+                      <Button
+                        variant="outline"
+                        disabled={reopen.isPending}
+                        onClick={() => setReopening(true)}
+                      >
+                        <RotateCcwIcon />
+                        {format(m.reopen)}
                       </Button>
                     )}
                   </div>
@@ -192,25 +265,32 @@ export function BatchScreen({
               </div>
 
               <ConfirmDialog
-                open={confirming === 'activate'}
-                title={format(m.activateConfirmTitle)}
-                description={format(m.activateConfirmBody)}
-                confirmLabel={format(m.activate)}
-                cancelLabel={format(m.cancel)}
-                pending={setStatus.isPending}
-                onConfirm={() => setStatus.mutate('active')}
-                onCancel={() => setConfirming(null)}
-              />
-              <ConfirmDialog
                 open={confirming === 'archive'}
                 title={format(m.archiveConfirmTitle)}
                 description={format(m.archiveConfirmBody)}
                 confirmLabel={format(m.archive)}
                 cancelLabel={format(m.cancel)}
-                pending={setStatus.isPending}
+                pending={archive.isPending}
                 tone="destructive"
-                onConfirm={() => setStatus.mutate('archived')}
+                onConfirm={() => archive.mutate()}
                 onCancel={() => setConfirming(null)}
+              />
+              <ConfirmDialog
+                open={confirming === 'delete'}
+                title={format(m.deleteConfirmTitle)}
+                description={format(m.deleteConfirmBody)}
+                confirmLabel={format(m.deleteBatch)}
+                cancelLabel={format(m.cancel)}
+                pending={remove.isPending}
+                tone="destructive"
+                onConfirm={() => remove.mutate()}
+                onCancel={() => setConfirming(null)}
+              />
+              <ReopenDialog
+                open={reopening}
+                pending={reopen.isPending}
+                onCancel={() => setReopening(false)}
+                onReopen={(input) => reopen.mutate({ ...input, startNow: true })}
               />
             </div>
           </div>
