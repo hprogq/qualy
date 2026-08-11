@@ -2950,3 +2950,26 @@ ENOENT 偶发红;④前端查询不再无条件重试三次(默认退避要 7 �
 29 全绿;`pnpm build` 通过;`tsx tools/quality/smoke-production.ts` 五探针全过、SIGTERM 退出 0;
 `pnpm vendor:check` 两棵树匹配;`prettier --check .` 全仓干净。CI 无需改动:`pnpm install
 --frozen-lockfile` 照旧跑根 `prepare` 打补丁,平台二进制 linux-x64/arm64 均已发布。
+
+### 迁移生成器:改了体的索引(2026-08-12)
+
+批次接受权限那一轮需要把 `role_grants` 的两条唯一索引换掉(加 `coalesce(resource_id, ...)`
+与 `revoked_at is null`),而生成的迁移里没有它们,只能手写 SQL 补在文件末尾——这与「插件自由装配、
+用户拿不到 migrations 目录」直接冲突:手写的那段只存在于这个仓库,别的装配再也生成不出来。
+
+上游不是缺陷:`SchemaComparator.diffIndex` 对经 `expression` 逃生口声明的索引**只比名字**,
+并写明原因(repos/mikro-orm/packages/sql/src/schema/SchemaComparator.ts:986)——没有任何东西能
+靠读两段任意 SQL 判断它们是否等价,所以不打 patch。检查约束不在此列,`diffExpression` 是比体的。
+
+我们比上游多一件东西:diff 的两侧都是**真实数据库**。声明的索引进过一次 Postgres,
+`pg_get_indexdef` 读回来就是规范化形式,两段规范化定义相等当且仅当索引相同——不解析、不猜。
+`diff.ts` 因此在结构语句之后补一趟:两侧同名而定义不同的索引,发 `drop index` 加数据库自己拼的
+`CREATE INDEX`(约束背后的索引排除在外,那归约束比对)。这条对所有插件、所有装配一律生效。
+
+那条迁移已删掉手写段重新生成(`20260811185310_batch-access-baseline.sql`,49 行、零注释,索引替换
+由生成器自己给出且用的是 Postgres 的拼写),本地按新文件重放。回归测试在
+`assembly.test.ts`「replaces an index whose definition changed under the same name」:同名换体应发出
+drop+create、能应用、再 diff 为空;实测拿掉这趟补丁它立刻红(expected [] to have a length of 2)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **450/72 全绿**(clean-room-parity 8.6s、
+assembly 15 项全过)。
