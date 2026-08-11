@@ -210,7 +210,7 @@ export default {
   'assessment/access/empty-hint': '在组织中担任相关角色的人，同步后会出现在这里。',
   'assessment/access/column-person': '人员',
   'assessment/access/column-sources': '权限来自',
-  'assessment/access/column-permissions': '本批次权限',
+  'assessment/access/column-permissions': '批次内权限',
   'assessment/access/origin-inherited': '组织授权',
   'assessment/access/origin-explicit': '本批次临时',
   'assessment/access/source-lapsed': '组织侧已撤销',
