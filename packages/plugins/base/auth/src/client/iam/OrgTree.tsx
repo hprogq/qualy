@@ -99,20 +99,33 @@ function Row({
   // reader click before it has told them anything
   const [open, setOpen] = useState(depth < 2)
 
+  // The row is one button, with the indentation inside it, and the chevron
+  // sits on top of its left edge. Laying them out side by side left the
+  // indentation belonging to the container, so the further down the tree a
+  // node was, the wider the strip in front of its name that looked pressable
+  // and was not.
+  const indent = depth * 0.75
+
   return (
     <li>
-      <div
-        className={cn(
-          'flex items-center gap-1 rounded-md pr-1',
-          selected === node.id && 'bg-accent',
-        )}
-        style={{ paddingLeft: `${String(depth * 0.75)}rem` }}
-      >
-        {children.length > 0 ? (
+      <div className={cn('relative rounded-md', selected === node.id && 'bg-accent')}>
+        <button
+          type="button"
+          className={cn(
+            'w-full truncate rounded-md py-1.5 pr-2 text-left text-sm outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
+            marked?.has(node.id) === true && 'font-medium',
+          )}
+          style={{ paddingLeft: `${String(indent + 1.75)}rem` }}
+          onClick={() => onSelect(node)}
+        >
+          {node.name}
+        </button>
+        {children.length > 0 && (
           <Button
             size="icon"
             variant="ghost"
-            className="size-6 shrink-0 text-muted-foreground"
+            className="absolute top-1/2 size-6 -translate-y-1/2 text-muted-foreground"
+            style={{ left: `${String(indent)}rem` }}
             aria-label={expandLabel}
             aria-expanded={open}
             onClick={() => setOpen((was) => !was)}
@@ -121,19 +134,7 @@ function Row({
               className={cn('size-3.5 transition-transform', open && 'rotate-90')}
             />
           </Button>
-        ) : (
-          <span className="size-6 shrink-0" />
         )}
-        <button
-          type="button"
-          className={cn(
-            'min-w-0 flex-1 truncate rounded-md py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            marked?.has(node.id) === true && 'font-medium',
-          )}
-          onClick={() => onSelect(node)}
-        >
-          {node.name}
-        </button>
       </div>
       {open && children.length > 0 && (
         <ul className="flex flex-col gap-0.5">

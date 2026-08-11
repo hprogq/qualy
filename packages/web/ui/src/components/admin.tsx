@@ -107,6 +107,7 @@ export function AsyncSection({
   retryLabel,
   onRetry,
   skeleton,
+  className,
   children,
 }: {
   pending: boolean
@@ -116,25 +117,27 @@ export function AsyncSection({
   onRetry: () => void
   /** what the section looks like while it loads; a spinner when absent */
   skeleton?: ReactNode
+  /** carried by every branch, for a section that has to fill its parent */
+  className?: string
   children: ReactNode
 }) {
   if (pending) {
     if (skeleton) {
       return (
-        <div role="status" aria-label={loadingLabel}>
+        <div role="status" aria-label={loadingLabel} className={className}>
           {skeleton}
         </div>
       )
     }
     return (
-      <div className="flex justify-center py-8">
+      <div className={cn('flex justify-center py-8', className)}>
         <Spinner aria-label={loadingLabel} />
       </div>
     )
   }
   if (error) {
     return (
-      <Alert variant="destructive">
+      <Alert variant="destructive" className={className}>
         <AlertDescription className="space-y-3">
           <p>{error}</p>
           <Button variant="outline" size="sm" onClick={onRetry}>
@@ -144,7 +147,7 @@ export function AsyncSection({
       </Alert>
     )
   }
-  return <>{children}</>
+  return className === undefined ? <>{children}</> : <div className={className}>{children}</div>
 }
 
 export function Feedback({

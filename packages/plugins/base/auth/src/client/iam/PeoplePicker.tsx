@@ -98,10 +98,10 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-      <div className="min-w-0 space-y-2">
+    <div className="grid min-h-0 flex-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <div className="flex min-h-0 min-w-0 flex-col gap-2">
         <p className="text-sm font-medium">{format(m.pickerUnits)}</p>
-        <div className="h-[42vh] min-h-64 overflow-auto rounded-md border p-1">
+        <div className="min-h-56 flex-1 overflow-auto rounded-md border p-1">
           <OrgTree
             nodes={nodes.map((row) => ({
               id: row.orgNodeId,
@@ -119,7 +119,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         )}
       </div>
 
-      <div className="min-w-0 space-y-3">
+      <div className="flex min-h-0 min-w-0 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={search}
@@ -156,19 +156,20 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         </div>
 
         <AsyncSection
+          className="flex min-h-0 flex-1 flex-col"
           pending={people.isPending && here !== null}
           error={people.isError ? formatError(people.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void people.refetch()}
-          skeleton={<Skeleton className="h-[34vh] min-h-56 w-full" />}
+          skeleton={<Skeleton className="min-h-40 w-full flex-1" />}
         >
           {rows.length === 0 ? (
-            <p className="flex h-[34vh] min-h-56 items-center justify-center rounded-md border text-sm text-muted-foreground">
+            <p className="flex min-h-40 flex-1 items-center justify-center rounded-md border text-sm text-muted-foreground">
               {format(m.pickerNobody)}
             </p>
           ) : (
-            <ul className="h-[34vh] min-h-56 divide-y overflow-auto rounded-md border">
+            <ul className="min-h-40 flex-1 divide-y overflow-auto rounded-md border">
               {rows.map((row) => (
                 <li key={row.id} className="flex items-center gap-3 px-3 py-2">
                   <Checkbox

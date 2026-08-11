@@ -139,8 +139,9 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
                       checked={chosen.has(node.id)}
                       onCheckedChange={() => toggle(node.id)}
                     />
-                    <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                    <span className="min-w-0 truncate">{node.name}</span>
                     {badge(node)}
+                    <span className="flex-1" />
                   </label>
                 </li>
               ))}

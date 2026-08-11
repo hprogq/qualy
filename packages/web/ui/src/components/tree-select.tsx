@@ -94,8 +94,11 @@ function TreeRow({
           checked={indeterminate ? 'indeterminate' : checked}
           onCheckedChange={() => onToggle(node)}
         />
-        <span className="min-w-0 flex-1 truncate">{node.name}</span>
+        <span className="min-w-0 truncate">{node.name}</span>
         {meta?.(node)}
+        {/* the row still fills its width, but the mark stays next to the name
+            rather than being pushed to the far edge away from what it marks */}
+        <span className="flex-1" />
       </label>
     </div>
   )

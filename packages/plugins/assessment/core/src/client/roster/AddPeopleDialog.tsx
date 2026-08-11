@@ -45,7 +45,8 @@ export function AddPeopleDialog({
           <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
           <DialogDescription>{format(m.addPeopleHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="min-h-[58vh]">
+        <DialogBody className="flex min-h-[58vh] flex-col">
+          {/* a column, so the picker can be told to fill what is left */}
           <UiSlot
             token={peoplePicker}
             context={{ value: chosen, onChange: setChosen }}

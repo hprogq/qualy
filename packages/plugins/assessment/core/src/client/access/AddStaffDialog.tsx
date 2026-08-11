@@ -98,7 +98,7 @@ export function AddStaffDialog({
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="min-h-[58vh] space-y-5">
+        <DialogBody className="flex min-h-[58vh] flex-col gap-5">
           <Steps
             steps={STEPS.map((label) => format(label))}
             current={step}
@@ -107,13 +107,15 @@ export function AddStaffDialog({
           />
 
           {step === 0 && (
-            <UiSlot
-              token={peoplePicker}
-              context={{ value: chosen, onChange: setChosen }}
-              fallback={
-                <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
-              }
-            />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <UiSlot
+                token={peoplePicker}
+                context={{ value: chosen, onChange: setChosen }}
+                fallback={
+                  <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
+                }
+              />
+            </div>
           )}
 
           {step === 1 && (
