@@ -392,9 +392,7 @@ describe('the stage plan', () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
     screen({ putPhases })
 
-    await expect
-      .element(page.getByText('暂无阶段。可从模板添加，或手动新增。'))
-      .toBeVisible()
+    await expect.element(page.getByText('暂无阶段。可从模板添加，或手动新增。')).toBeVisible()
 
     await page.getByRole('button', { name: '新增阶段', exact: true }).click()
     // a phase is named where a name has room to be read
@@ -652,11 +650,14 @@ describe('who may work on a batch', () => {
     await expect.element(page.getByText('组织授权')).toBeVisible()
 
     await page.getByRole('button', { name: '调整' }).click()
-    // the dialog offers exactly what this round holds, by name
+    // the dialog offers exactly what this batch holds, by name
     const box = page.getByRole('checkbox', { name: '审核提交的内容' })
     await expect.element(box).toBeChecked()
     await box.click()
 
+    // unticking is not the decision; confirming is
+    expect(setAccessDeny).not.toHaveBeenCalled()
+    await page.getByRole('button', { name: '保存' }).click()
     await vi.waitFor(() => expect(setAccessDeny).toHaveBeenCalledTimes(1))
     expect(setAccessDeny.mock.calls[0]![0]).toMatchObject({
       params: { userId: USER_ID, permission: 'assessment.review.process' },

@@ -128,6 +128,20 @@ export interface RbacShape {
     resource?: ResourceRef
   }) => Effect.Effect<readonly ApplicableAssignment[]>
 
+  /**
+   * What one person has been given, said the way a reader asks it: which
+   * duties, and where.
+   *
+   * A plain reading with no judgement in it - the caller has already decided
+   * whether this person is theirs to look at. Withdrawn and expired grants
+   * are left out, because a list of what somebody may do must not include
+   * what they no longer may.
+   */
+  readonly listUserRoles: (
+    tenantId: string,
+    userId: string,
+  ) => Effect.Effect<readonly UserRoleHolding[]>
+
   /** what a role carries right now, which is what an acceptance is measured against */
   readonly getRolePermissions: (
     tenantId: string,
@@ -213,6 +227,21 @@ export interface ResourceRef {
 }
 
 /** one assignment's authority over one part of the tree */
+/** one duty somebody holds, and the place it applies */
+export interface UserRoleHolding {
+  readonly grantId: string
+  readonly roleId: string
+  readonly roleCode: string
+  readonly roleName: string
+  readonly kind: 'tenant' | 'org'
+  /** null for a tenant-wide grant, which reaches the whole tree */
+  readonly orgNodeId: string | null
+  readonly orgNodeName: string | null
+  readonly coverage: 'self' | 'subtree' | null
+  /** confined to one object rather than held in general */
+  readonly scoped: boolean
+}
+
 export interface ApplicableAssignment {
   /** revoking this revokes everything derived from it */
   readonly assignmentId: string

@@ -26,6 +26,7 @@ import {
   canAt as canAtQuery,
   effectiveRows as effectiveRowsQuery,
   applicableAssignments,
+  userRoleHoldings,
   grantsBlockingOrgType,
   grantsBlockingUserType,
   hasTenantPermission as hasTenantPermissionQuery,
@@ -306,6 +307,27 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       return [...byAssignment.values()].map((assignment) => ({
         ...assignment,
         codes: [...assignment.codes].sort(),
+      }))
+    }),
+
+    listUserRoles: Effect.fn('Rbac.listUserRoles')(function* (tenantId, userId) {
+      const rows = yield* bound(() => userRoleHoldings(tenantId, userId))().pipe(Effect.orDie)
+      return rows.map((row) => ({
+        grantId: row.grantId,
+        roleId: row.roleId,
+        roleCode: row.roleCode,
+        roleName: row.roleName,
+        // the column is a checked varchar, so the narrowing happens here
+        kind: row.kind === 'org' ? ('org' as const) : ('tenant' as const),
+        orgNodeId: row.orgNodeId,
+        orgNodeName: row.orgNodeName,
+        coverage:
+          row.coverage === 'subtree'
+            ? ('subtree' as const)
+            : row.coverage === 'self'
+              ? ('self' as const)
+              : null,
+        scoped: row.resourceId !== null,
       }))
     }),
 

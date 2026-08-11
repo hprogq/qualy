@@ -283,6 +283,42 @@ export const authorizedScope = (principal: Principal, def: ActivePermission) =>
  * authority over people the caller cares about, and dropping either would
  * silently lose a college head or a class tutor.
  */
+/**
+ * Every duty one person currently holds, with the place it applies.
+ *
+ * No permission codes and no coverage arithmetic: this answers "what has this
+ * person been given", which is a different question from "may they act here",
+ * and mixing the two produced a list nobody could read.
+ */
+export const userRoleHoldings = (tenantId: string, userId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('RoleGrant as g')
+      .innerJoin('Role as r', (join) =>
+        join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
+      )
+      .leftJoin('OrgNode as anchor', (join) =>
+        join.onRef('anchor.tenantId', '=', 'g.tenantId').onRef('anchor.id', '=', 'g.orgNodeId'),
+      )
+      .select([
+        'g.id as grantId',
+        'g.orgNodeId as orgNodeId',
+        'g.coverage as coverage',
+        'g.resourceId as resourceId',
+        'anchor.name as orgNodeName',
+        'r.id as roleId',
+        'r.code as roleCode',
+        'r.name as roleName',
+        'r.kind as kind',
+      ])
+      .where('g.tenantId', '=', tenantId)
+      .where('g.userId', '=', userId)
+      .where('r.status', '=', 'active')
+      .where(inForce)
+      .orderBy('r.name')
+      .execute(),
+  )
+
 export const applicableAssignments = (input: {
   tenantId: string
   codes: readonly string[]

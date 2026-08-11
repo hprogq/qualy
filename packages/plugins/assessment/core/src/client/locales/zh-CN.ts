@@ -250,6 +250,7 @@ export default {
   'assessment/permission-hint/review-reopen': '重新开启已结束的审核。',
   'assessment/permission-hint/result-view-peers': '查看其他参评人员的成绩。',
   'assessment/permission-hint/ranking-view': '查看本批次的排名。',
+  'assessment/permission-hint/publication-manage': '预告、发布与撤回本批次的成绩公示。',
 
   'assessment/permission/entry-create': '新建申报',
   'assessment/permission/entry-edit': '修改自己的草稿',

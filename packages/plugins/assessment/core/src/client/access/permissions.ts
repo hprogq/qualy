@@ -22,9 +22,34 @@ const LABELS = {
   'assessment.publication.manage': m['permission.assessment.publication.manage'],
 } as const satisfies Record<StaffCode, MessageDescriptor>
 
+const HINTS = {
+  'assessment.entry.proxy': m['permission-hint.assessment.entry.proxy'],
+  'assessment.entry.record': m['permission-hint.assessment.entry.record'],
+  'assessment.entry.resubmit': m['permission-hint.assessment.entry.resubmit'],
+  'assessment.review.process': m['permission-hint.assessment.review.process'],
+  'assessment.review.reopen': m['permission-hint.assessment.review.reopen'],
+  'assessment.result.view-peers': m['permission-hint.assessment.result.view-peers'],
+  'assessment.ranking.view': m['permission-hint.assessment.ranking.view'],
+  'assessment.publication.manage': m['permission-hint.assessment.publication.manage'],
+} as const satisfies Record<StaffCode, MessageDescriptor>
+
 export const permissionLabel = (code: StaffCode) => LABELS[code]
 
+/** the one line under a label, saying what allowing it lets somebody do */
+export const permissionHint = (code: StaffCode) => HINTS[code]
+
 const known = (code: string): code is StaffCode => Object.hasOwn(LABELS, code)
+
+/**
+ * The three families the gate itself distinguishes, which is how the stage
+ * editor lists these codes and therefore how a reader has already seen them.
+ */
+export const familyOf = (code: StaffCode): 'entry' | 'review' | 'result' =>
+  code.startsWith('assessment.entry.')
+    ? 'entry'
+    : code.startsWith('assessment.review.')
+      ? 'review'
+      : 'result'
 
 /**
  * The codes this screen can say something about, in the catalog's order.

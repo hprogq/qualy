@@ -62,16 +62,37 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     },
     onError,
   })
+  // The dialog decides as a whole; the api states one capability at a time.
+  // The difference is sent, so a dialog closed without changing anything
+  // sends nothing at all.
   const setDeny = useMutation({
-    mutationFn: (input: { userId: string; permission: string; denied: boolean }) =>
-      run(
-        api.assessment.setAccessDeny({
-          params: { batchId, userId: input.userId, permission: input.permission },
-          payload: { denied: input.denied },
-        }),
-      ),
+    mutationFn: async (input: {
+      userId: string
+      was: readonly string[]
+      now: readonly string[]
+    }) => {
+      const changes = [
+        ...input.now
+          .filter((code) => !input.was.includes(code))
+          .map((code) => [code, true] as const),
+        ...input.was
+          .filter((code) => !input.now.includes(code))
+          .map((code) => [code, false] as const),
+      ]
+      for (const [permission, denied] of changes) {
+        await run(
+          api.assessment.setAccessDeny({
+            params: { batchId, userId: input.userId, permission },
+            payload: { denied },
+          }),
+        )
+      }
+    },
     onMutate,
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setAdjusting(null)
+      invalidate()
+    },
     onError,
   })
   const remove = useMutation({
@@ -168,8 +189,8 @@ export function AccessPanel({ batchId }: { batchId: string }) {
           subject={subject}
           open
           pending={setDeny.isPending}
-          onToggle={(permission, denied) =>
-            setDeny.mutate({ userId: subject.userId, permission, denied })
+          onSave={(denied) =>
+            setDeny.mutate({ userId: subject.userId, was: subject.denied, now: denied })
           }
           onClose={() => setAdjusting(null)}
         />

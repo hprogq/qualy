@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
@@ -12,39 +12,75 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
-import { Field, FieldContent, FieldLabel } from '@qualy/ui/field'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
+} from '@qualy/ui/field'
 import { assessmentMessages as m } from '../i18n.ts'
-import { inCatalogOrder, permissionLabel, type StaffCode } from './permissions.ts'
+import {
+  familyOf,
+  inCatalogOrder,
+  permissionHint,
+  permissionLabel,
+  type StaffCode,
+} from './permissions.ts'
 import type { AccessSubject } from './model.ts'
 
-// One person, one round, one checkbox per thing they may do.
+// One person, one batch, one checkbox per thing they may do.
 //
-// The list is what this round accepted on their behalf and still holds today,
-// plus anything already withheld - a capability withdrawn in the organization
-// is not offered here, because turning it off would suggest it was ever on.
+// The list is what this batch accepted for them and still holds, plus
+// anything already withheld - a capability withdrawn in the organization is
+// not offered, because turning it off would suggest it was ever on.
 //
-// Each box is its own decision, sent the moment it is made: withholding is an
-// idempotent statement about one capability, so a save button would only
-// invent a batch where the server has none.
+// Nothing is sent until the dialog is confirmed. A checkbox that took effect
+// on click made an experiment indistinguishable from a decision, and left no
+// way back except ticking it again.
+
+// the same three families the stage editor uses, in the same order: a reader
+// who has seen one of these screens has already learned this shape
+const FAMILIES = [
+  { key: 'entry', label: m.permissionGroupEntry },
+  { key: 'review', label: m.permissionGroupReview },
+  { key: 'result', label: m.permissionGroupResult },
+] as const
 
 export function AccessAdjustDialog({
   subject,
   open,
   pending,
-  onToggle,
+  onSave,
   onClose,
 }: {
   subject: AccessSubject
   open: boolean
   pending: boolean
-  /** true withholds the capability for this round, false gives it back */
-  onToggle: (permission: string, denied: boolean) => void
+  /** the capabilities to withhold from now on, as a whole */
+  onSave: (denied: readonly StaffCode[]) => void
   onClose: () => void
 }) {
   const { format } = useI18n()
-  const denied = new Set(subject.denied)
-  const offered = new Set(subject.sources.flatMap((source) => source.current))
-  const codes = inCatalogOrder([...new Set([...offered, ...denied])])
+  const offered = inCatalogOrder([
+    ...new Set([...subject.sources.flatMap((source) => source.current), ...subject.denied]),
+  ])
+  const [denied, setDenied] = useState<readonly string[]>(subject.denied)
+
+  // reopening starts from what is true, not from where the last visit left off
+  useEffect(() => {
+    if (open) setDenied(subject.denied)
+  }, [open, subject.denied])
+
+  const toggle = (code: StaffCode) =>
+    setDenied((current) =>
+      current.includes(code) ? current.filter((held) => held !== code) : [...current, code],
+    )
+
+  const changed =
+    denied.length !== subject.denied.length || denied.some((code) => !subject.denied.includes(code))
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -54,25 +90,44 @@ export function AccessAdjustDialog({
           <DialogDescription>{format(m.accessAdjustHint)}</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          {codes.length === 0 ? (
+          {offered.length === 0 ? (
             <p className="text-sm text-muted-foreground">{format(m.accessNothing)}</p>
           ) : (
-            <div className="flex flex-col gap-3">
-              {codes.map((code) => (
-                <PermissionRow
-                  key={code}
-                  code={code}
-                  granted={!denied.has(code)}
-                  pending={pending}
-                  onToggle={() => onToggle(code, !denied.has(code))}
-                />
-              ))}
+            <div className="flex flex-col gap-5">
+              {FAMILIES.map(({ key, label }, index) => {
+                const codes = offered.filter((code) => familyOf(code) === key)
+                if (codes.length === 0) return null
+                return (
+                  <div key={key} className="flex flex-col gap-3">
+                    {index > 0 && <FieldSeparator />}
+                    <FieldSet disabled={pending}>
+                      <FieldLegend variant="label">{format(label)}</FieldLegend>
+                      {/* two columns where the dialog is wide enough: eight
+                          rows in one column reads as a wall */}
+                      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                        {codes.map((code) => (
+                          <PermissionRow
+                            key={code}
+                            code={code}
+                            granted={!denied.includes(code)}
+                            disabled={pending}
+                            onToggle={() => toggle(code)}
+                          />
+                        ))}
+                      </div>
+                    </FieldSet>
+                  </div>
+                )
+              })}
             </div>
           )}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.close)}
+            {format(commonMessages.cancel)}
+          </Button>
+          <Button disabled={pending || !changed} onClick={() => onSave(inCatalogOrder(denied))}>
+            {format(m.saveShort)}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -83,27 +138,25 @@ export function AccessAdjustDialog({
 function PermissionRow({
   code,
   granted,
-  pending,
+  disabled,
   onToggle,
 }: {
   code: StaffCode
   granted: boolean
-  pending: boolean
+  disabled: boolean
   onToggle: () => void
 }) {
   const { format } = useI18n()
   const id = useId()
   return (
     <Field orientation="horizontal">
-      <Checkbox id={id} checked={granted} disabled={pending} onCheckedChange={onToggle} />
+      <Checkbox id={id} checked={granted} disabled={disabled} onCheckedChange={onToggle} />
       <FieldContent>
         <FieldLabel htmlFor={id} className="font-normal">
           {format(permissionLabel(code))}
         </FieldLabel>
+        <FieldDescription>{format(permissionHint(code))}</FieldDescription>
       </FieldContent>
-      {!granted && (
-        <span className="text-xs text-muted-foreground">{format(m.accessWithheld)}</span>
-      )}
     </Field>
   )
 }

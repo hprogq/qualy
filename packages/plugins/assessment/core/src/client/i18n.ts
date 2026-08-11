@@ -722,6 +722,10 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/ranking-view',
       defaultMessage: 'See the ranking of the batch.',
     },
+    'permission-hint.assessment.publication.manage': {
+      id: 'assessment/permission-hint/publication-manage',
+      defaultMessage: 'Announce, publish and withdraw the results of this batch.',
+    },
 
     // one label per gated code; the matrix is built from PHASE_GATED_CODES,
     // so a code without a label here does not compile

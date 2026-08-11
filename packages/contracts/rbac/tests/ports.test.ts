@@ -40,6 +40,7 @@ const rbacStub = (allowed: boolean) =>
     getProfile: () => Effect.succeed({ tenantPermissions: [], orgPermissions: [] }),
     listAuthorizedScope: () => Effect.succeed({ tenantWide: false, anchors: [] }),
     listApplicableAssignments: () => Effect.succeed([]),
+    listUserRoles: () => Effect.succeed([]),
     getRolePermissions: () => Effect.succeed([]),
     createScopedAssignment: () => Effect.succeed('assignment'),
     revokeAssignment: () => Effect.succeed(true),
