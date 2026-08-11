@@ -229,6 +229,11 @@ export interface BatchAccess {
   readonly staff: readonly AccessSubject[]
 }
 
+/** the same, as one reader sees it: every row says whether it is theirs to change */
+export interface BatchAccessView {
+  readonly staff: readonly (AccessSubject & { readonly manageable: boolean })[]
+}
+
 /**
  * One difference between what the organization says and what this batch
  * accepted.
@@ -482,7 +487,7 @@ export class Assessment extends Context.Service<
       tenantId: string,
       batchId: string,
       as: Principal,
-    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessDenied>
+    ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessDenied>
     /** what the organization now offers that this batch has not accepted */
     readonly previewAccessSync: (
       tenantId: string,
@@ -503,7 +508,7 @@ export class Assessment extends Context.Service<
       batchId: string,
       input: { userId: string; permission: string; denied: boolean; reason?: string },
       as: Principal,
-    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessInvalid | AccessDenied>
+    ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessInvalid | AccessDenied>
     /**
      * Somebody brought in for this round: an ordinary role assignment confined
      * to this batch, accepted into it in the same transaction.
@@ -518,14 +523,14 @@ export class Assessment extends Context.Service<
         validUntil?: EpochMillis
       },
       as: Principal,
-    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessInvalid | AccessDenied>
+    ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessInvalid | AccessDenied>
     /** and taking them out again, which revokes the assignment behind it */
     readonly removeStaff: (
       tenantId: string,
       batchId: string,
       sourceId: string,
       as: Principal,
-    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessInvalid | AccessDenied>
+    ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessInvalid | AccessDenied>
     /** a draft that never ran, removed with everything configured on it */
     readonly deleteBatch: (
       tenantId: string,
@@ -1201,6 +1206,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
   })
 
   /**
+   * The same list, with each row saying whether this reader may change it.
+   *
+   * Nobody edits their own standing: an administrator who can withdraw their
+   * own authority can lock themselves out of the batch they are responsible
+   * for, with nobody left to undo it. The server refuses it as well - this is
+   * so nobody is offered a button that answers with a refusal.
+   */
+  const asSeenBy = (access: BatchAccess, as: Principal) => ({
+    staff: access.staff.map((subject) => ({
+      ...subject,
+      manageable: subject.userId !== as.userId,
+    })),
+  })
+
+  /**
    * What one person may do in this batch, before the phase gate narrows it.
    *
    * Participants are not here: being on the roster is what their capabilities
@@ -1627,7 +1647,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     listAccess: Effect.fn('Assessment.listAccess')(function* (tenantId, batchId, as) {
       yield* requireBatchAdministration(tenantId, batchId, as)
-      return yield* readAccess(tenantId, batchId)
+      return asSeenBy(yield* readAccess(tenantId, batchId), as)
     }),
 
     previewAccessSync: Effect.fn('Assessment.previewAccessSync')(
@@ -1705,6 +1725,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     setAccessDeny: Effect.fn('Assessment.setAccessDeny')(function* (tenantId, batchId, input, as) {
       yield* requireBatchAdministration(tenantId, batchId, as)
+      if (input.userId === as.userId) {
+        return yield* new AccessInvalid({ reason: 'self-adjustment' })
+      }
       if (!STAFF_CODES.includes(input.permission as never)) {
         return yield* new AccessInvalid({ reason: 'permission-not-known' })
       }
@@ -1720,7 +1743,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               actorId: as.userId,
               reason: input.reason ?? null,
             })
-            return yield* readAccess(tenantId, batchId)
+            return asSeenBy(yield* readAccess(tenantId, batchId), as)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -1783,7 +1806,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               permissions: carried,
               acceptedBy: as.userId,
             })
-            return yield* readAccess(tenantId, batchId)
+            return asSeenBy(yield* readAccess(tenantId, batchId), as)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -1796,6 +1819,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
           Effect.gen(function* () {
             const source = yield* oneAccessSource(tenantId, batchId, sourceId)
             if (!source) return yield* new AccessInvalid({ reason: 'source-not-found' })
+            if (source.subjectId === as.userId) {
+              return yield* new AccessInvalid({ reason: 'self-adjustment' })
+            }
             // Only what this batch handed out itself. An inherited assignment
             // belongs to the tenant: the batch can refuse what it offers, and
             // that is what a deny is for.
@@ -1808,7 +1834,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               actorId: as.userId,
             })
             yield* dropAccessSource(tenantId, source.id)
-            return yield* readAccess(tenantId, batchId)
+            return asSeenBy(yield* readAccess(tenantId, batchId), as)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))

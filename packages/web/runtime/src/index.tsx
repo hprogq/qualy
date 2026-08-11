@@ -336,10 +336,27 @@ export function useUiCollection<TContribution, TResolved>(
 // by the surrounding layout or page, never serialized into the manifest.
 // A failing or missing slot item takes no layout space but is always
 // reported — silence here used to hide broken contributions completely.
-export function UiSlot({ token, context }: { token: UiSlotToken; context?: unknown }) {
+export function UiSlot({
+  token,
+  context,
+  fallback,
+}: {
+  token: UiSlotToken
+  context?: unknown
+  /**
+   * What to show when nobody contributes here.
+   *
+   * A surface is empty for two ordinary reasons - the plugin that fills it is
+   * not installed, or the viewer may not see what it offers - and a slot that
+   * a screen depends on for meaning (a person's name, say) must not leave a
+   * hole in either case. Absent by design for decorative surfaces.
+   */
+  fallback?: ReactNode
+}) {
   const manifest = useManifest()
   const registry = useRuntime().registry
   const items = manifest.slots[token.key] ?? []
+  if (items.length === 0) return <>{fallback ?? null}</>
   return (
     <>
       {items.map((item) => {

@@ -103,6 +103,7 @@ const subject = (over: Record<string, unknown> = {}) => ({
   sources: [source()],
   denied: [],
   effective: ['assessment.review.process'],
+  manageable: true,
   ...over,
 })
 
@@ -663,6 +664,30 @@ describe('who may work on a batch', () => {
       params: { userId: USER_ID, permission: 'assessment.review.process' },
       payload: { denied: true },
     })
+  })
+
+  it('offers nothing on the reader\u2019s own row', async () => {
+    accessScreen({
+      listAccess: () =>
+        Effect.succeed({
+          staff: [
+            subject({ displayName: '别人' }),
+            subject({
+              userId: PARTICIPANT_ID,
+              displayName: '我自己',
+              manageable: false,
+              sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit' })],
+            }),
+          ],
+        }),
+    })
+
+    await expect.element(page.getByText('我自己')).toBeVisible()
+    // one adjust button for the other person, and none for themselves - an
+    // administrator who can withdraw their own authority can lock themselves
+    // out of the batch they are responsible for
+    expect(page.getByRole('button', { name: '调整' }).elements()).toHaveLength(1)
+    expect(page.getByRole('button', { name: '移出本批次' }).elements()).toHaveLength(0)
   })
 
   it('merges only what was ticked, and never offers to approve a withdrawal', async () => {

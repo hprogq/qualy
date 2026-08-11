@@ -236,6 +236,8 @@ const accessSubjectView = Schema.Struct({
   sources: Schema.Array(accessSourceView),
   denied: Schema.Array(Schema.String),
   effective: Schema.Array(Schema.String),
+  /** whether this caller may change this person's standing in the batch */
+  manageable: Schema.Boolean,
 })
 
 /**

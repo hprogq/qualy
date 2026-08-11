@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
@@ -10,6 +10,7 @@ import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import type { ApiResult } from '@qualy/web-runtime/api'
+import { personCard } from '@qualy/ui-contract'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 
@@ -306,29 +307,20 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                   {rows.map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>
-                        <PersonCell
-                          name={row.displayName}
-                          secondary={row.businessNo ?? format(m.noBusinessNoShort)}
-                        >
-                          <div className="flex flex-col gap-2 text-sm">
-                            <span className="font-medium">{row.displayName}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {row.businessNo ?? format(m.noBusinessNoShort)}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {format(m.includedAt, {
-                                time: new Date(row.includedAt).toLocaleDateString(),
-                              })}
-                            </span>
-                            <span>
-                              {row.status === 'excluded' ? (
-                                <Badge variant="secondary">{format(m.excludedBadge)}</Badge>
-                              ) : (
-                                <Badge variant="outline">{format(m.participantActive)}</Badge>
-                              )}
-                            </span>
-                          </div>
-                        </PersonCell>
+                        <UiSlot
+                          token={personCard}
+                          context={{
+                            userId: row.userId,
+                            displayName: row.displayName,
+                            businessNo: row.businessNo,
+                          }}
+                          fallback={
+                            <PersonCell
+                              name={row.displayName}
+                              secondary={row.businessNo ?? format(m.noBusinessNoShort)}
+                            />
+                          }
+                        />
                       </TableCell>
                       <TableCell>
                         {row.status === 'excluded' ? (

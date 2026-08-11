@@ -177,6 +177,23 @@ const oneUser = (
   )
 
 /**
+ * Where somebody stands, said the way an address is: school, college, class.
+ *
+ * The node's own name answers "which class" but never "whose", and a reader
+ * meeting an unfamiliar name needs the second more than the first.
+ */
+const ancestryOf = (tenantId: string, orgNodeId: string) =>
+  db.query(async (k) =>
+    rows<{ id: string; name: string; depth: number }>(
+      await sql`select a.id, a.name, a.depth
+                  from org_nodes a, org_nodes n
+                 where n.tenant_id = ${tenantId} and n.id = ${orgNodeId}
+                   and a.tenant_id = n.tenant_id and a.path @> n.path
+                 order by a.depth`.execute(k),
+    ),
+  )
+
+/**
  * The nodes a caller may place people at.
  *
  * These are the nodes actually inside the caller's coverage, not the anchors
@@ -421,6 +438,27 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         // not-found and not-readable are indistinguishable on purpose
         if (!row) return yield* new UserNotFound()
         return row
+      }),
+    ),
+
+    /**
+     * One person as somebody who does not know them reads it: where they
+     * stand, spelled out from the top, and what they have been given.
+     *
+     * Behind the same read authority as the person themselves - it says more
+     * about them, not less - and the duties come from whoever owns them.
+     */
+    detail: bound(
+      Effect.fn('Iam.users.detail')(function* (principal: Principal, userId: string) {
+        const held = yield* scopes(principal)
+        const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
+        if (!row) return yield* new UserNotFound()
+        const rbac = yield* Rbac
+        const [orgPath, roles] = yield* Effect.all([
+          ancestryOf(principal.tenantId, row.primaryOrgNodeId).pipe(Effect.orDie),
+          rbac.listUserRoles(principal.tenantId, userId),
+        ])
+        return { user: row, orgPath, roles }
       }),
     ),
 

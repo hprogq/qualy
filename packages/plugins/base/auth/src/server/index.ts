@@ -267,7 +267,8 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const iam = yield* Iam
         const principal = yield* CurrentUser
         yield* requireUserRead(principal)
-        return { user: toUserDto(yield* iam.users.get(principal, params.userId)) }
+        const detail = yield* iam.users.detail(principal, params.userId)
+        return { ...detail, user: toUserDto(detail.user) }
       }),
     )
     .handle(

@@ -36,10 +36,36 @@ const grantIncompatibleMessage = defineMessage<{ grantCount: number }>()({
     '{grantCount, plural, one {# role grant does} other {# role grants do}} not allow this change.',
 })
 
+const personRoleSubtree = defineMessage<{ node: string }>()({
+  id: 'auth/person/role-subtree',
+  defaultMessage: '{node} and everything under it',
+})
+
+const personRoleHere = defineMessage<{ node: string }>()({
+  id: 'auth/person/role-here',
+  defaultMessage: 'at {node}',
+})
+
 const i18n = definePluginMessages({
   namespace: 'auth',
   messages: {
     title: { id: 'auth/login/title', defaultMessage: 'Sign in to Qualy' },
+
+    // the card any screen opens on a name it shows
+    personOpenDetail: { id: 'auth/person/open-detail', defaultMessage: 'View details' },
+    personBusinessNo: { id: 'auth/person/business-no', defaultMessage: 'Student or staff ID' },
+    personNoBusinessNo: { id: 'auth/person/no-business-no', defaultMessage: 'None' },
+    personUserType: { id: 'auth/person/user-type', defaultMessage: 'Type' },
+    personStatus: { id: 'auth/person/status', defaultMessage: 'Status' },
+    personActive: { id: 'auth/person/active', defaultMessage: 'Active' },
+    personDisabled: { id: 'auth/person/disabled', defaultMessage: 'Disabled' },
+    personPlacement: { id: 'auth/person/placement', defaultMessage: 'Where they are' },
+    personRoles: { id: 'auth/person/roles', defaultMessage: 'Roles' },
+    personNoRoles: { id: 'auth/person/no-roles', defaultMessage: 'No roles yet.' },
+    personRoleTenantWide: { id: 'auth/person/role-tenant-wide', defaultMessage: 'everywhere' },
+    personRoleScoped: { id: 'auth/person/role-scoped', defaultMessage: 'One object only' },
+    personRoleSubtree,
+    personRoleHere,
     methodsFailedTitle: {
       id: 'auth/login/methods-failed',
       defaultMessage: 'Could not load the sign-in methods',

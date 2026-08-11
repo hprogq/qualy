@@ -3000,3 +3000,36 @@ Record<StaffCode, MessageDescriptor>`,新增 staff code 少一条标签就编译
 持有 iam 域读权限去调 `/iam/user-options`、`/iam/role-grant-options`——按 API 纪律,选项要由本页
 权限可及的端点提供,所以要先加一条 assessment 自己的 options 端点(候选人 = 覆盖单位内可管的人,
 候选角色 = 权限全在 STAFF_CODES 内且调用方在该节点持有),含 frozen-routes 更新与服务端测试。
+
+### 人员权限页第二轮:合并变更、自我保护、通用人员卡片(2026-08-12)
+
+**文案改口径。** 界面小字改成引导,不再解释实现。批次页、阶段页、名单页、人员权限页的长句一并收短
+(例:「每个人在本轮能做什么,是本轮接受授权的那一刻定下来的……」→「管理批次参与者的权限,或与组织侧
+权限进行同步。」),术语统一到「批次」。纪律已写进 CLAUDE.md 的 UI 节:小字是给用户的引导,不是实现说明、
+不是领域复述、不是自夸;要两三句才说得清,说明这一屏的信息结构做错了。
+
+**同步变更改成分页 + 逐项勾选。** `GET .../access/sync` 从「三段全量列表」改成 keyset 分页的单一变更行
+(`{id, kind, userId, displayName, businessNo, roleName, permissions}` + `pendingTotal` / `lapsedTotal`),
+`POST .../access/sync` 收 `{accept: [{kind, id, permissions}]}`——服务端在事务里重算一遍并与之求交,
+选择只能收窄、不能凭空造出变更。页面上只留一行提示 + 「查看变更」,列表在对话框里翻页,默认全不勾,
+勾了才合并;撤销的那一类不给复选框(已经生效,批准已发生的事是谎)。路径未变,frozen-routes 不动。
+
+**不能改自己。** `setAccessDeny` 与 `removeStaff` 对 `subject === caller` 直接 422
+(`self-adjustment`);`listAccess` 逐行下发 `manageable`,自己那一行不渲染任何按钮——能撤销自己权限的
+管理员可以把自己锁在负责的批次外,而且没人能撤销。
+
+**调整对话框改成一次决定。** 取消勾选不再立即提交;按「保存」才把差集逐条 PUT 上去。选择器按阶段编辑
+同样的三族(填报/审核/结果)分组、两列、带一行说明。
+
+**通用人员卡片(由 iam 提供)。** 新 slot token `iam/person-card`(@qualy/ui-contract),auth 以
+`permissionOf('auth.user.read')` 贡献实现;`UiSlot` 新增 `fallback`,没人贡献(插件没装,或读者无权)
+时退回纯姓名,不留洞。卡片 hover 才发请求(一页一百个名字不能是一百个请求),浮层给身份类型与所在单位,
+「查看详情」开模态框:学工号、状态、自上而下的单位路径、担任的角色(角色来自新的 rbac 端口方法
+`listUserRoles`,只列在效的授权)。`GET /iam/users/{userId}` 顺势带上 `orgPath` 与 `roles`,不新增路由。
+测评的人员权限表与参评名单表都改用它。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 450/72 全绿;`pnpm test:browser` **39 全绿**
+(新增:自己那一行没有按钮、只合并勾选项、保存才提交);`pnpm build` 通过;`prettier --check .` 干净。
+
+**未做**:添加临时工作人员的选人器(仍缺一条 assessment 自己的 options 端点);`listAccess` 尚未分页
+(与变更列表不同,它只含担任角色的人,量级是几百;真要分页需要把 readAccess 的整表计算改成 SQL 分页)。

@@ -6,7 +6,14 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Login } from '@qualy/auth-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
-import { APP_SHELL, BLANK_SHELL, PUBLIC, permissionOf, sidebarUser } from '@qualy/ui-contract'
+import {
+  APP_SHELL,
+  BLANK_SHELL,
+  PUBLIC,
+  permissionOf,
+  personCard,
+  sidebarUser,
+} from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
@@ -71,6 +78,15 @@ const plugin = Plugin.define(
     id: 'auth/user-menu',
     component: Ui.react('./client/UserMenu.tsx'),
     visibility: PUBLIC,
+  }),
+  // A person, wherever another screen names one. Behind the same permission
+  // that reading people takes anywhere else, so a screen that lists names
+  // gets the plain name when the reader may not learn more than that.
+  Ui.slot({
+    key: personCard.key,
+    id: 'auth/person-card',
+    component: Ui.react('./client/iam/PersonCard.tsx'),
+    visibility: permissionOf('auth.user.read'),
   }),
   Access.permissions('auth', permissions),
   // auth owns the sign-in registry: drivers declare, this interprets

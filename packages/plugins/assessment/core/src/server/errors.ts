@@ -171,6 +171,10 @@ export class AccessInvalid extends Schema.TaggedErrorClass<AccessInvalid>()(
       'node-not-found',
       'user-not-found',
       'expiry-in-past',
+      // nobody edits their own standing: an administrator who can withdraw
+      // their own authority can lock themselves out of the batch they are
+      // responsible for, and nobody is left to undo it
+      'self-adjustment',
     ]),
   },
   { httpApiStatus: 422, identifier: 'AssessmentAccessInvalid' },

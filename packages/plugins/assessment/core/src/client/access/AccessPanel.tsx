@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
@@ -11,6 +11,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@qualy/ui/empt
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
+import { personCard } from '@qualy/ui-contract'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'
@@ -226,9 +227,21 @@ function SubjectRow({
   return (
     <TableRow>
       <TableCell>
-        <PersonCell
-          name={subject.displayName}
-          secondary={subject.businessNo ?? format(m.noBusinessNoShort)}
+        {/* whoever owns people decides what a reader may learn about one; this
+            screen only knows the name it was going to print anyway */}
+        <UiSlot
+          token={personCard}
+          context={{
+            userId: subject.userId,
+            displayName: subject.displayName,
+            businessNo: subject.businessNo,
+          }}
+          fallback={
+            <PersonCell
+              name={subject.displayName}
+              secondary={subject.businessNo ?? format(m.noBusinessNoShort)}
+            />
+          }
         />
       </TableCell>
       <TableCell>
@@ -251,7 +264,7 @@ function SubjectRow({
               {/* only what this round handed out itself: an inherited
                   assignment belongs to the organization, and refusing what it
                   offers is what withholding is for */}
-              {source.origin === 'explicit' && (
+              {source.origin === 'explicit' && subject.manageable && (
                 <Button
                   size="icon"
                   variant="ghost"
@@ -304,9 +317,13 @@ function SubjectRow({
         )}
       </TableCell>
       <TableCell className="text-right">
-        <Button size="sm" variant="ghost" onClick={onAdjust}>
-          {format(m.accessAdjust)}
-        </Button>
+        {/* their own row: the server refuses it too, this is so nobody is
+            offered a button that answers with a refusal */}
+        {subject.manageable && (
+          <Button size="sm" variant="ghost" onClick={onAdjust}>
+            {format(m.accessAdjust)}
+          </Button>
+        )}
       </TableCell>
     </TableRow>
   )

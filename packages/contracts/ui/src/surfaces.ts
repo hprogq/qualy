@@ -199,3 +199,27 @@ export const workspaceContext = defineUiSlot({
   key: 'workspace-shell/context',
   cardinality: 'one',
 })
+
+/**
+ * A person, wherever a screen shows one.
+ *
+ * Any list that names people renders this instead of spelling out a name, so
+ * that whoever owns people decides what a reader may learn about one and what
+ * it takes to learn it. The context is what the naming screen already knows -
+ * the identifier, and the name it was going to print anyway - so a table of a
+ * hundred rows costs no requests until somebody asks about a row.
+ *
+ * Nothing is contributed here when the viewer may not read people, which is
+ * what makes the plain name the fallback rather than a broken affordance.
+ */
+export const personCard = defineUiSlot({
+  key: 'iam/person-card',
+  cardinality: 'one',
+})
+
+/** what a screen hands the person card about the person it is naming */
+export interface PersonCardContext {
+  userId: string
+  displayName: string
+  businessNo?: string | null
+}

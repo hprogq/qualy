@@ -1,6 +1,20 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'auth/person/open-detail': '查看详情',
+  'auth/person/business-no': '学工号',
+  'auth/person/no-business-no': '未绑定',
+  'auth/person/user-type': '身份类型',
+  'auth/person/status': '状态',
+  'auth/person/active': '正常',
+  'auth/person/disabled': '已停用',
+  'auth/person/placement': '所在单位',
+  'auth/person/roles': '担任角色',
+  'auth/person/no-roles': '暂未担任任何角色。',
+  'auth/person/role-tenant-wide': '全租户',
+  'auth/person/role-scoped': '仅限单个对象',
+  'auth/person/role-subtree': '{node}及其下属单位',
+  'auth/person/role-here': '{node}',
   'auth/login/title': 'Qualy 登录',
   'auth/login/methods-failed': '登录方式加载失败',
   'auth/login/methods-failed-hint': '请检查网络后重试。',

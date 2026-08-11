@@ -111,6 +111,31 @@ const user = Schema.Struct({
   manageable: Schema.Boolean,
 })
 
+/**
+ * One person, for whoever met their name somewhere else.
+ *
+ * Where they stand is spelled from the top of the tree, and the duties are
+ * the ones they hold now. Permission codes are deliberately absent: a reader
+ * asks "what is this person to the organization", and a list of codes answers
+ * a question nobody had.
+ */
+const userDetail = Schema.Struct({
+  user,
+  orgPath: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  roles: Schema.Array(
+    Schema.Struct({
+      grantId: Schema.String,
+      roleId: Schema.String,
+      roleName: Schema.String,
+      kind: Schema.Literals(['tenant', 'org']),
+      orgNodeName: Schema.NullOr(Schema.String),
+      coverage: Schema.NullOr(Schema.Literals(['self', 'subtree'])),
+      /** held over one object rather than in general */
+      scoped: Schema.Boolean,
+    }),
+  ),
+})
+
 export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.get('listUserTypes', '/iam/user-types', {
@@ -304,9 +329,11 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     }).middleware(Authenticated),
   )
   .add(
+    // the whole of one person, which is also what a card opened on their name
+    // shows: no separate endpoint, because there is no second kind of person
     HttpApiEndpoint.get('getUser', '/iam/users/:userId', {
       params: Schema.Struct({ userId: id }),
-      success: Schema.Struct({ user }),
+      success: userDetail,
       error: [UserNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
