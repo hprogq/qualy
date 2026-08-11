@@ -47,6 +47,23 @@ const plugin = Plugin.define(
         },
         visibility: PUBLIC,
       },
+      // Running an assessment: the rounds themselves and the templates they
+      // are built from. The other three clusters the product is heading for -
+      // submissions, reviews, and what a participant sees of their own - are
+      // recorded in docs/assessment-design.md and declared when they have a
+      // page to lead to; an entry that leads nowhere is worse than no entry.
+      {
+        key: navigationGroups.key,
+        id: 'assessment/manage',
+        value: {
+          id: 'assessment/manage',
+          label: message('assessment/nav-group/manage', 'Assessment administration'),
+          order: 10,
+          parent: 'assessment/main',
+          icon: 'clipboard-list',
+        },
+        visibility: PUBLIC,
+      },
     ],
   }),
   Ui.page({
@@ -58,7 +75,7 @@ const plugin = Plugin.define(
     navigation: {
       label: message('assessment/navigation/batches', 'Batch management'),
       order: 10,
-      group: 'assessment/main',
+      group: 'assessment/manage',
     },
   }),
   // One batch, and its sections. The address names the batch and which of its

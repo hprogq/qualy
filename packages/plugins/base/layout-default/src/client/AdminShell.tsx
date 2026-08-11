@@ -22,6 +22,7 @@ import {
 import { Separator } from '@qualy/ui/separator'
 import {
   BookOpenCheckIcon,
+  ClipboardListIcon,
   ChevronRightIcon,
   FolderIcon,
   GraduationCapIcon,
@@ -50,6 +51,7 @@ const CLUSTER_ICONS: Record<string, LucideIcon> = {
   settings: SettingsIcon,
   'graduation-cap': GraduationCapIcon,
   'book-open-check': BookOpenCheckIcon,
+  'clipboard-list': ClipboardListIcon,
 }
 
 const clusterIconOf = (name: string | undefined): LucideIcon =>

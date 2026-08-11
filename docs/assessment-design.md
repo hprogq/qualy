@@ -579,18 +579,85 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 | POST `/assessment/entries/{id}/rounds`（锚定 publication+line；resubmit/reopen 按权限分流）                   | 申诉/复查 = 对终态条目开新一轮；决定复用 review decisions                        |
 | PUT `/assessment/batches/{id}/status`                                                                         | active / archived                                                                |
 
-## 23. UI 页面与体验基准
+## 23. 导航、URL 与页面（2026-08-11 定案）
 
-| page id                          | path                           | visibility                   | 内容                                                                                                                                                                             |
-| -------------------------------- | ------------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| assessment/batches · batch-admin | /assessment/batches[/:id]      | permissionOf(batch.manage)   | 管理端：基本信息 / Phase 时间线 / Roster+Diff / 题目与组树 / 审核异常 / ScoreRun 试算 / **Preflight 面板（一等公民）** / Publication / 归档                                      |
-| assessment/home                  | /assessment                    | AUTHENTICATED                | 学生填报中心：派生时间线 + 三大类分组的题目卡（题名 / 当前计入分 / 组上限 / 条目状态汇总 / 新增入口）                                                                            |
-| assessment/item · entry-editor   | /assessment/items/:id 等       | AUTHENTICATED                | 条目列表 + schema 驱动表单；条目卡统一解剖：状态徽章 / Revision 摘要 / 分值 / 审核到哪级 / 附件 / 时间线 / 动作区                                                                |
-| assessment/inbox                 | /assessment/inbox              | permissionOf(review.process) | 拉式收件箱（Item/Batch/状态/组织范围筛选）+ 详情（revision + 附件 + 有效链 + 事件 + 动作条）                                                                                     |
-| assessment/my-result             | /assessment/batches/:id/result | AUTHENTICATED                | **核心产品页**：品德 13.2/15 → 教师评价 7.5、献血 +1、教官 +2、国旗班 +2、组合封顶 −1……逐行可解释；公示后切 S1/S2 视图。大量真实申诉源于"不知道为什么算成这样"，此页做透申诉减半 |
-| assessment/appeals               | /assessment/appeals            | AUTHENTICATED                | 我的申诉/复查轮列表与发起入口（从成绩页 BreakdownLine 进入）                                                                                                                     |
+### 23.1 左侧导航
 
-体验红线：用户永远看到**业务流程**而非内部状态机——"第一次成绩公示：待定"而不是"管理员尚未创建公示"；管理员看到的是"审核状态 4231/4250 · 待处理 14 · 疑点 5 → [运行发布前检查]"这样的业务面板。管理员配置的一切文案（题名、说明、选项 label）i18n 上是 literal；系统文案（状态徽章、动作名）走插件 message catalog。
+一级只有「综合测评」,二级四个入口,职责互不重叠——用户不必想「这个功能到底在哪」:
+
+```
+综合测评
+├─ 测评管理        [clipboard-list]      我在组织和运行一次测评
+│  ├─ 批次管理
+│  ├─ 阶段模板
+│  └─ 时间线模板
+├─ 填报管理        [users-round]         我负责范围内的人填得怎么样
+├─ 审核工作台      [clipboard-check]     现在有什么需要我审
+└─ 我的测评        [user-round]          我自己的材料、结果与申诉
+   ├─ 我的填报
+   ├─ 结果公示
+   └─ 我的申诉
+```
+
+「填报管理」与「审核工作台」本身就是页面,不再往下加一层。**公示管理不进左侧**:它天然属于某个批次,
+从「批次管理 → 某批次 → 公示管理」进入。二级带图标(布局的图标名,不是组件),三级是纯链接。
+
+**今天已建**:测评管理 → 批次管理。其余入口**不预留占位**——一条通向空页的链接比没有链接更糟;
+新页面落地时再各自向对应导航位与批次子路由贡献。
+
+### 23.2 URL
+
+批次进入后不占用左侧三级导航,改用页面内的批次子导航:
+
+| 路径                                           | 状态 | 内容                              |
+| ---------------------------------------------- | ---- | --------------------------------- |
+| `/assessment/batches`                          | 已建 | 批次列表                          |
+| `/assessment/batches/:batchId`                 | 已建 | 重定向到第一个分区(现为 phases)   |
+| `/assessment/batches/:batchId/overview`        | 未建 | 概览(将成为重定向目标)            |
+| `/assessment/batches/:batchId/phases`          | 已建 | 阶段安排                          |
+| `/assessment/batches/:batchId/participants`    | 已建 | 参评人员(名单,偏静态)             |
+| `/assessment/batches/:batchId/publications`    | 未建 | 公示管理                          |
+| `/assessment/batches/:batchId/settings`        | 未建 | 批次设置                          |
+| `/assessment/templates/phases`                 | 未建 | 阶段模板                          |
+| `/assessment/templates/timelines`              | 未建 | 时间线模板                        |
+| `/assessment/submissions`                      | 未建 | 填报管理(按权限自动限定范围)      |
+| `/assessment/submissions/:submissionId`        | 未建 | 某人的填报(代填也在这里,按权限)   |
+| `/assessment/reviews`                          | 未建 | 审核工作台(填报审核 + 申诉审核)   |
+| `/assessment/reviews/:reviewId`                | 未建 | 单条审核,页面结构统一、动作按类型 |
+| `/assessment/my/submissions[/:batchId]`        | 未建 | 我的填报                          |
+| `/assessment/my/publications[/:publicationId]` | 未建 | 结果公示                          |
+| `/assessment/my/appeals[/:appealId]`           | 未建 | 我的申诉                          |
+
+**participants 与 submissions 不得混**:前者配置「哪些人属于这个批次」,后者管理「这些人实际填到什么状态」。
+
+**审核工作台不拆两个入口**:普通审核与申诉审核在同一页,用顶部筛选区分(`?kind=`),
+页面主体高度复用,业务类型只决定可用动作。
+
+### 23.3 什么进 URL
+
+> 值得刷新后恢复、值得复制给别人、值得后退键恢复的状态,才进 URL。
+
+- **path** = 我在哪个资源 / 哪个功能里(批次、分区、单条审核)
+- **query** = 我怎么看这个资源(搜索、筛选、排序、分页、跨页跳转带的 `?batch=`)
+- **不进 URL** = 编辑模式、排期对话框、开放操作抽屉——它们是未提交的本地事务,
+  刷新后草稿已经不在,恢复一个 `editing=true` 毫无意义
+
+批次概览里的「填报完成率 82% [查看填报情况]」直接跳 `/assessment/submissions?batch=:batchId`,
+「待审核 37 [处理审核]」直接跳 `/assessment/reviews?batch=:batchId`——跨入口跳转靠 query 带批次,
+不靠再复制一层路径层级。
+
+### 23.4 页面内容基准
+
+| 页面         | 内容                                                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 批次概览     | 审核状态 4231/4250 · 待处理 14 · 疑点 5 → [运行发布前检查];填报完成率与待审数各自可跳转                                                                                       |
+| 学生填报中心 | 派生时间线 + 三大类分组的题目卡(题名 / 当前计入分 / 组上限 / 条目状态汇总 / 新增入口)                                                                                         |
+| 条目编辑     | 条目列表 + schema 驱动表单;条目卡统一解剖:状态徽章 / Revision 摘要 / 分值 / 审核到哪级 / 附件 / 时间线 / 动作区                                                               |
+| 审核详情     | 左:原始材料与当前结果;右:申请人、流程、历史;底部动作条按类型给出(填报审核 通过/驳回/补充,申诉审核 维持/修改/补充)                                                             |
+| 我的结果     | **核心产品页**:品德 13.2/15 → 教师评价 7.5、献血 +1、教官 +2、国旗班 +2、组合封顶 −1……逐行可解释;公示后切 S1/S2 视图。大量真实申诉源于"不知道为什么算成这样",此页做透申诉减半 |
+
+体验红线:用户永远看到**业务流程**而非内部状态机——"第一次成绩公示:待定"而不是"管理员尚未创建公示"。
+管理员配置的一切文案(题名、说明、选项 label)i18n 上是 literal;系统文案(状态徽章、动作名)走插件 message catalog。
 
 ## 24. 测试重点（不变量优先于 CRUD 覆盖）
 
@@ -865,3 +932,5 @@ decision 事件不携带分值。需要人定值的条款一律是 administrativ
 **32.41 Phase 退回三职责：删除 offset / trigger / 公示绑定，排期形成连续前缀**（2026-08-11，用户提出后与审计定案，docs/phase-redesign.md 全文）。Phase 只负责「批次当前处于什么业务状态、这个状态允许做什么、何时进入下一个状态」，不再充当所有领域事件的中央编排器。四条删除：① **`entry_offset` 整体移除**——没有「学校工作日历」这个一等领域对象，"+3 个工作日"只是看起来自动化，遇到国庆/寒暑假/调休必然错；法规上的"公示后 3 个工作日内申诉"记在业务配置里，本批次的实际截止由管理员排成明确 datetime。② **`entry_trigger` 移除**——`planned_entry_at != null` 即已排期、`null` 即待排期，没有第三种答案；"实际为什么进入"是事实记录（phase_events）不是配置。③ **`opens_publication_id` 与 publication trigger 移除**——语义方向反了：真实世界是"公示生效 → 系统因此进入申诉阶段"，不是"申诉阶段等一个 publication 打开自己"；将来由 Publication 侧可选地指向目标 Phase（`PhaseScheduling` capability，ownership metadata 存在排期记录里，Batch Core 不认识 Publication），Publication 的可读性归 Publication 自己，Phase 只管当前允许什么动作。④ **`estimated_entry_at` 移除**，改为 **`description`**（阶段说明，纯文本，面向管理员与参与者，驱动任何逻辑均否）。**核心不变量（连续排期前缀）**：任意时刻计划都是「已进入前缀 + 已排期前缀 + 未排期后缀」；只能给第一个未排期阶段排期（`schedule-out-of-order`），只能从最后一个已排期阶段收回（`unschedule-not-from-tail`），已排期阶段的结构冻结（`scheduled-phase-immutable`），未排期后缀可自由增删改序。**"结束时间"彻底离开模型**：`endOf(phase[i]) = startOf(phase[i+1])` 只是展示投影，不可编辑，前端的 duration/end 互推编辑器整体删除。**模板**：阶段模板只存名称/说明/开放操作，时间线模板只存有序的阶段序列；应用 = **追加到计划末尾**（不再整体替换、不碰已有阶段），文案从"应用时间线模板"改为"从模板添加"。**激活不再校验时间**：结构齐备即可激活，排期在激活之后逐个进行；`current_phase_id` 为空的批次对参与者不可见（归档后的可见性另由 history policy 决定，不用 `currentPhase == null` 永久裁决）。API 新增 `PUT /assessment/batches/{batchId}/phases/{phaseId}/schedule`（幂等子资源，`plannedEntryAt: iso | null`），`putPhases` 收敛为纯结构写。~~`phase_schedules` 独立表与 owner metadata~~ 留待 Publication 插件落地时一并建（数据层冻结规则：复杂度必须由已发生的问题证明其存在，当前没有任何外部 owner）。
 
 **32.34 第四轮其余采纳汇总**（2026-08-09）。排名两口径（ties 仅在要求物化 rank 时 blocker、S1 默认 rank NULL；partition 祖先查冻结 lineage 禁查 live）；retire 历史引用语义（禁新增引用+入口隐藏，已引用读取永久有效，物理删除非 v1）；时间语义统一（锚的语义时刻一旦确定即可物化——SCHEDULED 的 publish_at 在 schedule 时确定；公示边界 SCHEDULED 前是 guard 里程碑、后转承诺型）；**source/actor 全部服务端推导**（安全不变量，客户端永不提交 source）；残留清扫（§6/§9 提示语/§20 依赖与模块表/§22 revisions 仅本人/§24 scoped 措辞/M5 两段式措辞/(roleId,nodeId) 去重）；作废条目终态 voided(reason=item_voided)；巡检 quorum 按可达性公式。
+
+**32.42 导航收敛为四个二级入口,批次分区改子路由**(2026-08-11,用户提出后与审计定案,§23 全文)。左侧一级只有「综合测评」,二级四个:**测评管理**(批次管理 / 阶段模板 / 时间线模板)、**填报管理**、**审核工作台**、**我的测评**(我的填报 / 结果公示 / 我的申诉),二级带图标、三级是纯链接。三条命名裁决:①「审核工作台」而非「审核工作」;②**普通审核与申诉审核合并为一个入口**,顶部筛选区分,页面结构统一、业务类型只决定可用动作;③「填报管理」(我负责范围内大家填得怎么样)与批次内「参评人员」(哪些人属于这个批次)是两件事,不得混。**公示管理不进左侧**——它天然属于某个批次,从批次内进入。**批次分区改 path 子路由**:~~`?batch=<id>` + Tabs 本地 state~~作废,改为 `/assessment/batches/:batchId/{overview,phases,participants,publications,settings}`,裸 id 重定向到第一个分区(overview 未建前为 phases);分区是批次的子资源页面,不是「Tab 状态写进 URL」。**URL 分工**:path = 我在哪个资源/功能里,query = 我怎么看这个资源(搜索、筛选、排序、分页,以及跨入口跳转带的 `?batch=`);**编辑模式、排期对话框、开放操作抽屉不进 URL**——未提交的本地事务,刷新后草稿已不在,恢复一个 `editing=true` 毫无意义。**不预留占位入口**:未建的页面不声明导航项,一条通向空页的链接比没有链接更糟;新页面落地时再各自向对应导航位与批次子路由贡献。

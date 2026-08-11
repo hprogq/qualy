@@ -2,6 +2,7 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
   'assessment/nav-group/main': '综合测评',
+  'assessment/nav-group/manage': '测评管理',
   'assessment/navigation/batches': '批次管理',
   'assessment/roster/count': '{count, plural, =0 {还没有参评人员} other {共 # 人}}',
   'assessment/phase/opens-count': '{count, plural, =0 {暂未开放任何操作} other {开放 # 项操作}}',
