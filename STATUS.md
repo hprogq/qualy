@@ -2973,3 +2973,30 @@ drop+create、能应用、再 diff 为空;实测拿掉这趟补丁它立刻红(e
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **450/72 全绿**(clean-room-parity 8.6s、
 assembly 15 项全过)。
+
+### 批次人员权限页(2026-08-12)
+
+`/assessment/batches/:batchId/access`,工作区侧栏第三项「人员权限」。服务端与 API 上一轮已就位,
+本轮补上页面本身:
+
+- **名单表**:人员、授权来自(角色 + 「组织授权」/「本轮临时」badge,底层分配被撤销的标「组织侧已撤销」)、
+  本轮可做(chips)、已停用(带删除线的 chips,不是"少几个 chip"的沉默)。
+- **同步提示**:扩权是提议,停在琥珀色面板里等人按「接受进本轮」;收权已经发生,同一面板里改用静音样式、
+  没有按钮,文案直说「已经生效」。两半不长一个样,是这一页存在的理由。
+- **逐项停用**:每人一个对话框,复选框是本轮持有 ∪ 已停用(组织侧已撤的项不出现,免得看起来像"曾经开过"),
+  每格独立即时 PUT,没有保存按钮——幂等子资源本来就没有批次概念。
+- **移出本轮**:只出现在 origin=explicit 的来源上,先问再做;继承来的授权归组织,拒绝它的手段是停用。
+
+文案 en + zh-CN 齐全(zh 另写,不是英文直译);`@qualy/web-i18n` 补了 `common/action/close`
+(改动已即时生效的面板,"取消"是假承诺)。权限标签由 STAFF_CODES 逐条列出并 `satisfies
+Record<StaffCode, MessageDescriptor>`,新增 staff code 少一条标签就编译失败;`inCatalogOrder`
+丢弃目录外的码,避免原始标识符落到屏幕上。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 450/72 全绿;`pnpm test:browser`
+**38 全绿**(新增 3 例:停用一项只影响本轮、扩权等确认而收权已生效、只有本轮临时的人可移出且先问);
+`pnpm build` 通过。
+
+**未做**:添加临时工作人员的选人器。`POST .../access` 需要 (userId, roleId, orgNodeId),而页面不得
+持有 iam 域读权限去调 `/iam/user-options`、`/iam/role-grant-options`——按 API 纪律,选项要由本页
+权限可及的端点提供,所以要先加一条 assessment 自己的 options 端点(候选人 = 覆盖单位内可管的人,
+候选角色 = 权限全在 STAFF_CODES 内且调用方在该节点持有),含 frozen-routes 更新与服务端测试。

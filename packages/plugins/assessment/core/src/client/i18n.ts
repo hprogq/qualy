@@ -33,6 +33,22 @@ const alsoActiveIn = defineMessage<{ batches: string }>()({
   defaultMessage: 'Already taking part in {batches}',
 })
 
+const accessSourceCount = defineMessage<{ count: number }>()({
+  id: 'assessment/access/source-count',
+  defaultMessage:
+    '{count, plural, =0 {Nobody yet} one {# person} other {# people}} can work on this round',
+})
+
+const accessRoleAt = defineMessage<{ role: string }>()({
+  id: 'assessment/access/role-at',
+  defaultMessage: 'as {role}',
+})
+
+const accessDeniedCount = defineMessage<{ count: number }>()({
+  id: 'assessment/access/denied-count',
+  defaultMessage: '{count, plural, one {# action withheld} other {# actions withheld}}',
+})
+
 const discardTitle = defineMessage<{ count: number }>()({
   id: 'assessment/plan/discard-title',
   defaultMessage:
@@ -326,6 +342,7 @@ const i18n = definePluginMessages({
     endedOn: { id: 'assessment/batch/ended-on', defaultMessage: 'Finished {date}' },
     tabPhases: { id: 'assessment/phase/tab', defaultMessage: 'Stages' },
     tabRoster: { id: 'assessment/roster/tab', defaultMessage: 'Participants' },
+    tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Who may work on it' },
     phasesHint: {
       id: 'assessment/phase/hint',
       defaultMessage:
@@ -543,6 +560,96 @@ const i18n = definePluginMessages({
     includedAt,
 
     // ------------------------------------------------------------------
+    // who may work on the round, and what this round accepted of it
+    accessHint: {
+      id: 'assessment/access/hint',
+      defaultMessage:
+        'What each person may do here was written down when this round accepted it, so a change made elsewhere later does not quietly change this round.',
+    },
+    accessEmpty: {
+      id: 'assessment/access/empty',
+      defaultMessage: 'Nobody works on this round yet.',
+    },
+    accessEmptyHint: {
+      id: 'assessment/access/empty-hint',
+      defaultMessage:
+        'People who hold a role over the units this round covers appear here once the round accepts it.',
+    },
+    accessColumnPerson: { id: 'assessment/access/column-person', defaultMessage: 'Person' },
+    accessColumnSources: { id: 'assessment/access/column-sources', defaultMessage: 'Comes from' },
+    accessColumnPermissions: {
+      id: 'assessment/access/column-permissions',
+      defaultMessage: 'May do here',
+    },
+    accessOriginInherited: {
+      id: 'assessment/access/origin-inherited',
+      defaultMessage: 'From the organization',
+    },
+    accessOriginExplicit: {
+      id: 'assessment/access/origin-explicit',
+      defaultMessage: 'Brought in for this round',
+    },
+    accessSourceLapsed: {
+      id: 'assessment/access/source-lapsed',
+      defaultMessage: 'Withdrawn elsewhere',
+    },
+    accessNothing: {
+      id: 'assessment/access/nothing',
+      defaultMessage: 'Nothing, for now',
+    },
+    accessAdjust: { id: 'assessment/access/adjust', defaultMessage: 'Adjust' },
+    accessAdjustTitle: {
+      id: 'assessment/access/adjust-title',
+      defaultMessage: 'What {name} may do in this round',
+    },
+    accessAdjustHint: {
+      id: 'assessment/access/adjust-hint',
+      defaultMessage:
+        'Turning something off applies to this round only, and stays off even if the same authority is granted again elsewhere.',
+    },
+    accessWithheld: { id: 'assessment/access/withheld', defaultMessage: 'Withheld' },
+    accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from this round' },
+    accessRemoveTitle: {
+      id: 'assessment/access/remove-title',
+      defaultMessage: 'Remove {name} from this round?',
+    },
+    accessRemoveBody: {
+      id: 'assessment/access/remove-body',
+      defaultMessage:
+        'They were brought in for this round only, so this withdraws the authority entirely. Anything they already did stays as it is.',
+    },
+    accessSyncTitle: {
+      id: 'assessment/access/sync-title',
+      defaultMessage: 'The organization has moved on',
+    },
+    accessSyncHint: {
+      id: 'assessment/access/sync-hint',
+      defaultMessage:
+        'None of this has reached the round yet. Accepting it is a decision, which is why it waits here.',
+    },
+    accessSyncNew: { id: 'assessment/access/sync-new', defaultMessage: 'Newly authorized' },
+    accessSyncWidened: { id: 'assessment/access/sync-widened', defaultMessage: 'Can now do more' },
+    accessSyncLapsed: {
+      id: 'assessment/access/sync-lapsed',
+      defaultMessage: 'No longer authorized',
+    },
+    accessSyncLapsedHint: {
+      id: 'assessment/access/sync-lapsed-hint',
+      defaultMessage: 'Already in effect: authority taken away elsewhere is gone here immediately.',
+    },
+    accessSyncApply: {
+      id: 'assessment/access/sync-apply',
+      defaultMessage: 'Accept into this round',
+    },
+    accessSyncQuiet: {
+      id: 'assessment/access/sync-quiet',
+      defaultMessage: 'This round matches the organization.',
+    },
+    accessSourceCount,
+    accessRoleAt,
+    accessDeniedCount,
+
+    // ------------------------------------------------------------------
     // the three families the gate itself distinguishes
     permissionGroupEntry: {
       id: 'assessment/permission-group/entry',
@@ -648,6 +755,12 @@ const i18n = definePluginMessages({
     'permission.assessment.ranking.view': {
       id: 'assessment/permission/ranking-view',
       defaultMessage: 'See the ranking',
+    },
+    // not gated by a phase, so the phase editor never lists it; the access
+    // page does, because a role can carry it into a round
+    'permission.assessment.publication.manage': {
+      id: 'assessment/permission/publication-manage',
+      defaultMessage: 'Announce and publish results',
     },
 
     // ------------------------------------------------------------------

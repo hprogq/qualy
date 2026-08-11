@@ -17,6 +17,9 @@ export const commonMessages = {
   retry: { id: 'common/action/retry', defaultMessage: 'Retry' },
   back: { id: 'common/action/back', defaultMessage: 'Back' },
   cancel: { id: 'common/action/cancel', defaultMessage: 'Cancel' },
+  // for a panel whose changes have already been made, where 'cancel' would
+  // promise to undo something
+  close: { id: 'common/action/close', defaultMessage: 'Close' },
   loading: { id: 'common/state/loading', defaultMessage: 'Loading' },
   // the calendar's caption pickers, named for whoever cannot see them
   calendarMonth: { id: 'common/calendar/month', defaultMessage: 'Month' },

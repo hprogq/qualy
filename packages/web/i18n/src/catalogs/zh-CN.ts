@@ -20,6 +20,7 @@ export default {
   'common/action/retry': '重试',
   'common/action/back': '返回',
   'common/action/cancel': '取消',
+  'common/action/close': '关闭',
   'common/action/go-home': '回到首页',
   'common/error/auth-required': '请先登录。',
   'common/error/session-expired': '登录状态已过期，请重新登录。',

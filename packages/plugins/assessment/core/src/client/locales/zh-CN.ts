@@ -6,6 +6,8 @@ export default {
   'assessment/navigation/batches': '全部测评',
   'assessment/navigation/phases': '阶段安排',
   'assessment/navigation/participants': '参评名单',
+  'assessment/navigation/access': '人员权限',
+  'assessment/access/tab': '人员权限',
   'assessment/roster/count': '{count, plural, =0 {还没有参评人员} other {共 # 人}}',
   'assessment/phase/opens-count': '{count, plural, =0 {暂未开放任何操作} other {开放 # 项操作}}',
   'assessment/roster/also-active': '已在参加：{batches}',
@@ -204,6 +206,40 @@ export default {
   'assessment/roster/apply-anchor': '应用变动',
   'assessment/roster/type-not-enrolled': '新的身份类型不在本批次的参评范围内。',
 
+  'assessment/access/hint':
+    '每个人在本轮能做什么，是本轮接受授权的那一刻定下来的。此后组织侧再调整，也不会悄悄改动这一轮。',
+  'assessment/access/empty': '本轮还没有工作人员。',
+  'assessment/access/empty-hint': '在本轮覆盖单位上担任角色的人，会在本轮接受该授权后出现在这里。',
+  'assessment/access/column-person': '人员',
+  'assessment/access/column-sources': '授权来自',
+  'assessment/access/column-permissions': '本轮可做',
+  'assessment/access/origin-inherited': '组织授权',
+  'assessment/access/origin-explicit': '本轮临时',
+  'assessment/access/source-lapsed': '组织侧已撤销',
+  'assessment/access/nothing': '暂无',
+  'assessment/access/adjust': '调整',
+  'assessment/access/adjust-title': '{name} 在本轮可做的事',
+  'assessment/access/adjust-hint':
+    '关掉的项只在本轮生效；即使组织侧再次授予同样的权限，这里仍然保持关闭。',
+  'assessment/access/withheld': '已停用',
+  'assessment/access/remove': '移出本轮',
+  'assessment/access/remove-title': '把 {name} 移出本轮？',
+  'assessment/access/remove-body':
+    '这份授权本就只为这一轮而设，移出即整体收回。此前已经完成的工作照旧保留。',
+  'assessment/access/sync-title': '组织侧有了新的变化',
+  'assessment/access/sync-hint':
+    '下面这些都还没有进入本轮。接受与否是一个决定，所以先停在这里等你确认。',
+  'assessment/access/sync-new': '新增授权',
+  'assessment/access/sync-widened': '权限变多',
+  'assessment/access/sync-lapsed': '授权已撤销',
+  'assessment/access/sync-lapsed-hint': '已经生效：组织侧收回的权限，在本轮同时失效，无需确认。',
+  'assessment/access/sync-apply': '接受进本轮',
+  'assessment/access/sync-quiet': '本轮与组织侧一致。',
+  'assessment/access/source-count':
+    '{count, plural, =0 {本轮暂无工作人员} other {本轮共 # 人可以工作}}',
+  'assessment/access/role-at': '担任{role}',
+  'assessment/access/denied-count': '{count, plural, other {已停用 # 项}}',
+
   'assessment/permission-group/entry': '填报',
   'assessment/permission-group/review': '审核',
   'assessment/permission-group/result': '结果',
@@ -231,6 +267,7 @@ export default {
   'assessment/permission/review-reopen': '重启已完成的审核',
   'assessment/permission/result-view-peers': '查看同学的成绩',
   'assessment/permission/ranking-view': '查看排名',
+  'assessment/permission/publication-manage': '发布与公示成绩',
 
   'assessment/refusal/phase-not-found': '有一个阶段已不在这份安排里，请刷新后重试。',
   'assessment/refusal/actual-immutable': '已经开始的阶段，开始时间不能再改。',

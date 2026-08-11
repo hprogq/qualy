@@ -111,6 +111,13 @@ const plugin = Plugin.define(
     layout: WORKSPACE_SHELL,
     visibility: permissionOf('assessment.batch.manage'),
   }),
+  Ui.page({
+    id: 'assessment/batch-access',
+    path: '/assessment/batches/:batchId/access',
+    component: Ui.react('./client/BatchAccessPage.tsx'),
+    layout: WORKSPACE_SHELL,
+    visibility: permissionOf('assessment.batch.manage'),
+  }),
   // What the rail offers inside a batch, and the bar that says which batch it
   // is. Both are contributions to the workspace shell: it renders them and
   // knows nothing about batches, and this plugin names no shell of its own.
@@ -136,6 +143,18 @@ const plugin = Plugin.define(
           label: message('assessment/navigation/participants', 'Participants'),
           target: { kind: 'page', pageId: 'assessment/batch-participants' },
           order: 20,
+          group: 'assessment/batch-admin',
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-access/rail',
+        value: {
+          id: 'assessment/batch-access/rail',
+          label: message('assessment/navigation/access', 'Who may work on it'),
+          target: { kind: 'page', pageId: 'assessment/batch-access' },
+          order: 30,
           group: 'assessment/batch-admin',
         },
         visibility: permissionOf('assessment.batch.manage'),

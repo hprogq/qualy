@@ -12,6 +12,7 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 const BatchListPage = (await components['assessment/BatchListPage']!()).default
 const BatchPhasesPage = (await components['assessment/BatchPhasesPage']!()).default
 const BatchParticipantsPage = (await components['assessment/BatchParticipantsPage']!()).default
+const BatchAccessPage = (await components['assessment/BatchAccessPage']!()).default
 // the bar the workspace shell puts above its rail: which batch is open, where
 // it stands, and what can be done to it. Mounted here the way the shell
 // mounts it, because half of what these cases drive lives in it.
@@ -44,6 +45,9 @@ const REVIEW_PHASE_ID = '44444444-4444-4444-8444-444444444444'
 const NODE_ID = '55555555-5555-4555-8555-555555555555'
 const USER_ID = '66666666-6666-4666-8666-666666666666'
 const PARTICIPANT_ID = '77777777-7777-4777-8777-777777777777'
+const SOURCE_ID = '99999999-9999-4999-8999-999999999999'
+const ASSIGNMENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const ROLE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
 const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
   id: BATCH_ID,
@@ -76,6 +80,33 @@ const phase = (over: Partial<PhaseDto> & { id: string; phaseKey: string }): Phas
   sourceTemplateVersion: null,
   ...over,
 })
+
+/** one accepted assignment, as the access page reads it */
+const source = (over: Record<string, unknown> = {}) => ({
+  sourceId: SOURCE_ID,
+  assignmentId: ASSIGNMENT_ID,
+  roleId: ROLE_ID,
+  roleName: '学院审核员',
+  origin: 'inherited' as const,
+  orgNodeId: NODE_ID,
+  coverage: 'subtree' as const,
+  accepted: ['assessment.review.process'],
+  current: ['assessment.review.process'],
+  active: true,
+  ...over,
+})
+
+const subject = (over: Record<string, unknown> = {}) => ({
+  userId: USER_ID,
+  displayName: '王审核',
+  businessNo: 'T0001',
+  sources: [source()],
+  denied: [],
+  effective: ['assessment.review.process'],
+  ...over,
+})
+
+const emptyPlan = { newSources: [], widened: [], lapsed: [] }
 
 const emptyDiff = {
   newArrivals: [],
@@ -142,6 +173,8 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
     Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
   listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
   getRosterDiff: () => Effect.succeed({ diff: emptyDiff }),
+  listAccess: () => Effect.succeed({ staff: [subject()] }),
+  previewAccessSync: () => Effect.succeed(emptyPlan),
   ...over,
 })
 
@@ -151,6 +184,7 @@ const PAGES = [
   { id: 'assessment/batches', path: '/assessment/batches' },
   { id: 'assessment/batch-phases', path: '/assessment/batches/:batchId/phases' },
   { id: 'assessment/batch-participants', path: '/assessment/batches/:batchId/participants' },
+  { id: 'assessment/batch-access', path: '/assessment/batches/:batchId/access' },
 ].map((page) => ({ ...page, component: page.id, layout: 'admin' }))
 
 /** a section of the batch, inside the chrome the workspace shell gives it */
@@ -174,6 +208,7 @@ const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phase
         path: '/assessment/batches/:batchId/participants',
         element: workspace(<BatchParticipantsPage />),
       },
+      { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
     ],
     route,
   })
@@ -572,5 +607,130 @@ describe('the participants tab', () => {
     expect(applyAnchor.mock.calls[0]![0]).toMatchObject({
       params: { participantId: PARTICIPANT_ID },
     })
+  })
+})
+
+// What this round accepted, which is not what the organization currently says.
+//
+// The difference is the whole point of the page, and it is a difference no
+// service test can show: one half waits for a decision and one half has
+// already happened, and they must not look alike on screen.
+
+const accessScreen = (over: Stubs = {}) => screen(over, `/assessment/batches/${BATCH_ID}/access`)
+
+describe('who may work on a batch', () => {
+  it('withholds one capability for this round without touching the role', async () => {
+    const setAccessDeny = vi.fn((_request: Request) =>
+      Effect.succeed({
+        staff: [
+          subject({
+            denied: ['assessment.review.process'],
+            effective: [],
+          }),
+        ],
+      }),
+    )
+    accessScreen({
+      listAccess: () =>
+        Effect.succeed({
+          staff: [
+            subject({
+              sources: [
+                source({
+                  accepted: ['assessment.review.process', 'assessment.ranking.view'],
+                  current: ['assessment.review.process', 'assessment.ranking.view'],
+                }),
+              ],
+              effective: ['assessment.review.process', 'assessment.ranking.view'],
+            }),
+          ],
+        }),
+      setAccessDeny,
+    })
+
+    await expect.element(page.getByText('王审核')).toBeVisible()
+    await expect.element(page.getByText('组织授权')).toBeVisible()
+
+    await page.getByRole('button', { name: '调整' }).click()
+    // the dialog offers exactly what this round holds, by name
+    const box = page.getByRole('checkbox', { name: '审核提交的内容' })
+    await expect.element(box).toBeChecked()
+    await box.click()
+
+    await vi.waitFor(() => expect(setAccessDeny).toHaveBeenCalledTimes(1))
+    expect(setAccessDeny.mock.calls[0]![0]).toMatchObject({
+      params: { userId: USER_ID, permission: 'assessment.review.process' },
+      payload: { denied: true },
+    })
+  })
+
+  it('waits for a decision on what was gained and states what was lost', async () => {
+    const applyAccessSync = vi.fn(() => Effect.succeed({ staff: [subject()] }))
+    accessScreen({
+      previewAccessSync: () =>
+        Effect.succeed({
+          newSources: [
+            {
+              assignmentId: ASSIGNMENT_ID,
+              userId: USER_ID,
+              displayName: '新来的老师',
+              roleName: '学院审核员',
+              permissions: ['assessment.review.process'],
+            },
+          ],
+          widened: [],
+          lapsed: [
+            {
+              userId: USER_ID,
+              displayName: '离任的老师',
+              roleName: '学院审核员',
+              permissions: ['assessment.ranking.view'],
+            },
+          ],
+        }),
+      applyAccessSync,
+    })
+
+    // gained: a proposal, with the one button that answers it
+    await expect.element(page.getByText('新增授权')).toBeVisible()
+    await expect.element(page.getByText('新来的老师')).toBeVisible()
+    // lost: already true, and said so rather than offered for approval
+    await expect.element(page.getByText('授权已撤销')).toBeVisible()
+    await expect
+      .element(page.getByText('组织侧收回的权限，在本轮同时失效', { exact: false }))
+      .toBeVisible()
+
+    await page.getByRole('button', { name: '接受进本轮' }).click()
+    await vi.waitFor(() => expect(applyAccessSync).toHaveBeenCalledTimes(1))
+  })
+
+  it('only offers to remove somebody this round brought in, and asks first', async () => {
+    const removeStaff = vi.fn((_request: Request) => Effect.succeed({ staff: [] }))
+    accessScreen({
+      listAccess: () =>
+        Effect.succeed({
+          staff: [
+            subject({ displayName: '组织来的', sources: [source()] }),
+            subject({
+              userId: PARTICIPANT_ID,
+              displayName: '临时来的',
+              sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit' })],
+            }),
+          ],
+        }),
+      removeStaff,
+    })
+
+    await expect.element(page.getByText('本轮临时')).toBeVisible()
+    // one control, on the row this round is responsible for
+    const remove = page.getByRole('button', { name: '移出本轮' })
+    await expect.element(remove).toBeVisible()
+    await remove.click()
+
+    // and it is a question before it is an action
+    await expect.element(page.getByText('把 临时来的 移出本轮？')).toBeVisible()
+    await page.getByRole('alertdialog').getByRole('button', { name: '移出本轮' }).click()
+    await vi.waitFor(() => expect(removeStaff).toHaveBeenCalledTimes(1))
+    expect(removeStaff.mock.calls[0]![0]).toMatchObject({ params: { sourceId: PARTICIPANT_ID } })
   })
 })
