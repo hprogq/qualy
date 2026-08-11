@@ -3,6 +3,7 @@ import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Panel } from '@qualy/ui/admin'
+import { PageContainer } from '@qualy/ui/page-container'
 import { iamMessages as m } from '../i18n.ts'
 import { UserTypeEditor } from './UserTypeEditor.tsx'
 import { NewUserTypeForm } from './NewUserTypeForm.tsx'
@@ -21,7 +22,7 @@ export default function UserTypesPage() {
   const current = types.data?.userTypes.find((type) => type.id === selected)
 
   return (
-    <div className="space-y-4 p-4">
+    <PageContainer size="wide" className="space-y-4">
       <Panel title={format(m.userTypesTitle)} description={format(m.userTypesHint)}>
         <AsyncSection
           pending={types.isPending}
@@ -87,6 +88,6 @@ export default function UserTypesPage() {
 
       {current && <UserTypeEditor userType={current} canManage={canManage} />}
       {canManage && <NewUserTypeForm onCreated={setSelected} />}
-    </div>
+    </PageContainer>
   )
 }

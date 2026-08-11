@@ -6,7 +6,7 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Login } from '@qualy/auth-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
-import { ADMIN_SHELL, BLANK_SHELL, PUBLIC, permissionOf, sidebarUser } from '@qualy/ui-contract'
+import { APP_SHELL, BLANK_SHELL, PUBLIC, permissionOf, sidebarUser } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
@@ -33,38 +33,38 @@ const plugin = Plugin.define(
   }),
   Ui.page({
     id: 'auth/users',
-    path: '/admin/users',
+    path: '/organization/users',
     component: Ui.react('./client/iam/UsersPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: APP_SHELL,
     visibility: permissionOf('auth.user.read'),
     navigation: {
       label: message('auth/navigation/users', 'Users'),
-      order: 30,
-      group: 'org/directory',
+      order: 20,
+      group: 'org/organization',
     },
   }),
   // a detail screen is reachable from the list rather than from the
   // navigation, so it declares no entry
   Ui.page({
     id: 'auth/user-detail',
-    path: '/admin/users/:userId',
+    path: '/organization/users/:userId',
     component: Ui.react('./client/iam/UserDetailPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: APP_SHELL,
     visibility: permissionOf('auth.user.read'),
   }),
   Ui.page({
     id: 'auth/user-types',
-    path: '/admin/user-types',
+    path: '/organization/user-types',
     component: Ui.react('./client/iam/UserTypesPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: APP_SHELL,
     visibility: permissionOf('auth.user-type.read'),
     navigation: {
       label: message('auth/navigation/user-types', 'User types'),
-      order: 31,
-      group: 'org/directory',
+      order: 40,
+      group: 'org/organization',
     },
   }),
-  // the account card in the sidebar footer; it shows a sign-in link to
+  // the account at the end of the top bar; it shows a sign-in link to
   // anonymous visitors, so it is public
   Ui.slot({
     key: sidebarUser.key,

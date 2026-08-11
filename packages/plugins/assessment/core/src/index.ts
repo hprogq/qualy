@@ -5,7 +5,15 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { ADMIN_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
+import {
+  APP_SHELL,
+  PUBLIC,
+  WORKSPACE_SHELL,
+  navigationGroups,
+  permissionOf,
+  workspaceContext,
+  workspaceNavigation,
+} from '@qualy/ui-contract'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
@@ -52,15 +60,16 @@ const plugin = Plugin.define(
       // submissions, reviews, and what a participant sees of their own - are
       // recorded in docs/assessment-design.md and declared when they have a
       // page to lead to; an entry that leads nowhere is worse than no entry.
+      // Inside one batch the rail says what can be done to it, in groups
+      // that name who is doing it rather than what the software calls it:
+      // taking part, handling other people's work, running the batch.
       {
         key: navigationGroups.key,
-        id: 'assessment/manage',
+        id: 'assessment/batch-admin',
         value: {
-          id: 'assessment/manage',
-          label: message('assessment/nav-group/manage', 'Assessment administration'),
-          order: 10,
-          parent: 'assessment/main',
-          icon: 'clipboard-list',
+          id: 'assessment/batch-admin',
+          label: message('assessment/nav-group/batch-admin', 'Batch administration'),
+          order: 30,
         },
         visibility: PUBLIC,
       },
@@ -70,12 +79,12 @@ const plugin = Plugin.define(
     id: 'assessment/batches',
     path: '/assessment/batches',
     component: Ui.react('./client/BatchListPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: APP_SHELL,
     visibility: permissionOf('assessment.batch.manage'),
     navigation: {
-      label: message('assessment/navigation/batches', 'Batch management'),
+      label: message('assessment/navigation/batches', 'Assessment rounds'),
       order: 10,
-      group: 'assessment/manage',
+      group: 'assessment/main',
     },
   }),
   // One batch, and its sections. The address names the batch and which of its
@@ -85,22 +94,61 @@ const plugin = Plugin.define(
     id: 'assessment/batch',
     path: '/assessment/batches/:batchId',
     component: Ui.react('./client/BatchPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: WORKSPACE_SHELL,
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
     id: 'assessment/batch-phases',
     path: '/assessment/batches/:batchId/phases',
     component: Ui.react('./client/BatchPhasesPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: WORKSPACE_SHELL,
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
     id: 'assessment/batch-participants',
     path: '/assessment/batches/:batchId/participants',
     component: Ui.react('./client/BatchParticipantsPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: WORKSPACE_SHELL,
     visibility: permissionOf('assessment.batch.manage'),
+  }),
+  // What the rail offers inside a batch, and the bar that says which batch it
+  // is. Both are contributions to the workspace shell: it renders them and
+  // knows nothing about batches, and this plugin names no shell of its own.
+  Ui.surfaces({
+    collections: [
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-phases/rail',
+        value: {
+          id: 'assessment/batch-phases/rail',
+          label: message('assessment/navigation/phases', 'Stage plan'),
+          target: { kind: 'page', pageId: 'assessment/batch-phases' },
+          order: 10,
+          group: 'assessment/batch-admin',
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-participants/rail',
+        value: {
+          id: 'assessment/batch-participants/rail',
+          label: message('assessment/navigation/participants', 'Participants'),
+          target: { kind: 'page', pageId: 'assessment/batch-participants' },
+          order: 20,
+          group: 'assessment/batch-admin',
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+    ],
+    slots: [
+      {
+        key: workspaceContext.key,
+        id: 'assessment/batch-context',
+        component: Ui.react('./client/batch/BatchContextBar.tsx'),
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+    ],
   }),
   Api.group(assessmentApiGroup, assessmentApiHandlers),
   Plugin.layer(serviceLayer),

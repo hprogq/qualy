@@ -1,9 +1,11 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
-  'assessment/nav-group/main': '综合测评',
-  'assessment/nav-group/manage': '测评管理',
-  'assessment/navigation/batches': '批次管理',
+  'assessment/nav-group/main': '测评',
+  'assessment/nav-group/batch-admin': '批次管理',
+  'assessment/navigation/batches': '全部测评',
+  'assessment/navigation/phases': '阶段安排',
+  'assessment/navigation/participants': '参评名单',
   'assessment/roster/count': '{count, plural, =0 {还没有参评人员} other {共 # 人}}',
   'assessment/phase/opens-count': '{count, plural, =0 {暂未开放任何操作} other {开放 # 项操作}}',
   'assessment/roster/also-active': '已在参加：{batches}',
@@ -55,8 +57,7 @@ export default {
   'assessment/status/archived': '已归档',
   'assessment/action/delete': '删除批次',
   'assessment/action/delete-confirm-title': '删除这个批次吗？',
-  'assessment/action/delete-confirm-body':
-    '本批次尚未开始，删除只会失去这些配置：阶段、开放的操作与参评范围。',
+  'assessment/action/delete-confirm-body': '批次尚未开始，确认要删除吗？批次删除后将不可恢复。',
   'assessment/action/reopen': '重新开启',
   'assessment/action/reopen-title': '重新开启这个批次？',
   'assessment/action/reopen-body':
@@ -151,7 +152,8 @@ export default {
 
   'assessment/roster/hint': '名单在批次开跑时冻结；组织变动以待处理建议列出，不会自动调整名单。',
   'assessment/roster/empty': '暂无参评人员。',
-  'assessment/roster/draft': '为第一个阶段排期后，参评名单即按批次设置冻结生成。',
+  'assessment/roster/draft':
+    '尚未完成阶段排期，无法查看参评名单；第一个阶段排期后，参评名单将自动生成。',
   'assessment/roster/column-name': '姓名',
   'assessment/roster/column-status': '状态',
   'assessment/roster/active': '参评中',

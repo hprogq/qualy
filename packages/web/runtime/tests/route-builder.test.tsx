@@ -22,7 +22,7 @@ const slots: RouteSlots = {
   empty: 'EMPTY',
 }
 
-const ADMIN = 'admin-shell/v1'
+const ADMIN = 'app-shell/v1'
 const BLANK = 'blank-shell/v1'
 
 const manifest = (pages: Manifest['pages'], layouts = [ADMIN, BLANK]): Manifest => ({

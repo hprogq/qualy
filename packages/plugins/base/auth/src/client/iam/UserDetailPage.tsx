@@ -5,6 +5,7 @@ import { PageLink, useApi, useRunApi, useApiQuery, usePageRouteParams } from '@q
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { PageContainer } from '@qualy/ui/page-container'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
@@ -95,7 +96,7 @@ export default function UserDetailPage() {
   const userTypes = options.data?.userTypes ?? []
 
   return (
-    <div className="space-y-4 p-4">
+    <PageContainer size="default" className="space-y-4">
       <p className="text-sm">
         <PageLink page="auth/users">{format(m.backToUsers)}</PageLink>
       </p>
@@ -243,6 +244,6 @@ export default function UserDetailPage() {
           </div>
         )}
       </AsyncSection>
-    </div>
+    </PageContainer>
   )
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -11,6 +12,10 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 const BatchListPage = (await components['assessment/BatchListPage']!()).default
 const BatchPhasesPage = (await components['assessment/BatchPhasesPage']!()).default
 const BatchParticipantsPage = (await components['assessment/BatchParticipantsPage']!()).default
+// the bar the workspace shell puts above its rail: which batch is open, where
+// it stands, and what can be done to it. Mounted here the way the shell
+// mounts it, because half of what these cases drive lives in it.
+const BatchContextBar = (await components['assessment/BatchContextBar']!()).default
 
 // What a service test cannot see: that a plan can be built with no template
 // at all, that the two template kinds stay in their own pickers and both stay
@@ -140,6 +145,14 @@ const PAGES = [
   { id: 'assessment/batch-participants', path: '/assessment/batches/:batchId/participants' },
 ].map((page) => ({ ...page, component: page.id, layout: 'admin' }))
 
+/** a section of the batch, inside the chrome the workspace shell gives it */
+const workspace = (element: ReactNode) => (
+  <>
+    <BatchContextBar />
+    {element}
+  </>
+)
+
 const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phases`) =>
   renderScreen({
     client: fakeClient({
@@ -148,8 +161,11 @@ const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phase
     }),
     routes: [
       { path: '/assessment/batches', element: <BatchListPage /> },
-      { path: '/assessment/batches/:batchId/phases', element: <BatchPhasesPage /> },
-      { path: '/assessment/batches/:batchId/participants', element: <BatchParticipantsPage /> },
+      { path: '/assessment/batches/:batchId/phases', element: workspace(<BatchPhasesPage />) },
+      {
+        path: '/assessment/batches/:batchId/participants',
+        element: workspace(<BatchParticipantsPage />),
+      },
     ],
     route,
   })
@@ -216,7 +232,9 @@ describe('the batch list', () => {
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
 
     await page.getByRole('link', { name: '2026 春季综测' }).click()
-    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    // the batch says which one it is in the bar above its rail, not in a
+    // heading the section would have to repeat
+    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
 
     await page.getByRole('link', { name: '全部批次' }).click()
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
@@ -483,10 +501,13 @@ describe('the stage plan', () => {
 
 describe('the participants tab', () => {
   it('says the list does not exist yet while the batch is a draft', async () => {
-    screen()
-    await page.getByRole('link', { name: '参评人员' }).click()
+    screen({}, `/assessment/batches/${BATCH_ID}/participants`)
     await expect
-      .element(page.getByText('为第一个阶段排期后，参评名单即按批次设置冻结生成。'))
+      .element(
+        page.getByText(
+          '尚未完成阶段排期，无法查看参评名单；第一个阶段排期后，参评名单将自动生成。',
+        ),
+      )
       .toBeVisible()
   })
 
@@ -497,39 +518,40 @@ describe('the participants tab', () => {
     const applyAnchor = vi.fn((_request: Request) =>
       Effect.succeed({ participant: {}, chainPreview: [] }),
     )
-    screen({
-      getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
-      includeParticipant: include,
-      applyParticipantAnchor: applyAnchor,
-      getRosterDiff: () =>
-        Effect.succeed({
-          diff: {
-            ...emptyDiff,
-            newArrivals: [
-              {
-                userId: USER_ID,
-                displayName: '转入生',
-                businessNo: '2401',
-                userTypeId: USER_ID,
-                nodeId: NODE_ID,
-                nodePath: 'r.se.c1',
-                activeElsewhere: [{ batchId: 'other', name: '英语学院综测' }],
-              },
-            ],
-            anchorChanged: [
-              {
-                participantId: PARTICIPANT_ID,
-                userId: USER_ID,
-                displayName: '换班生',
-                from: { nodeId: NODE_ID, path: 'r.se.c1' },
-                to: { nodeId: NODE_ID, path: 'r.se.c2' },
-              },
-            ],
-          },
-        }),
-    })
-
-    await page.getByRole('link', { name: '参评人员' }).click()
+    screen(
+      {
+        getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+        includeParticipant: include,
+        applyParticipantAnchor: applyAnchor,
+        getRosterDiff: () =>
+          Effect.succeed({
+            diff: {
+              ...emptyDiff,
+              newArrivals: [
+                {
+                  userId: USER_ID,
+                  displayName: '转入生',
+                  businessNo: '2401',
+                  userTypeId: USER_ID,
+                  nodeId: NODE_ID,
+                  nodePath: 'r.se.c1',
+                  activeElsewhere: [{ batchId: 'other', name: '英语学院综测' }],
+                },
+              ],
+              anchorChanged: [
+                {
+                  participantId: PARTICIPANT_ID,
+                  userId: USER_ID,
+                  displayName: '换班生',
+                  from: { nodeId: NODE_ID, path: 'r.se.c1' },
+                  to: { nodeId: NODE_ID, path: 'r.se.c2' },
+                },
+              ],
+            },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/participants`,
+    )
 
     // an arrival is a question, and the answer carries the warning that
     // matters: they are already counted somewhere else

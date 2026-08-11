@@ -5,7 +5,7 @@ import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  ADMIN_SHELL,
+  APP_SHELL,
   AUTHENTICATED,
   BLANK_SHELL,
   PUBLIC,
@@ -54,7 +54,7 @@ const surfaces = [
   defineSurfaces({
     layouts: [
       {
-        contract: ADMIN_SHELL,
+        contract: APP_SHELL,
         provider: 'test/admin',
         component: reactComponent('./client/AdminShell.tsx'),
       },
@@ -77,14 +77,14 @@ const surfaces = [
       {
         page: memberPage,
         component: reactComponent('./client/MemberPage.tsx'),
-        layout: ADMIN_SHELL,
+        layout: APP_SHELL,
         visibility: AUTHENTICATED,
         navigation: { label, order: 2 },
       },
       {
         page: gatedPage,
         component: reactComponent('./client/GatedPage.tsx'),
-        layout: ADMIN_SHELL,
+        layout: APP_SHELL,
         visibility: permissionOf('test.thing.read'),
         navigation: { label, order: 3 },
       },
@@ -213,7 +213,7 @@ describe('the manifest over the wire', () => {
     ])
     // the entry with no icon is the one that used to fail: it must arrive
     // without the key rather than with an undefined one
-    const navigation = body.collections['admin-shell/navigation-primary']!
+    const navigation = body.collections['app-shell/navigation-primary']!
     expect(navigation.every((item) => !('icon' in item))).toBe(true)
   })
 })
@@ -299,7 +299,7 @@ describe('a claim made twice', () => {
     const declaration = {
       page,
       component: reactComponent('./client/P.tsx'),
-      layout: ADMIN_SHELL,
+      layout: APP_SHELL,
       visibility: PUBLIC,
     }
     const exit = await build({ pages: [declaration, declaration] })
@@ -312,7 +312,7 @@ describe('a claim made twice', () => {
     const declaration = {
       page,
       component: reactComponent('./client/P.tsx'),
-      layout: ADMIN_SHELL,
+      layout: APP_SHELL,
       visibility: PUBLIC,
     }
     const exit = await Effect.runPromiseExit(
@@ -338,13 +338,13 @@ describe('a claim made twice', () => {
         {
           page,
           component: reactComponent('./client/P.tsx'),
-          layout: ADMIN_SHELL,
+          layout: APP_SHELL,
           visibility: PUBLIC,
         },
         {
           page: other,
           component: reactComponent('./client/O.tsx'),
-          layout: ADMIN_SHELL,
+          layout: APP_SHELL,
           visibility: PUBLIC,
         },
       ],
@@ -356,12 +356,12 @@ describe('a claim made twice', () => {
     const exit = await build({
       layouts: [
         {
-          contract: ADMIN_SHELL,
+          contract: APP_SHELL,
           provider: 'a/shell',
           component: reactComponent('./client/Shell.tsx'),
         },
         {
-          contract: ADMIN_SHELL,
+          contract: APP_SHELL,
           provider: 'b/shell',
           component: reactComponent('./client/Shell.tsx'),
         },

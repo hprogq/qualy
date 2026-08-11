@@ -4,7 +4,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
-import { ADMIN_SHELL, PUBLIC } from '@qualy/ui-contract'
+import { APP_SHELL, PUBLIC } from '@qualy/ui-contract'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
@@ -50,7 +50,7 @@ const plugin = Plugin.define(
     id: 'ping/page',
     path: '/ping',
     component: Ui.react('./client/PingPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: APP_SHELL,
     // the demo endpoint is deliberately open; a real plugin would gate this
     visibility: PUBLIC,
     navigation: { label: message('ping/navigation/ping', 'Ping'), order: 10 },

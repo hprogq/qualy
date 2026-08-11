@@ -5,7 +5,26 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 export type LayoutContractId = NamespacedId
 
-export const ADMIN_SHELL: LayoutContractId = 'admin-shell/v1'
+/**
+ * The shell every ordinary screen lives in: the applications across the top,
+ * the sections of the current one under them, the page below.
+ *
+ * It was called the admin shell, which was never true - a student reading
+ * their own result is in the same frame - and the name was quietly deciding
+ * who the product was for.
+ */
+export const APP_SHELL: LayoutContractId = 'app-shell/v1'
+
+/**
+ * The shell for working inside one thing for a while: the same applications
+ * across the top, then a bar naming what is being worked on and a rail of
+ * everything that can be done to it.
+ *
+ * The distinction is not decoration. A rail of batch pages on a screen that
+ * is not about a batch has nowhere to point, and a batch that is only ever a
+ * path segment gives the reader nothing to hold on to.
+ */
+export const WORKSPACE_SHELL: LayoutContractId = 'workspace-shell/v1'
 export const BLANK_SHELL: LayoutContractId = 'blank-shell/v1'
 
 // collection surfaces carry structured data rendered by the layout itself
@@ -44,7 +63,7 @@ export function defineUiSlot(options: {
   return { kind: 'slot', key: options.key, cardinality: options.cardinality }
 }
 
-// --- admin-shell/v1 surfaces ---
+// --- app-shell/v1 and workspace-shell/v1 surfaces ---
 
 // where a navigation entry leads. A page target names a page and the
 // registry resolves it, so navigation never repeats a path and an entry
@@ -120,24 +139,63 @@ const navigationGroupSchema = z.object({
   icon: z.string().optional(),
 })
 
+/** what the whole product offers: applications, and the sections inside one */
 export const primaryNavigation = defineUiCollection<NavigationItem, ResolvedNavigationItem>({
-  key: 'admin-shell/navigation-primary',
+  key: 'app-shell/navigation-primary',
   schema: navigationItemSchema,
 })
 
+/**
+ * Everything that can be done to the thing currently being worked on.
+ *
+ * A separate surface from the primary one because it answers a different
+ * question - not "where in the product am I" but "what can I do here" - and
+ * because its entries only mean anything while something is open: their paths
+ * carry the parameters of the route the workspace is mounted at, which the
+ * shell fills in from where the reader actually is.
+ */
+export const workspaceNavigation = defineUiCollection<NavigationItem, ResolvedNavigationItem>({
+  key: 'workspace-shell/navigation',
+  schema: navigationItemSchema,
+})
+
+/** the sections both navigations file their entries under */
 export const navigationGroups = defineUiCollection<NavigationGroup>({
-  key: 'admin-shell/navigation-groups',
+  key: 'app-shell/navigation-groups',
   schema: navigationGroupSchema,
 })
 
+/**
+ * Collections whose entries name a page rather than a path.
+ *
+ * The registry resolves those to the path the router mounts, and drops an
+ * entry whose page the viewer cannot see. Stated once here so a new
+ * navigation surface cannot be added without the resolution following it.
+ */
+export const navigationCollections: readonly NamespacedId[] = [
+  primaryNavigation.key,
+  workspaceNavigation.key,
+]
+
 export const headerActions = defineUiSlot({
-  key: 'admin-shell/header-actions',
+  key: 'app-shell/header-actions',
   cardinality: 'many',
 })
 
-// the sidebar footer: whoever owns sessions contributes the signed-in user
-// card here, so the shell can place an account surface it knows nothing about
+// the end of the top bar: whoever owns sessions contributes the signed-in
+// user card here, so the shell can place an account surface it knows nothing
+// about
 export const sidebarUser = defineUiSlot({
-  key: 'admin-shell/sidebar-user',
+  key: 'app-shell/user-menu',
+  cardinality: 'one',
+})
+
+/**
+ * What is being worked on, said by whoever knows: the workspace shell renders
+ * this above its rail and knows nothing about batches, courses or whatever
+ * else a workspace turns out to be about.
+ */
+export const workspaceContext = defineUiSlot({
+  key: 'workspace-shell/context',
   cardinality: 'one',
 })

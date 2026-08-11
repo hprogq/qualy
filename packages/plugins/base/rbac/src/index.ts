@@ -4,7 +4,7 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { ADMIN_SHELL, permissionOf } from '@qualy/ui-contract'
+import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
@@ -24,14 +24,14 @@ const plugin = Plugin.define(
   Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'rbac/roles',
-    path: '/admin/roles',
+    path: '/organization/roles',
     component: Ui.react('./client/RolesPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: APP_SHELL,
     visibility: permissionOf('iam.role.read'),
     navigation: {
       label: message('rbac/navigation/roles', 'Roles'),
-      order: 32,
-      group: 'org/directory',
+      order: 30,
+      group: 'org/organization',
     },
   }),
   Access.permissions('rbac', permissions),

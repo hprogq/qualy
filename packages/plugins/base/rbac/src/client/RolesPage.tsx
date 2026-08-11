@@ -3,6 +3,7 @@ import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Panel } from '@qualy/ui/admin'
+import { PageContainer } from '@qualy/ui/page-container'
 import { rbacMessages as m } from './i18n.ts'
 import { RoleEditor } from './RoleEditor.tsx'
 import { NewRoleForm } from './NewRoleForm.tsx'
@@ -22,7 +23,7 @@ export default function RolesPage() {
   const current = roles.data?.roles.find((role) => role.id === selected)
 
   return (
-    <div className="space-y-4 p-4">
+    <PageContainer size="wide" className="space-y-4">
       <Panel title={format(m.rolesTitle)} description={format(m.rolesHint)}>
         <AsyncSection
           pending={roles.isPending}
@@ -84,6 +85,6 @@ export default function RolesPage() {
 
       {current && <RoleEditor role={current} canManage={canManage} />}
       {canManage && <NewRoleForm onCreated={setSelected} />}
-    </div>
+    </PageContainer>
   )
 }

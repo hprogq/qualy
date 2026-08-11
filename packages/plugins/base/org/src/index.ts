@@ -4,7 +4,7 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { ADMIN_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
+import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
@@ -27,39 +27,29 @@ const plugin = Plugin.define(
   Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'org/page',
-    path: '/admin/org',
+    path: '/organization/tree',
     component: Ui.react('./client/OrgPage.tsx'),
-    layout: ADMIN_SHELL,
+    layout: APP_SHELL,
     visibility: permissionOf('org.tree.read'),
     navigation: {
-      label: message('org/navigation/organization', 'Organization'),
-      order: 20,
-      group: 'org/directory',
+      label: message('org/navigation/organization', 'Organization tree'),
+      order: 10,
+      group: 'org/organization',
     },
   }),
-  // the sidebar sections this domain anchors: a top-level Administration
-  // heading, and inside it one collapsible cluster where auth and rbac also
-  // file their pages by id
+  // The application this domain anchors, which auth and rbac also file their
+  // pages under: the tree, the people in it, and what they are allowed to do
+  // are one subject, and calling it "administration" said only who was
+  // allowed in rather than what it was about.
   Ui.surfaces({
     collections: [
       {
         key: navigationGroups.key,
-        id: 'org/admin',
+        id: 'org/organization',
         value: {
-          id: 'org/admin',
-          label: message('org/nav-group/admin', 'Administration'),
-          order: 10,
-        },
-        visibility: PUBLIC,
-      },
-      {
-        key: navigationGroups.key,
-        id: 'org/directory',
-        value: {
-          id: 'org/directory',
-          label: message('org/nav-group/directory', 'Organization & users'),
-          order: 10,
-          parent: 'org/admin',
+          id: 'org/organization',
+          label: message('org/nav-group/organization', 'Organization & access'),
+          order: 40,
           icon: 'users',
         },
         visibility: PUBLIC,

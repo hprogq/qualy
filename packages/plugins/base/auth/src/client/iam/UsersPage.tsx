@@ -4,6 +4,7 @@ import { PageLink, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { iamMessages as m } from '../i18n.ts'
@@ -46,7 +47,7 @@ export default function UsersPage() {
   })
 
   return (
-    <div className="space-y-4 p-4">
+    <PageContainer size="wide" className="space-y-4">
       <Panel
         title={format(m.usersTitle)}
         description={format(m.usersHint)}
@@ -153,6 +154,6 @@ export default function UsersPage() {
           )}
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

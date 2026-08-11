@@ -3,9 +3,5 @@ import { RosterPanel } from './RosterPanel.tsx'
 
 /** who takes part in one batch */
 export default function BatchParticipantsPage() {
-  return (
-    <BatchScreen section="assessment/batch-participants">
-      {(batch) => <RosterPanel batch={batch} />}
-    </BatchScreen>
-  )
+  return <BatchScreen>{(batch) => <RosterPanel batch={batch} />}</BatchScreen>
 }

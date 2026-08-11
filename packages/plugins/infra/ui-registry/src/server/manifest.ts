@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from 'effect'
 import {
   componentKey,
   isVisibleTo,
+  navigationCollections,
   primaryNavigation,
   type NamespacedId,
   type NavigationItem,
@@ -134,7 +135,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
       const projectedCollections: Record<string, unknown[]> = {}
       for (const item of sorted(collections.filter((item) => visible(item.visibility, viewer)))) {
         let value = item.value
-        if (item.key === primaryNavigation.key) {
+        if (navigationCollections.includes(item.key as NamespacedId)) {
           const navigation = value as NavigationItem
           if (navigation.target.kind === 'page') {
             // a page target resolves to the path the router mounts, and drops

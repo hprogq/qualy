@@ -16,6 +16,7 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@qualy/ui/input-group'
 import { Pagination, PaginationContent, PaginationItem } from '@qualy/ui/pagination'
 import { Reveal } from '@qualy/ui/reveal'
+import { PageContainer } from '@qualy/ui/page-container'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { ChevronLeftIcon, ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon } from 'lucide-react'
@@ -89,205 +90,203 @@ export default function BatchListPage() {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <Reveal className="flex flex-col">
-      <header className="relative border-b bg-gradient-to-b from-muted/50 to-background">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(var(--color-border)_1px,transparent_1px)] bg-[size:14px_14px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)]"
-        />
-        <div className="relative mx-auto flex min-h-40 w-full max-w-5xl flex-col justify-end px-6 pt-4 pb-8">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="flex flex-col gap-1.5">
-              <h1 className="text-2xl font-semibold tracking-tight">{format(m.batchesTitle)}</h1>
-              <p className="text-sm text-muted-foreground">{format(m.batchesHint)}</p>
-            </div>
-            <Button variant="outline" onClick={() => setCreating(true)}>
-              <PlusIcon />
-              {format(m.newBatch)}
-            </Button>
+    <Reveal>
+      <PageContainer size="wide" className="flex flex-col gap-5">
+        {/* the application's own landing page, so it introduces itself once
+            rather than repeating a banner on every screen below it */}
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-1.5">
+            <h1 className="text-xl font-semibold tracking-tight">{format(m.batchesTitle)}</h1>
+            <p className="text-sm text-muted-foreground">{format(m.batchesHint)}</p>
           </div>
+          <Button variant="outline" onClick={() => setCreating(true)}>
+            <PlusIcon />
+            {format(m.newBatch)}
+          </Button>
         </div>
-      </header>
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-6 pt-8 pb-10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <InputGroup className="w-full sm:max-w-xs">
-            <InputGroupInput
-              value={search}
-              placeholder={format(m.searchPlaceholder)}
-              aria-label={format(m.searchPlaceholder)}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <InputGroupAddon>
-              <SearchIcon />
-            </InputGroupAddon>
-          </InputGroup>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            value={statusFilter}
-            aria-label={format(m.filterStatus)}
-            // a filter group always has an answer: clicking the active item
-            // would otherwise clear the group and mean nothing
-            onValueChange={(next) => next !== '' && setStatusFilter(next as typeof statusFilter)}
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <InputGroup className="w-full sm:max-w-xs">
+              <InputGroupInput
+                value={search}
+                placeholder={format(m.searchPlaceholder)}
+                aria-label={format(m.searchPlaceholder)}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+            </InputGroup>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={statusFilter}
+              aria-label={format(m.filterStatus)}
+              // a filter group always has an answer: clicking the active item
+              // would otherwise clear the group and mean nothing
+              onValueChange={(next) => next !== '' && setStatusFilter(next as typeof statusFilter)}
+            >
+              <ToggleGroupItem value="all">{format(m.filterAll)}</ToggleGroupItem>
+              <ToggleGroupItem value="draft">{format(m.statusDraft)}</ToggleGroupItem>
+              <ToggleGroupItem value="active">{format(m.statusActive)}</ToggleGroupItem>
+              <ToggleGroupItem value="archived">{format(m.statusArchived)}</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+
+          <AsyncSection
+            pending={batches.isPending}
+            error={batches.isError ? formatError(batches.error) : null}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => void batches.refetch()}
+            skeleton={
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            }
           >
-            <ToggleGroupItem value="all">{format(m.filterAll)}</ToggleGroupItem>
-            <ToggleGroupItem value="draft">{format(m.statusDraft)}</ToggleGroupItem>
-            <ToggleGroupItem value="active">{format(m.statusActive)}</ToggleGroupItem>
-            <ToggleGroupItem value="archived">{format(m.statusArchived)}</ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-
-        <AsyncSection
-          pending={batches.isPending}
-          error={batches.isError ? formatError(batches.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
-          onRetry={() => void batches.refetch()}
-          skeleton={
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          }
-        >
-          {rows.length === 0 ? (
-            // an empty list and an empty result set are different situations,
-            // and only one of them is answered by clearing a filter
-            <Empty className="rounded-lg border border-dashed">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">{filtered ? <SearchIcon /> : <LayersIcon />}</EmptyMedia>
-                <EmptyTitle>{format(filtered ? m.noMatchTitle : m.batchesEmpty)}</EmptyTitle>
-                <EmptyDescription>
-                  {format(filtered ? m.noMatchHint : m.batchesEmptyHint)}
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                {filtered ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSearch('')
-                      setStatusFilter('all')
-                    }}
-                  >
-                    {format(m.clearFilters)}
-                  </Button>
-                ) : (
-                  <Button variant="outline" onClick={() => setCreating(true)}>
-                    <PlusIcon />
-                    {format(m.newBatch)}
-                  </Button>
-                )}
-              </EmptyContent>
-            </Empty>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <div className="rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{format(m.columnName)}</TableHead>
-                      <TableHead>{format(m.columnStatus)}</TableHead>
-                      <TableHead>{format(m.columnMaterialRange)}</TableHead>
-                      <TableHead>{format(m.columnParticipants)}</TableHead>
-                      <TableHead>{format(m.columnCreatedAt)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        className="cursor-pointer"
-                        onClick={() => open(row.id)}
-                      >
-                        <TableCell className="font-medium">
-                          {/* a real link, so a batch can be opened in another
+            {rows.length === 0 ? (
+              // an empty list and an empty result set are different situations,
+              // and only one of them is answered by clearing a filter
+              <Empty className="rounded-lg border border-dashed">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    {filtered ? <SearchIcon /> : <LayersIcon />}
+                  </EmptyMedia>
+                  <EmptyTitle>{format(filtered ? m.noMatchTitle : m.batchesEmpty)}</EmptyTitle>
+                  <EmptyDescription>
+                    {format(filtered ? m.noMatchHint : m.batchesEmptyHint)}
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  {filtered ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSearch('')
+                        setStatusFilter('all')
+                      }}
+                    >
+                      {format(m.clearFilters)}
+                    </Button>
+                  ) : (
+                    <Button variant="outline" onClick={() => setCreating(true)}>
+                      <PlusIcon />
+                      {format(m.newBatch)}
+                    </Button>
+                  )}
+                </EmptyContent>
+              </Empty>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{format(m.columnName)}</TableHead>
+                        <TableHead>{format(m.columnStatus)}</TableHead>
+                        <TableHead>{format(m.columnMaterialRange)}</TableHead>
+                        <TableHead>{format(m.columnParticipants)}</TableHead>
+                        <TableHead>{format(m.columnCreatedAt)}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((row) => (
+                        <TableRow
+                          key={row.id}
+                          className="cursor-pointer"
+                          onClick={() => open(row.id)}
+                        >
+                          <TableCell className="font-medium">
+                            {/* a real link, so a batch can be opened in another
                               tab or reached by keyboard; the row around it is
                               a convenience for the pointer */}
-                          <PageLink
-                            page="assessment/batch-phases"
-                            params={{ batchId: row.id }}
-                            className="text-left hover:underline"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            {row.name}
-                          </PageLink>
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.materialRange.start} – {row.materialRange.end}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {/* a draft has no roster yet, so it has no number */}
-                          {row.status === 'draft' ? '—' : row.participantCount}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {new Date(row.createdAt).toLocaleDateString(locale)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-sm text-muted-foreground">
-                  {/* the count answers "is that all of them?", which a cursor
+                            <PageLink
+                              page="assessment/batch-phases"
+                              params={{ batchId: row.id }}
+                              className="text-left hover:underline"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {row.name}
+                            </PageLink>
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {row.materialRange.start} – {row.materialRange.end}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {/* a draft has no roster yet, so it has no number */}
+                            {row.status === 'draft' ? '—' : row.participantCount}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {new Date(row.createdAt).toLocaleDateString(locale)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">
+                    {/* the count answers "is that all of them?", which a cursor
                       list has to answer even when it fits on one page */}
-                  {format(m.totalCount, { count: total })}
-                  {pageCount > 1 &&
-                    ` · ${format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })}`}
-                </span>
-                {/* the navigation structure is the library's; the controls
+                    {format(m.totalCount, { count: total })}
+                    {pageCount > 1 &&
+                      ` · ${format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })}`}
+                  </span>
+                  {/* the navigation structure is the library's; the controls
                     are buttons rather than its anchors, because these move
                     client-side state - an anchor with no href is neither
                     focusable nor disableable, and its label is english */}
-                {(pageCount > 1 || pageIndex > 0) && (
-                  <Pagination className="mx-0 w-auto">
-                    <PaginationContent>
-                      <PaginationItem>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={pageIndex === 0}
-                          onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
-                        >
-                          <ChevronLeftIcon />
-                          {format(m.previousPage)}
-                        </Button>
-                      </PaginationItem>
-                      <PaginationItem>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={nextCursor === null}
-                          onClick={() => setPageIndex((index) => index + 1)}
-                        >
-                          {format(m.nextPage)}
-                          <ChevronRightIcon />
-                        </Button>
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                )}
+                  {(pageCount > 1 || pageIndex > 0) && (
+                    <Pagination className="mx-0 w-auto">
+                      <PaginationContent>
+                        <PaginationItem>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={pageIndex === 0}
+                            onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
+                          >
+                            <ChevronLeftIcon />
+                            {format(m.previousPage)}
+                          </Button>
+                        </PaginationItem>
+                        <PaginationItem>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={nextCursor === null}
+                            onClick={() => setPageIndex((index) => index + 1)}
+                          >
+                            {format(m.nextPage)}
+                            <ChevronRightIcon />
+                          </Button>
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </AsyncSection>
-      </div>
+            )}
+          </AsyncSection>
+        </div>
 
-      <NewBatchDialog
-        open={creating}
-        onClose={() => setCreating(false)}
-        onCreated={(batchId) => {
-          setCreating(false)
-          open(batchId)
-        }}
-      />
+        <NewBatchDialog
+          open={creating}
+          onClose={() => setCreating(false)}
+          onCreated={(batchId) => {
+            setCreating(false)
+            open(batchId)
+          }}
+        />
+      </PageContainer>
     </Reveal>
   )
 }

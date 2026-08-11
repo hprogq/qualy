@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
+import { PageContainer } from '@qualy/ui/page-container'
 import { Button } from '@qualy/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@qualy/ui/card'
 import { Input } from '@qualy/ui/input'
@@ -119,7 +120,7 @@ export default function OrgPage() {
   const roots = treeQuery.data.roots.map((id) => byId.get(id)).filter(Boolean) as OrgTreeNodeDto[]
 
   return (
-    <div className="space-y-4 p-4">
+    <PageContainer size="full" className="space-y-4">
       {feedback && (
         <Alert variant="destructive">
           <AlertDescription>{feedback}</AlertDescription>
@@ -161,7 +162,7 @@ export default function OrgPage() {
       {rootManageable && (
         <TypeRuleAdmin types={types} rules={rulesQuery.data.rules} api={api} onAction={run} />
       )}
-    </div>
+    </PageContainer>
   )
 }
 

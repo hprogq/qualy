@@ -186,9 +186,9 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
         id: 'ping/page',
         path: '/ping',
         component: 'ping/PingPage',
-        layout: 'admin-shell/v1',
+        layout: 'app-shell/v1',
       })
-      expect(manifest.layouts.map((layout) => layout.contract)).toContain('admin-shell/v1')
+      expect(manifest.layouts.map((layout) => layout.contract)).toContain('app-shell/v1')
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()

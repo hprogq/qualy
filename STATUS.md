@@ -2752,6 +2752,29 @@ tools/tests/catalogs.test.ts` 7 全绿;`pnpm build` 通过;dev 实测:桌面/暗
 才浮出「在此添加阶段」——**显隐由 state 而非 `:hover` 决定**,因为插入一行后指针没动、CSS 的悬停态
 会滞留;点击后同时 `blur()`,`focus-within` 才不会把它钉住。移动端卡片改三段式。
 
+### 壳分家:应用壳与工作区壳(2026-08-12,裁决 §32.44,分支 feat/ui-shell)
+
+单一 `admin-shell/v1` 与那根常驻左侧栏退场。它把「产品有哪些应用」和「我正在做的这件事能做什么」
+塞进了同一根栏——学生一路背着一根自己打不开任何页面的空侧栏。按停留时长分成两个契约:
+
+- **`app-shell/v1`**:顶部一排应用 + 下面一行当前应用的分区(小字横排,多于一个才出现),无侧边栏。
+- **`workspace-shell/v1`**:同一排应用 + 上下文栏(在操作哪个批次)+ 导航栏(能做什么),
+  进入批次才出现。
+
+两条新机制,都为了让壳继续不认识业务:workspace 导航条目的 path 带参数,由壳用当前路由 params 填充,
+**填不出来就不渲染**;上下文栏是 slot,由知道什么是批次的插件贡献。导航解析从「只认
+primaryNavigation」推广为认 `navigationCollections` 列出的每一个导航面。
+
+- 契约与键改名 `admin-shell/*` → `app-shell/*`;新增 `workspace-shell/{navigation,context}`。
+- URL 搬家:`/admin/{org,users,user-types,roles}` → `/organization/{tree,users,user-types,roles}`。
+- 新增 `PageContainer`(default / wide / full),壳不再替页面定宽度;组织四页与批次页各自选档。
+- 批次的返回、名称、状态与生命周期操作从页面搬进上下文栏——说一次,而不是每个分区顶部再说一遍。
+- **未建的不建入口**:工作台、资源库、批次概览/公示管理/批次设置只写进 §23.1,等页面落地再贡献。
+
+**门禁**:typecheck 零错;`pnpm test` 448;`pnpm test:browser` **35**(新增 shell.browser.test.tsx
+三例:应用与分区两层、应用 Tab 指向自己的第一页、工作区把 `:batchId` 填进导航条目且填不出的条目不渲染);
+build + chunk 哨兵 + smoke 全过。
+
 ### 批次生命周期简化(2026-08-11,裁决 §32.43)
 
 「激活批次」这个动作删除了——它承担的校验与冻结整体并入**首次排期**:给第一个阶段排期(或直接

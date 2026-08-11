@@ -5,15 +5,36 @@
 
 ## 七概念
 
-| 概念            | 定义                                                                          | 现状                                                                               |
-| --------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Component       | 构建内可懒加载的 React renderer,key 为 `<plugin>/<Name>`                      | plugins.gen 聚合,生成期命名空间校验                                                |
-| Page            | 一个可路由主内容单元 = 恰好一个主 Component;`{ id, path, component, layout }` | id 必填(`org/tree` 式),layout 引用契约而非实现                                     |
-| Layout Contract | 语义布局协议(含版本):`admin-shell/v1`、`blank-shell/v1`                       | 定义于 @qualy/ui-contract                                                          |
-| Layout Provider | 契约的具体实现,由布局插件 registerLayout 注册                                 | @qualy/plugin-layout-default 提供两个默认实现                                      |
-| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                  | `admin-shell/navigation-primary`(pageId 引用,build 期解析 path,页面消失项自动脱落) |
-| Slot            | 松耦合 renderer 表面,cardinality one/many                                     | `admin-shell/header-actions`(首个真实消费者:auth/UserMenu)                         |
-| Theme           | 视觉 token,与结构布局分离                                                     | CSS variables 已就绪(@qualy/ui/theme.css),Provider 注册缓建                        |
+| 概念            | 定义                                                                          | 现状                                                                                                                |
+| --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Component       | 构建内可懒加载的 React renderer,key 为 `<plugin>/<Name>`                      | plugins.gen 聚合,生成期命名空间校验                                                                                 |
+| Page            | 一个可路由主内容单元 = 恰好一个主 Component;`{ id, path, component, layout }` | id 必填(`org/tree` 式),layout 引用契约而非实现                                                                      |
+| Layout Contract | 语义布局协议(含版本):`app-shell/v1`、`workspace-shell/v1`、`blank-shell/v1`   | 定义于 @qualy/ui-contract                                                                                           |
+| Layout Provider | 契约的具体实现,由布局插件 registerLayout 注册                                 | @qualy/plugin-layout-default 提供两个默认实现                                                                       |
+| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                  | `app-shell/navigation-primary` 与 `workspace-shell/navigation`(pageId 引用,manifest 期解析 path,页面消失项自动脱落) |
+| Slot            | 松耦合 renderer 表面,cardinality one/many                                     | `app-shell/header-actions`、`app-shell/user-menu`、`workspace-shell/context`                                        |
+| Theme           | 视觉 token,与结构布局分离                                                     | CSS variables 已就绪(@qualy/ui/theme.css),Provider 注册缓建                                                         |
+
+## 两个壳,一条边界(2026-08-12 扩展)
+
+原来只有一个 `admin-shell/v1`,于是「产品有哪些应用」「当前这件事能做什么」被塞进同一根侧边栏,
+而学生一路背着一根他打不开任何页面的空栏。现在按**停留时长**分成两个契约:
+
+- **`app-shell/v1`**:顶部一行应用(测评 / 工作台 / 资源库 / 组织与权限),下面一行是当前应用的分区,
+  再下面是页面。**没有常驻侧边栏**——三四个页面的应用不值得为它常年占一列。
+- **`workspace-shell/v1`**:同一排应用不变,下面是**上下文栏**(正在操作哪个对象)与**导航栏**
+  (对它能做什么)。进入一个批次才出现,离开就消失。
+
+两条新规则,都是为了让壳继续不认识业务:
+
+1. **workspace 导航条目的 path 带参数**(`/assessment/batches/:batchId/phases`),
+   由壳用**当前路由的 params** 填充;填不出来的条目**不渲染**(宁可缺,不可指向字面量 `:batchId`)。
+2. **上下文栏是 Slot**(`workspace-shell/context`,cardinality one):壳不知道什么是批次,
+   由知道的插件贡献一个组件;它自己从路由读参数,与它旁边的页面读法一致。
+
+导航解析(pageId → path、页面不可见即脱落)因此从「只认 primaryNavigation」改为认
+`navigationCollections` 列出的每一个导航面——新增导航面必须同时进这张表,否则条目带着未解析的
+pageId 上网。
 
 ## 规则
 

@@ -1,6 +1,6 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
-import { ADMIN_SHELL, BLANK_SHELL } from '@qualy/ui-contract'
+import { APP_SHELL, BLANK_SHELL, WORKSPACE_SHELL } from '@qualy/ui-contract'
 
 // A layout plugin ships one thing: implementations behind layout contracts.
 // It depends on no business plugin, no business plugin depends on it, and
@@ -11,9 +11,14 @@ const plugin = Plugin.define(
   { dependsOn: ['@qualy/plugin-ui-registry'] },
   Ui.i18n('./client/i18n.ts'),
   Ui.layout({
-    contract: ADMIN_SHELL,
-    provider: 'layout-default/admin',
-    component: Ui.react('./client/AdminShell.tsx'),
+    contract: APP_SHELL,
+    provider: 'layout-default/app',
+    component: Ui.react('./client/AppShell.tsx'),
+  }),
+  Ui.layout({
+    contract: WORKSPACE_SHELL,
+    provider: 'layout-default/workspace',
+    component: Ui.react('./client/WorkspaceShell.tsx'),
   }),
   Ui.layout({
     contract: BLANK_SHELL,
