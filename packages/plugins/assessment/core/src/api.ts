@@ -534,6 +534,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       query: Schema.Struct({
         ...pageQuery,
         status: Schema.optional(Schema.Literals(['active', 'excluded'])),
+        /** narrowed to the people this round admitted from these units */
+        orgNodeIds: Schema.optional(Schema.Array(id)),
       }),
       success: pageOf(participantView),
       error: [BatchNotFound, AccessDenied, BadRequest],

@@ -37,6 +37,8 @@ export default {
   'auth/picker/import-units': '从这些单位取人',
   'auth/picker/import-types': '人员类型',
   'auth/picker/import-no-types': '暂无可选类型。',
+  'auth/picker/import-all-types': '全选',
+  'auth/picker/import-clear-types': '清空',
   'auth/login/title': 'Qualy 登录',
   'auth/login/methods-failed': '登录方式加载失败',
   'auth/login/methods-failed-hint': '请检查网络后重试。',

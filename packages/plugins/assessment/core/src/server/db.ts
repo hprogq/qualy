@@ -1150,13 +1150,26 @@ export const insertParticipants = (
         where u.tenant_id = ${tenantId}::uuid
           and u.id = any(${userIds as string[]}::uuid[])
           and u.enabled
-          and not exists (
-            select 1 from batch_participants bp
-             where bp.tenant_id = u.tenant_id
-               and bp.batch_id = ${batchId}::uuid
-               and bp.user_id = u.id
-               and bp.status = 'active'
-          )
+        -- Somebody taken off the list keeps their row: the round is answerable
+        -- for having admitted them, and everything they did hangs off it. So
+        -- adding them again restores that row rather than inserting a second
+        -- one, which the uniqueness rule would refuse outright - the reason
+        -- re-adding an excluded person used to fail instead of working.
+        on conflict (tenant_id, batch_id, user_id) do update
+           set status = 'active',
+               included_at = now(),
+               included_by = excluded.included_by,
+               excluded_at = null,
+               excluded_by = null,
+               exclusion_reason = null,
+               -- re-admission is an admission: where they stand now is what
+               -- this round is answerable for from here
+               assessment_anchor_node_id = excluded.assessment_anchor_node_id,
+               anchor_path = excluded.anchor_path,
+               anchor_lineage = excluded.anchor_lineage,
+               user_type_id = excluded.user_type_id,
+               updated_at = now()
+         where batch_participants.status <> 'active'
         returning id
       `.execute(k),
     )
@@ -1512,7 +1525,13 @@ const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
 export const listParticipantsPage = (
   tenantId: string,
   batchId: string,
-  filter: { status?: string; after?: { path: string; id: string }; limit: number },
+  filter: {
+    status?: string
+    /** narrowed to the people frozen at or under these units */
+    orgNodeIds?: readonly string[]
+    after?: { path: string; id: string }
+    limit: number
+  },
 ) =>
   db
     .query((k) => {
@@ -1521,6 +1540,18 @@ export const listParticipantsPage = (
         .where('BatchParticipant.batchId', '=', batchId)
       if (filter.status !== undefined) {
         query = query.where('BatchParticipant.status', '=', filter.status)
+      }
+      if (filter.orgNodeIds !== undefined && filter.orgNodeIds.length > 0) {
+        // against the frozen anchor, not against where the person lives now:
+        // the list says who this round admitted and from where
+        query = query.where(
+          sql<boolean>`exists (
+            select 1 from org_nodes scope
+             where scope.tenant_id = batch_participants.tenant_id
+               and scope.id = any(${filter.orgNodeIds as string[]}::uuid[])
+               and batch_participants.anchor_path <@ scope.path
+          )`,
+        )
       }
       if (filter.after !== undefined) {
         query = query.where(

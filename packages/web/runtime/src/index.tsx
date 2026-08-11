@@ -19,6 +19,7 @@ import type {
   UiSlotToken,
 } from '@qualy/ui-contract'
 import { Button } from '@qualy/ui/button'
+import { Toaster } from '@qualy/ui/toast'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
@@ -141,6 +142,9 @@ export function RuntimeProvider({ clientFor: provided, registry, children }: Run
       <RuntimeLoader clientFor={runtime.clientFor} utilsFor={runtime.utilsFor} registry={registry}>
         {children}
       </RuntimeLoader>
+      {/* mounted once, above every screen: a plugin that wants to say
+          something did not have to arrange for somewhere to say it */}
+      <Toaster />
     </QueryClientProvider>
   )
 }
@@ -340,6 +344,7 @@ export function UiSlot({
   token,
   context,
   fallback,
+  loading,
 }: {
   token: UiSlotToken
   context?: unknown
@@ -352,6 +357,16 @@ export function UiSlot({
    * hole in either case. Absent by design for decorative surfaces.
    */
   fallback?: ReactNode
+  /**
+   * What stands there while the contribution's chunk is in flight.
+   *
+   * Defaults to the fallback, which is right when the fallback is the same
+   * thing drawn plainly - a person's name, say. It is wrong when the fallback
+   * says "you may not see this", because for a moment that is what a reader
+   * who may see it is told. Anything with a fallback like that passes a
+   * skeleton here instead.
+   */
+  loading?: ReactNode
 }) {
   const manifest = useManifest()
   const registry = useRuntime().registry
@@ -373,7 +388,7 @@ export function UiSlot({
             kind="slot"
             component={Renderer}
             props={{ context }}
-            loading={fallback ?? null}
+            loading={loading ?? fallback ?? null}
             fallback={() => null}
             missing={null}
           />

@@ -3,16 +3,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { AddPeopleDialog } from './roster/AddPeopleDialog.tsx'
 import { ImportDialog } from './roster/ImportDialog.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { toast } from '@qualy/ui/toast'
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import type { ApiResult } from '@qualy/web-runtime/api'
-import { personCard } from '@qualy/ui-contract'
+import { orgNodePicker, personCard } from '@qualy/ui-contract'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 
@@ -36,6 +37,9 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const [failure, setFailure] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [excluding, setExcluding] = useState<{ id: string; name: string } | null>(null)
+  // which units the reader is looking at; empty means the whole round
+  const [units, setUnits] = useState<readonly string[]>([])
 
   // keyset paging walked by page, the same way the access list does it
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
@@ -44,11 +48,17 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
     query.assessment.listParticipants.queryOptions({
       params: { batchId: batch.id },
       query: {
+        ...(units.length > 0 ? { orgNodeIds: [...units] } : {}),
         ...(cursors[at] !== undefined ? { cursor: cursors[at] } : {}),
         limit: String(PAGE_SIZE),
       },
     }),
   )
+  useEffect(() => {
+    // a different question deserves a first page
+    setCursors([undefined])
+    setAt(0)
+  }, [units])
   const nextCursor = participants.data?.nextCursor ?? null
   useEffect(() => {
     if (nextCursor === null || cursors[at + 1] === nextCursor) return
@@ -70,8 +80,9 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
         }),
       ),
     onMutate: () => setFailure(null),
-    onSuccess: () => {
+    onSuccess: (result: { added: number }) => {
       setImporting(false)
+      toast.success(format(m.toastImported, { count: result.added }))
       invalidate()
     },
     onError,
@@ -85,8 +96,9 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
         }),
       ),
     onMutate: () => setFailure(null),
-    onSuccess: () => {
+    onSuccess: (result: { added: number; skipped: number }) => {
       setAdding(false)
+      toast.success(format(m.toastAdded, { count: result.added }))
       invalidate()
     },
     onError,
@@ -98,9 +110,13 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
           params: { batchId: batch.id, participantId: input.participantId },
           payload: { status: input.status },
         }),
-      ),
+      ).then((answer) => ({ ...answer, status: input.status })),
     onMutate: () => setFailure(null),
-    onSuccess: invalidate,
+    onSuccess: (result: { status: 'active' | 'excluded' }) => {
+      setExcluding(null)
+      toast.success(format(result.status === 'excluded' ? m.toastExcluded : m.toastRestored))
+      invalidate()
+    },
     onError,
   })
 
@@ -110,124 +126,153 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
     <div className="space-y-5">
       <Feedback message={failure} />
 
-      <section aria-label={format(m.tabRoster)} className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">{format(m.tabRoster)}</h3>
-            <span className="text-xs text-muted-foreground">
-              {format(m.participantCount, { count: rows.length })}
-            </span>
-          </div>
-          {batch.manageable && (
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
+        <aside className="min-w-0 space-y-2">
+          <p className="text-sm font-medium">{format(m.rosterUnits)}</p>
+          {/* the same picker every other screen uses, standing in for a
+              filter: what it selects is what the list is narrowed to */}
+          <UiSlot
+            token={orgNodePicker}
+            context={{ value: units, onChange: setUnits }}
+            fallback={null}
+            loading={<Skeleton className="h-64 w-full" />}
+          />
+        </aside>
+
+        <section aria-label={format(m.tabRoster)} className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-                {format(m.importFromOrganization)}
-              </Button>
-              <Button size="sm" onClick={() => setAdding(true)}>
-                {format(m.addPeople)}
-              </Button>
+              <h3 className="text-sm font-semibold">{format(m.tabRoster)}</h3>
+              <span className="text-xs text-muted-foreground">
+                {format(m.participantCount, { count: rows.length })}
+              </span>
             </div>
-          )}
-        </div>
-
-        <AsyncSection
-          pending={participants.isPending}
-          error={participants.isError ? formatError(participants.error) : null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
-          onRetry={() => void participants.refetch()}
-          skeleton={
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
-            </div>
-          }
-        >
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{format(m.rosterEmpty)}</p>
-          ) : (
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{format(m.columnParticipant)}</TableHead>
-                    <TableHead>{format(m.columnParticipantStatus)}</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>
-                        <UiSlot
-                          token={personCard}
-                          context={{
-                            userId: row.userId,
-                            displayName: row.displayName,
-                            businessNo: row.businessNo,
-                          }}
-                          fallback={
-                            <PersonCell
-                              name={row.displayName}
-                              secondary={row.businessNo ?? format(m.noBusinessNoShort)}
-                            />
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {row.status === 'excluded' ? (
-                          <Badge variant="secondary">{format(m.excludedBadge)}</Badge>
-                        ) : (
-                          <Badge variant="outline">{format(m.participantActive)}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {batch.manageable && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={setStatus.isPending}
-                            onClick={() =>
-                              setStatus.mutate({
-                                participantId: row.id,
-                                status: row.status === 'excluded' ? 'active' : 'excluded',
-                              })
-                            }
-                          >
-                            {format(row.status === 'excluded' ? m.restore : m.exclude)}
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </AsyncSection>
-
-        {(at > 0 || nextCursor !== null) && (
-          <div className="flex items-center justify-end gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={at === 0}
-              onClick={() => setAt((page) => Math.max(0, page - 1))}
-            >
-              {format(m.previousPage)}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={nextCursor === null}
-              onClick={() => setAt((page) => page + 1)}
-            >
-              {format(m.nextPage)}
-            </Button>
+            {batch.manageable && (
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+                  {format(m.importFromOrganization)}
+                </Button>
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  {format(m.addPeople)}
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-      </section>
+
+          <AsyncSection
+            pending={participants.isPending}
+            error={participants.isError ? formatError(participants.error) : null}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => void participants.refetch()}
+            skeleton={
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            }
+          >
+            {rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{format(m.rosterEmpty)}</p>
+            ) : (
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{format(m.columnParticipant)}</TableHead>
+                      <TableHead>{format(m.columnParticipantStatus)}</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          <UiSlot
+                            token={personCard}
+                            context={{
+                              userId: row.userId,
+                              displayName: row.displayName,
+                              businessNo: row.businessNo,
+                            }}
+                            fallback={
+                              <PersonCell
+                                name={row.displayName}
+                                secondary={row.businessNo ?? format(m.noBusinessNoShort)}
+                              />
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {row.status === 'excluded' ? (
+                            <Badge variant="secondary">{format(m.excludedBadge)}</Badge>
+                          ) : (
+                            <Badge variant="outline">{format(m.participantActive)}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {batch.manageable && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={setStatus.isPending}
+                              onClick={() =>
+                                row.status === 'excluded'
+                                  ? setStatus.mutate({ participantId: row.id, status: 'active' })
+                                  : // taking somebody off is worth a question,
+                                    // because what it keeps is not obvious
+                                    setExcluding({ id: row.id, name: row.displayName })
+                              }
+                            >
+                              {format(row.status === 'excluded' ? m.restore : m.exclude)}
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </AsyncSection>
+
+          {(at > 0 || nextCursor !== null) && (
+            <div className="flex items-center justify-end gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={at === 0}
+                onClick={() => setAt((page) => Math.max(0, page - 1))}
+              >
+                {format(m.previousPage)}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={nextCursor === null}
+                onClick={() => setAt((page) => page + 1)}
+              >
+                {format(m.nextPage)}
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <ConfirmDialog
+        open={excluding !== null}
+        title={format(m.excludeTitle, { name: excluding?.name ?? '' })}
+        description={format(m.excludeBody)}
+        confirmLabel={format(m.exclude)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={setStatus.isPending}
+        tone="destructive"
+        onConfirm={() =>
+          excluding && setStatus.mutate({ participantId: excluding.id, status: 'excluded' })
+        }
+        onCancel={() => setExcluding(null)}
+      />
 
       <AddPeopleDialog
         open={adding}

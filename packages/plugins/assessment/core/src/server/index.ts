@@ -619,6 +619,7 @@ export class Assessment extends Context.Service<
       batchId: string,
       filter: {
         status?: 'active' | 'excluded'
+        orgNodeIds?: readonly string[]
         after?: { path: string; id: string }
         limit: number
       },
@@ -3120,7 +3121,10 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
-        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}`
+        // every filter in the fingerprint: a cursor from one question applied
+        // to another silently skips or repeats people
+        const units = [...(query.orgNodeIds ?? [])].sort()
+        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${units.join(',')}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listParticipants(
@@ -3128,6 +3132,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.batchId,
           {
             ...(query.status !== undefined ? { status: query.status } : {}),
+            ...(units.length > 0 ? { orgNodeIds: units } : {}),
             ...(key !== undefined ? { after: { path: key[0]!, id: key[1]! } } : {}),
             limit: limit + 1,
           },

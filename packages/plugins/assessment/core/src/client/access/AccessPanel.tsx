@@ -7,6 +7,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { toast } from '@qualy/ui/toast'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@qualy/ui/empty'
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -78,8 +79,9 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     mutationFn: (selection: AccessSelection) =>
       run(api.assessment.applyAccessSync({ params: { batchId }, payload: selection })),
     onMutate,
-    onSuccess: () => {
+    onSuccess: (result: { merged: number }) => {
       setMerging(false)
+      toast.success(format(m.toastMerged, { count: result.merged }))
       invalidate()
     },
     onError,
@@ -113,6 +115,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     onMutate,
     onSuccess: () => {
       setAdjusting(null)
+      toast.success(format(m.toastAdjusted))
       invalidate()
     },
     onError,
@@ -136,6 +139,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     onMutate,
     onSuccess: () => {
       setAddingStaff(false)
+      toast.success(format(m.toastStaffAdded))
       invalidate()
     },
     onError,
@@ -146,6 +150,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     onMutate,
     onSuccess: () => {
       setRemoving(null)
+      toast.success(format(m.toastStaffRemoved))
       invalidate()
     },
     onError,

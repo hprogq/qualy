@@ -393,6 +393,51 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(reasonIn(stranger)).toBe('user-not-found')
   })
 
+  it('lets somebody excluded be added again, on the row they already had', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('re-add')
+        const assessment = yield* Assessment
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        const first = (yield* assessment.listParticipants(
+          f.tenant,
+          batch.id,
+          { limit: 50 },
+          f.principal,
+        ))[0]!
+        yield* assessment.setParticipantStatus(
+          f.tenant,
+          batch.id,
+          first.id,
+          'excluded',
+          'left the class',
+          f.principal,
+        )
+        // adding them again is not a second membership; it is this one, back
+        const added = yield* assessment.addParticipants(
+          f.tenant,
+          batch.id,
+          [first.userId],
+          f.principal,
+        )
+        const rows = rowsOf<{ id: string; status: string; exclusion_reason: string | null }>(
+          yield* runSql(sql`
+            select id, status, exclusion_reason from batch_participants
+            where batch_id = ${batch.id} and user_id = ${first.userId}`),
+        )
+        return { added, rows, first }
+      }),
+    )
+    const { added, rows, first } = ok(exit)
+    expect(added).toEqual({ added: 1, skipped: 0 })
+    // one row, the same one, and the withdrawal cleared off it
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.id).toBe(first.id)
+    expect(rows[0]!.status).toBe('active')
+    expect(rows[0]!.exclusion_reason).toBeNull()
+  })
+
   it('takes somebody out without deleting them, and lets them back in', async () => {
     const exit = await run(
       db.url,

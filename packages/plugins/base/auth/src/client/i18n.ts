@@ -102,6 +102,8 @@ const i18n = definePluginMessages({
     importUnits: { id: 'auth/picker/import-units', defaultMessage: 'Units to take people from' },
     importTypes: { id: 'auth/picker/import-types', defaultMessage: 'Kinds of person' },
     importNoTypes: { id: 'auth/picker/import-no-types', defaultMessage: 'No types available.' },
+    importAllTypes: { id: 'auth/picker/import-all-types', defaultMessage: 'Select all' },
+    importClearTypes: { id: 'auth/picker/import-clear-types', defaultMessage: 'Clear' },
     nodeSearch: { id: 'auth/picker/node-search', defaultMessage: 'Search units' },
     nodeKind: { id: 'auth/picker/node-kind', defaultMessage: 'Kind of unit' },
     nodeAnyKind: { id: 'auth/picker/node-any-kind', defaultMessage: 'Any kind' },

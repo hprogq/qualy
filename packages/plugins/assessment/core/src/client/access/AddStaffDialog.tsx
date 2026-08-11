@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Steps } from '@qualy/ui/steps'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -114,6 +115,7 @@ export function AddStaffDialog({
                 fallback={
                   <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
                 }
+                loading={<Skeleton className="min-h-0 w-full flex-1" />}
               />
             </div>
           )}
@@ -133,6 +135,7 @@ export function AddStaffDialog({
                 fallback={
                   <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
                 }
+                loading={<Skeleton className="h-[42vh] w-full" />}
               />
             </div>
           )}

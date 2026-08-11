@@ -33,6 +33,21 @@ const addPeopleConfirm = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, =0 {Add} one {Add # person} other {Add # people}}',
 })
 
+const toastImported = defineMessage<{ count: number }>()({
+  id: 'assessment/toast/imported',
+  defaultMessage: '{count, plural, one {# person added} other {# people added}}',
+})
+
+const toastAdded = defineMessage<{ count: number }>()({
+  id: 'assessment/toast/added',
+  defaultMessage: '{count, plural, one {# person added} other {# people added}}',
+})
+
+const toastMerged = defineMessage<{ count: number }>()({
+  id: 'assessment/toast/merged',
+  defaultMessage: '{count, plural, one {# change accepted} other {# changes accepted}}',
+})
+
 const importCandidates = defineMessage<{ count: number }>()({
   id: 'assessment/roster/import-candidates',
   defaultMessage:
@@ -531,6 +546,17 @@ const i18n = definePluginMessages({
     },
     importConfirm: { id: 'assessment/roster/import-confirm', defaultMessage: 'Import' },
     importCandidates,
+    toastImported,
+    toastAdded,
+    toastMerged,
+    toastExcluded: { id: 'assessment/toast/excluded', defaultMessage: 'Taken off the list' },
+    toastRestored: { id: 'assessment/toast/restored', defaultMessage: 'Back on the list' },
+    toastAdjusted: { id: 'assessment/toast/adjusted', defaultMessage: 'Saved' },
+    toastStaffAdded: { id: 'assessment/toast/staff-added', defaultMessage: 'Brought in' },
+    toastStaffRemoved: {
+      id: 'assessment/toast/staff-removed',
+      defaultMessage: 'Removed from this batch',
+    },
     addPeople: { id: 'assessment/roster/add', defaultMessage: 'Add people' },
     addPeopleTitle: { id: 'assessment/roster/add-title', defaultMessage: 'Add participants' },
     addPeopleHint: {
@@ -542,6 +568,7 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/picker-unavailable',
       defaultMessage: 'You cannot browse people in this deployment.',
     },
+    rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Units' },
     rosterEmpty: {
       id: 'assessment/roster/empty',
       defaultMessage: 'No participants yet.',
@@ -588,6 +615,15 @@ const i18n = definePluginMessages({
     },
     include: { id: 'assessment/roster/include', defaultMessage: 'Add to this batch' },
     exclude: { id: 'assessment/roster/exclude', defaultMessage: 'Remove' },
+    excludeTitle: {
+      id: 'assessment/roster/exclude-title',
+      defaultMessage: 'Take {name} off the list?',
+    },
+    excludeBody: {
+      id: 'assessment/roster/exclude-body',
+      defaultMessage:
+        'They stop taking part from now on. Everything they have submitted stays, and they can be added again later.',
+    },
     restore: { id: 'assessment/roster/restore', defaultMessage: 'Bring back' },
     applyAnchor: { id: 'assessment/roster/apply-anchor', defaultMessage: 'Apply the move' },
     typeNotEnrolled: {

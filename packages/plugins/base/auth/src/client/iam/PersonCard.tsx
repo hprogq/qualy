@@ -53,7 +53,13 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
             className="rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onFocus={() => setHovered(true)}
           >
-            <PersonCell name={context.displayName} secondary={context.businessNo ?? undefined} />
+            {/* the same two lines the plain cell draws: saying nothing where
+                the id would be made the second line vanish a beat after the
+                card arrived, and the row jump with it */}
+            <PersonCell
+              name={context.displayName}
+              secondary={context.businessNo ?? format(m.personNoBusinessNo)}
+            />
           </button>
         </HoverCardTrigger>
         <HoverCardContent className="w-72 space-y-3">

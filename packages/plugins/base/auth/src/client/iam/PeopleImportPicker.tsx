@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { CheckboxGroup } from '@qualy/ui/admin'
+import { Button } from '@qualy/ui/button'
 import { authApi } from '../api.ts'
 import { authMessages as m } from '../i18n.ts'
 import OrgNodePicker from './OrgNodePicker.tsx'
@@ -18,6 +19,9 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
   const query = useApiQuery(authApi)
   const { format } = useI18n()
   const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
+  const types = options.data?.userTypes ?? []
+  const allChosen =
+    types.length > 0 && types.every((type) => context.value.userTypeIds.includes(type.id))
 
   return (
     <div className="space-y-5">
@@ -31,16 +35,34 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
         />
       </div>
 
-      <CheckboxGroup
-        legend={format(m.importTypes)}
-        options={(options.data?.userTypes ?? []).map((type) => ({
-          value: type.id,
-          label: type.name,
-        }))}
-        selected={[...context.value.userTypeIds]}
-        onChange={(userTypeIds) => context.onChange({ ...context.value, userTypeIds })}
-        emptyLabel={format(m.importNoTypes)}
-      />
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">{format(m.importTypes)}</p>
+          {types.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                context.onChange({
+                  ...context.value,
+                  // one button for both directions: with everything ticked the
+                  // only thing left to want is none of it
+                  userTypeIds: allChosen ? [] : types.map((type) => type.id),
+                })
+              }
+            >
+              {format(allChosen ? m.importClearTypes : m.importAllTypes)}
+            </Button>
+          )}
+        </div>
+        <CheckboxGroup
+          legend={format(m.importTypes)}
+          options={types.map((type) => ({ value: type.id, label: type.name }))}
+          selected={[...context.value.userTypeIds]}
+          onChange={(userTypeIds) => context.onChange({ ...context.value, userTypeIds })}
+          emptyLabel={format(m.importNoTypes)}
+        />
+      </div>
     </div>
   )
 }

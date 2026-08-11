@@ -4,6 +4,7 @@ import { peoplePicker } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
+import { Skeleton } from '@qualy/ui/skeleton'
 import {
   Dialog,
   DialogBody,

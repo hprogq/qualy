@@ -182,6 +182,14 @@ export default {
   'assessment/profile/hint': '仅在本阶段生效，不改变角色本身的权限。',
 
   'assessment/roster/hint': '管理本批次的参评人员，或处理组织变动带来的待办建议。',
+  'assessment/toast/imported': '{count, plural, other {已导入 # 人}}',
+  'assessment/toast/added': '{count, plural, other {已添加 # 人}}',
+  'assessment/toast/merged': '{count, plural, other {已合并 # 项变更}}',
+  'assessment/toast/excluded': '已移出名单',
+  'assessment/toast/restored': '已重新加入名单',
+  'assessment/toast/adjusted': '已保存',
+  'assessment/toast/staff-added': '已添加工作人员',
+  'assessment/toast/staff-removed': '已移出本批次',
   'assessment/roster/import': '从组织导入',
   'assessment/roster/add': '添加人员',
   'assessment/roster/add-title': '添加参评人员',
@@ -194,6 +202,7 @@ export default {
   'assessment/roster/import-confirm': '导入',
   'assessment/roster/import-candidates':
     '{count, plural, =0 {没有可新增的人员} other {将新增 # 人}}',
+  'assessment/roster/units': '所在单位',
   'assessment/roster/empty': '暂无参评人员。',
   'assessment/roster/column-name': '姓名',
   'assessment/roster/column-status': '状态',
@@ -212,6 +221,9 @@ export default {
   'assessment/roster/scope-integrity-hint': '所选单位已从组织架构中删除，调整范围前不再纳入人员。',
   'assessment/roster/include': '加入本批次',
   'assessment/roster/exclude': '移出',
+  'assessment/roster/exclude-title': '将 {name} 移出名单？',
+  'assessment/roster/exclude-body':
+    '该用户自此不再参与本批次。已填报的内容全部保留，日后可以重新加入。',
   'assessment/roster/restore': '重新加入',
   'assessment/roster/apply-anchor': '应用变动',
   'assessment/roster/type-not-enrolled': '新的身份类型不在本批次的参评范围内。',
