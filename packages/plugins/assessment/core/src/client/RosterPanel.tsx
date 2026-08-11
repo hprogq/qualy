@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ChevronDownIcon } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -10,7 +11,10 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { PersonCell } from '@qualy/ui/person'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
+import { cn } from '@qualy/ui/cn'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { orgNodePicker, personCard } from '@qualy/ui-contract'
@@ -41,6 +45,10 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   // which units the reader is looking at; empty means the whole round
   const [units, setUnits] = useState<readonly string[]>([])
   const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
+  // open where there is room for it beside the list, folded where there is not
+  const isMobile = useIsMobile()
+  const [unitsOpen, setUnitsOpen] = useState(!isMobile)
+  useEffect(() => setUnitsOpen(!isMobile), [isMobile])
 
   // keyset paging walked by page, the same way the access list does it
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
@@ -128,25 +136,46 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
       <Feedback message={failure} />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        <aside className="min-w-0 space-y-2">
-          <p className="text-sm font-medium">{format(m.rosterUnits)}</p>
-          {/* the same picker every other screen uses, standing in for a
-              filter: what it selects is what the list is narrowed to */}
-          <UiSlot
-            token={orgNodePicker}
-            context={{
-              // one unit, pointed at rather than collected, plus how far down
-              // to look: a filter is not a shopping list
-              single: true,
-              value: units,
-              onChange: setUnits,
-              scope: unitScope,
-              onScopeChange: setUnitScope,
-            }}
-            fallback={null}
-            loading={<Skeleton className="h-64 w-full" />}
-          />
-        </aside>
+        {/* on a phone the tree is a second screenful in front of the list
+            somebody came for, so it starts folded and says what it is */}
+        <Collapsible
+          open={unitsOpen}
+          onOpenChange={setUnitsOpen}
+          className="min-w-0 space-y-2"
+          asChild
+        >
+          <aside>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                className="w-full justify-between px-2 lg:pointer-events-none"
+                aria-label={format(m.rosterUnits)}
+              >
+                <span className="text-sm font-medium">{format(m.rosterUnits)}</span>
+                <ChevronDownIcon
+                  aria-hidden
+                  className={cn('size-4 transition-transform lg:hidden', unitsOpen && 'rotate-180')}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <UiSlot
+                token={orgNodePicker}
+                context={{
+                  // one unit, pointed at rather than collected, plus how far
+                  // down to look: a filter is not a shopping list
+                  single: true,
+                  value: units,
+                  onChange: setUnits,
+                  scope: unitScope,
+                  onScopeChange: setUnitScope,
+                }}
+                fallback={null}
+                loading={<Skeleton className="h-64 w-full" />}
+              />
+            </CollapsibleContent>
+          </aside>
+        </Collapsible>
 
         <section aria-label={format(m.tabRoster)} className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-3">

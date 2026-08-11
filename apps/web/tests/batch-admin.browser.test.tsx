@@ -281,6 +281,55 @@ describe('the batch list', () => {
   })
 })
 
+// The bar's countdown, which is arithmetic nothing else covers: two units at
+// a time, and the smaller one dropped when it is empty.
+
+describe('the countdown', () => {
+  const HOUR = 3600_000
+  const at = (ms: number) => new Date(Date.now() + ms).toISOString()
+  const running = (untilNext: number) => [
+    {
+      phaseId: ENTRY_PHASE_ID,
+      displayName: '正式填报',
+      description: '',
+      status: 'current' as const,
+      entry: { kind: 'entered' as const, at: at(-HOUR) },
+    },
+    {
+      phaseId: REVIEW_PHASE_ID,
+      displayName: '审核',
+      description: '',
+      status: 'future' as const,
+      entry: { kind: 'planned' as const, at: at(untilNext) },
+    },
+  ]
+
+  it('says two units, and drops the smaller one when it is empty', async () => {
+    screen(
+      {
+        getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+        getTimeline: () => Effect.succeed({ timeline: running(27 * HOUR + 30 * 60_000) }),
+      },
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+    // a day and change reads as days and hours, never down to the minute
+    await expect.element(page.getByText('剩余 1 天 3 小时')).toBeVisible()
+  })
+
+  it('says the larger unit alone when nothing is left under it', async () => {
+    screen(
+      {
+        getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+        // a shade over three hours: exactly three would be two and
+        // fifty-nine by the time the component reads the clock
+        getTimeline: () => Effect.succeed({ timeline: running(3 * HOUR + 30_000) }),
+      },
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+    await expect.element(page.getByText('剩余 3 小时')).toBeVisible()
+  })
+})
+
 describe('the batch lifecycle', () => {
   it('offers to delete a draft, and never says the word activate', async () => {
     const deleteBatch = vi.fn((_request: Request) => Effect.succeed({ deleted: true }))

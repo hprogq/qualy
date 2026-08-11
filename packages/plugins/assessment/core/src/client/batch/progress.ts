@@ -5,9 +5,12 @@ import type { assessmentMessages } from '../i18n.ts'
 // Two questions with one answer shape, because they are the same question
 // asked from either side of a boundary that may not exist yet: a stage with a
 // scheduled successor is counting down to it, and a stage without one has
-// simply been running since it began. Both are said in the largest unit that
-// still tells the reader something - days while there are days, then hours,
-// then minutes and seconds, which is when the number starts to matter.
+// simply been running since it began.
+//
+// Both are said in two units, never more: "1 day 3 hours" is what somebody
+// plans around, and the minutes under it are noise they have to read past.
+// The second unit is dropped when it is zero, so "3 hours" stays "3 hours"
+// rather than becoming "3 hours 0 minutes".
 
 export interface TimelineLike {
   readonly displayName: string
@@ -21,31 +24,38 @@ const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
 export interface Elapsed {
-  /** which message says it, and the parts it needs */
+  /** the larger unit, which decides how the whole thing is said */
   readonly unit: 'days' | 'hours' | 'minutes' | 'seconds'
   readonly value: number
-  readonly minutes: number
-  readonly seconds: number
+  /** the one below it, zero when there is nothing left to say */
+  readonly rest: number
 }
 
-/** a span as the largest unit that still carries information */
+/** a span as its two largest units, the smaller dropped when it is empty */
 export const spanOf = (ms: number): Elapsed => {
   const total = Math.max(0, ms)
   if (total >= DAY) {
-    return { unit: 'days', value: Math.floor(total / DAY), minutes: 0, seconds: 0 }
+    return {
+      unit: 'days',
+      value: Math.floor(total / DAY),
+      rest: Math.floor((total % DAY) / HOUR),
+    }
   }
   if (total >= HOUR) {
-    return { unit: 'hours', value: Math.floor(total / HOUR), minutes: 0, seconds: 0 }
+    return {
+      unit: 'hours',
+      value: Math.floor(total / HOUR),
+      rest: Math.floor((total % HOUR) / MINUTE),
+    }
   }
   if (total >= MINUTE) {
     return {
       unit: 'minutes',
       value: Math.floor(total / MINUTE),
-      minutes: Math.floor(total / MINUTE),
-      seconds: Math.floor((total % MINUTE) / SECOND),
+      rest: Math.floor((total % MINUTE) / SECOND),
     }
   }
-  return { unit: 'seconds', value: Math.floor(total / SECOND), minutes: 0, seconds: 0 }
+  return { unit: 'seconds', value: Math.floor(total / SECOND), rest: 0 }
 }
 
 export type Progress =
@@ -85,7 +95,10 @@ export function progressOf(timeline: readonly TimelineLike[], now: number): Prog
 /** how often the shown value could still change, so nothing ticks needlessly */
 export const tickOf = (progress: Progress): number =>
   progress.kind === 'until' || progress.kind === 'since'
-    ? progress.span.unit === 'days' || progress.span.unit === 'hours'
+    ? // hours under a day, minutes under an hour: neither moves faster than
+      // once a minute, and a clock that ticks for nothing is a clock that
+      // re-renders a page for nothing
+      progress.span.unit === 'days' || progress.span.unit === 'hours'
       ? MINUTE
       : SECOND
     : MINUTE
@@ -99,17 +112,33 @@ export const spanMessage = (
 ): { message: Messages[keyof Messages]; values: Record<string, number> } => {
   const { span } = progress
   const counting = progress.kind === 'until'
+  const both = span.rest > 0
   if (span.unit === 'days') {
-    return { message: counting ? m.leftDays : m.sinceDays, values: { count: span.value } }
+    return both
+      ? {
+          message: counting ? m.leftDaysHours : m.sinceDaysHours,
+          values: { days: span.value, hours: span.rest },
+        }
+      : { message: counting ? m.leftDays : m.sinceDays, values: { count: span.value } }
   }
   if (span.unit === 'hours') {
-    return { message: counting ? m.leftHours : m.sinceHours, values: { count: span.value } }
+    return both
+      ? {
+          message: counting ? m.leftHoursMinutes : m.sinceHoursMinutes,
+          values: { hours: span.value, minutes: span.rest },
+        }
+      : { message: counting ? m.leftHours : m.sinceHours, values: { count: span.value } }
   }
   if (span.unit === 'minutes') {
-    return {
-      message: counting ? m.leftMinutes : m.sinceMinutes,
-      values: { minutes: span.minutes, seconds: span.seconds },
-    }
+    return both
+      ? {
+          message: counting ? m.leftMinutes : m.sinceMinutes,
+          values: { minutes: span.value, seconds: span.rest },
+        }
+      : {
+          message: counting ? m.leftMinutesOnly : m.sinceMinutesOnly,
+          values: { count: span.value },
+        }
   }
   return { message: counting ? m.leftSeconds : m.sinceSeconds, values: { count: span.value } }
 }

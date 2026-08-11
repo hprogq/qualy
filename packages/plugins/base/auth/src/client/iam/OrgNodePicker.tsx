@@ -92,42 +92,52 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* the search takes the whole width and the two narrow controls share
+          the next line: side by side in a pane this wide, the last one was
+          forever being pushed onto a line of its own */}
+      <div className="space-y-2">
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder={format(m.nodeSearch)}
-          className="h-8 min-w-40 flex-1"
+          className="h-8 w-full"
         />
-        {context.scope !== undefined && (
-          <ToggleGroup
-            type="single"
-            value={context.scope}
-            onValueChange={(next) => next && context.onScopeChange?.(next as 'self' | 'subtree')}
-            variant="outline"
-            size="sm"
-          >
-            <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
-            <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
-          </ToggleGroup>
-        )}
-        {typeNames.size > 0 && (
-          <Select
-            value={orgTypeId === '' ? ANY : orgTypeId}
-            onValueChange={(next) => setOrgTypeId(next === ANY ? '' : next)}
-          >
-            <SelectTrigger size="sm" className="w-auto" aria-label={format(m.nodeKind)}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY}>{format(m.nodeAnyKind)}</SelectItem>
-              {[...typeNames.entries()].map(([id, name]) => (
-                <SelectItem key={id} value={id}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {(context.scope !== undefined || typeNames.size > 0) && (
+          <div className="flex items-center gap-2">
+            {context.scope !== undefined && (
+              <ToggleGroup
+                type="single"
+                value={context.scope}
+                onValueChange={(next) =>
+                  next && context.onScopeChange?.(next as 'self' | 'subtree')
+                }
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+              >
+                <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
+                <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
+              </ToggleGroup>
+            )}
+            {typeNames.size > 0 && (
+              <Select
+                value={orgTypeId === '' ? ANY : orgTypeId}
+                onValueChange={(next) => setOrgTypeId(next === ANY ? '' : next)}
+              >
+                <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={format(m.nodeKind)}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY}>{format(m.nodeAnyKind)}</SelectItem>
+                  {[...typeNames.entries()].map(([id, name]) => (
+                    <SelectItem key={id} value={id}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         )}
       </div>
 

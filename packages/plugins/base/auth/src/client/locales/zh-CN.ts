@@ -12,7 +12,7 @@ export default {
   'auth/person/roles': '担任角色',
   'auth/person/no-roles': '暂未担任任何角色。',
   'auth/person/role-tenant-wide': '全租户',
-  'auth/person/role-scoped': '仅限单个对象',
+  'auth/person/role-scoped': '单节点',
   'auth/person/role-subtree': '{node}及其下属单位',
   'auth/person/role-here': '{node}',
   'auth/picker/units': '组织架构',

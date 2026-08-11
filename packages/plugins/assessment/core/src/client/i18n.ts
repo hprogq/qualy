@@ -145,6 +145,18 @@ const leftMinutes = defineMessage<{ minutes: number; seconds: number }>()({
   id: 'assessment/progress/left-minutes',
   defaultMessage: '{minutes}m {seconds}s left',
 })
+const leftDaysHours = defineMessage<{ days: number; hours: number }>()({
+  id: 'assessment/progress/left-days-hours',
+  defaultMessage: '{days}d {hours}h left',
+})
+const leftHoursMinutes = defineMessage<{ hours: number; minutes: number }>()({
+  id: 'assessment/progress/left-hours-minutes',
+  defaultMessage: '{hours}h {minutes}m left',
+})
+const leftMinutesOnly = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/left-minutes-only',
+  defaultMessage: '{count}m left',
+})
 const leftSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-seconds',
   defaultMessage: '{count}s left',
@@ -160,6 +172,18 @@ const sinceHours = defineMessage<{ count: number }>()({
 const sinceMinutes = defineMessage<{ minutes: number; seconds: number }>()({
   id: 'assessment/progress/since-minutes',
   defaultMessage: 'running for {minutes}m {seconds}s',
+})
+const sinceDaysHours = defineMessage<{ days: number; hours: number }>()({
+  id: 'assessment/progress/since-days-hours',
+  defaultMessage: 'running for {days}d {hours}h',
+})
+const sinceHoursMinutes = defineMessage<{ hours: number; minutes: number }>()({
+  id: 'assessment/progress/since-hours-minutes',
+  defaultMessage: 'running for {hours}h {minutes}m',
+})
+const sinceMinutesOnly = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/since-minutes-only',
+  defaultMessage: 'running for {count}m',
 })
 const sinceSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-seconds',
@@ -238,10 +262,16 @@ const i18n = definePluginMessages({
     coversUnits,
     enrolled,
     leftDays,
+    leftDaysHours,
     leftHours,
+    leftHoursMinutes,
     leftMinutes,
+    leftMinutesOnly,
     leftSeconds,
     sinceDays,
+    sinceDaysHours,
+    sinceHoursMinutes,
+    sinceMinutesOnly,
     sinceHours,
     sinceMinutes,
     sinceSeconds,
