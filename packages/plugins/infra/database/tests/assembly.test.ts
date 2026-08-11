@@ -21,6 +21,9 @@ import {
 } from '../src/assembly/drop-guard.ts'
 import { guardDestructive } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
+import { diffAgainstDeclared } from '../src/assembly/diff.ts'
+import { defineEntity } from '@mikro-orm/core'
+import type { EntityModule } from '../src/assembly/entities.ts'
 
 // Can a plugin selection other than this repository's own build a lineage from
 // nothing and deploy it?
@@ -468,6 +471,82 @@ describe.runIf(postgresAvailable)('adopting an existing database', () => {
     } finally {
       await db.dispose()
       workspace.dispose()
+    }
+  })
+})
+
+// An index whose name stayed and whose body changed.
+//
+// The comparator cannot see one: an index declared through the raw
+// `expression` escape hatch is matched by name alone, and it says so
+// (repos/mikro-orm/packages/sql/src/schema/SchemaComparator.ts, `diffIndex`).
+// That is not a defect - nothing decides whether two arbitrary SQL
+// expressions mean the same thing by reading them - but it did once cost a
+// hand-written migration, which is the failure this suite exists to prevent:
+// a lineage nobody can regenerate.
+//
+// Because both sides of the diff are real databases, postgres answers it
+// instead. The declared index goes in, comes back normalised, and two
+// normalised definitions are equal exactly when the indexes are the same.
+
+const probeEntity = (indexBody: string) =>
+  defineEntity({
+    name: 'DiffProbe',
+    tableName: 'diff_probe',
+    properties: {
+      id: defineEntity.properties.uuid().primary().defaultRaw('uuidv7()'),
+      tenantId: defineEntity.properties.uuid(),
+      resourceId: defineEntity.properties.uuid().nullable(),
+    },
+    indexes: [
+      {
+        name: 'uq_diff_probe',
+        expression: `create unique index uq_diff_probe on diff_probe (${indexBody})`,
+      },
+    ],
+  })
+
+const probeModule = (indexBody: string): EntityModule => ({
+  pluginId: '@qualy/plugin-diff-probe',
+  entities: [probeEntity(indexBody)],
+})
+
+describe.runIf(postgresAvailable)('generation', () => {
+  it('replaces an index whose definition changed under the same name', async () => {
+    // no lineage at all: this is about the generator, not about the product's
+    // schema, so the database starts as empty as a fresh install's
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-diff-'))
+    const db = await createTestContext('diff-index-body', { migrationsFolder: empty })
+    try {
+      // built through the generator too, so the starting shape is one it
+      // produced rather than one the test wrote by hand
+      const before = await diffAgainstDeclared(db.url, db.url, [probeModule('tenant_id')], [])
+      for (const statement of before.up) await db.query(statement)
+
+      const after = await diffAgainstDeclared(
+        db.url,
+        db.url,
+        [probeModule(`tenant_id, coalesce(resource_id, '00000000-0000-0000-0000-000000000000')`)],
+        [],
+      )
+      expect(after.up).toHaveLength(2)
+      expect(after.up[0]).toBe('drop index "uq_diff_probe"')
+      expect(after.up[1]).toMatch(/COALESCE\(resource_id/)
+
+      // and it applies, on the database it was computed against
+      for (const statement of after.up) await db.query(statement)
+      // idempotent once it has: the same declaration diffs to nothing, which
+      // is what stops a redefinition being emitted into every later migration
+      const settled = await diffAgainstDeclared(
+        db.url,
+        db.url,
+        [probeModule(`tenant_id, coalesce(resource_id, '00000000-0000-0000-0000-000000000000')`)],
+        [],
+      )
+      expect(settled.up).toEqual([])
+    } finally {
+      await db.dispose()
+      fs.rmSync(empty, { recursive: true, force: true })
     }
   })
 })

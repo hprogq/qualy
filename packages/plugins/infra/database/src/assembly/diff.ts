@@ -122,6 +122,51 @@ export function splitStatements(sql: string): string[] {
   return parts.map((part) => part.trim().replace(/;$/, '')).filter(Boolean)
 }
 
+/**
+ * Indexes as postgres itself spells them, which is the only spelling that can
+ * be compared.
+ *
+ * The comparator says so plainly: an index declared through the raw
+ * `expression` escape hatch "can't be compared structurally - fall back to
+ * name-only matching" (repos/mikro-orm/packages/sql/src/schema/SchemaComparator.ts,
+ * `diffIndex`). That is not a defect to patch: nothing can decide whether two
+ * arbitrary SQL expressions mean the same thing by reading them.
+ *
+ * But both sides here are real databases, and postgres normalises an index
+ * definition on the way in. `pg_get_indexdef` therefore gives two strings that
+ * are equal exactly when the indexes are the same - no parsing, no guessing -
+ * and a plugin that edits a partial index or a coalesce inside one gets a
+ * migration for it like any other change.
+ *
+ * Constraint-backed indexes are left out: a primary key or a unique constraint
+ * is changed through its constraint, which the comparator does handle.
+ */
+const indexDefinitions = async (orm: MikroORM): Promise<Map<string, string>> => {
+  const rows = await orm.em.getConnection().execute<{ name: string; def: string }[]>(
+    `select c.relname as name, pg_get_indexdef(i.indexrelid) as def
+       from pg_index i
+       join pg_class c on c.oid = i.indexrelid
+       join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and not exists (select 1 from pg_constraint con where con.conindid = i.indexrelid)`,
+  )
+  return new Map(rows.map((row) => [row.name, row.def]))
+}
+
+/** what the comparator could not judge: same name on both sides, different body */
+const redefinedIndexes = async (from: MikroORM, to: MikroORM): Promise<string[]> => {
+  const [before, after] = await Promise.all([indexDefinitions(from), indexDefinitions(to)])
+  const statements: string[] = []
+  for (const [name, declared] of after) {
+    const existing = before.get(name)
+    // absent on one side is an ordinary addition or removal, which the
+    // comparator already reported; only a redefinition is invisible to it
+    if (existing === undefined || existing === declared) continue
+    statements.push(`drop index "${name}"`, declared)
+  }
+  return statements
+}
+
 export interface StructuralDiff {
   /** the statements that bring the lineage to the declared schema */
   up: string[]
@@ -193,9 +238,14 @@ export async function diffAgainstDeclared(
       // whole job is to make a drop deliberate.
       const forward = comparator.compare(from, to)
       return {
-        up: splitStatements(
-          lineageOrm.schema.diffToSQL(forward, { wrap: false, safe: false, dropTables: true }),
-        ),
+        up: [
+          ...splitStatements(
+            lineageOrm.schema.diffToSQL(forward, { wrap: false, safe: false, dropTables: true }),
+          ),
+          // after the structural statements: an index may name a column that
+          // only exists once they have run
+          ...(await redefinedIndexes(lineageOrm, declaredOrm)),
+        ],
       }
     } finally {
       // both, in order: closing the first used to be able to throw and leave
