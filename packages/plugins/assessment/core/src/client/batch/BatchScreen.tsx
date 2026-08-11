@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection } from '@qualy/ui/admin'
+import { AsyncSection, PageHeader } from '@qualy/ui/admin'
 import { PageContainer } from '@qualy/ui/page-container'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -17,9 +17,14 @@ import type { BatchDto } from '../phase/model.ts'
 // workspace instead of again at the top of every section.
 
 export function BatchScreen({
-  size = 'wide',
+  title,
+  description,
+  size = 'default',
   children,
 }: {
+  /** which of the batch's pages this is; the bar above says which batch */
+  title: string
+  description?: string
   size?: 'default' | 'wide' | 'full'
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
@@ -37,7 +42,8 @@ export function BatchScreen({
   const batch = detail.data?.batch
 
   return (
-    <PageContainer size={size}>
+    <PageContainer size={size} className="space-y-5">
+      <PageHeader title={title} description={description} />
       <AsyncSection
         pending={detail.isPending}
         error={detail.isError ? formatError(detail.error) : null}

@@ -57,6 +57,7 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
   configRevision: 0,
   anchorAutoSync: false,
   currentPhaseId: null,
+  currentPhaseName: null,
   userTypeIds: [],
   createdAt: '2026-02-01T00:00:00.000Z',
   ...over,

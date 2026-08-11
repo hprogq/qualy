@@ -15,6 +15,7 @@ import {
 } from '@qualy/ui/empty'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@qualy/ui/input-group'
 import { Pagination, PaginationContent, PaginationItem } from '@qualy/ui/pagination'
+import { Badge } from '@qualy/ui/badge'
 import { Reveal } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -96,7 +97,14 @@ export default function BatchListPage() {
             rather than repeating a banner on every screen below it */}
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-1.5">
-            <h1 className="text-xl font-semibold tracking-tight">{format(m.batchesTitle)}</h1>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl font-semibold tracking-tight">{format(m.batchesTitle)}</h1>
+              {total > 0 && (
+                <Badge variant="secondary" className="tabular-nums">
+                  {format(m.totalCount, { count: total })}
+                </Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">{format(m.batchesHint)}</p>
           </div>
           <Button variant="outline" onClick={() => setCreating(true)}>
@@ -189,6 +197,7 @@ export default function BatchListPage() {
                       <TableRow>
                         <TableHead>{format(m.columnName)}</TableHead>
                         <TableHead>{format(m.columnStatus)}</TableHead>
+                        <TableHead>{format(m.columnCurrentPhase)}</TableHead>
                         <TableHead>{format(m.columnMaterialRange)}</TableHead>
                         <TableHead>{format(m.columnParticipants)}</TableHead>
                         <TableHead>{format(m.columnCreatedAt)}</TableHead>
@@ -218,6 +227,9 @@ export default function BatchListPage() {
                             <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
                           </TableCell>
                           <TableCell className="text-muted-foreground">
+                            {row.currentPhaseName ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
                             {row.materialRange.start} – {row.materialRange.end}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
@@ -234,11 +246,11 @@ export default function BatchListPage() {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-sm text-muted-foreground">
-                    {/* the count answers "is that all of them?", which a cursor
-                      list has to answer even when it fits on one page */}
-                    {format(m.totalCount, { count: total })}
-                    {pageCount > 1 &&
-                      ` · ${format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })}`}
+                    {/* how many there are is said beside the title; here is
+                      only where in them this page falls */}
+                    {pageCount > 1
+                      ? format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })
+                      : ''}
                   </span>
                   {/* the navigation structure is the library's; the controls
                     are buttons rather than its anchors, because these move

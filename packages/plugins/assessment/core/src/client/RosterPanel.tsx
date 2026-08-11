@@ -103,10 +103,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
 
       {/* what changed in the organization since the list was drawn up */}
       <section aria-label={format(m.diffTitle)} className="space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold">{format(m.diffTitle)}</h3>
-          <p className="text-xs text-muted-foreground">{format(m.rosterHint)}</p>
-        </div>
+        <h3 className="text-sm font-semibold">{format(m.diffTitle)}</h3>
         <AsyncSection
           pending={diff.isPending}
           error={diff.isError ? formatError(diff.error) : null}

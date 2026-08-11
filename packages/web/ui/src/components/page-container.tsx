@@ -9,10 +9,10 @@ import { cn } from '../lib/utils.ts'
 // says which kind it is, and the shell stays out of it.
 
 const widths = {
-  /** reading and filling in: a form, a summary, one thing being described */
-  default: 'max-w-5xl',
-  /** looking across: a table with several columns, a plan, a queue */
-  wide: 'max-w-[1600px]',
+  /** reading and filling in: a form, a summary, a table of a few columns */
+  default: 'max-w-6xl',
+  /** looking across: a queue, a wide grid, several panes side by side */
+  wide: 'max-w-[1440px]',
   /** whatever there is: a tree, a canvas, a split view */
   full: 'max-w-none',
 } as const

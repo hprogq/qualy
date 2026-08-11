@@ -67,6 +67,8 @@ export interface BatchRow {
   configRevision: number
   anchorAutoSync: boolean
   currentPhaseId: string | null
+  /** what that phase is called, so a list can say where a batch has got to */
+  currentPhaseName: string | null
   /** people currently on the roster; zero until the batch is activated */
   participantCount: number
   createdAt: number
@@ -103,6 +105,13 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
           and bp.batch_id = assessment_batches.id
           and bp.status = 'active'
       )`.as('participantCount'),
+      // the first thing anybody asks of a running batch is where it has got
+      // to, and an id does not answer that
+      sql<string | null>`(
+        select p.display_name from batch_phases p
+        where p.tenant_id = assessment_batches.tenant_id
+          and p.id = assessment_batches.current_phase_id
+      )`.as('currentPhaseName'),
     ])
 
 const toBatchRow = (row: Record<string, unknown>): BatchRow =>

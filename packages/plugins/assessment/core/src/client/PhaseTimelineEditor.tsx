@@ -316,8 +316,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{format(m.phasesHint)}</p>
+      {/* the page header says what a stage plan is; this row is only the
+          controls that act on it */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex shrink-0 items-center gap-2">
           {editing && dirty > 0 && (
             <span className="text-xs text-muted-foreground">

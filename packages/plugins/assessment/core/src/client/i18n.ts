@@ -140,6 +140,10 @@ const i18n = definePluginMessages({
       id: 'assessment/batch/column-participants',
       defaultMessage: 'Participants',
     },
+    columnCurrentPhase: {
+      id: 'assessment/batch/column-current-phase',
+      defaultMessage: 'Current stage',
+    },
     columnCreatedAt: { id: 'assessment/batch/column-created-at', defaultMessage: 'Created' },
 
     // the batch form

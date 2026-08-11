@@ -34,6 +34,7 @@ export default {
   'assessment/batch/column-status': '状态',
   'assessment/batch/column-material-range': '材料时间范围',
   'assessment/batch/column-participants': '参评人数',
+  'assessment/batch/column-current-phase': '当前阶段',
   'assessment/batch/column-created-at': '创建时间',
 
   'assessment/batch/name': '名称',

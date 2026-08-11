@@ -57,6 +57,7 @@ const batchListView = Schema.Struct({
   configRevision: Schema.Number,
   anchorAutoSync: Schema.Boolean,
   currentPhaseId: Schema.NullOr(Schema.String),
+  currentPhaseName: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
 })
 

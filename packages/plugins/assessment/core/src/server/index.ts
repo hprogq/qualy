@@ -122,6 +122,7 @@ export interface BatchDetail {
   readonly configRevision: number
   readonly anchorAutoSync: boolean
   readonly currentPhaseId: string | null
+  readonly currentPhaseName: string | null
   readonly userTypeIds: readonly string[]
   readonly participantCount: number
   readonly createdAt: EpochMillis
@@ -524,6 +525,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       configRevision: batch.configRevision,
       anchorAutoSync: batch.anchorAutoSync,
       currentPhaseId: batch.currentPhaseId,
+      currentPhaseName: batch.currentPhaseName,
       userTypeIds,
       participantCount: batch.participantCount,
       createdAt: batch.createdAt,
@@ -1868,6 +1870,7 @@ const toBatchDto = (detail: BatchDetail) => ({
   configRevision: detail.configRevision,
   anchorAutoSync: detail.anchorAutoSync,
   currentPhaseId: detail.currentPhaseId,
+  currentPhaseName: detail.currentPhaseName,
   userTypeIds: detail.userTypeIds,
   participantCount: detail.participantCount,
   createdAt: new Date(detail.createdAt).toISOString(),
@@ -2001,6 +2004,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             configRevision: row.configRevision,
             anchorAutoSync: row.anchorAutoSync,
             currentPhaseId: row.currentPhaseId,
+            currentPhaseName: row.currentPhaseName,
             createdAt: new Date(row.createdAt).toISOString(),
           })),
           nextCursor:

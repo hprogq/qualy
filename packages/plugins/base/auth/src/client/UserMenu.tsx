@@ -32,11 +32,13 @@ import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
 
-// The sidebar-user contribution: the signed-in person as a card - avatar,
-// name over their number, their user type on the right - opening a menu
-// beside it with the whole identity, where they stand in the organization,
-// and the way out. Anonymous visitors get a sign-in link, and a session
-// state that simply cannot be determined says so instead of guessing.
+// The account at the end of the top bar: an avatar and a name, opening a menu
+// with the whole identity - their number, their type, where they stand in the
+// organization - and the way out. The bar has one line to spare, so the card
+// that used to sit in a sidebar footer moved inside the menu it opens.
+//
+// Anonymous visitors get a sign-in link, and a session state that simply
+// cannot be determined says so instead of guessing.
 
 /** latin names shrink to initials, cjk names keep their first characters */
 const initialsOf = (name: string): string => {
@@ -71,7 +73,7 @@ export default function UserMenu() {
     // server fault must not be dressed up as a sign-in prompt
     if (isAuthenticationError(me.error)) {
       return (
-        <Button variant="outline" size="sm" className="w-full" asChild>
+        <Button variant="outline" size="sm" asChild>
           <PageLink page="auth/login">{format(m.signIn)}</PageLink>
         </Button>
       )
@@ -112,14 +114,18 @@ export default function UserMenu() {
     <div className="flex flex-col gap-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
+          {/* the bar shows who, the menu shows everything else */}
           <button
             type="button"
-            className="flex w-full items-center gap-2.5 rounded-md p-2 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent"
+            className="flex max-w-56 items-center gap-2 rounded-md p-1 pr-2 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent"
           >
-            {identity}
+            <Avatar className="size-7 shrink-0">
+              <AvatarFallback className="text-xs">{initialsOf(user.displayName)}</AvatarFallback>
+            </Avatar>
+            <span className="truncate text-sm font-medium max-sm:hidden">{user.displayName}</span>
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="end" className="w-64">
+        <DropdownMenuContent side="bottom" align="end" className="w-64">
           <DropdownMenuLabel className="flex items-center gap-2.5 font-normal">
             {identity}
           </DropdownMenuLabel>

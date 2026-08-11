@@ -45,6 +45,34 @@ import { Spinner } from './spinner.tsx'
 // this package: every visible string arrives as a prop, so the primitives
 // never need a locale and a plugin never needs to re-implement a panel.
 
+/**
+ * What a page is, above what it shows.
+ *
+ * The shell says which application and which object; the page still has to
+ * say which of that object's pages this is. Without it a section opens on
+ * its own controls, which reads as a fragment of a screen rather than a
+ * screen.
+ */
+export function PageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string
+  description?: string
+  actions?: ReactNode
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div className="space-y-1">
+        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      </div>
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  )
+}
+
 export function Panel({
   title,
   description,
