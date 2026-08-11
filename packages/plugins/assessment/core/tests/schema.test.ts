@@ -60,10 +60,6 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
         [f.tenantId, name],
       )
     ).id
-    await db.query(
-      `insert into batch_scope_nodes (tenant_id, batch_id, node_id) values ($1, $2, $3)`,
-      [f.tenantId, batchId, f.nodeId],
-    )
     return batchId
   }
 
@@ -217,12 +213,22 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
       ),
     ).toBe('23503')
 
-    // a batch enrolling another tenant's user type
+    // an import recorded against another tenant's batch
     expect(
       await pgCode(
         db.query(
-          `insert into batch_user_types (tenant_id, batch_id, user_type_id) values ($1, $2, $3)`,
-          [a.tenantId, batchId, b.userTypeId],
+          `insert into roster_imports (tenant_id, batch_id, org_node_ids, user_type_ids, imported_count)
+           values ($1, $2, '[]'::jsonb, '[]'::jsonb, 0)`,
+          [
+            a.tenantId,
+            (
+              await db.row<{ id: string }>(
+                `insert into assessment_batches (tenant_id, name, material_range)
+             values ($1, 'other', daterange('2026-03-01', '2026-09-01')) returning id`,
+                [b.tenantId],
+              )
+            ).id,
+          ],
         ),
       ),
     ).toBe('23503')

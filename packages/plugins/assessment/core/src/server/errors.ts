@@ -63,13 +63,6 @@ export class BatchReadOnly extends Schema.TaggedErrorClass<BatchReadOnly>()(
   { httpApiStatus: 409, identifier: 'AssessmentBatchReadOnly' },
 ) {}
 
-/** once a roster exists, where the batch points is not an ordinary field */
-export class BatchScopeLocked extends Schema.TaggedErrorClass<BatchScopeLocked>()(
-  'ASSESSMENT_BATCH_SCOPE_LOCKED',
-  {},
-  { httpApiStatus: 409, identifier: 'AssessmentBatchScopeLocked' },
-) {}
-
 /**
  * A lifecycle move the batch is not in a position to make.
  *
@@ -96,11 +89,11 @@ export class BatchStatusInvalid extends Schema.TaggedErrorClass<BatchStatusInval
   { httpApiStatus: 409, identifier: 'AssessmentBatchStatusInvalid' },
 ) {}
 
-/** a batch that can enroll nobody is a configuration mistake, not a roster */
-export class BatchNoUserTypes extends Schema.TaggedErrorClass<BatchNoUserTypes>()(
-  'ASSESSMENT_BATCH_NO_USER_TYPES',
+/** a round with nobody in it has nothing to start */
+export class BatchNoParticipants extends Schema.TaggedErrorClass<BatchNoParticipants>()(
+  'ASSESSMENT_BATCH_NO_PARTICIPANTS',
   {},
-  { httpApiStatus: 422, identifier: 'AssessmentBatchNoUserTypes' },
+  { httpApiStatus: 422, identifier: 'AssessmentBatchNoParticipants' },
 ) {}
 
 /** what a batch's references can be refused for: a named node or type that
@@ -192,10 +185,9 @@ export const batchConstraints: Record<string, () => BatchReferenceInvalid> = {
 }
 
 export type CreateBatchError = BatchReferenceInvalid | AccessDenied
-export type UpdateBatchError =
-  BatchNotFound | BatchReadOnly | BatchScopeLocked | BatchReferenceInvalid | AccessDenied
+export type UpdateBatchError = BatchNotFound | BatchReadOnly | BatchReferenceInvalid | AccessDenied
 export type SetBatchStatusError =
-  BatchNotFound | BatchStatusInvalid | BatchNoUserTypes | PlanInvalid | AccessDenied
+  BatchNotFound | BatchStatusInvalid | BatchNoParticipants | PlanInvalid | AccessDenied
 
 /** reading or changing who may work on a batch */
 export type BatchAccessError = BatchNotFound | AccessInvalid | AccessDenied
@@ -214,4 +206,4 @@ export type AdvancePhaseError = BatchNotFound | PhaseNotFound | AdvanceInvalid |
  * plan to run.
  */
 export type SchedulePhaseError =
-  BatchNotFound | BatchReadOnly | PhaseNotFound | PlanInvalid | BatchNoUserTypes | AccessDenied
+  BatchNotFound | BatchReadOnly | PhaseNotFound | PlanInvalid | BatchNoParticipants | AccessDenied

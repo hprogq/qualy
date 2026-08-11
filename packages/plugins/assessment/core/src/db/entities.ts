@@ -32,10 +32,10 @@ const tenantKeyOf = (foreignKeyName: string) => () =>
     .foreignKeyName(foreignKeyName)
     .deleteRule('cascade')
 
-// One batch = one rule set over a set of organizational units. The scope
-// lives in batch_scope_nodes below: the population's definition, referencing
-// living units; participants freeze their own anchors, so nothing about the
-// batch row itself is a snapshot.
+// One batch = one round of assessment. Who takes part in it is the roster and
+// nothing else: the organizational units somebody once imported from are a
+// record of that act (roster_imports), not a standing definition the roster
+// has to be kept in step with.
 export const AssessmentBatch = defineEntity({
   name: 'AssessmentBatch',
   tableName: 'assessment_batches',
@@ -97,41 +97,34 @@ export const AssessmentBatch = defineEntity({
 // must surface as a scope-integrity warning on the diff panel rather than
 // vanish with its row or block the deletion; the service validates tenant
 // and existence at write.
-export const BatchScopeNode = defineEntity({
-  name: 'BatchScopeNode',
-  tableName: 'batch_scope_nodes',
+// What somebody once imported, and on what grounds.
+//
+// A record of an act, not a definition: "on 12 August these units and these
+// user types were used to add 128 people". It is history, and nothing reads
+// it to decide anything - who takes part in a batch is the roster and only
+// the roster. A batch that kept a live "participant scope" would be two
+// answers to one question, and every organizational change would ask which
+// of them wins.
+export const RosterImport = defineEntity({
+  name: 'RosterImport',
+  tableName: 'roster_imports',
   properties: {
-    tenantId: tenantKeyOf('batch_scope_nodes_tenant_id_tenants_id_fkey'),
-    batchId: p.uuid().primary(),
-    nodeId: p.uuid().primary(),
-    createdAt: p.datetime().defaultRaw('now()'),
-  },
-  indexes: [
-    // backs "which batches face this unit", the drift detector's direction
-    {
-      name: 'idx_batch_scope_nodes_tenant_node',
-      expression:
-        'create index idx_batch_scope_nodes_tenant_node on batch_scope_nodes (tenant_id, node_id)',
-    },
-  ],
-})
-
-// which user types a batch enrolls; batch-level configuration, not a tenant
-// global (§32.5)
-export const BatchUserType = defineEntity({
-  name: 'BatchUserType',
-  tableName: 'batch_user_types',
-  properties: {
-    tenantId: tenantKeyOf('batch_user_types_tenant_id_tenants_id_fkey'),
-    batchId: p.uuid().primary(),
-    userTypeId: p.uuid().primary(),
-    createdAt: p.datetime().defaultRaw('now()'),
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('roster_imports_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    // the query that was run, as it was written: ids rather than references,
+    // because a unit deleted afterwards must not erase the record of it
+    orgNodeIds: p.json<readonly string[]>(),
+    userTypeIds: p.json<readonly string[]>(),
+    importedCount: p.integer(),
+    actorId: p.uuid().nullable(),
+    occurredAt: p.datetime().defaultRaw('now()'),
   },
   indexes: [
     {
-      name: 'idx_batch_user_types_tenant_user_type',
+      name: 'idx_roster_imports_batch',
       expression:
-        'create index idx_batch_user_types_tenant_user_type on batch_user_types (tenant_id, user_type_id)',
+        'create index idx_roster_imports_batch on roster_imports (tenant_id, batch_id, occurred_at desc)',
     },
   ],
 })
@@ -457,7 +450,12 @@ export const BatchParticipant = defineEntity({
     userTypeId: p.uuid(),
     status: p.string().length(16).defaultRaw(`'active'`),
     includedAt: p.datetime().defaultRaw('now()'),
+    includedBy: p.uuid().nullable(),
     excludedAt: p.datetime().nullable(),
+    excludedBy: p.uuid().nullable(),
+    // why somebody was taken out, for the round where they had already
+    // submitted something: membership is withdrawn, never deleted
+    exclusionReason: p.string().length(500).nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
@@ -545,12 +543,8 @@ export const BatchConfigRevision = defineEntity({
 export const compositeForeignKeys = [
   `alter table assessment_batches add constraint fk_assessment_batches_current_phase
      foreign key (tenant_id, current_phase_id) references batch_phases (tenant_id, id) on delete set null (current_phase_id)`,
-  `alter table batch_scope_nodes add constraint fk_batch_scope_nodes_batch
+  `alter table roster_imports add constraint fk_roster_imports_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
-  `alter table batch_user_types add constraint fk_batch_user_types_batch
-     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
-  `alter table batch_user_types add constraint fk_batch_user_types_type
-     foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete restrict`,
   `alter table batch_phases add constraint fk_batch_phases_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_access_sources add constraint fk_batch_access_sources_batch
@@ -587,8 +581,7 @@ export const compositeForeignKeys = [
 
 export const entities = [
   AssessmentBatch,
-  BatchScopeNode,
-  BatchUserType,
+  RosterImport,
   BatchPhase,
   PhaseEvent,
   BatchLifecycleEvent,

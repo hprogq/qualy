@@ -58,7 +58,11 @@ export function NewBatchDialog({
     mutationFn: () =>
       run(
         api.assessment.createBatch({
-          payload: { name, scopeNodeIds, materialRange: range, userTypeIds },
+          payload: {
+            name,
+            materialRange: range,
+            import: { orgNodeIds: scopeNodeIds, userTypeIds },
+          },
         }),
       ),
     onMutate: () => setFailure(null),

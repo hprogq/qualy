@@ -59,8 +59,6 @@ export interface BatchRow {
   id: string
   name: string
   descriptionMd: string | null
-  /** the configured set, dangling ids included: this is the intent */
-  scopeNodeIds: readonly string[]
   materialRange: string
   timezone: string
   status: string
@@ -74,14 +72,6 @@ export interface BatchRow {
   /** whether the reader this row was selected for may administer it */
   manageable: boolean
 }
-
-/** the batch's scope as the row carries it on the wire-facing reads */
-const scopeNodeIdsOf = sql<readonly string[]>`coalesce(
-  (select jsonb_agg(bsn.node_id order by bsn.node_id)
-     from batch_scope_nodes bsn
-    where bsn.tenant_id = assessment_batches.tenant_id
-      and bsn.batch_id = assessment_batches.id),
-  '[]'::jsonb)`
 
 const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
   k
@@ -98,7 +88,6 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
     .select([
       sql<string>`material_range::text`.as('materialRange'),
       epoch('created_at').as('createdAt'),
-      scopeNodeIdsOf.as('scopeNodeIds'),
       sql<string>`(
         select count(*) from batch_participants bp
         where bp.tenant_id = assessment_batches.tenant_id
@@ -140,26 +129,24 @@ export const oneBatch = (
     .pipe(Effect.map((row) => (row === undefined ? null : toBatchRow(row as never))))
 
 /**
- * One page of the batches every one of whose existing scope nodes the
- * caller's grants reach, newest first. The authorization scope is pushed
- * into the statement: the database intersects, nothing is fetched and
- * filtered. A dangling scope row defines nobody, so it neither blocks nor
- * grants visibility here; it surfaces as an integrity warning instead.
- */
-/**
- * A batch is readable when every unit it faces is inside the caller's reach;
- * the list and its count ask the same question, so they ask it in one place.
+ * A batch every one of whose people stands inside this person's reach.
+ *
+ * The roster is the batch's only population, so it is also the only thing
+ * administration can be measured against: managing a round means managing
+ * everybody in it. A round nobody has been added to yet is reachable by
+ * anyone holding the permission at all - there is nothing yet to be outside
+ * of, and a draft its author could not open would be unusable.
  */
 const withinReach = (held: AuthorizationScope) =>
   sql<boolean>`not exists (
-    select 1 from batch_scope_nodes bsn
-    join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
-    where bsn.tenant_id = assessment_batches.tenant_id
-      and bsn.batch_id = assessment_batches.id
+    select 1 from batch_participants bp
+    where bp.tenant_id = assessment_batches.tenant_id
+      and bp.batch_id = assessment_batches.id
+      and bp.status = 'active'
       and not ${scopeCoverage(held, {
-        id: sql.ref('scope.id') as never,
-        tenantId: sql.ref('scope.tenant_id') as never,
-        path: sql.ref('scope.path') as never,
+        id: sql.ref('bp.assessment_anchor_node_id') as never,
+        tenantId: sql.ref('bp.tenant_id') as never,
+        path: sql.ref('bp.anchor_path') as never,
       })}
   )`
 
@@ -249,6 +236,11 @@ export const countBatches = (
     )
     .pipe(Effect.map((row) => Number(row.total)))
 
+/**
+ * One page of the batches this person may see, newest first. The
+ * authorization scope is pushed into the statement: the database intersects,
+ * nothing is fetched and filtered.
+ */
 export const listBatchesPage = (
   tenantId: string,
   viewer: { held: AuthorizationScope; userId: string },
@@ -301,48 +293,24 @@ export const insertBatch = (input: {
   )
 
 /** idempotent replacement of the population definition */
-export const replaceBatchScopeNodes = (
-  tenantId: string,
-  batchId: string,
-  nodeIds: readonly string[],
-) =>
-  Effect.gen(function* () {
-    yield* db.query((k) =>
-      k
-        .deleteFrom('BatchScopeNode')
-        .where('tenantId', '=', tenantId)
-        .where('batchId', '=', batchId)
-        .execute(),
-    )
-    if (nodeIds.length === 0) return
-    yield* db.query((k) =>
-      k
-        .insertInto('BatchScopeNode')
-        .values(nodeIds.map((nodeId) => ({ tenantId, batchId, nodeId })))
-        .execute(),
-    )
-  })
-
-/** the scope rows that still name a living unit, with where those units are now */
-export const scopeNodeRows = (tenantId: string, batchId: string) =>
+/**
+ * The distinct units the people in a batch stand at, as frozen when they were
+ * added. What a round is anchored to, now that nothing else is.
+ */
+export const rosterAnchors = (tenantId: string, batchId: string) =>
   db
     .query((k) =>
       k
-        .selectFrom('BatchScopeNode')
-        .innerJoin('OrgNode as n', (join) =>
-          join
-            .onRef('n.id', '=', 'BatchScopeNode.nodeId')
-            .onRef('n.tenantId', '=', 'BatchScopeNode.tenantId'),
-        )
-        .select(['n.id', 'n.path'])
-        .where('BatchScopeNode.tenantId', '=', tenantId)
-        .where('BatchScopeNode.batchId', '=', batchId)
-        .orderBy('n.id')
+        .selectFrom('BatchParticipant')
+        .select('assessmentAnchorNodeId')
+        .distinct()
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .where('status', '=', 'active')
         .execute(),
     )
-    .pipe(Effect.map((found) => found as { id: string; path: string }[]))
+    .pipe(Effect.map((rows) => rows.map((row) => row.assessmentAnchorNodeId as string)))
 
-/** the named nodes that exist in this tenant, for validating a selection */
 export const nodesByIds = (tenantId: string, nodeIds: readonly string[]) =>
   nodeIds.length === 0
     ? Effect.succeed([] as { id: string; path: string }[])
@@ -399,42 +367,6 @@ export const setCurrentPhase = (tenantId: string, batchId: string, phaseId: stri
       .execute(),
   )
 
-export const listBatchUserTypes = (tenantId: string, batchId: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('BatchUserType')
-        .select('userTypeId')
-        .where('tenantId', '=', tenantId)
-        .where('batchId', '=', batchId)
-        .orderBy('userTypeId')
-        .execute(),
-    )
-    .pipe(Effect.map((found) => found.map((row) => row.userTypeId as string)))
-
-export const replaceBatchUserTypes = (
-  tenantId: string,
-  batchId: string,
-  userTypeIds: readonly string[],
-) =>
-  Effect.gen(function* () {
-    yield* db.query((k) =>
-      k
-        .deleteFrom('BatchUserType')
-        .where('tenantId', '=', tenantId)
-        .where('batchId', '=', batchId)
-        .execute(),
-    )
-    if (userTypeIds.length === 0) return
-    yield* db.query((k) =>
-      k
-        .insertInto('BatchUserType')
-        .values(userTypeIds.map((userTypeId) => ({ tenantId, batchId, userTypeId })))
-        .execute(),
-    )
-  })
-
-/** bumps the monotonic counter and returns the revision the event will carry */
 export const bumpConfigRevision = (tenantId: string, batchId: string) =>
   db
     .query((k) =>
@@ -1093,42 +1025,140 @@ export const phaseScopes = (tenantId: string, phaseId: string) =>
  * selection is refused at write, so subtrees are disjoint, and a dangling
  * scope row simply matches nothing.
  */
-export const generateRoster = (tenantId: string, batchId: string) =>
+/**
+ * The people one import would add: everybody under these units with one of
+ * these types, minus whoever is already taking part.
+ *
+ * Run twice - once to count for the confirmation, once to insert - and the
+ * second run is the one that decides, so a person who arrives between the
+ * two is simply not in this import.
+ */
+export const importCandidates = (
+  tenantId: string,
+  batchId: string,
+  nodeIds: readonly string[],
+  userTypeIds: readonly string[],
+) =>
   db
     .query((k) =>
-      sql`
+      sql<{ id: string }>`
+        select u.id
+          from users u
+          join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+         where u.tenant_id = ${tenantId}::uuid
+           and u.enabled
+           and u.user_type_id = any(${userTypeIds as string[]}::uuid[])
+           and exists (
+             select 1 from org_nodes scope
+              where scope.tenant_id = u.tenant_id
+                and scope.id = any(${nodeIds as string[]}::uuid[])
+                and n.path <@ scope.path
+           )
+           and not exists (
+             select 1 from batch_participants bp
+              where bp.tenant_id = u.tenant_id
+                and bp.batch_id = ${batchId}::uuid
+                and bp.user_id = u.id
+                and bp.status = 'active'
+           )
+         order by u.display_name, u.id
+      `.execute(k),
+    )
+    .pipe(Effect.map((result) => result.rows.map((row) => row.id)))
+
+/**
+ * Adding people to a roster, by name of the people themselves.
+ *
+ * One insertion path for both ways in: importing from the organization
+ * resolves its units to people first, so nothing here knows what a unit is.
+ * Each row freezes where its person stood and what they were when they were
+ * added - the round is answerable for the people it admitted, not for who
+ * they became afterwards.
+ */
+export const insertParticipants = (
+  tenantId: string,
+  batchId: string,
+  userIds: readonly string[],
+  actorId: string | null,
+) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
         insert into batch_participants
-          (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage, user_type_id)
+          (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path,
+           anchor_lineage, user_type_id, included_by)
         select
-          u.tenant_id,
-          ${batchId}::uuid,
-          u.id,
-          u.primary_org_node_id,
-          n.path,
+          u.tenant_id, ${batchId}::uuid, u.id, u.primary_org_node_id, n.path,
           (select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
                             order by a.depth desc)
              from org_nodes a
             where a.tenant_id = u.tenant_id and a.path @> n.path),
-          u.user_type_id
+          u.user_type_id, ${actorId}::uuid
         from users u
         join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-        join batch_user_types enrolled
-          on enrolled.tenant_id = u.tenant_id
-         and enrolled.batch_id = ${batchId}::uuid
-         and enrolled.user_type_id = u.user_type_id
         where u.tenant_id = ${tenantId}::uuid
+          and u.id = any(${userIds as string[]}::uuid[])
           and u.enabled
-          and exists (
-            select 1 from batch_scope_nodes bsn
-            join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
-            where bsn.tenant_id = u.tenant_id
-              and bsn.batch_id = ${batchId}::uuid
-              and n.path <@ scope.path
+          and not exists (
+            select 1 from batch_participants bp
+             where bp.tenant_id = u.tenant_id
+               and bp.batch_id = ${batchId}::uuid
+               and bp.user_id = u.id
+               and bp.status = 'active'
           )
+        returning id
       `.execute(k),
     )
+    .pipe(Effect.map((result) => result.rows.map((row) => row.id)))
+
+/** what somebody once imported, and on what grounds; history, never a rule */
+export const insertRosterImport = (input: {
+  tenantId: string
+  batchId: string
+  orgNodeIds: readonly string[]
+  userTypeIds: readonly string[]
+  importedCount: number
+  actorId: string | null
+}) =>
+  db.query((k) =>
+    k
+      .insertInto('RosterImport')
+      .values({
+        tenantId: input.tenantId,
+        batchId: input.batchId,
+        orgNodeIds: JSON.stringify(input.orgNodeIds),
+        userTypeIds: JSON.stringify(input.userTypeIds),
+        importedCount: input.importedCount,
+        actorId: input.actorId,
+      } as never)
+      .execute(),
+  )
+
+export const rosterImports = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RosterImport')
+        .select(['id', 'orgNodeIds', 'userTypeIds', 'importedCount', 'actorId'])
+        .select([epoch('occurred_at').as('occurredAt')])
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .orderBy('occurredAt', 'desc')
+        .limit(50)
+        .execute(),
+    )
     .pipe(
-      Effect.map((result) => Number((result as { numAffectedRows?: bigint }).numAffectedRows ?? 0)),
+      Effect.map(
+        (found) =>
+          found as unknown as {
+            id: string
+            orgNodeIds: readonly string[]
+            userTypeIds: readonly string[]
+            importedCount: number
+            actorId: string | null
+            occurredAt: number
+          }[],
+      ),
     )
 
 export const oneOrgNode = (tenantId: string, nodeId: string) =>
@@ -1429,26 +1459,6 @@ export const userLivePosition = (tenantId: string, userId: string) =>
     )
 
 /** whether this live position falls under any living scope node of the batch */
-export const positionInScope = (tenantId: string, batchId: string, nodePath: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('BatchScopeNode')
-        .innerJoin('OrgNode as scope', (join) =>
-          join
-            .onRef('scope.id', '=', 'BatchScopeNode.nodeId')
-            .onRef('scope.tenantId', '=', 'BatchScopeNode.tenantId'),
-        )
-        .select('BatchScopeNode.nodeId')
-        .where('BatchScopeNode.tenantId', '=', tenantId)
-        .where('BatchScopeNode.batchId', '=', batchId)
-        .where(sql<boolean>`${nodePath}::ltree <@ scope.path`)
-        .limit(1)
-        .execute(),
-    )
-    .pipe(Effect.map((found) => found.length > 0))
-
-/** the other non-archived batches where this person already participates */
 export const activeElsewhere = (tenantId: string, userId: string, excludingBatchId: string) =>
   db
     .query((k) =>
@@ -1475,70 +1485,34 @@ export const activeElsewhere = (tenantId: string, userId: string, excludingBatch
  * activation uses, scoped to a single user. Returns nothing when the user is
  * missing - eligibility and scope are the service's questions, asked first.
  */
-export const insertParticipant = (tenantId: string, batchId: string, userId: string) =>
-  db
-    .query((k) =>
-      sql<{ id: string }>`
-        insert into batch_participants
-          (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage, user_type_id)
-        select
-          u.tenant_id,
-          ${batchId}::uuid,
-          u.id,
-          u.primary_org_node_id,
-          n.path,
-          (select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
-                            order by a.depth desc)
-             from org_nodes a
-            where a.tenant_id = u.tenant_id and a.path @> n.path),
-          u.user_type_id
-        from users u
-        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-        where u.tenant_id = ${tenantId}::uuid and u.id = ${userId}::uuid
-        returning id
-      `.execute(k),
-    )
-    .pipe(Effect.map((result) => (result.rows[0] ?? null) as { id: string } | null))
-
-/** re-freezes one participant's snapshot - anchor, lineage and type - from live */
-export const refreshParticipantSnapshot = (tenantId: string, participantId: string) =>
-  db.query((k) =>
-    sql`
-      update batch_participants p
-      set assessment_anchor_node_id = u.primary_org_node_id,
-          anchor_path = n.path,
-          anchor_lineage =
-            (select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
-                              order by a.depth desc)
-               from org_nodes a
-              where a.tenant_id = u.tenant_id and a.path @> n.path),
-          user_type_id = u.user_type_id,
-          updated_at = now()
-      from users u
-      join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-      where p.tenant_id = ${tenantId}::uuid
-        and p.id = ${participantId}::uuid
-        and u.tenant_id = p.tenant_id
-        and u.id = p.user_id
-    `.execute(k),
-  )
-
 export const setParticipantStatus = (
   tenantId: string,
   participantId: string,
   to: 'active' | 'excluded',
   nowMs: number,
+  actor?: { userId: string | null; reason: string | null },
 ) =>
   db.query((k) =>
     k
       .updateTable('BatchParticipant')
       .set(
         to === 'excluded'
-          ? ({ status: 'excluded', excludedAt: instant(nowMs), updatedAt: sql`now()` } as never)
-          : ({
+          ? ({
+              status: 'excluded',
+              excludedAt: instant(nowMs),
+              excludedBy: actor?.userId ?? null,
+              exclusionReason: actor?.reason ?? null,
+              updatedAt: sql`now()`,
+            } as never)
+          : // brought back in: the withdrawal is cleared rather than kept
+            // beside a live membership, and the record of it is the event log
+            ({
               status: 'active',
               excludedAt: null,
+              excludedBy: null,
+              exclusionReason: null,
               includedAt: instant(nowMs),
+              includedBy: actor?.userId ?? null,
               updatedAt: sql`now()`,
             } as never),
       )
@@ -1547,125 +1521,6 @@ export const setParticipantStatus = (
       .execute(),
   )
 
-// --- the roster diff, class by class ---
-
-export interface NewArrivalRow {
-  userId: string
-  displayName: string
-  businessNo: string | null
-  userTypeId: string
-  nodeId: string
-  nodePath: string
-  activeElsewhere: readonly { batchId: string; name: string }[]
-}
-
-export const diffNewArrivals = (tenantId: string, batchId: string) =>
-  db
-    .query((k) =>
-      sql<NewArrivalRow>`
-        select
-          u.id as "userId",
-          u.display_name as "displayName",
-          u.business_no as "businessNo",
-          u.user_type_id as "userTypeId",
-          n.id as "nodeId",
-          n.path::text as "nodePath",
-          coalesce(
-            (select jsonb_agg(jsonb_build_object('batchId', b2.id, 'name', b2.name) order by b2.id)
-               from batch_participants p2
-               join assessment_batches b2 on b2.tenant_id = p2.tenant_id and b2.id = p2.batch_id
-              where p2.tenant_id = u.tenant_id and p2.user_id = u.id
-                and p2.status = 'active' and p2.batch_id <> ${batchId}::uuid
-                and b2.status <> 'archived'),
-            '[]'::jsonb) as "activeElsewhere"
-        from users u
-        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-        join batch_user_types enrolled
-          on enrolled.tenant_id = u.tenant_id
-         and enrolled.batch_id = ${batchId}::uuid
-         and enrolled.user_type_id = u.user_type_id
-        where u.tenant_id = ${tenantId}::uuid
-          and u.enabled
-          and ${inScope(batchId, 'u.tenant_id', 'n.path')}
-          and not exists (
-            select 1 from batch_participants p
-            where p.tenant_id = u.tenant_id and p.batch_id = ${batchId}::uuid and p.user_id = u.id)
-        order by n.path, u.id
-      `.execute(k),
-    )
-    .pipe(Effect.map((result) => result.rows as NewArrivalRow[]))
-
-export interface DriftRow {
-  participantId: string
-  userId: string
-  displayName: string
-  frozenNodeId: string
-  frozenPath: string
-  frozenUserTypeId: string
-  liveNodeId: string
-  livePath: string
-  liveUserTypeId: string
-}
-
-/** every active participant whose live position or type differs from the frozen one */
-export const diffDriftedParticipants = (tenantId: string, batchId: string) =>
-  db
-    .query((k) =>
-      sql<DriftRow & { inScope: boolean }>`
-        select
-          p.id as "participantId",
-          u.id as "userId",
-          u.display_name as "displayName",
-          p.assessment_anchor_node_id as "frozenNodeId",
-          p.anchor_path::text as "frozenPath",
-          p.user_type_id as "frozenUserTypeId",
-          n.id as "liveNodeId",
-          n.path::text as "livePath",
-          u.user_type_id as "liveUserTypeId",
-          ${inScope(batchId, 'u.tenant_id', 'n.path')} as "inScope"
-        from batch_participants p
-        join users u on u.tenant_id = p.tenant_id and u.id = p.user_id
-        join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
-        where p.tenant_id = ${tenantId}::uuid
-          and p.batch_id = ${batchId}::uuid
-          and p.status = 'active'
-          and (n.id <> p.assessment_anchor_node_id
-               or n.path <> p.anchor_path
-               or u.user_type_id <> p.user_type_id
-               or not ${inScope(batchId, 'u.tenant_id', 'n.path')})
-        order by p.anchor_path, p.id
-      `.execute(k),
-    )
-    .pipe(Effect.map((result) => result.rows as (DriftRow & { inScope: boolean })[]))
-
-/** scope rows whose unit no longer exists: the definition itself has a hole */
-export const diffScopeIntegrity = (tenantId: string, batchId: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('BatchScopeNode')
-        .leftJoin('OrgNode as n', (join) =>
-          join
-            .onRef('n.id', '=', 'BatchScopeNode.nodeId')
-            .onRef('n.tenantId', '=', 'BatchScopeNode.tenantId'),
-        )
-        .select('BatchScopeNode.nodeId')
-        .where('BatchScopeNode.tenantId', '=', tenantId)
-        .where('BatchScopeNode.batchId', '=', batchId)
-        .where('n.id', 'is', null)
-        .orderBy('BatchScopeNode.nodeId')
-        .execute(),
-    )
-    .pipe(Effect.map((found) => found.map((row) => row.nodeId as string)))
-
-/**
- * How many people hold any role anchored exactly at each of these nodes.
- *
- * The degraded stand-in for chain validation until review policies exist
- * (M3): it cannot know which roles matter, so it reports whether each level
- * of a lineage has anyone at all. Exact-anchor on purpose - the same
- * membership rule stage resolution will use.
- */
 export const roleHoldersAt = (tenantId: string, nodeIds: readonly string[]) =>
   nodeIds.length === 0
     ? Effect.succeed(new Map<string, number>())

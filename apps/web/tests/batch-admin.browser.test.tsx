@@ -62,7 +62,6 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
   configRevision: 0,
   currentPhaseId: null,
   currentPhaseName: null,
-  userTypeIds: [],
   createdAt: '2026-02-01T00:00:00.000Z',
   ...over,
 })
@@ -108,14 +107,6 @@ const subject = (over: Record<string, unknown> = {}) => ({
 })
 
 const emptyPlan = { newSources: [], widened: [], lapsed: [] }
-
-const emptyDiff = {
-  newArrivals: [],
-  departed: [],
-  anchorChanged: [],
-  userTypeChanged: [],
-  scopeIntegrity: [],
-}
 
 // one template of each kind: the pickers must keep them apart, which this
 // stub verifies by construction - ask without a kind and you would see both
@@ -173,7 +164,7 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   listUserTypeOptions: () =>
     Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
   listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
-  getRosterDiff: () => Effect.succeed({ diff: emptyDiff }),
+  previewImport: () => Effect.succeed({ candidates: 0 }),
   listAccess: () => Effect.succeed({ staff: [subject()] }),
   previewAccessSync: () => Effect.succeed(emptyPlan),
   ...over,
@@ -372,8 +363,9 @@ describe('creating a batch', () => {
     await vi.waitFor(() => expect(createBatch).toHaveBeenCalledTimes(1))
     const sent = createBatch.mock.calls[0]![0].payload!
     expect(sent['name']).toBe('2026 秋季综测')
-    expect(sent['scopeNodeIds']).toEqual([NODE_ID])
-    expect(sent['userTypeIds']).toEqual([USER_ID])
+    // the units and types are the import's parameters, not a scope the batch
+    // will carry afterwards
+    expect(sent['import']).toEqual({ orgNodeIds: [NODE_ID], userTypeIds: [USER_ID] })
   })
 })
 
@@ -544,67 +536,36 @@ describe('the stage plan', () => {
 })
 
 describe('the participants tab', () => {
-  it('shows a draft roster as something to check, not as an empty list', async () => {
+  it('offers a draft the same two ways in that a running batch has', async () => {
     screen({}, `/assessment/batches/${BATCH_ID}/participants`)
-    // the roster exists from the moment the batch does, so a draft is asked
-    // to be checked rather than told that nothing is there yet
-    await expect
-      .element(page.getByText('批次开始前可先行核对；调整参评范围会重新生成名单。'))
-      .toBeVisible()
+    // the roster exists from the moment the batch does, so a draft is a list
+    // to check and add to rather than a screen waiting for a scope
+    await expect.element(page.getByRole('button', { name: '从组织导入' })).toBeVisible()
   })
 
-  it('offers each organizational change the action that answers it', async () => {
-    const include = vi.fn((_request: Request) =>
-      Effect.succeed({ participant: {}, activeElsewhere: [], chainPreview: [] }),
-    )
-    const applyAnchor = vi.fn((_request: Request) =>
-      Effect.succeed({ participant: {}, chainPreview: [] }),
-    )
+  it('imports from the organization only after saying how many that is', async () => {
+    const importParticipants = vi.fn((_request: Request) => Effect.succeed({ added: 3 }))
     screen(
       {
         getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
-        includeParticipant: include,
-        applyParticipantAnchor: applyAnchor,
-        getRosterDiff: () =>
-          Effect.succeed({
-            diff: {
-              ...emptyDiff,
-              newArrivals: [
-                {
-                  userId: USER_ID,
-                  displayName: '转入生',
-                  businessNo: '2401',
-                  userTypeId: USER_ID,
-                  nodeId: NODE_ID,
-                  nodePath: 'r.se.c1',
-                  activeElsewhere: [{ batchId: 'other', name: '英语学院综测' }],
-                },
-              ],
-              anchorChanged: [
-                {
-                  participantId: PARTICIPANT_ID,
-                  userId: USER_ID,
-                  displayName: '换班生',
-                },
-              ],
-            },
-          }),
+        previewImport: () => Effect.succeed({ candidates: 3 }),
+        importParticipants,
       },
       `/assessment/batches/${BATCH_ID}/participants`,
     )
 
-    // an arrival is a question, and the answer carries the warning that
-    // matters: they are already counted somewhere else
-    await expect.element(page.getByText('已在参加：英语学院综测')).toBeVisible()
-    await page.getByRole('button', { name: '加入本批次' }).click()
-    await vi.waitFor(() => expect(include).toHaveBeenCalledTimes(1))
-    expect(include.mock.calls[0]![0]).toMatchObject({ payload: { userId: USER_ID } })
+    await page.getByRole('button', { name: '从组织导入' }).click()
+    // nothing can be imported until something is chosen
+    await expect.element(page.getByText('请选择组织单位与人员类型。')).toBeVisible()
+    await page.getByRole('checkbox', { name: '软件学院' }).click()
+    await page.getByRole('checkbox', { name: '学生' }).click()
 
-    // a move inside the covered units is answered by refreezing the snapshot
-    await page.getByRole('button', { name: '应用变动' }).click()
-    await vi.waitFor(() => expect(applyAnchor).toHaveBeenCalledTimes(1))
-    expect(applyAnchor.mock.calls[0]![0]).toMatchObject({
-      params: { participantId: PARTICIPANT_ID },
+    // and the number is said before the button will do anything
+    await expect.element(page.getByText('将新增 3 人')).toBeVisible()
+    await page.getByRole('button', { name: '导入' }).click()
+    await vi.waitFor(() => expect(importParticipants).toHaveBeenCalledTimes(1))
+    expect(importParticipants.mock.calls[0]![0]).toMatchObject({
+      payload: { orgNodeIds: [NODE_ID], userTypeIds: [USER_ID] },
     })
   })
 })

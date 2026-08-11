@@ -15,13 +15,12 @@ import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   AccessInvalid,
   AdvanceInvalid,
-  BatchNoUserTypes,
+  BatchNoParticipants,
   BatchNotFound,
   ParticipantInvalid,
   ParticipantNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
-  BatchScopeLocked,
   BatchStatusInvalid,
   PhaseNotFound,
   PlanInvalid,
@@ -90,12 +89,8 @@ const batchListView = Schema.Struct({
   timeline: Schema.Array(batchTimelineEntry),
 })
 
-/** the detail adds what the list has no join for; its plan is its own request */
-const batchView = Schema.Struct({
-  ...batchFields,
-  userTypeIds: Schema.Array(Schema.String),
-  participantCount: Schema.Number,
-})
+/** one batch on its own; its plan and its people are their own requests */
+const batchView = Schema.Struct({ ...batchFields })
 
 const phaseView = Schema.Struct({
   id: Schema.String,
@@ -177,49 +172,6 @@ const chainPreview = Schema.Array(
   }),
 )
 
-const otherBatch = Schema.Struct({ batchId: Schema.String, name: Schema.String })
-
-const rosterDiff = Schema.Struct({
-  newArrivals: Schema.Array(
-    Schema.Struct({
-      userId: Schema.String,
-      displayName: Schema.String,
-      businessNo: Schema.NullOr(Schema.String),
-      userTypeId: Schema.String,
-      nodeId: Schema.String,
-      nodePath: Schema.String,
-      activeElsewhere: Schema.Array(otherBatch),
-    }),
-  ),
-  departed: Schema.Array(
-    Schema.Struct({
-      participantId: Schema.String,
-      userId: Schema.String,
-      displayName: Schema.String,
-      frozenPath: Schema.String,
-      livePath: Schema.String,
-    }),
-  ),
-  anchorChanged: Schema.Array(
-    Schema.Struct({
-      participantId: Schema.String,
-      userId: Schema.String,
-      displayName: Schema.String,
-    }),
-  ),
-  userTypeChanged: Schema.Array(
-    Schema.Struct({
-      participantId: Schema.String,
-      userId: Schema.String,
-      displayName: Schema.String,
-      from: Schema.String,
-      to: Schema.String,
-      toEnrolled: Schema.Boolean,
-    }),
-  ),
-  scopeIntegrity: Schema.Array(Schema.Struct({ nodeId: Schema.String })),
-})
-
 /** one accepted assignment, as the access page reads it */
 const accessSourceView = Schema.Struct({
   sourceId: Schema.String,
@@ -272,6 +224,12 @@ const accessSyncPageView = Schema.Struct({
   lapsedTotal: Schema.Number,
 })
 
+/** the query one import runs: units to look under, and which kinds of people */
+const importSelection = Schema.Struct({
+  orgNodeIds: Schema.Array(id),
+  userTypeIds: Schema.Array(id),
+})
+
 const templateKind = Schema.Literals(['timeline', 'phase'])
 
 const templateView = Schema.Struct({
@@ -299,10 +257,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: Schema.Struct({
         name: trimmedName(255),
         descriptionMd: Schema.optional(boundedText(65536)),
-        scopeNodeIds: Schema.Array(id),
         materialRange,
         timezone: Schema.optional(trimmedName(63)),
-        userTypeIds: Schema.Array(id),
+        // where the first people come from: a query run once, not a scope the
+        // batch keeps and has to be reconciled against afterwards
+        import: importSelection,
       }),
       success: Schema.Struct({ batch: batchView }),
       error: [AccessDenied, BatchReferenceInvalid, BadRequest],
@@ -322,24 +281,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         {
           name: Schema.optional(trimmedName(255)),
           descriptionMd: Schema.optional(Schema.NullOr(boundedText(65536))),
-          // repointable while the batch is a draft; a roster freezes it
-          scopeNodeIds: Schema.optional(Schema.Array(id)),
           materialRange: Schema.optional(materialRange),
           timezone: Schema.optional(trimmedName(63)),
-          userTypeIds: Schema.optional(Schema.Array(id)),
           reason: Schema.optional(boundedText(500)),
         },
-        ['name', 'descriptionMd', 'scopeNodeIds', 'materialRange', 'timezone', 'userTypeIds'],
+        ['name', 'descriptionMd', 'materialRange', 'timezone'],
       ),
       success: Schema.Struct({ batch: batchView }),
-      error: [
-        BatchNotFound,
-        BatchReadOnly,
-        BatchScopeLocked,
-        BatchReferenceInvalid,
-        AccessDenied,
-        BadRequest,
-      ],
+      error: [BatchNotFound, BatchReadOnly, BatchReferenceInvalid, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(
@@ -367,7 +316,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         }),
       ]),
       success: Schema.Struct({ batch: batchView }),
-      error: [BatchNotFound, BatchStatusInvalid, BatchNoUserTypes, PlanInvalid, AccessDenied],
+      error: [BatchNotFound, BatchStatusInvalid, BatchNoParticipants, PlanInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
@@ -507,7 +456,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         PlanInvalid,
         // the first time a phase is given a time, the batch starts running,
         // and a batch that can enroll nobody may not
-        BatchNoUserTypes,
+        BatchNoParticipants,
         AccessDenied,
         BadRequest,
       ],
@@ -545,59 +494,77 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
-    // inclusion is explicit, never automatic: the diff lists who could join,
-    // a person decides. The response carries the double-participation warning
-    // and the chain preview the decision needs.
-    HttpApiEndpoint.post('includeParticipant', '/assessment/batches/:batchId/participants', {
+    // Adding people, by name of the people themselves. Importing from the
+    // organization resolves its units to people first, so there is one way in
+    // and it takes user ids.
+    HttpApiEndpoint.post('addParticipants', '/assessment/batches/:batchId/participants', {
       params: Schema.Struct({ batchId: id }),
-      payload: Schema.Struct({ userId: id }),
-      success: Schema.Struct({
-        participant: participantView,
-        activeElsewhere: Schema.Array(otherBatch),
-        chainPreview,
-      }),
+      payload: Schema.Struct({ userIds: Schema.Array(id) }),
+      success: Schema.Struct({ added: Schema.Number, skipped: Schema.Number }),
       error: [BatchNotFound, BatchReadOnly, ParticipantInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
-    // the on-read derivation (§32.35): opening the panel computes it, the
-    // badge counts the same rows, nothing is stored
-    HttpApiEndpoint.get('getRosterDiff', '/assessment/batches/:batchId/roster-diff', {
+    // how many people a selection would add, so the number can be confirmed
+    // before anybody is added
+    HttpApiEndpoint.get('previewImport', '/assessment/batches/:batchId/import-candidates', {
       params: Schema.Struct({ batchId: id }),
-      success: Schema.Struct({ diff: rosterDiff }),
+      query: Schema.Struct({
+        orgNodeIds: Schema.Array(id),
+        userTypeIds: Schema.Array(id),
+      }),
+      success: Schema.Struct({ candidates: Schema.Number }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
-    // exclusion keeps the row and everything hanging off it; re-inclusion is
-    // the same door in the other direction
+    // An import is an act, and the record of it is history: it says what was
+    // asked for and how many people it added, and nothing reads it to decide
+    // anything afterwards.
+    HttpApiEndpoint.post('importParticipants', '/assessment/batches/:batchId/participant-imports', {
+      params: Schema.Struct({ batchId: id }),
+      payload: importSelection,
+      success: Schema.Struct({ added: Schema.Number }),
+      error: [
+        BatchNotFound,
+        BatchReadOnly,
+        BatchReferenceInvalid,
+        ParticipantInvalid,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listImports', '/assessment/batches/:batchId/participant-imports', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({
+        imports: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            orgNodeIds: Schema.Array(Schema.String),
+            userTypeIds: Schema.Array(Schema.String),
+            importedCount: Schema.Number,
+            actorId: Schema.NullOr(Schema.String),
+            occurredAt: Schema.String,
+          }),
+        ),
+      }),
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // taking somebody out keeps the row and everything hanging off it;
+    // bringing them back is the same door in the other direction
     HttpApiEndpoint.put(
       'setParticipantStatus',
       '/assessment/batches/:batchId/participants/:participantId/status',
       {
         params: Schema.Struct({ batchId: id, participantId: id }),
-        payload: Schema.Struct({ status: Schema.Literals(['active', 'excluded']) }),
+        payload: Schema.Struct({
+          status: Schema.Literals(['active', 'excluded']),
+          reason: Schema.optional(boundedText(500)),
+        }),
         success: Schema.Struct({ participant: participantView }),
-        error: [
-          BatchNotFound,
-          BatchReadOnly,
-          ParticipantNotFound,
-          ParticipantInvalid,
-          AccessDenied,
-        ],
-      },
-    ).middleware(Authenticated),
-  )
-  .add(
-    // applying an anchor change refreezes the whole snapshot - position,
-    // lineage and type - from where the person lives now; in-flight work
-    // keeps its snapshotted chain untouched
-    HttpApiEndpoint.put(
-      'applyParticipantAnchor',
-      '/assessment/batches/:batchId/participants/:participantId/anchor',
-      {
-        params: Schema.Struct({ batchId: id, participantId: id }),
-        success: Schema.Struct({ participant: participantView, chainPreview }),
         error: [
           BatchNotFound,
           BatchReadOnly,

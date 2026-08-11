@@ -3061,3 +3061,38 @@ Record<StaffCode, MessageDescriptor>`,新增 staff code 少一条标签就编译
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **451/72 全绿**(新增「参与者只看得到自己那一轮、
 看不到草稿、按 id 也读不到别人的」);`pnpm test:browser` 39 全绿;`pnpm build` 通过;
 `prettier --check .` 干净。
+
+### 花名册成为唯一事实,参评范围整体删除(2026-08-12)
+
+批次不再持有「参评范围」。组织节点 + 人员类型只是**创建/导入那一次的查询条件**,查完即成为历史记录;
+谁参加这一轮,只有花名册说了算。这样一次删掉的不是一张表,是「规则与物化结果必须保持一致」这整类问题——
+改范围要不要动名单、删节点要不要踢人、转专业要不要从历史批次消失、手工加的人下次同步会不会被删,
+这些问题现在都不成立了。
+
+- **表**:`batch_scope_nodes` / `batch_user_types` 删除;新增 `roster_imports`(节点 id、类型 id、导入人数、
+  操作人、时间),它是**审计事实,不参与任何判定**。`batch_participants` 增加 `included_by` /
+  `excluded_by` / `exclusion_reason`——移出保留成员历史,不物理删除。
+- **两条入口一条实现**:`insertParticipants(userIds)`。从组织导入 = 先把节点+类型解析成 userIds 再走同一条路,
+  所以插入路径不知道「单位」是什么。导入前算候选人数并要求确认,提交时**再算一次**——用户确认的那个数
+  在他读到时是真的,而决定的是第二次。
+- **管理权限的锚点改为花名册**:批次不再挂在节点上,「能管这一轮」= 能管这一轮里的每一个人
+  (`batch_participants.anchor_path` 与授权范围求交)。空名单回落到「持有该权限」,否则草稿作者自己都打不开。
+  强制切阶段的权限校验同样改用花名册锚点。
+- **删掉的东西**:`getRosterDiff` 及四类漂移检测、`applyParticipantAnchor`(重新冻结快照)、
+  `includeParticipant`、`BatchScopeLocked` 错误、`updateBatch` 的 scope/userTypes 字段。批次 DTO 不再有
+  `userTypeIds`。`ASSESSMENT_BATCH_NO_USER_TYPES` 改名 `ASSESSMENT_BATCH_NO_PARTICIPANTS`:开跑的前提
+  从「配置了人员类型」变成「名单里有人」。
+- **权限同步收窄**:范围没了,「组织侧现在还提供谁」就没有基准,所以 `previewAccessSync` 的
+  **newSources 一并取消**,只剩已接受授权的权限增加(等确认)与撤销(已生效)。新工作人员一律显式添加——
+  与花名册那侧完全对称:没有隐式范围,就没有隐式新人。
+- **路由**:新增 `GET .../import-candidates`、`GET/POST .../participant-imports`;
+  `POST .../participants` 改收 `{userIds}`;删除 `GET .../roster-diff` 与 `PUT .../participants/{id}/anchor`。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **449/72 全绿**(花名册套件按新模型重写:导入只发生一次、
+按姓名添加会跳过已在名单的人、移出保留记录);`pnpm test:browser` 39 全绿;`pnpm build` 通过;
+`prettier --check .` 干净。迁移 `20260811205602_roster-is-the-population.sql`(destructive: approved)。
+
+**下一步(未做)**:iam 的两个公共选人组件——①选人器(树/列表双模式、姓名与学工号搜索、按用户类型与
+组织类型筛选、仅本层/含子树、分页、右侧已选清单),②从组织批量导入(选节点 + 类型,预算人数后确认)。
+目前参评名单的「从组织导入」是 assessment 内的临时实现(复用 TreeSelect + 类型多选 + 人数确认),
+待公共组件落地后替换;「添加人员」与「添加工作人员」两处选人入口也等这两个组件。

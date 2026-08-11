@@ -28,6 +28,12 @@ const opensCount = defineMessage<{ count: number }>()({
     '{count, plural, =0 {Opens nothing yet} one {Opens # action} other {Opens # actions}}',
 })
 
+const importCandidates = defineMessage<{ count: number }>()({
+  id: 'assessment/roster/import-candidates',
+  defaultMessage:
+    '{count, plural, =0 {Nobody new to add} one {# person will be added} other {# people will be added}}',
+})
+
 const alsoActiveIn = defineMessage<{ batches: string }>()({
   id: 'assessment/roster/also-active',
   defaultMessage: 'Already taking part in {batches}',
@@ -250,10 +256,10 @@ const i18n = definePluginMessages({
     },
     pickDateRange: { id: 'assessment/action/pick-date-range', defaultMessage: 'Select a period' },
     stepBasics: { id: 'assessment/batch/step-basics', defaultMessage: 'Details' },
-    stepScope: { id: 'assessment/batch/step-scope', defaultMessage: 'Coverage' },
+    stepScope: { id: 'assessment/batch/step-scope', defaultMessage: 'First participants' },
     back: { id: 'assessment/action/back', defaultMessage: 'Back' },
     next: { id: 'assessment/action/next', defaultMessage: 'Next' },
-    scopeLegend: { id: 'assessment/batch/scope', defaultMessage: 'Participating units' },
+    scopeLegend: { id: 'assessment/batch/scope', defaultMessage: 'Import from these units' },
     scopeEmpty: {
       id: 'assessment/batch/scope-empty',
       defaultMessage: 'No units available to manage.',
@@ -505,13 +511,24 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Manage who takes part in this batch, and act on what changed in the organization.',
     },
+    importFromOrganization: {
+      id: 'assessment/roster/import',
+      defaultMessage: 'Import from the organization',
+    },
+    importTitle: { id: 'assessment/roster/import-title', defaultMessage: 'Import participants' },
+    importHint: {
+      id: 'assessment/roster/import-hint',
+      defaultMessage: 'Anybody already on the list is skipped.',
+    },
+    importChoose: {
+      id: 'assessment/roster/import-choose',
+      defaultMessage: 'Choose units and participant types.',
+    },
+    importConfirm: { id: 'assessment/roster/import-confirm', defaultMessage: 'Import' },
+    importCandidates,
     rosterEmpty: {
       id: 'assessment/roster/empty',
       defaultMessage: 'No participants yet.',
-    },
-    rosterDraft: {
-      id: 'assessment/roster/draft',
-      defaultMessage: 'Check the list before the batch starts; changing its scope redraws it.',
     },
     columnParticipant: { id: 'assessment/roster/column-name', defaultMessage: 'Name' },
     columnParticipantStatus: {
@@ -896,16 +913,12 @@ const i18n = definePluginMessages({
       id: 'assessment/error/batch-read-only',
       defaultMessage: 'This batch is archived, so nothing about it can be changed.',
     },
-    ASSESSMENT_BATCH_SCOPE_LOCKED: {
-      id: 'assessment/error/batch-scope-locked',
-      defaultMessage: 'The units taking part were fixed when the batch started and cannot change.',
-    },
     ASSESSMENT_BATCH_STATUS_INVALID: {
       id: 'assessment/error/batch-status-invalid',
       defaultMessage: 'The batch cannot be moved to that state from where it is now.',
     },
-    ASSESSMENT_BATCH_NO_USER_TYPES: {
-      id: 'assessment/error/batch-no-user-types',
+    ASSESSMENT_BATCH_NO_PARTICIPANTS: {
+      id: 'assessment/error/batch-no-participants',
       defaultMessage: 'Choose who is assessed - at least one user type - before activating.',
     },
     ASSESSMENT_BATCH_REFERENCE_INVALID: {

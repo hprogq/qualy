@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:8faf6eae8f9536b7a66a0fb4bdafb27e929f132b84c76bcbe04c617e7d5a78d9",
-  "resolutionHash": "sha256:a037e8476df9a5ca49cc37a9257732eb25614a94f8c36d3b3a44a8fe6fc8b2f8",
+  "resolutionHash": "sha256:1e53a5c285d24e3388a05c41911780dca9804a3f984d5cb924e27c3136440996",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -17,12 +17,11 @@
             "BatchLifecycleEvent",
             "BatchParticipant",
             "BatchPhase",
-            "BatchScopeNode",
-            "BatchUserType",
             "PhaseEvent",
             "PhaseItemScope",
             "PhaseParticipantScope",
-            "PhaseTemplate"
+            "PhaseTemplate",
+            "RosterImport"
           ],
           "dependsOn": [
             "@qualy/plugin-auth",

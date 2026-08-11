@@ -159,9 +159,8 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
           f.tenant,
           {
             name: 'Scheduled',
-            scopeNodeIds: [f.node],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
-            userTypeIds: [f.studentType],
+            import: { orgNodeIds: [f.node], userTypeIds: [f.studentType] },
           },
           f.principal,
         )
@@ -288,9 +287,8 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
             f.tenant,
             {
               name: slug,
-              scopeNodeIds: [f.node],
               materialRange: { start: '2026-03-01', end: '2026-09-01' },
-              userTypeIds: [f.studentType],
+              import: { orgNodeIds: [f.node], userTypeIds: [f.studentType] },
             },
             f.principal,
           )
@@ -326,9 +324,8 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
           c.tenant,
           {
             name: 'still drafting',
-            scopeNodeIds: [c.node],
             materialRange: { start: '2026-03-01', end: '2026-09-01' },
-            userTypeIds: [c.studentType],
+            import: { orgNodeIds: [c.node], userTypeIds: [c.studentType] },
           },
           c.principal,
         )

@@ -4,6 +4,7 @@ import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { ImportDialog } from './roster/ImportDialog.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { PersonCell } from '@qualy/ui/person'
@@ -14,12 +15,12 @@ import { personCard } from '@qualy/ui-contract'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 
-// The participants, and what has drifted away from them.
+// Who takes part in this round.
 //
-// The list never moves on its own: every organizational change is a
-// suggestion below, each with the one action that answers it - add the
-// arrival, remove the departed, apply the move. Nothing here decides anything
-// by itself.
+// The roster is the batch's population - there is no scope behind it that it
+// has to be kept in step with. People get in by being imported from the
+// organization or by being named one at a time, and out by somebody taking
+// them out, which keeps the row and everything hanging off it.
 
 type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']
 
@@ -30,30 +31,31 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [failure, setFailure] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
 
-  const isDraft = batch.status === 'draft'
-  const participants = useQuery({
-    ...query.assessment.listParticipants.queryOptions({
+  const participants = useQuery(
+    query.assessment.listParticipants.queryOptions({
       params: { batchId: batch.id },
       query: {},
     }),
-    enabled: true,
-  })
-  const diff = useQuery({
-    ...query.assessment.getRosterDiff.queryOptions({ params: { batchId: batch.id } }),
-    enabled: true,
-  })
+  )
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   const onError = (error: unknown) => setFailure(formatError(error))
 
-  const include = useMutation({
-    mutationFn: (userId: string) =>
+  const importPeople = useMutation({
+    mutationFn: (selection: { orgNodeIds: string[]; userTypeIds: string[] }) =>
       run(
-        api.assessment.includeParticipant({ params: { batchId: batch.id }, payload: { userId } }),
+        api.assessment.importParticipants({
+          params: { batchId: batch.id },
+          payload: selection,
+        }),
       ),
     onMutate: () => setFailure(null),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setImporting(false)
+      invalidate()
+    },
     onError,
   })
   const setStatus = useMutation({
@@ -68,215 +70,28 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
     onSuccess: invalidate,
     onError,
   })
-  const applyAnchor = useMutation({
-    mutationFn: (participantId: string) =>
-      run(
-        api.assessment.applyParticipantAnchor({
-          params: { batchId: batch.id, participantId },
-        }),
-      ),
-    onMutate: () => setFailure(null),
-    onSuccess: invalidate,
-    onError,
-  })
 
   const rows = participants.data?.items ?? []
-  const drift = diff.data?.diff
-  const quiet =
-    drift !== undefined &&
-    drift.newArrivals.length === 0 &&
-    drift.departed.length === 0 &&
-    drift.anchorChanged.length === 0 &&
-    drift.userTypeChanged.length === 0 &&
-    drift.scopeIntegrity.length === 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Feedback message={failure} />
 
-      {/* a draft's list was drawn when the batch was created and is redrawn
-          whenever its coverage changes, so there is nothing to reconcile yet */}
-      {isDraft && (
-        <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-          {format(m.rosterDraft)}
-        </p>
-      )}
-
-      {/* what changed in the organization since the list was drawn up */}
-      {!isDraft && (
-        <section aria-label={format(m.diffTitle)} className="space-y-4">
-          <h3 className="text-sm font-semibold">{format(m.diffTitle)}</h3>
-          <AsyncSection
-            pending={diff.isPending}
-            error={diff.isError ? formatError(diff.error) : null}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
-            onRetry={() => void diff.refetch()}
-            skeleton={<Skeleton className="h-10 w-full" />}
-          >
-            {quiet ? (
-              <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                {format(m.diffEmpty)}
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {(drift?.newArrivals ?? []).length > 0 && (
-                  <section aria-label={format(m.diffArrivals)} className="rounded-lg border">
-                    <header className="space-y-0.5 border-b px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-medium">{format(m.diffArrivals)}</h4>
-                        <Badge variant="secondary">{drift?.newArrivals.length}</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{format(m.diffArrivalsHint)}</p>
-                    </header>
-                    <ul className="divide-y">
-                      {(drift?.newArrivals ?? []).map((row) => (
-                        <li
-                          key={row.userId}
-                          className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
-                        >
-                          <span className="text-sm">
-                            {row.displayName}
-                            {row.businessNo !== null && (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                {row.businessNo}
-                              </span>
-                            )}
-                            {row.activeElsewhere.length > 0 && (
-                              <span className="ml-2 text-xs text-destructive">
-                                {format(m.alsoActiveIn, {
-                                  batches: row.activeElsewhere
-                                    .map((other) => other.name)
-                                    .join('、'),
-                                })}
-                              </span>
-                            )}
-                          </span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={include.isPending}
-                            onClick={() => include.mutate(row.userId)}
-                          >
-                            {format(m.include)}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-
-                {(drift?.departed ?? []).length > 0 && (
-                  <section aria-label={format(m.diffDeparted)} className="rounded-lg border">
-                    <header className="space-y-0.5 border-b px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-medium">{format(m.diffDeparted)}</h4>
-                        <Badge variant="secondary">{drift?.departed.length}</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{format(m.diffDepartedHint)}</p>
-                    </header>
-                    <ul className="divide-y">
-                      {(drift?.departed ?? []).map((row) => (
-                        <li
-                          key={row.participantId}
-                          className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
-                        >
-                          <span className="text-sm">{row.displayName}</span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={setStatus.isPending}
-                            onClick={() =>
-                              setStatus.mutate({
-                                participantId: row.participantId,
-                                status: 'excluded',
-                              })
-                            }
-                          >
-                            {format(m.exclude)}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-
-                {(drift?.anchorChanged ?? []).length > 0 && (
-                  <section aria-label={format(m.diffAnchor)} className="rounded-lg border">
-                    <header className="space-y-0.5 border-b px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-medium">{format(m.diffAnchor)}</h4>
-                        <Badge variant="secondary">{drift?.anchorChanged.length}</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{format(m.diffAnchorHint)}</p>
-                    </header>
-                    <ul className="divide-y">
-                      {(drift?.anchorChanged ?? []).map((row) => (
-                        <li
-                          key={row.participantId}
-                          className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
-                        >
-                          <span className="text-sm">{row.displayName}</span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={applyAnchor.isPending}
-                            onClick={() => applyAnchor.mutate(row.participantId)}
-                          >
-                            {format(m.applyAnchor)}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-
-                {(drift?.userTypeChanged ?? []).length > 0 && (
-                  <section aria-label={format(m.diffUserType)} className="rounded-lg border">
-                    <header className="flex items-center gap-2 border-b px-4 py-2.5">
-                      <h4 className="text-sm font-medium">{format(m.diffUserType)}</h4>
-                      <Badge variant="secondary">{drift?.userTypeChanged.length}</Badge>
-                    </header>
-                    <ul className="divide-y">
-                      {(drift?.userTypeChanged ?? []).map((row) => (
-                        <li key={row.participantId} className="px-4 py-2.5 text-sm">
-                          {row.displayName}
-                          {!row.toEnrolled && (
-                            <span className="ml-2 text-xs text-destructive">
-                              {format(m.typeNotEnrolled)}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-
-                {(drift?.scopeIntegrity ?? []).length > 0 && (
-                  <section aria-label={format(m.diffScope)} className="rounded-lg border">
-                    <header className="space-y-0.5 border-b px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-medium">{format(m.diffScope)}</h4>
-                        <Badge variant="destructive">{drift?.scopeIntegrity.length}</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{format(m.diffScopeHint)}</p>
-                    </header>
-                  </section>
-                )}
-              </div>
-            )}
-          </AsyncSection>
-        </section>
-      )}
-
-      {/* the list itself */}
       <section aria-label={format(m.tabRoster)} className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">{format(m.tabRoster)}</h3>
-          <span className="text-xs text-muted-foreground">
-            {format(m.participantCount, { count: rows.length })}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">{format(m.tabRoster)}</h3>
+            <span className="text-xs text-muted-foreground">
+              {format(m.participantCount, { count: rows.length })}
+            </span>
+          </div>
+          {batch.manageable && (
+            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+              {format(m.importFromOrganization)}
+            </Button>
+          )}
         </div>
+
         <AsyncSection
           pending={participants.isPending}
           error={participants.isError ? formatError(participants.error) : null}
@@ -330,19 +145,21 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={setStatus.isPending}
-                          onClick={() =>
-                            setStatus.mutate({
-                              participantId: row.id,
-                              status: row.status === 'excluded' ? 'active' : 'excluded',
-                            })
-                          }
-                        >
-                          {format(row.status === 'excluded' ? m.restore : m.exclude)}
-                        </Button>
+                        {batch.manageable && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={setStatus.isPending}
+                            onClick={() =>
+                              setStatus.mutate({
+                                participantId: row.id,
+                                status: row.status === 'excluded' ? 'active' : 'excluded',
+                              })
+                            }
+                          >
+                            {format(row.status === 'excluded' ? m.restore : m.exclude)}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -352,6 +169,14 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
           )}
         </AsyncSection>
       </section>
+
+      <ImportDialog
+        batchId={batch.id}
+        open={importing}
+        pending={importPeople.isPending}
+        onImport={(selection) => importPeople.mutate(selection)}
+        onClose={() => setImporting(false)}
+      />
     </div>
   )
 }
