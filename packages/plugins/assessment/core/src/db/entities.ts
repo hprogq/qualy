@@ -217,6 +217,120 @@ export const PhaseEvent = defineEntity({
   ],
 })
 
+// What this batch has accepted of the tenant's authority.
+//
+// Not roles, and not a copy of them either. A role assignment is the tenant
+// saying "this person does this job here"; these rows are the batch saying
+// "and I accepted that much of it, on this date". Authority is then read as
+//
+//   what the assignment still carries  ∩  what this batch accepted
+//
+// which is the whole point of the acceptance boundary: withdrawing a role, an
+// assignment or a capability narrows every batch at once, while granting one
+// reaches only the batches whose administrator has since said yes. Without the
+// ceiling, an assessment nobody has looked at in a year silently gains
+// whatever the tenant added to a role last week.
+export const BatchAccessSource = defineEntity({
+  name: 'BatchAccessSource',
+  tableName: 'batch_access_sources',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('batch_access_sources_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    /**
+     * The role assignment this came from. Deliberately no foreign key: a
+     * revoked assignment must leave this row behind - it is the record of what
+     * was accepted and when - rather than take it away.
+     */
+    roleAssignmentId: p.uuid(),
+    /** who the assignment is for; stored so a person can be read without rbac */
+    subjectId: p.uuid(),
+    /**
+     * inherited: the tenant already gave them this job, and the batch took it
+     * on at creation or at a synchronisation.
+     * explicit: this batch asked for the assignment itself, for somebody
+     * brought in for this round.
+     */
+    origin: p.string().length(16),
+    acceptedAt: p.datetime().defaultRaw('now()'),
+    acceptedBy: p.uuid().nullable(),
+  },
+  checks: [
+    {
+      name: 'chk_batch_access_sources_origin',
+      expression: `origin IN ('inherited', 'explicit')`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_batch_access_sources_tenant_id_id',
+      expression:
+        'create unique index uq_batch_access_sources_tenant_id_id on batch_access_sources (tenant_id, id)',
+    },
+    {
+      name: 'uq_batch_access_sources_assignment',
+      expression:
+        'create unique index uq_batch_access_sources_assignment on batch_access_sources (tenant_id, batch_id, role_assignment_id)',
+    },
+    {
+      name: 'idx_batch_access_sources_subject',
+      expression:
+        'create index idx_batch_access_sources_subject on batch_access_sources (tenant_id, batch_id, subject_id)',
+    },
+  ],
+})
+
+/** the ceiling itself: one row per capability this batch said yes to */
+export const BatchAccessSourcePermission = defineEntity({
+  name: 'BatchAccessSourcePermission',
+  tableName: 'batch_access_source_permissions',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('batch_access_source_permissions_tenant_id_tenants_id_fkey'),
+    sourceId: p.uuid(),
+    permissionCode: p.string().length(127),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'uq_batch_access_source_permissions',
+      expression:
+        'create unique index uq_batch_access_source_permissions on batch_access_source_permissions (tenant_id, source_id, permission_code)',
+    },
+  ],
+})
+
+/**
+ * What this batch takes back, whoever gave it.
+ *
+ * Held against the person rather than against one source, because that is what
+ * an administrator means: somebody who is both a tutor and a year head has two
+ * ways to reach the same capability, and turning it off once has to turn it
+ * off. A deny against one of the two would read as done and leave the other
+ * standing.
+ */
+export const BatchAccessDeny = defineEntity({
+  name: 'BatchAccessDeny',
+  tableName: 'batch_access_denies',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('batch_access_denies_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    subjectId: p.uuid(),
+    permissionCode: p.string().length(127),
+    reason: p.text().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+    createdBy: p.uuid().nullable(),
+  },
+  indexes: [
+    {
+      name: 'uq_batch_access_denies',
+      expression:
+        'create unique index uq_batch_access_denies on batch_access_denies (tenant_id, batch_id, subject_id, permission_code)',
+    },
+  ],
+})
+
 // What happened to the batch as a whole, as facts rather than as a column
 // that can be nulled out.
 //
@@ -440,6 +554,16 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete restrict`,
   `alter table batch_phases add constraint fk_batch_phases_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_access_sources add constraint fk_batch_access_sources_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_access_sources add constraint fk_batch_access_sources_subject
+     foreign key (tenant_id, subject_id) references users (tenant_id, id) on delete cascade`,
+  `alter table batch_access_source_permissions add constraint fk_batch_access_source_permissions_source
+     foreign key (tenant_id, source_id) references batch_access_sources (tenant_id, id) on delete cascade`,
+  `alter table batch_access_denies add constraint fk_batch_access_denies_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_access_denies add constraint fk_batch_access_denies_subject
+     foreign key (tenant_id, subject_id) references users (tenant_id, id) on delete cascade`,
   `alter table batch_lifecycle_events add constraint fk_batch_lifecycle_events_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table phase_events add constraint fk_phase_events_phase
@@ -469,6 +593,9 @@ export const entities = [
   BatchPhase,
   PhaseEvent,
   BatchLifecycleEvent,
+  BatchAccessSource,
+  BatchAccessSourcePermission,
+  BatchAccessDeny,
   PhaseTemplate,
   PhaseItemScope,
   PhaseParticipantScope,

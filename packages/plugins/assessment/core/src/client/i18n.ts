@@ -300,7 +300,7 @@ const i18n = definePluginMessages({
     draftBanner: {
       id: 'assessment/batch/draft-banner',
       defaultMessage:
-        'This batch has not started. Scheduling the first stage starts it and freezes the roster from the selected units.',
+        'This batch has not started. The roster and the staff who may work on it are ready to check; scheduling the first stage is what starts it.',
     },
 
     // ------------------------------------------------------------------
@@ -475,7 +475,7 @@ const i18n = definePluginMessages({
     rosterHint: {
       id: 'assessment/roster/hint',
       defaultMessage:
-        'Frozen when the batch starts; organizational changes appear below as suggestions and never move the roster on their own.',
+        'Drawn when the batch was created and frozen from then on; organizational changes appear below as suggestions and never move the roster on their own.',
     },
     rosterEmpty: {
       id: 'assessment/roster/empty',
@@ -484,7 +484,7 @@ const i18n = definePluginMessages({
     rosterDraft: {
       id: 'assessment/roster/draft',
       defaultMessage:
-        'The roster is frozen from the selected units and user types when the first stage is scheduled.',
+        'The roster was drawn from the selected units and participant types when this batch was created.',
     },
     columnParticipant: { id: 'assessment/roster/column-name', defaultMessage: 'Name' },
     columnParticipantStatus: {
@@ -780,6 +780,10 @@ const i18n = definePluginMessages({
     ASSESSMENT_ADVANCE_INVALID: {
       id: 'assessment/error/advance-invalid',
       defaultMessage: 'That stage cannot be started this way.',
+    },
+    ASSESSMENT_ACCESS_INVALID: {
+      id: 'assessment/error/access-invalid',
+      defaultMessage: 'That change to who may work on this batch was refused.',
     },
   }),
   locales: {

@@ -111,6 +111,55 @@ export interface RbacShape {
   ) => Effect.Effect<AuthorizationScope>
 
   /**
+   * Who holds these capabilities anywhere inside these organizational nodes,
+   * and by which grant.
+   *
+   * For consumers that need to know not only whether somebody may act, but
+   * who may act and where the authority comes from - so that they can watch
+   * that source rather than re-deciding for themselves. The grant id is the
+   * handle: while it exists and its role is active, the authority stands;
+   * revoke it and everything derived from it falls with it.
+   */
+  readonly listApplicableAssignments: (input: {
+    tenantId: string
+    codes: readonly string[]
+    nodeIds: readonly string[]
+    /** also include authority confined to exactly this object */
+    resource?: ResourceRef
+  }) => Effect.Effect<readonly ApplicableAssignment[]>
+
+  /** what a role carries right now, which is what an acceptance is measured against */
+  readonly getRolePermissions: (
+    tenantId: string,
+    roleId: string,
+  ) => Effect.Effect<readonly string[]>
+
+  /**
+   * Authority over one object, for somebody who has none in general.
+   *
+   * The plugin that owns the object names it; this one stores three opaque
+   * strings and confines the grant to them. Scope is immutable by
+   * construction: changing who, what or where means revoking and granting
+   * again, so nothing widens under a consumer that has already accepted it.
+   */
+  readonly createScopedAssignment: (input: {
+    tenantId: string
+    subjectId: string
+    roleId: string
+    orgNodeId: string
+    includeDescendants: boolean
+    resource: ResourceRef
+    validUntil?: number
+    createdBy: string | null
+  }) => Effect.Effect<string, AccessDenied>
+
+  readonly revokeAssignment: (input: {
+    tenantId: string
+    assignmentId: string
+    actorId: string | null
+  }) => Effect.Effect<boolean>
+
+  /**
    * After the caller's own writes, the tenant must still have an administrator
    * who can sign in.
    *
@@ -154,6 +203,30 @@ export interface RbacShape {
     userId: string,
     userTypeId: string,
   ) => Effect.Effect<number>
+}
+
+/** an object some authority is confined to, as three opaque strings */
+export interface ResourceRef {
+  readonly namespace: string
+  readonly type: string
+  readonly id: string
+}
+
+/** one assignment's authority over one part of the tree */
+export interface ApplicableAssignment {
+  /** revoking this revokes everything derived from it */
+  readonly assignmentId: string
+  readonly userId: string
+  readonly roleId: string
+  readonly roleCode: string
+  readonly roleName: string
+  /** null for a tenant-wide assignment, which reaches the whole tree */
+  readonly orgNodeId: string | null
+  readonly coverage: 'self' | 'subtree' | null
+  /** set when the assignment is confined to the object that was asked about */
+  readonly resourceId: string | null
+  /** which of the requested codes it carries */
+  readonly codes: readonly string[]
 }
 
 export class Rbac extends Context.Service<Rbac, RbacShape>()('@qualy/rbac-contract/Rbac') {}

@@ -7,6 +7,7 @@ import {
   type RbacShape,
 } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
+import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
@@ -24,6 +25,7 @@ import {
   authorizedScope,
   canAt as canAtQuery,
   effectiveRows as effectiveRowsQuery,
+  applicableAssignments,
   grantsBlockingOrgType,
   grantsBlockingUserType,
   hasTenantPermission as hasTenantPermissionQuery,
@@ -38,7 +40,14 @@ import { make as makeRoles } from './roles.ts'
 import { make as makeDiagnostics } from './diagnostics.ts'
 import { ESCALATE, type Authority } from './escalation.ts'
 import { type GrantScope } from './grants.ts'
-import { type RoleRow as RoleProjection } from './db.ts'
+import {
+  insertScopedGrant,
+  oneRoleProjected,
+  revokeGrant,
+  rolePermissionCodes,
+  rolePermissionMode,
+  type RoleRow as RoleProjection,
+} from './db.ts'
 
 // rbac as an Effect layer, and the root of the graph.
 //
@@ -267,6 +276,74 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     hasPermission,
     canAt,
     listAuthorizedScope,
+    listApplicableAssignments: Effect.fn('Rbac.listApplicableAssignments')(function* (input) {
+      // a code outside the active catalog authorizes nothing, here as
+      // everywhere else: a stored row is not authority on its own
+      const codes = input.codes.filter((code) => definitionOf(code) !== undefined)
+      if (codes.length === 0 || input.nodeIds.length === 0) return []
+      const rows = yield* bound(() => applicableAssignments({ ...input, codes }))().pipe(
+        Effect.orDie,
+      )
+      const byAssignment = new Map<string, ApplicableAssignment & { codes: string[] }>()
+      for (const row of rows) {
+        const held = byAssignment.get(row.assignmentId)
+        if (held) {
+          held.codes.push(row.code)
+          continue
+        }
+        byAssignment.set(row.assignmentId, {
+          assignmentId: row.assignmentId,
+          userId: row.userId,
+          roleId: row.roleId,
+          roleCode: row.roleCode,
+          roleName: row.roleName,
+          orgNodeId: row.orgNodeId,
+          coverage: row.coverage,
+          resourceId: row.resourceId,
+          codes: [row.code],
+        })
+      }
+      return [...byAssignment.values()].map((assignment) => ({
+        ...assignment,
+        codes: [...assignment.codes].sort(),
+      }))
+    }),
+
+    getRolePermissions: Effect.fn('Rbac.getRolePermissions')(function* (tenantId, roleId) {
+      const mode = yield* bound(() => rolePermissionMode(tenantId, roleId))().pipe(Effect.orDie)
+      // the administrator carries whatever the catalog serves, by definition
+      if (mode?.mode === 'all-active') return [...catalog.keys()]
+      const codes = yield* bound(() => rolePermissionCodes(tenantId, roleId))().pipe(Effect.orDie)
+      return codes.filter((code) => definitionOf(code) !== undefined).sort()
+    }),
+
+    createScopedAssignment: Effect.fn('Rbac.createScopedAssignment')(function* (input) {
+      const role = yield* bound(() => oneRoleProjected(input.tenantId, input.roleId))().pipe(
+        Effect.orDie,
+      )
+      if (!role || role.status !== 'active') {
+        return yield* new AccessDenied({ reason: 'role is not assignable' })
+      }
+      return yield* bound(() =>
+        insertScopedGrant({
+          tenantId: input.tenantId,
+          userId: input.subjectId,
+          roleId: input.roleId,
+          orgNodeId: input.orgNodeId,
+          coverage: input.includeDescendants ? 'subtree' : 'self',
+          resource: input.resource,
+          validUntil: input.validUntil ?? null,
+          createdBy: input.createdBy,
+        }),
+      )().pipe(Effect.orDie)
+    }),
+
+    revokeAssignment: Effect.fn('Rbac.revokeAssignment')(function* (input) {
+      return yield* bound(() =>
+        revokeGrant(input.tenantId, input.assignmentId, input.actorId),
+      )().pipe(Effect.orDie)
+    }),
+
     require: Effect.fn('Rbac.require')(function* (principal, code) {
       const definition = definitionOf(code)
       if (!definition) return yield* new AccessDenied({ reason: 'unknown permission' })

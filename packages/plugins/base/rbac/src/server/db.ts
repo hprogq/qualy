@@ -165,6 +165,62 @@ export const rolePermissionCodes = (tenantId: string, roleId: string) =>
     )
     .pipe(Effect.map((rows) => rows.map((row) => row.code)))
 
+/**
+ * Authority over one object.
+ *
+ * Written here rather than through the ordinary grant path because it answers
+ * a different question: not "what does this person do in the organization" but
+ * "what may they do to this one thing". The scope is set once - changing it
+ * means revoking and granting again - so nothing a consumer has accepted can
+ * widen underneath it.
+ */
+export const insertScopedGrant = (input: {
+  tenantId: string
+  userId: string
+  roleId: string
+  orgNodeId: string
+  coverage: 'self' | 'subtree'
+  resource: { namespace: string; type: string; id: string }
+  validUntil: number | null
+  createdBy: string | null
+}) =>
+  db
+    .query((k) =>
+      k
+        .insertInto('RoleGrant')
+        .values({
+          tenantId: input.tenantId,
+          userId: input.userId,
+          roleId: input.roleId,
+          orgNodeId: input.orgNodeId,
+          coverage: input.coverage,
+          resourceNamespace: input.resource.namespace,
+          resourceType: input.resource.type,
+          resourceId: input.resource.id,
+          validUntil:
+            input.validUntil === null ? null : sql`to_timestamp(${input.validUntil} / 1000.0)`,
+          createdBy: input.createdBy,
+        } as never)
+        .returning('id')
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => row.id as string))
+
+/** withdrawn, not deleted: an authority that once existed is a fact */
+export const revokeGrant = (tenantId: string, grantId: string, actorId: string | null) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('RoleGrant')
+        .set({ revokedAt: sql`now()`, revokedBy: actorId } as never)
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', grantId)
+        .where('revokedAt', 'is', null)
+        .returning('id')
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
 export const rolePermissionMode = (tenantId: string, roleId: string) =>
   db.query((k) =>
     k

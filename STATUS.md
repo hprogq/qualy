@@ -2752,6 +2752,42 @@ tools/tests/catalogs.test.ts` 7 全绿;`pnpm build` 通过;dev 实测:桌面/暗
 才浮出「在此添加阶段」——**显隐由 state 而非 `:hover` 决定**,因为插入一行后指针没动、CSS 的悬停态
 会滞留;点击后同时 `blur()`,`focus-within` 才不会把它钉住。移动端卡片改三段式。
 
+### 批次授权改为接受边界(2026-08-12,裁决 §32.45,docs/batch-redesign.md)
+
+不做「批次角色」。角色与分配仍是租户层的通用 RBAC,批次只维护**自己接受过什么**。
+
+- **RBAC 加通用资源范围**:`role_grants` 多了 `resource_namespace/type/id` 与
+  `valid_from/valid_until/revoked_at`,一次分配可以限定在某个不透明对象上
+  (`assessment / batch / <uuid>`)。RBAC 里没有一行 assessment 代码。**带资源范围的分配不参与
+  任何通用判定**——`held` CTE 加了 `resource_id is null`,否则「某批次的临时审核员」会变成
+  全租户审核员。端口新增 `listApplicableAssignments / getRolePermissions /
+createScopedAssignment / revokeAssignment`。
+- **Assessment 建三张表**:`batch_access_sources`(接受了哪条分配,inherited|explicit)、
+  `batch_access_source_permissions`(接受时的权限上限)、`batch_access_denies`(**按人**,不按来源
+  ——一个人同时是辅导员与年级负责人时,点一次「禁用审核」就该两条来源都禁用)。
+- **有效权限** = `(分配现在仍携带 ∩ 批次接受过) − 批次 deny` ∪ 花名册赋予参评人的,
+  再对 `PHASE_GATED` 的码 ∩ 当前阶段开放集。由此得到本轮的核心性质:
+  **收权实时,扩权需确认**——撤角色/撤分配/撤权限立刻在所有批次生效;新增则必须在批次里
+  显式「同步组织权限」(preview 分新增人员 / 新增权限 / 已失效三段)。
+- **临时工作人员不是新概念**:就是一条限定在本批次的普通 RBAC 分配,创建时同事务接受进 baseline
+  并快照上限——即使临时分配也过接受边界,否则日后有人给共享的审核员角色加了公示管理,
+  这个人会突然获得。委派受限:只能授出自己在该节点持有的权限,只能在自己管得到的节点上授权,
+  且角色携带的权限必须全部属于批次可委派集合,否则整条角色不可用。
+- **物化时机整体提前到创建批次**(取代 §32.43 的「首次排期时冻结名单」):同一个事务里生成花名册
+  与授权基线,失败则批次不存在;草稿期两者都可检查,改 scope 或人员类型则重新绘制;
+  首次排期只校验与推进状态,「立即开始」不再顺手初始化任何东西。相关文案同步改写。
+- **参评人不进 RBAC**:五百人乘五个权限就是两千五百行在重复同一件事;参评能力来自
+  「在花名册里 + 人员类型」,同样受 PhaseGate 约束。
+
+**门禁**:typecheck 零错;`pnpm test` 449(新增一条端到端用例钉死接受边界:创建时接受两项 →
+租户撤一项立刻消失、加一项不自动进入 → 批次 deny 生效且同步后仍在 → 撤销分配后全部归零);
+`pnpm test:browser` 35;build + smoke + drop-guard 全过。迁移 20260812182627_batch-access-baseline.sql
+(含手写的两条唯一索引替换——生成器只比对索引名,不比对索引体)。
+
+**未做**:批次内的「人员权限」页面(服务与 API 已就绪,`GET/POST .../access`、
+`PUT .../access/{userId}/permissions/{permission}`、`DELETE .../access/sources/{sourceId}`、
+`GET/POST .../access/sync` 均已冻结进 frozen-routes),下一轮落地。
+
 ### 测评首页与批次上下文栏(2026-08-12,分支 feat/ui-shell)
 
 **上下文栏**:批次名与状态徽章**居中**,右侧一个 ▾ 打开切换菜单(按需加载最近几个批次,不为每页

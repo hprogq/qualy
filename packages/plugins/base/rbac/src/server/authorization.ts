@@ -96,6 +96,20 @@ const reaches = (
  * Two copies of "which grants does this person hold" is the drift this file
  * exists to prevent.
  */
+/**
+ * A grant that is in force right now, and not confined to some object.
+ *
+ * Both halves are here because both are easy to forget somewhere else: a
+ * withdrawn or expired grant must stop authorizing everywhere at once, and a
+ * grant given for one batch must not answer a general question about the
+ * tenant. Consumers that own the object ask for it by name instead.
+ */
+const inForce = sql<boolean>`(
+  g.revoked_at is null
+  and (g.valid_from is null or g.valid_from <= now())
+  and (g.valid_until is null or g.valid_until > now())
+)`
+
 const held = (k: Db, tenantId: string, userId: string) =>
   k.with('held', (db) =>
     db
@@ -114,6 +128,8 @@ const held = (k: Db, tenantId: string, userId: string) =>
       )
       .where('g.tenantId', '=', tenantId)
       .where('g.userId', '=', userId)
+      .where(inForce)
+      .where('g.resourceId', 'is', null)
       .select([
         'g.roleId',
         'g.orgNodeId',
@@ -253,6 +269,115 @@ export const authorizedScope = (principal: Principal, def: ActivePermission) =>
  * discovery asks, since a capability held at one college is discoverable even
  * though it applies nowhere else.
  */
+/**
+ * Which assignments carry these capabilities anywhere inside these nodes.
+ *
+ * A question about the tenant's authority, asked without knowing what the
+ * caller wants it for: it names permission codes and organizational nodes and
+ * gets back grants. What the caller then does with a grant - copy it, watch
+ * it, refuse it - is the caller's business, which is how this stays free of
+ * any knowledge of assessments, batches or anything else downstream.
+ *
+ * "Inside" is an intersection, not containment: a grant anchored above the
+ * nodes covers them, and one anchored below covers part of them. Both are
+ * authority over people the caller cares about, and dropping either would
+ * silently lose a college head or a class tutor.
+ */
+export const applicableAssignments = (input: {
+  tenantId: string
+  codes: readonly string[]
+  nodeIds: readonly string[]
+  resource?: { namespace: string; type: string; id: string }
+}) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrant as g')
+        .innerJoin('Role as r', (join) =>
+          join
+            .onRef('r.tenantId', '=', 'g.tenantId')
+            .onRef('r.id', '=', 'g.roleId')
+            .on('r.status', '=', 'active'),
+        )
+        // the catalog is the tenant's: a permission row is global, and what
+        // makes it authority here is the role carrying it
+        .innerJoin('Permission as p', (join) =>
+          join.on((eb) =>
+            rolePermits(
+              {
+                id: eb.ref('r.id'),
+                tenantId: eb.ref('r.tenantId'),
+                permissionMode: eb.ref('r.permissionMode'),
+              },
+              eb.ref('p.id'),
+            ),
+          ),
+        )
+        .leftJoin('OrgNode as anchor', (join) =>
+          join.onRef('anchor.tenantId', '=', 'g.tenantId').onRef('anchor.id', '=', 'g.orgNodeId'),
+        )
+        .select([
+          'g.id as assignmentId',
+          'g.resourceId as resourceId',
+          'g.userId as userId',
+          'g.orgNodeId as orgNodeId',
+          'g.coverage as coverage',
+          'r.id as roleId',
+          'r.code as roleCode',
+          'r.name as roleName',
+          'p.code as code',
+        ])
+        .where('g.tenantId', '=', input.tenantId)
+        .where('p.code', 'in', input.codes as string[])
+        .where(inForce)
+        // either general authority, or authority over exactly this object
+        .where((eb) =>
+          input.resource === undefined
+            ? eb('g.resourceId', 'is', null)
+            : eb.or([
+                eb('g.resourceId', 'is', null),
+                eb.and([
+                  eb('g.resourceNamespace', '=', input.resource.namespace),
+                  eb('g.resourceType', '=', input.resource.type),
+                  eb('g.resourceId', '=', input.resource.id),
+                ]),
+              ]),
+        )
+        .where(
+          sql<boolean>`(
+            g.org_node_id is null
+            or exists (
+              select 1 from org_nodes scope
+              where scope.tenant_id = g.tenant_id
+                and scope.id = any(${input.nodeIds as string[]}::uuid[])
+                and (
+                  case when g.coverage = 'subtree'
+                    then anchor.path @> scope.path or scope.path @> anchor.path
+                    else anchor.id = scope.id or scope.path @> anchor.path
+                  end
+                )
+            )
+          )`,
+        )
+        .execute(),
+    )
+    .pipe(
+      Effect.map(
+        (rows) =>
+          rows as unknown as {
+            assignmentId: string
+            resourceId: string | null
+            userId: string
+            orgNodeId: string | null
+            coverage: 'self' | 'subtree' | null
+            roleId: string
+            roleCode: string
+            roleName: string
+            code: string
+          }[],
+      ),
+    )
+
 export const effectiveRows = (
   principal: Principal,
   target: { orgNodeId: string } | 'anywhere' | undefined,

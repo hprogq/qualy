@@ -640,6 +640,220 @@ export const insertPhaseEvent = (input: {
       .execute(),
   )
 
+// --- who may work on this batch -------------------------------------------
+
+export interface AccessSourceRow {
+  id: string
+  roleAssignmentId: string
+  subjectId: string
+  origin: 'inherited' | 'explicit'
+  acceptedAt: number
+  /** the ceiling: what this batch said yes to, whatever the role carries now */
+  accepted: readonly string[]
+}
+
+/** what this batch has accepted, with the ceiling each source carries */
+export const accessSources = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchAccessSource as s')
+        .select(['s.id', 's.roleAssignmentId', 's.subjectId', 's.origin'])
+        .select([
+          epoch('s.accepted_at').as('acceptedAt'),
+          sql<string[]>`coalesce((select array_agg(sp.permission_code order by sp.permission_code)
+            from batch_access_source_permissions sp
+            where sp.tenant_id = s.tenant_id and sp.source_id = s.id), '{}')`.as('accepted'),
+        ])
+        .where('s.tenantId', '=', tenantId)
+        .where('s.batchId', '=', batchId)
+        .orderBy('s.acceptedAt')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        (rows as unknown as Record<string, unknown>[]).map(
+          (row) => ({ ...row, acceptedAt: msOf(row.acceptedAt) }) as unknown as AccessSourceRow,
+        ),
+      ),
+    )
+
+/** accepting an assignment into this batch, with the ceiling it comes in at */
+export const acceptAccessSource = (input: {
+  tenantId: string
+  batchId: string
+  roleAssignmentId: string
+  subjectId: string
+  origin: 'inherited' | 'explicit'
+  permissions: readonly string[]
+  acceptedBy: string | null
+}) =>
+  db
+    .query((k) =>
+      k
+        .insertInto('BatchAccessSource')
+        .values({
+          tenantId: input.tenantId,
+          batchId: input.batchId,
+          roleAssignmentId: input.roleAssignmentId,
+          subjectId: input.subjectId,
+          origin: input.origin,
+          acceptedBy: input.acceptedBy,
+        } as never)
+        .returning('id')
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(
+      Effect.flatMap((row) =>
+        acceptPermissions(input.tenantId, row.id as string, input.permissions).pipe(
+          Effect.as(row.id as string),
+        ),
+      ),
+    )
+
+/** raising a source's ceiling, which is the only thing a synchronisation does */
+export const acceptPermissions = (
+  tenantId: string,
+  sourceId: string,
+  permissions: readonly string[],
+) =>
+  permissions.length === 0
+    ? Effect.void
+    : db
+        .query((k) =>
+          k
+            .insertInto('BatchAccessSourcePermission')
+            .values(
+              permissions.map((permissionCode) => ({
+                tenantId,
+                sourceId,
+                permissionCode,
+              })) as never,
+            )
+            .onConflict((conflict) => conflict.doNothing())
+            .execute(),
+        )
+        .pipe(Effect.asVoid)
+
+/** what the batch has taken back, per person */
+export const accessDenies = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchAccessDeny')
+        .select(['subjectId', 'permissionCode'])
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows as unknown as { subjectId: string; permissionCode: string }[]))
+
+export const setAccessDeny = (input: {
+  tenantId: string
+  batchId: string
+  subjectId: string
+  permissionCode: string
+  denied: boolean
+  actorId: string | null
+  reason: string | null
+}) =>
+  input.denied
+    ? db.query((k) =>
+        k
+          .insertInto('BatchAccessDeny')
+          .values({
+            tenantId: input.tenantId,
+            batchId: input.batchId,
+            subjectId: input.subjectId,
+            permissionCode: input.permissionCode,
+            createdBy: input.actorId,
+            reason: input.reason,
+          } as never)
+          .onConflict((conflict) => conflict.doNothing())
+          .execute(),
+      )
+    : db.query((k) =>
+        k
+          .deleteFrom('BatchAccessDeny')
+          .where('tenantId', '=', input.tenantId)
+          .where('batchId', '=', input.batchId)
+          .where('subjectId', '=', input.subjectId)
+          .where('permissionCode', '=', input.permissionCode)
+          .execute(),
+      )
+
+export const oneAccessSource = (tenantId: string, batchId: string, sourceId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchAccessSource')
+        .select(['id', 'subjectId', 'roleAssignmentId', 'origin'])
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .where('id', '=', sourceId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map(
+        (row) =>
+          (row ?? null) as {
+            id: string
+            subjectId: string
+            roleAssignmentId: string
+            origin: 'inherited' | 'explicit'
+          } | null,
+      ),
+    )
+
+/** a draft's acceptances, cleared before they are drawn again */
+export const clearAccessSources = (tenantId: string, batchId: string) =>
+  db.query((k) =>
+    k
+      .deleteFrom('BatchAccessSource')
+      .where('tenantId', '=', tenantId)
+      .where('batchId', '=', batchId)
+      .execute(),
+  )
+
+/** a draft's roster, likewise: it is derived from a definition that changed */
+export const clearRoster = (tenantId: string, batchId: string) =>
+  db.query((k) =>
+    k
+      .deleteFrom('BatchParticipant')
+      .where('tenantId', '=', tenantId)
+      .where('batchId', '=', batchId)
+      .execute(),
+  )
+
+export const dropAccessSource = (tenantId: string, sourceId: string) =>
+  db.query((k) =>
+    k
+      .deleteFrom('BatchAccessSource')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', sourceId)
+      .execute(),
+  )
+
+/** the display names the access page needs; the closure already reaches users */
+export const namesOf = (tenantId: string, userIds: readonly string[]) =>
+  userIds.length === 0
+    ? Effect.succeed([] as { id: string; displayName: string; businessNo: string | null }[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('User')
+            .select(['id', 'displayName', 'businessNo'])
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', userIds as string[])
+            .execute(),
+        )
+        .pipe(
+          Effect.map(
+            (rows) =>
+              rows as unknown as { id: string; displayName: string; businessNo: string | null }[],
+          ),
+        )
+
 export const insertLifecycleEvent = (input: {
   tenantId: string
   batchId: string
@@ -685,22 +899,6 @@ export const lifecycleEvents = (tenantId: string, batchId: string) =>
           }[],
       ),
     )
-
-/**
- * The roster, discarded.
- *
- * Only ever called for a batch that never started: the first schedule freezes
- * a roster, and withdrawing that schedule releases a commitment nobody has
- * acted on yet. A batch that has entered a phase keeps its roster forever.
- */
-export const discardRoster = (tenantId: string, batchId: string) =>
-  db.query((k) =>
-    k
-      .deleteFrom('BatchParticipant')
-      .where('tenantId', '=', tenantId)
-      .where('batchId', '=', batchId)
-      .execute(),
-  )
 
 /** a draft nobody ever started, removed with the rows that hang off it */
 export const deleteBatchRow = (tenantId: string, batchId: string) =>

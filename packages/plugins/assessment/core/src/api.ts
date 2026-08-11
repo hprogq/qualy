@@ -13,6 +13,7 @@ import {
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
+  AccessInvalid,
   AdvanceInvalid,
   BatchNoUserTypes,
   BatchNotFound,
@@ -214,6 +215,42 @@ const rosterDiff = Schema.Struct({
   scopeIntegrity: Schema.Array(Schema.Struct({ nodeId: Schema.String })),
 })
 
+/** one accepted assignment, as the access page reads it */
+const accessSourceView = Schema.Struct({
+  sourceId: Schema.String,
+  assignmentId: Schema.String,
+  roleId: Schema.String,
+  roleName: Schema.String,
+  origin: Schema.Literals(['inherited', 'explicit']),
+  orgNodeId: Schema.NullOr(Schema.String),
+  coverage: Schema.NullOr(Schema.Literals(['self', 'subtree'])),
+  accepted: Schema.Array(Schema.String),
+  current: Schema.Array(Schema.String),
+  active: Schema.Boolean,
+})
+
+const accessSubjectView = Schema.Struct({
+  userId: Schema.String,
+  displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  sources: Schema.Array(accessSourceView),
+  denied: Schema.Array(Schema.String),
+  effective: Schema.Array(Schema.String),
+})
+
+const accessChange = Schema.Struct({
+  userId: Schema.String,
+  displayName: Schema.String,
+  roleName: Schema.String,
+  permissions: Schema.Array(Schema.String),
+})
+
+const accessSyncPlanView = Schema.Struct({
+  newSources: Schema.Array(Schema.Struct({ ...accessChange.fields, assignmentId: Schema.String })),
+  widened: Schema.Array(Schema.Struct({ ...accessChange.fields, sourceId: Schema.String })),
+  lapsed: Schema.Array(accessChange),
+})
+
 const templateKind = Schema.Literals(['timeline', 'phase'])
 
 const templateView = Schema.Struct({
@@ -320,6 +357,70 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       ]),
       success: Schema.Struct({ batch: batchView }),
       error: [BatchNotFound, BatchStatusInvalid, BatchNoUserTypes, PlanInvalid, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // Who may work on this batch. Not "roles": a role is the tenant's word for
+    // what somebody generally does, and this is what this batch accepted of it.
+    HttpApiEndpoint.get('listAccess', '/assessment/batches/:batchId/access', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // what the organization now offers that this batch has not accepted, and
+    // what has already lapsed; a preview because widening needs a decision
+    HttpApiEndpoint.get('previewAccessSync', '/assessment/batches/:batchId/access/sync', {
+      params: Schema.Struct({ batchId: id }),
+      success: accessSyncPlanView,
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('applyAccessSync', '/assessment/batches/:batchId/access/sync', {
+      params: Schema.Struct({ batchId: id }),
+      payload: Schema.Struct({}),
+      success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // one capability, for one person, in this batch: idempotent by nature
+    HttpApiEndpoint.put(
+      'setAccessDeny',
+      '/assessment/batches/:batchId/access/:userId/permissions/:permission',
+      {
+        params: Schema.Struct({ batchId: id, userId: id, permission: Schema.String }),
+        payload: Schema.Struct({
+          denied: Schema.Boolean,
+          reason: Schema.optional(boundedText(500)),
+        }),
+        success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
+        error: [BatchNotFound, AccessInvalid, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // somebody brought in for this round: an ordinary assignment confined to
+    // this batch, accepted into it in the same breath
+    HttpApiEndpoint.post('addStaff', '/assessment/batches/:batchId/access', {
+      params: Schema.Struct({ batchId: id }),
+      payload: Schema.Struct({
+        userId: id,
+        roleId: id,
+        orgNodeId: id,
+        validUntil: Schema.optional(isoInstant),
+      }),
+      success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
+      error: [BatchNotFound, AccessInvalid, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('removeStaff', '/assessment/batches/:batchId/access/sources/:sourceId', {
+      params: Schema.Struct({ batchId: id, sourceId: id }),
+      success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
+      error: [BatchNotFound, AccessInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

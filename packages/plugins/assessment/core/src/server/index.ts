@@ -8,6 +8,7 @@ import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/serv
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
+import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
 import { assessmentApiGroup } from '../api.ts'
 import {
   reviewInsertion,
@@ -21,7 +22,9 @@ import { effectiveState, normalizePlan } from '../phase/engine/queue.ts'
 import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
 import type { EpochMillis, PhasePlan } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
+import { PARTICIPANT_CODES, STAFF_CODES } from '../permissions.ts'
 import {
+  AccessInvalid,
   AdvanceInvalid,
   BatchNoUserTypes,
   BatchNotFound,
@@ -61,7 +64,16 @@ import {
   insertConfigEvent,
   insertPhase,
   insertLifecycleEvent,
-  discardRoster,
+  accessSources,
+  clearAccessSources,
+  clearRoster,
+  acceptAccessSource,
+  acceptPermissions,
+  accessDenies,
+  setAccessDeny as setAccessDenyRow,
+  oneAccessSource,
+  dropAccessSource,
+  namesOf,
   deleteBatchRow,
   insertPhaseEvent,
   insertTemplate,
@@ -179,6 +191,67 @@ export interface UpdateBatchInput {
   readonly userTypeIds?: readonly string[]
   readonly anchorAutoSync?: boolean
   readonly reason?: string
+}
+
+/** one accepted assignment, as the access page reads it */
+export interface AccessSourceView {
+  readonly sourceId: string
+  readonly assignmentId: string
+  readonly userId: string
+  readonly displayName: string
+  readonly businessNo: string | null
+  readonly roleId: string
+  readonly roleName: string
+  readonly origin: 'inherited' | 'explicit'
+  readonly orgNodeId: string | null
+  readonly coverage: 'self' | 'subtree' | null
+  /** the ceiling this batch accepted */
+  readonly accepted: readonly string[]
+  /** of those, what the assignment still carries */
+  readonly current: readonly string[]
+  /** whether the assignment itself is still in force */
+  readonly active: boolean
+}
+
+/** what one person may do in this batch, and why */
+export interface AccessSubject {
+  readonly userId: string
+  readonly displayName: string
+  readonly businessNo: string | null
+  readonly sources: readonly AccessSourceView[]
+  /** this batch's own refusals, whichever source offered the capability */
+  readonly denied: readonly string[]
+  /** what is left: (accepted ∩ current) − denied, before the phase gate */
+  readonly effective: readonly string[]
+}
+
+export interface BatchAccess {
+  readonly staff: readonly AccessSubject[]
+}
+
+/** what a synchronisation would add; withdrawals have already taken effect */
+export interface AccessSyncPlan {
+  readonly newSources: readonly {
+    readonly assignmentId: string
+    readonly userId: string
+    readonly displayName: string
+    readonly roleName: string
+    readonly permissions: readonly string[]
+  }[]
+  readonly widened: readonly {
+    readonly sourceId: string
+    readonly userId: string
+    readonly displayName: string
+    readonly roleName: string
+    readonly permissions: readonly string[]
+  }[]
+  /** what has already stopped working, said so the reader knows why */
+  readonly lapsed: readonly {
+    readonly userId: string
+    readonly displayName: string
+    readonly roleName: string
+    readonly permissions: readonly string[]
+  }[]
 }
 
 /** closing a batch that has reached the end of its plan */
@@ -354,6 +427,56 @@ export class Assessment extends Context.Service<
       input: ArchiveInput | ReopenInput,
       as: Principal,
     ) => Effect.Effect<BatchDetail, SetBatchStatusError>
+    /**
+     * Who may work on this batch, where the authority comes from, and what
+     * this batch has taken back from it.
+     */
+    readonly listAccess: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessDenied>
+    /** what the organization now offers that this batch has not accepted */
+    readonly previewAccessSync: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<AccessSyncPlan, BatchNotFound | AccessDenied>
+    /** accepts exactly what the preview showed; withdrawals need no accepting */
+    readonly applyAccessSync: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessDenied>
+    /** takes one capability back from a person, whichever source offered it */
+    readonly setAccessDeny: (
+      tenantId: string,
+      batchId: string,
+      input: { userId: string; permission: string; denied: boolean; reason?: string },
+      as: Principal,
+    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessInvalid | AccessDenied>
+    /**
+     * Somebody brought in for this round: an ordinary role assignment confined
+     * to this batch, accepted into it in the same transaction.
+     */
+    readonly addStaff: (
+      tenantId: string,
+      batchId: string,
+      input: {
+        userId: string
+        roleId: string
+        orgNodeId: string
+        validUntil?: EpochMillis
+      },
+      as: Principal,
+    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessInvalid | AccessDenied>
+    /** and taking them out again, which revokes the assignment behind it */
+    readonly removeStaff: (
+      tenantId: string,
+      batchId: string,
+      sourceId: string,
+      as: Principal,
+    ) => Effect.Effect<BatchAccess, BatchNotFound | AccessInvalid | AccessDenied>
     /** a draft that never ran, removed with everything configured on it */
     readonly deleteBatch: (
       tenantId: string,
@@ -906,6 +1029,222 @@ export const make = Effect.fn('Assessment.make')(function* () {
       for (const node of nodes) yield* rbac.requireAt(as, MANAGE, node.id)
     })
 
+  /** administering who may work on a batch is administering the batch */
+  const requireBatchAdministration = (tenantId: string, batchId: string, as: Principal) =>
+    Effect.gen(function* () {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return yield* new BatchNotFound()
+      yield* requireScopeReach(as, yield* dieQuery(withDb(scopeNodeRows(tenantId, batchId))))
+    })
+
+  /** this batch, as an object authority can be confined to */
+  const batchResource = (batchId: string) => ({
+    namespace: 'assessment',
+    type: 'batch',
+    id: batchId,
+  })
+
+  /**
+   * Every assignment the tenant currently has that could work on this batch.
+   *
+   * Asked of rbac rather than answered here: who holds what, where, is the
+   * tenant's question, and a second implementation of it in this plugin would
+   * be a second authorization system that agrees until the day one is edited.
+   * Assignments confined to this batch come back too - somebody drafted in for
+   * this round is an ordinary assignment that happens to name it.
+   */
+  const applicableAssignments = (tenantId: string, batchId: string) =>
+    Effect.gen(function* () {
+      const nodes = yield* dieQuery(withDb(scopeNodeRows(tenantId, batchId)))
+      return yield* rbac.listApplicableAssignments({
+        tenantId,
+        codes: [...STAFF_CODES],
+        nodeIds: nodes.map((node) => node.id),
+        resource: batchResource(batchId),
+      })
+    })
+
+  /**
+   * Accepting assignments into a batch: the whole acceptance boundary in one
+   * place, used at creation and at every synchronisation afterwards.
+   */
+  const acceptAssignments = (
+    tenantId: string,
+    batchId: string,
+    assignments: readonly ApplicableAssignment[],
+    origin: 'inherited' | 'explicit',
+    actorId: string | null,
+  ) =>
+    Effect.forEach(assignments, (assignment) =>
+      acceptAccessSource({
+        tenantId,
+        batchId,
+        roleAssignmentId: assignment.assignmentId,
+        subjectId: assignment.userId,
+        origin,
+        permissions: assignment.codes,
+        acceptedBy: actorId,
+      }),
+    )
+
+  /**
+   * Who may work on this batch, and what is left of it.
+   *
+   *   what the assignment still carries  ∩  what this batch accepted  −  denies
+   *
+   * The first term is why withdrawing a role takes effect everywhere at once;
+   * the second is why granting one does not. Nothing here consults the phase:
+   * that narrows what may be done today, not who may do it at all.
+   */
+  const readAccess = Effect.fn('Assessment.readAccess')(function* (
+    tenantId: string,
+    batchId: string,
+  ) {
+    const [sources, denies, assignments] = yield* Effect.all([
+      dieQuery(withDb(accessSources(tenantId, batchId))),
+      dieQuery(withDb(accessDenies(tenantId, batchId))),
+      applicableAssignments(tenantId, batchId),
+    ])
+    const live = new Map(assignments.map((row) => [row.assignmentId, row]))
+    const names = new Map(
+      (yield* dieQuery(
+        withDb(namesOf(tenantId, [...new Set(sources.map((row) => row.subjectId))])),
+      )).map((row) => [row.id, row]),
+    )
+    const deniedOf = (userId: string) =>
+      denies.filter((row) => row.subjectId === userId).map((row) => row.permissionCode)
+
+    const bySubject = new Map<string, AccessSourceView[]>()
+    for (const source of sources) {
+      const assignment = live.get(source.roleAssignmentId)
+      const view: AccessSourceView = {
+        sourceId: source.id,
+        assignmentId: source.roleAssignmentId,
+        userId: source.subjectId,
+        displayName: names.get(source.subjectId)?.displayName ?? '',
+        businessNo: names.get(source.subjectId)?.businessNo ?? null,
+        roleId: assignment?.roleId ?? '',
+        roleName: assignment?.roleName ?? '',
+        origin: source.origin,
+        orgNodeId: assignment?.orgNodeId ?? null,
+        coverage: assignment?.coverage ?? null,
+        accepted: source.accepted,
+        current: source.accepted.filter((code) => assignment?.codes.includes(code) === true),
+        active: assignment !== undefined,
+      }
+      bySubject.set(source.subjectId, [...(bySubject.get(source.subjectId) ?? []), view])
+    }
+
+    return {
+      staff: [...bySubject.entries()].map(([userId, views]): AccessSubject => {
+        const denied = [...new Set(deniedOf(userId))].sort()
+        const offered = new Set(views.flatMap((view) => view.current))
+        return {
+          userId,
+          displayName: views[0]!.displayName,
+          businessNo: views[0]!.businessNo,
+          sources: views,
+          denied,
+          effective: [...offered].filter((code) => !denied.includes(code)).sort(),
+        }
+      }),
+    }
+  })
+
+  /**
+   * What one person may do in this batch, before the phase gate narrows it.
+   *
+   * Participants are not here: being on the roster is what their capabilities
+   * are made of, and five hundred students times five permissions would be two
+   * and a half thousand rows saying it again.
+   */
+  const batchAuthority = Effect.fn('Assessment.batchAuthority')(function* (
+    tenantId: string,
+    batchId: string,
+    userId: string,
+  ) {
+    const access = yield* readAccess(tenantId, batchId)
+    const subject = access.staff.find((row) => row.userId === userId)
+    return new Set(subject?.effective ?? [])
+  })
+
+  /**
+   * What synchronising would add, and what has already fallen away.
+   *
+   * Only the additions need deciding. A capability the tenant withdrew stopped
+   * counting the moment it was withdrawn - it is listed so the reader knows
+   * why somebody lost access, not so they can approve it.
+   */
+  const planAccessSync = Effect.fn('Assessment.planAccessSync')(function* (
+    tenantId: string,
+    batchId: string,
+  ) {
+    const [sources, assignments] = yield* Effect.all([
+      dieQuery(withDb(accessSources(tenantId, batchId))),
+      applicableAssignments(tenantId, batchId),
+    ])
+    const accepted = new Map(sources.map((source) => [source.roleAssignmentId, source]))
+    const names = new Map(
+      (yield* dieQuery(
+        withDb(
+          namesOf(tenantId, [
+            ...new Set([
+              ...sources.map((row) => row.subjectId),
+              ...assignments.map((row) => row.userId),
+            ]),
+          ]),
+        ),
+      )).map((row) => [row.id, row.displayName]),
+    )
+    const named = (userId: string) => names.get(userId) ?? ''
+
+    const newSources = assignments
+      .filter((assignment) => !accepted.has(assignment.assignmentId))
+      .map((assignment) => ({
+        assignmentId: assignment.assignmentId,
+        userId: assignment.userId,
+        displayName: named(assignment.userId),
+        roleName: assignment.roleName,
+        permissions: assignment.codes,
+      }))
+
+    const widened = assignments.flatMap((assignment) => {
+      const source = accepted.get(assignment.assignmentId)
+      if (!source) return []
+      const ceiling = new Set(source.accepted)
+      const gained = assignment.codes.filter((code) => !ceiling.has(code))
+      return gained.length === 0
+        ? []
+        : [
+            {
+              sourceId: source.id,
+              userId: source.subjectId,
+              displayName: named(source.subjectId),
+              roleName: assignment.roleName,
+              permissions: gained,
+            },
+          ]
+    })
+
+    const lapsed = sources.flatMap((source) => {
+      const assignment = assignments.find((row) => row.assignmentId === source.roleAssignmentId)
+      const live = new Set(assignment?.codes ?? [])
+      const gone = source.accepted.filter((code) => !live.has(code))
+      return gone.length === 0
+        ? []
+        : [
+            {
+              userId: source.subjectId,
+              displayName: named(source.subjectId),
+              roleName: assignment?.roleName ?? '',
+              permissions: gone,
+            },
+          ]
+    })
+
+    return { newSources, widened, lapsed }
+  })
+
   return Assessment.of({
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
       return yield* withDb(
@@ -932,7 +1271,25 @@ export const make = Effect.fn('Assessment.make')(function* () {
             yield* replaceBatchUserTypes(tenantId, created.id as string, [
               ...new Set(input.userTypeIds),
             ])
-            const batch = yield* oneBatch(tenantId, created.id as string)
+            const batchId = created.id as string
+            // Both of the batch's populations are settled here, while it is
+            // still a draft nobody is running: who takes part, and who may
+            // work on it. Doing this at the first schedule instead meant
+            // "start now" created them and started on them in one act, with
+            // an administrator never having seen either.
+            yield* generateRoster(tenantId, batchId)
+            yield* acceptAssignments(
+              tenantId,
+              batchId,
+              yield* rbac.listApplicableAssignments({
+                tenantId,
+                codes: [...STAFF_CODES],
+                nodeIds: nodes.map((node) => node.id),
+              }),
+              'inherited',
+              as.userId,
+            )
+            const batch = yield* oneBatch(tenantId, batchId)
             return yield* readDetail(tenantId, batch!)
           }),
         ),
@@ -1058,6 +1415,28 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (nextTypes !== undefined) {
               yield* replaceBatchUserTypes(tenantId, batchId, nextTypes)
             }
+            // A draft's roster and access baseline are drawn from its scope and
+            // its participant types, so changing either redraws them. Only a
+            // draft: once a batch has run, its roster is frozen history and
+            // changing the scope is refused a few lines above.
+            if (scopeMove !== undefined || nextTypes !== undefined) {
+              yield* clearRoster(tenantId, batchId)
+              yield* generateRoster(tenantId, batchId)
+              yield* clearAccessSources(tenantId, batchId)
+              const nodes = yield* scopeNodeRows(tenantId, batchId)
+              yield* acceptAssignments(
+                tenantId,
+                batchId,
+                yield* rbac.listApplicableAssignments({
+                  tenantId,
+                  codes: [...STAFF_CODES],
+                  nodeIds: nodes.map((node) => node.id),
+                  resource: batchResource(batchId),
+                }),
+                'inherited',
+                as.userId,
+              )
+            }
 
             yield* recordConfigChange(
               tenantId,
@@ -1179,6 +1558,154 @@ export const make = Effect.fn('Assessment.make')(function* () {
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
       },
     ),
+
+    listAccess: Effect.fn('Assessment.listAccess')(function* (tenantId, batchId, as) {
+      yield* requireBatchAdministration(tenantId, batchId, as)
+      return yield* readAccess(tenantId, batchId)
+    }),
+
+    previewAccessSync: Effect.fn('Assessment.previewAccessSync')(function* (tenantId, batchId, as) {
+      yield* requireBatchAdministration(tenantId, batchId, as)
+      return yield* planAccessSync(tenantId, batchId)
+    }),
+
+    applyAccessSync: Effect.fn('Assessment.applyAccessSync')(function* (tenantId, batchId, as) {
+      yield* requireBatchAdministration(tenantId, batchId, as)
+      const assignments = yield* applicableAssignments(tenantId, batchId)
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const plan = yield* planAccessSync(tenantId, batchId)
+            const byId = new Map(assignments.map((row) => [row.assignmentId, row]))
+            yield* acceptAssignments(
+              tenantId,
+              batchId,
+              plan.newSources.flatMap((added) => {
+                const assignment = byId.get(added.assignmentId)
+                return assignment ? [assignment] : []
+              }),
+              'inherited',
+              as.userId,
+            )
+            for (const widened of plan.widened) {
+              yield* acceptPermissions(tenantId, widened.sourceId, widened.permissions)
+            }
+            return yield* readAccess(tenantId, batchId)
+          }),
+        ),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+    }),
+
+    setAccessDeny: Effect.fn('Assessment.setAccessDeny')(function* (tenantId, batchId, input, as) {
+      yield* requireBatchAdministration(tenantId, batchId, as)
+      if (!STAFF_CODES.includes(input.permission as never)) {
+        return yield* new AccessInvalid({ reason: 'permission-not-known' })
+      }
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            yield* setAccessDenyRow({
+              tenantId,
+              batchId,
+              subjectId: input.userId,
+              permissionCode: input.permission,
+              denied: input.denied,
+              actorId: as.userId,
+              reason: input.reason ?? null,
+            })
+            return yield* readAccess(tenantId, batchId)
+          }),
+        ),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+    }),
+
+    addStaff: Effect.fn('Assessment.addStaff')(function* (tenantId, batchId, input, as) {
+      yield* requireBatchAdministration(tenantId, batchId, as)
+      const now = yield* Clock.currentTimeMillis
+      if (input.validUntil !== undefined && input.validUntil <= now) {
+        return yield* new AccessInvalid({ reason: 'expiry-in-past' })
+      }
+      // The role decides what they may do, so the role is what is checked.
+      // Anything a batch is not allowed to hand out at all - administering the
+      // batch, administering this very list - makes the whole role ineligible
+      // rather than being quietly dropped from it.
+      const carried = yield* rbac.getRolePermissions(tenantId, input.roleId)
+      if (carried.length === 0) return yield* new AccessInvalid({ reason: 'role-not-usable' })
+      for (const code of carried) {
+        if (!STAFF_CODES.includes(code as never)) {
+          return yield* new AccessInvalid({ reason: 'permission-not-delegatable' })
+        }
+      }
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const [node] = yield* nodesByIds(tenantId, [input.orgNodeId])
+            if (!node) return yield* new AccessInvalid({ reason: 'node-not-found' })
+            const [user] = yield* namesOf(tenantId, [input.userId])
+            if (!user) return yield* new AccessInvalid({ reason: 'user-not-found' })
+            // Delegation, the plain rule: nobody hands out authority they do
+            // not hold, over people they do not already administer.
+            if (!(yield* rbac.canAt(as, MANAGE, input.orgNodeId))) {
+              return yield* new AccessInvalid({ reason: 'node-out-of-reach' })
+            }
+            for (const code of carried) {
+              if (!(yield* rbac.canAt(as, code, input.orgNodeId))) {
+                return yield* new AccessInvalid({ reason: 'permission-not-held' })
+              }
+            }
+            // One act, two records: the tenant's assignment, confined to this
+            // batch, and this batch accepting exactly what it carries today.
+            // Even here the ceiling is written down - a shared reviewer role
+            // that gains a capability next month must not widen this round.
+            const assignmentId = yield* rbac.createScopedAssignment({
+              tenantId,
+              subjectId: input.userId,
+              roleId: input.roleId,
+              orgNodeId: input.orgNodeId,
+              includeDescendants: true,
+              resource: batchResource(batchId),
+              ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
+              createdBy: as.userId,
+            })
+            yield* acceptAccessSource({
+              tenantId,
+              batchId,
+              roleAssignmentId: assignmentId,
+              subjectId: input.userId,
+              origin: 'explicit',
+              permissions: carried,
+              acceptedBy: as.userId,
+            })
+            return yield* readAccess(tenantId, batchId)
+          }),
+        ),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+    }),
+
+    removeStaff: Effect.fn('Assessment.removeStaff')(function* (tenantId, batchId, sourceId, as) {
+      yield* requireBatchAdministration(tenantId, batchId, as)
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const source = yield* oneAccessSource(tenantId, batchId, sourceId)
+            if (!source) return yield* new AccessInvalid({ reason: 'source-not-found' })
+            // Only what this batch handed out itself. An inherited assignment
+            // belongs to the tenant: the batch can refuse what it offers, and
+            // that is what a deny is for.
+            if (source.origin !== 'explicit') {
+              return yield* new AccessInvalid({ reason: 'source-not-explicit' })
+            }
+            yield* rbac.revokeAssignment({
+              tenantId,
+              assignmentId: source.roleAssignmentId,
+              actorId: as.userId,
+            })
+            yield* dropAccessSource(tenantId, source.id)
+            return yield* readAccess(tenantId, batchId)
+          }),
+        ),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+    }),
 
     deleteBatch: Effect.fn('Assessment.deleteBatch')(function* (tenantId, batchId, as) {
       return yield* withDb(
@@ -1462,15 +1989,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 return yield* new PlanInvalid({ refusals: review.refusals })
               }
               // The first time somebody puts a phase in the diary, the batch
-              // stops being a draft. That commitment is what activation used
-              // to be a separate button for: there has to be somebody to
-              // enroll and a plan to run, and the roster freezes here rather
-              // than at some later moment nobody chose.
+              // stops being a draft. Nothing is created here: the roster and
+              // the access baseline were settled when the batch was created,
+              // so this only checks that there is somebody to enroll and puts
+              // the batch into service.
               if (locked.status === 'draft' && plannedEntryAt !== null) {
                 if ((yield* listBatchUserTypes(tenantId, batchId)).length === 0) {
                   return yield* new BatchNoUserTypes()
                 }
-                yield* generateRoster(tenantId, batchId)
                 yield* updateBatchFields(tenantId, batchId, { status: 'active' })
               }
               yield* updatePhaseFields(tenantId, phaseId, { plannedEntryAt })
@@ -1483,14 +2009,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
               })
               // And withdrawing the last of them releases it again. Only a
               // batch that never actually entered a phase can go back: once
-              // something has happened, it happened.
+              // something has happened, it happened. The roster stays - a
+              // draft has one too now, and throwing it away would lose
+              // whatever the administrator had adjusted on it.
               if (plannedEntryAt === null && locked.status === 'active') {
                 const after = yield* listPhaseRows(tenantId, batchId)
                 const running = after.some(
                   (row) => row.actualEntryAt !== null || row.plannedEntryAt !== null,
                 )
                 if (!running) {
-                  yield* discardRoster(tenantId, batchId)
                   yield* updateBatchFields(tenantId, batchId, { status: 'draft' })
                 }
               }
@@ -1525,8 +2052,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (targetIndex === -1) return yield* new PhaseNotFound()
             const target = plan[targetIndex]!
             // Starting the first phase by hand is the other half of the same
-            // commitment a first schedule makes: the batch runs from here, so
-            // it needs somebody to enroll and a roster frozen as of now.
+            // commitment a first schedule makes: the batch runs from here.
+            // What it runs on - the roster, the access baseline - has existed
+            // since it was created.
             if (locked.status === 'draft') {
               if (targetIndex !== 0) {
                 return yield* new AdvanceInvalid({ reason: 'batch-not-active' })
@@ -1534,7 +2062,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
               if ((yield* listBatchUserTypes(tenantId, batchId)).length === 0) {
                 return yield* new AdvanceInvalid({ reason: 'batch-not-active' })
               }
-              yield* generateRoster(tenantId, batchId)
               yield* updateBatchFields(tenantId, batchId, { status: 'active' })
             }
 
@@ -1594,10 +2121,23 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     authorizeEntryAction: Effect.fn('Assessment.authorizeEntryAction')(
       function* (principal, code, batchId, ctx) {
-        // Layer one: identity authority. M1 asks "held at all"; anchored
-        // resolution against a participant's frozen lineage arrives with
-        // entries, which is also when org-node codes get a real target.
-        const held = yield* rbac.hasPermission(principal, code)
+        // Layer one: authority in THIS batch, which is not the same question
+        // as authority in the tenant.
+        //
+        // A participant needs no grant: being on the roster is what a
+        // participant's capabilities are made of, and five hundred students
+        // times five permissions would be two and a half thousand rows saying
+        // it again. Everybody else holds what this batch accepted from the
+        // tenant and has not taken back, or what this batch granted directly.
+        //
+        // Which node it applies to is not asked yet: entries do not exist, so
+        // there is no object to locate. When they do, the participant's frozen
+        // lineage is what the scopes here get compared against.
+        const held = PARTICIPANT_CODES.includes(code as never)
+          ? (yield* dieQuery(
+              withDb(participantByUser(principal.tenantId, batchId, principal.userId)),
+            )) !== null
+          : (yield* batchAuthority(principal.tenantId, batchId, principal.userId)).has(code)
         if (!held) {
           return { allowed: false, layer: 'rbac', reason: 'permission-not-held' } as const
         }
@@ -2126,6 +2666,81 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { batch: toBatchDto(detail) }
+      }),
+    )
+    .handle(
+      'listAccess',
+      Effect.fn('assessment.listAccess.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.listAccess(principal.tenantId, params.batchId, principal)
+      }),
+    )
+    .handle(
+      'previewAccessSync',
+      Effect.fn('assessment.previewAccessSync.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.previewAccessSync(principal.tenantId, params.batchId, principal)
+      }),
+    )
+    .handle(
+      'applyAccessSync',
+      Effect.fn('assessment.applyAccessSync.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.applyAccessSync(principal.tenantId, params.batchId, principal)
+      }),
+    )
+    .handle(
+      'setAccessDeny',
+      Effect.fn('assessment.setAccessDeny.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.setAccessDeny(
+          principal.tenantId,
+          params.batchId,
+          {
+            userId: params.userId,
+            permission: params.permission,
+            denied: payload.denied,
+            ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
+          },
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'addStaff',
+      Effect.fn('assessment.addStaff.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.addStaff(
+          principal.tenantId,
+          params.batchId,
+          {
+            userId: payload.userId,
+            roleId: payload.roleId,
+            orgNodeId: payload.orgNodeId,
+            ...(payload.validUntil !== undefined
+              ? { validUntil: Date.parse(payload.validUntil) }
+              : {}),
+          },
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'removeStaff',
+      Effect.fn('assessment.removeStaff.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.removeStaff(
+          principal.tenantId,
+          params.batchId,
+          params.sourceId,
+          principal,
+        )
       }),
     )
     .handle(

@@ -508,14 +508,12 @@ describe('the stage plan', () => {
 })
 
 describe('the participants tab', () => {
-  it('says the list does not exist yet while the batch is a draft', async () => {
+  it('says where a draft list came from, rather than that there is none', async () => {
     screen({}, `/assessment/batches/${BATCH_ID}/participants`)
+    // the roster exists from the moment the batch does, so a draft shows it
+    // with a note saying where it came from
     await expect
-      .element(
-        page.getByText(
-          '尚未完成阶段排期，无法查看参评名单；第一个阶段排期后，参评名单将自动生成。',
-        ),
-      )
+      .element(page.getByText('参评名单已在创建批次时按所选单位与人员类型生成。'))
       .toBeVisible()
   })
 

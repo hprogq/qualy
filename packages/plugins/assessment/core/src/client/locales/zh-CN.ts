@@ -73,7 +73,7 @@ export default {
   'assessment/action/archive-confirm-body':
     '归档即为末阶段划下终点，批次转为只读：结果仍可查看，内容不可再改。日后可凭事由重新开启。',
   'assessment/batch/draft-banner':
-    '批次尚未开始。为第一个阶段排期即正式开跑，届时按所选范围冻结参评名单。',
+    '批次尚未开始。参评名单与可参与工作的人员均已就绪，可先行核对；为第一个阶段排期即正式开跑。',
 
   'assessment/batch/sections': '批次内容',
   'assessment/batch/switch': '切换批次',
@@ -179,10 +179,10 @@ export default {
   'assessment/profile/title': '本阶段开放的操作',
   'assessment/profile/hint': '仅在本阶段生效，不改变角色本身的权限。',
 
-  'assessment/roster/hint': '名单在批次开跑时冻结；组织变动以待处理建议列出，不会自动调整名单。',
+  'assessment/roster/hint':
+    '名单在创建批次时即已生成并就此冻结；组织变动以待处理建议列出，不会自动调整名单。',
   'assessment/roster/empty': '暂无参评人员。',
-  'assessment/roster/draft':
-    '尚未完成阶段排期，无法查看参评名单；第一个阶段排期后，参评名单将自动生成。',
+  'assessment/roster/draft': '参评名单已在创建批次时按所选单位与人员类型生成。',
   'assessment/roster/column-name': '姓名',
   'assessment/roster/column-status': '状态',
   'assessment/roster/active': '参评中',
@@ -263,5 +263,6 @@ export default {
   'assessment/error/batch-no-user-types': '先选好参评的人员类型（至少一种），再激活批次。',
   'assessment/error/batch-reference-invalid': '所选的单位或人员类型中，有的已经不存在了。',
   'assessment/error/plan-invalid': '阶段信息保存失败，请按下列问题修改后重试。',
+  'assessment/error/access-invalid': '这项人员权限的改动被拒绝了。',
   'assessment/error/advance-invalid': '这个阶段不能这样开始。',
 } satisfies MessageCatalog

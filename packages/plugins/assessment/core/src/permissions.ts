@@ -102,6 +102,41 @@ export const permissions = [
  * bare set because the editor's label map is keyed by it: a code added here
  * without a translation stops compiling.
  */
+/**
+ * What being on the roster is worth.
+ *
+ * A participant's capabilities come from membership, not from rows: five
+ * hundred students times five permissions is two and a half thousand records
+ * saying the same thing, and the roster already says it once.
+ */
+export const PARTICIPANT_CODES = [
+  'assessment.entry.create',
+  'assessment.entry.edit',
+  'assessment.entry.submit',
+  'assessment.entry.withdraw',
+  'assessment.result.view-self',
+] as const
+
+/**
+ * What a batch copies out of the tenant's authority when it is created.
+ *
+ * The work staff do inside a round, and only that. Administering the batch
+ * itself (`assessment.batch.manage`, forcing a boundary) deliberately stays
+ * live tenant authority: it is the capability that decides who may edit this
+ * very list, and freezing it at creation would leave an administrator
+ * appointed afterwards unable to touch rounds that already exist.
+ */
+export const STAFF_CODES = [
+  'assessment.entry.proxy',
+  'assessment.entry.record',
+  'assessment.entry.resubmit',
+  'assessment.review.process',
+  'assessment.review.reopen',
+  'assessment.result.view-peers',
+  'assessment.ranking.view',
+  'assessment.publication.manage',
+] as const
+
 export const PHASE_GATED_CODES = [
   'assessment.entry.create',
   'assessment.entry.edit',
@@ -121,6 +156,11 @@ export type PhaseGatedCode = (typeof PHASE_GATED_CODES)[number]
 export const PHASE_GATED: ReadonlySet<string> = new Set(PHASE_GATED_CODES)
 
 const declared = new Set<string>(permissions.map((definition) => definition.code))
+for (const code of [...PARTICIPANT_CODES, ...STAFF_CODES]) {
+  if (!declared.has(code)) {
+    throw new Error(`assessment: ${code} is not a declared permission`)
+  }
+}
 for (const code of PHASE_GATED) {
   if (!declared.has(code)) {
     throw new Error(`PHASE_GATED lists '${code}', which @qualy/plugin-assessment does not declare`)

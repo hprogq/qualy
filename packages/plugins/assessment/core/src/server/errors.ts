@@ -150,6 +150,32 @@ export class AdvanceInvalid extends Schema.TaggedErrorClass<AdvanceInvalid>()(
   { httpApiStatus: 422, identifier: 'AssessmentAdvanceInvalid' },
 ) {}
 
+/**
+ * A batch access write the model will not take.
+ *
+ * Delegation is the reason most of these exist: somebody may only hand out
+ * authority they hold themselves, over people they already administer, and
+ * only capabilities a batch is allowed to carry at all.
+ */
+export class AccessInvalid extends Schema.TaggedErrorClass<AccessInvalid>()(
+  'ASSESSMENT_ACCESS_INVALID',
+  {
+    reason: Schema.Literals([
+      'source-not-found',
+      'source-not-explicit',
+      'role-not-usable',
+      'permission-not-known',
+      'permission-not-delegatable',
+      'permission-not-held',
+      'node-out-of-reach',
+      'node-not-found',
+      'user-not-found',
+      'expiry-in-past',
+    ]),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentAccessInvalid' },
+) {}
+
 /** what a template write can be refused by, keyed by constraint name */
 export const templateConstraints: Record<string, () => TemplateConflict> = {
   uq_phase_templates_tenant_name: () => new TemplateConflict(),
@@ -166,6 +192,9 @@ export type UpdateBatchError =
   BatchNotFound | BatchReadOnly | BatchScopeLocked | BatchReferenceInvalid | AccessDenied
 export type SetBatchStatusError =
   BatchNotFound | BatchStatusInvalid | BatchNoUserTypes | PlanInvalid | AccessDenied
+
+/** reading or changing who may work on a batch */
+export type BatchAccessError = BatchNotFound | AccessInvalid | AccessDenied
 
 /** removing a draft that never ran; anything else is archived, not deleted */
 export type DeleteBatchError = BatchNotFound | BatchStatusInvalid | AccessDenied

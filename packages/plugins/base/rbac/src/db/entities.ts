@@ -225,6 +225,25 @@ export const RoleGrant = defineEntity({
     roleId: p.uuid(),
     orgNodeId: p.uuid().nullable(),
     coverage: p.string().length(16).nullable(),
+    /**
+     * The thing this authority is confined to, if it is confined to one.
+     *
+     * Opaque on purpose: three strings that mean nothing here. A consumer that
+     * owns some kind of object can ask for authority scoped to one of its
+     * own - "assessment / batch / <uuid>" - without this plugin learning what
+     * an assessment is, and without a foreign key that would make its table
+     * depend on one. A grant that names a resource confers nothing outside it:
+     * every general question filters these rows out.
+     */
+    resourceNamespace: p.string().length(63).nullable(),
+    resourceType: p.string().length(63).nullable(),
+    resourceId: p.uuid().nullable(),
+    validFrom: p.datetime().nullable(),
+    validUntil: p.datetime().nullable(),
+    /** withdrawn rather than deleted: who could do what, and until when, is history */
+    revokedAt: p.datetime().nullable(),
+    revokedBy: p.uuid().nullable(),
+    createdBy: p.uuid().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
@@ -234,19 +253,39 @@ export const RoleGrant = defineEntity({
       name: 'chk_role_grants_anchor',
       expression: '(org_node_id IS NULL) = (coverage IS NULL)',
     },
+    // all three parts of a resource, or none of them: half a reference points
+    // at nothing and would silently widen the grant
+    {
+      name: 'chk_role_grants_resource',
+      expression: `num_nonnulls(resource_namespace, resource_type, resource_id) IN (0, 3)`,
+    },
+    {
+      name: 'chk_role_grants_validity',
+      expression: 'valid_from IS NULL OR valid_until IS NULL OR valid_from < valid_until',
+    },
   ],
   indexes: [
     // one grant per (user, role, anchor); the partial index covers the
     // tenant-wide case, where a null node would defeat a plain unique index
+    // One live grant per (user, role, anchor, resource). Revoked rows are
+    // excluded: a withdrawn authority is history, and history must not stop
+    // the same authority being given again.
     {
       name: 'uq_role_grants_anchored',
-      expression:
-        'create unique index uq_role_grants_anchored on role_grants (tenant_id, user_id, role_id, org_node_id, coverage) where org_node_id is not null',
+      expression: `create unique index uq_role_grants_anchored on role_grants
+        (tenant_id, user_id, role_id, org_node_id, coverage, coalesce(resource_id, '00000000-0000-0000-0000-000000000000'::uuid))
+        where org_node_id is not null and revoked_at is null`,
     },
     {
       name: 'uq_role_grants_tenant_wide',
-      expression:
-        'create unique index uq_role_grants_tenant_wide on role_grants (tenant_id, user_id, role_id) where org_node_id is null',
+      expression: `create unique index uq_role_grants_tenant_wide on role_grants
+        (tenant_id, user_id, role_id, coalesce(resource_id, '00000000-0000-0000-0000-000000000000'::uuid))
+        where org_node_id is null and revoked_at is null`,
+    },
+    {
+      name: 'idx_role_grants_resource',
+      expression: `create index idx_role_grants_resource on role_grants
+        (tenant_id, resource_namespace, resource_type, resource_id) where resource_id is not null`,
     },
     {
       name: 'idx_role_grants_tenant_user',

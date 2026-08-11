@@ -546,7 +546,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             sql`select count(*)::text as count from batch_participants where batch_id = ${batch.id}`,
           ).pipe(Effect.map((rows) => Number(one<{ count: string }>(rows).count)))
 
-        // a draft has promised nothing and enrolled nobody
+        // a draft has promised nothing, but its roster exists: it was drawn
+        // when the batch was created, so somebody can check it before it runs
         const asDraft = {
           status: (yield* assessment.getBatch(f.tenant, batch.id, f.principal)).status,
           roster: yield* rosterSize(),
@@ -590,14 +591,109 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
       }),
     )
     const { asDraft, committed, whileCommitted, withdrawn, tooEarly, afterRunning } = ok(exit)
-    expect(asDraft).toEqual({ status: 'draft', roster: 0 })
+    expect(asDraft.status).toBe('draft')
+    expect(asDraft.roster).toBeGreaterThan(0)
     expect(committed.status).toBe('active')
-    expect(committed.roster).toBeGreaterThan(0)
+    expect(committed.roster).toBe(asDraft.roster)
     expect(tagOf(whileCommitted)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
-    // back to a draft, with the roster it had never really needed
-    expect(withdrawn).toEqual({ status: 'draft', roster: 0 })
+    // back to a draft, and the roster stays: the promise was released, not
+    // the preparation
+    expect(withdrawn).toEqual({ status: 'draft', roster: asDraft.roster })
     expect(tagOf(tooEarly)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
     expect(tagOf(afterRunning)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
+  })
+
+  it('accepts what the tenant offers when the batch is created, and no more after', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('acceptance')
+        const assessment = yield* Assessment
+        // a tutor with two of the capabilities a batch may carry
+        const role = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode)
+            values (${f.tenant}, 'tutor', 'Tutor', 'org', 'active', 'explicit') returning id`),
+        ).id
+        const permissionId = (code: string) =>
+          Effect.map(
+            runSql(sql`select id from permissions where code = ${code}`),
+            (result) => one<{ id: string }>(result).id,
+          )
+        const carry = (code: string) =>
+          Effect.gen(function* () {
+            const id = yield* permissionId(code)
+            yield* runSql(sql`insert into role_permissions (tenant_id, role_id, permission_id)
+              values (${f.tenant}, ${role}, ${id})`)
+          })
+        yield* carry('assessment.review.process')
+        yield* carry('assessment.entry.proxy')
+        const tutor = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Tutor', ${f.teacherType}, ${f.gradeA}) returning id`),
+        ).id
+        const assignment = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${tutor}, ${role}, ${f.gradeA}, 'subtree') returning id`),
+        ).id
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Acceptance',
+            scopeNodeIds: [f.gradeA],
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            userTypeIds: [f.studentType],
+          },
+          f.principal,
+        )
+        // the batch took the tutor's two capabilities on when it was created
+        const atCreation = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+
+        // the tenant now widens the role and narrows the assignment's reach in
+        // one go: a capability added, a capability taken away
+        yield* carry('assessment.publication.manage')
+        yield* runSql(sql`
+          delete from role_permissions rp using permissions p
+          where p.id = rp.permission_id and rp.role_id = ${role}
+            and p.code = 'assessment.entry.proxy'`)
+        const afterTenantEdit = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+        const plan = yield* assessment.previewAccessSync(f.tenant, batch.id, f.principal)
+
+        // taking one back is this batch's own decision, and it outlives a sync
+        yield* assessment.setAccessDeny(
+          f.tenant,
+          batch.id,
+          { userId: tutor, permission: 'assessment.review.process', denied: true },
+          f.principal,
+        )
+        const afterDeny = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+        const afterSync = yield* assessment.applyAccessSync(f.tenant, batch.id, f.principal)
+
+        // and revoking the assignment takes everything it carried with it
+        yield* runSql(sql`update role_grants set revoked_at = now() where id = ${assignment}`)
+        const afterRevoke = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+
+        return { atCreation, afterTenantEdit, plan, afterDeny, afterSync, afterRevoke, tutor }
+      }),
+    )
+    const { atCreation, afterTenantEdit, plan, afterDeny, afterSync, afterRevoke, tutor } = ok(exit)
+    const of = (access: { staff: readonly { userId: string; effective: readonly string[] }[] }) =>
+      access.staff.find((row) => row.userId === tutor)?.effective ?? []
+
+    expect(of(atCreation)).toEqual(['assessment.entry.proxy', 'assessment.review.process'])
+    // withdrawing takes effect at once; widening does not arrive on its own
+    expect(of(afterTenantEdit)).toEqual(['assessment.review.process'])
+    expect(plan.widened.flatMap((row) => row.permissions)).toEqual([
+      'assessment.publication.manage',
+    ])
+    expect(plan.lapsed.flatMap((row) => row.permissions)).toEqual(['assessment.entry.proxy'])
+    expect(of(afterDeny)).toEqual([])
+    // the synchronisation accepts the new capability, and leaves the refusal
+    expect(of(afterSync)).toEqual(['assessment.publication.manage'])
+    expect(of(afterRevoke)).toEqual([])
   })
 
   it('reopens an archived batch into a new phase, and says why in the record', async () => {
@@ -992,29 +1088,12 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
         yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
 
-        // one student holds submit and create through a role; the other holds nothing
-        const role = one<{ id: string }>(
-          yield* runSql(sql`
-            insert into roles (tenant_id, code, name, kind, status, permission_mode)
-            values (${f.tenant}, 'student', 'Student', 'tenant', 'active', 'explicit') returning id`),
-        ).id
-        for (const code of ['assessment.entry.submit', 'assessment.entry.create']) {
-          const permission = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into permissions (code, plugin, name, target_kind)
-              values (${code}, 'assessment', ${code}, 'tenant')
-              on conflict (code) do update set code = excluded.code returning id`),
-          ).id
-          yield* runSql(sql`
-            insert into role_permissions (tenant_id, role_id, permission_id)
-            values (${f.tenant}, ${role}, ${permission})`)
-        }
-        yield* runSql(sql`
-          insert into role_grants (tenant_id, user_id, role_id)
-          values (${f.tenant}, ${f.s1}, ${role})`)
-
+        // A participant needs no grant of any kind: what makes them one is the
+        // roster, drawn when the batch was created. Somebody outside the units
+        // this batch faces is on nobody's roster and can do nothing here,
+        // whatever the tenant thinks of them in general.
         const holder: Principal = { tenantId: f.tenant, userId: f.s1, sessionId: 's' }
-        const stranger: Principal = { tenantId: f.tenant, userId: f.s2, sessionId: 's' }
+        const stranger: Principal = { tenantId: f.tenant, userId: f.s3, sessionId: 's' }
         return {
           allowed: yield* assessment.authorizeEntryAction(
             holder,
