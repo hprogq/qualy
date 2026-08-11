@@ -65,6 +65,7 @@ export function renderScreen({
   client,
   registry,
   children,
+  routes,
   route = '/',
   path,
   // headless chromium reports en-US, so a test that wants translated copy
@@ -73,7 +74,15 @@ export function renderScreen({
 }: {
   client: FakeClient
   registry?: ComponentRegistry
-  children: ReactNode
+  children?: ReactNode
+  /**
+   * More than one screen, mounted at their real paths.
+   *
+   * A link from one page to another only leads anywhere if the destination is
+   * a route, so a test about navigation mounts every page it can reach rather
+   * than the one it starts on.
+   */
+  routes?: { path: string; element: ReactNode }[]
   route?: string
   path?: string
   locale?: 'zh-CN' | 'en-US'
@@ -83,7 +92,17 @@ export function renderScreen({
     <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
       <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
         <MemoryRouter initialEntries={[route]}>
-          {path ? <RouteHost path={path}>{children}</RouteHost> : children}
+          {routes ? (
+            <Routes>
+              {routes.map((entry) => (
+                <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
+              ))}
+            </Routes>
+          ) : path ? (
+            <RouteHost path={path}>{children}</RouteHost>
+          ) : (
+            children
+          )}
         </MemoryRouter>
       </RuntimeProvider>
     </I18nProvider>,

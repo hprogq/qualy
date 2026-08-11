@@ -205,6 +205,7 @@ const i18n = definePluginMessages({
 
     // ------------------------------------------------------------------
     // the stage plan
+    sectionsLabel: { id: 'assessment/batch/sections', defaultMessage: 'Batch sections' },
     tabPhases: { id: 'assessment/phase/tab', defaultMessage: 'Stages' },
     tabRoster: { id: 'assessment/roster/tab', defaultMessage: 'Participants' },
     phasesHint: {

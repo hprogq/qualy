@@ -61,6 +61,7 @@ export default {
     '归档后批次将永久锁定：结果仍可查看，所有内容不可再修改。',
   'assessment/batch/draft-banner': '批次尚未激活。完成阶段安排后激活，将按所选范围生成参评名单。',
 
+  'assessment/batch/sections': '批次内容',
   'assessment/phase/tab': '阶段安排',
   'assessment/roster/tab': '参评人员',
   'assessment/phase/hint':

@@ -8,7 +8,9 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
-const BatchAdminPage = (await components['assessment/BatchAdminPage']!()).default
+const BatchListPage = (await components['assessment/BatchListPage']!()).default
+const BatchPhasesPage = (await components['assessment/BatchPhasesPage']!()).default
+const BatchParticipantsPage = (await components['assessment/BatchParticipantsPage']!()).default
 
 // What a service test cannot see: that a plan can be built with no template
 // at all, that the two template kinds stay in their own pickers and both stay
@@ -130,13 +132,25 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   ...over,
 })
 
-const screen = (over: Stubs = {}, route = `/assessment/batches?batch=${BATCH_ID}`) =>
+// the batch pages as the manifest carries them: a link between them resolves
+// through this, the same way it does in the running application
+const PAGES = [
+  { id: 'assessment/batches', path: '/assessment/batches' },
+  { id: 'assessment/batch-phases', path: '/assessment/batches/:batchId/phases' },
+  { id: 'assessment/batch-participants', path: '/assessment/batches/:batchId/participants' },
+].map((page) => ({ ...page, component: page.id, layout: 'admin' }))
+
+const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phases`) =>
   renderScreen({
     client: fakeClient({
-      app: { getManifest: () => Effect.succeed(emptyManifest()) },
+      app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: assessmentStubs(over),
     }),
-    children: <BatchAdminPage />,
+    routes: [
+      { path: '/assessment/batches', element: <BatchListPage /> },
+      { path: '/assessment/batches/:batchId/phases', element: <BatchPhasesPage /> },
+      { path: '/assessment/batches/:batchId/participants', element: <BatchParticipantsPage /> },
+    ],
     route,
   })
 
@@ -201,10 +215,10 @@ describe('the batch list', () => {
     screen({}, '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
 
-    await page.getByRole('button', { name: '2026 春季综测' }).click()
+    await page.getByRole('link', { name: '2026 春季综测' }).click()
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
 
-    await page.getByRole('button', { name: '全部批次' }).click()
+    await page.getByRole('link', { name: '全部批次' }).click()
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
   })
 })
@@ -419,7 +433,7 @@ describe('the stage plan', () => {
 describe('the participants tab', () => {
   it('says the list does not exist yet while the batch is a draft', async () => {
     screen()
-    await page.getByRole('tab', { name: '参评人员' }).click()
+    await page.getByRole('link', { name: '参评人员' }).click()
     await expect
       .element(page.getByText('批次激活时，参评名单会根据批次设置自动生成。'))
       .toBeVisible()
@@ -464,7 +478,7 @@ describe('the participants tab', () => {
         }),
     })
 
-    await page.getByRole('tab', { name: '参评人员' }).click()
+    await page.getByRole('link', { name: '参评人员' }).click()
 
     // an arrival is a question, and the answer carries the warning that
     // matters: they are already counted somewhere else

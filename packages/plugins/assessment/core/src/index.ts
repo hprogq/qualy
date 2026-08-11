@@ -52,7 +52,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batches',
     path: '/assessment/batches',
-    component: Ui.react('./client/BatchAdminPage.tsx'),
+    component: Ui.react('./client/BatchListPage.tsx'),
     layout: ADMIN_SHELL,
     visibility: permissionOf('assessment.batch.manage'),
     navigation: {
@@ -60,6 +60,30 @@ const plugin = Plugin.define(
       order: 10,
       group: 'assessment/main',
     },
+  }),
+  // One batch, and its sections. The address names the batch and which of its
+  // sections is open, so a reload and a shared link both land where the
+  // reader was; the batch on its own sends them to the first section.
+  Ui.page({
+    id: 'assessment/batch',
+    path: '/assessment/batches/:batchId',
+    component: Ui.react('./client/BatchPage.tsx'),
+    layout: ADMIN_SHELL,
+    visibility: permissionOf('assessment.batch.manage'),
+  }),
+  Ui.page({
+    id: 'assessment/batch-phases',
+    path: '/assessment/batches/:batchId/phases',
+    component: Ui.react('./client/BatchPhasesPage.tsx'),
+    layout: ADMIN_SHELL,
+    visibility: permissionOf('assessment.batch.manage'),
+  }),
+  Ui.page({
+    id: 'assessment/batch-participants',
+    path: '/assessment/batches/:batchId/participants',
+    component: Ui.react('./client/BatchParticipantsPage.tsx'),
+    layout: ADMIN_SHELL,
+    visibility: permissionOf('assessment.batch.manage'),
   }),
   Api.group(assessmentApiGroup, assessmentApiHandlers),
   Plugin.layer(serviceLayer),

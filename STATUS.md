@@ -2752,6 +2752,37 @@ tools/tests/catalogs.test.ts` 7 全绿;`pnpm build` 通过;dev 实测:桌面/暗
 才浮出「在此添加阶段」——**显隐由 state 而非 `:hover` 决定**,因为插入一行后指针没动、CSS 的悬停态
 会滞留;点击后同时 `blur()`,`focus-within` 才不会把它钉住。移动端卡片改三段式。
 
+### 批次的地址栏说清楚它在哪(2026-08-11)
+
+`?batch=<id>` 退场,批次与它的分区都进 path:
+
+```
+/assessment/batches                              批次列表
+/assessment/batches/:batchId                     → 重定向到 phases(replace)
+/assessment/batches/:batchId/phases              阶段安排
+/assessment/batches/:batchId/participants        参评人员
+```
+
+「阶段安排 / 参评人员」不再是 Tabs 的本地 state,而是**批次下的两个子页面**——外观仍是分段控件,
+实现是两条 `PageLink`(`aria-current="page"` 标出当前项),刷新、复制链接、前进后退都自然工作。
+批次名也成了真链接,可以中键新开标签页。
+
+页面按此拆开:`BatchListPage.tsx`(列表)、`batch/BatchScreen.tsx`(批次的公共外壳:标题、状态、
+批次级操作、分区导航、确认框)、`BatchPhasesPage.tsx` / `BatchParticipantsPage.tsx`(各自的分区)、
+`BatchPage.tsx`(裸 id 的重定向)、`batch/StatusBadge.tsx`(列表与详情同一个状态徽章);
+原 `BatchAdminPage.tsx`(482 行、两个屏幕挤在一起)删除。
+
+**没有进 URL 的**:编辑模式、排期对话框、开放操作抽屉——它们是未提交的本地事务,刷新后草稿已经
+不在,恢复一个 `editing=true` 没有意义。列表的搜索与筛选目前仍是本地 state,按同一条原则它们
+将来更适合放 query,但这次不改。
+
+每个分区各自挂载一次批次外壳,所以**外壳不再做入场动画**——否则每次切分区,标题与按钮都要淡入上移
+一遍,宣告一个并没有发生的变化;只有分区内容 `Reveal key={section}` 淡入。批次详情查询给 30s
+staleTime,切分区不再是一次往返(改动批次的操作本就显式失效这个 key,不等这个钟)。
+
+测试侧:harness 新增 `routes` 选项(一次挂载多条真实路由),批次浏览器套件据此覆盖
+「列表 → 阶段 → 参评人员 → 返回列表」的真实跳转。
+
 ### Dialog / AlertDialog 重做(2026-08-11)
 
 按 shadcn base-nova 的结构重排(底层仍是 Radix,没有引入 @base-ui/react):`DialogContent` 改为
