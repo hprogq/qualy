@@ -357,6 +357,10 @@ export function UiSlot({
   const registry = useRuntime().registry
   const items = manifest.slots[token.key] ?? []
   if (items.length === 0) return <>{fallback ?? null}</>
+  // While the contribution's chunk is in flight the fallback holds its place.
+  // Rendering nothing there is what made a table of names appear a beat after
+  // the rest of the row and push everything sideways when it arrived: the
+  // fallback is the same person drawn the plain way, so the swap is invisible.
   return (
     <>
       {items.map((item) => {
@@ -369,7 +373,7 @@ export function UiSlot({
             kind="slot"
             component={Renderer}
             props={{ context }}
-            loading={null}
+            loading={fallback ?? null}
             fallback={() => null}
             missing={null}
           />

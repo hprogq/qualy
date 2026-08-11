@@ -1,10 +1,14 @@
 import type { ReactNode } from 'react'
+import { cn } from '../lib/cn.ts'
 import { Avatar, AvatarFallback } from './avatar.tsx'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from './hover-card.tsx'
 
-// A person in a table row: avatar, name, one secondary line. Given children,
-// hovering (or focusing) the cell opens a card with the fuller story. All
-// words arrive from the caller.
+// A person in a table row: avatar, name, one secondary line, and nothing else.
+//
+// It used to grow a hover card of its own when given children, which is what
+// somebody wanting the fuller story reached for - and then iam contributed a
+// person card that does exactly that, knowing who may see what. Two ways to
+// answer one question is one too many: this stays the way a person is drawn,
+// and what happens when you point at one belongs to whoever owns people.
 
 /** latin names shrink to initials, cjk names keep their first characters */
 export const initialsOf = (name: string): string => {
@@ -26,14 +30,14 @@ export const initialsOf = (name: string): string => {
 export function PersonCell({
   name,
   secondary,
-  children,
+  className,
 }: {
   name: string
   secondary?: ReactNode
-  children?: ReactNode
+  className?: string
 }) {
-  const core = (
-    <span className="flex min-w-0 items-center gap-2.5">
+  return (
+    <span className={cn('flex min-w-0 items-center gap-2.5', className)}>
       <Avatar className="rounded-lg">
         <AvatarFallback className="rounded-lg bg-primary text-xs font-medium text-primary-foreground">
           {initialsOf(name)}
@@ -46,21 +50,5 @@ export function PersonCell({
         )}
       </span>
     </span>
-  )
-  if (children === undefined) return core
-  return (
-    <HoverCard>
-      <HoverCardTrigger asChild>
-        <button
-          type="button"
-          className="rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {core}
-        </button>
-      </HoverCardTrigger>
-      <HoverCardContent align="start" className="w-72">
-        {children}
-      </HoverCardContent>
-    </HoverCard>
   )
 }

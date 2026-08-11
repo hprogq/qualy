@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -29,6 +29,8 @@ import type { AccessSelection, AccessSource, AccessSubject } from './model.ts'
 // what holds today, and everything the organization has changed since waits
 // in the notice above until somebody decides on it.
 
+const PAGE_SIZE = 25
+
 export function AccessPanel({ batchId }: { batchId: string }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -41,7 +43,24 @@ export function AccessPanel({ batchId }: { batchId: string }) {
   const [merging, setMerging] = useState(false)
   const [addingStaff, setAddingStaff] = useState(false)
 
-  const access = useQuery(query.assessment.listAccess.queryOptions({ params: { batchId } }))
+  // keyset paging walked by page: each cursor is kept as it is handed out,
+  // so going back is one we already hold
+  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
+  const [at, setAt] = useState(0)
+  const access = useQuery(
+    query.assessment.listAccess.queryOptions({
+      params: { batchId },
+      query: {
+        ...(cursors[at] !== undefined ? { cursor: cursors[at] } : {}),
+        limit: String(PAGE_SIZE),
+      },
+    }),
+  )
+  const nextCursor = access.data?.nextCursor ?? null
+  useEffect(() => {
+    if (nextCursor === null || cursors[at + 1] === nextCursor) return
+    setCursors((current) => [...current.slice(0, at + 1), nextCursor])
+  }, [nextCursor, at, cursors])
   // the counts only: what changed is read a page at a time inside the dialog
   // that offers it, so this page never renders the list
   const summary = useQuery(
@@ -213,6 +232,27 @@ export function AccessPanel({ batchId }: { batchId: string }) {
             </div>
           )}
         </AsyncSection>
+
+        {(at > 0 || nextCursor !== null) && (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={at === 0}
+              onClick={() => setAt((page) => Math.max(0, page - 1))}
+            >
+              {format(m.previousPage)}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={nextCursor === null}
+              onClick={() => setAt((page) => page + 1)}
+            >
+              {format(m.nextPage)}
+            </Button>
+          </div>
+        )}
       </section>
 
       {subject && (

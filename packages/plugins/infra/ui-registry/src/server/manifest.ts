@@ -3,8 +3,10 @@ import {
   componentKey,
   isVisibleTo,
   navigationCollections,
+  navigationGroups,
   primaryNavigation,
   type NamespacedId,
+  type NavigationGroup,
   type NavigationItem,
   type ResolvedNavigationItem,
   type UiVisibility,
@@ -153,6 +155,39 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
           }
         }
         ;(projectedCollections[item.key] ??= []).push(value)
+      }
+
+      // A section nothing files under is not a section.
+      //
+      // Groups survive their own visibility check, which asks whether the
+      // reader may see the section - not whether anything is in it. So a
+      // student with no page under "Organization & access" was still told the
+      // section exists, and the shell had a heading with nothing beneath it.
+      // Its name is a small disclosure too: the reader learns what parts of
+      // the product they are being kept out of.
+      const filed = new Set<NamespacedId>(
+        navigationCollections.flatMap((key) =>
+          (projectedCollections[key] ?? []).flatMap((entry) => {
+            const group = (entry as NavigationItem).group
+            return group === undefined ? [] : [group]
+          }),
+        ),
+      )
+      const groups = projectedCollections[navigationGroups.key]
+      if (groups) {
+        // a group may be filed under another one, and a parent whose only
+        // child is empty is empty as well - resolved by walking up the chain
+        const byId = new Map(groups.map((group) => [(group as NavigationGroup).id, group]))
+        for (const id of [...filed]) {
+          let step = byId.get(id) as NavigationGroup | undefined
+          while (step?.parent !== undefined) {
+            filed.add(step.parent)
+            step = byId.get(step.parent) as NavigationGroup | undefined
+          }
+        }
+        projectedCollections[navigationGroups.key] = groups.filter((group) =>
+          filed.has((group as NavigationGroup).id),
+        )
       }
 
       // The component that crosses the wire is the derived registry key,

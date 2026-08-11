@@ -65,6 +65,7 @@ import {
   insertPhase,
   insertLifecycleEvent,
   accessSources,
+  accessSubjectPage,
   acceptAccessSource,
   acceptPermissions,
   accessDenies,
@@ -470,8 +471,12 @@ export class Assessment extends Context.Service<
     readonly listAccess: (
       tenantId: string,
       batchId: string,
+      page: { cursor?: string; limit?: string },
       as: Principal,
-    ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessDenied>
+    ) => Effect.Effect<
+      BatchAccessView & { nextCursor: string | null },
+      BatchNotFound | AccessDenied | BadRequest
+    >
     /** what the organization now offers that this batch has not accepted */
     readonly previewAccessSync: (
       tenantId: string,
@@ -1217,9 +1222,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const readAccess = Effect.fn('Assessment.readAccess')(function* (
     tenantId: string,
     batchId: string,
+    subjectIds?: readonly string[],
   ) {
     const [sources, denies, assignments] = yield* Effect.all([
-      dieQuery(withDb(accessSources(tenantId, batchId))),
+      dieQuery(withDb(accessSources(tenantId, batchId, subjectIds))),
       dieQuery(withDb(accessDenies(tenantId, batchId))),
       applicableAssignments(tenantId, batchId),
     ])
@@ -1296,7 +1302,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     batchId: string,
     userId: string,
   ) {
-    const access = yield* readAccess(tenantId, batchId)
+    const access = yield* readAccess(tenantId, batchId, [userId])
     const subject = access.staff.find((row) => row.userId === userId)
     return new Set(subject?.effective ?? [])
   })
@@ -1664,9 +1670,34 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
-    listAccess: Effect.fn('Assessment.listAccess')(function* (tenantId, batchId, as) {
+    listAccess: Effect.fn('Assessment.listAccess')(function* (tenantId, batchId, page, as) {
       yield* requireBatchAdministration(tenantId, batchId, as)
-      return asSeenBy(yield* readAccess(tenantId, batchId), as)
+      const key = readQueryCursor(page.cursor, `access:${batchId}`, ['text', 'uuid'])
+      if (key === null) return yield* cursorUnusable()
+      const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+      // one more than asked for, which is how the page knows there is another
+      const found = yield* dieQuery(
+        withDb(
+          accessSubjectPage(tenantId, batchId, {
+            ...(key !== undefined ? { after: key } : {}),
+            limit: size + 1,
+          }),
+        ),
+      )
+      const subjects = found.slice(0, size)
+      const access = yield* readAccess(
+        tenantId,
+        batchId,
+        subjects.map((subject) => subject.userId),
+      )
+      const last = subjects.at(-1)
+      return {
+        ...asSeenBy(access, as),
+        nextCursor:
+          found.length > size && last !== undefined
+            ? encodeQueryCursor(`access:${batchId}`, [last.displayName, last.userId])
+            : null,
+      }
     }),
 
     previewAccessSync: Effect.fn('Assessment.previewAccessSync')(
@@ -2894,10 +2925,10 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
     )
     .handle(
       'listAccess',
-      Effect.fn('assessment.listAccess.handler')(function* ({ params }) {
+      Effect.fn('assessment.listAccess.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.listAccess(principal.tenantId, params.batchId, principal)
+        return yield* assessment.listAccess(principal.tenantId, params.batchId, query, principal)
       }),
     )
     .handle(
@@ -3072,7 +3103,6 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return {
           timeline: timeline.map((entry) => ({
             phaseId: entry.phaseId,
-            phaseKey: entry.phaseKey,
             displayName: entry.displayName,
             description: entry.description,
             status: entry.status,

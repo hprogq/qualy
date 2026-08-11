@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -25,6 +25,8 @@ import { assessmentApi } from './api.ts'
 
 type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']
 
+const PAGE_SIZE = 25
+
 export function RosterPanel({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -35,12 +37,23 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const [importing, setImporting] = useState(false)
   const [adding, setAdding] = useState(false)
 
+  // keyset paging walked by page, the same way the access list does it
+  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
+  const [at, setAt] = useState(0)
   const participants = useQuery(
     query.assessment.listParticipants.queryOptions({
       params: { batchId: batch.id },
-      query: {},
+      query: {
+        ...(cursors[at] !== undefined ? { cursor: cursors[at] } : {}),
+        limit: String(PAGE_SIZE),
+      },
     }),
   )
+  const nextCursor = participants.data?.nextCursor ?? null
+  useEffect(() => {
+    if (nextCursor === null || cursors[at + 1] === nextCursor) return
+    setCursors((current) => [...current.slice(0, at + 1), nextCursor])
+  }, [nextCursor, at, cursors])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   const onError = (error: unknown) => setFailure(formatError(error))
@@ -193,6 +206,27 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
             </div>
           )}
         </AsyncSection>
+
+        {(at > 0 || nextCursor !== null) && (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={at === 0}
+              onClick={() => setAt((page) => Math.max(0, page - 1))}
+            >
+              {format(m.previousPage)}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={nextCursor === null}
+              onClick={() => setAt((page) => page + 1)}
+            >
+              {format(m.nextPage)}
+            </Button>
+          </div>
+        )}
       </section>
 
       <AddPeopleDialog

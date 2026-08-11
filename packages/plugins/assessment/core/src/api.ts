@@ -131,9 +131,11 @@ const planWarning = Schema.Struct({
   index: Schema.optional(Schema.Number),
 })
 
+// The plan as a reader sees it. No phaseKey: `stage-7` is the plan's internal
+// handle for a row, meaningless to anybody reading a timeline, and a field
+// nothing uses is a field somebody eventually starts depending on.
 const timelineEntry = Schema.Struct({
   phaseId: Schema.String,
-  phaseKey: Schema.String,
   displayName: Schema.String,
   status: Schema.Literals(['ended', 'current', 'future']),
   description: Schema.String,
@@ -324,8 +326,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // what somebody generally does, and this is what this batch accepted of it.
     HttpApiEndpoint.get('listAccess', '/assessment/batches/:batchId/access', {
       params: Schema.Struct({ batchId: id }),
-      success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
-      error: [BatchNotFound, AccessDenied],
+      query: Schema.Struct(pageQuery),
+      // paged over people, not over the rows behind them: a limit on sources
+      // would show one of somebody's two roles and call it their standing
+      success: Schema.Struct({
+        staff: Schema.Array(accessSubjectView),
+        nextCursor: Schema.NullOr(Schema.String),
+      }),
+      error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(

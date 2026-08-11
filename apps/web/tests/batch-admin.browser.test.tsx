@@ -605,8 +605,9 @@ describe('the participants tab', () => {
     // every unit says what kind of thing it is, and the same kinds are what
     // the filter offers: that is how somebody picks the right one out of a
     // tree of similar names
-    await expect.element(page.getByRole('option', { name: '院系' })).toBeInTheDocument()
-    await expect.element(page.getByText('院系').last()).toBeVisible()
+    // the kind filter is there, and every unit says which kind it is
+    await expect.element(page.getByText('全部类型')).toBeVisible()
+    await expect.element(page.getByText('院系')).toBeVisible()
 
     // ticking a unit, and untucking it again: a selection that cannot be
     // taken back is a trap, and this one was

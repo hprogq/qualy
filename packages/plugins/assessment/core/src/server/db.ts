@@ -642,7 +642,45 @@ export interface AccessSourceRow {
 }
 
 /** what this batch has accepted, with the ceiling each source carries */
-export const accessSources = (tenantId: string, batchId: string) =>
+/**
+ * One page of the people who may work on this batch, by name.
+ *
+ * The rows behind them are per source and per permission, so the page has to
+ * be over subjects: a limit on sources would cut somebody in half and show
+ * one of their two roles.
+ */
+export const accessSubjectPage = (
+  tenantId: string,
+  batchId: string,
+  page: { after?: readonly string[]; limit: number },
+) =>
+  db
+    .query((k) => {
+      let query = k
+        .selectFrom('BatchAccessSource as s')
+        .innerJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 's.tenantId').onRef('u.id', '=', 's.subjectId'),
+        )
+        .select(['s.subjectId as userId', 'u.displayName'])
+        .distinct()
+        .where('s.tenantId', '=', tenantId)
+        .where('s.batchId', '=', batchId)
+        .orderBy('u.displayName')
+        .orderBy('s.subjectId')
+        .limit(page.limit)
+      if (page.after !== undefined) {
+        const [name, id] = [page.after[0] ?? '', page.after[1] ?? '']
+        query = query.where(sql<boolean>`(u.display_name, s.subject_id) > (${name}, ${id}::uuid)`)
+      }
+      return query.execute()
+    })
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => ({ userId: row.userId as string, displayName: row.displayName })),
+      ),
+    )
+
+export const accessSources = (tenantId: string, batchId: string, subjectIds?: readonly string[]) =>
   db
     .query((k) =>
       k
@@ -656,6 +694,9 @@ export const accessSources = (tenantId: string, batchId: string) =>
         ])
         .where('s.tenantId', '=', tenantId)
         .where('s.batchId', '=', batchId)
+        .$if(subjectIds !== undefined, (query) =>
+          query.where('s.subjectId', 'in', (subjectIds ?? []) as string[]),
+        )
         .orderBy('s.acceptedAt')
         .execute(),
     )

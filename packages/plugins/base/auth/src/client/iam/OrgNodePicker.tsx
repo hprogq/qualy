@@ -8,7 +8,8 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { Badge } from '@qualy/ui/badge'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { TreeSelect } from '@qualy/ui/tree-select'
 import { authApi } from '../api.ts'
 import { authMessages as m } from '../i18n.ts'
@@ -25,6 +26,9 @@ import { authMessages as m } from '../i18n.ts'
 // ticked year leaves the other classes ticked (the arithmetic lives in
 // @qualy/ui's tree-selection and is tested there). Selection is always a set:
 // one person over two classes and two people over one are the same errand.
+
+// a select cannot hold the empty string as a value, so "any" needs a word
+const ANY = 'any'
 
 export default function OrgNodePicker({ context }: { context: OrgNodePickerContext }) {
   const query = useApiQuery(authApi)
@@ -56,6 +60,9 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
   const kindOf = (node: { orgTypeId?: string }) =>
     node.orgTypeId === undefined ? undefined : typeNames.get(node.orgTypeId)
 
+  // supplied units arrive with whoever opened the picker, and only they know
+  // whether they are still fetching them
+  const loading = supplied ? context.loading === true : options.isPending
   const filtering = search.trim() !== '' || orgTypeId !== ''
   const matches = nodes.filter(
     (node) =>
@@ -91,24 +98,35 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
           className="h-8 min-w-40 flex-1"
         />
         {typeNames.size > 0 && (
-          <NativeSelect
-            value={orgTypeId}
-            onChange={(event) => setOrgTypeId(event.target.value)}
-            className="h-8 w-auto"
-            aria-label={format(m.nodeKind)}
+          <Select
+            value={orgTypeId === '' ? ANY : orgTypeId}
+            onValueChange={(next) => setOrgTypeId(next === ANY ? '' : next)}
           >
-            <option value="">{format(m.nodeAnyKind)}</option>
-            {[...typeNames.entries()].map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </NativeSelect>
+            <SelectTrigger size="sm" className="w-auto" aria-label={format(m.nodeKind)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>{format(m.nodeAnyKind)}</SelectItem>
+              {[...typeNames.entries()].map(([id, name]) => (
+                <SelectItem key={id} value={id}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
-      <div className="max-h-64 overflow-auto rounded-md border p-1">
-        {filtering ? (
+      <div className="h-64 overflow-auto rounded-md border p-1">
+        {loading ? (
+          // a fixed height and a skeleton, because the alternative is an
+          // empty box that grows to a tree and shoves the dialog around
+          <div className="flex flex-col gap-2 p-2">
+            <Skeleton className="h-6 w-2/3" />
+            <Skeleton className="h-6 w-1/2" />
+            <Skeleton className="h-6 w-3/5" />
+          </div>
+        ) : filtering ? (
           matches.length === 0 ? (
             <p className="p-2 text-sm text-muted-foreground">{format(m.nodeNoMatch)}</p>
           ) : (

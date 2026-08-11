@@ -645,7 +645,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.principal,
         )
         // the batch took the tutor's two capabilities on when it was created
-        const atCreation = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+        const atCreation = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
 
         // the tenant now widens the role and narrows the assignment's reach in
         // one go: a capability added, a capability taken away
@@ -654,7 +654,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           delete from role_permissions rp using permissions p
           where p.id = rp.permission_id and rp.role_id = ${role}
             and p.code = 'assessment.entry.proxy'`)
-        const afterTenantEdit = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+        const afterTenantEdit = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
         const plan = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
 
         // taking one back is this batch's own decision, and it outlives a sync
@@ -664,7 +664,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           { userId: tutor, permission: 'assessment.review.process', denied: true },
           f.principal,
         )
-        const afterDeny = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+        const afterDeny = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
         // only what was chosen: the widening is taken, and a second change
         // nobody ticked would stay where it is
         const merged = yield* assessment.applyAccessSync(
@@ -681,11 +681,11 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           },
           f.principal,
         )
-        const afterSync = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+        const afterSync = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
 
         // and revoking the assignment takes everything it carried with it
         yield* runSql(sql`update role_grants set revoked_at = now() where id = ${assignment}`)
-        const afterRevoke = yield* assessment.listAccess(f.tenant, batch.id, f.principal)
+        const afterRevoke = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
 
         return {
           atCreation,

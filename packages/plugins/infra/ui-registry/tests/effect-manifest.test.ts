@@ -12,6 +12,7 @@ import {
   definePage,
   defineSurfaces,
   headerActions,
+  navigationGroups,
   permissionOf,
   primaryNavigation,
   type UiSurfaces,
@@ -86,7 +87,7 @@ const surfaces = [
         component: reactComponent('./client/GatedPage.tsx'),
         layout: APP_SHELL,
         visibility: permissionOf('test.thing.read'),
-        navigation: { label, order: 3 },
+        navigation: { label, order: 3, group: 'test/restricted' },
       },
       // no provider ships this contract, so the page cannot be framed
       {
@@ -94,6 +95,21 @@ const surfaces = [
         component: reactComponent('./client/OrphanPage.tsx'),
         layout: 'nobody/ships-this',
         visibility: PUBLIC,
+      },
+    ],
+    collections: [
+      // a section the gated page files under, and one nothing files under
+      {
+        key: navigationGroups.key,
+        id: 'test/restricted',
+        value: { id: 'test/restricted', label, order: 1 },
+        visibility: AUTHENTICATED,
+      },
+      {
+        key: navigationGroups.key,
+        id: 'test/empty',
+        value: { id: 'test/empty', label, order: 2 },
+        visibility: AUTHENTICATED,
       },
     ],
     slots: [
@@ -197,6 +213,21 @@ describe('the manifest over the wire', () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/app/manifest`)
     const body = (await response.json()) as { pages: { id: string }[] }
     expect(body.pages.map((page) => page.id)).toContain('test/gated')
+  })
+
+  it('leaves out a section nothing files under', async () => {
+    const held = await build(viewer, ['test.thing.read'])
+    const denied = await build(viewer, [])
+    const groups = (manifest: typeof held) =>
+      (manifest.collections['app-shell/navigation-groups'] ?? []).map(
+        (group) => (group as { id: string }).id,
+      )
+
+    // the reader who can see the gated page gets the section it sits in
+    expect(groups(held)).toEqual(['test/restricted'])
+    // and the one who cannot gets neither the page nor a heading with
+    // nothing under it - the name alone says what they are kept out of
+    expect(groups(denied)).toEqual([])
   })
 
   it('encodes as the response schema it declares', async () => {

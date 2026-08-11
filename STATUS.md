@@ -3244,3 +3244,33 @@ destructive: approved)先删 `role_permissions` 的引用行再删 `permissions`
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **452/72 全绿**(新增迁移升级用例);`pnpm test:browser`
 39 全绿;`pnpm build` 通过;`prettier --check .` 干净。
+
+### 六处修补(2026-08-12)
+
+**manifest 不再下发空导航分组。** 分组自己的可见性只回答「这个读者能不能看到这个分区」,不回答「这里面还剩
+什么」,所以一个页面都看不到的学生仍被告知「组织与权限」存在。现在投影完成后再筛一遍:没有任何条目归属的
+分组直接丢掉,归属链上的父分组随子分组一起保留。分组名本身也是泄露——读者由此得知自己被挡在哪些门外。
+门禁在 effect-manifest.test:有权者拿到该分区,无权者页面与分区一并消失。
+
+**/timeline 不再回传 phaseKey。** `stage-7` 是计划给某一行起的内部把手,对读时间线的人没有意义;前端没有
+任何地方用它,而一个没人用的字段迟早会有人开始依赖。
+
+**PersonCell 与 PersonCard 去重。** 重复的其实是「指上去看更多」这件事:`PersonCell` 传 children 时会长出
+自己的 HoverCard,而 iam 的 `PersonCard` 又做了一遍——后者还知道谁有权看到什么。现在 `PersonCell` 收回成
+纯粹的画法(头像、姓名、副标题),交互层归 iam。
+
+**PersonCard 的布局闪动。** 根因不是渲染慢,是 slot 的 `loading` 是 null:契约组件的 chunk 在飞的时候那格
+什么都不画,等它到了再把整行挤开。现在 `UiSlot` 加载期间渲染 `fallback`——而 fallback 正是同一个人的朴素
+画法,所以替换是看不见的。
+
+**组织节点选择器**:①加载骨架 + 固定高度,不再从空盒子长成一棵树;②类型筛选换成 shadcn `Select`;
+③`OrgNodePickerContext` 新增 `loading`,因为「空列表」和「还没到」长得一样,而由调用方传节点时只有它知道
+自己还在取。至于「树只显示一条链」:那是**添加工作人员**第二步,节点由批次提供,而这个批次的花名册只有一名
+成员在软件2023级1班,所以链就是 学校→学院→年级→专业→班。导入对话框不传节点,拿到的是完整的树。
+
+**两张表分页。** 参评名单的接口本来就是 keyset 分页,只是前端没用;人员权限的接口原来一次返回全部——
+现在按**人**分页(`accessSubjectPage`,按姓名+id 的 keyset),因为按 source 截断会把一个人切成两半、
+只显示他两个角色中的一个。两处 UI 都是走过的翻页写法:游标发下来就记住,回上一页用的是手里已有的那个。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **453/72 全绿**;`pnpm test:browser` 39 全绿;
+`pnpm build` 通过;`prettier --check .` 干净。

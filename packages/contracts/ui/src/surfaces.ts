@@ -288,4 +288,12 @@ export interface OrgNodePickerContext {
     parentId: string | null
     orgTypeId?: string
   }[]
+  /**
+   * Whether the supplied units are still on their way.
+   *
+   * An empty list and a list that has not arrived look identical, and the
+   * second one drawn as the first is a box that grows into a tree and shoves
+   * everything below it.
+   */
+  loading?: boolean
 }

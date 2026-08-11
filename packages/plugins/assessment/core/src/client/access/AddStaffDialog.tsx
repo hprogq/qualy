@@ -126,6 +126,7 @@ export function AddStaffDialog({
                   onChange: setOrgNodeIds,
                   // the units this round covers, not the whole organization
                   nodes: units.data?.nodes ?? [],
+                  loading: units.isPending,
                 }}
                 fallback={
                   <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
