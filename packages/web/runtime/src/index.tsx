@@ -103,10 +103,25 @@ export interface RuntimeProviderProps {
   children: ReactNode
 }
 
+// How long a failed read waits before it says so.
+//
+// The library retries three times with a growing delay, which is right for a
+// screen that has no other answer to a failure. Every screen here does: a
+// failed section renders what went wrong and a retry button, so the ladder
+// only buys seven seconds of a spinner in front of a message the reader could
+// have had at once, and a refusal the server means (a 4xx, a typed domain
+// error) is not going to answer differently the third time.
+//
+// One retry is kept for the case the reader cannot see: a connection that
+// dropped between here and the server, where the second attempt genuinely may
+// succeed and nothing has been decided yet.
+const retry = (attempt: number, error: unknown) =>
+  attempt < 1 && !(typeof error === 'object' && error !== null && '_tag' in error)
+
 // the runtime owns the manifest lifecycle: loading renders nothing, failure
 // renders a retry prompt instead of a permanently blank shell
 export function RuntimeProvider({ clientFor: provided, registry, children }: RuntimeProviderProps) {
-  const [queryClient] = useState(() => new QueryClient())
+  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry } } }))
   const [runtime] = useState(() => {
     const provider = provided ?? defaultClientFor
     const utils = new WeakMap<object, unknown>()

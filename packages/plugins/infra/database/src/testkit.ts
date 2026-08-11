@@ -38,7 +38,17 @@ import {
 // rather than closed it: business suites would still be reaching past the
 // database service to a peer that reimplements it.
 
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
+// The suite builds and drops a database per test, so it is worth pointing at a
+// server that trades durability for speed - the compose stack runs one beside
+// the development database for exactly this. It stays optional: DATABASE_URL
+// alone is a working setup, just a slower one, and CI turns the same settings
+// on for the only database its job has.
+export const testDatabaseUrl =
+  process.env.QUALY_TEST_DATABASE_URL ??
+  process.env.DATABASE_URL ??
+  'postgres://qualy:qualy@localhost:5432/qualy'
+
+const baseUrl = testDatabaseUrl
 const migrationsFolder = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
 
 // Probed once per module instance rather than once per suite. Vitest isolates

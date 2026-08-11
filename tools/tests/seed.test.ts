@@ -4,8 +4,10 @@ import { Pool, type PoolClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { seed } from '../fixtures/seed.ts'
 import { resolvePluginModuleUrl } from '@qualy/assembly/host'
+import { testDatabaseUrl } from '@qualy/plugin-database/testkit'
 
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
+// the same server the testkit uses: this suite builds scratch databases too
+const baseUrl = testDatabaseUrl
 
 const available = await (async () => {
   const probe = new Pool({ connectionString: baseUrl, connectionTimeoutMillis: 1500 })

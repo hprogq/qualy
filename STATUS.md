@@ -2774,12 +2774,18 @@ false` 挡在 tsc 输出之外。详见 docs/notes/tooling.md 与 docs/agents/ef
 
 ### 测试与类型检查提速(2026-08-11)
 
-`pnpm test` **15.8s → 8.9s**(三次连跑稳定,446 全绿),`pnpm typecheck` **8.5s → 3.6s**(热)。
-①开发与 CI 的 Postgres 关掉 fsync/synchronous_commit/full_page_writes——测试 CPU 时间 155s → 72s,
-近一半原本在等磁盘确认提交;②tsc 全部带 `--incremental` 与各自的 buildinfo(node_modules/.cache),
-plugin-isolation 门禁 6.5s → 1.3s,并实测注入类型错误后热运行照报;③六个门禁各自的仓库遍历合并进
-tools/lib/walk.ts——诊断门禁的临时 fixture 与它们竞态,曾两次以 ENOENT 偶发红。
-死路已记录在 docs/notes/tooling.md(create database 不是瓶颈、threads 池无差别、--no-isolate 不值)。
+`pnpm test` **15.8s → 10.5s**,`pnpm test:browser` **14.2s → 12.5s**,`pnpm typecheck` **8.5s → 3.6s**(热)。
+①测试改跑在 compose 新加的 `postgres-test`(5433,fsync/synchronous_commit/full_page_writes 全关、
+tmpfs 无卷)上——一次运行建删约 150 个库,这些操作无论 synchronous_commit 怎么设都要刷盘,
+实测只关 synchronous_commit 收益为零;不 fsync 的集群崩溃后可能起不来,所以开发库照旧持久化,
+两者分开(testkit 认 `QUALY_TEST_DATABASE_URL`,缺了就退回 `DATABASE_URL`,只是慢一点);
+CI 只有一个库且活不过一个 job,安装后 `alter system` 关掉即可。②tsc 全部带 `--incremental` 与各自的
+buildinfo(node_modules/.cache),plugin-isolation 门禁 6.5s → 1.3s,并实测注入类型错误后热运行照报;
+③六个门禁各自的仓库遍历合并进 tools/lib/walk.ts——诊断门禁的临时 fixture 与它们竞态,曾两次以
+ENOENT 偶发红;④前端查询不再无条件重试三次(默认退避要 7 秒才肯说话,而每个区块本就有错误态与
+重试按钮),只对连接层失败重试一次——最慢的一条浏览器用例 7.0s → 0.4s。
+死路已记录在 docs/notes/tooling.md(create database 不是瓶颈、threads 池无差别、--no-isolate 不值、
+浏览器侧 isolate/fileParallelism 都无效)。
 
 **门禁(实际执行)**:`pnpm typecheck` 8.7s 零错;`pnpm test` 446/72 全绿;`pnpm test:browser`
 29 全绿;`pnpm build` 通过;`tsx tools/quality/smoke-production.ts` 五探针全过、SIGTERM 退出 0;

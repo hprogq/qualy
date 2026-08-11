@@ -1,7 +1,7 @@
 import { Effect, Exit, Scope } from 'effect'
 import { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, pgCode, postgresAvailable } from '../src/testkit.ts'
+import { createTestContext, pgCode, postgresAvailable, testDatabaseUrl } from '../src/testkit.ts'
 
 // The harness every database-backed suite now depends on, pinned here rather
 // than left to be covered sideways by the suites that use it. Each of these
@@ -10,7 +10,9 @@ import { createTestContext, pgCode, postgresAvailable } from '../src/testkit.ts'
 // surfaced three lines later as a null dereference, and teardown paths that
 // skipped the rest of teardown as soon as one step failed.
 
-const baseUrl = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
+// the server the testkit builds scratch databases on, which is not always the
+// one DATABASE_URL names
+const baseUrl = testDatabaseUrl
 
 const scratchDatabases = async () => {
   const admin = new Pool({ connectionString: baseUrl })

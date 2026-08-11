@@ -70,12 +70,17 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
 
 `pnpm test` 15.8s → **8.9s**,`pnpm typecheck` 8.5s → **3.6s**(热)。三个改动,按收益排序:
 
-1. **本地/CI 的 Postgres 关掉持久化**(`fsync=off`、`synchronous_commit=off`、
-   `full_page_writes=off`):一次全量 15.8s → 11.1s,测试 CPU 时间 155s → 72s——
-   **将近一半的测试时间花在等磁盘确认提交上**。开发库里没有崩溃后需要保留的东西:
-   schema 来自 lineage,行来自 seed。compose 里走 `command`,CI 的 service 容器不接
-   command,改为安装后 `alter system` + `pg_reload_conf()`(三项都是 sighup 级)。
-   **绝不能对任何人还想要的数据库这么做**:崩溃后是不可恢复,而不只是丢最近几笔。
+1. **测试跑在一个不做持久化的独立 Postgres 上**(`fsync=off`、`synchronous_commit=off`、
+   `full_page_writes=off`):一次全量 15.8s → 10.5s,测试 CPU 时间 155s → 72s。
+   一次运行要建、删约 150 个数据库,那些操作**无论 synchronous_commit 怎么设都要刷数据文件**
+   ——实测只关 synchronous_commit 收益为零(15.9s),收益全部来自 fsync。
+   但不 fsync 的集群崩溃后可能起不来(不是丢最近几笔,是起不来),所以它是**另一个容器**
+   (compose 的 `postgres-test`,5433,tmpfs 无卷),开发库照旧持久化;
+   testkit 认 `QUALY_TEST_DATABASE_URL`,没有就退回 `DATABASE_URL`——少一个容器只是慢,不是坏。
+   CI 只有一个库且活不过一个 job,直接在安装后 `alter system` + `pg_reload_conf()`
+   (三项都是 sighup 级,service 容器不接 command)。
+   **vitest 不读 .env**:这一个变量由 vitest.config.ts 单独挑出来注入,
+   整份 .env 灌进测试进程会让装配门禁看见它们本来就不该有的 DATABASE_URL 与清单覆盖(实测三条红)。
 2. **tsc 带上 `--incremental` 与各自的 `tsBuildInfoFile`**(写在 node_modules/.cache 下,
    派生物、机器本地、随 install 消失):plugin-isolation 门禁 6.5s → 1.3s,
    `pnpm typecheck` 8.5s → 3.6s。实测注入一个类型错误,热运行照报不误——缓存按文件版本
@@ -85,7 +90,14 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
    有的 walk 在「列出目录」与「读文件」之间撞上删除,以 ENOENT 在无关门禁里偶发红——
    两次。现在只有一条规则:node_modules 与点开头目录不是源码。
 
+4. **前端查询的重试策略写明白**:TanStack 默认失败重试 3 次、退避 1+2+4 秒,而本项目每个区块
+   在失败时都会渲染错误与「重试」按钮——那七秒只是把读者本来立刻就能看到的消息藏在转圈后面,
+   服务器给的 4xx/领域错误第三次也不会改口。现在只对「没有 `_tag` 的错误」(即连接层失败)
+   重试一次。浏览器套件 14.2s → 12.5s,其中一条用例从 7.0s 降到 0.4s。
+
 **排查过的死路**(别再重来):`create database ... template` 本身很便宜(并发 10 个时每个
 18ms),`strategy = file_copy` 反而慢 4 倍;`--pool=threads` 无差别;`--no-isolate` 省 CPU
 (75s → 52s)但墙钟只快 1.4s,而它把文件间的模块隔离也一起关掉了,不值。
 瓶颈从来不是并行度——是**单个最慢文件**决定墙钟(现在是 assembly.test.ts 的 7.2s)。
+浏览器套件那边 `browser.isolate=false` 与 `browser.fileParallelism` 都不动分毫,
+剩下的 12s 基本是 Chromium 启动与四个文件各自经 Vite 加载整张模块图。

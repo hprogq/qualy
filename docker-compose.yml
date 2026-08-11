@@ -8,22 +8,6 @@ services:
     environment:
       TZ: Asia/Shanghai
       LANG: en_US.utf8
-    # A development database holds nothing that survives a crash: the schema
-    # comes from the lineage and the rows come from the seed. Every test also
-    # commits, hundreds of times per run, and waiting for the disk to confirm
-    # each one is the single most expensive thing about the suite - turning
-    # these three off took a full run from 15.8s to 11.5s.
-    #
-    # Never do this to a database anybody wants to keep: a crash leaves it
-    # unrecoverable rather than merely behind.
-    command:
-      - postgres
-      - -c
-      - fsync=off
-      - -c
-      - synchronous_commit=off
-      - -c
-      - full_page_writes=off
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
@@ -38,6 +22,50 @@ services:
         max-file: '5'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # The suite creates and drops a database per test - around a hundred and
+  # fifty of them in one run - and those flush data files whatever
+  # synchronous_commit says. Turning fsync off takes a full run from 15.8s to
+  # 8.9s, and turning only synchronous_commit off buys nothing at all (15.9s,
+  # measured). But a cluster that does not fsync can come back from a crash
+  # unstartable rather than merely behind, so this is a database of its own:
+  # it holds only scratch databases the tests build and drop, keeps no volume,
+  # and the development data next door stays durable.
+  postgres-test:
+    image: pgvector/pgvector:pg18-bookworm
+    container_name: qualy-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qualy
+      POSTGRES_PASSWORD: qualy
+      POSTGRES_DB: qualy
+      TZ: Asia/Shanghai
+      LANG: en_US.utf8
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+    ports:
+      - '${POSTGRES_TEST_PORT:-5433}:5432'
+    # tmpfs rather than a volume: nothing here outlives the container, which is
+    # the same statement the settings above make
+    tmpfs:
+      - /var/lib/postgresql
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U qualy -d qualy']
       interval: 10s
       timeout: 5s
       retries: 5

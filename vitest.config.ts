@@ -1,7 +1,25 @@
+import fs from 'node:fs'
 import { defineConfig, defaultExclude } from 'vitest/config'
+
+// Where the scratch databases go.
+//
+// The compose stack runs a second postgres for them, with durability turned
+// off and no volume - the suite builds and drops around a hundred and fifty
+// databases per run, and on a server that fsyncs that is most of what a run
+// costs. Only this one variable is read out of .env, and only when it is
+// there: loading the file wholesale would hand every suite a DATABASE_URL and
+// a manifest override that the assembly gates are written without.
+const testDatabaseUrl = (): Record<string, string> => {
+  if (process.env.QUALY_TEST_DATABASE_URL) return {}
+  const declared = fs.existsSync('.env')
+    ? /^QUALY_TEST_DATABASE_URL=(.+)$/m.exec(fs.readFileSync('.env', 'utf8'))
+    : null
+  return declared ? { QUALY_TEST_DATABASE_URL: declared[1]!.trim() } : {}
+}
 
 export default defineConfig({
   test: {
+    env: testDatabaseUrl(),
     // A suite that touches postgres creates a scratch database and applies the
     // whole lineage to it before its first assertion, and several of them run
     // at once. The 5s default was already close and stopped being enough once
