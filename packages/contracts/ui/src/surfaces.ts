@@ -278,8 +278,14 @@ export const orgNodePicker = defineUiSlot({
 })
 
 export interface OrgNodePickerContext {
-  value: string | null
-  onChange: (orgNodeId: string) => void
+  /** always a set: picking one unit and picking four is the same errand */
+  value: readonly string[]
+  onChange: (orgNodeIds: string[]) => void
   /** when absent, the picker offers everything the reader may administer */
-  nodes?: readonly { id: string; name: string; parentId: string | null }[]
+  nodes?: readonly {
+    id: string
+    name: string
+    parentId: string | null
+    orgTypeId?: string
+  }[]
 }

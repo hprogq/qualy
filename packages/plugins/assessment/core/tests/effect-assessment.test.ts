@@ -782,7 +782,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           assessment.addStaff(
             f.tenant,
             batch.id,
-            { userId: teacher, roleId: reviewer, orgNodeId: f.class3 },
+            { userIds: [teacher], orgNodeIds: [f.class3], roleId: reviewer },
             f.principal,
           ),
         )

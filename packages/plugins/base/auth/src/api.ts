@@ -297,6 +297,9 @@ export const identityApiGroup = HttpApiGroup.make('identity')
             manageable: Schema.Boolean,
           }),
         ),
+        // the kinds of unit there are: a picker labels every node with its
+        // kind and filters by it, which is how somebody finds "all the classes"
+        orgTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         // each type carries the org types it admits, so the screen can pair a
         // person with a place without a second round trip
         userTypes: Schema.Array(

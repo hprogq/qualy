@@ -99,8 +99,21 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     onError,
   })
   const addStaff = useMutation({
-    mutationFn: (input: { userId: string; orgNodeId: string; roleId: string }) =>
-      run(api.assessment.addStaff({ params: { batchId }, payload: input })),
+    mutationFn: (input: {
+      userIds: readonly string[]
+      orgNodeIds: readonly string[]
+      roleId: string
+    }) =>
+      run(
+        api.assessment.addStaff({
+          params: { batchId },
+          payload: {
+            userIds: [...input.userIds],
+            orgNodeIds: [...input.orgNodeIds],
+            roleId: input.roleId,
+          },
+        }),
+      ),
     onMutate,
     onSuccess: () => {
       setAddingStaff(false)

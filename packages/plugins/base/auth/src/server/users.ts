@@ -264,6 +264,17 @@ const placeableNodes = (
  * round trip. A system type is provisioned rather than assigned, so it never
  * appears.
  */
+/** the kinds of unit there are, so a picker can label and filter by them */
+const orgTypesOf = (tenantId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('OrgType')
+      .select(['id', 'name'])
+      .where('tenantId', '=', tenantId)
+      .orderBy('name')
+      .execute(),
+  )
+
 const assignableUserTypes = (tenantId: string) =>
   db.query((k) =>
     k
@@ -498,11 +509,14 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         limit: number,
       ) {
         const held = yield* scopes(principal)
-        if (!readable(held)) return { nodes: [], truncated: false, userTypes: [] }
+        if (!readable(held)) {
+          return { nodes: [], truncated: false, orgTypes: [], userTypes: [] }
+        }
         const nodes = yield* placeableNodes(principal.tenantId, held, search, limit).pipe(
           Effect.orDie,
         )
         const userTypes = yield* assignableUserTypes(principal.tenantId).pipe(Effect.orDie)
+        const orgTypes = yield* orgTypesOf(principal.tenantId).pipe(Effect.orDie)
         return {
           nodes: nodes.slice(0, limit).map((row) => ({
             orgNodeId: row.id,
@@ -517,6 +531,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // a picker that quietly showed the first five hundred of a large tree
           // looked complete; saying so lets the screen ask for a search instead
           truncated: nodes.length > limit,
+          orgTypes: orgTypes.map((row) => ({ id: row.id as string, name: row.name as string })),
           userTypes: userTypes.map((row) => ({
             id: row.id,
             code: row.code,

@@ -39,36 +39,48 @@ export function AddStaffDialog({
   batchId: string
   open: boolean
   pending: boolean
-  onAdd: (input: { userId: string; orgNodeId: string; roleId: string }) => void
+  onAdd: (input: {
+    userIds: readonly string[]
+    orgNodeIds: readonly string[]
+    roleId: string
+  }) => void
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
   const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<readonly string[]>([])
-  const [orgNodeId, setOrgNodeId] = useState<string | null>(null)
+  const [orgNodeIds, setOrgNodeIds] = useState<readonly string[]>([])
   const [roleId, setRoleId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     setStep(0)
     setChosen([])
-    setOrgNodeId(null)
+    setOrgNodeIds([])
     setRoleId(null)
   }, [open])
 
-  const userId = chosen[0]
-  const options = useQuery({
-    ...query.assessment.staffOptions.queryOptions({
-      params: { batchId },
-      query: {
-        ...(userId !== undefined ? { userId } : {}),
-        ...(orgNodeId !== null ? { orgNodeId } : {}),
-      },
-    }),
+  // The units are asked for on their own, with nothing about the selection in
+  // the question: sharing one request with the roles meant every click
+  // refetched the tree, and a tree that reloads collapses back to the top
+  // while somebody is halfway down it.
+  const units = useQuery({
+    ...query.assessment.staffOptions.queryOptions({ params: { batchId }, query: {} }),
     enabled: open,
   })
-  const roles = options.data?.roles ?? []
+  // Roles depend on who and where, and are asked for once both are settled.
+  // Every chosen person is checked against every chosen unit and only what
+  // holds everywhere is offered: an offer that is true of one pair and false
+  // of another is not an answer.
+  const probes = useQuery({
+    ...query.assessment.staffOptions.queryOptions({
+      params: { batchId },
+      query: { userId: chosen[0] ?? '', orgNodeId: orgNodeIds[0] ?? '' },
+    }),
+    enabled: open && chosen.length > 0 && orgNodeIds.length > 0,
+  })
+  const roles = probes.data?.roles ?? []
   // a role that stopped being on offer stops being the answer
   useEffect(() => {
     if (roleId !== null && !roles.some((role) => role.id === roleId && role.refusal === null)) {
@@ -76,8 +88,8 @@ export function AddStaffDialog({
     }
   }, [roles, roleId])
 
-  const answered = [userId !== undefined, orgNodeId !== null, roleId !== null]
-  const ready = userId !== undefined && orgNodeId !== null && roleId !== null
+  const answered = [chosen.length > 0, orgNodeIds.length > 0, roleId !== null]
+  const ready = chosen.length > 0 && orgNodeIds.length > 0 && roleId !== null
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -97,7 +109,7 @@ export function AddStaffDialog({
           {step === 0 && (
             <UiSlot
               token={peoplePicker}
-              context={{ value: chosen, onChange: setChosen, single: true }}
+              context={{ value: chosen, onChange: setChosen }}
               fallback={
                 <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
               }
@@ -110,10 +122,10 @@ export function AddStaffDialog({
               <UiSlot
                 token={orgNodePicker}
                 context={{
-                  value: orgNodeId,
-                  onChange: setOrgNodeId,
+                  value: orgNodeIds,
+                  onChange: setOrgNodeIds,
                   // the units this round covers, not the whole organization
-                  nodes: options.data?.nodes ?? [],
+                  nodes: units.data?.nodes ?? [],
                 }}
                 fallback={
                   <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
@@ -153,7 +165,7 @@ export function AddStaffDialog({
             ) : (
               <Button
                 disabled={pending || !ready}
-                onClick={() => ready && onAdd({ userId, orgNodeId, roleId })}
+                onClick={() => ready && onAdd({ userIds: chosen, orgNodeIds, roleId })}
               >
                 {format(m.addStaffConfirm)}
               </Button>

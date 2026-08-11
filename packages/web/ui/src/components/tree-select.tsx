@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '../lib/cn.ts'
 import {
@@ -26,12 +26,15 @@ export function TreeSelect({
   onChange,
   nodes,
   emptyLabel,
+  meta,
   className,
 }: {
   value: readonly string[]
   onChange: (next: string[]) => void
   nodes: readonly TreeSelectNode[]
   emptyLabel: string
+  /** something to show at the end of a row - what kind of thing it is, say */
+  meta?: (node: TreeSelectNode) => ReactNode
   className?: string
 }) {
   const shape = shapeOf(nodes)
@@ -47,6 +50,7 @@ export function TreeSelect({
           node={root}
           shape={shape}
           selection={selection}
+          {...(meta !== undefined ? { meta } : {})}
           onToggle={(node) => onChange([...toggleNode(shape, selection, node)])}
         />
       ))}
@@ -58,11 +62,13 @@ function TreeRow({
   node,
   shape,
   selection,
+  meta,
   onToggle,
 }: {
   node: TreeSelectNode
   shape: TreeShape
   selection: ReadonlySet<string>
+  meta?: (node: TreeSelectNode) => ReactNode
   onToggle: (node: TreeSelectNode) => void
 }) {
   const children = shape.childrenOf.get(node.id) ?? []
@@ -88,7 +94,8 @@ function TreeRow({
           checked={indeterminate ? 'indeterminate' : checked}
           onCheckedChange={() => onToggle(node)}
         />
-        <span className="truncate">{node.name}</span>
+        <span className="min-w-0 flex-1 truncate">{node.name}</span>
+        {meta?.(node)}
       </label>
     </div>
   )
@@ -106,6 +113,7 @@ function TreeRow({
                 node={child}
                 shape={shape}
                 selection={selection}
+                {...(meta !== undefined ? { meta } : {})}
                 onToggle={onToggle}
               />
             ))}

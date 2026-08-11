@@ -413,9 +413,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('addStaff', '/assessment/batches/:batchId/access', {
       params: Schema.Struct({ batchId: id }),
       payload: Schema.Struct({
-        userId: id,
+        // both sides are sets: one person over two classes and two people over
+        // one are the same errand, and doing either one pair at a time is a
+        // sequence of writes somebody can be interrupted halfway through
+        userIds: Schema.Array(id),
+        orgNodeIds: Schema.Array(id),
         roleId: id,
-        orgNodeId: id,
         validUntil: Schema.optional(isoInstant),
       }),
       success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),

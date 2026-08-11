@@ -578,6 +578,7 @@ describe('the participants tab', () => {
                   manageable: true,
                 },
               ],
+              orgTypes: [{ id: NODE_ID, name: '院系' }],
               userTypes: [{ id: USER_ID, code: 'student', name: '学生', placementPolicy: null }],
             }),
         },
@@ -601,7 +602,20 @@ describe('the participants tab', () => {
     // nothing can be imported until something is chosen
     await expect.element(page.getByText('请选择组织单位与人员类型。')).toBeVisible()
     await expect.element(page.getByText('从这些单位取人')).toBeVisible()
-    await page.getByRole('button', { name: '软件学院' }).click()
+    // every unit says what kind of thing it is, and the same kinds are what
+    // the filter offers: that is how somebody picks the right one out of a
+    // tree of similar names
+    await expect.element(page.getByRole('option', { name: '院系' })).toBeInTheDocument()
+    await expect.element(page.getByText('院系').last()).toBeVisible()
+
+    // ticking a unit, and untucking it again: a selection that cannot be
+    // taken back is a trap, and this one was
+    const unit = page.getByRole('checkbox', { name: '软件学院' })
+    await unit.click()
+    await expect.element(unit).toBeChecked()
+    await unit.click()
+    await expect.element(unit).not.toBeChecked()
+    await unit.click()
     await page.getByRole('checkbox', { name: '学生' }).click()
 
     // and the number is said before the button will do anything

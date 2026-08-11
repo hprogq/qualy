@@ -507,9 +507,9 @@ export class Assessment extends Context.Service<
       tenantId: string,
       batchId: string,
       input: {
-        userId: string
+        userIds: readonly string[]
+        orgNodeIds: readonly string[]
         roleId: string
-        orgNodeId: string
         validUntil?: EpochMillis
       },
       as: Principal,
@@ -1819,54 +1819,69 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
-            const [node] = yield* nodesByIds(tenantId, [input.orgNodeId])
-            if (!node) return yield* new AccessInvalid({ reason: 'node-not-found' })
-            const [user] = yield* namesOf(tenantId, [input.userId])
-            if (!user) return yield* new AccessInvalid({ reason: 'user-not-found' })
-            // Delegation, the plain rule: nobody hands out authority they do
-            // not hold, over people they do not already administer.
-            if (!(yield* rbac.canAt(as, MANAGE, input.orgNodeId))) {
-              return yield* new AccessInvalid({ reason: 'node-out-of-reach' })
+            const nodes = yield* nodesByIds(tenantId, input.orgNodeIds)
+            if (nodes.length !== new Set(input.orgNodeIds).size) {
+              return yield* new AccessInvalid({ reason: 'node-not-found' })
             }
-            // and it has to be a unit this round is actually in, which is the
-            // same rule the options endpoint offers by: otherwise staffing a
-            // batch is a way of granting authority anywhere in the tenant
+            const people = yield* namesOf(tenantId, input.userIds)
+            if (people.length !== new Set(input.userIds).size) {
+              return yield* new AccessInvalid({ reason: 'user-not-found' })
+            }
+            // the units this round is in, asked once for the whole request
             const units = yield* batchUnits(
               tenantId,
               batchId,
               yield* rbac.listAuthorizedScope(as, MANAGE),
             )
-            if (!units.some((unit) => unit.id === input.orgNodeId)) {
-              return yield* new AccessInvalid({ reason: 'node-out-of-batch' })
-            }
-            for (const code of carried) {
-              if (!(yield* rbac.canAt(as, code, input.orgNodeId))) {
-                return yield* new AccessInvalid({ reason: 'permission-not-held' })
+            for (const orgNodeId of new Set(input.orgNodeIds)) {
+              // Delegation, the plain rule: nobody hands out authority they do
+              // not hold, over people they do not already administer.
+              if (!(yield* rbac.canAt(as, MANAGE, orgNodeId))) {
+                return yield* new AccessInvalid({ reason: 'node-out-of-reach' })
+              }
+              // and it has to be a unit this round is actually in, the same
+              // rule the options endpoint offers by: otherwise staffing a
+              // batch is a way of granting authority anywhere in the tenant
+              if (!units.some((unit) => unit.id === orgNodeId)) {
+                return yield* new AccessInvalid({ reason: 'node-out-of-batch' })
+              }
+              for (const code of carried) {
+                if (!(yield* rbac.canAt(as, code, orgNodeId))) {
+                  return yield* new AccessInvalid({ reason: 'permission-not-held' })
+                }
               }
             }
-            // One act, two records: the tenant's assignment, confined to this
-            // batch, and this batch accepting exactly what it carries today.
-            // Even here the ceiling is written down - a shared reviewer role
-            // that gains a capability next month must not widen this round.
-            const assignmentId = yield* rbac.createScopedAssignment({
-              tenantId,
-              subjectId: input.userId,
-              roleId: input.roleId,
-              orgNodeId: input.orgNodeId,
-              includeDescendants: true,
-              resource: batchResource(batchId),
-              ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
-              createdBy: as.userId,
-            })
-            yield* acceptAccessSource({
-              tenantId,
-              batchId,
-              roleAssignmentId: assignmentId,
-              subjectId: input.userId,
-              origin: 'explicit',
-              permissions: carried,
-              acceptedBy: as.userId,
-            })
+            // Every pair, in one transaction: half of a request nobody
+            // finished is worse than none of it, because what is missing is
+            // invisible next to what went in.
+            for (const userId of new Set(input.userIds)) {
+              for (const orgNodeId of new Set(input.orgNodeIds)) {
+                // One act, two records: the tenant's assignment, confined to
+                // this batch, and this batch accepting exactly what it carries
+                // today. Even here the ceiling is written down - a shared
+                // reviewer role that gains a capability next month must not
+                // widen this round.
+                const assignmentId = yield* rbac.createScopedAssignment({
+                  tenantId,
+                  subjectId: userId,
+                  roleId: input.roleId,
+                  orgNodeId,
+                  includeDescendants: true,
+                  resource: batchResource(batchId),
+                  ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
+                  createdBy: as.userId,
+                })
+                yield* acceptAccessSource({
+                  tenantId,
+                  batchId,
+                  roleAssignmentId: assignmentId,
+                  subjectId: userId,
+                  origin: 'explicit',
+                  permissions: carried,
+                  acceptedBy: as.userId,
+                })
+              }
+            }
             return asSeenBy(yield* readAccess(tenantId, batchId), as)
           }),
         ),
@@ -2929,9 +2944,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal.tenantId,
           params.batchId,
           {
-            userId: payload.userId,
+            userIds: payload.userIds,
+            orgNodeIds: payload.orgNodeIds,
             roleId: payload.roleId,
-            orgNodeId: payload.orgNodeId,
             ...(payload.validUntil !== undefined
               ? { validUntil: Date.parse(payload.validUntil) }
               : {}),
