@@ -264,3 +264,22 @@ export interface PeopleImportContext {
   value: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }
   onChange: (selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) => void
 }
+
+/**
+ * Choosing one unit of the organization.
+ *
+ * The caller may pass the units it will accept - a batch offers the ones it
+ * covers, not the whole tree - and gets the same tree rendering everywhere
+ * either way.
+ */
+export const orgNodePicker = defineUiSlot({
+  key: 'iam/org-node-picker',
+  cardinality: 'one',
+})
+
+export interface OrgNodePickerContext {
+  value: string | null
+  onChange: (orgNodeId: string) => void
+  /** when absent, the picker offers everything the reader may administer */
+  nodes?: readonly { id: string; name: string; parentId: string | null }[]
+}

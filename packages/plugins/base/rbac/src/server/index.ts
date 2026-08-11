@@ -677,11 +677,13 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
                 coverage: query.coverage ?? 'self',
               } as const)
         return {
-          roles: yield* access.grants.options(
+          // this screen offers what can be granted; the refusals it now gets
+          // back are for the pickers that explain themselves
+          roles: (yield* access.grants.options(
             principal.tenantId,
             { userId: query.userId, target },
             principal,
-          ),
+          )).filter((role) => role.refusal === null),
         }
       }),
     )

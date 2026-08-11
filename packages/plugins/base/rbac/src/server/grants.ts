@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+
 import {
   transaction,
   withDatabase,
@@ -86,6 +87,9 @@ export interface GrantScope {
   /** a tenant-wide grant has no node, so node coverage cannot decide it */
   tenantGrants: { read: boolean; manage: boolean }
 }
+
+/** why a role cannot be given here, in words a screen can act on */
+export type RoleRefusal = 'user-type' | 'authority' | 'unavailable'
 
 /**
  * Whether a grant is inside a scope, for a query that has outer-joined its node.
@@ -454,6 +458,15 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     return { codes, allActive: false }
   })
 
+  const refusalOf = (tag: string): RoleRefusal =>
+    tag === 'GRANT_NOT_ELIGIBLE'
+      ? 'user-type'
+      : tag === 'ROLE_NOT_FOUND'
+        ? 'unavailable'
+        : // escalation, or a role this caller may not administer: both say the
+          // same thing to a reader - it is not theirs to give
+          'authority'
+
   /**
    * The roles that could be granted to this person here, right now.
    *
@@ -471,7 +484,13 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     request: { userId: string; target: GrantTarget },
     actor: Principal,
   ) => Effect.Effect<
-    { id: string; code: string; name: string; kind: 'tenant' | 'org' }[],
+    {
+      id: string
+      code: string
+      name: string
+      kind: 'tenant' | 'org'
+      refusal: RoleRefusal | null
+    }[],
     GrantUserNotFound | GrantNodeNotFound,
     Orm
   > = Effect.fn('Rbac.grants.options')(function* (
@@ -494,7 +513,13 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     const candidates = (yield* rolesOfTenant(tenantId).pipe(Effect.orDie)).filter(
       (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
     )
-    const offered: { id: string; code: string; name: string; kind: 'tenant' | 'org' }[] = []
+    const offered: {
+      id: string
+      code: string
+      name: string
+      kind: 'tenant' | 'org'
+      refusal: RoleRefusal | null
+    }[] = []
     for (const role of candidates) {
       const verdict = yield* transaction(
         Effect.gen(function* () {
@@ -512,6 +537,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           return true
         }),
       ).pipe(
+        // the tag is kept rather than collapsed to false: an offer list that
+        // shows why a role is out of reach lets somebody fix the reason,
+        // where a shorter list only says "no" with no subject
         Effect.catchTag(
           [
             'GRANT_NOT_ELIGIBLE',
@@ -528,13 +556,17 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
             // answer rather than a fault
             'ROLE_NOT_FOUND',
           ],
-          () => Effect.succeed(false),
+          (error) => Effect.succeed<string | true>(error._tag),
         ),
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
-      if (verdict) {
-        offered.push({ id: role.id, code: role.code, name: role.name, kind: role.kind })
-      }
+      offered.push({
+        id: role.id,
+        code: role.code,
+        name: role.name,
+        kind: role.kind,
+        refusal: typeof verdict === 'string' ? refusalOf(verdict) : null,
+      })
     }
     return offered
   })

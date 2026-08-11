@@ -899,7 +899,12 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
         }),
       )
       const answer = ok(exit)
-      expect(answer.offered.map((role) => role.code)).toEqual(['local'])
+      // every candidate comes back; only one of them can actually be given,
+      // and the others say why so a screen can pass the reason on
+      expect(
+        answer.offered.filter((role) => role.refusal === null).map((role) => role.code),
+      ).toEqual(['local'])
+      expect(answer.offered.find((role) => role.code === 'closed')?.refusal).toBe('user-type')
       expect(tagOf(answer.absent)).toBe('GRANT_USER_NOT_FOUND')
     } finally {
       await db.dispose()

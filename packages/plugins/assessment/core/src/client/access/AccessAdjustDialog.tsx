@@ -84,7 +84,7 @@ export function AccessAdjustDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{format(m.accessAdjustTitle, { name: subject.displayName })}</DialogTitle>
           <DialogDescription>{format(m.accessAdjustHint)}</DialogDescription>

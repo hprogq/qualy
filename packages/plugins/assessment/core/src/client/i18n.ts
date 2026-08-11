@@ -712,15 +712,32 @@ const i18n = definePluginMessages({
       id: 'assessment/access/add-staff-hint',
       defaultMessage: 'What they may do applies to this batch only.',
     },
-    addStaffWhere: { id: 'assessment/access/add-staff-where', defaultMessage: 'Working on' },
-    addStaffAs: { id: 'assessment/access/add-staff-as', defaultMessage: 'As' },
-    addStaffPickUnit: {
-      id: 'assessment/access/add-staff-pick-unit',
-      defaultMessage: 'Choose a unit',
+    addStaffStepWho: { id: 'assessment/access/add-staff-step-who', defaultMessage: 'Person' },
+    addStaffStepWhere: { id: 'assessment/access/add-staff-step-where', defaultMessage: 'Unit' },
+    addStaffStepAs: { id: 'assessment/access/add-staff-step-as', defaultMessage: 'Role' },
+    addStaffWhereHint: {
+      id: 'assessment/access/add-staff-where-hint',
+      defaultMessage: 'Which part of this batch they will work on.',
     },
-    addStaffPickRole: {
-      id: 'assessment/access/add-staff-pick-role',
-      defaultMessage: 'Choose a role',
+    addStaffAsHint: {
+      id: 'assessment/access/add-staff-as-hint',
+      defaultMessage: 'What they may do here comes from the role.',
+    },
+    roleRefusedUserType: {
+      id: 'assessment/access/role-refused-user-type',
+      defaultMessage: 'Not for this kind of user',
+    },
+    roleRefusedAuthority: {
+      id: 'assessment/access/role-refused-authority',
+      defaultMessage: 'Not yours to give',
+    },
+    roleRefusedUnavailable: {
+      id: 'assessment/access/role-refused-unavailable',
+      defaultMessage: 'No longer available',
+    },
+    roleRefusedBeyondBatch: {
+      id: 'assessment/access/role-refused-beyond-batch',
+      defaultMessage: 'Reaches beyond this batch',
     },
     addStaffNoRoles: {
       id: 'assessment/access/add-staff-no-roles',

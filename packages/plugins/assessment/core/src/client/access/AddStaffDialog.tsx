@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
-import { peoplePicker } from '@qualy/ui-contract'
+import { orgNodePicker, peoplePicker } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
@@ -14,17 +14,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Steps } from '@qualy/ui/steps'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { RolePicker } from './RolePicker.tsx'
 
-// Bringing somebody in for this round only.
+// Bringing somebody in for this round only, one question at a time.
 //
-// Three answers, in the order they constrain each other: who, where, and as
-// what. The roles come last because which ones can be offered depends on the
-// first two - and they are the roles this caller could actually grant, asked
-// of the server rather than worked out here, so the list cannot promise
-// something the write refuses.
+// Three steps because the answers constrain each other in order: which roles
+// can be offered depends on who and where, so asking for all three at once
+// would mean showing a role list that is wrong until the other two are
+// settled. Going back is free; going forward is not offered until the step
+// has an answer.
+
+const STEPS = [m.addStaffStepWho, m.addStaffStepWhere, m.addStaffStepAs] as const
 
 export function AddStaffDialog({
   batchId,
@@ -41,15 +44,17 @@ export function AddStaffDialog({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
+  const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<readonly string[]>([])
-  const [orgNodeId, setOrgNodeId] = useState('')
-  const [roleId, setRoleId] = useState('')
+  const [orgNodeId, setOrgNodeId] = useState<string | null>(null)
+  const [roleId, setRoleId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
+    setStep(0)
     setChosen([])
-    setOrgNodeId('')
-    setRoleId('')
+    setOrgNodeId(null)
+    setRoleId(null)
   }, [open])
 
   const userId = chosen[0]
@@ -58,80 +63,102 @@ export function AddStaffDialog({
       params: { batchId },
       query: {
         ...(userId !== undefined ? { userId } : {}),
-        ...(orgNodeId !== '' ? { orgNodeId } : {}),
+        ...(orgNodeId !== null ? { orgNodeId } : {}),
       },
     }),
     enabled: open,
   })
   const roles = options.data?.roles ?? []
-  // a role that is no longer on offer stops being the answer
+  // a role that stopped being on offer stops being the answer
   useEffect(() => {
-    if (roleId !== '' && !roles.some((role) => role.id === roleId)) setRoleId('')
+    if (roleId !== null && !roles.some((role) => role.id === roleId && role.refusal === null)) {
+      setRoleId(null)
+    }
   }, [roles, roleId])
 
-  const ready = userId !== undefined && orgNodeId !== '' && roleId !== ''
+  const answered = [userId !== undefined, orgNodeId !== null, roleId !== null]
+  const ready = userId !== undefined && orgNodeId !== null && roleId !== null
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-5">
-          <UiSlot
-            token={peoplePicker}
-            context={{ value: chosen, onChange: setChosen, single: true }}
-            fallback={
-              <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
-            }
+          <Steps
+            steps={STEPS.map((label) => format(label))}
+            current={step}
+            // a step already answered is a way back to it
+            onSelect={(at) => at <= step && setStep(at)}
           />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5 text-sm">
-              {format(m.addStaffWhere)}
-              <NativeSelect
-                value={orgNodeId}
-                onChange={(event) => setOrgNodeId(event.target.value)}
-              >
-                <option value="">{format(m.addStaffPickUnit)}</option>
-                {(options.data?.nodes ?? []).map((node) => (
-                  <option key={node.id} value={node.id}>
-                    {node.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm">
-              {format(m.addStaffAs)}
-              <NativeSelect
+
+          {step === 0 && (
+            <UiSlot
+              token={peoplePicker}
+              context={{ value: chosen, onChange: setChosen, single: true }}
+              fallback={
+                <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
+              }
+            />
+          )}
+
+          {step === 1 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">{format(m.addStaffWhereHint)}</p>
+              <UiSlot
+                token={orgNodePicker}
+                context={{
+                  value: orgNodeId,
+                  onChange: setOrgNodeId,
+                  // the units this round covers, not the whole organization
+                  nodes: options.data?.nodes ?? [],
+                }}
+                fallback={
+                  <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
+                }
+              />
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">{format(m.addStaffAsHint)}</p>
+              <RolePicker
+                roles={roles}
                 value={roleId}
-                disabled={userId === undefined || orgNodeId === ''}
-                onChange={(event) => setRoleId(event.target.value)}
-              >
-                <option value="">
-                  {roles.length === 0 && userId !== undefined && orgNodeId !== ''
-                    ? format(m.addStaffNoRoles)
-                    : format(m.addStaffPickRole)}
-                </option>
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-          </div>
+                emptyLabel={format(m.addStaffNoRoles)}
+                onChange={setRoleId}
+              />
+            </div>
+          )}
         </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
-          </Button>
+        <DialogFooter className="sm:justify-between">
           <Button
-            disabled={pending || !ready}
-            onClick={() => ready && onAdd({ userId, orgNodeId, roleId })}
+            variant="ghost"
+            disabled={step === 0}
+            onClick={() => setStep((at) => Math.max(0, at - 1))}
           >
-            {format(m.addStaffConfirm)}
+            {format(commonMessages.back)}
           </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={onClose}>
+              {format(commonMessages.cancel)}
+            </Button>
+            {step < 2 ? (
+              <Button disabled={!answered[step]} onClick={() => setStep((at) => at + 1)}>
+                {format(m.next)}
+              </Button>
+            ) : (
+              <Button
+                disabled={pending || !ready}
+                onClick={() => ready && onAdd({ userId, orgNodeId, roleId })}
+              >
+                {format(m.addStaffConfirm)}
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

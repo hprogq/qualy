@@ -118,7 +118,7 @@ export function AccessSyncDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{format(m.accessSyncTitle)}</DialogTitle>
           <DialogDescription>{format(m.accessSyncHint)}</DialogDescription>

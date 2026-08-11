@@ -67,7 +67,7 @@ export function ImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{format(m.importTitle)}</DialogTitle>
           <DialogDescription>{format(m.importHint)}</DialogDescription>

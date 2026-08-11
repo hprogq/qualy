@@ -3169,3 +3169,27 @@ fingerprint——不同筛选条件之间沿用游标会静默跳行或重复;`r
 `node-out-of-batch`(422)。测试同时断言列表给出整条链、批次外的单位列表为空、以及写入被拒。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 451/72 全绿;`pnpm test:browser` 39 全绿。
+
+### 添加工作人员改三步,以及一个让按钮消失的 bug(2026-08-12)
+
+**先说 bug**:参评人员页看不到「添加人员 / 从组织导入」两个按钮,原因是 `getBatch` 调 `oneBatch` 时
+没传 viewer,而 `manageable` 是在 SQL 里按 viewer 算的——没有 viewer 就恒为 false,于是所有按 manageable
+渲染的控件全部静默消失。已修:详情按读者查询;凡是过了管理守卫才返回详情的路径直接置 true。
+
+**三步式添加工作人员**:选人 → 选单位 → 选角色。分三步是因为答案互相约束——能给什么角色取决于给谁、
+在哪,三个一起问就会先显示一份错的角色列表。已答过的步骤可以点回去。
+
+- 单位那步用新的 `iam/org-node-picker`(slot):调用方可以把候选节点传进去(本批次覆盖的那条链),
+  传了就只显示这些,没传就显示读者可管的整棵树。组织架构页将来可以直接用。
+- 角色那步是新的 `RolePicker`:**不可授予的角色也会列出来,置灰并说明原因**——「该用户类型不能设置此角色」
+  「你无权授予此角色」「此角色的权限超出批次范围」「该角色已不可用」。为此把 rbac 的 `grants.options`
+  从「过滤掉」改成「保留并带 refusal」(`user-type` / `authority` / `unavailable`),assessment 再补一条
+  自己的 `beyond-batch`。原来那个 iam 授权页保持旧行为(在 handler 里过滤),所以对它无感。
+  理由:一份更短的列表只是在对读者看不见的对象说「不行」,而原因通常是他能去改的。
+
+顺带:选人/导入/合并/调整几个对话框都放宽了一档(4xl / 2xl / 3xl / 2xl);`StatusBadge.tsx` 里
+`standingOf` 拆到 `batch/standing.ts`——组件文件同时导出非组件会让 Fast Refresh 整个失效(vite 已经在
+控制台警告),而一个悄悄不更新的组件比一条警告难查得多。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 451/72 全绿;`pnpm test:browser` 39 全绿;
+`pnpm build` 通过;`prettier --check .` 干净。

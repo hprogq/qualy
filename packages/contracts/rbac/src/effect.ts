@@ -157,7 +157,7 @@ export interface RbacShape {
     userId: string
     orgNodeId: string
     coverage?: 'self' | 'subtree'
-  }) => Effect.Effect<readonly { id: string; code: string; name: string }[]>
+  }) => Effect.Effect<readonly RoleCandidate[]>
 
   /** what a role carries right now, which is what an acceptance is measured against */
   readonly getRolePermissions: (
@@ -244,6 +244,22 @@ export interface ResourceRef {
 }
 
 /** one assignment's authority over one part of the tree */
+/**
+ * A role considered for one person at one place, and why it cannot be given
+ * if it cannot.
+ *
+ * Refused candidates come back rather than vanishing: a screen that says
+ * "this role needs a different kind of user" tells somebody what to change,
+ * where a shorter list only says no with no subject.
+ */
+export interface RoleCandidate {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  /** null when this caller could give it here and now */
+  readonly refusal: 'user-type' | 'authority' | 'unavailable' | null
+}
+
 /** one duty somebody holds, and the place it applies */
 export interface UserRoleHolding {
   readonly grantId: string

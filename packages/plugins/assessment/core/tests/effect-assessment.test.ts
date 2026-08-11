@@ -794,9 +794,12 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     // has to be appointable once rather than class by class
     expect(units.nodes.map((node) => node.name)).toEqual(['College', 'Grade A', 'Class 1'])
     expect(units.roles).toEqual([])
-    // the role carrying batch administration is not on offer: a batch may not
-    // hand out the authority that decides who may administer it
-    expect(here.roles.map((role) => role.id)).toEqual([reviewer])
+    // the role carrying batch administration is shown and refused, not hidden:
+    // "reaches beyond this batch" is something somebody can act on
+    expect(here.roles.filter((role) => role.refusal === null).map((role) => role.id)).toEqual([
+      reviewer,
+    ])
+    expect(here.roles.find((role) => role.id !== reviewer)?.refusal).toBe('beyond-batch')
     expect(elsewhere.roles).toEqual([])
     expect(reasonsOf(written).map((entry) => (entry.error as { reason?: string }).reason)).toEqual([
       'node-out-of-batch',

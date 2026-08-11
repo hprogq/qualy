@@ -1188,7 +1188,7 @@ export const batchUnits = (tenantId: string, batchId: string, held: Authorizatio
     .query((k) =>
       k
         .selectFrom('OrgNode as unit')
-        .select(['unit.id', 'unit.name', 'unit.depth'])
+        .select(['unit.id', 'unit.name', 'unit.depth', 'unit.parentId'])
         .distinct()
         .where('unit.tenantId', '=', tenantId)
         .where((eb) =>
@@ -1219,7 +1219,16 @@ export const batchUnits = (tenantId: string, batchId: string, held: Authorizatio
         .execute(),
     )
     .pipe(
-      Effect.map((rows) => rows.map((row) => ({ id: row.id as string, name: row.name as string }))),
+      Effect.map((rows) => {
+        const within = new Set(rows.map((row) => row.id as string))
+        return rows.map((row) => ({
+          id: row.id as string,
+          name: row.name as string,
+          // a parent outside this set is not named: the tree a reader is shown
+          // starts where the batch, and their own authority, does
+          parentId: within.has(row.parentId as string) ? (row.parentId as string) : null,
+        }))
+      }),
     )
 
 /** the names of these units, leaving out the ones this reader cannot reach */

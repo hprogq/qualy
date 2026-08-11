@@ -490,8 +490,12 @@ export class Assessment extends Context.Service<
       as: Principal,
     ) => Effect.Effect<
       {
-        nodes: readonly { id: string; name: string }[]
-        roles: readonly { id: string; name: string }[]
+        nodes: readonly { id: string; name: string; parentId: string | null }[]
+        roles: readonly {
+          id: string
+          name: string
+          refusal: 'user-type' | 'authority' | 'unavailable' | 'beyond-batch' | null
+        }[]
       },
       BatchNotFound | AccessDenied
     >
@@ -1435,7 +1439,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               as.userId,
             )
             const batch = yield* oneBatch(tenantId, batchId)
-            return yield* readDetail(tenantId, batch!)
+            return { ...(yield* readDetail(tenantId, batch!)), manageable: true }
           }),
         ),
       ).pipe(
@@ -1476,7 +1480,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
     assertVisible: requireBatchVisible,
 
     getBatch: Effect.fn('Assessment.getBatch')(function* (tenantId, batchId, as) {
-      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      // with the reader, so the row can say whether it is theirs to change:
+      // asked without one it answered "no" to everybody, and every control
+      // that reads it quietly disappeared
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId, yield* viewerOf(as))))
       if (!batch) return yield* new BatchNotFound()
       yield* requireBatchVisible(tenantId, batchId, as)
       return yield* dieQuery(withDb(readDetail(tenantId, batch)))
@@ -1535,7 +1542,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             )
 
             const batch = yield* oneBatch(tenantId, batchId)
-            return yield* readDetail(tenantId, batch!)
+            return { ...(yield* readDetail(tenantId, batch!)), manageable: true }
           }),
         ),
       ).pipe(
@@ -1639,7 +1646,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               }
 
               const batch = yield* oneBatch(tenantId, batchId)
-              return yield* readDetail(tenantId, batch!)
+              return { ...(yield* readDetail(tenantId, batch!)), manageable: true }
             }),
           ),
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -1767,14 +1774,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
         userId: request.userId,
         orgNodeId: request.orgNodeId,
       })
-      // and only roles a batch may carry at all: the same rule the write
-      // applies, so the list cannot offer what adding them would refuse
-      const roles: { id: string; name: string }[] = []
+      // and one more rule of this domain's own: a batch may only hand out
+      // what a batch may hand out. A role reaching past that is shown and
+      // refused rather than hidden, like the ones rbac refused.
+      const roles: {
+        id: string
+        name: string
+        refusal: 'user-type' | 'authority' | 'unavailable' | 'beyond-batch' | null
+      }[] = []
       for (const role of grantable) {
+        if (role.refusal !== null) {
+          roles.push({ id: role.id, name: role.name, refusal: role.refusal })
+          continue
+        }
         const carried = yield* rbac.getRolePermissions(tenantId, role.id)
-        if (carried.length === 0) continue
-        if (carried.some((code) => !STAFF_CODES.includes(code as never))) continue
-        roles.push({ id: role.id, name: role.name })
+        const delegatable =
+          carried.length > 0 && carried.every((code) => STAFF_CODES.includes(code as never))
+        roles.push({
+          id: role.id,
+          name: role.name,
+          refusal: delegatable ? null : 'beyond-batch',
+        })
       }
       return { nodes, roles }
     }),

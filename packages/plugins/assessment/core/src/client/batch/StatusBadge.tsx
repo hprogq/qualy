@@ -2,19 +2,17 @@ import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import { assessmentMessages as m } from '../i18n.ts'
+import { standingOf } from './standing.ts'
 
-/**
- * Where a batch stands, said the same way in the list and on the batch itself.
- *
- * Four words for three stored values: a batch that has promised to start but
- * has not arrived there yet is neither a draft nor under way, and calling it
- * "in progress" while nobody can do anything in it reads as a bug. It is the
- * absence of a current phase that says so, which is also what makes the batch
- * invisible to participants.
- *
- * The dot is not decoration either: a running batch is the only one whose
- * screen can change under the reader, and it is the only one whose dot moves.
- */
+// Where a batch stands, as a badge.
+//
+// Four words for three stored values: a batch that has promised to start but
+// has not arrived there yet is neither a draft nor under way, and calling it
+// "in progress" while nobody can do anything in it reads as a bug.
+//
+// The dot is not decoration either: a running batch is the only one whose
+// screen can change under the reader, and it is the only one whose dot moves.
+
 const tones = {
   draft: {
     badge: 'border-transparent bg-muted text-muted-foreground',
@@ -32,25 +30,11 @@ const tones = {
     live: true,
   },
   archived: {
-    badge: 'border-transparent bg-slate-500/15 text-slate-600 dark:text-slate-300',
-    dot: 'bg-slate-500',
+    badge: 'border-transparent bg-muted text-muted-foreground',
+    dot: 'bg-muted-foreground/60',
     live: false,
   },
 } as const
-
-export type BatchStanding = keyof typeof tones
-
-export const standingOf = (
-  status: 'draft' | 'active' | 'archived',
-  currentPhaseId: string | null,
-): BatchStanding =>
-  status === 'draft'
-    ? 'draft'
-    : status === 'archived'
-      ? 'archived'
-      : currentPhaseId === null
-        ? 'pending'
-        : 'active'
 
 export function StatusBadge({
   status,

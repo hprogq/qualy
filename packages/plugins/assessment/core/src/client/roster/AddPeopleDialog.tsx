@@ -40,7 +40,7 @@ export function AddPeopleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
           <DialogDescription>{format(m.addPeopleHint)}</DialogDescription>

@@ -24,7 +24,7 @@ import { ChevronLeftIcon, ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon } f
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
-import { standingOf } from './batch/StatusBadge.tsx'
+import { standingOf } from './batch/standing.ts'
 import { BatchCard } from './batch/BatchCard.tsx'
 
 /** rows per page; the page indicator divides the total by it */

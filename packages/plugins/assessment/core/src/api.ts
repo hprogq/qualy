@@ -384,8 +384,25 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         orgNodeId: Schema.optional(id),
       }),
       success: Schema.Struct({
-        nodes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
-        roles: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+        nodes: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            name: Schema.String,
+            /** null for a unit whose parent is not one of this batch's own */
+            parentId: Schema.NullOr(Schema.String),
+          }),
+        ),
+        // refused roles come back too, with why: a screen that says what to
+        // change is worth more than a shorter list
+        roles: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            name: Schema.String,
+            refusal: Schema.NullOr(
+              Schema.Literals(['user-type', 'authority', 'unavailable', 'beyond-batch']),
+            ),
+          }),
+        ),
       }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
