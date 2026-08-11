@@ -21,11 +21,11 @@ import { PageContainer } from '@qualy/ui/page-container'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { ChevronLeftIcon, ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon } from 'lucide-react'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
-import { StatusBadge } from './batch/StatusBadge.tsx'
+import { standingOf } from './batch/StatusBadge.tsx'
+import { BatchCard } from './batch/BatchCard.tsx'
 
 /** rows per page; the page indicator divides the total by it */
 const PAGE_SIZE = 20
@@ -89,6 +89,17 @@ export default function BatchListPage() {
   const rows = batches.data?.items ?? []
   const total = batches.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const standing = (row: (typeof rows)[number]) => standingOf(row.status, row.currentPhaseId)
+  const groups = [
+    { id: 'active', label: m.groupRunning, rows: rows.filter((row) => standing(row) === 'active') },
+    {
+      id: 'pending',
+      label: m.groupPending,
+      rows: rows.filter((row) => standing(row) === 'pending'),
+    },
+    { id: 'draft', label: m.groupDraft, rows: rows.filter((row) => standing(row) === 'draft') },
+    { id: 'ended', label: m.groupEnded, rows: rows.filter((row) => standing(row) === 'archived') },
+  ] as const
 
   return (
     <Reveal>
@@ -137,9 +148,11 @@ export default function BatchListPage() {
               onValueChange={(next) => next !== '' && setStatusFilter(next as typeof statusFilter)}
             >
               <ToggleGroupItem value="all">{format(m.filterAll)}</ToggleGroupItem>
-              <ToggleGroupItem value="draft">{format(m.statusDraft)}</ToggleGroupItem>
               <ToggleGroupItem value="active">{format(m.statusActive)}</ToggleGroupItem>
-              <ToggleGroupItem value="archived">{format(m.statusArchived)}</ToggleGroupItem>
+              <ToggleGroupItem value="draft">{format(m.statusDraft)}</ToggleGroupItem>
+              {/* "archived" is the word the column stores; what a reader
+                  recognises is that the assessment is over */}
+              <ToggleGroupItem value="archived">{format(m.filterEnded)}</ToggleGroupItem>
             </ToggleGroup>
           </div>
 
@@ -190,60 +203,52 @@ export default function BatchListPage() {
                 </EmptyContent>
               </Empty>
             ) : (
-              <div className="flex flex-col gap-4">
-                <div className="rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{format(m.columnName)}</TableHead>
-                        <TableHead>{format(m.columnStatus)}</TableHead>
-                        <TableHead>{format(m.columnCurrentPhase)}</TableHead>
-                        <TableHead>{format(m.columnMaterialRange)}</TableHead>
-                        <TableHead>{format(m.columnParticipants)}</TableHead>
-                        <TableHead>{format(m.columnCreatedAt)}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {rows.map((row) => (
-                        <TableRow
-                          key={row.id}
-                          className="cursor-pointer"
-                          onClick={() => open(row.id)}
-                        >
-                          <TableCell className="font-medium">
-                            {/* a real link, so a batch can be opened in another
-                              tab or reached by keyboard; the row around it is
-                              a convenience for the pointer */}
-                            <PageLink
-                              page="assessment/batch-phases"
-                              params={{ batchId: row.id }}
-                              className="text-left hover:underline"
-                              onClick={(event) => event.stopPropagation()}
+              <div className="flex flex-col gap-8">
+                {/* grouped by what the reader is looking for: what is running
+                    now, what is about to, what is still being set up, and
+                    what is over - and the last of those needs a line each
+                    rather than a card, because all anybody wants there is to
+                    find it and open it */}
+                {groups.map((group) =>
+                  group.rows.length === 0 ? null : (
+                    <section key={group.id} className="flex flex-col gap-3">
+                      <h2 className="text-sm font-medium text-muted-foreground">
+                        {format(group.label)}
+                      </h2>
+                      {group.id === 'ended' ? (
+                        <ul className="divide-y rounded-xl border bg-background">
+                          {group.rows.map((row) => (
+                            <li
+                              key={row.id}
+                              className="group relative flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-3"
                             >
-                              {row.name}
-                            </PageLink>
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {row.currentPhaseName ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {row.materialRange.start} – {row.materialRange.end}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {/* a draft has no roster yet, so it has no number */}
-                            {row.status === 'draft' ? '—' : row.participantCount}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {new Date(row.createdAt).toLocaleDateString(locale)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                              <div className="min-w-0">
+                                <PageLink
+                                  page="assessment/batch-phases"
+                                  params={{ batchId: row.id }}
+                                  className="truncate text-sm font-medium before:absolute before:inset-0 before:content-['']"
+                                >
+                                  {row.name}
+                                </PageLink>
+                              </div>
+                              <span className="shrink-0 text-sm text-muted-foreground">
+                                {format(m.endedOn, {
+                                  date: new Date(row.createdAt).toLocaleDateString(locale),
+                                })}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <ul className="flex flex-col gap-3">
+                          {group.rows.map((row) => (
+                            <BatchCard key={row.id} row={row} />
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  ),
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-sm text-muted-foreground">
                     {/* how many there are is said beside the title; here is

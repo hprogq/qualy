@@ -121,10 +121,17 @@ const templates = (request: Request) =>
     nextCursor: null,
   })
 
+/** a row as the list receives it: the batch, plus its derived timeline */
+const listRow = (over: Partial<BatchDto> = {}, timeline: unknown[] = []) => ({
+  ...batch(over),
+  timeline,
+})
+
 const assessmentStubs = (over: Stubs = {}): Stubs => ({
-  listBatches: () => Effect.succeed({ items: [batch()], nextCursor: null, total: 1 }),
+  listBatches: () => Effect.succeed({ items: [listRow()], nextCursor: null, total: 1 }),
   getBatch: () => Effect.succeed({ batch: batch() }),
   getPhases: () => Effect.succeed({ phases: [] }),
+  getTimeline: () => Effect.succeed({ timeline: [] }),
   listTemplates: templates,
   listScopeOptions: () =>
     Effect.succeed({
@@ -179,12 +186,12 @@ describe('the batch list', () => {
       const cursor = request.query?.['cursor']
       if (cursor === 'next-page') {
         return Effect.succeed({
-          items: [batch({ id: 'second', name: '2025 秋季综测' })],
+          items: [listRow({ id: 'second', name: '2025 秋季综测' })],
           nextCursor: null,
           total: 21,
         })
       }
-      return Effect.succeed({ items: [batch()], nextCursor: 'next-page', total: 21 })
+      return Effect.succeed({ items: [listRow()], nextCursor: 'next-page', total: 21 })
     })
     screen({ listBatches }, '/assessment/batches')
 
@@ -406,7 +413,7 @@ describe('the stage plan', () => {
       advancePhase,
       getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
       listBatches: () =>
-        Effect.succeed({ items: [batch({ status: 'active' })], nextCursor: null, total: 1 }),
+        Effect.succeed({ items: [listRow({ status: 'active' })], nextCursor: null, total: 1 }),
       getPhases: () => Effect.succeed(twoPhases()),
     })
 

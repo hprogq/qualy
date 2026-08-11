@@ -87,6 +87,39 @@ const totalCount = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# item} other {# items}}',
 })
 
+const leftDays = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/left-days',
+  defaultMessage: '{count, plural, one {# day left} other {# days left}}',
+})
+const leftHours = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/left-hours',
+  defaultMessage: '{count, plural, one {# hour left} other {# hours left}}',
+})
+const leftMinutes = defineMessage<{ minutes: number; seconds: number }>()({
+  id: 'assessment/progress/left-minutes',
+  defaultMessage: '{minutes}m {seconds}s left',
+})
+const leftSeconds = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/left-seconds',
+  defaultMessage: '{count}s left',
+})
+const sinceDays = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/since-days',
+  defaultMessage: '{count, plural, one {running for # day} other {running for # days}}',
+})
+const sinceHours = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/since-hours',
+  defaultMessage: '{count, plural, one {running for # hour} other {running for # hours}}',
+})
+const sinceMinutes = defineMessage<{ minutes: number; seconds: number }>()({
+  id: 'assessment/progress/since-minutes',
+  defaultMessage: 'running for {minutes}m {seconds}s',
+})
+const sinceSeconds = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/since-seconds',
+  defaultMessage: 'running for {count}s',
+})
+
 const includedAt = defineMessage<{ time: string }>()({
   id: 'assessment/roster/included-at',
   defaultMessage: 'On the list since {time}',
@@ -127,6 +160,14 @@ const i18n = definePluginMessages({
     nextPage: { id: 'assessment/action/next-page', defaultMessage: 'Next' },
     pageOfTotal,
     totalCount,
+    leftDays,
+    leftHours,
+    leftMinutes,
+    leftSeconds,
+    sinceDays,
+    sinceHours,
+    sinceMinutes,
+    sinceSeconds,
     batchSummary,
     batchSummaryDraft,
     backToList: { id: 'assessment/batch/back', defaultMessage: 'All batches' },
@@ -234,6 +275,19 @@ const i18n = definePluginMessages({
     // ------------------------------------------------------------------
     // the stage plan
     sectionsLabel: { id: 'assessment/batch/sections', defaultMessage: 'Batch sections' },
+    switchBatch: { id: 'assessment/batch/switch', defaultMessage: 'Switch batch' },
+    notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started yet' },
+    plannedStart: { id: 'assessment/batch/planned-start', defaultMessage: 'Starts' },
+    noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages arranged yet' },
+    currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
+    endsUnknown: { id: 'assessment/batch/ends-unknown', defaultMessage: 'No end time set' },
+    enterBatch: { id: 'assessment/batch/enter', defaultMessage: 'Open' },
+    groupRunning: { id: 'assessment/batch/group-running', defaultMessage: 'Under way' },
+    groupPending: { id: 'assessment/batch/group-pending', defaultMessage: 'Starting soon' },
+    groupDraft: { id: 'assessment/batch/group-draft', defaultMessage: 'Drafts' },
+    groupEnded: { id: 'assessment/batch/group-ended', defaultMessage: 'Finished' },
+    filterEnded: { id: 'assessment/batch/filter-ended', defaultMessage: 'Finished' },
+    endedOn: { id: 'assessment/batch/ended-on', defaultMessage: 'Finished {date}' },
     tabPhases: { id: 'assessment/phase/tab', defaultMessage: 'Stages' },
     tabRoster: { id: 'assessment/roster/tab', defaultMessage: 'Participants' },
     phasesHint: {

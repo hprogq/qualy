@@ -18,6 +18,8 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { refusalMessage, refusalsOf } from '../refusals.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { ReopenDialog } from './ReopenDialog.tsx'
+import { BatchProgress } from './BatchProgress.tsx'
+import { BatchSwitcher } from './BatchSwitcher.tsx'
 
 // Which batch is open, where it stands, and what can be done to it as a whole.
 //
@@ -45,6 +47,12 @@ export default function BatchContextBar() {
     staleTime: 30_000,
   })
   const batch = detail.data?.batch
+  // the derived timeline, which is where "the stage ends when the next one
+  // starts" is already worked out; the bar only counts the clock down to it
+  const plan = useQuery({
+    ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
+    staleTime: 30_000,
+  })
 
   // the plan answers with its own reasons; anything else is a sentence the
   // error catalog already has
@@ -117,56 +125,71 @@ export default function BatchContextBar() {
   })
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-      <Button size="sm" variant="ghost" className="-ml-1 shrink-0 text-muted-foreground" asChild>
-        <PageLink page="assessment/batches">
-          <ArrowLeftIcon />
-          {format(m.backToList)}
-        </PageLink>
-      </Button>
+    <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-3">
+      <div className="flex min-w-0 items-center">
+        <Button size="sm" variant="ghost" className="-ml-1 shrink-0 text-muted-foreground" asChild>
+          <PageLink page="assessment/batches">
+            <ArrowLeftIcon />
+            <span className="max-sm:sr-only">{format(m.backToList)}</span>
+          </PageLink>
+        </Button>
+      </div>
+
+      {/* the middle column, so the batch sits in the centre of the bar
+          whatever is beside it, and the switch is where the eye already is */}
       {batch === undefined ? (
-        <Skeleton className="h-5 w-52" />
+        <Skeleton className="h-6 w-56 justify-self-center" />
       ) : (
-        <>
-          <span className="min-w-0 truncate text-sm font-semibold">{batch.name}</span>
-          <StatusBadge status={batch.status} currentPhaseId={batch.currentPhaseId} />
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            {failure !== null && <Feedback message={failure} />}
-            {batch.status === 'draft' && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={remove.isPending}
-                onClick={() => setConfirming('delete')}
-              >
-                <Trash2Icon />
-                {format(m.deleteBatch)}
-              </Button>
-            )}
-            {batch.status === 'active' && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={archive.isPending}
-                onClick={() => setConfirming('archive')}
-              >
-                {format(m.archive)}
-              </Button>
-            )}
-            {batch.status === 'archived' && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={reopen.isPending}
-                onClick={() => setReopening(true)}
-              >
-                <RotateCcwIcon />
-                {format(m.reopen)}
-              </Button>
-            )}
-          </div>
-        </>
+        <BatchSwitcher
+          batchId={batchId}
+          name={batch.name}
+          status={batch.status}
+          currentPhaseId={batch.currentPhaseId}
+        />
       )}
+
+      <div className="flex min-w-0 items-center justify-end gap-2">
+        {batch !== undefined && (
+          <BatchProgress
+            showStage
+            timeline={plan.data?.timeline ?? []}
+            className="flex min-w-0 items-center truncate text-sm text-muted-foreground max-md:hidden"
+          />
+        )}
+        {failure !== null && <Feedback message={failure} />}
+        {batch?.status === 'draft' && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={remove.isPending}
+            onClick={() => setConfirming('delete')}
+          >
+            <Trash2Icon />
+            <span className="max-lg:sr-only">{format(m.deleteBatch)}</span>
+          </Button>
+        )}
+        {batch?.status === 'active' && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={archive.isPending}
+            onClick={() => setConfirming('archive')}
+          >
+            {format(m.archive)}
+          </Button>
+        )}
+        {batch?.status === 'archived' && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={reopen.isPending}
+            onClick={() => setReopening(true)}
+          >
+            <RotateCcwIcon />
+            <span className="max-lg:sr-only">{format(m.reopen)}</span>
+          </Button>
+        )}
+      </div>
 
       <ConfirmDialog
         open={confirming === 'archive'}

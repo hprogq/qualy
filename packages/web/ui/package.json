@@ -14,6 +14,7 @@
     "./label": "./src/components/label.tsx",
     "./card": "./src/components/card.tsx",
     "./page-container": "./src/components/page-container.tsx",
+    "./ticker": "./src/components/ticker.tsx",
     "./alert": "./src/components/alert.tsx",
     "./theme.css": "./src/styles/theme.css",
     "./spinner": "./src/components/spinner.tsx",

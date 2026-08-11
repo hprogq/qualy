@@ -428,6 +428,53 @@ export interface PhaseRow {
   sourceTemplateVersion: number | null
 }
 
+/**
+ * The phases of several batches at once, ordered within each.
+ *
+ * A list that shows where every batch has got to needs every batch's plan,
+ * and asking per row is how a page of twenty becomes twenty-one round trips.
+ */
+export const phaseRowsForBatches = (tenantId: string, batchIds: readonly string[]) =>
+  batchIds.length === 0
+    ? Effect.succeed([] as (PhaseRow & { batchId: string })[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('BatchPhase')
+            .select([
+              'id',
+              'batchId',
+              'ordinal',
+              'phaseKey',
+              'displayName',
+              'description',
+              'permissionProfile',
+              'sourceTemplateId',
+              'sourceTemplateVersion',
+            ])
+            .select([
+              epoch('planned_entry_at').as('plannedEntryAt'),
+              epoch('actual_entry_at').as('actualEntryAt'),
+            ])
+            .where('tenantId', '=', tenantId)
+            .where('batchId', 'in', batchIds as string[])
+            .orderBy('batchId')
+            .orderBy('ordinal')
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) =>
+            (rows as unknown as Record<string, unknown>[]).map(
+              (row) =>
+                ({
+                  ...row,
+                  plannedEntryAt: msOf(row.plannedEntryAt),
+                  actualEntryAt: msOf(row.actualEntryAt),
+                }) as unknown as PhaseRow & { batchId: string },
+            ),
+          ),
+        )
+
 export const listPhaseRows = (tenantId: string, batchId: string) =>
   db
     .query((k) =>

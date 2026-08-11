@@ -70,6 +70,7 @@ import {
   listBatchesPage,
   listParticipantsPage,
   listPhaseRows,
+  phaseRowsForBatches,
   listTemplatesPage,
   lockBatch,
   nodesByIds,
@@ -109,6 +110,11 @@ import {
 export interface MaterialRange {
   readonly start: string
   readonly end: string
+}
+
+/** a batch as a list shows it: the row, plus where the batch has got to */
+export interface BatchListRow extends BatchRow {
+  readonly timeline: readonly TimelineEntry[]
 }
 
 export interface BatchDetail {
@@ -320,7 +326,7 @@ export class Assessment extends Context.Service<
         limit: number
       },
       as: Principal,
-    ) => Effect.Effect<readonly BatchRow[]>
+    ) => Effect.Effect<readonly BatchListRow[]>
     readonly countBatches: (
       tenantId: string,
       filter: { status?: 'draft' | 'active' | 'archived'; q?: string },
@@ -938,7 +944,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     listBatches: Effect.fn('Assessment.listBatches')(function* (tenantId, filter, as) {
       const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-      return yield* dieQuery(withDb(listBatchesPage(tenantId, held, filter)))
+      const rows = yield* dieQuery(withDb(listBatchesPage(tenantId, held, filter)))
+      // where each batch has got to, derived the same way the batch's own
+      // timeline is: a list that says "in progress" and stops there is a list
+      // nobody can read without opening every row
+      const now = yield* Clock.currentTimeMillis
+      const phases = yield* dieQuery(
+        withDb(
+          phaseRowsForBatches(
+            tenantId,
+            rows.map((row) => row.id),
+          ),
+        ),
+      )
+      const byBatch = new Map<string, PhaseRow[]>()
+      for (const phase of phases) {
+        byBatch.set(phase.batchId, [...(byBatch.get(phase.batchId) ?? []), phase])
+      }
+      return rows.map((row) => ({
+        ...row,
+        timeline: deriveTimeline(toSnapshots(byBatch.get(row.id) ?? []), now),
+      }))
     }),
 
     countBatches: Effect.fn('Assessment.countBatches')(function* (tenantId, filter, as) {
@@ -2005,6 +2031,15 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             anchorAutoSync: row.anchorAutoSync,
             currentPhaseId: row.currentPhaseId,
             currentPhaseName: row.currentPhaseName,
+            timeline: row.timeline.map((entry) => ({
+              phaseId: entry.phaseId,
+              displayName: entry.displayName,
+              status: entry.status,
+              entry: {
+                kind: entry.entry.kind,
+                at: entry.entry.kind === 'pending' ? null : new Date(entry.entry.at).toISOString(),
+              },
+            })),
             createdAt: new Date(row.createdAt).toISOString(),
           })),
           nextCursor:

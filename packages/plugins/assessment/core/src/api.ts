@@ -45,7 +45,18 @@ const materialRange = Schema.Struct({ start: isoDate, end: isoDate })
 
 const batchStatus = Schema.Literals(['draft', 'active', 'archived'])
 
-const batchListView = Schema.Struct({
+/** where a batch has got to, as a list draws it: one line per stage */
+const batchTimelineEntry = Schema.Struct({
+  phaseId: Schema.String,
+  displayName: Schema.String,
+  status: Schema.Literals(['ended', 'current', 'future']),
+  entry: Schema.Struct({
+    kind: Schema.Literals(['entered', 'planned', 'pending']),
+    at: Schema.NullOr(Schema.String),
+  }),
+})
+
+const batchFields = {
   id: Schema.String,
   name: Schema.String,
   descriptionMd: Schema.NullOr(Schema.String),
@@ -59,11 +70,21 @@ const batchListView = Schema.Struct({
   currentPhaseId: Schema.NullOr(Schema.String),
   currentPhaseName: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
+}
+
+/**
+ * A batch as the list draws it. It carries the whole (small) timeline because
+ * the list's job is to say where each batch has got to, and a card that only
+ * knows the current stage's name cannot draw the run of them.
+ */
+const batchListView = Schema.Struct({
+  ...batchFields,
+  timeline: Schema.Array(batchTimelineEntry),
 })
 
-/** the detail adds what the list has no join for */
+/** the detail adds what the list has no join for; its plan is its own request */
 const batchView = Schema.Struct({
-  ...batchListView.fields,
+  ...batchFields,
   userTypeIds: Schema.Array(Schema.String),
   participantCount: Schema.Number,
 })

@@ -1,5 +1,6 @@
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
+import { cn } from '@qualy/ui/cn'
 import { assessmentMessages as m } from '../i18n.ts'
 
 /**
@@ -10,17 +11,80 @@ import { assessmentMessages as m } from '../i18n.ts'
  * "in progress" while nobody can do anything in it reads as a bug. It is the
  * absence of a current phase that says so, which is also what makes the batch
  * invisible to participants.
+ *
+ * The dot is not decoration either: a running batch is the only one whose
+ * screen can change under the reader, and it is the only one whose dot moves.
  */
+const tones = {
+  draft: {
+    badge: 'border-transparent bg-muted text-muted-foreground',
+    dot: 'bg-muted-foreground/60',
+    live: false,
+  },
+  pending: {
+    badge: 'border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-300',
+    dot: 'bg-amber-500',
+    live: false,
+  },
+  active: {
+    badge: 'border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+    dot: 'bg-emerald-500',
+    live: true,
+  },
+  archived: {
+    badge: 'border-transparent bg-slate-500/15 text-slate-600 dark:text-slate-300',
+    dot: 'bg-slate-500',
+    live: false,
+  },
+} as const
+
+export type BatchStanding = keyof typeof tones
+
+export const standingOf = (
+  status: 'draft' | 'active' | 'archived',
+  currentPhaseId: string | null,
+): BatchStanding =>
+  status === 'draft'
+    ? 'draft'
+    : status === 'archived'
+      ? 'archived'
+      : currentPhaseId === null
+        ? 'pending'
+        : 'active'
+
 export function StatusBadge({
   status,
   currentPhaseId = null,
+  className,
 }: {
   status: 'draft' | 'active' | 'archived'
   currentPhaseId?: string | null
+  className?: string
 }) {
   const { format } = useI18n()
-  if (status === 'draft') return <Badge variant="outline">{format(m.statusDraft)}</Badge>
-  if (status === 'archived') return <Badge variant="secondary">{format(m.statusArchived)}</Badge>
-  if (currentPhaseId === null) return <Badge variant="outline">{format(m.statusPending)}</Badge>
-  return <Badge>{format(m.statusActive)}</Badge>
+  const standing = standingOf(status, currentPhaseId)
+  const tone = tones[standing]
+  const label = {
+    draft: m.statusDraft,
+    pending: m.statusPending,
+    active: m.statusActive,
+    archived: m.statusArchived,
+  }[standing]
+
+  return (
+    <Badge className={cn('gap-1.5 font-medium', tone.badge, className)}>
+      <span aria-hidden className="relative flex size-1.5">
+        {tone.live && (
+          <span
+            className={cn(
+              'absolute inline-flex size-full animate-ping rounded-full opacity-75 motion-reduce:animate-none',
+              tone.dot,
+            )}
+          />
+        )}
+        <span className={cn('relative inline-flex size-1.5 rounded-full', tone.dot)} />
+      </span>
+      {format(label)}
+    </Badge>
+  )
 }
