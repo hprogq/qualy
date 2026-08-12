@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
+import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import { Ticker } from '@qualy/ui/ticker'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -111,7 +112,9 @@ export function BatchProgress({
           <span className="shrink-0 text-xs text-muted-foreground max-lg:hidden">
             {format(m.currentStage)}
           </span>
-          <span className="truncate font-medium text-foreground">{stage}</span>
+          <Badge variant="secondary" className="max-w-full min-w-0 font-normal">
+            <span className="truncate">{stage}</span>
+          </Badge>
         </span>
       )}
       {stage !== null && said !== null && (
