@@ -137,50 +137,87 @@ export const oneBatch = (
  * anyone holding the permission at all - there is nothing yet to be outside
  * of, and a draft its author could not open would be unusable.
  */
-const withinReach = (held: AuthorizationScope) =>
-  sql<boolean>`not exists (
-    select 1 from batch_participants bp
-    where bp.tenant_id = assessment_batches.tenant_id
-      and bp.batch_id = assessment_batches.id
-      and bp.status = 'active'
-      and not ${scopeCoverage(held, {
-        id: sql.ref('bp.assessment_anchor_node_id') as never,
-        tenantId: sql.ref('bp.tenant_id') as never,
-        path: sql.ref('bp.anchor_path') as never,
-      })}
-  )`
-
 /**
- * A batch somebody takes part in, whether or not they administer anything.
+ * A batch whose whole roster this person administers.
  *
- * Being on the roster or having been accepted as staff is what makes a batch
- * theirs to see. Drafts are excluded: a round that has not started is a plan
- * its administrators are still writing, and the people in it have not been
- * told about it yet.
+ * Authority first, containment second. Containment alone is "no participant
+ * of this batch is outside my reach", which every batch with an empty roster
+ * satisfies for everybody - a draft nobody has been added to, or a round
+ * whose participants have all been excluded, was visible to any signed-in
+ * account, and projected as manageable at that.
  */
-const takesPart = (userId: string) =>
-  sql<boolean>`(
-    assessment_batches.status <> 'draft'
-    and (
-      exists (
+const withinReach = (held: AuthorizationScope) =>
+  held.tenantWide || held.anchors.length > 0
+    ? sql<boolean>`not exists (
         select 1 from batch_participants bp
         where bp.tenant_id = assessment_batches.tenant_id
           and bp.batch_id = assessment_batches.id
-          and bp.user_id = ${userId}::uuid
           and bp.status = 'active'
-      )
-      or exists (
-        select 1 from batch_access_sources bas
-        where bas.tenant_id = assessment_batches.tenant_id
-          and bas.batch_id = assessment_batches.id
-          and bas.subject_id = ${userId}::uuid
-      )
+          and not ${scopeCoverage(held, {
+            id: sql.ref('bp.assessment_anchor_node_id') as never,
+            tenantId: sql.ref('bp.tenant_id') as never,
+            path: sql.ref('bp.anchor_path') as never,
+          })}
+      )`
+    : sql<boolean>`false`
+
+/**
+ * A batch a participant is in, and has been told about.
+ *
+ * Told about means a phase has actually begun. A round whose first phase is
+ * merely in the diary is still a plan its administrators are writing: the
+ * people in it learn of it when it starts, not when somebody pencils in a
+ * date. A draft has no phase at all, so it is out either way.
+ */
+const isParticipant = (userId: string) =>
+  sql<boolean>`(
+    assessment_batches.status = 'active'
+    and assessment_batches.current_phase_id is not null
+    and exists (
+      select 1 from batch_participants bp
+      where bp.tenant_id = assessment_batches.tenant_id
+        and bp.batch_id = assessment_batches.id
+        and bp.user_id = ${userId}::uuid
+        and bp.status = 'active'
     )
   )`
 
-/** what one person may see of the batches: what they administer, or what they are in */
+/**
+ * A batch somebody works on, by an authority that still stands.
+ *
+ * The acceptance record alone is not it: a source outlives the assignment it
+ * accepted, on purpose (the batch keeps what it agreed to), so reading it
+ * without asking whether the grant behind it is still live left somebody who
+ * had been taken off the job still reading the round.
+ */
+const isStaff = (userId: string) =>
+  sql<boolean>`exists (
+    select 1 from batch_access_sources bas
+    join role_grants rg
+      on rg.tenant_id = bas.tenant_id and rg.id = bas.role_assignment_id
+    where bas.tenant_id = assessment_batches.tenant_id
+      and bas.batch_id = assessment_batches.id
+      and bas.subject_id = ${userId}::uuid
+      and rg.user_id = ${userId}::uuid
+      and rg.revoked_at is null
+      and (rg.valid_from is null or rg.valid_from <= now())
+      and (rg.valid_until is null or rg.valid_until > now())
+  )`
+
+/**
+ * What one person may see of the batches.
+ *
+ * Three separate ways in, each with its own rule: administering the whole
+ * roster, working on it under an authority that still stands, or being in it
+ * once it has begun. They were one predicate before, and the shortest of the
+ * three quietly decided the other two.
+ */
 export const visibleTo = (viewer: { held: AuthorizationScope; userId: string }) =>
-  sql<boolean>`(${withinReach(viewer.held)} or ${takesPart(viewer.userId)})`
+  sql<boolean>`(
+    ${withinReach(viewer.held)}
+    or ${isStaff(viewer.userId)}
+    or ${isParticipant(viewer.userId)}
+  )`
 
 /** whether one batch is one this person may read at all */
 export const batchVisibleTo = (
@@ -931,6 +968,33 @@ export const namesOf = (tenantId: string, userIds: readonly string[]) =>
           ),
         )
 
+/**
+ * When this round was last closed, if it ever was.
+ *
+ * A reopened round keeps every stage it ran before, entry instants and all,
+ * so "which stage is in effect" computed from the plan alone would answer
+ * with the one it ended on - and that stage's profile would be live again
+ * the moment somebody reopened the round for a date next week.
+ */
+export const lastArchivedAt = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchLifecycleEvent')
+        .select([epoch('occurred_at').as('occurredAt')])
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .where('kind', '=', 'archived')
+        .orderBy('occurredAt', 'desc')
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined ? null : msOf((row as unknown as Record<string, unknown>).occurredAt),
+      ),
+    )
+
 export const insertLifecycleEvent = (input: {
   tenantId: string
   batchId: string
@@ -1181,7 +1245,7 @@ export const insertParticipants = (
 ) =>
   db
     .query((k) =>
-      sql<{ id: string }>`
+      sql<{ id: string; inserted: boolean }>`
         insert into batch_participants
           (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path,
            anchor_lineage, user_type_id, included_by)
@@ -1217,10 +1281,17 @@ export const insertParticipants = (
                user_type_id = excluded.user_type_id,
                updated_at = now()
          where batch_participants.status <> 'active'
-        returning id
+        -- xmax is zero on a row this statement inserted: it is the only way
+        -- an upsert can say which half of itself happened, and the roster's
+        -- history needs "joined" and "came back" told apart
+        returning id, (xmax = 0) as inserted
       `.execute(k),
     )
-    .pipe(Effect.map((result) => result.rows.map((row) => row.id)))
+    .pipe(
+      Effect.map((result) =>
+        result.rows.map((row) => ({ id: row.id, inserted: row.inserted === true })),
+      ),
+    )
 
 /** what somebody once imported, and on what grounds; history, never a rule */
 export const insertRosterImport = (input: {
@@ -1625,7 +1696,17 @@ export const listParticipantsPage = (
     )
 
 /** the row for one person in one batch, whatever its status */
-export const participantByUser = (tenantId: string, batchId: string, userId: string) =>
+/**
+ * Somebody's live membership of a batch, which is the whole of what a
+ * participant's capabilities are made of.
+ *
+ * Excluded rows are not membership. They are kept because what a person did
+ * while they were in the round is theirs and the round's (§32.47), and a
+ * query that returns them to an authorization check turns "taken off the
+ * list" into "still allowed to file". Whoever wants the record of a past
+ * membership asks the roster, which is where records belong.
+ */
+export const activeParticipantByUser = (tenantId: string, batchId: string, userId: string) =>
   db
     .query((k) =>
       k
@@ -1634,6 +1715,7 @@ export const participantByUser = (tenantId: string, batchId: string, userId: str
         .where('tenantId', '=', tenantId)
         .where('batchId', '=', batchId)
         .where('userId', '=', userId)
+        .where('status', '=', 'active')
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => (row ?? null) as { id: string; status: string } | null))
@@ -1710,6 +1792,62 @@ export const activeElsewhere = (tenantId: string, userId: string, excludingBatch
  * activation uses, scoped to a single user. Returns nothing when the user is
  * missing - eligibility and scope are the service's questions, asked first.
  */
+/**
+ * One thing that happened to somebody's membership, kept for good.
+ *
+ * The participant row says who is in the round now, and it says it by being
+ * overwritten - a readmission clears the withdrawal it replaces. This is
+ * where the fact that both happened survives.
+ */
+export const insertParticipantEvent = (input: {
+  tenantId: string
+  batchId: string
+  participantId: string
+  kind: 'included' | 'excluded' | 'readmitted'
+  actorId: string | null
+  reason?: string | null
+}) =>
+  db
+    .query((k) =>
+      k
+        .insertInto('BatchParticipantEvent')
+        .values({
+          tenantId: input.tenantId,
+          batchId: input.batchId,
+          participantId: input.participantId,
+          kind: input.kind,
+          actorId: input.actorId,
+          reason: input.reason ?? null,
+        } as never)
+        .execute(),
+    )
+    .pipe(Effect.asVoid)
+
+/** the membership history of one person in one round, oldest first */
+export const participantEvents = (tenantId: string, participantId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchParticipantEvent')
+        .select(['id', 'kind', 'actorId', 'reason'])
+        .select([epoch('occurred_at').as('occurredAt')])
+        .where('tenantId', '=', tenantId)
+        .where('participantId', '=', participantId)
+        .orderBy('occurredAt')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        (rows as unknown as Record<string, unknown>[]).map((row) => ({
+          id: row.id as string,
+          kind: row.kind as 'included' | 'excluded' | 'readmitted',
+          actorId: (row.actorId ?? null) as string | null,
+          reason: (row.reason ?? null) as string | null,
+          occurredAt: msOf(row.occurredAt),
+        })),
+      ),
+    )
+
 export const setParticipantStatus = (
   tenantId: string,
   participantId: string,

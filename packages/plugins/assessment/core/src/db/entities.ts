@@ -186,6 +186,44 @@ export const BatchPhase = defineEntity({
 // append-only audit of plan edits and actual transitions; actor is recorded
 // as a historical fact, deliberately without a foreign key, so the audit
 // outlives any account
+/**
+ * What happened to somebody's place in a round, in the order it happened.
+ *
+ * The participant row is the truth about who is in the round now; this is
+ * the truth about how they came to be. Without it, taking somebody off the
+ * list and putting them back left no trace of either: the row's own columns
+ * are the current state, and restoring one clears the withdrawal it replaced.
+ * Append-only, and nothing reads it to make a decision.
+ */
+export const BatchParticipantEvent = defineEntity({
+  name: 'BatchParticipantEvent',
+  tableName: 'batch_participant_events',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('batch_participant_events_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    participantId: p.uuid(),
+    /** included, excluded, readmitted */
+    kind: p.string().length(31),
+    actorId: p.uuid().nullable(),
+    reason: p.string().length(500).nullable(),
+    occurredAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_batch_participant_events_kind',
+      expression: `kind IN ('included', 'excluded', 'readmitted')`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'idx_batch_participant_events_participant',
+      expression:
+        'create index idx_batch_participant_events_participant on batch_participant_events (tenant_id, participant_id, occurred_at desc)',
+    },
+  ],
+})
+
 export const PhaseEvent = defineEntity({
   name: 'PhaseEvent',
   tableName: 'phase_events',
@@ -563,6 +601,10 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, subject_id) references users (tenant_id, id) on delete cascade`,
   `alter table batch_lifecycle_events add constraint fk_batch_lifecycle_events_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_participant_events add constraint fk_batch_participant_events_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_participant_events add constraint fk_batch_participant_events_participant
+     foreign key (tenant_id, participant_id) references batch_participants (tenant_id, id) on delete cascade`,
   `alter table phase_events add constraint fk_phase_events_phase
      foreign key (tenant_id, phase_id) references batch_phases (tenant_id, id) on delete cascade`,
   `alter table phase_item_scopes add constraint fk_phase_item_scopes_phase
@@ -596,5 +638,6 @@ export const entities = [
   PhaseItemScope,
   PhaseParticipantScope,
   BatchParticipant,
+  BatchParticipantEvent,
   BatchConfigRevision,
 ] as const

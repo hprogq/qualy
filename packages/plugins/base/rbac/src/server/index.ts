@@ -364,12 +364,31 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     }),
 
     createScopedAssignment: Effect.fn('Rbac.createScopedAssignment')(function* (input) {
-      const role = yield* bound(() => oneRoleProjected(input.tenantId, input.roleId))().pipe(
-        Effect.orDie,
+      // The same structural rules an ordinary grant obeys: active and
+      // assignable, a person of a kind the role admits, a node of a kind it
+      // can anchor to, and the right shape for its kind.
+      //
+      // Confining a grant to one resource says where it applies, not who may
+      // hold it - so a batch that hands out a role its owner marked
+      // unassignable, or gives a teachers' role to a student, would be
+      // writing exactly the row the role's own rules exist to refuse. Whether
+      // this caller may hand it out at all, and how widely, stays with the
+      // caller: a resource is the only thing that knows its own reach.
+      yield* bound(() =>
+        grants.assertEligible(input.tenantId, {
+          userId: input.subjectId,
+          roleId: input.roleId,
+          target: {
+            kind: 'org-node',
+            orgNodeId: input.orgNodeId,
+            coverage: input.includeDescendants ? 'subtree' : 'self',
+          },
+        }),
+      )().pipe(
+        // one answer for every way a role can be the wrong role here: the
+        // caller is a resource, and the reasons belong to the role's owner
+        Effect.catch(() => new AccessDenied({ reason: 'role is not assignable here' })),
       )
-      if (!role || role.status !== 'active') {
-        return yield* new AccessDenied({ reason: 'role is not assignable' })
-      }
       return yield* bound(() =>
         insertScopedGrant({
           tenantId: input.tenantId,

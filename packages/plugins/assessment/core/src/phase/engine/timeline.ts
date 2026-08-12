@@ -22,9 +22,22 @@ export interface TimelineEntry {
   readonly entry: TimelineTime
 }
 
-export function deriveTimeline(plan: PhasePlan, now: EpochMillis): readonly TimelineEntry[] {
+/**
+ * @param running whether the batch is in service. A round that has been
+ * archived has no stage in effect: leaving its last one marked as current
+ * says the round is still going, on every card and in every bar that reads
+ * this, and would make a stage's profile the live one again the moment the
+ * round was reopened for a future date.
+ */
+export function deriveTimeline(
+  plan: PhasePlan,
+  now: EpochMillis,
+  running = true,
+): readonly TimelineEntry[] {
   const state = effectiveState(plan, now)
   const pendingAt = new Map(state.pending.map((p) => [p.phaseId, p.actualEntryAt]))
+  // everything that happened is behind it, and nothing is in hand
+  const here = running ? state.index : plan.length
 
   return plan.map((phase, index) => {
     const enteredAt = phase.actualEntryAt ?? pendingAt.get(phase.id) ?? null
@@ -42,7 +55,7 @@ export function deriveTimeline(plan: PhasePlan, now: EpochMillis): readonly Time
       // a note about waiting is answered by the time itself; keeping it after
       // one is set would leave the plan explaining a decision it has made
       entryNote: entry.kind === 'pending' ? phase.entryNote : '',
-      status: index < state.index ? 'ended' : index === state.index ? 'current' : 'future',
+      status: index < here ? 'ended' : index === here ? 'current' : 'future',
       entry,
     }
   })

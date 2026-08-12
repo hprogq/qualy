@@ -581,6 +581,22 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     ) => withDb(grantRows(tenantId, filter, scope, page).pipe(Effect.orDie)),
 
     options,
+
+    /**
+     * The structural half of a grant's rules, for a caller that carries its
+     * own authority checks.
+     *
+     * A resource-scoped assignment (a batch's own staff, say) is still a
+     * grant: the role has to be one somebody may hold, the person has to be
+     * a kind of person the role admits, and the node has to be a kind of
+     * node it can anchor to. Only "who may hand this out, and how widely" is
+     * the caller's own question, because a resource decides that for itself.
+     */
+    assertEligible: (
+      tenantId: string,
+      input: { userId: string; roleId: string; target: GrantTarget },
+    ) => eligible(tenantId, input).pipe(Effect.asVoid),
+
     grant: Effect.fn('Rbac.grants.grant')(function* (
       tenantId: string,
       input: { userId: string; roleId: string; target: GrantTarget },

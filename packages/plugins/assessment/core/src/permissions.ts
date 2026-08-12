@@ -40,12 +40,6 @@ export const permissions = [
     target: 'org-node',
   },
   {
-    code: 'assessment.entry.resubmit',
-    name: '对终态条目发起复议',
-    description: '在开放窗口内对已有终局结果的条目发起新一轮审核',
-    target: 'tenant',
-  },
-  {
     code: 'assessment.review.process',
     name: '处理审核任务',
     target: 'org-node',
@@ -93,6 +87,10 @@ export const PARTICIPANT_ACTION_CODES = [
   'assessment.entry.edit',
   'assessment.entry.submit',
   'assessment.entry.withdraw',
+  // asking for a decided entry to be looked at again is the participant's
+  // move (§32.14): a member of staff who wants another look reopens the
+  // review, which is a different code and a different act
+  'assessment.entry.resubmit',
   'assessment.result.view-self',
 ] as const
 
@@ -108,7 +106,6 @@ export const PARTICIPANT_ACTION_CODES = [
 export const STAFF_CODES = [
   'assessment.entry.proxy',
   'assessment.entry.record',
-  'assessment.entry.resubmit',
   'assessment.review.process',
   'assessment.review.reopen',
   'assessment.result.view-peers',

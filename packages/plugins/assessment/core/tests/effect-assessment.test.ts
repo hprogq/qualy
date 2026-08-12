@@ -22,8 +22,13 @@ import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
-import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
-import type { PhaseRow } from '../src/server/db.ts'
+import {
+  Assessment,
+  serviceLayer,
+  type ActionDecision,
+  type PhaseSpecInput,
+} from '../src/server/index.ts'
+import { participantEvents, type PhaseRow } from '../src/server/db.ts'
 import { startBatch } from './support/lifecycle.ts'
 
 // The service against a real database: batch lifecycle with the one-statement
@@ -70,6 +75,9 @@ const tagOf = (exit: Exit.Exit<unknown, unknown>): string | undefined =>
     .find((tag) => tag !== undefined)
 
 const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+
+/** why a refused action was refused, for a suite that asserts on refusals */
+const refusal = (decision: ActionDecision) => (decision.allowed ? null : decision)
 const rowsOf = <T>(result: unknown) => (result as { rows: T[] }).rows
 
 const HOUR = 3_600_000
@@ -792,6 +800,412 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(scheduled[1]!.entryNote).toBe('')
   })
 
+  // The hostile cases: every one of these was a way in that the ordinary
+  // paths never take, and every one of them is somebody's mistake away from
+  // being a real request.
+
+  it("takes a participant's actions away the moment they leave the roster", async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('excluded-actions')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Excluded',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({
+                phaseKey: 'entry',
+                permissionProfile: [
+                  'assessment.entry.create',
+                  'assessment.entry.edit',
+                  'assessment.entry.submit',
+                  'assessment.entry.withdraw',
+                ],
+              }),
+            ],
+          },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        yield* assessment.advancePhase(
+          f.tenant,
+          batch.id,
+          { to: plan[0]!.id, force: true, reason: 'starting now' },
+          f.principal,
+        )
+        const student: Principal = { tenantId: f.tenant, userId: f.s1, sessionId: 's' }
+        const codes = [
+          'assessment.entry.create',
+          'assessment.entry.edit',
+          'assessment.entry.submit',
+          'assessment.entry.withdraw',
+          // gated but not opened by this stage, and ungated: one is refused
+          // by the gate, the other passes it whatever the stage says
+          'assessment.entry.resubmit',
+          'assessment.result.view-self',
+        ] as const
+        const inside = yield* Effect.forEach(codes, (code) =>
+          assessment.authorizeEntryAction(student, code, batch.id),
+        )
+        const roster = yield* assessment.listParticipants(
+          f.tenant,
+          batch.id,
+          { limit: 50 },
+          f.principal,
+        )
+        const mine = roster.find((row) => row.userId === f.s1)!
+        yield* assessment.setParticipantStatus(
+          f.tenant,
+          batch.id,
+          mine.id,
+          'excluded',
+          'transferred out',
+          f.principal,
+        )
+        const outside = yield* Effect.forEach(codes, (code) =>
+          assessment.authorizeEntryAction(student, code, batch.id),
+        )
+        // and back on the list, the entitlements come back with the membership
+        yield* assessment.setParticipantStatus(
+          f.tenant,
+          batch.id,
+          mine.id,
+          'active',
+          undefined,
+          f.principal,
+        )
+        const again = yield* assessment.authorizeEntryAction(
+          student,
+          'assessment.entry.create',
+          batch.id,
+        )
+        const history = yield* participantEvents(f.tenant, mine.id).pipe(Effect.orDie)
+        return { inside, outside, again, history }
+      }),
+    )
+    const { inside, outside, again, history } = ok(exit)
+    // four opened by the stage, plus the one no stage governs; resubmit is
+    // gated and this stage did not open it, so the gate refuses it - not
+    // authority, which is what being on the roster answers
+    expect(inside.filter((decision) => decision.allowed)).toHaveLength(5)
+    expect(refusal(inside.find((decision) => !decision.allowed)!)?.layer).toBe('gate')
+    // off the list, every one of them is refused at the authority layer
+    expect(outside.every((decision) => !decision.allowed)).toBe(true)
+    expect([...new Set(outside.map((decision) => refusal(decision)?.reason))]).toEqual([
+      'not-participant',
+    ])
+    expect(again.allowed).toBe(true)
+    // and both halves of the story survive the round trip
+    expect(history.map((event) => event.kind)).toEqual(['included', 'excluded', 'readmitted'])
+    expect(history[1]!.reason).toBe('transferred out')
+  })
+
+  it("holds a batch's own staff to the role's own rules", async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-rules')
+        const assessment = yield* Assessment
+        const role = (code: string, extra: string) =>
+          Effect.gen(function* () {
+            const id = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                   assignable, eligibility_mode, anchor_mode)
+                values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', ${sql.raw(extra)})
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_permissions (tenant_id, role_id, permission_id)
+              select ${f.tenant}, ${id}, id from permissions
+               where code = 'assessment.review.process'`)
+            return id
+          })
+        const open = yield* role('open', `true, 'unrestricted', 'unrestricted'`)
+        const teachersOnly = yield* role('teachers', `true, 'allow-list', 'unrestricted'`)
+        yield* runSql(sql`
+          insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+          values (${f.tenant}, ${teachersOnly}, ${f.teacherType})`)
+        const classesOnly = yield* role('classes', `true, 'unrestricted', 'allow-list'`)
+        yield* runSql(sql`
+          insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+          values (${f.tenant}, ${classesOnly}, ${f.classType})`)
+        const shelved = yield* role('shelved', `false, 'unrestricted', 'unrestricted'`)
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Staff rules',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.root], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const student = { userIds: [f.s1], orgNodeIds: [f.class1] }
+        const attempt = (roleId: string, at: string[] = [f.class1]) =>
+          Effect.exit(
+            assessment.addStaff(
+              f.tenant,
+              batch.id,
+              { ...student, orgNodeIds: at, roleId },
+              f.principal,
+            ),
+          )
+        return {
+          // a student given a role only teachers may hold
+          wrongUserType: yield* attempt(teachersOnly),
+          // a class role hung on the college above it
+          wrongOrgType: yield* attempt(classesOnly, [f.root]),
+          // a role its owner has taken out of circulation
+          notAssignable: yield* attempt(shelved),
+          // and the one that breaks none of those rules
+          allowed: yield* attempt(open),
+        }
+      }),
+    )
+    const { wrongUserType, wrongOrgType, notAssignable, allowed } = ok(exit)
+    expect(tagOf(wrongUserType)).toBe('ACCESS_DENIED')
+    expect(tagOf(wrongOrgType)).toBe('ACCESS_DENIED')
+    expect(tagOf(notAssignable)).toBe('ACCESS_DENIED')
+    expect(Exit.isSuccess(allowed)).toBe(true)
+  })
+
+  it('closes every gated action when a round is archived, and again while a reopening waits', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('archived-gate')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Archived',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // a terminal stage that happens to leave filing open
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.create'] })],
+          },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        yield* assessment.advancePhase(
+          f.tenant,
+          batch.id,
+          { to: plan[0]!.id, force: true, reason: 'starting now' },
+          f.principal,
+        )
+        const student: Principal = { tenantId: f.tenant, userId: f.s1, sessionId: 's' }
+        const running = yield* assessment.authorizeEntryAction(
+          student,
+          'assessment.entry.create',
+          batch.id,
+        )
+        yield* assessment.setBatchStatus(f.tenant, batch.id, { status: 'archived' }, f.principal)
+        const archived = yield* assessment.authorizeEntryAction(
+          student,
+          'assessment.entry.create',
+          batch.id,
+        )
+        const afterArchive = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
+        const timelineArchived = yield* assessment.timeline(f.tenant, batch.id)
+        // reopened for next week: active again, but nothing is in effect yet
+        yield* assessment.setBatchStatus(
+          f.tenant,
+          batch.id,
+          {
+            status: 'active',
+            reason: 'appeals arrived late',
+            phase: { displayName: 'Appeals', permissionProfile: ['assessment.entry.create'] },
+            plannedEntryAt: Date.now() + 24 * HOUR,
+          },
+          f.principal,
+        )
+        const waiting = yield* assessment.authorizeEntryAction(
+          student,
+          'assessment.entry.create',
+          batch.id,
+        )
+        return { running, archived, waiting, afterArchive, timelineArchived }
+      }),
+    )
+    const { running, archived, waiting, afterArchive, timelineArchived } = ok(exit)
+    expect(running.allowed).toBe(true)
+    expect(archived.allowed).toBe(false)
+    expect(refusal(archived)?.layer).toBe('gate')
+    // the projection goes with it, which is what a reopening would revive
+    expect(afterArchive.currentPhaseId).toBeNull()
+    expect(timelineArchived.every((entry) => entry.status === 'ended')).toBe(true)
+    // and a stage in next week's diary opens nothing today
+    expect(waiting.allowed).toBe(false)
+  })
+
+  it('shows an empty round to nobody, and a batch to no former member of staff', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('batch-visibility-paths')
+        const assessment = yield* Assessment
+        const rbac = yield* Rbac
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Empty',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class3], userTypeIds: [f.teacherType] },
+          },
+          f.principal,
+        )
+        // nobody was imported: a roster with nothing in it contains everybody's
+        // reach vacuously, which used to make the batch everybody's to read
+        const roster = yield* assessment.listParticipants(
+          f.tenant,
+          batch.id,
+          { limit: 50 },
+          f.principal,
+        )
+        const stranger: Principal = { tenantId: f.tenant, userId: f.s1, sessionId: 's' }
+        const seenByStranger = yield* assessment.listBatches(f.tenant, { limit: 20 }, stranger)
+        const openedByStranger = yield* Effect.exit(
+          assessment.getBatch(f.tenant, batch.id, stranger),
+        )
+
+        // and somebody brought in and then taken off the job
+        const reviewer = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'reviewer', 'reviewer', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${reviewer}, id from permissions
+           where code = 'assessment.review.process'`)
+        const staffed = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Staffed',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.addStaff(
+          f.tenant,
+          staffed.id,
+          { userIds: [f.s2], orgNodeIds: [f.class1], roleId: reviewer },
+          f.principal,
+        )
+        const worker: Principal = { tenantId: f.tenant, userId: f.s2, sessionId: 's' }
+        const whileStaff = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
+        const grants = rowsOf<{ id: string }>(
+          yield* runSql(sql`select id from role_grants where user_id = ${f.s2}`),
+        )
+        for (const grant of grants) {
+          yield* rbac.revokeAssignment({
+            tenantId: f.tenant,
+            assignmentId: grant.id,
+            actorId: f.principal.userId,
+          })
+        }
+        const afterRevoke = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
+        return { roster, seenByStranger, openedByStranger, whileStaff, afterRevoke }
+      }),
+    )
+    const { roster, seenByStranger, openedByStranger, whileStaff, afterRevoke } = ok(exit)
+    expect(roster).toEqual([])
+    expect(seenByStranger).toEqual([])
+    expect(tagOf(openedByStranger)).toBe('ACCESS_DENIED')
+    expect(whileStaff.map((row) => row.name)).toEqual(['Staffed'])
+    // the acceptance record outlives the assignment on purpose; reading the
+    // round does not
+    expect(afterRevoke).toEqual([])
+  })
+
+  it('lets a draft be brought up to strength before it starts', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('draft-roster')
+        const assessment = yield* Assessment
+        // an import that finds nobody: the batch exists with an empty roster
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Empty draft',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class3], userTypeIds: [f.teacherType] },
+          },
+          f.principal,
+        )
+        const empty = yield* assessment.listParticipants(
+          f.tenant,
+          batch.id,
+          { limit: 50 },
+          f.principal,
+        )
+        // adding by hand, and importing, both while it is still a draft
+        const added = yield* assessment.addParticipants(f.tenant, batch.id, [f.s1], f.principal)
+        const imported = yield* assessment.importParticipants(
+          f.tenant,
+          batch.id,
+          { orgNodeIds: [f.class2], userTypeIds: [f.studentType] },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // and with somebody on it, the round can start
+        const started = yield* Effect.exit(
+          assessment.schedulePhase(f.tenant, batch.id, plan[0]!.id, Date.now() + HOUR, f.principal),
+        )
+        return { empty, added, imported, started }
+      }),
+    )
+    const { empty, added, imported, started } = ok(exit)
+    expect(empty).toEqual([])
+    expect(added.added).toBe(1)
+    expect(imported.added).toBe(1)
+    expect(Exit.isSuccess(started)).toBe(true)
+  })
+
   it('offers only roles a batch may carry, at units the batch actually covers', async () => {
     const exit = await run(
       db.url,
@@ -883,6 +1297,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const f = yield* seed('visibility')
         const assessment = yield* Assessment
         const student: Principal = { tenantId: f.tenant, userId: f.s1, sessionId: 's' }
+        const page = { limit: 20 }
 
         const running = yield* assessment.createBatch(
           f.tenant,
@@ -900,12 +1315,22 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.principal,
         )
         const plan = yield* assessment.getPlan(f.tenant, running.id, f.principal)
-        // scheduling the first stage is what starts a batch
+        // scheduling the first stage is what starts a batch, but a date in
+        // the diary is not the round beginning: until it does, the people in
+        // it have not been told about it
         yield* assessment.schedulePhase(
           f.tenant,
           running.id,
           plan[0]!.id,
           Date.now() + HOUR,
+          f.principal,
+        )
+        const asStudentWhileScheduled = yield* assessment.listBatches(f.tenant, page, student)
+        // and now it actually begins
+        yield* assessment.advancePhase(
+          f.tenant,
+          running.id,
+          { to: plan[0]!.id, force: true, reason: 'starting the round early' },
           f.principal,
         )
         // a second one, left as a draft: its people have not been told about it
@@ -919,23 +1344,24 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.principal,
         )
 
-        const page = { limit: 20 }
         const asAdmin = yield* assessment.listBatches(f.tenant, page, f.principal)
         const asStudent = yield* assessment.listBatches(f.tenant, page, student)
         const stranger: Principal = { tenantId: f.tenant, userId: f.s3, sessionId: 's' }
         const asStranger = yield* assessment.listBatches(f.tenant, page, stranger)
         const opened = yield* assessment.getBatch(f.tenant, running.id, student)
         const refused = yield* Effect.exit(assessment.getBatch(f.tenant, running.id, stranger))
-        return { asAdmin, asStudent, asStranger, opened, refused }
+        return { asAdmin, asStudent, asStudentWhileScheduled, asStranger, opened, refused }
       }),
     )
-    const { asAdmin, asStudent, asStranger, opened, refused } = ok(exit)
+    const { asAdmin, asStudent, asStudentWhileScheduled, asStranger, opened, refused } = ok(exit)
     const names = (rows: readonly { name: string }[]) => rows.map((row) => row.name).sort()
 
     // the administrator sees the round being written as well as the one running
     expect(names(asAdmin)).toEqual(['Draft', 'Running'])
-    // the student sees the one they are actually in, and reads it without
-    // holding any permission over batches at all
+    // a date in the diary tells the people in the round nothing
+    expect(asStudentWhileScheduled).toEqual([])
+    // once it has begun the student sees the one they are actually in, and
+    // reads it without holding any permission over batches at all
     expect(names(asStudent)).toEqual(['Running'])
     expect(asStudent[0]!.manageable).toBe(false)
     expect(opened.name).toBe('Running')

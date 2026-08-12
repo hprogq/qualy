@@ -711,9 +711,13 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 # 第四部分 · 里程碑（垂直切片，每步端到端可演示）
 
-**M1 — Batch + Phase + Roster + PhaseGate（运行时骨架）**
-交付：§9–§11 全部（批次 CRUD、daterange、阶段序列/模板/phase_events(+processed_at)、**队列武装模型与三种时间形态、effectivePhase 时钟判定**、phase_item/participant_scopes 与插入阶段、配置事件日志、调度 fiber、花名册生成与 diff（转入转出对称）、permissions.ts（权限声明 + PHASE_GATED 同文件）、PhaseGate(+ctx)、结构化拒因、学生时间线（取值优先级）、batch-admin 基础页）。不做 Entry/附件/复杂审核/计分/公示。
-验收：① 模板建批次，阶段编辑器只显示受控权限；② scheduled 到点自动切换且幂等（重扫无重复事件），actual 写 planned 值、processed_at 另记；③ 改未来 planned 成功并审计，改 actual 被拒；④ manual/force 切换落审计带 reason；⑤ 花名册单 SQL 生成；diff 三类差异可应用；excluded 不删数据、组织变化不使 roster 漂移；转入默认不纳入、纳入时双重参与警告；⑥ 权限矩阵逐格验证（预填报可 edit 不可 submit；审核整理关提交、review 继续；归档期写动作全 403）；⑦ createTestContext 覆盖 gate 判定与切换幂等；⑧ **队头武装**：manual 边界之后的 scheduled 到点不自燃，硬计划越过 manual 被拒；⑨ **effectivePhase**：物化延迟不影响 gate 判定（时钟说了算）；⑩ scoped 阶段：范围外 entry 动作拒绝且拒因可辨，review 不受限。
+**M1 — Batch + Phase + Roster + 三层授权（运行时骨架）**
+
+交付：§9–§11 全部,按 §32 的后续裁决为准 —— 批次 CRUD 与 daterange;阶段序列/模板/`phase_events`(+`processed_at`);**队列武装模型与 effectivePhase 时钟判定**(时间形态已按 §32.34 收敛为「有时间 / 没有时间」两态,`entry_trigger` 与 offset/estimated 三列不落地);`phase_item_scopes` / `phase_participant_scopes` 与插入阶段;配置事件日志;调度 fiber;**创建批次即生成花名册与接受边界**(§32.45,取代「首次排期时冻结」与 diff 面板);`permissions.ts`(RBAC 权限声明 + `PARTICIPANT_ACTION_CODES` + `PHASE_GATED` 同文件,§32.46);三层授权 `authorizeEntryAction`(权威 → 阶段闸门 → 资源策略,资源策略在 M1 是空槽);结构化拒因;只读业务时间线(§32.50);批次工作区页(总览/阶段安排/参评名单/人员权限/批次设置)。不做 Entry/附件/复杂审核/计分/公示。
+
+验收:① 模板建批次,阶段编辑器只显示受控权限;② scheduled 到点自动切换且幂等(重扫无重复事件),actual 写 planned 值、`processed_at` 另记;③ 改未来 planned 成功并审计,改 actual 被拒;④ manual/force 切换落审计带 reason;⑤ 创建批次单 SQL 生成花名册;草稿期可增删改名单并从 0 人补到可启动;移出不删数据(§32.47),重新加入恢复同一行并刷新锚点,`batch_participant_events` 留下 included/excluded/readmitted 三态历史;组织变化不使 roster 漂移;⑥ 权限矩阵逐格验证(预填报可 edit 不可 submit;审核整理关提交、review 继续;**归档期所有 PHASE_GATED 写动作全拒**,且归档会清空 current phase 投影、为未来日期重开的批次在新阶段真正进入前无任何阶段生效);⑦ `createTestContext` 覆盖 gate 判定与切换幂等;⑧ **队头武装**:manual 边界之后的 scheduled 到点不自燃,硬计划越过 manual 被拒;⑨ **effectivePhase**:物化延迟不影响 gate 判定(时钟说了算);⑩ scoped 阶段:范围外 entry 动作拒绝且拒因可辨,review 不受限。
+
+**M1 的敌意验收**(全部有回归测试,§32.52):⑪ 被移出名单的人五个参评动作全部在**权威层**拒(`not-participant`),重新加入后恢复;⑫ 直接调 `addStaff` 用「只允许老师」的角色给学生、把「只允许班级」的角色挂在学院、使用 `assignable=false` 的角色,三者全拒;⑬ 空花名册的批次对无 `assessment.batch.manage` 的人不可见、不可读;⑭ 已排期但尚未真正进入首个阶段的批次,参评人看不到;⑮ 被撤销/过期的工作人员分配立即失去批次可见性(接受记录仍在,读取权不在)。
 
 **M2 — Storage + Evidence 最小闭环（第一条可演示业务）**
 交付：storage 四接口 + 本地 provider + authorizer；item-type 扩展点 + evidence 驱动（text/date/attachment）；Entry/Revision/关系表附件（含 item_revision_id 引用与 ItemRevision 实体）；题目的 `entrySource`（student | administrative）与行政认定路径（**record = trusted，不建审核实例**）；单 stage 审核 approve/reject；**驳回附修改建议**（建议稿 + 必填文字意见，学生端只读、不可套用/复制）；**最小 scorer 内核**（第三轮审计 §10——M2 的 +3 必须是真实竖切不是 mock，且"calcParticipant 全系统唯一实现"从第一天成立）：calcParticipant 骨架 + `fixed@1` + `sum@1` + 单层 ScoreGroup + 最小 Breakdown + provisional my-result；实例：退役复学（student）+ 一条扣分题（administrative）。
@@ -1004,3 +1008,21 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 **32.51 `entry_note`:阶段在等什么,只在它还没有时间的时候说**(2026-08-12,用户提出,采纳)。`batch_phases` 新增 `entry_note varchar(200) not null default ''`(迁移 `20260812123827_phase-entry-note.sql`),与既有的 `description` 分工不同:`description` 是「这个阶段是干什么的」,任何时候都成立;`entry_note` 是「为什么它现在还没有时间」(如「待学院审批名单后确定」),**一旦这个阶段被排上时间,后端就不再下发它**(`deriveTimeline` 里 `entry.kind === 'pending'` 才带上)——时间本身已经回答了那个问题,继续显示会让计划在解释一个它已经做完的决定。编辑入口在阶段详情面板(名称、用途之下),提示语明说「在本阶段确定时间之前,所有人都会看到这句话」。引擎侧新增 `note-entry` 编辑动作,与 `describe` 一样永远可编辑。
 
 **只读时间线的呈现**(承 §32.50):纵向条目铺满右栏(名称一行、时间或等待说明一行,当前阶段有底色),节点悬停用 HoverCard 展示详情(状态、时刻、用途说明);移动端不再是一排卡片,而是**同一条时间线转 90°**——横线穿过节点标记,名字在标记下方居中,只有当前阶段多一行时间,横向滚动并 snap,首屏自动把当前阶段滚到中央。两端是同一套画法(线 + 标记 + 文字),不是两种控件。
+
+**32.52 M1 收口的安全加固**(2026-08-13,外部源码审计逐条提出,全部采纳)。六处授权/生命周期缺口在 M1 收口时修掉,均补敌意回归测试:
+
+① **参评资格只由 active 成员关系构成**。`participantByUser` 改名 `activeParticipantByUser` 并只返回 `status='active'` 的行:被移出的人在阶段开放 `entry.*` 时仍被权威层放行,与 §32.47「移出即失去参评资格、历史数据保留」直接冲突。历史查询是花名册的事,不是授权的事。
+
+② **`createScopedAssignment` 执行与普通授权一致的结构性不变量**。资源范围只说明「授权在哪儿生效」,不改变「谁可以持有这个角色」:此前它只检查角色存在且 active,于是绕过 UI 直接调 `addStaff` 可以把「只允许老师」的角色给学生、把「只允许班级」的角色挂到年级、使用 owner 已下架(`assignable=false`)的角色。判定复用 grants 模块的 `eligible`(经 `assertEligible` 暴露),Assessment 继续负责「这个批次是否允许委派该角色」与「调用人是否有权委派到该范围」。
+
+③ **归档关闭闸门,并且不会被重开复活**。`gateView` 从「draft 无闸门、archived 仍用末阶段 profile」改为**只有 active 批次有生效阶段**;归档同时把 `current_phase_id` 置空;为未来日期重开的批次,在新阶段真正进入前处于「阶段之间」——由 `lastArchivedAt` 与阶段的生效时刻比较判定,因为重开会保留归档前所有阶段的 actual 时刻,单看计划仍会算出旧阶段。重开新建的阶段现在走 `reviewInsertion` 与「计划时间必须在未来」的校验,不再直接 INSERT。
+
+④ **批次可见性拆成三条独立路径**。原先一条谓词里「不存在超出我管辖范围的 active 参评人」对空花名册恒真,于是任何登录用户都能看到并被投影为 `manageable` 的空草稿批次;现在管理路径先要求调用人在该权限上确有权威(`tenantWide || anchors.length > 0`)。工作人员路径改为 join `role_grants` 复核授权仍然有效(未撤销、未过期)——接受记录按设计比分配活得久(§32.48),但读取权不该。参评人路径要求批次 active **且已真正进入某个阶段**:日程上写了日期不等于这一轮开始了。
+
+⑤ **草稿期的花名册可以管理**。§32.45 把名单前移到创建批次的同一个事务,正是为了让人在首次排期前核对;而 guard 仍停留在旧模型「draft 无花名册」,导致创建出来的草稿只能看不能改,导入 0 人的批次除了删除没有出路。现在 draft 与 active 都允许,archived 只读(SCHEDULED 冻结留给 M5)。
+
+⑥ **成员关系历史落表**。`batch_participant_events`(append-only,`included|excluded|readmitted` + actor + reason + occurredAt)记录进出;参评行本身仍是当前状态的唯一真相,不搞事件溯源。同时把「恢复」收敛到唯一的接纳路径:`setParticipantStatus(active)` 现在走 `insertParticipants` 的 upsert,与「添加人员」一样刷新锚点与用户类型快照(重新接纳也是接纳),不能被接纳的人(停用、无站位)不予恢复。
+
+另有两处按 §32.14 与 §32.50 归位:`assessment.entry.resubmit` 从 RBAC 目录与 `STAFF_CODES` 移入 `PARTICIPANT_ACTION_CODES`(申请复议是参评人的动作,工作人员主动复查走 `review.reopen`);`deriveTimeline` 接受「是否在服务中」,归档的批次不再把末阶段标成 current。
+
+**未纳入本轮**:`authorizeEntryAction` 的资源策略仍是空槽,这在 M1 是允许的(还没有 Entry);进入 M2 的第一件事是接上归属、Entry 状态与工作人员的组织范围——`entry.record/proxy` 必须校验目标参评人的冻结锚点落在提供该权限的分配范围内,否则「有 A 班权限的人可以操作 B 班学生」。

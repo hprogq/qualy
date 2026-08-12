@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:8faf6eae8f9536b7a66a0fb4bdafb27e929f132b84c76bcbe04c617e7d5a78d9",
-  "resolutionHash": "sha256:025fba4faf728c4b3a8fdfd6b7739e6d033d870b97c5840a5d247132cec9d1c9",
+  "resolutionHash": "sha256:7fc980aa769a3197d72679bb1aac32dab51d4a5d864cc36bfe3a895fcb73cf38",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -16,6 +16,7 @@
             "BatchConfigRevision",
             "BatchLifecycleEvent",
             "BatchParticipant",
+            "BatchParticipantEvent",
             "BatchPhase",
             "PhaseEvent",
             "PhaseItemScope",
@@ -36,7 +37,6 @@
             "assessment.batch.manage",
             "assessment.entry.proxy",
             "assessment.entry.record",
-            "assessment.entry.resubmit",
             "assessment.publication.manage",
             "assessment.ranking.view",
             "assessment.result.view-peers",

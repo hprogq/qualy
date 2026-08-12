@@ -981,9 +981,11 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/entry-record',
       defaultMessage: 'Record findings the institution establishes itself.',
     },
+    // still spoken of on the phase editor: the gate opens and closes it by
+    // name whoever it belongs to, and it belongs to the participant (§32.14)
     'permission-hint.assessment.entry.resubmit': {
       id: 'assessment/permission-hint/entry-resubmit',
-      defaultMessage: 'Contest an entry that has already been settled.',
+      defaultMessage: 'Ask for a settled entry to be looked at again.',
     },
     'permission-hint.assessment.review.process': {
       id: 'assessment/permission-hint/review-process',
@@ -1034,7 +1036,7 @@ const i18n = definePluginMessages({
     },
     'permission.assessment.entry.resubmit': {
       id: 'assessment/permission/entry-resubmit',
-      defaultMessage: 'Contest a settled entry',
+      defaultMessage: 'Ask for another look',
     },
     'permission.assessment.review.process': {
       id: 'assessment/permission/review-process',

@@ -20,7 +20,7 @@ import {
 } from '../phase/engine/edits.ts'
 import { effectiveState, normalizePlan } from '../phase/engine/queue.ts'
 import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
-import type { EpochMillis, PhasePlan } from '../phase/engine/types.ts'
+import type { EpochMillis, PhasePlan, PhaseSnapshot } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
 import { PARTICIPANT_ACTION_CODES, STAFF_CODES } from '../permissions.ts'
 import {
@@ -55,6 +55,7 @@ import {
   deletePhases,
   deleteTemplateRow,
   insertBatch,
+  insertParticipantEvent,
   insertParticipants,
   insertRosterImport,
   importCandidates,
@@ -64,6 +65,7 @@ import {
   insertConfigEvent,
   insertPhase,
   insertLifecycleEvent,
+  lastArchivedAt,
   accessSources,
   accessSubjectPage,
   acceptAccessSource,
@@ -90,7 +92,7 @@ import {
   oneBatch,
   oneParticipant,
   oneTemplate,
-  participantByUser,
+  activeParticipantByUser,
   phaseScopes,
   roleHoldersAt,
   replacePhaseScopes,
@@ -1029,13 +1031,33 @@ export const make = Effect.fn('Assessment.make')(function* () {
   }
 
   /** the current phase's profile and scopes, null before any phase is in effect */
+  /**
+   * Whether the stage the plan computes is really the stage in hand.
+   *
+   * It is not, if the round was closed after that stage began: reopening
+   * appends a new one, and until that one arrives the round is between
+   * stages rather than back in the last one it ran.
+   */
+  const inService = (tenantId: string, batchId: string, phase: PhaseSnapshot) =>
+    Effect.map(lastArchivedAt(tenantId, batchId), (closed) => {
+      if (closed === null) return true
+      const began = phase.actualEntryAt ?? phase.plannedEntryAt
+      return began !== null && began > closed
+    })
+
   const gateView = (tenantId: string, batch: BatchRow, now: EpochMillis) =>
     Effect.gen(function* () {
+      // Only a running batch has a phase in effect. A draft's rows are a plan
+      // somebody is still writing, and an archived round is over: leaving it
+      // answering by its last phase's profile meant archiving a batch whose
+      // final stage happened to open submissions closed nothing at all.
+      if (batch.status !== 'active') return null
       const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
       const state = effectiveState(plan, now)
-      // a draft batch has no phase in effect whatever its rows say; an
-      // archived one still answers by its terminal profile
-      if (batch.status === 'draft' || state.phase === null) return null
+      if (state.phase === null) return null
+      // and a round reopened for a date still to come is between stages: the
+      // one it ended on belongs to the round it was before it was closed
+      if (!(yield* inService(tenantId, batch.id, state.phase))) return null
       const scopes = yield* phaseScopes(tenantId, state.phase.id)
       return {
         profile: state.phase.permissionProfile,
@@ -1080,16 +1102,40 @@ export const make = Effect.fn('Assessment.make')(function* () {
     )
 
   /** the shared guards of every roster write, inside its transaction */
+  /**
+   * The record of an admission, one line per person admitted.
+   *
+   * Written wherever people join a roster, and told apart by whether the row
+   * was created or brought back: "joined the round" and "was let back in"
+   * are different facts, and the participant row cannot hold both.
+   */
+  const recordAdmissions = (
+    tenantId: string,
+    batchId: string,
+    admitted: readonly { id: string; inserted: boolean }[],
+    actorId: string | null,
+  ) =>
+    Effect.forEach(admitted, (row) =>
+      insertParticipantEvent({
+        tenantId,
+        batchId,
+        participantId: row.id,
+        kind: row.inserted ? 'included' : 'readmitted',
+        actorId,
+      }),
+    )
+
   const rosterWriteGuards = (tenantId: string, batchId: string, as: Principal) =>
     Effect.gen(function* () {
       const locked = yield* lockBatch(tenantId, batchId)
       if (!locked) return yield* new BatchNotFound()
       yield* requireRosterReach(as, tenantId, batchId)
+      // A draft's roster is exactly what a draft is for. It is drawn when the
+      // batch is created (§32.45), and the point of the gap before the first
+      // stage is scheduled is that somebody can check it - add the person the
+      // import missed, take out the one who transferred out, and start from
+      // zero if the import found nobody. Only an archived round is closed.
       if (locked.status === 'archived') return yield* new BatchReadOnly()
-      // a draft has no roster to manage: activation is what creates one
-      if (locked.status !== 'active') {
-        return yield* new ParticipantInvalid({ reason: 'batch-not-active' })
-      }
       return locked
     })
 
@@ -1459,6 +1505,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               ),
               as.userId,
             )
+            yield* recordAdmissions(tenantId, batchId, admitted, as.userId)
             yield* insertRosterImport({
               tenantId,
               batchId,
@@ -1516,7 +1563,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }
       return rows.map((row) => ({
         ...row,
-        timeline: deriveTimeline(toSnapshots(byBatch.get(row.id) ?? []), now),
+        timeline: deriveTimeline(
+          toSnapshots(byBatch.get(row.id) ?? []),
+          now,
+          row.status === 'active',
+        ),
       }))
     }),
 
@@ -1628,6 +1679,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   })
                 }
                 yield* updateBatchFields(tenantId, batchId, { status: 'archived' })
+                // nothing is in effect once a round is over, and a projection
+                // left behind is what a later reopening would revive
+                yield* setCurrentPhase(tenantId, batchId, null)
                 yield* insertLifecycleEvent({
                   tenantId,
                   batchId,
@@ -1647,6 +1701,22 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   return yield* new BatchStatusInvalid({ from, to, refusal: 'phase-required' })
                 }
                 const rows = yield* listPhaseRows(tenantId, batchId)
+                // the same rules any other phase is held to: only codes the
+                // gate knows, and a time that is still ahead of the round
+                const review = reviewInsertion(toSnapshots(rows), now, rows.length, {
+                  phaseKey: freshPhaseKey(rows),
+                  displayName: input.phase.displayName.trim(),
+                  description: input.phase.description?.trim() ?? '',
+                  permissionProfile: input.phase.permissionProfile ?? [],
+                })
+                if (review.refusals.length > 0) {
+                  return yield* new PlanInvalid({ refusals: review.refusals })
+                }
+                if (input.plannedEntryAt !== null && input.plannedEntryAt <= now) {
+                  return yield* new PlanInvalid({
+                    refusals: [{ reason: 'planned-in-past', phaseId: null }],
+                  })
+                }
                 const phaseId = yield* insertPhase({
                   tenantId,
                   batchId,
@@ -2405,8 +2475,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
     timeline: Effect.fn('Assessment.timeline')(function* (tenantId, batchId) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
+      const now = yield* Clock.currentTimeMillis
       const plan = toSnapshots(yield* dieQuery(withDb(listPhaseRows(tenantId, batchId))))
-      return deriveTimeline(plan, yield* Clock.currentTimeMillis)
+      const state = effectiveState(plan, now)
+      const running =
+        batch.status === 'active' &&
+        state.phase !== null &&
+        (yield* dieQuery(withDb(inService(tenantId, batchId, state.phase))))
+      return deriveTimeline(plan, now, running)
     }),
 
     gate: Effect.fn('Assessment.gate')(function* (tenantId, batchId, code, ctx) {
@@ -2433,7 +2509,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // lineage is what the scopes here get compared against.
         const held = PARTICIPANT_ACTION_CODES.includes(code as never)
           ? (yield* dieQuery(
-              withDb(participantByUser(principal.tenantId, batchId, principal.userId)),
+              withDb(activeParticipantByUser(principal.tenantId, batchId, principal.userId)),
             )) !== null
           : (yield* batchAuthority(principal.tenantId, batchId, principal.userId)).has(code)
         if (!held) {
@@ -2550,6 +2626,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 }
               }
               const added = yield* insertParticipants(tenantId, batchId, wanted, as.userId)
+              yield* recordAdmissions(tenantId, batchId, added, as.userId)
               return { added: added.length, skipped: wanted.length - added.length }
             }),
           ),
@@ -2603,6 +2680,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 ),
                 as.userId,
               )
+              yield* recordAdmissions(tenantId, batchId, added, as.userId)
               yield* insertRosterImport({
                 tenantId,
                 batchId,
@@ -2661,13 +2739,41 @@ export const make = Effect.fn('Assessment.make')(function* () {
               if (!existing) return yield* new ParticipantNotFound()
               // an idempotent replacement: saying what already holds changes nothing
               if (existing.status === to) return existing
-              yield* setParticipantStatus(
+              if (to === 'active') {
+                // Readmission goes through the one admission path there is,
+                // so it is the same act however it was asked for: the anchor
+                // and the user type are taken again from where the person
+                // stands now, because the round is answerable for that from
+                // here (§32.47). A person who cannot be admitted at all -
+                // disabled, or standing nowhere - is not readmitted either.
+                const back = yield* insertParticipants(
+                  tenantId,
+                  batchId,
+                  [existing.userId],
+                  as.userId,
+                )
+                if (back.length === 0) {
+                  return yield* new ParticipantInvalid({ reason: 'user-not-eligible' })
+                }
+              } else {
+                yield* setParticipantStatus(
+                  tenantId,
+                  participantId,
+                  to,
+                  yield* Clock.currentTimeMillis,
+                  { userId: as.userId, reason: reason ?? null },
+                )
+              }
+              // the row keeps the current state and loses the last one; this
+              // is where both survive
+              yield* insertParticipantEvent({
                 tenantId,
+                batchId,
                 participantId,
-                to,
-                yield* Clock.currentTimeMillis,
-                { userId: as.userId, reason: reason ?? null },
-              )
+                kind: to === 'excluded' ? 'excluded' : 'readmitted',
+                actorId: as.userId,
+                reason: reason ?? null,
+              })
               return (yield* oneParticipant(tenantId, batchId, participantId))!
             }),
           ),
