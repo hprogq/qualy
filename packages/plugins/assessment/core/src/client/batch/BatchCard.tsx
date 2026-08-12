@@ -44,9 +44,9 @@ function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 }
 
 const SEGMENTS = {
-  ended: 'bg-muted-foreground/40 text-background',
-  current: 'bg-emerald-500 text-white',
-  future: 'bg-muted text-foreground/70',
+  ended: 'bg-muted-foreground/40 group-hover/segment:bg-muted-foreground/70',
+  current: 'bg-emerald-500 group-hover/segment:bg-emerald-500',
+  future: 'bg-muted group-hover/segment:bg-muted-foreground/30',
 } as const
 
 /**
@@ -57,11 +57,12 @@ const SEGMENTS = {
  * behind, where it is now, how much is left - and the current stage's name is
  * said in full above it.
  *
- * A segment gives its own name when the pointer rests on it. It grows upward
- * into the gap above rather than pushing anything: the row is one line of
- * cards and a card that changes height on hover moves its neighbours. On a
- * phone, where there is no pointer to rest, the stage the batch is actually
- * in stands open and the rest stay as they are.
+ * A segment gives its own name when the pointer rests on it: the segment
+ * itself only thickens, and the name appears above it as a line of small
+ * text. Neither costs the card a pixel of height - the row is one line of
+ * cards, and a card that grows on hover moves its neighbours. On a phone,
+ * where there is no pointer to rest, the stage the batch is actually in keeps
+ * its name shown and the rest stay as they are.
  */
 function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; batchId: string }) {
   return (
@@ -81,22 +82,22 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
             key={entry.displayName + String(index)}
             className="group/segment relative h-1 min-w-0 flex-1"
           >
+            {/* wider than the segment it belongs to and centred on it, so a
+                four-character name is legible over a bar six pixels wide */}
             <span
               className={cn(
-                'absolute inset-x-0 bottom-0 flex h-1 items-center justify-center overflow-hidden rounded-full px-1 transition-[height,background-color] duration-200 group-hover/segment:h-4',
-                SEGMENTS[entry.status],
-                entry.status === 'current' && 'max-sm:h-4',
+                'pointer-events-none absolute bottom-full left-1/2 mb-1.5 max-w-40 -translate-x-1/2 translate-y-1 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover/segment:translate-y-0 group-hover/segment:opacity-100',
+                entry.status === 'current' && 'max-sm:translate-y-0 max-sm:opacity-100',
               )}
             >
-              <span
-                className={cn(
-                  'truncate text-[9px] leading-none font-medium opacity-0 transition-opacity duration-150 group-hover/segment:opacity-100',
-                  entry.status === 'current' && 'max-sm:opacity-100',
-                )}
-              >
-                {entry.displayName}
-              </span>
+              {entry.displayName}
             </span>
+            <span
+              className={cn(
+                'absolute inset-x-0 bottom-0 h-1 rounded-[2px] transition-[height,background-color] duration-150 group-hover/segment:h-1.5',
+                SEGMENTS[entry.status],
+              )}
+            />
           </span>
         ))}
       </div>
@@ -126,7 +127,7 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
         : { label: null, value: format(m.noStagesYet) }
 
   return (
-    <li className="group relative flex flex-col gap-4 rounded-xl border bg-background p-5 transition-[color,background-color,border-color] hover:border-foreground/12 hover:bg-muted/25">
+    <li className="group relative flex flex-col gap-4 rounded-xl border bg-background p-5 transition-[color,background-color,border-color,box-shadow] hover:border-foreground/12 hover:bg-muted/25 hover:shadow-xs">
       <div className="flex items-start justify-between gap-3">
         {/* the whole card is the target; the link carries the name so it is
             also reachable by keyboard and readable out of context */}
