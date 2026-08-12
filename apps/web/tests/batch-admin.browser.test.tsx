@@ -323,26 +323,27 @@ describe('the batch list', () => {
 // The bar's countdown, which is arithmetic nothing else covers: two units at
 // a time, and the smaller one dropped when it is empty.
 
-describe('the countdown', () => {
-  const HOUR = 3600_000
-  const at = (ms: number) => new Date(Date.now() + ms).toISOString()
-  const running = (untilNext: number) => [
-    {
-      phaseId: ENTRY_PHASE_ID,
-      displayName: '正式填报',
-      description: '',
-      status: 'current' as const,
-      entry: { kind: 'entered' as const, at: at(-HOUR) },
-    },
-    {
-      phaseId: REVIEW_PHASE_ID,
-      displayName: '审核',
-      description: '',
-      status: 'future' as const,
-      entry: { kind: 'planned' as const, at: at(untilNext) },
-    },
-  ]
+const HOUR = 3600_000
+const at = (ms: number) => new Date(Date.now() + ms).toISOString()
+/** a round in its filing stage, with the next one due in so long */
+const running = (untilNext: number) => [
+  {
+    phaseId: ENTRY_PHASE_ID,
+    displayName: '正式填报',
+    description: '',
+    status: 'current' as const,
+    entry: { kind: 'entered' as const, at: at(-HOUR) },
+  },
+  {
+    phaseId: REVIEW_PHASE_ID,
+    displayName: '审核',
+    description: '',
+    status: 'future' as const,
+    entry: { kind: 'planned' as const, at: at(untilNext) },
+  },
+]
 
+describe('the countdown', () => {
   it('says two units, and drops the smaller one when it is empty', async () => {
     // two units is what a bar with room says; the phone case is below
     await page.viewport(1280, 800)
@@ -385,6 +386,32 @@ describe('the countdown', () => {
     await expect.element(page.getByText('39 分')).toBeVisible()
     await expect.element(page.getByText('填报')).toBeVisible()
     await page.viewport(1280, 800)
+  })
+})
+
+describe('the batch overview', () => {
+  it('says where the round is, and opens the whole flow on request', async () => {
+    await page.viewport(1280, 800)
+    screen(
+      {
+        getBatch: () =>
+          Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID }) }),
+        getTimeline: () => Effect.succeed({ timeline: running(30 * HOUR) }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+    )
+
+    // the context bar answers "why can I do this now"
+    await expect.element(page.getByText('当前阶段').first()).toBeVisible()
+    await expect.element(page.getByText('正式填报').first()).toBeVisible()
+
+    // and the flow itself is one click away wherever the reader is
+    await page.getByRole('button', { name: '查看完整流程' }).click()
+    const panel = page.getByRole('dialog')
+    await expect.element(panel.getByText('测评流程')).toBeVisible()
+    await expect.element(panel.getByText('审核')).toBeVisible()
+    // read-only: no word of how the plan is arranged
+    expect(await panel.getByText('未排期').elements()).toHaveLength(0)
   })
 })
 

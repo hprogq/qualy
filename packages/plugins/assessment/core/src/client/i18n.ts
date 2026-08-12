@@ -208,6 +208,21 @@ const sinceSeconds = defineMessage<{ count: number }>()({
   defaultMessage: 'running for {count}s',
 })
 
+// the round as the people in it read it: when a stage began, when it gives
+// way to the next, and nothing about who arranges any of it
+const flowFrom = defineMessage<{ when: string }>()({
+  id: 'assessment/flow/from',
+  defaultMessage: 'from {when}',
+})
+const flowExpected = defineMessage<{ when: string }>()({
+  id: 'assessment/flow/expected',
+  defaultMessage: 'from {when}',
+})
+const flowUntil = defineMessage<{ when: string }>()({
+  id: 'assessment/flow/until',
+  defaultMessage: 'until {when}',
+})
+
 /** how far along the plan is, when the stage names have no room */
 const stagePosition = defineMessage<{ current: number; total: number }>()({
   id: 'assessment/batch/stage-position',
@@ -404,6 +419,12 @@ const i18n = definePluginMessages({
     plannedStart: { id: 'assessment/batch/planned-start', defaultMessage: 'Starts' },
     noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages arranged yet' },
     currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
+    flowTitle: { id: 'assessment/flow/title', defaultMessage: 'How this round runs' },
+    flowNow: { id: 'assessment/flow/now', defaultMessage: 'under way' },
+    flowFrom,
+    flowExpected,
+    flowUntil,
+    viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'See the whole flow' },
     bareDays,
     bareHours,
     bareMinutes,
