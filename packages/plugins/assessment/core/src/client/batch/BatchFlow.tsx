@@ -197,20 +197,7 @@ export function BatchFlow({
         </TimelineItem>
       )}
       {shown.map((stage, index) => (
-        <TimelineItem
-          key={stage.id}
-          step={folded + index + 1}
-          className={cn('ms-6 wrap-anywhere', stage.status === 'current' && 'isolate')}
-        >
-          {/* the box reaches back past the rail so it holds the dot too: a
-              frame that starts after the mark would say the mark belongs to
-              the stage above */}
-          {stage.status === 'current' && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute -inset-y-2 -left-8 -right-2 -z-10 rounded-lg border bg-muted/40"
-            />
-          )}
+        <TimelineItem key={stage.id} step={folded + index + 1} className="ms-6 wrap-anywhere">
           <Stage stage={stage} />
         </TimelineItem>
       ))}
@@ -279,17 +266,8 @@ export function BatchFlowStrip({
             ref={stage.status === 'current' ? here : undefined}
             // flex-none, or the timeline's own flex-1 basis of zero shrinks
             // every stage to the width of one character
-            className={cn(
-              'w-56 flex-none snap-center wrap-anywhere',
-              stage.status === 'current' && 'isolate',
-            )}
+            className="w-56 flex-none snap-center wrap-anywhere"
           >
-            {stage.status === 'current' && (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -top-8 -right-2 -bottom-2 -left-2 -z-10 rounded-lg border bg-muted/40"
-              />
-            )}
             <Stage stage={stage} />
           </TimelineItem>
         ))}
