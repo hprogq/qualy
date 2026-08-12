@@ -2691,6 +2691,10 @@ const parseInstant = (value: string) => {
     : Effect.succeed(ms)
 }
 
+/** one of them or several: a repeated query parameter is a list either way */
+const listed = (value: string | readonly string[] | undefined): string[] =>
+  value === undefined ? [] : typeof value === 'string' ? [value] : [...value]
+
 const toBatchDto = (detail: BatchDetail) => ({
   id: detail.id,
   name: detail.name,
@@ -3129,7 +3133,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         // every filter in the fingerprint: a cursor from one question applied
         // to another silently skips or repeats people
-        const units = [...(query.orgNodeIds ?? [])].sort()
+        const units = listed(query.orgNodeIds).sort()
         const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${units.join(',')}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
@@ -3174,7 +3178,15 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.previewImport.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.previewImport(principal.tenantId, params.batchId, query, principal)
+        return yield* assessment.previewImport(
+          principal.tenantId,
+          params.batchId,
+          {
+            orgNodeIds: listed(query.orgNodeIds),
+            userTypeIds: listed(query.userTypeIds),
+          },
+          principal,
+        )
       }),
     )
     .handle(

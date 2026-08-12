@@ -3368,3 +3368,24 @@ minutes/seconds 对。刷新频率不变:天与小时下面挂的是小时与分
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 455/72 全绿;`pnpm test:browser` **41 全绿**;
 `pnpm build` 通过;`prettier --check .` 干净。
+
+### 选组织单位就 400,以及一条假门禁(2026-08-12)
+
+**400 的真因不是游标,是「一个值不是数组」。** 上游 `UrlParams.toRecord`
+(repos/effect/packages/effect/src/unstable/http/UrlParams.ts) 只在参数**重复出现**时才给数组,出现一次给的是
+字符串;而 schema 写的是 `Schema.Array(id)`,于是「只选一个单位」这种最常见的请求整个被拒,前端拿到的是
+一个没有任何可操作信息的 400。改成 `idList = Schema.Union([Schema.Array(id), id])`,handler 侧统一用
+`listed()` 归一。`import-candidates` 的两个数组参数同病同治。
+
+**顺手拆掉一条假门禁。** 我先写的是 HTTP 用例(打真实 URL 断言不是 400),写完把 schema 改回坏的一跑——
+**照样绿**:鉴权在解码 query 之前就短路了,这条用例什么也没证明。换成直接对 `idList` 解码的契约测试:
+一个值、多个值都过,不是 id 的仍然拒。教训记在这里:一条不会因为 bug 变红的测试,比没有测试更糟。
+
+顺带修的:①换筛选条件时用 effect 重置分页,effect 比渲染晚一步,第一次请求仍带着旧游标——现在游标栈把
+「它属于哪个问题」一起存着,问题变了当场作废(名单页与选人器同治);②`AsyncSection` 的错误态从靠左的红条
+改成基于 `Empty` 的居中块(图标 + 一句话 + 重试);③组织树折叠的断点从壳的 768 改成本页真正分两列的 1024,
+768–1024 之间原来树是展开的而布局还是一列,把用户列表挤到了第二屏;④树太深时横向滚动而不是把名字截成
+一串省略号;⑤左栏收窄到 18rem 并吸顶填满剩余视口高度。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **458/73 全绿**(新增三条 query 解码用例);
+`pnpm test:browser` 41 全绿;`pnpm build` 通过;`prettier --check .` 干净。

@@ -289,6 +289,13 @@ export interface OrgNodePickerContext {
    * levels down a name is what is left of the row.
    */
   single?: boolean
+  /**
+   * As tall as the room it is in, rather than a box of its own size.
+   *
+   * For a picker standing beside something long - a filter next to a table -
+   * where a short box leaves a column of nothing under it.
+   */
+  fill?: boolean
   /** shown as a toggle when given: this unit only, or everything under it */
   scope?: 'self' | 'subtree'
   onScopeChange?: (scope: 'self' | 'subtree') => void

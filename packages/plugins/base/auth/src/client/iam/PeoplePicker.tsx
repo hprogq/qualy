@@ -44,22 +44,27 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
   const [userTypeId, setUserTypeId] = useState('')
   const [search, setSearch] = useState('')
   const [settled, setSettled] = useState('')
-  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
-  const [at, setAt] = useState(0)
+  // the cursor stack carries the question it belongs to, so a filter change
+  // cannot send the previous question's cursor: the server refuses one that
+  // did not come from the question being asked, and rightly
+  const [paging, setPaging] = useState<{
+    question: string
+    cursors: readonly (string | undefined)[]
+    at: number
+  }>({ question: '', cursors: [undefined], at: 0 })
 
   useEffect(() => {
     const timer = setTimeout(() => setSettled(search.trim()), 300)
     return () => clearTimeout(timer)
   }, [search])
-  useEffect(() => {
-    // a different question deserves a first page
-    setCursors([undefined])
-    setAt(0)
-  }, [settled, scope, userTypeId, node?.id])
 
   const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
   const nodes = options.data?.nodes ?? []
   const here = node ?? (nodes[0] ? { id: nodes[0].orgNodeId, name: nodes[0].name } : null)
+
+  const question = `${here?.id ?? ''}:${scope}:${settled}:${userTypeId}`
+  const page = paging.question === question ? paging : { question, cursors: [undefined], at: 0 }
+  const { cursors, at } = page
 
   const people = useQuery({
     ...query.identity.listUsers.queryOptions({
@@ -78,8 +83,8 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
   const nextCursor = people.data?.nextCursor ?? null
   useEffect(() => {
     if (nextCursor === null || cursors[at + 1] === nextCursor) return
-    setCursors((current) => [...current.slice(0, at + 1), nextCursor])
-  }, [nextCursor, at, cursors])
+    setPaging({ question, cursors: [...cursors.slice(0, at + 1), nextCursor], at })
+  }, [nextCursor, at, cursors, question])
 
   const chosen = new Set(context.value)
   const blocked = new Set(context.disabled ?? [])
@@ -204,7 +209,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
               size="sm"
               variant="ghost"
               disabled={at === 0}
-              onClick={() => setAt((page) => Math.max(0, page - 1))}
+              onClick={() => setPaging({ question, cursors, at: Math.max(0, at - 1) })}
             >
               {format(m.pickerPrevious)}
             </Button>
@@ -212,7 +217,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
               size="sm"
               variant="ghost"
               disabled={nextCursor === null}
-              onClick={() => setAt((page) => page + 1)}
+              onClick={() => setPaging({ question, cursors, at: at + 1 })}
             >
               {format(m.pickerNext)}
             </Button>

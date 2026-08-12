@@ -72,7 +72,7 @@ export function OrgTree({
   }
   if (flat === true) {
     return (
-      <ul className={cn('flex flex-col gap-0.5', className)}>
+      <ul className={cn('flex w-max min-w-full flex-col gap-0.5', className)}>
         {nodes.map((node) => (
           <li key={node.id}>
             <Name
@@ -89,7 +89,7 @@ export function OrgTree({
     )
   }
   return (
-    <ul className={cn('flex flex-col gap-0.5', className)}>
+    <ul className={cn('flex w-max min-w-full flex-col gap-0.5', className)}>
       {shape.roots.map((root) => (
         <Row
           key={root.id}
@@ -127,14 +127,17 @@ function Name({
     <button
       type="button"
       className={cn(
-        'flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
+        // no truncation: five levels in, a truncated name is an ellipsis and
+        // nothing else. The box scrolls sideways instead, which at least
+        // leaves the name readable by moving to it.
+        'flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm whitespace-nowrap outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
         selected === node.id && 'bg-accent',
         marked?.has(node.id) === true && 'font-medium',
       )}
       style={{ paddingLeft: `${String(depth * 0.75 + 1.75)}rem` }}
       onClick={() => onSelect(node)}
     >
-      <span className="min-w-0 truncate">{node.name}</span>
+      <span>{node.name}</span>
       {meta?.(node)}
     </button>
   )

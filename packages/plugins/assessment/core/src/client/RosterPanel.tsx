@@ -14,7 +14,7 @@ import { PersonCell } from '@qualy/ui/person'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
 import { cn } from '@qualy/ui/cn'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { useIsMobile } from '@qualy/ui/use-mobile'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { orgNodePicker, personCard } from '@qualy/ui-contract'
@@ -32,6 +32,9 @@ type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch
 
 const PAGE_SIZE = 25
 
+/** the width the tree and the table stop competing for, tailwind's `lg` */
+const TWO_COLUMNS = 1024
+
 export function RosterPanel({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -45,14 +48,27 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   // which units the reader is looking at; empty means the whole round
   const [units, setUnits] = useState<readonly string[]>([])
   const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
-  // open where there is room for it beside the list, folded where there is not
-  const isMobile = useIsMobile()
-  const [unitsOpen, setUnitsOpen] = useState(!isMobile)
-  useEffect(() => setUnitsOpen(!isMobile), [isMobile])
+  // Folded until the layout actually has two columns for it. Following the
+  // shell's own breakpoint left a band between the two where the tree was
+  // open and the grid was not, so it sat on top of the list rather than
+  // beside it and pushed the thing somebody came for off the screen.
+  const narrow = useIsBelow(TWO_COLUMNS)
+  const [unitsOpen, setUnitsOpen] = useState(!narrow)
+  useEffect(() => setUnitsOpen(!narrow), [narrow])
 
-  // keyset paging walked by page, the same way the access list does it
-  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
-  const [at, setAt] = useState(0)
+  // Keyset paging walked by page, with the question it belongs to carried
+  // beside it. Resetting the stack from an effect ran a render too late: the
+  // request for the new filter had already gone out holding the old filter's
+  // cursor, which the server rightly refuses - a cursor means nothing against
+  // a question it did not come from.
+  const question = `${[...units].sort().join(',')}:${unitScope}`
+  const [paging, setPaging] = useState<{
+    question: string
+    cursors: readonly (string | undefined)[]
+    at: number
+  }>({ question, cursors: [undefined], at: 0 })
+  const page = paging.question === question ? paging : { question, cursors: [undefined], at: 0 }
+  const { cursors, at } = page
   const participants = useQuery(
     query.assessment.listParticipants.queryOptions({
       params: { batchId: batch.id },
@@ -63,16 +79,11 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
       },
     }),
   )
-  useEffect(() => {
-    // a different question deserves a first page
-    setCursors([undefined])
-    setAt(0)
-  }, [units, unitScope])
   const nextCursor = participants.data?.nextCursor ?? null
   useEffect(() => {
     if (nextCursor === null || cursors[at + 1] === nextCursor) return
-    setCursors((current) => [...current.slice(0, at + 1), nextCursor])
-  }, [nextCursor, at, cursors])
+    setPaging({ question, cursors: [...cursors.slice(0, at + 1), nextCursor], at })
+  }, [nextCursor, at, cursors, question])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   const onError = (error: unknown) => setFailure(formatError(error))
@@ -135,7 +146,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
     <div className="space-y-5">
       <Feedback message={failure} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
         {/* on a phone the tree is a second screenful in front of the list
             somebody came for, so it starts folded and says what it is */}
         <Collapsible
@@ -158,13 +169,17 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                 />
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent>
+            {/* as tall as what is left of the window: a filter that stops
+                halfway down leaves a column of nothing beside a list that
+                keeps going */}
+            <CollapsibleContent className="lg:sticky lg:top-4">
               <UiSlot
                 token={orgNodePicker}
                 context={{
                   // one unit, pointed at rather than collected, plus how far
                   // down to look: a filter is not a shopping list
                   single: true,
+                  fill: true,
                   value: units,
                   onChange: setUnits,
                   scope: unitScope,
@@ -281,7 +296,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                 size="sm"
                 variant="ghost"
                 disabled={at === 0}
-                onClick={() => setAt((page) => Math.max(0, page - 1))}
+                onClick={() => setPaging({ question, cursors, at: Math.max(0, at - 1) })}
               >
                 {format(m.previousPage)}
               </Button>
@@ -289,7 +304,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                 size="sm"
                 variant="ghost"
                 disabled={nextCursor === null}
-                onClick={() => setAt((page) => page + 1)}
+                onClick={() => setPaging({ question, cursors, at: at + 1 })}
               >
                 {format(m.nextPage)}
               </Button>

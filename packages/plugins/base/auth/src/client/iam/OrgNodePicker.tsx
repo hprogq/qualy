@@ -6,6 +6,7 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Badge } from '@qualy/ui/badge'
+import { cn } from '@qualy/ui/cn'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
@@ -141,7 +142,12 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
         )}
       </div>
 
-      <div className="h-[42vh] min-h-64 overflow-auto rounded-md border p-1">
+      <div
+        className={cn(
+          'overflow-auto rounded-md border p-1',
+          context.fill === true ? 'h-[calc(100dvh-24rem)] min-h-56' : 'h-[42vh] min-h-64',
+        )}
+      >
         {loading ? (
           // a fixed height and a skeleton, because the alternative is an
           // empty box that grows to a tree and shoves the dialog around
@@ -168,15 +174,15 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
           matches.length === 0 ? (
             <p className="p-2 text-sm text-muted-foreground">{format(m.nodeNoMatch)}</p>
           ) : (
-            <ul className="flex flex-col gap-0.5">
+            <ul className="flex w-max min-w-full flex-col gap-0.5">
               {matches.map((node) => (
                 <li key={node.id}>
-                  <label className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                  <label className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm whitespace-nowrap hover:bg-muted/50">
                     <Checkbox
                       checked={chosen.has(node.id)}
                       onCheckedChange={() => toggle(node.id)}
                     />
-                    <span className="min-w-0 truncate">{node.name}</span>
+                    <span>{node.name}</span>
                     {badge(node)}
                     <span className="flex-1" />
                   </label>

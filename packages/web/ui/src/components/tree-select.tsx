@@ -43,7 +43,9 @@ export function TreeSelect({
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
   }
   return (
-    <ul className={cn('flex flex-col gap-0.5', className)}>
+    // wider than its box when the tree is deep, so the box scrolls sideways
+    // rather than truncating every name to an ellipsis
+    <ul className={cn('flex w-max min-w-full flex-col gap-0.5', className)}>
       {shape.roots.map((root) => (
         <TreeRow
           key={root.id}
@@ -89,12 +91,12 @@ function TreeRow({
       ) : (
         <span aria-hidden className="size-8 shrink-0" />
       )}
-      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm whitespace-nowrap hover:bg-muted/50">
         <Checkbox
           checked={indeterminate ? 'indeterminate' : checked}
           onCheckedChange={() => onToggle(node)}
         />
-        <span className="min-w-0 truncate">{node.name}</span>
+        <span>{node.name}</span>
         {meta?.(node)}
         {/* the row still fills its width, but the mark stays next to the name
             rather than being pushed to the far edge away from what it marks */}

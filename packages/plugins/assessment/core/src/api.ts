@@ -226,6 +226,16 @@ const accessSyncPageView = Schema.Struct({
   lapsedTotal: Schema.Number,
 })
 
+/**
+ * A repeated query parameter, which is a list only when it repeats.
+ *
+ * `?a=1&a=2` arrives as an array and `?a=1` as a string - that is what
+ * UrlParams.toRecord builds (repos/effect/packages/effect/src/unstable/http/
+ * UrlParams.ts). A schema asking for an array therefore refused every request
+ * that named exactly one thing, which is most of them.
+ */
+export const idList = Schema.Union([Schema.Array(id), id])
+
 /** the query one import runs: units to look under, and which kinds of people */
 const importSelection = Schema.Struct({
   orgNodeIds: Schema.Array(id),
@@ -536,7 +546,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         ...pageQuery,
         status: Schema.optional(Schema.Literals(['active', 'excluded'])),
         /** narrowed to the people this round admitted from these units */
-        orgNodeIds: Schema.optional(Schema.Array(id)),
+        orgNodeIds: Schema.optional(idList),
         /** that unit only, or everything under it; under it when absent */
         orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
       }),
@@ -561,8 +571,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('previewImport', '/assessment/batches/:batchId/import-candidates', {
       params: Schema.Struct({ batchId: id }),
       query: Schema.Struct({
-        orgNodeIds: Schema.Array(id),
-        userTypeIds: Schema.Array(id),
+        orgNodeIds: idList,
+        userTypeIds: idList,
       }),
       success: Schema.Struct({ candidates: Schema.Number }),
       error: [BatchNotFound, AccessDenied],

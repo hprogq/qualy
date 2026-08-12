@@ -1,6 +1,8 @@
 import { useId, type ReactNode } from 'react'
+import { TriangleAlertIcon } from 'lucide-react'
 import { cn } from '../lib/cn.ts'
 import { Alert, AlertDescription } from './alert.tsx'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from './empty.tsx'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -136,15 +138,24 @@ export function AsyncSection({
     )
   }
   if (error) {
+    // Centred and given room, rather than a red bar hugging the left edge.
+    // A section that could not load is the whole of what the reader is
+    // looking at, and the sentence and its one action should be where their
+    // eye already is.
     return (
-      <Alert variant="destructive" className={className}>
-        <AlertDescription className="space-y-3">
-          <p>{error}</p>
+      <Empty className={cn('rounded-lg border border-dashed', className)}>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <TriangleAlertIcon />
+          </EmptyMedia>
+          <EmptyDescription>{error}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
           <Button variant="outline" size="sm" onClick={onRetry}>
             {retryLabel}
           </Button>
-        </AlertDescription>
-      </Alert>
+        </EmptyContent>
+      </Empty>
     )
   }
   return className === undefined ? <>{children}</> : <div className={className}>{children}</div>
