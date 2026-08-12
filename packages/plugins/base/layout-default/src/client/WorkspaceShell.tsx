@@ -13,6 +13,7 @@ import { cn } from '@qualy/ui/cn'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { TopBar } from './TopBar.tsx'
+import { NavIcon } from './icons.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
 import { layoutMessages as m } from './i18n.ts'
 
@@ -45,7 +46,15 @@ const fill = (path: string, params: Readonly<Record<string, string | undefined>>
   return filled.join('/')
 }
 
-function RailEntry({ label, to }: { label: ResolvedNavigationItem['label']; to: string }) {
+function RailEntry({
+  label,
+  icon,
+  to,
+}: {
+  label: ResolvedNavigationItem['label']
+  icon?: string
+  to: string
+}) {
   return (
     <li>
       <NavLink
@@ -53,14 +62,17 @@ function RailEntry({ label, to }: { label: ResolvedNavigationItem['label']; to: 
         to={to}
         className={({ isActive }) =>
           cn(
-            'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+            'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors',
             isActive
               ? 'bg-accent font-medium text-accent-foreground'
               : 'text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground',
           )
         }
       >
-        <LocalizedText value={label} />
+        <NavIcon name={icon} className="size-4 shrink-0" />
+        <span className="truncate">
+          <LocalizedText value={label} />
+        </span>
       </NavLink>
     </li>
   )
@@ -128,7 +140,7 @@ export default function WorkspaceShell() {
         {loose.length > 0 && (
           <ul className="flex flex-col gap-0.5">
             {loose.map((item) => (
-              <RailEntry key={item.id} label={item.label} to={item.to} />
+              <RailEntry key={item.id} label={item.label} icon={item.icon} to={item.to} />
             ))}
           </ul>
         )}
@@ -139,7 +151,7 @@ export default function WorkspaceShell() {
             </p>
             <ul className="flex flex-col gap-0.5">
               {section.items.map((item) => (
-                <RailEntry key={item.id} label={item.label} to={item.to} />
+                <RailEntry key={item.id} label={item.label} icon={item.icon} to={item.to} />
               ))}
             </ul>
           </section>

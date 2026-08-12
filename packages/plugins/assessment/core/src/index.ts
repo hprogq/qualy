@@ -69,7 +69,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-admin',
         value: {
           id: 'assessment/batch-admin',
-          label: message('assessment/nav-group/batch-admin', 'Batch administration'),
+          label: message('assessment/nav-group/batch-admin', 'Managing'),
           order: 30,
         },
         visibility: PUBLIC,
@@ -136,14 +136,17 @@ const plugin = Plugin.define(
   Ui.surfaces({
     collections: [
       {
+        // above the sections rather than in one: it is where a batch opens,
+        // and it belongs to whoever opened it - a participant, a reviewer or
+        // whoever runs the round
         key: workspaceNavigation.key,
         id: 'assessment/batch-overview/rail',
         value: {
           id: 'assessment/batch-overview/rail',
           label: message('assessment/navigation/overview', 'Overview'),
           target: { kind: 'page', pageId: 'assessment/batch' },
+          icon: 'layout-dashboard',
           order: 0,
-          group: 'assessment/batch-admin',
         },
         visibility: AUTHENTICATED,
       },
@@ -154,6 +157,7 @@ const plugin = Plugin.define(
           id: 'assessment/batch-phases/rail',
           label: message('assessment/navigation/phases', 'Stage plan'),
           target: { kind: 'page', pageId: 'assessment/batch-phases' },
+          icon: 'calendar-clock',
           order: 10,
           group: 'assessment/batch-admin',
         },
@@ -166,6 +170,7 @@ const plugin = Plugin.define(
           id: 'assessment/batch-participants/rail',
           label: message('assessment/navigation/participants', 'Participants'),
           target: { kind: 'page', pageId: 'assessment/batch-participants' },
+          icon: 'users',
           order: 20,
           group: 'assessment/batch-admin',
         },
@@ -178,6 +183,7 @@ const plugin = Plugin.define(
           id: 'assessment/batch-access/rail',
           label: message('assessment/navigation/access', 'Who may work on it'),
           target: { kind: 'page', pageId: 'assessment/batch-access' },
+          icon: 'shield-check',
           order: 30,
           group: 'assessment/batch-admin',
         },
@@ -190,6 +196,7 @@ const plugin = Plugin.define(
           id: 'assessment/batch-settings/rail',
           label: message('assessment/navigation/settings', 'Settings'),
           target: { kind: 'page', pageId: 'assessment/batch-settings' },
+          icon: 'settings',
           order: 40,
           group: 'assessment/batch-admin',
         },

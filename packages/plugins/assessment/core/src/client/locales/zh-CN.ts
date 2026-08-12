@@ -2,7 +2,7 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
   'assessment/nav-group/main': '测评',
-  'assessment/nav-group/batch-admin': '批次管理',
+  'assessment/nav-group/batch-admin': '管理',
   'assessment/navigation/batches': '全部测评',
   'assessment/navigation/phases': '阶段安排',
   'assessment/navigation/participants': '参评名单',
@@ -18,11 +18,11 @@ export default {
   'assessment/settings/basics': '基本信息',
   'assessment/settings/basics-hint': '材料时间决定这一轮可以填报哪段时间内取得的成果。',
   'assessment/settings/note': '备注',
-  'assessment/settings/note-hint': '本批次的工作人员都能看到。',
+  'assessment/settings/note-hint': '备注信息对外公开，请勿包含机密信息。',
   'assessment/settings/enrolled': '参评人数',
   'assessment/settings/unsaved': '尚未保存',
   'assessment/settings/lifecycle': '本轮状态',
-  'assessment/settings/lifecycle-hint': '归档后内容全部保留、不再继续推进；每一步都会先确认。',
+  'assessment/settings/lifecycle-hint': '使用归档功能锁定并结束当前批次，所有数据将被妥善存档。',
   'assessment/roster/count': '{count, plural, =0 {还没有参评人员} other {共 # 人}}',
   'assessment/phase/opens-count': '{count, plural, =0 {暂未开放任何操作} other {开放 # 项操作}}',
   'assessment/roster/also-active': '已在参加：{batches}',
