@@ -3591,5 +3591,15 @@ bind / open / retire`;额度;GC;backend 注册表。它不认识 COS,也不认�
 `pnpm qualy resolve --frozen-lockfile` 零写入;`pnpm qualy generate` 无待生成;`prettier --check .` 干净;
 生产 smoke 走真实装配全绿(探针/壳/manifest/哈希资源/SIGTERM 退出 0)。
 
+**补测:整条链路对真实桶跑通**(同日追加)。上面那轮里服务层用的是内存 backend,COS 只单独测了 backend
+四件事,两半没一起跑过。新增 `upload.integration.test.ts`(同样 `QUALY_TEST_COS=1` opt-in,另加真实 PG):
+`prepareUpload` → STS 临时凭据 → 用该凭据 PUT 真实字节 → `completeUpload` 读 HEAD 得到 crc64 与长度 →
+`storage_attachments` 行 → `open` 签名 URL 取回同一份字节 → `bind`;第二条断言同一张票的凭据再写一次被桶拒绝。
+2/2 通过,连同 backend 套件 10/10。首跑曾因去 ap-beijing 的 TLS 被重置失败一次,签名 URL 的那次 fetch 现在重试
+三次——跨洲的连接被掐不是这份代码的事实。
+
+**仍未验证**:浏览器那一条腿。上传用的是 node SDK 拿同一份临时凭据,`cos-js-sdk-v5` 没有在真实浏览器里跑过,
+开发桶的 CORS(§5.18:PUT/GET/HEAD + 实际 origin)也还没配。这两件事随第一个上传表单一起验。
+
 **下一步**:对话 2(Assessment M2 数据骨架 + item registry)。两处留给它之前先想清楚的:Local 的 raw PUT
 route(归 storage-local,需要和 reservation 凭据一起设计)、provider client driver 进浏览器包的聚合方式。

@@ -178,7 +178,9 @@ describe.skipIf(!configured)('the cos backend against a real bucket', () => {
     expect(opened.kind).toBe('redirect')
     if (opened.kind !== 'redirect') return
     expect(opened.url).toContain('q-signature=')
-    const response = await fetch(opened.url)
+    // a tls reset on the way to another continent is not a fact about the
+    // signature, and this suite has seen one
+    const response = await fetch(opened.url).catch(() => fetch(opened.url))
     expect(response.status).toBe(200)
     expect(response.headers.get('content-disposition')).toContain('attachment')
     expect(await response.text()).toBe('downloadable')

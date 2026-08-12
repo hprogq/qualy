@@ -18,5 +18,8 @@
     "cos-nodejs-sdk-v5": "catalog:",
     "effect": "catalog:",
     "qcloud-cos-sts": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-database": "workspace:*"
   }
 }

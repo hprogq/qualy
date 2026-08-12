@@ -16,7 +16,9 @@
     "./client": "./src/client/index.ts",
     "./testkit": "./src/testkit/index.ts",
     "./testkit/contract": "./src/testkit/contract.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./server/registry": "./src/server/registry.ts",
+    "./server/service": "./src/server/service.ts"
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
