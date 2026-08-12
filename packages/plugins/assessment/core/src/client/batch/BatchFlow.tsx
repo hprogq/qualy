@@ -33,20 +33,27 @@ const useWhen = () => {
   }
 }
 
+// The rail runs behind the markers, so each one is drawn on the page's own
+// ground: a marker with a transparent middle would have a line through it.
 function Marker({ status, className }: { status: FlowStage['status']; className?: string }) {
   return (
     <span
       aria-hidden
       className={cn(
-        'flex size-4 shrink-0 items-center justify-center rounded-full border-2 bg-background',
-        status === 'ended' && 'border-muted-foreground/40 bg-muted-foreground/40 text-background',
-        status === 'current' && 'border-emerald-500 shadow-[0_0_0_3px] shadow-emerald-500/15',
-        status === 'future' && 'border-muted-foreground/25',
+        'flex size-4 shrink-0 items-center justify-center rounded-full bg-background',
         className,
       )}
     >
-      {status === 'ended' && <CheckIcon className="size-2.5" strokeWidth={3} />}
-      {status === 'current' && <span className="size-1.5 rounded-full bg-emerald-500" />}
+      <span
+        className={cn(
+          'flex size-2.5 items-center justify-center rounded-full',
+          status === 'ended' && 'size-4 bg-muted-foreground/25 text-foreground/60',
+          status === 'current' && 'bg-emerald-500 ring-4 ring-emerald-500/15',
+          status === 'future' && 'border border-muted-foreground/35 bg-background',
+        )}
+      >
+        {status === 'ended' && <CheckIcon className="size-2.5" strokeWidth={3} />}
+      </span>
     </span>
   )
 }
@@ -125,40 +132,41 @@ export function BatchFlow({
   }
 
   return (
+    // The marker is positioned rather than laid out beside the words: as a
+    // flex item next to a paragraph it sat on that paragraph's baseline, and
+    // the line box around a 14px word is taller than the word - which is the
+    // gap that kept the first line hanging below the tick.
     <ol className={cn('flex flex-col', className)}>
       {stages.map((stage, index) => (
-        <li key={stage.id} className="flex min-w-0 gap-3">
-          <div className="flex flex-col items-center">
-            <Marker status={stage.status} />
-            {/* the line belongs to the gap between two stages, so the last
-                one ends rather than trailing off */}
-            {index < stages.length - 1 && (
-              <span
-                aria-hidden
-                className={cn(
-                  'w-px flex-1 rounded-full',
-                  stage.status === 'ended' ? 'bg-muted-foreground/30' : 'bg-border',
-                )}
-              />
-            )}
-          </div>
-          {/* the words start at the marker's own line, and wrap rather than
-              being cut: this column is narrow and a stage name is a name */}
-          <div className={cn('min-w-0 flex-1', index < stages.length - 1 && 'pb-5')}>
-            <Detailed stage={stage}>
-              <p
-                className={cn(
-                  'inline-block text-sm/4 wrap-anywhere',
-                  stage.status === 'current' ? 'font-medium' : 'text-foreground/85',
-                )}
-              >
-                {stage.name}
-              </p>
-            </Detailed>
-            {said(stage) !== '' && (
-              <p className="mt-1 text-xs/4 text-muted-foreground wrap-anywhere">{said(stage)}</p>
-            )}
-          </div>
+        <li key={stage.id} className="relative min-w-0 pl-7 last:pb-0 not-last:pb-6">
+          <Marker status={stage.status} className="absolute top-0 left-0" />
+          {index < stages.length - 1 && (
+            <span
+              aria-hidden
+              className={cn(
+                'absolute top-4 bottom-0 left-2 w-px -translate-x-1/2',
+                stage.status === 'ended' ? 'bg-muted-foreground/25' : 'bg-border',
+              )}
+            />
+          )}
+          {/* time first and small, name under it: the column is read down the
+              dates, and a name means nothing until you know when it happens */}
+          {said(stage) !== '' && (
+            <p className="text-[11px]/4 tracking-wide text-muted-foreground tabular-nums wrap-anywhere">
+              {said(stage)}
+            </p>
+          )}
+          <Detailed stage={stage}>
+            <p
+              className={cn(
+                'mt-0.5 text-sm/5 wrap-anywhere',
+                stage.status === 'current' && 'font-medium',
+                stage.status === 'ended' && 'text-muted-foreground',
+              )}
+            >
+              {stage.name}
+            </p>
+          </Detailed>
         </li>
       ))}
     </ol>
@@ -215,32 +223,36 @@ export function BatchFlowStrip({
             <span
               aria-hidden
               className={cn(
-                'h-0.5 flex-1 rounded-full',
+                'h-px flex-1',
                 index === 0 && 'opacity-0',
-                stage.status === 'ended' ? 'bg-muted-foreground/30' : 'bg-border',
+                stage.status === 'ended' ? 'bg-muted-foreground/25' : 'bg-border',
               )}
             />
-            <Marker status={stage.status} className="mx-1" />
+            <Marker status={stage.status} />
             <span
               aria-hidden
               className={cn(
-                'h-0.5 flex-1 rounded-full',
+                'h-px flex-1',
                 index === stages.length - 1 && 'opacity-0',
-                stage.status === 'ended' ? 'bg-muted-foreground/30' : 'bg-border',
+                // the segment after a stage belongs to what comes next
+                stages[index + 1]?.status === 'ended' ? 'bg-muted-foreground/25' : 'bg-border',
               )}
             />
           </div>
           <div className="mt-2 px-2 text-center">
             <p
               className={cn(
-                'text-sm/4 wrap-anywhere',
-                stage.status === 'current' ? 'font-medium' : 'text-foreground/85',
+                'text-sm/5 wrap-anywhere',
+                stage.status === 'current' && 'font-medium',
+                stage.status === 'ended' && 'text-muted-foreground',
               )}
             >
               {stage.name}
             </p>
             {said(stage) !== '' && (
-              <p className="mt-1 text-xs/4 text-muted-foreground wrap-anywhere">{said(stage)}</p>
+              <p className="mt-0.5 text-[11px]/4 text-muted-foreground tabular-nums wrap-anywhere">
+                {said(stage)}
+              </p>
             )}
           </div>
         </li>
