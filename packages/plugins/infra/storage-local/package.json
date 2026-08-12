@@ -1,0 +1,20 @@
+{
+  "name": "@qualy/plugin-storage-local",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server/backend.ts",
+    "./client": "./src/client/upload.ts",
+    "./package.json": "./package.json",
+    "./config": "./src/server/config.ts"
+  },
+  "dependencies": {
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-storage": "workspace:*",
+    "effect": "catalog:"
+  }
+}

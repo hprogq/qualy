@@ -3555,3 +3555,41 @@ staff 可见性补 deny-all 分支);`pnpm test:browser` 48 全绿;`pnpm build` �
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **478/73 全绿**;`pnpm test:browser` 48 全绿;
 `pnpm build` 通过;`prettier --check .` 干净。
+
+### M2 对话 1:Storage 基座,拆成能力拥有者 + 两个 provider(2026-08-13)
+
+M2 第一段。开工时按 v3 文档把 Local/COS 都放进 `@qualy/plugin-storage`,随后裁决改成三个包——理由不是「多拆几个
+包」,而是职责确实不同:「什么叫附件」是 Qualy 的概念,「附件现在放在腾讯云」是部署决策。形态与仓库既有的
+`Login.driver` 一致(auth 定义扩展点,auth-local 贡献驱动)。设计文档 §4 / §5.5 / §5.19 已同笔改写。
+
+- **`@qualy/plugin-storage`(能力拥有者)**:两张表 `storage_upload_reservations` / `storage_attachments`
+  (不对 tenants/users 建外键,保持 `storage → database` 单向);`prepareUpload / completeUpload / metadata /
+bind / open / retire`;额度;GC;backend 注册表。它不认识 COS,也不认识文件系统。
+- **`storage-local` / `storage-cos`(provider)**:各自 `Storage.backend({ code })` 声明 + 在自己的 layer 里
+  注册实现。**可以同时装多个,但同一时刻只有一个默认写入 backend**:新附件写 `defaultBackend`,历史附件按
+  `attachments.backend` 回到写它的那个 provider——否则把默认从 local 换成 cos 会让此前所有附件打不开。
+- **声明与实现在启动屏障对齐**:声明了却没注册、默认 backend 没安装,都是启动硬失败,而不是第一个上传的人
+  才发现。
+- **不可变从第一个字节起**:key 在 prepare 就定死(`attachments/{tenantId}/{attachmentId}`),COS 靠
+  `x-cos-forbid-overwrite`,Local 靠 `link()`(不是 rename——rename 会静默覆盖)。没有 promote,没有 incoming。
+- **上传者说什么都不算数**:size 与指纹一律来自 backend 的 stat/HEAD;客户端多传了就 `failed` + 删对象。
+- **额度算的是「持票」而不是「占盘」**:一张票还没上传就已经吃掉 reserved bytes 与在途张数,
+  tenant → owner 顺序的 `pg_advisory_xact_lock` 串行化准入。十并发抢三份额度的测试实测只放行三份。
+- **GC 三段式**:短事务 CAS claim → commit → 网络 delete → 短事务 finalize。持 DB 行锁调对象存储是被明确
+  禁止的;delete 失败则保留 claim 与额度,下一轮重试。abandoned 只在凭据失效 + grace 之后动手。
+- **浏览器不认识 COS**:`prepareUpload` 返回 `{ driver, payload }`,页面只调 `upload(ticket, file)`,
+  `cos-js-sdk-v5` 只存在于 storage-cos 的浏览器半边。
+- **Storage 的失败暂不是 wire error**:没有 HTTP 边界服务它们,所以是普通 tagged Error,不进全局码表、不写
+  翻译;附件 API 接入时由暴露端点的插件登记(否则 core storage 要为几句文案依赖 ui-registry)。
+- 顺带修了两条门禁:`test-layers` 现在认 testkit **目录**(共享契约用例是 testkit 的一部分),`effect-api`
+  套件补上 storage 的两个 config 服务。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **520 passed / 10 skipped(79 文件)**,其中 storage
+33 例(service 7 + quota 8 + cleanup 9 + registry 9)、storage-local 11 例(含 7 条共享契约);
+`QUALY_TEST_COS=1` 对真实开发桶 **10/10 全绿**(含「凭据只认自己那一个 key」「超出 content-length 被拒」
+「签名 URL 带 attachment disposition 且能取回字节」);`pnpm test:browser` 48 全绿;`pnpm build` 通过;
+`pnpm qualy resolve --frozen-lockfile` 零写入;`pnpm qualy generate` 无待生成;`prettier --check .` 干净;
+生产 smoke 走真实装配全绿(探针/壳/manifest/哈希资源/SIGTERM 退出 0)。
+
+**下一步**:对话 2(Assessment M2 数据骨架 + item registry)。两处留给它之前先想清楚的:Local 的 raw PUT
+route(归 storage-local,需要和 reservation 凭据一起设计)、provider client driver 进浏览器包的聚合方式。

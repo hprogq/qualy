@@ -22,5 +22,20 @@ plugins:
   '@qualy/plugin-auth-local': {}
   '@qualy/plugin-rbac': {}
 
+  # Attachments: what one is, and where its bytes go. The second question is a
+  # deployment's to answer, which is why the backends are separate plugins -
+  # install the ones this machine can reach, and name the one new uploads are
+  # written to. Everything already written stays readable through the backend
+  # that wrote it.
+  '@qualy/plugin-storage':
+    config:
+      defaultBackend: local
+  '@qualy/plugin-storage-local': {}
+  '@qualy/plugin-storage-cos':
+    enabled: false
+    config:
+      region: ap-beijing
+      bucket: qualy-dev-files-1301296774
+
   '@qualy/plugin-ping': {}
   '@qualy/plugin-assessment': {}

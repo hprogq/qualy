@@ -1,0 +1,29 @@
+{
+  "name": "@qualy/plugin-storage",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": "./src/plugin.ts",
+    "./db": "./src/db/entities.ts",
+    "./backend": "./src/server/backend.ts",
+    "./errors": "./src/errors.ts",
+    "./upload": "./src/upload.ts",
+    "./server": "./src/server/index.ts",
+    "./client": "./src/client/index.ts",
+    "./testkit": "./src/testkit/index.ts",
+    "./testkit/contract": "./src/testkit/contract.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@mikro-orm/core": "catalog:",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "effect": "catalog:",
+    "kysely": "catalog:"
+  }
+}

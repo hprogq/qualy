@@ -1,0 +1,22 @@
+{
+  "name": "@qualy/plugin-storage-cos",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server/backend.ts",
+    "./client": "./src/client/upload.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-storage": "workspace:*",
+    "cos-js-sdk-v5": "catalog:",
+    "cos-nodejs-sdk-v5": "catalog:",
+    "effect": "catalog:",
+    "qcloud-cos-sts": "catalog:"
+  }
+}

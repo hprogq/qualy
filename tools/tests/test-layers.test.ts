@@ -316,7 +316,12 @@ describe('test layering', () => {
       // A testkit is a test boundary that happens to live in src/, and the
       // next test is what keeps it out of production: no production module is
       // allowed to import one, so running effects here reaches no shipped path.
-      .filter((file) => !posix(file).endsWith('/src/testkit.ts'))
+      // One file or a directory of them - a shared contract suite several
+      // providers run is still a testkit.
+      .filter(
+        (file) =>
+          !posix(file).endsWith('/src/testkit.ts') && !posix(file).includes('/src/testkit/'),
+      )
       .filter((file) => !RUNS_EFFECTS.includes(posix(file)))
     const offenders = breaches(production, [
       {
@@ -339,7 +344,12 @@ describe('test layering', () => {
       .concat(walk('apps'))
       .filter((file) => !isTestFile(file))
     const offenders = breaches(production, [
-      { pattern: /\/testkit(?:\.ts)?['"]/, why: 'imports a testkit from production code' },
+      {
+        // the subpath form too: `/testkit/contract` is as much a back door as
+        // `/testkit` is
+        pattern: /\/testkit(?:\/[\w.-]+)*(?:\.ts)?['"]/,
+        why: 'imports a testkit from production code',
+      },
     ])
     expect(offenders).toEqual([])
   })

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:8faf6eae8f9536b7a66a0fb4bdafb27e929f132b84c76bcbe04c617e7d5a78d9",
-  "resolutionHash": "sha256:6c04a4ffbe118590b8bd8d2a3960fb8700b69788ab4c12e93e4bee3c4c85840c",
+  "manifestHash": "sha256:d6060ec527ab2754820fd9d139ec18883f8dc6590829219d2f6adbcaae7f435c",
+  "resolutionHash": "sha256:6e28245cac19dbc1a8506a5072a77f4db60d37385a9af3259b7408034aa08001",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -157,6 +157,27 @@
         }
       }
     },
+    "@qualy/plugin-storage": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "entities": [
+            "Attachment",
+            "UploadReservation"
+          ],
+          "dependsOn": []
+        }
+      }
+    },
+    "@qualy/plugin-storage-cos": {
+      "version": "0.0.0",
+      "state": "disabled"
+    },
+    "@qualy/plugin-storage-local": {
+      "version": "0.0.0",
+      "state": "active"
+    },
     "@qualy/plugin-ui-registry": {
       "version": "0.0.0",
       "state": "active"
@@ -175,7 +196,8 @@
           "@qualy/plugin-auth",
           "@qualy/plugin-rbac",
           "@qualy/plugin-assessment",
-          "@qualy/plugin-ping"
+          "@qualy/plugin-ping",
+          "@qualy/plugin-storage"
         ]
       }
     },
@@ -201,6 +223,8 @@
       "@qualy/plugin-org",
       "@qualy/plugin-ping",
       "@qualy/plugin-rbac",
+      "@qualy/plugin-storage",
+      "@qualy/plugin-storage-local",
       "@qualy/plugin-ui-registry",
       "@qualy/plugin-web"
     ]

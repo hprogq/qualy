@@ -6,10 +6,14 @@ import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiClient } from 'effect/unstable/httpapi'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
+import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
+import { LocalStorageConfig } from '@qualy/plugin-storage-local/config'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
@@ -89,6 +93,16 @@ const shell = (url: string) => {
             sessionTtlSeconds: 604_800,
             secureCookies: false,
           }),
+        ),
+        // storage is assembled like everything else here; nothing in this
+        // suite uploads, so the disk it would write to is a scratch directory
+        Layer.succeed(
+          StorageConfig,
+          StorageConfig.of({ defaultBackend: 'local', limits: DEFAULT_LIMITS }),
+        ),
+        Layer.succeed(
+          LocalStorageConfig,
+          LocalStorageConfig.of({ root: path.join(tmpdir(), 'qualy-effect-api-storage') }),
         ),
       ),
     ),
