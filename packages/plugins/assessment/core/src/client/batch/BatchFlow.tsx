@@ -58,18 +58,40 @@ const useSaid = () => {
  */
 function Marker({ status }: { status: FlowStage['status'] }) {
   return (
-    <TimelineIndicator className="flex items-center justify-center border-0 bg-background">
+    <TimelineIndicator
+      className={cn(
+        'flex items-center justify-center border-0 bg-background',
+        // the dot's middle on the stage name's middle: at the top of the box
+        // it sat above the word it belongs to, which reads as a bullet for
+        // the whole item rather than a mark on the line
+        'group-data-[orientation=vertical]/timeline:top-2.5 group-data-[orientation=vertical]/timeline:-translate-y-1/2',
+      )}
+    >
+      {status === 'current' && (
+        // a mark that keeps moving, because this is the one stage that is
+        // happening rather than recorded
+        <span
+          aria-hidden
+          className="absolute size-2.5 animate-ping rounded-full bg-foreground/25 [animation-duration:2.6s] motion-reduce:hidden"
+        />
+      )}
       <span
         className={cn(
-          'rounded-full',
+          'relative rounded-full',
           status === 'ended' && 'size-2 bg-muted-foreground/40',
-          status === 'current' && 'size-2.5 bg-foreground ring-[3px] ring-foreground/12',
+          status === 'current' && 'size-2.5 bg-foreground',
           status === 'future' && 'size-2 border border-muted-foreground/40 bg-background',
         )}
       />
     </TimelineIndicator>
   )
 }
+
+/** the gradient that dissolves whichever end has more beyond it */
+const edgeMask = ({ before, after }: { before: boolean; after: boolean }) =>
+  `linear-gradient(to right, ${before ? 'transparent, black 2.5rem' : 'black 0'}, ${
+    after ? 'black calc(100% - 2.5rem), transparent' : 'black 100%'
+  })`
 
 /** how many stages are behind the reader, which is what a timeline colours */
 const reachedIn = (stages: readonly FlowStage[]) => {
@@ -175,7 +197,20 @@ export function BatchFlow({
         </TimelineItem>
       )}
       {shown.map((stage, index) => (
-        <TimelineItem key={stage.id} step={folded + index + 1} className="ms-6 wrap-anywhere">
+        <TimelineItem
+          key={stage.id}
+          step={folded + index + 1}
+          className={cn('ms-6 wrap-anywhere', stage.status === 'current' && 'isolate')}
+        >
+          {/* the box reaches back past the rail so it holds the dot too: a
+              frame that starts after the mark would say the mark belongs to
+              the stage above */}
+          {stage.status === 'current' && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -inset-y-2 -left-8 -right-2 -z-10 rounded-lg border bg-muted/40"
+            />
+          )}
           <Stage stage={stage} />
         </TimelineItem>
       ))}
@@ -195,14 +230,26 @@ export function BatchFlowStrip({
   const stages = stagesOf(timeline)
   const track = useRef<HTMLDivElement>(null)
   const here = useRef<HTMLDivElement>(null)
+  // which ends have something beyond them, which is what the fade says
+  const [more, setMore] = useState({ before: false, after: false })
+
+  const measure = () => {
+    const rail = track.current
+    if (!rail) return
+    setMore({
+      before: rail.scrollLeft > 4,
+      after: rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 4,
+    })
+  }
 
   // opens where the round is, not where it began: the stage somebody is in
   // is the one they came to check, and the ones behind it are history
   useEffect(() => {
     const rail = track.current
     const node = here.current
-    if (!rail || !node) return
-    rail.scrollTo({ left: node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2 })
+    if (!rail) return
+    if (node) rail.scrollTo({ left: node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2 })
+    measure()
   }, [timeline])
 
   if (stages.length === 0) {
@@ -212,6 +259,13 @@ export function BatchFlowStrip({
   return (
     <div
       ref={track}
+      onScroll={measure}
+      // the fade is the scrollbar this rail does not have: an end with more
+      // beyond it dissolves, and an end with nothing beyond it stays sharp,
+      // so the edge itself says which way there is anything to find
+      style={{
+        maskImage: more.before || more.after ? edgeMask(more) : undefined,
+      }}
       className={cn(
         'snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
@@ -225,8 +279,17 @@ export function BatchFlowStrip({
             ref={stage.status === 'current' ? here : undefined}
             // flex-none, or the timeline's own flex-1 basis of zero shrinks
             // every stage to the width of one character
-            className="w-56 flex-none snap-center wrap-anywhere"
+            className={cn(
+              'w-56 flex-none snap-center wrap-anywhere',
+              stage.status === 'current' && 'isolate',
+            )}
           >
+            {stage.status === 'current' && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -top-8 -right-2 -bottom-2 -left-2 -z-10 rounded-lg border bg-muted/40"
+              />
+            )}
             <Stage stage={stage} />
           </TimelineItem>
         ))}
