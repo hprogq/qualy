@@ -101,7 +101,7 @@ export function BatchProgress({
   const filled = progress.kind === 'until' ? progress.fraction : null
 
   return (
-    <span className={cn('inline-flex min-w-0 items-center gap-2 max-sm:gap-1.5', className)}>
+    <span className={cn('inline-flex min-w-0 items-center gap-3 max-sm:gap-1.5', className)}>
       {stage !== null && (
         // "审核期" on its own is a word, not a fact about this batch: whoever
         // reads it has to already know that the bar names the stage the batch
@@ -113,6 +113,11 @@ export function BatchProgress({
           </span>
           <span className="truncate font-medium text-foreground">{stage}</span>
         </span>
+      )}
+      {stage !== null && said !== null && (
+        // a rule rather than more space: the two halves answer different
+        // questions, and at a glance the gap alone read as one long phrase
+        <span aria-hidden className="h-3.5 w-px shrink-0 bg-border max-sm:hidden" />
       )}
       {said !== null && (
         <span className={cn('inline-flex shrink-0 items-center gap-1.5', tone)}>
