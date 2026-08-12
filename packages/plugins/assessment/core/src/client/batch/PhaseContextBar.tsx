@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ClockIcon, RouteIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -32,9 +32,32 @@ export function PhaseContextBar({
   const narrow = useIsBelow(640)
   const stage = currentOf(stagesOf(timeline))
 
+  // What the row gives up first, and what it never gives up.
+  //
+  // The stage's name is the one thing here nobody can infer, so everything
+  // else yields to it in turn: the hour it ends goes, then the words on the
+  // button, then the second unit of the countdown. Decided from the row's own
+  // width rather than the window's, because that is what actually runs out -
+  // and the row is a block, so its width does not move with what it holds and
+  // this cannot chase its own tail.
+  const bar = useRef<HTMLDivElement>(null)
+  const [room, setRoom] = useState(Number.POSITIVE_INFINITY)
+  useEffect(() => {
+    const node = bar.current
+    if (!node) return
+    const observer = new ResizeObserver(() => setRoom(node.clientWidth))
+    observer.observe(node)
+    setRoom(node.clientWidth)
+    return () => observer.disconnect()
+  }, [])
+  const showDeadline = room >= 640
+  const showLabel = room >= 460
+  const dense = room < 380
+
   return (
     <>
       <div
+        ref={bar}
         className={cn(
           // one line, whatever the width: this sits above somebody's work and
           // a second row of it would push the work down the page
@@ -46,13 +69,13 @@ export function PhaseContextBar({
             dot that used to stand here said "happening" to whoever already
             knew what the line was about, which is not who needs the line. */}
         <span className="shrink-0 text-xs text-muted-foreground">{format(m.currentStage)}</span>
-        <span className="min-w-0 truncate font-medium">
+        <span className="min-w-0 flex-1 truncate font-medium">
           {stage?.name ?? format(m.notStartedYet)}
         </span>
-        {stage !== undefined && (
+        {stage !== undefined && showDeadline && (
           // the deadline as an hour with a clock beside it: the words "until"
           // and "current stage" are what a narrow bar can least afford
-          <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground max-sm:hidden">
+          <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
             <ClockIcon aria-hidden className="size-3.5" />
             <span className="tabular-nums">
               {stage.until === null ? format(m.flowEndPending) : when.moment(stage.until)}
@@ -61,16 +84,16 @@ export function PhaseContextBar({
         )}
         {/* the same countdown the bar above the rail shows, so the two never
             disagree about how long is left */}
-        <BatchProgress timeline={timeline} className="ms-auto shrink-0 text-sm" />
+        <BatchProgress dense={dense} timeline={timeline} className="ms-auto shrink-0 text-sm" />
         <Button
           variant="ghost"
           size="sm"
           aria-label={format(m.viewFullFlow)}
-          className="shrink-0 text-muted-foreground max-sm:size-8 max-sm:p-0"
+          className={cn('shrink-0 text-muted-foreground', !showLabel && 'size-8 p-0')}
           onClick={() => setOpen(true)}
         >
           <RouteIcon aria-hidden />
-          <span className="max-sm:sr-only">{format(m.viewFullFlow)}</span>
+          {showLabel ? format(m.viewFullFlow) : null}
         </Button>
       </div>
 

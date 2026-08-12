@@ -77,11 +77,14 @@ function Ring({ fraction }: { fraction: number }) {
 export function BatchProgress({
   timeline,
   showStage = false,
+  dense = false,
   className,
 }: {
   timeline: readonly TimelineLike[]
   /** the bar names the stage; a card has already said it on the line above */
   showStage?: boolean
+  /** one unit, whatever the window: the row it sits in is out of room */
+  dense?: boolean
   className?: string
 }) {
   const { format, locale } = useI18n()
@@ -89,7 +92,7 @@ export function BatchProgress({
   // stage goes and the clock takes its name instead - "3 hours left in stage"
   // rather than a number beside nothing.
   const tight = useIsBelow(768)
-  const form = tight ? 'bare' : 'full'
+  const form = dense || tight ? 'bare' : 'full'
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)
