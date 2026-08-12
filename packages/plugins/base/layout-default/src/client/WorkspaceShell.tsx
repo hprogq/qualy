@@ -161,6 +161,9 @@ export default function WorkspaceShell() {
         <div className="min-w-0 flex-1">
           <UiSlot token={workspaceContext} />
         </div>
+        {/* the same width as the control on the left, so whatever the slot
+            centres is centred on the screen rather than on what is left of it */}
+        {isMobile && <div aria-hidden className="size-8 shrink-0" />}
       </div>
       <div className="flex min-h-0 flex-1">
         {isMobile ? (

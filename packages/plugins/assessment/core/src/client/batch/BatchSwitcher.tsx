@@ -40,9 +40,10 @@ export function BatchSwitcher({
   const query = useApiQuery(assessmentApi)
   const navigate = usePageNavigate()
   const { format } = useI18n()
-  // on a phone the standing keeps its colour and its dot and loses its word:
-  // the name of the batch is what the bar is for
-  const narrow = useIsBelow(640)
+  // below a tablet the standing keeps its colour and its dot and loses its
+  // word: the name of the batch is what the bar is for, and the word is what
+  // pushed the stage name beside it into an ellipsis
+  const narrow = useIsBelow(768)
   const [open, setOpen] = useState(false)
 
   const nearby = useQuery({

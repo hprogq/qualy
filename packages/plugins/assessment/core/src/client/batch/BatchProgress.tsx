@@ -79,9 +79,12 @@ export function BatchProgress({
   className?: string
 }) {
   const { format, locale } = useI18n()
-  // one number instead of two once the bar is narrow, so the stage keeps the
-  // room it needs to be read
-  const narrow = useIsBelow(640)
+  // Two thresholds, because two things run out of room at different widths:
+  // under a tablet the second unit goes, and under a phone the words with it.
+  // The stage name is what stays, whatever the width.
+  const tight = useIsBelow(768)
+  const phone = useIsBelow(640)
+  const form = phone ? 'bare' : tight ? 'single' : 'full'
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)
@@ -96,8 +99,8 @@ export function BatchProgress({
   const said =
     progress.kind === 'until' || progress.kind === 'since'
       ? format(
-          spanMessage(m, progress, narrow).message as never,
-          spanMessage(m, progress, narrow).values as never,
+          spanMessage(m, progress, form).message as never,
+          spanMessage(m, progress, form).values as never,
         )
       : progress.kind === 'starts'
         ? new Date(progress.at).toLocaleString(locale, {
