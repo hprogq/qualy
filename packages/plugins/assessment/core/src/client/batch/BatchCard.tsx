@@ -43,6 +43,12 @@ function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   )
 }
 
+const SEGMENTS = {
+  ended: 'bg-muted-foreground/40 text-background',
+  current: 'bg-emerald-500 text-white',
+  future: 'bg-muted text-foreground/70',
+} as const
+
 /**
  * The plan as a bar of segments, one per stage.
  *
@@ -50,22 +56,51 @@ function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
  * uselessness at six stages, so the shape carries the meaning - how much is
  * behind, where it is now, how much is left - and the current stage's name is
  * said in full above it.
+ *
+ * A segment gives its own name when the pointer rests on it. It grows upward
+ * into the gap above rather than pushing anything: the row is one line of
+ * cards and a card that changes height on hover moves its neighbours. On a
+ * phone, where there is no pointer to rest, the stage the batch is actually
+ * in stands open and the rest stay as they are.
  */
-function StageBar({ timeline }: { timeline: readonly TimelineLike[] }) {
+function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; batchId: string }) {
   return (
-    <div className="flex items-center gap-1" aria-hidden>
-      {timeline.map((entry, index) => (
-        <span
-          key={entry.displayName + String(index)}
-          className={cn(
-            'h-1 flex-1 rounded-full transition-colors',
-            entry.status === 'ended' && 'bg-muted-foreground/40',
-            entry.status === 'current' && 'bg-emerald-500',
-            entry.status === 'future' && 'bg-muted',
-          )}
-        />
-      ))}
-    </div>
+    // above the card's own overlay so the pointer reaches a segment at all,
+    // and a link of its own so that reaching it costs nothing: a strip in the
+    // middle of a card that swallows clicks reads as broken
+    <PageLink
+      page="assessment/batch"
+      params={{ batchId }}
+      tabIndex={-1}
+      aria-hidden
+      className="relative z-10 block"
+    >
+      <div className="flex h-1 items-end gap-1">
+        {timeline.map((entry, index) => (
+          <span
+            key={entry.displayName + String(index)}
+            className="group/segment relative h-1 min-w-0 flex-1"
+          >
+            <span
+              className={cn(
+                'absolute inset-x-0 bottom-0 flex h-1 items-center justify-center overflow-hidden rounded-full px-1 transition-[height,background-color] duration-200 group-hover/segment:h-4',
+                SEGMENTS[entry.status],
+                entry.status === 'current' && 'max-sm:h-4',
+              )}
+            >
+              <span
+                className={cn(
+                  'truncate text-[9px] leading-none font-medium opacity-0 transition-opacity duration-150 group-hover/segment:opacity-100',
+                  entry.status === 'current' && 'max-sm:opacity-100',
+                )}
+              >
+                {entry.displayName}
+              </span>
+            </span>
+          </span>
+        ))}
+      </div>
+    </PageLink>
   )
 }
 
@@ -91,7 +126,7 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
         : { label: null, value: format(m.noStagesYet) }
 
   return (
-    <li className="group relative flex flex-col gap-4 rounded-xl border bg-background p-5 transition-[color,background-color,border-color,box-shadow] hover:border-foreground/20 hover:shadow-sm">
+    <li className="group relative flex flex-col gap-4 rounded-xl border bg-background p-5 transition-[color,background-color,border-color] hover:border-foreground/12 hover:bg-muted/25">
       <div className="flex items-start justify-between gap-3">
         {/* the whole card is the target; the link carries the name so it is
             also reachable by keyboard and readable out of context */}
@@ -147,7 +182,7 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
         )}
       </div>
 
-      {row.timeline.length > 0 && <StageBar timeline={row.timeline} />}
+      {row.timeline.length > 0 && <StageBar timeline={row.timeline} batchId={row.id} />}
 
       <p className="mt-auto flex items-center justify-end gap-1 text-sm text-muted-foreground transition-colors group-hover:text-foreground">
         {format(standing === 'draft' ? m.configureBatch : m.enterBatch)}
