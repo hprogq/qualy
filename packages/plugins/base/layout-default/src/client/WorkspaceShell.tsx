@@ -154,16 +154,17 @@ export default function WorkspaceShell() {
       {/* its height is fixed rather than found: the slot arrives a moment after
           the shell does, and a bar that grows from empty to filled moves every
           page below it just as the reader starts reading */}
-      <div className="flex h-13 shrink-0 items-center gap-2 border-b bg-background px-2 sm:px-4">
-        {/* only on a phone, where the rail is a sheet with no edge of its own
-            to reach; on a desktop it keeps its own control, open or shut */}
-        {isMobile && toggle(format(m.toggleSidebar))}
-        <div className="min-w-0 flex-1">
+      <div className="relative flex h-13 shrink-0 items-center border-b bg-background px-2 sm:px-4">
+        {/* Only on a phone, where the rail is a sheet with no edge of its own
+            to reach; on a desktop it keeps its own control, open or shut.
+            Over the bar rather than in it: in the row it would push the slot
+            aside, and whatever the slot centres would be centred on what was
+            left of the bar instead of on the screen. The slot keeps its own
+            left margin clear (data-bar-start). */}
+        {isMobile && <div className="absolute left-2 z-10">{toggle(format(m.toggleSidebar))}</div>}
+        <div className="min-w-0 flex-1 max-sm:[&_[data-bar-start]]:pl-9">
           <UiSlot token={workspaceContext} />
         </div>
-        {/* the same width as the control on the left, so whatever the slot
-            centres is centred on the screen rather than on what is left of it */}
-        {isMobile && <div aria-hidden className="size-8 shrink-0" />}
       </div>
       <div className="flex min-h-0 flex-1">
         {isMobile ? (

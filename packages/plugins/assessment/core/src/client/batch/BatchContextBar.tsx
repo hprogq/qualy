@@ -36,7 +36,7 @@ export default function BatchContextBar() {
 
   return (
     <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-3">
-      <div className="flex min-w-0 items-center">
+      <div data-bar-start className="flex min-w-0 items-center">
         <Button size="sm" variant="ghost" className="-ml-1 shrink-0 text-muted-foreground" asChild>
           <PageLink page="assessment/batches">
             <ArrowLeftIcon />
