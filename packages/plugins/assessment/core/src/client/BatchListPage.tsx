@@ -77,6 +77,9 @@ export default function BatchListPage() {
     }),
   )
 
+  // said by the server, not guessed here: a control the api would refuse is
+  // not drawn, and this reader's own list is still theirs to read
+  const canCreate = batches.data?.capabilities.create ?? false
   const nextCursor = batches.data?.nextCursor ?? null
   useEffect(() => {
     // remember where the next page starts, the moment this one says
@@ -118,10 +121,12 @@ export default function BatchListPage() {
             </div>
             <p className="text-sm text-muted-foreground">{format(m.batchesHint)}</p>
           </div>
-          <Button variant="outline" onClick={() => setCreating(true)}>
-            <PlusIcon />
-            {format(m.newBatch)}
-          </Button>
+          {canCreate && (
+            <Button variant="outline" onClick={() => setCreating(true)}>
+              <PlusIcon />
+              {format(m.newBatch)}
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-col gap-5">
@@ -149,7 +154,12 @@ export default function BatchListPage() {
             >
               <ToggleGroupItem value="all">{format(m.filterAll)}</ToggleGroupItem>
               <ToggleGroupItem value="active">{format(m.statusActive)}</ToggleGroupItem>
-              <ToggleGroupItem value="draft">{format(m.statusDraft)}</ToggleGroupItem>
+              {/* a draft is a round being set up, and it is only ever listed
+                  for whoever sets rounds up: offered to a participant the
+                  filter is a promise of an empty page */}
+              {canCreate && (
+                <ToggleGroupItem value="draft">{format(m.statusDraft)}</ToggleGroupItem>
+              )}
               {/* "archived" is the word the column stores; what a reader
                   recognises is that the assessment is over */}
               <ToggleGroupItem value="archived">{format(m.filterEnded)}</ToggleGroupItem>
@@ -195,10 +205,12 @@ export default function BatchListPage() {
                       {format(m.clearFilters)}
                     </Button>
                   ) : (
-                    <Button variant="outline" onClick={() => setCreating(true)}>
-                      <PlusIcon />
-                      {format(m.newBatch)}
-                    </Button>
+                    canCreate && (
+                      <Button variant="outline" onClick={() => setCreating(true)}>
+                        <PlusIcon />
+                        {format(m.newBatch)}
+                      </Button>
+                    )
                   )}
                 </EmptyContent>
               </Empty>

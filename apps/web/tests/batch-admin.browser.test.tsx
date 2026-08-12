@@ -154,7 +154,13 @@ const listRow = (over: Partial<BatchDto> = {}, timeline: unknown[] = []) => ({
 })
 
 const assessmentStubs = (over: Stubs = {}): Stubs => ({
-  listBatches: () => Effect.succeed({ items: [listRow()], nextCursor: null, total: 1 }),
+  listBatches: () =>
+    Effect.succeed({
+      items: [listRow()],
+      nextCursor: null,
+      total: 1,
+      capabilities: { create: true },
+    }),
   getBatch: () => Effect.succeed({ batch: batch() }),
   getPhases: () => Effect.succeed({ phases: [] }),
   getTimeline: () => Effect.succeed({ timeline: [] }),
@@ -224,9 +230,15 @@ describe('the batch list', () => {
           items: [listRow({ id: 'second', name: '2025 秋季综测' })],
           nextCursor: null,
           total: 21,
+          capabilities: { create: true },
         })
       }
-      return Effect.succeed({ items: [listRow()], nextCursor: 'next-page', total: 21 })
+      return Effect.succeed({
+        items: [listRow()],
+        nextCursor: 'next-page',
+        total: 21,
+        capabilities: { create: true },
+      })
     })
     screen({ listBatches }, '/assessment/batches')
 
@@ -255,9 +267,33 @@ describe('the batch list', () => {
     })
   })
 
+  it('offers neither creation nor drafts to somebody who administers nothing', async () => {
+    screen(
+      {
+        listBatches: () =>
+          Effect.succeed({
+            items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
+            nextCursor: null,
+            total: 1,
+            capabilities: { create: false },
+          }),
+      },
+      '/assessment/batches',
+    )
+
+    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+    // the rounds they take part in are still theirs to read
+    expect(await page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(0)
+    // and a filter that could only ever answer with an empty page is not offered
+    expect(await page.getByRole('radio', { name: '草稿' }).elements()).toHaveLength(0)
+  })
+
   it('tells an empty result apart from an empty list', async () => {
     screen(
-      { listBatches: () => Effect.succeed({ items: [], nextCursor: null, total: 0 }) },
+      {
+        listBatches: () =>
+          Effect.succeed({ items: [], nextCursor: null, total: 0, capabilities: { create: true } }),
+      },
       '/assessment/batches',
     )
     // nothing has been created yet: the answer is to create one

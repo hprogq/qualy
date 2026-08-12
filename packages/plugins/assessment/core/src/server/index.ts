@@ -423,6 +423,8 @@ export class Assessment extends Context.Service<
       input: CreateBatchInput,
       as: Principal,
     ) => Effect.Effect<BatchDetail, CreateBatchError>
+    /** whether this person holds the batch permission anywhere at all */
+    readonly canCreateBatch: (as: Principal) => Effect.Effect<boolean>
     readonly listBatches: (
       tenantId: string,
       filter: {
@@ -1472,6 +1474,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
         translateConstraints(batchConstraints),
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
+    }),
+
+    canCreateBatch: Effect.fn('Assessment.canCreateBatch')(function* (as) {
+      // creating validates every unit the form chose; this only says whether
+      // there is any unit at all it could choose from
+      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+      return held.tenantWide || held.anchors.length > 0
     }),
 
     listBatches: Effect.fn('Assessment.listBatches')(function* (tenantId, filter, as) {
@@ -2841,6 +2850,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const last = page[page.length - 1]
         return {
           total,
+          capabilities: { create: yield* assessment.canCreateBatch(principal) },
           items: page.map((row) => ({
             id: row.id,
             name: row.name,

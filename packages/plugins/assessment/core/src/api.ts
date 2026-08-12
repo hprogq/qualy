@@ -260,7 +260,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         status: Schema.optional(batchStatus),
         q: Schema.optional(boundedText(100)),
       }),
-      success: countedPageOf(batchListView),
+      success: Schema.Struct({
+        ...countedPageOf(batchListView).fields,
+        // whether this reader may start a round at all, rather than only read
+        // the ones they are in: the control that opens the form is not drawn
+        // for somebody the api would refuse
+        capabilities: Schema.Struct({ create: Schema.Boolean }),
+      }),
       error: [AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
