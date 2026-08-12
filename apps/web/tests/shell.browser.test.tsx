@@ -147,7 +147,8 @@ describe('the workspace shell', () => {
     expect(toggle.elements()).toHaveLength(1)
     await toggle.click()
 
-    // the entries are gone but the control is not: a rail that closed over
+    // the entries are out of reach - not merely faded, or the keyboard would
+    // still walk into them - but the control is not: a rail that closed over
     // its own handle would send somebody back up to the bar to find it
     expect(page.getByRole('link', { name: '阶段安排' }).elements()).toHaveLength(0)
     expect(page.getByRole('button', { name: '收起或展开侧边栏' }).elements()).toHaveLength(1)

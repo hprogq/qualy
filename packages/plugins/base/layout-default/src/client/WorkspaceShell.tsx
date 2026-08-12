@@ -104,30 +104,47 @@ export default function WorkspaceShell() {
     </button>
   )
 
-  const rail = (
-    <nav className="flex h-full flex-col gap-5 overflow-y-auto p-3">
-      {/* the control that closes it belongs to the thing it closes; the bar
-          above has room for one thing, and that is the way back out */}
+  // The rail is always its full width; the column around it is what narrows.
+  //
+  // Swapping the contents for a narrow version instead made the animation
+  // play over the wrong thing - the button stretching to full width on the
+  // way out, the entries reflowing to one character a line on the way back
+  // in. Held at one width and clipped, nothing inside it moves at all; the
+  // entries only fade, which changes no layout.
+  const rail = (fixed: boolean) => (
+    <nav
+      className={cn('flex h-full flex-col gap-5 overflow-y-auto p-3', fixed ? 'w-56' : 'w-full')}
+    >
       {!isMobile && <div className="flex">{toggle(format(m.toggleSidebar))}</div>}
-      {loose.length > 0 && (
-        <ul className="flex flex-col gap-0.5">
-          {loose.map((item) => (
-            <RailEntry key={item.id} label={item.label} to={item.to} />
-          ))}
-        </ul>
-      )}
-      {sections.map((section) => (
-        <section key={section.id}>
-          <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
-            <LocalizedText value={section.label} />
-          </p>
+      <div
+        // out of reach as well as out of sight: a link nobody can see is
+        // still a link the keyboard walks into and the screen reader reads
+        {...(fixed && !railOpen ? { inert: true, 'aria-hidden': true } : {})}
+        className={cn(
+          'flex flex-col gap-5 transition-opacity duration-150',
+          fixed && !railOpen && 'opacity-0',
+        )}
+      >
+        {loose.length > 0 && (
           <ul className="flex flex-col gap-0.5">
-            {section.items.map((item) => (
+            {loose.map((item) => (
               <RailEntry key={item.id} label={item.label} to={item.to} />
             ))}
           </ul>
-        </section>
-      ))}
+        )}
+        {sections.map((section) => (
+          <section key={section.id}>
+            <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+              <LocalizedText value={section.label} />
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              {section.items.map((item) => (
+                <RailEntry key={item.id} label={item.label} to={item.to} />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     </nav>
   )
 
@@ -147,7 +164,7 @@ export default function WorkspaceShell() {
           <Sheet open={railOpen} onOpenChange={setRailOpen}>
             <SheetContent side="left" className="w-64 p-0">
               <SheetTitle className="sr-only">{format(m.toggleSidebar)}</SheetTitle>
-              {rail}
+              {rail(false)}
             </SheetContent>
           </Sheet>
         ) : (
@@ -160,11 +177,7 @@ export default function WorkspaceShell() {
               railOpen ? 'w-56' : 'w-13',
             )}
           >
-            {railOpen ? (
-              rail
-            ) : (
-              <div className="flex h-full flex-col p-3">{toggle(format(m.toggleSidebar))}</div>
-            )}
+            {rail(true)}
           </aside>
         )}
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/30">
