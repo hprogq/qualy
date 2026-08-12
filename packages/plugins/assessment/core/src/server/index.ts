@@ -418,7 +418,7 @@ const SCOPE_OPTION_LIMIT = 500
 export interface ChainPreviewStep {
   readonly nodeId: string
   readonly nodeTypeId: string
-  /** people holding any role anchored exactly here; real chains arrive M3 */
+  /** people holding any role anchored exactly here; real chains arrive with review policies */
   readonly holders: number
 }
 

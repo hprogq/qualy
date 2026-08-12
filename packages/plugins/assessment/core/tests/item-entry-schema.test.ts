@@ -12,7 +12,7 @@ import { createTestContext, pgCode, postgresAvailable } from '@qualy/plugin-data
 // write, and every one must be a 23503 rather than a row that looks fine
 // until scoring reads it.
 
-describe.runIf(postgresAvailable)('assessment m2 schema', () => {
+describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
 
   const createFixture = async (slug: string) => {
@@ -129,7 +129,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   }
 
   beforeAll(async () => {
-    db = await createTestContext('assessment-m2-schema')
+    db = await createTestContext('assessment-item-entry-schema')
   })
 
   afterAll(async () => {
@@ -137,7 +137,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('round-trips a group, an item, an entry and a round', async () => {
-    const f = await createFixture('m2-rt')
+    const f = await createFixture('ie-rt')
     const g = await createBatchGraph(f, '2026 春季综测')
     const e = await createEntry(f, g)
 
@@ -179,7 +179,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('refuses an entry citing an item from another batch', async () => {
-    const f = await createFixture('m2-xbatch-item')
+    const f = await createFixture('ie-xbatch-item')
     const a = await createBatchGraph(f, 'Round A')
     const b = await createBatchGraph(f, 'Round B')
 
@@ -196,7 +196,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('refuses an entry citing a participant from another batch', async () => {
-    const f = await createFixture('m2-xbatch-part')
+    const f = await createFixture('ie-xbatch-part')
     const a = await createBatchGraph(f, 'Round A')
     const b = await createBatchGraph(f, 'Round B')
 
@@ -212,7 +212,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('refuses an item whose score group belongs to another batch', async () => {
-    const f = await createFixture('m2-xbatch-group')
+    const f = await createFixture('ie-xbatch-group')
     const a = await createBatchGraph(f, 'Round A')
     const b = await createBatchGraph(f, 'Round B')
 
@@ -228,7 +228,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('refuses pointing an entry at a revision of a different entry', async () => {
-    const f = await createFixture('m2-xrev')
+    const f = await createFixture('ie-xrev')
     const g = await createBatchGraph(f, 'Round A')
     const first = await createEntry(f, g)
     const second = await createEntry(f, g)
@@ -244,7 +244,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('refuses a round citing a revision of a different entry', async () => {
-    const f = await createFixture('m2-xround')
+    const f = await createFixture('ie-xround')
     const g = await createBatchGraph(f, 'Round A')
     const first = await createEntry(f, g)
     const second = await createEntry(f, g)
@@ -263,7 +263,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('refuses pointing an item at another item’s revision', async () => {
-    const f = await createFixture('m2-xitemrev')
+    const f = await createFixture('ie-xitemrev')
     const g = await createBatchGraph(f, 'Round A')
     const otherItemId = (
       await db.row<{ id: string }>(
@@ -284,7 +284,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('holds one open round per entry, whoever asks for a second', async () => {
-    const f = await createFixture('m2-double')
+    const f = await createFixture('ie-double')
     const g = await createBatchGraph(f, 'Round A')
     const e = await createEntry(f, g)
 
@@ -310,7 +310,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('keeps revision numbers unique per entry and per item', async () => {
-    const f = await createFixture('m2-revno')
+    const f = await createFixture('ie-revno')
     const g = await createBatchGraph(f, 'Round A')
     const e = await createEntry(f, g)
 
@@ -336,7 +336,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('ties an attachment citation to a real stored attachment in the same tenant', async () => {
-    const f = await createFixture('m2-attach')
+    const f = await createFixture('ie-attach')
     const g = await createBatchGraph(f, 'Round A')
     const e = await createEntry(f, g)
 
@@ -372,7 +372,7 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('refuses the states and shapes nothing should ever write', async () => {
-    const f = await createFixture('m2-checks')
+    const f = await createFixture('ie-checks')
     const g = await createBatchGraph(f, 'Round A')
 
     // a voided item without a reason is not a voided item
@@ -407,8 +407,8 @@ describe.runIf(postgresAvailable)('assessment m2 schema', () => {
   })
 
   it('rejects cross-tenant references between the new tables', async () => {
-    const a = await createFixture('m2-xta')
-    const b = await createFixture('m2-xtb')
+    const a = await createFixture('ie-xta')
+    const b = await createFixture('ie-xtb')
     const ga = await createBatchGraph(a, 'A')
     const gb = await createBatchGraph(b, 'B')
 

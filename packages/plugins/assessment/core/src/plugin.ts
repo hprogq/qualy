@@ -10,7 +10,7 @@ import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
 // and payloads; core owns the tables and never learns what an evidence field
 // is. A scoring driver is a named, versioned reference that item
 // configuration cites; the reference is declared here and its arithmetic
-// arrives with the milestone that computes results.
+// arrives with the scoring engine.
 
 /** how a driver refuses a payload; reasons stay structural, never free text */
 export class ItemPayloadInvalid extends Error {
@@ -81,9 +81,9 @@ export class ItemTypeCatalog extends Context.Service<
  * alter any result is a new version beside the old one, not an edit.
  *
  * Only the declaration lives here - ref, role and the shape of acceptable
- * configuration. The functions arrive with the scoring milestone; validating
- * an item's scoring_config against installed references is what this
- * catalog is for until then.
+ * configuration. The functions arrive with the scoring engine; until then
+ * this catalog exists to validate an item's scoring_config against the
+ * references that are actually installed.
  */
 export interface ScoringDriver {
   readonly kind: 'calculator' | 'aggregator'

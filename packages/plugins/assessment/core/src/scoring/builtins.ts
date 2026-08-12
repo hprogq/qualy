@@ -2,15 +2,15 @@ import { Schema } from 'effect'
 import type { ScoringDriver } from '../plugin.ts'
 
 // The two pieces of arithmetic every deployment starts with, declared here
-// and computed in the scoring milestone.
+// and computed by the scoring engine.
 //
 // What is frozen now is the wire between configuration and arithmetic: an
-// item revision stores `{ calculator: 'fixed@1', config: { value: '3.00' } }`
-// and the reference plus its config shape must already be checkable when the
-// configuration API arrives - which is one conversation before any score is
-// computed. Amounts are decimal strings from the very first config saved,
-// because a JSON float in a stored config is a rounding error somebody will
-// eventually have to explain to a student.
+// item revision stores `{ calculator: 'fixed@1', config: { value: '3.00' } }`,
+// and saving a configuration has to be able to check the reference and its
+// config shape long before anything computes a score. Amounts are decimal
+// strings from the very first config saved, because a JSON float in a stored
+// config is a rounding error somebody will eventually have to explain to a
+// student.
 
 /**
  * A signed amount as text, up to four decimal places.

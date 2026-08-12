@@ -34,7 +34,7 @@ import { startBatch } from './support/lifecycle.ts'
 // The service against a real database: batch lifecycle with the one-statement
 // roster, plan edits landing as audited events, manual and forced advancement,
 // idempotent ratification, and the gate over real scope rows. These are the
-// milestone's acceptance items for the service layer.
+// acceptance items for the service layer.
 
 const catalog: readonly ActivePermission[] = compileCatalog([
   { owner: 'rbac', permissions: rbacPermissions },

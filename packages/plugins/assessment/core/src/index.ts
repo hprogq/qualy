@@ -44,8 +44,8 @@ const plugin = Plugin.define(
   },
   Db.entities(entities, {
     compositeForeignKeys,
-    // storage joined in M2: the attachment relation table holds a real
-    // foreign key into storage_attachments
+    // the attachment relation table holds a real foreign key into
+    // storage_attachments, which is what makes a citation enforceable
     dependsOn: [
       '@qualy/plugin-org',
       '@qualy/plugin-auth',

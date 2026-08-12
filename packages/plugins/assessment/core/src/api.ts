@@ -182,7 +182,7 @@ const participantView = Schema.Struct({
 })
 
 /**
- * The degraded chain preview (M3 wires real review policies): for each level
+ * The degraded chain preview (real review policies wire in later): for each level
  * of the lineage being frozen, how many people hold any role anchored
  * exactly there. Zero is the number an administrator wants shouted.
  */

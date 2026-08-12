@@ -1,10 +1,9 @@
 import { defineEntity } from '@mikro-orm/core'
 import { Tenant } from '@qualy/plugin-org/db'
 
-// The assessment domain's tables: batch, phase and roster from the first
-// milestone; items, entries and review from the second. Score runs and
-// publication arrive with their own milestones - nothing here anticipates
-// them.
+// The assessment domain's tables: batches, phases and rosters; items,
+// entries and review. Score run and publication tables arrive with the
+// features that need them - nothing here anticipates them.
 //
 // Constraint names are explicit throughout: postgres errors are translated to
 // domain errors by constraint name, and the parity gates compare the schema
@@ -598,7 +597,7 @@ export const BatchConfigRevision = defineEntity({
   ],
 })
 
-// --- items, entries and review: the M2 tables ---
+// --- items, entries and review ---
 //
 // From here down is what a batch is *about*: the questions it asks (items,
 // versioned), the answers people give (entries, versioned), and the judgment
@@ -618,8 +617,8 @@ export const BatchConfigRevision = defineEntity({
 //     keys, because history must not pin the living org tree.
 
 /**
- * A node of the score tree - only one level of it in M2, but the shape is
- * final so M4's nesting is an API change, not a migration.
+ * A node of the score tree - only one level of it for now, but the shape is
+ * final so nesting is an API change, not a migration.
  *
  * cap and floor are the whole reason the tree exists (ADR-5): combination
  * limits live here and only here, never inside a calculator.
@@ -631,8 +630,9 @@ export const ScoreGroup = defineEntity({
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('score_groups_tenant_id_tenants_id_fkey'),
     batchId: p.uuid(),
-    // single layer in M2: the API refuses a parent, the schema does not -
-    // freezing "flat" into the database would make M4 a destructive change
+    // the API refuses a parent while grouping is flat; the schema does not,
+    // because freezing "flat" into the database would make nesting a
+    // destructive change
     parentGroupId: p.uuid().nullable(),
     name: p.string().length(255),
     cap: p.decimal().precision(12).scale(4).nullable(),
@@ -1120,7 +1120,7 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete restrict`,
   `alter table batch_config_revisions add constraint fk_batch_config_revisions_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
-  // --- M2: items, entries, review ---
+  // --- items, entries, review ---
   //
   // The same-batch keys are the point of this block: wherever two batch-scoped
   // rows reference each other, the reference carries batch_id, so citing a row

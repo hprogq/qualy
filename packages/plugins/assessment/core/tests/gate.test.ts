@@ -21,7 +21,7 @@ const decide = (
     ...(ctx !== undefined ? { ctx } : {}),
   })
 
-// the default matrix rows this milestone ships (§11)
+// the default permission matrix rows (§11)
 const PRE_ENTRY = ['assessment.entry.create', 'assessment.entry.edit', 'assessment.entry.record']
 const ENTRY = [
   'assessment.entry.create',
