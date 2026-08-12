@@ -92,8 +92,23 @@ export default function WorkspaceShell() {
     }))
     .filter((group) => group.items.length > 0)
 
+  const toggle = (label: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      aria-expanded={railOpen}
+      className="rounded-md p-1.5 text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={() => setRailOpen((open) => !open)}
+    >
+      <PanelLeftIcon aria-hidden className="size-4" />
+    </button>
+  )
+
   const rail = (
     <nav className="flex h-full flex-col gap-5 overflow-y-auto p-3">
+      {/* the control that closes it belongs to the thing it closes; the bar
+          above has room for one thing, and that is the way back out */}
+      {!isMobile && <div className="flex">{toggle(format(m.toggleSidebar))}</div>}
       {loose.length > 0 && (
         <ul className="flex flex-col gap-0.5">
           {loose.map((item) => (
@@ -120,14 +135,9 @@ export default function WorkspaceShell() {
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
       <TopBar apps={apps} activeApp={activeApp} />
       <div className="flex shrink-0 items-center gap-2 border-b bg-background px-2 py-2 sm:px-4">
-        <button
-          type="button"
-          aria-label={format(m.toggleSidebar)}
-          className="rounded-md p-1.5 text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => setRailOpen((open) => !open)}
-        >
-          <PanelLeftIcon aria-hidden className="size-4" />
-        </button>
+        {/* only on a phone, where the rail is a sheet with no edge of its own
+            to reach; on a desktop it keeps its own control, open or shut */}
+        {isMobile && toggle(format(m.toggleSidebar))}
         <div className="min-w-0 flex-1">
           <UiSlot token={workspaceContext} />
         </div>
@@ -141,13 +151,20 @@ export default function WorkspaceShell() {
             </SheetContent>
           </Sheet>
         ) : (
+          // Collapsed to a strip rather than to nothing: the control that
+          // brings it back stays where it was taken from, so reopening does
+          // not mean going up to the bar and hunting for it.
           <aside
             className={cn(
-              'h-full w-56 shrink-0 overflow-hidden border-r transition-[margin-left] duration-200 ease-linear',
-              railOpen ? 'ml-0' : '-ml-56',
+              'h-full shrink-0 overflow-hidden border-r transition-[width] duration-200 ease-linear',
+              railOpen ? 'w-56' : 'w-13',
             )}
           >
-            {rail}
+            {railOpen ? (
+              rail
+            ) : (
+              <div className="flex h-full flex-col p-3">{toggle(format(m.toggleSidebar))}</div>
+            )}
           </aside>
         )}
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/30">

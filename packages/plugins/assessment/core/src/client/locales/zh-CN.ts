@@ -35,7 +35,7 @@ export default {
   'assessment/batch/summary-draft': '覆盖 {units} 个单位，统计 {from} 至 {until} 期间的材料',
   'assessment/batch/page-of-total': '第 {page} / {pages} 页',
   'assessment/batch/total-count': '共 {count} 条',
-  'assessment/batch/back': '全部批次',
+  'assessment/batch/back': '返回批次列表',
   'assessment/batch/column-name': '名称',
   'assessment/batch/column-status': '状态',
   'assessment/batch/column-material-range': '材料时间范围',

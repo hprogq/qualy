@@ -130,4 +130,28 @@ describe('the workspace shell', () => {
     // product, not a place the product disappears from
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()
   })
+
+  it('keeps the control that closes the rail inside the rail, and offers it back', async () => {
+    await page.viewport(1280, 800)
+    shell(
+      <WorkspaceShell />,
+      '/assessment/batches/:batchId/phases',
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+
+    // the rail has arrived before anything is counted
+    await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
+
+    // one control, in the rail, while the rail is there to be closed
+    const toggle = page.getByRole('button', { name: '收起或展开侧边栏' })
+    expect(toggle.elements()).toHaveLength(1)
+    await toggle.click()
+
+    // the entries are gone but the control is not: a rail that closed over
+    // its own handle would send somebody back up to the bar to find it
+    expect(page.getByRole('link', { name: '阶段安排' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '收起或展开侧边栏' }).elements()).toHaveLength(1)
+    await page.getByRole('button', { name: '收起或展开侧边栏' }).click()
+    await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
+  })
 })

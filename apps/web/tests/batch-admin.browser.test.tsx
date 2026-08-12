@@ -276,7 +276,7 @@ describe('the batch list', () => {
     // heading the section would have to repeat
     await expect.element(page.getByText('2026 春季综测')).toBeVisible()
 
-    await page.getByRole('link', { name: '全部批次' }).click()
+    await page.getByRole('link', { name: '返回批次列表' }).click()
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
   })
 })
