@@ -95,7 +95,10 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
             </span>
             <span
               className={cn(
-                'absolute inset-x-0 bottom-0 h-1 rounded-[2px] transition-[height,background-color] duration-150 group-hover/segment:h-1.5',
+                // scaled rather than grown: height is a layout property, and
+                // a card list relaying itself out on every frame of a hover
+                // is the one animation here that cannot run on the compositor
+                'absolute inset-x-0 bottom-0 h-1 origin-bottom rounded-[2px] transition-[transform,background-color] duration-150 group-hover/segment:scale-y-150',
                 SEGMENTS[entry.status],
               )}
             />
@@ -128,7 +131,7 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
         : { label: null, value: format(m.noStagesYet) }
 
   return (
-    <li className="group relative flex flex-col gap-4 rounded-xl border bg-background p-5 transition-[color,background-color,border-color,box-shadow] hover:border-foreground/12 hover:bg-muted/25 hover:shadow-xs">
+    <li className="group relative flex flex-col gap-4 rounded-xl border bg-background p-5 transition-[color,background-color,border-color,box-shadow] hover:border-foreground/12 hover:bg-muted/10 hover:shadow-xs">
       <div className="flex items-start justify-between gap-3">
         {/* the whole card is the target; the link carries the name so it is
             also reachable by keyboard and readable out of context */}
