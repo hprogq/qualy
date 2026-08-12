@@ -1206,6 +1206,259 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(Exit.isSuccess(started)).toBe(true)
   })
 
+  it('keeps an empty round inside the boundary it was created in', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('management-boundary')
+        const assessment = yield* Assessment
+        // two administrators, each over one grade and neither over the other
+        const roleFor = (code: string) =>
+          Effect.gen(function* () {
+            const id = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                   assignable, eligibility_mode, anchor_mode)
+                values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', true,
+                        'unrestricted', 'unrestricted')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_permissions (tenant_id, role_id, permission_id)
+              select ${f.tenant}, ${id}, id from permissions
+               where code = 'assessment.batch.manage'`)
+            return id
+          })
+        const gradeRole = yield* roleFor('grade-admin')
+        const person = (name: string, nodeId: string) =>
+          Effect.gen(function* () {
+            const id = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                values (${f.tenant}, ${name}, ${f.teacherType}, ${nodeId}) returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.tenant}, ${id}, ${gradeRole}, ${nodeId}, 'subtree')`)
+            return id
+          })
+        const ours = yield* person('Grade A admin', f.gradeA)
+        const theirs = yield* person('Grade B admin', f.gradeB)
+        const mine: Principal = { tenantId: f.tenant, userId: ours, sessionId: 's' }
+        const other: Principal = { tenantId: f.tenant, userId: theirs, sessionId: 's' }
+
+        // a round drawn from grade A that happens to find nobody: the type it
+        // asks for has no members there yet
+        const visiting = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into user_types (tenant_id, code, name, placement_mode)
+            values (${f.tenant}, 'visiting', 'visiting', 'unrestricted') returning id`),
+        ).id
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'A grade round',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [visiting] },
+          },
+          mine,
+        )
+        const roster = yield* assessment.listParticipants(f.tenant, batch.id, { limit: 50 }, mine)
+        return {
+          roster,
+          seenByOwner: yield* assessment.listBatches(f.tenant, { limit: 20 }, mine),
+          seenByOther: yield* assessment.listBatches(f.tenant, { limit: 20 }, other),
+          openedByOther: yield* Effect.exit(assessment.getBatch(f.tenant, batch.id, other)),
+          // the takeover the boundary exists to refuse
+          takenByOther: yield* Effect.exit(
+            assessment.addParticipants(f.tenant, batch.id, [f.s3], other),
+          ),
+          // and the owner can still fill their own round
+          filledByOwner: yield* Effect.exit(
+            assessment.addParticipants(f.tenant, batch.id, [f.s1], mine),
+          ),
+        }
+      }),
+    )
+    const { roster, seenByOwner, seenByOther, openedByOther, takenByOther, filledByOwner } =
+      ok(exit)
+    expect(roster).toEqual([])
+    expect(seenByOwner.map((row) => row.name)).toEqual(['A grade round'])
+    // an empty roster contains everybody's reach vacuously; the frozen anchors
+    // are what still says whose round this is
+    expect(seenByOther).toEqual([])
+    expect(tagOf(openedByOther)).toBe('ACCESS_DENIED')
+    expect(tagOf(takenByOther)).toBe('ACCESS_DENIED')
+    expect(Exit.isSuccess(filledByOwner)).toBe(true)
+  })
+
+  it('opens a round to the people in it the moment the clock says so, and keeps it after it ends', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('clock-visibility')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'By the clock',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        const student: Principal = { tenantId: f.tenant, userId: f.s1, sessionId: 's' }
+        const beforeIt = yield* assessment.listBatches(f.tenant, { limit: 20 }, student)
+        // the hour arrives and nobody has swept yet: the projection still says
+        // no phase, and the gate is already open
+        yield* runSql(sql`
+          update batch_phases set planned_entry_at = now() - interval '1 minute'
+           where batch_id = ${batch.id}`)
+        const whenDue = yield* assessment.listBatches(f.tenant, { limit: 20 }, student)
+        const projection = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
+        // and after the round is over, the people in it keep their history
+        yield* assessment.setBatchStatus(f.tenant, batch.id, { status: 'archived' }, f.principal)
+        const afterwards = yield* assessment.listBatches(f.tenant, { limit: 20 }, student)
+        const opened = yield* Effect.exit(assessment.getBatch(f.tenant, batch.id, student))
+        return { beforeIt, whenDue, projection, afterwards, opened }
+      }),
+    )
+    const { beforeIt, whenDue, projection, afterwards, opened } = ok(exit)
+    expect(beforeIt).toEqual([])
+    // visible from the instant itself, not from whenever the sweeper ran
+    expect(whenDue.map((row) => row.name)).toEqual(['By the clock'])
+    expect(projection.currentPhaseId).toBeNull()
+    expect(afterwards.map((row) => row.name)).toEqual(['By the clock'])
+    expect(Exit.isSuccess(opened)).toBe(true)
+  })
+
+  it('leaves a reopened round with nothing in hand until its new stage arrives', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('reopen-timeline')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Reopened',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        yield* assessment.advancePhase(
+          f.tenant,
+          batch.id,
+          { to: plan[0]!.id, force: true, reason: 'starting now' },
+          f.principal,
+        )
+        yield* assessment.setBatchStatus(f.tenant, batch.id, { status: 'archived' }, f.principal)
+        yield* assessment.setBatchStatus(
+          f.tenant,
+          batch.id,
+          {
+            status: 'active',
+            reason: 'appeals arrived late',
+            phase: { displayName: 'Appeals' },
+            plannedEntryAt: Date.now() + 24 * HOUR,
+          },
+          f.principal,
+        )
+        return yield* assessment.timeline(f.tenant, batch.id)
+      }),
+    )
+    const timeline = ok(exit)
+    // what ran is over, what is coming is still to come, and nothing is now
+    expect(timeline.map((entry) => entry.status)).toEqual(['ended', 'future'])
+  })
+
+  it('takes a batch back from staff whose role no longer carries anything it accepted', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-authority')
+        const assessment = yield* Assessment
+        const reviewer = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'reviewer', 'reviewer', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${reviewer}, id from permissions
+           where code = 'assessment.review.process'`)
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Staffed round',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.addStaff(
+          f.tenant,
+          batch.id,
+          { userIds: [f.s2], orgNodeIds: [f.class1], roleId: reviewer },
+          f.principal,
+        )
+        const worker: Principal = { tenantId: f.tenant, userId: f.s2, sessionId: 's' }
+        const whileCarrying = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
+        // the role keeps existing and the grant keeps standing; what it
+        // carries is what goes
+        yield* runSql(sql`
+          delete from role_permissions where role_id = ${reviewer}`)
+        const afterStripping = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
+        // and a role taken out of service takes the round with it
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${reviewer}, id from permissions
+           where code = 'assessment.review.process'`)
+        const restored = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
+        yield* runSql(sql`update roles set status = 'disabled' where id = ${reviewer}`)
+        const afterDisabling = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
+        return { whileCarrying, afterStripping, restored, afterDisabling }
+      }),
+    )
+    const { whileCarrying, afterStripping, restored, afterDisabling } = ok(exit)
+    expect(whileCarrying.map((row) => row.name)).toEqual(['Staffed round'])
+    expect(afterStripping).toEqual([])
+    expect(restored.map((row) => row.name)).toEqual(['Staffed round'])
+    expect(afterDisabling).toEqual([])
+  })
+
   it('offers only roles a batch may carry, at units the batch actually covers', async () => {
     const exit = await run(
       db.url,

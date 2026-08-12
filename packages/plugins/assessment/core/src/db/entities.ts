@@ -105,6 +105,27 @@ export const AssessmentBatch = defineEntity({
 // the roster. A batch that kept a live "participant scope" would be two
 // answers to one question, and every organizational change would ask which
 // of them wins.
+/**
+ * Where a round is administered from, frozen when it is created.
+ *
+ * The roster answers who takes part; it cannot also answer who may run the
+ * round, because a round with nobody in it would then be nobody's - and
+ * "nobody's" resolved to "anybody holding the permission somewhere", which
+ * let an administrator of one college pick up an empty draft belonging to
+ * another and fill it with their own people. These are the units the round
+ * was drawn from, and they stay whatever happens to the roster.
+ */
+export const BatchManagementAnchor = defineEntity({
+  name: 'BatchManagementAnchor',
+  tableName: 'batch_management_anchors',
+  properties: {
+    tenantId: tenantKeyOf('batch_management_anchors_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid().primary(),
+    orgNodeId: p.uuid().primary(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+})
+
 export const RosterImport = defineEntity({
   name: 'RosterImport',
   tableName: 'roster_imports',
@@ -587,6 +608,10 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, current_phase_id) references batch_phases (tenant_id, id) on delete set null (current_phase_id)`,
   `alter table roster_imports add constraint fk_roster_imports_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_management_anchors add constraint fk_batch_management_anchors_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table batch_management_anchors add constraint fk_batch_management_anchors_node
+     foreign key (tenant_id, org_node_id) references org_nodes (tenant_id, id) on delete restrict`,
   `alter table batch_phases add constraint fk_batch_phases_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_access_sources add constraint fk_batch_access_sources_batch
@@ -627,6 +652,7 @@ export const compositeForeignKeys = [
 
 export const entities = [
   AssessmentBatch,
+  BatchManagementAnchor,
   RosterImport,
   BatchPhase,
   PhaseEvent,

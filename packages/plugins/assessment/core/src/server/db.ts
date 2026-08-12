@@ -138,41 +138,79 @@ export const oneBatch = (
  * of, and a draft its author could not open would be unusable.
  */
 /**
- * A batch whose whole roster this person administers.
+ * A batch this person administers: the units it is run from, and everybody
+ * on it today.
  *
- * Authority first, containment second. Containment alone is "no participant
- * of this batch is outside my reach", which every batch with an empty roster
- * satisfies for everybody - a draft nobody has been added to, or a round
- * whose participants have all been excluded, was visible to any signed-in
- * account, and projected as manageable at that.
+ * Both halves are needed, and neither is enough on its own. Containment of
+ * the roster alone is vacuously true of a round with nobody in it, which made
+ * an empty draft everybody's - including an administrator of some other
+ * college, who could then fill it with their own people. The frozen anchors
+ * are what an empty round still belongs to; the roster is what it has become.
  */
 const withinReach = (held: AuthorizationScope) =>
   held.tenantWide || held.anchors.length > 0
-    ? sql<boolean>`not exists (
-        select 1 from batch_participants bp
-        where bp.tenant_id = assessment_batches.tenant_id
-          and bp.batch_id = assessment_batches.id
-          and bp.status = 'active'
-          and not ${scopeCoverage(held, {
-            id: sql.ref('bp.assessment_anchor_node_id') as never,
-            tenantId: sql.ref('bp.tenant_id') as never,
-            path: sql.ref('bp.anchor_path') as never,
-          })}
+    ? sql<boolean>`(
+        not exists (
+          select 1 from batch_management_anchors ma
+          join org_nodes mn on mn.tenant_id = ma.tenant_id and mn.id = ma.org_node_id
+          where ma.tenant_id = assessment_batches.tenant_id
+            and ma.batch_id = assessment_batches.id
+            and not ${scopeCoverage(held, {
+              id: sql.ref('mn.id') as never,
+              tenantId: sql.ref('mn.tenant_id') as never,
+              path: sql.ref('mn.path') as never,
+            })}
+        )
+        and not exists (
+          select 1 from batch_participants bp
+          where bp.tenant_id = assessment_batches.tenant_id
+            and bp.batch_id = assessment_batches.id
+            and bp.status = 'active'
+            and not ${scopeCoverage(held, {
+              id: sql.ref('bp.assessment_anchor_node_id') as never,
+              tenantId: sql.ref('bp.tenant_id') as never,
+              path: sql.ref('bp.anchor_path') as never,
+            })}
+        )
       )`
     : sql<boolean>`false`
 
 /**
- * A batch a participant is in, and has been told about.
+ * Whether a stage of this round has actually begun, by the clock.
  *
- * Told about means a phase has actually begun. A round whose first phase is
- * merely in the diary is still a plan its administrators are writing: the
- * people in it learn of it when it starts, not when somebody pencils in a
- * date. A draft has no phase at all, so it is out either way.
+ * The same question the gate asks, asked the same way: a stage is in effect
+ * from its own instant, whether or not the sweeper has got round to writing
+ * that down. Reading the materialized projection instead left a window every
+ * morning in which the stage had opened its actions and the round it belongs
+ * to was still invisible.
+ *
+ * Stages that began before the round was last closed do not count: reopening
+ * keeps them, and they belong to the round as it was.
+ */
+const hasBegun = sql<boolean>`exists (
+  select 1 from batch_phases ph
+  where ph.tenant_id = assessment_batches.tenant_id
+    and ph.batch_id = assessment_batches.id
+    and coalesce(ph.actual_entry_at, ph.planned_entry_at) <= now()
+    and coalesce(ph.actual_entry_at, ph.planned_entry_at) > coalesce(
+      (select max(le.occurred_at) from batch_lifecycle_events le
+        where le.tenant_id = assessment_batches.tenant_id
+          and le.batch_id = assessment_batches.id
+          and le.kind = 'archived'),
+      '-infinity'::timestamptz
+    )
+)`
+
+/**
+ * A batch a participant is in, or was in.
+ *
+ * They are told about it when it begins - a date in the diary is a plan its
+ * administrators are still writing - and they keep it afterwards: a round is
+ * archived to stop the work, not to take back what somebody took part in.
  */
 const isParticipant = (userId: string) =>
   sql<boolean>`(
-    assessment_batches.status = 'active'
-    and assessment_batches.current_phase_id is not null
+    (assessment_batches.status = 'archived' or (assessment_batches.status = 'active' and ${hasBegun}))
     and exists (
       select 1 from batch_participants bp
       where bp.tenant_id = assessment_batches.tenant_id
@@ -183,18 +221,24 @@ const isParticipant = (userId: string) =>
   )`
 
 /**
- * A batch somebody works on, by an authority that still stands.
+ * A batch somebody works on, measured by what they can actually do in it.
  *
- * The acceptance record alone is not it: a source outlives the assignment it
- * accepted, on purpose (the batch keeps what it agreed to), so reading it
- * without asking whether the grant behind it is still live left somebody who
- * had been taken off the job still reading the round.
+ * The same arithmetic the batch's own authority uses - what the assignment
+ * still carries, intersected with what this batch accepted, minus what it
+ * has taken back - rather than a shorter question about whether the grant
+ * looks alive. A member of staff whose role has since lost every capability
+ * this round accepted has no authority here, and reading the round is one of
+ * the things authority is for.
  */
 const isStaff = (userId: string) =>
   sql<boolean>`exists (
-    select 1 from batch_access_sources bas
+    select 1
+    from batch_access_sources bas
     join role_grants rg
       on rg.tenant_id = bas.tenant_id and rg.id = bas.role_assignment_id
+    join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
+    join batch_access_source_permissions sp
+      on sp.tenant_id = bas.tenant_id and sp.source_id = bas.id
     where bas.tenant_id = assessment_batches.tenant_id
       and bas.batch_id = assessment_batches.id
       and bas.subject_id = ${userId}::uuid
@@ -202,6 +246,24 @@ const isStaff = (userId: string) =>
       and rg.revoked_at is null
       and (rg.valid_from is null or rg.valid_from <= now())
       and (rg.valid_until is null or rg.valid_until > now())
+      and ro.status = 'active'
+      and (
+        ro.permission_mode = 'all-active'
+        or exists (
+          select 1 from role_permissions rp
+          join permissions pe on pe.id = rp.permission_id
+          where rp.tenant_id = ro.tenant_id
+            and rp.role_id = ro.id
+            and pe.code = sp.permission_code
+        )
+      )
+      and not exists (
+        select 1 from batch_access_denies dn
+        where dn.tenant_id = bas.tenant_id
+          and dn.batch_id = bas.batch_id
+          and dn.subject_id = bas.subject_id
+          and dn.permission_code = sp.permission_code
+      )
   )`
 
 /**
@@ -334,6 +396,42 @@ export const insertBatch = (input: {
  * The distinct units the people in a batch stand at, as frozen when they were
  * added. What a round is anchored to, now that nothing else is.
  */
+/** the units a round is administered from, frozen when it was created */
+export const managementAnchors = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchManagementAnchor')
+        .select('orgNodeId')
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.orgNodeId as string)))
+
+export const insertManagementAnchors = (
+  tenantId: string,
+  batchId: string,
+  orgNodeIds: readonly string[],
+) =>
+  orgNodeIds.length === 0
+    ? Effect.void
+    : db
+        .query((k) =>
+          k
+            .insertInto('BatchManagementAnchor')
+            .values(
+              [...new Set(orgNodeIds)].map((orgNodeId) => ({
+                tenantId,
+                batchId,
+                orgNodeId,
+              })) as never,
+            )
+            .onConflict((conflict) => conflict.doNothing())
+            .execute(),
+        )
+        .pipe(Effect.asVoid)
+
 export const rosterAnchors = (tenantId: string, batchId: string) =>
   db
     .query((k) =>

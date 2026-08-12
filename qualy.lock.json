@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:8faf6eae8f9536b7a66a0fb4bdafb27e929f132b84c76bcbe04c617e7d5a78d9",
-  "resolutionHash": "sha256:7fc980aa769a3197d72679bb1aac32dab51d4a5d864cc36bfe3a895fcb73cf38",
+  "resolutionHash": "sha256:6c04a4ffbe118590b8bd8d2a3960fb8700b69788ab4c12e93e4bee3c4c85840c",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -15,6 +15,7 @@
             "BatchAccessSourcePermission",
             "BatchConfigRevision",
             "BatchLifecycleEvent",
+            "BatchManagementAnchor",
             "BatchParticipant",
             "BatchParticipantEvent",
             "BatchPhase",

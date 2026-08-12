@@ -3475,3 +3475,28 @@ RBAC 目录移入参评人动作,`deriveTimeline` 认得「已归档」不再把
 **未纳入本轮**:`authorizeEntryAction` 的资源策略仍是空槽(M1 允许,还没有 Entry);M2 第一件事是接上
 归属、Entry 状态与工作人员组织范围——`entry.record/proxy` 必须校验目标参评人的冻结锚点落在提供该权限的
 分配范围内。
+
+### M1 收口第二轮:管理边界与语义状态(2026-08-13)
+
+第二次源码审计的五条全部修掉,裁决写入 docs/assessment-design.md §32.53。
+
+**P0 是跨组织接管**:上一轮只堵住「零权限的陌生人看得到空批次」,而 `withinReach` 与 `requireRosterReach`
+在花名册为空时都退化成「在任意地方持有 `assessment.batch.manage`」,于是 B 学院管理员可以拿走 A 学院的空
+草稿并往里加人。修法是给批次一条自己的**管理边界** `batch_management_anchors`(创建时从初始组织选择冻结),
+授权要求同时覆盖锚点与当前花名册;花名册仍是参与者的唯一真相,不恢复 participant scope。迁移带回填(从
+`roster_imports` 最早一条的 org_node_ids,跳过已删除节点)。
+
+**语义状态统一**:新增 `effectivePhaseIndex` 返回「当前阶段序号或 null」,gate / 时间线 / 可见性共用一份;
+`deriveTimeline` 第三参数由 boolean 改为 `number | null`(上一轮把下周才开始的新阶段也标成了 ended);
+参评人可见性改按时钟判定,不再读 `current_phase_id` 投影(到点而扫描器未跑的窗口里会出现「动作已开放但批次
+不可见」的分裂);归档不再等于不可见——归档是停止工作,不是收回「你参加过」。
+
+**另外三条**:`entry.resubmit` 的升级迁移补齐(它比其他参评动作晚一版离开目录,旧库里 permissions /
+role_permissions / 批次天花板 / deny 四处都会残留),带升级测试;`isStaff` 改为复用与 BatchAuthority
+相同的算术(接受 ∩ 角色当前携带 − deny,角色须 active),此前角色被摘光权限的人仍能读批次;
+scoped assignment 整段收进 grants 的 `scoped()`,与普通授权共用「先锁租户再检查再写」的临界区。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **470/73 全绿**(新增 4 组回归 + 1 组升级测试);
+`pnpm test:browser` 48 全绿;`pnpm build` 通过;`pnpm qualy resolve --frozen-lockfile` 零写入;
+`prettier --check .` 干净。新增迁移两条:`20260812175917_batch-management-anchors.sql`(含回填)与
+`20260812183000_drop-resubmit-permission.sql`。

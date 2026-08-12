@@ -1026,3 +1026,17 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 另有两处按 §32.14 与 §32.50 归位:`assessment.entry.resubmit` 从 RBAC 目录与 `STAFF_CODES` 移入 `PARTICIPANT_ACTION_CODES`(申请复议是参评人的动作,工作人员主动复查走 `review.reopen`);`deriveTimeline` 接受「是否在服务中」,归档的批次不再把末阶段标成 current。
 
 **未纳入本轮**:`authorizeEntryAction` 的资源策略仍是空槽,这在 M1 是允许的(还没有 Entry);进入 M2 的第一件事是接上归属、Entry 状态与工作人员的组织范围——`entry.record/proxy` 必须校验目标参评人的冻结锚点落在提供该权限的分配范围内,否则「有 A 班权限的人可以操作 B 班学生」。
+
+**32.53 M1 收口第二轮:管理边界与语义状态**(2026-08-13,第二次源码审计提出,全部采纳)。
+
+① **批次拥有自己的管理边界**(`batch_management_anchors`,创建时从初始组织选择冻结)。上一轮只堵住了「完全没有 `assessment.batch.manage` 的人能看到空批次」,漏了**跨组织接管**:`withinReach` 与 `requireRosterReach` 在花名册为空时都退化成「在任意地方持有该权限」(`hasPermission` 的语义就是 tenantWide 或至少一个 anchor),于是 B 学院管理员可以拿走 A 学院的空草稿并往里加自己的人;全员被移出后同样复现。**不恢复 participant scope**(那会重造双重真相):锚点只回答「这一轮归谁管」,花名册仍是参与者的唯一真相;授权要求调用人**同时**覆盖管理锚点与当前花名册。迁移带数据步骤,从 `roster_imports` 里最早那条导入的 `org_node_ids` 回填(已删除的节点跳过——边界要对活节点判定,引用一个不存在的单位会把整轮锁死给所有人)。两者皆空的旧批次(理论上不存在)退回原来的「持有权限即可」,并在代码里写明这是历史形态的兜底。
+
+② **一个语义状态,三处共用**。`effectivePhaseIndex(tenant, batch, plan, now)` 返回「当前阶段序号或 null」,gate、时间线与可见性都读它:draft 未开始、archived 已结束、为未来日期重开的批次在新阶段到达前**处于阶段之间**。相应地 `deriveTimeline` 的第三个参数从 boolean 改为 `number | null`——上一轮传 `running=false` 会把「下周才开始的新阶段」也标成 `ended`,而它显然还没发生;现在 null 表示「无当前」,已进入的算 ended、其余算 future。**参评人可见性改按时钟判定**(`coalesce(actual_entry_at, planned_entry_at) <= now()`,且晚于最近一次归档),不再读 `current_phase_id` 投影:投影由扫描器物化,09:00 到点而扫描器未跑的窗口里,阶段动作在语义上已经开放而批次却不可见,这正违反 M1 自己「物化延迟不改变 effectivePhase 语义」的不变量。**归档不再等于不可见**:归档是停止工作,不是收回「你参加过」——参评人对已归档批次保留读权(§18 要求多年后仍可还原历史)。
+
+③ **`assessment.entry.resubmit` 的升级迁移补齐**(`20260812183000_drop-resubmit-permission.sql`)。它比其他参评动作晚一版离开 RBAC 目录,而 `20260811225407` 不含它;已提交的迁移不改,新增一条前向迁移,连同 `role_permissions`、`permissions`、以及批次已接受的 `batch_access_source_permissions` / `batch_access_denies` 一并清理。补「从上一形态升级」的测试(建旧库形态 → 跑迁移 → 断言四张表都干净)。
+
+④ **工作人员的可见性即工作人员的权威**。`isStaff` 改为复用与 `BatchAuthority` 相同的算术:分配仍然有效(未撤销、未过期)、角色仍 active、**接受的天花板与角色当前携带的权限仍有交集**、且未被批次 deny。此前只检查「分配看起来还活着」,于是角色被摘光权限的人仍能读取批次元数据与时间线。
+
+⑤ **scoped assignment 进入与普通授权相同的临界区**。上一轮补的 `assertEligible` 堵住了绕过,但检查与 INSERT 分处两次调用,理论上可与「停用角色 / 改 eligibility / 改用户类型」并发交错。现在整段收进 grants 模块的 `scoped()`,由同一个 `write()`(先锁租户再检查再写)串行化,与 `grant()` 同一条路。
+
+回归测试:A/B 两个年级管理员争抢空批次(看不到、开不了、加不了人,本人可以);到点未物化时参评人可见且与 gate 一致;归档后参评人仍可读历史;未来日期重开的时间线是「旧 ended + 新 future + 无 current」;角色被摘光权限或被停用后工作人员失去可见性、恢复后回来。

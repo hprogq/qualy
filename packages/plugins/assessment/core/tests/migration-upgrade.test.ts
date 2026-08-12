@@ -146,3 +146,145 @@ describe.runIf(postgresAvailable)('the participant-action cleanup migration', ()
     }
   })
 })
+
+// `assessment.entry.resubmit` followed the other participant actions out of
+// the catalog, one release later - so the earlier cleanup does not name it,
+// and a database upgraded from that release still carries it in the catalog,
+// in roles, and in whatever ceilings a batch had accepted it into.
+
+const RESUBMIT = '20260812183000_drop-resubmit-permission.sql'
+
+describe.runIf(postgresAvailable)('the resubmit cleanup migration', () => {
+  it('takes the code out of the catalog, the roles and the batches that held it', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, RESUBMIT))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-resubmit-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file !== RESUBMIT) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('resubmit-cleanup', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('resubmit', 'Resubmit') returning id`,
+        )
+      ).id
+      const orgType = (
+        await db.row<{ id: string }>(
+          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
+          [tenant],
+        )
+      ).id
+      const node = (
+        await db.row<{ id: string }>(
+          `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+           values ($1, $2, 'College', 'res', 0) returning id`,
+          [tenant, orgType],
+        )
+      ).id
+      const userType = (
+        await db.row<{ id: string }>(
+          `insert into user_types (tenant_id, code, name, placement_mode)
+           values ($1, 'teacher', 'Teacher', 'unrestricted') returning id`,
+          [tenant],
+        )
+      ).id
+      const user = (
+        await db.row<{ id: string }>(
+          `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+           values ($1, 'Reviewer', $2, $3) returning id`,
+          [tenant, userType, node],
+        )
+      ).id
+      // the world as it was: the code in the catalog, on a role, and accepted
+      // into a batch as staff authority
+      const resubmit = (
+        await db.row<{ id: string }>(
+          `insert into permissions (code, plugin, name, target_kind)
+           values ('assessment.entry.resubmit', 'assessment', 'Resubmit', 'tenant') returning id`,
+        )
+      ).id
+      const kept = (
+        await db.row<{ id: string }>(
+          `insert into permissions (code, plugin, name, target_kind)
+           values ('assessment.review.process', 'assessment', 'Review', 'org-node') returning id`,
+        )
+      ).id
+      const role = (
+        await db.row<{ id: string }>(
+          `insert into roles (tenant_id, code, name, kind, status, permission_mode)
+           values ($1, 'reviewer', 'Reviewer', 'org', 'active', 'explicit') returning id`,
+          [tenant],
+        )
+      ).id
+      for (const id of [resubmit, kept]) {
+        await db.query(
+          `insert into role_permissions (tenant_id, role_id, permission_id) values ($1, $2, $3)`,
+          [tenant, role, id],
+        )
+      }
+      const grant = (
+        await db.row<{ id: string }>(
+          `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+           values ($1, $2, $3, $4, 'subtree') returning id`,
+          [tenant, user, role, node],
+        )
+      ).id
+      const batch = (
+        await db.row<{ id: string }>(
+          `insert into assessment_batches (tenant_id, name, material_range)
+           values ($1, 'Old round', daterange('2026-03-01', '2026-09-01')) returning id`,
+          [tenant],
+        )
+      ).id
+      const source = (
+        await db.row<{ id: string }>(
+          `insert into batch_access_sources (tenant_id, batch_id, role_assignment_id, subject_id, origin)
+           values ($1, $2, $3, $4, 'inherited') returning id`,
+          [tenant, batch, grant, user],
+        )
+      ).id
+      for (const code of ['assessment.entry.resubmit', 'assessment.review.process']) {
+        await db.query(
+          `insert into batch_access_source_permissions (tenant_id, source_id, permission_code)
+           values ($1, $2, $3)`,
+          [tenant, source, code],
+        )
+      }
+      await db.query(
+        `insert into batch_access_denies (tenant_id, batch_id, subject_id, permission_code)
+         values ($1, $2, $3, 'assessment.entry.resubmit')`,
+        [tenant, batch, user],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const granted = await db.query<{ code: string }>(
+        `select p.code from role_permissions rp join permissions p on p.id = rp.permission_id
+          where rp.role_id = $1`,
+        [role],
+      )
+      expect(granted.rows.map((row) => row.code)).toEqual(['assessment.review.process'])
+      const catalog = await db.query<{ code: string }>(
+        `select code from permissions where plugin = 'assessment' order by code`,
+      )
+      expect(catalog.rows.map((row) => row.code)).toEqual(['assessment.review.process'])
+      // and the ceiling a batch had accepted it into, with the refusal beside it
+      const ceiling = await db.query<{ permission_code: string }>(
+        `select permission_code from batch_access_source_permissions where source_id = $1`,
+        [source],
+      )
+      expect(ceiling.rows.map((row) => row.permission_code)).toEqual(['assessment.review.process'])
+      const denies = await db.query(`select 1 from batch_access_denies where batch_id = $1`, [
+        batch,
+      ])
+      expect(denies.rows).toHaveLength(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+})

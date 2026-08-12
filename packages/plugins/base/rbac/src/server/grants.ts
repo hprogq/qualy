@@ -22,6 +22,7 @@ import {
   db,
   admitsOrgType,
   admitsUserType,
+  insertScopedGrant,
   lockTenant,
   orgNodeExists,
   rolePermissionCodes,
@@ -583,19 +584,50 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     options,
 
     /**
-     * The structural half of a grant's rules, for a caller that carries its
-     * own authority checks.
+     * A grant confined to one resource: a batch's own staff, say.
      *
-     * A resource-scoped assignment (a batch's own staff, say) is still a
-     * grant: the role has to be one somebody may hold, the person has to be
-     * a kind of person the role admits, and the node has to be a kind of
-     * node it can anchor to. Only "who may hand this out, and how widely" is
-     * the caller's own question, because a resource decides that for itself.
+     * Still a grant, so it obeys the same structural rules - a role somebody
+     * may hold, a person of a kind it admits, a node of a kind it anchors to
+     * - and it is checked and written inside the same tenant lock every other
+     * grant uses. Checking outside the lock is checking a world that can
+     * change before the row lands: disable the role, narrow its eligibility
+     * or move the person to another type in that gap and the insert would
+     * still go through.
+     *
+     * "Who may hand this out, and how widely" stays with the caller, because
+     * only a resource knows its own reach.
      */
-    assertEligible: (
-      tenantId: string,
-      input: { userId: string; roleId: string; target: GrantTarget },
-    ) => eligible(tenantId, input).pipe(Effect.asVoid),
+    scoped: (input: {
+      tenantId: string
+      userId: string
+      roleId: string
+      orgNodeId: string
+      includeDescendants: boolean
+      resource: { namespace: string; type: string; id: string }
+      validUntil?: number | undefined
+      createdBy: string | null
+    }) =>
+      write(input.tenantId, () =>
+        Effect.gen(function* () {
+          const coverage = input.includeDescendants ? ('subtree' as const) : ('self' as const)
+          yield* eligible(input.tenantId, {
+            userId: input.userId,
+            roleId: input.roleId,
+            target: { kind: 'org-node', orgNodeId: input.orgNodeId, coverage },
+          })
+          const created = yield* insertScopedGrant({
+            tenantId: input.tenantId,
+            userId: input.userId,
+            roleId: input.roleId,
+            orgNodeId: input.orgNodeId,
+            coverage,
+            resource: input.resource,
+            validUntil: input.validUntil ?? null,
+            createdBy: input.createdBy,
+          })
+          return created
+        }),
+      ),
 
     grant: Effect.fn('Rbac.grants.grant')(function* (
       tenantId: string,

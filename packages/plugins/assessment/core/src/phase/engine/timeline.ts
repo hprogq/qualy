@@ -23,21 +23,22 @@ export interface TimelineEntry {
 }
 
 /**
- * @param running whether the batch is in service. A round that has been
- * archived has no stage in effect: leaving its last one marked as current
- * says the round is still going, on every card and in every bar that reads
- * this, and would make a stage's profile the live one again the moment the
- * round was reopened for a future date.
+ * @param inEffect which stage is in hand, or `null` when none is.
+ *
+ * A round can have no present: an archived one is over, and one reopened for
+ * a date still to come is between stages. Neither is "everything has ended" -
+ * a stage the round has not reached is still to come whether or not the round
+ * is running today, and marking it ended would say it had happened.
  */
 export function deriveTimeline(
   plan: PhasePlan,
   now: EpochMillis,
-  running = true,
+  inEffect: number | null = -2,
 ): readonly TimelineEntry[] {
   const state = effectiveState(plan, now)
   const pendingAt = new Map(state.pending.map((p) => [p.phaseId, p.actualEntryAt]))
-  // everything that happened is behind it, and nothing is in hand
-  const here = running ? state.index : plan.length
+  // -2 is "ask the clock", which is what a caller with no opinion means
+  const here = inEffect === -2 ? state.index : inEffect
 
   return plan.map((phase, index) => {
     const enteredAt = phase.actualEntryAt ?? pendingAt.get(phase.id) ?? null
@@ -55,7 +56,18 @@ export function deriveTimeline(
       // a note about waiting is answered by the time itself; keeping it after
       // one is set would leave the plan explaining a decision it has made
       entryNote: entry.kind === 'pending' ? phase.entryNote : '',
-      status: index < here ? 'ended' : index === here ? 'current' : 'future',
+      // with nothing in hand, what has happened is behind and the rest is
+      // ahead: the entry itself is what says which
+      status:
+        here === null
+          ? entry.kind === 'entered'
+            ? 'ended'
+            : 'future'
+          : index < here
+            ? 'ended'
+            : index === here
+              ? 'current'
+              : 'future',
       entry,
     }
   })

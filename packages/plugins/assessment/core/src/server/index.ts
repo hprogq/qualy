@@ -56,6 +56,7 @@ import {
   deleteTemplateRow,
   insertBatch,
   insertParticipantEvent,
+  insertManagementAnchors,
   insertParticipants,
   insertRosterImport,
   importCandidates,
@@ -96,6 +97,7 @@ import {
   phaseScopes,
   roleHoldersAt,
   replacePhaseScopes,
+  managementAnchors,
   rosterAnchors,
   scopeOptions as scopeOptionRows,
   scopesForBatch,
@@ -1045,22 +1047,36 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return began !== null && began > closed
     })
 
-  const gateView = (tenantId: string, batch: BatchRow, now: EpochMillis) =>
+  /**
+   * Which stage is in hand, or nothing at all.
+   *
+   * One answer for the gate, the timeline and whatever asks next. A draft has
+   * not begun; an archived round is over; a round reopened for a date still
+   * to come is between stages until that date arrives - and none of those is
+   * "the last stage it ran", which is what a plan read on its own says.
+   */
+  const effectivePhaseIndex = (
+    tenantId: string,
+    batch: BatchRow,
+    plan: PhasePlan,
+    now: EpochMillis,
+  ) =>
     Effect.gen(function* () {
-      // Only a running batch has a phase in effect. A draft's rows are a plan
-      // somebody is still writing, and an archived round is over: leaving it
-      // answering by its last phase's profile meant archiving a batch whose
-      // final stage happened to open submissions closed nothing at all.
       if (batch.status !== 'active') return null
-      const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
       const state = effectiveState(plan, now)
       if (state.phase === null) return null
-      // and a round reopened for a date still to come is between stages: the
-      // one it ended on belongs to the round it was before it was closed
-      if (!(yield* inService(tenantId, batch.id, state.phase))) return null
-      const scopes = yield* phaseScopes(tenantId, state.phase.id)
+      return (yield* inService(tenantId, batch.id, state.phase)) ? state.index : null
+    })
+
+  const gateView = (tenantId: string, batch: BatchRow, now: EpochMillis) =>
+    Effect.gen(function* () {
+      const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
+      const here = yield* effectivePhaseIndex(tenantId, batch, plan, now)
+      if (here === null) return null
+      const phase = plan[here]!
+      const scopes = yield* phaseScopes(tenantId, phase.id)
       return {
-        profile: state.phase.permissionProfile,
+        profile: phase.permissionProfile,
         itemScope: scopes.items,
         participantScope: scopes.participants,
       }
@@ -1199,24 +1215,30 @@ export const make = Effect.fn('Assessment.make')(function* () {
   })
 
   /**
-   * Managing a round means managing everybody in it.
+   * Managing a round means managing where it is run from and everybody in it.
    *
-   * The roster is the batch's only population, so it is the only thing this
-   * can be measured against. A round nobody has been added to yet asks for
-   * the permission itself: there is nothing to be outside of, and a draft its
-   * own author could not open would be unusable.
+   * Both, never one or the other. The roster alone leaves a round with nobody
+   * in it belonging to nobody, and "nobody's" used to mean "anybody holding
+   * the permission somewhere" - which is how an administrator of one college
+   * could take over another college's empty draft. The frozen anchors say
+   * whose round it is; the roster says who is in it today.
    */
   const requireRosterReach = (as: Principal, tenantId: string, batchId: string) =>
     Effect.gen(function* () {
-      const anchors = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
-      if (anchors.length === 0) {
+      const anchors = yield* dieQuery(withDb(managementAnchors(tenantId, batchId)))
+      const roster = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
+      if (anchors.length === 0 && roster.length === 0) {
+        // a round from before the boundary was recorded and with nobody on it:
+        // nothing here says whose it is, so it asks for the permission itself
         const held = yield* rbac.hasPermission(as, MANAGE)
         if (!held) {
           return yield* new AccessDenied({ reason: 'cannot manage assessment batches' })
         }
         return
       }
-      for (const nodeId of anchors) yield* rbac.requireAt(as, MANAGE, nodeId)
+      for (const nodeId of [...new Set([...anchors, ...roster])]) {
+        yield* rbac.requireAt(as, MANAGE, nodeId)
+      }
     })
 
   /** administering who may work on a batch is administering the batch */
@@ -1493,6 +1515,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
             // accepted here, and both are changed by somebody deciding to.
             const nodeIds = nodes.map((node) => node.id)
             const userTypeIds = [...new Set(input.import.userTypeIds)]
+            // where this round is run from, kept for as long as it exists:
+            // the roster is what it has become, and a roster can empty
+            yield* insertManagementAnchors(tenantId, batchId, nodeIds)
             const admitted = yield* insertParticipants(
               tenantId,
               batchId,
@@ -1563,10 +1588,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }
       return rows.map((row) => ({
         ...row,
+        // the list asks the clock for a running round and answers "nothing in
+        // hand" for the rest; a reopening waiting on a date is rare enough
+        // not to be worth a query per row here
         timeline: deriveTimeline(
           toSnapshots(byBatch.get(row.id) ?? []),
           now,
-          row.status === 'active',
+          row.status === 'active' ? -2 : null,
         ),
       }))
     }),
@@ -2477,12 +2505,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (!batch) return yield* new BatchNotFound()
       const now = yield* Clock.currentTimeMillis
       const plan = toSnapshots(yield* dieQuery(withDb(listPhaseRows(tenantId, batchId))))
-      const state = effectiveState(plan, now)
-      const running =
-        batch.status === 'active' &&
-        state.phase !== null &&
-        (yield* dieQuery(withDb(inService(tenantId, batchId, state.phase))))
-      return deriveTimeline(plan, now, running)
+      return deriveTimeline(
+        plan,
+        now,
+        yield* dieQuery(withDb(effectivePhaseIndex(tenantId, batch, plan, now))),
+      )
     }),
 
     gate: Effect.fn('Assessment.gate')(function* (tenantId, batchId, code, ctx) {
