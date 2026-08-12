@@ -229,14 +229,34 @@ export function BatchFlowStrip({
     })
   }
 
-  // opens where the round is, not where it began: the stage somebody is in
-  // is the one they came to check, and the ones behind it are history
+  // Opens where the round is, not where it began: the stage somebody is in
+  // is the one they came to check, and the ones behind it are history.
+  //
+  // Centring is done again when the rail comes into view, not only on mount.
+  // On a wide screen this whole strip is display:none, which measures zero -
+  // so a window narrowed until the strip takes over would otherwise reveal it
+  // parked at the first stage, having "centred" nothing.
+  const seen = useRef(0)
   useEffect(() => {
     const rail = track.current
-    const node = here.current
     if (!rail) return
-    if (node) rail.scrollTo({ left: node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2 })
-    measure()
+    const centre = () => {
+      const node = here.current
+      if (node) rail.scrollTo({ left: node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2 })
+      measure()
+    }
+    const observer = new ResizeObserver(() => {
+      const width = rail.clientWidth
+      const hidden = seen.current === 0
+      seen.current = width
+      // only on the way back into view: re-centring on every resize would
+      // take the rail away from wherever the reader had scrolled it
+      if (width > 0 && hidden) centre()
+      else measure()
+    })
+    observer.observe(rail)
+    centre()
+    return () => observer.disconnect()
   }, [timeline])
 
   if (stages.length === 0) {
