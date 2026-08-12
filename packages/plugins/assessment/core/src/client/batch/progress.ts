@@ -127,6 +127,32 @@ export const toneOf = (progress: Progress): 'calm' | 'soon' | 'urgent' =>
         ? 'soon'
         : 'calm'
 
+/**
+ * Everything a reader could see of a progress, as one string.
+ *
+ * The clock is read far more often than the display changes: a stage counted
+ * in days is re-read every minute and says the same thing all but once an
+ * hour. Comparing this is what keeps those reads from becoming renders - and
+ * a render here measures every animated piece of the countdown, which is the
+ * work that shows up as jank with the profiler open.
+ *
+ * The fraction is quantised because the ring it draws is twelve pixels wide:
+ * a quarter of a percent of it is well under one.
+ */
+export const displayKey = (progress: Progress): string => {
+  if (progress.kind === 'until') {
+    const { span } = progress
+    return `until:${span.unit}:${String(span.value)}:${String(span.rest)}:${String(
+      Math.round((progress.fraction ?? 0) * 400),
+    )}`
+  }
+  if (progress.kind === 'since') {
+    const { span } = progress
+    return `since:${span.unit}:${String(span.value)}:${String(span.rest)}`
+  }
+  return progress.kind === 'starts' ? `starts:${String(progress.at)}` : 'none'
+}
+
 /** how often the shown value could still change, so nothing ticks needlessly */
 export const tickOf = (progress: Progress): number =>
   progress.kind === 'until' || progress.kind === 'since'

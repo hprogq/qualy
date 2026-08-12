@@ -1,11 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
-import { progressOf, spanMessage, tickOf, toneOf, type TimelineLike } from './progress.ts'
+import {
+  displayKey,
+  progressOf,
+  spanMessage,
+  tickOf,
+  toneOf,
+  type TimelineLike,
+} from './progress.ts'
 
 // Where a batch is right now, in one line: the stage it is in, and how long
 // until the next one - or, when nothing follows it yet, how long it has been
@@ -88,19 +95,29 @@ export function BatchProgress({
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)
+  // the clock is read on the interval; the component is only told about it
+  // when the reading would look different
+  const shown = useRef(displayKey(progress))
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), tick)
+    const timer = setInterval(() => {
+      const at = Date.now()
+      const key = displayKey(progressOf(timeline, at))
+      if (key === shown.current) return
+      shown.current = key
+      setNow(at)
+    }, tick)
     return () => clearInterval(timer)
-  }, [tick])
+  }, [tick, timeline])
 
   const current = timeline.find((entry) => entry.status === 'current')
   const stage = showStage ? (current?.displayName ?? null) : null
 
   const said =
     progress.kind === 'until' || progress.kind === 'since'
-      ? format(
-          spanMessage(m, progress, form).message as never,
-          spanMessage(m, progress, form).values as never,
+      ? // one call, not two: it is pure, but it is also called on every tick
+        // of every card in the list
+        ((span) => format(span.message as never, span.values as never))(
+          spanMessage(m, progress, form),
         )
       : progress.kind === 'starts'
         ? new Date(progress.at).toLocaleString(locale, {

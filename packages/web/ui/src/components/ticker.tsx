@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '../lib/utils.ts'
 
@@ -34,7 +35,11 @@ const pieces = (value: string): string[] => {
   return out
 }
 
-export function Ticker({
+// Memoised on the value, which is the whole input: laying out a line of
+// independently animated pieces means measuring each of them, and a caller
+// that re-renders on a clock would otherwise pay for that every tick whether
+// or not a single character moved.
+export const Ticker = memo(function Ticker({
   value,
   className,
 }: {
@@ -71,4 +76,4 @@ export function Ticker({
       ))}
     </motion.span>
   )
-}
+})
