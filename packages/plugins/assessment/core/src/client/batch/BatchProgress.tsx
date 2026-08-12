@@ -15,26 +15,14 @@ import { progressOf, spanMessage, tickOf, toneOf, type TimelineLike } from './pr
 // costs a request per second. The interval follows the unit shown, so days
 // tick by the minute and seconds by the second.
 //
-// The pill fills as the stage runs out and warms as the time does, so the
-// answer to "how long" is legible before the words are read. The tide behind
-// the fill is the part that says the clock is still running: a still bar and
-// a stopped bar look the same.
+// Everything it draws is one line of text and one hairline under it. The
+// batch is the subject of the screen below; this only says where it has got
+// to, so it is sized and coloured to be read after everything else.
 
 const TONES = {
-  calm: {
-    shell: 'border-border/70 text-muted-foreground',
-    fill: 'bg-[linear-gradient(90deg,transparent,color-mix(in_oklch,var(--color-foreground)_12%,transparent),transparent),linear-gradient(90deg,transparent,color-mix(in_oklch,var(--color-foreground)_7%,transparent),transparent)]',
-  },
-  soon: {
-    shell:
-      'border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300 [&_.stage]:text-amber-800 dark:[&_.stage]:text-amber-200',
-    fill: 'bg-[linear-gradient(90deg,transparent,color-mix(in_oklch,var(--color-amber-500)_28%,transparent),transparent),linear-gradient(90deg,transparent,color-mix(in_oklch,var(--color-amber-500)_16%,transparent),transparent)]',
-  },
-  urgent: {
-    shell:
-      'border-destructive/45 bg-destructive/5 text-destructive [&_.stage]:text-destructive/90 dark:[&_.stage]:text-destructive',
-    fill: 'bg-[linear-gradient(90deg,transparent,color-mix(in_oklch,var(--color-destructive)_28%,transparent),transparent),linear-gradient(90deg,transparent,color-mix(in_oklch,var(--color-destructive)_16%,transparent),transparent)]',
-  },
+  calm: { text: 'text-muted-foreground', rule: 'bg-foreground/35' },
+  soon: { text: 'text-amber-600 dark:text-amber-400', rule: 'bg-amber-500/70' },
+  urgent: { text: 'text-destructive', rule: 'bg-destructive/70' },
 } as const
 
 export function BatchProgress({
@@ -75,37 +63,33 @@ export function BatchProgress({
   const filled = progress.kind === 'until' ? progress.fraction : null
 
   return (
-    <span
-      className={cn(
-        'relative isolate overflow-hidden rounded-full border px-3 py-1 text-sm transition-colors',
-        tone.shell,
-        className,
-      )}
-    >
+    <span className={cn('inline-flex min-w-0 flex-col gap-1', className)}>
+      <span className="inline-flex min-w-0 items-baseline gap-2 truncate">
+        {stage !== null && <span className="truncate text-foreground">{stage}</span>}
+        {stage !== null && said !== null && (
+          <span aria-hidden className="text-muted-foreground/50">
+            ·
+          </span>
+        )}
+        {said !== null && (
+          <span className={cn('shrink-0 tabular-nums', tone.text)}>
+            {progress.kind === 'starts' && (
+              <span className="mr-1 text-muted-foreground">{format(m.plannedStart)}</span>
+            )}
+            <Ticker value={said} />
+          </span>
+        )}
+      </span>
+      {/* the stage running out, under the words rather than around them: a
+          hairline says the same thing as a filled capsule and asks for none
+          of the attention the sentence below it needs */}
       {filled !== null && (
-        <span
-          aria-hidden
-          data-tide
-          className={cn(
-            'absolute inset-y-0 left-0 -z-10 bg-[length:55%_100%,35%_100%] bg-repeat-x [animation:qualy-tide_11s_linear_infinite]',
-            tone.fill,
-          )}
-          style={{ width: `${String(Math.round(filled * 100))}%` }}
-        />
-      )}
-      {stage !== null && <span className="stage text-foreground">{stage}</span>}
-      {said !== null && (
-        <>
-          {stage !== null && (
-            <span aria-hidden className="mx-2 opacity-40">
-              |
-            </span>
-          )}
-          {progress.kind === 'starts' && (
-            <span className="mr-1 text-muted-foreground">{format(m.plannedStart)}</span>
-          )}
-          <Ticker value={said} />
-        </>
+        <span aria-hidden className="h-px w-full overflow-hidden rounded-full bg-border">
+          <span
+            className={cn('block h-px transition-[width] duration-1000 ease-linear', tone.rule)}
+            style={{ width: `${String(Math.round(filled * 100))}%` }}
+          />
+        </span>
       )}
     </span>
   )

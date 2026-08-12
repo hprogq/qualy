@@ -105,26 +105,3 @@
     color: var(--color-foreground);
   }
 }
-
-/* A surface that keeps moving while it waits.
-   Two crests of slightly different length, so the pattern never repeats on a
-   beat the eye can count - which is what makes it read as passing time rather
-   than as a loading bar. */
-@keyframes qualy-tide {
-  from {
-    background-position:
-      0% 50%,
-      0% 50%;
-  }
-  to {
-    background-position:
-      200% 50%,
-      -300% 50%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-tide] {
-    animation: none;
-  }
-}
