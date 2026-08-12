@@ -433,6 +433,11 @@ const i18n = definePluginMessages({
     flowEndPending: { id: 'assessment/flow/end-pending', defaultMessage: 'End to be decided' },
     flowEarlier,
     flowFromPending,
+    // said on every stage: a rail of dates leaves the reader counting which
+    // of them is behind and which is still to come
+    flowStatusEnded: { id: 'assessment/flow/status-ended', defaultMessage: 'Over' },
+    flowStatusCurrent: { id: 'assessment/flow/status-current', defaultMessage: 'Under way' },
+    flowStatusFuture: { id: 'assessment/flow/status-future', defaultMessage: 'To come' },
     bareDays,
     bareHours,
     bareMinutes,

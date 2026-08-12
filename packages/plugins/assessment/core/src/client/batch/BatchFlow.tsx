@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { MoreVerticalIcon } from 'lucide-react'
+import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import {
   Timeline,
@@ -76,26 +77,44 @@ const reachedIn = (stages: readonly FlowStage[]) => {
   return at === -1 ? stages.filter((stage) => stage.status === 'ended').length : at + 1
 }
 
+const STATUS = {
+  ended: m.flowStatusEnded,
+  current: m.flowStatusCurrent,
+  future: m.flowStatusFuture,
+} as const
+
 /** one stage, said the same way whichever direction the timeline runs */
 function Stage({ stage }: { stage: FlowStage }) {
   const said = useSaid()
+  const { format } = useI18n()
   return (
     <>
       <Marker status={stage.status} />
       {/* a hairline, not a bar: at two pixels the rail read as a ruled
           margin down the page and out-shouted the words beside it */}
-      <TimelineSeparator className="w-px bg-border group-data-completed/timeline-item:bg-muted-foreground/25" />
-      <TimelineHeader>
-        <TimelineDate className="font-normal tabular-nums">{said(stage)}</TimelineDate>
+      <TimelineSeparator className="w-px bg-border/70 group-data-completed/timeline-item:bg-border" />
+      <TimelineHeader className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <TimelineTitle
           className={cn(
             stage.status === 'current' && 'text-foreground',
-            stage.status === 'ended' && 'font-normal text-muted-foreground',
+            stage.status !== 'current' && 'font-normal text-muted-foreground',
           )}
         >
           {stage.name}
         </TimelineTitle>
+        {/* the word, not only the dot: three shades of grey on a rail are a
+            legend nobody was given */}
+        <Badge
+          variant={stage.status === 'current' ? 'default' : 'secondary'}
+          className={cn(
+            'shrink-0 px-1.5 py-0 text-[10px] font-normal',
+            stage.status === 'future' && 'bg-transparent text-muted-foreground ring-1 ring-border',
+          )}
+        >
+          {format(STATUS[stage.status])}
+        </Badge>
       </TimelineHeader>
+      <TimelineDate className="mt-1 mb-0 font-normal tabular-nums">{said(stage)}</TimelineDate>
       {/* what it waits on first, then what it is for: one is about now and
           the other is about the stage whenever it happens */}
       {stage.note !== '' && (
@@ -204,7 +223,9 @@ export function BatchFlowStrip({
             key={stage.id}
             step={index + 1}
             ref={stage.status === 'current' ? here : undefined}
-            className="w-52 shrink-0 snap-center wrap-anywhere"
+            // flex-none, or the timeline's own flex-1 basis of zero shrinks
+            // every stage to the width of one character
+            className="w-56 flex-none snap-center wrap-anywhere"
           >
             <Stage stage={stage} />
           </TimelineItem>
