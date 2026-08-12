@@ -50,15 +50,15 @@ export function Ticker({
         <AnimatePresence key={at} initial={false} mode="popLayout">
           <motion.span
             key={piece}
-            className="inline-block"
+            // pre, because a space at the edge of an inline block is trimmed:
+            // "3 分 20 秒" set as boxes comes out as "3分20秒"
+            className="inline-block whitespace-pre"
             initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: -5, filter: 'blur(4px)', position: 'absolute' }}
             transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
           >
-            {/* a piece that is only a space would collapse, and the words
-                would close up over it every time a digit beside it moved */}
-            {piece === ' ' ? ' ' : piece}
+            {piece}
           </motion.span>
         </AnimatePresence>
       ))}

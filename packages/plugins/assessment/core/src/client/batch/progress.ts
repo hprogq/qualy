@@ -114,8 +114,8 @@ export function progressOf(timeline: readonly TimelineLike[], now: number): Prog
 /**
  * How loudly to say what is left.
  *
- * Grey while there is time to plan around, amber inside a day, and warm
- * inside the last hour. A countdown that wears the same colour at four weeks
+ * Grey while there is time to plan around, amber inside three hours, and red
+ * inside the last one. A countdown that wears the same colour at four weeks
  * and at four minutes is a countdown nobody reads twice.
  */
 export const toneOf = (progress: Progress): 'calm' | 'soon' | 'urgent' =>
@@ -123,7 +123,7 @@ export const toneOf = (progress: Progress): 'calm' | 'soon' | 'urgent' =>
     ? 'calm'
     : progress.remaining < HOUR
       ? 'urgent'
-      : progress.remaining < DAY
+      : progress.remaining < 3 * HOUR
         ? 'soon'
         : 'calm'
 

@@ -15,15 +15,53 @@ import { progressOf, spanMessage, tickOf, toneOf, type TimelineLike } from './pr
 // costs a request per second. The interval follows the unit shown, so days
 // tick by the minute and seconds by the second.
 //
-// Everything it draws is one line of text and one hairline under it. The
-// batch is the subject of the screen below; this only says where it has got
-// to, so it is sized and coloured to be read after everything else.
+// Everything it draws is one line of text, with a small ring for how far
+// through the stage is. The batch is the subject of the screen below; this
+// only says where it has got to, so it is sized and coloured to be read after
+// everything else - the colour arrives when the time does, not before.
 
 const TONES = {
-  calm: { text: 'text-muted-foreground', rule: 'bg-foreground/35' },
-  soon: { text: 'text-amber-600 dark:text-amber-400', rule: 'bg-amber-500/70' },
-  urgent: { text: 'text-destructive', rule: 'bg-destructive/70' },
+  calm: 'text-muted-foreground',
+  soon: 'text-amber-600 dark:text-amber-400',
+  urgent: 'text-destructive',
 } as const
+
+/**
+ * How far through, as a ring rather than a bar.
+ *
+ * A bar under the line has to be as wide as the line, which makes a rule
+ * across the top of the page out of a detail; a ring is the size of the text
+ * beside it and stays a detail.
+ */
+function Ring({ fraction }: { fraction: number }) {
+  const radius = 5
+  const circumference = 2 * Math.PI * radius
+  return (
+    <svg viewBox="0 0 14 14" className="size-3 shrink-0 -rotate-90" aria-hidden>
+      <circle
+        cx="7"
+        cy="7"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        opacity="0.2"
+      />
+      <circle
+        cx="7"
+        cy="7"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - fraction)}
+        className="transition-[stroke-dashoffset] duration-1000 ease-linear"
+      />
+    </svg>
+  )
+}
 
 export function BatchProgress({
   timeline,
@@ -63,32 +101,15 @@ export function BatchProgress({
   const filled = progress.kind === 'until' ? progress.fraction : null
 
   return (
-    <span className={cn('inline-flex min-w-0 flex-col gap-1', className)}>
-      <span className="inline-flex min-w-0 items-baseline gap-2 truncate">
-        {stage !== null && <span className="truncate text-foreground">{stage}</span>}
-        {stage !== null && said !== null && (
-          <span aria-hidden className="text-muted-foreground/50">
-            ·
-          </span>
-        )}
-        {said !== null && (
-          <span className={cn('shrink-0 tabular-nums', tone.text)}>
-            {progress.kind === 'starts' && (
-              <span className="mr-1 text-muted-foreground">{format(m.plannedStart)}</span>
-            )}
-            <Ticker value={said} />
-          </span>
-        )}
-      </span>
-      {/* the stage running out, under the words rather than around them: a
-          hairline says the same thing as a filled capsule and asks for none
-          of the attention the sentence below it needs */}
-      {filled !== null && (
-        <span aria-hidden className="h-px w-full overflow-hidden rounded-full bg-border">
-          <span
-            className={cn('block h-px transition-[width] duration-1000 ease-linear', tone.rule)}
-            style={{ width: `${String(Math.round(filled * 100))}%` }}
-          />
+    <span className={cn('inline-flex min-w-0 items-center gap-2', className)}>
+      {stage !== null && <span className="truncate text-foreground">{stage}</span>}
+      {said !== null && (
+        <span className={cn('inline-flex shrink-0 items-center gap-1.5', tone)}>
+          {filled !== null && <Ring fraction={filled} />}
+          {progress.kind === 'starts' && (
+            <span className="text-muted-foreground">{format(m.plannedStart)}</span>
+          )}
+          <Ticker value={said} />
         </span>
       )}
     </span>
