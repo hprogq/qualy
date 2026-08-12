@@ -19,6 +19,8 @@ export default {
   'assessment/settings/basics-hint': '材料时间决定这一轮可以填报哪段时间内取得的成果。',
   'assessment/settings/note': '备注',
   'assessment/settings/note-hint': '本批次的工作人员都能看到。',
+  'assessment/settings/enrolled': '参评人数',
+  'assessment/settings/unsaved': '尚未保存',
   'assessment/settings/lifecycle': '本轮状态',
   'assessment/settings/lifecycle-hint': '归档后内容全部保留、不再继续推进；每一步都会先确认。',
   'assessment/roster/count': '{count, plural, =0 {还没有参评人员} other {共 # 人}}',

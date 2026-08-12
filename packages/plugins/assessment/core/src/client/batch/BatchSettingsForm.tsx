@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { RotateCcwIcon, Trash2Icon } from 'lucide-react'
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { ConfirmDialog, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
@@ -22,6 +22,55 @@ import type { BatchDto } from '../phase/model.ts'
 // The lifecycle actions live here rather than in the bar above the rail: they
 // are rare, they are the kind that asks twice, and a row of them across the
 // top of every section made the section itself look like the smaller subject.
+
+/**
+ * One subject of the screen: what it is on the left, what to do about it on
+ * the right.
+ *
+ * No card. A card is a thing lifted off the page because it stands beside
+ * others like it; a settings screen is one column of subjects read top to
+ * bottom, and boxing each of them only adds edges to count.
+ */
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description: string
+  children: ReactNode
+}) {
+  return (
+    <section className="grid gap-x-10 gap-y-4 border-b py-6 first:pt-0 last:border-b-0 last:pb-0 md:grid-cols-[15rem_minmax(0,1fr)]">
+      <div className="space-y-1">
+        <h3 className="text-sm font-medium">{title}</h3>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="min-w-0 max-w-xl">{children}</div>
+    </section>
+  )
+}
+
+/** one thing that can happen to the round, what it does, and the way to do it */
+function LifecycleRow({
+  title,
+  description,
+  action,
+}: {
+  title: string
+  description: string
+  action: ReactNode
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="shrink-0">{action}</div>
+    </div>
+  )
+}
 
 export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
@@ -152,18 +201,17 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     range.end === batch.materialRange.end
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col">
       <Feedback message={failure} />
 
-      <Panel title={format(m.settingsBasics)} description={format(m.settingsBasicsHint)}>
+      <Section title={format(m.settingsBasics)} description={format(m.settingsBasicsHint)}>
         <form
-          className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault()
             save.mutate()
           }}
         >
-          <FieldGroup>
+          <FieldGroup className="gap-5">
             <Field label={format(m.nameLabel)}>
               {(id) => (
                 <Input
@@ -189,61 +237,82 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 />
               )}
             </Field>
+            <Field label={format(m.settingsNote)} hint={format(m.settingsNoteHint)}>
+              {(id) => (
+                <Textarea
+                  id={id}
+                  rows={4}
+                  value={description}
+                  disabled={!editable}
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+              )}
+            </Field>
           </FieldGroup>
-          <Field label={format(m.settingsNote)} hint={format(m.settingsNoteHint)}>
-            {(id) => (
-              <Textarea
-                id={id}
-                rows={4}
-                value={description}
-                disabled={!editable}
-                onChange={(event) => setDescription(event.target.value)}
-              />
+          <div className="mt-5 flex items-center justify-end gap-3">
+            {!unchanged && (
+              <span className="text-xs text-muted-foreground">{format(m.settingsUnsaved)}</span>
             )}
-          </Field>
-          <div className="flex justify-end">
             <Button type="submit" disabled={!editable || unchanged || save.isPending}>
               {format(m.saveShort)}
             </Button>
           </div>
         </form>
-      </Panel>
+      </Section>
 
       {batch.manageable && (
-        <Panel title={format(m.settingsLifecycle)} description={format(m.settingsLifecycleHint)}>
-          <div className="flex flex-wrap gap-2">
+        <Section title={format(m.settingsLifecycle)} description={format(m.settingsLifecycleHint)}>
+          <div className="divide-y">
             {batch.status === 'active' && (
-              <Button
-                variant="outline"
-                disabled={archive.isPending}
-                onClick={() => setConfirming('archive')}
-              >
-                {format(m.archive)}
-              </Button>
+              <LifecycleRow
+                title={format(m.archive)}
+                description={format(m.archiveConfirmBody)}
+                action={
+                  <Button
+                    variant="outline"
+                    disabled={archive.isPending}
+                    onClick={() => setConfirming('archive')}
+                  >
+                    {format(m.archive)}
+                  </Button>
+                }
+              />
             )}
             {batch.status === 'archived' && (
-              <Button
-                variant="outline"
-                disabled={reopen.isPending}
-                onClick={() => setReopening(true)}
-              >
-                <RotateCcwIcon />
-                {format(m.reopen)}
-              </Button>
+              <LifecycleRow
+                title={format(m.reopen)}
+                description={format(m.reopenBody)}
+                action={
+                  <Button
+                    variant="outline"
+                    disabled={reopen.isPending}
+                    onClick={() => setReopening(true)}
+                  >
+                    <RotateCcwIcon />
+                    {format(m.reopen)}
+                  </Button>
+                }
+              />
             )}
             {batch.status === 'draft' && (
-              <Button
-                variant="outline"
-                className="text-destructive"
-                disabled={remove.isPending}
-                onClick={() => setConfirming('delete')}
-              >
-                <Trash2Icon />
-                {format(m.deleteBatch)}
-              </Button>
+              <LifecycleRow
+                title={format(m.deleteBatch)}
+                description={format(m.deleteConfirmBody)}
+                action={
+                  <Button
+                    variant="outline"
+                    className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                    disabled={remove.isPending}
+                    onClick={() => setConfirming('delete')}
+                  >
+                    <Trash2Icon />
+                    {format(m.deleteBatch)}
+                  </Button>
+                }
+              />
             )}
           </div>
-        </Panel>
+        </Section>
       )}
 
       <ConfirmDialog

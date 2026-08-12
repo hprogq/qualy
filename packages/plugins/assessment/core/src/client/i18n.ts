@@ -448,6 +448,8 @@ const i18n = definePluginMessages({
       id: 'assessment/settings/note-hint',
       defaultMessage: 'Seen by whoever works on this batch.',
     },
+    enrolledLabel: { id: 'assessment/settings/enrolled', defaultMessage: 'Taking part' },
+    settingsUnsaved: { id: 'assessment/settings/unsaved', defaultMessage: 'Not saved yet' },
     settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'This round' },
     settingsLifecycleHint: {
       id: 'assessment/settings/lifecycle-hint',
