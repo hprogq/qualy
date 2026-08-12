@@ -179,11 +179,16 @@ export const templateConstraints: Record<string, () => TemplateConflict> = {
   uq_phase_templates_tenant_name: () => new TemplateConflict(),
 }
 
-/** and what a batch write can be refused by */
-export const batchConstraints: Record<string, () => BatchReferenceInvalid> = {
-  fk_assessment_batches_scope_node: () => new BatchReferenceInvalid({ reference: 'scope-node' }),
-  fk_batch_user_types_type: () => new BatchReferenceInvalid({ reference: 'user-type' }),
-}
+/**
+ * And what a batch write can be refused by.
+ *
+ * Empty: the scope columns and the user-type join both went when the roster
+ * became the batch's only population (§32.45), and a translator for a
+ * constraint no table has is a translator nothing can reach. The map stays
+ * because the write path names it, and because the next foreign key a batch
+ * write can violate belongs here.
+ */
+export const batchConstraints: Record<string, () => BatchReferenceInvalid> = {}
 
 export type CreateBatchError = BatchReferenceInvalid | AccessDenied
 export type UpdateBatchError = BatchNotFound | BatchReadOnly | BatchReferenceInvalid | AccessDenied

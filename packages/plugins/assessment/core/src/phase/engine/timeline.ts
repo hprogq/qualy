@@ -33,12 +33,13 @@ export interface TimelineEntry {
 export function deriveTimeline(
   plan: PhasePlan,
   now: EpochMillis,
-  inEffect: number | null = -2,
+  inEffect: number | null | undefined = undefined,
 ): readonly TimelineEntry[] {
   const state = effectiveState(plan, now)
   const pendingAt = new Map(state.pending.map((p) => [p.phaseId, p.actualEntryAt]))
-  // -2 is "ask the clock", which is what a caller with no opinion means
-  const here = inEffect === -2 ? state.index : inEffect
+  // undefined is "ask the clock", which is what a caller with no opinion
+  // means; null is "nothing is in hand", which only the lifecycle knows
+  const here = inEffect === undefined ? state.index : inEffect
 
   return plan.map((phase, index) => {
     const enteredAt = phase.actualEntryAt ?? pendingAt.get(phase.id) ?? null

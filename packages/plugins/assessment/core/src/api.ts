@@ -339,7 +339,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         }),
       ]),
       success: Schema.Struct({ batch: batchView }),
-      error: [BatchNotFound, BatchStatusInvalid, BatchNoParticipants, PlanInvalid, AccessDenied],
+      error: [
+        BadRequest,
+        BatchNotFound,
+        BatchStatusInvalid,
+        BatchNoParticipants,
+        PlanInvalid,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(
@@ -452,7 +459,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         validUntil: Schema.optional(isoInstant),
       }),
       success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
-      error: [BatchNotFound, AccessInvalid, AccessDenied],
+      error: [BadRequest, BatchNotFound, AccessInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

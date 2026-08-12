@@ -1040,3 +1040,17 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 ⑤ **scoped assignment 进入与普通授权相同的临界区**。上一轮补的 `assertEligible` 堵住了绕过,但检查与 INSERT 分处两次调用,理论上可与「停用角色 / 改 eligibility / 改用户类型」并发交错。现在整段收进 grants 模块的 `scoped()`,由同一个 `write()`(先锁租户再检查再写)串行化,与 `grant()` 同一条路。
 
 回归测试:A/B 两个年级管理员争抢空批次(看不到、开不了、加不了人,本人可以);到点未物化时参评人可见且与 gate 一致;归档后参评人仍可读历史;未来日期重开的时间线是「旧 ended + 新 future + 无 current」;角色被摘光权限或被停用后工作人员失去可见性、恢复后回来。
+
+**32.54 M1.1:接纳的唯一路径与两处一致性**(2026-08-13,第三份审计;其中三条已由 §32.53 覆盖,此处记未覆盖的部分)。
+
+① **重新加入必须重新校验接纳者此刻的范围**(P0)。`addParticipants` 一直是对的(读当前站位 → `canAt(MANAGE, 站位)`),但 `setParticipantStatus(active)` 直接调 `insertParticipants`,而后者会从 `users.primary_org_node_id` 重新取位置并刷新冻结锚点——于是「A 班管理员移出某学生 → 学生转到 B 班 → A 班管理员点恢复」会把该学生按 B 班锚点重新接纳,而 A 班管理员对 B 班没有任何权限。**裁决:接纳只有一条路径** `admit(tenantId, batchId, userIds, as, reason?)`:逐人读当前站位、校验 enabled 与 `canAt`、写入、记事件,添加与恢复共用。并且**把授权过的位置写进 SQL**:`insertParticipants` 现在按 `(user_id, node_id)` 对 join `unnest(...)`,人若在检查与写入之间被移走,那一行根本不会落库——这也顺带关掉了审计指出的 check-then-use 窗口(锁批次锁不住 users 表)。
+
+② **列表与详情必须给出同一个时间线状态**。`Assessment.timeline` 已按 §32.53 用 `effectivePhaseIndex`,而 `listBatches` 当时仍按 `row.status === 'active'` 传参,于是「归档后重开、新阶段排在下周」的批次在详情里是「旧 ended + 新 future」,在列表里旧阶段却仍是 current;草稿有计划时列表还会把它们标成 ended。现在列表额外取一次 `lastArchivedFor`(整页一条查询)并调用同一份判定 `effectiveIndexOf`;`deriveTimeline` 的第三参数从哨兵值改成 `number | null | undefined`(undefined = 问时钟,null = 无当前)。
+
+③ **参评人分页游标的指纹漏了 `orgScope`**。`subtree` 查询发出的游标可以拿去继续 `self` 查询,导致漏行或重复。指纹补齐,STATUS 的旧描述随之作数。
+
+④ **非法时刻在边界上被拒**。`setBatchStatus` 与 `addStaff` 原先直接 `Date.parse`,非法串变成 `NaN` 往下走;现在与 `schedulePhase` 一样走 `parseInstant`,两个端点的错误联合补上 `BadRequest`。(`isoDate` 只验形状、`2026-02-31` 这类不存在的日期仍能通过 schema——它落到 `daterange` 的构造上由数据库拒绝,视为已有防线,不额外加。)
+
+⑤ **删除失效引用**:`db.ts` 里指向已删表 `batch_scope_nodes` 的 `inScope()` 与那段描述 diff 面板的注释、`errors.ts` 里 `batch_user_types` / `assessment_batches.scope_node_id` 的约束翻译。
+
+**未采纳**:审计建议为 `current_phase_id`、`phase_participant_scopes`、`batch_participant_events` 补「两端属于同一批次」的复合外键。按 CLAUDE.md 的数据层冻结规则,新增机制必须由已发生的事故或需求触发,而跨批次引用从未发生过,写入路径也只有一条。此条记入触发表:M2 的 Entry/Revision 关系表若出现第二条写入路径,或一旦真的出现跨批次引用,即按此加固。

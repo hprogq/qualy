@@ -1093,6 +1093,33 @@ export const lastArchivedAt = (tenantId: string, batchId: string) =>
       ),
     )
 
+/** when each of these rounds was last closed, for the ones that ever were */
+export const lastArchivedFor = (tenantId: string, batchIds: readonly string[]) =>
+  batchIds.length === 0
+    ? Effect.succeed([] as { batchId: string; occurredAt: number }[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('BatchLifecycleEvent')
+            .select('batchId')
+            .select([
+              sql<number>`(extract(epoch from max(occurred_at)) * 1000)::float8`.as('occurredAt'),
+            ])
+            .where('tenantId', '=', tenantId)
+            .where('kind', '=', 'archived')
+            .where('batchId', 'in', batchIds as string[])
+            .groupBy('batchId')
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) =>
+            (rows as unknown as Record<string, unknown>[]).map((row) => ({
+              batchId: row.batchId as string,
+              occurredAt: msOf(row.occurredAt),
+            })),
+          ),
+        )
+
 export const insertLifecycleEvent = (input: {
   tenantId: string
   batchId: string
@@ -1292,8 +1319,8 @@ export const importCandidates = (
 ) =>
   db
     .query((k) =>
-      sql<{ id: string }>`
-        select u.id
+      sql<{ id: string; nodeId: string }>`
+        select u.id, u.primary_org_node_id as "nodeId"
           from users u
           join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
          where u.tenant_id = ${tenantId}::uuid
@@ -1324,7 +1351,9 @@ export const importCandidates = (
          order by u.display_name, u.id
       `.execute(k),
     )
-    .pipe(Effect.map((result) => result.rows.map((row) => row.id)))
+    .pipe(
+      Effect.map((result) => result.rows.map((row) => ({ userId: row.id, nodeId: row.nodeId }))),
+    )
 
 /**
  * Adding people to a roster, by name of the people themselves.
@@ -1335,10 +1364,19 @@ export const importCandidates = (
  * added - the round is answerable for the people it admitted, not for who
  * they became afterwards.
  */
+/**
+ * Admitting people to a roster, at the positions they were authorized at.
+ *
+ * The node is part of the statement, not only of the check before it: a
+ * person who moves between the two would otherwise be admitted at wherever
+ * they had moved to, on the strength of a check made about where they were.
+ * A row that no longer matches is simply not written, and the caller sees it
+ * in the count.
+ */
 export const insertParticipants = (
   tenantId: string,
   batchId: string,
-  userIds: readonly string[],
+  admitting: readonly { userId: string; nodeId: string }[],
   actorId: string | null,
 ) =>
   db
@@ -1356,8 +1394,11 @@ export const insertParticipants = (
           u.user_type_id, ${actorId}::uuid
         from users u
         join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+        join unnest(${admitting.map((row) => row.userId)}::uuid[],
+                    ${admitting.map((row) => row.nodeId)}::uuid[])
+             as wanted(user_id, node_id)
+          on wanted.user_id = u.id and wanted.node_id = u.primary_org_node_id
         where u.tenant_id = ${tenantId}::uuid
-          and u.id = any(${userIds as string[]}::uuid[])
           and u.enabled
         -- Somebody taken off the list keeps their row: the round is answerable
         -- for having admitted them, and everything they did hangs off it. So
@@ -1682,19 +1723,10 @@ export const batchesWithDueBoundaries = (now: number, limit: number) =>
 
 // --- roster management ---
 //
-// The diff queries below are derived views, computed on read: the roster
-// never moves on its own, so these answer "what has drifted" and a person
-// applies or ignores each line. Every one compares the frozen snapshot
-// against the live tree through the living scope set.
-
-/** membership in the living scope, as a fragment both sides of the diff use */
-const inScope = (batchId: string, tenantRef: string, pathRef: string) => sql<boolean>`exists (
-  select 1 from batch_scope_nodes bsn
-  join org_nodes scope on scope.tenant_id = bsn.tenant_id and scope.id = bsn.node_id
-  where bsn.tenant_id = ${sql.ref(tenantRef)}
-    and bsn.batch_id = ${batchId}::uuid
-    and ${sql.ref(pathRef)} <@ scope.path
-)`
+// The roster is the batch's population and its only truth (§32.45): drawn
+// once when the round is created, and changed afterwards only by somebody
+// deciding to. There is no drift to compute and nothing to reconcile against
+// the live tree.
 
 export interface ParticipantRow {
   id: string

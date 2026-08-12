@@ -1449,14 +1449,162 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const restored = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
         yield* runSql(sql`update roles set status = 'disabled' where id = ${reviewer}`)
         const afterDisabling = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
-        return { whileCarrying, afterStripping, restored, afterDisabling }
+        // and the batch's own refusal counts the same: authority is what is
+        // accepted, minus what this round has taken back
+        yield* runSql(sql`update roles set status = 'active' where id = ${reviewer}`)
+        yield* assessment.setAccessDeny(
+          f.tenant,
+          batch.id,
+          { userId: f.s2, permission: 'assessment.review.process', denied: true },
+          f.principal,
+        )
+        const afterDenying = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
+        return { whileCarrying, afterStripping, restored, afterDisabling, afterDenying }
       }),
     )
-    const { whileCarrying, afterStripping, restored, afterDisabling } = ok(exit)
+    const { whileCarrying, afterStripping, restored, afterDisabling, afterDenying } = ok(exit)
     expect(whileCarrying.map((row) => row.name)).toEqual(['Staffed round'])
     expect(afterStripping).toEqual([])
     expect(restored.map((row) => row.name)).toEqual(['Staffed round'])
     expect(afterDisabling).toEqual([])
+    expect(afterDenying).toEqual([])
+  })
+
+  it('will not let somebody be readmitted at a unit their readmitter cannot reach', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('readmit-scope')
+        const assessment = yield* Assessment
+        const classRole = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'class-admin', 'class-admin', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${classRole}, id from permissions
+           where code = 'assessment.batch.manage'`)
+        const teacher = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Class 1 admin', ${f.teacherType}, ${f.class1}) returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${teacher}, ${classRole}, ${f.class1}, 'subtree')`)
+        const mine: Principal = { tenantId: f.tenant, userId: teacher, sessionId: 's' }
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Class 1 round',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          mine,
+        )
+        const roster = yield* assessment.listParticipants(f.tenant, batch.id, { limit: 50 }, mine)
+        const s1 = roster.find((row) => row.userId === f.s1)!
+        yield* assessment.setParticipantStatus(
+          f.tenant,
+          batch.id,
+          s1.id,
+          'excluded',
+          'transferring',
+          mine,
+        )
+        // and the student moves to a class this administrator has nothing to
+        // do with
+        yield* runSql(sql`
+          update users set primary_org_node_id = ${f.class3} where id = ${f.s1}`)
+        const readmitted = yield* Effect.exit(
+          assessment.setParticipantStatus(f.tenant, batch.id, s1.id, 'active', undefined, mine),
+        )
+        // the row is still excluded, and its anchor was not rewritten
+        const after = yield* assessment.listParticipants(
+          f.tenant,
+          batch.id,
+          { limit: 50, status: 'excluded' },
+          mine,
+        )
+        return { readmitted, after }
+      }),
+    )
+    const { readmitted, after } = ok(exit)
+    expect(tagOf(readmitted)).toBe('ASSESSMENT_PARTICIPANT_INVALID')
+    expect(
+      reasonsOf(readmitted).map((entry) => (entry.error as { reason?: string }).reason),
+    ).toEqual(['user-out-of-scope'])
+    expect(after).toHaveLength(1)
+  })
+
+  it('says the same thing about a reopened round in the list as on its own page', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('list-detail-agreement')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Waiting',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // a draft with a plan and no times at all
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' })] },
+          f.principal,
+        )
+        const asDraft = yield* assessment.listBatches(f.tenant, { limit: 20 }, f.principal)
+        const draftDetail = yield* assessment.timeline(f.tenant, batch.id)
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        yield* assessment.advancePhase(
+          f.tenant,
+          batch.id,
+          { to: plan[0]!.id, force: true, reason: 'starting now' },
+          f.principal,
+        )
+        yield* assessment.setBatchStatus(f.tenant, batch.id, { status: 'archived' }, f.principal)
+        yield* assessment.setBatchStatus(
+          f.tenant,
+          batch.id,
+          {
+            status: 'active',
+            reason: 'appeals arrived late',
+            phase: { displayName: 'Appeals' },
+            plannedEntryAt: Date.now() + 24 * HOUR,
+          },
+          f.principal,
+        )
+        const asList = yield* assessment.listBatches(f.tenant, { limit: 20 }, f.principal)
+        const detail = yield* assessment.timeline(f.tenant, batch.id)
+        return { asDraft, draftDetail, asList, detail }
+      }),
+    )
+    const { asDraft, draftDetail, asList, detail } = ok(exit)
+    const statuses = (rows: readonly { status: string }[]) => rows.map((row) => row.status)
+    // a plan nobody has scheduled has not happened: it is ahead, not behind
+    expect(statuses(asDraft[0]!.timeline)).toEqual(['future'])
+    expect(statuses(draftDetail)).toEqual(['future'])
+    // and a round waiting on next week's stage says so in both places
+    expect(statuses(asList[0]!.timeline)).toEqual(['ended', 'future'])
+    expect(statuses(detail)).toEqual(['ended', 'future'])
   })
 
   it('offers only roles a batch may carry, at units the batch actually covers', async () => {

@@ -3500,3 +3500,28 @@ scoped assignment 整段收进 grants 的 `scoped()`,与普通授权共用「先
 `pnpm test:browser` 48 全绿;`pnpm build` 通过;`pnpm qualy resolve --frozen-lockfile` 零写入;
 `prettier --check .` 干净。新增迁移两条:`20260812175917_batch-management-anchors.sql`(含回填)与
 `20260812183000_drop-resubmit-permission.sql`。
+
+### M1.1:接纳的唯一路径与两处一致性(2026-08-13)
+
+第三份审计的五条:其中「空花名册退化成任意位置持有 MANAGE」「staff 可见性按当前有效权限」「参评人可见性按时钟而非投影」
+三条已由上一轮(§32.53)修掉并有回归测试;本轮补的是其余两条与四项非阻断项,裁决写入 §32.54。
+
+**P0 是恢复成员绕过范围校验**:`addParticipants` 一直读当前站位并校验 `canAt`,而 `setParticipantStatus(active)`
+直接走 `insertParticipants`,后者会按 `users.primary_org_node_id` 刷新冻结锚点——A 班管理员因此可以把已转去
+B 班的学生按 B 班锚点重新接纳。现在接纳只有一条路径 `admit()`,添加与恢复共用;并把授权过的位置写进 SQL
+(`join unnest((user_id, node_id))`),人若在检查与写入之间被移走,那一行根本不会落库,check-then-use 窗口一并关掉。
+
+**列表与详情的时间线统一**:`listBatches` 现在与详情页共用 `effectiveIndexOf`(整页多取一次 `lastArchivedFor`),
+`deriveTimeline` 第三参数改为 `number | null | undefined`。修掉两处矛盾:重开待命的批次在列表里旧阶段仍是 current;
+草稿的计划阶段被标成 ended。
+
+**另外三项**:参评人游标指纹补上 `orgScope`(subtree 的游标可被 self 查询继续用,会漏行/重复);
+`setBatchStatus` 与 `addStaff` 的时刻改走 `parseInstant`,两个端点补 `BadRequest`;删掉指向已删表的
+`inScope()` 与 `batch_user_types` 约束翻译。
+
+**未采纳**:为 `current_phase_id` 等补「两端同批次」的复合外键——按 CLAUDE.md 数据层冻结规则,新增机制需由已发生
+的事故触发,跨批次引用从未发生且写入路径唯一。已记入触发表,M2 的 Entry/Revision 出现第二条写入路径时按此加固。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **472/73 全绿**(新增恢复越权、列表/详情一致性两组,
+staff 可见性补 deny-all 分支);`pnpm test:browser` 48 全绿;`pnpm build` 通过;
+`pnpm qualy resolve --frozen-lockfile` 零写入;`pnpm qualy generate` 无待生成;`prettier --check .` 干净。

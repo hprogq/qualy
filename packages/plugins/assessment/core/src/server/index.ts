@@ -67,6 +67,7 @@ import {
   insertPhase,
   insertLifecycleEvent,
   lastArchivedAt,
+  lastArchivedFor,
   accessSources,
   accessSubjectPage,
   acceptAccessSource,
@@ -1040,12 +1041,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * appends a new one, and until that one arrives the round is between
    * stages rather than back in the last one it ran.
    */
+  const beganAfter = (phase: PhaseSnapshot, closed: number | null) => {
+    if (closed === null) return true
+    const began = phase.actualEntryAt ?? phase.plannedEntryAt
+    return began !== null && began > closed
+  }
+
   const inService = (tenantId: string, batchId: string, phase: PhaseSnapshot) =>
-    Effect.map(lastArchivedAt(tenantId, batchId), (closed) => {
-      if (closed === null) return true
-      const began = phase.actualEntryAt ?? phase.plannedEntryAt
-      return began !== null && began > closed
-    })
+    Effect.map(lastArchivedAt(tenantId, batchId), (closed) => beganAfter(phase, closed))
+
+  /** the same answer as effectivePhaseIndex, for a page of rounds at once */
+  const effectiveIndexOf = (
+    status: string,
+    plan: PhasePlan,
+    now: EpochMillis,
+    closed: number | null,
+  ) => {
+    if (status !== 'active') return null
+    const state = effectiveState(plan, now)
+    if (state.phase === null) return null
+    return beganAfter(state.phase, closed) ? state.index : null
+  }
 
   /**
    * Which stage is in hand, or nothing at all.
@@ -1119,6 +1135,43 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
   /** the shared guards of every roster write, inside its transaction */
   /**
+   * Admitting people to a roster, by name.
+   *
+   * The one path there is, whether somebody is being added for the first time
+   * or let back in: where each person stands now is read, the caller's
+   * authority is checked at that position, and the write itself names the
+   * position it was authorized at (see insertParticipants). Readmission used
+   * to skip the check entirely - so an administrator could let back in
+   * somebody who had since moved to a unit they had no authority over, and
+   * the round would take the new anchor as read.
+   */
+  const admit = (
+    tenantId: string,
+    batchId: string,
+    userIds: readonly string[],
+    as: Principal,
+    reason?: string | null,
+  ) =>
+    Effect.gen(function* () {
+      const wanted = [...new Set(userIds)]
+      const admitting: { userId: string; nodeId: string }[] = []
+      for (const userId of wanted) {
+        const position = yield* userLivePosition(tenantId, userId)
+        if (!position) return yield* new ParticipantInvalid({ reason: 'user-not-found' })
+        if (!position.enabled) return yield* new ParticipantInvalid({ reason: 'user-not-eligible' })
+        // the roster is what batch authority is measured against, so admitting
+        // a stranger would widen it by writing a row
+        if (!(yield* rbac.canAt(as, MANAGE, position.nodeId))) {
+          return yield* new ParticipantInvalid({ reason: 'user-out-of-scope' })
+        }
+        admitting.push({ userId, nodeId: position.nodeId })
+      }
+      const admitted = yield* insertParticipants(tenantId, batchId, admitting, as.userId)
+      yield* recordAdmissions(tenantId, batchId, admitted, as.userId, reason ?? null)
+      return { admitted, wanted: wanted.length }
+    })
+
+  /**
    * The record of an admission, one line per person admitted.
    *
    * Written wherever people join a roster, and told apart by whether the row
@@ -1130,6 +1183,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     batchId: string,
     admitted: readonly { id: string; inserted: boolean }[],
     actorId: string | null,
+    reason: string | null = null,
   ) =>
     Effect.forEach(admitted, (row) =>
       insertParticipantEvent({
@@ -1138,6 +1192,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         participantId: row.id,
         kind: row.inserted ? 'included' : 'readmitted',
         actorId,
+        reason,
       }),
     )
 
@@ -1586,16 +1641,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
       for (const phase of phases) {
         byBatch.set(phase.batchId, [...(byBatch.get(phase.batchId) ?? []), phase])
       }
+      // one more query for the whole page rather than a different rule here:
+      // a round reopened for a date still to come has nothing in hand, and a
+      // list that said otherwise would contradict the round's own page
+      const closures = new Map(
+        (yield* dieQuery(
+          withDb(
+            lastArchivedFor(
+              tenantId,
+              rows.map((row) => row.id),
+            ),
+          ),
+        )).map((row) => [row.batchId, row.occurredAt]),
+      )
       return rows.map((row) => ({
         ...row,
-        // the list asks the clock for a running round and answers "nothing in
-        // hand" for the rest; a reopening waiting on a date is rare enough
-        // not to be worth a query per row here
-        timeline: deriveTimeline(
-          toSnapshots(byBatch.get(row.id) ?? []),
-          now,
-          row.status === 'active' ? -2 : null,
-        ),
+        timeline: ((plan) =>
+          deriveTimeline(
+            plan,
+            now,
+            effectiveIndexOf(row.status, plan, now, closures.get(row.id) ?? null),
+          ))(toSnapshots(byBatch.get(row.id) ?? [])),
       }))
     }),
 
@@ -2635,26 +2701,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
           transaction(
             Effect.gen(function* () {
               yield* rosterWriteGuards(tenantId, batchId, as)
-              const wanted = [...new Set(userIds)]
-              if (wanted.length === 0) return { added: 0, skipped: 0 }
-              // everybody added has to be somebody this caller administers:
-              // the roster is what batch authority is measured against, so
-              // adding a stranger would widen it by writing a row
-              const positions = yield* Effect.forEach(wanted, (userId) =>
-                userLivePosition(tenantId, userId),
-              )
-              for (const position of positions) {
-                if (!position) return yield* new ParticipantInvalid({ reason: 'user-not-found' })
-                if (!position.enabled) {
-                  return yield* new ParticipantInvalid({ reason: 'user-not-eligible' })
-                }
-                if (!(yield* rbac.canAt(as, MANAGE, position.nodeId))) {
-                  return yield* new ParticipantInvalid({ reason: 'user-out-of-scope' })
-                }
-              }
-              const added = yield* insertParticipants(tenantId, batchId, wanted, as.userId)
-              yield* recordAdmissions(tenantId, batchId, added, as.userId)
-              return { added: added.length, skipped: wanted.length - added.length }
+              if (userIds.length === 0) return { added: 0, skipped: 0 }
+              const { admitted, wanted } = yield* admit(tenantId, batchId, userIds, as)
+              return { added: admitted.length, skipped: wanted - admitted.length }
             }),
           ),
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -2773,13 +2822,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 // stands now, because the round is answerable for that from
                 // here (§32.47). A person who cannot be admitted at all -
                 // disabled, or standing nowhere - is not readmitted either.
-                const back = yield* insertParticipants(
+                // the readmission records its own event, so nothing more is
+                // written below: two entries for one act would read as two
+                const { admitted } = yield* admit(
                   tenantId,
                   batchId,
                   [existing.userId],
-                  as.userId,
+                  as,
+                  reason ?? null,
                 )
-                if (back.length === 0) {
+                if (admitted.length === 0) {
                   return yield* new ParticipantInvalid({ reason: 'user-not-eligible' })
                 }
               } else {
@@ -2790,17 +2842,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   yield* Clock.currentTimeMillis,
                   { userId: as.userId, reason: reason ?? null },
                 )
+                // the row keeps the current state and loses the last one;
+                // this is where both survive
+                yield* insertParticipantEvent({
+                  tenantId,
+                  batchId,
+                  participantId,
+                  kind: 'excluded',
+                  actorId: as.userId,
+                  reason: reason ?? null,
+                })
               }
-              // the row keeps the current state and loses the last one; this
-              // is where both survive
-              yield* insertParticipantEvent({
-                tenantId,
-                batchId,
-                participantId,
-                kind: to === 'excluded' ? 'excluded' : 'readmitted',
-                actorId: as.userId,
-                reason: reason ?? null,
-              })
               return (yield* oneParticipant(tenantId, batchId, participantId))!
             }),
           ),
@@ -3104,7 +3156,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
                 reason: payload.reason,
                 phase: payload.phase,
                 plannedEntryAt:
-                  payload.plannedEntryAt === null ? null : Date.parse(payload.plannedEntryAt),
+                  payload.plannedEntryAt === null
+                    ? null
+                    : yield* parseInstant(payload.plannedEntryAt),
               },
           principal,
         )
@@ -3184,7 +3238,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             orgNodeIds: payload.orgNodeIds,
             roleId: payload.roleId,
             ...(payload.validUntil !== undefined
-              ? { validUntil: Date.parse(payload.validUntil) }
+              ? { validUntil: yield* parseInstant(payload.validUntil) }
               : {}),
           },
           principal,
@@ -3312,7 +3366,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         // every filter in the fingerprint: a cursor from one question applied
         // to another silently skips or repeats people
         const units = listed(query.orgNodeIds).sort()
-        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${units.join(',')}`
+        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listParticipants(
