@@ -60,7 +60,14 @@ export function StatusBadge({
 
   return (
     <Badge
-      className={cn('gap-1.5 font-medium', tone.badge, compact && 'px-1.5', className)}
+      className={cn(
+        'gap-1.5 font-medium',
+        tone.badge,
+        // with the word gone the badge is only a dot in a ground, and a
+        // ground longer than it is tall reads as a label that failed to load
+        compact && 'size-5 justify-center p-0',
+        className,
+      )}
       // the word is what goes, not the meaning: the colour and the dot still
       // say it, and whoever cannot see them is reading this instead
       aria-label={compact ? format(label) : undefined}
