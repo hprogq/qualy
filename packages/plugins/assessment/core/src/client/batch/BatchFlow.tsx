@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
-import { ChevronsLeftIcon, ChevronsRightIcon, MoreVerticalIcon } from 'lucide-react'
+import { ChevronsLeftIcon, ChevronsRightIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import {
@@ -115,7 +115,7 @@ function Stage({ stage }: { stage: FlowStage }) {
       <Marker status={stage.status} />
       {/* a hairline, not a bar: at two pixels the rail read as a ruled
           margin down the page and out-shouted the words beside it */}
-      <TimelineSeparator className="w-px bg-border/70 group-data-completed/timeline-item:bg-border/70" />
+      <TimelineSeparator className="w-px bg-border/50 group-data-completed/timeline-item:bg-border/50" />
       <TimelineHeader className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <TimelineTitle
           className={cn(
@@ -198,13 +198,18 @@ export function BatchFlow({
   return (
     <Timeline value={reachedIn(stages)} className={className}>
       {folded > 1 && (
-        <TimelineItem step={0} className="ms-6 pb-4">
-          <TimelineIndicator className="flex items-center justify-center border-0 bg-background text-muted-foreground/50">
-            <MoreVerticalIcon className="size-3.5" />
-          </TimelineIndicator>
+        <TimelineItem step={0} className="ms-6 pb-5">
+          {/* the rail comes out of nothing: a line that fades in from above
+              says the round did not start here without spending a row on
+              saying it */}
+          <span
+            aria-hidden
+            className="absolute -top-6 -left-6 h-6 w-px -translate-x-1/2 bg-gradient-to-b from-transparent to-border/50"
+          />
+          <TimelineSeparator className="top-0 h-full w-px translate-y-0 bg-border/50" />
           <button
             type="button"
-            className="-mt-0.5 text-left text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            className="text-left text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             onClick={() => setOpened(true)}
           >
             {format(m.flowEarlier, { count: folded })}
