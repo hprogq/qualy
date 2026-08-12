@@ -750,20 +750,36 @@ export const make = Effect.fn('Assessment.make')(function* () {
       ),
     ) as never
 
-  const readDetail = (_tenantId: string, batch: BatchRow) =>
-    Effect.succeed<BatchDetail>({
-      id: batch.id,
-      name: batch.name,
-      descriptionMd: batch.descriptionMd,
-      materialRange: parseRange(batch.materialRange),
-      timezone: batch.timezone,
-      status: batch.status as BatchDetail['status'],
-      configRevision: batch.configRevision,
-      manageable: batch.manageable,
-      currentPhaseId: batch.currentPhaseId,
-      currentPhaseName: batch.currentPhaseName,
-      participantCount: batch.participantCount,
-      createdAt: batch.createdAt,
+  /**
+   * A batch as a reader receives it.
+   *
+   * The stage in hand is derived, not read off the row. `current_phase_id` is
+   * a projection the sweeper maintains, and the clock is what decides: for
+   * the minutes between an instant arriving and the sweeper writing it down,
+   * the projection says "not started" while the gate is already open and the
+   * round already visible to the people in it. Every screen that colours a
+   * batch by where it stands was reading that gap.
+   */
+  const readDetail = (tenantId: string, batch: BatchRow) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
+      const here = yield* effectivePhaseIndex(tenantId, batch, plan, now)
+      const phase = here === null ? null : plan[here]
+      return {
+        id: batch.id,
+        name: batch.name,
+        descriptionMd: batch.descriptionMd,
+        materialRange: parseRange(batch.materialRange),
+        timezone: batch.timezone,
+        status: batch.status as BatchDetail['status'],
+        configRevision: batch.configRevision,
+        manageable: batch.manageable,
+        currentPhaseId: phase?.id ?? null,
+        currentPhaseName: phase?.displayName ?? null,
+        participantCount: batch.participantCount,
+        createdAt: batch.createdAt,
+      } satisfies BatchDetail
     })
 
   /** the plan with its allowances, as every plan endpoint answers it */
@@ -1283,10 +1299,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const anchors = yield* dieQuery(withDb(managementAnchors(tenantId, batchId)))
       const roster = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
       if (anchors.length === 0 && roster.length === 0) {
-        // a round from before the boundary was recorded and with nobody on it:
-        // nothing here says whose it is, so it asks for the permission itself
-        const held = yield* rbac.hasPermission(as, MANAGE)
-        if (!held) {
+        // Nothing here says whose round this is: no boundary, nobody on the
+        // list. It can happen to a round upgraded from before the boundary
+        // existed whose units have since been deleted, so it needs a way
+        // back - but "holds the permission somewhere" is exactly the answer
+        // that let one college pick up another's empty draft. Only authority
+        // over the whole tenant is wide enough to be nobody's in particular.
+        const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+        if (!held.tenantWide) {
           return yield* new AccessDenied({ reason: 'cannot manage assessment batches' })
         }
         return
@@ -1654,15 +1674,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
           ),
         )).map((row) => [row.batchId, row.occurredAt]),
       )
-      return rows.map((row) => ({
-        ...row,
-        timeline: ((plan) =>
-          deriveTimeline(
-            plan,
-            now,
-            effectiveIndexOf(row.status, plan, now, closures.get(row.id) ?? null),
-          ))(toSnapshots(byBatch.get(row.id) ?? [])),
-      }))
+      return rows.map((row) => {
+        const plan = toSnapshots(byBatch.get(row.id) ?? [])
+        const here = effectiveIndexOf(row.status, plan, now, closures.get(row.id) ?? null)
+        const phase = here === null ? null : plan[here]
+        return {
+          ...row,
+          // the same derivation the batch's own page uses, so a card and the
+          // page it opens never disagree about where the round has got to
+          currentPhaseId: phase?.id ?? null,
+          currentPhaseName: phase?.displayName ?? null,
+          timeline: deriveTimeline(plan, now, here),
+        }
+      })
     }),
 
     countBatches: Effect.fn('Assessment.countBatches')(function* (tenantId, filter, as) {

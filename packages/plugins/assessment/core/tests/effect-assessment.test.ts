@@ -1292,6 +1292,70 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(Exit.isSuccess(filledByOwner)).toBe(true)
   })
 
+  it('answers a round with no boundary and nobody on it only to tenant-wide authority', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('boundaryless')
+        const assessment = yield* Assessment
+        // a scoped administrator, the way an upgraded deployment has them
+        const gradeRole = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'grade-admin', 'grade-admin', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${gradeRole}, id from permissions
+           where code = 'assessment.batch.manage'`)
+        const scoped = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Grade A admin', ${f.teacherType}, ${f.gradeA}) returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${scoped}, ${gradeRole}, ${f.gradeA}, 'subtree')`)
+        const theirs: Principal = { tenantId: f.tenant, userId: scoped, sessionId: 's' }
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Boundaryless',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // the state an upgrade can leave behind: the units it was created
+        // from are gone from the boundary, and nobody is on the list
+        yield* runSql(sql`delete from batch_management_anchors where batch_id = ${batch.id}`)
+        yield* runSql(sql`delete from batch_participants where batch_id = ${batch.id}`)
+        return {
+          seenByScoped: yield* assessment.listBatches(f.tenant, { limit: 20 }, theirs),
+          takenByScoped: yield* Effect.exit(
+            assessment.addParticipants(f.tenant, batch.id, [f.s1], theirs),
+          ),
+          // the tenant's own administrator can still pick it up and repair it
+          seenByTenant: yield* assessment.listBatches(f.tenant, { limit: 20 }, f.principal),
+          repaired: yield* Effect.exit(
+            assessment.addParticipants(f.tenant, batch.id, [f.s1], f.principal),
+          ),
+        }
+      }),
+    )
+    const { seenByScoped, takenByScoped, seenByTenant, repaired } = ok(exit)
+    // nobody's is not everybody's: holding the permission somewhere is what
+    // let one college pick up another's empty round
+    expect(seenByScoped).toEqual([])
+    expect(tagOf(takenByScoped)).toBe('ACCESS_DENIED')
+    expect(seenByTenant.map((row) => row.name)).toEqual(['Boundaryless'])
+    expect(Exit.isSuccess(repaired)).toBe(true)
+  })
+
   it('opens a round to the people in it the moment the clock says so, and keeps it after it ends', async () => {
     const exit = await run(
       db.url,
@@ -1329,19 +1393,29 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           update batch_phases set planned_entry_at = now() - interval '1 minute'
            where batch_id = ${batch.id}`)
         const whenDue = yield* assessment.listBatches(f.tenant, { limit: 20 }, student)
-        const projection = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
+        const detail = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
+        // the column the sweeper maintains has not been written yet, which is
+        // the whole point: nothing a reader sees may depend on it
+        const projection = one<{ current_phase_id: string | null }>(
+          yield* runSql(sql`
+            select current_phase_id from assessment_batches where id = ${batch.id}`),
+        )
         // and after the round is over, the people in it keep their history
         yield* assessment.setBatchStatus(f.tenant, batch.id, { status: 'archived' }, f.principal)
         const afterwards = yield* assessment.listBatches(f.tenant, { limit: 20 }, student)
         const opened = yield* Effect.exit(assessment.getBatch(f.tenant, batch.id, student))
-        return { beforeIt, whenDue, projection, afterwards, opened }
+        return { beforeIt, whenDue, detail, projection, afterwards, opened }
       }),
     )
-    const { beforeIt, whenDue, projection, afterwards, opened } = ok(exit)
+    const { beforeIt, whenDue, detail, projection, afterwards, opened } = ok(exit)
     expect(beforeIt).toEqual([])
     // visible from the instant itself, not from whenever the sweeper ran
     expect(whenDue.map((row) => row.name)).toEqual(['By the clock'])
-    expect(projection.currentPhaseId).toBeNull()
+    expect(projection.current_phase_id).toBeNull()
+    // and every reader is told the stage the clock says, in the list and on
+    // the round's own page alike
+    expect(detail.currentPhaseId).not.toBeNull()
+    expect(whenDue[0]!.currentPhaseId).toBe(detail.currentPhaseId)
     expect(afterwards.map((row) => row.name)).toEqual(['By the clock'])
     expect(Exit.isSuccess(opened)).toBe(true)
   })

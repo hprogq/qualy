@@ -148,8 +148,10 @@ export const oneBatch = (
  * are what an empty round still belongs to; the roster is what it has become.
  */
 const withinReach = (held: AuthorizationScope) =>
-  held.tenantWide || held.anchors.length > 0
-    ? sql<boolean>`(
+  held.tenantWide
+    ? sql<boolean>`true`
+    : held.anchors.length > 0
+      ? sql<boolean>`(
         not exists (
           select 1 from batch_management_anchors ma
           join org_nodes mn on mn.tenant_id = ma.tenant_id and mn.id = ma.org_node_id
@@ -172,8 +174,22 @@ const withinReach = (held: AuthorizationScope) =>
               path: sql.ref('bp.anchor_path') as never,
             })}
         )
+        -- and it has to belong to somewhere: a round with no boundary and
+        -- nobody on it is nobody's, and "nobody's" must not resolve to
+        -- "anybody holding the permission somewhere". Tenant-wide authority
+        -- reads it above; a scoped administrator does not.
+        and exists (
+          select 1 from batch_management_anchors ma
+          where ma.tenant_id = assessment_batches.tenant_id
+            and ma.batch_id = assessment_batches.id
+          union all
+          select 1 from batch_participants bp
+          where bp.tenant_id = assessment_batches.tenant_id
+            and bp.batch_id = assessment_batches.id
+            and bp.status = 'active'
+        )
       )`
-    : sql<boolean>`false`
+      : sql<boolean>`false`
 
 /**
  * Whether a stage of this round has actually begun, by the clock.

@@ -288,3 +288,94 @@ describe.runIf(postgresAvailable)('the resubmit cleanup migration', () => {
     }
   })
 })
+
+// The boundary a round is administered from is the one it was created with.
+// The first backfill read every roster_imports row, and that table is written
+// again every time somebody imports more people - so a round created for one
+// college and topped up from another came out of the upgrade belonging to
+// both.
+
+const ANCHORS = '20260813090000_management-anchors-from-first-import.sql'
+
+describe.runIf(postgresAvailable)('the management-anchor rebuild', () => {
+  it('keeps the units a round was created with, and drops the ones it imported later', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, ANCHORS))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-anchors-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file !== ANCHORS) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('anchor-rebuild', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('anchors', 'Anchors') returning id`,
+        )
+      ).id
+      const orgType = (
+        await db.row<{ id: string }>(
+          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
+          [tenant],
+        )
+      ).id
+      // one root, because a tenant may only have one, and two units under it
+      const root = (
+        await db.row<{ id: string }>(
+          `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+           values ($1, $2, 'Root', 'anc', 0) returning id`,
+          [tenant, orgType],
+        )
+      ).id
+      const node = async (name: string, pathValue: string) =>
+        (
+          await db.row<{ id: string }>(
+            `insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+             values ($1, $2, $3, $4, $5, 1) returning id`,
+            [tenant, orgType, root, name, pathValue],
+          )
+        ).id
+      const first = await node('First', 'anc.one')
+      const later = await node('Later', 'anc.two')
+      const batch = (
+        await db.row<{ id: string }>(
+          `insert into assessment_batches (tenant_id, name, material_range)
+           values ($1, 'Topped up', daterange('2026-03-01', '2026-09-01')) returning id`,
+          [tenant],
+        )
+      ).id
+      // the round as it was created, and the import somebody ran a month later
+      await db.query(
+        `insert into roster_imports (tenant_id, batch_id, org_node_ids, user_type_ids,
+                                     imported_count, occurred_at)
+         values ($1, $2, $3::jsonb, '[]'::jsonb, 3, now() - interval '30 days')`,
+        [tenant, batch, JSON.stringify([first])],
+      )
+      await db.query(
+        `insert into roster_imports (tenant_id, batch_id, org_node_ids, user_type_ids,
+                                     imported_count, occurred_at)
+         values ($1, $2, $3::jsonb, '[]'::jsonb, 1, now())`,
+        [tenant, batch, JSON.stringify([later])],
+      )
+      // the boundary as the first backfill left it: both units
+      const upgraded = await db.query<{ org_node_id: string }>(
+        `select org_node_id from batch_management_anchors where batch_id = $1`,
+        [batch],
+      )
+      expect(upgraded.rows).toHaveLength(0)
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const anchors = await db.query<{ org_node_id: string }>(
+        `select org_node_id from batch_management_anchors where batch_id = $1`,
+        [batch],
+      )
+      expect(anchors.rows.map((row) => row.org_node_id)).toEqual([first])
+    } finally {
+      await db.dispose()
+    }
+  })
+})

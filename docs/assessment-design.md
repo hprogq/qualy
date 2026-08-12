@@ -1054,3 +1054,13 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 ⑤ **删除失效引用**:`db.ts` 里指向已删表 `batch_scope_nodes` 的 `inScope()` 与那段描述 diff 面板的注释、`errors.ts` 里 `batch_user_types` / `assessment_batches.scope_node_id` 的约束翻译。
 
 **未采纳**:审计建议为 `current_phase_id`、`phase_participant_scopes`、`batch_participant_events` 补「两端属于同一批次」的复合外键。按 CLAUDE.md 的数据层冻结规则,新增机制必须由已发生的事故或需求触发,而跨批次引用从未发生过,写入路径也只有一条。此条记入触发表:M2 的 Entry/Revision 关系表若出现第二条写入路径,或一旦真的出现跨批次引用,即按此加固。
+
+**32.55 M1.1 收尾:边界只认创建时那次,没有边界就 fail closed**(2026-08-13,第四份审计;其中「roster 写入的 TOCTOU」已由 §32.54 的「授权过的位置写进 SQL」关闭,此处记其余四条)。
+
+① **管理锚点的回填只取最早一次导入**(新增 `20260813090000_management-anchors-from-first-import.sql`)。上一条回填读了批次的**全部** `roster_imports`,而那张表不只在创建时写——之后每次「从组织导入」都会再写一行。于是「为 A 学院创建、一个月后从 B 学院补导过人」的旧批次,升级后边界变成 A+B,而且因为边界是冻结的,B 的人全部移出后仍要求管理员同时握有 B 的权限。已提交的迁移不改,新增一条按 `distinct on (tenant_id, batch_id) order by occurred_at, id` 重建;创建后才存在的批次本来就在同一事务里写了自己的锚点,而它们最早的导入正是那次创建,所以重建对它们是恒等的。补升级测试(旧批次两条导入 A→B,升级后只剩 A)。
+
+② **既无锚点又无花名册时 fail closed**。上一版退回 `hasPermission(MANAGE)`,而 org-node 权限的这个语义正是「在租户任意位置持有」,于是跨组织接管又回来了。裁决:这种「谁的都不是」的历史批次**只对租户级(tenantWide)权威开放**,scoped 管理员一律拒绝;可见性 SQL 同步加上「必须有锚点或有在册的人」的存在性条件。这不是理论状态——回填会跳过已被删除的节点,真实历史数据可以产生没有锚点的批次,所以它需要一条修复入口,而那条入口只能是租户管理员。
+
+③ **删除组织节点对任何插件的外键都答 409**。`batch_management_anchors` 对 `org_nodes` 是 restrict,而 org 的 `nodeConstraints` 只认得 base 层那几个约束名,未知约束会变成 defect → 500。让 org 去硬编码 assessment 的约束名会把依赖方向倒过来,所以改成:**只在 `deleteNode` 这一处**,把「仍被引用」的 sqlstate 泛化为 `ORG_NODE_IN_USE`——`23001`(RESTRICT)与 `23503`(NO ACTION)两个都认(实测 RESTRICT 报的是 23001)。判定读的是整棵 cause 树(`failedWith`),因为未命名约束到这里时已经是 defect。测试在 org 套件里现建一张「上层插件的表」引用节点,断言删除答 409 而不是 500。**产品政策明确**:只要历史批次还在,它的管理锚点所指的组织节点就不能删除;这是有意的(边界必须指向活节点,§32.53),要让节点可退役需要改成存 path 快照,不在 M1 范围。
+
+④ **「待开始 / 进行中」不再读物化投影**。服务端已按语义状态判定可见性与闸门,但 DTO 仍下发 `current_phase_id` 这一列,前端 `standingOf` 据此着色——于是 09:00 已到、扫描器未跑的窗口里,学生能看到批次、能执行开放的动作,列表却把它标成「待开始」。裁决:`readDetail` 与 `listBatches` 都改为**下发派生出来的当前阶段**(`effectivePhaseIndex` / `effectiveIndexOf`),`current_phase_id` 列继续只做投影、永不出服务端。前端不动,因为它读的字段现在说的是真话。

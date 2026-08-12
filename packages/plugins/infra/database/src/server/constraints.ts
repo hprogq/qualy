@@ -46,6 +46,32 @@ export const constraintOf = (error: unknown): string | undefined => {
   return walk(error, 0)
 }
 
+/** whether a failure anywhere in the chain carries this sqlstate */
+export const failedWith = (error: unknown, sqlstate: string): boolean => {
+  const seen = new Set<unknown>()
+  const walk = (node: unknown, depth: number): boolean => {
+    if (!node || typeof node !== 'object' || depth > 10 || seen.has(node)) return false
+    seen.add(node)
+    const value = node as Record<string, unknown>
+    if (value.code === sqlstate) return true
+    // 'defect' as well as the failure keys: a cause that reached here as a
+    // die carries the driver error under it, and that is exactly the case
+    // this exists for
+    for (const key of ['cause', 'error', 'reason', 'defect']) {
+      if (walk(value[key], depth + 1)) return true
+    }
+    for (const key of ['reasons', 'failures']) {
+      const list = value[key]
+      if (!Array.isArray(list)) continue
+      for (const entry of list) {
+        if (walk(entry, depth + 1)) return true
+      }
+    }
+    return false
+  }
+  return walk(error, 0)
+}
+
 /**
  * Replaces a named constraint violation with the domain error it means.
  *

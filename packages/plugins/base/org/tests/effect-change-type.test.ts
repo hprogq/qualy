@@ -360,6 +360,44 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
+  it('answers a foreign key it has never heard of the same way', async () => {
+    // A plugin above this one may point at a node - a round's management
+    // boundary does - and org must not learn that plugin's constraint names
+    // to answer for it: the dependency runs the other way. Deleting a node is
+    // the one place where every reference means the same thing to a reader.
+    const db = await createTestContext('effect-org-unknown-fk')
+    try {
+      // a table this plugin knows nothing about, made the way a plugin above
+      // it would have made one
+      await db.query(`create table upstairs (
+        tenant_id uuid not null,
+        org_node_id uuid not null,
+        constraint fk_upstairs_node foreign key (tenant_id, org_node_id)
+          references org_nodes (tenant_id, id) on delete restrict
+      )`)
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const child = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Leaf', 'r.leaf', 1) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into upstairs (tenant_id, org_node_id) values (${f.tenant}, ${child})`)
+          const org = yield* Org
+          const blocked = yield* Effect.result(org.deleteNode(f.tenant, child, f.principal))
+          return { tag: tagOf(blocked) }
+        }),
+      )
+      expect(ok(exit).tag).toBe('ORG_NODE_IN_USE')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('answers a restrict foreign key with the domain error, not a defect', async () => {
     // the delete is blocked by a user standing on the node, which no service
     // check prevents without a race: the constraint is what actually decides,

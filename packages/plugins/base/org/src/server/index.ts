@@ -49,6 +49,7 @@ import {
   RuleCycle,
   RuleInUse,
   RuleInvalid,
+  NodeInUse,
   RuleNotFound,
   TypeInUse,
   type ChangeNodeTypeError,
@@ -63,7 +64,7 @@ import {
   type UpdateNodeError,
 } from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
-import { translateConstraints } from '@qualy/plugin-database/server/constraints'
+import { failedWith, translateConstraints } from '@qualy/plugin-database/server/constraints'
 import {
   byPath,
   coveredBy,
@@ -305,6 +306,15 @@ export const make = Effect.fn('Org.make')(function* () {
     )
   })
 
+  /**
+   * What postgres says when a row is still pointed at.
+   *
+   * Two codes, not one: a RESTRICT foreign key raises 23001 and a NO ACTION
+   * one raises 23503, and which of them a plugin above this chose is not
+   * something this plugin should have to know.
+   */
+  const STILL_REFERENCED = ['23001', '23503']
+
   // the shape every structural write shares: lock the tenant, find the node,
   // re-decide authorization on the locked connection, then write
   const write = <A, E, R>(
@@ -359,12 +369,28 @@ export const make = Effect.fn('Org.make')(function* () {
         if (!node.parentId) return yield* new NodeIsRoot()
         const children = yield* hasChildren(tenantId, nodeId)
         if (children) return yield* new NodeHasChildren()
-        // users and assignments still block through their restrict foreign
-        // keys. That is not a comment about intent: the write runs under
-        // translateConstraints, which turns those constraint names into
-        // ORG_NODE_IN_USE rather than letting them become a 500.
+        // Users and assignments still block through their restrict foreign
+        // keys, and so does anything else that points here.
         yield* deleteNodeRow(tenantId, nodeId)
       }),
+    ).pipe(
+      // Any foreign key, not only the ones this plugin can name.
+      //
+      // A named map cannot keep up: a plugin above this one may point at a
+      // node (a round's management boundary does), and org must not learn
+      // that plugin's constraint names to answer for it - the dependency
+      // runs the other way. Deleting a node is the one place where every
+      // reference means the same thing to a reader, so the sqlstate itself
+      // is the answer: something is still using it.
+      //
+      // The whole cause, not the failure: an unnamed constraint has already
+      // become a defect by the time it gets here, which is exactly the 500
+      // this is here to prevent.
+      Effect.catchCause((cause) =>
+        STILL_REFERENCED.some((sqlstate) => failedWith(cause, sqlstate))
+          ? new NodeInUse()
+          : Effect.failCause(cause),
+      ),
     )
   })
 

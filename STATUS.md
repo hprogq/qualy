@@ -3525,3 +3525,22 @@ B 班的学生按 B 班锚点重新接纳。现在接纳只有一条路径 `admi
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **472/73 全绿**(新增恢复越权、列表/详情一致性两组,
 staff 可见性补 deny-all 分支);`pnpm test:browser` 48 全绿;`pnpm build` 通过;
 `pnpm qualy resolve --frozen-lockfile` 零写入;`pnpm qualy generate` 无待生成;`prettier --check .` 干净。
+
+### M1.1 收尾:边界、fail closed、跨插件外键、投影(2026-08-13)
+
+第四份审计五条:其中「roster 写入 TOCTOU」上一轮已由「把授权过的位置写进 INSERT 语句」关闭;其余四条本轮修完,
+裁决 §32.55。
+
+- **回填只取最早一次导入**:`roster_imports` 不只在创建时写,原回填把后续补导的单位也算进了边界。新增前向迁移
+  按 `distinct on (batch_id) order by occurred_at` 重建,配升级测试(A→B 两次导入,升级后只剩 A)。
+- **没有边界就 fail closed**:既无锚点又无在册的人时,只对租户级权威开放(scoped 管理员一律拒绝),可见性 SQL
+  同步加存在性条件。回填会跳过已删除节点,所以这个状态真实存在,修复入口只能是租户管理员。
+- **删除组织节点对任何插件的外键都答 409**:只在 `deleteNode` 一处把 23001/23503 泛化为 `ORG_NODE_IN_USE`
+  (实测 RESTRICT 报 23001),判定读整棵 cause 树;org 不需要知道上层插件的约束名。测试在 org 套件里现建一张
+  上层表引用节点。
+- **状态不再读投影**:`readDetail` 与 `listBatches` 下发派生出来的当前阶段,`current_phase_id` 列只做投影、
+  永不出服务端——否则扫描器未跑的窗口里,授权说"已开始"而列表说"待开始"。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **475/73 全绿**;`pnpm test:browser` 48 全绿;
+`pnpm build` 通过;`pnpm qualy resolve --frozen-lockfile` 零写入;`pnpm qualy generate` 无待生成;
+`prettier --check .` 干净。
