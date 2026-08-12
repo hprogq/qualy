@@ -180,7 +180,7 @@ export default function WorkspaceShell() {
             {rail(true)}
           </aside>
         )}
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/30">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
       </div>

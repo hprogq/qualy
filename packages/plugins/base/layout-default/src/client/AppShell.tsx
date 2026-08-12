@@ -16,7 +16,7 @@ export default function AppShell() {
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
       <TopBar apps={apps} activeApp={activeApp} />
       <SectionBar items={sections} />
-      <main className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
+      <main className="min-h-0 flex-1 overflow-y-auto">
         <Outlet />
       </main>
     </div>
