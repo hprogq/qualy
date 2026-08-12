@@ -2966,6 +2966,13 @@ QUALY_TEST_COS=1
 - `uq_review_instances_open_entry` 的谓词按 `pg_get_indexdef` 的回读形态拼写
   （`(state)::text = ANY (...)`）——comparator 对 expression index 做文本配对，
   更好看的写法会永远 diff 自己的 introspection。
+- 收口一轮（外部审计六条）：`entry_revisions` 增列 `item_id`，两条复合键合抱钉死
+  「payload 只按本 entry 所属题目的 revision 解码」（§9.2 的列表相应 +item_id）；items 的
+  void shape 改真二选一并要求 `btrim(reason) <> ''`；review_instances 合并为 lifecycle 检查
+  （completed ⇔ 有 completed_at 且有 outcome，outcome 词表仍留给审核状态机冻结）；
+  score_groups 加 `floor <= cap`；`ItemTypes.driver` 声明期校验 id 格式（与 `item_type` 列
+  同一正则）；scoring 注册点 id 定名 `@qualy/plugin-assessment/scoring-drivers`。
+  生成器两个实测坑记 docs/notes/mikro-orm.md（改 CHECK 要换名；已有表 add CHECK 勿用 IN 列表）。
 
 ### 对话 3：Item 配置 + Evidence driver
 

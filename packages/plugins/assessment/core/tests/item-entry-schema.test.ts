@@ -116,9 +116,9 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     ).id
     const revisionId = (
       await db.row<{ id: string }>(
-        `insert into entry_revisions (tenant_id, entry_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
-         values ($1, $2, $3, 1, '{"note":"discharged 2025"}', $4, $4, 'self') returning id`,
-        [f.tenantId, entryId, g.itemRevisionId, f.userId],
+        `insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+         values ($1, $2, $3, $4, 1, '{"note":"discharged 2025"}', $5, $5, 'self') returning id`,
+        [f.tenantId, entryId, g.itemId, g.itemRevisionId, f.userId],
       )
     ).id
     await db.query(`update entries set current_revision_id = $1 where id = $2`, [
@@ -283,6 +283,68 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     ).toBe('23503')
   })
 
+  it('refuses a revision decoding by another item\u2019s configuration', async () => {
+    const f = await createFixture('ie-xdecode')
+    const g = await createBatchGraph(f, 'Round A')
+    const e = await createEntry(f, g)
+    const otherItemId = (
+      await db.row<{ id: string }>(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id)
+         values ($1, $2, 'evidence', 'another question', $3) returning id`,
+        [f.tenantId, g.batchId, g.groupId],
+      )
+    ).id
+    const otherRevisionId = (
+      await db.row<{ id: string }>(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 1, 'student', '{}', '{}', '{}', '{}', $3) returning id`,
+        [f.tenantId, otherItemId, f.userId],
+      )
+    ).id
+
+    // lying about the item outright: the entry-item pair refuses it
+    expect(
+      await pgCode(
+        db.query(
+          `insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+           values ($1, $2, $3, $4, 2, '{}', $5, $5, 'self')`,
+          [f.tenantId, e.entryId, otherItemId, otherRevisionId, f.userId],
+        ),
+      ),
+    ).toBe('23503')
+    // telling the truth about the item but citing the other item's revision:
+    // the item-revision pair refuses it
+    expect(
+      await pgCode(
+        db.query(
+          `insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+           values ($1, $2, $3, $4, 2, '{}', $5, $5, 'self')`,
+          [f.tenantId, e.entryId, g.itemId, otherRevisionId, f.userId],
+        ),
+      ),
+    ).toBe('23503')
+  })
+
+  it('refuses a revision decoding by another batch\u2019s configuration', async () => {
+    const f = await createFixture('ie-xdecode-batch')
+    const a = await createBatchGraph(f, 'Round A')
+    const b = await createBatchGraph(f, 'Round B')
+    const e = await createEntry(f, a)
+
+    // the shape scoring would misread worst: a real revision, a real config,
+    // and the config belongs to a different round entirely
+    expect(
+      await pgCode(
+        db.query(
+          `insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+           values ($1, $2, $3, $4, 2, '{}', $5, $5, 'self')`,
+          [f.tenantId, e.entryId, b.itemId, b.itemRevisionId, f.userId],
+        ),
+      ),
+    ).toBe('23503')
+  })
+
   it('holds one open round per entry, whoever asks for a second', async () => {
     const f = await createFixture('ie-double')
     const g = await createBatchGraph(f, 'Round A')
@@ -317,9 +379,9 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     expect(
       await pgCode(
         db.query(
-          `insert into entry_revisions (tenant_id, entry_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
-           values ($1, $2, $3, 1, '{}', $4, $4, 'self')`,
-          [f.tenantId, e.entryId, g.itemRevisionId, f.userId],
+          `insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+           values ($1, $2, $3, $4, 1, '{}', $5, $5, 'self')`,
+          [f.tenantId, e.entryId, g.itemId, g.itemRevisionId, f.userId],
         ),
       ),
     ).toBe('23505')
@@ -381,6 +443,28 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
         db.query(`update assessment_items set status = 'voided' where id = $1`, [g.itemId]),
       ),
     ).toBe('23514')
+    // a blank reason is not a reason
+    expect(
+      await pgCode(
+        db.query(
+          `update assessment_items set status = 'voided', voided_at = now(), voided_by = $2, void_reason = '   ' where id = $1`,
+          [g.itemId, f.userId],
+        ),
+      ),
+    ).toBe('23514')
+    // an active item carrying a stray trace of voiding is neither one thing
+    // nor the other
+    expect(
+      await pgCode(
+        db.query(`update assessment_items set voided_at = now() where id = $1`, [g.itemId]),
+      ),
+    ).toBe('23514')
+    // a floor above the cap would leave the aggregator two defensible answers
+    expect(
+      await pgCode(
+        db.query(`update score_groups set floor = 10, cap = 5 where id = $1`, [g.groupId]),
+      ),
+    ).toBe('23514')
     // an unknown entry source
     expect(
       await pgCode(
@@ -400,6 +484,30 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
              (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path, state)
            values ($1, $2, $3, 1, 'initial', 'participant', '{}', '{}', $4,
                    (select path from org_nodes where id = $4), 'completed')`,
+          [f.tenantId, e.entryId, e.revisionId, f.nodeId],
+        ),
+      ),
+    ).toBe('23514')
+    // and how it ended: completed with no outcome is half a fact
+    expect(
+      await pgCode(
+        db.query(
+          `insert into review_instances
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path, state, completed_at)
+           values ($1, $2, $3, 1, 'initial', 'participant', '{}', '{}', $4,
+                   (select path from org_nodes where id = $4), 'completed', now())`,
+          [f.tenantId, e.entryId, e.revisionId, f.nodeId],
+        ),
+      ),
+    ).toBe('23514')
+    // the reverse half: an open round already claiming an outcome
+    expect(
+      await pgCode(
+        db.query(
+          `insert into review_instances
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path, outcome)
+           values ($1, $2, $3, 1, 'initial', 'participant', '{}', '{}', $4,
+                   (select path from org_nodes where id = $4), 'approved')`,
           [f.tenantId, e.entryId, e.revisionId, f.nodeId],
         ),
       ),

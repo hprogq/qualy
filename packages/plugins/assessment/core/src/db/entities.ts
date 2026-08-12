@@ -641,7 +641,15 @@ export const ScoreGroup = defineEntity({
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
-  checks: [{ name: 'chk_score_groups_name_not_blank', expression: `btrim(name) <> ''` }],
+  checks: [
+    { name: 'chk_score_groups_name_not_blank', expression: `btrim(name) <> ''` },
+    // floor above cap would leave the aggregator two defensible answers;
+    // negative values stay legal, deduction groups are real
+    {
+      name: 'chk_score_groups_floor_le_cap',
+      expression: 'floor IS NULL OR cap IS NULL OR floor <= cap',
+    },
+  ],
   indexes: [
     {
       name: 'uq_score_groups_tenant_id_id',
@@ -704,11 +712,14 @@ export const AssessmentItem = defineEntity({
       name: 'chk_assessment_items_max_entries_positive',
       expression: 'max_entries IS NULL OR max_entries >= 1',
     },
-    // voiding is an act with an actor, a time and a mandatory reason; an
-    // active row carries none of them
+    // voiding is an act with an actor, a time and a non-blank reason; an
+    // active row carries none of them. Spelled as two full arms because the
+    // equality form has a hole: with the right side false, an active row
+    // with a stray voided_at also makes the left side false, and false =
+    // false passes
     {
-      name: 'chk_assessment_items_voided_shape',
-      expression: `(status = 'voided') = (voided_at IS NOT NULL AND voided_by IS NOT NULL AND void_reason IS NOT NULL)`,
+      name: 'chk_assessment_items_void_state_shape',
+      expression: `(status = 'active' AND voided_at IS NULL AND voided_by IS NULL AND void_reason IS NULL) OR (status = 'voided' AND voided_at IS NOT NULL AND voided_by IS NOT NULL AND btrim(void_reason) <> '')`,
     },
   ],
   indexes: [
@@ -829,6 +840,14 @@ export const Entry = defineEntity({
       name: 'uq_entries_tenant_id_id',
       expression: 'create unique index uq_entries_tenant_id_id on entries (tenant_id, id)',
     },
+    // the target of the revision item-binding key: a revision names its entry
+    // together with that entry's item, and this is what makes the pair
+    // checkable
+    {
+      name: 'uq_entries_tenant_id_item',
+      expression:
+        'create unique index uq_entries_tenant_id_item on entries (tenant_id, id, item_id)',
+    },
     // one participant's entries on one item: the max_entries count and the
     // filing screen both read down this path
     {
@@ -859,6 +878,9 @@ export const EntryRevision = defineEntity({
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('entry_revisions_tenant_id_tenants_id_fkey'),
     entryId: p.uuid(),
+    // the entry's own item, repeated here so the pair of keys below can hold
+    // "item_revision_id is a revision of that item" without a service if
+    itemId: p.uuid(),
     itemRevisionId: p.uuid(),
     revisionNo: p.integer(),
     payload: p.json<Record<string, unknown>>(),
@@ -984,14 +1006,14 @@ export const ReviewInstance = defineEntity({
       name: 'chk_review_instances_stage_non_negative',
       expression: 'current_stage_index >= 0',
     },
-    // a completed round says when and how it ended; an open one says neither
+    // a completed round says when and how it ended; an open one says neither.
+    // The open arm is spelled <> 'completed' rather than IN ('active',
+    // 'blocked') - the state check above already bounds the values, and the
+    // generator mangles IN-lists when adding a check to an existing table
+    // (the array cast comes back as a bare [], which is not sql)
     {
-      name: 'chk_review_instances_completed_shape',
-      expression: `(state = 'completed') = (completed_at IS NOT NULL)`,
-    },
-    {
-      name: 'chk_review_instances_outcome_only_completed',
-      expression: `outcome IS NULL OR state = 'completed'`,
+      name: 'chk_review_instances_lifecycle_shape',
+      expression: `(state <> 'completed' AND completed_at IS NULL AND outcome IS NULL) OR (state = 'completed' AND completed_at IS NOT NULL AND outcome IS NOT NULL)`,
     },
   ],
   indexes: [
@@ -1151,8 +1173,14 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, id, current_review_instance_id) references review_instances (tenant_id, entry_id, id) on delete set null (current_review_instance_id)`,
   `alter table entry_revisions add constraint fk_entry_revisions_entry
      foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
+  // the item-binding pair: the first key holds "item_id is this entry's own
+  // item", the second holds "item_revision_id is a revision of that item".
+  // Together they refuse a revision decoding by another item's - or another
+  // batch's - configuration, which neither plain key could say alone
+  `alter table entry_revisions add constraint fk_entry_revisions_entry_item
+     foreign key (tenant_id, entry_id, item_id) references entries (tenant_id, id, item_id) on delete cascade`,
   `alter table entry_revisions add constraint fk_entry_revisions_item_revision
-     foreign key (tenant_id, item_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
+     foreign key (tenant_id, item_id, item_revision_id) references assessment_item_revisions (tenant_id, item_id, id) on delete restrict`,
   `alter table entry_revision_attachments add constraint fk_entry_revision_attachments_revision
      foreign key (tenant_id, revision_id) references entry_revisions (tenant_id, id) on delete cascade`,
   // into storage: a revision that cites an attachment is what "bound" means,

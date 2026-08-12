@@ -126,3 +126,15 @@ peer 完全没看见调用方的事务。
 **因此顺序是**:先把三个插件里**不在事务内的读**逐个搬走(各自独立、随时可提交),
 剩下的事务核心一次切完。已搬走的 session 中间件与 sign-in 都属于前者
 (sign-in 的 `completeLogin` 是两条独立语句,不在事务里)。
+
+## 对已有表新增/修改 CHECK 的两个坑(7.1.11,2026-08-13 实测)
+
+- **改 CHECK 表达式不会进迁移**:comparator 能检出 `changedChecks`,但 DDL 写出器不渲染这一类,
+  生成结果只有 added/removed。要改表达式就**换名字**(旧名 drop + 新名 add 正常出现)。
+- **对已有表 add CHECK 时,表达式取自实体侧库的 introspection**,其中 IN 列表被 pg 规范化为
+  `= ANY ((ARRAY[...])::text[])`,写出器剥列侧 cast 时把 `(...)::text[]` 剥成残缺的 `ARRAY[...][]`
+  ——不是合法 SQL,lineage 重放当场炸(clean-room parity 抓到)。规避:**新增到已有表的 CHECK 里
+  不要写 IN 列表**,用等价的标量比较(如 `state <> 'completed'`,值域已由另一条 IN 检查兜住);
+  新建表同迁移内的 CHECK 走 metadata 渲染,不受影响。
+- 同日另一处:部分唯一索引的 `where state in (...)` 谓词要按 `pg_get_indexdef` 的回读形态拼写,
+  否则 comparator 对 expression index 的文本配对永远 diff 自己。

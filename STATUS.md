@@ -3683,3 +3683,42 @@ route(归 storage-local,需要和 reservation 凭据一起设计)、provider cli
 
 **下一步**:对话 3(`@qualy/plugin-assessment-evidence` + item/score-group API + M2 review policy
 validator)。对话 5 写 review 事件时用 kebab-case(`submitted` 等,裁决见 m2-design §18 落地记录)。
+
+### 对话 2 收口:一条真裂缝与五处约束补紧(2026-08-13)
+
+外部审计六条,逐条对着实体核过全部成立,本轮修完。上一条 STATUS 里「跨批次引用一律 23503」当时说满了:
+EntryRevision 的 item_revision 恰好是没被绑住的那条边。
+
+- **EntryRevision 可以引用别的题、甚至别的批次的配置(阻塞项)**。两条外键各自成立
+  (revision→entry、revision→item_revision),合起来却没说「这份配置属于这个 entry 的题」——
+  于是 `Entry.itemId = 题A,payload 按题B 的表单解码`是合法数据,历史解码、review policy、
+  计分全被污染。修法沿用本轮的复合键策略而不是 service if:`entry_revisions` 增列 `item_id`,
+  两条键合抱——`(tenant, entry_id, item_id) → entries (tenant, id, item_id)` 钉住「item 是这个
+  entry 的 item」,`(tenant, item_id, item_revision_id) → assessment_item_revisions
+(tenant, item_id, id)` 钉住「revision 是那个 item 的 revision」。三条敌意用例:谎报 item、
+  实报 item 引别题 revision、跨批次 revision,全部 23503。
+- **void shape 的 `false = false` 通道**:等式形式下,active 行带着残留 voided_at 会让两边同假而通过;
+  空白 reason 也过。改成真二选一(active 三件全空 / voided 三件全有且 `btrim(reason) <> ''`),
+  换名 `chk_assessment_items_void_state_shape`。
+- **completed 却没有 outcome 是合法数据**:原来只有单向蕴含。合并成一条
+  `chk_review_instances_lifecycle_shape`:开着的轮两者皆空,completed 两者皆有。outcome 词表
+  仍不冻结(归审核状态机落地时)。
+- **floor > cap**:aggregator 会有两个都说得通的答案,加 `floor <= cap`(NULL 放过,负值仍合法
+  ——扣分组是真需求)。
+- **driver id 声明期校验**:`ItemTypes.driver` 现在按 `item_type` 列同一条正则拒绝
+  (`Evidence`/`foo/bar`/`foo..bar` 装配期即死),与 `Scoring.driver` 的 `name@version` 校验同型。
+- **注册点改名**:`@qualy/plugin-assessment/calculators` → `.../scoring-drivers`(它装的是两类)。
+
+修正迁移 `20260813090300_bind-entry-revisions-to-their-item.sql`(fix-forward,不回改已提交迁移;
+entry_revisions 尚无任何写路径,加 NOT NULL 列无回填问题)。过程中实测出 MikroORM 生成器两个坑,
+已记 docs/notes/mikro-orm.md:①改 CHECK 表达式不进迁移(comparator 检出但写出器不渲染,要改就换
+约束名);②对已有表 add CHECK 时 IN 列表被写成残缺的 `ARRAY[...][]`(非法 SQL,clean-room parity
+抓到)——lifecycle 检查因此拼成 `state <> 'completed'`(值域由另一条 IN 检查兜住)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **559 passed / 17 skipped(84 文件)**,
+其中 item-entry-schema 14 例(+2 敌意解码、4 处新 check 拒绝)、registries 8 例(+driver id 格式);
+`pnpm test:browser` 48;`pnpm build`、`pnpm qualy resolve --frozen-lockfile`(零写入)、
+`pnpm qualy generate`(无待生成)、`prettier --check .`、生产 smoke 全绿;dev 库已 deploy。
+
+审计中「暂不修」四条照单:actor/subject 不加 users 外键(历史不钉活人)、附件 owner/status/跨 entry
+复用归 ResourcePolicy 与 bind 事务、parent_group 不焊死单层、current_* 保持 nullable。

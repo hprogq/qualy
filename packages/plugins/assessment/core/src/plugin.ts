@@ -67,6 +67,9 @@ export const ItemTypeDeclarations = ExtensionPoint.make<ItemTypeDriver>(
   { phase: 'prepare' },
 )
 
+/** the one spelling of a driver id; items.item_type carries the same check */
+const ITEM_TYPE_FORMAT = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/
+
 /** the compiled catalog: which drivers exist, before any layer builds */
 export class ItemTypeCatalog extends Context.Service<
   ItemTypeCatalog,
@@ -94,7 +97,7 @@ export interface ScoringDriver {
 
 /** every scoring driver this assembly's plugins declare, in plugin order */
 export const ScoringDeclarations = ExtensionPoint.make<ScoringDriver>(
-  '@qualy/plugin-assessment/calculators',
+  '@qualy/plugin-assessment/scoring-drivers',
   { phase: 'prepare' },
 )
 
@@ -110,8 +113,17 @@ const REF_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*@[1-9]\d*$/
 
 export const ItemTypes = {
   /** declares that this plugin provides a kind of question */
-  driver: (driver: ItemTypeDriver): PluginFeature =>
-    Plugin.contribute(ItemTypeDeclarations, driver),
+  driver: (driver: ItemTypeDriver): PluginFeature => {
+    if (!ITEM_TYPE_FORMAT.test(driver.id)) {
+      // the same rule the item_type column enforces, refused at declaration -
+      // a driver that assembles cleanly and dies on the first item created
+      // would point everyone at the wrong file
+      throw new Error(
+        `item type id "${driver.id}" is not lowercase dot-or-dash words (like "evidence" or "appraisal.teacher")`,
+      )
+    }
+    return Plugin.contribute(ItemTypeDeclarations, driver)
+  },
 
   /**
    * The owner's interpretation: the catalog, refused rather than merged on a

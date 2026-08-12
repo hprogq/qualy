@@ -63,6 +63,18 @@ describe('the item-type registry', () => {
     expect(catalog.has('appraisal.teacher')).toBe(false)
   })
 
+  it('refuses a driver id the item_type column would refuse', () => {
+    // the same rule as the database check, applied where the plugin author
+    // is: a driver that assembles and dies on the first item created would
+    // point everyone at the wrong file
+    for (const id of ['Evidence', 'foo/bar', 'foo..bar', 'foo.', '-foo', '']) {
+      expect(() => ItemTypes.driver(driver(id)), id).toThrow(/lowercase dot-or-dash/)
+    }
+    for (const id of ['evidence', 'appraisal.teacher', 'foo-bar', 'grades.derived']) {
+      expect(() => ItemTypes.driver(driver(id)), id).not.toThrow()
+    }
+  })
+
   it('refuses two plugins claiming one item type', () => {
     expect(() =>
       compileOf(ItemTypes.provider)([
