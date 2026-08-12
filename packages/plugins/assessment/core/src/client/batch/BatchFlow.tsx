@@ -337,8 +337,14 @@ export function BatchFlowStrip({
           if (rail && node) rail.scrollTo({ left: centreOf(rail, node), behavior: 'smooth' })
         }}
         className={cn(
-          'absolute bottom-0 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-[opacity,transform] hover:text-foreground',
-          strayed ? 'opacity-100' : 'pointer-events-none translate-y-1 opacity-0',
+          // the transform is written out rather than composed from the
+          // translate utilities: those set a custom property the transition
+          // does not name, so the way back down happened in one step - the
+          // few pixels of jump just as the rail came back to centre
+          'absolute bottom-0 left-1/2 z-10 flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-[opacity,transform] duration-200 hover:text-foreground',
+          strayed
+            ? 'opacity-100 [transform:translate(-50%,0)]'
+            : 'pointer-events-none opacity-0 [transform:translate(-50%,4px)]',
         )}
       >
         <LocateFixedIcon aria-hidden className="size-3.5" />
