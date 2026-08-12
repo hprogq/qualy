@@ -60,9 +60,11 @@ const SEGMENTS = {
  * A segment gives its own name when the pointer rests on it: the segment
  * itself only thickens, and the name appears above it as a line of small
  * text. Neither costs the card a pixel of height - the row is one line of
- * cards, and a card that grows on hover moves its neighbours. On a phone,
- * where there is no pointer to rest, the stage the batch is actually in keeps
- * its name shown and the rest stay as they are.
+ * cards, and a card that grows on hover moves its neighbours.
+ *
+ * Nothing of this happens without a pointer. A touch screen has nowhere to
+ * rest one, and the stage the batch is in is already named in full higher up
+ * the card, so a phone gets the plain bar.
  */
 function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; batchId: string }) {
   return (
@@ -86,8 +88,7 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
                 four-character name is legible over a bar six pixels wide */}
             <span
               className={cn(
-                'pointer-events-none absolute bottom-full left-1/2 mb-1.5 max-w-40 -translate-x-1/2 translate-y-1 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover/segment:translate-y-0 group-hover/segment:opacity-100',
-                entry.status === 'current' && 'max-sm:translate-y-0 max-sm:opacity-100',
+                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 -translate-x-1/2 translate-y-1 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover/segment:translate-y-0 group-hover/segment:opacity-100',
               )}
             >
               {entry.displayName}
