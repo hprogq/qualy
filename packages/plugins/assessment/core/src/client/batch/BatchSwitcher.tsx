@@ -62,9 +62,15 @@ export function BatchSwitcher({
         <button
           type="button"
           aria-label={format(m.switchBatch)}
-          className="flex min-w-0 items-center gap-2 rounded-full border border-transparent px-3 py-1 transition-[colors,transform] outline-none active:scale-[0.98] hover:border-border hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:border-border data-[state=open]:bg-muted/60"
+          // A ceiling of its own, not just min-w-0: the bar centres this
+          // button between two columns that can give it more room than the
+          // screen has, so a long batch name pushed the standing and the
+          // chevron off the edge instead of being cut.
+          className="flex min-w-0 max-w-[min(45vw,15rem)] items-center gap-2 rounded-full border border-transparent px-3 py-1 transition-[colors,transform] outline-none active:scale-[0.98] hover:border-border hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:border-border data-[state=open]:bg-muted/60"
         >
-          <span className="min-w-0 truncate text-sm font-semibold">{name}</span>
+          <span className="min-w-0 truncate text-sm font-semibold" title={name}>
+            {name}
+          </span>
           <StatusBadge status={status} currentPhaseId={currentPhaseId} compact={narrow} />
           <ChevronDownIcon
             aria-hidden
