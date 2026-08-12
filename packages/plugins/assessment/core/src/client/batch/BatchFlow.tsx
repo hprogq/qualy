@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { CheckIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { cn } from '@qualy/ui/cn'
 import {
@@ -14,6 +13,7 @@ import {
 } from '@qualy/ui/timeline'
 import { assessmentMessages as m } from '../i18n.ts'
 import { stagesOf, type FlowEntry, type FlowStage } from './flow.ts'
+import { useWhen } from './when.ts'
 
 // The stages of the round, drawn twice.
 //
@@ -28,45 +28,43 @@ import { stagesOf, type FlowEntry, type FlowStage } from './flow.ts'
 // a hover - a touch screen has no pointer to rest, and a detail worth writing
 // down is worth reading without asking for it.
 
-// Times are said in full, to the minute. Two stages of one round can begin
-// and end on the same day, and a flow that says only "September 5" leaves its
-// reader to guess which of them they are looking at.
-const useWhen = () => {
-  const { locale } = useI18n()
-  const moment = (at: number) =>
-    new Date(at).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })
-  return {
-    moment,
-    /** the two edges of a stage, with the second dropped when it is unknown */
-    span: (from: number | null, to: number | null) =>
-      from === null ? null : to === null ? moment(from) : `${moment(from)} — ${moment(to)}`,
+/**
+ * When a stage runs.
+ *
+ * Every stage says something here, including the ones nobody has scheduled:
+ * a blank where a date belongs reads as a screen that failed rather than as
+ * a decision still to be made. What the stage is waiting for is a separate
+ * sentence, and the server only sends it while there is no time to say.
+ */
+const useSaid = () => {
+  const when = useWhen()
+  const { format } = useI18n()
+  return (stage: FlowStage): string => {
+    if (stage.at === null) return format(m.flowPending)
+    return (
+      when.span(stage.at, stage.until) ?? format(m.flowFromPending, { when: when.moment(stage.at) })
+    )
   }
 }
 
 /**
- * When a stage runs, or what it is waiting for instead.
+ * Done, doing, and not yet - as one mark in three weights.
  *
- * One or the other, never both: a stage with times has answered the question
- * the note was standing in for, and the server stops sending the note then.
+ * No tick and no colour: the three states differ in how solid the dot is,
+ * which is enough to read a rail by and leaves the page's one accent for
+ * things a reader has to act on.
  */
-const useSaid = () => {
-  const when = useWhen()
-  return (stage: FlowStage): string => when.span(stage.at, stage.until) ?? stage.note
-}
-
-/** done, doing, and not yet - as the marker rather than as a word */
 function Marker({ status }: { status: FlowStage['status'] }) {
   return (
     <TimelineIndicator className="flex items-center justify-center border-0 bg-background">
-      {status === 'ended' ? (
-        <span className="flex size-4 items-center justify-center rounded-full bg-muted-foreground/25 text-muted-foreground">
-          <CheckIcon className="size-2.5" strokeWidth={3} />
-        </span>
-      ) : status === 'current' ? (
-        <span className="size-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
-      ) : (
-        <span className="size-3 rounded-full border border-muted-foreground/35" />
-      )}
+      <span
+        className={cn(
+          'rounded-full',
+          status === 'ended' && 'size-2 bg-muted-foreground/40',
+          status === 'current' && 'size-2.5 bg-foreground ring-[3px] ring-foreground/12',
+          status === 'future' && 'size-2 border border-muted-foreground/40 bg-background',
+        )}
+      />
     </TimelineIndicator>
   )
 }
@@ -85,9 +83,7 @@ function Stage({ stage }: { stage: FlowStage }) {
       <Marker status={stage.status} />
       <TimelineSeparator className="bg-border group-data-completed/timeline-item:bg-muted-foreground/25" />
       <TimelineHeader>
-        {said(stage) !== '' && (
-          <TimelineDate className="font-normal tabular-nums">{said(stage)}</TimelineDate>
-        )}
+        <TimelineDate className="font-normal tabular-nums">{said(stage)}</TimelineDate>
         <TimelineTitle
           className={cn(
             stage.status === 'current' && 'text-foreground',
@@ -97,6 +93,11 @@ function Stage({ stage }: { stage: FlowStage }) {
           {stage.name}
         </TimelineTitle>
       </TimelineHeader>
+      {/* what it waits on first, then what it is for: one is about now and
+          the other is about the stage whenever it happens */}
+      {stage.note !== '' && (
+        <TimelineContent className="mt-1 text-xs">{stage.note}</TimelineContent>
+      )}
       {stage.description !== '' && (
         <TimelineContent className="mt-1 text-xs">{stage.description}</TimelineContent>
       )}

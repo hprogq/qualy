@@ -441,8 +441,8 @@ describe('the batch overview', () => {
       `/assessment/batches/${BATCH_ID}`,
     )
 
-    // the sentence stands where a date would be, and the absence is never
-    // reported as one
+    // the stage says its time is still to be decided, and why
+    await expect.element(page.getByText('时间待定').first()).toBeVisible()
     await expect.element(page.getByText('待学院审批名单后确定').first()).toBeVisible()
   })
 })

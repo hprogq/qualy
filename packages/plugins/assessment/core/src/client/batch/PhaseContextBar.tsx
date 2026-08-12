@@ -8,6 +8,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { BatchFlow } from './BatchFlow.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { currentOf, stagesOf, type FlowEntry } from './flow.ts'
+import { useWhen } from './when.ts'
 
 // One line at the top of a working screen: which stage the round is in, when
 // it gives way to the next, and the way to the whole flow.
@@ -24,7 +25,8 @@ export function PhaseContextBar({
   timeline: readonly FlowEntry[]
   className?: string
 }) {
-  const { format, locale } = useI18n()
+  const { format } = useI18n()
+  const when = useWhen()
   const [open, setOpen] = useState(false)
   const narrow = useIsBelow(640)
   const stage = currentOf(stagesOf(timeline))
@@ -41,16 +43,13 @@ export function PhaseContextBar({
         <span className="min-w-0 truncate font-medium">
           {stage?.name ?? format(m.notStartedYet)}
         </span>
-        {stage?.until != null && (
+        {stage !== undefined && (
           <>
             <span aria-hidden className="h-3.5 w-px bg-border max-sm:hidden" />
-            <span className="text-muted-foreground">
-              {format(m.flowUntil, {
-                when: new Date(stage.until).toLocaleString(locale, {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                }),
-              })}
+            <span className="text-muted-foreground tabular-nums">
+              {stage.until === null
+                ? format(m.flowEndPending)
+                : format(m.flowUntil, { when: when.moment(stage.until) })}
             </span>
           </>
         )}

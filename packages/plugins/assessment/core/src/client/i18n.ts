@@ -214,6 +214,10 @@ const flowFrom = defineMessage<{ when: string }>()({
   id: 'assessment/flow/from',
   defaultMessage: 'from {when}',
 })
+const flowFromPending = defineMessage<{ when: string }>()({
+  id: 'assessment/flow/from-pending',
+  defaultMessage: 'from {when}, end to be decided',
+})
 const flowUntil = defineMessage<{ when: string }>()({
   id: 'assessment/flow/until',
   defaultMessage: 'until {when}',
@@ -419,6 +423,11 @@ const i18n = definePluginMessages({
     flowFrom,
     flowUntil,
     viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'See the whole flow' },
+    // a stage with no time still says something about its time: an empty
+    // line reads as a screen that failed to load one
+    flowPending: { id: 'assessment/flow/pending', defaultMessage: 'Time to be decided' },
+    flowEndPending: { id: 'assessment/flow/end-pending', defaultMessage: 'End to be decided' },
+    flowFromPending,
     bareDays,
     bareHours,
     bareMinutes,
