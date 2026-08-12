@@ -47,11 +47,13 @@ export function BatchScreen({
           the page's own width is a card pretending to be a header, and it
           reads as one more box among the boxes below it. */}
       <div className="relative overflow-hidden border-b bg-background">
-        {/* a hairline lattice, fading out downwards so the band gives way to
-            the work instead of stopping at a line */}
+        {/* Hairlines in one direction, widely spaced, gathered at the far
+            corner and gone by the time they reach the words: crossed the
+            other way they read as graph paper, and evenly spread they read as
+            a texture somebody chose. Here it is only depth. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.055] [background-image:repeating-linear-gradient(45deg,currentColor_0_1px,transparent_1px_17px),repeating-linear-gradient(-45deg,currentColor_0_1px,transparent_1px_17px)] [mask-image:linear-gradient(to_bottom,black,transparent)]"
+          className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:repeating-linear-gradient(-45deg,currentColor_0_1px,transparent_1px_24px)] [mask-image:radial-gradient(130%_115%_at_100%_0%,black,transparent_62%)]"
         />
         <PageContainer size={size} className="relative py-6">
           <PageHeader title={title} description={description} variant="banner" />
