@@ -101,12 +101,14 @@ const plugin = Plugin.define(
     component: Ui.react('./client/BatchOverviewPage.tsx'),
     layout: WORKSPACE_SHELL,
     visibility: AUTHENTICATED,
+    title: message('assessment/navigation/overview', 'Overview'),
   }),
   Ui.page({
     id: 'assessment/batch-phases',
     path: '/assessment/batches/:batchId/phases',
     component: Ui.react('./client/BatchPhasesPage.tsx'),
     layout: WORKSPACE_SHELL,
+    title: message('assessment/navigation/phases', 'Stage plan'),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
@@ -114,6 +116,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/participants',
     component: Ui.react('./client/BatchParticipantsPage.tsx'),
     layout: WORKSPACE_SHELL,
+    title: message('assessment/navigation/participants', 'Participants'),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
@@ -121,6 +124,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/access',
     component: Ui.react('./client/BatchAccessPage.tsx'),
     layout: WORKSPACE_SHELL,
+    title: message('assessment/navigation/access', 'Staffs'),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
@@ -128,6 +132,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/settings',
     component: Ui.react('./client/BatchSettingsPage.tsx'),
     layout: WORKSPACE_SHELL,
+    title: message('assessment/navigation/settings', 'Settings'),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   // What the rail offers inside a batch, and the bar that says which batch it
@@ -181,7 +186,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-access/rail',
         value: {
           id: 'assessment/batch-access/rail',
-          label: message('assessment/navigation/access', 'Who may work on it'),
+          label: message('assessment/navigation/access', 'Staffs'),
           target: { kind: 'page', pageId: 'assessment/batch-access' },
           icon: 'shield-check',
           order: 30,

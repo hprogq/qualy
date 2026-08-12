@@ -40,6 +40,9 @@ const plugin = Plugin.define(
     component: Ui.react('./client/LoginPage.tsx'),
     layout: BLANK_SHELL,
     visibility: PUBLIC,
+    // no menu entry to borrow the words from: a page reached before there is
+    // anybody to show a menu to
+    title: message('auth/navigation/login', 'Sign in'),
   }),
   Ui.page({
     id: 'auth/users',
@@ -61,6 +64,7 @@ const plugin = Plugin.define(
     component: Ui.react('./client/iam/UserDetailPage.tsx'),
     layout: APP_SHELL,
     visibility: permissionOf('auth.user.read'),
+    title: message('auth/navigation/user-detail', 'Person'),
   }),
   Ui.page({
     id: 'auth/user-types',

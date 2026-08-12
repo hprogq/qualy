@@ -1,5 +1,6 @@
-import { useMemo, type ComponentType, type ReactNode } from 'react'
-import { Navigate, useRoutes, type RouteObject } from 'react-router'
+import { useEffect, useMemo, type ComponentType, type ReactNode } from 'react'
+import { matchPath, Navigate, useLocation, useRoutes, type RouteObject } from 'react-router'
+import { useI18n } from '@qualy/web-i18n'
 import type { ComponentRegistry, Manifest } from './index.tsx'
 import { PluginComponent } from './component-boundary.tsx'
 
@@ -109,5 +110,36 @@ export function ManifestRoutes(options: RouteBuilderOptions) {
     // the host memoizes the slot object so this stays cheap
     [options.manifest, options.registry, options.homePath, options.slots],
   )
-  return useRoutes(routes)
+  return (
+    <>
+      <DocumentTitle pages={options.manifest.pages} />
+      {useRoutes(routes)}
+    </>
+  )
+}
+
+// Whatever index.html called the product, kept as the suffix every page
+// hangs off. Read once, before anything has changed it.
+const PRODUCT = typeof document === 'undefined' ? '' : document.title
+
+/**
+ * What the browser tab, the history entry and a bookmark call this page.
+ *
+ * The manifest already carries the words - a page's own title, or the ones
+ * its menu entry uses - so the title follows the same authorized projection
+ * as everything else, and a page nobody may see never names itself. Pages
+ * without either keep the product's own name rather than inventing one from
+ * the address.
+ */
+function DocumentTitle({ pages }: { pages: Manifest['pages'] }) {
+  const { pathname } = useLocation()
+  const { formatText } = useI18n()
+  const named = pages.find(
+    (page) => page.title !== undefined && matchPath({ path: page.path, end: true }, pathname),
+  )
+  const title = named?.title
+  useEffect(() => {
+    document.title = title === undefined ? PRODUCT : `${formatText(title)} - ${PRODUCT}`
+  }, [title, formatText])
+  return null
 }

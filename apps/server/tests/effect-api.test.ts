@@ -176,17 +176,25 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       const response = await fetch(`${base}${QUALY_API_PREFIX}/app/manifest`)
       expect(response.status).toBe(200)
       const manifest = (await response.json()) as {
-        pages: readonly { id: string; path: string; component: string; layout: string }[]
+        pages: readonly {
+          id: string
+          path: string
+          component: string
+          layout: string
+          title?: unknown
+        }[]
         layouts: readonly { contract: string }[]
       }
       // ping's page is public, so an anonymous request sees it; a page whose
       // layout nobody implements is dropped, so this also proves the layout
-      // plugin registered its own contract implementation
+      // plugin registered its own contract implementation. Its title comes
+      // from the menu entry it declares, which is where a tab gets its words.
       expect(manifest.pages).toContainEqual({
         id: 'ping/page',
         path: '/ping',
         component: 'ping/PingPage',
         layout: 'app-shell/v1',
+        title: { kind: 'message', id: 'ping/navigation/ping', defaultMessage: 'Ping' },
       })
       expect(manifest.layouts.map((layout) => layout.contract)).toContain('app-shell/v1')
     } finally {

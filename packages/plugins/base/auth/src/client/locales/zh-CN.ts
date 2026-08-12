@@ -53,6 +53,8 @@ export default {
   'auth/preference/theme-light': '浅色',
   'auth/preference/theme-dark': '深色',
   'auth/preference/theme-system': '跟随系统',
+  'auth/navigation/login': '登录',
+  'auth/navigation/user-detail': '用户详情',
   'auth/navigation/users': '用户',
   'auth/navigation/user-types': '用户类型',
 

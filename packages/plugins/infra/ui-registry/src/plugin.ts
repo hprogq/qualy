@@ -51,6 +51,8 @@ export interface PageOptions {
   readonly component: ClientComponentRef
   readonly layout: LayoutContractId
   readonly visibility: UiVisibility
+  /** what a browser tab calls it; a page with a menu entry inherits its words */
+  readonly title?: UiText
   readonly navigation?: {
     readonly label: UiText
     readonly icon?: string
@@ -80,6 +82,7 @@ export const Ui = {
           component: options.component,
           layout: options.layout,
           visibility: options.visibility,
+          ...(options.title === undefined ? {} : { title: options.title }),
           ...(options.navigation === undefined ? {} : { navigation: options.navigation }),
         },
       ],

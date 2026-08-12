@@ -17,11 +17,23 @@ const layout = Schema.Struct({
   component: Schema.String,
 })
 
+// the same two shapes the i18n contract calls UiText: a message the browser
+// translates, or business data that must not be translated at all
+const uiText = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal('message'),
+    id: Schema.String,
+    defaultMessage: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal('literal'), value: Schema.String }),
+])
+
 const page = Schema.Struct({
   id: namespaced,
   path: Schema.String,
   component: Schema.String,
   layout: namespaced,
+  title: Schema.optional(uiText),
 })
 
 const slotItem = Schema.Struct({

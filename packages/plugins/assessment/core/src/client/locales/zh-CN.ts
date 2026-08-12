@@ -99,7 +99,7 @@ export default {
   'assessment/batch/ends-unknown': '结束时间待定',
   'assessment/batch/enter': '进入测评',
   'assessment/batch/configure': '继续配置',
-  'assessment/batch/draft-hint': '排好阶段并为第一个阶段排期即可开始。',
+  'assessment/batch/draft-hint': '安排阶段并排期后即可开启该批次。',
   'assessment/batch/stage-position': '第 {current} 阶段，共 {total} 个',
   'assessment/batch/stage-count': '共 {total} 个阶段',
   'assessment/batch/material-window': '材料 {from} 至 {until}',

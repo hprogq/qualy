@@ -31,6 +31,16 @@ export interface PageDeclaration {
   readonly layout: LayoutContractId
   readonly visibility: UiVisibility
   /**
+   * What the browser calls this page: its tab, its history entry, the name a
+   * bookmark takes.
+   *
+   * A page that declares a navigation entry needs no title of its own - the
+   * words in the menu are the words somebody would look for in a tab, and two
+   * declarations of the same thing drift. This is for the pages with no menu
+   * entry, and for the ones a tab should name differently.
+   */
+  readonly title?: UiText
+  /**
    * Sugar for the primary navigation entry most pages also want.
    *
    * It inherits the page's visibility and disappears with it, so a page and

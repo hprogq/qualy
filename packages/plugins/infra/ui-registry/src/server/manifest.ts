@@ -1,3 +1,4 @@
+import type { UiText } from '@qualy/i18n-contract'
 import { Context, Effect, Layer } from 'effect'
 import {
   componentKey,
@@ -35,6 +36,8 @@ export interface ManifestPage {
   readonly path: string
   readonly component: string
   readonly layout: string
+  /** what a tab should call it, in the viewer's own language once resolved */
+  readonly title?: UiText
 }
 
 export interface Manifest {
@@ -219,12 +222,18 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
             provider: layout.declaration.provider,
             component: componentKey(layout.owner, layout.declaration.component),
           })),
-        pages: shown.map((page) => ({
-          id: page.declaration.page.id,
-          path: page.declaration.page.path,
-          component: componentKey(page.owner, page.declaration.component),
-          layout: page.declaration.layout,
-        })),
+        pages: shown.map((page) => {
+          // the menu entry's words when there is one, so a page and its tab
+          // cannot come to disagree about what the page is called
+          const title = page.declaration.title ?? page.declaration.navigation?.label
+          return {
+            id: page.declaration.page.id,
+            path: page.declaration.page.path,
+            component: componentKey(page.owner, page.declaration.component),
+            layout: page.declaration.layout,
+            ...(title === undefined ? {} : { title }),
+          }
+        }),
         collections: projectedCollections,
         slots: projectedSlots,
       } satisfies Manifest

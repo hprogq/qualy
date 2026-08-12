@@ -432,7 +432,7 @@ const i18n = definePluginMessages({
       id: 'assessment/overview/placeholder',
       defaultMessage: 'Nothing here yet.',
     },
-    tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Who may work on it' },
+    tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Staffs' },
     tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Settings' },
     settingsHint: {
       id: 'assessment/settings/hint',
@@ -831,10 +831,10 @@ const i18n = definePluginMessages({
     accessRoleAt,
     accessDeniedCount,
     accessSyncSelected,
-    addStaff: { id: 'assessment/access/add-staff', defaultMessage: 'Bring somebody in' },
+    addStaff: { id: 'assessment/access/add-staff', defaultMessage: 'Assign a new staff' },
     addStaffTitle: {
       id: 'assessment/access/add-staff-title',
-      defaultMessage: 'Bring somebody in for this batch',
+      defaultMessage: 'Assign a new staff for this batch',
     },
     addStaffHint: {
       id: 'assessment/access/add-staff-hint',
