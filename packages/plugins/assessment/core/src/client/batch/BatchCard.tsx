@@ -94,10 +94,10 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
                 four-character name is legible over a bar six pixels wide */}
             <span
               className={cn(
-                // will-change only while it is wanted: left on, every segment of
-                // every card holds a compositor layer of its own, and a list
-                // of them costs more than the animation ever saves
-                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 -translate-x-1/2 translate-y-1 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover/segment:translate-y-0 group-hover/segment:opacity-100 group-hover/segment:will-change-[opacity,transform]',
+                // No will-change here or on the bar below. Switching it on
+                // with the hover and off again drops the layer the moment the
+                // way back begins, and the way back is what then snaps.
+                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 -translate-x-1/2 translate-y-1 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover/segment:translate-y-0 group-hover/segment:opacity-100',
               )}
             >
               {entry.displayName}
@@ -107,7 +107,7 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
                 // scaled rather than grown: height is a layout property, and
                 // a card list relaying itself out on every frame of a hover
                 // is the one animation here that cannot run on the compositor
-                'absolute inset-x-0 bottom-0 h-1 origin-bottom rounded-[2px] transition-[transform,background-color] duration-150 group-hover/segment:scale-y-150 group-hover/segment:will-change-transform',
+                'absolute inset-x-0 bottom-0 h-1 origin-bottom rounded-[2px] transition-[transform,background-color] duration-200 ease-out group-hover/segment:scale-y-150',
                 SEGMENTS[entry.status],
               )}
             />
