@@ -180,10 +180,10 @@ export default function WorkspaceShell() {
             {rail(true)}
           </aside>
         )}
-        {/* the gutter is reserved whether or not the section overflows: the
-            roster fills the viewport and the overview scrolls, and without it
-            the two put their headings in different places */}
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+        {/* always scroll, never auto: the roster fills the viewport and the
+            overview overflows, and left to themselves the two would put their
+            headings in different places (see AppShell for why not a gutter) */}
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-scroll">
           <Outlet />
         </main>
       </div>

@@ -42,5 +42,5 @@ export default {
   'common/component/page-failed': '该页面无法显示。',
   'common/component/layout-failed': '应用框架无法显示。',
   'common/page/not-found-title': '页面不存在',
-  'common/page/not-found-hint': '这个地址没有对应到任何你能打开的页面。',
+  'common/page/not-found-hint': '未找到页面，请检查路径后重试。',
 } satisfies CatalogFor<typeof runtimeMessages>
