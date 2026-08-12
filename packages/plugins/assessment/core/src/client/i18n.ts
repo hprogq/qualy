@@ -444,6 +444,10 @@ const i18n = definePluginMessages({
     flowFrom,
     flowUntil,
     viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'See the whole flow' },
+    flowBackToCurrent: {
+      id: 'assessment/flow/back-to-current',
+      defaultMessage: 'Back to the stage in hand',
+    },
     // a stage with no time still says something about its time: an empty
     // line reads as a screen that failed to load one
     flowPending: { id: 'assessment/flow/pending', defaultMessage: 'Time to be decided' },

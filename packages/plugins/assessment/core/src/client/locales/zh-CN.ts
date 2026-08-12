@@ -100,6 +100,7 @@ export default {
   'assessment/flow/from': '{when} 开始',
   'assessment/flow/until': '至 {when}',
   'assessment/flow/view': '查看完整流程',
+  'assessment/flow/back-to-current': '返回当前阶段',
   'assessment/flow/earlier': '展开前面 {count} 个阶段',
   'assessment/flow/status-ended': '已结束',
   'assessment/flow/status-current': '进行中',

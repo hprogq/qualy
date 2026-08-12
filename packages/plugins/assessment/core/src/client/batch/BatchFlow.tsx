@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
-import { ChevronsLeftIcon, ChevronsRightIcon, MoreVerticalIcon } from 'lucide-react'
+import {
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
+  LocateFixedIcon,
+  MoreVerticalIcon,
+} from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import {
@@ -235,14 +240,23 @@ export function BatchFlowStrip({
   const here = useRef<HTMLDivElement>(null)
   // which ends have something beyond them, which is what the fade says
   const [more, setMore] = useState({ before: false, after: false })
+  const [strayed, setStrayed] = useState(false)
+
+  // where the stage in hand would sit if it were centred
+  const centreOf = (rail: HTMLDivElement, node: HTMLDivElement) =>
+    node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2
 
   const measure = () => {
     const rail = track.current
     if (!rail) return
+    const node = here.current
     setMore({
       before: rail.scrollLeft > 4,
       after: rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 4,
     })
+    // far enough that the reader has gone looking somewhere else, not the
+    // few pixels a snap leaves behind
+    setStrayed(node !== null && Math.abs(rail.scrollLeft - centreOf(rail, node)) > 64)
   }
 
   // Opens where the round is, not where it began: the stage somebody is in
@@ -258,7 +272,7 @@ export function BatchFlowStrip({
     if (!rail) return
     const centre = () => {
       const node = here.current
-      if (node) rail.scrollTo({ left: node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2 })
+      if (node) rail.scrollTo({ left: centreOf(rail, node) })
       measure()
     }
     const observer = new ResizeObserver(() => {
@@ -286,17 +300,37 @@ export function BatchFlowStrip({
       <ChevronsLeftIcon
         aria-hidden
         className={cn(
-          'pointer-events-none absolute top-1 left-0 z-10 size-3.5 text-muted-foreground/50 transition-opacity',
+          'pointer-events-none absolute top-1/2 left-0 z-10 size-3.5 -translate-y-1/2 text-muted-foreground/50 transition-opacity',
           more.before ? 'opacity-100' : 'opacity-0',
         )}
       />
       <ChevronsRightIcon
         aria-hidden
         className={cn(
-          'pointer-events-none absolute top-1 right-0 z-10 size-3.5 text-muted-foreground/50 transition-opacity',
+          'pointer-events-none absolute top-1/2 right-0 z-10 size-3.5 -translate-y-1/2 text-muted-foreground/50 transition-opacity',
           more.after ? 'opacity-100' : 'opacity-0',
         )}
       />
+      {/* the way back, offered only to somebody who has gone looking: the
+          rail opens on the stage in hand, so this appears when they leave it
+          and takes them back the way they came, at the speed they went */}
+      <button
+        type="button"
+        tabIndex={strayed ? 0 : -1}
+        aria-hidden={!strayed}
+        onClick={() => {
+          const rail = track.current
+          const node = here.current
+          if (rail && node) rail.scrollTo({ left: centreOf(rail, node), behavior: 'smooth' })
+        }}
+        className={cn(
+          'absolute -bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-[opacity,transform] hover:text-foreground',
+          strayed ? 'opacity-100' : 'pointer-events-none translate-y-1 opacity-0',
+        )}
+      >
+        <LocateFixedIcon aria-hidden className="size-3.5" />
+        {format(m.flowBackToCurrent)}
+      </button>
       <div
         ref={track}
         onScroll={measure}
