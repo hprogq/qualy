@@ -78,9 +78,12 @@ describe.skipIf(!postgresAvailable)('storage cleanup', () => {
     await context?.dispose()
   })
   // a sweep is deliberately not scoped to one tenant, so rows another test
-  // left behind would be swept by this one and counted in its report
+  // left behind would be swept by this one and counted in its report. Cascade
+  // because business plugins hold foreign keys into attachments; their tables
+  // are empty here, and naming them would couple this suite to whoever they
+  // are this month.
   beforeEach(async () => {
-    await context.query('truncate storage_upload_reservations, storage_attachments')
+    await context.query('truncate storage_upload_reservations, storage_attachments cascade')
   })
 
   it('leaves an abandoned upload alone until the grace period is over', async () => {

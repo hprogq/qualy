@@ -16,15 +16,19 @@ import {
   workspaceNavigation,
 } from '@qualy/ui-contract'
 import { compositeForeignKeys, entities } from './db/entities.ts'
+import { ItemTypes, Scoring } from './plugin.ts'
+import { builtinScoringDrivers } from './scoring/builtins.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
 import { schedulerLayer } from './phase/scheduler.ts'
 import { assessmentApiHandlers, serviceLayer } from './server/index.ts'
 
 // The assessment bounded context: its tables, its permission codes, its api
-// group, the service the batch screens talk to, and the fiber that writes
-// down the boundaries the clock has crossed. Pages and the item-type and
-// calculator extension points land with their own milestones.
+// group, the service the batch screens talk to, the fiber that writes down
+// the boundaries the clock has crossed, and the two channels other plugins
+// extend it through - item types and scoring arithmetic. Core contributes
+// the arithmetic every deployment starts with; the first item-type driver is
+// the evidence plugin's.
 
 const plugin = Plugin.define(
   '@qualy/plugin-assessment',
@@ -34,13 +38,24 @@ const plugin = Plugin.define(
       '@qualy/plugin-database',
       '@qualy/plugin-org',
       '@qualy/plugin-rbac',
+      '@qualy/plugin-storage',
       '@qualy/plugin-ui-registry',
     ],
   },
   Db.entities(entities, {
     compositeForeignKeys,
-    dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac'],
+    // storage joined in M2: the attachment relation table holds a real
+    // foreign key into storage_attachments
+    dependsOn: [
+      '@qualy/plugin-org',
+      '@qualy/plugin-auth',
+      '@qualy/plugin-rbac',
+      '@qualy/plugin-storage',
+    ],
   }),
+  ItemTypes.provider,
+  Scoring.provider,
+  ...builtinScoringDrivers.map((driver) => Scoring.driver(driver)),
   Access.permissions('assessment', permissions),
   Ui.i18n('./client/i18n.ts'),
   // the sidebar section this domain owns; its pages file under it by id

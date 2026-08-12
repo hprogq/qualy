@@ -2945,6 +2945,28 @@ QUALY_TEST_COS=1
 
 `feat(assessment): add item and entry persistence`
 
+落地记录（对话 2 完成时相对本节的偏离）：
+
+- ExtensionPoint 的 id 字符串按仓库惯例命名（`@qualy/plugin-assessment/item-types` /
+  `@qualy/plugin-assessment/calculators`），`assessment.item-type` / `assessment.calculator`
+  仍是概念名。构造器住 `@qualy/plugin-assessment/plugin` 子路径（mirror `Login.driver` /
+  `Storage.backend`），evidence 插件（对话 3）从这里贡献。
+- **review_events.kind 用本插件既有的 kebab-case**（`submitted` / `approved` / `rejected` /
+  `cancelled-by-submitter` / `cancelled-item-voided`），不用文档里的 SCREAMING_SNAKE——
+  phase_events 已经把 `kind ~ '^[a-z0-9-]+$'` 定成插件口径，两张事件表两种大小写没有任何好处。
+  对话 5 写事件时按此拼写。
+- `items.current_revision_id` 与 `entries.current_revision_id / current_review_instance_id`
+  在 DB 里 **nullable**：行与它的第一个 revision 互相引用，非空约束会让插入顺序无解
+  （与 `assessment_batches.current_phase_id` 同型）。service 层从创建后保持非空。
+- 同批次约束落了比 §9.4 底线更多的三条同型键：item→score_group 同批次、score_group parent
+  同批次、item→current_revision 同 item、entry→current_review_instance 同 entry——
+  都是"能直接堵住 M2 写路径交叉引用"的同一类，不需要新增列。
+- `score_groups.cap/floor` 落 `numeric(12,4)`（1e-4 定点的列宽），配置金额从第一天就是
+  decimal string：`fixed@1` 的 configSchema 拒绝 JSON number。
+- `uq_review_instances_open_entry` 的谓词按 `pg_get_indexdef` 的回读形态拼写
+  （`(state)::text = ANY (...)`）——comparator 对 expression index 做文本配对，
+  更好看的写法会永远 diff 自己的 introspection。
+
 ### 对话 3：Item 配置 + Evidence driver
 
 目标：

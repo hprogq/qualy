@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./plugin": "./src/plugin.ts",
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
     "./api": "./src/api.ts",
@@ -22,6 +23,7 @@
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-storage": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",

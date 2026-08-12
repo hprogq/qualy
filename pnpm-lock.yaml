@@ -522,6 +522,9 @@ importers:
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../../base/rbac
+      '@qualy/plugin-storage':
+        specifier: workspace:*
+        version: link:../../infra/storage
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac

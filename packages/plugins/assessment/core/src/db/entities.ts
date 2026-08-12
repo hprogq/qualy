@@ -1,9 +1,10 @@
 import { defineEntity } from '@mikro-orm/core'
 import { Tenant } from '@qualy/plugin-org/db'
 
-// The assessment domain's batch, phase and roster tables. Entry, review,
-// scoring and publication tables arrive with their own milestones; nothing
-// here anticipates them beyond the two bare uuid columns called out below.
+// The assessment domain's tables: batch, phase and roster from the first
+// milestone; items, entries and review from the second. Score runs and
+// publication arrive with their own milestones - nothing here anticipates
+// them.
 //
 // Constraint names are explicit throughout: postgres errors are translated to
 // domain errors by constraint name, and the parity gates compare the schema
@@ -539,6 +540,14 @@ export const BatchParticipant = defineEntity({
       expression:
         'create unique index uq_batch_participants_tenant_batch_user on batch_participants (tenant_id, batch_id, user_id)',
     },
+    // the target of the entries same-batch reference: an entry names its
+    // participant together with its batch, and this is what makes that pair
+    // checkable
+    {
+      name: 'uq_batch_participants_tenant_batch_id',
+      expression:
+        'create unique index uq_batch_participants_tenant_batch_id on batch_participants (tenant_id, batch_id, id)',
+    },
     // referencing sides of the user, anchor and type foreign keys
     {
       name: 'idx_batch_participants_tenant_user',
@@ -585,6 +594,469 @@ export const BatchConfigRevision = defineEntity({
       name: 'uq_batch_config_revisions_tenant_batch_revision',
       expression:
         'create unique index uq_batch_config_revisions_tenant_batch_revision on batch_config_revisions (tenant_id, batch_id, revision)',
+    },
+  ],
+})
+
+// --- items, entries and review: the M2 tables ---
+//
+// From here down is what a batch is *about*: the questions it asks (items,
+// versioned), the answers people give (entries, versioned), and the judgment
+// passed on each answer (review instances and their events). Three shared
+// rules govern all of it:
+//
+//   - History is append-only. Item configuration and entry content are both
+//     revision tables; nothing updates a payload in place, and everything
+//     that judges or scores an answer anchors the exact revision it judged.
+//   - The batch is a boundary the database itself holds. Every reference
+//     between two batch-scoped rows carries (tenant_id, batch_id) so that an
+//     entry cannot cite an item from another round, whatever a service bug
+//     asks for.
+//   - Resolution snapshots are values, not references. Who reviews an entry
+//     was decided from frozen lineage at submit time; the columns recording
+//     that decision (node id, role ids, path) deliberately have no foreign
+//     keys, because history must not pin the living org tree.
+
+/**
+ * A node of the score tree - only one level of it in M2, but the shape is
+ * final so M4's nesting is an API change, not a migration.
+ *
+ * cap and floor are the whole reason the tree exists (ADR-5): combination
+ * limits live here and only here, never inside a calculator.
+ */
+export const ScoreGroup = defineEntity({
+  name: 'ScoreGroup',
+  tableName: 'score_groups',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('score_groups_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    // single layer in M2: the API refuses a parent, the schema does not -
+    // freezing "flat" into the database would make M4 a destructive change
+    parentGroupId: p.uuid().nullable(),
+    name: p.string().length(255),
+    cap: p.decimal().precision(12).scale(4).nullable(),
+    floor: p.decimal().precision(12).scale(4).nullable(),
+    sortOrder: p.integer().default(0),
+    createdAt: p.datetime().defaultRaw('now()'),
+    updatedAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [{ name: 'chk_score_groups_name_not_blank', expression: `btrim(name) <> ''` }],
+  indexes: [
+    {
+      name: 'uq_score_groups_tenant_id_id',
+      expression:
+        'create unique index uq_score_groups_tenant_id_id on score_groups (tenant_id, id)',
+    },
+    // the target of every same-batch reference to a group
+    {
+      name: 'uq_score_groups_tenant_batch_id',
+      expression:
+        'create unique index uq_score_groups_tenant_batch_id on score_groups (tenant_id, batch_id, id)',
+    },
+    {
+      name: 'idx_score_groups_tenant_batch_sort',
+      expression:
+        'create index idx_score_groups_tenant_batch_sort on score_groups (tenant_id, batch_id, sort_order)',
+    },
+  ],
+})
+
+/**
+ * One question a batch asks - a light identity whose actual configuration
+ * lives in immutable revisions.
+ *
+ * current_revision_id is what a *new* entry decodes against; an existing
+ * entry decodes against the revision it recorded, whatever the item says
+ * today. Nullable only for the instant between inserting the item and its
+ * first revision; the service keeps it set from then on.
+ */
+export const AssessmentItem = defineEntity({
+  name: 'AssessmentItem',
+  tableName: 'assessment_items',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('assessment_items_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    // which driver interprets this item's config and payloads
+    itemType: p.string().length(63),
+    title: p.string().length(255),
+    currentRevisionId: p.uuid().nullable(),
+    scoreGroupId: p.uuid(),
+    // how many entries one participant may hold; null is unlimited
+    maxEntries: p.integer().nullable(),
+    sortOrder: p.integer().default(0),
+    status: p.string().length(16).defaultRaw(`'active'`),
+    voidedAt: p.datetime().nullable(),
+    voidedBy: p.uuid().nullable(),
+    voidReason: p.string().length(500).nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+    updatedAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_assessment_items_item_type_format',
+      expression: `item_type ~ '^[a-z0-9]+(?:[.-][a-z0-9]+)*$'`,
+    },
+    { name: 'chk_assessment_items_title_not_blank', expression: `btrim(title) <> ''` },
+    { name: 'chk_assessment_items_status', expression: `status IN ('active', 'voided')` },
+    {
+      name: 'chk_assessment_items_max_entries_positive',
+      expression: 'max_entries IS NULL OR max_entries >= 1',
+    },
+    // voiding is an act with an actor, a time and a mandatory reason; an
+    // active row carries none of them
+    {
+      name: 'chk_assessment_items_voided_shape',
+      expression: `(status = 'voided') = (voided_at IS NOT NULL AND voided_by IS NOT NULL AND void_reason IS NOT NULL)`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_assessment_items_tenant_id_id',
+      expression:
+        'create unique index uq_assessment_items_tenant_id_id on assessment_items (tenant_id, id)',
+    },
+    {
+      name: 'uq_assessment_items_tenant_batch_id',
+      expression:
+        'create unique index uq_assessment_items_tenant_batch_id on assessment_items (tenant_id, batch_id, id)',
+    },
+    {
+      name: 'idx_assessment_items_tenant_batch_group',
+      expression:
+        'create index idx_assessment_items_tenant_batch_group on assessment_items (tenant_id, batch_id, score_group_id, sort_order)',
+    },
+  ],
+})
+
+/**
+ * One saved configuration of an item, immutable from the moment it exists.
+ *
+ * Entry revisions and score runs cite these by id, which is what lets an
+ * administrator change a question without changing what already-submitted
+ * answers mean. There is deliberately no update path: fixing a config is
+ * appending the next revision.
+ */
+export const AssessmentItemRevision = defineEntity({
+  name: 'AssessmentItemRevision',
+  tableName: 'assessment_item_revisions',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('assessment_item_revisions_tenant_id_tenants_id_fkey'),
+    itemId: p.uuid(),
+    revisionNo: p.integer(),
+    // who may create entries on this configuration: the students themselves,
+    // or only staff recording an administrative fact
+    entrySource: p.string().length(31),
+    formConfig: p.json<Record<string, unknown>>(),
+    scoringConfig: p.json<Record<string, unknown>>(),
+    reviewPolicy: p.json<Record<string, unknown>>(),
+    displayConfig: p.json<Record<string, unknown>>(),
+    createdBy: p.uuid(),
+    reason: p.string().length(500).nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_assessment_item_revisions_no_positive',
+      expression: 'revision_no >= 1',
+    },
+    {
+      name: 'chk_assessment_item_revisions_entry_source',
+      expression: `entry_source IN ('student', 'administrative')`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_assessment_item_revisions_tenant_id_id',
+      expression:
+        'create unique index uq_assessment_item_revisions_tenant_id_id on assessment_item_revisions (tenant_id, id)',
+    },
+    {
+      name: 'uq_assessment_item_revisions_tenant_item_no',
+      expression:
+        'create unique index uq_assessment_item_revisions_tenant_item_no on assessment_item_revisions (tenant_id, item_id, revision_no)',
+    },
+    // the target of "this revision must belong to this item" references
+    {
+      name: 'uq_assessment_item_revisions_tenant_item_id',
+      expression:
+        'create unique index uq_assessment_item_revisions_tenant_item_id on assessment_item_revisions (tenant_id, item_id, id)',
+    },
+  ],
+})
+
+/**
+ * One person's one claim on one item - the business identity, kept light.
+ *
+ * Content lives in revisions and judgment lives in review instances; what
+ * this row holds is whose claim it is and where the claim stands. The status
+ * is a projection of the review history, updated in the same transaction as
+ * the event that moves it.
+ */
+export const Entry = defineEntity({
+  name: 'Entry',
+  tableName: 'entries',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('entries_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    itemId: p.uuid(),
+    participantId: p.uuid(),
+    currentRevisionId: p.uuid().nullable(),
+    // the latest round, while one is open; history stays on the instances
+    currentReviewInstanceId: p.uuid().nullable(),
+    status: p.string().length(16).defaultRaw(`'draft'`),
+    // how the claim came to exist - self-filed, proxied, recorded by staff -
+    // always derived by the server, never accepted from a client
+    source: p.string().length(16),
+    createdAt: p.datetime().defaultRaw('now()'),
+    updatedAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_entries_status',
+      expression: `status IN ('draft', 'in_review', 'approved', 'rejected', 'voided')`,
+    },
+    {
+      name: 'chk_entries_source',
+      expression: `source IN ('self', 'proxy', 'record', 'import', 'system')`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_entries_tenant_id_id',
+      expression: 'create unique index uq_entries_tenant_id_id on entries (tenant_id, id)',
+    },
+    // one participant's entries on one item: the max_entries count and the
+    // filing screen both read down this path
+    {
+      name: 'idx_entries_tenant_batch_participant_item',
+      expression:
+        'create index idx_entries_tenant_batch_participant_item on entries (tenant_id, batch_id, participant_id, item_id)',
+    },
+    {
+      name: 'idx_entries_tenant_batch_item_status',
+      expression:
+        'create index idx_entries_tenant_batch_item_status on entries (tenant_id, batch_id, item_id, status)',
+    },
+  ],
+})
+
+/**
+ * What was actually said, each time it was said.
+ *
+ * The payload decodes against item_revision_id - the configuration that was
+ * current when this revision was written - and never against the item's
+ * latest. actor and subject are distinct on purpose: a proxy filing records
+ * who typed and who it is about, and neither is ever client-supplied.
+ */
+export const EntryRevision = defineEntity({
+  name: 'EntryRevision',
+  tableName: 'entry_revisions',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('entry_revisions_tenant_id_tenants_id_fkey'),
+    entryId: p.uuid(),
+    itemRevisionId: p.uuid(),
+    revisionNo: p.integer(),
+    payload: p.json<Record<string, unknown>>(),
+    actorId: p.uuid(),
+    subjectId: p.uuid(),
+    source: p.string().length(16),
+    note: p.string().length(500).nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    { name: 'chk_entry_revisions_no_positive', expression: 'revision_no >= 1' },
+    {
+      name: 'chk_entry_revisions_source',
+      expression: `source IN ('self', 'proxy', 'record', 'import', 'system')`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_entry_revisions_tenant_id_id',
+      expression:
+        'create unique index uq_entry_revisions_tenant_id_id on entry_revisions (tenant_id, id)',
+    },
+    {
+      name: 'uq_entry_revisions_tenant_entry_no',
+      expression:
+        'create unique index uq_entry_revisions_tenant_entry_no on entry_revisions (tenant_id, entry_id, revision_no)',
+    },
+    // the target of "this revision must belong to this entry" references
+    {
+      name: 'uq_entry_revisions_tenant_entry_id',
+      expression:
+        'create unique index uq_entry_revisions_tenant_entry_id on entry_revisions (tenant_id, entry_id, id)',
+    },
+  ],
+})
+
+/**
+ * Which attachments a revision cites, as rows rather than an array column.
+ *
+ * The payload still names attachment ids field by field; this table is what
+ * makes those names enforceable - a real foreign key into storage, a reverse
+ * path for authorization, and a stable order.
+ */
+export const EntryRevisionAttachment = defineEntity({
+  name: 'EntryRevisionAttachment',
+  tableName: 'entry_revision_attachments',
+  properties: {
+    tenantId: tenantKeyOf('entry_revision_attachments_tenant_id_tenants_id_fkey'),
+    revisionId: p.uuid().primary(),
+    attachmentId: p.uuid().primary(),
+    position: p.integer(),
+  },
+  checks: [
+    {
+      name: 'chk_entry_revision_attachments_position_non_negative',
+      expression: 'position >= 0',
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_entry_revision_attachments_tenant_revision_position',
+      expression:
+        'create unique index uq_entry_revision_attachments_tenant_revision_position on entry_revision_attachments (tenant_id, revision_id, position)',
+    },
+    // the reverse question: which revisions cite this attachment
+    {
+      name: 'idx_entry_revision_attachments_tenant_attachment',
+      expression:
+        'create index idx_entry_revision_attachments_tenant_attachment on entry_revision_attachments (tenant_id, attachment_id)',
+    },
+  ],
+})
+
+/**
+ * One formal round of judgment over one revision of one entry.
+ *
+ * A row per submission, never reused: withdrawing and resubmitting opens a
+ * new round with its own history. The chain the round walks was resolved
+ * from frozen lineage at submit time and snapshotted into effective_chain;
+ * the current_* columns are the projection the inbox joins against, and
+ * they carry no foreign keys because completed rounds are history and
+ * history must not pin the org tree.
+ */
+export const ReviewInstance = defineEntity({
+  name: 'ReviewInstance',
+  tableName: 'review_instances',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('review_instances_tenant_id_tenants_id_fkey'),
+    entryId: p.uuid(),
+    // the exact revision under judgment, frozen for the whole round
+    revisionId: p.uuid(),
+    roundNo: p.integer(),
+    origin: p.string().length(16),
+    initiator: p.string().length(16),
+    effectiveChain: p.json<Record<string, unknown>>(),
+    mode: p.string().length(16).defaultRaw(`'normal'`),
+    currentStageIndex: p.integer().default(0),
+    state: p.string().length(16).defaultRaw(`'active'`),
+    outcome: p.string().length(31).nullable(),
+    currentRoleIds: p.array().columnType('uuid[]'),
+    currentNodeId: p.uuid(),
+    currentNodePath: p.string().type('ltree'),
+    createdAt: p.datetime().defaultRaw('now()'),
+    completedAt: p.datetime().nullable(),
+  },
+  checks: [
+    { name: 'chk_review_instances_round_positive', expression: 'round_no >= 1' },
+    {
+      name: 'chk_review_instances_origin',
+      expression: `origin IN ('initial', 'appeal', 'reopen')`,
+    },
+    {
+      name: 'chk_review_instances_initiator',
+      expression: `initiator IN ('participant', 'staff')`,
+    },
+    { name: 'chk_review_instances_mode', expression: `mode IN ('normal', 'escalated')` },
+    {
+      name: 'chk_review_instances_state',
+      expression: `state IN ('active', 'blocked', 'completed')`,
+    },
+    {
+      name: 'chk_review_instances_stage_non_negative',
+      expression: 'current_stage_index >= 0',
+    },
+    // a completed round says when and how it ended; an open one says neither
+    {
+      name: 'chk_review_instances_completed_shape',
+      expression: `(state = 'completed') = (completed_at IS NOT NULL)`,
+    },
+    {
+      name: 'chk_review_instances_outcome_only_completed',
+      expression: `outcome IS NULL OR state = 'completed'`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_review_instances_tenant_id_id',
+      expression:
+        'create unique index uq_review_instances_tenant_id_id on review_instances (tenant_id, id)',
+    },
+    {
+      name: 'uq_review_instances_tenant_entry_round',
+      expression:
+        'create unique index uq_review_instances_tenant_entry_round on review_instances (tenant_id, entry_id, round_no)',
+    },
+    // the target of "this round must belong to this entry" references
+    {
+      name: 'uq_review_instances_tenant_entry_id',
+      expression:
+        'create unique index uq_review_instances_tenant_entry_id on review_instances (tenant_id, entry_id, id)',
+    },
+    // one open round per entry, held by the database rather than by a guard
+    // in whatever code path happens to submit: a double-click and a race both
+    // land here
+    {
+      name: 'uq_review_instances_open_entry',
+      // spelled the way pg_get_indexdef reports it back: the comparator pairs
+      // expression indexes textually, and any prettier spelling of this
+      // predicate diffs against its own introspection forever
+      expression: `create unique index uq_review_instances_open_entry on review_instances (entry_id) where ((state)::text = ANY ((ARRAY['active'::character varying, 'blocked'::character varying])::text[]))`,
+    },
+    // the inbox join: open rounds standing at my node
+    {
+      name: 'idx_review_instances_inbox',
+      expression:
+        'create index idx_review_instances_inbox on review_instances (tenant_id, state, current_node_id)',
+    },
+  ],
+})
+
+/**
+ * What happened in a round, in order, forever.
+ *
+ * Events are the audit trail and the appeal record; the instance columns are
+ * a projection of them, updated in the same transaction. A rejection's
+ * suggested payload rides here too - advice shown read-only to the student,
+ * never a revision of the entry itself.
+ */
+export const ReviewEvent = defineEntity({
+  name: 'ReviewEvent',
+  tableName: 'review_events',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('review_events_tenant_id_tenants_id_fkey'),
+    reviewInstanceId: p.uuid(),
+    kind: p.string().length(31),
+    actorId: p.uuid().nullable(),
+    comment: p.text().nullable(),
+    suggestedPayload: p.json<Record<string, unknown>>().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [{ name: 'chk_review_events_kind_format', expression: `kind ~ ${CODE}` }],
+  indexes: [
+    {
+      name: 'idx_review_events_tenant_instance_created',
+      expression:
+        'create index idx_review_events_tenant_instance_created on review_events (tenant_id, review_instance_id, created_at)',
     },
   ],
 })
@@ -648,6 +1120,51 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete restrict`,
   `alter table batch_config_revisions add constraint fk_batch_config_revisions_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  // --- M2: items, entries, review ---
+  //
+  // The same-batch keys are the point of this block: wherever two batch-scoped
+  // rows reference each other, the reference carries batch_id, so citing a row
+  // from another round is a 23503 rather than a service-layer promise. The
+  // "belongs to the same parent" keys (an entry's current revision, a round's
+  // revision) work the same way one level down, carrying the parent id.
+  `alter table score_groups add constraint fk_score_groups_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table score_groups add constraint fk_score_groups_parent
+     foreign key (tenant_id, batch_id, parent_group_id) references score_groups (tenant_id, batch_id, id) on delete restrict`,
+  `alter table assessment_items add constraint fk_assessment_items_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table assessment_items add constraint fk_assessment_items_score_group
+     foreign key (tenant_id, batch_id, score_group_id) references score_groups (tenant_id, batch_id, id) on delete restrict`,
+  `alter table assessment_items add constraint fk_assessment_items_current_revision
+     foreign key (tenant_id, id, current_revision_id) references assessment_item_revisions (tenant_id, item_id, id) on delete set null (current_revision_id)`,
+  `alter table assessment_item_revisions add constraint fk_assessment_item_revisions_item
+     foreign key (tenant_id, item_id) references assessment_items (tenant_id, id) on delete cascade`,
+  `alter table entries add constraint fk_entries_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table entries add constraint fk_entries_item
+     foreign key (tenant_id, batch_id, item_id) references assessment_items (tenant_id, batch_id, id) on delete restrict`,
+  `alter table entries add constraint fk_entries_participant
+     foreign key (tenant_id, batch_id, participant_id) references batch_participants (tenant_id, batch_id, id) on delete restrict`,
+  `alter table entries add constraint fk_entries_current_revision
+     foreign key (tenant_id, id, current_revision_id) references entry_revisions (tenant_id, entry_id, id) on delete set null (current_revision_id)`,
+  `alter table entries add constraint fk_entries_current_review_instance
+     foreign key (tenant_id, id, current_review_instance_id) references review_instances (tenant_id, entry_id, id) on delete set null (current_review_instance_id)`,
+  `alter table entry_revisions add constraint fk_entry_revisions_entry
+     foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
+  `alter table entry_revisions add constraint fk_entry_revisions_item_revision
+     foreign key (tenant_id, item_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
+  `alter table entry_revision_attachments add constraint fk_entry_revision_attachments_revision
+     foreign key (tenant_id, revision_id) references entry_revisions (tenant_id, id) on delete cascade`,
+  // into storage: a revision that cites an attachment is what "bound" means,
+  // and the row it cites cannot be deleted out from under it
+  `alter table entry_revision_attachments add constraint fk_entry_revision_attachments_attachment
+     foreign key (tenant_id, attachment_id) references storage_attachments (tenant_id, id) on delete restrict`,
+  `alter table review_instances add constraint fk_review_instances_entry
+     foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
+  `alter table review_instances add constraint fk_review_instances_revision
+     foreign key (tenant_id, entry_id, revision_id) references entry_revisions (tenant_id, entry_id, id) on delete cascade`,
+  `alter table review_events add constraint fk_review_events_instance
+     foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
 ]
 
 export const entities = [
@@ -666,4 +1183,12 @@ export const entities = [
   BatchParticipant,
   BatchParticipantEvent,
   BatchConfigRevision,
+  ScoreGroup,
+  AssessmentItem,
+  AssessmentItemRevision,
+  Entry,
+  EntryRevision,
+  EntryRevisionAttachment,
+  ReviewInstance,
+  ReviewEvent,
 ] as const

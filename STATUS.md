@@ -3643,3 +3643,43 @@ route(归 storage-local,需要和 reservation 凭据一起设计)、provider cli
 上一条 CI 红的 browser 用例(`identity.browser.test.tsx`「保存」按钮数)已在 `ca2f2ac` 修掉:站位面板等的是
 第二个查询,断言用的 `.elements()` 不重试。给那个 stub 加 400ms 延迟可以在本地稳定复现同样的报错,加上
 等待后带延迟也全绿。
+
+### M2 对话 2:题目、条目与审核的持久层 + 两个注册表(2026-08-13)
+
+按 m2-design §18 对话 2 的边界:只有 schema 与 prepare 相注册表,**没有任何业务 API**。
+
+- **八张表一次定终形**:`score_groups`(cap/floor `numeric(12,4)`,树形自引用——M2 API 层拒绝嵌套,
+  DB 不把"单层"焊死)、`assessment_items`(轻量身份 + `current_revision_id` 投影,void 三件套由 check
+  绑定:voided ⇔ 有时间、有人、有理由)、`assessment_item_revisions`(不可变,`(item, revision_no)` 唯一)、
+  `entries`(status/source 枚举 check,source 永远服务端推导)、`entry_revisions`(不可变,actor 与
+  subject 分列)、`entry_revision_attachments`(关系表,复合主键 + position 唯一)、`review_instances`
+  (m2-design §11.1 的核心列集:round_no/origin/initiator/effective_chain/mode/state/outcome +
+  `uuid[]` 角色快照 + ltree 路径)、`review_events`(append-only)。
+- **批次边界由数据库自己持有**:entry→item、entry→participant、item→score_group、score_group→parent
+  全部携带 `(tenant_id, batch_id)` 复合键;entry→current_revision、entry→current_review_instance、
+  item→current_revision、review_instance→revision 携带父 id("必须属于同一 entry/item")。
+  跨批次、跨条目、跨题目的引用一律 23503,不再是 service 层的承诺。为此给 `batch_participants` 补了
+  `(tenant_id, batch_id, id)` 唯一索引。
+- **一个 entry 只有一轮开着**:`uq_review_instances_open_entry` 部分唯一索引
+  (`where state in ('active','blocked')`),双击 submit 与并发 submit 都死在 23505;完成一轮后
+  开新轮照常。谓词按 introspection 回读形态拼写,理由记进了 m2-design §18 落地记录。
+- **附件引用是真外键**:`entry_revision_attachments → storage_attachments (tenant_id, id)` RESTRICT
+  ——被不可变 revision 引用的附件行删不掉(实测 23001),这就是「bound」在数据库里的形状。
+  assessment 的 Db.entities 与描述器 dependsOn 补 `@qualy/plugin-storage`。
+- **两个 prepare 相注册表**(`@qualy/plugin-assessment/plugin` 子路径):`ItemTypes.driver/provider`
+  (driver = configSchema + decodePayload + attachmentRefs + interaction + scoring refs;同 id 双注册
+  编译期硬失败)与 `Scoring.driver/provider`(tagged calculator/aggregator,ref 强制 `name@version`,
+  同 kind 同 ref 双注册硬失败,跨 kind 同名允许)。core 自身贡献 `fixed@1`(config 只收 decimal string,
+  JSON float 被 schema 拒绝)与 `sum@1`(零配置)——纯声明骨架,算术归对话 6。
+- 迁移 `20260813090200_assessment-items-entries-review.sql`;生成期踩了一个真实坑:对已有表
+  (batch_participants)新增的索引被排在文件尾部,而新表的外键在前面引用它——lineage 重放即失败,
+  已把该索引移到文件头(未提交迁移,可改)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **556 passed / 17 skipped(84 文件)**,其中
+新增 m2-schema 12 例(跨批次/跨条目/跨题目引用、双开轮、revision_no 唯一、附件外键、check 形状、
+跨租户)+ registries 7 例(目录编译、重复拒绝、ref 格式、decimal string);`pnpm test:browser` 48;
+`pnpm build`、`pnpm qualy resolve --frozen-lockfile`(零写入)、`pnpm qualy generate`(无待生成)、
+`prettier --check .`、生产 smoke 全绿。storage 的 cleanup 套件因新外键把 truncate 改成 cascade。
+
+**下一步**:对话 3(`@qualy/plugin-assessment-evidence` + item/score-group API + M2 review policy
+validator)。对话 5 写 review 事件时用 kebab-case(`submitted` 等,裁决见 m2-design §18 落地记录)。
