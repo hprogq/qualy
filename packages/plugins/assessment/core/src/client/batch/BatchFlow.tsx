@@ -302,7 +302,9 @@ export function BatchFlowStrip({
   }
 
   return (
-    <div className={cn('relative', className)}>
+    // room under the rail for the way-back button to hang in: floating it
+    // over the stages would cover the line it is offering to take you to
+    <div className={cn('relative pb-7', className)}>
       {/* the arrows are a hint, not a control: they say which way the rail
           still has stages, and a thumb is already the way to go there */}
       <ChevronsLeftIcon
@@ -335,7 +337,7 @@ export function BatchFlowStrip({
           if (rail && node) rail.scrollTo({ left: centreOf(rail, node), behavior: 'smooth' })
         }}
         className={cn(
-          'absolute -bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-[opacity,transform] hover:text-foreground',
+          'absolute bottom-0 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-[opacity,transform] hover:text-foreground',
           strayed ? 'opacity-100' : 'pointer-events-none translate-y-1 opacity-0',
         )}
       >
