@@ -166,6 +166,12 @@ describe('user types screen', () => {
     })
 
     await expect.element(page.getByText('学生').first()).toBeInTheDocument()
+    // the placement panel arrives on a second query, and its save button with
+    // it. Counting before it lands is a coin flip that comes up two on a fast
+    // machine and one on a busy ci runner, so wait for the panel itself.
+    await expect
+      .element(page.getByText('这里只决定这类人可以站在哪；能做什么由角色决定。'))
+      .toBeInTheDocument()
     // the record is visible and the editor opens, but nothing in it acts.
     // The count is asserted too: a screen that rendered no controls at all
     // would satisfy "every control is disabled" without meaning it.
