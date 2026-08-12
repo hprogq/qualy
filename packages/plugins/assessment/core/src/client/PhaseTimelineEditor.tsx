@@ -8,6 +8,7 @@ import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Button } from '@qualy/ui/button'
+import { toast } from '@qualy/ui/toast'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { cn } from '@qualy/ui/cn'
 import { assessmentMessages as m } from './i18n.ts'
@@ -163,6 +164,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
+      toast.success(format(m.toastPlanSaved))
       await settle()
       setEdited(null)
       setEditing(false)
@@ -180,6 +182,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
+      toast.success(format(m.toastPlanSaved))
       await settle()
       setEdited(null)
       setTemplateOpen(false)
@@ -198,6 +201,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
+      toast.success(format(m.toastPhaseScheduled))
       await settle()
       setScheduling(null)
       setUnscheduling(null)
@@ -220,6 +224,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
+      toast.success(format(m.toastPhaseAdvanced))
       await settle()
       setScheduling(null)
     },

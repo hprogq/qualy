@@ -12,6 +12,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { toast } from '@qualy/ui/toast'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -74,6 +75,7 @@ export default function BatchContextBar() {
       run(api.assessment.setBatchStatus({ params: { batchId }, payload: { status: 'archived' } })),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
+      toast.success(format(m.toastBatchArchived))
       await settle()
       setConfirming(null)
     },
@@ -100,6 +102,7 @@ export default function BatchContextBar() {
       ),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
+      toast.success(format(m.toastBatchReopened))
       await settle()
       setReopening(false)
     },
@@ -113,6 +116,7 @@ export default function BatchContextBar() {
     mutationFn: () => run(api.assessment.deleteBatch({ params: { batchId } })),
     onMutate: () => setFailure(null),
     onSuccess: () => {
+      toast.success(format(m.toastBatchDeleted))
       setConfirming(null)
       // the batch this workspace is about no longer exists
       navigate('assessment/batches', { replace: true })

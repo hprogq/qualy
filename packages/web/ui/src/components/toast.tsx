@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Toaster as Sonner, toast } from 'sonner'
 
 // What just happened, said where the eye already is.
@@ -17,8 +18,17 @@ export function Toaster() {
       // the viewer's theme is on the document already, and sonner's own
       // theme prop would fight it
       theme="system"
-      richColors
       closeButton
+      // sonner's own surface, told to use this application's: without it the
+      // library paints its own greens and reds, which belong to no palette
+      // here and read as a banner rather than a remark
+      style={
+        {
+          '--normal-bg': 'var(--popover)',
+          '--normal-text': 'var(--popover-foreground)',
+          '--normal-border': 'var(--border)',
+        } as CSSProperties
+      }
       toastOptions={{ duration: 4000 }}
     />
   )

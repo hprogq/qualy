@@ -5,6 +5,7 @@ import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { CheckboxGroup, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { toast } from '@qualy/ui/toast'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
@@ -67,6 +68,7 @@ export function NewBatchDialog({
       ),
     onMutate: () => setFailure(null),
     onSuccess: async (result: { batch: { id: string } }) => {
+      toast.success(format(m.toastBatchCreated))
       reset()
       await queryClient.invalidateQueries({ queryKey: query.assessment.key() })
       onCreated(result.batch.id)

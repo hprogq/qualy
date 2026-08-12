@@ -582,6 +582,16 @@ const i18n = definePluginMessages({
     toastExcluded: { id: 'assessment/toast/excluded', defaultMessage: 'Taken off the list' },
     toastRestored: { id: 'assessment/toast/restored', defaultMessage: 'Back on the list' },
     toastAdjusted: { id: 'assessment/toast/adjusted', defaultMessage: 'Saved' },
+    toastBatchCreated: { id: 'assessment/toast/batch-created', defaultMessage: 'Batch created' },
+    toastBatchArchived: { id: 'assessment/toast/batch-archived', defaultMessage: 'Batch archived' },
+    toastBatchReopened: { id: 'assessment/toast/batch-reopened', defaultMessage: 'Batch reopened' },
+    toastBatchDeleted: { id: 'assessment/toast/batch-deleted', defaultMessage: 'Batch deleted' },
+    toastPlanSaved: { id: 'assessment/toast/plan-saved', defaultMessage: 'Phases saved' },
+    toastPhaseScheduled: { id: 'assessment/toast/phase-scheduled', defaultMessage: 'Time set' },
+    toastPhaseAdvanced: {
+      id: 'assessment/toast/phase-advanced',
+      defaultMessage: 'Moved to the next phase',
+    },
     toastLapsedCleared: {
       id: 'assessment/toast/lapsed-cleared',
       defaultMessage: 'Withdrawn records cleared',
