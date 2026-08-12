@@ -79,9 +79,13 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     mutationFn: (selection: AccessSelection) =>
       run(api.assessment.applyAccessSync({ params: { batchId }, payload: selection })),
     onMutate,
-    onSuccess: (result: { merged: number }) => {
+    onSuccess: (result: { merged: number; cleared: number }) => {
       setMerging(false)
-      toast.success(format(m.toastMerged, { count: result.merged }))
+      toast.success(
+        result.merged === 0 && result.cleared > 0
+          ? format(m.toastLapsedCleared)
+          : format(m.toastMerged, { count: result.merged }),
+      )
       invalidate()
     },
     onError,

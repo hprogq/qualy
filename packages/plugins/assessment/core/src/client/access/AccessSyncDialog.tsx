@@ -87,6 +87,11 @@ export function AccessSyncDialog({
   const items = changes.data?.items ?? []
   const decidable = items.filter((change) => change.kind !== 'lapsed')
   const selectedCount = [...chosen.values()].filter((codes) => codes.length > 0).length
+  // Nothing here needs deciding, so the button is not an approval: it puts the
+  // withdrawal down. Sending it with nothing ticked is what clears the record
+  // the organization has already made obsolete.
+  const onlyWithdrawals =
+    (changes.data?.pendingTotal ?? 0) === 0 && (changes.data?.lapsedTotal ?? 0) > 0
 
   const toggle = (change: AccessChange, code: string) => {
     setChosen((current) => {
@@ -179,14 +184,16 @@ export function AccessSyncDialog({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              {format(m.accessSyncSelected, { count: selectedCount })}
-            </span>
+            {!onlyWithdrawals && (
+              <span className="text-xs text-muted-foreground">
+                {format(m.accessSyncSelected, { count: selectedCount })}
+              </span>
+            )}
             <Button variant="outline" onClick={onClose}>
               {format(commonMessages.cancel)}
             </Button>
-            <Button disabled={pending || selectedCount === 0} onClick={merge}>
-              {format(m.accessSyncApply)}
+            <Button disabled={pending || (selectedCount === 0 && !onlyWithdrawals)} onClick={merge}>
+              {format(onlyWithdrawals ? m.accessSyncClear : m.accessSyncApply)}
             </Button>
           </div>
         </DialogFooter>
@@ -231,6 +238,9 @@ function ChangeRow({
         <Badge variant={settled ? 'outline' : 'secondary'}>
           {format(KIND_LABELS[change.kind])}
         </Badge>
+        {settled && (
+          <span className="text-xs text-muted-foreground">{format(m.accessSyncLapsedHint)}</span>
+        )}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1.5">
         {inCatalogOrder(change.permissions).map((code) =>

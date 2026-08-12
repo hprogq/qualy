@@ -71,7 +71,9 @@ import {
   accessDenies,
   setAccessDeny as setAccessDenyRow,
   oneAccessSource,
+  dropAcceptedPermissions,
   dropAccessSource,
+  dropEmptyAccessSources,
   namesOf,
   deleteBatchRow,
   insertPhaseEvent,
@@ -490,7 +492,7 @@ export class Assessment extends Context.Service<
       batchId: string,
       input: AccessSyncSelection,
       as: Principal,
-    ) => Effect.Effect<{ merged: number }, BatchNotFound | AccessDenied>
+    ) => Effect.Effect<{ merged: number; cleared: number }, BatchNotFound | AccessDenied>
     /** takes one capability back from a person, whichever source offered it */
     readonly setAccessDeny: (
       tenantId: string,
@@ -1773,7 +1775,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 }
                 merged += 1
               }
-              return { merged }
+              // What the organization took back goes with it, whether or not
+              // anybody ticked anything: the withdrawal is already in effect,
+              // and a ceiling that outlives it would let the same capability
+              // flow back unasked the day the role is handed out again. It is
+              // also the only way the page stops saying so - a standing fact
+              // reported as news is a notice nobody can ever put down.
+              let cleared = 0
+              for (const change of changes) {
+                if (change.kind !== 'lapsed') continue
+                yield* dropAcceptedPermissions(tenantId, change.id, change.permissions)
+                cleared += 1
+              }
+              if (cleared > 0) yield* dropEmptyAccessSources(tenantId, batchId)
+              return { merged, cleared }
             }),
           ),
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))

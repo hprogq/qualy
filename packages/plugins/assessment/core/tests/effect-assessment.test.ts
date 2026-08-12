@@ -682,6 +682,9 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.principal,
         )
         const afterSync = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
+        // and the withdrawal is gone from the comparison: it was news once,
+        // and news that cannot be put down is a notice nobody can close
+        const afterPlan = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
 
         // and revoking the assignment takes everything it carried with it
         yield* runSql(sql`update role_grants set revoked_at = now() where id = ${assignment}`)
@@ -694,13 +697,23 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           afterDeny,
           merged,
           afterSync,
+          afterPlan,
           afterRevoke,
           tutor,
         }
       }),
     )
-    const { atCreation, afterTenantEdit, plan, afterDeny, merged, afterSync, afterRevoke, tutor } =
-      ok(exit)
+    const {
+      atCreation,
+      afterTenantEdit,
+      plan,
+      afterDeny,
+      merged,
+      afterSync,
+      afterPlan,
+      afterRevoke,
+      tutor,
+    } = ok(exit)
     const kind = (want: 'new' | 'widened' | 'lapsed') =>
       plan.items.filter((change) => change.kind === want).flatMap((change) => change.permissions)
     const of = (access: { staff: readonly { userId: string; effective: readonly string[] }[] }) =>
@@ -717,8 +730,10 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(plan.lapsedTotal).toBe(1)
     expect(of(afterDeny)).toEqual([])
     // the synchronisation accepts the new capability, and leaves the refusal
-    expect(merged).toEqual({ merged: 1 })
+    expect(merged).toEqual({ merged: 1, cleared: 1 })
     expect(of(afterSync)).toEqual(['assessment.publication.manage'])
+    expect(afterPlan.lapsedTotal).toBe(0)
+    expect(afterPlan.pendingTotal).toBe(0)
     expect(of(afterRevoke)).toEqual([])
   })
 

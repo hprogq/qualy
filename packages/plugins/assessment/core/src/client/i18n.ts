@@ -582,6 +582,10 @@ const i18n = definePluginMessages({
     toastExcluded: { id: 'assessment/toast/excluded', defaultMessage: 'Taken off the list' },
     toastRestored: { id: 'assessment/toast/restored', defaultMessage: 'Back on the list' },
     toastAdjusted: { id: 'assessment/toast/adjusted', defaultMessage: 'Saved' },
+    toastLapsedCleared: {
+      id: 'assessment/toast/lapsed-cleared',
+      defaultMessage: 'Withdrawn records cleared',
+    },
     toastStaffAdded: { id: 'assessment/toast/staff-added', defaultMessage: 'Brought in' },
     toastStaffRemoved: {
       id: 'assessment/toast/staff-removed',
@@ -757,10 +761,13 @@ const i18n = definePluginMessages({
     },
     accessSyncLapsedHint: {
       id: 'assessment/access/sync-lapsed-hint',
-      defaultMessage:
-        'Withdrawn in the organization and already in effect here. Nothing to confirm.',
+      defaultMessage: 'Withdrawn in the organization and already in effect here.',
     },
     accessSyncApply: { id: 'assessment/access/sync-apply', defaultMessage: 'Accept changes' },
+    accessSyncClear: {
+      id: 'assessment/access/sync-clear',
+      defaultMessage: 'Clear withdrawn records',
+    },
     accessSyncQuiet: {
       id: 'assessment/access/sync-quiet',
       defaultMessage: 'Nothing to merge from the organization.',

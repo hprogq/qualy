@@ -370,7 +370,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           }),
         ),
       }),
-      success: Schema.Struct({ merged: Schema.Number }),
+      success: Schema.Struct({ merged: Schema.Number, cleared: Schema.Number }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )

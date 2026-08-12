@@ -855,6 +855,46 @@ export const clearRoster = (tenantId: string, batchId: string) =>
       .execute(),
   )
 
+/**
+ * Letting go of what the organization has taken back.
+ *
+ * The ceiling records what this batch agreed to take from an assignment. Once
+ * the organization stops carrying a capability the agreement is about nothing,
+ * and keeping it would mean a later re-grant flows in unasked - the batch said
+ * yes to something that has since been withdrawn, not to whatever comes back.
+ */
+export const dropAcceptedPermissions = (
+  tenantId: string,
+  sourceId: string,
+  permissions: readonly string[],
+) =>
+  permissions.length === 0
+    ? Effect.void
+    : db
+        .query((k) =>
+          k
+            .deleteFrom('BatchAccessSourcePermission')
+            .where('tenantId', '=', tenantId)
+            .where('sourceId', '=', sourceId)
+            .where('permissionCode', 'in', permissions as string[])
+            .execute(),
+        )
+        .pipe(Effect.asVoid)
+
+/** a source that carries nothing is not a record of anything */
+export const dropEmptyAccessSources = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      sql`delete from batch_access_sources s
+        where s.tenant_id = ${tenantId}::uuid
+          and s.batch_id = ${batchId}::uuid
+          and not exists (
+            select 1 from batch_access_source_permissions p
+            where p.tenant_id = s.tenant_id and p.source_id = s.id
+          )`.execute(k),
+    )
+    .pipe(Effect.asVoid)
+
 export const dropAccessSource = (tenantId: string, sourceId: string) =>
   db.query((k) =>
     k
