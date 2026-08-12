@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ClockIcon, RouteIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
@@ -35,34 +36,44 @@ export function PhaseContextBar({
     <>
       <div
         className={cn(
-          'flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border bg-muted/30 px-3 py-2 text-sm',
+          // one line, whatever the width: this sits above somebody's work and
+          // a second row of it would push the work down the page
+          'flex items-center gap-2 overflow-hidden rounded-lg border bg-muted/30 px-3 py-2 text-sm sm:gap-3',
           className,
         )}
       >
-        <span className="text-xs text-muted-foreground">{format(m.currentStage)}</span>
+        {/* the stage is the subject here, and it is happening: no label in
+            front of it, unlike the bar above the rail, which has to say what
+            kind of thing the name is because it names a batch too */}
+        <span aria-hidden className="relative flex size-2 shrink-0">
+          <span className="absolute size-2 animate-ping rounded-full bg-foreground/25 [animation-duration:2.6s] motion-reduce:hidden" />
+          <span className="relative size-2 rounded-full bg-foreground" />
+        </span>
         <span className="min-w-0 truncate font-medium">
           {stage?.name ?? format(m.notStartedYet)}
         </span>
         {stage !== undefined && (
-          <>
-            <span aria-hidden className="h-3.5 w-px bg-border max-sm:hidden" />
-            <span className="text-muted-foreground tabular-nums">
-              {stage.until === null
-                ? format(m.flowEndPending)
-                : format(m.flowUntil, { when: when.moment(stage.until) })}
+          // the deadline as an hour with a clock beside it: the words "until"
+          // and "current stage" are what a narrow bar can least afford
+          <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground max-sm:hidden">
+            <ClockIcon aria-hidden className="size-3.5" />
+            <span className="tabular-nums">
+              {stage.until === null ? format(m.flowEndPending) : when.moment(stage.until)}
             </span>
-          </>
+          </span>
         )}
         {/* the same countdown the bar above the rail shows, so the two never
             disagree about how long is left */}
-        <BatchProgress timeline={timeline} className="text-sm" />
+        <BatchProgress timeline={timeline} className="ms-auto shrink-0 text-sm" />
         <Button
           variant="ghost"
           size="sm"
-          className="ms-auto shrink-0 text-muted-foreground"
+          aria-label={format(m.viewFullFlow)}
+          className="shrink-0 text-muted-foreground max-sm:size-8 max-sm:p-0"
           onClick={() => setOpen(true)}
         >
-          {format(m.viewFullFlow)}
+          <RouteIcon aria-hidden />
+          <span className="max-sm:sr-only">{format(m.viewFullFlow)}</span>
         </Button>
       </div>
 

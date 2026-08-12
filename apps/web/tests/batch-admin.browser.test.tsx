@@ -403,8 +403,8 @@ describe('the batch overview', () => {
       `/assessment/batches/${BATCH_ID}`,
     )
 
-    // the context bar answers "why can I do this now"
-    await expect.element(page.getByText('当前阶段').first()).toBeVisible()
+    // the context bar answers "why can I do this now": the stage in hand and
+    // when it gives way, said without a label in front of it
     await expect.element(page.getByText('正式填报').first()).toBeVisible()
 
     // and the flow itself is one click away wherever the reader is
