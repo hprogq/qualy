@@ -42,13 +42,10 @@ export function PhaseContextBar({
           className,
         )}
       >
-        {/* the stage is the subject here, and it is happening: no label in
-            front of it, unlike the bar above the rail, which has to say what
-            kind of thing the name is because it names a batch too */}
-        <span aria-hidden className="relative flex size-2 shrink-0">
-          <span className="absolute size-2 animate-ping rounded-full bg-foreground/25 [animation-duration:2.6s] motion-reduce:hidden" />
-          <span className="relative size-2 rounded-full bg-foreground" />
-        </span>
+        {/* A name with nothing in front of it was read as a page title: the
+            dot that used to stand here said "happening" to whoever already
+            knew what the line was about, which is not who needs the line. */}
+        <span className="shrink-0 text-xs text-muted-foreground">{format(m.currentStage)}</span>
         <span className="min-w-0 truncate font-medium">
           {stage?.name ?? format(m.notStartedYet)}
         </span>
