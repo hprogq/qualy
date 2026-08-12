@@ -53,7 +53,7 @@ export function BatchScreen({
             a texture somebody chose. Here it is only depth. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:repeating-linear-gradient(-45deg,currentColor_0_1px,transparent_1px_24px)] [mask-image:radial-gradient(130%_115%_at_100%_0%,black,transparent_62%)]"
+          className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:repeating-linear-gradient(-45deg,currentColor_0_1px,transparent_1px_24px)] [mask-image:radial-gradient(130%_115%_at_100%_0%,black,transparent_62%)]"
         />
         <PageContainer size={size} className="relative py-6">
           <PageHeader title={title} description={description} variant="banner" />
