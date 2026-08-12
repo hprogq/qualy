@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useParams } from 'react-router'
+import { NavLink, Outlet, useLocation, useParams } from 'react-router'
 import { PanelLeftIcon } from 'lucide-react'
 import {
   navigationGroups,
@@ -87,6 +87,14 @@ export default function WorkspaceShell() {
   const isMobile = useIsMobile()
   const [railOpen, setRailOpen] = useState(!isMobile)
   useEffect(() => setRailOpen(!isMobile), [isMobile])
+  // On a phone the rail is a sheet over the page, so arriving somewhere is
+  // the end of it: leaving it open would put the page the reader just chose
+  // behind the thing they chose it from. On a desktop the rail is the
+  // furniture beside the page and stays as it was left.
+  const { pathname } = useLocation()
+  useEffect(() => {
+    if (isMobile) setRailOpen(false)
+  }, [pathname, isMobile])
 
   const addressable = entries.flatMap((item) => {
     const to = item.target.kind === 'page' ? fill(item.target.path, params) : item.target.href
