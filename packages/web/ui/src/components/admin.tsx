@@ -59,13 +59,29 @@ export function PageHeader({
   title,
   description,
   actions,
+  variant = 'plain',
 }: {
   title: string
   description?: string
   actions?: ReactNode
+  /**
+   * A band across the top of the page rather than a line of text.
+   *
+   * For a screen that arrives inside something else - a section of a batch,
+   * say, whose name is already said in the bar above - where a bare heading
+   * over a table reads as the page having forgotten to load. The band gives
+   * the section a top edge and the content below it a place to start.
+   */
+  variant?: 'plain' | 'banner'
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+    <div
+      className={cn(
+        'flex flex-wrap items-start justify-between gap-x-4 gap-y-2',
+        variant === 'banner' &&
+          'rounded-xl border bg-gradient-to-b from-muted/60 to-background px-5 py-4',
+      )}
+    >
       <div className="space-y-1">
         <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}

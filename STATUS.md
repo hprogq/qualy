@@ -3434,3 +3434,13 @@ minutes/seconds 对。刷新频率不变:天与小时下面挂的是小时与分
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 458/73 全绿;`pnpm test:browser` **42 全绿**;
 `pnpm build` 通过;`prettier --check .` 干净。
+
+### 批次分区的页头变成一条 banner(2026-08-12)
+
+`PageHeader` 增加 `variant="banner"`:带边框、自上而下的浅色渐变、`px-5 py-4`。批次的四个分区(总览 /
+阶段安排 / 参评名单 / 人员权限)改用它。理由不是「填空白」——一个光秃秃的标题压在表格上,读起来像页面
+还没加载完;banner 给了分区一条上边缘,下面的内容也就有了起点。actions 位早就在 `PageHeader` 上,
+将来某个分区想把主操作提到页头,不用再改结构。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 458/73 全绿;`pnpm test:browser` 42 全绿;
+`pnpm build` 通过;`prettier --check .` 干净。

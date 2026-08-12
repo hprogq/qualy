@@ -43,7 +43,7 @@ export function BatchScreen({
 
   return (
     <PageContainer size={size} className="space-y-5">
-      <PageHeader title={title} description={description} />
+      <PageHeader title={title} description={description} variant="banner" />
       <AsyncSection
         pending={detail.isPending}
         error={detail.isError ? formatError(detail.error) : null}
