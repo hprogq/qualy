@@ -157,6 +157,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
               phaseKey: row.phaseKey,
               displayName: row.displayName,
               description: row.description,
+              entryNote: row.entryNote,
               permissionProfile: row.permissionProfile,
             })),
           },

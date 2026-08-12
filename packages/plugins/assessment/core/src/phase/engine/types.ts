@@ -24,6 +24,8 @@ export interface PhaseSnapshot {
   readonly description: string
   /** the instant it is due to begin, or null while it is unscheduled */
   readonly plannedEntryAt: EpochMillis | null
+  /** what it is waiting for, said only while it has no time; drives nothing */
+  readonly entryNote: string
   /**
    * The semantic instant the phase began: a scheduled boundary carries its
    * planned value however late the scheduler materialized it. Immutable once

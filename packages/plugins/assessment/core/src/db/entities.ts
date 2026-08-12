@@ -148,6 +148,10 @@ export const BatchPhase = defineEntity({
     // the instant it is due to begin, or null while it is unscheduled. There
     // is no second way to enter a phase: a time or an administrator
     plannedEntryAt: p.datetime().nullable(),
+    // what the round is waiting for before this phase can be given a time
+    // ("waiting on the college's approval"). Read only while there is no
+    // time: once one is set, the sentence is about a decision already made
+    entryNote: p.string().length(200).default(''),
     // the semantic instant the phase began: a scheduled boundary records its
     // planned value however late the scheduler ran (the machine's execution
     // instant goes to phase_events.processed_at); immutable once set

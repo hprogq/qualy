@@ -410,6 +410,7 @@ export interface PhaseRow {
   phaseKey: string
   displayName: string
   description: string
+  entryNote: string
   plannedEntryAt: number | null
   actualEntryAt: number | null
   permissionProfile: readonly string[]
@@ -437,6 +438,7 @@ export const phaseRowsForBatches = (tenantId: string, batchIds: readonly string[
               'phaseKey',
               'displayName',
               'description',
+              'entryNote',
               'permissionProfile',
               'sourceTemplateId',
               'sourceTemplateVersion',
@@ -475,6 +477,7 @@ export const listPhaseRows = (tenantId: string, batchId: string) =>
           'phaseKey',
           'displayName',
           'description',
+          'entryNote',
           'permissionProfile',
           'sourceTemplateId',
           'sourceTemplateVersion',
@@ -508,6 +511,7 @@ export const insertPhase = (input: {
   phaseKey: string
   displayName: string
   description: string
+  entryNote: string
   permissionProfile: readonly string[]
   sourceTemplateId?: string
   sourceTemplateVersion?: number
@@ -523,6 +527,7 @@ export const insertPhase = (input: {
           phaseKey: input.phaseKey,
           displayName: input.displayName,
           description: input.description,
+          entryNote: input.entryNote,
           permissionProfile: jsonb(input.permissionProfile),
           ...(input.sourceTemplateId !== undefined
             ? {
@@ -543,6 +548,7 @@ export const updatePhaseFields = (
     displayName?: string
     phaseKey?: string
     description?: string
+    entryNote?: string
     plannedEntryAt?: number | null
     permissionProfile?: readonly string[]
     ordinal?: number
@@ -555,6 +561,7 @@ export const updatePhaseFields = (
         ...(fields.displayName !== undefined ? { displayName: fields.displayName } : {}),
         ...(fields.phaseKey !== undefined ? { phaseKey: fields.phaseKey } : {}),
         ...(fields.description !== undefined ? { description: fields.description } : {}),
+        ...(fields.entryNote !== undefined ? { entryNote: fields.entryNote } : {}),
         ...(fields.plannedEntryAt !== undefined
           ? {
               plannedEntryAt:

@@ -7,8 +7,7 @@ import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchFlow } from './BatchFlow.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
-import { currentOf, stagesOf } from './flow.ts'
-import type { TimelineLike } from './progress.ts'
+import { currentOf, stagesOf, type FlowEntry } from './flow.ts'
 
 // One line at the top of a working screen: which stage the round is in, when
 // it gives way to the next, and the way to the whole flow.
@@ -22,7 +21,7 @@ export function PhaseContextBar({
   timeline,
   className,
 }: {
-  timeline: readonly TimelineLike[]
+  timeline: readonly FlowEntry[]
   className?: string
 }) {
   const { format, locale } = useI18n()

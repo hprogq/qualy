@@ -13,7 +13,12 @@ describe('the participant timeline', () => {
     const plan = normalizePlan([
       phase({ ordinal: 0, displayName: 'Entry', actualEntryAt: T('2026-09-01T00:00:00Z') }),
       phase({ ordinal: 1, displayName: 'Review', plannedEntryAt: T('2026-09-20T00:00:00Z') }),
-      phase({ ordinal: 2, displayName: 'Appeal', description: 'after the results are out' }),
+      phase({
+        ordinal: 2,
+        displayName: 'Appeal',
+        description: 'after the results are out',
+        entryNote: 'once the college has approved the list',
+      }),
     ])
     expect(deriveTimeline(plan, NOW)).toEqual([
       {
@@ -21,6 +26,7 @@ describe('the participant timeline', () => {
         phaseKey: 'entry',
         displayName: 'Entry',
         description: '',
+        entryNote: '',
         status: 'current',
         entry: { kind: 'entered', at: T('2026-09-01T00:00:00Z') },
       },
@@ -29,6 +35,7 @@ describe('the participant timeline', () => {
         phaseKey: 'entry',
         displayName: 'Review',
         description: '',
+        entryNote: '',
         status: 'future',
         entry: { kind: 'planned', at: T('2026-09-20T00:00:00Z') },
       },
@@ -37,10 +44,25 @@ describe('the participant timeline', () => {
         phaseKey: 'entry',
         displayName: 'Appeal',
         description: 'after the results are out',
+        // said only while there is no time to say instead
+        entryNote: 'once the college has approved the list',
         status: 'future',
         entry: { kind: 'pending' },
       },
     ])
+  })
+
+  it('drops what a stage was waiting for once it has a time', () => {
+    const plan = normalizePlan([
+      phase({ ordinal: 0, actualEntryAt: T('2026-09-01T00:00:00Z') }),
+      phase({
+        ordinal: 1,
+        plannedEntryAt: T('2026-09-20T00:00:00Z'),
+        entryNote: 'waiting on the college',
+      }),
+    ])
+    // the date answers the question the note was standing in for
+    expect(deriveTimeline(plan, NOW)[1]!.entryNote).toBe('')
   })
 
   it('counts a boundary the clock crossed as entered before anyone ratifies it', () => {

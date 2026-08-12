@@ -331,6 +331,7 @@ const toSnapshots = (rows: readonly PhaseRow[]): PhasePlan =>
       phaseKey: row.phaseKey,
       displayName: row.displayName,
       description: row.description,
+      entryNote: row.entryNote,
       plannedEntryAt: row.plannedEntryAt,
       actualEntryAt: row.actualEntryAt,
       permissionProfile: row.permissionProfile,
@@ -944,6 +945,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             phaseKey: spec.phaseKey,
             displayName: spec.displayName,
             description: spec.description ?? '',
+            entryNote: spec.entryNote ?? '',
             permissionProfile: spec.permissionProfile ?? [],
             ...(options.provenance
               ? {
@@ -1642,6 +1644,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   phaseKey: freshPhaseKey(rows),
                   displayName: input.phase.displayName.trim(),
                   description: input.phase.description?.trim() ?? '',
+                  // a phase opened to continue an archived round begins now:
+                  // there is nothing it is waiting for
+                  entryNote: '',
                   permissionProfile: input.phase.permissionProfile ?? [],
                 })
                 yield* updateBatchFields(tenantId, batchId, { status: 'active' })
@@ -2182,6 +2187,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                       phaseKey: engineSpec.phaseKey,
                       displayName: engineSpec.displayName,
                       description: engineSpec.description ?? '',
+                      entryNote: engineSpec.entryNote ?? '',
                       plannedEntryAt: null,
                       actualEntryAt: null,
                       permissionProfile: engineSpec.permissionProfile ?? [],
@@ -2740,6 +2746,7 @@ const toPhaseDto = (row: PlanPhase) => ({
   phaseKey: row.phaseKey,
   displayName: row.displayName,
   description: row.description,
+  entryNote: row.entryNote,
   plannedEntryAt: isoOf(row.plannedEntryAt),
   actualEntryAt: isoOf(row.actualEntryAt),
   permissionProfile: row.permissionProfile,
@@ -2774,6 +2781,7 @@ interface WirePhaseSpec {
   readonly phaseKey: string
   readonly displayName: string
   readonly description?: string
+  readonly entryNote?: string
   readonly permissionProfile?: readonly string[]
   readonly itemScope?: readonly string[]
   readonly participantScope?: readonly string[]
@@ -2786,6 +2794,7 @@ const parseSpec = (spec: WirePhaseSpec) =>
       phaseKey: spec.phaseKey,
       displayName: spec.displayName,
       description: spec.description ?? '',
+      entryNote: spec.entryNote ?? '',
       permissionProfile: spec.permissionProfile ?? [],
       ...(spec.itemScope !== undefined ? { itemScope: spec.itemScope } : {}),
       ...(spec.participantScope !== undefined ? { participantScope: spec.participantScope } : {}),
@@ -3141,6 +3150,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             phaseId: entry.phaseId,
             displayName: entry.displayName,
             description: entry.description,
+            entryNote: entry.entryNote,
             status: entry.status,
             entry: {
               kind: entry.entry.kind,

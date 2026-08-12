@@ -73,6 +73,7 @@ const phase = (over: Partial<PhaseDto> & { id: string; phaseKey: string }): Phas
   ordinal: 0,
   displayName: over.phaseKey,
   description: '',
+  entryNote: '',
   plannedEntryAt: null,
   actualEntryAt: null,
   permissionProfile: [],
@@ -331,6 +332,7 @@ const running = (untilNext: number) => [
     phaseId: ENTRY_PHASE_ID,
     displayName: '正式填报',
     description: '',
+    entryNote: '',
     status: 'current' as const,
     entry: { kind: 'entered' as const, at: at(-HOUR) },
   },
@@ -338,6 +340,7 @@ const running = (untilNext: number) => [
     phaseId: REVIEW_PHASE_ID,
     displayName: '审核',
     description: '',
+    entryNote: '',
     status: 'future' as const,
     entry: { kind: 'planned' as const, at: at(untilNext) },
   },
@@ -412,6 +415,35 @@ describe('the batch overview', () => {
     await expect.element(panel.getByText('审核')).toBeVisible()
     // read-only: no word of how the plan is arranged
     expect(await panel.getByText('未排期').elements()).toHaveLength(0)
+  })
+
+  it('says what a stage with no time is waiting for', async () => {
+    await page.viewport(1280, 800)
+    screen(
+      {
+        getBatch: () =>
+          Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID }) }),
+        getTimeline: () =>
+          Effect.succeed({
+            timeline: [
+              ...running(30 * HOUR),
+              {
+                phaseId: 'appeal',
+                displayName: '申诉期',
+                description: '',
+                entryNote: '待学院审批名单后确定',
+                status: 'future' as const,
+                entry: { kind: 'pending' as const, at: null },
+              },
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+    )
+
+    // the sentence stands where a date would be, and the absence is never
+    // reported as one
+    await expect.element(page.getByText('待学院审批名单后确定').first()).toBeVisible()
   })
 })
 

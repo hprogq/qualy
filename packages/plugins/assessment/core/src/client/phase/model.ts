@@ -19,6 +19,8 @@ export interface PhaseDraft {
   phaseKey: string
   displayName: string
   description: string
+  /** what the phase waits on; read only while it has no time of its own */
+  entryNote: string
   permissionProfile: readonly string[]
 }
 
@@ -27,6 +29,7 @@ export const draftOf = (phase: PhaseDto): PhaseDraft => ({
   phaseKey: phase.phaseKey,
   displayName: phase.displayName,
   description: phase.description,
+  entryNote: phase.entryNote,
   permissionProfile: phase.permissionProfile,
 })
 
@@ -42,6 +45,7 @@ export const freshDraft = (taken: readonly { phaseKey: string }[]): PhaseDraft =
   phaseKey: freshKey(taken),
   displayName: '',
   description: '',
+  entryNote: '',
   permissionProfile: [],
 })
 

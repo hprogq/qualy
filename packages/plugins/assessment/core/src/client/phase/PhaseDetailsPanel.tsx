@@ -86,6 +86,19 @@ export function PhaseDetailsPanel({
             )}
           </Field>
 
+          <Field label={format(m.entryNoteLabel)} hint={format(m.entryNoteHint)}>
+            {(id) => (
+              <Input
+                id={id}
+                maxLength={200}
+                value={draft.entryNote}
+                disabled={readOnly}
+                placeholder={format(m.entryNotePlaceholder)}
+                onChange={(event) => onDraft({ ...draft, entryNote: event.target.value })}
+              />
+            )}
+          </Field>
+
           {!readOnly && !frozen && presets.length > 0 && (
             <div className="flex items-end gap-2">
               <span className="flex-1">

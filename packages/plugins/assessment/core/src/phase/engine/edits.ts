@@ -62,6 +62,7 @@ export interface EditReview {
 export type PlanEdit =
   | { readonly kind: 'rename'; readonly phaseId: string; readonly displayName: string }
   | { readonly kind: 'describe'; readonly phaseId: string; readonly description: string }
+  | { readonly kind: 'note-entry'; readonly phaseId: string; readonly entryNote: string }
   | {
       readonly kind: 'set-planned'
       readonly phaseId: string
@@ -79,6 +80,7 @@ export interface NewPhaseSpec {
   readonly phaseKey: string
   readonly displayName: string
   readonly description?: string
+  readonly entryNote?: string
   readonly permissionProfile?: readonly string[]
 }
 
@@ -166,6 +168,10 @@ export function reviewPlanEdit(plan: PhasePlan, now: EpochMillis, edit: PlanEdit
     case 'describe':
       // a description is prose about a phase, editable for as long as the
       // phase is worth describing
+      return ok()
+    case 'note-entry':
+      // and so is what the phase is waiting for; it stops being shown once a
+      // time is set, which is a question for whoever reads it, not for this
       return ok()
     case 'set-actual':
       return refuse([{ reason: 'actual-immutable', phaseId: phase.id }])
@@ -266,6 +272,8 @@ export function applyToPlan(plan: PhasePlan, edit: PlanEdit): PhasePlan {
         return { ...phase, displayName: edit.displayName }
       case 'describe':
         return { ...phase, description: edit.description }
+      case 'note-entry':
+        return { ...phase, entryNote: edit.entryNote }
       case 'set-planned':
         return { ...phase, plannedEntryAt: edit.plannedEntryAt }
       case 'set-actual':

@@ -425,6 +425,9 @@ const i18n = definePluginMessages({
     flowExpected,
     flowUntil,
     viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'See the whole flow' },
+    flowStatusEnded: { id: 'assessment/flow/status-ended', defaultMessage: 'Over' },
+    flowStatusCurrent: { id: 'assessment/flow/status-current', defaultMessage: 'Under way' },
+    flowStatusFuture: { id: 'assessment/flow/status-future', defaultMessage: 'Still to come' },
     bareDays,
     bareHours,
     bareMinutes,
@@ -491,6 +494,15 @@ const i18n = definePluginMessages({
     colStatus: { id: 'assessment/plan/col-status', defaultMessage: 'Status' },
     colActions: { id: 'assessment/plan/col-actions', defaultMessage: 'Actions' },
     descriptionLabel: { id: 'assessment/phase/description', defaultMessage: 'What it is for' },
+    entryNoteLabel: { id: 'assessment/phase/entry-note', defaultMessage: 'Waiting on' },
+    entryNoteHint: {
+      id: 'assessment/phase/entry-note-hint',
+      defaultMessage: 'Shown to everybody until this stage has a time.',
+    },
+    entryNotePlaceholder: {
+      id: 'assessment/phase/entry-note-placeholder',
+      defaultMessage: 'e.g. the college has to approve the list first',
+    },
     descriptionPlaceholder: {
       id: 'assessment/phase/description-placeholder',
       defaultMessage: 'What happens in this stage',

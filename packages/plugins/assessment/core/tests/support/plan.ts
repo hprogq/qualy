@@ -10,6 +10,7 @@ export function phase(overrides: Partial<PhaseSnapshot> & { ordinal: number }): 
     phaseKey: 'entry',
     displayName: `Phase ${overrides.ordinal}`,
     description: '',
+    entryNote: '',
     plannedEntryAt: null,
     actualEntryAt: null,
     permissionProfile: [],

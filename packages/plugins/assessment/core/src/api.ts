@@ -98,6 +98,7 @@ const phaseView = Schema.Struct({
   phaseKey: Schema.String,
   displayName: Schema.String,
   description: Schema.String,
+  entryNote: Schema.String,
   plannedEntryAt: Schema.NullOr(Schema.String),
   actualEntryAt: Schema.NullOr(Schema.String),
   permissionProfile: Schema.Array(Schema.String),
@@ -120,6 +121,8 @@ const phaseSpec = Schema.Struct({
   phaseKey: kebabCode,
   displayName: trimmedName(100),
   description: Schema.optional(boundedText(500)),
+  /** what the phase is waiting for, while it has no time of its own */
+  entryNote: Schema.optional(boundedText(200)),
   permissionProfile: Schema.optional(Schema.Array(Schema.String)),
   itemScope: Schema.optional(Schema.Array(id)),
   participantScope: Schema.optional(Schema.Array(id)),
@@ -137,6 +140,8 @@ const planWarning = Schema.Struct({
 const timelineEntry = Schema.Struct({
   phaseId: Schema.String,
   displayName: Schema.String,
+  /** why it has no time yet, in the words of whoever arranged the round */
+  entryNote: Schema.String,
   status: Schema.Literals(['ended', 'current', 'future']),
   description: Schema.String,
   entry: Schema.Struct({

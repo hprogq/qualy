@@ -16,6 +16,8 @@ export interface TimelineEntry {
   readonly phaseKey: string
   readonly displayName: string
   readonly description: string
+  /** what the phase is waiting for; only ever set while it has no time */
+  readonly entryNote: string
   readonly status: 'ended' | 'current' | 'future'
   readonly entry: TimelineTime
 }
@@ -37,6 +39,9 @@ export function deriveTimeline(plan: PhasePlan, now: EpochMillis): readonly Time
       phaseKey: phase.phaseKey,
       displayName: phase.displayName,
       description: phase.description,
+      // a note about waiting is answered by the time itself; keeping it after
+      // one is set would leave the plan explaining a decision it has made
+      entryNote: entry.kind === 'pending' ? phase.entryNote : '',
       status: index < state.index ? 'ended' : index === state.index ? 'current' : 'future',
       entry,
     }
