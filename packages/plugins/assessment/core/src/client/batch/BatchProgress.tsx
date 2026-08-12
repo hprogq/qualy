@@ -101,8 +101,19 @@ export function BatchProgress({
   const filled = progress.kind === 'until' ? progress.fraction : null
 
   return (
-    <span className={cn('inline-flex min-w-0 items-center gap-2', className)}>
-      {stage !== null && <span className="truncate text-foreground">{stage}</span>}
+    <span className={cn('inline-flex min-w-0 items-center gap-2 max-sm:gap-1.5', className)}>
+      {stage !== null && (
+        // "审核期" on its own is a word, not a fact about this batch: whoever
+        // reads it has to already know that the bar names the stage the batch
+        // is in. The label is narrower than the name it introduces, so it is
+        // the first thing dropped when the bar runs out of room.
+        <span data-slot="stage" className="inline-flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0 text-xs text-muted-foreground max-lg:hidden">
+            {format(m.currentStage)}
+          </span>
+          <span className="truncate font-medium text-foreground">{stage}</span>
+        </span>
+      )}
       {said !== null && (
         <span className={cn('inline-flex shrink-0 items-center gap-1.5', tone)}>
           {filled !== null && <Ring fraction={filled} />}
