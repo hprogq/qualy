@@ -174,7 +174,9 @@ export default function WorkspaceShell() {
             left of the bar instead of on the screen. The slot keeps its own
             left margin clear (data-bar-start). */}
         {isMobile && <div className="absolute left-2 z-10">{toggle(format(m.toggleSidebar))}</div>}
-        <div className="min-w-0 flex-1 max-sm:[&_[data-bar-start]]:pl-9">
+        {/* the same width the control takes, and at the same breakpoint it
+            appears at: below that the two sat on top of each other */}
+        <div className="min-w-0 flex-1 max-md:[&_[data-bar-start]]:pl-9">
           <UiSlot token={workspaceContext} />
         </div>
       </div>

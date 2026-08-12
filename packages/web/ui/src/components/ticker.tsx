@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import { cn } from '../lib/utils.ts'
 
 // A value that changes while you are looking at it.
@@ -57,8 +57,11 @@ export const Ticker = memo(function Ticker({
   const line = useRef<HTMLSpanElement>(null)
   const [width, setWidth] = useState<number | null>(null)
   useLayoutEffect(() => {
-    // once per changed value rather than once per frame: the width is what a
-    // leaving piece takes with it, and the box outside tweens to the new one
+    // The line is measured the moment the value changes, which is only right
+    // because a leaving piece is out of the flow from its first frame (see
+    // Piece). Left to an exit animation to take it out one frame later, this
+    // measured both texts at once and the box kept the width of the two of
+    // them - the stray gap at the end of the bar, and the overflow past it.
     if (line.current) setWidth(line.current.offsetWidth)
   }, [value])
 
@@ -72,36 +75,57 @@ export const Ticker = memo(function Ticker({
     >
       <span ref={line} className="inline-flex tabular-nums whitespace-nowrap">
         {pieces(value).map((piece, at) => (
-          // One slot per position, and the slot is what the leaving piece is
-          // positioned against: taken out of the flow with nothing of its own
-          // to sit in, it lands at the start of the line and the digit flies
-          // across the words on its way out.
-          <span key={at} className="relative inline-flex">
-            {/* only the pieces whose text changed have anything to swap */}
-            <AnimatePresence initial={false}>
-              <motion.span
-                key={piece}
-                // pre, because a space at the edge of an inline block is
-                // trimmed: "3 分 20 秒" set as boxes comes out as "3分20秒"
-                className="inline-block whitespace-pre"
-                initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
-                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                exit={{
-                  opacity: 0,
-                  y: -5,
-                  filter: 'blur(4px)',
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                }}
-                transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-              >
-                {piece}
-              </motion.span>
-            </AnimatePresence>
-          </span>
+          <Piece key={at} text={piece} />
         ))}
       </span>
     </span>
   )
 })
+
+const SWAP = { duration: 0.22, ease: [0.32, 0.72, 0, 1] } as const
+
+/**
+ * One position of the value, and the character leaving it.
+ *
+ * The two are tracked here rather than by AnimatePresence so that the one on
+ * its way out is positioned from the first frame: an exit that becomes
+ * absolute a frame later is a frame in which the line is twice as wide, and
+ * whatever laid the line out has already measured it by then.
+ */
+function Piece({ text }: { text: string }) {
+  const [shown, setShown] = useState(text)
+  const [leaving, setLeaving] = useState<string | null>(null)
+  if (text !== shown) {
+    setLeaving(shown)
+    setShown(text)
+  }
+
+  return (
+    <span className="relative inline-flex">
+      <motion.span
+        key={shown}
+        // pre, because a space at the edge of an inline block is trimmed:
+        // "3 分 20 秒" set as boxes comes out as "3分20秒"
+        className="inline-block whitespace-pre"
+        initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+        transition={SWAP}
+      >
+        {shown}
+      </motion.span>
+      {leaving !== null && (
+        <motion.span
+          key={leaving}
+          aria-hidden
+          className="pointer-events-none absolute top-0 left-0 inline-block whitespace-pre"
+          initial={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          animate={{ opacity: 0, y: -5, filter: 'blur(4px)' }}
+          transition={SWAP}
+          onAnimationComplete={() => setLeaving(null)}
+        >
+          {leaving}
+        </motion.span>
+      )}
+    </span>
+  )
+}
