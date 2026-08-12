@@ -19,6 +19,10 @@ import { useWhen } from './when.ts'
 // asks for it, and a panel that is always there costs the page a column it
 // needs for the work itself.
 
+/** what the hour and the words in front of the name take, near enough */
+const DEADLINE = 150
+const LABEL = 64
+
 export function PhaseContextBar({
   timeline,
   className,
@@ -41,18 +45,31 @@ export function PhaseContextBar({
   // and the row is a block, so its width does not move with what it holds and
   // this cannot chase its own tail.
   const bar = useRef<HTMLDivElement>(null)
+  const name = useRef<HTMLSpanElement>(null)
+  const tail = useRef<HTMLDivElement>(null)
   const [room, setRoom] = useState(Number.POSITIVE_INFINITY)
+  const [needed, setNeeded] = useState(0)
   useEffect(() => {
-    const node = bar.current
-    if (!node) return
-    const observer = new ResizeObserver(() => setRoom(node.clientWidth))
-    observer.observe(node)
-    setRoom(node.clientWidth)
+    const row = bar.current
+    const label = name.current
+    const rest = tail.current
+    if (!row || !label || !rest) return
+    const measure = () => {
+      setRoom(row.clientWidth)
+      // scrollWidth even when the name is cut: it reports the text's own
+      // width, so this asks "how much would it like" rather than "how much
+      // did it get" - which is what keeps the answer from chasing itself
+      setNeeded(label.scrollWidth + rest.offsetWidth)
+    }
+    const observer = new ResizeObserver(measure)
+    for (const node of [row, label, rest]) observer.observe(node)
+    measure()
     return () => observer.disconnect()
   }, [])
-  const showDeadline = room >= 640
   const showLabel = room >= 460
   const dense = room < 380
+  // the hour goes as soon as it would cost the stage's name a character
+  const showDeadline = room >= 640 && needed + DEADLINE + LABEL <= room
 
   return (
     <>
@@ -68,33 +85,40 @@ export function PhaseContextBar({
         {/* A name with nothing in front of it was read as a page title: the
             dot that used to stand here said "happening" to whoever already
             knew what the line was about, which is not who needs the line. */}
-        <span className="shrink-0 text-xs text-muted-foreground">{format(m.currentStage)}</span>
-        <span className="min-w-0 flex-1 truncate font-medium">
-          {stage?.name ?? format(m.notStartedYet)}
-        </span>
-        {stage !== undefined && showDeadline && (
-          // the deadline as an hour with a clock beside it: the words "until"
-          // and "current stage" are what a narrow bar can least afford
-          <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-            <ClockIcon aria-hidden className="size-3.5" />
-            <span className="tabular-nums">
-              {stage.until === null ? format(m.flowEndPending) : when.moment(stage.until)}
-            </span>
+        {/* what the stage is and when it ends, in that order and together:
+            the hour belongs to the name beside it, not to the clock at the
+            far end of the row */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <span className="shrink-0 text-xs text-muted-foreground">{format(m.currentStage)}</span>
+          <span ref={name} className="min-w-0 truncate font-medium">
+            {stage?.name ?? format(m.notStartedYet)}
           </span>
-        )}
-        {/* the same countdown the bar above the rail shows, so the two never
-            disagree about how long is left */}
-        <BatchProgress dense={dense} timeline={timeline} className="ms-auto shrink-0 text-sm" />
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={format(m.viewFullFlow)}
-          className={cn('shrink-0 text-muted-foreground', !showLabel && 'size-8 p-0')}
-          onClick={() => setOpen(true)}
-        >
-          <RouteIcon aria-hidden />
-          {showLabel ? format(m.viewFullFlow) : null}
-        </Button>
+          {stage !== undefined && showDeadline && (
+            // an hour with a clock beside it: the word "until" is what a
+            // narrow row can least afford
+            <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+              <ClockIcon aria-hidden className="size-3.5" />
+              <span className="tabular-nums">
+                {stage.until === null ? format(m.flowEndPending) : when.moment(stage.until)}
+              </span>
+            </span>
+          )}
+        </div>
+        <div ref={tail} className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {/* the same countdown the bar above the rail shows, so the two never
+              disagree about how long is left */}
+          <BatchProgress dense={dense} timeline={timeline} className="text-sm" />
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={format(m.viewFullFlow)}
+            className={cn('-mr-1 text-muted-foreground', !showLabel && 'size-8 p-0')}
+            onClick={() => setOpen(true)}
+          >
+            <RouteIcon aria-hidden />
+            {showLabel ? format(m.viewFullFlow) : null}
+          </Button>
+        </div>
       </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
