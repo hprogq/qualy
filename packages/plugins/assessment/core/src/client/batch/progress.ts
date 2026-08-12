@@ -169,10 +169,9 @@ type Messages = typeof assessmentMessages
 /**
  * How much of the span there is room to say.
  *
- * `single` keeps the sentence and drops the second unit; `bare` drops the
- * words too, which only a countdown can afford - the ring beside it already
- * says the number is running out, while "3 天" with nothing else on the line
- * could as easily be how long the stage has been running.
+ * `single` keeps the sentence and drops the second unit; `bare` keeps one
+ * unit and names the stage instead of the batch ("3 hours left in stage"),
+ * for a bar too narrow to be showing which stage that is.
  */
 export type SpanForm = 'full' | 'single' | 'bare'
 
@@ -185,13 +184,20 @@ export const spanMessage = (
   const { span } = progress
   const counting = progress.kind === 'until'
   const both = span.rest > 0 && form === 'full'
-  if (form === 'bare' && counting) {
-    const bare = {
-      days: m.bareDays,
-      hours: m.bareHours,
-      minutes: m.bareMinutes,
-      seconds: m.bareSeconds,
-    } as const
+  if (form === 'bare') {
+    const bare = counting
+      ? ({
+          days: m.bareDays,
+          hours: m.bareHours,
+          minutes: m.bareMinutes,
+          seconds: m.bareSeconds,
+        } as const)
+      : ({
+          days: m.bareSinceDays,
+          hours: m.bareSinceHours,
+          minutes: m.bareSinceMinutes,
+          seconds: m.bareSinceSeconds,
+        } as const)
     return { message: bare[span.unit], values: { count: span.value } }
   }
   if (span.unit === 'days') {

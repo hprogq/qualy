@@ -375,7 +375,7 @@ describe('the countdown', () => {
     await expect.element(page.getByText('剩余 3 小时')).toBeVisible()
   })
 
-  it('says one unit on a phone, and keeps the stage name', async () => {
+  it('names the stage in the clock once the bar is too narrow to show it', async () => {
     await page.viewport(390, 844)
     screen(
       {
@@ -384,10 +384,9 @@ describe('the countdown', () => {
       },
       `/assessment/batches/${BATCH_ID}/phases`,
     )
-    // the seconds go, not the stage: "how long" survives one number, and a
-    // countdown with no idea what it is counting does not
-    await expect.element(page.getByText('39 分')).toBeVisible()
-    await expect.element(page.getByText('填报')).toBeVisible()
+    // one unit, and whose clock it is: the stage's name has gone from the
+    // bar, so a bare number would read as the batch's own countdown
+    await expect.element(page.getByText('阶段余 39 分')).toBeVisible()
     await page.viewport(1280, 800)
   })
 })

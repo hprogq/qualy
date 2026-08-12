@@ -85,12 +85,11 @@ export function BatchProgress({
   className?: string
 }) {
   const { format, locale } = useI18n()
-  // Two thresholds, because two things run out of room at different widths:
-  // under a tablet the second unit goes, and under a phone the words with it.
-  // The stage name is what stays, whatever the width.
+  // One threshold: under a tablet the bar has no room for the stage, so the
+  // stage goes and the clock takes its name instead - "3 hours left in stage"
+  // rather than a number beside nothing.
   const tight = useIsBelow(768)
-  const phone = useIsBelow(640)
-  const form = phone ? 'bare' : tight ? 'single' : 'full'
+  const form = tight ? 'bare' : 'full'
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)
@@ -137,7 +136,10 @@ export function BatchProgress({
         // reads it has to already know that the bar names the stage the batch
         // is in. The label is narrower than the name it introduces, so it is
         // the first thing dropped when the bar runs out of room.
-        <span data-slot="stage" className="inline-flex min-w-0 items-baseline gap-1.5">
+        <span
+          data-slot="stage"
+          className="inline-flex min-w-0 items-baseline gap-1.5 max-md:hidden"
+        >
           <span className="shrink-0 text-xs text-muted-foreground max-lg:hidden">
             {format(m.currentStage)}
           </span>
@@ -160,7 +162,7 @@ export function BatchProgress({
       {stage !== null && said !== null && (
         // a rule rather than more space: the two halves answer different
         // questions, and at a glance the gap alone read as one long phrase
-        <span aria-hidden className="h-3.5 w-px shrink-0 bg-border max-sm:hidden" />
+        <span aria-hidden className="h-3.5 w-px shrink-0 bg-border max-md:hidden" />
       )}
       {said !== null && (
         <span className={cn('inline-flex shrink-0 items-center gap-1.5 font-medium', tone)}>

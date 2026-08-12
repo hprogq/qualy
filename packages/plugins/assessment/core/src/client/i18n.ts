@@ -161,23 +161,40 @@ const leftSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-seconds',
   defaultMessage: '{count}s left',
 })
-// the countdown with no room for a sentence: the ring beside it is what says
-// the number is running out
+// The countdown with no room for a sentence, on a bar narrow enough to have
+// dropped the stage's name: it says whose clock it is in one word, because
+// without it a bare number on a page about a batch reads as the batch's.
 const bareDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-days',
-  defaultMessage: '{count, plural, one {# day} other {# days}}',
+  defaultMessage: '{count, plural, one {# day left in stage} other {# days left in stage}}',
 })
 const bareHours = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-hours',
-  defaultMessage: '{count, plural, one {# hour} other {# hours}}',
+  defaultMessage: '{count, plural, one {# hour left in stage} other {# hours left in stage}}',
 })
 const bareMinutes = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-minutes',
-  defaultMessage: '{count, plural, one {# minute} other {# minutes}}',
+  defaultMessage: '{count, plural, one {# minute left in stage} other {# minutes left in stage}}',
 })
 const bareSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-seconds',
-  defaultMessage: '{count, plural, one {# second} other {# seconds}}',
+  defaultMessage: '{count, plural, one {# second left in stage} other {# seconds left in stage}}',
+})
+const bareSinceDays = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-since-days',
+  defaultMessage: '{count, plural, one {# day into stage} other {# days into stage}}',
+})
+const bareSinceHours = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-since-hours',
+  defaultMessage: '{count, plural, one {# hour into stage} other {# hours into stage}}',
+})
+const bareSinceMinutes = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-since-minutes',
+  defaultMessage: '{count, plural, one {# minute into stage} other {# minutes into stage}}',
+})
+const bareSinceSeconds = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-since-seconds',
+  defaultMessage: '{count, plural, one {# second into stage} other {# seconds into stage}}',
 })
 const sinceDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-days',
@@ -442,6 +459,10 @@ const i18n = definePluginMessages({
     bareHours,
     bareMinutes,
     bareSeconds,
+    bareSinceDays,
+    bareSinceHours,
+    bareSinceMinutes,
+    bareSinceSeconds,
     endsUnknown: { id: 'assessment/batch/ends-unknown', defaultMessage: 'No end time set' },
     enterBatch: { id: 'assessment/batch/enter', defaultMessage: 'Open' },
     configureBatch: { id: 'assessment/batch/configure', defaultMessage: 'Keep setting up' },
