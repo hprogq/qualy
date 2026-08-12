@@ -94,10 +94,12 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
                 four-character name is legible over a bar six pixels wide */}
             <span
               className={cn(
-                // No will-change here or on the bar below. Switching it on
-                // with the hover and off again drops the layer the moment the
-                // way back begins, and the way back is what then snaps.
-                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 -translate-x-1/2 translate-y-1 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover/segment:translate-y-0 group-hover/segment:opacity-100',
+                // The transform is written out for the same reason as the
+                // bar's: the translate utilities set a custom property, and a
+                // property the transition does not name changes in one step.
+                // No will-change either - switching it on with the hover and
+                // off again drops the layer as the way back begins.
+                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 [transform:translate(-50%,4px)] transition-[opacity,transform] duration-200 ease-out group-hover/segment:opacity-100 group-hover/segment:[transform:translate(-50%,0)]',
               )}
             >
               {entry.displayName}
@@ -107,11 +109,11 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
                 // scaled rather than grown: height is a layout property, and
                 // a card list relaying itself out on every frame of a hover
                 // is the one animation here that cannot run on the compositor
-                // The transform is written out rather than composed from the scale
-                // utilities: those set a custom property that the transform
-                // reads, and a property the transition does not name changes
-                // in one step - so the bar jumped where it should have grown.
-                'absolute inset-x-0 bottom-0 h-1 origin-bottom rounded-[2px] [transform:scaleY(1)] transition-[transform,background-color] duration-200 ease-out group-hover/segment:[transform:scaleY(1.5)]',
+                // Height rather than a scale: two pixels of growth scaled out
+                // of four leaves the rounded ends landing between pixels, and
+                // the shimmer of that is worse than the layout this costs -
+                // the bar is absolutely positioned, so nothing else moves.
+                'absolute inset-x-0 bottom-0 h-1 rounded-[2px] transition-[height,background-color] duration-200 ease-out group-hover/segment:h-1.5',
                 SEGMENTS[entry.status],
               )}
             />
