@@ -3399,3 +3399,18 @@ minutes/seconds 对。刷新频率不变:天与小时下面挂的是小时与分
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 458/73 全绿;`pnpm test:browser` 41 全绿;
 `prettier --check .` 干净。
+
+### 确认框:结构照抄,尺度用自己的(2026-08-12)
+
+先按上游渲染出来的 DOM 抄了一版(padded card + footer 用负 margin 顶回边缘、hairline ring、h-8 按钮、
+`max-w-sm`),用户看过实物后否决:那套间距是配它自己那套字号的,搬过来偏挤。现在**结构保留、尺度回到本仓库
+自己的**——header `px-6 pt-6 pb-5`、footer `border-t bg-muted/30 px-6 py-4`(与隔壁 Dialog 的 footer 同一套,
+两者是兄弟)、按钮回到默认尺寸、宽度 `sm:max-w-md`。基本款不放图标(与参照一致),破坏性只体现在按钮颜色上;
+`AlertDialogMedia` 保留给需要它的调用方。
+
+**关闭动画期间标题里的姓名消失**:调用方在点下确认的那一刻就把「正在移出谁」清成 null,而对话框还要淡出
+一段时间,于是句子中间的名字先没了,变成「将 移出本批次?」。`ConfirmDialog` 现在记住最后一次拿到的文案,
+关闭期间继续显示它——调用方照旧可以在用完的那一刻清自己的状态。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 458/73 全绿;`pnpm test:browser` 41 全绿;
+`pnpm build` 通过;`prettier --check .` 干净。

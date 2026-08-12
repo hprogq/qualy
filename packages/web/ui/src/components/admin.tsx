@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { TriangleAlertIcon } from 'lucide-react'
 import { cn } from '../lib/cn.ts'
 import { Alert, AlertDescription } from './alert.tsx'
@@ -448,12 +448,28 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  // The words outlive the answer.
+  //
+  // Whoever opens one of these keeps the subject in state - which person is
+  // being removed - and clears it the moment the question is answered. The
+  // dialog is still on screen for the length of its closing animation, so the
+  // sentence lost its name mid-fade and asked about nobody. Holding the last
+  // words it was given costs nothing and means a caller can go on clearing
+  // its own state the moment it is done with it.
+  const [said, setSaid] = useState({ title, description, confirmLabel })
+  useEffect(() => {
+    if (open) setSaid({ title, description, confirmLabel })
+  }, [open, title, description, confirmLabel])
+  const shown = open ? { title, description, confirmLabel } : said
+
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && onCancel()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
+          <AlertDialogTitle>{shown.title}</AlertDialogTitle>
+          {shown.description !== undefined && (
+            <AlertDialogDescription>{shown.description}</AlertDialogDescription>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel} disabled={pending}>
@@ -464,7 +480,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={pending}
           >
-            {confirmLabel}
+            {shown.confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
