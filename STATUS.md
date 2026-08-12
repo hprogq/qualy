@@ -3444,3 +3444,34 @@ minutes/seconds 对。刷新频率不变:天与小时下面挂的是小时与分
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 458/73 全绿;`pnpm test:browser` 42 全绿;
 `pnpm build` 通过;`prettier --check .` 干净。
+
+### M1 收口:六处授权/生命周期缺口(2026-08-13)
+
+外部源码审计逐条提出,全部采纳并修掉,裁决写入 docs/assessment-design.md §32.52,M1 的交付与验收段
+同步改写成当前模型(旧稿仍写着「花名册 diff」「三种时间形态」这些已被 §32.34/§32.45 取代的措辞)。
+
+**四条按真实授权漏洞处理**:①`participantByUser` 只返回 active 成员关系(被移出的人此前在阶段开放
+`entry.*` 时仍被权威层放行,与「移出即失去资格、数据保留」直接冲突);②`createScopedAssignment` 执行
+与普通授权一致的结构性不变量(active/assignable/用户类型/节点类型/角色 kind),此前绕开 UI 直接调
+`addStaff` 可以把「只允许老师」的角色给学生、把「只允许班级」的角色挂到年级;③归档关闭闸门并清空
+current phase 投影,重开若排在未来则在新阶段真正进入前无任何阶段生效(重开保留归档前所有阶段的 actual,
+单看计划会算出旧阶段,故按 `lastArchivedAt` 与阶段生效时刻比较判定);④批次可见性拆成管理/工作/参评三
+条路径——管理路径先要求确有权威(空花名册此前对任何登录用户恒真),工作路径 join `role_grants` 复核授权
+仍然有效,参评路径要求批次已真正进入某个阶段。
+
+**两条 P1 同轮清掉**:⑤草稿期的花名册可管理(创建即建名单是 §32.45 的意思,guard 却还停在旧模型,
+导致导入 0 人的草稿除了删除没有出路);⑥`batch_participant_events` 落表记 included/excluded/readmitted,
+并把「恢复」收敛到唯一的接纳路径(与添加人员同样刷新锚点快照)。另有 `entry.resubmit` 按 §32.14 从
+RBAC 目录移入参评人动作,`deriveTimeline` 认得「已归档」不再把末阶段标成 current。
+
+回归测试五组全部落在 `effect-assessment.test.ts`:被移出者五个动作全在权威层拒且恢复后回来、成员历史三态
+留痕;三种非法角色委派全拒;归档后即使末阶段开着 create 也拒、重开待命期间仍拒;空花名册对无权限者不可见、
+撤职后失去可见性;草稿期可从 0 人补到可启动。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **465/73 全绿**(新增 5 组敌意用例);
+`pnpm test:browser` 48 全绿;`pnpm build` 通过;`pnpm qualy resolve --frozen-lockfile` 零写入;
+`prettier --check .` 干净。迁移新增 `20260812164252_participant-membership-events.sql`。
+
+**未纳入本轮**:`authorizeEntryAction` 的资源策略仍是空槽(M1 允许,还没有 Entry);M2 第一件事是接上
+归属、Entry 状态与工作人员组织范围——`entry.record/proxy` 必须校验目标参评人的冻结锚点落在提供该权限的
+分配范围内。
