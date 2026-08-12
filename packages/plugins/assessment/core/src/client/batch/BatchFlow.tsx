@@ -78,7 +78,7 @@ function Marker({ status }: { status: FlowStage['status'] }) {
       <span
         className={cn(
           'relative rounded-full',
-          status === 'ended' && 'size-2 bg-muted-foreground/40',
+          status === 'ended' && 'size-2 bg-muted-foreground/25',
           status === 'current' && 'size-2.5 bg-foreground',
           status === 'future' && 'size-2 border border-muted-foreground/40 bg-background',
         )}
@@ -109,17 +109,19 @@ const STATUS = {
 function Stage({ stage }: { stage: FlowStage }) {
   const said = useSaid()
   const { format } = useI18n()
+  const faded = stage.status === 'ended' && 'text-muted-foreground/60'
   return (
     <>
       <Marker status={stage.status} />
       {/* a hairline, not a bar: at two pixels the rail read as a ruled
           margin down the page and out-shouted the words beside it */}
-      <TimelineSeparator className="w-px bg-border/70 group-data-completed/timeline-item:bg-border" />
+      <TimelineSeparator className="w-px bg-border/70 group-data-completed/timeline-item:bg-border/70" />
       <TimelineHeader className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <TimelineTitle
           className={cn(
             stage.status === 'current' && 'text-foreground',
-            stage.status !== 'current' && 'font-normal text-muted-foreground',
+            stage.status === 'future' && 'font-normal text-muted-foreground',
+            stage.status === 'ended' && 'font-normal text-muted-foreground/70',
           )}
         >
           {stage.name}
@@ -130,20 +132,33 @@ function Stage({ stage }: { stage: FlowStage }) {
           variant={stage.status === 'current' ? 'default' : 'secondary'}
           className={cn(
             'shrink-0 px-1.5 py-0 text-[10px] font-normal',
+            // what is over is drawn faintest of the three: next to a solid
+            // mark for the stage in hand, a grey that is nearly as dark reads
+            // as another live one
+            stage.status === 'ended' && 'bg-muted/60 text-muted-foreground/70',
             stage.status === 'future' && 'bg-transparent text-muted-foreground ring-1 ring-border',
           )}
         >
           {format(STATUS[stage.status])}
         </Badge>
       </TimelineHeader>
-      <TimelineDate className="mt-1 mb-0 font-normal tabular-nums">{said(stage)}</TimelineDate>
+      {/* the whole row fades together, not only its name: a finished stage
+          with a full-strength date under a pale title reads as two stages */}
+      <TimelineDate
+        className={cn(
+          'mt-1 mb-0 font-normal tabular-nums',
+          stage.status === 'ended' && 'text-muted-foreground/60',
+        )}
+      >
+        {said(stage)}
+      </TimelineDate>
       {/* what it waits on first, then what it is for: one is about now and
           the other is about the stage whenever it happens */}
       {stage.note !== '' && (
-        <TimelineContent className="mt-1 text-xs">{stage.note}</TimelineContent>
+        <TimelineContent className={cn('mt-1 text-xs', faded)}>{stage.note}</TimelineContent>
       )}
       {stage.description !== '' && (
-        <TimelineContent className="mt-1 text-xs">{stage.description}</TimelineContent>
+        <TimelineContent className={cn('mt-1 text-xs', faded)}>{stage.description}</TimelineContent>
       )}
     </>
   )

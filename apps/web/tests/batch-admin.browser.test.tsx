@@ -446,9 +446,9 @@ describe('the batch overview', () => {
 
     // the rail opens on where the round is, not on where it started; the
     // strip beside it is the phone's copy and keeps every stage
-    await expect.element(page.getByText('展开前面 2 个阶段')).toBeVisible()
-    await page.getByText('展开前面 2 个阶段').click()
-    expect(await page.getByText('展开前面 2 个阶段').elements()).toHaveLength(0)
+    await expect.element(page.getByText('展开前面 3 个阶段')).toBeVisible()
+    await page.getByText('展开前面 3 个阶段').click()
+    expect(await page.getByText('展开前面 3 个阶段').elements()).toHaveLength(0)
     await expect.element(page.getByRole('heading', { name: '预填报期' }).first()).toBeVisible()
   })
 

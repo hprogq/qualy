@@ -59,7 +59,7 @@ export default function BatchOverviewPage() {
                   <Skeleton className="h-5 w-full" />
                 </div>
               ) : (
-                <BatchFlow timeline={timeline} keepPast={2} />
+                <BatchFlow timeline={timeline} keepPast={1} />
               )}
             </aside>
           </div>
