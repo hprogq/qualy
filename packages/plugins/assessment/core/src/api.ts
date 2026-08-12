@@ -38,8 +38,23 @@ const id = Schema.String.check(Schema.isUUID())
 
 /** an instant on the wire; the service parses it and refuses the unreadable */
 const isoInstant = Schema.String.check(Schema.isMaxLength(64))
-/** a calendar date, as the half-open material range states its bounds */
-const isoDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
+/**
+ * A calendar date, as the half-open material range states its bounds.
+ *
+ * The shape is not enough: `2026-02-31` matches it and is not a day. Left to
+ * the pattern alone it travelled all the way to postgres, which refused it as
+ * a database fault - a 500 for what is plainly a bad request. Checked by
+ * round trip, because that is what "this date exists" means.
+ */
+const isRealDate = (value: string) => {
+  const at = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === value
+}
+
+export const isoDate = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/),
+  Schema.makeFilter((value: string) => isRealDate(value) || 'must be a real calendar date'),
+)
 
 const materialRange = Schema.Struct({ start: isoDate, end: isoDate })
 

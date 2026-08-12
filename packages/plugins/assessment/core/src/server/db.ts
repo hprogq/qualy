@@ -220,9 +220,15 @@ const hasBegun = sql<boolean>`exists (
 /**
  * A batch a participant is in, or was in.
  *
- * They are told about it when it begins - a date in the diary is a plan its
- * administrators are still writing - and they keep it afterwards: a round is
- * archived to stop the work, not to take back what somebody took part in.
+ * Any membership row, not only a live one (§32.56). Being taken off the list
+ * ends what somebody may do in the round; it does not unsay that they were in
+ * it, and everything they filed while they were is still theirs to look at.
+ * What they may still DO is a different question, asked of a different query
+ * (activeParticipantByUser) and answered by the authority layer.
+ *
+ * They are told about the round when it begins - a date in the diary is a
+ * plan its administrators are still writing - and they keep it afterwards: a
+ * round is archived to stop the work, not to take back what happened in it.
  */
 const isParticipant = (userId: string) =>
   sql<boolean>`(
@@ -232,7 +238,6 @@ const isParticipant = (userId: string) =>
       where bp.tenant_id = assessment_batches.tenant_id
         and bp.batch_id = assessment_batches.id
         and bp.user_id = ${userId}::uuid
-        and bp.status = 'active'
     )
   )`
 

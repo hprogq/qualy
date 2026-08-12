@@ -883,6 +883,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const outside = yield* Effect.forEach(codes, (code) =>
           assessment.authorizeEntryAction(student, code, batch.id),
         )
+        const whileOut = yield* assessment.listBatches(f.tenant, { limit: 20 }, student)
+        const readWhileOut = yield* Effect.exit(assessment.getBatch(f.tenant, batch.id, student))
         // and back on the list, the entitlements come back with the membership
         yield* assessment.setParticipantStatus(
           f.tenant,
@@ -898,10 +900,10 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           batch.id,
         )
         const history = yield* participantEvents(f.tenant, mine.id).pipe(Effect.orDie)
-        return { inside, outside, again, history }
+        return { inside, outside, again, whileOut, readWhileOut, history }
       }),
     )
-    const { inside, outside, again, history } = ok(exit)
+    const { inside, outside, again, whileOut, readWhileOut, history } = ok(exit)
     // four opened by the stage, plus the one no stage governs; resubmit is
     // gated and this stage did not open it, so the gate refuses it - not
     // authority, which is what being on the roster answers
@@ -913,6 +915,10 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
       'not-participant',
     ])
     expect(again.allowed).toBe(true)
+    // being taken off the list ends what they may do, not that they were in
+    // it: the round stays theirs to look at (§32.56)
+    expect(whileOut.map((row) => row.name)).toEqual(['Excluded'])
+    expect(Exit.isSuccess(readWhileOut)).toBe(true)
     // and both halves of the story survive the round trip
     expect(history.map((event) => event.kind)).toEqual(['included', 'excluded', 'readmitted'])
     expect(history[1]!.reason).toBe('transferred out')

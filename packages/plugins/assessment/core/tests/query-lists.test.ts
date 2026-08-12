@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { idList } from '../src/api.ts'
+import { idList, isoDate } from '../src/api.ts'
 
 // A list-valued query parameter is a list only when it repeats.
 //
@@ -30,5 +30,29 @@ describe('a repeated query parameter', () => {
   it('still refuses something that is not an id', () => {
     expect(() => decode('not-an-id')).toThrow()
     expect(() => decode([one, 'not-an-id'])).toThrow()
+  })
+})
+
+// A material range says which days count, so a day that does not exist is a
+// bad request rather than something for postgres to refuse. The pattern alone
+// let 2026-02-31 through, and the round trip is what "this date exists" means.
+
+const day = Schema.decodeUnknownSync(isoDate)
+
+describe('a calendar date on the wire', () => {
+  it('takes a day the calendar has', () => {
+    expect(day('2026-02-28')).toBe('2026-02-28')
+    expect(day('2024-02-29')).toBe('2024-02-29')
+  })
+
+  it('refuses a day it does not', () => {
+    expect(() => day('2026-02-31')).toThrow()
+    expect(() => day('2026-13-01')).toThrow()
+    expect(() => day('2025-02-29')).toThrow()
+  })
+
+  it('still refuses anything of the wrong shape', () => {
+    expect(() => day('2026-3-1')).toThrow()
+    expect(() => day('not-a-date')).toThrow()
   })
 })

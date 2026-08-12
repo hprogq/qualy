@@ -3544,3 +3544,14 @@ staff 可见性补 deny-all 分支);`pnpm test:browser` 48 全绿;`pnpm build` �
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **475/73 全绿**;`pnpm test:browser` 48 全绿;
 `pnpm build` 通过;`pnpm qualy resolve --frozen-lockfile` 零写入;`pnpm qualy generate` 无待生成;
 `prettier --check .` 干净。
+
+### 两条低优先边界:资格与历史读取分家,日期校验(2026-08-13)
+
+- **`excluded` = 失去资格,不等于失去自己的历史**(裁决 §32.56)。可见性按「有没有成员关系行」判定,资格按
+  `status='active'` 判定:被移出的人仍能打开那一轮读自己当时的东西,任何写动作在权威层被拒。这条现在定下,
+  M2 写 Entry ACL 时只需再加「这条 Entry 是不是他的」。
+- **`isoDate` 校验真实日期**:`2026-02-31` 此前一路走到 postgres 变成 500,现在在契约边界返回 400;闰年一并
+  管住。契约测试直接解码 schema(HTTP 用例会先被鉴权挡下,说明不了 schema 的事)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **478/73 全绿**;`pnpm test:browser` 48 全绿;
+`pnpm build` 通过;`prettier --check .` 干净。
