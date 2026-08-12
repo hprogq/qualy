@@ -324,8 +324,11 @@ export function BatchFlowStrip({
           and takes them back the way they came, at the speed they went */}
       <button
         type="button"
-        tabIndex={strayed ? 0 : -1}
-        aria-hidden={!strayed}
+        // inert rather than aria-hidden: this button hides itself the moment
+        // it is pressed, and hiding an element from assistive technology
+        // while it still holds focus is the one way to do that wrongly.
+        // inert takes the focus with it.
+        {...(strayed ? {} : { inert: true })}
         onClick={() => {
           const rail = track.current
           const node = here.current
