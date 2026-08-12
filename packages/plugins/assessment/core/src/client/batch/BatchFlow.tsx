@@ -242,9 +242,17 @@ export function BatchFlowStrip({
   const [more, setMore] = useState({ before: false, after: false })
   const [strayed, setStrayed] = useState(false)
 
-  // where the stage in hand would sit if it were centred
+  // Where the rail has to sit for the stage in hand to be as centred as it
+  // can be - clamped, because the first and last stages cannot reach the
+  // middle and a rail already as far as it goes has not strayed anywhere.
   const centreOf = (rail: HTMLDivElement, node: HTMLDivElement) =>
-    node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2
+    Math.max(
+      0,
+      Math.min(
+        node.offsetLeft - (rail.clientWidth - node.clientWidth) / 2,
+        rail.scrollWidth - rail.clientWidth,
+      ),
+    )
 
   const measure = () => {
     const rail = track.current
