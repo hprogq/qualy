@@ -38,7 +38,7 @@ function Ring({ fraction }: { fraction: number }) {
   const radius = 5
   const circumference = 2 * Math.PI * radius
   return (
-    <svg viewBox="0 0 14 14" className="size-3 shrink-0 -rotate-90" aria-hidden>
+    <svg viewBox="0 0 14 14" className="size-3.5 shrink-0 -rotate-90" aria-hidden>
       <circle
         cx="7"
         cy="7"
@@ -112,7 +112,7 @@ export function BatchProgress({
           <span className="shrink-0 text-xs text-muted-foreground max-lg:hidden">
             {format(m.currentStage)}
           </span>
-          <Badge variant="secondary" className="max-w-full min-w-0 font-normal">
+          <Badge variant="secondary" className="max-w-full min-w-0 px-2 py-0.5 text-sm font-normal">
             <span className="truncate">{stage}</span>
           </Badge>
         </span>
@@ -123,7 +123,7 @@ export function BatchProgress({
         <span aria-hidden className="h-3.5 w-px shrink-0 bg-border max-sm:hidden" />
       )}
       {said !== null && (
-        <span className={cn('inline-flex shrink-0 items-center gap-1.5', tone)}>
+        <span className={cn('inline-flex shrink-0 items-center gap-1.5 font-medium', tone)}>
           {filled !== null && <Ring fraction={filled} />}
           {progress.kind === 'starts' && (
             <span className="text-muted-foreground">{format(m.plannedStart)}</span>
