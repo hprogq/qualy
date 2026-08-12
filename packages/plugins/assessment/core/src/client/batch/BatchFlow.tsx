@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
-import { MoreVerticalIcon } from 'lucide-react'
+import { ChevronsLeftIcon, ChevronsRightIcon, MoreVerticalIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import {
@@ -244,34 +244,49 @@ export function BatchFlowStrip({
   }
 
   return (
-    <div
-      ref={track}
-      onScroll={measure}
-      // the fade is the scrollbar this rail does not have: an end with more
-      // beyond it dissolves, and an end with nothing beyond it stays sharp,
-      // so the edge itself says which way there is anything to find
-      style={{
-        maskImage: more.before || more.after ? edgeMask(more) : undefined,
-      }}
-      className={cn(
-        'snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-        className,
-      )}
-    >
-      <Timeline orientation="horizontal" value={reachedIn(stages)} className="w-max">
-        {stages.map((stage, index) => (
-          <TimelineItem
-            key={stage.id}
-            step={index + 1}
-            ref={stage.status === 'current' ? here : undefined}
-            // flex-none, or the timeline's own flex-1 basis of zero shrinks
-            // every stage to the width of one character
-            className="w-56 flex-none snap-center wrap-anywhere"
-          >
-            <Stage stage={stage} />
-          </TimelineItem>
-        ))}
-      </Timeline>
+    <div className={cn('relative', className)}>
+      {/* the arrows are a hint, not a control: they say which way the rail
+          still has stages, and a thumb is already the way to go there */}
+      <ChevronsLeftIcon
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute top-1 left-0 z-10 size-3.5 text-muted-foreground/50 transition-opacity',
+          more.before ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+      <ChevronsRightIcon
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute top-1 right-0 z-10 size-3.5 text-muted-foreground/50 transition-opacity',
+          more.after ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+      <div
+        ref={track}
+        onScroll={measure}
+        // the fade is the scrollbar this rail does not have: an end with more
+        // beyond it dissolves, and an end with nothing beyond it stays sharp,
+        // so the edge itself says which way there is anything to find
+        style={{
+          maskImage: more.before || more.after ? edgeMask(more) : undefined,
+        }}
+        className="snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <Timeline orientation="horizontal" value={reachedIn(stages)} className="w-max">
+          {stages.map((stage, index) => (
+            <TimelineItem
+              key={stage.id}
+              step={index + 1}
+              ref={stage.status === 'current' ? here : undefined}
+              // flex-none, or the timeline's own flex-1 basis of zero shrinks
+              // every stage to the width of one character
+              className="w-56 flex-none snap-center wrap-anywhere"
+            >
+              <Stage stage={stage} />
+            </TimelineItem>
+          ))}
+        </Timeline>
+      </div>
     </div>
   )
 }
