@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
+import { MoreVerticalIcon } from 'lucide-react'
 import { cn } from '@qualy/ui/cn'
 import {
   Timeline,
@@ -81,7 +82,9 @@ function Stage({ stage }: { stage: FlowStage }) {
   return (
     <>
       <Marker status={stage.status} />
-      <TimelineSeparator className="bg-border group-data-completed/timeline-item:bg-muted-foreground/25" />
+      {/* a hairline, not a bar: at two pixels the rail read as a ruled
+          margin down the page and out-shouted the words beside it */}
+      <TimelineSeparator className="w-px bg-border group-data-completed/timeline-item:bg-muted-foreground/25" />
       <TimelineHeader>
         <TimelineDate className="font-normal tabular-nums">{said(stage)}</TimelineDate>
         <TimelineTitle
@@ -105,24 +108,55 @@ function Stage({ stage }: { stage: FlowStage }) {
   )
 }
 
-/** the flow down a column, for a screen with width to spare */
+/**
+ * The flow down a column, for a screen with width to spare.
+ *
+ * `keepPast` folds the stages further back than that: a round of eight ends
+ * with the stage in hand pushed off the bottom of the rail, and a reader who
+ * has to scroll to find where the round is has been told nothing by a column
+ * that exists to tell them exactly that. What is folded is always the past,
+ * never what is still to come, and it opens in one click.
+ */
 export function BatchFlow({
   timeline,
+  keepPast,
   className,
 }: {
   timeline: readonly FlowEntry[]
+  /** how many finished stages to keep above the one in hand */
+  keepPast?: number
   className?: string
 }) {
   const { format } = useI18n()
+  const [opened, setOpened] = useState(false)
   const stages = stagesOf(timeline)
   if (stages.length === 0) {
     return <p className={cn('text-sm text-muted-foreground', className)}>{format(m.noStagesYet)}</p>
   }
 
+  const here = stages.findIndex((stage) => stage.status === 'current')
+  // folding one row saves a row and costs a control, so it starts at two
+  const folded = opened || keepPast === undefined || here === -1 ? 0 : Math.max(0, here - keepPast)
+  const shown = folded > 1 ? stages.slice(folded) : stages
+
   return (
     <Timeline value={reachedIn(stages)} className={className}>
-      {stages.map((stage, index) => (
-        <TimelineItem key={stage.id} step={index + 1} className="ms-6 wrap-anywhere">
+      {folded > 1 && (
+        <TimelineItem step={0} className="ms-6 pb-4">
+          <TimelineIndicator className="flex items-center justify-center border-0 bg-background text-muted-foreground/50">
+            <MoreVerticalIcon className="size-3.5" />
+          </TimelineIndicator>
+          <button
+            type="button"
+            className="-mt-0.5 text-left text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            onClick={() => setOpened(true)}
+          >
+            {format(m.flowEarlier, { count: folded })}
+          </button>
+        </TimelineItem>
+      )}
+      {shown.map((stage, index) => (
+        <TimelineItem key={stage.id} step={folded + index + 1} className="ms-6 wrap-anywhere">
           <Stage stage={stage} />
         </TimelineItem>
       ))}

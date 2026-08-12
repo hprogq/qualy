@@ -417,6 +417,42 @@ describe('the batch overview', () => {
     expect(await panel.getByText('未排期').elements()).toHaveLength(0)
   })
 
+  it('folds the stages the round has left behind, and opens them on a click', async () => {
+    await page.viewport(1280, 800)
+    const past = (name: string, hoursAgo: number) => ({
+      phaseId: name,
+      displayName: name,
+      description: '',
+      entryNote: '',
+      status: 'ended' as const,
+      entry: { kind: 'entered' as const, at: at(-hoursAgo * HOUR) },
+    })
+    screen(
+      {
+        getBatch: () =>
+          Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID }) }),
+        getTimeline: () =>
+          Effect.succeed({
+            timeline: [
+              past('预填报期', 96),
+              past('资格核对', 72),
+              past('材料补交', 48),
+              past('初审', 24),
+              ...running(30 * HOUR),
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+    )
+
+    // the rail opens on where the round is, not on where it started; the
+    // strip beside it is the phone's copy and keeps every stage
+    await expect.element(page.getByText('展开前面 2 个阶段')).toBeVisible()
+    await page.getByText('展开前面 2 个阶段').click()
+    expect(await page.getByText('展开前面 2 个阶段').elements()).toHaveLength(0)
+    await expect.element(page.getByRole('heading', { name: '预填报期' }).first()).toBeVisible()
+  })
+
   it('says what a stage with no time is waiting for', async () => {
     await page.viewport(1280, 800)
     screen(

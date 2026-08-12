@@ -214,6 +214,10 @@ const flowFrom = defineMessage<{ when: string }>()({
   id: 'assessment/flow/from',
   defaultMessage: 'from {when}',
 })
+const flowEarlier = defineMessage<{ count: number }>()({
+  id: 'assessment/flow/earlier',
+  defaultMessage: '{count, plural, one {# earlier stage} other {# earlier stages}}',
+})
 const flowFromPending = defineMessage<{ when: string }>()({
   id: 'assessment/flow/from-pending',
   defaultMessage: 'from {when}, end to be decided',
@@ -427,6 +431,7 @@ const i18n = definePluginMessages({
     // line reads as a screen that failed to load one
     flowPending: { id: 'assessment/flow/pending', defaultMessage: 'Time to be decided' },
     flowEndPending: { id: 'assessment/flow/end-pending', defaultMessage: 'End to be decided' },
+    flowEarlier,
     flowFromPending,
     bareDays,
     bareHours,
