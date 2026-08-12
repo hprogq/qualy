@@ -16,7 +16,10 @@ export default function AppShell() {
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
       <TopBar apps={apps} activeApp={activeApp} />
       <SectionBar items={sections} />
-      <main className="min-h-0 flex-1 overflow-y-auto">
+      {/* the gutter is reserved whether or not this page overflows: without
+          it a page that fits sits a few pixels right of one that scrolls, and
+          the whole layout appears to shift as you move between them */}
+      <main className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <Outlet />
       </main>
     </div>
