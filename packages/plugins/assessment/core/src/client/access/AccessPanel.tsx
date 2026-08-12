@@ -260,17 +260,17 @@ export function AccessPanel({ batchId }: { batchId: string }) {
         )}
       </section>
 
-      {subject && (
-        <AccessAdjustDialog
-          subject={subject}
-          open
-          pending={setDeny.isPending}
-          onSave={(denied) =>
-            setDeny.mutate({ userId: subject.userId, was: subject.denied, now: denied })
-          }
-          onClose={() => setAdjusting(null)}
-        />
-      )}
+      {/* mounted whether or not it is open: unmounting it the moment the
+          answer arrives cuts its closing animation off at the knees */}
+      <AccessAdjustDialog
+        subject={subject ?? null}
+        open={subject !== undefined}
+        pending={setDeny.isPending}
+        onSave={(denied) =>
+          subject && setDeny.mutate({ userId: subject.userId, was: subject.denied, now: denied })
+        }
+        onClose={() => setAdjusting(null)}
+      />
 
       <AddStaffDialog
         batchId={batchId}

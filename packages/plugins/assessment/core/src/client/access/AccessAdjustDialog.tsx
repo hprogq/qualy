@@ -56,7 +56,8 @@ export function AccessAdjustDialog({
   onSave,
   onClose,
 }: {
-  subject: AccessSubject
+  /** null while closed, which is most of the time it is mounted */
+  subject: AccessSubject | null
   open: boolean
   pending: boolean
   /** the capabilities to withhold from now on, as a whole */
@@ -64,15 +65,26 @@ export function AccessAdjustDialog({
   onClose: () => void
 }) {
   const { format } = useI18n()
+  // the person it was opened for, kept while it closes: the panel drops them
+  // the moment it is done, and the dialog is still fading out
+  const [shown, setShown] = useState<AccessSubject | null>(subject)
+  useEffect(() => {
+    if (subject !== null) setShown(subject)
+  }, [subject])
+  const person = subject ?? shown
+
   const offered = inCatalogOrder([
-    ...new Set([...subject.sources.flatMap((source) => source.current), ...subject.denied]),
+    ...new Set([
+      ...(person?.sources ?? []).flatMap((source) => source.current),
+      ...(person?.denied ?? []),
+    ]),
   ])
-  const [denied, setDenied] = useState<readonly string[]>(subject.denied)
+  const [denied, setDenied] = useState<readonly string[]>(person?.denied ?? [])
 
   // reopening starts from what is true, not from where the last visit left off
   useEffect(() => {
-    if (open) setDenied(subject.denied)
-  }, [open, subject.denied])
+    if (open && subject !== null) setDenied(subject.denied)
+  }, [open, subject])
 
   const toggle = (code: StaffCode) =>
     setDenied((current) =>
@@ -80,13 +92,16 @@ export function AccessAdjustDialog({
     )
 
   const changed =
-    denied.length !== subject.denied.length || denied.some((code) => !subject.denied.includes(code))
+    person !== null &&
+    (denied.length !== person.denied.length || denied.some((code) => !person.denied.includes(code)))
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{format(m.accessAdjustTitle, { name: subject.displayName })}</DialogTitle>
+          <DialogTitle>
+            {format(m.accessAdjustTitle, { name: person?.displayName ?? '' })}
+          </DialogTitle>
           <DialogDescription>{format(m.accessAdjustHint)}</DialogDescription>
         </DialogHeader>
         <DialogBody>
