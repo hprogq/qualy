@@ -308,6 +308,7 @@ const specToEngine = (spec: PhaseSpecInput): NewPhaseSpec => ({
   phaseKey: spec.phaseKey,
   displayName: spec.displayName,
   description: spec.description ?? '',
+  entryNote: spec.entryNote ?? '',
   permissionProfile: spec.permissionProfile ?? [],
 })
 
@@ -834,6 +835,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
     if (description !== existing.description) {
       edits.push({ kind: 'describe', phaseId: existing.id, description })
     }
+    const entryNote = spec.entryNote ?? ''
+    if (entryNote !== existing.entryNote) {
+      edits.push({ kind: 'note-entry', phaseId: existing.id, entryNote })
+    }
     const profile = spec.permissionProfile ?? []
     if (JSON.stringify(profile) !== JSON.stringify(existing.permissionProfile)) {
       edits.push({ kind: 'set-profile', phaseId: existing.id, permissionProfile: profile })
@@ -849,6 +854,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
         return { kind: 'planned-changed', plannedAt: edit.plannedEntryAt }
       case 'describe':
         return { kind: 'described' }
+      case 'note-entry':
+        return { kind: 'entry-noted' }
       case 'set-profile':
         return { kind: 'profile-changed' }
       default:
@@ -867,6 +874,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
           return { ...phase, plannedEntryAt: edit.plannedEntryAt }
         case 'describe':
           return { ...phase, description: edit.description }
+        case 'note-entry':
+          return { ...phase, entryNote: edit.entryNote }
         case 'set-profile':
           return { ...phase, permissionProfile: edit.permissionProfile }
         default:
@@ -907,6 +916,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             displayName: spec.displayName,
             phaseKey: spec.phaseKey,
             description: spec.description ?? '',
+            entryNote: spec.entryNote ?? '',
             permissionProfile: spec.permissionProfile ?? [],
           })
           const scopesChanged =

@@ -175,6 +175,7 @@ const toSpec = (row: PhaseRow): PhaseSpecInput => ({
   phaseKey: row.phaseKey,
   displayName: row.displayName,
   description: row.description,
+  entryNote: row.entryNote,
   permissionProfile: row.permissionProfile,
 })
 
@@ -735,6 +736,60 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(afterPlan.lapsedTotal).toBe(0)
     expect(afterPlan.pendingTotal).toBe(0)
     expect(of(afterRevoke)).toEqual([])
+  })
+
+  it('keeps what a stage is waiting for, and drops it once the stage has a time', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('entry-note')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'entry note',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.root], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'appeal' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // an edit of an existing phase, which is the path a screen takes
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: plan.map((row, index) =>
+              index === 1 ? { ...toSpec(row), entryNote: '待学院审批名单后确定' } : toSpec(row),
+            ),
+          },
+          f.principal,
+        )
+        const noted = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        const waiting = yield* assessment.timeline(f.tenant, batch.id)
+        // and once the stage has a time, the sentence has been answered
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[1]!.id,
+          Date.now() + 86_400_000,
+          f.principal,
+        )
+        const scheduled = yield* assessment.timeline(f.tenant, batch.id)
+        return { noted, waiting, scheduled }
+      }),
+    )
+    const { noted, waiting, scheduled } = ok(exit)
+    expect(noted[1]!.entryNote).toBe('待学院审批名单后确定')
+    expect(waiting[1]!.entryNote).toBe('待学院审批名单后确定')
+    expect(scheduled[1]!.entryNote).toBe('')
   })
 
   it('offers only roles a batch may carry, at units the batch actually covers', async () => {

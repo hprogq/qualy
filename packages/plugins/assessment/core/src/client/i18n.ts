@@ -214,10 +214,6 @@ const flowFrom = defineMessage<{ when: string }>()({
   id: 'assessment/flow/from',
   defaultMessage: 'from {when}',
 })
-const flowExpected = defineMessage<{ when: string }>()({
-  id: 'assessment/flow/expected',
-  defaultMessage: 'from {when}',
-})
 const flowUntil = defineMessage<{ when: string }>()({
   id: 'assessment/flow/until',
   defaultMessage: 'until {when}',
@@ -420,9 +416,7 @@ const i18n = definePluginMessages({
     noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages arranged yet' },
     currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
     flowTitle: { id: 'assessment/flow/title', defaultMessage: 'How this round runs' },
-    flowNow: { id: 'assessment/flow/now', defaultMessage: 'under way' },
     flowFrom,
-    flowExpected,
     flowUntil,
     viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'See the whole flow' },
     flowStatusEnded: { id: 'assessment/flow/status-ended', defaultMessage: 'Over' },

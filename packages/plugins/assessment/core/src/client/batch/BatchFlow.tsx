@@ -18,12 +18,18 @@ import { stagesOf, type FlowEntry, type FlowStage } from './flow.ts'
 // about each. Neither says a word about how the plan was made, and a stage
 // with no time says what it is waiting for instead of naming its own absence.
 
+// Times are said in full, to the minute. Two stages of the same round can
+// begin and end on one day, and a flow that says only "September 5" leaves
+// its reader to guess which of them they are looking at.
 const useWhen = () => {
   const { locale } = useI18n()
+  const moment = (at: number) =>
+    new Date(at).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })
   return {
-    day: (at: number) => new Date(at).toLocaleDateString(locale, { month: 'long', day: 'numeric' }),
-    moment: (at: number) =>
-      new Date(at).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }),
+    moment,
+    /** the two edges of a stage, with the second dropped when it is unknown */
+    span: (from: number | null, to: number | null) =>
+      from === null ? null : to === null ? moment(from) : `${moment(from)} — ${moment(to)}`,
   }
 }
 
@@ -45,48 +51,49 @@ function Marker({ status, className }: { status: FlowStage['status']; className?
   )
 }
 
-/** the line for a stage, said the way that stage deserves */
-function useSaid() {
-  const { format } = useI18n()
+/**
+ * When a stage runs, or what it is waiting for instead.
+ *
+ * One or the other, never both: a stage with times has answered the question
+ * the note was standing in for, and the server stops sending the note then.
+ */
+const useSaid = () => {
   const when = useWhen()
-  return (stage: FlowStage): string => {
-    if (stage.status === 'current') {
-      return stage.until !== null
-        ? format(m.flowUntil, { when: when.moment(stage.until) })
-        : format(m.flowNow)
-    }
-    if (stage.at !== null) {
-      return stage.status === 'ended'
-        ? format(m.flowFrom, { when: when.day(stage.at) })
-        : format(m.flowExpected, { when: when.day(stage.at) })
-    }
-    // nothing fixed: what it waits for, or nothing at all
-    return stage.note
-  }
+  return (stage: FlowStage): string => when.span(stage.at, stage.until) ?? stage.note
 }
+
+const STATUS = {
+  ended: m.flowStatusEnded,
+  current: m.flowStatusCurrent,
+  future: m.flowStatusFuture,
+} as const
 
 /** everything known about one stage, for whoever asks for it */
 function StageDetail({ stage }: { stage: FlowStage }) {
   const { format } = useI18n()
   const when = useWhen()
-  const said = useSaid()
   return (
-    <div className="space-y-1.5">
-      <p className="text-sm font-medium">{stage.name}</p>
-      <p className="text-xs text-muted-foreground">
-        {format(
-          stage.status === 'ended'
-            ? m.flowStatusEnded
-            : stage.status === 'current'
-              ? m.flowStatusCurrent
-              : m.flowStatusFuture,
-        )}
-        {said(stage) !== '' && ` · ${said(stage)}`}
-      </p>
-      {stage.at !== null && stage.status !== 'ended' && (
-        <p className="text-xs text-muted-foreground">{when.moment(stage.at)}</p>
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium">{stage.name}</p>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {format(STATUS[stage.status])}
+        </span>
+      </div>
+      {stage.at !== null && (
+        <p className="text-xs text-muted-foreground">
+          {format(m.flowFrom, { when: when.moment(stage.at) })}
+        </p>
       )}
-      {stage.description !== '' && <p className="text-sm">{stage.description}</p>}
+      {stage.until !== null && (
+        <p className="text-xs text-muted-foreground">
+          {format(m.flowUntil, { when: when.moment(stage.until) })}
+        </p>
+      )}
+      {stage.note !== '' && <p className="text-sm">{stage.note}</p>}
+      {stage.description !== '' && (
+        <p className="text-sm text-muted-foreground">{stage.description}</p>
+      )}
     </div>
   )
 }
@@ -120,8 +127,8 @@ export function BatchFlow({
   return (
     <ol className={cn('flex flex-col', className)}>
       {stages.map((stage, index) => (
-        <li key={stage.id} className="flex gap-3">
-          <div className="flex flex-col items-center pt-0.5">
+        <li key={stage.id} className="flex min-w-0 gap-3">
+          <div className="flex flex-col items-center">
             <Marker status={stage.status} />
             {/* the line belongs to the gap between two stages, so the last
                 one ends rather than trailing off */}
@@ -129,33 +136,29 @@ export function BatchFlow({
               <span
                 aria-hidden
                 className={cn(
-                  'w-0.5 flex-1 rounded-full',
+                  'w-px flex-1 rounded-full',
                   stage.status === 'ended' ? 'bg-muted-foreground/30' : 'bg-border',
                 )}
               />
             )}
           </div>
-          <Detailed stage={stage}>
-            <div
-              className={cn(
-                'mb-1 min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-left transition-colors',
-                index === stages.length - 1 && 'mb-0',
-                stage.status === 'current' ? 'bg-emerald-500/8' : 'hover:bg-muted/60',
-              )}
-            >
+          {/* the words start at the marker's own line, and wrap rather than
+              being cut: this column is narrow and a stage name is a name */}
+          <div className={cn('min-w-0 flex-1', index < stages.length - 1 && 'pb-5')}>
+            <Detailed stage={stage}>
               <p
                 className={cn(
-                  'truncate text-sm',
-                  stage.status === 'current' ? 'font-medium text-foreground' : 'text-foreground/85',
+                  'inline-block text-sm/4 wrap-anywhere',
+                  stage.status === 'current' ? 'font-medium' : 'text-foreground/85',
                 )}
               >
                 {stage.name}
               </p>
-              {said(stage) !== '' && (
-                <p className="mt-0.5 text-xs text-muted-foreground">{said(stage)}</p>
-              )}
-            </div>
-          </Detailed>
+            </Detailed>
+            {said(stage) !== '' && (
+              <p className="mt-1 text-xs/4 text-muted-foreground wrap-anywhere">{said(stage)}</p>
+            )}
+          </div>
         </li>
       ))}
     </ol>
@@ -201,7 +204,10 @@ export function BatchFlowStrip({
         <li
           key={stage.id}
           ref={stage.status === 'current' ? here : undefined}
-          className={cn('flex snap-center flex-col', stage.status === 'current' ? 'w-40' : 'w-28')}
+          className={cn(
+            'flex shrink-0 snap-center flex-col',
+            stage.status === 'current' ? 'w-48' : 'w-40',
+          )}
         >
           {/* the rail runs through the markers rather than under the words,
               so the row of them reads as one line and not as a row of cards */}
@@ -227,16 +233,14 @@ export function BatchFlowStrip({
           <div className="mt-2 px-2 text-center">
             <p
               className={cn(
-                'truncate text-sm',
+                'text-sm/4 wrap-anywhere',
                 stage.status === 'current' ? 'font-medium' : 'text-foreground/85',
               )}
             >
               {stage.name}
             </p>
-            {/* only the stage in hand spends a second line: the rest are
-                there to say where this one sits between them */}
-            {stage.status === 'current' && said(stage) !== '' && (
-              <p className="mt-0.5 text-xs text-muted-foreground">{said(stage)}</p>
+            {said(stage) !== '' && (
+              <p className="mt-1 text-xs/4 text-muted-foreground wrap-anywhere">{said(stage)}</p>
             )}
           </div>
         </li>
