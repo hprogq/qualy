@@ -65,12 +65,12 @@ export function PageHeader({
   description?: string
   actions?: ReactNode
   /**
-   * A band across the top of the page rather than a line of text.
+   * The heading of a band that spans the content area, rather than a line of
+   * text above it.
    *
-   * For a screen that arrives inside something else - a section of a batch,
-   * say, whose name is already said in the bar above - where a bare heading
-   * over a table reads as the page having forgotten to load. The band gives
-   * the section a top edge and the content below it a place to start.
+   * Only the rhythm differs here - the band itself belongs to whoever draws
+   * it edge to edge, because a header inset inside the page's own width is a
+   * card pretending to be a header.
    */
   variant?: 'plain' | 'banner'
 }) {
@@ -78,8 +78,7 @@ export function PageHeader({
     <div
       className={cn(
         'flex flex-wrap items-start justify-between gap-x-4 gap-y-2',
-        variant === 'banner' &&
-          'rounded-xl border bg-gradient-to-b from-muted/60 to-background px-5 py-4',
+        variant === 'banner' && 'py-1',
       )}
     >
       <div className="space-y-1">

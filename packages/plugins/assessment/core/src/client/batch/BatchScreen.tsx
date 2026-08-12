@@ -42,26 +42,41 @@ export function BatchScreen({
   const batch = detail.data?.batch
 
   return (
-    <PageContainer size={size} className="space-y-5">
-      <PageHeader title={title} description={description} variant="banner" />
-      <AsyncSection
-        pending={detail.isPending}
-        error={detail.isError ? formatError(detail.error) : null}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
-        onRetry={() => void detail.refetch()}
-      >
-        {batch && (
-          <div className="flex flex-col gap-4">
-            {batch.status === 'draft' && (
-              <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-                {format(m.draftBanner)}
-              </p>
-            )}
-            {children(batch)}
-          </div>
-        )}
-      </AsyncSection>
-    </PageContainer>
+    <>
+      {/* Edge to edge, cutting the content area in two: a band inset inside
+          the page's own width is a card pretending to be a header, and it
+          reads as one more box among the boxes below it. */}
+      <div className="relative overflow-hidden border-b bg-background">
+        {/* the dots fade out downwards, so the band gives way to the work
+            instead of stopping at a line */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.18] [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:14px_14px] [mask-image:linear-gradient(to_bottom,black,transparent)]"
+        />
+        <PageContainer size={size} className="relative py-6">
+          <PageHeader title={title} description={description} variant="banner" />
+        </PageContainer>
+      </div>
+      <PageContainer size={size} className="space-y-5">
+        <AsyncSection
+          pending={detail.isPending}
+          error={detail.isError ? formatError(detail.error) : null}
+          loadingLabel={format(commonMessages.loading)}
+          retryLabel={format(commonMessages.retry)}
+          onRetry={() => void detail.refetch()}
+        >
+          {batch && (
+            <div className="flex flex-col gap-4">
+              {batch.status === 'draft' && (
+                <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                  {format(m.draftBanner)}
+                </p>
+              )}
+              {children(batch)}
+            </div>
+          )}
+        </AsyncSection>
+      </PageContainer>
+    </>
   )
 }
