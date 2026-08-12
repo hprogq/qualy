@@ -82,13 +82,19 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
         {timeline.map((entry, index) => (
           <span
             key={entry.displayName + String(index)}
-            className="group/segment relative h-1 min-w-0 flex-1"
+            // The strip itself is four pixels tall with four between them, so
+            // a pointer crossing it enters and leaves a dozen times on the
+            // way: every crossing restarts two transitions, and the flicker
+            // that comes of it is what reads as stutter. The hit area is a
+            // band around the segment, half the gap wide, so one pass over
+            // the bar is one hover.
+            className="group/segment relative h-1 min-w-0 flex-1 before:absolute before:-inset-x-0.5 before:-top-4 before:-bottom-2 before:content-['']"
           >
             {/* wider than the segment it belongs to and centred on it, so a
                 four-character name is legible over a bar six pixels wide */}
             <span
               className={cn(
-                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 -translate-x-1/2 translate-y-1 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 group-hover/segment:translate-y-0 group-hover/segment:opacity-100',
+                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 -translate-x-1/2 translate-y-1 transform-gpu truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 will-change-[opacity,transform] group-hover/segment:translate-y-0 group-hover/segment:opacity-100',
               )}
             >
               {entry.displayName}
@@ -98,7 +104,7 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
                 // scaled rather than grown: height is a layout property, and
                 // a card list relaying itself out on every frame of a hover
                 // is the one animation here that cannot run on the compositor
-                'absolute inset-x-0 bottom-0 h-1 origin-bottom rounded-[2px] transition-[transform,background-color] duration-150 group-hover/segment:scale-y-150',
+                'absolute inset-x-0 bottom-0 h-1 origin-bottom transform-gpu rounded-[2px] transition-[transform,background-color] duration-150 will-change-transform group-hover/segment:scale-y-150',
                 SEGMENTS[entry.status],
               )}
             />
