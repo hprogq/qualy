@@ -151,7 +151,10 @@ export default function WorkspaceShell() {
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
       <TopBar apps={apps} activeApp={activeApp} />
-      <div className="flex shrink-0 items-center gap-2 border-b bg-background px-2 py-2 sm:px-4">
+      {/* its height is fixed rather than found: the slot arrives a moment after
+          the shell does, and a bar that grows from empty to filled moves every
+          page below it just as the reader starts reading */}
+      <div className="flex h-13 shrink-0 items-center gap-2 border-b bg-background px-2 sm:px-4">
         {/* only on a phone, where the rail is a sheet with no edge of its own
             to reach; on a desktop it keeps its own control, open or shut */}
         {isMobile && toggle(format(m.toggleSidebar))}

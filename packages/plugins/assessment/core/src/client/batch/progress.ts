@@ -60,7 +60,14 @@ export const spanOf = (ms: number): Elapsed => {
 
 export type Progress =
   /** counting down to the stage that follows this one */
-  | { readonly kind: 'until'; readonly span: Elapsed }
+  | {
+      readonly kind: 'until'
+      readonly span: Elapsed
+      /** what is left, for whoever has to decide how loudly to say it */
+      readonly remaining: number
+      /** how much of this stage has gone, when its start is known */
+      readonly fraction: number | null
+    }
   /** nothing is scheduled after it, so all there is to say is how long */
   | { readonly kind: 'since'; readonly span: Elapsed }
   /** the batch has not begun; when it is due to */
@@ -83,14 +90,42 @@ export function progressOf(timeline: readonly TimelineLike[], now: number): Prog
     )
     return first ? { kind: 'starts', at: Date.parse(first.entry.at!) } : { kind: 'none' }
   }
+  const current = timeline[index]!
   const next = timeline[index + 1]
   if (next?.entry.kind === 'planned' && next.entry.at !== null) {
-    return { kind: 'until', span: spanOf(Date.parse(next.entry.at) - now) }
+    const end = Date.parse(next.entry.at)
+    const start = current.entry.at === null ? null : Date.parse(current.entry.at)
+    return {
+      kind: 'until',
+      span: spanOf(end - now),
+      remaining: Math.max(0, end - now),
+      // a stage whose own start was never recorded has no length to divide
+      // by, and a bar filled from an invented start is a bar that lies
+      fraction:
+        start === null || end <= start
+          ? null
+          : Math.min(1, Math.max(0, (now - start) / (end - start))),
+    }
   }
-  const current = timeline[index]!
   if (current.entry.at === null) return { kind: 'none' }
   return { kind: 'since', span: spanOf(now - Date.parse(current.entry.at)) }
 }
+
+/**
+ * How loudly to say what is left.
+ *
+ * Grey while there is time to plan around, amber inside a day, and warm
+ * inside the last hour. A countdown that wears the same colour at four weeks
+ * and at four minutes is a countdown nobody reads twice.
+ */
+export const toneOf = (progress: Progress): 'calm' | 'soon' | 'urgent' =>
+  progress.kind !== 'until'
+    ? 'calm'
+    : progress.remaining < HOUR
+      ? 'urgent'
+      : progress.remaining < DAY
+        ? 'soon'
+        : 'calm'
 
 /** how often the shown value could still change, so nothing ticks needlessly */
 export const tickOf = (progress: Progress): number =>

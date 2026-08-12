@@ -14,6 +14,7 @@ const BatchPhasesPage = (await components['assessment/BatchPhasesPage']!()).defa
 const BatchParticipantsPage = (await components['assessment/BatchParticipantsPage']!()).default
 const BatchAccessPage = (await components['assessment/BatchAccessPage']!()).default
 const BatchOverviewPage = (await components['assessment/BatchOverviewPage']!()).default
+const BatchSettingsPage = (await components['assessment/BatchSettingsPage']!()).default
 // the picker iam contributes, held the way the registry holds one
 const PeopleImportPicker = lazy(components['auth/PeopleImportPicker']!)
 // the bar the workspace shell puts above its rail: which batch is open, where
@@ -181,6 +182,7 @@ const PAGES = [
   { id: 'assessment/batch-phases', path: '/assessment/batches/:batchId/phases' },
   { id: 'assessment/batch-participants', path: '/assessment/batches/:batchId/participants' },
   { id: 'assessment/batch-access', path: '/assessment/batches/:batchId/access' },
+  { id: 'assessment/batch-settings', path: '/assessment/batches/:batchId/settings' },
 ].map((page) => ({ ...page, component: page.id, layout: 'admin' }))
 
 /** a section of the batch, inside the chrome the workspace shell gives it */
@@ -206,6 +208,7 @@ const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phase
         element: workspace(<BatchParticipantsPage />),
       },
       { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
+      { path: '/assessment/batches/:batchId/settings', element: workspace(<BatchSettingsPage />) },
     ],
     route,
   })
@@ -333,7 +336,8 @@ describe('the countdown', () => {
 describe('the batch lifecycle', () => {
   it('offers to delete a draft, and never says the word activate', async () => {
     const deleteBatch = vi.fn((_request: Request) => Effect.succeed({ deleted: true }))
-    screen({ deleteBatch })
+    // the lifecycle lives on the settings page, not above every section
+    screen({ deleteBatch }, `/assessment/batches/${BATCH_ID}/settings`)
 
     // a draft has run nothing, so removing it loses only the setup
     await expect.element(page.getByText('草稿')).toBeVisible()
@@ -342,6 +346,23 @@ describe('the batch lifecycle', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: '删除批次' }).click()
     await vi.waitFor(() => expect(deleteBatch).toHaveBeenCalledTimes(1))
     expect(deleteBatch.mock.calls[0]![0]).toMatchObject({ params: { batchId: BATCH_ID } })
+  })
+
+  it('saves the batch it is looking at, and sends only what it holds', async () => {
+    const updateBatch = vi.fn((_request: Request) => Effect.succeed({ batch: batch() }))
+    screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+
+    // nothing to save until something differs from what was read
+    await expect.element(page.getByRole('button', { name: '保存' })).toBeDisabled()
+    await page.getByRole('textbox', { name: '名称' }).fill('2026 春季综测（改）')
+    await page.getByRole('textbox', { name: '备注' }).fill('先行试点')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
+    expect(updateBatch.mock.calls[0]![0]).toMatchObject({
+      params: { batchId: BATCH_ID },
+      payload: { name: '2026 春季综测（改）', descriptionMd: '先行试点' },
+    })
   })
 
   it('says a scheduled batch has not begun, rather than calling it under way', async () => {
@@ -355,11 +376,14 @@ describe('the batch lifecycle', () => {
     const setBatchStatus = vi.fn((_request: Request) =>
       Effect.succeed({ batch: batch({ status: 'active' }) }),
     )
-    screen({
-      getBatch: () =>
-        Effect.succeed({ batch: batch({ status: 'archived', currentPhaseId: ENTRY_PHASE_ID }) }),
-      setBatchStatus,
-    })
+    screen(
+      {
+        getBatch: () =>
+          Effect.succeed({ batch: batch({ status: 'archived', currentPhaseId: ENTRY_PHASE_ID }) }),
+        setBatchStatus,
+      },
+      `/assessment/batches/${BATCH_ID}/settings`,
+    )
 
     await page.getByRole('button', { name: '重新开启' }).click()
     const dialog = page.getByRole('dialog')

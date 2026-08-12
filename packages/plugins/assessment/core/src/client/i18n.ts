@@ -411,6 +411,26 @@ const i18n = definePluginMessages({
       defaultMessage: 'Nothing here yet.',
     },
     tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Who may work on it' },
+    tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Settings' },
+    settingsHint: {
+      id: 'assessment/settings/hint',
+      defaultMessage: 'Change what this batch is called and what it covers.',
+    },
+    settingsBasics: { id: 'assessment/settings/basics', defaultMessage: 'The batch itself' },
+    settingsBasicsHint: {
+      id: 'assessment/settings/basics-hint',
+      defaultMessage: 'The material range decides which achievements may be reported here.',
+    },
+    settingsNote: { id: 'assessment/settings/note', defaultMessage: 'Notes' },
+    settingsNoteHint: {
+      id: 'assessment/settings/note-hint',
+      defaultMessage: 'Seen by whoever works on this batch.',
+    },
+    settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'This round' },
+    settingsLifecycleHint: {
+      id: 'assessment/settings/lifecycle-hint',
+      defaultMessage: 'Closing it keeps everything and stops the work; each step asks first.',
+    },
     phasesHint: {
       id: 'assessment/phase/hint',
       defaultMessage: 'Arrange the stages of this batch and choose what each one opens.',
@@ -583,6 +603,7 @@ const i18n = definePluginMessages({
     toastRestored: { id: 'assessment/toast/restored', defaultMessage: 'Back on the list' },
     toastAdjusted: { id: 'assessment/toast/adjusted', defaultMessage: 'Saved' },
     toastBatchCreated: { id: 'assessment/toast/batch-created', defaultMessage: 'Batch created' },
+    toastBatchSaved: { id: 'assessment/toast/batch-saved', defaultMessage: 'Saved' },
     toastBatchArchived: { id: 'assessment/toast/batch-archived', defaultMessage: 'Batch archived' },
     toastBatchReopened: { id: 'assessment/toast/batch-reopened', defaultMessage: 'Batch reopened' },
     toastBatchDeleted: { id: 'assessment/toast/batch-deleted', defaultMessage: 'Batch deleted' },

@@ -139,7 +139,7 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
           <p className="truncate text-sm font-medium">{lead.value}</p>
         </div>
         {standing === 'active' ? (
-          <BatchProgress timeline={row.timeline} className="text-sm text-muted-foreground" />
+          <BatchProgress timeline={row.timeline} className="text-sm" />
         ) : (
           standing === 'draft' && (
             <p className="text-xs text-muted-foreground">{format(m.draftHint)}</p>

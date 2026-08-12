@@ -1,47 +1,26 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
-import {
-  PageLink,
-  useApi,
-  useApiQuery,
-  usePageNavigate,
-  usePageRouteParams,
-  useRunApi,
-} from '@qualy/web-runtime'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowLeftIcon } from 'lucide-react'
+import { PageLink, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import { toast } from '@qualy/ui/toast'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { refusalMessage, refusalsOf } from '../refusals.ts'
-import { StatusBadge } from './StatusBadge.tsx'
-import { ReopenDialog } from './ReopenDialog.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
 
-// Which batch is open, where it stands, and what can be done to it as a whole.
+// Which batch is open and where it stands.
 //
 // The shell renders this above the rail without knowing what a batch is, and
 // this renders without knowing what the shell put around it: it reads the
 // batch from the route it was mounted at, the same way the pages beside it
-// do. The lifecycle actions live here rather than on a page because they are
-// about the batch rather than about any one section of it - and because a
-// button repeated at the top of every section is a button in no particular
-// place.
+// do. What may happen to the batch as a whole is not here - archiving and
+// deleting ask twice and happen once, and a row of them across the top of
+// every section made each section look like the smaller subject.
 export default function BatchContextBar() {
   const { batchId } = usePageRouteParams('batchId')
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
   const query = useApiQuery(assessmentApi)
-  const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
-  const navigate = usePageNavigate()
-  const [confirming, setConfirming] = useState<'archive' | 'delete' | null>(null)
-  const [reopening, setReopening] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
+  const { format } = useI18n()
 
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
@@ -53,79 +32,6 @@ export default function BatchContextBar() {
   const plan = useQuery({
     ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
     staleTime: 30_000,
-  })
-
-  // the plan answers with its own reasons; anything else is a sentence the
-  // error catalog already has
-  const said = (error: unknown) => {
-    const refusals = refusalsOf(error)
-    return refusals.length > 0
-      ? refusals
-          .map((refusal) => {
-            const sentence = refusalMessage(refusal.reason)
-            return sentence ? format(sentence) : refusal.reason
-          })
-          .join(' ')
-      : formatError(error)
-  }
-  const settle = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
-
-  const archive = useMutation({
-    mutationFn: () =>
-      run(api.assessment.setBatchStatus({ params: { batchId }, payload: { status: 'archived' } })),
-    onMutate: () => setFailure(null),
-    onSuccess: async () => {
-      toast.success(format(m.toastBatchArchived))
-      await settle()
-      setConfirming(null)
-    },
-    onError: (error: unknown) => {
-      setConfirming(null)
-      setFailure(said(error))
-    },
-  })
-
-  const reopen = useMutation({
-    mutationFn: (input: { reason: string; displayName: string }) =>
-      run(
-        api.assessment.setBatchStatus({
-          params: { batchId },
-          payload: {
-            status: 'active',
-            reason: input.reason,
-            phase: { displayName: input.displayName },
-            // a reopening that waits has nothing to wait for yet: the new
-            // phase is scheduled from the plan afterwards
-            plannedEntryAt: null,
-          },
-        }),
-      ),
-    onMutate: () => setFailure(null),
-    onSuccess: async () => {
-      toast.success(format(m.toastBatchReopened))
-      await settle()
-      setReopening(false)
-    },
-    onError: (error: unknown) => {
-      setReopening(false)
-      setFailure(said(error))
-    },
-  })
-
-  const remove = useMutation({
-    mutationFn: () => run(api.assessment.deleteBatch({ params: { batchId } })),
-    onMutate: () => setFailure(null),
-    onSuccess: () => {
-      toast.success(format(m.toastBatchDeleted))
-      setConfirming(null)
-      // the batch this workspace is about no longer exists
-      navigate('assessment/batches', { replace: true })
-      void settle()
-    },
-    onError: (error: unknown) => {
-      setConfirming(null)
-      setFailure(said(error))
-    },
   })
 
   return (
@@ -157,72 +63,10 @@ export default function BatchContextBar() {
           <BatchProgress
             showStage
             timeline={plan.data?.timeline ?? []}
-            className="flex min-w-0 items-center truncate text-sm text-muted-foreground max-md:hidden"
+            className="inline-flex min-w-0 items-center truncate text-sm max-md:hidden"
           />
         )}
-        {failure !== null && <Feedback message={failure} />}
-        {batch?.status === 'draft' && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={remove.isPending}
-            onClick={() => setConfirming('delete')}
-          >
-            <Trash2Icon />
-            <span className="max-lg:sr-only">{format(m.deleteBatch)}</span>
-          </Button>
-        )}
-        {batch?.status === 'active' && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={archive.isPending}
-            onClick={() => setConfirming('archive')}
-          >
-            {format(m.archive)}
-          </Button>
-        )}
-        {batch?.status === 'archived' && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={reopen.isPending}
-            onClick={() => setReopening(true)}
-          >
-            <RotateCcwIcon />
-            <span className="max-lg:sr-only">{format(m.reopen)}</span>
-          </Button>
-        )}
       </div>
-
-      <ConfirmDialog
-        open={confirming === 'archive'}
-        title={format(m.archiveConfirmTitle)}
-        description={format(m.archiveConfirmBody)}
-        confirmLabel={format(m.archive)}
-        cancelLabel={format(m.cancel)}
-        pending={archive.isPending}
-        tone="destructive"
-        onConfirm={() => archive.mutate()}
-        onCancel={() => setConfirming(null)}
-      />
-      <ConfirmDialog
-        open={confirming === 'delete'}
-        title={format(m.deleteConfirmTitle)}
-        description={format(m.deleteConfirmBody)}
-        confirmLabel={format(m.deleteBatch)}
-        cancelLabel={format(m.cancel)}
-        pending={remove.isPending}
-        tone="destructive"
-        onConfirm={() => remove.mutate()}
-        onCancel={() => setConfirming(null)}
-      />
-      <ReopenDialog
-        open={reopening}
-        pending={reopen.isPending}
-        onCancel={() => setReopening(false)}
-        onReopen={(input) => reopen.mutate(input)}
-      />
     </div>
   )
 }
