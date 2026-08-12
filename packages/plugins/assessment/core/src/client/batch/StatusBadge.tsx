@@ -65,7 +65,7 @@ export function StatusBadge({
         tone.badge,
         // with the word gone the badge is only a dot in a ground, and a
         // ground longer than it is tall reads as a label that failed to load
-        compact && 'size-5 justify-center p-0',
+        compact && 'size-4 justify-center p-0',
         className,
       )}
       // the word is what goes, not the meaning: the colour and the dot still
