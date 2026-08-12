@@ -10,6 +10,10 @@ import { Toaster as Sonner, toast } from 'sonner'
 //
 // The words never come from here: every caller formats its own, because this
 // package holds no copy.
+//
+// No close button: these say what already happened and leave on their own, so
+// dismissing one saves nobody anything, and sonner puts it over the first
+// characters of the line it is meant to help you read.
 
 export function Toaster() {
   return (
@@ -18,7 +22,6 @@ export function Toaster() {
       // the viewer's theme is on the document already, and sonner's own
       // theme prop would fight it
       theme="system"
-      closeButton
       // sonner's own surface, told to use this application's: without it the
       // library paints its own greens and reds, which belong to no palette
       // here and read as a banner rather than a remark
