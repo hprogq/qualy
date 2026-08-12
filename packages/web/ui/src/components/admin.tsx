@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react'
-import { TriangleAlertIcon } from 'lucide-react'
+import { CircleHelpIcon, TriangleAlertIcon } from 'lucide-react'
 import { cn } from '../lib/cn.ts'
 import { Alert, AlertDescription } from './alert.tsx'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from './empty.tsx'
@@ -11,6 +11,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle,
 } from './alert-dialog.tsx'
 import { Button } from './button.tsx'
@@ -452,6 +453,15 @@ export function ConfirmDialog({
     <AlertDialog open={open} onOpenChange={(next) => !next && onCancel()}>
       <AlertDialogContent>
         <AlertDialogHeader>
+          {/* the mark the whole layout is built around: with it the title and
+              the sentence sit beside an icon rather than starting at the top
+              left of an empty box, which is what made this read as a bare
+              paragraph with two buttons under it */}
+          <AlertDialogMedia
+            className={cn(tone === 'destructive' && 'bg-destructive/10 text-destructive')}
+          >
+            {tone === 'destructive' ? <TriangleAlertIcon /> : <CircleHelpIcon />}
+          </AlertDialogMedia>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
         </AlertDialogHeader>

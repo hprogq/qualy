@@ -3389,3 +3389,13 @@ minutes/seconds 对。刷新频率不变:天与小时下面挂的是小时与分
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **458/73 全绿**(新增三条 query 解码用例);
 `pnpm test:browser` 41 全绿;`pnpm build` 通过;`prettier --check .` 干净。
+
+### 确认框用上它本来就有的样式(2026-08-12)
+
+`alert-dialog.tsx` 早就是 base-nova 的形态——`size`、`AlertDialogMedia`、以媒体位为轴的 grid header、
+移动端反向堆叠的 footer 全都在;没用上它们的是 `ConfirmDialog`,它只塞了标题和一句话,于是渲染成
+「一段话 + 两个按钮」,自然不如人家好看。现在补上媒体位:破坏性动作是红底三角警告,普通确认是问号,
+标题与正文因此落在图标右侧(小屏则居中于图标下方)。所有确认框都走这一个组件,所以改一处即可。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 458/73 全绿;`pnpm test:browser` 41 全绿;
+`prettier --check .` 干净。
