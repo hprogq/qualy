@@ -63,9 +63,7 @@ export default function BatchContextBar() {
           <BatchProgress
             showStage
             timeline={plan.data?.timeline ?? []}
-            // on a phone the stage name gives way to the time, which is the half
-            // somebody checks in passing; the whole line is never hidden
-            className="inline-flex min-w-0 items-center truncate text-[0.9375rem] max-sm:[&_[data-slot=stage]]:hidden"
+            className="inline-flex min-w-0 items-center truncate text-sm"
           />
         )}
       </div>

@@ -140,14 +140,31 @@ export const tickOf = (progress: Progress): number =>
 
 type Messages = typeof assessmentMessages
 
-/** the message and values for a span, in the caller's locale */
+/**
+ * The message and values for a span, in the caller's locale.
+ *
+ * `compact` drops the second unit and, when counting down, the words around
+ * it: on a phone the bar has room for one number, and the ring beside it
+ * already says the number is running out. What is left is the stage name,
+ * which is the half that cannot be inferred from anything else on screen.
+ */
 export const spanMessage = (
   m: Messages,
   progress: Progress & { kind: 'until' | 'since' },
+  compact = false,
 ): { message: Messages[keyof Messages]; values: Record<string, number> } => {
   const { span } = progress
   const counting = progress.kind === 'until'
-  const both = span.rest > 0
+  const both = span.rest > 0 && !compact
+  if (compact && counting) {
+    const bare = {
+      days: m.bareDays,
+      hours: m.bareHours,
+      minutes: m.bareMinutes,
+      seconds: m.bareSeconds,
+    } as const
+    return { message: bare[span.unit], values: { count: span.value } }
+  }
   if (span.unit === 'days') {
     return both
       ? {

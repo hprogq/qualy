@@ -3,6 +3,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import { Ticker } from '@qualy/ui/ticker'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
 import { progressOf, spanMessage, tickOf, toneOf, type TimelineLike } from './progress.ts'
 
@@ -21,6 +22,9 @@ import { progressOf, spanMessage, tickOf, toneOf, type TimelineLike } from './pr
 // only says where it has got to, so it is sized and coloured to be read after
 // everything else - the colour arrives when the time does, not before.
 
+// Only the clock takes a colour. The stage name is a fact that does not
+// change when the time runs short, and a name that turns red says the stage
+// itself is wrong.
 const TONES = {
   calm: 'text-muted-foreground',
   soon: 'text-amber-600 dark:text-amber-400',
@@ -38,7 +42,7 @@ function Ring({ fraction }: { fraction: number }) {
   const radius = 5
   const circumference = 2 * Math.PI * radius
   return (
-    <svg viewBox="0 0 14 14" className="size-3.5 shrink-0 -rotate-90" aria-hidden>
+    <svg viewBox="0 0 14 14" className="size-3 shrink-0 -rotate-90" aria-hidden>
       <circle
         cx="7"
         cy="7"
@@ -75,6 +79,9 @@ export function BatchProgress({
   className?: string
 }) {
   const { format, locale } = useI18n()
+  // one number instead of two once the bar is narrow, so the stage keeps the
+  // room it needs to be read
+  const narrow = useIsBelow(640)
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)
@@ -88,7 +95,10 @@ export function BatchProgress({
 
   const said =
     progress.kind === 'until' || progress.kind === 'since'
-      ? format(spanMessage(m, progress).message as never, spanMessage(m, progress).values as never)
+      ? format(
+          spanMessage(m, progress, narrow).message as never,
+          spanMessage(m, progress, narrow).values as never,
+        )
       : progress.kind === 'starts'
         ? new Date(progress.at).toLocaleString(locale, {
             dateStyle: 'medium',
@@ -112,8 +122,19 @@ export function BatchProgress({
           <span className="shrink-0 text-xs text-muted-foreground max-lg:hidden">
             {format(m.currentStage)}
           </span>
-          <Badge variant="secondary" className="max-w-full min-w-0 px-2 py-0.5 text-sm font-normal">
-            <span className="truncate">{stage}</span>
+          <Badge
+            variant="secondary"
+            className="relative max-w-full min-w-0 overflow-hidden bg-muted/70 px-2 py-0.5 text-[0.8125rem] font-medium text-foreground"
+          >
+            {/* it breathes only once the time is short: an animation that never
+                stops is decoration, and decoration is what people stop seeing */}
+            {toneOf(progress) === 'urgent' && (
+              <span
+                aria-hidden
+                className="absolute inset-0 animate-pulse rounded-full bg-foreground/10 [animation-duration:2.8s] motion-reduce:hidden"
+              />
+            )}
+            <span className="relative truncate">{stage}</span>
           </Badge>
         </span>
       )}

@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { cn } from '@qualy/ui/cn'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { StatusBadge } from './StatusBadge.tsx'
@@ -39,6 +40,9 @@ export function BatchSwitcher({
   const query = useApiQuery(assessmentApi)
   const navigate = usePageNavigate()
   const { format } = useI18n()
+  // on a phone the standing keeps its colour and its dot and loses its word:
+  // the name of the batch is what the bar is for
+  const narrow = useIsBelow(640)
   const [open, setOpen] = useState(false)
 
   const nearby = useQuery({
@@ -60,7 +64,7 @@ export function BatchSwitcher({
           className="flex min-w-0 items-center gap-2 rounded-full border border-transparent px-3 py-1 transition-[colors,transform] outline-none active:scale-[0.98] hover:border-border hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:border-border data-[state=open]:bg-muted/60"
         >
           <span className="min-w-0 truncate text-sm font-semibold">{name}</span>
-          <StatusBadge status={status} currentPhaseId={currentPhaseId} />
+          <StatusBadge status={status} currentPhaseId={currentPhaseId} compact={narrow} />
           <ChevronDownIcon
             aria-hidden
             className={cn(

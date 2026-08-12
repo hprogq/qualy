@@ -161,6 +161,24 @@ const leftSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-seconds',
   defaultMessage: '{count}s left',
 })
+// the countdown with no room for a sentence: the ring beside it is what says
+// the number is running out
+const bareDays = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-days',
+  defaultMessage: '{count, plural, one {# day} other {# days}}',
+})
+const bareHours = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-hours',
+  defaultMessage: '{count, plural, one {# hour} other {# hours}}',
+})
+const bareMinutes = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-minutes',
+  defaultMessage: '{count, plural, one {# minute} other {# minutes}}',
+})
+const bareSeconds = defineMessage<{ count: number }>()({
+  id: 'assessment/progress/bare-seconds',
+  defaultMessage: '{count, plural, one {# second} other {# seconds}}',
+})
 const sinceDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-days',
   defaultMessage: '{count, plural, one {running for # day} other {running for # days}}',
@@ -386,6 +404,10 @@ const i18n = definePluginMessages({
     plannedStart: { id: 'assessment/batch/planned-start', defaultMessage: 'Starts' },
     noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages arranged yet' },
     currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
+    bareDays,
+    bareHours,
+    bareMinutes,
+    bareSeconds,
     endsUnknown: { id: 'assessment/batch/ends-unknown', defaultMessage: 'No end time set' },
     enterBatch: { id: 'assessment/batch/enter', defaultMessage: 'Open' },
     configureBatch: { id: 'assessment/batch/configure', defaultMessage: 'Keep setting up' },

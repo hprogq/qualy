@@ -43,12 +43,15 @@ export function Ticker({
   className?: string
 }) {
   return (
-    <span className={cn('tabular-nums whitespace-nowrap', className)}>
+    // the whole line animates its own size, so a value that loses a piece
+    // ("37 分 1 秒" becoming "37 分") closes the gap instead of snapping shut
+    <motion.span layout className={cn('inline-flex tabular-nums whitespace-nowrap', className)}>
       {pieces(value).map((piece, at) => (
         // one presence per position: only the pieces whose text changed have
         // anything to swap
         <AnimatePresence key={at} initial={false} mode="popLayout">
           <motion.span
+            layout
             key={piece}
             // pre, because a space at the edge of an inline block is trimmed:
             // "3 分 20 秒" set as boxes comes out as "3分20秒"
@@ -56,12 +59,16 @@ export function Ticker({
             initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: -5, filter: 'blur(4px)', position: 'absolute' }}
-            transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+            transition={{
+              duration: 0.22,
+              ease: [0.32, 0.72, 0, 1],
+              layout: { duration: 0.3, ease: [0.32, 0.72, 0, 1] },
+            }}
           >
             {piece}
           </motion.span>
         </AnimatePresence>
       ))}
-    </span>
+    </motion.span>
   )
 }

@@ -39,10 +39,13 @@ const tones = {
 export function StatusBadge({
   status,
   currentPhaseId = null,
+  compact = false,
   className,
 }: {
   status: 'draft' | 'active' | 'archived'
   currentPhaseId?: string | null
+  /** the dot and its ground only, for a bar with no room for the word */
+  compact?: boolean
   className?: string
 }) {
   const { format } = useI18n()
@@ -56,7 +59,12 @@ export function StatusBadge({
   }[standing]
 
   return (
-    <Badge className={cn('gap-1.5 font-medium', tone.badge, className)}>
+    <Badge
+      className={cn('gap-1.5 font-medium', tone.badge, compact && 'px-1.5', className)}
+      // the word is what goes, not the meaning: the colour and the dot still
+      // say it, and whoever cannot see them is reading this instead
+      aria-label={compact ? format(label) : undefined}
+    >
       <span aria-hidden className="relative flex size-1.5">
         {tone.live && (
           <span
@@ -68,7 +76,7 @@ export function StatusBadge({
         )}
         <span className={cn('relative inline-flex size-1.5 rounded-full', tone.dot)} />
       </span>
-      {format(label)}
+      {!compact && format(label)}
     </Badge>
   )
 }

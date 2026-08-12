@@ -308,6 +308,8 @@ describe('the countdown', () => {
   ]
 
   it('says two units, and drops the smaller one when it is empty', async () => {
+    // two units is what a bar with room says; the phone case is below
+    await page.viewport(1280, 800)
     screen(
       {
         getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
@@ -320,6 +322,7 @@ describe('the countdown', () => {
   })
 
   it('says the larger unit alone when nothing is left under it', async () => {
+    await page.viewport(1280, 800)
     screen(
       {
         getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
@@ -330,6 +333,22 @@ describe('the countdown', () => {
       `/assessment/batches/${BATCH_ID}/phases`,
     )
     await expect.element(page.getByText('剩余 3 小时')).toBeVisible()
+  })
+
+  it('says one unit on a phone, and keeps the stage name', async () => {
+    await page.viewport(390, 844)
+    screen(
+      {
+        getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+        getTimeline: () => Effect.succeed({ timeline: running(39 * 60_000 + 13_000) }),
+      },
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+    // the seconds go, not the stage: "how long" survives one number, and a
+    // countdown with no idea what it is counting does not
+    await expect.element(page.getByText('39 分')).toBeVisible()
+    await expect.element(page.getByText('填报')).toBeVisible()
+    await page.viewport(1280, 800)
   })
 })
 
