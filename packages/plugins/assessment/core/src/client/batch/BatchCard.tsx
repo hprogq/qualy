@@ -107,7 +107,11 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
                 // scaled rather than grown: height is a layout property, and
                 // a card list relaying itself out on every frame of a hover
                 // is the one animation here that cannot run on the compositor
-                'absolute inset-x-0 bottom-0 h-1 origin-bottom rounded-[2px] transition-[transform,background-color] duration-200 ease-out group-hover/segment:scale-y-150',
+                // The transform is written out rather than composed from the scale
+                // utilities: those set a custom property that the transform
+                // reads, and a property the transition does not name changes
+                // in one step - so the bar jumped where it should have grown.
+                'absolute inset-x-0 bottom-0 h-1 origin-bottom rounded-[2px] [transform:scaleY(1)] transition-[transform,background-color] duration-200 ease-out group-hover/segment:[transform:scaleY(1.5)]',
                 SEGMENTS[entry.status],
               )}
             />
