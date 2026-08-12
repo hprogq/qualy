@@ -70,24 +70,36 @@ export const Ticker = memo(function Ticker({
       )}
       style={width === null ? undefined : { width }}
     >
-      <span ref={line} className="relative inline-flex tabular-nums whitespace-nowrap">
+      <span ref={line} className="inline-flex tabular-nums whitespace-nowrap">
         {pieces(value).map((piece, at) => (
-          // one presence per position: only the pieces whose text changed have
-          // anything to swap
-          <AnimatePresence key={at} initial={false}>
-            <motion.span
-              key={piece}
-              // pre, because a space at the edge of an inline block is trimmed:
-              // "3 分 20 秒" set as boxes comes out as "3分20秒"
-              className="inline-block whitespace-pre"
-              initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -5, filter: 'blur(4px)', position: 'absolute' }}
-              transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-            >
-              {piece}
-            </motion.span>
-          </AnimatePresence>
+          // One slot per position, and the slot is what the leaving piece is
+          // positioned against: taken out of the flow with nothing of its own
+          // to sit in, it lands at the start of the line and the digit flies
+          // across the words on its way out.
+          <span key={at} className="relative inline-flex">
+            {/* only the pieces whose text changed have anything to swap */}
+            <AnimatePresence initial={false}>
+              <motion.span
+                key={piece}
+                // pre, because a space at the edge of an inline block is
+                // trimmed: "3 分 20 秒" set as boxes comes out as "3分20秒"
+                className="inline-block whitespace-pre"
+                initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{
+                  opacity: 0,
+                  y: -5,
+                  filter: 'blur(4px)',
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                }}
+                transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+              >
+                {piece}
+              </motion.span>
+            </AnimatePresence>
+          </span>
         ))}
       </span>
     </span>
