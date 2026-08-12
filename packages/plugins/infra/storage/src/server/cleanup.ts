@@ -9,7 +9,6 @@ import {
   deleteStagedAttachment,
   expireReservation,
 } from './db.ts'
-import { CLEANUP_LEASE_MS } from './service.ts'
 
 // The two things nobody comes back for: an upload ticket that was never used,
 // and an attachment nobody saved.
@@ -26,6 +25,16 @@ import { CLEANUP_LEASE_MS } from './service.ts'
 
 /** how many rows one pass takes, so a large backlog drains over several */
 const BATCH = 50
+
+/**
+ * How long one sweeper's claim keeps other sweepers off a row.
+ *
+ * Only other sweepers. Business transitions refuse a claimed row whatever its
+ * age, because an expired lease says nothing about whether the worker that
+ * took it has stopped - its delete may still be in flight. The lease exists so
+ * that a node which dies mid-sweep does not strand the row forever.
+ */
+export const CLEANUP_LEASE_MS = 5 * 60 * 1000
 
 export interface SweepReport {
   readonly claimed: number

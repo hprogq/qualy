@@ -1,18 +1,19 @@
 import { randomUUID } from 'node:crypto'
-import COS from 'cos-nodejs-sdk-v5'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import {
-  createTestContext,
-  databaseFor,
-  postgresAvailable,
-  type TestContext,
-} from '@qualy/plugin-database/testkit'
+import { createTestContext, databaseFor, type TestContext } from '@qualy/plugin-database/testkit'
 import { entities } from '@qualy/plugin-storage/db'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { registryLayer, StorageBackends } from '@qualy/plugin-storage/server/registry'
 import { Storage, serviceLayer } from '@qualy/plugin-storage/server/service'
-import { cosBackend, type CosSettings } from '../src/server/backend.ts'
+import {
+  backend,
+  clientFor,
+  cosAndPostgres,
+  cosSettings,
+  fetchWithRetry,
+} from './support/bucket.ts'
+import { cosBackend } from '../src/server/backend.ts'
 import type { CosUploadPayload } from '../src/payload.ts'
 
 // One file, all the way through, against the real bucket.
@@ -23,23 +24,8 @@ import type { CosUploadPayload } from '../src/payload.ts'
 // the service hands out is one the bucket accepts, and that the attachment row
 // afterwards carries the checksum the bucket actually computed.
 //
-// Opt-in like its sibling: QUALY_TEST_COS=1 plus the deployment's variables.
-
-const enabled = process.env['QUALY_TEST_COS'] === '1'
-const region = process.env['QUALY_STORAGE_COS_REGION']
-const bucket = process.env['QUALY_STORAGE_COS_BUCKET']
-const secretId = process.env['QUALY_STORAGE_COS_SECRET_ID']
-const secretKey = process.env['QUALY_STORAGE_COS_SECRET_KEY']
-const configured = Boolean(
-  enabled && region && bucket && secretId && secretKey && postgresAvailable,
-)
-
-const settings: CosSettings = {
-  region: region ?? '',
-  bucket: bucket ?? '',
-  secretId: Redacted.make(secretId ?? ''),
-  secretKey: Redacted.make(secretKey ?? ''),
-}
+// Opt-in like its siblings: QUALY_TEST_COS=1, the deployment's variables, and
+// a postgres to write the attachment to.
 
 const stack = (url: string) => {
   const config = Layer.succeed(StorageConfig, {
@@ -47,7 +33,7 @@ const stack = (url: string) => {
     limits: DEFAULT_LIMITS,
   })
   const registered = Layer.effectDiscard(
-    Effect.flatMap(StorageBackends, (registry) => registry.register(cosBackend(settings))),
+    Effect.flatMap(StorageBackends, (registry) => registry.register(cosBackend(cosSettings))),
   ).pipe(Layer.provideMerge(registryLayer), Layer.provideMerge(config))
   return serviceLayer.pipe(
     Layer.provideMerge(registered),
@@ -55,43 +41,20 @@ const stack = (url: string) => {
   )
 }
 
-/**
- * Fetches over the public internet, which sometimes simply does not work.
- *
- * A tls reset on the way to another continent is not a fact about this code,
- * and a test that reports it as one gets ignored within a week.
- */
-const fetchWithRetry = async (url: string, attempts = 3): Promise<Response> => {
-  let last: unknown
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return await fetch(url)
-    } catch (error) {
-      last = error
-    }
-  }
-  throw last
-}
-
 /** the browser's half, done here with the node sdk and the same credential */
 const putWithGrant = async (payload: CosUploadPayload, bytes: Buffer) => {
-  const client = new COS({
-    SecretId: payload.tmpSecretId,
-    SecretKey: payload.tmpSecretKey,
-    SecurityToken: payload.sessionToken,
-  })
-  await client.putObject({
+  await clientFor(payload).putObject({
     Bucket: payload.bucket,
     Region: payload.region,
     Key: payload.key,
     Body: bytes,
     ContentLength: bytes.byteLength,
     ContentType: 'text/plain',
-    Headers: { 'x-cos-forbid-overwrite': 'true' },
+    Headers: { 'x-cos-forbid-overwrite': 'true', 'x-cos-acl': 'private' },
   })
 }
 
-describe.skipIf(!configured)('an attachment, end to end, on the real bucket', () => {
+describe.skipIf(!cosAndPostgres)('an attachment, end to end, on the real bucket', () => {
   let context: TestContext
   const written: string[] = []
   beforeAll(async () => {
@@ -99,7 +62,7 @@ describe.skipIf(!configured)('an attachment, end to end, on the real bucket', ()
   })
   afterAll(async () => {
     await Promise.all(
-      written.map((key) => Effect.runPromise(cosBackend(settings).delete(key)).catch(() => {})),
+      written.map((key) => Effect.runPromise(backend().delete(key)).catch(() => {})),
     )
     await context?.dispose()
   })

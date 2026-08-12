@@ -58,10 +58,15 @@ export const admit = (input: Admission, limits: StorageLimits) =>
     if (usage.reservedBytes + input.bytes > limits.maxReservedBytesPerOwner) {
       return yield* refuse('owner-quota-exceeded')
     }
-    if (usage.stagedBytes + input.bytes > limits.maxStagedBytesPerOwner) {
+    // Every outstanding ticket is a future staged attachment, so the staged
+    // and stored limits have to weigh them too. Counting only what exists lets
+    // two tickets each fit under the same remaining room and both be granted -
+    // the same oversell the advisory lock closes for reserved bytes, one level
+    // further along.
+    if (usage.stagedBytes + usage.reservedBytes + input.bytes > limits.maxStagedBytesPerOwner) {
       return yield* refuse('owner-quota-exceeded')
     }
-    if (usage.storedBytes + input.bytes > limits.maxStoredBytesPerOwner) {
+    if (usage.storedBytes + usage.reservedBytes + input.bytes > limits.maxStoredBytesPerOwner) {
       return yield* refuse('owner-quota-exceeded')
     }
     if (usage.tenantCommittedBytes + input.bytes > limits.tenantHardBytes) {

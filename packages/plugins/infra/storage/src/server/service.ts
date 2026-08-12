@@ -39,9 +39,6 @@ import { StorageBackends } from './registry.ts'
 // one this deployment writes to; an existing attachment goes to the one that
 // wrote it, whatever the deployment writes to today.
 
-/** how long a sweeper's claim on a row is respected */
-export const CLEANUP_LEASE_MS = 5 * 60 * 1000
-
 export interface AttachmentMeta {
   readonly id: string
   readonly tenantId: string
@@ -143,11 +140,15 @@ export class Storage extends Context.Service<
       input: { readonly tenantId: string; readonly attachmentId: string },
       authorize: (meta: AttachmentMeta) => Effect.Effect<void, E, R>,
     ) => Effect.Effect<AttachmentOpen, AttachmentNotFound | BackendUnavailable | E, R>
-    /** takes an attachment out of circulation without deleting anything */
+    /**
+     * Takes a bound attachment out of circulation, without deleting anything.
+     *
+     * Nothing new may refer to it; everything that already does still reads.
+     */
     readonly retire: (input: {
       readonly tenantId: string
       readonly attachmentId: string
-    }) => Effect.Effect<void, AttachmentNotFound>
+    }) => Effect.Effect<void, AttachmentNotFound | AttachmentInvalid>
   }
 >()('@qualy/plugin-storage/Storage') {}
 
@@ -261,7 +262,6 @@ const make = () =>
     }) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
-        const claimCutoff = now - CLEANUP_LEASE_MS
         const reservation = yield* reservationOf({
           tenantId: input.tenantId,
           ownerUserId: input.ownerUserId,
@@ -285,7 +285,9 @@ const make = () =>
         if (reservation.status === 'failed') {
           return yield* Effect.fail(new ReservationInvalid({ reason: 'failed' }))
         }
-        if (reservation.cleanupClaimedAt !== null && reservation.cleanupClaimedAt >= claimCutoff) {
+        // any claim, of any age: see completeReservation for why an expired
+        // lease is not the same as a finished sweeper
+        if (reservation.cleanupClaimedAt !== null) {
           return yield* Effect.fail(new ReservationInvalid({ reason: 'being-cleaned-up' }))
         }
 
@@ -298,20 +300,21 @@ const make = () =>
           return yield* Effect.fail(new ReservationInvalid({ reason: 'not-uploaded' }))
         }
         if (stat.size > reservation.reservedBytes) {
-          yield* transaction(failReservation({ id: reservation.id, now }))
-          yield* backend
-            .delete(reservation.storageKey)
-            .pipe(
-              Effect.catchCause((cause) =>
-                Effect.logError('could not delete an oversized upload', cause),
-              ),
-            )
+          // The ticket stays issued on purpose. Marking it failed here would
+          // hand the owner their quota back while the oversized object is
+          // still in the store, and nothing would ever come for it: the sweep
+          // looks for issued tickets. Left as it is, the ordinary abandoned
+          // sweep deletes the object after the grace period and releases the
+          // quota then - after the bytes are actually gone.
+          yield* Effect.logWarning(
+            `upload ${reservation.id} arrived at ${stat.size} bytes against a reservation of ${reservation.reservedBytes}; leaving it to the sweep`,
+          )
           return yield* Effect.fail(new ReservationInvalid({ reason: 'oversized' }))
         }
 
         const written = yield* transaction(
           Effect.gen(function* () {
-            const taken = yield* completeReservation({ id: reservation.id, now, claimCutoff })
+            const taken = yield* completeReservation({ id: reservation.id, now })
             if (!taken) return null
             yield* insertAttachment({
               id: reservation.attachmentId,
@@ -365,18 +368,22 @@ const make = () =>
           id: input.attachmentId,
           ownerUserId: input.ownerUserId,
           now,
-          claimCutoff: now - CLEANUP_LEASE_MS,
         })
         const row = yield* attachmentOf({ tenantId: input.tenantId, id: input.attachmentId })
         if (row === null) return yield* Effect.fail(new AttachmentNotFound())
+        // Ownership first, before the idempotent answer. Asked in the other
+        // order, "it is already bound" comes back as success to anybody at
+        // all - which is harmless while nothing consults this, and a hole the
+        // moment a caller treats a successful bind as proof the file was
+        // theirs to use.
+        if (row.ownerUserId !== input.ownerUserId) {
+          return yield* Effect.fail(new AttachmentInvalid({ reason: 'not-owner' }))
+        }
         if (bound) return metaOf(row)
         // it did not move, so say which of the three reasons it was
         if (row.status === 'bound') return metaOf(row)
         if (row.status === 'retired') {
           return yield* Effect.fail(new AttachmentInvalid({ reason: 'retired' }))
-        }
-        if (row.ownerUserId !== input.ownerUserId) {
-          return yield* Effect.fail(new AttachmentInvalid({ reason: 'not-owner' }))
         }
         return yield* Effect.fail(new AttachmentInvalid({ reason: 'being-cleaned-up' }))
       }).pipe(
@@ -407,16 +414,18 @@ const make = () =>
 
     const retire = (input: { tenantId: string; attachmentId: string }) =>
       Effect.gen(function* () {
-        const now = yield* Clock.currentTimeMillis
         const moved = yield* retireAttachment({
           tenantId: input.tenantId,
           id: input.attachmentId,
-          now,
         })
         if (moved) return
         const row = yield* attachmentOf({ tenantId: input.tenantId, id: input.attachmentId })
-        // already retired is the outcome asked for, so it is not a failure
         if (row === null) return yield* Effect.fail(new AttachmentNotFound())
+        // already retired is the outcome that was asked for
+        if (row.status === 'retired') return
+        // a staged attachment has no history to take out of circulation; what
+        // it has is a sweep waiting for it
+        return yield* Effect.fail(new AttachmentInvalid({ reason: 'not-bound' }))
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.retire'),

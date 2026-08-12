@@ -3603,3 +3603,43 @@ bind / open / retire`;额度;GC;backend 注册表。它不认识 COS,也不认�
 
 **下一步**:对话 2(Assessment M2 数据骨架 + item registry)。两处留给它之前先想清楚的:Local 的 raw PUT
 route(归 storage-local,需要和 reservation 凭据一起设计)、provider client driver 进浏览器包的聚合方式。
+
+### 对话 1 收口:六处不变量,一处是真漏洞(2026-08-13)
+
+外部审计对 Storage 基座提了六条,逐条对着源码核过都成立,本轮全部修完。每条都先写一个**会失败**的测试,
+再改代码——七个新用例在旧行为下确实全红,改完全绿(实测,不是断言的形状好看)。
+
+- **STS 凭据可以把附件设成公开读(P0)**。原 policy 只限定了 key、大小、禁覆盖,但 `PutObject` 允许请求
+  自带 `x-cos-acl`。攻击者根本不必用我们的 upload helper:拿着 STS 自己发一个合法 PUT 加上
+  `x-cos-acl: public-read`,一份私密证明材料在第一次写入时就公开了。现在 policy 补
+  `string_equal_if_exist { cos:x-cos-acl: private }` 与四条独立的 `deny string_like cos:x-cos-grant-*`;
+  browser driver 也显式发 `x-cos-acl: private`。两处细节是实测定的:`if_exist` 而非 `string_equal`
+  (否则不带 acl 头的正常上传被拒),四条 deny 拆开写(同一 condition 块里多个键是与关系,合并只会在
+  「四个头都带」时触发)。新增 hostile 套件,站在攻击者一侧、完全不用 upload helper:公开读 403、
+  四个 grant 头各 403、写别的 key 403、超长 403、不带禁覆盖头 403、拿写凭据去 get/delete/list 403,
+  而正常 private 写入 200。**注意**:用户此前已按同一口径配好 CAM 父策略,所以实测的 403 无法区分是
+  STS 还是 CAM 拦下的——两层都要,仓库能保证的是自己这层。
+- **owner 的 staged/stored 额度可被超卖(P1)**。原判断只算已存在的字节,没算已签发未完成的 reservation:
+  240 已 staged + 两张各 10 MiB 的票都能过 250 的线,complete 后是 260。改为
+  `staged/stored + reserved + new`(tenant 那条本来就算了 reserved,所以没这个洞)。
+- **claim 租约过期不等于旧 worker 停了(P1)**。原来 `bind`/`complete` 把超过 5 分钟的 claim 当作无人认领
+  就放行,于是「租约刚过 → 用户 bind → 旧 worker 迟到的 DELETE 成功」= DB 说 bound、对象不存在。现在业务
+  transition 遇到 `cleanup_claimed_at IS NOT NULL` 一律拒绝,**租约只用来决定另一个 sweeper 能不能接手**。
+- **oversized 分支在对象删掉前就把额度还了(P1)**。原来置 failed + 尝试删除,删除失败只记日志——而 sweeper
+  只扫 issued,那个对象从此没人负责。现在保持 issued 直接拒绝,交给正常的 abandoned sweep:先删对象,
+  再释放额度。
+- **`bind` 对已 bound 的附件不查 owner(P1)**。幂等分支排在 owner 检查前面,于是任何人对别人已绑定的附件
+  调一次 bind 都得到成功。owner 检查提到最前:幂等是给 owner 重试用的,不是给所有人用的。
+- **`retire` 允许 staged → retired 并伪造 `bound_at`(P2)**。retire 是关于历史的话,staged 没有历史;
+  现在只接受 `bound → retired`,staged 答 `not-bound`,归 TTL sweep。
+
+设计文档 §5.7 / §5.9 / §5.11 / §5.13 / §5.14 / §5.20 同笔改写,把这六条写成规则而不是修复记录。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **537 passed / 17 skipped**;
+`QUALY_TEST_COS=1` 对真实开发桶 **17/17**(backend 8 + hostile 7 + 端到端 2);`pnpm test:browser` 48;
+`pnpm build`、`pnpm qualy resolve --frozen-lockfile`(零写入)、`pnpm qualy generate`(无待生成)、
+`prettier --check .`、生产 smoke 全绿。
+
+上一条 CI 红的 browser 用例(`identity.browser.test.tsx`「保存」按钮数)已在 `ca2f2ac` 修掉:站位面板等的是
+第二个查询,断言用的 `.elements()` 不重试。给那个 stub 加 400ms 延迟可以在本地稳定复现同样的报错,加上
+等待后带延迟也全绿。

@@ -310,7 +310,7 @@ export const reservationOf = (input: { tenantId: string; ownerUserId: string; id
  * ticket a sweeper holds is on its way to being deleted, and turning it into
  * an attachment would race that delete.
  */
-export const completeReservation = (input: { id: string; now: number; claimCutoff: number }) =>
+export const completeReservation = (input: { id: string; now: number }) =>
   db
     .query((k) =>
       k
@@ -318,12 +318,11 @@ export const completeReservation = (input: { id: string; now: number; claimCutof
         .set({ status: 'completed', completedAt: at(input.now) })
         .where('id', '=', input.id)
         .where('status', '=', 'issued')
-        .where((eb) =>
-          eb.or([
-            eb('cleanupClaimedAt', 'is', null),
-            eb('cleanupClaimedAt', '<', at(input.claimCutoff)),
-          ]),
-        )
+        // any claim at all, however old. A lease that has run out says another
+        // sweeper may take the work over, not that the first one has stopped:
+        // its delete may still be in flight, and an attachment built on an
+        // object that is about to disappear is worse than asking for a retry.
+        .where('cleanupClaimedAt', 'is', null)
         .returning(['id'])
         .executeTakeFirst(),
     )
@@ -400,7 +399,6 @@ export const bindAttachment = (input: {
   id: string
   ownerUserId: string
   now: number
-  claimCutoff: number
 }) =>
   db
     .query((k) =>
@@ -411,32 +409,33 @@ export const bindAttachment = (input: {
         .where('tenantId', '=', input.tenantId)
         .where('ownerUserId', '=', input.ownerUserId)
         .where('status', '=', 'staged')
-        .where((eb) =>
-          eb.or([
-            eb('cleanupClaimedAt', 'is', null),
-            eb('cleanupClaimedAt', '<', at(input.claimCutoff)),
-          ]),
-        )
+        // as above: a claimed row is on its way out, and binding it would race
+        // a delete this transaction cannot see
+        .where('cleanupClaimedAt', 'is', null)
         .returning(['id'])
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))
 
-export const retireAttachment = (input: { tenantId: string; id: string; now: number }) =>
+/**
+ * Takes an attachment out of circulation.
+ *
+ * Only a bound one, because retiring is a statement about history: it says
+ * "this was referred to, and nothing new may refer to it again". A staged
+ * attachment has no history to speak of - nothing refers to it - so retiring
+ * one would mean keeping a row and its bytes forever to record that somebody
+ * uploaded a file and never used it. Letting the staged sweep have it is both
+ * cheaper and truer.
+ */
+export const retireAttachment = (input: { tenantId: string; id: string }) =>
   db
     .query((k) =>
       k
         .updateTable('Attachment')
-        // a staged attachment retired without ever being bound still has to
-        // record when it stopped being available, because the check ties a
-        // null bound_at to the staged state
-        .set((eb) => ({
-          status: 'retired',
-          boundAt: eb.fn.coalesce('boundAt', eb.val(at(input.now))),
-        }))
+        .set({ status: 'retired' })
         .where('id', '=', input.id)
         .where('tenantId', '=', input.tenantId)
-        .where('status', 'in', ['staged', 'bound'])
+        .where('status', '=', 'bound')
         .returning(['id'])
         .executeTakeFirst(),
     )

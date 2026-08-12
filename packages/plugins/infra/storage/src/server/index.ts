@@ -22,7 +22,6 @@ export {
   type StorageBackend,
 } from './backend.ts'
 export {
-  CLEANUP_LEASE_MS,
   Storage,
   type AttachmentMeta,
   type AttachmentOpen,
@@ -31,7 +30,7 @@ export {
   type PrepareUploadError,
   type PrepareUploadInput,
 } from './service.ts'
-export { StorageCleanup, SWEEP_INTERVAL, type SweepReport } from './cleanup.ts'
+export { CLEANUP_LEASE_MS, StorageCleanup, SWEEP_INTERVAL, type SweepReport } from './cleanup.ts'
 export { lockKey } from './db.ts'
 
 /**

@@ -142,7 +142,7 @@ describe.skipIf(!postgresAvailable)('storage', () => {
     expect(rows.rows).toHaveLength(1)
   })
 
-  it('fails the ticket and deletes the object when more arrived than was reserved', async () => {
+  it('refuses an oversized upload without handing back the quota it owes', async () => {
     const { tenantId, ownerUserId } = owner()
     const backend = memoryBackend()
     const exit = await run(
@@ -164,11 +164,15 @@ describe.skipIf(!postgresAvailable)('storage', () => {
     )
 
     expect(reasonIn(exit)).toBe('oversized')
-    expect(backend.keys()).toEqual([])
+    // the object is still there, so the reservation still owes for it: marking
+    // the ticket failed here would return the quota and leave the sweep - which
+    // only looks at issued tickets - with nothing to find
+    expect(backend.keys()).toHaveLength(1)
     const row = await context.row<{ status: string }>(
-      'select status from storage_upload_reservations order by created_at desc limit 1',
+      'select status from storage_upload_reservations where tenant_id = $1',
+      [tenantId],
     )
-    expect(row.status).toBe('failed')
+    expect(row.status).toBe('issued')
   })
 
   it('refuses to complete somebody else’s ticket', async () => {

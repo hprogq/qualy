@@ -1,16 +1,21 @@
 // The permission a browser is given, written out in full.
 //
 // This is the security boundary of the whole cloud path, so it is a pure
-// function with no sdk in sight and a test that reads it back. Four clauses,
+// function with no sdk in sight and a test that reads it back. Six clauses,
 // each closing a different door:
 //
 //   action    - PutObject only, so a leaked credential cannot read or list
 //   resource  - one exact object key, not a prefix
 //   length    - the size the ticket reserved, enforced by the store
 //   overwrite - the header that makes a second write to that key fail
+//   acl       - the header that would make the object world-readable
+//   grants    - the four headers that would hand it to a named account
 //
-// Together they mean a stolen credential can do exactly what the person it was
-// issued to was already allowed to do, once, until it expires.
+// The last two are the ones that are easy to miss. A credential that may only
+// write one object still writes it *with whatever headers the client sends*,
+// and `x-cos-acl: public-read` on that write would publish a student's
+// evidence to anyone with the url. Confining the key is not enough; the write
+// has to be confined too.
 
 export interface ObjectPolicyInput {
   readonly region: string
@@ -20,17 +25,16 @@ export interface ObjectPolicyInput {
   readonly maxBytes: bigint
 }
 
+export interface CosStatement {
+  readonly effect: 'allow' | 'deny'
+  readonly action: readonly string[]
+  readonly resource: readonly string[]
+  readonly condition: Record<string, Record<string, string | number>>
+}
+
 export interface CosPolicy {
   readonly version: '2.0'
-  readonly statement: readonly {
-    readonly effect: 'allow'
-    readonly action: readonly string[]
-    readonly resource: readonly string[]
-    readonly condition: {
-      readonly numeric_less_than_equal: { readonly 'cos:content-length': number }
-      readonly string_equal: { readonly 'cos:x-cos-forbid-overwrite': 'true' }
-    }
-  }[]
+  readonly statement: readonly CosStatement[]
 }
 
 /**
@@ -54,19 +58,49 @@ export const objectResource = (input: { region: string; bucket: string; key: str
   return `qcs::cos:${input.region}:uid/${appId}:prefix//${appId}/${name}/${input.key}`
 }
 
-export const objectWritePolicy = (input: ObjectPolicyInput): CosPolicy => ({
-  version: '2.0',
-  statement: [
-    {
-      effect: 'allow',
-      action: ['name/cos:PutObject'],
-      resource: [objectResource(input)],
-      condition: {
-        // the store weighs the request itself; nothing here relies on the
-        // uploader being honest about the size it declared
-        numeric_less_than_equal: { 'cos:content-length': Number(input.maxBytes) },
-        string_equal: { 'cos:x-cos-forbid-overwrite': 'true' },
+/**
+ * The headers that would give the object away, each denied on its own.
+ *
+ * One statement per header rather than one statement listing four: several
+ * keys inside a single condition block are read together, so a combined deny
+ * would only fire for a request that sent all four - which no attacker would.
+ */
+const GRANT_HEADERS = [
+  'cos:x-cos-grant-read',
+  'cos:x-cos-grant-read-acp',
+  'cos:x-cos-grant-write-acp',
+  'cos:x-cos-grant-full-control',
+] as const
+
+export const objectWritePolicy = (input: ObjectPolicyInput): CosPolicy => {
+  const resource = objectResource(input)
+  return {
+    version: '2.0',
+    statement: [
+      {
+        effect: 'allow',
+        action: ['name/cos:PutObject'],
+        resource: [resource],
+        condition: {
+          // the store weighs the request itself; nothing here relies on the
+          // uploader being honest about the size it declared
+          numeric_less_than_equal: { 'cos:content-length': Number(input.maxBytes) },
+          string_equal: { 'cos:x-cos-forbid-overwrite': 'true' },
+          // if_exist rather than equal: an upload that sends no acl header at
+          // all gets the bucket's default, which is private. Requiring the
+          // header would refuse the ordinary request while changing nothing
+          // about the dangerous one.
+          string_equal_if_exist: { 'cos:x-cos-acl': 'private' },
+        },
       },
-    },
-  ],
-})
+      ...GRANT_HEADERS.map((header): CosStatement => ({
+        effect: 'deny',
+        action: ['name/cos:PutObject'],
+        resource: [resource],
+        // any value at all: there is no version of "grant somebody else
+        // access to this object" that this credential is for
+        condition: { string_like: { [header]: '*' } },
+      })),
+    ],
+  }
+}

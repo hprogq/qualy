@@ -134,6 +134,51 @@ describe.skipIf(!postgresAvailable)('storage quota', () => {
     expect(reasonIn(exit)).toBe('rate-limited')
   })
 
+  it('counts tickets nobody has uploaded yet against the staged allowance', async () => {
+    const { tenantId, ownerUserId } = owner()
+    const exit = await run(
+      context.url,
+      memoryBackend(),
+      Effect.gen(function* () {
+        // nothing is staged yet, and a limit that only weighed what exists
+        // would let both of these through and end up at 1200 of a 1000 limit
+        yield* prepare({ tenantId, ownerUserId, size: 600n })
+        return yield* prepare({ tenantId, ownerUserId, size: 600n })
+      }),
+      { maxStagedBytesPerOwner: 1000n, maxReservedBytesPerOwner: 10_000n },
+    )
+    expect(reasonIn(exit)).toBe('owner-quota-exceeded')
+  })
+
+  it('counts them against the stored allowance too', async () => {
+    const { tenantId, ownerUserId } = owner()
+    const backend = memoryBackend()
+    const exit = await run(
+      context.url,
+      backend,
+      Effect.gen(function* () {
+        const storage = yield* Storage
+        // one attachment that really exists, plus one ticket in flight, is
+        // already the whole allowance; a third request is over it
+        const first = yield* prepare({ tenantId, ownerUserId, size: 400n })
+        backend.put(`attachments/${tenantId}/${first.attachmentId}`, Buffer.alloc(400))
+        yield* storage.completeUpload({
+          tenantId,
+          ownerUserId,
+          reservationId: first.reservationId,
+        })
+        yield* prepare({ tenantId, ownerUserId, size: 400n })
+        return yield* prepare({ tenantId, ownerUserId, size: 400n })
+      }),
+      {
+        maxStoredBytesPerOwner: 1000n,
+        maxStagedBytesPerOwner: 10_000n,
+        maxReservedBytesPerOwner: 10_000n,
+      },
+    )
+    expect(reasonIn(exit)).toBe('owner-quota-exceeded')
+  })
+
   it('lets exactly as many concurrent requests through as there was room for', async () => {
     const { tenantId, ownerUserId } = owner()
     const exits = ok(

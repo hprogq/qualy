@@ -78,10 +78,12 @@ export class AttachmentNotFound extends Error {
 export type AttachmentInvalidReason =
   /** retired attachments take no new references */
   | 'retired'
-  /** somebody else's staged upload is not yours to bind */
+  /** somebody else's upload is not yours to bind */
   | 'not-owner'
   /** a sweeper holds it; binding would race a delete */
   | 'being-cleaned-up'
+  /** nothing refers to it yet, so there is no history to retire */
+  | 'not-bound'
 
 /** the attachment is not in a state this act can be done to */
 export class AttachmentInvalid extends Error {

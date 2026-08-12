@@ -814,8 +814,27 @@ Browser 获得的能力必须满足：
 不能 Get/Delete/List
 不能超过 maxBytes
 必须 x-cos-forbid-overwrite=true
+不得改写对象 ACL
 有效期短
 ```
+
+**限定 key 不等于限定这次写入**。`PutObject` 允许请求自带 `x-cos-acl` 与四个
+`x-cos-grant-*`,拿到 STS 的人完全可以绕开我们的 upload helper,自己发一个合法 PUT 并附上
+`x-cos-acl: public-read` —— 于是这份「私密证明材料」在第一次写入时就公开了。因此 policy 必须同时:
+
+```text
+string_equal_if_exist { "cos:x-cos-acl": "private" }
+
+deny × 4(每个 header 一条独立 statement):
+  string_like { "cos:x-cos-grant-read": "*" }
+  string_like { "cos:x-cos-grant-read-acp": "*" }
+  string_like { "cos:x-cos-grant-write-acp": "*" }
+  string_like { "cos:x-cos-grant-full-control": "*" }
+```
+
+两处细节都是实测定下来的:`if_exist` 而不是 `string_equal`,否则不带 acl 头的正常上传会被拒
+(不带就是桶默认的 private,本来就对);四条 deny 拆开写,因为同一个 condition 块里的多个键是**与**关系,
+合并成一条只会在「四个头都带上」时才触发。CAM 父策略照同样口径再限一次。
 
 Browser 永远拿不到 `QUALY_STORAGE_COS_SECRET_ID/KEY`。
 
@@ -877,7 +896,7 @@ Backend：
 4. status!=issued -> 按状态拒绝
 5. backend.stat(storageKey)
 6. not found -> UPLOAD_NOT_COMPLETED，reservation 保持 issued
-7. size > reservedBytes -> failed，删除对象
+7. size > reservedBytes -> 拒绝,但 reservation 保持 issued(见下)
 8. 验证 stat 中存在可接受 integrity
 9. transaction:
      insert Attachment(staged)
@@ -896,6 +915,12 @@ x-cos-hash-crc64ecma
 CRC64 以字符串保存，不转 JavaScript `number`。
 
 由于 key 从第一次上传起就是最终 key，complete 不再有对象存储写操作；`HEAD → DB transaction` 即可。HEAD 成功后进程崩溃，客户端重试 complete 即能收敛。
+
+**oversized 分支不得把 reservation 置 failed**。置 failed 会在对象还躺在桶里的时候把额度还给用户,
+而 abandoned sweeper 只扫 `status = 'issued'` —— 那个对象从此没有任何人负责,成为永久 orphan。正确做法是
+保持 issued、直接拒绝,让凭据失效 + grace 之后的正常 sweep 删对象、再释放额度。正常路径上 COS 的
+`cos:content-length` 与 Local 的流式限长已经拦住了超量写入,这条分支是 defense-in-depth——而 defense-in-depth
+不该制造更坏的状态。
 
 ### 5.10 Local backend：语义与 COS 一致，实现细节可以不同
 
@@ -970,7 +995,21 @@ commit
 短事务 finalize
 ```
 
-claim 使用 `cleanup_claimed_at + lease`（或仓库已有等价 primitive），多实例只允许一个 worker 当前处理。`completeUpload` 发现 reservation 正处于有效 cleanup claim 时返回可重试冲突；不要在 claim 后继续把它转 completed。
+claim 使用 `cleanup_claimed_at + lease`（或仓库已有等价 primitive），多实例只允许一个 worker 当前处理。
+
+**lease 只对 sweeper 有意义,对业务 transition 没有**。`bind` 与 `completeUpload` 遇到
+`cleanup_claimed_at IS NOT NULL` 一律拒绝,不看它有多旧:「租约过期」只说明另一个 sweeper 可以接手,
+不说明原来那个 worker 已经停下——它那个迟到的 DELETE 可能正在路上。如果按「过期即视为无人认领」放行,就会出现:
+
+```text
+T0        worker A claim
+T0+5m     lease 过期
+T0+5m1s   用户 bind 成功    staged → bound
+T0+5m2s   A 那个迟到的 delete 成功
+          DB = bound,对象不存在
+```
+
+这是不可恢复的历史损坏。反过来,「claim 了就永远不能 bind」不会卡死:那一行本来就在被删除的路上。
 
 直接最终 key 以后**不要给 `attachments/` 配“1 天全部删除”的 COS Lifecycle**，否则会把 staged/bound/retired 正常对象一起删掉。M2 的未完成上传由 DB-backed sweeper 负责。
 
@@ -1019,15 +1058,22 @@ TTL GC 永久停止。
 
 `retired`：
 
+- **只能从 `bound` 进入**
 - 禁止新增引用
 - 普通选择器隐藏
 - 历史不可变引用仍可授权读取
 - M2 不物理删除
 - 继续计入 physicalBytes
 
+`staged → retired` 是被明确拒绝的(`not-bound`)。retire 是一句关于历史的话——「它曾被引用,今后不再接受新引用」;
+staged 附件没有历史可言,把它 retire 只会为了「有人上传过、又没用」而永久保留一行和一份字节,还得伪造一个
+`bound_at` 去满足 check 约束。staged 的归宿是 TTL sweep。
+
 ### 5.14 新 Revision 引用附件
 
 - staged：必须 `owner_user_id == actor`
+- **owner 检查在幂等之前**:已经 bound 的附件被别人再 bind 一次,答 `not-owner` 而不是「已绑定,成功」。
+  幂等是给 owner 重试用的,不是给所有人用的;把成功的 bind 当作「这份材料是我的」的凭据是后续会话很自然的写法。
 - bound：M2 只允许已被当前 Entry 旧 Revision 引用的附件复用
 - retired：禁止新增 relation
 - 禁止跨 Entry 借用 bound attachment
@@ -1233,13 +1279,16 @@ ACL write
 CopyObject-specific workflow
 ```
 
-建议 `PutObject` 策略同时强制：
+`PutObject` 策略同时强制(不是建议,是必须):
 
 ```text
 cos:x-cos-forbid-overwrite = true
+cos:x-cos-acl              = private
+拒绝任何 cos:x-cos-grant-*
 ```
 
-STS 再进一步把 resource 缩到 exact ObjectKey，并限制 `cos:content-length`。
+STS 再进一步把 resource 缩到 exact ObjectKey,限制 `cos:content-length`,并把上面三条重复一遍——
+CAM 与 STS 是两层,任何一层写松了都能让「私密材料」变成公开链接。
 
 ### 5.21 Conversation 1 腾讯云官方文档清单
 

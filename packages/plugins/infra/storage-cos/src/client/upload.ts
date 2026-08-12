@@ -35,10 +35,11 @@ const put = (payload: CosUploadPayload, file: Blob, options: UploadOptions) => {
         Key: payload.key,
         Body: file,
         ContentType: file.type || 'application/octet-stream',
-        // the credential itself insists on this header, so a second upload to
-        // the same key fails at the store rather than replacing an attachment
-        // somebody has already referred to
-        Headers: { 'x-cos-forbid-overwrite': 'true' },
+        // both headers are conditions of the credential, not politeness: the
+        // store refuses a second write to the key, and refuses to publish the
+        // object. Sending them explicitly means a request that lost them
+        // fails here rather than quietly storing something world-readable.
+        Headers: { 'x-cos-forbid-overwrite': 'true', 'x-cos-acl': 'private' },
         onProgress: (info) => {
           options.onProgress?.({ loaded: info.loaded, total: info.total })
         },

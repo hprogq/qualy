@@ -246,6 +246,58 @@ describe.skipIf(!postgresAvailable)('storage cleanup', () => {
     expect(row.status).toBe('bound')
   })
 
+  it('still refuses to bind an attachment whose sweeper lease has run out', async () => {
+    const tenantId = randomUUID()
+    const ownerUserId = randomUUID()
+    const backend = memoryBackend()
+    const exit = await run(
+      context.url,
+      backend,
+      Effect.gen(function* () {
+        const storage = yield* Storage
+        const cleanup = yield* StorageCleanup
+        const { meta } = yield* uploaded(backend, { tenantId, ownerUserId })
+        yield* TestClock.adjust('25 hours')
+        backend.failNext('delete')
+        yield* cleanup.sweepStagedAttachments
+        // long past the lease: another sweeper may take the work over, but
+        // the first one's delete may still be in flight, and binding on top
+        // of an object that is about to vanish is how history loses a file
+        yield* TestClock.adjust('1 hour')
+        return yield* storage.bind({ tenantId, attachmentId: meta.id, ownerUserId })
+      }),
+    )
+
+    expect(reasonIn(exit)).toBe('being-cleaned-up')
+  })
+
+  it('still refuses to complete an upload whose sweeper lease has run out', async () => {
+    const tenantId = randomUUID()
+    const ownerUserId = randomUUID()
+    const backend = memoryBackend()
+    const exit = await run(
+      context.url,
+      backend,
+      Effect.gen(function* () {
+        const storage = yield* Storage
+        const cleanup = yield* StorageCleanup
+        const ticket = yield* prepare({ tenantId, ownerUserId })
+        yield* TestClock.adjust('50 minutes')
+        backend.failNext('delete')
+        yield* cleanup.sweepAbandonedUploads
+        yield* TestClock.adjust('1 hour')
+        backend.put(`attachments/${tenantId}/${ticket.attachmentId}`, Buffer.from('very late'))
+        return yield* storage.completeUpload({
+          tenantId,
+          ownerUserId,
+          reservationId: ticket.reservationId,
+        })
+      }),
+    )
+
+    expect(reasonIn(exit)).toBe('being-cleaned-up')
+  })
+
   it('refuses to bind an attachment a sweeper is holding', async () => {
     const tenantId = randomUUID()
     const ownerUserId = randomUUID()
@@ -288,6 +340,56 @@ describe.skipIf(!postgresAvailable)('storage cleanup', () => {
     expect(reasonIn(exit)).toBe('not-owner')
   })
 
+  it('does not let one person bind an attachment that is already bound to another', async () => {
+    const tenantId = randomUUID()
+    const ownerUserId = randomUUID()
+    const backend = memoryBackend()
+    const exit = await run(
+      context.url,
+      backend,
+      Effect.gen(function* () {
+        const storage = yield* Storage
+        const { meta } = yield* uploaded(backend, { tenantId, ownerUserId })
+        yield* storage.bind({ tenantId, attachmentId: meta.id, ownerUserId })
+        // idempotence is for the owner retrying, not for everybody else: a
+        // caller that reads a successful bind as "this file was mine to use"
+        // must not get one here
+        return yield* storage.bind({
+          tenantId,
+          attachmentId: meta.id,
+          ownerUserId: randomUUID(),
+        })
+      }),
+    )
+
+    expect(reasonIn(exit)).toBe('not-owner')
+  })
+
+  it('refuses to retire an attachment nothing ever referred to', async () => {
+    const tenantId = randomUUID()
+    const ownerUserId = randomUUID()
+    const backend = memoryBackend()
+    const exit = await run(
+      context.url,
+      backend,
+      Effect.gen(function* () {
+        const storage = yield* Storage
+        const { meta } = yield* uploaded(backend, { tenantId, ownerUserId })
+        // retiring is a statement about history, and a staged attachment has
+        // none; keeping it forever to record that nobody used it is the
+        // opposite of what the staged sweep is for
+        return yield* storage.retire({ tenantId, attachmentId: meta.id })
+      }),
+    )
+
+    expect(reasonIn(exit)).toBe('not-bound')
+    const row = await context.row<{ status: string; bound_at: string | null }>(
+      'select status, bound_at from storage_attachments where tenant_id = $1',
+      [tenantId],
+    )
+    expect(row).toEqual({ status: 'staged', bound_at: null })
+  })
+
   it('keeps a retired attachment’s bytes and refuses to bind it again', async () => {
     const tenantId = randomUUID()
     const ownerUserId = randomUUID()
@@ -298,6 +400,7 @@ describe.skipIf(!postgresAvailable)('storage cleanup', () => {
       Effect.gen(function* () {
         const storage = yield* Storage
         const { meta } = yield* uploaded(backend, { tenantId, ownerUserId })
+        yield* storage.bind({ tenantId, attachmentId: meta.id, ownerUserId })
         yield* storage.retire({ tenantId, attachmentId: meta.id })
         return yield* storage.bind({ tenantId, attachmentId: meta.id, ownerUserId })
       }),
