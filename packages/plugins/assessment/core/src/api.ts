@@ -442,6 +442,22 @@ const reviewDetailView = Schema.Struct({
     ),
   }),
   form: Schema.Struct({ itemType: Schema.String, formConfig: configJson }),
+  /** where the round stands in its chain, and what the chain is */
+  chain: Schema.Struct({
+    mode: Schema.Literals(['normal', 'escalated']),
+    stageIndex: Schema.Number,
+    normalTerminal: Schema.Number,
+    stages: Schema.Array(
+      Schema.Struct({
+        index: Schema.Number,
+        nodeName: Schema.NullOr(Schema.String),
+        roleNames: Schema.Array(Schema.String),
+        skipped: Schema.NullOr(Schema.String),
+      }),
+    ),
+    /** what this reader may say here, already narrowed by mode and position */
+    decisions: Schema.Array(Schema.String),
+  }),
   events: Schema.Array(
     Schema.Struct({
       kind: Schema.String,
@@ -487,6 +503,23 @@ const myResultView = Schema.Struct({
 })
 
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
+  .add(
+    // the rounds nobody can act on: an appointment away from moving again
+    HttpApiEndpoint.get('reviewAlerts', '/assessment/batches/:batchId/review-alerts', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({
+        groups: Schema.Array(
+          Schema.Struct({
+            nodeId: Schema.String,
+            nodeName: Schema.String,
+            roleNames: Schema.Array(Schema.String),
+            waiting: Schema.Number,
+          }),
+        ),
+      }),
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
   .add(
     // whether a review stage as composed has anybody in it, unit by unit
     HttpApiEndpoint.get('reviewCoverage', '/assessment/batches/:batchId/review-coverage', {
@@ -570,7 +603,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('decideReview', '/assessment/review/instances/:instanceId/decisions', {
       params: Schema.Struct({ instanceId: id }),
       payload: Schema.Struct({
-        decision: Schema.Literals(['approve', 'reject']),
+        decision: Schema.Literals([
+          'approve',
+          'reject',
+          'escalate',
+          'comment',
+          'recommend-approve',
+          'recommend-reject',
+        ]),
         comment: Schema.optional(boundedText(2000)),
         suggestedPayload: Schema.optional(configJson),
       }),

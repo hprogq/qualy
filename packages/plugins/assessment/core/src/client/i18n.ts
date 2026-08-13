@@ -770,6 +770,20 @@ const i18n = definePluginMessages({
       id: 'assessment/items/hint',
       defaultMessage: 'The questions this round asks, and the groups their scores add up in.',
     },
+    itemsStuckTitle: {
+      id: 'assessment/items/stuck-title',
+      defaultMessage: 'Waiting on an appointment',
+    },
+    itemsStuckRow: {
+      id: 'assessment/items/stuck-row',
+      defaultMessage:
+        '{unit} · {roles} · {count, plural, one {# submission waiting} other {# submissions waiting}}',
+    },
+    itemsStuckHint: {
+      id: 'assessment/items/stuck-hint',
+      defaultMessage:
+        'Give somebody one of these roles at that unit and they start moving again by themselves, within a minute.',
+    },
     itemsGroupsTitle: { id: 'assessment/items/groups-title', defaultMessage: 'Score groups' },
     itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
     itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Cap' },
@@ -840,6 +854,65 @@ const i18n = definePluginMessages({
     itemsFixedValueHint: {
       id: 'assessment/items/fixed-value-hint',
       defaultMessage: 'A signed amount, like 3.00 or -1.00.',
+    },
+    itemsChainHint: {
+      id: 'assessment/items/chain-hint',
+      defaultMessage:
+        'Reviewed step by step, nearest first. Mark where the ordinary flow ends - the steps after it are only walked when a reviewer sends something up as a doubt.',
+    },
+    itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add a step' },
+    itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Remove step' },
+    itemsStageNumber: { id: 'assessment/items/stage-number', defaultMessage: 'Step {n}' },
+    itemsStageKind: { id: 'assessment/items/stage-kind', defaultMessage: 'Who reviews' },
+    itemsStageRoleAt: {
+      id: 'assessment/items/stage-role-at',
+      defaultMessage: 'Roles at a level',
+    },
+    itemsStageNearestRole: {
+      id: 'assessment/items/stage-nearest-role',
+      defaultMessage: 'The nearest holder of one role',
+    },
+    itemsStageNearestHint: {
+      id: 'assessment/items/stage-nearest-hint',
+      defaultMessage:
+        'Walks outward from the participant until somebody holds this role - for roles that cover everything below them, like a counsellor.',
+    },
+    itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
+    itemsTerminalHere: {
+      id: 'assessment/items/terminal-here',
+      defaultMessage: 'Approved here ends it',
+    },
+    itemsTerminalMark: {
+      id: 'assessment/items/terminal-mark',
+      defaultMessage: 'End the ordinary flow at this step',
+    },
+    itemsStageDoubt: {
+      id: 'assessment/items/stage-doubt',
+      defaultMessage: 'Only reached by escalation',
+    },
+    reviewChainTitle: { id: 'assessment/review/chain-title', defaultMessage: 'The chain' },
+    reviewStageHere: { id: 'assessment/review/stage-here', defaultMessage: 'Now here' },
+    reviewStageSkipped: {
+      id: 'assessment/review/stage-skipped',
+      defaultMessage: 'Skipped: no such unit above this participant',
+    },
+    reviewEscalate: { id: 'assessment/review/escalate', defaultMessage: 'Send up as a doubt' },
+    reviewCommentAction: {
+      id: 'assessment/review/comment-action',
+      defaultMessage: 'Leave a note',
+    },
+    reviewRecommendApprove: {
+      id: 'assessment/review/recommend-approve',
+      defaultMessage: 'Advise approval',
+    },
+    reviewRecommendReject: {
+      id: 'assessment/review/recommend-reject',
+      defaultMessage: 'Advise sending back',
+    },
+    reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
+    reviewEscalatedHere: {
+      id: 'assessment/review/escalated-here',
+      defaultMessage: 'Sent up as a doubt; only the end of the chain decides it.',
     },
     itemsReviewTitle: { id: 'assessment/items/review-title', defaultMessage: 'Review' },
     itemsReviewCovered: {

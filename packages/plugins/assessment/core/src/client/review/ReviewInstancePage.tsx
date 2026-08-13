@@ -8,6 +8,7 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -48,7 +49,7 @@ function Detail({ batchId }: { batchId: string }) {
   const detail = useQuery(
     query.assessment.getReviewInstance.queryOptions({ params: { instanceId } }),
   )
-  const [rejecting, setRejecting] = useState(false)
+  const [saying, setSaying] = useState<string | null>(null)
   const review = detail.data?.review
 
   const decided = () => {
@@ -138,6 +139,38 @@ function Detail({ batchId }: { batchId: string }) {
                   </div>
                 </dl>
               </section>
+              <section className="rounded-lg border p-4">
+                <p className="pb-2 text-xs font-medium text-muted-foreground">
+                  {format(m.reviewChainTitle)}
+                </p>
+                <ol className="flex flex-col gap-2 text-sm">
+                  {review.chain.stages.map((stage) => (
+                    <li
+                      key={stage.index}
+                      className={
+                        stage.index === review.chain.stageIndex
+                          ? 'rounded-md bg-accent/60 px-2 py-1'
+                          : 'px-2 py-1'
+                      }
+                    >
+                      <p className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-medium">
+                          {stage.nodeName ?? format(m.reviewStageSkipped)}
+                        </span>
+                        {stage.index === review.chain.stageIndex && (
+                          <span className="text-xs text-primary">{format(m.reviewStageHere)}</span>
+                        )}
+                        {stage.index > review.chain.normalTerminal && (
+                          <span className="text-xs text-muted-foreground">
+                            {format(m.itemsStageDoubt)}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{stage.roleNames.join('、')}</p>
+                    </li>
+                  ))}
+                </ol>
+              </section>
               {review.events.length > 0 && (
                 <section className="rounded-lg border p-4">
                   <p className="pb-2 text-xs font-medium text-muted-foreground">
@@ -158,27 +191,37 @@ function Detail({ batchId }: { batchId: string }) {
             </aside>
           </div>
 
-          {review.capabilities.canDecide && (
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRejecting(true)}>
-                {format(m.reviewReject)}
-              </Button>
-              <Button disabled={approve.isPending} onClick={() => approve.mutate()}>
-                {format(m.reviewApprove)}
-              </Button>
+          {review.chain.mode === 'escalated' && (
+            <p className="text-sm text-muted-foreground">{format(m.reviewEscalatedHere)}</p>
+          )}
+          {review.chain.decisions.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {review.chain.decisions
+                .filter((decision) => decision !== 'approve')
+                .map((decision) => (
+                  <Button key={decision} variant="outline" onClick={() => setSaying(decision)}>
+                    {format(SAYINGS[decision] ?? m.reviewCommentAction)}
+                  </Button>
+                ))}
+              {review.chain.decisions.includes('approve') && (
+                <Button disabled={approve.isPending} onClick={() => approve.mutate()}>
+                  {format(m.reviewApprove)}
+                </Button>
+              )}
             </div>
           )}
 
-          {rejecting && (
-            <RejectDialog
+          {saying !== null && (
+            <SayDialog
               batchId={batchId}
               instanceId={instanceId}
               itemId={review.itemId}
+              decision={saying}
               formConfig={review.form.formConfig}
               judgedPayload={review.revision.payload}
-              onClose={() => setRejecting(false)}
+              onClose={() => setSaying(null)}
               onDone={() => {
-                setRejecting(false)
+                setSaying(null)
                 decided()
               }}
             />
@@ -206,10 +249,24 @@ function JudgedPayload({ payload, formConfig }: { payload: unknown; formConfig: 
   )
 }
 
-function RejectDialog({
+/** what each decision is called on a button and at the top of its dialog */
+const SAYINGS: Record<string, MessageDescriptor> = {
+  reject: m.reviewReject,
+  escalate: m.reviewEscalate,
+  comment: m.reviewCommentAction,
+  'recommend-approve': m.reviewRecommendApprove,
+  'recommend-reject': m.reviewRecommendReject,
+}
+
+/**
+ * Everything a reviewer says except a plain approval: a word is required,
+ * and a rejection may carry a suggested version of the filing.
+ */
+function SayDialog({
   batchId,
   instanceId,
   itemId,
+  decision,
   formConfig,
   judgedPayload,
   onClose,
@@ -218,6 +275,7 @@ function RejectDialog({
   batchId: string
   instanceId: string
   itemId: string
+  decision: string
   formConfig: unknown
   judgedPayload: unknown
   onClose: () => void
@@ -233,15 +291,15 @@ function RejectDialog({
   )
   const [problem, setProblem] = useState<string | null>(null)
 
-  const reject = useMutation({
+  const say = useMutation({
     mutationFn: () =>
       run(
         api.assessment.decideReview({
           params: { instanceId },
           payload: {
-            decision: 'reject',
+            decision: decision as 'reject',
             comment: comment.trim(),
-            ...(suggesting ? { suggestedPayload: suggestion } : {}),
+            ...(suggesting && decision === 'reject' ? { suggestedPayload: suggestion } : {}),
           },
         }),
       ),
@@ -252,18 +310,15 @@ function RejectDialog({
   return (
     <FormDialog
       open
-      title={format(m.reviewRejectTitle)}
+      title={format(SAYINGS[decision] ?? m.reviewSayTitle)}
       onClose={onClose}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
-          <Button
-            disabled={reject.isPending || comment.trim() === ''}
-            onClick={() => reject.mutate()}
-          >
-            {format(m.reviewReject)}
+          <Button disabled={say.isPending || comment.trim() === ''} onClick={() => say.mutate()}>
+            {format(SAYINGS[decision] ?? m.reviewSayTitle)}
           </Button>
         </div>
       }
@@ -283,7 +338,7 @@ function RejectDialog({
           <Checkbox checked={suggesting} onCheckedChange={(next) => setSuggesting(next === true)} />
           {format(m.reviewSuggestToggle)}
         </label>
-        {suggesting && (
+        {suggesting && decision === 'reject' && (
           <EvidenceForm
             fields={fieldsOf(formConfig).filter((field) => field.type !== 'attachment')}
             value={suggestion}

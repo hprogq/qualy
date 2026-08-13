@@ -28,7 +28,16 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
-import { reviewersAt, stageNodesOf } from '../review/db.ts'
+import { insertReviewEvent } from '../entry/db.ts'
+import {
+  blockedGroups,
+  chainNames,
+  openInstances,
+  reviewersAt,
+  setInstanceState,
+  stageNodesOf,
+  tenantsWithOpenRounds,
+} from '../review/db.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { participantRowByUser } from '../scoring/db.ts'
 import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
@@ -788,6 +797,23 @@ export class Assessment extends Context.Service<
      * writes down what is already true.
      */
     readonly sweepDueBoundaries: Effect.Effect<SweepReport>
+    /** re-resolves every open round's stage and heals both ways (§14) */
+    readonly patrolReviewRounds: Effect.Effect<{ blocked: number; released: number }>
+    readonly reviewAlerts: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        groups: readonly {
+          nodeId: string
+          nodeName: string
+          roleNames: readonly string[]
+          waiting: number
+        }[]
+      },
+      BatchNotFound | AccessDenied
+    >
     /** one person's claims on the round's questions, and their lifecycle */
     readonly listMyEntries: EntryMethods['listMyEntries']
     readonly getEntryHistory: EntryMethods['getEntryHistory']
@@ -3227,6 +3253,137 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* dieQuery(withDb(userTypeOptionRows(tenantId)))
     }),
 
+    /**
+     * The patrol (§14): the one mechanism trusted to keep the queues true.
+     *
+     * Nothing hooks the writes that change who can review - granting a role,
+     * revoking one, moving the tree, editing a policy, disabling a user -
+     * because a hook missed is a round stuck forever and a hook added is
+     * this logic scattered across ten write paths in two plugins. Instead
+     * every open round's current stage is re-resolved on a cadence and the
+     * state follows what it finds, in both directions: appoint somebody and
+     * the stuck rounds wake by themselves, revoke the last holder and the
+     * rounds say so. Idempotent, re-entrant, and safe beside a human doing
+     * the same thing - each write is conditional on the state it read.
+     */
+    patrolReviewRounds: Effect.gen(function* () {
+      const tenants = yield* dieQuery(withDb(tenantsWithOpenRounds()))
+      let blocked = 0
+      let released = 0
+      for (const tenantId of tenants) {
+        const rounds = yield* dieQuery(withDb(openInstances(tenantId)))
+        // one resolution per (roles, node) rather than per round: a class
+        // with forty waiting entries asks the same question forty times
+        const answers = new Map<string, boolean>()
+        for (const round of rounds) {
+          const key = `${round.currentNodeId}:${[...round.currentRoleIds].sort().join(',')}`
+          let staffed = answers.get(key)
+          if (staffed === undefined) {
+            const holders = yield* dieQuery(
+              withDb(
+                reviewersAt({
+                  tenantId,
+                  batchId: round.batchId,
+                  nodeId: round.currentNodeId,
+                  roleIds: round.currentRoleIds,
+                  // the per-filing exclusions are asked per round below
+                  subjectUserId: NOBODY,
+                  actorId: NOBODY,
+                }),
+              ),
+            )
+            staffed = holders.length > 0
+            answers.set(key, staffed)
+          }
+          // the round's own people can never judge it, so the count that
+          // decides its state is the one with them taken out
+          const actionable = staffed
+            ? (yield* dieQuery(
+                withDb(
+                  reviewersAt({
+                    tenantId,
+                    batchId: round.batchId,
+                    nodeId: round.currentNodeId,
+                    roleIds: round.currentRoleIds,
+                    subjectUserId: round.subjectUserId,
+                    actorId: round.actorId,
+                  }),
+                ),
+              )).length > 0
+            : false
+          if (round.state === 'active' && !actionable) {
+            const moved = yield* dieQuery(
+              withDb(
+                setInstanceState({ tenantId, instanceId: round.id, from: 'active', to: 'blocked' }),
+              ),
+            )
+            if (moved) {
+              blocked += 1
+              yield* dieQuery(
+                withDb(
+                  insertReviewEvent({
+                    tenantId,
+                    reviewInstanceId: round.id,
+                    kind: 'assignee-not-found',
+                    actorId: null,
+                  }),
+                ),
+              )
+            }
+          } else if (round.state === 'blocked' && actionable) {
+            const moved = yield* dieQuery(
+              withDb(
+                setInstanceState({ tenantId, instanceId: round.id, from: 'blocked', to: 'active' }),
+              ),
+            )
+            if (moved) {
+              released += 1
+              yield* dieQuery(
+                withDb(
+                  insertReviewEvent({
+                    tenantId,
+                    reviewInstanceId: round.id,
+                    kind: 'assignee-found',
+                    actorId: null,
+                  }),
+                ),
+              )
+            }
+          }
+        }
+      }
+      return { blocked, released }
+    }),
+
+    /** the rounds nobody can act on, as the batch's own alert panel reads them */
+    reviewAlerts: Effect.fn('Assessment.reviewAlerts')(function* (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return yield* new BatchNotFound()
+      yield* requireRosterReach(as, tenantId, batchId)
+      const groups = yield* dieQuery(withDb(blockedGroups(tenantId, batchId)))
+      const roleNames = yield* dieQuery(
+        withDb(
+          chainNames({
+            tenantId,
+            nodeIds: [],
+            roleIds: groups.flatMap((group) => group.roleIds),
+          }),
+        ),
+      )
+      return {
+        groups: groups.map((group) => ({
+          nodeId: group.nodeId,
+          nodeName: group.nodeName,
+          roleNames: group.roleIds.map((roleId) => roleNames.roles.get(roleId) ?? roleId),
+          waiting: group.waiting,
+        })),
+      }
+    }),
+
     sweepDueBoundaries: Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis
       // One candidate query, then one transaction per batch. Sweeping every
@@ -3316,6 +3473,7 @@ const reviewDto = (review: ReviewDetailView) => ({
   completedAt: review.completedAt === null ? null : new Date(review.completedAt).toISOString(),
   revision: review.revision,
   form: review.form,
+  chain: review.chain,
   events: review.events.map((event) => ({
     kind: event.kind,
     actorId: event.actorId,
@@ -4264,6 +4422,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'reviewAlerts',
+      Effect.fn('assessment.reviewAlerts.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.reviewAlerts(principal.tenantId, params.batchId, principal)
       }),
     )
     .handle(

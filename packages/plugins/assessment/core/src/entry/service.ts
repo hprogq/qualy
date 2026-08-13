@@ -47,7 +47,7 @@ import {
   type EntryRow,
   type ParticipantAnchor,
 } from './db.ts'
-import { reviewersAt } from '../review/db.ts'
+import { holdersOf, resolveChain, stageAt, type ReviewPolicy } from '../review/chain.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
 //
@@ -684,41 +684,37 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               // ancestor of the stage's node type, held to the same reviewer
               // definition the inbox and the decisions ask - the arrival
               // check may not find a judge the queue would never show
-              const policy = itemRevision.reviewPolicy as {
-                stages: readonly {
-                  selector: { nodeTypeId: string; roleIds: readonly string[] }
-                  quorum: unknown
-                }[]
-                normalTerminal: number
-              }
-              const stage = policy.stages[0]!
-              const step = participant.anchorLineage.find(
-                (candidate) => candidate.nodeTypeId === stage.selector.nodeTypeId,
-              )
-              // no unit of that kind above this person, or the frozen one is
-              // gone: there is nothing to anchor a round to, and no later
-              // grant can supply it - the configuration itself is wrong here
-              if (step === undefined) return yield* refuse(action, 'review-level-missing')
-              const nodePath = yield* nodePathOf(tenantId, step.nodeId)
-              if (nodePath === null) return yield* refuse(action, 'review-level-missing')
-              const holders = yield* reviewersAt({
+              // The whole chain, resolved once against this person's frozen
+              // lineage and snapshotted: the stages past the ordinary
+              // terminal are the doubt chain of the same list, and an
+              // escalation must not re-resolve an organization that has
+              // moved since (§14).
+              const policy = itemRevision.reviewPolicy as ReviewPolicy
+              const chain = yield* resolveChain({
                 tenantId,
                 batchId: entry.batchId,
-                nodeId: step.nodeId,
-                roleIds: stage.selector.roleIds,
+                policy,
+                lineage: participant.anchorLineage,
+              })
+              const first = stageAt(chain, 0)
+              // every stage named a level this person sits under none of:
+              // there is nowhere to anchor a round, and no later grant can
+              // supply it - the configuration itself is wrong here
+              if (first === null) return yield* refuse(action, 'review-level-missing')
+              const nodePath = yield* nodePathOf(tenantId, first.nodeId!)
+              if (nodePath === null) return yield* refuse(action, 'review-level-missing')
+              const holders = yield* holdersOf({
+                tenantId,
+                batchId: entry.batchId,
+                stage: first,
                 subjectUserId: participant.userId,
                 actorId: current!.actorId,
               })
               // Nobody holds the stage's roles there today - which is the
-              // round's problem, not this person's. The submission stands and
-              // waits: the round freezes the roles and the node, so whoever
-              // is given one of them later finds it in their queue. Said
-              // loudly here because nothing else would say it.
-              if (holders.length === 0) {
-                yield* Effect.logWarning(
-                  `no reviewer for entry ${entryId}: roles ${stage.selector.roleIds.join(', ')} at node ${step.nodeId}`,
-                )
-              }
+              // round's problem, not this person's. The round is written
+              // down as blocked so the patrol and the alert panel own it,
+              // and it heals the moment somebody is appointed (§14).
+              const arrived = holders.length > 0 ? 'active' : 'blocked'
 
               const roundNo = yield* nextRoundNo(tenantId, entryId)
               const instanceId = yield* insertReviewInstance({
@@ -726,19 +722,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 entryId,
                 revisionId: entry.currentRevisionId,
                 roundNo,
-                effectiveChain: {
-                  stages: [
-                    {
-                      selector: stage.selector,
-                      nodeId: step.nodeId,
-                      quorum: stage.quorum,
-                    },
-                  ],
-                  normalTerminal: policy.normalTerminal,
-                },
-                roleIds: stage.selector.roleIds,
-                nodeId: step.nodeId,
+                effectiveChain: chain,
+                stageIndex: first.index,
+                roleIds: first.roleIds,
+                nodeId: first.nodeId!,
                 nodePath,
+                state: arrived,
               })
               yield* insertReviewEvent({
                 tenantId,
@@ -746,6 +735,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 kind: 'submitted',
                 actorId: as.userId,
               })
+              if (arrived === 'blocked') {
+                yield* insertReviewEvent({
+                  tenantId,
+                  reviewInstanceId: instanceId,
+                  kind: 'assignee-not-found',
+                  actorId: null,
+                })
+              }
               const moved = yield* setEntryState({
                 tenantId,
                 entryId,

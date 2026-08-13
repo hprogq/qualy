@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
 import { db } from '../server/db.ts'
+import type { ResolvedChain } from './chain.ts'
 
 // The review rows and the one definition of who may judge them.
 //
@@ -33,10 +34,13 @@ export interface ReviewerRefs {
  * so "the submit found a reviewer the inbox never shows" cannot be written.
  *
  * One assignment carries the whole answer. Standing: one of the stage's
- * roles granted at exactly the stage's node with coverage `self` - exact on
- * purpose (§32.23), a subtree grant participates in jurisdiction, never in
- * stage membership, even when it is anchored on the stage node itself -
- * live, role active, holder enabled, resource general or this batch. And
+ * roles anchored at exactly the stage's node - exact on purpose (§14,
+ * §32.23): a grant anchored higher up does not reach down into the stage,
+ * however wide its coverage, or a role mis-granted at the college would
+ * quietly review every class below it. Coverage itself says nothing about
+ * membership either way, so the ordinary subtree grant an administrator
+ * writes at that unit is a member like any other - live, role active,
+ * holder enabled, resource general or this batch. And
  * the batch accepted assessment.review.process from THAT assignment, not
  * merely from some assignment of theirs: acceptance names sources one by
  * one, so a new stage grant may not walk in on an older assignment's
@@ -67,7 +71,6 @@ const mayReview = (r: ReviewerRefs) => sql<boolean>`(
     where rg.tenant_id = ${r.tenantId}
       and rg.user_id = ${r.userId}
       and rg.org_node_id = ${r.nodeId}
-      and rg.coverage = 'self'
       and rg.role_id = any(${r.roleIds})
       and rg.revoked_at is null
       and (rg.valid_from is null or rg.valid_from <= now())
@@ -169,6 +172,9 @@ export interface ReviewInstanceDetailRow {
   id: string
   state: 'active' | 'blocked' | 'completed'
   outcome: string | null
+  mode: 'normal' | 'escalated'
+  currentStageIndex: number
+  effectiveChain: ResolvedChain
   roundNo: number
   entryId: string
   revisionId: string
@@ -216,6 +222,9 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'ri.id',
           'ri.state',
           'ri.outcome',
+          'ri.mode',
+          'ri.currentStageIndex',
+          'ri.effectiveChain',
           'ri.roundNo',
           'ri.entryId',
           'ri.revisionId',
@@ -248,6 +257,9 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               id: row.id,
               state: row.state as ReviewInstanceDetailRow['state'],
               outcome: row.outcome,
+              mode: row.mode as ReviewInstanceDetailRow['mode'],
+              currentStageIndex: row.currentStageIndex,
+              effectiveChain: row.effectiveChain as unknown as ResolvedChain,
               roundNo: row.roundNo,
               entryId: row.entryId,
               revisionId: row.revisionId,
@@ -479,3 +491,199 @@ export const stageNodesOf = (input: { tenantId: string; batchId: string; nodeTyp
         rows.map((row) => ({ id: String(row.node_id), name: String(row.name) })),
       ),
     )
+
+/**
+ * The nearest holder of one role along a frozen lineage, walking outward
+ * from where the participant stood. This is the selector for roles that
+ * genuinely inherit - a counsellor granted over a whole faculty answers for
+ * everyone under it - and it is why `nearestRole` exists beside `roleAt`
+ * (§14): the anchor is wherever the holder actually is, not a level named
+ * in the configuration.
+ */
+export const nearestRoleNode = (input: {
+  tenantId: string
+  batchId: string
+  roleId: string
+  lineage: readonly { nodeId: string }[]
+}) =>
+  input.lineage.length === 0
+    ? Effect.succeed(null)
+    : db
+        .query((k) =>
+          sql<{ node_id: string; ord: number }>`
+            select steps.node_id, steps.ord
+            from unnest(${sql.val(`{${input.lineage.map((step) => step.nodeId).join(',')}}`)}::uuid[])
+              with ordinality as steps(node_id, ord)
+            where exists (
+              select 1
+              from role_grants rg
+              join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
+              join users u on u.tenant_id = rg.tenant_id and u.id = rg.user_id
+              where rg.tenant_id = ${input.tenantId}
+                and rg.org_node_id = steps.node_id
+                and rg.role_id = ${input.roleId}
+                and rg.revoked_at is null
+                and (rg.valid_from is null or rg.valid_from <= now())
+                and (rg.valid_until is null or rg.valid_until > now())
+                and ro.status = 'active'
+                and u.enabled
+                and (
+                  rg.resource_namespace is null
+                  or (
+                    rg.resource_namespace = 'assessment'
+                    and rg.resource_type = 'batch'
+                    and rg.resource_id = ${input.batchId}
+                  )
+                )
+            )
+            order by steps.ord
+            limit 1
+          `.execute(k),
+        )
+        .pipe(Effect.map(({ rows }) => (rows[0] ? String(rows[0].node_id) : null)))
+
+/** names for the units and roles a chain snapshot refers to by id */
+export const chainNames = (input: {
+  tenantId: string
+  nodeIds: readonly string[]
+  roleIds: readonly string[]
+}) =>
+  Effect.gen(function* () {
+    const nodes =
+      input.nodeIds.length === 0
+        ? []
+        : yield* db.query((k) =>
+            k
+              .selectFrom('OrgNode')
+              .select(['id', 'name'])
+              .where('tenantId', '=', input.tenantId)
+              .where('id', 'in', [...new Set(input.nodeIds)])
+              .execute(),
+          )
+    const roles =
+      input.roleIds.length === 0
+        ? []
+        : yield* db.query((k) =>
+            k
+              .selectFrom('Role')
+              .select(['id', 'name'])
+              .where('tenantId', '=', input.tenantId)
+              .where('id', 'in', [...new Set(input.roleIds)])
+              .execute(),
+          )
+    return {
+      nodes: new Map(nodes.map((row) => [row.id, row.name])),
+      roles: new Map(roles.map((row) => [row.id, row.name])),
+    }
+  })
+
+export interface PatrolRow {
+  id: string
+  batchId: string
+  state: 'active' | 'blocked'
+  currentNodeId: string
+  currentRoleIds: readonly string[]
+  subjectUserId: string
+  actorId: string
+}
+
+/** every open round in a tenant, with what deciding its stage needs */
+export const openInstances = (tenantId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance as ri')
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+        )
+        .select([
+          'ri.id',
+          'ri.state',
+          'ri.currentNodeId',
+          'ri.currentRoleIds',
+          'e.batchId',
+          'bp.userId as subjectUserId',
+          'er.actorId',
+        ])
+        .where('ri.tenantId', '=', tenantId)
+        .where('ri.state', 'in', ['active', 'blocked'])
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): PatrolRow => ({
+          id: row.id,
+          batchId: row.batchId,
+          state: row.state as PatrolRow['state'],
+          currentNodeId: row.currentNodeId,
+          currentRoleIds: row.currentRoleIds,
+          subjectUserId: row.subjectUserId,
+          actorId: row.actorId,
+        })),
+      ),
+    )
+
+/** the patrol's one write: a round changes state only if it is still where it was read */
+export const setInstanceState = (input: {
+  tenantId: string
+  instanceId: string
+  from: 'active' | 'blocked'
+  to: 'active' | 'blocked'
+}) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('ReviewInstance')
+        .set({ state: input.to })
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.instanceId)
+        .where('state', '=', input.from)
+        .returning(['id'])
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/** the rounds nobody can currently act on, grouped the way an alert panel reads them */
+export const blockedGroups = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      sql<{ node_id: string; node_name: string; role_ids: string[]; waiting: string }>`
+        select ri.current_node_id as node_id, n.name as node_name,
+               ri.current_role_ids as role_ids, count(*)::text as waiting
+        from review_instances ri
+        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+        join org_nodes n on n.tenant_id = ri.tenant_id and n.id = ri.current_node_id
+        where ri.tenant_id = ${tenantId} and e.batch_id = ${batchId} and ri.state = 'blocked'
+        group by ri.current_node_id, n.name, ri.current_role_ids
+        order by n.name
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) =>
+        rows.map((row) => ({
+          nodeId: String(row.node_id),
+          nodeName: String(row.node_name),
+          roleIds: row.role_ids.map(String),
+          waiting: Number(row.waiting),
+        })),
+      ),
+    )
+
+/** the tenants with open rounds at all, so the patrol visits nothing empty */
+export const tenantsWithOpenRounds = () =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance')
+        .select(['tenantId'])
+        .distinct()
+        .where('state', 'in', ['active', 'blocked'])
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.tenantId)))

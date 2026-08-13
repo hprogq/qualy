@@ -4110,3 +4110,28 @@ frozen resolve、prettier、生产 smoke 全绿。
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` 621 passed / 17 skipped;`pnpm test:browser`
 54(既有用例未破);build、prettier、生产 smoke 全绿。
+
+### 审核链按 §14 补齐(2026-08-13)
+
+用户指出前实现与《14. Review 引擎》不符,并当场裁决了成员资格语义。逐条对齐:
+
+- **成员资格只看锚点,coverage 不参与**(裁决入 assessment-design §32.58):上一轮按外部审计加的
+  `coverage='self'` 已删——「subtree 不参与成员资格」约束的是向下延伸,锚点相等本身已挡住;多余的
+  self 条件排除的恰是授权表单默认值,等于让 stage 无法配齐人。用户报的「配了 3 个审核员仍无法
+  提交」实际根因是**审核层级配在「年级」而所有授权都在学院/专业/班级**——现已被配置页的覆盖
+  预览当场标红。
+- **整条链**:policy 放开为 §14 全量(多 stage、roleAt|nearestRole、normalTerminal);提交时解析
+  整条链落 `effective_chain` 快照(含跳过的段与原因);`nearestRole` 沿冻结 lineage 找最近持有者
+  ——「上级管下级」由它表达,与 ltree 语义一致。
+- **决定走链**:approve 逐段推进到 normalTerminal 才终结;reject 任何段即终结;escalate 进入疑点段
+  (mode=escalated),其中间段只能留意见/建议/继续上报,**仅链尾可裁决**;动作集由服务端按 mode 与
+  位置下发。
+- **到站检查 + 巡检**:进入任何一段无人 → `blocked` + 事件(不再拒学生);巡检上 scheduler 分钟档,
+  按 (roles,node) 去重重解析,双向自愈;`review-alerts` 分组为「等待任命」面板。
+- **quorum all/atLeast 具名拒绝**(`policy-quorum-not-counted`):panel 快照与计票未建,接受配置就会
+  把 all 当 any 跑;建好后删这一分支即可。
+- 前端:配置页多步骤链编辑器(选层级角色 / 最近持有者、标记普通流程终点、逐步覆盖预览);审核详情
+  右栏链路展示 + 按下发动作集渲染。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **623 passed / 17 skipped**;`pnpm test:browser`
+54;build、frozen resolve、prettier、生产 smoke 全绿。

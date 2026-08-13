@@ -60,6 +60,14 @@ const blankField = (key: string): FieldDraft => ({
   accept: '',
 })
 
+/** one step of the chain as the pen holds it */
+interface StageDraft {
+  kind: 'roleAt' | 'nearestRole'
+  nodeTypeId: string
+  roleIds: string[]
+  roleId: string
+}
+
 interface Draft {
   title: string
   scoreGroupId: string
@@ -67,10 +75,18 @@ interface Draft {
   entrySource: 'student' | 'administrative'
   fields: FieldDraft[]
   fixedValue: string
-  reviewNodeTypeId: string
-  reviewRoleIds: string[]
+  stages: StageDraft[]
+  /** the step the ordinary flow ends at; the ones after it are the doubt chain */
+  normalTerminal: number
   reason: string
 }
+
+const blankStage = (options: ItemOptions): StageDraft => ({
+  kind: 'roleAt',
+  nodeTypeId: options.orgTypes[0]?.id ?? '',
+  roleIds: [],
+  roleId: options.roles[0]?.id ?? '',
+})
 
 /** the stored configuration back into the pen; a shape this pen cannot hold starts fresh */
 const draftOf = (
@@ -107,8 +123,29 @@ const draftOf = (
   const scoring = config?.scoringConfig as
     { calculator?: { config?: { value?: string } } } | undefined
   const policy = config?.reviewPolicy as
-    { stages?: { selector?: { nodeTypeId?: string; roleIds?: string[] } }[] } | undefined
-  const stage = policy?.stages?.[0]?.selector
+    | {
+        stages?: {
+          selector?: { kind?: string; nodeTypeId?: string; roleIds?: string[]; roleId?: string }
+        }[]
+        normalTerminal?: number
+      }
+    | undefined
+  const stages = (policy?.stages ?? []).map((stage): StageDraft => {
+    const selector = stage.selector ?? {}
+    return selector.kind === 'nearestRole'
+      ? {
+          kind: 'nearestRole',
+          nodeTypeId: options.orgTypes[0]?.id ?? '',
+          roleIds: [],
+          roleId: selector.roleId ?? options.roles[0]?.id ?? '',
+        }
+      : {
+          kind: 'roleAt',
+          nodeTypeId: selector.nodeTypeId ?? options.orgTypes[0]?.id ?? '',
+          roleIds: selector.roleIds ?? [],
+          roleId: options.roles[0]?.id ?? '',
+        }
+  })
   return {
     title: item?.title ?? '',
     scoreGroupId: item?.scoreGroupId ?? groups[0]?.id ?? '',
@@ -116,8 +153,8 @@ const draftOf = (
     entrySource: config?.entrySource ?? 'student',
     fields: fields.length > 0 ? fields : [blankField('f1')],
     fixedValue: scoring?.calculator?.config?.value ?? '1.00',
-    reviewNodeTypeId: stage?.nodeTypeId ?? options.orgTypes[0]?.id ?? '',
-    reviewRoleIds: stage?.roleIds ?? [],
+    stages: stages.length > 0 ? stages : [blankStage(options)],
+    normalTerminal: Math.min(policy?.normalTerminal ?? 0, Math.max(0, stages.length - 1)),
     reason: '',
   }
 }
@@ -159,17 +196,14 @@ const configOf = (draft: Draft) => ({
     aggregator: { ref: 'sum@1', config: {} },
   },
   reviewPolicy: {
-    stages: [
-      {
-        selector: {
-          kind: 'roleAt',
-          nodeTypeId: draft.reviewNodeTypeId,
-          roleIds: draft.reviewRoleIds,
-        },
-        quorum: { type: 'any' },
-      },
-    ],
-    normalTerminal: 0,
+    stages: draft.stages.map((stage) => ({
+      selector:
+        stage.kind === 'roleAt'
+          ? { kind: 'roleAt', nodeTypeId: stage.nodeTypeId, roleIds: stage.roleIds }
+          : { kind: 'nearestRole', roleId: stage.roleId },
+      quorum: { type: 'any' },
+    })),
+    normalTerminal: draft.normalTerminal,
   },
 })
 
@@ -260,23 +294,23 @@ export function ItemConfigEditor({
     },
   })
 
-  // whether the stage being composed has anybody in it, unit by unit: the
-  // one moment where an empty chain costs nothing to fix
-  const coverage = useQuery({
-    ...query.assessment.reviewCoverage.queryOptions({
-      params: { batchId },
-      query: { nodeTypeId: draft.reviewNodeTypeId, roleIds: draft.reviewRoleIds },
-    }),
-    enabled: draft.reviewNodeTypeId !== '' && draft.reviewRoleIds.length > 0,
-  })
-  const uncovered = (coverage.data?.nodes ?? []).filter((node) => node.reviewers === 0)
+  const patchStage = (index: number, next: Partial<StageDraft>) =>
+    setDraft((previous) => ({
+      ...previous,
+      stages: previous.stages.map((stage, at) => (at === index ? { ...stage, ...next } : stage)),
+    }))
+
+  const stageReady = (stage: StageDraft) =>
+    stage.kind === 'roleAt'
+      ? stage.nodeTypeId !== '' && stage.roleIds.length > 0
+      : stage.roleId !== ''
 
   const ready =
     draft.title.trim() !== '' &&
     draft.scoreGroupId !== '' &&
     draft.fixedValue.trim() !== '' &&
-    draft.reviewNodeTypeId !== '' &&
-    draft.reviewRoleIds.length > 0 &&
+    draft.stages.length > 0 &&
+    draft.stages.every(stageReady) &&
     draft.fields.every((field) => field.label.trim() !== '')
 
   return (
@@ -542,59 +576,42 @@ export function ItemConfigEditor({
         </section>
 
         <section className="flex flex-col gap-3">
-          <h4 className="text-sm font-medium">{format(m.itemsReviewTitle)}</h4>
-          <Field label={format(m.itemsReviewLevel)}>
-            {(id) => (
-              <NativeSelect
-                id={id}
-                value={draft.reviewNodeTypeId}
-                onChange={(event) => patch({ reviewNodeTypeId: event.target.value })}
-              >
-                {options.orgTypes.map((orgType) => (
-                  <option key={orgType.id} value={orgType.id}>
-                    {orgType.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            )}
-          </Field>
-          {coverage.data !== undefined && (
-            <p
-              className={
-                uncovered.length > 0 ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium">{format(m.itemsReviewTitle)}</h4>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setDraft((previous) => ({
+                  ...previous,
+                  stages: [...previous.stages, blankStage(options)],
+                }))
               }
             >
-              {coverage.data.nodes.length === 0
-                ? format(m.itemsReviewNoUnits)
-                : uncovered.length === 0
-                  ? format(m.itemsReviewCovered, { count: coverage.data.nodes.length })
-                  : format(m.itemsReviewUncovered, {
-                      names: uncovered.map((node) => node.name).join('、'),
-                    })}
-            </p>
-          )}
-          <Field label={format(m.itemsReviewRoles)} hint={format(m.itemsReviewRolesHint)}>
-            {() => (
-              <div className="flex flex-col gap-1.5">
-                {options.roles.map((role) => (
-                  <label key={role.id} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={draft.reviewRoleIds.includes(role.id)}
-                      onCheckedChange={(next) =>
-                        patch({
-                          reviewRoleIds:
-                            next === true
-                              ? [...draft.reviewRoleIds, role.id]
-                              : draft.reviewRoleIds.filter((id) => id !== role.id),
-                        })
-                      }
-                    />
-                    {role.name}
-                  </label>
-                ))}
-              </div>
-            )}
-          </Field>
+              {format(m.itemsStageAdd)}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{format(m.itemsChainHint)}</p>
+          {draft.stages.map((stage, index) => (
+            <StageEditor
+              key={index}
+              batchId={batchId}
+              index={index}
+              stage={stage}
+              options={options}
+              terminal={draft.normalTerminal}
+              removable={draft.stages.length > 1}
+              onChange={(next) => patchStage(index, next)}
+              onTerminal={() => patch({ normalTerminal: index })}
+              onRemove={() =>
+                setDraft((previous) => ({
+                  ...previous,
+                  stages: previous.stages.filter((_, at) => at !== index),
+                  normalTerminal: Math.min(previous.normalTerminal, previous.stages.length - 2),
+                }))
+              }
+            />
+          ))}
         </section>
 
         {item !== null && (
@@ -620,5 +637,164 @@ export function ItemConfigEditor({
         )}
       </div>
     </SidePanel>
+  )
+}
+
+/**
+ * One step of the chain, with the one thing an author cannot know by
+ * looking: whether anybody actually holds these roles at these units in
+ * this round. Asked live, of the same definition the queue asks.
+ */
+function StageEditor({
+  batchId,
+  index,
+  stage,
+  options,
+  terminal,
+  removable,
+  onChange,
+  onTerminal,
+  onRemove,
+}: {
+  batchId: string
+  index: number
+  stage: StageDraft
+  options: ItemOptions
+  terminal: number
+  removable: boolean
+  onChange: (next: Partial<StageDraft>) => void
+  onTerminal: () => void
+  onRemove: () => void
+}) {
+  const query = useApiQuery(assessmentApi)
+  const { format } = useI18n()
+  const roleIds = stage.kind === 'roleAt' ? stage.roleIds : [stage.roleId]
+  const coverage = useQuery({
+    ...query.assessment.reviewCoverage.queryOptions({
+      params: { batchId },
+      query: { nodeTypeId: stage.nodeTypeId, roleIds },
+    }),
+    // only the level-anchored kind has units to count; the nearest-holder
+    // kind finds a person wherever they are, so there is nothing to survey
+    enabled: stage.kind === 'roleAt' && stage.nodeTypeId !== '' && roleIds.length > 0,
+  })
+  const uncovered = (coverage.data?.nodes ?? []).filter((node) => node.reviewers === 0)
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">
+          {format(m.itemsStageNumber, { n: index + 1 })}
+          {index === terminal && (
+            <span className="pl-2 text-xs font-normal text-muted-foreground">
+              {format(m.itemsTerminalHere)}
+            </span>
+          )}
+          {index > terminal && (
+            <span className="pl-2 text-xs font-normal text-muted-foreground">
+              {format(m.itemsStageDoubt)}
+            </span>
+          )}
+        </p>
+        <div className="flex gap-1">
+          {index !== terminal && (
+            <Button variant="ghost" size="sm" onClick={onTerminal}>
+              {format(m.itemsTerminalMark)}
+            </Button>
+          )}
+          {removable && (
+            <Button variant="ghost" size="sm" onClick={onRemove}>
+              {format(m.itemsStageRemove)}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Field label={format(m.itemsStageKind)}>
+        {(id) => (
+          <NativeSelect
+            id={id}
+            value={stage.kind}
+            onChange={(event) => onChange({ kind: event.target.value as StageDraft['kind'] })}
+          >
+            <option value="roleAt">{format(m.itemsStageRoleAt)}</option>
+            <option value="nearestRole">{format(m.itemsStageNearestRole)}</option>
+          </NativeSelect>
+        )}
+      </Field>
+
+      {stage.kind === 'roleAt' ? (
+        <>
+          <Field label={format(m.itemsReviewLevel)}>
+            {(id) => (
+              <NativeSelect
+                id={id}
+                value={stage.nodeTypeId}
+                onChange={(event) => onChange({ nodeTypeId: event.target.value })}
+              >
+                {options.orgTypes.map((orgType) => (
+                  <option key={orgType.id} value={orgType.id}>
+                    {orgType.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            )}
+          </Field>
+          <Field label={format(m.itemsReviewRoles)} hint={format(m.itemsReviewRolesHint)}>
+            {() => (
+              <div className="flex flex-col gap-1.5">
+                {options.roles.map((role) => (
+                  <label key={role.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={stage.roleIds.includes(role.id)}
+                      onCheckedChange={(next) =>
+                        onChange({
+                          roleIds:
+                            next === true
+                              ? [...stage.roleIds, role.id]
+                              : stage.roleIds.filter((id) => id !== role.id),
+                        })
+                      }
+                    />
+                    {role.name}
+                  </label>
+                ))}
+              </div>
+            )}
+          </Field>
+          {coverage.data !== undefined && (
+            <p
+              className={
+                uncovered.length > 0 ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
+              }
+            >
+              {coverage.data.nodes.length === 0
+                ? format(m.itemsReviewNoUnits)
+                : uncovered.length === 0
+                  ? format(m.itemsReviewCovered, { count: coverage.data.nodes.length })
+                  : format(m.itemsReviewUncovered, {
+                      names: uncovered.map((node) => node.name).join('、'),
+                    })}
+            </p>
+          )}
+        </>
+      ) : (
+        <Field label={format(m.itemsStageRole)} hint={format(m.itemsStageNearestHint)}>
+          {(id) => (
+            <NativeSelect
+              id={id}
+              value={stage.roleId}
+              onChange={(event) => onChange({ roleId: event.target.value })}
+            >
+              {options.roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
+                </option>
+              ))}
+            </NativeSelect>
+          )}
+        </Field>
+      )}
+    </div>
   )
 }

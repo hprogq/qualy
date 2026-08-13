@@ -287,11 +287,11 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(issuesOf(result.unknownDriver)).toContain('item-type-not-installed')
     expect(issuesOf(result.unknownCalculator)).toContain('calculator-not-installed')
     expect(issuesOf(result.floatAmount)).toContain('calculator-config-invalid')
-    expect(issuesOf(result.badPolicy)).toContain('policy-single-stage')
+    expect(issuesOf(result.badPolicy)).toContain('policy-stages-required')
     expect(issuesOf(result.strayGroup)).toContain('group-not-in-batch')
   })
 
-  it('refuses the policy shapes the engine does not implement', async () => {
+  it('takes the whole chain grammar, and refuses what is outside it', async () => {
     const result = ok(
       await run(
         db.url,
@@ -320,6 +320,13 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           }
           return {
             twoStages: yield* create({ stages: [stage, stage], normalTerminal: 0 }, 'student'),
+            unknownSelector: yield* create(
+              {
+                stages: [{ selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } }],
+                normalTerminal: 0,
+              },
+              'student',
+            ),
             nearestRole: yield* create(
               {
                 stages: [
@@ -353,12 +360,15 @@ describe.runIf(postgresAvailable)('item configuration', () => {
       (errorOf<{ issues?: readonly { path: string; reason: string }[] }>(exit)?.issues ?? []).map(
         (issue) => issue.reason,
       )
-    expect(issuesOf(result.twoStages)).toContain('policy-single-stage')
-    expect(issuesOf(result.nearestRole)).toContain('policy-selector-role-at')
-    expect(issuesOf(result.quorumAll)).toContain('policy-quorum-any')
-    expect(issuesOf(result.laterTerminal)).toContain('policy-terminal-first')
+    // the chain the domain describes is stored as written
+    expect(Exit.isSuccess(result.twoStages)).toBe(true)
+    expect(Exit.isSuccess(result.nearestRole)).toBe(true)
+    expect(issuesOf(result.quorumAll)).toContain('policy-quorum-not-counted')
+    // and what is outside the grammar is still named and refused
+    expect(issuesOf(result.unknownSelector)).toContain('policy-selector-kind')
+    expect(issuesOf(result.laterTerminal)).toContain('policy-terminal-in-chain')
     expect(Exit.isSuccess(result.administrativeChain)).toBe(true)
-    expect(issuesOf(result.administrativeEmpty)).toContain('policy-single-stage')
+    expect(issuesOf(result.administrativeEmpty)).toContain('policy-stages-required')
   })
 
   it('refuses a save that live entries could not survive, naming them', async () => {

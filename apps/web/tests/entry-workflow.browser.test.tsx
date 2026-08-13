@@ -262,6 +262,13 @@ describe('judging a submission', () => {
       itemType: 'evidence',
       formConfig: { fields: [{ key: 'summary', type: 'text', label: '事项说明' }] },
     },
+    chain: {
+      mode: 'normal' as const,
+      stageIndex: 0,
+      normalTerminal: 0,
+      stages: [{ index: 0, nodeName: '软件2023级2班', roleNames: ['审核员'], skipped: null }],
+      decisions: ['approve', 'reject', 'comment'],
+    },
     events: [],
     capabilities: { canDecide: true },
   }
@@ -344,8 +351,8 @@ describe('judging a submission', () => {
       ],
     )
 
-    await page.getByRole('button', { name: '退回' }).click()
-    const confirm = page.getByRole('dialog').getByRole('button', { name: '退回' })
+    await page.getByRole('button', { name: '退回', exact: true }).click()
+    const confirm = page.getByRole('dialog').getByRole('button', { name: '退回', exact: true })
     await expect.element(confirm).toBeDisabled()
     await page.getByLabelText('给学生的说明').fill('证明日期与填报不符，请核对。')
     await expect.element(confirm).toBeEnabled()

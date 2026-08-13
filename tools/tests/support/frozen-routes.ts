@@ -93,6 +93,7 @@ export const FROZEN_ROUTES = [
   'POST /assessment/batches/{batchId}/items',
   'GET /assessment/items/{itemId}',
   'GET /assessment/batches/{batchId}/item-options',
+  'GET /assessment/batches/{batchId}/review-alerts',
   'GET /assessment/batches/{batchId}/review-coverage',
   'DELETE /assessment/items/{itemId}',
   'PUT /assessment/items/{itemId}/status',

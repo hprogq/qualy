@@ -3283,6 +3283,30 @@ hostile tests 必须先于 UI。
 - 实测修掉一个发布环：publish 身份不稳（useMemo 随 state 重建）→ 发布者 effect 反复重挂 →
   Maximum update depth；`useCallback` 钉稳后 54 例浏览器用例全绿。
 
+落地记录（对话 8 追加：审核链按 §14 补齐，用户指出前实现只做了单 stage）：
+
+- **成员资格澄清（用户裁决，见 assessment-design §32.58）**：判据只有锚点，coverage 不参与；
+  上一轮按外部审计加的 `coverage='self'` 已删——它排除的恰好是授权表单的默认值。
+- **§14 的链落地**：policy 语法放开为文档全量（`stages[1..n]`、`roleAt | nearestRole`、
+  `normalTerminal ∈ [0, n-1]`）；提交时 **resolveChain 解析整条链**并写入 `effective_chain`
+  快照（每段解析到的 nodeId、跳过的段与原因 `no-such-level | no-holder`、terminal），
+  `nearestRole` 沿冻结 lineage 自下而上找最近持有者；解析不到任何一段才拒
+  （`review-level-missing`）。
+- **决定走链**：approve 未到 normalTerminal 则推进到下一段（更新 stage_index/node/roles，CAS 守
+  并发），到终点才 approved；reject 任何一段即终结；escalate 置 `mode=escalated` 并推进（越过
+  normalTerminal 即进入疑点段）；escalated 的中间段只能 comment / recommend-approve /
+  recommend-reject / escalate，**只有链尾能 approve/reject**；意见类动作只写事件、不移动链。
+  动作集由服务端按 mode 与位置算好下发（`chain.decisions`），前端不自己推。
+- **到站检查与巡检**：每次进入一段当场解析，为空则 `state=blocked` + `assignee-not-found` 事件
+  （**不再拒绝学生提交**）；blocked 不进收件箱；巡检挂在既有 scheduler 的分钟档，按 (roles,node)
+  去重重解析，双向自愈（补任命自动转回 active 并记 `assignee-found`，最后一名持有者被撤则转
+  blocked）；`review-alerts` 端点把 blocked 按单位/角色分组，项目配置页作为「等待任命」面板显示。
+- **quorum `all`/`atLeast` 具名拒绝**（`policy-quorum-not-counted`）：panel 快照与计票（§32.28）
+  尚未建，若接受配置就会把 `all` 当 `any` 跑——那是配置与行为不符。建 panel 时删掉这条分支即可，
+  不需要重新解释任何已存配置。
+- 前端：配置页改为**多步骤链编辑器**（每步选「某层级上的角色」或「最近的某角色持有者」、
+  标记普通流程终点、逐步覆盖预览）；审核详情右栏展示链路与当前位置，动作按下发的集合渲染。
+
 ### 对话 9：M2 收官审计
 
 不要再加业务能力。

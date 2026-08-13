@@ -247,12 +247,16 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
           const nobody = yield* Effect.exit(
             assessment.setEntryStatus(f.t, entry.id, 'in_review', s1),
           )
-          // the round waits with the roles and the node frozen, so whoever
-          // is given the role later finds it in their queue
+          // the round waits with the roles and the node frozen, written down
+          // as blocked so the patrol owns it and it heals on appointment
           const reviewer = yield* runSql(
-            sql`select current_role_ids, current_node_id, state from review_instances
-                where entry_id = ${entry.id}`,
+            sql`select state from review_instances where entry_id = ${entry.id}`,
           )
+          const said = yield* runSql(sql`
+            select kind from review_events
+            where review_instance_id = (
+              select id from review_instances where entry_id = ${entry.id})
+            order by created_at, id`)
           // an item whose stage names a level this person has no unit of
           // cannot be anchored at all, and that is the configuration's fault
           const noSuchLevel = yield* runSql(sql`
@@ -272,6 +276,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
           return {
             nobody,
             instance: one<{ state: string }>(reviewer),
+            said: (said as { rows: { kind: string }[] }).rows.map((row) => row.kind),
             unanchorable,
           }
         }),
@@ -280,7 +285,8 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
 
     // the student is not held responsible for an empty roster of judges
     expect(ok(result.nobody).status).toBe('in_review')
-    expect(result.instance.state).toBe('active')
+    expect(result.instance.state).toBe('blocked')
+    expect(result.said).toEqual(['submitted', 'assignee-not-found'])
     expect(refusalOf(result.unanchorable)?.reason).toBe('review-level-missing')
   })
 

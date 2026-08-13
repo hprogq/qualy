@@ -14,17 +14,21 @@ import {
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { revisionOf } from '../item/db.ts'
 import {
+  advanceReviewInstance,
   entryRevisionOf,
   insertReviewEvent,
   revisionAttachmentsOf,
   setEntryState,
 } from '../entry/db.ts'
 import type { GateDecision } from '../phase/gate.ts'
+import { holdersOf, isChainEnd, isTerminal, stageAt } from './chain.ts'
+import { nodePathOf } from '../entry/db.ts'
 import {
   activeReviewBatches,
   completeInstance,
   inboxPage,
   instanceOf,
+  chainNames,
   reviewEventsOf,
   userMayReview,
   type InboxRow,
@@ -52,6 +56,19 @@ export interface ReviewInboxItem {
   readonly submittedAt: number
 }
 
+export interface ReviewChainView {
+  readonly mode: 'normal' | 'escalated'
+  readonly stageIndex: number
+  readonly normalTerminal: number
+  readonly stages: readonly {
+    readonly index: number
+    readonly nodeName: string | null
+    readonly roleNames: readonly string[]
+    readonly skipped: string | null
+  }[]
+  readonly decisions: readonly string[]
+}
+
 export interface ReviewDetailView {
   readonly id: string
   readonly state: 'active' | 'blocked' | 'completed'
@@ -71,6 +88,7 @@ export interface ReviewDetailView {
     readonly attachments: readonly { attachmentId: string; position: number }[]
   }
   readonly form: { readonly itemType: string; readonly formConfig: unknown }
+  readonly chain: ReviewChainView
   readonly events: readonly {
     readonly kind: string
     readonly actorId: string | null
@@ -81,8 +99,17 @@ export interface ReviewDetailView {
   readonly capabilities: { readonly canDecide: boolean }
 }
 
+/**
+ * What a reviewer can say (§14). The ordinary stages carry the round:
+ * approve moves it on, reject ends it, escalate hands it upward as a doubt.
+ * Inside an escalated round the middle stages may only advise - the decision
+ * belongs to the end of the chain.
+ */
+export type ReviewDecision =
+  'approve' | 'reject' | 'escalate' | 'comment' | 'recommend-approve' | 'recommend-reject'
+
 export interface ReviewDecisionInput {
-  readonly decision: 'approve' | 'reject'
+  readonly decision: ReviewDecision
   readonly comment?: string
   readonly suggestedPayload?: unknown
 }
@@ -154,6 +181,22 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const itemRevision = yield* revisionOf(tenantId, row.itemRevisionId)
       const attachments = yield* revisionAttachmentsOf(tenantId, row.revisionId)
       const events = yield* reviewEventsOf(tenantId, row.id)
+      const chain = row.effectiveChain
+      const names = yield* chainNames({
+        tenantId,
+        nodeIds: chain.stages.flatMap((stage) => (stage.nodeId === null ? [] : [stage.nodeId])),
+        roleIds: chain.stages.flatMap((stage) => [...stage.roleIds]),
+      })
+      const here = chain.stages.find((stage) => stage.index === row.currentStageIndex)
+      const atEnd = here === undefined ? true : isChainEnd(chain, here.index)
+      const decisions: readonly string[] =
+        !canDecide || here === undefined
+          ? []
+          : row.mode === 'escalated' && !atEnd
+            ? ['comment', 'recommend-approve', 'recommend-reject', 'escalate']
+            : atEnd
+              ? ['approve', 'reject', 'comment']
+              : ['approve', 'reject', 'escalate', 'comment']
       return {
         id: row.id,
         state: row.state,
@@ -173,6 +216,18 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           attachments,
         },
         form: { itemType: row.itemType, formConfig: itemRevision?.formConfig ?? null },
+        chain: {
+          mode: row.mode,
+          stageIndex: row.currentStageIndex,
+          normalTerminal: chain.normalTerminal,
+          stages: chain.stages.map((stage) => ({
+            index: stage.index,
+            nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
+            roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
+            skipped: stage.skipped,
+          })),
+          decisions,
+        },
         events: events.map((event) => ({
           kind: event.kind,
           actorId: event.actorId,
@@ -280,10 +335,26 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             const gate = yield* deps.reviewGate(tenantId, row.batchId)
             if (!gate.allowed) return yield* refuse(action, gate.reason)
 
+            const chain = row.effectiveChain
+            const here = chain.stages.find((stage) => stage.index === row.currentStageIndex)
+            if (here === undefined) return yield* refuse(action, 'chain-unreadable')
+            // Where in the chain this round stands decides what may be said
+            // here (§14): an ordinary stage carries or ends the round; a
+            // middle stage of an escalated round may only advise, because
+            // the decision belongs to the end of the chain.
+            const atChainEnd = isChainEnd(chain, here.index)
+            const allowed: readonly ReviewDecision[] =
+              row.mode === 'escalated' && !atChainEnd
+                ? ['comment', 'recommend-approve', 'recommend-reject', 'escalate']
+                : atChainEnd
+                  ? ['approve', 'reject', 'comment']
+                  : ['approve', 'reject', 'escalate', 'comment']
+            if (!allowed.includes(action)) return yield* refuse(action, 'decision-not-available')
+
             const comment = input.comment?.trim() ?? ''
-            if (action === 'reject' && comment === '') {
-              // a rejection is advice to a person; without a word it is only
-              // an obstacle
+            if (comment === '' && action !== 'approve') {
+              // everything except a plain approval is something being said to
+              // a person; without a word it is only an obstacle
               return yield* new EntryPayloadInvalid({
                 issues: [{ field: 'comment', reason: 'required' }],
               })
@@ -298,27 +369,87 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               suggestion = yield* decodeSuggestion(tenantId, row, input.suggestedPayload)
             }
 
-            // first writer wins; everyone else is told the round has closed
-            const won = yield* completeInstance({
+            const say = (kind: string) =>
+              insertReviewEvent({
+                tenantId,
+                reviewInstanceId: instanceId,
+                kind,
+                actorId: as.userId,
+                comment: comment === '' ? null : comment,
+                ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
+              })
+
+            // an opinion moves nothing; it is said and the round stays where
+            // it is, waiting for whoever will decide
+            if (action === 'comment' || action.startsWith('recommend-')) {
+              yield* say(action)
+              const written = (yield* instanceOf(tenantId, instanceId))!
+              return yield* assembleDetail(tenantId, written, true)
+            }
+
+            // ending the round: a rejection at any stage, or an approval at
+            // the last stage the ordinary flow reaches
+            const ends =
+              action === 'reject' ||
+              (action === 'approve' &&
+                (row.mode === 'escalated' ? atChainEnd : isTerminal(chain, here.index)))
+            if (ends) {
+              // first writer wins; everyone else is told the round has closed
+              const won = yield* completeInstance({
+                tenantId,
+                instanceId,
+                outcome: action === 'approve' ? 'approved' : 'rejected',
+              })
+              if (!won) return yield* new ReviewConflict()
+              yield* say(action === 'approve' ? 'approved' : 'rejected')
+              yield* setEntryState({
+                tenantId,
+                entryId: row.entryId,
+                from: ['in_review'],
+                to: action === 'approve' ? 'approved' : 'rejected',
+              })
+              const written = (yield* instanceOf(tenantId, instanceId))!
+              return yield* assembleDetail(tenantId, written, false)
+            }
+
+            // onward: the next stage that resolved to a unit
+            const next = stageAt(chain, here.index + 1)
+            if (next === null || next.nodeId === null) {
+              return yield* refuse(action, 'chain-ends-here')
+            }
+            const nodePath = yield* nodePathOf(tenantId, next.nodeId)
+            if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
+            const holders = yield* holdersOf({
+              tenantId,
+              batchId: row.batchId,
+              stage: next,
+              subjectUserId: row.subjectUserId,
+              actorId: row.actorId,
+            })
+            // the arrival check, at every stage a round enters (§14): a
+            // stage with nobody in it is written down as blocked, which the
+            // patrol owns and heals - it is never the student's problem
+            const moved = yield* advanceReviewInstance({
               tenantId,
               instanceId,
-              outcome: action === 'approve' ? 'approved' : 'rejected',
+              fromStageIndex: here.index,
+              toStageIndex: next.index,
+              roleIds: next.roleIds,
+              nodeId: next.nodeId,
+              nodePath,
+              state: holders.length > 0 ? 'active' : 'blocked',
+              mode: action === 'escalate' ? 'escalated' : row.mode,
             })
-            if (!won) return yield* new ReviewConflict()
-            yield* insertReviewEvent({
-              tenantId,
-              reviewInstanceId: instanceId,
-              kind: action === 'approve' ? 'approved' : 'rejected',
-              actorId: as.userId,
-              comment: comment === '' ? null : comment,
-              ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
-            })
-            yield* setEntryState({
-              tenantId,
-              entryId: row.entryId,
-              from: ['in_review'],
-              to: action === 'approve' ? 'approved' : 'rejected',
-            })
+            if (!moved) return yield* new ReviewConflict()
+            yield* say(action === 'escalate' ? 'escalated' : 'approved')
+            if (holders.length === 0) {
+              yield* insertReviewEvent({
+                tenantId,
+                reviewInstanceId: instanceId,
+                kind: 'assignee-not-found',
+                actorId: null,
+              })
+            }
             const written = (yield* instanceOf(tenantId, instanceId))!
             return yield* assembleDetail(tenantId, written, false)
           }),

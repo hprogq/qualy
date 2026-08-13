@@ -2,7 +2,8 @@ import { Effect, Layer, Schedule } from 'effect'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { Assessment } from '../server/index.ts'
 
-// The clock's own hand on the plan.
+// The clock's own hand on the plan, and the patrol that keeps the review
+// queues true.
 //
 // Everything about which boundaries have been crossed is already decided
 // elsewhere: the engine answers it from the plan and an instant, and the gate
@@ -38,9 +39,19 @@ const sweep = Effect.gen(function* () {
       `ratified ${report.ratified} phase boundary(s) across ${report.scanned} batch(es)`,
     )
   }
+  // the review patrol rides the same minute (§14): who can review changes
+  // through half a dozen writes in two plugins, none of which this domain
+  // may hook, so the queues are kept true by looking rather than by being
+  // told - and looking heals in both directions
+  const patrol = yield* assessment.patrolReviewRounds
+  if (patrol.blocked > 0 || patrol.released > 0) {
+    yield* Effect.logInfo(
+      `review patrol: ${patrol.blocked} round(s) waiting on an appointment, ${patrol.released} released`,
+    )
+  }
 }).pipe(
   Effect.catchCause((cause) =>
-    Effect.logError('phase sweep failed; retrying on the next tick', cause),
+    Effect.logError('assessment sweep failed; retrying on the next tick', cause),
   ),
 )
 

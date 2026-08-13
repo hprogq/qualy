@@ -89,9 +89,9 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           ).id
           yield* accept(f.t, g.batch.id, wide, wideGrant)
 
-          // the sharper miss: the same role, anchored on the stage node
-          // itself, but as a subtree grant - membership is (role, node,
-          // self), and a wider promise on the right node is still not it
+          // the same role anchored on the stage node itself, written the way
+          // an administrator ordinarily writes one - coverage says nothing
+          // about membership, the anchor does
           const near = one<{ id: string }>(
             yield* runSql(sql`
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
@@ -145,8 +145,10 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       participantName: 'Zhang San',
       roundNo: 1,
     })
+    // anchored above the stage: jurisdiction, not membership
     expect(result.forWide).toEqual([])
-    expect(result.forNear).toEqual([])
+    // anchored on the stage's own node: a member, whatever its coverage
+    expect(result.forNear.map((item) => item.instanceId)).toEqual([result.instanceId])
     expect(result.forRecorder).toEqual([])
     expect(result.denied).toEqual([])
     expect(result.arrival.instanceId).toBeDefined()

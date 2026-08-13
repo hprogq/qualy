@@ -57,6 +57,12 @@ function Editor({
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const options = useQuery(query.assessment.itemOptions.queryOptions({ params: { batchId } }))
+  // rounds waiting on an appointment: the patrol writes them down, this is
+  // where somebody can act on them
+  const alerts = useQuery({
+    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
+    refetchInterval: 60_000,
+  })
   const [rows, setRows] = useState<GroupRow[]>([])
   const [editing, setEditing] = useState<{ item: ItemDto | null } | null>(null)
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
@@ -132,6 +138,23 @@ function Editor({
       skeleton={<Skeleton className="h-48 w-full" />}
     >
       <div className="flex flex-col gap-6">
+        {(alerts.data?.groups ?? []).length > 0 && (
+          <section className="rounded-lg border border-destructive/40 p-4">
+            <p className="pb-2 text-sm font-medium text-destructive">{format(m.itemsStuckTitle)}</p>
+            <ul className="flex flex-col gap-1 text-sm">
+              {(alerts.data?.groups ?? []).map((group) => (
+                <li key={`${group.nodeId}:${group.roleNames.join(',')}`}>
+                  {format(m.itemsStuckRow, {
+                    unit: group.nodeName,
+                    roles: group.roleNames.join('、'),
+                    count: group.waiting,
+                  })}
+                </li>
+              ))}
+            </ul>
+            <p className="pt-2 text-xs text-muted-foreground">{format(m.itemsStuckHint)}</p>
+          </section>
+        )}
         <section className="rounded-lg border p-4">
           <div className="flex items-center justify-between pb-3">
             <h3 className="text-sm font-medium">{format(m.itemsGroupsTitle)}</h3>

@@ -464,24 +464,63 @@ export const insertReviewInstance = (input: {
   revisionId: string
   roundNo: number
   effectiveChain: unknown
+  stageIndex: number
   roleIds: readonly string[]
   nodeId: string
   nodePath: string
+  state: 'active' | 'blocked'
 }) =>
   db
     .query((k) =>
       sql<{ id: string }>`
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain,
-           current_role_ids, current_node_id, current_node_path)
+           current_stage_index, state, current_role_ids, current_node_id, current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
                 'initial', 'participant', ${jsonb(input.effectiveChain)},
+                ${input.stageIndex}, ${input.state},
                 ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},
                 ${input.nodePath}::ltree)
         returning id
       `.execute(k),
     )
     .pipe(Effect.map(({ rows }) => String(rows[0]!.id)))
+
+/**
+ * Moves an open round to the stage it just entered, whether that came of an
+ * approval carrying it onward or of somebody escalating. Conditional on the
+ * round still standing where the caller read it, so two decisions on one
+ * round cannot both advance it.
+ */
+export const advanceReviewInstance = (input: {
+  tenantId: string
+  instanceId: string
+  fromStageIndex: number
+  toStageIndex: number
+  roleIds: readonly string[]
+  nodeId: string
+  nodePath: string
+  state: 'active' | 'blocked'
+  mode: 'normal' | 'escalated'
+}) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        update review_instances
+        set current_stage_index = ${input.toStageIndex},
+            current_role_ids = ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[],
+            current_node_id = ${input.nodeId},
+            current_node_path = ${input.nodePath}::ltree,
+            state = ${input.state},
+            mode = ${input.mode}
+        where tenant_id = ${input.tenantId}
+          and id = ${input.instanceId}
+          and state in ('active', 'blocked')
+          and current_stage_index = ${input.fromStageIndex}
+        returning id
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => rows.length > 0))
 
 /** ends the open round, if it is still open; the loser of a race writes nothing */
 export const cancelReviewInstance = (input: {
