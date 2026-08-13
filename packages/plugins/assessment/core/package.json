@@ -35,6 +35,7 @@
     "lucide-react": "^0.552.0"
   },
   "devDependencies": {
+    "@qualy/plugin-assessment-evidence": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@types/react": "catalog:"
   },

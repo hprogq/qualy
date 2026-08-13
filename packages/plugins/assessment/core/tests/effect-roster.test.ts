@@ -22,6 +22,7 @@ import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
+import { catalogLayers } from './support/catalogs.ts'
 import { startBatch } from './support/lifecycle.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
 
@@ -49,6 +50,7 @@ const stack = (url: string) =>
         { catalog },
       ),
     ),
+    Layer.provide(catalogLayers),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Assessment | Rbac | Orm>) =>

@@ -23,6 +23,8 @@ import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
 import type { EpochMillis, PhasePlan, PhaseSnapshot } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
 import { PARTICIPANT_ACTION_CODES, STAFF_CODES } from '../permissions.ts'
+import { ItemTypeCatalog, ScoringCatalog } from '../plugin.ts'
+import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
 import {
   AccessInvalid,
   AdvanceInvalid,
@@ -731,12 +733,21 @@ export class Assessment extends Context.Service<
      * writes down what is already true.
      */
     readonly sweepDueBoundaries: Effect.Effect<SweepReport>
+    /** the score tree and the items on it; the save gauntlet lives behind these */
+    readonly listItems: ItemMethods['listItems']
+    readonly createItem: ItemMethods['createItem']
+    readonly getItem: ItemMethods['getItem']
+    readonly updateItem: ItemMethods['updateItem']
+    readonly listScoreGroups: ItemMethods['listScoreGroups']
+    readonly replaceScoreGroups: ItemMethods['replaceScoreGroups']
   }
 >()('@qualy/plugin-assessment/Assessment') {}
 
 export const make = Effect.fn('Assessment.make')(function* () {
   const withDb = yield* withDatabase
   const rbac = yield* Rbac
+  const itemTypes = yield* ItemTypeCatalog
+  const scoring = yield* ScoringCatalog
 
   const dieQuery = <A, E, R>(
     effect: Effect.Effect<A, E, R>,
@@ -1577,7 +1588,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
     return { changes }
   })
 
+  const itemMethods = makeItemMethods({
+    withDb,
+    requireBatchVisible,
+    requireRosterReach,
+    recordConfigChange,
+    parseRange,
+    catalogs: {
+      itemTypes,
+      calculators: scoring.calculators,
+      aggregators: scoring.aggregators,
+    },
+  })
+
   return Assessment.of({
+    ...itemMethods,
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
       return yield* withDb(
         transaction(
@@ -2935,10 +2960,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
   })
 })
 
-export const serviceLayer: Layer.Layer<Assessment, never, Orm | Rbac> = Layer.effect(
+export const serviceLayer: Layer.Layer<
   Assessment,
-  make(),
-)
+  never,
+  Orm | Rbac | ItemTypeCatalog | ScoringCatalog
+> = Layer.effect(Assessment, make())
 
 // --- api ---
 
@@ -2954,6 +2980,47 @@ const parseInstant = (value: string) => {
 /** one of them or several: a repeated query parameter is a list either way */
 const listed = (value: string | readonly string[] | undefined): string[] =>
   value === undefined ? [] : typeof value === 'string' ? [value] : [...value]
+
+const itemDto = (item: ItemView) => ({
+  id: item.id,
+  batchId: item.batchId,
+  itemType: item.itemType,
+  title: item.title,
+  scoreGroupId: item.scoreGroupId,
+  maxEntries: item.maxEntries,
+  sortOrder: item.sortOrder,
+  status: item.status,
+  currentRevision:
+    item.currentRevision === null
+      ? null
+      : {
+          id: item.currentRevision.id,
+          revisionNo: item.currentRevision.revisionNo,
+          entrySource: item.currentRevision.entrySource,
+          formConfig: item.currentRevision.formConfig,
+          scoringConfig: item.currentRevision.scoringConfig,
+          reviewPolicy: item.currentRevision.reviewPolicy,
+          displayConfig: item.currentRevision.displayConfig,
+          reason: item.currentRevision.reason,
+          createdAt: new Date(item.currentRevision.createdAt).toISOString(),
+        },
+  createdAt: new Date(item.createdAt).toISOString(),
+})
+
+/** exactOptionalPropertyTypes: an absent displayConfig stays absent */
+const configInput = (config: {
+  entrySource: 'student' | 'administrative'
+  formConfig: unknown
+  scoringConfig: unknown
+  reviewPolicy: unknown
+  displayConfig?: unknown
+}) => ({
+  entrySource: config.entrySource,
+  formConfig: config.formConfig,
+  scoringConfig: config.scoringConfig,
+  reviewPolicy: config.reviewPolicy,
+  ...(config.displayConfig !== undefined ? { displayConfig: config.displayConfig } : {}),
+})
 
 const toBatchDto = (detail: BatchDetail) => ({
   id: detail.id,
@@ -3587,6 +3654,96 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const principal = yield* CurrentUser
         yield* assessment.deleteTemplate(principal.tenantId, params.templateId, principal)
         return { ok: true as const }
+      }),
+    )
+    .handle(
+      'listItems',
+      Effect.fn('assessment.listItems.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const found = yield* assessment.listItems(principal.tenantId, params.batchId, principal)
+        return {
+          items: found.items.map(itemDto),
+          capabilities: found.capabilities,
+        }
+      }),
+    )
+    .handle(
+      'createItem',
+      Effect.fn('assessment.createItem.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const item = yield* assessment.createItem(
+          principal.tenantId,
+          params.batchId,
+          {
+            itemType: payload.itemType,
+            title: payload.title,
+            scoreGroupId: payload.scoreGroupId,
+            maxEntries: payload.maxEntries ?? null,
+            ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}),
+            config: configInput(payload.config),
+          },
+          principal,
+        )
+        return { item: itemDto(item) }
+      }),
+    )
+    .handle(
+      'getItem',
+      Effect.fn('assessment.getItem.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const item = yield* assessment.getItem(principal.tenantId, params.itemId, principal)
+        return { item: itemDto(item), capabilities: { canManage: item.manageable } }
+      }),
+    )
+    .handle(
+      'updateItem',
+      Effect.fn('assessment.updateItem.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const item = yield* assessment.updateItem(
+          principal.tenantId,
+          params.itemId,
+          {
+            ...(payload.title !== undefined ? { title: payload.title } : {}),
+            ...(payload.scoreGroupId !== undefined ? { scoreGroupId: payload.scoreGroupId } : {}),
+            ...(payload.maxEntries !== undefined ? { maxEntries: payload.maxEntries } : {}),
+            ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}),
+            ...(payload.config !== undefined ? { config: configInput(payload.config) } : {}),
+            ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
+          },
+          principal,
+        )
+        return { item: itemDto(item) }
+      }),
+    )
+    .handle(
+      'listScoreGroups',
+      Effect.fn('assessment.listScoreGroups.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.listScoreGroups(principal.tenantId, params.batchId, principal)
+      }),
+    )
+    .handle(
+      'replaceScoreGroups',
+      Effect.fn('assessment.replaceScoreGroups.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.replaceScoreGroups(
+          principal.tenantId,
+          params.batchId,
+          payload.groups.map((group) => ({
+            ...(group.id !== undefined ? { id: group.id } : {}),
+            name: group.name,
+            cap: group.cap ?? null,
+            floor: group.floor ?? null,
+            ...(group.sortOrder !== undefined ? { sortOrder: group.sortOrder } : {}),
+          })),
+          principal,
+        )
       }),
     ),
 )

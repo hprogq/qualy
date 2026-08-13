@@ -15,6 +15,9 @@ import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   AccessInvalid,
   AdvanceInvalid,
+  ItemConfigInvalid,
+  ItemNotFound,
+  ScoreGroupInvalid,
   BatchNoParticipants,
   BatchNotFound,
   ParticipantInvalid,
@@ -272,7 +275,150 @@ const templateView = Schema.Struct({
   phases: Schema.Array(phaseSpec),
 })
 
+/** a driver id: lowercase words joined by dots or dashes */
+const itemTypeCode = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/),
+  Schema.isMaxLength(63),
+)
+
+/** a signed amount as text; scoring never sees a JSON float */
+const decimalAmount = Schema.String.check(Schema.isPattern(/^-?\d+(?:\.\d{1,4})?$/))
+
+/** validated jsonb, carried opaquely: the driver is the schema's owner */
+const configJson = Schema.Unknown
+
+const itemRevisionView = Schema.Struct({
+  id: Schema.String,
+  revisionNo: Schema.Number,
+  entrySource: Schema.Literals(['student', 'administrative']),
+  formConfig: configJson,
+  scoringConfig: configJson,
+  reviewPolicy: configJson,
+  displayConfig: configJson,
+  reason: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+})
+
+const itemView = Schema.Struct({
+  id: Schema.String,
+  batchId: Schema.String,
+  itemType: Schema.String,
+  title: Schema.String,
+  scoreGroupId: Schema.String,
+  maxEntries: Schema.NullOr(Schema.Number),
+  sortOrder: Schema.Number,
+  status: Schema.Literals(['active', 'voided']),
+  currentRevision: Schema.NullOr(itemRevisionView),
+  createdAt: Schema.String,
+})
+
+const scoreGroupView = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  cap: Schema.NullOr(Schema.String),
+  floor: Schema.NullOr(Schema.String),
+  sortOrder: Schema.Number,
+  itemCount: Schema.Number,
+})
+
+const itemConfigPayload = Schema.Struct({
+  entrySource: Schema.Literals(['student', 'administrative']),
+  formConfig: configJson,
+  scoringConfig: configJson,
+  reviewPolicy: configJson,
+  displayConfig: Schema.optional(configJson),
+})
+
+const positiveCount = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
+const sortOrder = Schema.Number.check(Schema.isInt())
+
+const scoreGroupSpec = Schema.Struct({
+  id: Schema.optional(id),
+  name: trimmedName(255),
+  cap: Schema.optional(Schema.NullOr(decimalAmount)),
+  floor: Schema.optional(Schema.NullOr(decimalAmount)),
+  sortOrder: Schema.optional(sortOrder),
+})
+
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
+  .add(
+    HttpApiEndpoint.get('listItems', '/assessment/batches/:batchId/items', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({
+        items: Schema.Array(itemView),
+        capabilities: Schema.Struct({ canManage: Schema.Boolean }),
+      }),
+      error: [AccessDenied, BatchNotFound],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('createItem', '/assessment/batches/:batchId/items', {
+      params: Schema.Struct({ batchId: id }),
+      payload: Schema.Struct({
+        itemType: itemTypeCode,
+        title: trimmedName(255),
+        scoreGroupId: id,
+        maxEntries: Schema.optional(Schema.NullOr(positiveCount)),
+        sortOrder: Schema.optional(sortOrder),
+        config: itemConfigPayload,
+      }),
+      success: Schema.Struct({ item: itemView }),
+      error: [AccessDenied, BatchNotFound, BatchReadOnly, ItemConfigInvalid, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getItem', '/assessment/items/:itemId', {
+      params: Schema.Struct({ itemId: id }),
+      success: Schema.Struct({
+        item: itemView,
+        capabilities: Schema.Struct({ canManage: Schema.Boolean }),
+      }),
+      error: [AccessDenied, ItemNotFound],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.patch('updateItem', '/assessment/items/:itemId', {
+      params: Schema.Struct({ itemId: id }),
+      payload: changed(
+        {
+          title: Schema.optional(trimmedName(255)),
+          scoreGroupId: Schema.optional(id),
+          maxEntries: Schema.optional(Schema.NullOr(positiveCount)),
+          sortOrder: Schema.optional(sortOrder),
+          config: Schema.optional(itemConfigPayload),
+          reason: Schema.optional(boundedText(500)),
+        },
+        ['title', 'scoreGroupId', 'maxEntries', 'sortOrder', 'config'],
+      ),
+      success: Schema.Struct({ item: itemView }),
+      error: [
+        AccessDenied,
+        ItemNotFound,
+        BatchNotFound,
+        BatchReadOnly,
+        ItemConfigInvalid,
+        BadRequest,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('listScoreGroups', '/assessment/batches/:batchId/score-groups', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({
+        groups: Schema.Array(scoreGroupView),
+        capabilities: Schema.Struct({ canManage: Schema.Boolean }),
+      }),
+      error: [AccessDenied, BatchNotFound],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('replaceScoreGroups', '/assessment/batches/:batchId/score-groups', {
+      params: Schema.Struct({ batchId: id }),
+      payload: Schema.Struct({ groups: Schema.Array(scoreGroupSpec) }),
+      success: Schema.Struct({ groups: Schema.Array(scoreGroupView) }),
+      error: [AccessDenied, BatchNotFound, BatchReadOnly, ScoreGroupInvalid, BadRequest],
+    }).middleware(Authenticated),
+  )
   .add(
     HttpApiEndpoint.get('listBatches', '/assessment/batches', {
       query: Schema.Struct({

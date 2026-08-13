@@ -2994,6 +2994,19 @@ QUALY_TEST_COS=1
 
 `feat(assessment): add evidence item configuration`
 
+落地记录（对话 3 完成时相对本节的偏离）：
+
+- **administrative 题的 review_policy 必须是空对象 `{}`**（validator 强制）。§6.4 的单 stage 形状只对
+  `entry_source='student'` 生效；trusted 路径不建审核实例，存一条没人走的链是配置说谎。
+- scoring_config 的存储形状定为
+  `{ calculator: { ref, config }, aggregator: { ref, config } }`，两个 ref 各自过目录、config 各自过
+  该驱动的 configSchema。
+- 组树 PUT 的 payload **没有 parent 字段**：M2 单层由形状保证，而不是收下再拒绝。
+- 两个 fixture 落在测试（经 `validateItemConfig` + 真驱动 + 真内置 refs 的完整验证路径），不进 demo
+  seed——seed 目前不建批次，等对话 8 有界面可看时一起做。
+- evidence 插件 `dependsOn` 只有 assessment：驱动本身不 import storage（附件引用只是 id 提取），
+  §4 图中的 storage 依赖等对话 4 真用到再声明。
+
 ### 对话 4：Entry + ResourcePolicy
 
 这是 M2 安全核心。

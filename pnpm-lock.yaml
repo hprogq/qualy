@@ -267,6 +267,9 @@ importers:
       '@qualy/plugin-assessment':
         specifier: workspace:*
         version: link:../../packages/plugins/assessment/core
+      '@qualy/plugin-assessment-evidence':
+        specifier: workspace:*
+        version: link:../../packages/plugins/assessment/evidence
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../../packages/plugins/base/auth
@@ -556,12 +559,27 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8
     devDependencies:
+      '@qualy/plugin-assessment-evidence':
+        specifier: workspace:*
+        version: link:../evidence
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
+
+  packages/plugins/assessment/evidence:
+    dependencies:
+      '@qualy/plugin-assessment':
+        specifier: workspace:*
+        version: link:../core
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
 
   packages/plugins/base/auth:
     dependencies:

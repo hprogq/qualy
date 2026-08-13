@@ -39,3 +39,4 @@ plugins:
 
   '@qualy/plugin-ping': {}
   '@qualy/plugin-assessment': {}
+  '@qualy/plugin-assessment-evidence': {}

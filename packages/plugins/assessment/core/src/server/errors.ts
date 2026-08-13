@@ -44,6 +44,44 @@ export class ParticipantInvalid extends Schema.TaggedErrorClass<ParticipantInval
   { httpApiStatus: 422, identifier: 'AssessmentParticipantInvalid' },
 ) {}
 
+export class ItemNotFound extends Schema.TaggedErrorClass<ItemNotFound>()(
+  'ASSESSMENT_ITEM_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentItemNotFound' },
+) {}
+
+/**
+ * A configuration that cannot be accepted, with every reason at once.
+ *
+ * Issues carry a path into the submitted config and a stable reason word;
+ * the browser turns reasons into sentences. `incompatible-entry` is the one
+ * that names rows: the new form cannot read an entry that is in review or
+ * approved, and the way forward is void-and-replace, never a save that
+ * strands what it governs.
+ */
+export class ItemConfigInvalid extends Schema.TaggedErrorClass<ItemConfigInvalid>()(
+  'ASSESSMENT_ITEM_CONFIG_INVALID',
+  {
+    issues: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentItemConfigInvalid' },
+) {}
+
+/** a score-tree write that cannot be accepted, row by row */
+export class ScoreGroupInvalid extends Schema.TaggedErrorClass<ScoreGroupInvalid>()(
+  'ASSESSMENT_SCORE_GROUP_INVALID',
+  {
+    refusals: Schema.Array(
+      Schema.Struct({
+        reason: Schema.String,
+        groupId: Schema.NullOr(Schema.String),
+        index: Schema.optional(Schema.Number),
+      }),
+    ),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentScoreGroupInvalid' },
+) {}
+
 export class TemplateNotFound extends Schema.TaggedErrorClass<TemplateNotFound>()(
   'ASSESSMENT_TEMPLATE_NOT_FOUND',
   {},

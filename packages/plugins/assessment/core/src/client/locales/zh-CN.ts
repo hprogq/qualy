@@ -388,6 +388,9 @@ export default {
   'assessment/error/batch-no-participants': '批次里还没有参评人员，请先导入或添加后再开始。',
   'assessment/error/batch-reference-invalid': '所选的单位或人员类型中，有的已经不存在了。',
   'assessment/error/plan-invalid': '阶段信息保存失败，请按下列问题修改后重试。',
+  'assessment/error/item-not-found': '这个题目已经不存在了。',
+  'assessment/error/item-config-invalid': '题目没有保存成功，请按提示修正后重试。',
+  'assessment/error/score-group-invalid': '分组没有保存成功，请按提示修正后重试。',
   'assessment/error/access-invalid': '这项人员权限的改动被拒绝了。',
   'assessment/error/advance-invalid': '这个阶段不能这样开始。',
 } satisfies MessageCatalog

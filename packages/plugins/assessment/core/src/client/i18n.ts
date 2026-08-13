@@ -1196,6 +1196,18 @@ const i18n = definePluginMessages({
       id: 'assessment/error/access-invalid',
       defaultMessage: 'That change to who may work on this batch was refused.',
     },
+    ASSESSMENT_ITEM_NOT_FOUND: {
+      id: 'assessment/error/item-not-found',
+      defaultMessage: 'This item no longer exists.',
+    },
+    ASSESSMENT_ITEM_CONFIG_INVALID: {
+      id: 'assessment/error/item-config-invalid',
+      defaultMessage: 'Could not save the item. Fix the problems listed and try again.',
+    },
+    ASSESSMENT_SCORE_GROUP_INVALID: {
+      id: 'assessment/error/score-group-invalid',
+      defaultMessage: 'Could not save the score groups. Fix the problems listed and try again.',
+    },
   }),
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),

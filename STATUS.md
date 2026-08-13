@@ -3731,3 +3731,42 @@ catalog)。修正迁移 `20260813090400`(先清没有对应 item 的历史悬挂
 之前就可写,不能假设无旧数据)。原来把"随机 UUID 进 itemScope 且成功"当正常行为断言的测试改为
 插真实题;敌意用例三条:不存在的 id 拒、同租户他批次真实题拒、本批次题过;DB 级两条:悬挂 23503、
 draft 题删除连带 allowance。`pnpm test` 560 passed / 17 skipped,全门禁绿,dev 库已 deploy。
+
+### M2 对话 3:题目配置、evidence 驱动与保存关卡(2026-08-13)
+
+按 §18 对话 3 的边界:item/score-group API + ItemRevision append + review policy validator +
+configRevision 事件 + evidence 驱动 + 两个 fixture;**不做 Entry write**。
+
+- **保存关卡(§6.3)整条落地**:锁批次 → 驱动已装 → formConfig 过驱动 schema → scoring 引用已装且
+  config 过各自 schema → review policy 形状 → **对 {in_review, approved} 条目的 current revision 用新
+  配置实测解码** → append revision N+1 → currentRevisionId 前移 → active 批次 config_revision++ +
+  事件(draft 零仪式)。全部问题一次列完(`ASSESSMENT_ITEM_CONFIG_INVALID.issues[]`),不是发现第一个
+  就停。兼容试算已有真测试:直接 SQL 造一条 in_review 条目,收紧表单被拒且**点名该条目**;把它改成
+  draft 后同一保存通过(draft 经新表单重入,新配置不欠它)。
+- **policy validator(§6.4)**:只认「单 roleAt stage + quorum any + normalTerminal 0」;stages≠1、
+  nearestRole、all/atLeast、terminal≠0、未知键逐个点名拒绝。**administrative 题的 policy 必须是空对象**
+  ——trusted 路径没有链,存一条没人走的链是配置说谎(此裁决记入 §18 落地记录)。
+- **item/score-group API 六端点**(frozen-routes 同笔):`GET/POST /assessment/batches/{id}/items`、
+  `GET/PATCH /assessment/items/{id}`、`GET/PUT /assessment/batches/{id}/score-groups`。组树 PUT 是
+  整表替换(flat by construction——payload 里没有 parent 字段,M2 单层由形状保证而不是靠拒绝);
+  结构化拒绝 `group-has-items` / `group-not-found` / `floor-above-cap`。三个新错误码进全局码表与双语
+  catalog。授权沿用 requireRosterReach(管理)与批次可见性(读);跨租户答 NOT_FOUND 不是 FORBIDDEN。
+- **`@qualy/plugin-assessment-evidence`**:首个 item-type 驱动,经 `ItemTypes.driver` 上车。字段 DSL
+  只做 text / date / attachment(§7.2 M2 集);date 合法域 = materialRange ∩ 字段 min/max,**range 端
+  半开、字段 max 闭**的差异有专门用例(9-01 出、8-31 进);attachment 查 count/uuid/去重;
+  `attachmentRefs` 从 payload 提取引用(带 accept),对历史 payload 读而不判。
+- **两个 fixture 走真实验证路径**:退役复学 +3(student,单附件必传 maxCount=1,fixed@1 "3.00",
+  单级链)与行政扣分 -1(administrative,依据文号必填,fixed@1 "-1.00",空 policy)——经
+  `validateItemConfig` + 真驱动 + 真内置 refs 全绿。demo seed 不建批次,故 fixture 落在测试而非 seed
+  (seed 版随对话 8 的 UI 一起做才有东西可看)。
+- Assessment service 现在依赖两个 prepare 目录(layer 类型显式加 ItemTypeCatalog | ScoringCatalog),
+  三个既有 harness 补 `catalogLayers`(测试自带一个极简驱动,evidence 真驱动只在 fixture 测试里进目录
+  ——core 对 evidence 是 devDep,循环与 auth↔auth-local 同型)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **582 passed / 17 skipped(88 文件)**——新增
+item-config 7(关卡/拒绝/兼容试算/事件/组替换/授权)+ policy 5 + evidence driver 6 + fixtures 3;
+api-parity 与 OpenAPI 深比较随全量跑绿;`pnpm test:browser` 48;`pnpm build`、
+`pnpm qualy resolve --frozen-lockfile`(零写入)、`pnpm qualy generate`(无待生成——本对话零迁移,
+schema 是对话 2 的)、`prettier --check .`、生产 smoke 全绿。
+
+**下一步**:对话 4(Entry + ResourcePolicy,M2 安全核心;hostile tests 先于 UI)。

@@ -29,6 +29,7 @@ import {
   type PhaseSpecInput,
 } from '../src/server/index.ts'
 import { participantEvents, type PhaseRow } from '../src/server/db.ts'
+import { catalogLayers } from './support/catalogs.ts'
 import { startBatch } from './support/lifecycle.ts'
 
 // The service against a real database: batch lifecycle with the one-statement
@@ -53,6 +54,7 @@ const stack = (url: string) =>
         { catalog },
       ),
     ),
+    Layer.provide(catalogLayers),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Assessment | Rbac | Orm>) =>
