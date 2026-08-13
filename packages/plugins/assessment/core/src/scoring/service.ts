@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import type { Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
+import type { AccessDenied } from '@qualy/rbac-contract/effect'
 import { BatchNotFound, ParticipantNotFound } from '../server/errors.ts'
 import { oneBatch } from '../server/db.ts'
 import { groupsOf, itemsOf, revisionsOf } from '../item/db.ts'
@@ -23,11 +24,17 @@ export interface ScoringMethods {
     tenantId: string,
     batchId: string,
     as: Principal,
-  ) => Effect.Effect<MyResultView, BatchNotFound | ParticipantNotFound>
+  ) => Effect.Effect<MyResultView, BatchNotFound | ParticipantNotFound | AccessDenied>
 }
 
 export interface ScoringDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
+  /** the same visibility every batch read passes through */
+  readonly requireBatchVisible: (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+  ) => Effect.Effect<void, AccessDenied>
   readonly catalogs: {
     readonly calculators: ReadonlyMap<string, { readonly kind: string }>
     readonly aggregators: ReadonlyMap<string, { readonly kind: string }>
@@ -93,8 +100,12 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
         Effect.gen(function* () {
           const batch = yield* oneBatch(tenantId, batchId)
           if (!batch) return yield* new BatchNotFound()
-          // one's own result only: membership row present is enough, an
-          // excluded member still reads the round they took part in
+          // the same visibility as every other read of the round: a member
+          // is told about it when it begins, and keeps it once archived. The
+          // membership row then keeps its historical standing - excluded
+          // members still read the round they took part in - but a row alone
+          // never opens a round that has not begun.
+          yield* deps.requireBatchVisible(tenantId, batchId, as)
           const participant = yield* participantRowByUser(tenantId, batchId, as.userId)
           if (participant === null) return yield* new ParticipantNotFound()
           const input = yield* collectParticipantScoreInput(tenantId, batchId, participant.id)

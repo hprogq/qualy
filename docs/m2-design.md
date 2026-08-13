@@ -3158,9 +3158,12 @@ hostile tests 必须先于 UI。
   `collectParticipantScoreInput` 是独立的收集段（scoring/service.ts），未来 adjudication 只换
   这一段；行的 payload 现在就随输入携带，fixed@1 不读它，但读 payload 的 calculator 到来时
   收集段不用改。
-- `/my-result` 只回答本人：成员行存在即可读（excluded 仍读自己参加过的那轮，§32.56），
-  非成员 `ASSESSMENT_PARTICIPANT_NOT_FOUND`；响应恒 `mode: 'provisional'`。staff 侧的他人
-  结果视图不在本对话（归公示/管理面）。
+- `/my-result` 只回答本人，且**先过 Batch visibility**（收口一条：外部审计指出首版只查成员行，
+  草稿/未开始的批次会被 roster 里的学生提前看到）：成员行保留的是历史资格，读入口与其他批次
+  读取共用 `requireBatchVisible`——participant 要么批次已开始、要么已归档，staff/admin 走原有
+  规则；不给 `result.view-self` 加 PhaseGate。visibility 之内 excluded 仍读自己参加过的那轮
+  （§32.56），完全无关者 `ACCESS_DENIED`，可见但无成员行者 `ASSESSMENT_PARTICIPANT_NOT_FOUND`；
+  响应恒 `mode: 'provisional'`。staff 侧的他人结果视图不在本对话（归公示/管理面）。
 - 未配置过的题（无 currentRevision）不进账目——它没有算术也不可能有条目。
 
 ### 对话 7：题目作废 + 历史/附件授权闭环

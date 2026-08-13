@@ -32,6 +32,7 @@ const scoringBatch = (
     groups: readonly { name: string; cap?: string | null; floor?: string | null }[]
     items: readonly ItemSpec[]
   },
+  start: 'none' | 'scheduled' | 'entered' = 'entered',
 ) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
@@ -104,13 +105,17 @@ const scoringBatch = (
       items.push(created.id)
     }
     const plan = yield* assessment.getPlan(f.t, batch.id, admin)
-    yield* assessment.schedulePhase(f.t, batch.id, plan[0]!.id, Date.now() + 3_600_000, admin)
-    yield* assessment.advancePhase(
-      f.t,
-      batch.id,
-      { to: plan[0]!.id, force: true, reason: 'test enters the phase' },
-      admin,
-    )
+    if (start !== 'none') {
+      yield* assessment.schedulePhase(f.t, batch.id, plan[0]!.id, Date.now() + 3_600_000, admin)
+    }
+    if (start === 'entered') {
+      yield* assessment.advancePhase(
+        f.t,
+        batch.id,
+        { to: plan[0]!.id, force: true, reason: 'test enters the phase' },
+        admin,
+      )
+    }
     const pOf = (userId: string) =>
       Effect.map(
         runSql(
@@ -118,7 +123,15 @@ const scoringBatch = (
         ),
         (result) => one<{ id: string }>(result).id,
       )
-    return { batch, groupIds, items, p1: yield* pOf(f.s1), p2: yield* pOf(f.s2) }
+    return {
+      batch,
+      groupIds,
+      items,
+      planId: plan[0]!.id,
+      lastPhaseId: plan[plan.length - 1]!.id,
+      p1: yield* pOf(f.s1),
+      p2: yield* pOf(f.s2),
+    }
   })
 
 /** file, submit and have the class reviewer approve one student entry */
@@ -220,9 +233,9 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
     expect(provenance?.entryRevisionId).toBeDefined()
     // byte-identical on the same facts
     expect(result.second).toEqual(result.first)
-    expect(errorOf<{ _tag: string }>(result.notInRound)?._tag).toBe(
-      'ASSESSMENT_PARTICIPANT_NOT_FOUND',
-    )
+    // never on the roster, no authority: the round itself is not theirs to
+    // see, which is a wider refusal than "not a participant"
+    expect(errorOf<{ _tag: string }>(result.notInRound)?._tag).toBe('ACCESS_DENIED')
   })
 
   it('holds a group to its cap and lifts one to its floor, as visible adjustments', async () => {
@@ -265,6 +278,72 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
       [`entry:${result.penalty.id}`, 'entry', '-1.00'],
       [`grp:${result.groupIds[1]}:floor`, 'group-adjustment', '1.00'],
     ])
+  })
+
+  it('opens the account only when the round has, and keeps it open ever after', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-visible')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          // the roster is materialized at creation; being on it is not yet
+          // being told about the round
+          const g = yield* scoringBatch(
+            f,
+            {
+              groups: [{ name: '文体', cap: '10.00' }],
+              items: [{ title: '退役复学', value: '3.00', group: 0, entrySource: 'student' }],
+            },
+            'none',
+          )
+          const whileDraft = yield* Effect.exit(assessment.getMyResult(f.t, g.batch.id, s1))
+          yield* assessment.schedulePhase(f.t, g.batch.id, g.planId, Date.now() + 3_600_000, admin)
+          const whilePlanned = yield* Effect.exit(assessment.getMyResult(f.t, g.batch.id, s1))
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: g.planId, force: true, reason: 'test enters the phase' },
+            admin,
+          )
+          yield* approved(f, g.items[0]!, g.p1, f.s1)
+          const begun = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          yield* assessment.setParticipantStatus(
+            f.t,
+            g.batch.id,
+            g.p1,
+            'excluded',
+            'moved away mid-term',
+            admin,
+          )
+          const whileExcluded = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          // a batch archives from its last phase, so walk there first
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: g.lastPhaseId, force: true, reason: 'test reaches the end' },
+            admin,
+          )
+          yield* assessment.setBatchStatus(
+            f.t,
+            g.batch.id,
+            { status: 'archived', reason: 'term closed' },
+            admin,
+          )
+          const archived = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          return { whileDraft, whilePlanned, begun, whileExcluded, archived }
+        }),
+      ),
+    )
+
+    expect(errorOf<{ _tag: string }>(result.whileDraft)?._tag).toBe('ACCESS_DENIED')
+    expect(errorOf<{ _tag: string }>(result.whilePlanned)?._tag).toBe('ACCESS_DENIED')
+    expect(result.begun.total).toBe('3.00')
+    // exclusion takes back eligibility, never the account of having been in
+    expect(result.whileExcluded.total).toBe('3.00')
+    expect(result.archived.total).toBe('3.00')
   })
 
   it('states a voided question to whoever has history on it, and to nobody else', async () => {

@@ -3950,3 +3950,19 @@ browser 48;build、frozen resolve、generate(无待生成)、prettier、生产 s
 build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。
 
 下一步:对话 7(题目作废动作 + 历史/附件授权闭环)。
+
+### 对话 6 收口:my-result 服从 Batch visibility(2026-08-13)
+
+外部审计一条(P1)核实成立:首版 `getMyResult` 只查成员行(「membership row present is enough」),
+而 roster 在创建时物化——草稿或首阶段未到点的批次,榜上学生凭 batchId 就能提前看到分组与
+provisional 结果,绕过了已冻结的 Batch visibility(participant = 已开始或已归档;API schema 里
+早已列着 `AccessDenied`,实现却从不产生它)。
+
+修法即审计给的最窄一刀:`ScoringDeps` 注入现成的 `requireBatchVisible`,在确认批次存在之后、
+读成员行之前调用;不走 `authorizeAction`(`result.view-self` 不受 PhaseGate 控制,excluded 也
+不能被权威层挡掉)。visibility 之内成员行只保留历史资格。新边界用例:草稿被拒、排在未来未到点
+被拒、进入首阶段后可读、excluded 仍可读、走到末阶段归档后仍可读;完全无关者从
+`PARTICIPANT_NOT_FOUND` 改为更宽的 `ACCESS_DENIED`(这一轮先问「这轮与你何干」)。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **609 passed / 17 skipped**;browser 48;
+build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。
