@@ -58,7 +58,7 @@ describe('the first two real configurations', () => {
     expect(issues).toEqual([])
   })
 
-  it('expresses an administrative -1 deduction: recorded with its basis, never reviewed', () => {
+  it('expresses an administrative -1: recorded with its basis, chain held for appeals', () => {
     const issues = Effect.runSync(
       validateItemConfig(catalogs, 'evidence', {
         entrySource: 'administrative',
@@ -72,7 +72,15 @@ describe('the first two real configurations', () => {
           calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
           aggregator: { ref: 'sum@1', config: {} },
         },
-        reviewPolicy: {},
+        reviewPolicy: {
+          stages: [
+            {
+              selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
+              quorum: { type: 'any' },
+            },
+          ],
+          normalTerminal: 0,
+        },
       }),
     )
     expect(issues).toEqual([])

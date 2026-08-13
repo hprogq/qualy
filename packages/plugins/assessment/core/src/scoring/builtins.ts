@@ -19,11 +19,27 @@ import type { ScoringDriver } from '../plugin.ts'
  * places) is a rule about lines, not about configuration.
  */
 export const decimalString = Schema.String.check(
-  Schema.makeFilter((value: string) => /^-?\d+(?:\.\d{1,4})?$/.test(value), {
+  Schema.makeFilter((value: string) => /^-?\d{1,8}(?:\.\d{1,4})?$/.test(value), {
     identifier: 'DecimalString',
     description: 'a decimal amount as a string, like "3.00"',
   }),
 )
+
+/**
+ * A decimal string as the engine's own integer, scaled by 1e4.
+ *
+ * The only way amounts are ever compared or added: parsing to a float here
+ * would quietly open a second arithmetic besides the engine's, and the two
+ * would eventually disagree in front of a student.
+ */
+export const scaledAmount = (value: string): bigint => {
+  const match = /^(-?)(\d{1,8})(?:\.(\d{1,4}))?$/.exec(value)
+  if (!match) throw new Error(`not a decimal amount: ${value}`)
+  const sign = match[1] === '-' ? -1n : 1n
+  const whole = BigInt(match[2]!)
+  const fraction = BigInt((match[3] ?? '').padEnd(4, '0') || '0')
+  return sign * (whole * 10000n + fraction)
+}
 
 /** approved entry = this amount, exactly as configured */
 export const fixed1: ScoringDriver = {

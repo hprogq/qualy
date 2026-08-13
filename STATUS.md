@@ -3770,3 +3770,40 @@ api-parity 与 OpenAPI 深比较随全量跑绿;`pnpm test:browser` 48;`pnpm bui
 schema 是对话 2 的)、`prettier --check .`、生产 smoke 全绿。
 
 **下一步**:对话 4(Entry + ResourcePolicy,M2 安全核心;hostile tests 先于 UI)。
+
+### 对话 3 收口:一条对权威文档的违规裁决,加七处配置不变量(2026-08-13)
+
+外部审计八条全部核实成立,其中第一条是我在对话 3 犯的真错误:把「administrative 题 review_policy
+必须为空」写成了 validator 规则,而 assessment-design §13/§15(第 423 行)白纸黑字冻结着相反的规则
+——record 录入不走链,但申诉/复查按 EntryRevision 引用的 ItemRevision.review_policy 现场解析救济链,
+**administrative 题必须配置 review_policy**。CLAUDE.md 明确两文冲突时停下报告,我却用施工文档覆盖了
+领域定案。已纠正:两种 entry_source 同一 M2 单 stage 形状,行政 -1 fixture 带链,m2-design 落地记录
+划掉原条目注明纠正。幸而 Entry write 尚不存在,没有任何行按空 policy 落进不可变历史。
+
+其余七条:
+
+- **`AttachmentRef.maxFileBytes`(P0)**:core 持可信文件事实(storage 的 size),驱动持字段规则,
+  ref 是两者相遇处——没有它,Entry 侧要么破插件边界读 evidence formConfig,要么放弃大小校验。
+  evidence 的 refs 现在带 accept + maxFileBytes。
+- **materialRange impact check**:`updateBatch` 收缩材料窗口前,逐条 live entry 按**其自身 ItemRevision
+  的 form** 在候选范围下试解,越界点名拒绝(新码 `ASSESSMENT_MATERIAL_RANGE_INVALID`,进码表与双语
+  catalog)。驱动契约增可选 `configIssues(config, batch)`:date 字段窗口与 materialRange 无交集
+  (必填却无任何合法日期)在保存关卡拒绝。
+- **理由必填按操作类型挂(§32.8)**:active 批次上 scoringConfig 变更、换组、cap/floor 移动必须给
+  非空理由(`reason-required`);标题等装饰随便改;draft 零仪式。分数 3→5 无言被拒、附一句话通过、
+  改标题不问,三态都有用例。
+- **审计 diff 讲真话**:item 事件记 itemId + 逐字段 [old,new] + old/newRevisionId;组树事件记
+  added/removed/changed 逐字段;**真 no-op 不追加 revision、不写事件、不动 config_revision**——
+  否则重复 PUT 会让所有 ScoreRun 永远显示过期。jsonb 回读键序重排,比较改用 canonical stringify
+  (实测:原样重存曾被误判为变更)。
+- **wire schema 收到列宽**:金额整数部分 ≤8 位(numeric(12,4)),int 字段限 int4 范围——超宽输入
+  是 400 而不是数据库炸成 500;floor/cap 比较走 1e4 定点 bigint,不再经 Number。
+- **policy 每层拒未知键**:selector/quorum/stage 各自的键集封死,嵌套私货(futureFallback 等)
+  三处全数点名拒绝。
+- **entrySource 冻结**:题目一旦存在任何 Entry(含 draft),不得再切换 student↔administrative
+  (`entry-source-frozen`);要改事实来源走作废+替换。无 Entry 时仍可自由改。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **588 passed / 17 skipped**(item-config 11、
+policy 6、evidence driver 7、fixtures 3);`pnpm test:browser` 48;`pnpm build`、
+`pnpm qualy resolve --frozen-lockfile`(零写入)、`pnpm qualy generate`(无待生成)、
+`prettier --check .` 全绿。

@@ -144,15 +144,39 @@ describe('what a payload must satisfy', () => {
             label: 'x',
             maxCount: 2,
             accept: ['application/pdf'],
+            maxFileBytes: 5_242_880,
           },
           { key: 'note', type: 'text', label: 'y' },
         ],
       },
       { proof: [a, b], note: 'hello' },
     )
+    // accept and maxFileBytes ride on the ref: core holds the trusted file
+    // facts, the driver holds the field's rules, and this is where they meet
     expect(refs).toEqual([
-      { field: 'proof', attachmentId: a, accept: ['application/pdf'] },
-      { field: 'proof', attachmentId: b, accept: ['application/pdf'] },
+      { field: 'proof', attachmentId: a, accept: ['application/pdf'], maxFileBytes: 5_242_880 },
+      { field: 'proof', attachmentId: b, accept: ['application/pdf'], maxFileBytes: 5_242_880 },
     ])
+  })
+
+  it('refuses a date field whose window misses the round entirely', () => {
+    // well-formed on its own (min < max), and no legal day exists inside the
+    // round: the config gauntlet is where this dies, not the first student
+    const issues = evidenceDriver.configIssues!(
+      {
+        fields: [
+          { key: 'when', type: 'date', label: 'When', min: '2026-09-01', max: '2026-12-31' },
+        ],
+      },
+      batch,
+    )
+    expect(issues).toEqual([{ path: 'formConfig.fields[0]', reason: 'date-window-empty' }])
+    // a window clipped by the range but not emptied is fine
+    expect(
+      evidenceDriver.configIssues!(
+        { fields: [{ key: 'when', type: 'date', label: 'When', min: '2026-08-31' }] },
+        batch,
+      ),
+    ).toEqual([])
   })
 })

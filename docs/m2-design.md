@@ -2996,8 +2996,11 @@ QUALY_TEST_COS=1
 
 落地记录（对话 3 完成时相对本节的偏离）：
 
-- **administrative 题的 review_policy 必须是空对象 `{}`**（validator 强制）。§6.4 的单 stage 形状只对
-  `entry_source='student'` 生效；trusted 路径不建审核实例，存一条没人走的链是配置说谎。
+- ~~administrative 题的 review_policy 必须是空对象~~ **已纠正（收口审计 P0）**：这条与
+  assessment-design §13/§15 的冻结规则直接冲突——record 首次录入确实不走链，但申诉/复查按
+  **EntryRevision 引用的 ItemRevision.review_policy** 现场解析救济链，administrative 题**必须配置**
+  同一 M2 单 stage 形状。validator 现在对两种 entry_source 要求同一形状；行政 -1 fixture 带链。
+  没有任何 Entry 曾按空 policy 落库（Entry write 尚未存在），无历史需要修复。
 - scoring_config 的存储形状定为
   `{ calculator: { ref, config }, aggregator: { ref, config } }`，两个 ref 各自过目录、config 各自过
   该驱动的 configSchema。
@@ -3006,6 +3009,16 @@ QUALY_TEST_COS=1
   seed——seed 目前不建批次，等对话 8 有界面可看时一起做。
 - evidence 插件 `dependsOn` 只有 assessment：驱动本身不 import storage（附件引用只是 id 提取），
   §4 图中的 storage 依赖等对话 4 真用到再声明。
+- 收口一轮（外部审计八条）：`AttachmentRef` 增 `maxFileBytes`（core 持可信文件事实、驱动持字段规则，
+  ref 是两者相遇处）；驱动契约增可选 `configIssues(config, batch)`（date 窗口与 materialRange 无交集
+  在保存关卡拒绝）；`updateBatch` 改 materialRange 走 impact check（逐条 live entry 按**其自身
+  ItemRevision 的 form** 在候选范围下试解，越界点名拒绝，`ASSESSMENT_MATERIAL_RANGE_INVALID`）；
+  active 批次计分语义变更（scoringConfig / 换组 / cap / floor）理由必填（§32.8），装饰性修改不问；
+  config 事件 diff 记 itemId 与 old/newRevisionId、组树 diff 记 added/removed/changed 逐字段
+  [old,new]，**真 no-op 不追加 revision、不写事件、不动计数器**（jsonb 回读键序重排,比较用
+  canonical stringify）；金额 wire schema 收到 `numeric(12,4)` 列宽（整数部分 ≤8 位）、int 字段收到
+  int4 范围，floor/cap 比较走 1e4 定点 bigint 不再过 Number；policy 每一层都拒未知键；
+  **entrySource 在题目存在任何 Entry 后冻结**（`entry-source-frozen`，改事实来源走作废+替换）。
 
 ### 对话 4：Entry + ResourcePolicy
 

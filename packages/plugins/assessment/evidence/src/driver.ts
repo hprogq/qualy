@@ -232,6 +232,7 @@ const attachmentRefs = (config: unknown, payload: unknown): readonly AttachmentR
           field: entry.key,
           attachmentId: item,
           ...(entry.accept !== undefined ? { accept: entry.accept } : {}),
+          ...(entry.maxFileBytes !== undefined ? { maxFileBytes: entry.maxFileBytes } : {}),
         })
       }
     }
@@ -239,9 +240,41 @@ const attachmentRefs = (config: unknown, payload: unknown): readonly AttachmentR
   return refs
 }
 
+/**
+ * What the schema cannot see: a date field against the round it will run in.
+ *
+ * A window that misses the material range entirely is well-formed and
+ * unusable - required, and no legal day exists. Refused at save, where the
+ * administrator is, rather than at the first student's first attempt.
+ */
+const configIssues = (
+  config: unknown,
+  batch: BatchContext,
+): readonly { path: string; reason: string }[] => {
+  const form = decodeConfig(config)
+  if (form === null) return []
+  const issues: { path: string; reason: string }[] = []
+  for (const [index, entry] of form.fields.entries()) {
+    if (entry.type !== 'date') continue
+    const lower =
+      entry.min !== undefined && entry.min > batch.materialRange.start
+        ? entry.min
+        : batch.materialRange.start
+    // the range end is exclusive, a field max inclusive: the window is empty
+    // when the floor reaches past the last legal day
+    const emptyAgainstRange = lower >= batch.materialRange.end
+    const emptyAgainstMax = entry.max !== undefined && entry.max < lower
+    if (emptyAgainstRange || emptyAgainstMax) {
+      issues.push({ path: `formConfig.fields[${index}]`, reason: 'date-window-empty' })
+    }
+  }
+  return issues
+}
+
 export const evidenceDriver: ItemTypeDriver = {
   id: 'evidence',
   configSchema: evidenceConfig,
+  configIssues,
   decodePayload: decode,
   attachmentRefs,
   interaction: 'entry',

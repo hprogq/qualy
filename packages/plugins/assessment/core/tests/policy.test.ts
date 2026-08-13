@@ -78,10 +78,31 @@ describe('the review policy shape', () => {
     expect(reasons('student', 'not even an object')).toEqual(['policy-not-an-object'])
   })
 
-  it('holds administrative items to no chain at all', () => {
-    expect(reasons('administrative', {})).toEqual([])
-    expect(reasons('administrative', { stages: [stage()], normalTerminal: 0 })).toEqual([
-      'policy-empty-for-administrative',
-    ])
+  it('holds administrative items to the same shape: the chain is their remedy', () => {
+    // recording never walks the chain, but an appeal later resolves it from
+    // this very revision - a policy with no chain would be immutable history
+    // with no way back (assessment-design §13/§15)
+    expect(reasons('administrative', { stages: [stage()], normalTerminal: 0 })).toEqual([])
+    expect(reasons('administrative', {})).toContain('policy-single-stage')
+  })
+
+  it('refuses unknown keys at every level, not only the top', () => {
+    const smuggling = {
+      stages: [
+        {
+          selector: {
+            kind: 'roleAt',
+            nodeTypeId: randomUUID(),
+            roleIds: [randomUUID()],
+            futureFallback: true,
+          },
+          quorum: { type: 'any', futureN: 3 },
+          someFutureRule: true,
+        },
+      ],
+      normalTerminal: 0,
+    }
+    const found = reasons('student', smuggling)
+    expect(found.filter((reason) => reason === 'policy-unknown-key')).toHaveLength(3)
   })
 })

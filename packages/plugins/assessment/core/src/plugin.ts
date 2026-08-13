@@ -24,11 +24,19 @@ export class ItemPayloadInvalid extends Error {
   }
 }
 
-/** one attachment a payload cites, named so core can enforce the citation */
+/**
+ * One attachment a payload cites, named so core can enforce the citation.
+ *
+ * accept and maxFileBytes ride along because core is the one holding the
+ * trusted file facts (storage's size, its declared type) and the driver is
+ * the one holding the field's rules; neither may read the other's side, so
+ * the ref is where they meet.
+ */
 export interface AttachmentRef {
   readonly field: string
   readonly attachmentId: string
   readonly accept?: readonly string[] | undefined
+  readonly maxFileBytes?: number | undefined
 }
 
 /** what a payload may know about its batch while being decoded */
@@ -49,6 +57,15 @@ export interface ItemTypeDriver {
   readonly id: string
   /** validates an item's form configuration when an administrator saves it */
   readonly configSchema: Schema.Top
+  /**
+   * Batch-aware configuration problems the schema cannot see, if the driver
+   * has any: a date field whose window misses the round's material range
+   * entirely is well-formed and unusable, and only the driver knows both.
+   */
+  readonly configIssues?: (
+    config: unknown,
+    batch: BatchContext,
+  ) => readonly { readonly path: string; readonly reason: string }[]
   readonly decodePayload: (
     config: unknown,
     payload: unknown,

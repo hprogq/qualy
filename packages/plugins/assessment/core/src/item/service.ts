@@ -12,6 +12,7 @@ import {
   ScoreGroupInvalid,
 } from '../server/errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
+import { scaledAmount } from '../scoring/builtins.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
   deleteGroups,
@@ -19,6 +20,7 @@ import {
   insertGroup,
   insertItem,
   insertItemRevision,
+  itemHasEntries,
   itemOf,
   itemsOf,
   liveEntryPayloads,
@@ -106,6 +108,11 @@ export interface ScoreGroupSpec {
   readonly sortOrder?: number
 }
 
+export interface ReplaceScoreGroupsInput {
+  readonly groups: readonly ScoreGroupSpec[]
+  readonly reason?: string
+}
+
 export type CreateItemError = BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
 export type UpdateItemError =
   ItemNotFound | BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
@@ -148,7 +155,7 @@ export interface ItemMethods {
   readonly replaceScoreGroups: (
     tenantId: string,
     batchId: string,
-    specs: readonly ScoreGroupSpec[],
+    input: ReplaceScoreGroupsInput,
     as: Principal,
   ) => Effect.Effect<{ groups: readonly ScoreGroupView[] }, ReplaceGroupsError>
 }
@@ -206,6 +213,28 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     createdAt: row.createdAt,
   })
 
+  // jsonb hands objects back with keys re-sorted, so equality has to be
+  // order-blind: stringify with keys canonically sorted at every level
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+    if (typeof value === 'object' && value !== null) {
+      const record = value as Record<string, unknown>
+      const keys = Object.keys(record).sort()
+      return `{${keys.map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`
+    }
+    return JSON.stringify(value) ?? 'null'
+  }
+  const sameJson = (left: unknown, right: unknown) =>
+    canonical(left ?? null) === canonical(right ?? null)
+
+  /** whether a submitted configuration differs from the stored current one */
+  const configChanged = (current: ItemRevisionRow, config: ItemConfigInput) =>
+    current.entrySource !== config.entrySource ||
+    !sameJson(current.formConfig, config.formConfig) ||
+    !sameJson(current.scoringConfig, config.scoringConfig) ||
+    !sameJson(current.reviewPolicy, config.reviewPolicy) ||
+    !sameJson(current.displayConfig, config.displayConfig ?? {})
+
   /** whether this person could administer the batch, as a plain answer */
   const canManage = (as: Principal, tenantId: string, batchId: string) =>
     deps.requireRosterReach(as, tenantId, batchId).pipe(
@@ -226,6 +255,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   const appendRevision = (input: {
     tenantId: string
     item: ItemRow
+    current: ItemRevisionRow | null
     materialRange: MaterialRange
     config: ItemConfigInput
     actorId: string
@@ -233,7 +263,26 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   }) =>
     Effect.gen(function* () {
       const issues = [...(yield* validateItemConfig(catalogs, input.item.itemType, input.config))]
+      // once anything has been filed against the item, who may file is no
+      // longer negotiable: the resource policy reads it from the current
+      // revision, and flipping it would strand every existing entry on a
+      // path that no longer exists. Void and replace is the way to change
+      // what kind of question this is.
+      if (
+        input.current !== null &&
+        input.config.entrySource !== input.current.entrySource &&
+        (yield* itemHasEntries(input.tenantId, input.item.id))
+      ) {
+        issues.push({ path: 'entrySource', reason: 'entry-source-frozen' })
+      }
       const driver = catalogs.itemTypes.get(input.item.itemType) as ItemTypeDriver | undefined
+      if (driver?.configIssues !== undefined) {
+        issues.push(
+          ...driver
+            .configIssues(input.config.formConfig, { materialRange: input.materialRange })
+            .map((issue) => ({ path: issue.path, reason: issue.reason })),
+        )
+      }
       if (issues.length === 0 && driver !== undefined) {
         const live = yield* liveEntryPayloads(input.tenantId, input.item.id)
         for (const entry of live) {
@@ -249,6 +298,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       }
       if (issues.length > 0) return yield* new ItemConfigInvalid({ issues })
 
+      // a byte-identical configuration is not a new version of anything:
+      // appending it would move current_revision_id and the audit counter to
+      // say that nothing happened
+      if (input.current !== null && !configChanged(input.current, input.config)) {
+        return { revisionId: input.current.id, changed: false as const }
+      }
+
       const revisionNo = yield* nextRevisionNo(input.tenantId, input.item.id)
       const revisionId = yield* insertItemRevision({
         tenantId: input.tenantId,
@@ -263,7 +319,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         reason: input.reason,
       })
       yield* setCurrentRevision(input.tenantId, input.item.id, revisionId)
-      return revisionId
+      return { revisionId, changed: true as const }
     })
 
   const groupsView = (tenantId: string, batchId: string) =>
@@ -325,9 +381,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               sortOrder: input.sortOrder ?? 0,
             })
             const item = (yield* itemOf(tenantId, itemId))!
-            yield* appendRevision({
+            const appended = yield* appendRevision({
               tenantId,
               item,
+              current: null,
               materialRange: deps.parseRange(String(batch!.materialRange)),
               config: input.config,
               actorId: as.userId,
@@ -337,7 +394,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               tenantId,
               batchId,
               locked.status,
-              { itemCreated: [item.title] },
+              {
+                itemCreated: {
+                  itemId: item.id,
+                  title: item.title,
+                  revisionId: appended.revisionId,
+                },
+              },
               as.userId,
               null,
             )
@@ -401,6 +464,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 })
               }
             }
+            const current =
+              item.currentRevisionId === null
+                ? null
+                : yield* revisionOf(tenantId, item.currentRevisionId)
+
             const fieldDiff: Record<string, unknown> = {}
             if (input.title !== undefined && input.title !== item.title) {
               fieldDiff['title'] = [item.title, input.title]
@@ -414,6 +482,23 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             if (input.sortOrder !== undefined && input.sortOrder !== item.sortOrder) {
               fieldDiff['sortOrder'] = [item.sortOrder, input.sortOrder]
             }
+
+            // On a running round, changing what a question is worth needs a
+            // sentence saying why (assessment-design §32.8): the scoring
+            // references, and which group's caps the item answers to, are
+            // scoring semantics. A title is not.
+            const scoringChanged =
+              input.config !== undefined &&
+              current !== null &&
+              !sameJson(current.scoringConfig, input.config.scoringConfig)
+            const semanticChange = scoringChanged || fieldDiff['scoreGroupId'] !== undefined
+            const reason = input.reason?.trim() ?? ''
+            if (locked.status === 'active' && semanticChange && reason === '') {
+              return yield* new ItemConfigInvalid({
+                issues: [{ path: 'reason', reason: 'reason-required' }],
+              })
+            }
+
             if (Object.keys(fieldDiff).length > 0) {
               yield* updateItemFields({
                 tenantId,
@@ -428,21 +513,29 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             }
             if (input.config !== undefined) {
               const batch = yield* oneBatch(tenantId, item.batchId)
-              yield* appendRevision({
+              const appended = yield* appendRevision({
                 tenantId,
                 item,
+                current,
                 materialRange: deps.parseRange(String(batch!.materialRange)),
                 config: input.config,
                 actorId: as.userId,
                 reason: input.reason ?? null,
               })
-              fieldDiff['config'] = 'revised'
+              if (appended.changed) {
+                fieldDiff['config'] = {
+                  oldRevisionId: current?.id ?? null,
+                  newRevisionId: appended.revisionId,
+                }
+              }
             }
+            // an update that changed nothing leaves no event and moves no
+            // counter; recordConfigChange skips the empty diff
             yield* deps.recordConfigChange(
               tenantId,
               item.batchId,
               locked.status,
-              fieldDiff,
+              Object.keys(fieldDiff).length > 0 ? { itemId, ...fieldDiff } : {},
               as.userId,
               input.reason ?? null,
             )
@@ -472,9 +565,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     },
   )
 
+  /** an amount as the engine's integer, or null; the schema already vetted it */
+  const scaled = (value: string | null) => (value === null ? null : scaledAmount(value))
+
   const replaceScoreGroups: ItemMethods['replaceScoreGroups'] = Effect.fn(
     'Assessment.replaceScoreGroups',
-  )(function* (tenantId, batchId, specs, as) {
+  )(function* (tenantId, batchId, input, as) {
+    const specs = input.groups
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -490,8 +587,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             if (spec.id !== undefined && !existingById.has(spec.id)) {
               refusals.push({ reason: 'group-not-found', groupId: spec.id, index })
             }
-            // the database holds this line too; refusing here names the row
-            if (spec.cap !== null && spec.floor !== null && Number(spec.floor) > Number(spec.cap)) {
+            // compared as the engine's own integers: a float comparison here
+            // would be a second arithmetic beside the scoring one
+            if (
+              spec.cap !== null &&
+              spec.floor !== null &&
+              scaled(spec.floor)! > scaled(spec.cap)!
+            ) {
               refusals.push({ reason: 'floor-above-cap', groupId: spec.id ?? null, index })
             }
           }
@@ -502,7 +604,40 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               refusals.push({ reason: 'group-has-items', groupId: group.id })
             }
           }
+
+          // the audit diff, computed before anything is written: which rows
+          // appeared, which went, and field by field what changed on the rest
+          const changed: Record<string, unknown>[] = []
+          let limitsChanged = false
+          for (const [index, spec] of specs.entries()) {
+            if (spec.id === undefined) continue
+            const before = existingById.get(spec.id)
+            if (before === undefined) continue
+            const delta: Record<string, unknown> = { groupId: spec.id }
+            if (before.name !== spec.name) delta['name'] = [before.name, spec.name]
+            if (scaled(before.cap) !== scaled(spec.cap)) {
+              delta['cap'] = [before.cap, spec.cap]
+              limitsChanged = true
+            }
+            if (scaled(before.floor) !== scaled(spec.floor)) {
+              delta['floor'] = [before.floor, spec.floor]
+              limitsChanged = true
+            }
+            const order = spec.sortOrder ?? index
+            if (before.sortOrder !== order) delta['sortOrder'] = [before.sortOrder, order]
+            if (Object.keys(delta).length > 1) changed.push(delta)
+          }
+          const added = specs.filter((spec) => spec.id === undefined).map((spec) => spec.name)
+          const isNoOp = added.length === 0 && removed.length === 0 && changed.length === 0
+
+          // a cap or floor on a running round is scoring semantics: moving
+          // one without a sentence saying why is refused (§32.8)
+          const reason = input.reason?.trim() ?? ''
+          if (locked.status === 'active' && limitsChanged && reason === '') {
+            refusals.push({ reason: 'reason-required', groupId: null })
+          }
           if (refusals.length > 0) return yield* new ScoreGroupInvalid({ refusals })
+          if (isNoOp) return { groups: yield* groupsView(tenantId, batchId) }
 
           yield* deleteGroups(
             tenantId,
@@ -535,9 +670,17 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             tenantId,
             batchId,
             locked.status,
-            { scoreGroups: [existing.length, specs.length] },
+            {
+              scoreGroups: {
+                ...(added.length > 0 ? { added } : {}),
+                ...(removed.length > 0
+                  ? { removed: removed.map((group) => ({ groupId: group.id, name: group.name })) }
+                  : {}),
+                ...(changed.length > 0 ? { changed } : {}),
+              },
+            },
             as.userId,
-            null,
+            reason === '' ? null : reason,
           )
           return { groups: yield* groupsView(tenantId, batchId) }
         }),

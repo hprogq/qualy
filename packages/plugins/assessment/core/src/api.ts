@@ -17,6 +17,7 @@ import {
   AdvanceInvalid,
   ItemConfigInvalid,
   ItemNotFound,
+  MaterialRangeInvalid,
   ScoreGroupInvalid,
   BatchNoParticipants,
   BatchNotFound,
@@ -281,8 +282,13 @@ const itemTypeCode = Schema.String.check(
   Schema.isMaxLength(63),
 )
 
-/** a signed amount as text; scoring never sees a JSON float */
-const decimalAmount = Schema.String.check(Schema.isPattern(/^-?\d+(?:\.\d{1,4})?$/))
+/**
+ * A signed amount as text; scoring never sees a JSON float.
+ *
+ * The integer part is bounded to what the numeric(12,4) column holds, so an
+ * absurd magnitude is a 400 here rather than a database fault downstream.
+ */
+const decimalAmount = Schema.String.check(Schema.isPattern(/^-?\d{1,8}(?:\.\d{1,4})?$/))
 
 /** validated jsonb, carried opaquely: the driver is the schema's owner */
 const configJson = Schema.Unknown
@@ -329,8 +335,17 @@ const itemConfigPayload = Schema.Struct({
   displayConfig: Schema.optional(configJson),
 })
 
-const positiveCount = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
-const sortOrder = Schema.Number.check(Schema.isInt())
+// bounded to the int4 columns they land in, for the same reason as amounts
+const positiveCount = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(1),
+  Schema.isLessThanOrEqualTo(2_147_483_647),
+)
+const sortOrder = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(-2_147_483_648),
+  Schema.isLessThanOrEqualTo(2_147_483_647),
+)
 
 const scoreGroupSpec = Schema.Struct({
   id: Schema.optional(id),
@@ -414,7 +429,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     HttpApiEndpoint.put('replaceScoreGroups', '/assessment/batches/:batchId/score-groups', {
       params: Schema.Struct({ batchId: id }),
-      payload: Schema.Struct({ groups: Schema.Array(scoreGroupSpec) }),
+      payload: Schema.Struct({
+        groups: Schema.Array(scoreGroupSpec),
+        /** why, when a cap or floor moves on a running round */
+        reason: Schema.optional(boundedText(500)),
+      }),
       success: Schema.Struct({ groups: Schema.Array(scoreGroupView) }),
       error: [AccessDenied, BatchNotFound, BatchReadOnly, ScoreGroupInvalid, BadRequest],
     }).middleware(Authenticated),
@@ -472,7 +491,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         ['name', 'descriptionMd', 'materialRange', 'timezone'],
       ),
       success: Schema.Struct({ batch: batchView }),
-      error: [BatchNotFound, BatchReadOnly, BatchReferenceInvalid, AccessDenied, BadRequest],
+      error: [
+        BatchNotFound,
+        BatchReadOnly,
+        BatchReferenceInvalid,
+        MaterialRangeInvalid,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

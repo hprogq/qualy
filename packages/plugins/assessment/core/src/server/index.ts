@@ -1,4 +1,4 @@
-import { Clock, Context, Effect, Layer } from 'effect'
+import { Clock, Context, Effect, Layer, Result } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -25,6 +25,7 @@ import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.t
 import { PARTICIPANT_ACTION_CODES, STAFF_CODES } from '../permissions.ts'
 import { ItemTypeCatalog, ScoringCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
+import { liveBatchPayloads } from '../item/db.ts'
 import {
   AccessInvalid,
   AdvanceInvalid,
@@ -33,6 +34,7 @@ import {
   BatchReadOnly,
   BatchReferenceInvalid,
   BatchStatusInvalid,
+  MaterialRangeInvalid,
   ParticipantInvalid,
   ParticipantNotFound,
   PhaseNotFound,
@@ -1768,6 +1770,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 current.end !== input.materialRange.end
               ) {
                 diff.materialRange = [current, input.materialRange]
+                // the window is part of what makes existing evidence legal:
+                // every live entry is re-read under the candidate range by
+                // its own item revision's form, and the ones that would fall
+                // outside are named rather than silently stranded (§32.8)
+                const live = yield* liveBatchPayloads(tenantId, batchId)
+                const stranded: { entryId: string; itemId: string }[] = []
+                for (const row of live) {
+                  const driver = itemTypes.get(row.itemType)
+                  if (driver === undefined) continue
+                  const decoded = yield* Effect.result(
+                    driver.decodePayload(row.formConfig, row.payload, {
+                      materialRange: input.materialRange,
+                    }),
+                  )
+                  if (Result.isFailure(decoded)) {
+                    stranded.push({ entryId: row.entryId, itemId: row.itemId })
+                  }
+                }
+                if (stranded.length > 0) {
+                  return yield* new MaterialRangeInvalid({ entries: stranded })
+                }
               }
             }
 
@@ -3735,13 +3758,16 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return yield* assessment.replaceScoreGroups(
           principal.tenantId,
           params.batchId,
-          payload.groups.map((group) => ({
-            ...(group.id !== undefined ? { id: group.id } : {}),
-            name: group.name,
-            cap: group.cap ?? null,
-            floor: group.floor ?? null,
-            ...(group.sortOrder !== undefined ? { sortOrder: group.sortOrder } : {}),
-          })),
+          {
+            groups: payload.groups.map((group) => ({
+              ...(group.id !== undefined ? { id: group.id } : {}),
+              name: group.name,
+              cap: group.cap ?? null,
+              floor: group.floor ?? null,
+              ...(group.sortOrder !== undefined ? { sortOrder: group.sortOrder } : {}),
+            })),
+            ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
+          },
           principal,
         )
       }),

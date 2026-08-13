@@ -44,6 +44,20 @@ export class ParticipantInvalid extends Schema.TaggedErrorClass<ParticipantInval
   { httpApiStatus: 422, identifier: 'AssessmentParticipantInvalid' },
 ) {}
 
+/**
+ * The material range cannot move where it was asked to, because entries
+ * already in review or approved carry dates that would fall outside it. The
+ * entries are named: shrinking the window means dealing with what is in it,
+ * not silently making history illegal.
+ */
+export class MaterialRangeInvalid extends Schema.TaggedErrorClass<MaterialRangeInvalid>()(
+  'ASSESSMENT_MATERIAL_RANGE_INVALID',
+  {
+    entries: Schema.Array(Schema.Struct({ entryId: Schema.String, itemId: Schema.String })),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentMaterialRangeInvalid' },
+) {}
+
 export class ItemNotFound extends Schema.TaggedErrorClass<ItemNotFound>()(
   'ASSESSMENT_ITEM_NOT_FOUND',
   {},
@@ -229,7 +243,8 @@ export const templateConstraints: Record<string, () => TemplateConflict> = {
 export const batchConstraints: Record<string, () => BatchReferenceInvalid> = {}
 
 export type CreateBatchError = BatchReferenceInvalid | AccessDenied
-export type UpdateBatchError = BatchNotFound | BatchReadOnly | BatchReferenceInvalid | AccessDenied
+export type UpdateBatchError =
+  BatchNotFound | BatchReadOnly | BatchReferenceInvalid | MaterialRangeInvalid | AccessDenied
 export type SetBatchStatusError =
   BatchNotFound | BatchStatusInvalid | BatchNoParticipants | PlanInvalid | AccessDenied
 

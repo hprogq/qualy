@@ -1196,6 +1196,11 @@ const i18n = definePluginMessages({
       id: 'assessment/error/access-invalid',
       defaultMessage: 'That change to who may work on this batch was refused.',
     },
+    ASSESSMENT_MATERIAL_RANGE_INVALID: {
+      id: 'assessment/error/material-range-invalid',
+      defaultMessage:
+        'The new material window would leave existing entries outside it. Deal with those entries first.',
+    },
     ASSESSMENT_ITEM_NOT_FOUND: {
       id: 'assessment/error/item-not-found',
       defaultMessage: 'This item no longer exists.',

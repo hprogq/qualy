@@ -380,6 +380,73 @@ export const setCurrentRevision = (tenantId: string, itemId: string, revisionId:
       .execute(),
   )
 
+/** whether any entry, in any state, has ever been filed against this item */
+export const itemHasEntries = (tenantId: string, itemId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('itemId', '=', itemId)
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/**
+ * Every live entry of a batch with what its payload decodes by, for the
+ * material-range impact check: each row carries its own item revision's form
+ * and its item's driver, because history decodes by what it cited, never by
+ * what the item says today.
+ */
+export const liveBatchPayloads = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry')
+        .innerJoin('EntryRevision', (join) =>
+          join
+            .onRef('EntryRevision.tenantId', '=', 'Entry.tenantId')
+            .onRef('EntryRevision.id', '=', 'Entry.currentRevisionId'),
+        )
+        .innerJoin('AssessmentItemRevision', (join) =>
+          join
+            .onRef('AssessmentItemRevision.tenantId', '=', 'Entry.tenantId')
+            .onRef('AssessmentItemRevision.id', '=', 'EntryRevision.itemRevisionId'),
+        )
+        .innerJoin('AssessmentItem', (join) =>
+          join
+            .onRef('AssessmentItem.tenantId', '=', 'Entry.tenantId')
+            .onRef('AssessmentItem.id', '=', 'Entry.itemId'),
+        )
+        .select([
+          'Entry.id as entryId',
+          'Entry.itemId as itemId',
+          'AssessmentItem.itemType as itemType',
+          'AssessmentItemRevision.formConfig as formConfig',
+          'EntryRevision.payload as payload',
+        ])
+        .where('Entry.tenantId', '=', tenantId)
+        .where('Entry.batchId', '=', batchId)
+        .where('Entry.status', 'in', ['in_review', 'approved'])
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => {
+          const record = row as Record<string, unknown>
+          return {
+            entryId: String(record['entryId']),
+            itemId: String(record['itemId']),
+            itemType: String(record['itemType']),
+            formConfig: record['formConfig'],
+            payload: record['payload'],
+          }
+        }),
+      ),
+    )
+
 /**
  * The revisions a configuration change must still be able to read: the
  * current revision of every entry of this item that is in review or approved.
