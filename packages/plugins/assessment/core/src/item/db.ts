@@ -512,3 +512,69 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
         })),
       ),
     )
+
+/**
+ * A draft-batch question leaves without ceremony: the projection lets go of
+ * its revision, the revisions go, the row goes. Only callable where nothing
+ * ever happened - the service refuses when any entry exists.
+ */
+export const deleteItemRows = (tenantId: string, itemId: string) =>
+  Effect.gen(function* () {
+    yield* db.query((k) =>
+      k
+        .updateTable('AssessmentItem')
+        .set({ currentRevisionId: null })
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', itemId)
+        .execute(),
+    )
+    yield* db.query((k) =>
+      k
+        .deleteFrom('AssessmentItemRevision')
+        .where('tenantId', '=', tenantId)
+        .where('itemId', '=', itemId)
+        .execute(),
+    )
+    yield* db.query((k) =>
+      k
+        .deleteFrom('AssessmentItem')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', itemId)
+        .execute(),
+    )
+  })
+
+/** active -> voided with its record, or voided -> active clean; CAS on the from-status */
+export const setItemLifecycle = (
+  input:
+    | { tenantId: string; itemId: string; to: 'voided'; actorId: string; reason: string }
+    | { tenantId: string; itemId: string; to: 'active' },
+) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('AssessmentItem')
+        .set(
+          input.to === 'voided'
+            ? {
+                status: 'voided',
+                voidedAt: sql`now()`,
+                voidedBy: input.actorId,
+                voidReason: input.reason,
+                updatedAt: sql`now()`,
+              }
+            : {
+                status: 'active',
+                voidedAt: null,
+                voidedBy: null,
+                voidReason: null,
+                updatedAt: sql`now()`,
+              },
+        )
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.itemId)
+        .where('status', '=', input.to === 'voided' ? 'active' : 'voided')
+        .returning(['id'])
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))

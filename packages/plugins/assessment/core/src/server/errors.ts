@@ -88,6 +88,23 @@ export class EntryPayloadInvalid extends Schema.TaggedErrorClass<EntryPayloadInv
   { httpApiStatus: 422, identifier: 'AssessmentEntryPayloadInvalid' },
 ) {}
 
+/** the item lifecycle said no: the action names itself and a stable reason */
+export class ItemActionRefused extends Schema.TaggedErrorClass<ItemActionRefused>()(
+  'ASSESSMENT_ITEM_ACTION_REFUSED',
+  { action: Schema.String, reason: Schema.String },
+  { httpApiStatus: 403, identifier: 'AssessmentItemActionRefused' },
+) {}
+
+/**
+ * Nothing here for this reader: absent, in another tenant, or simply not
+ * theirs to see - the refusal never says which.
+ */
+export class AttachmentUnavailable extends Schema.TaggedErrorClass<AttachmentUnavailable>()(
+  'ASSESSMENT_ATTACHMENT_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentAttachmentUnavailable' },
+) {}
+
 export class ReviewNotFound extends Schema.TaggedErrorClass<ReviewNotFound>()(
   'ASSESSMENT_REVIEW_NOT_FOUND',
   {},

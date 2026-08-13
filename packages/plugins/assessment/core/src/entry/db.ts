@@ -525,3 +525,29 @@ export const insertReviewEvent = (input: {
       } as never)
       .execute(),
   )
+
+/** the open work a void sweeps: entries of this item still in someone's hands */
+export const openEntriesOfItem = (tenantId: string, itemId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry')
+        .select(['id', 'status', 'currentReviewInstanceId'])
+        .where('tenantId', '=', tenantId)
+        .where('itemId', '=', itemId)
+        .where('status', 'in', ['draft', 'in_review'])
+        .orderBy('id')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => ({
+          id: String((row as Record<string, unknown>)['id']),
+          status: String((row as Record<string, unknown>)['status']) as EntryStatus,
+          currentReviewInstanceId:
+            (row as Record<string, unknown>)['currentReviewInstanceId'] == null
+              ? null
+              : String((row as Record<string, unknown>)['currentReviewInstanceId']),
+        })),
+      ),
+    )

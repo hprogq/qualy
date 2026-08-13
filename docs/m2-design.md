@@ -3186,6 +3186,36 @@ hostile tests 必须先于 UI。
 
 `feat(assessment): close item lifecycle`
 
+落地记录（对话 7 完成时相对本节的偏离）：
+
+- **delete 与 void 的分界照 §12**：delete 只对「草稿批次 ∩ 零条目」放行（`batch-not-draft` /
+  `item-has-entries`），行删除同时收走全部 ItemRevision；草稿批次上的 void 仪式被直接拒绝
+  （`batch-draft`——没有事实可保，仪式记录不了任何东西）。void 必填非空 reason，事务内：锁批次 →
+  CAS active→voided（记 actor/time/reason）→ 敞开的工作随题死（draft/in_review 条目→voided，
+  in_review 的当前 round CAS 完结 outcome=cancelled 并追加 `cancelled-item-voided` 事件）→
+  approved/rejected 一字不动 → bump config_revision + config 事件（diff `{voidedItem}`）。
+  restore 只把题打开（CAS voided→active、清空 void 三列、config 事件 `{restoredItem}`）——
+  **随作废死掉的条目与被取消的 round 不复活**；voided 条目不占 max_entries，学生重新填报。
+- **Assessment attachment authorizer 落在服务层**（src/attachment/），经对话 1 就定好的
+  `Storage.open(input, authorize)` 回调闭合：storage 只管对象与 backend，读一份业务材料的理由
+  归 assessment。读者 = 文件故事里的人：staged 且是上传者本人；某条引用它的 entry 的 subject
+  （**成员行即历史**——excluded 之后照读，§32.56）；对引用批次有管理 reach 的 staff；审核谓词
+  （`mayReview` 单源）承认的、判过引用它的 revision 的 round 的审核人。**retired 只停新引用，
+  不停历史阅读**（storage 的 open 本就不拦 retired，authorizer 按引用史放行）。拒绝一律
+  `ASSESSMENT_ATTACHMENT_NOT_FOUND`（404）：不存在、别的租户、无权，从外面看是同一句话。
+  敌意面：邻座学生、只持 entry.record 的 recorder（有权限≠有管理 reach）、跨租户、别人的
+  staged，全部 404。
+- **HTTP 挂载随对话 8 的上传边界一起走**：§13 的四条 attachment 路由（uploads/complete/GET/
+  DELETE）与浏览器上传 helper 是同一块 HTTP 边界，本对话交付其授权内核与服务方法
+  `Assessment.openAttachment`（memory/local 后端回 stream、COS 回短时 redirect 的
+  `BackendOpen` 原样透传）。
+- 新 API：`DELETE /assessment/items/{itemId}`、`PUT /assessment/items/{itemId}/status`
+  （payload 二态 union：voided 必带 reason）；新错误码 `ASSESSMENT_ITEM_ACTION_REFUSED`（403，
+  action+reason）与 `ASSESSMENT_ATTACHMENT_NOT_FOUND`（404）。scorer 对 voided 题的答案在
+  对话 6 已冻结，本对话的正式作废动作直接接上，无需改动。
+- 跨域 security audit 的仓库侧部分以敌意用例交付（三份新套件覆盖删除/作废权限、开放工作清扫、
+  终态保全、restore 不复活、附件读者矩阵）；外部审计照例在对话间进行。
+
 ### 对话 8：前端真实竖切
 
 目标：

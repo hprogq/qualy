@@ -5,6 +5,7 @@ import type { AccessDenied } from '@qualy/rbac-contract/effect'
 import type { EpochMillis } from '../phase/engine/types.ts'
 import type { ItemTypeDriver } from '../plugin.ts'
 import {
+  ItemActionRefused,
   BatchNotFound,
   BatchReadOnly,
   ItemConfigInvalid,
@@ -15,7 +16,14 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
+  cancelReviewInstance,
+  insertReviewEvent,
+  openEntriesOfItem,
+  setEntryState,
+} from '../entry/db.ts'
+import {
   deleteGroups,
+  deleteItemRows,
   groupsOf,
   insertGroup,
   insertItem,
@@ -28,6 +36,7 @@ import {
   revisionOf,
   revisionsOf,
   setCurrentRevision,
+  setItemLifecycle,
   updateGroup,
   updateItemFields,
   type ItemRevisionRow,
@@ -114,6 +123,7 @@ export interface ReplaceScoreGroupsInput {
 }
 
 export type CreateItemError = BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
+export type ItemLifecycleError = ItemNotFound | BatchReadOnly | AccessDenied | ItemActionRefused
 export type UpdateItemError =
   ItemNotFound | BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
 export type ReplaceGroupsError = BatchNotFound | BatchReadOnly | AccessDenied | ScoreGroupInvalid
@@ -144,6 +154,17 @@ export interface ItemMethods {
     input: UpdateItemInput,
     as: Principal,
   ) => Effect.Effect<ItemView, UpdateItemError>
+  readonly deleteItem: (
+    tenantId: string,
+    itemId: string,
+    as: Principal,
+  ) => Effect.Effect<void, ItemLifecycleError>
+  readonly setItemStatus: (
+    tenantId: string,
+    itemId: string,
+    input: { status: 'voided'; reason: string } | { status: 'active' },
+    as: Principal,
+  ) => Effect.Effect<ItemView, ItemLifecycleError>
   readonly listScoreGroups: (
     tenantId: string,
     batchId: string,
@@ -688,5 +709,132 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     )
   })
 
-  return { listItems, createItem, getItem, updateItem, listScoreGroups, replaceScoreGroups }
+  const refuse = (action: string, reason: string) => new ItemActionRefused({ action, reason })
+
+  const deleteItem: ItemMethods['deleteItem'] = Effect.fn('Assessment.deleteItem')(
+    function* (tenantId, itemId, as) {
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const item = yield* itemOf(tenantId, itemId)
+            if (item === null) return yield* new ItemNotFound()
+            yield* deps
+              .requireBatchVisible(tenantId, item.batchId, as)
+              .pipe(Effect.catchTag('ACCESS_DENIED', () => new ItemNotFound()))
+            const locked = yield* lockBatch(tenantId, item.batchId)
+            if (locked!.status === 'archived') return yield* new BatchReadOnly()
+            yield* deps.requireRosterReach(as, tenantId, item.batchId)
+            // deletion is for questions nothing ever happened to: a draft
+            // round, and not one entry. Anything more is a void, which keeps
+            // the record.
+            if (locked!.status !== 'draft') return yield* refuse('delete', 'batch-not-draft')
+            if (yield* itemHasEntries(tenantId, itemId)) {
+              return yield* refuse('delete', 'item-has-entries')
+            }
+            yield* deleteItemRows(tenantId, itemId)
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+      )
+    },
+  )
+
+  const setItemStatus: ItemMethods['setItemStatus'] = Effect.fn('Assessment.setItemStatus')(
+    function* (tenantId, itemId, input, as) {
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const item = yield* itemOf(tenantId, itemId)
+            if (item === null) return yield* new ItemNotFound()
+            yield* deps
+              .requireBatchVisible(tenantId, item.batchId, as)
+              .pipe(Effect.catchTag('ACCESS_DENIED', () => new ItemNotFound()))
+            const locked = yield* lockBatch(tenantId, item.batchId)
+            if (locked!.status === 'archived') return yield* new BatchReadOnly()
+            yield* deps.requireRosterReach(as, tenantId, item.batchId)
+            if (locked!.status === 'draft') {
+              // a draft round has no facts to keep; the ceremony would
+              // record nothing - delete instead
+              return yield* refuse('void', 'batch-draft')
+            }
+
+            if (input.status === 'voided') {
+              const reason = input.reason.trim()
+              if (reason === '') return yield* refuse('void', 'reason-required')
+              const moved = yield* setItemLifecycle({
+                tenantId,
+                itemId,
+                to: 'voided',
+                actorId: as.userId,
+                reason,
+              })
+              if (!moved) return yield* refuse('void', 'item-not-active')
+              // open work dies with the question; decided work stands
+              for (const entry of yield* openEntriesOfItem(tenantId, itemId)) {
+                if (entry.status === 'in_review' && entry.currentReviewInstanceId !== null) {
+                  const cancelled = yield* cancelReviewInstance({
+                    tenantId,
+                    instanceId: entry.currentReviewInstanceId,
+                    outcome: 'cancelled',
+                  })
+                  if (cancelled) {
+                    yield* insertReviewEvent({
+                      tenantId,
+                      reviewInstanceId: entry.currentReviewInstanceId,
+                      kind: 'cancelled-item-voided',
+                      actorId: as.userId,
+                    })
+                  }
+                }
+                yield* setEntryState({
+                  tenantId,
+                  entryId: entry.id,
+                  from: ['draft', 'in_review'],
+                  to: 'voided',
+                })
+              }
+              yield* deps.recordConfigChange(
+                tenantId,
+                item.batchId,
+                locked!.status,
+                { voidedItem: itemId },
+                as.userId,
+                reason,
+              )
+            } else {
+              // restore reopens the question for new work and nothing else:
+              // entries voided with it stay voided, cancelled rounds stay
+              // cancelled - what happened, happened
+              const moved = yield* setItemLifecycle({ tenantId, itemId, to: 'active' })
+              if (!moved) return yield* refuse('restore', 'item-not-voided')
+              yield* deps.recordConfigChange(
+                tenantId,
+                item.batchId,
+                locked!.status,
+                { restoredItem: itemId },
+                as.userId,
+                null,
+              )
+            }
+            const written = (yield* itemOf(tenantId, itemId))!
+            const revision =
+              written.currentRevisionId === null
+                ? null
+                : yield* revisionOf(tenantId, written.currentRevisionId)
+            return toView(written, revision)
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+      )
+    },
+  )
+
+  return {
+    listItems,
+    createItem,
+    getItem,
+    updateItem,
+    deleteItem,
+    setItemStatus,
+    listScoreGroups,
+    replaceScoreGroups,
+  }
 }

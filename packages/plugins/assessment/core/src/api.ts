@@ -18,6 +18,7 @@ import {
   EntryActionRefused,
   EntryNotFound,
   EntryPayloadInvalid,
+  ItemActionRefused,
   ItemConfigInvalid,
   ItemNotFound,
   MaterialRangeInvalid,
@@ -471,6 +472,27 @@ const myResultView = Schema.Struct({
 })
 
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
+  .add(
+    // gone without ceremony: only for questions nothing ever happened to
+    HttpApiEndpoint.delete('deleteItem', '/assessment/items/:itemId', {
+      params: Schema.Struct({ itemId: id }),
+      success: Schema.Struct({}),
+      error: [ItemNotFound, BatchReadOnly, ItemActionRefused, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // voiding keeps every record and stops the counting; restoring reopens
+    // the question for new work and revives nothing
+    HttpApiEndpoint.put('setItemStatus', '/assessment/items/:itemId/status', {
+      params: Schema.Struct({ itemId: id }),
+      payload: Schema.Union([
+        Schema.Struct({ status: Schema.Literals(['voided']), reason: boundedText(500) }),
+        Schema.Struct({ status: Schema.Literals(['active']) }),
+      ]),
+      success: Schema.Struct({ item: itemView }),
+      error: [ItemNotFound, BatchReadOnly, ItemActionRefused, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
   .add(
     // the caller's own standing in the round, computed on request by the
     // one scorer; never anybody else's through this path

@@ -29,6 +29,7 @@ import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
+import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
   AccessInvalid,
@@ -750,11 +751,15 @@ export class Assessment extends Context.Service<
     readonly decideReview: ReviewMethods['decideReview']
     /** one's own provisional standing, from the one scorer */
     readonly getMyResult: ScoringMethods['getMyResult']
+    /** the bytes of a business material, for whoever its story admits */
+    readonly openAttachment: AttachmentMethods['openAttachment']
     /** the score tree and the items on it; the save gauntlet lives behind these */
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
     readonly getItem: ItemMethods['getItem']
     readonly updateItem: ItemMethods['updateItem']
+    readonly deleteItem: ItemMethods['deleteItem']
+    readonly setItemStatus: ItemMethods['setItemStatus']
     readonly listScoreGroups: ItemMethods['listScoreGroups']
     readonly replaceScoreGroups: ItemMethods['replaceScoreGroups']
   }
@@ -1698,11 +1703,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
     catalogs: { calculators: scoring.calculators, aggregators: scoring.aggregators },
   })
 
+  const attachmentMethods = makeAttachmentMethods({
+    withDb,
+    storage,
+    rosterReach: (as, tenantId, batchId) =>
+      Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
+  })
+
   return Assessment.of({
     ...itemMethods,
     ...entryMethods,
     ...reviewMethods,
     ...scoringMethods,
+    ...attachmentMethods,
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
       return yield* withDb(
         transaction(
@@ -3917,6 +3930,31 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'deleteItem',
+      Effect.fn('assessment.deleteItem.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        yield* assessment.deleteItem(principal.tenantId, params.itemId, principal)
+        return {}
+      }),
+    )
+    .handle(
+      'setItemStatus',
+      Effect.fn('assessment.setItemStatus.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const item = yield* assessment.setItemStatus(
+          principal.tenantId,
+          params.itemId,
+          payload.status === 'voided'
+            ? { status: 'voided', reason: payload.reason }
+            : { status: 'active' },
+          principal,
+        )
+        return { item: itemDto(item) }
       }),
     )
     .handle(

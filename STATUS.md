@@ -3966,3 +3966,26 @@ provisional 结果,绕过了已冻结的 Batch visibility(participant = 已开�
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` **609 passed / 17 skipped**;browser 48;
 build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。
+
+### 对话 7:题目生命周期与附件授权闭环(2026-08-13)
+
+- **delete / void 分界**(§12):delete 只对草稿批次且零条目放行并连 ItemRevision 一起删;
+  active 批次只能 void(必填 reason,事务内锁批次、CAS 置 voided、draft/in_review 条目随题
+  voided、in_review 的 round CAS 完结 outcome=cancelled 加 `cancelled-item-voided` 事件、
+  approved/rejected 保全、config_revision +1 记 diff)。restore 只开题不复活:死掉的条目与
+  round 保持原样,voided 不占 max_entries,学生可重新填报。草稿批次上的 void 仪式直接拒绝。
+- **附件授权闭环**:`Assessment.openAttachment` 经 Storage.open 的 authorize 回调落地(§3.5,
+  storage 不学业务)。读者 = staged 上传者本人 / 引用 entry 的 subject(excluded 照读)/
+  有管理 reach 的 staff / `mayReview` 承认的审核人;retired 只停新引用不停阅读;其余(邻座、
+  只持 record 权限的 recorder、跨租户、别人的 staged)一律 404 单一话术。HTTP 四条 attachment
+  路由随对话 8 的上传 UI 边界一起挂载,本对话交付授权内核。
+- 新 API:`DELETE /assessment/items/{id}`、`PUT /assessment/items/{id}/status`;新码
+  `ASSESSMENT_ITEM_ACTION_REFUSED`、`ASSESSMENT_ATTACHMENT_NOT_FOUND`,双语目录同步。
+- 测试:tests/item-lifecycle.test.ts 三例(权限与状态分界 / 作废清扫与保全与 restore 不复活 /
+  附件读者矩阵含 excluded+retired 与跨租户)。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **612 passed / 17 skipped**;browser 48;
+build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。
+
+下一步:对话 8(前端真实竖切:工作区、填报、审核收件箱、我的结果、上传 UI 与 attachment HTTP
+边界)。

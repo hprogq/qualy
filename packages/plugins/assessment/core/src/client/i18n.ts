@@ -1213,6 +1213,14 @@ const i18n = definePluginMessages({
       id: 'assessment/error/entry-payload-invalid',
       defaultMessage: 'The filing could not be saved. Fix the fields listed and try again.',
     },
+    ASSESSMENT_ITEM_ACTION_REFUSED: {
+      id: 'assessment/error/item-action-refused',
+      defaultMessage: 'This cannot be done to the item right now.',
+    },
+    ASSESSMENT_ATTACHMENT_NOT_FOUND: {
+      id: 'assessment/error/attachment-not-found',
+      defaultMessage: 'This file no longer exists.',
+    },
     ASSESSMENT_REVIEW_NOT_FOUND: {
       id: 'assessment/error/review-not-found',
       defaultMessage: 'This review no longer exists.',
