@@ -4010,3 +4010,31 @@ build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` **612 passed / 17 skipped**(行为不变,全部
 既有敌意用例照常通过);browser 48;build、frozen resolve、prettier、生产 smoke 全绿。
+
+### 对话 7 收口:锁后重读与找回入口(2026-08-13)
+
+外部审计两条 P0 均核实成立,分两笔提交。
+
+**锁前快照不可信(TOCTOU)**:createEntry / appendEntryRevision / setEntryStatus / updateItem 都在
+`lockBatch()` 之前读取 item/entry,拿到锁后继续用旧快照——void 恰好可以落在读与锁之间,于是
+「作废后出现新 draft」「voided entry 挂着 active review instance」都构造得出来。修法统一为:
+**锁前读取只用于定位 batchId,锁后重读业务对象,只信锁后的状态**;submit/withdraw 的
+`setEntryState` CAS 返回值补上检查(锁下 fresh read 后不可达,防未来重排静默留孤儿)。新增
+tests/void-races.test.ts:create/edit/submit/updateItem/decision 五路与 void 真并发,收尾断言
+不变量——voided 题下零 live entry、零 active round、round 恰好完结一次且 entry 状态与 outcome
+一致(approved↔approved / cancelled↔voided,事件序列同源)。
+
+**找回入口**:此前刷新浏览器后没有任何 API 能重新拿到自己的 entryId,draft/in_review 永久失联。
+新增两条读:
+
+- `GET /assessment/batches/{batchId}/my-entries`:本人全部状态(draft/in_review/approved/
+  rejected/voided),keyset 分页,visibility 先答(与 my-result 同层:无关者 ACCESS_DENIED,
+  可见非成员 PARTICIPANT_NOT_FOUND);
+- `GET /assessment/entries/{entryId}/revisions`:一条申报的完整账目——全部 revision(含附件
+  关系)+ 全部审核轮(state/outcome/所审 revisionId/事件含驳回意见与建议稿),读权与 getEntry
+  同源(本人或管理 reach,其余 404)。
+  tests/entry-discovery.test.ts 两例:三态列表 + 分页 + 邻座隔离 + 无关者拒;两轮历史 + round 与
+  revision 对齐 + 陌生人 404。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **617 passed / 17 skipped**;browser 48;
+build、frozen resolve、prettier、生产 smoke 全绿。

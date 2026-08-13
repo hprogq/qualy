@@ -542,6 +542,51 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // the way back in after a refresh: everything the caller has filed in
+    // this round, whatever state it is in now
+    HttpApiEndpoint.get('listMyEntries', '/assessment/batches/:batchId/my-entries', {
+      params: Schema.Struct({ batchId: id }),
+      query: Schema.Struct(pageQuery),
+      success: Schema.Struct({
+        entries: Schema.Array(entryView),
+        nextCursor: Schema.NullOr(Schema.String),
+      }),
+      error: [BatchNotFound, ParticipantNotFound, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the whole account of one claim: every revision as written, every
+    // round it went through, every word said in them
+    HttpApiEndpoint.get('getEntryHistory', '/assessment/entries/:entryId/revisions', {
+      params: Schema.Struct({ entryId: id }),
+      success: Schema.Struct({
+        entry: entryView,
+        revisions: Schema.Array(entryRevisionView),
+        rounds: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            roundNo: Schema.Number,
+            state: Schema.String,
+            outcome: Schema.NullOr(Schema.String),
+            revisionId: Schema.String,
+            submittedAt: Schema.String,
+            completedAt: Schema.NullOr(Schema.String),
+            events: Schema.Array(
+              Schema.Struct({
+                kind: Schema.String,
+                actorId: Schema.NullOr(Schema.String),
+                comment: Schema.NullOr(Schema.String),
+                suggestedPayload: configJson,
+                at: Schema.String,
+              }),
+            ),
+          }),
+        ),
+      }),
+      error: [EntryNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.post('createEntry', '/assessment/entries', {
       payload: Schema.Struct({
         itemId: id,

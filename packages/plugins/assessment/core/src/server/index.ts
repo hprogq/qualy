@@ -741,6 +741,8 @@ export class Assessment extends Context.Service<
      */
     readonly sweepDueBoundaries: Effect.Effect<SweepReport>
     /** one person's claims on the round's questions, and their lifecycle */
+    readonly listMyEntries: EntryMethods['listMyEntries']
+    readonly getEntryHistory: EntryMethods['getEntryHistory']
     readonly createEntry: EntryMethods['createEntry']
     readonly getEntry: EntryMethods['getEntry']
     readonly appendEntryRevision: EntryMethods['appendEntryRevision']
@@ -1675,6 +1677,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     withDb,
     authorize: authorizeAction,
     requireRosterReach,
+    requireBatchVisible,
     parseRange,
     itemTypes,
     storage,
@@ -3817,6 +3820,67 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const principal = yield* CurrentUser
         yield* assessment.deleteTemplate(principal.tenantId, params.templateId, principal)
         return { ok: true as const }
+      }),
+    )
+    .handle(
+      'listMyEntries',
+      Effect.fn('assessment.listMyEntries.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const page = yield* assessment.listMyEntries(
+          principal.tenantId,
+          params.batchId,
+          {
+            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+            ...(query.limit !== undefined ? { limit: query.limit } : {}),
+          },
+          principal,
+        )
+        return { entries: page.entries.map(entryDto), nextCursor: page.nextCursor }
+      }),
+    )
+    .handle(
+      'getEntryHistory',
+      Effect.fn('assessment.getEntryHistory.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const history = yield* assessment.getEntryHistory(
+          principal.tenantId,
+          params.entryId,
+          principal,
+        )
+        return {
+          entry: entryDto(history.entry),
+          revisions: history.revisions.map((revision) => ({
+            id: revision.id,
+            revisionNo: revision.revisionNo,
+            itemRevisionId: revision.itemRevisionId,
+            payload: revision.payload,
+            note: revision.note,
+            source: revision.source,
+            actorId: revision.actorId,
+            subjectId: revision.subjectId,
+            attachments: revision.attachments,
+            createdAt: new Date(revision.createdAt).toISOString(),
+          })),
+          rounds: history.rounds.map((round) => ({
+            id: round.id,
+            roundNo: round.roundNo,
+            state: round.state,
+            outcome: round.outcome,
+            revisionId: round.revisionId,
+            submittedAt: new Date(round.submittedAt).toISOString(),
+            completedAt:
+              round.completedAt === null ? null : new Date(round.completedAt).toISOString(),
+            events: round.events.map((event) => ({
+              kind: event.kind,
+              actorId: event.actorId,
+              comment: event.comment,
+              suggestedPayload: event.suggestedPayload,
+              at: new Date(event.at).toISOString(),
+            })),
+          })),
+        }
       }),
     )
     .handle(

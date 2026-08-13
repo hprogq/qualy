@@ -551,3 +551,203 @@ export const openEntriesOfItem = (tenantId: string, itemId: string) =>
         })),
       ),
     )
+
+/** one participant's entries in a batch, oldest first, keyset-paged */
+export const entriesOfParticipantPage = (input: {
+  tenantId: string
+  batchId: string
+  participantId: string
+  after?: readonly [string, string] | undefined
+  limit: number
+}) =>
+  db
+    .query((k) => {
+      let query = k
+        .selectFrom('Entry')
+        .select(entryColumns)
+        .select([epoch('created_at').as('createdMs')])
+        .where('tenantId', '=', input.tenantId)
+        .where('batchId', '=', input.batchId)
+        .where('participantId', '=', input.participantId)
+        .orderBy('createdAt')
+        .orderBy('id')
+        .limit(input.limit)
+      if (input.after !== undefined) {
+        query = query.where(
+          sql<boolean>`(created_at, id) > (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
+        )
+      }
+      return query.execute()
+    })
+    .pipe(Effect.map((rows) => rows.map((row) => toEntry(row as Record<string, unknown>))))
+
+/** the creation instant as the keyset cursor needs it, exactly as stored */
+export const entryCreatedIso = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry')
+        .select([sql<string>`created_at::text`.as('createdIso')])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', entryId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row ? row.createdIso : null)))
+
+/** every revision of one entry, in the order they were written */
+export const entryRevisionsOf = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryRevision')
+        .select([
+          'id',
+          'revisionNo',
+          'itemRevisionId',
+          'payload',
+          'actorId',
+          'subjectId',
+          'source',
+          'note',
+        ])
+        .select([epoch('created_at').as('createdMs')])
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .orderBy('revisionNo')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): EntryRevisionRow => ({
+          id: row.id,
+          revisionNo: row.revisionNo,
+          itemRevisionId: row.itemRevisionId,
+          payload: row.payload,
+          actorId: row.actorId,
+          subjectId: row.subjectId,
+          source: row.source as EntrySource,
+          note: row.note,
+          createdAt: msOf(row.createdMs),
+        })),
+      ),
+    )
+
+/** the attachment relations of many revisions at once, grouped by revision */
+export const attachmentsOfRevisions = (tenantId: string, revisionIds: readonly string[]) =>
+  revisionIds.length === 0
+    ? Effect.succeed(new Map<string, { attachmentId: string; position: number }[]>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('EntryRevisionAttachment')
+            .select(['revisionId', 'attachmentId', 'position'])
+            .where('tenantId', '=', tenantId)
+            .where('revisionId', 'in', [...revisionIds])
+            .orderBy('revisionId')
+            .orderBy('position')
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) => {
+            const grouped = new Map<string, { attachmentId: string; position: number }[]>()
+            for (const row of rows) {
+              const bucket = grouped.get(row.revisionId)
+              const item = { attachmentId: row.attachmentId, position: row.position }
+              if (bucket === undefined) grouped.set(row.revisionId, [item])
+              else bucket.push(item)
+            }
+            return grouped
+          }),
+        )
+
+export interface EntryRoundRow {
+  id: string
+  roundNo: number
+  state: string
+  outcome: string | null
+  revisionId: string
+  createdAt: number
+  completedAt: number | null
+}
+
+/** every review round this entry has been through, oldest first */
+export const roundsOfEntry = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance')
+        .select(['id', 'state', 'outcome', 'roundNo', 'revisionId'])
+        .select([epoch('created_at').as('createdMs'), epoch('completed_at').as('completedMs')])
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .orderBy('roundNo')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): EntryRoundRow => ({
+          id: row.id,
+          roundNo: row.roundNo,
+          state: row.state as string,
+          outcome: row.outcome,
+          revisionId: row.revisionId,
+          createdAt: msOf(row.createdMs),
+          completedAt: row.completedMs == null ? null : msOf(row.completedMs),
+        })),
+      ),
+    )
+
+/** the events of many rounds at once, grouped by round, oldest first */
+export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[]) =>
+  instanceIds.length === 0
+    ? Effect.succeed(
+        new Map<
+          string,
+          {
+            kind: string
+            actorId: string | null
+            comment: string | null
+            suggestedPayload: unknown
+            createdAt: number
+          }[]
+        >(),
+      )
+    : db
+        .query((k) =>
+          k
+            .selectFrom('ReviewEvent')
+            .select(['reviewInstanceId', 'kind', 'actorId', 'comment', 'suggestedPayload'])
+            .select([epoch('created_at').as('createdMs')])
+            .where('tenantId', '=', tenantId)
+            .where('reviewInstanceId', 'in', [...instanceIds])
+            .orderBy('createdAt')
+            .orderBy('id')
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) => {
+            const grouped = new Map<
+              string,
+              {
+                kind: string
+                actorId: string | null
+                comment: string | null
+                suggestedPayload: unknown
+                createdAt: number
+              }[]
+            >()
+            for (const row of rows) {
+              const event = {
+                kind: row.kind,
+                actorId: row.actorId,
+                comment: row.comment,
+                suggestedPayload: row.suggestedPayload ?? null,
+                createdAt: msOf(row.createdMs),
+              }
+              const bucket = grouped.get(row.reviewInstanceId)
+              if (bucket === undefined) grouped.set(row.reviewInstanceId, [event])
+              else bucket.push(event)
+            }
+            return grouped
+          }),
+        )
