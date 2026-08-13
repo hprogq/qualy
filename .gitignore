@@ -69,6 +69,11 @@ cordis.gen.yml
 # materialised plugin aggregate, rewritten by the vite plugin on every start
 apps/web/.qualy/
 
+# attachments the local storage provider keeps when this machine is the
+# deployment (its default root, ./data/storage; QUALY_STORAGE_LOCAL_ROOT moves
+# it). Anchored: a package's own data/ fixtures are not this.
+/data/
+
 # scratch fixtures written by the effect diagnostics gate
 .effect-diagnostics-*/
 
