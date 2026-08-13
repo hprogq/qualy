@@ -32,13 +32,17 @@ export interface ReviewerRefs {
  * check, the inbox and the decision endpoints all ask this same fragment,
  * so "the submit found a reviewer the inbox never shows" cannot be written.
  *
- * Three conjuncts. Standing: one of the stage's roles granted at exactly
- * the stage's node - exact on purpose (§32.23), a subtree grant participates
- * in jurisdiction, never in stage membership - live, role active, holder
- * enabled, and the grant's resource, if it names one, is this batch.
- * Authority: the batch accepted assessment.review.process from a live
- * assignment of theirs and has not taken it back. Distance: they are neither
- * the subject nor whoever authored the revision under judgment.
+ * One assignment carries the whole answer. Standing: one of the stage's
+ * roles granted at exactly the stage's node with coverage `self` - exact on
+ * purpose (§32.23), a subtree grant participates in jurisdiction, never in
+ * stage membership, even when it is anchored on the stage node itself -
+ * live, role active, holder enabled, resource general or this batch. And
+ * the batch accepted assessment.review.process from THAT assignment, not
+ * merely from some assignment of theirs: acceptance names sources one by
+ * one, so a new stage grant may not walk in on an older assignment's
+ * acceptance - it becomes reviewable when it is itself accepted. Minus what
+ * the batch took back, minus distance: neither the subject nor whoever
+ * authored the revision under judgment.
  *
  * The phase gate is deliberately not in here: it answers "is this act open
  * this minute" and binds the acts (inbox, decisions), while this fragment
@@ -51,9 +55,19 @@ const mayReview = (r: ReviewerRefs) => sql<boolean>`(
     from role_grants rg
     join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
     join users u on u.tenant_id = rg.tenant_id and u.id = rg.user_id
+    join batch_access_sources bas
+      on bas.tenant_id = rg.tenant_id
+      and bas.role_assignment_id = rg.id
+      and bas.batch_id = ${r.batchId}
+      and bas.subject_id = rg.user_id
+    join batch_access_source_permissions sp
+      on sp.tenant_id = bas.tenant_id
+      and sp.source_id = bas.id
+      and sp.permission_code = 'assessment.review.process'
     where rg.tenant_id = ${r.tenantId}
       and rg.user_id = ${r.userId}
       and rg.org_node_id = ${r.nodeId}
+      and rg.coverage = 'self'
       and rg.role_id = any(${r.roleIds})
       and rg.revoked_at is null
       and (rg.valid_from is null or rg.valid_from <= now())
@@ -61,37 +75,11 @@ const mayReview = (r: ReviewerRefs) => sql<boolean>`(
       and ro.status = 'active'
       and u.enabled
       and (
-        rg.resource_namespace is null
-        or (
-          rg.resource_namespace = 'assessment'
-          and rg.resource_type = 'batch'
-          and rg.resource_id = ${r.batchId}
-        )
-      )
-  )
-  and exists (
-    select 1
-    from batch_access_sources bas
-    join role_grants rg2
-      on rg2.tenant_id = bas.tenant_id and rg2.id = bas.role_assignment_id
-    join roles ro2 on ro2.tenant_id = rg2.tenant_id and ro2.id = rg2.role_id
-    join batch_access_source_permissions sp
-      on sp.tenant_id = bas.tenant_id and sp.source_id = bas.id
-    where bas.tenant_id = ${r.tenantId}
-      and bas.batch_id = ${r.batchId}
-      and bas.subject_id = ${r.userId}
-      and rg2.user_id = ${r.userId}
-      and rg2.revoked_at is null
-      and (rg2.valid_from is null or rg2.valid_from <= now())
-      and (rg2.valid_until is null or rg2.valid_until > now())
-      and ro2.status = 'active'
-      and sp.permission_code = 'assessment.review.process'
-      and (
-        ro2.permission_mode = 'all-active'
+        ro.permission_mode = 'all-active'
         or exists (
           select 1 from role_permissions rp
           join permissions pe on pe.id = rp.permission_id
-          where rp.tenant_id = ro2.tenant_id and rp.role_id = ro2.id
+          where rp.tenant_id = ro.tenant_id and rp.role_id = ro.id
             and pe.code = sp.permission_code
         )
       )
@@ -102,11 +90,11 @@ const mayReview = (r: ReviewerRefs) => sql<boolean>`(
           and dn.permission_code = sp.permission_code
       )
       and (
-        rg2.resource_namespace is null
+        rg.resource_namespace is null
         or (
-          rg2.resource_namespace = 'assessment'
-          and rg2.resource_type = 'batch'
-          and rg2.resource_id = ${r.batchId}
+          rg.resource_namespace = 'assessment'
+          and rg.resource_type = 'batch'
+          and rg.resource_id = ${r.batchId}
         )
       )
   )

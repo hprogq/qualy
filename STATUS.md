@@ -3904,3 +3904,24 @@ review-flow 6 例,entry-policy 10 例全绿);`pnpm test:browser` 48;`pnpm build`
 
 下一步:对话 6(唯一 scorer + provisional result:ScoreAmount、fixed@1/sum@1、单层 ScoreGroup、
 calcParticipant 单点、breakdown/provenance、/my-result、+3/-1/+2 全链测试)。
+
+### 对话 5 收口:reviewer 资格的两处边界(2026-08-13)
+
+外部审计两条(P1)均核实成立,`mayReview` 收成**单条 EXISTS**:同一条 RoleGrant 必须同时满足
+stage 成员资格与批次 acceptance——
+
+- **coverage 必须是 `self`**:此前锚在 stage 节点上的 subtree 授权会被误认为 stage 成员,
+  违反「subtree 只参与管辖、不构成 stage membership」的冻结规则。新敌意用例:同角色、同节点、
+  coverage='subtree'、已 accept → 队列不见、不构成到站 reviewer。
+- **acceptance 按 assignment 逐条命名**:原先站位与权威是两个独立 EXISTS,可以由两条不同
+  RoleGrant 拼出——新授的 stage 角色能借另一条旧 source 已 accept 的 review.process 直接进审核链,
+  绕过 Batch Access Baseline 的显式确认。现在 batch_access_sources 直接 join 在 rg.id 上。
+  新敌意用例:inspector 已有 accepted review.process source,再新授未 accept 的 stage 角色 →
+  队列空、判定答 404;把这条 assignment accept 后 → 立即成为 reviewer。
+
+同笔落 **§32.57**(只记裁决、不建表):概念链「学生声明 → 审核认定 → 生效事实 → scorer」;
+M2 显式简化 effective facts = approved EntryRevision.payload 逐字;将来 ReviewAdjudication 只
+替换 `collectParticipantScoreInput` 这一段,`calcParticipant → Breakdown` 唯一 scorer 不动。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **605 passed / 17 skipped**(review-flow 7 例);
+browser 48;build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。

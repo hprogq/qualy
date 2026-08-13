@@ -1070,3 +1070,9 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 ① **`excluded` 收回的是资格,不是「你参加过」这件事**。此前 `isParticipant` 要求 `status = 'active'`,于是被移出的人连自己参加过、已归档的那一轮都读不到。§32.47 只说过移出不删数据,没有明说本人还能不能读,这里补齐裁决:**成员关系行的存在 = 曾经参加,`active` = 此刻的资格**。可见性按前者,`authorizeEntryAction` 的权威层按后者(`activeParticipantByUser`)。因此被移出的人仍能打开那一轮、看到自己当时的材料与结论,但任何写动作在权威层被拒(`not-participant`)。这条现在就定,不留给 M2 写 Entry ACL 时隐式决定:M2 的资源策略只需在此基础上加「这条 Entry 是不是他的」,而不必重新回答「他还算不算这一轮的人」。
 
 ② **`isoDate` 校验真实日期**。原来只验形状(`^\d{4}-\d{2}-\d{2}$`),`2026-02-31` 一路走到 postgres,由数据库以 `QueryFailed` 拒绝——那是 500,而它显然是 400。现在加一条往返校验(`new Date(...).toISOString().slice(0,10)` 必须等于原串),闰年也一并管住(`2024-02-29` 通过,`2025-02-29` 拒绝)。契约测试直接解码 schema,不写 HTTP 用例——请求会先被鉴权挡下,响应说明不了 schema 的事。
+
+**32.57 计分读的是"生效事实",不是"学生说了什么";M2 里两者暂时同一**(2026-08-13,第五份审计随对话 5 收口冻结;只记裁决,不建表、不加接口)。
+
+概念链定案为四段:**学生声明(EntryRevision.payload)→ 审核认定 → 生效事实(effective facts)→ scorer**。"修改永远只有本人"(§7 / 上文 §13 交互)管的是**声明**——审核人永远不改学生写了什么,驳回附建议稿仍是唯一路径;它不应也不曾承诺"计分只能读声明原文"。将来落地 ReviewAdjudication(审核认定层:同一份声明,审核在通过时可附带"按认定口径计入"的结构化认定,例如日期口径、次数认定)时,改动**只发生在输入收集这一段**:`collectParticipantScoreInput()` 从"approved 声明原文"换成"approved 声明 ∘ 认定覆盖"后仍产出同形状的 effective facts;`calcParticipant(input) → Breakdown` 这个全系统唯一 scorer(§18)一行不动。
+
+M2 当前的简化随之显式化:**effective facts = approved EntryRevision.payload,逐字**——没有认定层,通过即按原文计入,审核人对内容的一切意见走驳回。这条现在写下,是因为对话 6 就要开 scorer:输入收集与计分之间的这条边界(`collectParticipantScoreInput → calcParticipant → Breakdown`)在 M2 冻结,后续任何"审核认定/口径覆盖"都不得越过它去改 scorer 本体或往 calculator 里塞审核知识(审核决定不携带分值的禁令照旧,§7)。

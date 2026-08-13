@@ -89,10 +89,26 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           ).id
           yield* accept(f.t, g.batch.id, wide, wideGrant)
 
+          // the sharper miss: the same role, anchored on the stage node
+          // itself, but as a subtree grant - membership is (role, node,
+          // self), and a wider promise on the right node is still not it
+          const near = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Head Teacher', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const nearGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${near}, ${f.reviewRole}, ${f.classA}, 'subtree') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, near, nearGrant)
+
           const queueOf = (who: string) =>
             Effect.map(assessment.listReviewInbox(f.t, {}, f.principal(who)), (page) => page.items)
           const forReviewer = yield* queueOf(f.reviewer)
           const forWide = yield* queueOf(wide)
+          const forNear = yield* queueOf(near)
           const forRecorder = yield* queueOf(f.recorder)
 
           // take the acceptance back: the queue empties, and the next
@@ -103,7 +119,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const denied = yield* queueOf(f.reviewer)
           const arrival = yield* Effect.exit(submitted(f, g, g.p2, f.s2))
 
-          return { instanceId, forReviewer, forWide, forRecorder, denied, arrival }
+          return { instanceId, forReviewer, forWide, forNear, forRecorder, denied, arrival }
         }),
       ),
     )
@@ -117,9 +133,79 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       roundNo: 1,
     })
     expect(result.forWide).toEqual([])
+    expect(result.forNear).toEqual([])
     expect(result.forRecorder).toEqual([])
     expect(result.denied).toEqual([])
     expect(refusalOf(result.arrival)?.reason).toBe('reviewer-not-found')
+  })
+
+  it('admits a stage grant only once the batch accepted that very assignment', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-same-src')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
+
+          // an inspector: review.process accepted into this batch, through a
+          // role that is NOT the stage's
+          const inspectorRole = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status)
+              values (${f.t}, 'inspector', 'Inspector', 'org', 'active') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${inspectorRole}, p.id from permissions p
+            where p.code = 'assessment.review.process'`)
+          const inspector = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Inspector', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const inspectorGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${inspector}, ${inspectorRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, inspector, inspectorGrant)
+
+          // now they are also handed the stage role - but the batch has not
+          // accepted THAT assignment, and the older acceptance may not carry it
+          const stageGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${inspector}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          const queueOf = () =>
+            Effect.map(
+              assessment.listReviewInbox(f.t, {}, f.principal(inspector)),
+              (page) => page.items,
+            )
+          const borrowed = yield* queueOf()
+          const judged = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'approve' },
+              f.principal(inspector),
+            ),
+          )
+
+          yield* accept(f.t, g.batch.id, inspector, stageGrant)
+          const accepted = yield* queueOf()
+          return { borrowed, judged, accepted, instanceId }
+        }),
+      ),
+    )
+
+    expect(result.borrowed).toEqual([])
+    // not even readable through the stage: without the accepted stage
+    // assignment they are a stranger to this round
+    expect(errorOf<{ _tag: string }>(result.judged)?._tag).toBe('ASSESSMENT_REVIEW_NOT_FOUND')
+    expect(result.accepted.map((item) => item.instanceId)).toEqual([result.instanceId])
   })
 
   it('keeps judging shut while the phase is', async () => {
