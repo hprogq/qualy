@@ -464,12 +464,16 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
-            const item = yield* itemOf(tenantId, itemId)
-            if (item === null) return yield* new ItemNotFound()
-            const locked = yield* lockBatch(tenantId, item.batchId)
+            const located = yield* itemOf(tenantId, itemId)
+            if (located === null) return yield* new ItemNotFound()
+            const locked = yield* lockBatch(tenantId, located.batchId)
             if (!locked) return yield* new BatchNotFound()
-            yield* deps.requireRosterReach(as, tenantId, item.batchId)
+            yield* deps.requireRosterReach(as, tenantId, located.batchId)
             if (locked.status === 'archived') return yield* new BatchReadOnly()
+            // only the state read under the lock is trusted: a void landing
+            // between the locate read and the lock must be seen, or an edit
+            // would quietly reconfigure a question that no longer runs
+            const item = (yield* itemOf(tenantId, itemId))!
             // a voided question keeps its history; un-voiding it is its own
             // act, not a side effect of an edit
             if (item.status === 'voided') {

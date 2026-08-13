@@ -12,12 +12,22 @@ import {
   EntryNotFound,
   EntryPayloadInvalid,
   ItemNotFound,
+  ParticipantNotFound,
 } from '../server/errors.ts'
+import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
+import { cursorUnusable, type BadRequest, pageSize } from '@qualy/api-kit/schema'
+import { participantRowByUser } from '../scoring/db.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
 import {
+  attachmentsOfRevisions,
   cancelReviewInstance,
+  entriesOfParticipantPage,
   entryAttachmentHistory,
+  entryCreatedIso,
+  entryRevisionsOf,
+  eventsOfRounds,
+  roundsOfEntry,
   lockAttachments,
   entryCountOf,
   entryOf,
@@ -100,7 +110,44 @@ export type ReviseEntryError =
   EntryNotFound | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
 export type EntryStatusError = EntryNotFound | BatchReadOnly | EntryActionRefused
 
+export interface EntryRoundView {
+  readonly id: string
+  readonly roundNo: number
+  readonly state: string
+  readonly outcome: string | null
+  readonly revisionId: string
+  readonly submittedAt: number
+  readonly completedAt: number | null
+  readonly events: readonly {
+    readonly kind: string
+    readonly actorId: string | null
+    readonly comment: string | null
+    readonly suggestedPayload: unknown
+    readonly at: number
+  }[]
+}
+
+export interface EntryHistoryView {
+  readonly entry: EntryView
+  readonly revisions: readonly EntryRevisionView[]
+  readonly rounds: readonly EntryRoundView[]
+}
+
 export interface EntryMethods {
+  readonly listMyEntries: (
+    tenantId: string,
+    batchId: string,
+    page: { cursor?: string; limit?: string },
+    as: Principal,
+  ) => Effect.Effect<
+    { entries: readonly EntryView[]; nextCursor: string | null },
+    BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
+  >
+  readonly getEntryHistory: (
+    tenantId: string,
+    entryId: string,
+    as: Principal,
+  ) => Effect.Effect<EntryHistoryView, EntryNotFound>
   readonly createEntry: (
     tenantId: string,
     input: CreateEntryInput,
@@ -142,6 +189,12 @@ export interface EntryDeps {
     as: Principal,
     tenantId: string,
     batchId: string,
+  ) => Effect.Effect<void, AccessDenied>
+  /** the same visibility every batch read passes through */
+  readonly requireBatchVisible: (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
   ) => Effect.Effect<void, AccessDenied>
   readonly parseRange: (text: string) => { start: string; end: string }
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
@@ -366,11 +419,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
-            const item = yield* itemOf(tenantId, input.itemId)
-            if (item === null) return yield* new ItemNotFound()
-            const locked = yield* lockBatch(tenantId, item.batchId)
+            // the first read only locates the batch; nothing else read
+            // before the lock may be trusted - a void can land between the
+            // read and the lock, and its whole point is that no new work
+            // starts after it
+            const located = yield* itemOf(tenantId, input.itemId)
+            if (located === null) return yield* new ItemNotFound()
+            const locked = yield* lockBatch(tenantId, located.batchId)
             if (!locked) return yield* new BatchNotFound()
             if (locked.status === 'archived') return yield* new BatchReadOnly()
+            const item = (yield* itemOf(tenantId, input.itemId))!
             const participant = yield* participantOf(tenantId, item.batchId, input.participantId)
             if (participant === null) return yield* refuse('create', 'participant-not-found')
             if (participant.status !== 'active') {
@@ -497,11 +555,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
-          const loaded = yield* loadEntry(tenantId, entryId)
-          if (loaded === null) return yield* new EntryNotFound()
-          const { entry, item, participant } = loaded
-          const locked = yield* lockBatch(tenantId, entry.batchId)
+          const located = yield* entryOf(tenantId, entryId)
+          if (located === null) return yield* new EntryNotFound()
+          const locked = yield* lockBatch(tenantId, located.batchId)
           if (locked!.status === 'archived') return yield* new BatchReadOnly()
+          // only what was read under the lock is trusted; the locate read
+          // races with voids by design
+          const { entry, item, participant } = (yield* loadEntry(tenantId, entryId))!
           // editing is the subject's own act, always: proxies file once and
           // hold nothing afterwards, staff records are corrected by voiding
           if (participant.userId !== as.userId) return yield* refuse('edit', 'not-your-entry')
@@ -574,11 +634,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
-            const loaded = yield* loadEntry(tenantId, entryId)
-            if (loaded === null) return yield* new EntryNotFound()
-            const { entry, item, participant } = loaded
-            const locked = yield* lockBatch(tenantId, entry.batchId)
+            const located = yield* entryOf(tenantId, entryId)
+            if (located === null) return yield* new EntryNotFound()
+            const locked = yield* lockBatch(tenantId, located.batchId)
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
+            const { entry, item, participant } = (yield* loadEntry(tenantId, entryId))!
             const action = to === 'in_review' ? 'submit' : 'withdraw'
             if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
             if (participant.status !== 'active') {
@@ -674,13 +734,17 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 kind: 'submitted',
                 actorId: as.userId,
               })
-              yield* setEntryState({
+              const moved = yield* setEntryState({
                 tenantId,
                 entryId,
                 from: ['draft'],
                 to: 'in_review',
                 currentReviewInstanceId: instanceId,
               })
+              // unreachable while the batch lock is held over a fresh read;
+              // checked so a future reordering fails loudly instead of
+              // leaving a review round attached to nothing
+              if (!moved) return yield* refuse(action, 'entry-not-submittable')
             } else {
               if (entry.status !== 'in_review' || entry.currentReviewInstanceId === null) {
                 return yield* refuse(action, 'entry-not-withdrawable')
@@ -697,13 +761,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 kind: 'cancelled-by-submitter',
                 actorId: as.userId,
               })
-              yield* setEntryState({
+              const moved = yield* setEntryState({
                 tenantId,
                 entryId,
                 from: ['in_review'],
                 to: 'draft',
                 currentReviewInstanceId: null,
               })
+              if (!moved) return yield* refuse(action, 'entry-not-withdrawable')
             }
             const written = (yield* entryOf(tenantId, entryId))!
             return view(
@@ -718,5 +783,124 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     },
   )
 
-  return { createEntry, getEntry, appendEntryRevision, setEntryStatus }
+  const listMyEntries: EntryMethods['listMyEntries'] = Effect.fn('Assessment.listMyEntries')(
+    function* (tenantId, batchId, page, as) {
+      const fingerprint = `my-entries:${batchId}:${as.userId}`
+      const key = readQueryCursor(page.cursor, fingerprint, ['text', 'uuid'])
+      if (key === null) return yield* cursorUnusable()
+      const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+      return yield* withDb(
+        Effect.gen(function* () {
+          const batch = yield* oneBatch(tenantId, batchId)
+          if (!batch) return yield* new BatchNotFound()
+          // one's own filings only, behind the same door as every other
+          // read of the round; the membership row is historical standing
+          yield* deps.requireBatchVisible(tenantId, batchId, as)
+          const membership = yield* participantRowByUser(tenantId, batchId, as.userId)
+          if (membership === null) return yield* new ParticipantNotFound()
+          const participant = (yield* participantOf(tenantId, batchId, membership.id))!
+          const rows = yield* entriesOfParticipantPage({
+            tenantId,
+            batchId,
+            participantId: membership.id,
+            after: key === undefined ? undefined : [key[0]!, key[1]!],
+            limit: limit + 1,
+          })
+          const pageRows = rows.slice(0, limit)
+          const entries: EntryView[] = []
+          for (const entry of pageRows) {
+            entries.push(
+              view(entry, yield* revisionView(tenantId, entry.currentRevisionId), as, participant),
+            )
+          }
+          const last = pageRows[pageRows.length - 1]
+          const lastIso =
+            rows.length > limit && last !== undefined
+              ? yield* entryCreatedIso(tenantId, last.id)
+              : null
+          return {
+            entries,
+            nextCursor:
+              lastIso !== null && last !== undefined
+                ? encodeQueryCursor(fingerprint, [lastIso, last.id])
+                : null,
+          }
+        }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+      )
+    },
+  )
+
+  const getEntryHistory: EntryMethods['getEntryHistory'] = Effect.fn('Assessment.getEntryHistory')(
+    function* (tenantId, entryId, as) {
+      return yield* withDb(
+        Effect.gen(function* () {
+          const loaded = yield* loadEntry(tenantId, entryId)
+          if (loaded === null) return yield* new EntryNotFound()
+          const { entry, participant } = loaded
+          // the same read rule as the entry itself (§32.56): the subject,
+          // or administrative reach - and nothing, not even existence,
+          // for anyone else
+          if (participant.userId !== as.userId) {
+            const reach = yield* Effect.result(deps.requireRosterReach(as, tenantId, entry.batchId))
+            if (Result.isFailure(reach)) return yield* new EntryNotFound()
+          }
+          const revisions = yield* entryRevisionsOf(tenantId, entryId)
+          const attachments = yield* attachmentsOfRevisions(
+            tenantId,
+            revisions.map((revision) => revision.id),
+          )
+          const rounds = yield* roundsOfEntry(tenantId, entryId)
+          const events = yield* eventsOfRounds(
+            tenantId,
+            rounds.map((round) => round.id),
+          )
+          return {
+            entry: view(
+              entry,
+              yield* revisionView(tenantId, entry.currentRevisionId),
+              as,
+              participant,
+            ),
+            revisions: revisions.map((revision): EntryRevisionView => ({
+              id: revision.id,
+              revisionNo: revision.revisionNo,
+              itemRevisionId: revision.itemRevisionId,
+              payload: revision.payload,
+              note: revision.note,
+              source: revision.source,
+              actorId: revision.actorId,
+              subjectId: revision.subjectId,
+              attachments: attachments.get(revision.id) ?? [],
+              createdAt: revision.createdAt,
+            })),
+            rounds: rounds.map((round): EntryRoundView => ({
+              id: round.id,
+              roundNo: round.roundNo,
+              state: round.state,
+              outcome: round.outcome,
+              revisionId: round.revisionId,
+              submittedAt: round.createdAt,
+              completedAt: round.completedAt,
+              events: (events.get(round.id) ?? []).map((event) => ({
+                kind: event.kind,
+                actorId: event.actorId,
+                comment: event.comment,
+                suggestedPayload: event.suggestedPayload,
+                at: event.createdAt,
+              })),
+            })),
+          }
+        }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+      )
+    },
+  )
+
+  return {
+    listMyEntries,
+    getEntryHistory,
+    createEntry,
+    getEntry,
+    appendEntryRevision,
+    setEntryStatus,
+  }
 }
