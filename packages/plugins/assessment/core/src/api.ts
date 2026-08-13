@@ -488,6 +488,23 @@ const myResultView = Schema.Struct({
 
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
+    // whether a review stage as composed has anybody in it, unit by unit
+    HttpApiEndpoint.get('reviewCoverage', '/assessment/batches/:batchId/review-coverage', {
+      params: Schema.Struct({ batchId: id }),
+      query: Schema.Struct({ nodeTypeId: id, roleIds: idList }),
+      success: Schema.Struct({
+        nodes: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            name: Schema.String,
+            reviewers: Schema.Number,
+          }),
+        ),
+      }),
+      error: [BatchNotFound, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
     // what a question's configuration may point at, for whoever runs the round
     HttpApiEndpoint.get('itemOptions', '/assessment/batches/:batchId/item-options', {
       params: Schema.Struct({ batchId: id }),

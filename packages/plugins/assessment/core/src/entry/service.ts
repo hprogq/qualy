@@ -695,9 +695,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               const step = participant.anchorLineage.find(
                 (candidate) => candidate.nodeTypeId === stage.selector.nodeTypeId,
               )
-              if (step === undefined) return yield* refuse(action, 'reviewer-not-found')
+              // no unit of that kind above this person, or the frozen one is
+              // gone: there is nothing to anchor a round to, and no later
+              // grant can supply it - the configuration itself is wrong here
+              if (step === undefined) return yield* refuse(action, 'review-level-missing')
               const nodePath = yield* nodePathOf(tenantId, step.nodeId)
-              if (nodePath === null) return yield* refuse(action, 'reviewer-not-found')
+              if (nodePath === null) return yield* refuse(action, 'review-level-missing')
               const holders = yield* reviewersAt({
                 tenantId,
                 batchId: entry.batchId,
@@ -706,7 +709,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 subjectUserId: participant.userId,
                 actorId: current!.actorId,
               })
-              if (holders.length === 0) return yield* refuse(action, 'reviewer-not-found')
+              // Nobody holds the stage's roles there today - which is the
+              // round's problem, not this person's. The submission stands and
+              // waits: the round freezes the roles and the node, so whoever
+              // is given one of them later finds it in their queue. Said
+              // loudly here because nothing else would say it.
+              if (holders.length === 0) {
+                yield* Effect.logWarning(
+                  `no reviewer for entry ${entryId}: roles ${stage.selector.roleIds.join(', ')} at node ${step.nodeId}`,
+                )
+              }
 
               const roundNo = yield* nextRoundNo(tenantId, entryId)
               const instanceId = yield* insertReviewInstance({

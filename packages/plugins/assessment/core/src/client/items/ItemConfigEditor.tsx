@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { useApi, useRunApi } from '@qualy/web-runtime'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Feedback, Field, SidePanel } from '@qualy/ui/admin'
@@ -192,6 +192,7 @@ export function ItemConfigEditor({
   onSaved: () => void
 }) {
   const api = useApi(assessmentApi)
+  const query = useApiQuery(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
   const [draft, setDraft] = useState<Draft>(() => draftOf(item, groups, options))
@@ -258,6 +259,17 @@ export function ItemConfigEditor({
       setProblem(formatError(error))
     },
   })
+
+  // whether the stage being composed has anybody in it, unit by unit: the
+  // one moment where an empty chain costs nothing to fix
+  const coverage = useQuery({
+    ...query.assessment.reviewCoverage.queryOptions({
+      params: { batchId },
+      query: { nodeTypeId: draft.reviewNodeTypeId, roleIds: draft.reviewRoleIds },
+    }),
+    enabled: draft.reviewNodeTypeId !== '' && draft.reviewRoleIds.length > 0,
+  })
+  const uncovered = (coverage.data?.nodes ?? []).filter((node) => node.reviewers === 0)
 
   const ready =
     draft.title.trim() !== '' &&
@@ -546,6 +558,21 @@ export function ItemConfigEditor({
               </NativeSelect>
             )}
           </Field>
+          {coverage.data !== undefined && (
+            <p
+              className={
+                uncovered.length > 0 ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
+              }
+            >
+              {coverage.data.nodes.length === 0
+                ? format(m.itemsReviewNoUnits)
+                : uncovered.length === 0
+                  ? format(m.itemsReviewCovered, { count: coverage.data.nodes.length })
+                  : format(m.itemsReviewUncovered, {
+                      names: uncovered.map((node) => node.name).join('、'),
+                    })}
+            </p>
+          )}
           <Field label={format(m.itemsReviewRoles)} hint={format(m.itemsReviewRolesHint)}>
             {() => (
               <div className="flex flex-col gap-1.5">

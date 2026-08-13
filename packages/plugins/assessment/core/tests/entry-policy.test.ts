@@ -226,7 +226,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     expect(result.events).toEqual(['submitted', 'cancelled-by-submitter', 'submitted'])
   })
 
-  it('refuses to submit into a stage with nobody fit to judge it', async () => {
+  it('takes a submission into a stage nobody can judge yet, and lets it wait', async () => {
     const result = ok(
       await run(
         db.url,
@@ -247,21 +247,41 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
           const nobody = yield* Effect.exit(
             assessment.setEntryStatus(f.t, entry.id, 'in_review', s1),
           )
-          // the participant themselves picking up the role does not help:
-          // nobody judges their own filing
-          yield* runSql(sql`
-            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
-            values (${f.t}, ${f.s1}, ${f.reviewRole}, ${f.classA}, 'self')`)
-          const onlySelf = yield* Effect.exit(
-            assessment.setEntryStatus(f.t, entry.id, 'in_review', s1),
+          // the round waits with the roles and the node frozen, so whoever
+          // is given the role later finds it in their queue
+          const reviewer = yield* runSql(
+            sql`select current_role_ids, current_node_id, state from review_instances
+                where entry_id = ${entry.id}`,
           )
-          return { nobody, onlySelf }
+          // an item whose stage names a level this person has no unit of
+          // cannot be anchored at all, and that is the configuration's fault
+          const noSuchLevel = yield* runSql(sql`
+            update assessment_item_revisions
+            set review_policy = jsonb_set(
+              review_policy, '{stages,0,selector,nodeTypeId}', to_jsonb(gen_random_uuid()::text))
+            where id = (select current_revision_id from assessment_items where id = ${g.item.id})`)
+          void noSuchLevel
+          const second = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p2, payload: {} },
+            f.principal(f.s2),
+          )
+          const unanchorable = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, second.id, 'in_review', f.principal(f.s2)),
+          )
+          return {
+            nobody,
+            instance: one<{ state: string }>(reviewer),
+            unanchorable,
+          }
         }),
       ),
     )
 
-    expect(refusalOf(result.nobody)?.reason).toBe('reviewer-not-found')
-    expect(refusalOf(result.onlySelf)?.reason).toBe('reviewer-not-found')
+    // the student is not held responsible for an empty roster of judges
+    expect(ok(result.nobody).status).toBe('in_review')
+    expect(result.instance.state).toBe('active')
+    expect(refusalOf(result.unanchorable)?.reason).toBe('review-level-missing')
   })
 
   it('binds cited files in the same breath as the revision, or not at all', async () => {

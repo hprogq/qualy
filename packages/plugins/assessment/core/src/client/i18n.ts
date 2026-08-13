@@ -552,6 +552,75 @@ const i18n = definePluginMessages({
       defaultMessage: 'names a file already used by another entry',
     },
     entryIssueOther: { id: 'assessment/entry/issue-other', defaultMessage: 'cannot be accepted' },
+    refuseNotYours: {
+      id: 'assessment/entry/refuse-not-yours',
+      defaultMessage: 'This entry is not yours to change.',
+    },
+    refuseNotActive: {
+      id: 'assessment/entry/refuse-not-active',
+      defaultMessage: 'You are no longer taking part in this round.',
+    },
+    refuseOutOfReach: {
+      id: 'assessment/entry/refuse-out-of-reach',
+      defaultMessage: 'This participant is outside the units you look after.',
+    },
+    refuseNotEditable: {
+      id: 'assessment/entry/refuse-not-editable',
+      defaultMessage: 'It is being reviewed. Withdraw it first to change it.',
+    },
+    refuseNotSubmittable: {
+      id: 'assessment/entry/refuse-not-submittable',
+      defaultMessage: 'Only a draft can be submitted.',
+    },
+    refuseNotWithdrawable: {
+      id: 'assessment/entry/refuse-not-withdrawable',
+      defaultMessage: 'It has already been decided and cannot be withdrawn.',
+    },
+    refuseMaxEntries: {
+      id: 'assessment/entry/refuse-max-entries',
+      defaultMessage: 'You have already filed as many as this question allows.',
+    },
+    refuseItemVoided: {
+      id: 'assessment/entry/refuse-item-voided',
+      defaultMessage: 'This question is no longer open.',
+    },
+    refuseItemUnconfigured: {
+      id: 'assessment/entry/refuse-item-unconfigured',
+      defaultMessage: 'This question is not fully set up yet. Tell whoever runs the round.',
+    },
+    refuseReviewLevelMissing: {
+      id: 'assessment/entry/refuse-review-level-missing',
+      defaultMessage:
+        'This question is reviewed at a level you do not sit under, so it cannot be submitted. Tell whoever runs the round.',
+    },
+    refuseBasisRequired: {
+      id: 'assessment/entry/refuse-basis-required',
+      defaultMessage: 'A recorded fact needs its basis.',
+    },
+    refuseNotParticipant: {
+      id: 'assessment/entry/refuse-not-participant',
+      defaultMessage: 'You are not taking part in this round.',
+    },
+    refuseNoPermission: {
+      id: 'assessment/entry/refuse-no-permission',
+      defaultMessage: 'You are not allowed to do this in this round.',
+    },
+    refuseNotReviewer: {
+      id: 'assessment/entry/refuse-not-reviewer',
+      defaultMessage: 'You are not a reviewer for this submission.',
+    },
+    refusePhaseClosed: {
+      id: 'assessment/entry/refuse-phase-closed',
+      defaultMessage: 'The round is not open for this right now.',
+    },
+    refuseOutOfScope: {
+      id: 'assessment/entry/refuse-out-of-scope',
+      defaultMessage: 'The current stage does not cover this question or this person.',
+    },
+    refuseOther: {
+      id: 'assessment/entry/refuse-other',
+      defaultMessage: 'This cannot be done to the entry right now.',
+    },
     entryNote: { id: 'assessment/entry/note', defaultMessage: 'Note' },
     entryStatusDraft: { id: 'assessment/entry/status-draft', defaultMessage: 'Draft' },
     entryStatusInReview: { id: 'assessment/entry/status-in-review', defaultMessage: 'In review' },
@@ -773,6 +842,21 @@ const i18n = definePluginMessages({
       defaultMessage: 'A signed amount, like 3.00 or -1.00.',
     },
     itemsReviewTitle: { id: 'assessment/items/review-title', defaultMessage: 'Review' },
+    itemsReviewCovered: {
+      id: 'assessment/items/review-covered',
+      defaultMessage:
+        '{count, plural, one {The one unit at this level has someone who can review} other {All # units at this level have someone who can review}}',
+    },
+    itemsReviewUncovered: {
+      id: 'assessment/items/review-uncovered',
+      defaultMessage:
+        'Nobody can review at {names}. Give someone one of these roles there, for that unit only - submissions from those participants will wait until you do.',
+    },
+    itemsReviewNoUnits: {
+      id: 'assessment/items/review-no-units',
+      defaultMessage:
+        'Nobody in this round sits under a unit of this kind, so nothing can be reviewed here.',
+    },
     itemsReviewLevel: {
       id: 'assessment/items/review-level',
       defaultMessage: 'Reviewed at which level',

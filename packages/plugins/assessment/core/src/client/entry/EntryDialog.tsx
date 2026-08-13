@@ -8,6 +8,7 @@ import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { assessmentApi } from '../api.ts'
+import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
 import { fieldsOf, type EntryDto, type ItemDto } from './model.ts'
@@ -94,7 +95,8 @@ export function EntryDialog({
     onError: (error: unknown) => {
       const payload = error as { issues?: readonly { field: string; reason: string }[] }
       if (Array.isArray(payload.issues)) setIssues(payload.issues)
-      setProblem(formatError(error))
+      const refusal = entryRefusalMessage(error)
+      setProblem(refusal === null ? formatError(error) : format(refusal))
     },
   })
 

@@ -28,6 +28,7 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
+import { reviewersAt, stageNodesOf } from '../review/db.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { participantRowByUser } from '../scoring/db.ts'
 import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
@@ -757,6 +758,15 @@ export class Assessment extends Context.Service<
       tenantId: string,
       as: Principal,
     ) => Effect.Effect<readonly { id: string; code: string; name: string }[], AccessDenied>
+    readonly reviewCoverage: (
+      tenantId: string,
+      batchId: string,
+      stage: { nodeTypeId: string; roleIds: readonly string[] },
+      as: Principal,
+    ) => Effect.Effect<
+      { nodes: readonly { id: string; name: string; reviewers: number }[] },
+      BatchNotFound | AccessDenied
+    >
     readonly itemOptions: (
       tenantId: string,
       batchId: string,
@@ -3170,6 +3180,48 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }
     }),
 
+    /**
+     * Whether a review stage, as it is being composed, has anybody in it.
+     *
+     * Asked of the same definition submission and the queue ask, with a
+     * subject nobody can be, so the count is "who could judge here at all"
+     * rather than "who could judge this person". A level with no unit and a
+     * unit with no reviewer are both answers an administrator can act on -
+     * and the only moment acting is cheap is while the question is open.
+     */
+    reviewCoverage: Effect.fn('Assessment.reviewCoverage')(function* (
+      tenantId: string,
+      batchId: string,
+      stage: { nodeTypeId: string; roleIds: readonly string[] },
+      as: Principal,
+    ) {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return yield* new BatchNotFound()
+      yield* requireRosterReach(as, tenantId, batchId)
+      const nodes = yield* dieQuery(
+        withDb(stageNodesOf({ tenantId, batchId, nodeTypeId: stage.nodeTypeId })),
+      )
+      const counted: { id: string; name: string; reviewers: number }[] = []
+      for (const node of nodes) {
+        const holders = yield* dieQuery(
+          withDb(
+            reviewersAt({
+              tenantId,
+              batchId,
+              nodeId: node.id,
+              roleIds: stage.roleIds,
+              // a subject nobody is, so the self-review exclusion takes
+              // nobody out of a count that is about the stage, not a filing
+              subjectUserId: NOBODY,
+              actorId: NOBODY,
+            }),
+          ),
+        )
+        counted.push({ id: node.id, name: node.name, reviewers: holders.length })
+      }
+      return { nodes: counted }
+    }),
+
     userTypeOptions: Effect.fn('Assessment.userTypeOptions')(function* (tenantId, as) {
       yield* templatePermission(as)
       return yield* dieQuery(withDb(userTypeOptionRows(tenantId)))
@@ -3314,6 +3366,9 @@ const configInput = (config: {
   reviewPolicy: config.reviewPolicy,
   ...(config.displayConfig !== undefined ? { displayConfig: config.displayConfig } : {}),
 })
+
+/** a user id nobody has, so a per-person exclusion excludes nobody */
+const NOBODY = '00000000-0000-0000-0000-000000000000'
 
 const toBatchDto = (detail: BatchDetail) => ({
   id: detail.id,
@@ -4209,6 +4264,19 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'reviewCoverage',
+      Effect.fn('assessment.reviewCoverage.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.reviewCoverage(
+          principal.tenantId,
+          params.batchId,
+          { nodeTypeId: query.nodeTypeId, roleIds: listed(query.roleIds) },
+          principal,
+        )
       }),
     )
     .handle(

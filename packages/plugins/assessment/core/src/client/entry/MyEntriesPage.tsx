@@ -9,6 +9,7 @@ import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
+import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
@@ -70,7 +71,10 @@ function Body({
         }),
       ),
     onSuccess: refresh,
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error: unknown) => {
+      const refusal = entryRefusalMessage(error)
+      toast.error(refusal === null ? formatError(error) : format(refusal))
+    },
   })
 
   // questions this person files themselves; what staff recorded about them

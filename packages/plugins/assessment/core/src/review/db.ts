@@ -449,3 +449,33 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
         })),
       ),
     )
+
+/**
+ * The units of one level this round actually reaches, for a stage being
+ * composed. Distinct because many participants share a unit, and drawn from
+ * the frozen lineages rather than the live tree: the round judges people
+ * where they stood when they joined it.
+ */
+export const stageNodesOf = (input: { tenantId: string; batchId: string; nodeTypeId: string }) =>
+  db
+    .query((k) =>
+      sql<{ node_id: string; name: string }>`
+        select distinct step.node_id, n.name
+        from batch_participants bp
+        cross join lateral (
+          select (element->>'nodeId')::uuid as node_id, element->>'nodeTypeId' as node_type_id
+          from jsonb_array_elements(bp.anchor_lineage) as element
+        ) as step
+        join org_nodes n on n.tenant_id = bp.tenant_id and n.id = step.node_id
+        where bp.tenant_id = ${input.tenantId}
+          and bp.batch_id = ${input.batchId}
+          and bp.status = 'active'
+          and step.node_type_id = ${input.nodeTypeId}
+        order by n.name
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) =>
+        rows.map((row) => ({ id: String(row.node_id), name: String(row.name) })),
+      ),
+    )

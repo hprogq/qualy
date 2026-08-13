@@ -117,9 +117,22 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             insert into batch_access_denies (tenant_id, batch_id, subject_id, permission_code)
             values (${f.t}, ${g.batch.id}, ${f.reviewer}, 'assessment.review.process')`)
           const denied = yield* queueOf(f.reviewer)
-          const arrival = yield* Effect.exit(submitted(f, g, g.p2, f.s2))
+          // the submission still lands - a round with nobody in it waits for
+          // somebody rather than blaming the student - but the queue that
+          // one definition governs is empty for the person just denied
+          const arrival = yield* submitted(f, g, g.p2, f.s2)
+          const afterArrival = yield* queueOf(f.reviewer)
 
-          return { instanceId, forReviewer, forWide, forNear, forRecorder, denied, arrival }
+          return {
+            instanceId,
+            forReviewer,
+            forWide,
+            forNear,
+            forRecorder,
+            denied,
+            arrival,
+            afterArrival,
+          }
         }),
       ),
     )
@@ -136,7 +149,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.forNear).toEqual([])
     expect(result.forRecorder).toEqual([])
     expect(result.denied).toEqual([])
-    expect(refusalOf(result.arrival)?.reason).toBe('reviewer-not-found')
+    expect(result.arrival.instanceId).toBeDefined()
+    expect(result.afterArrival).toEqual([])
   })
 
   it('admits a stage grant only once the batch accepted that very assignment', async () => {
