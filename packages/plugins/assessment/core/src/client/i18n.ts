@@ -770,7 +770,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Provisional',
     },
     resultTotal: { id: 'assessment/result/total', defaultMessage: 'Total' },
-    resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'From items' },
+    resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'From questions' },
     resultGroupFinal: { id: 'assessment/result/group-final', defaultMessage: 'Counted' },
     resultLineExcluded: {
       id: 'assessment/result/line-excluded',
@@ -817,7 +817,8 @@ const i18n = definePluginMessages({
     itemsTab: { id: 'assessment/items/tab', defaultMessage: 'Questions' },
     itemsHint: {
       id: 'assessment/items/hint',
-      defaultMessage: 'The questions this round asks, and the groups their scores add up in.',
+      defaultMessage:
+        'Compose the paper: how it is grouped, what each group is worth at most, and how each question is filed and reviewed.',
     },
     itemsStuckTitle: {
       id: 'assessment/items/stuck-title',
@@ -832,6 +833,40 @@ const i18n = definePluginMessages({
       id: 'assessment/items/stuck-hint',
       defaultMessage:
         'Give somebody one of these roles at that unit and they start moving again by themselves, within a minute.',
+    },
+    itemsOutlineTitle: { id: 'assessment/items/outline-title', defaultMessage: 'The paper' },
+    itemsOutlineEmpty: {
+      id: 'assessment/items/outline-empty',
+      defaultMessage: 'Nothing here yet. Add a group, then put questions in it.',
+    },
+    itemsOutlineOrphans: {
+      id: 'assessment/items/outline-orphans',
+      defaultMessage: 'Whose group is gone',
+    },
+    itemsOutlineAddItem: { id: 'assessment/items/outline-add-item', defaultMessage: '+ question' },
+    itemsOutlineAddGroup: { id: 'assessment/items/outline-add-group', defaultMessage: '+ group' },
+    itemsCapChip: { id: 'assessment/items/cap-chip', defaultMessage: 'up to {value}' },
+    itemsChipRecorded: { id: 'assessment/items/chip-recorded', defaultMessage: 'recorded' },
+    itemsGroupUnnamed: { id: 'assessment/items/group-unnamed', defaultMessage: 'Untitled group' },
+    itemsGroupTopLevel: { id: 'assessment/items/group-top-level', defaultMessage: 'Top level' },
+    itemsGroupInside: { id: 'assessment/items/group-inside', defaultMessage: 'Inside {parent}' },
+    itemsGroupNew: { id: 'assessment/items/group-new', defaultMessage: 'New group' },
+    itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'The group' },
+    itemsGroupCapHint: {
+      id: 'assessment/items/group-cap-hint',
+      defaultMessage: 'At most this much counts from here. Leave empty for no ceiling.',
+    },
+    itemsGroupFloorHint: {
+      id: 'assessment/items/group-floor-hint',
+      defaultMessage: 'Never counts below this. Leave empty for no floor.',
+    },
+    itemsPickSomething: {
+      id: 'assessment/items/pick-something',
+      defaultMessage: 'Pick a group or a question on the left',
+    },
+    itemsPickHint: {
+      id: 'assessment/items/pick-hint',
+      defaultMessage: 'What you choose opens here, beside the paper rather than over it.',
     },
     itemsGroupsTitle: { id: 'assessment/items/groups-title', defaultMessage: 'Score groups' },
     itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
@@ -1538,7 +1573,7 @@ const i18n = definePluginMessages({
     // one sentence per gated code: what opening it lets a participant do
     'permission-hint.assessment.entry.create': {
       id: 'assessment/permission-hint/entry-create',
-      defaultMessage: 'Start new entries against the items open in this batch.',
+      defaultMessage: 'Start new entries against the questions open in this batch.',
     },
     'permission-hint.assessment.entry.edit': {
       id: 'assessment/permission-hint/entry-edit',
@@ -1701,7 +1736,7 @@ const i18n = definePluginMessages({
     },
     'refusal.scope-in-template': {
       id: 'assessment/refusal/scope-in-template',
-      defaultMessage: 'A reusable template cannot point at one batch’s items or people.',
+      defaultMessage: 'A reusable template cannot point at one batch’s questions or people.',
     },
     'refusal.participant-not-in-batch': {
       id: 'assessment/refusal/participant-not-in-batch',
@@ -1709,7 +1744,7 @@ const i18n = definePluginMessages({
     },
     'refusal.item-not-in-batch': {
       id: 'assessment/refusal/item-not-in-batch',
-      defaultMessage: 'One of the selected items does not belong to this batch.',
+      defaultMessage: 'One of the selected questions does not belong to this batch.',
     },
     'refusal.phase-template-shape': {
       id: 'assessment/refusal/phase-template-shape',
@@ -1794,7 +1829,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_ITEM_ACTION_REFUSED: {
       id: 'assessment/error/item-action-refused',
-      defaultMessage: 'This cannot be done to the item right now.',
+      defaultMessage: 'This cannot be done to the question right now.',
     },
     ASSESSMENT_ATTACHMENT_NOT_FOUND: {
       id: 'assessment/error/attachment-not-found',
@@ -1810,11 +1845,11 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_ITEM_NOT_FOUND: {
       id: 'assessment/error/item-not-found',
-      defaultMessage: 'This item no longer exists.',
+      defaultMessage: 'This question no longer exists.',
     },
     ASSESSMENT_ITEM_CONFIG_INVALID: {
       id: 'assessment/error/item-config-invalid',
-      defaultMessage: 'Could not save the item. Fix the problems listed and try again.',
+      defaultMessage: 'Could not save the question. Fix the problems listed and try again.',
     },
     ASSESSMENT_SCORE_GROUP_INVALID: {
       id: 'assessment/error/score-group-invalid',

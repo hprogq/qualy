@@ -1,32 +1,32 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { GroupTreeEditor } from './GroupTreeEditor.tsx'
+import { GroupPanel } from './GroupPanel.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
+import { PaperOutline, type Selection } from './PaperOutline.tsx'
+import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import type { ItemDto } from '../entry/model.ts'
 
-// The round's questions and the groups their scores add up in - the least
-// configuration screen that can run a real round. The full configuration
-// travels as JSON on purpose: its shape belongs to the item type, and the
-// server answers with named problems when it cannot accept one.
+// Composing a round the way a paper is composed: the whole structure down the
+// left, one part open beside it. Nothing here is a dialog over the paper -
+// somebody setting questions is constantly comparing what they are writing
+// with what is already there, and a modal takes exactly that away.
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
   return (
-    <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)}>
+    <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)} size="wide">
       {(batch) => (
         <Editor batchId={batch.id} batchStatus={batch.status} materialRange={batch.materialRange} />
       )}
@@ -51,40 +51,45 @@ function Editor({
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const options = useQuery(query.assessment.itemOptions.queryOptions({ params: { batchId } }))
-  // rounds waiting on an appointment: the patrol writes them down, this is
-  // where somebody can act on them
   const alerts = useQuery({
     ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
     refetchInterval: 60_000,
   })
-  const [editing, setEditing] = useState<{ item: ItemDto | null } | null>(null)
+  const [selection, setSelection] = useState<Selection | null>(null)
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   }
 
-  const setStatus = useMutation({
+  const restore = useMutation({
     mutationFn: (itemId: string) =>
-      run(
-        api.assessment.setItemStatus({
-          params: { itemId },
-          payload: { status: 'active' },
-        }),
-      ),
+      run(api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } })),
     onSuccess: refresh,
     onError: (error) => toast.error(formatError(error)),
   })
 
   const remove = useMutation({
     mutationFn: (itemId: string) => run(api.assessment.deleteItem({ params: { itemId } })),
-    onSuccess: refresh,
+    onSuccess: () => {
+      setSelection(null)
+      refresh()
+    },
     onError: (error) => toast.error(formatError(error)),
   })
 
+  const allGroups = groups.data?.groups ?? []
+  const allItems = (items.data?.items ?? []) as readonly ItemDto[]
+  const selectedItem =
+    selection?.kind === 'item' ? (allItems.find((item) => item.id === selection.id) ?? null) : null
+  const selectedGroup =
+    selection?.kind === 'group'
+      ? (allGroups.find((group) => group.id === selection.id) ?? null)
+      : null
+
   return (
     <AsyncSection
-      pending={groups.isPending || items.isPending}
+      pending={groups.isPending || items.isPending || options.isPending}
       error={
         groups.error ? formatError(groups.error) : items.error ? formatError(items.error) : null
       }
@@ -94,106 +99,131 @@ function Editor({
         void groups.refetch()
         void items.refetch()
       }}
-      skeleton={<Skeleton className="h-48 w-full" />}
+      skeleton={<Skeleton className="h-96 w-full" />}
     >
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         {(alerts.data?.groups ?? []).length > 0 && (
-          <section className="rounded-lg border border-destructive/40 p-4">
-            <p className="pb-2 text-sm font-medium text-destructive">{format(m.itemsStuckTitle)}</p>
-            <ul className="flex flex-col gap-1 text-sm">
-              {(alerts.data?.groups ?? []).map((group) => (
-                <li key={`${group.nodeId}:${group.roleNames.join(',')}`}>
-                  {format(m.itemsStuckRow, {
-                    unit: group.nodeName,
-                    roles: group.roleNames.join('、'),
-                    count: group.waiting,
-                  })}
-                </li>
-              ))}
-            </ul>
-            <p className="pt-2 text-xs text-muted-foreground">{format(m.itemsStuckHint)}</p>
+          <section className="flex flex-wrap items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+            <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-destructive">{format(m.itemsStuckTitle)}</p>
+              <ul className="pt-1 text-sm">
+                {(alerts.data?.groups ?? []).map((group) => (
+                  <li key={`${group.nodeId}:${group.roleNames.join(',')}`}>
+                    {format(m.itemsStuckRow, {
+                      unit: group.nodeName,
+                      roles: group.roleNames.join('、'),
+                      count: group.waiting,
+                    })}
+                  </li>
+                ))}
+              </ul>
+              <p className="pt-1 text-xs text-muted-foreground">{format(m.itemsStuckHint)}</p>
+            </div>
           </section>
         )}
-        <GroupTreeEditor
-          batchId={batchId}
-          batchStatus={batchStatus}
-          groups={groups.data?.groups ?? []}
-          onSaved={refresh}
-        />
 
-        <section className="rounded-lg border p-4">
-          <div className="flex items-center justify-between pb-3">
-            <h3 className="text-sm font-medium">{format(m.itemsListTitle)}</h3>
-            <Button size="sm" onClick={() => setEditing({ item: null })}>
-              {format(m.itemsNew)}
-            </Button>
+        <div className="grid gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
+          {/* the paper's shape, always on screen */}
+          <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-9rem)] lg:self-start lg:overflow-y-auto">
+            <div className="rounded-lg border p-2">
+              <p className="px-2 pt-1 pb-2 text-xs font-medium text-muted-foreground">
+                {format(m.itemsOutlineTitle)}
+              </p>
+              <PaperOutline
+                groups={allGroups}
+                items={allItems}
+                selection={selection}
+                onSelect={setSelection}
+              />
+            </div>
+          </aside>
+
+          <div className="min-w-0 rounded-lg border p-5">
+            {selection === null && (
+              <div className="flex min-h-64 flex-col items-center justify-center gap-1 text-center">
+                <p className="text-sm text-muted-foreground">{format(m.itemsPickSomething)}</p>
+                <p className="text-xs text-muted-foreground">{format(m.itemsPickHint)}</p>
+              </div>
+            )}
+
+            {(selection?.kind === 'group' || selection?.kind === 'new-group') && (
+              <GroupPanel
+                batchId={batchId}
+                batchStatus={batchStatus}
+                groups={allGroups}
+                editing={selectedGroup}
+                parentId={selection.kind === 'new-group' ? selection.parentId : null}
+                onCancel={() => setSelection(null)}
+                onSaved={(groupId) => {
+                  setSelection(groupId === null ? null : { kind: 'group', id: groupId })
+                  refresh()
+                }}
+              />
+            )}
+
+            {(selection?.kind === 'item' || selection?.kind === 'new-item') &&
+              options.data !== undefined && (
+                <ItemConfigEditor
+                  key={selection.kind === 'item' ? selection.id : `new:${selection.groupId}`}
+                  batchId={batchId}
+                  materialRange={materialRange}
+                  item={selectedItem}
+                  groups={allGroups.map((group) => ({ id: group.id, name: group.name }))}
+                  defaultGroupId={selection.kind === 'new-item' ? selection.groupId : undefined}
+                  options={options.data}
+                  actions={
+                    selectedItem === null ? undefined : (
+                      <div className="flex items-center gap-1">
+                        {selectedItem.status === 'voided' && (
+                          <Badge variant="outline">{format(m.itemsStatusVoided)}</Badge>
+                        )}
+                        {selectedItem.status === 'active' && batchStatus !== 'draft' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setVoiding(selectedItem)}
+                          >
+                            {format(m.itemsVoid)}
+                          </Button>
+                        )}
+                        {selectedItem.status === 'voided' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={restore.isPending}
+                            onClick={() => restore.mutate(selectedItem.id)}
+                          >
+                            {format(m.itemsRestore)}
+                          </Button>
+                        )}
+                        {batchStatus === 'draft' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            disabled={remove.isPending}
+                            onClick={() => remove.mutate(selectedItem.id)}
+                          >
+                            {format(m.itemsDelete)}
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  }
+                  onClose={() => setSelection(null)}
+                  onSaved={() => {
+                    setSelection(null)
+                    refresh()
+                  }}
+                />
+              )}
           </div>
-          <ul className="flex flex-col gap-2">
-            {((items.data?.items ?? []) as readonly ItemDto[]).map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-              >
-                <span className="flex items-center gap-2">
-                  {item.title}
-                  {item.status === 'voided' && (
-                    <Badge variant="outline">{format(m.itemsStatusVoided)}</Badge>
-                  )}
-                </span>
-                <span className="flex gap-1">
-                  {item.status === 'active' && (
-                    <Button variant="ghost" size="sm" onClick={() => setEditing({ item })}>
-                      {format(m.entryEdit)}
-                    </Button>
-                  )}
-                  {item.status === 'active' && batchStatus !== 'draft' && (
-                    <Button variant="ghost" size="sm" onClick={() => setVoiding(item)}>
-                      {format(m.itemsVoid)}
-                    </Button>
-                  )}
-                  {item.status === 'voided' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={setStatus.isPending}
-                      onClick={() => setStatus.mutate(item.id)}
-                    >
-                      {format(m.itemsRestore)}
-                    </Button>
-                  )}
-                  {batchStatus === 'draft' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={remove.isPending}
-                      onClick={() => remove.mutate(item.id)}
-                    >
-                      {format(m.itemsDelete)}
-                    </Button>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        </div>
       </div>
 
-      {editing !== null && options.data !== undefined && (
-        <ItemConfigEditor
-          batchId={batchId}
-          materialRange={materialRange}
-          item={editing.item}
-          groups={(groups.data?.groups ?? []).map((group) => ({ id: group.id, name: group.name }))}
-          options={options.data}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null)
-            refresh()
-          }}
-        />
-      )}
       {voiding !== null && (
-        <VoidDialog
+        <VoidQuestionDialog
           item={voiding}
           onClose={() => setVoiding(null)}
           onDone={() => {
@@ -203,61 +233,5 @@ function Editor({
         />
       )}
     </AsyncSection>
-  )
-}
-
-function VoidDialog({
-  item,
-  onClose,
-  onDone,
-}: {
-  item: ItemDto
-  onClose: () => void
-  onDone: () => void
-}) {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { format, formatError } = useI18n()
-  const [reason, setReason] = useState('')
-
-  const act = useMutation({
-    mutationFn: () =>
-      run(
-        api.assessment.setItemStatus({
-          params: { itemId: item.id },
-          payload: { status: 'voided', reason: reason.trim() },
-        }),
-      ),
-    onSuccess: onDone,
-    onError: (error) => toast.error(formatError(error)),
-  })
-
-  return (
-    <FormDialog
-      open
-      title={format(m.itemsVoidTitle)}
-      description={format(m.itemsVoidHint)}
-      onClose={onClose}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={act.isPending || reason.trim() === ''}
-            onClick={() => act.mutate()}
-          >
-            {format(m.itemsVoid)}
-          </Button>
-        </div>
-      }
-    >
-      <Field label={format(m.itemsVoidReason)}>
-        {(id) => (
-          <Input id={id} value={reason} onChange={(event) => setReason(event.target.value)} />
-        )}
-      </Field>
-    </FormDialog>
   )
 }

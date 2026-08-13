@@ -231,7 +231,9 @@ export function ItemConfigEditor({
   materialRange,
   item,
   groups,
+  defaultGroupId,
   options,
+  actions,
   onClose,
   onSaved,
 }: {
@@ -240,7 +242,11 @@ export function ItemConfigEditor({
   materialRange: { start: string; end: string }
   item: ItemDto | null
   groups: readonly { id: string; name: string }[]
+  /** the group a new question was opened inside */
+  defaultGroupId?: string | undefined
   options: ItemOptions
+  /** what can be done to the question as a whole, drawn beside its title */
+  actions?: React.ReactNode
   onClose: () => void
   onSaved: () => void
 }) {
@@ -248,7 +254,10 @@ export function ItemConfigEditor({
   const query = useApiQuery(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
-  const [draft, setDraft] = useState<Draft>(() => draftOf(item, groups, options))
+  const [draft, setDraft] = useState<Draft>(() => {
+    const seeded = draftOf(item, groups, options)
+    return defaultGroupId === undefined ? seeded : { ...seeded, scoreGroupId: defaultGroupId }
+  })
   const [problem, setProblem] = useState<string | null>(null)
   const [issues, setIssues] = useState<readonly { path: string; reason: string }[]>([])
 
