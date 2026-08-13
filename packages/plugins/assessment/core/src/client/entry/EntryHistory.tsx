@@ -7,7 +7,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { attachmentContentUrl } from './model.ts'
+import { AttachmentLink } from './AttachmentLink.tsx'
 
 // The whole account of one claim, oldest first: every version as written,
 // every round it went through, and what was said in them. A rejection's
@@ -44,16 +44,10 @@ export function EntryHistory({ entryId, onClose }: { entryId: string; onClose: (
                   <p className="pt-1 text-muted-foreground">{revision.note}</p>
                 )}
                 {revision.attachments.length > 0 && (
-                  <ul className="pt-2">
+                  <ul className="flex flex-col gap-1 pt-2">
                     {revision.attachments.map((attachment) => (
                       <li key={attachment.attachmentId}>
-                        <a
-                          className="text-primary underline-offset-2 hover:underline"
-                          href={attachmentContentUrl(attachment.attachmentId)}
-                          download
-                        >
-                          {format(m.reviewDownload)}
-                        </a>
+                        <AttachmentLink attachmentId={attachment.attachmentId} />
                       </li>
                     ))}
                   </ul>

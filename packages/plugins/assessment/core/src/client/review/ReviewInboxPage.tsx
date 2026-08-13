@@ -5,6 +5,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
@@ -53,32 +54,46 @@ function Queue({ batchId }: { batchId: string }) {
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">{format(m.reviewEmpty)}</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <li
-              key={row.instanceId}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2"
-            >
-              <div className="text-sm">
-                <p className="font-medium">{row.itemTitle}</p>
-                <p className="text-muted-foreground">
-                  {format(m.reviewSubmittedBy, { name: row.participantName, round: row.roundNo })}
-                  <span className="pl-2">{new Date(row.submittedAt).toLocaleString()}</span>
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={() =>
-                  navigate('assessment/review-instance', {
-                    params: { batchId, instanceId: row.instanceId },
-                  })
-                }
-              >
-                {format(m.reviewOpen)}
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{format(m.reviewColumnItem)}</TableHead>
+                <TableHead>{format(m.reviewColumnWho)}</TableHead>
+                <TableHead>{format(m.reviewColumnWhen)}</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.instanceId}>
+                  <TableCell className="font-medium">{row.itemTitle}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {format(m.reviewSubmittedBy, {
+                      name: row.participantName,
+                      round: row.roundNo,
+                    })}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(row.submittedAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        navigate('assessment/review-instance', {
+                          params: { batchId, instanceId: row.instanceId },
+                        })
+                      }
+                    >
+                      {format(m.reviewOpen)}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </AsyncSection>
   )

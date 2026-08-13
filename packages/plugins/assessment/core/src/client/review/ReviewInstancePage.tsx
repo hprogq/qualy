@@ -20,7 +20,8 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
-import { attachmentContentUrl, fieldsOf } from '../entry/model.ts'
+import { fieldsOf } from '../entry/model.ts'
+import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 
 // One submission, judged. What was filed shows exactly as the round froze
 // it; the two decisions are the only writes. A rejection needs a word for
@@ -78,7 +79,7 @@ function Detail({ batchId }: { batchId: string }) {
       skeleton={<Skeleton className="h-48 w-full" />}
     >
       {review !== undefined && (
-        <div className="flex max-w-2xl flex-col gap-5">
+        <div className="flex flex-col gap-5">
           <header className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-base font-medium">{review.itemTitle}</h3>
@@ -94,31 +95,68 @@ function Detail({ batchId }: { batchId: string }) {
             )}
           </header>
 
-          <section className="rounded-lg border p-4">
-            <h4 className="pb-2 text-sm font-medium">{format(m.reviewPayloadTitle)}</h4>
-            <JudgedPayload payload={review.revision.payload} formConfig={review.form.formConfig} />
-            {review.revision.note !== null && (
-              <p className="pt-2 text-sm text-muted-foreground">{review.revision.note}</p>
-            )}
-            {review.revision.attachments.length > 0 && (
-              <div className="pt-3">
-                <p className="text-xs font-medium text-muted-foreground">{format(m.reviewFiles)}</p>
-                <ul className="pt-1 text-sm">
-                  {review.revision.attachments.map((attachment) => (
-                    <li key={attachment.attachmentId}>
-                      <a
-                        className="text-primary underline-offset-2 hover:underline"
-                        href={attachmentContentUrl(attachment.attachmentId)}
-                        download
-                      >
-                        {format(m.reviewDownload)}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <section className="rounded-lg border p-4">
+              <h4 className="pb-3 text-sm font-medium">{format(m.reviewPayloadTitle)}</h4>
+              <JudgedPayload
+                payload={review.revision.payload}
+                formConfig={review.form.formConfig}
+              />
+              {review.revision.note !== null && (
+                <p className="pt-3 text-sm text-muted-foreground">{review.revision.note}</p>
+              )}
+              {review.revision.attachments.length > 0 && (
+                <div className="pt-4">
+                  <p className="pb-1 text-xs font-medium text-muted-foreground">
+                    {format(m.reviewFiles)}
+                  </p>
+                  <ul className="flex flex-col gap-1">
+                    {review.revision.attachments.map((attachment) => (
+                      <li key={attachment.attachmentId}>
+                        <AttachmentLink attachmentId={attachment.attachmentId} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+
+            <aside className="flex flex-col gap-4">
+              <section className="rounded-lg border p-4 text-sm">
+                <dl className="flex flex-col gap-2">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">{format(m.reviewApplicant)}</dt>
+                    <dd className="font-medium">{review.participantName}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">{format(m.reviewRound)}</dt>
+                    <dd>{review.roundNo}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">{format(m.reviewSubmittedAt)}</dt>
+                    <dd>{new Date(review.submittedAt).toLocaleString()}</dd>
+                  </div>
+                </dl>
+              </section>
+              {review.events.length > 0 && (
+                <section className="rounded-lg border p-4">
+                  <p className="pb-2 text-xs font-medium text-muted-foreground">
+                    {format(m.reviewTrail)}
+                  </p>
+                  <ul className="flex flex-col gap-2 text-sm">
+                    {review.events.map((event, index) => (
+                      <li key={index}>
+                        <p className="text-xs text-muted-foreground">
+                          {event.kind} · {new Date(event.at).toLocaleString()}
+                        </p>
+                        {event.comment !== null && <p>{event.comment}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </aside>
+          </div>
 
           {review.capabilities.canDecide && (
             <div className="flex justify-end gap-2">

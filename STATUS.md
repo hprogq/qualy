@@ -4088,3 +4088,25 @@ build、frozen resolve、prettier、生产 smoke 全绿。
 **门禁(实际执行)**:typecheck 零错;`pnpm test` **621 passed / 17 skipped**(rbac 21、
 capabilities 矩阵);`pnpm test:browser` **54**(scope 契约 + shell fail-closed);build、
 frozen resolve、prettier、生产 smoke 全绿。
+
+### 前端可用性整改:侧栏定案落地与配置去 JSON(2026-08-13)
+
+用户指出批次内前端不可用:侧栏未按 §23.1 定案组织、页面功能薄且与既有页面不配、项目配置竟要
+手填 JSON。本轮按定案整改(不新增测试,前端将反复迭代):
+
+- **侧栏**:工作区分组照定案「概览 / 个人 / 工作 / 管理」;分组标题只有文字,icon 只在条目层
+  (用户当场纠正过一版带分组 icon 的实现);图标集补齐 8 个 lucide 名(此前 rail 条目引用的
+  file-text/inbox 等根本不在 ICONS 表,画不出来);「审核」按定案更名「审核工作」。未建页面
+  (填报进度、公示、申诉)不占位。
+- **项目配置去 JSON**:新增 `GET /assessment/batches/{batchId}/item-options`(manage 门槛,
+  组织类型 + 活跃 org 角色两组选项);ItemConfigEditor 侧栏面板结构化编辑——基础(标题/分组/
+  每人条数/由谁填报)、表单字段行(文本/日期/文件三类,按类型展开 maxLength、日期界、文件数/
+  单文件 MB/接受类型,增删上下移)、计分(每条通过计 X 分)、审核(在哪一级 × 由谁审,单 stage);
+  编辑时把既有配置解析回表单,保存拼出与 API 校验同形的 config,`ItemConfigInvalid` 逐条回显。
+- **页面版式对齐**:审核队列表格化(项目/来自/提交时间/操作);审核详情左材料右案卷
+  (申报人/轮次/时间/处理经过,§23.4);我的填报题目卡带「通过后计 X 分」与备注摘要;
+  附件统一 `AttachmentLink`(经 describeAttachment 显示真实文件名与大小,redirect 后端直链、
+  否则走 content 门)。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` 621 passed / 17 skipped;`pnpm test:browser`
+54(既有用例未破);build、prettier、生产 smoke 全绿。

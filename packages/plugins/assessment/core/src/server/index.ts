@@ -59,6 +59,7 @@ import {
   type UpdateBatchError,
 } from './errors.ts'
 import {
+  db,
   activeElsewhere,
   batchParticipantIds,
   batchesWithDueBoundaries,
@@ -756,6 +757,17 @@ export class Assessment extends Context.Service<
       tenantId: string,
       as: Principal,
     ) => Effect.Effect<readonly { id: string; code: string; name: string }[], AccessDenied>
+    readonly itemOptions: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        orgTypes: readonly { id: string; code: string; name: string }[]
+        roles: readonly { id: string; name: string }[]
+      },
+      BatchNotFound | AccessDenied
+    >
     /**
      * Ratifies every boundary the clock has crossed, across tenants.
      *
@@ -3116,6 +3128,48 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* dieQuery(withDb(scopeOptionRows(tenantId, held, SCOPE_OPTION_LIMIT)))
     }),
 
+    /**
+     * What a question's configuration may point at: the tenant's unit types
+     * for the review stage's level, and the active org roles that can hold
+     * it. Served here so the configuration screen needs no authority over
+     * the organization domain beyond running its own batch.
+     */
+    itemOptions: Effect.fn('Assessment.itemOptions')(function* (tenantId, batchId, as) {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return yield* new BatchNotFound()
+      yield* requireRosterReach(as, tenantId, batchId)
+      const orgTypes = yield* dieQuery(
+        withDb(
+          db.query((k) =>
+            k
+              .selectFrom('OrgType')
+              .select(['id', 'code', 'name'])
+              .where('tenantId', '=', tenantId)
+              .orderBy('name')
+              .execute(),
+          ),
+        ),
+      )
+      const roles = yield* dieQuery(
+        withDb(
+          db.query((k) =>
+            k
+              .selectFrom('Role')
+              .select(['id', 'name'])
+              .where('tenantId', '=', tenantId)
+              .where('kind', '=', 'org')
+              .where('status', '=', 'active')
+              .orderBy('name')
+              .execute(),
+          ),
+        ),
+      )
+      return {
+        orgTypes: orgTypes.map((row) => ({ id: row.id, code: row.code, name: row.name })),
+        roles: roles.map((row) => ({ id: row.id, name: row.name })),
+      }
+    }),
+
     userTypeOptions: Effect.fn('Assessment.userTypeOptions')(function* (tenantId, as) {
       yield* templatePermission(as)
       return yield* dieQuery(withDb(userTypeOptionRows(tenantId)))
@@ -4155,6 +4209,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'itemOptions',
+      Effect.fn('assessment.itemOptions.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.itemOptions(principal.tenantId, params.batchId, principal)
       }),
     )
     .handle(

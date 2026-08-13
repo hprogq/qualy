@@ -103,14 +103,22 @@ function Body({ batchId }: { batchId: string }) {
             item.status === 'active' &&
             item.currentRevision?.entrySource === 'student' &&
             (item.maxEntries === null || live.length < item.maxEntries)
+          const fixedValue = (
+            item.currentRevision?.scoringConfig as
+              { calculator?: { config?: { value?: string } } } | undefined
+          )?.calculator?.config?.value
           return (
             <section key={item.id} className="rounded-lg border p-4">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-medium">{item.title}</h3>
-                  {item.status === 'voided' && (
-                    <p className="pt-1 text-xs text-muted-foreground">{format(m.itemVoided)}</p>
-                  )}
+                  <p className="pt-0.5 text-xs text-muted-foreground">
+                    {item.status === 'voided'
+                      ? format(m.itemVoided)
+                      : fixedValue !== undefined
+                        ? format(m.entryCountsFor, { value: fixedValue })
+                        : null}
+                  </p>
                 </div>
                 {mayFile && (
                   <Button size="sm" onClick={() => setEditing({ item, entry: null })}>
@@ -130,8 +138,16 @@ function Body({ batchId }: { batchId: string }) {
                           {format(entryStatusMessage[entry.status])}
                         </Badge>
                         <span className="text-muted-foreground">
-                          {new Date(entry.createdAt).toLocaleDateString()}
+                          {format(m.entryUpdatedAt, {
+                            when: new Date(entry.createdAt).toLocaleDateString(),
+                          })}
                         </span>
+                        {entry.currentRevision?.note !== null &&
+                          entry.currentRevision?.note !== undefined && (
+                            <span className="hidden max-w-48 truncate text-muted-foreground sm:inline">
+                              {entry.currentRevision.note}
+                            </span>
+                          )}
                       </div>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => setHistory(entry.id)}>

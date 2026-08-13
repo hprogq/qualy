@@ -1,9 +1,17 @@
 import type { ComponentType, SVGProps } from 'react'
 import {
+  BriefcaseIcon,
   CalendarClockIcon,
+  ChartColumnIcon,
+  FileTextIcon,
+  InboxIcon,
   LayoutDashboardIcon,
+  ListChecksIcon,
+  PenLineIcon,
+  Settings2Icon,
   SettingsIcon,
   ShieldCheckIcon,
+  UserRoundIcon,
   UsersIcon,
 } from 'lucide-react'
 
@@ -20,10 +28,18 @@ import {
 // cost the reader the way in.
 
 const ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
+  briefcase: BriefcaseIcon,
   'calendar-clock': CalendarClockIcon,
+  'chart-column': ChartColumnIcon,
+  'file-text': FileTextIcon,
+  inbox: InboxIcon,
   'layout-dashboard': LayoutDashboardIcon,
+  'list-checks': ListChecksIcon,
+  'pen-line': PenLineIcon,
+  'settings-2': Settings2Icon,
   settings: SettingsIcon,
   'shield-check': ShieldCheckIcon,
+  'user-round': UserRoundIcon,
   users: UsersIcon,
 }
 

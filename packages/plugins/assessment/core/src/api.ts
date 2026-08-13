@@ -488,6 +488,19 @@ const myResultView = Schema.Struct({
 
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
+    // what a question's configuration may point at, for whoever runs the round
+    HttpApiEndpoint.get('itemOptions', '/assessment/batches/:batchId/item-options', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({
+        orgTypes: Schema.Array(
+          Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
+        ),
+        roles: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+      }),
+      error: [BatchNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     // gone without ceremony: only for questions nothing ever happened to
     HttpApiEndpoint.delete('deleteItem', '/assessment/items/:itemId', {
       params: Schema.Struct({ itemId: id }),

@@ -14,6 +14,7 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { ItemConfigEditor } from './ItemConfigEditor.tsx'
 import type { ItemDto } from '../entry/model.ts'
 
 // The round's questions and the groups their scores add up in - the least
@@ -45,6 +46,7 @@ function Editor({ batchId, batchStatus }: { batchId: string; batchStatus: string
   const { format, formatError } = useI18n()
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
+  const options = useQuery(query.assessment.itemOptions.queryOptions({ params: { batchId } }))
   const [rows, setRows] = useState<GroupRow[]>([])
   const [editing, setEditing] = useState<{ item: ItemDto | null } | null>(null)
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
@@ -231,11 +233,12 @@ function Editor({ batchId, batchStatus }: { batchId: string; batchStatus: string
         </section>
       </div>
 
-      {editing !== null && (
-        <ItemDialog
+      {editing !== null && options.data !== undefined && (
+        <ItemConfigEditor
           batchId={batchId}
           item={editing.item}
           groups={(groups.data?.groups ?? []).map((group) => ({ id: group.id, name: group.name }))}
+          options={options.data}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -254,162 +257,6 @@ function Editor({ batchId, batchStatus }: { batchId: string; batchStatus: string
         />
       )}
     </AsyncSection>
-  )
-}
-
-function ItemDialog({
-  batchId,
-  item,
-  groups,
-  onClose,
-  onSaved,
-}: {
-  batchId: string
-  item: ItemDto | null
-  groups: readonly { id: string; name: string }[]
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { format, formatError } = useI18n()
-  const [title, setTitle] = useState(item?.title ?? '')
-  const [groupId, setGroupId] = useState(item?.scoreGroupId ?? groups[0]?.id ?? '')
-  const [maxEntries, setMaxEntries] = useState(String(item?.maxEntries ?? 1))
-  const [reason, setReason] = useState('')
-  const [config, setConfig] = useState(() =>
-    item?.currentRevision
-      ? JSON.stringify(
-          {
-            entrySource: item.currentRevision.entrySource,
-            formConfig: item.currentRevision.formConfig,
-            scoringConfig: item.currentRevision.scoringConfig,
-            reviewPolicy: item.currentRevision.reviewPolicy,
-            ...(item.currentRevision.displayConfig == null
-              ? {}
-              : { displayConfig: item.currentRevision.displayConfig }),
-          },
-          null,
-          2,
-        )
-      : '',
-  )
-  const [problem, setProblem] = useState<string | null>(null)
-
-  const save = useMutation({
-    mutationFn: async () => {
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(config)
-      } catch {
-        throw new Error(format(m.itemsConfigUnreadable))
-      }
-      if (item === null) {
-        return run(
-          api.assessment.createItem({
-            params: { batchId },
-            payload: {
-              itemType: 'evidence',
-              title: title.trim(),
-              scoreGroupId: groupId,
-              maxEntries: Number(maxEntries),
-              config: parsed as never,
-            },
-          }),
-        )
-      }
-      return run(
-        api.assessment.updateItem({
-          params: { itemId: item.id },
-          payload: {
-            title: title.trim(),
-            scoreGroupId: groupId,
-            maxEntries: Number(maxEntries),
-            config: parsed as never,
-            ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
-          },
-        }),
-      )
-    },
-    onSuccess: () => {
-      toast.success(format(m.itemsSaved))
-      onSaved()
-    },
-    onError: (error) =>
-      setProblem(
-        error instanceof Error && error.message !== '' ? error.message : formatError(error),
-      ),
-  })
-
-  return (
-    <FormDialog
-      open
-      title={format(m.itemsEditTitle)}
-      onClose={onClose}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
-          </Button>
-          <Button disabled={save.isPending || title.trim() === ''} onClick={() => save.mutate()}>
-            {format(m.entrySave)}
-          </Button>
-        </div>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        <Field label={format(m.itemsFieldTitle)}>
-          {(id) => (
-            <Input id={id} value={title} onChange={(event) => setTitle(event.target.value)} />
-          )}
-        </Field>
-        <Field label={format(m.itemsFieldGroup)}>
-          {(id) => (
-            <NativeSelect
-              id={id}
-              value={groupId}
-              onChange={(event) => setGroupId(event.target.value)}
-            >
-              {groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </NativeSelect>
-          )}
-        </Field>
-        <Field label={format(m.itemsFieldMax)}>
-          {(id) => (
-            <Input
-              id={id}
-              type="number"
-              min={1}
-              value={maxEntries}
-              onChange={(event) => setMaxEntries(event.target.value)}
-            />
-          )}
-        </Field>
-        <Field label={format(m.itemsFieldConfig)} hint={format(m.itemsFieldConfigHint)}>
-          {(id) => (
-            <Textarea
-              id={id}
-              value={config}
-              rows={12}
-              className="font-mono text-xs"
-              onChange={(event) => setConfig(event.target.value)}
-            />
-          )}
-        </Field>
-        {item !== null && (
-          <Field label={format(m.itemsFieldReason)}>
-            {(id) => (
-              <Input id={id} value={reason} onChange={(event) => setReason(event.target.value)} />
-            )}
-          </Field>
-        )}
-        <Feedback message={problem} />
-      </div>
-    </FormDialog>
   )
 }
 
