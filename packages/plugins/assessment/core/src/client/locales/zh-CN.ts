@@ -40,6 +40,8 @@ export default {
   'assessment/entry/history-revision': '第 {no} 版',
   'assessment/entry/suggestion-title': '审核人的修改建议',
   'assessment/entry/suggestion-hint': '仅供参考。请自行修改后重新提交。',
+  'assessment/review/no-standing': '你在本轮没有审核身份。',
+  'assessment/record/no-standing': '你在本轮没有登记权限。',
   'assessment/review/tab': '审核',
   'assessment/review/hint': '等待你处理的申报，先来的排在前面。',
   'assessment/review/empty': '暂时没有需要你处理的申报。',

@@ -126,6 +126,60 @@ describe.runIf(postgresAvailable)('finding entries again', () => {
     expect(errorOf<{ _tag: string }>(result.outsider)?._tag).toBe('ACCESS_DENIED')
   })
 
+  it('tells each reader who they are in each round, and only there', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ed-caps')
+          const assessment = yield* Assessment
+          const a = yield* runningBatch(f)
+          const b = yield* runningBatch(f)
+          // both rounds inherited the same tenant assignments; the second
+          // one takes the reviewer's authority back, so the same person is
+          // a reviewer in A and nobody of the kind in B
+          yield* runSql(sql`
+            insert into batch_access_denies (tenant_id, batch_id, subject_id, permission_code)
+            values (${f.t}, ${b.batch.id}, ${f.reviewer}, 'assessment.review.process')`)
+          yield* assessment.setParticipantStatus(
+            f.t,
+            a.batch.id,
+            a.p1,
+            'excluded',
+            'moved away',
+            f.principal(f.admin),
+          )
+          const capsOf = (batchId: string, who: string) =>
+            Effect.map(
+              assessment.getBatch(f.t, batchId, f.principal(who)),
+              (batch) => batch.capabilities,
+            )
+          return {
+            reviewerInA: yield* capsOf(a.batch.id, f.reviewer),
+            reviewerInB: yield* capsOf(b.batch.id, f.reviewer),
+            recorder: yield* capsOf(a.batch.id, f.recorder),
+            student: yield* capsOf(a.batch.id, f.s2),
+            excluded: yield* capsOf(a.batch.id, f.s1),
+            admin: yield* capsOf(a.batch.id, f.admin),
+          }
+        }),
+      ),
+    )
+
+    expect(result.reviewerInA).toMatchObject({ review: true, record: false, manage: false })
+    expect(result.reviewerInB).toMatchObject({ review: false })
+    expect(result.recorder).toMatchObject({ review: false, record: true })
+    expect(result.student).toMatchObject({
+      personal: true,
+      review: false,
+      record: false,
+      manage: false,
+    })
+    // exclusion takes back eligibility, never the standing of having been in
+    expect(result.excluded).toMatchObject({ personal: true })
+    expect(result.admin).toMatchObject({ manage: true })
+  })
+
   it('hands back the whole account of one claim, to its own people only', async () => {
     const result = ok(
       await run(

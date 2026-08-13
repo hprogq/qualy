@@ -29,6 +29,7 @@ import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
+import { participantRowByUser } from '../scoring/db.ts'
 import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
@@ -154,6 +155,21 @@ export interface BatchDetail {
   readonly currentPhaseName: string | null
   readonly participantCount: number
   readonly createdAt: EpochMillis
+}
+
+/**
+ * Who the reader is in this round, as navigation reads it (§32.57 sibling
+ * ruling): coarse standing, not an act-permission mirror, and deliberately
+ * gate-free - "you are a reviewer here" does not flicker with the phases.
+ * Computed with the same arithmetic the acts use, never re-derived by a
+ * screen.
+ */
+export interface BatchCapabilities {
+  /** a membership row exists - excluded people keep their history (§32.56) */
+  readonly personal: boolean
+  readonly review: boolean
+  readonly record: boolean
+  readonly manage: boolean
 }
 
 /** one phase as a plan write states it; instants already parsed to epoch ms */
@@ -462,7 +478,16 @@ export class Assessment extends Context.Service<
       tenantId: string,
       batchId: string,
       as: Principal,
-    ) => Effect.Effect<BatchDetail, BatchNotFound | AccessDenied>
+    ) => Effect.Effect<
+      BatchDetail & { capabilities: BatchCapabilities },
+      BatchNotFound | AccessDenied
+    >
+    readonly capabilitiesFor: (
+      tenantId: string,
+      batchId: string,
+      manageable: boolean,
+      as: Principal,
+    ) => Effect.Effect<BatchCapabilities>
     /** refuses a batch this person neither administers nor takes part in */
     readonly assertVisible: (
       tenantId: string,
@@ -1860,6 +1885,23 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     assertVisible: requireBatchVisible,
 
+    /** who this reader is in the round, with the same arithmetic the acts use */
+    capabilitiesFor: Effect.fn('Assessment.capabilitiesFor')(function* (
+      tenantId: string,
+      batchId: string,
+      manageable: boolean,
+      as: Principal,
+    ) {
+      const membership = yield* dieQuery(withDb(participantRowByUser(tenantId, batchId, as.userId)))
+      const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+      return {
+        personal: membership !== null,
+        review: authority.has('assessment.review.process'),
+        record: authority.has('assessment.entry.record'),
+        manage: manageable,
+      } satisfies BatchCapabilities
+    }),
+
     getBatch: Effect.fn('Assessment.getBatch')(function* (tenantId, batchId, as) {
       // with the reader, so the row can say whether it is theirs to change:
       // asked without one it answered "no" to everybody, and every control
@@ -1867,7 +1909,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId, yield* viewerOf(as))))
       if (!batch) return yield* new BatchNotFound()
       yield* requireBatchVisible(tenantId, batchId, as)
-      return yield* dieQuery(withDb(readDetail(tenantId, batch)))
+      const detail = yield* dieQuery(withDb(readDetail(tenantId, batch)))
+      const membership = yield* dieQuery(withDb(participantRowByUser(tenantId, batchId, as.userId)))
+      const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+      return {
+        ...detail,
+        capabilities: {
+          personal: membership !== null,
+          review: authority.has('assessment.review.process'),
+          record: authority.has('assessment.entry.record'),
+          manage: detail.manageable,
+        } satisfies BatchCapabilities,
+      }
     }),
 
     updateBatch: Effect.fn('Assessment.updateBatch')(function* (tenantId, batchId, input, as) {
@@ -3394,7 +3447,13 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
-        return { batch: toBatchDto(detail) }
+        const capabilities = yield* assessment.capabilitiesFor(
+          principal.tenantId,
+          detail.id,
+          detail.manageable,
+          principal,
+        )
+        return { batch: { ...toBatchDto(detail), capabilities } }
       }),
     )
     .handle(
@@ -3403,7 +3462,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const detail = yield* assessment.getBatch(principal.tenantId, params.batchId, principal)
-        return { batch: toBatchDto(detail) }
+        return { batch: { ...toBatchDto(detail), capabilities: detail.capabilities } }
       }),
     )
     .handle(
@@ -3423,7 +3482,13 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           payload,
           principal,
         )
-        return { batch: toBatchDto(detail) }
+        const capabilities = yield* assessment.capabilitiesFor(
+          principal.tenantId,
+          detail.id,
+          detail.manageable,
+          principal,
+        )
+        return { batch: { ...toBatchDto(detail), capabilities } }
       }),
     )
     .handle(
@@ -3450,7 +3515,13 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               },
           principal,
         )
-        return { batch: toBatchDto(detail) }
+        const capabilities = yield* assessment.capabilitiesFor(
+          principal.tenantId,
+          detail.id,
+          detail.manageable,
+          principal,
+        )
+        return { batch: { ...toBatchDto(detail), capabilities } }
       }),
     )
     .handle(

@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeftIcon } from 'lucide-react'
-import { PageLink, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import {
+  PageLink,
+  useApiQuery,
+  usePageRouteParams,
+  usePublishWorkspaceCapabilities,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -27,6 +32,21 @@ export default function BatchContextBar() {
     staleTime: 30_000,
   })
   const batch = detail.data?.batch
+  // the workspace speaks for itself: who this reader is in the open batch,
+  // straight from the server's projection, withdrawn while a batch loads so
+  // gated rail entries never flash before the answer arrives
+  usePublishWorkspaceCapabilities(
+    batch === undefined
+      ? null
+      : new Set(
+          [
+            batch.capabilities.personal && 'assessment/personal',
+            batch.capabilities.review && 'assessment/review',
+            batch.capabilities.record && 'assessment/record',
+            batch.capabilities.manage && 'assessment/manage',
+          ].filter((token): token is string => token !== false),
+        ),
+  )
   // the derived timeline, which is where "the stage ends when the next one
   // starts" is already worked out; the bar only counts the clock down to it
   const plan = useQuery({

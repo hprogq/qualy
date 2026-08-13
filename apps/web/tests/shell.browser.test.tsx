@@ -62,6 +62,30 @@ const manifest = () => ({
         order: 10,
       },
       {
+        id: 'rail/review',
+        label: text('审核'),
+        target: {
+          kind: 'page',
+          pageId: 'assessment/batch-reviews',
+          path: '/assessment/batches/:batchId/reviews',
+        },
+        group: 'batch/admin',
+        order: 15,
+        capability: 'assessment/review',
+      },
+      {
+        id: 'rail/review',
+        label: text('审核'),
+        target: {
+          kind: 'page',
+          pageId: 'assessment/batch-reviews',
+          path: '/assessment/batches/:batchId/reviews',
+        },
+        group: 'batch/admin',
+        order: 15,
+        capability: 'assessment/review',
+      },
+      {
         id: 'rail/elsewhere',
         label: text('别处'),
         target: {
@@ -126,6 +150,12 @@ describe('the workspace shell', () => {
     // an entry this route cannot address is not shown pointing at a literal
     // ":otherId"
     expect(await page.getByRole('link', { name: '别处' }).elements()).toHaveLength(0)
+    // an entry gated on a workspace capability stays hidden while nothing
+    // has published one: unloaded is not "unfiltered"
+    expect(await page.getByRole('link', { name: '审核' }).elements()).toHaveLength(0)
+    // an entry gated on a workspace capability stays hidden while nothing
+    // has published one: unloaded is not "unfiltered"
+    expect(await page.getByRole('link', { name: '审核' }).elements()).toHaveLength(0)
     // the applications stay above it: a workspace is somewhere inside the
     // product, not a place the product disappears from
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()

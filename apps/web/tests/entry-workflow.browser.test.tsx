@@ -46,6 +46,7 @@ const batch = (): BatchDto => ({
   name: '2026 春季综测',
   descriptionMd: null,
   manageable: false,
+  capabilities: { personal: true, review: true, record: true, manage: false },
   participantCount: 12,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',

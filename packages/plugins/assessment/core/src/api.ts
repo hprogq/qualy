@@ -115,8 +115,22 @@ const batchListView = Schema.Struct({
   timeline: Schema.Array(batchTimelineEntry),
 })
 
-/** one batch on its own; its plan and its people are their own requests */
-const batchView = Schema.Struct({ ...batchFields })
+/**
+ * One batch on its own; its plan and its people are their own requests.
+ *
+ * `capabilities` is who the reader is in this round - the standing the
+ * workspace navigation filters by. Coarse on purpose, and free of the phase
+ * gate: being a reviewer here does not come and go with the calendar.
+ */
+const batchView = Schema.Struct({
+  ...batchFields,
+  capabilities: Schema.Struct({
+    personal: Schema.Boolean,
+    review: Schema.Boolean,
+    record: Schema.Boolean,
+    manage: Schema.Boolean,
+  }),
+})
 
 const phaseView = Schema.Struct({
   id: Schema.String,

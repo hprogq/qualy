@@ -16,7 +16,16 @@ export default function ReviewInboxPage() {
   const { format } = useI18n()
   return (
     <BatchScreen title={format(m.reviewTab)} description={format(m.reviewHint)}>
-      {(batch) => <Queue batchId={batch.id} />}
+      {(batch) =>
+        batch.capabilities.review ? (
+          <Queue batchId={batch.id} />
+        ) : (
+          // said as what it is: no standing here, not an empty queue -
+          // pretending otherwise makes permission problems look like quiet
+          // days
+          <p className="text-sm text-muted-foreground">{format(m.reviewNoStanding)}</p>
+        )
+      }
     </BatchScreen>
   )
 }

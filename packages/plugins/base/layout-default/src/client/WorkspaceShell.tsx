@@ -7,7 +7,12 @@ import {
   workspaceNavigation,
   type ResolvedNavigationItem,
 } from '@qualy/ui-contract'
-import { UiSlot, useUiCollection } from '@qualy/web-runtime'
+import {
+  UiSlot,
+  useUiCollection,
+  WorkspaceCapabilityScope,
+  useWorkspaceCapabilities,
+} from '@qualy/web-runtime'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
 import { cn } from '@qualy/ui/cn'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
@@ -79,9 +84,18 @@ function RailEntry({
 }
 
 export default function WorkspaceShell() {
+  return (
+    <WorkspaceCapabilityScope>
+      <CapableWorkspaceShell />
+    </WorkspaceCapabilityScope>
+  )
+}
+
+function CapableWorkspaceShell() {
   const { apps, activeApp } = useAppNavigation()
   const entries = useUiCollection(workspaceNavigation)
   const groups = useUiCollection(navigationGroups)
+  const capabilities = useWorkspaceCapabilities()
   const params = useParams()
   const { format } = useI18n()
   const isMobile = useIsMobile()
@@ -96,7 +110,15 @@ export default function WorkspaceShell() {
     if (isMobile) setRailOpen(false)
   }, [pathname, isMobile])
 
-  const addressable = entries.flatMap((item) => {
+  // an entry carrying a capability token waits for the open workspace to
+  // publish its set, and renders only while the set holds it; a gated entry
+  // must never flash in and be taken away, so "not published yet" hides it
+  const admitted = entries.filter(
+    (item) =>
+      item.capability === undefined ||
+      (capabilities.status === 'ready' && capabilities.values.has(item.capability)),
+  )
+  const addressable = admitted.flatMap((item) => {
     const to = item.target.kind === 'page' ? fill(item.target.path, params) : item.target.href
     return to === undefined ? [] : [{ ...item, to }]
   })

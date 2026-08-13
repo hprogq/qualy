@@ -70,3 +70,29 @@ apps/web      → web-runtime / ui-contract(纯路由引擎,无布局 DOM)
 
 明确不做:微前端/Module Federation/远程 JS 加载、插件独立 Router/Tailwind、
 任意 manifest 深合并、贡献间依赖图、拖拽布局编辑器。
+
+## 增补裁决:工作区能力过滤(2026-08-13,用户批准)
+
+批次工作区暴露的导航撞上了 manifest 模型:manifest 是**按 principal** 的授权投影,而「审核入口
+该不该出现在这个批次的侧栏」是**按批次**的问题。裁决为三层分工,并扩展一个冻结概念:
+
+1. **资格(manifest 层)**:页面可见性 `permissionOf(code)` 的语义定义为「**该 principal 在至少
+   一个有效授权上下文中对该码具有 effective authority**」——resource 限定的授权也算一个上下文
+   (rbac 的 `getProfile` / `effectiveRows('anywhere')` 据此把 `held` 放宽为 any-context;通用
+   判定 `canAt` 等继续排除 resource 授权)。rbac 代数里没有 deny,批次层的 accepted−denied
+   细化归第二层——这不是放宽的漏洞,是层次分工。
+2. **批次能力投影(服务端)**:`getBatch` 携带 `capabilities: {personal, review, record, manage}`。
+   它是 **workspace navigation capability**,不是权限码镜像:粗粒度、与 authorizeAction 同一套
+   `batchAuthority` / 成员行算术单源计算,**不掺 PhaseGate**(能力=你在这一轮是谁;gate=此刻
+   能做什么;阶段推进不得让侧栏条目忽隐忽现)。`personal` 表示成员行存在(excluded 保留历史,
+   §32.56),不叫 participate 以免与「当前可参与」混淆。**列表如需 capabilities 必须批量投影**
+   (principal + batchIds → 一次/常数次查询),禁止逐批次 authorization;当前列表不带。
+3. **NavigationItem 扩展一个字段**:`capability?: string`(命名空间化 token,如
+   `assessment/review`)。shell 只做集合匹配,不认识 token 的含义;workspace shell 挂
+   `WorkspaceCapabilityScope`,工作区上下文的拥有者(assessment 的 BatchContextBar)把服务端
+   投影映射成 token 集合发布。**loading/ready 是契约的一部分**:未发布时带 token 的条目一律
+   不渲染(fail closed,绝不闪现后收回),不带 token 的条目不等待;无发布者的工作区里带 token
+   的条目永不出现。
+
+深链语义:路由存在 ≠ 资源授权成立;页面必须区分「有身份但当前无事可做」与「没有身份」两种话术
+(unauthorized 不得伪装成 empty),守门的仍然是 API。

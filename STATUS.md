@@ -4061,3 +4061,30 @@ build、frozen resolve、prettier、生产 smoke 全绿。
 
 下一步:对话 9(M2 收官审计:hostile matrix 复审、migration 重放、frozen routes/error gate、
 死代码清理、assessment-design 增补、验收报告)。
+
+### 工作区能力过滤:批次内导航按身份显示(2026-08-13)
+
+用户报出 manifest 模型与批次域的正面冲突:批次内授予的审核权限拿不到审核页;若按人投影放宽,
+每个批次都会冒出审核按钮。经用户裁决(四条修正一并采纳)按三层收口:
+
+- **资格层**:`permissionOf` 语义定为「∃ 有效授权上下文中的 effective authority」。确诊根因:
+  rbac 的 `held` CTE 无条件排除 resource 限定授权,manifest 的 `getProfile` 因此看不见批次内
+  授权。`held` 增 `general | any-context` 档,`effectiveRows('anywhere')` 走 any-context
+  (discovery 计入 resource 授权),`canAt` 等通用判定不变。rbac 层无 deny;批次 accepted−denied
+  细化归第二层。测试:resource 限定授权 → getProfile 可见、canAt 依旧拒绝。
+- **能力层**:`getBatch.capabilities {personal, review, record, manage}`——workspace navigation
+  capability 而非权限码镜像;与 authorizeAction 同源(batchAuthority/成员行),不掺 PhaseGate;
+  `personal`=成员行存在(excluded 保留历史);创建/更新/归档三个写响应同样携带;列表暂不带
+  (要带必须批量投影,已写入裁决)。矩阵测试:同一审核人 A 批 review=true、被 deny 的 B 批
+  false;recorder/学生/excluded/管理员各就各位。
+- **导航层**:`NavigationItem.capability?: string`(概念冻结的批准扩展,裁决入
+  notes/ui-composition.md);workspace shell 挂 `WorkspaceCapabilityScope`,BatchContextBar 把
+  服务端投影发布为 token 集合;**loading/ready 是契约**——未发布时带 token 条目一律不渲染
+  (fail closed,绝不闪现后收回)。管理组五条 rail 同批挂 `assessment/manage`,「A 批管理员在
+  B 批看到管理按钮」的同源问题一并消失。审核/登记页区分「无身份」与「无任务」两种话术。
+- 实测修一个发布环:publish 身份随 state 重建 → 发布者 effect 反复重挂 → Maximum update depth;
+  `useCallback` 钉稳。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **621 passed / 17 skipped**(rbac 21、
+capabilities 矩阵);`pnpm test:browser` **54**(scope 契约 + shell fail-closed);build、
+frozen resolve、prettier、生产 smoke 全绿。

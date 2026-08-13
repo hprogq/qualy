@@ -3270,6 +3270,19 @@ hostile tests 必须先于 UI。
   调整行），总 53。
 - 本对话与两次 P0 收口累计新增门禁面：node 619 / browser 53。
 
+落地记录（对话 8 追加：工作区能力过滤，用户裁决后实施）：
+
+- manifest 与批次域的第一次正面相撞（「批次内的审核权限拿不到审核页；按人投影又会让每个批次都
+  冒出审核按钮」）按三层收口，完整裁决见 notes/ui-composition.md 增补节：①资格＝∃有效授权上下文
+  的 effective authority（rbac `held` 增 any-context 档，resource 限定授权计入 discovery、仍不
+  计入通用判定）；②`getBatch.capabilities {personal,review,record,manage}` 与 authorizeAction
+  同源、不掺 PhaseGate、不做权限码镜像，列表暂不带（要带必须批量）；③`NavigationItem.capability`
+  token + workspace shell 的 `WorkspaceCapabilityScope`（loading/ready 契约、fail closed、
+  BatchContextBar 发布）。管理组五个 rail 条目同批挂 `assessment/manage`——「A 批管理员在 B 批
+  看到管理按钮」的同源问题一并消失。审核/登记页区分「无身份」与「无任务」两种话术。
+- 实测修掉一个发布环：publish 身份不稳（useMemo 随 state 重建）→ 发布者 effect 反复重挂 →
+  Maximum update depth；`useCallback` 钉稳后 54 例浏览器用例全绿。
+
 ### 对话 9：M2 收官审计
 
 不要再加业务能力。

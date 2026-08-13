@@ -110,9 +110,18 @@ const inForce = sql<boolean>`(
   and (g.valid_until is null or g.valid_until > now())
 )`
 
-const held = (k: Db, tenantId: string, userId: string) =>
-  k.with('held', (db) =>
-    db
+/**
+ * The grants a judgment may draw on.
+ *
+ * `general` is every judgment about the tenant or the org tree: a grant tied
+ * to one resource carries no authority anywhere else, so it is excluded.
+ * `any-context` is the discovery question - does this person hold the
+ * capability in at least one context, a resource-bound one included - which
+ * is what the manifest's qualification asks and nothing else may.
+ */
+const held = (k: Db, tenantId: string, userId: string, scope: 'general' | 'any-context') =>
+  k.with('held', (db) => {
+    const grants = db
       .selectFrom('RoleGrant as g')
       .innerJoin('User as u', (join) =>
         join
@@ -129,16 +138,17 @@ const held = (k: Db, tenantId: string, userId: string) =>
       .where('g.tenantId', '=', tenantId)
       .where('g.userId', '=', userId)
       .where(inForce)
-      .where('g.resourceId', 'is', null)
       .select([
         'g.roleId',
         'g.orgNodeId',
         'g.id as grantId',
         sql<'self' | 'subtree' | null>`g.coverage`.as('coverage'),
-      ]),
-  )
+      ])
+    return scope === 'general' ? grants.where('g.resourceId', 'is', null) : grants
+  })
 
-const forPrincipal = (k: Db, principal: Principal) => held(k, principal.tenantId, principal.userId)
+const forPrincipal = (k: Db, principal: Principal, scope: 'general' | 'any-context' = 'general') =>
+  held(k, principal.tenantId, principal.userId, scope)
 
 /** a tenant capability comes only from a tenant role: an org role is anchored somewhere */
 export const hasTenantPermission = (principal: Principal, def: ActivePermission) =>
@@ -420,7 +430,9 @@ export const effectiveRows = (
 ) =>
   db.query((k) => {
     const at = typeof target === 'object' ? target : undefined
-    return forPrincipal(k, principal)
+    // 'anywhere' is the discovery question, so a resource-bound grant counts:
+    // holding review authority inside one round is holding it somewhere
+    return forPrincipal(k, principal, target === 'anywhere' ? 'any-context' : 'general')
       .selectFrom('held')
       .innerJoin('Role as r', (join) =>
         join
@@ -541,7 +553,7 @@ export const reachAt = (principal: Principal, orgNodeId: string) =>
  */
 export const explainRows = (tenantId: string, userId: string, orgNodeId: string | undefined) =>
   db.query((k) =>
-    held(k, tenantId, userId)
+    held(k, tenantId, userId, 'general')
       .selectFrom('held')
       .innerJoin('Role as r', (join) =>
         join

@@ -99,6 +99,15 @@ export interface NavigationItem {
   // which sidebar section the entry sits in; absent means a loose top-level
   // entry above the sections
   group?: NamespacedId
+  /**
+   * An opaque workspace-capability token (namespaced, e.g.
+   * 'assessment/review'). An entry carrying one renders only while the open
+   * workspace publishes that token; the shell matches strings and knows
+   * nothing else. The manifest already decided per-principal visibility -
+   * this narrows it to "in the thing currently open". Absent means the
+   * entry is capability-free and renders as before.
+   */
+  capability?: string
 }
 
 // what the browser receives: a page target has been resolved to the path
@@ -129,6 +138,7 @@ const navigationItemSchema = z.object({
   icon: z.string().optional(),
   order: z.number().optional(),
   group: z.string().regex(NAMESPACED_ID).optional(),
+  capability: z.string().regex(NAMESPACED_ID).optional(),
 })
 
 const navigationGroupSchema = z.object({

@@ -397,3 +397,9 @@ export function UiSlot({
     </>
   )
 }
+export {
+  WorkspaceCapabilityScope,
+  useWorkspaceCapabilities,
+  usePublishWorkspaceCapabilities,
+  type WorkspaceCapabilities,
+} from './workspace-capabilities.tsx'

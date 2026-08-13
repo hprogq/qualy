@@ -547,6 +547,14 @@ const i18n = definePluginMessages({
     },
     // ------------------------------------------------------------------
     // the review queue
+    reviewNoStanding: {
+      id: 'assessment/review/no-standing',
+      defaultMessage: 'You have no reviewing role in this round.',
+    },
+    recordNoStanding: {
+      id: 'assessment/record/no-standing',
+      defaultMessage: 'You have no recording authority in this round.',
+    },
     reviewTab: { id: 'assessment/review/tab', defaultMessage: 'Reviewing' },
     reviewHint: {
       id: 'assessment/review/hint',

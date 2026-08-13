@@ -23,7 +23,13 @@ export default function RecordPage() {
   const { format } = useI18n()
   return (
     <BatchScreen title={format(m.recordTab)} description={format(m.recordHint)}>
-      {(batch) => <Recorder batchId={batch.id} />}
+      {(batch) =>
+        batch.capabilities.record ? (
+          <Recorder batchId={batch.id} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{format(m.recordNoStanding)}</p>
+        )
+      }
     </BatchScreen>
   )
 }

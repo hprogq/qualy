@@ -171,6 +171,47 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('counts a resource-bound grant as standing somewhere, and nowhere in general', async () => {
+    const db = await createTestContext('effect-rbac-resource-profile')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // the same role the plain user holds, but granted only inside one
+          // resource: authority in that round, none anywhere else
+          const holder = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              select ${f.tenant}, 'Scoped Reviewer', u.user_type_id, ${f.root}
+              from users u where u.tenant_id = ${f.tenant} limit 1
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants
+              (tenant_id, user_id, role_id, org_node_id, coverage,
+               resource_namespace, resource_type, resource_id)
+            values (${f.tenant}, ${holder}, ${f.plainRole}, ${f.root}, 'self',
+                    'assessment', 'batch', ${f.child})`)
+          const scoped: Principal = { tenantId: f.tenant, userId: holder, sessionId: 's' }
+          return {
+            // the manifest's question: held somewhere, resource contexts included
+            profile: yield* rbac.getProfile(scoped),
+            // the general question: a resource-bound grant is no authority here
+            general: yield* rbac.canAt(scoped, 'org.tree.manage', f.root),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.profile.orgPermissions).toContain('org.tree.manage')
+      expect(answer.general).toBe(false)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('stops a self anchor at its own node, and denies as a failure', async () => {
     const db = await createTestContext('effect-rbac-deny')
     try {
