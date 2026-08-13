@@ -1,0 +1,434 @@
+import { sql } from 'kysely'
+import { Effect, Exit } from 'effect'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import { Assessment } from '../src/server/index.ts'
+import {
+  errorOf,
+  GATED,
+  ok,
+  one,
+  refusalOf,
+  run,
+  runningBatch,
+  seed,
+  staged,
+  type Seeded,
+} from './support/round.ts'
+
+// The single review stage under attack. Who may judge is one SQL definition
+// shared with submit's arrival check, so most cases here flip one conjunct -
+// standing, acceptance, the gate, distance - and watch the queue, the
+// decision and the submission refuse together.
+
+const REVIEW_OPEN = [...GATED, 'assessment.review.process']
+
+/** an accepted source carrying review.process, the way a sync would write it */
+const accept = (t: string, batchId: string, subjectId: string, assignmentId: string) =>
+  runSql(sql`
+    with s as (
+      insert into batch_access_sources (tenant_id, batch_id, role_assignment_id, subject_id, origin)
+      values (${t}, ${batchId}, ${assignmentId}, ${subjectId}, 'explicit')
+      returning tenant_id, id
+    )
+    insert into batch_access_source_permissions (tenant_id, source_id, permission_code)
+    select tenant_id, id, 'assessment.review.process' from s`)
+
+/** one student's entry, filed and submitted, back with its instance id */
+const submitted = (f: Seeded, g: { item: { id: string } }, participantId: string, who: string) =>
+  Effect.gen(function* () {
+    const assessment = yield* Assessment
+    const as = f.principal(who)
+    const entry = yield* assessment.createEntry(
+      f.t,
+      { itemId: g.item.id, participantId, payload: {} },
+      as,
+    )
+    const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
+    return { entryId: entry.id, instanceId: sent.currentReviewInstanceId! }
+  })
+
+describe.runIf(postgresAvailable)('the single review stage', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-review-flow')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('answers the queue only to whoever the one definition admits', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-defn')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
+
+          // somebody holding the same role over the whole college, accepted
+          // and all - a subtree grant participates in jurisdiction, never in
+          // stage membership
+          const collegeA = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_nodes where tenant_id = ${f.t} and name = 'College A'`,
+            ),
+          ).id
+          const wide = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Vice Dean', ${f.studentType}, ${collegeA}) returning id`),
+          ).id
+          const wideGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${wide}, ${f.reviewRole}, ${collegeA}, 'subtree') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, wide, wideGrant)
+
+          const queueOf = (who: string) =>
+            Effect.map(assessment.listReviewInbox(f.t, {}, f.principal(who)), (page) => page.items)
+          const forReviewer = yield* queueOf(f.reviewer)
+          const forWide = yield* queueOf(wide)
+          const forRecorder = yield* queueOf(f.recorder)
+
+          // take the acceptance back: the queue empties, and the next
+          // submission cannot even arrive - one definition, both doors
+          yield* runSql(sql`
+            insert into batch_access_denies (tenant_id, batch_id, subject_id, permission_code)
+            values (${f.t}, ${g.batch.id}, ${f.reviewer}, 'assessment.review.process')`)
+          const denied = yield* queueOf(f.reviewer)
+          const arrival = yield* Effect.exit(submitted(f, g, g.p2, f.s2))
+
+          return { instanceId, forReviewer, forWide, forRecorder, denied, arrival }
+        }),
+      ),
+    )
+
+    expect(result.forReviewer).toHaveLength(1)
+    expect(result.forReviewer[0]).toMatchObject({
+      instanceId: result.instanceId,
+      batchName: 'Round',
+      itemTitle: '退役复学',
+      participantName: 'Zhang San',
+      roundNo: 1,
+    })
+    expect(result.forWide).toEqual([])
+    expect(result.forRecorder).toEqual([])
+    expect(result.denied).toEqual([])
+    expect(refusalOf(result.arrival)?.reason).toBe('reviewer-not-found')
+  })
+
+  it('keeps judging shut while the phase is', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-gate')
+          const assessment = yield* Assessment
+          // the entry phase as it usually is: filing open, judging not yet
+          const g = yield* runningBatch(f)
+          const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
+          const queue = yield* assessment.listReviewInbox(f.t, {}, f.principal(f.reviewer))
+          const decided = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'approve' },
+              f.principal(f.reviewer),
+            ),
+          )
+          const detail = yield* assessment.getReviewInstance(
+            f.t,
+            instanceId,
+            f.principal(f.reviewer),
+          )
+          return { queue: queue.items, decided, detail }
+        }),
+      ),
+    )
+
+    expect(result.queue).toEqual([])
+    expect(refusalOf(result.decided)?.reason).toBe('phase-closed')
+    expect(result.detail.capabilities.canDecide).toBe(false)
+  })
+
+  it('closes a round exactly once', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-close')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
+          const reviewer = f.principal(f.reviewer)
+          const before = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
+          const approved = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'approve', comment: 'checked against the certificate' },
+            reviewer,
+          )
+          const again = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'reject', comment: 'no' },
+              reviewer,
+            ),
+          )
+          const entry = yield* assessment.getEntry(f.t, entryId, f.principal(f.s1))
+          const withdraw = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entryId, 'draft', f.principal(f.s1)),
+          )
+          return { before, approved, again, entry, withdraw }
+        }),
+      ),
+    )
+
+    expect(result.before.capabilities.canDecide).toBe(true)
+    expect(result.before.state).toBe('active')
+    expect(result.approved.state).toBe('completed')
+    expect(result.approved.outcome).toBe('approved')
+    expect(result.approved.events.map((event) => event.kind)).toEqual(['submitted', 'approved'])
+    expect(result.approved.events[1]!.comment).toBe('checked against the certificate')
+    expect(errorOf<{ _tag: string }>(result.again)?._tag).toBe('ASSESSMENT_REVIEW_CONFLICT')
+    expect(result.entry.status).toBe('approved')
+    expect(refusalOf(result.withdraw)?.reason).toBe('entry-not-withdrawable')
+  })
+
+  it('rejects only with a word, holds advice to the judged evidence, and reopens as a new round', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-reject')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const reviewer = f.principal(f.reviewer)
+          const fileA = yield* staged(f.t, f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: { files: [fileA] } },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+
+          const wordless = yield* Effect.exit(
+            assessment.decideReview(f.t, instanceId, { decision: 'reject' }, reviewer),
+          )
+          const fileB = yield* staged(f.t, f.s1)
+          const growing = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              {
+                decision: 'reject',
+                comment: 'swap the file',
+                suggestedPayload: { files: [fileB] },
+              },
+              reviewer,
+            ),
+          )
+          const advisedApproval = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'approve', suggestedPayload: { files: [fileA] } },
+              reviewer,
+            ),
+          )
+          const rejected = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'reject',
+              comment: 'date the certificate',
+              suggestedPayload: { files: [fileA], hint: 'add the issue date' },
+            },
+            reviewer,
+          )
+          const after = yield* assessment.getEntry(f.t, entry.id, s1)
+
+          // advice moved nothing; the student's own next revision does
+          const revised = yield* assessment.appendEntryRevision(
+            f.t,
+            entry.id,
+            { payload: { files: [fileA], dated: '2026-05-01' } },
+            s1,
+          )
+          const resent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const round2 = yield* assessment.getReviewInstance(
+            f.t,
+            resent.currentReviewInstanceId!,
+            reviewer,
+          )
+          const closed = yield* assessment.decideReview(
+            f.t,
+            resent.currentReviewInstanceId!,
+            { decision: 'approve' },
+            reviewer,
+          )
+          const final = yield* assessment.getEntry(f.t, entry.id, s1)
+          return {
+            wordless,
+            growing,
+            advisedApproval,
+            rejected,
+            after,
+            revised,
+            round2,
+            closed,
+            final,
+          }
+        }),
+      ),
+    )
+
+    const issuesOf = (exit: Exit.Exit<unknown, unknown>) =>
+      errorOf<{ issues: readonly { field: string; reason: string }[] }>(exit)?.issues
+    expect(issuesOf(result.wordless)).toEqual([{ field: 'comment', reason: 'required' }])
+    expect(issuesOf(result.growing)).toEqual([{ field: 'files', reason: 'attachment-not-cited' }])
+    expect(issuesOf(result.advisedApproval)).toEqual([
+      { field: 'suggestedPayload', reason: 'not-allowed' },
+    ])
+    expect(result.rejected.outcome).toBe('rejected')
+    const rejection = result.rejected.events[1]!
+    expect(rejection.kind).toBe('rejected')
+    expect(rejection.comment).toBe('date the certificate')
+    expect(rejection.suggestedPayload).toMatchObject({ hint: 'add the issue date' })
+    expect(result.after.status).toBe('rejected')
+    expect(result.after.currentRevision!.revisionNo).toBe(1)
+    expect(result.revised.status).toBe('draft')
+    expect(result.round2.roundNo).toBe(2)
+    expect(result.round2.revision.revisionNo).toBe(2)
+    expect(result.closed.outcome).toBe('approved')
+    expect(result.final.status).toBe('approved')
+  })
+
+  it('shows a round only to its own people, and lets none of them judge themselves', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-people')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          // the second student also holds the review role at the class,
+          // accepted and all - distance is the only thing keeping them out
+          const peerGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${f.s2}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, f.s2, peerGrant)
+          const own = yield* submitted(f, g, g.p2, f.s2)
+
+          const s2Queue = yield* assessment.listReviewInbox(f.t, {}, f.principal(f.s2))
+          const selfJudged = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              own.instanceId,
+              { decision: 'approve' },
+              f.principal(f.s2),
+            ),
+          )
+          const asSubject = yield* assessment.getReviewInstance(
+            f.t,
+            own.instanceId,
+            f.principal(f.s2),
+          )
+          const asAdmin = yield* assessment.getReviewInstance(
+            f.t,
+            own.instanceId,
+            f.principal(f.admin),
+          )
+          const adminJudged = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              own.instanceId,
+              { decision: 'approve' },
+              f.principal(f.admin),
+            ),
+          )
+          const strangerRead = yield* Effect.exit(
+            assessment.getReviewInstance(f.t, own.instanceId, f.principal(f.s3)),
+          )
+          const strangerJudged = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              own.instanceId,
+              { decision: 'approve' },
+              f.principal(f.s3),
+            ),
+          )
+          const settled = yield* assessment.decideReview(
+            f.t,
+            own.instanceId,
+            { decision: 'approve' },
+            f.principal(f.reviewer),
+          )
+          return {
+            s2Queue: s2Queue.items,
+            selfJudged,
+            asSubject,
+            asAdmin,
+            adminJudged,
+            strangerRead,
+            strangerJudged,
+            settled,
+          }
+        }),
+      ),
+    )
+
+    expect(result.s2Queue).toEqual([])
+    expect(refusalOf(result.selfJudged)?.reason).toBe('not-reviewer')
+    expect(result.asSubject.capabilities.canDecide).toBe(false)
+    expect(result.asAdmin.capabilities.canDecide).toBe(false)
+    expect(refusalOf(result.adminJudged)?.reason).toBe('not-reviewer')
+    expect(errorOf<{ _tag: string }>(result.strangerRead)?._tag).toBe('ASSESSMENT_REVIEW_NOT_FOUND')
+    expect(errorOf<{ _tag: string }>(result.strangerJudged)?._tag).toBe(
+      'ASSESSMENT_REVIEW_NOT_FOUND',
+    )
+    expect(result.settled.outcome).toBe('approved')
+  })
+
+  it('pages the queue oldest first and refuses a cursor it did not write', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-pages')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const first = yield* submitted(f, g, g.p1, f.s1)
+          const second = yield* submitted(f, g, g.p2, f.s2)
+          const reviewer = f.principal(f.reviewer)
+          const page1 = yield* assessment.listReviewInbox(f.t, { limit: '1' }, reviewer)
+          const page2 = yield* assessment.listReviewInbox(
+            f.t,
+            { limit: '1', cursor: page1.nextCursor! },
+            reviewer,
+          )
+          const tampered = yield* Effect.exit(
+            assessment.listReviewInbox(f.t, { cursor: 'not-a-cursor' }, reviewer),
+          )
+          return { first, second, page1, page2, tampered }
+        }),
+      ),
+    )
+
+    expect(result.page1.items.map((item) => item.instanceId)).toEqual([result.first.instanceId])
+    expect(result.page1.nextCursor).not.toBeNull()
+    expect(result.page2.items.map((item) => item.instanceId)).toEqual([result.second.instanceId])
+    expect(result.page2.nextCursor).toBeNull()
+    expect(errorOf<{ _tag: string }>(result.tampered)?._tag).toBe('BAD_REQUEST')
+  })
+})

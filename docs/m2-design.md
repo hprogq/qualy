@@ -3091,6 +3091,34 @@ hostile tests 必须先于 UI。
 
 `feat(assessment): add single-stage review flow`
 
+落地记录（对话 5 完成时相对本节的偏离）：
+
+- **「当前可行动 reviewer」只有一个定义**（上一轮审计的开工约束）：SQL 谓词 `mayReview`
+  （review/db.ts）由三个合取构成——站位（stage 角色**精确**授在 stage 节点，授权行有效、角色
+  active、持有人 enabled、resource 为空或本批次）、权威（批次 accepted `assessment.review.process`
+  且无 deny，含 all-active 与 role_permissions 两种携带、来源 assignment 仍有效）、回避
+  （既非 subject 也非受审 revision 的 actor）。submit 的到站检查、inbox 查询、decision 授权都
+  引用这同一片段；对话 4 的 `stageHolders` 已删除。测试用同一根拒绝证明两扇门一起关
+  （deny 后 inbox 清空且下一次 submit 直接 `reviewer-not-found`）。
+- **PhaseGate 刻意不在该谓词里**：谓词回答「存在谁」，gate 回答「此刻开没开」。submit 在填报
+  phase 问「有没有人能接」（此时 review.process 通常还没开门），inbox 与 decision 才叠加 gate
+  ——phase 未开时队列为空、决定拒 `phase-closed`，detail 的 canDecide 同源计算。
+- inbox 是拉模型、批次间聚合、oldest-first keyset 分页（cursor 带 per-user fingerprint，
+  篡改答 400）；行内只有屏幕要念的字段（批次名、题目、姓名、轮次、提交时刻），不落 assignee。
+- 决定 first-writer-wins：instance 行 CAS active→completed，输家（第二个审核人、或已撤回）
+  得 `ASSESSMENT_REVIEW_CONFLICT`（409），不是把话追加进已关闭的历史。entry 状态随决定
+  in_review→approved/rejected，与 withdraw 的竞态由同一 CAS 序串化。
+- reject 必须带 comment（422 `comment/required`）；suggestedPayload 只在 reject 上合法、按
+  **受审 revision 引用的 ItemRevision** 表单解码、只准引用受审 payload 已引用的附件
+  （`attachment-not-cited`——建议可以重排证据，不能替学生长出新证据）、存 event 不动 entry
+  （currentRevisionId 不变，学生只读；驳回后学生自己修订、resubmit 开 roundNo+1 新 round）。
+- detail 读权三种人：subject 本人、谓词意义上的审核人、批次管理 reach；其余 404 不泄露存在性。
+  decision 对可读不可判者答 403 `not-reviewer`（含 subject 自判、admin 越权判），对陌生人 404。
+- 新错误码 `ASSESSMENT_REVIEW_NOT_FOUND`（404）与 `ASSESSMENT_REVIEW_CONFLICT`（409）；路径
+  `/assessment/review/inbox`、`/assessment/review/instances/{id}`、`.../decisions`（决定是名词
+  集合的追加）。conv-4 测试夹具随共享定义修正：review 角色现在真实携带并被批次 accept
+  `assessment.review.process`——只站在节点上不再是审核人。
+
 ### 对话 6：唯一 scorer + provisional result
 
 目标：

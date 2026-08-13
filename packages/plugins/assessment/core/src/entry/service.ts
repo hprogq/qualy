@@ -33,11 +33,11 @@ import {
   participantOf,
   revisionAttachmentsOf,
   setEntryState,
-  stageHolders,
   staffReachesParticipant,
   type EntryRow,
   type ParticipantAnchor,
 } from './db.ts'
+import { reviewersAt } from '../review/db.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
 //
@@ -621,8 +621,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               }
 
               // the one stage, resolved from the frozen lineage: the nearest
-              // ancestor of the stage's node type, the roles anchored exactly
-              // there, minus whoever would be judging their own filing
+              // ancestor of the stage's node type, held to the same reviewer
+              // definition the inbox and the decisions ask - the arrival
+              // check may not find a judge the queue would never show
               const policy = itemRevision.reviewPolicy as {
                 stages: readonly {
                   selector: { nodeTypeId: string; roleIds: readonly string[] }
@@ -637,15 +638,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               if (step === undefined) return yield* refuse(action, 'reviewer-not-found')
               const nodePath = yield* nodePathOf(tenantId, step.nodeId)
               if (nodePath === null) return yield* refuse(action, 'reviewer-not-found')
-              const holders = yield* stageHolders({
+              const holders = yield* reviewersAt({
                 tenantId,
+                batchId: entry.batchId,
                 nodeId: step.nodeId,
                 roleIds: stage.selector.roleIds,
+                subjectUserId: participant.userId,
+                actorId: current!.actorId,
               })
-              const conflicted = new Set([participant.userId, current!.actorId])
-              if (holders.filter((holder) => !conflicted.has(holder)).length === 0) {
-                return yield* refuse(action, 'reviewer-not-found')
-              }
+              if (holders.length === 0) return yield* refuse(action, 'reviewer-not-found')
 
               const roundNo = yield* nextRoundNo(tenantId, entryId)
               const instanceId = yield* insertReviewInstance({

@@ -411,40 +411,6 @@ export const staffReachesParticipant = (input: {
     )
     .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.reaches)))
 
-/**
- * Who could review at this stage: enabled people holding one of the stage's
- * roles granted at exactly this node, today.
- *
- * Exact anchor on purpose (§32.23): a subtree grant participates in
- * jurisdiction checks, never in stage membership, or a role mis-granted at
- * the college would quietly review every class below it.
- */
-export const stageHolders = (input: {
-  tenantId: string
-  nodeId: string
-  roleIds: readonly string[]
-}) =>
-  input.roleIds.length === 0
-    ? Effect.succeed([] as readonly string[])
-    : db
-        .query((k) =>
-          sql<{ user_id: string }>`
-            select distinct rg.user_id
-            from role_grants rg
-            join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
-            join users u on u.tenant_id = rg.tenant_id and u.id = rg.user_id
-            where rg.tenant_id = ${input.tenantId}
-              and rg.org_node_id = ${input.nodeId}
-              and rg.role_id = any(${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[])
-              and rg.revoked_at is null
-              and (rg.valid_from is null or rg.valid_from <= now())
-              and (rg.valid_until is null or rg.valid_until > now())
-              and ro.status = 'active'
-              and u.enabled
-          `.execute(k),
-        )
-        .pipe(Effect.map(({ rows }) => rows.map((row) => String(row.user_id))))
-
 /** the live path of a frozen node, or null when the node no longer exists */
 export const nodePathOf = (tenantId: string, nodeId: string) =>
   db
@@ -542,6 +508,7 @@ export const insertReviewEvent = (input: {
   kind: string
   actorId: string | null
   comment?: string | null
+  suggestedPayload?: unknown
 }) =>
   db.query((k) =>
     k
@@ -552,6 +519,9 @@ export const insertReviewEvent = (input: {
         kind: input.kind,
         actorId: input.actorId,
         comment: input.comment ?? null,
-      })
+        ...(input.suggestedPayload !== undefined
+          ? { suggestedPayload: jsonb(input.suggestedPayload) }
+          : {}),
+      } as never)
       .execute(),
   )

@@ -3874,3 +3874,33 @@ reject → revision → new round)。
 审计留给对话 5 的开工约束照单记下:**submit 的到站检查、inbox、approve/reject 权限必须同一份
 「当前可行动 reviewer 集合」语义**(exact grant ∩ batch accepted review.process − deny ∩ PhaseGate
 ∩ 自审排除),不允许 submit 与 inbox 各写一套 SQL。
+
+### 对话 5:单 stage 审核流(2026-08-13)
+
+上一轮审计的开工约束落地为一个 SQL 谓词:`mayReview`(review/db.ts)= 站位(stage 角色精确授在
+stage 节点、授权行有效、角色 active、人 enabled、resource 为空或本批次)∩ 权威(批次 accepted
+`assessment.review.process` 且无 deny)∩ 回避(非 subject、非受审 revision 的 actor)。submit
+到站检查、inbox、approve/reject 授权全部引用同一片段,conv-4 的 stageHolders 已删;测试用一条
+deny 同时关掉两扇门(队列清空 + 下一次 submit 直接 reviewer-not-found)证明单源。PhaseGate 刻意
+不进谓词:谓词答「存在谁」,gate 答「此刻开没开」——submit 在填报期只问前者,inbox/decision
+叠加后者(phase 未开:队列空、决定拒 phase-closed、canDecide=false)。
+
+- **inbox**:拉模型、跨批次、oldest-first keyset(cursor 带 per-user fingerprint,篡改 400);
+  行内只有屏幕要念的字段,不落 assignee。
+- **decision**:instance CAS active→completed,first-writer-wins,输家得
+  `ASSESSMENT_REVIEW_CONFLICT`(409);entry 随决定走 approved/rejected,与 withdraw 的竞态由
+  同一 CAS 串化。approve 可留言;reject 必须留言(422)。
+- **suggestedPayload**:只在 reject 上合法,按受审 revision 引用的 ItemRevision 表单解码,只准
+  引用受审 payload 已有的附件(attachment-not-cited),存 event 不动 entry;学生修订后 resubmit
+  开新 round(roundNo+1),第二轮照常审。
+- **读写分离**:detail 给 subject/审核人/批次管理 reach,其余 404;可读不可判答 403
+  not-reviewer(subject 自判、admin 越权判都在内),陌生人 404。
+- 夹具修正:review 角色现在真实携带并被批次 accept review.process——只站在节点上不再是审核人。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **604 passed / 17 skipped**(新增
+review-flow 6 例,entry-policy 10 例全绿);`pnpm test:browser` 48;`pnpm build`、
+`pnpm qualy resolve --frozen-lockfile`、`pnpm qualy generate`(无待生成)、`prettier --check .`、
+生产 smoke 全绿。
+
+下一步:对话 6(唯一 scorer + provisional result:ScoreAmount、fixed@1/sum@1、单层 ScoreGroup、
+calcParticipant 单点、breakdown/provenance、/my-result、+3/-1/+2 全链测试)。

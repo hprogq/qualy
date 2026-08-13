@@ -393,6 +393,8 @@ export default {
   'assessment/error/entry-payload-invalid': '申报没有保存成功，请按提示修正后重试。',
   'assessment/error/material-range-invalid': '新的材料时间范围会让已有条目越界，请先处理这些条目。',
   'assessment/error/item-not-found': '这个题目已经不存在了。',
+  'assessment/error/review-not-found': '这条审核已经不存在了。',
+  'assessment/error/review-conflict': '这一轮已被他人处理，刷新后可查看结果。',
   'assessment/error/item-config-invalid': '题目没有保存成功，请按提示修正后重试。',
   'assessment/error/score-group-invalid': '分组没有保存成功，请按提示修正后重试。',
   'assessment/error/access-invalid': '这项人员权限的改动被拒绝了。',

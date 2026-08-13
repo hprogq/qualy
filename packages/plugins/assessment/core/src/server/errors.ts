@@ -88,6 +88,24 @@ export class EntryPayloadInvalid extends Schema.TaggedErrorClass<EntryPayloadInv
   { httpApiStatus: 422, identifier: 'AssessmentEntryPayloadInvalid' },
 ) {}
 
+export class ReviewNotFound extends Schema.TaggedErrorClass<ReviewNotFound>()(
+  'ASSESSMENT_REVIEW_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentReviewNotFound' },
+) {}
+
+/**
+ * The round closed under the caller's hands: another reviewer's decision or
+ * the submitter's withdrawal got there first. Not a refusal - they were
+ * allowed to act - and not a validation problem: there is simply no open
+ * round left to close.
+ */
+export class ReviewConflict extends Schema.TaggedErrorClass<ReviewConflict>()(
+  'ASSESSMENT_REVIEW_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'AssessmentReviewConflict' },
+) {}
+
 export class ItemNotFound extends Schema.TaggedErrorClass<ItemNotFound>()(
   'ASSESSMENT_ITEM_NOT_FOUND',
   {},

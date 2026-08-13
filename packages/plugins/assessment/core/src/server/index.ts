@@ -27,6 +27,7 @@ import { ItemTypeCatalog, ScoringCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
+import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
   AccessInvalid,
@@ -742,6 +743,10 @@ export class Assessment extends Context.Service<
     readonly getEntry: EntryMethods['getEntry']
     readonly appendEntryRevision: EntryMethods['appendEntryRevision']
     readonly setEntryStatus: EntryMethods['setEntryStatus']
+    /** the single review stage: a queue answered, a round closed exactly once */
+    readonly listReviewInbox: ReviewMethods['listReviewInbox']
+    readonly getReviewInstance: ReviewMethods['getReviewInstance']
+    readonly decideReview: ReviewMethods['decideReview']
     /** the score tree and the items on it; the save gauntlet lives behind these */
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
@@ -1667,9 +1672,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
     storage,
   })
 
+  const reviewMethods = makeReviewMethods({
+    withDb,
+    // the same gate every entry act passes through, asked for review.process
+    reviewGate: (tenantId, batchId) =>
+      Effect.gen(function* () {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
+        const now = yield* Clock.currentTimeMillis
+        const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
+        return decide(view, 'assessment.review.process', undefined)
+      }),
+    rosterReach: (as, tenantId, batchId) =>
+      Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
+    parseRange,
+    itemTypes,
+  })
+
   return Assessment.of({
     ...itemMethods,
     ...entryMethods,
+    ...reviewMethods,
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
       return yield* withDb(
         transaction(
@@ -3074,6 +3097,30 @@ const entryDto = (entry: EntryView) => ({
   capabilities: entry.capabilities,
 })
 
+const reviewDto = (review: ReviewDetailView) => ({
+  id: review.id,
+  state: review.state,
+  outcome: review.outcome,
+  roundNo: review.roundNo,
+  entryId: review.entryId,
+  batchId: review.batchId,
+  itemId: review.itemId,
+  itemTitle: review.itemTitle,
+  participantName: review.participantName,
+  submittedAt: new Date(review.submittedAt).toISOString(),
+  completedAt: review.completedAt === null ? null : new Date(review.completedAt).toISOString(),
+  revision: review.revision,
+  form: review.form,
+  events: review.events.map((event) => ({
+    kind: event.kind,
+    actorId: event.actorId,
+    comment: event.comment,
+    suggestedPayload: event.suggestedPayload,
+    at: new Date(event.at).toISOString(),
+  })),
+  capabilities: review.capabilities,
+})
+
 const itemDto = (item: ItemView) => ({
   id: item.id,
   batchId: item.batchId,
@@ -3805,6 +3852,61 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { entry: entryDto(entry) }
+      }),
+    )
+    .handle(
+      'listReviewInbox',
+      Effect.fn('assessment.listReviewInbox.handler')(function* ({ query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const page = yield* assessment.listReviewInbox(
+          principal.tenantId,
+          {
+            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+            ...(query.limit !== undefined ? { limit: query.limit } : {}),
+          },
+          principal,
+        )
+        return {
+          items: page.items.map((item) => ({
+            ...item,
+            submittedAt: new Date(item.submittedAt).toISOString(),
+          })),
+          nextCursor: page.nextCursor,
+        }
+      }),
+    )
+    .handle(
+      'getReviewInstance',
+      Effect.fn('assessment.getReviewInstance.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const review = yield* assessment.getReviewInstance(
+          principal.tenantId,
+          params.instanceId,
+          principal,
+        )
+        return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'decideReview',
+      Effect.fn('assessment.decideReview.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const review = yield* assessment.decideReview(
+          principal.tenantId,
+          params.instanceId,
+          {
+            decision: payload.decision,
+            ...(payload.comment !== undefined ? { comment: payload.comment } : {}),
+            ...(payload.suggestedPayload !== undefined
+              ? { suggestedPayload: payload.suggestedPayload }
+              : {}),
+          },
+          principal,
+        )
+        return { review: reviewDto(review) }
       }),
     )
     .handle(

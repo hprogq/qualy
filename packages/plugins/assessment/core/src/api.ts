@@ -26,6 +26,8 @@ import {
   BatchNotFound,
   ParticipantInvalid,
   ParticipantNotFound,
+  ReviewConflict,
+  ReviewNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
   BatchStatusInvalid,
@@ -390,7 +392,92 @@ const entryView = Schema.Struct({
   }),
 })
 
+const reviewInboxItem = Schema.Struct({
+  instanceId: Schema.String,
+  entryId: Schema.String,
+  batchId: Schema.String,
+  batchName: Schema.String,
+  itemId: Schema.String,
+  itemTitle: Schema.String,
+  participantName: Schema.String,
+  roundNo: Schema.Number,
+  submittedAt: Schema.String,
+})
+
+const reviewDetailView = Schema.Struct({
+  id: Schema.String,
+  state: Schema.Literals(['active', 'blocked', 'completed']),
+  outcome: Schema.NullOr(Schema.String),
+  roundNo: Schema.Number,
+  entryId: Schema.String,
+  batchId: Schema.String,
+  itemId: Schema.String,
+  itemTitle: Schema.String,
+  participantName: Schema.String,
+  submittedAt: Schema.String,
+  completedAt: Schema.NullOr(Schema.String),
+  /** exactly what is being judged: the revision the round froze, not the entry's latest */
+  revision: Schema.Struct({
+    revisionNo: Schema.Number,
+    payload: configJson,
+    note: Schema.NullOr(Schema.String),
+    attachments: Schema.Array(
+      Schema.Struct({ attachmentId: Schema.String, position: Schema.Number }),
+    ),
+  }),
+  form: Schema.Struct({ itemType: Schema.String, formConfig: configJson }),
+  events: Schema.Array(
+    Schema.Struct({
+      kind: Schema.String,
+      actorId: Schema.NullOr(Schema.String),
+      comment: Schema.NullOr(Schema.String),
+      suggestedPayload: configJson,
+      at: Schema.String,
+    }),
+  ),
+  capabilities: Schema.Struct({ canDecide: Schema.Boolean }),
+})
+
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
+  .add(
+    // the caller's own queue; there is nothing here to name or filter by
+    // another person, so the path carries no batch and no user
+    HttpApiEndpoint.get('listReviewInbox', '/assessment/review/inbox', {
+      query: Schema.Struct(pageQuery),
+      success: Schema.Struct({
+        items: Schema.Array(reviewInboxItem),
+        nextCursor: Schema.NullOr(Schema.String),
+      }),
+      error: [BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getReviewInstance', '/assessment/review/instances/:instanceId', {
+      params: Schema.Struct({ instanceId: id }),
+      success: Schema.Struct({ review: reviewDetailView }),
+      error: [ReviewNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('decideReview', '/assessment/review/instances/:instanceId/decisions', {
+      params: Schema.Struct({ instanceId: id }),
+      payload: Schema.Struct({
+        decision: Schema.Literals(['approve', 'reject']),
+        comment: Schema.optional(boundedText(2000)),
+        suggestedPayload: Schema.optional(configJson),
+      }),
+      success: Schema.Struct({ review: reviewDetailView }),
+      error: [
+        ReviewNotFound,
+        ReviewConflict,
+        BatchReadOnly,
+        EntryActionRefused,
+        EntryPayloadInvalid,
+        AccessDenied,
+        BadRequest,
+      ],
+    }).middleware(Authenticated),
+  )
   .add(
     HttpApiEndpoint.post('createEntry', '/assessment/entries', {
       payload: Schema.Struct({
