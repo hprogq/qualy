@@ -20,7 +20,17 @@ export const testItemType: ItemTypeDriver = {
   id: 'evidence',
   configSchema: Schema.Struct({
     required: Schema.optional(Schema.Array(Schema.String)),
+    // a stand-in for evidence's date windows: the config claims it needs
+    // days from this date on, and the range sweep must notice when the
+    // round no longer has any
+    validFrom: Schema.optional(Schema.String),
   }),
+  configIssues: (config, batch) => {
+    const from = (config as { validFrom?: string }).validFrom
+    return from !== undefined && from >= batch.materialRange.end
+      ? [{ path: 'formConfig.validFrom', reason: 'date-window-empty' }]
+      : []
+  },
   decodePayload: (config, payload) =>
     Effect.suspend(() => {
       const required = ((config as { required?: readonly string[] }).required ?? []).filter(

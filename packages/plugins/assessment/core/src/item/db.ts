@@ -394,6 +394,40 @@ export const itemHasEntries = (tenantId: string, itemId: string) =>
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/** every active item's current configuration, for the range impact check */
+export const currentBatchConfigs = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentItem')
+        .innerJoin('AssessmentItemRevision', (join) =>
+          join
+            .onRef('AssessmentItemRevision.tenantId', '=', 'AssessmentItem.tenantId')
+            .onRef('AssessmentItemRevision.id', '=', 'AssessmentItem.currentRevisionId'),
+        )
+        .select([
+          'AssessmentItem.id as itemId',
+          'AssessmentItem.itemType as itemType',
+          'AssessmentItemRevision.formConfig as formConfig',
+        ])
+        .where('AssessmentItem.tenantId', '=', tenantId)
+        .where('AssessmentItem.batchId', '=', batchId)
+        .where('AssessmentItem.status', '=', 'active')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => {
+          const record = row as Record<string, unknown>
+          return {
+            itemId: String(record['itemId']),
+            itemType: String(record['itemType']),
+            formConfig: record['formConfig'],
+          }
+        }),
+      ),
+    )
+
 /**
  * Every live entry of a batch with what its payload decodes by, for the
  * material-range impact check: each row carries its own item revision's form

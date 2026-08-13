@@ -25,7 +25,7 @@ import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.t
 import { PARTICIPANT_ACTION_CODES, STAFF_CODES } from '../permissions.ts'
 import { ItemTypeCatalog, ScoringCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
-import { liveBatchPayloads } from '../item/db.ts'
+import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import {
   AccessInvalid,
   AdvanceInvalid,
@@ -1770,15 +1770,35 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 current.end !== input.materialRange.end
               ) {
                 diff.materialRange = [current, input.materialRange]
-                // the window is part of what makes existing evidence legal:
-                // every live entry is re-read under the candidate range by
-                // its own item revision's form, and the ones that would fall
-                // outside are named rather than silently stranded (§32.8)
+                // The window is part of what makes the round's questions and
+                // their evidence legal, so both are re-read under the
+                // candidate range: every active item's current form (a date
+                // field can end up with no legal day at all), and every live
+                // entry by its own item revision's form. Whatever cannot
+                // live inside the new window is named; a driver that is not
+                // installed proves nothing and refuses rather than skips.
+                const badItems: { itemId: string; reason: string }[] = []
+                const configs = yield* currentBatchConfigs(tenantId, batchId)
+                for (const row of configs) {
+                  const driver = itemTypes.get(row.itemType)
+                  if (driver === undefined) {
+                    badItems.push({ itemId: row.itemId, reason: 'item-type-not-installed' })
+                    continue
+                  }
+                  for (const issue of driver.configIssues?.(row.formConfig, {
+                    materialRange: input.materialRange,
+                  }) ?? []) {
+                    badItems.push({ itemId: row.itemId, reason: issue.reason })
+                  }
+                }
                 const live = yield* liveBatchPayloads(tenantId, batchId)
                 const stranded: { entryId: string; itemId: string }[] = []
                 for (const row of live) {
                   const driver = itemTypes.get(row.itemType)
-                  if (driver === undefined) continue
+                  if (driver === undefined) {
+                    badItems.push({ itemId: row.itemId, reason: 'item-type-not-installed' })
+                    continue
+                  }
                   const decoded = yield* Effect.result(
                     driver.decodePayload(row.formConfig, row.payload, {
                       materialRange: input.materialRange,
@@ -1788,8 +1808,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
                     stranded.push({ entryId: row.entryId, itemId: row.itemId })
                   }
                 }
-                if (stranded.length > 0) {
-                  return yield* new MaterialRangeInvalid({ entries: stranded })
+                if (stranded.length > 0 || badItems.length > 0) {
+                  return yield* new MaterialRangeInvalid({ entries: stranded, items: badItems })
                 }
               }
             }

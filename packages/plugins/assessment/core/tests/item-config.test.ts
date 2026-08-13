@@ -784,7 +784,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.after.configRevision).toBe(result.activated.configRevision)
   })
 
-  it('refuses to shrink the material window over entries that carry dates outside it', async () => {
+  it('refuses to shrink the material window over what could not live inside it', async () => {
     const result = ok(
       await run(
         db.url,
@@ -800,10 +800,11 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               title: 'dated evidence',
               scoreGroupId: groupId,
               maxEntries: null,
-              config: studentConfig({ formConfig: { required: ['certified-on'] } }),
+              config: studentConfig({ formConfig: { validFrom: '2026-08-01' } }),
             },
             f.principal,
           )
+          // a live entry that the current form still reads
           const participant = one<{ id: string }>(
             yield* runSql(sql`
               select id from batch_participants
@@ -819,33 +820,76 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             yield* runSql(sql`
               insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
               values (${f.tenant}, ${entry}, ${item.id}, ${item.currentRevision!.id}, 1,
-                      '{"certified-on":"2026-03-15"}', ${f.student}, ${f.student}, 'self')
+                      '{}', ${f.student}, ${f.student}, 'self')
               returning id`),
           ).id
           yield* runSql(
             sql`update entries set current_revision_id = ${revision} where id = ${entry}`,
           )
 
-          // the test driver has no date semantics, so "outside the window" is
-          // expressed through its required-key contract instead: the shrink
-          // itself is what the service must ask every driver about
-          const shrunk = yield* Effect.exit(
+          // the item's own window dies before any payload does: a form that
+          // needs days from august cannot live in a round that ends in july
+          const emptied = yield* Effect.exit(
             assessment.updateBatch(
               f.tenant,
               batch.id,
-              { materialRange: { start: '2026-04-01', end: '2026-09-01' } },
+              { materialRange: { start: '2026-03-01', end: '2026-07-01' } },
               f.principal,
             ),
           )
-          return { entry, shrunk, itemId: item.id }
+          // a shrink both the form and the payloads survive goes through
+          const survivable = yield* assessment.updateBatch(
+            f.tenant,
+            batch.id,
+            { materialRange: { start: '2026-03-02', end: '2026-09-01' } },
+            f.principal,
+          )
+          // an item whose driver this assembly does not carry proves nothing
+          // about any window, so the change is refused rather than waved past
+          const ghostGroup = groupId
+          const ghostItem = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id)
+              values (${f.tenant}, ${batch.id}, 'ghost', 'orphaned question', ${ghostGroup})
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into assessment_item_revisions
+              (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
+            values (${f.tenant}, ${ghostItem}, 1, 'student', '{}', '{}', '{}', '{}', ${f.principal.userId})`)
+          yield* runSql(sql`
+            update assessment_items set current_revision_id =
+              (select id from assessment_item_revisions where item_id = ${ghostItem})
+            where id = ${ghostItem}`)
+          const unprovable = yield* Effect.exit(
+            assessment.updateBatch(
+              f.tenant,
+              batch.id,
+              { materialRange: { start: '2026-03-03', end: '2026-09-01' } },
+              f.principal,
+            ),
+          )
+          return { item: item.id, ghostItem, emptied, survivable, unprovable }
         }),
       ),
     )
 
-    // the test driver decodes independently of dates, so the shrink passes -
-    // what this pins is that the impact path ran and named nobody, rather
-    // than refusing blindly
-    expect(Exit.isSuccess(result.shrunk)).toBe(true)
+    expect(tagOf(result.emptied)).toBe('ASSESSMENT_MATERIAL_RANGE_INVALID')
+    const emptiedError = errorOf<{ items: readonly { itemId: string; reason: string }[] }>(
+      result.emptied,
+    )!
+    expect(emptiedError.items).toContainEqual({
+      itemId: result.item,
+      reason: 'date-window-empty',
+    })
+    expect(result.survivable.materialRange.start).toBe('2026-03-02')
+    const unprovableError = errorOf<{ items: readonly { itemId: string; reason: string }[] }>(
+      result.unprovable,
+    )!
+    expect(unprovableError.items).toContainEqual({
+      itemId: result.ghostItem,
+      reason: 'item-type-not-installed',
+    })
   })
 
   it('keeps configuration management inside the batch boundary', async () => {

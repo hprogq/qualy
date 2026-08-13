@@ -53,7 +53,10 @@ export class ParticipantInvalid extends Schema.TaggedErrorClass<ParticipantInval
 export class MaterialRangeInvalid extends Schema.TaggedErrorClass<MaterialRangeInvalid>()(
   'ASSESSMENT_MATERIAL_RANGE_INVALID',
   {
+    /** live entries whose payloads would fall outside the candidate window */
     entries: Schema.Array(Schema.Struct({ entryId: Schema.String, itemId: Schema.String })),
+    /** items whose configuration itself cannot live inside it */
+    items: Schema.Array(Schema.Struct({ itemId: Schema.String, reason: Schema.String })),
   },
   { httpApiStatus: 422, identifier: 'AssessmentMaterialRangeInvalid' },
 ) {}
