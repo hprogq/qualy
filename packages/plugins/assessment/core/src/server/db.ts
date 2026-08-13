@@ -1275,6 +1275,19 @@ export const replacePhaseScopes = (
     }
   })
 
+/** the items of a batch, for validating an item allowance */
+export const batchItemIds = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentItem')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .execute(),
+    )
+    .pipe(Effect.map((found) => new Set(found.map((row) => row.id as string))))
+
 /** the participant rows of a batch, for validating a participant allowance */
 export const batchParticipantIds = (tenantId: string, batchId: string) =>
   db

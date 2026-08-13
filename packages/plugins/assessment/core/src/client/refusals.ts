@@ -24,6 +24,7 @@ type ServiceRefusalReason =
   | 'phase-key-immutable'
   | 'scope-in-template'
   | 'participant-not-in-batch'
+  | 'item-not-in-batch'
 
 /**
  * Every refusal reason the api can return, mapped to its explanation. Typed
@@ -52,6 +53,7 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'phase-key-immutable': m['refusal.phase-key-immutable'],
   'scope-in-template': m['refusal.scope-in-template'],
   'participant-not-in-batch': m['refusal.participant-not-in-batch'],
+  'item-not-in-batch': m['refusal.item-not-in-batch'],
 }
 
 export interface PlanRefusalLike {

@@ -95,6 +95,7 @@ import {
   oneParticipant,
   oneTemplate,
   activeParticipantByUser,
+  batchItemIds,
   phaseScopes,
   roleHoldersAt,
   replacePhaseScopes,
@@ -1024,6 +1025,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     specs: readonly PhaseSpecInput[],
     existingById: ReadonlyMap<string, PlanPhase>,
     participants: ReadonlySet<string>,
+    items: ReadonlySet<string>,
     endedIds: ReadonlySet<string>,
   ): PlanRefusal[] => {
     const refusals: PlanRefusal[] = []
@@ -1034,6 +1036,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // the foreign key only knows the tenant, so the service holds the line
         if (!participants.has(participantId)) {
           refusals.push({ reason: 'participant-not-in-batch', phaseId: spec.id ?? null, index })
+        }
+      }
+      for (const itemId of normalScope(spec.itemScope)) {
+        // same line for items: the key proves the item exists in the tenant,
+        // the service proves it is this batch's - an allowance naming another
+        // round's question would gate on something nobody here can satisfy
+        if (!items.has(itemId)) {
+          refusals.push({ reason: 'item-not-in-batch', phaseId: spec.id ?? null, index })
         }
       }
       if (spec.id !== undefined && endedIds.has(spec.id)) {
@@ -2247,6 +2257,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const rows = yield* readPlan(tenantId, batchId)
             const existingById = new Map(rows.map((row) => [row.id, row]))
             const participants = yield* batchParticipantIds(tenantId, batchId)
+            const batchItems = yield* batchItemIds(tenantId, batchId)
             const now = yield* Clock.currentTimeMillis
             const actorId = as.userId
 
@@ -2305,7 +2316,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               // a draft plan is replaced as a whole: ids are kept where
               // given, rows absent from the submission go away
               const review = reviewPlan(specs.map(specToEngine))
-              const scoped = scopeRefusals(specs, existingById, participants, new Set())
+              const scoped = scopeRefusals(specs, existingById, participants, batchItems, new Set())
               if (review.refusals.length + scoped.length > 0) {
                 return yield* new PlanInvalid({ refusals: [...review.refusals, ...scoped] })
               }
@@ -2356,7 +2367,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const endedIds = new Set(
               rows.filter((_, index) => index < effective.index).map((row) => row.id),
             )
-            refusals.push(...scopeRefusals(specs, existingById, participants, endedIds))
+            refusals.push(...scopeRefusals(specs, existingById, participants, batchItems, endedIds))
 
             let working = toSnapshots(rows)
             for (const [index, spec] of specs.entries()) {

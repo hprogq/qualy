@@ -459,8 +459,10 @@ export const PhaseTemplate = defineEntity({
 })
 
 // a scoped supplementary phase's item allowance; empty means unrestricted.
-// item_id stays a bare uuid until the items table exists; the foreign key is
-// a later ALTER.
+// item_id carries a real key to assessment_items (cascade: only a draft
+// item with no business facts can be hard-deleted, and a phase allowance
+// naming it should go with it). Same-batch membership is the service's
+// check, like the participant allowance.
 export const PhaseItemScope = defineEntity({
   name: 'PhaseItemScope',
   tableName: 'phase_item_scopes',
@@ -1128,6 +1130,8 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, phase_id) references batch_phases (tenant_id, id) on delete cascade`,
   `alter table phase_item_scopes add constraint fk_phase_item_scopes_phase
      foreign key (tenant_id, phase_id) references batch_phases (tenant_id, id) on delete cascade`,
+  `alter table phase_item_scopes add constraint fk_phase_item_scopes_item
+     foreign key (tenant_id, item_id) references assessment_items (tenant_id, id) on delete cascade`,
   `alter table phase_participant_scopes add constraint fk_phase_participant_scopes_phase
      foreign key (tenant_id, phase_id) references batch_phases (tenant_id, id) on delete cascade`,
   `alter table phase_participant_scopes add constraint fk_phase_participant_scopes_participant

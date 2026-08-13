@@ -3722,3 +3722,12 @@ entry_revisions 尚无任何写路径,加 NOT NULL 列无回填问题)。过程�
 
 审计中「暂不修」四条照单:actor/subject 不加 users 外键(历史不钉活人)、附件 owner/status/跨 entry
 复用归 ResourcePolicy 与 bind 事务、parent_group 不焊死单层、current_* 保持 nullable。
+
+**补一条同类边(第二轮反查)**:`phase_item_scopes.item_id` 一直是裸 uuid("等 items 表出现再补外键"
+的那条注释欠的账)。现在 items 表在了:补 `(tenant_id, item_id) → assessment_items` **CASCADE**
+(只有零业务事实的 draft 题可硬删,阶段对它的 allowance 应随之消失;active 题走 void 不经过这里);
+service 与 participant allowance 同一口径加同批次校验(`item-not-in-batch`,进 refusal 词表与双语
+catalog)。修正迁移 `20260813090400`(先清没有对应 item 的历史悬挂行再加键——这张表在 items 表出现
+之前就可写,不能假设无旧数据)。原来把"随机 UUID 进 itemScope 且成功"当正常行为断言的测试改为
+插真实题;敌意用例三条:不存在的 id 拒、同租户他批次真实题拒、本批次题过;DB 级两条:悬挂 23503、
+draft 题删除连带 allowance。`pnpm test` 560 passed / 17 skipped,全门禁绿,dev 库已 deploy。

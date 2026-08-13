@@ -514,6 +514,48 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     ).toBe('23514')
   })
 
+  it('ties a phase item allowance to a real item, and lets a draft deletion take it along', async () => {
+    const f = await createFixture('ie-scope')
+    const g = await createBatchGraph(f, 'Round A')
+    const phaseId = (
+      await db.row<{ id: string }>(
+        `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name)
+         values ($1, $2, 0, 'supplementary', 'Supplementary') returning id`,
+        [f.tenantId, g.batchId],
+      )
+    ).id
+
+    // an allowance naming an id no item ever had is refused outright
+    expect(
+      await pgCode(
+        db.query(
+          `insert into phase_item_scopes (tenant_id, phase_id, item_id) values ($1, $2, $3)`,
+          [f.tenantId, phaseId, randomUUID()],
+        ),
+      ),
+    ).toBe('23503')
+
+    // a real one is accepted, and follows its item out: a draft item with no
+    // business facts may be hard-deleted, and an allowance naming it should
+    // not survive as a reference to nothing
+    const freshItemId = (
+      await db.row<{ id: string }>(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id)
+         values ($1, $2, 'evidence', 'short-lived', $3) returning id`,
+        [f.tenantId, g.batchId, g.groupId],
+      )
+    ).id
+    await db.query(
+      `insert into phase_item_scopes (tenant_id, phase_id, item_id) values ($1, $2, $3)`,
+      [f.tenantId, phaseId, freshItemId],
+    )
+    await db.query(`delete from assessment_items where id = $1`, [freshItemId])
+    const remaining = await db.query(`select item_id from phase_item_scopes where phase_id = $1`, [
+      phaseId,
+    ])
+    expect(remaining.rows).toHaveLength(0)
+  })
+
   it('rejects cross-tenant references between the new tables', async () => {
     const a = await createFixture('ie-xta')
     const b = await createFixture('ie-xtb')

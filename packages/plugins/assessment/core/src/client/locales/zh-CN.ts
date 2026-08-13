@@ -373,6 +373,7 @@ export default {
   'assessment/refusal/phase-key-immutable': '批次已开始，无法修改参与批次的用户类型。',
   'assessment/refusal/scope-in-template': '可复用的模板不能指向某个批次里的题目或人员。',
   'assessment/refusal/participant-not-in-batch': '所选人员中有人不在本批次名单里。',
+  'assessment/refusal/item-not-in-batch': '所选题目中有的不属于本批次。',
   'assessment/refusal/phase-template-shape': '阶段模板用于预定义阶段的基本信息和可执行操作。',
   'assessment/refusal/template-not-a-timeline': '阶段模板无法替换时间线模板。',
 

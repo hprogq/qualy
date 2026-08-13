@@ -2042,7 +2042,68 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         )
         const p1 = participants.find((row) => row.user_id === f.s1)!.id
         const p2 = participants.find((row) => row.user_id === f.s2)!.id
-        const itemA = randomUUID()
+        // a real item: the allowance now refuses ids that are not this
+        // batch's questions, so the fixture has to have one
+        const groupId = one<{ id: string }>(
+          yield* runSql(
+            sql`insert into score_groups (tenant_id, batch_id, name) values (${f.tenant}, ${batch.id}, 'general') returning id`,
+          ),
+        ).id
+        const itemA = one<{ id: string }>(
+          yield* runSql(
+            sql`insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id)
+                values (${f.tenant}, ${batch.id}, 'evidence', 'evidence item', ${groupId}) returning id`,
+          ),
+        ).id
+        // a real item of a different round: exists in the tenant, so only
+        // the service's same-batch line refuses it
+        const otherBatch = one<{ id: string }>(
+          yield* runSql(
+            sql`insert into assessment_batches (tenant_id, name, material_range)
+                values (${f.tenant}, 'another round', daterange('2026-03-01', '2026-09-01')) returning id`,
+          ),
+        ).id
+        const otherGroup = one<{ id: string }>(
+          yield* runSql(
+            sql`insert into score_groups (tenant_id, batch_id, name) values (${f.tenant}, ${otherBatch}, 'general') returning id`,
+          ),
+        ).id
+        const foreignItem = one<{ id: string }>(
+          yield* runSql(
+            sql`insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id)
+                values (${f.tenant}, ${otherBatch}, 'evidence', 'foreign item', ${otherGroup}) returning id`,
+          ),
+        ).id
+        const crossBatchItem = yield* Effect.exit(
+          assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            {
+              specs: plan.map((row) =>
+                row.phaseKey === 'supplementary'
+                  ? { ...toSpec(row), itemScope: [foreignItem] }
+                  : toSpec(row),
+              ),
+            },
+            f.principal,
+          ),
+        )
+        // an allowance naming a made-up item is refused the same way a
+        // stranger on the participant side is
+        const strayItem = yield* Effect.exit(
+          assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            {
+              specs: plan.map((row) =>
+                row.phaseKey === 'supplementary'
+                  ? { ...toSpec(row), itemScope: [randomUUID()] }
+                  : toSpec(row),
+              ),
+            },
+            f.principal,
+          ),
+        )
         const stranger = yield* Effect.exit(
           assessment.replacePlan(
             f.tenant,
@@ -2074,6 +2135,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           assessment.gate(f.tenant, batch.id, code, ctx)
         return {
           stranger,
+          strayItem,
+          crossBatchItem,
           scoped,
           inScope: yield* gate('assessment.entry.create', { itemId: itemA, participantId: p1 }),
           wrongItem: yield* gate('assessment.entry.create', {
@@ -2095,6 +2158,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     const decisions = ok(exit)
     // an allowance naming a stranger's row is refused before anything writes
     expect(tagOf(decisions.stranger)).toBe('ASSESSMENT_PLAN_INVALID')
+    expect(tagOf(decisions.strayItem)).toBe('ASSESSMENT_PLAN_INVALID')
+    expect(tagOf(decisions.crossBatchItem)).toBe('ASSESSMENT_PLAN_INVALID')
     const supplementary = decisions.scoped.phases.find((row) => row.phaseKey === 'supplementary')!
     expect(supplementary.itemScope).toEqual([decisions.itemA])
     expect(supplementary.participantScope).toEqual([decisions.p1])

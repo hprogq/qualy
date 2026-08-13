@@ -1128,6 +1128,10 @@ const i18n = definePluginMessages({
       id: 'assessment/refusal/participant-not-in-batch',
       defaultMessage: 'One of the selected people is not a participant of this batch.',
     },
+    'refusal.item-not-in-batch': {
+      id: 'assessment/refusal/item-not-in-batch',
+      defaultMessage: 'One of the selected items does not belong to this batch.',
+    },
     'refusal.phase-template-shape': {
       id: 'assessment/refusal/phase-template-shape',
       defaultMessage:
