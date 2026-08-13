@@ -26,12 +26,7 @@ export const participantRowByUser = (tenantId: string, batchId: string, userId: 
     )
     .pipe(
       Effect.map((row) =>
-        row === undefined
-          ? null
-          : {
-              id: String((row as Record<string, unknown>)['id']),
-              status: String((row as Record<string, unknown>)['status']),
-            },
+        row === undefined ? null : { id: row.id, status: row.status as string },
       ),
     )
 
@@ -48,27 +43,27 @@ export interface ScoredEntryRow {
 export const participantEntries = (tenantId: string, batchId: string, participantId: string) =>
   db
     .query((k) =>
-      sql`
-        select e.id, e.item_id, e.status, e.current_revision_id, er.payload,
-               ${epoch('e.created_at')} as created_ms
-        from entries e
-        left join entry_revisions er
-          on er.tenant_id = e.tenant_id and er.id = e.current_revision_id
-        where e.tenant_id = ${tenantId}
-          and e.batch_id = ${batchId}
-          and e.participant_id = ${participantId}
-      `.execute(k),
+      k
+        .selectFrom('Entry as e')
+        .leftJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'e.tenantId').onRef('er.id', '=', 'e.currentRevisionId'),
+        )
+        .select(['e.id', 'e.itemId', 'e.status', 'e.currentRevisionId as revisionId', 'er.payload'])
+        .select([epoch('e.created_at').as('createdMs')])
+        .where('e.tenantId', '=', tenantId)
+        .where('e.batchId', '=', batchId)
+        .where('e.participantId', '=', participantId)
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) =>
-        (rows as Record<string, unknown>[]).map((row): ScoredEntryRow => ({
-          id: String(row['id']),
-          itemId: String(row['item_id']),
-          status: String(row['status']),
-          revisionId:
-            row['current_revision_id'] == null ? null : String(row['current_revision_id']),
-          payload: row['payload'] ?? null,
-          createdAt: msOf(row['created_ms']),
+      Effect.map((rows) =>
+        rows.map((row): ScoredEntryRow => ({
+          id: row.id,
+          itemId: row.itemId,
+          status: row.status as string,
+          revisionId: row.revisionId,
+          payload: row.payload ?? null,
+          createdAt: msOf(row.createdMs),
         })),
       ),
     )

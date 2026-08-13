@@ -3989,3 +3989,24 @@ build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿
 
 下一步:对话 8(前端真实竖切:工作区、填报、审核收件箱、我的结果、上传 UI 与 attachment HTTP
 边界)。
+
+### 查询层规约:Query Builder 默认,raw SQL 只留给 PG 特性(2026-08-13)
+
+工程规则入 CLAUDE.md:查询默认走 Kysely Query Builder,`sql` 模板只留给 PostgreSQL 特有表达
+(advisory lock、ltree、row-value keyset、extract(epoch)、IS DISTINCT FROM、uuid[]/jsonb 等),
+且以最小 `sql<T>` 片段内嵌进 builder 查询;`sql<Row>` 是自我声明不是 schema 校验,能推断就不许
+`Record<string, unknown>` 手工映射。
+
+同笔把 C5–C7 新增的普通关系查询收回 builder(不碰已被敌意测试钉死的 server/db.ts 复杂授权 SQL,
+不碰 `mayReview`/`reviewersAt`/`userMayReview` 共享谓词与 `pg_advisory_xact_lock`):
+
+- attachment/db.ts `citingEntries`/`citingInstances`、scoring/db.ts `participantEntries`、
+  review/db.ts `instanceOf`/`activeReviewBatches`/`inboxPage`/`reviewEventsOf` 全部改为
+  aliased join + 类型化 select,列名/关系拼错现在编译期就报;
+- `inboxPage` 外围整体 builder 化:`mayReview` 谓词作为 typed fragment 挂在 `.where()` 上,
+  keyset 行值比较与 `created_at::text` 保留为内嵌片段,`limit ${sql.raw(...)}` 改回原生
+  `.limit(n)`;
+- 手工 `Record<string, unknown>` 映射全部删除,行类型由实体 schema 推断。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **612 passed / 17 skipped**(行为不变,全部
+既有敌意用例照常通过);browser 48;build、frozen resolve、prettier、生产 smoke 全绿。

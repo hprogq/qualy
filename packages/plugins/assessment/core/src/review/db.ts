@@ -192,51 +192,81 @@ export interface ReviewInstanceDetailRow {
 export const instanceOf = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>
-      sql`
-        select ri.id, ri.state, ri.outcome, ri.round_no, ri.entry_id, ri.revision_id,
-               ri.current_node_id, ri.current_role_ids,
-               ${epoch('ri.created_at')} as created_ms,
-               ${epoch('ri.completed_at')} as completed_ms,
-               e.batch_id, b.status as batch_status, e.item_id, i.title as item_title,
-               i.item_type, e.participant_id, bp.user_id as subject_user_id,
-               su.display_name as subject_name, er.actor_id, er.item_revision_id
-        from review_instances ri
-        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        join assessment_batches b on b.tenant_id = e.tenant_id and b.id = e.batch_id
-        join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-        join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-        join users su on su.tenant_id = bp.tenant_id and su.id = bp.user_id
-        join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-        where ri.tenant_id = ${tenantId} and ri.id = ${instanceId}
-      `.execute(k),
+      k
+        .selectFrom('ReviewInstance as ri')
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('AssessmentBatch as b', (join) =>
+          join.onRef('b.tenantId', '=', 'e.tenantId').onRef('b.id', '=', 'e.batchId'),
+        )
+        .innerJoin('AssessmentItem as i', (join) =>
+          join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .innerJoin('User as su', (join) =>
+          join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
+        )
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+        )
+        .select([
+          'ri.id',
+          'ri.state',
+          'ri.outcome',
+          'ri.roundNo',
+          'ri.entryId',
+          'ri.revisionId',
+          'ri.currentNodeId',
+          'ri.currentRoleIds',
+          'e.batchId',
+          'b.status as batchStatus',
+          'e.itemId',
+          'i.title as itemTitle',
+          'i.itemType',
+          'e.participantId',
+          'bp.userId as subjectUserId',
+          'su.displayName as subjectName',
+          'er.actorId',
+          'er.itemRevisionId',
+        ])
+        .select([
+          epoch('ri.created_at').as('createdMs'),
+          epoch('ri.completed_at').as('completedMs'),
+        ])
+        .where('ri.tenantId', '=', tenantId)
+        .where('ri.id', '=', instanceId)
+        .executeTakeFirst(),
     )
     .pipe(
-      Effect.map(({ rows }) => {
-        const row = rows[0] as Record<string, unknown> | undefined
-        if (row === undefined) return null
-        return {
-          id: String(row['id']),
-          state: String(row['state']),
-          outcome: row['outcome'] == null ? null : String(row['outcome']),
-          roundNo: Number(row['round_no']),
-          entryId: String(row['entry_id']),
-          revisionId: String(row['revision_id']),
-          currentNodeId: String(row['current_node_id']),
-          currentRoleIds: (row['current_role_ids'] as readonly string[]).map(String),
-          createdAt: msOf(row['created_ms']),
-          completedAt: row['completed_ms'] == null ? null : msOf(row['completed_ms']),
-          batchId: String(row['batch_id']),
-          batchStatus: String(row['batch_status']),
-          itemId: String(row['item_id']),
-          itemTitle: String(row['item_title']),
-          itemType: String(row['item_type']),
-          participantId: String(row['participant_id']),
-          subjectUserId: String(row['subject_user_id']),
-          subjectName: String(row['subject_name']),
-          actorId: String(row['actor_id']),
-          itemRevisionId: String(row['item_revision_id']),
-        } as ReviewInstanceDetailRow
-      }),
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : ({
+              id: row.id,
+              state: row.state as ReviewInstanceDetailRow['state'],
+              outcome: row.outcome,
+              roundNo: row.roundNo,
+              entryId: row.entryId,
+              revisionId: row.revisionId,
+              currentNodeId: row.currentNodeId,
+              currentRoleIds: row.currentRoleIds,
+              createdAt: msOf(row.createdMs),
+              completedAt: row.completedMs == null ? null : msOf(row.completedMs),
+              batchId: row.batchId,
+              batchStatus: row.batchStatus as string,
+              itemId: row.itemId,
+              itemTitle: row.itemTitle,
+              itemType: row.itemType,
+              participantId: row.participantId,
+              subjectUserId: row.subjectUserId,
+              subjectName: row.subjectName,
+              actorId: row.actorId,
+              itemRevisionId: row.itemRevisionId,
+            } satisfies ReviewInstanceDetailRow),
+      ),
     )
 
 export interface InboxRow {
@@ -256,14 +286,18 @@ export interface InboxRow {
 export const activeReviewBatches = (tenantId: string) =>
   db
     .query((k) =>
-      sql<{ batch_id: string }>`
-        select distinct e.batch_id
-        from review_instances ri
-        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        where ri.tenant_id = ${tenantId} and ri.state = 'active'
-      `.execute(k),
+      k
+        .selectFrom('ReviewInstance as ri')
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .select(['e.batchId'])
+        .distinct()
+        .where('ri.tenantId', '=', tenantId)
+        .where('ri.state', '=', 'active')
+        .execute(),
     )
-    .pipe(Effect.map(({ rows }) => rows.map((row) => String(row.batch_id))))
+    .pipe(Effect.map((rows) => rows.map((row) => row.batchId)))
 
 /**
  * One reviewer's queue, oldest first: every active round whose stage the
@@ -281,24 +315,46 @@ export const inboxPage = (input: {
   input.batchIds.length === 0
     ? Effect.succeed([] as readonly InboxRow[])
     : db
-        .query((k) =>
-          sql`
-            select ri.id, ri.entry_id, ri.round_no,
-                   ${epoch('ri.created_at')} as submitted_ms,
-                   ri.created_at::text as submitted_iso,
-                   e.batch_id, b.name as batch_name, e.item_id, i.title as item_title,
-                   su.display_name as participant_name
-            from review_instances ri
-            join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-            join assessment_batches b on b.tenant_id = e.tenant_id and b.id = e.batch_id
-            join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-            join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-            join users su on su.tenant_id = bp.tenant_id and su.id = bp.user_id
-            join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-            where ri.tenant_id = ${input.tenantId}
-              and ri.state = 'active'
-              and e.batch_id = any(${uuidArray(input.batchIds)})
-              and ${mayReview({
+        .query((k) => {
+          let query = k
+            .selectFrom('ReviewInstance as ri')
+            .innerJoin('Entry as e', (join) =>
+              join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+            )
+            .innerJoin('AssessmentBatch as b', (join) =>
+              join.onRef('b.tenantId', '=', 'e.tenantId').onRef('b.id', '=', 'e.batchId'),
+            )
+            .innerJoin('AssessmentItem as i', (join) =>
+              join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+            )
+            .innerJoin('BatchParticipant as bp', (join) =>
+              join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+            )
+            .innerJoin('User as su', (join) =>
+              join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
+            )
+            .innerJoin('EntryRevision as er', (join) =>
+              join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+            )
+            .select([
+              'ri.id as instanceId',
+              'ri.entryId',
+              'ri.roundNo',
+              'e.batchId',
+              'b.name as batchName',
+              'e.itemId',
+              'i.title as itemTitle',
+              'su.displayName as participantName',
+            ])
+            .select([
+              epoch('ri.created_at').as('submittedMs'),
+              sql<string>`ri.created_at::text`.as('submittedIso'),
+            ])
+            .where('ri.tenantId', '=', input.tenantId)
+            .where('ri.state', '=', 'active')
+            .where('e.batchId', 'in', [...input.batchIds])
+            .where(
+              mayReview({
                 tenantId: sql`${input.tenantId}`,
                 batchId: sql.ref('e.batch_id'),
                 nodeId: sql.ref('ri.current_node_id'),
@@ -306,29 +362,31 @@ export const inboxPage = (input: {
                 userId: sql`${input.userId}`,
                 subjectUserId: sql.ref('bp.user_id'),
                 actorId: sql.ref('er.actor_id'),
-              })}
-              ${
-                input.after !== undefined
-                  ? sql`and (ri.created_at, ri.id) > (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`
-                  : sql``
-              }
-            order by ri.created_at, ri.id
-            limit ${sql.raw(String(input.limit))}
-          `.execute(k),
-        )
+              }),
+            )
+            .orderBy('ri.createdAt')
+            .orderBy('ri.id')
+            .limit(input.limit)
+          if (input.after !== undefined) {
+            query = query.where(
+              sql<boolean>`(ri.created_at, ri.id) > (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
+            )
+          }
+          return query.execute()
+        })
         .pipe(
-          Effect.map(({ rows }) =>
-            (rows as Record<string, unknown>[]).map((row): InboxRow => ({
-              instanceId: String(row['id']),
-              entryId: String(row['entry_id']),
-              batchId: String(row['batch_id']),
-              batchName: String(row['batch_name']),
-              itemId: String(row['item_id']),
-              itemTitle: String(row['item_title']),
-              participantName: String(row['participant_name']),
-              roundNo: Number(row['round_no']),
-              submittedAt: msOf(row['submitted_ms']),
-              submittedAtIso: String(row['submitted_iso']),
+          Effect.map((rows) =>
+            rows.map((row): InboxRow => ({
+              instanceId: row.instanceId,
+              entryId: row.entryId,
+              batchId: row.batchId,
+              batchName: row.batchName,
+              itemId: row.itemId,
+              itemTitle: row.itemTitle,
+              participantName: row.participantName,
+              roundNo: row.roundNo,
+              submittedAt: msOf(row.submittedMs),
+              submittedAtIso: row.submittedIso,
             })),
           ),
         )
@@ -369,23 +427,25 @@ export interface ReviewEventRow {
 export const reviewEventsOf = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>
-      sql`
-        select id, kind, actor_id, comment, suggested_payload,
-               ${epoch('created_at')} as created_ms
-        from review_events
-        where tenant_id = ${tenantId} and review_instance_id = ${instanceId}
-        order by created_at, id
-      `.execute(k),
+      k
+        .selectFrom('ReviewEvent')
+        .select(['id', 'kind', 'actorId', 'comment', 'suggestedPayload'])
+        .select([epoch('created_at').as('createdMs')])
+        .where('tenantId', '=', tenantId)
+        .where('reviewInstanceId', '=', instanceId)
+        .orderBy('createdAt')
+        .orderBy('id')
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) =>
-        (rows as Record<string, unknown>[]).map((row): ReviewEventRow => ({
-          id: String(row['id']),
-          kind: String(row['kind']),
-          actorId: row['actor_id'] == null ? null : String(row['actor_id']),
-          comment: row['comment'] == null ? null : String(row['comment']),
-          suggestedPayload: row['suggested_payload'] ?? null,
-          createdAt: msOf(row['created_ms']),
+      Effect.map((rows) =>
+        rows.map((row): ReviewEventRow => ({
+          id: row.id,
+          kind: row.kind,
+          actorId: row.actorId,
+          comment: row.comment,
+          suggestedPayload: row.suggestedPayload ?? null,
+          createdAt: msOf(row.createdMs),
         })),
       ),
     )

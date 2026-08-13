@@ -1,5 +1,4 @@
 import { Effect } from 'effect'
-import { sql } from 'kysely'
 import { db } from '../server/db.ts'
 
 // Who stands around an attachment: every entry whose history cites it, and
@@ -15,21 +14,29 @@ export interface CitingEntryRow {
 export const citingEntries = (tenantId: string, attachmentId: string) =>
   db
     .query((k) =>
-      sql`
-        select distinct e.id as entry_id, e.batch_id, bp.user_id as subject_user_id
-        from entry_revision_attachments era
-        join entry_revisions er on er.tenant_id = era.tenant_id and er.id = era.revision_id
-        join entries e on e.tenant_id = er.tenant_id and e.id = er.entry_id
-        join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-        where era.tenant_id = ${tenantId} and era.attachment_id = ${attachmentId}
-      `.execute(k),
+      k
+        .selectFrom('EntryRevisionAttachment as era')
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'era.tenantId').onRef('er.id', '=', 'era.revisionId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'er.tenantId').onRef('e.id', '=', 'er.entryId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .select(['e.id as entryId', 'e.batchId', 'bp.userId as subjectUserId'])
+        .distinct()
+        .where('era.tenantId', '=', tenantId)
+        .where('era.attachmentId', '=', attachmentId)
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) =>
-        (rows as Record<string, unknown>[]).map((row): CitingEntryRow => ({
-          entryId: String(row['entry_id']),
-          batchId: String(row['batch_id']),
-          subjectUserId: String(row['subject_user_id']),
+      Effect.map((rows) =>
+        rows.map((row): CitingEntryRow => ({
+          entryId: row.entryId,
+          batchId: row.batchId,
+          subjectUserId: row.subjectUserId,
         })),
       ),
     )
@@ -46,26 +53,42 @@ export interface CitingInstanceRow {
 export const citingInstances = (tenantId: string, attachmentId: string) =>
   db
     .query((k) =>
-      sql`
-        select distinct ri.id, e.batch_id, ri.current_node_id, ri.current_role_ids,
-               bp.user_id as subject_user_id, er.actor_id
-        from review_instances ri
-        join entry_revision_attachments era
-          on era.tenant_id = ri.tenant_id and era.revision_id = ri.revision_id
-        join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-        where ri.tenant_id = ${tenantId} and era.attachment_id = ${attachmentId}
-      `.execute(k),
+      k
+        .selectFrom('ReviewInstance as ri')
+        .innerJoin('EntryRevisionAttachment as era', (join) =>
+          join
+            .onRef('era.tenantId', '=', 'ri.tenantId')
+            .onRef('era.revisionId', '=', 'ri.revisionId'),
+        )
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .select([
+          'e.batchId',
+          'ri.currentNodeId',
+          'ri.currentRoleIds',
+          'bp.userId as subjectUserId',
+          'er.actorId',
+        ])
+        .distinct()
+        .where('ri.tenantId', '=', tenantId)
+        .where('era.attachmentId', '=', attachmentId)
+        .execute(),
     )
     .pipe(
-      Effect.map(({ rows }) =>
-        (rows as Record<string, unknown>[]).map((row): CitingInstanceRow => ({
-          batchId: String(row['batch_id']),
-          currentNodeId: String(row['current_node_id']),
-          currentRoleIds: (row['current_role_ids'] as readonly string[]).map(String),
-          subjectUserId: String(row['subject_user_id']),
-          actorId: String(row['actor_id']),
+      Effect.map((rows) =>
+        rows.map((row): CitingInstanceRow => ({
+          batchId: row.batchId,
+          currentNodeId: row.currentNodeId,
+          currentRoleIds: row.currentRoleIds,
+          subjectUserId: row.subjectUserId,
+          actorId: row.actorId,
         })),
       ),
     )
