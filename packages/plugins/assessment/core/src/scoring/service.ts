@@ -56,6 +56,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       return {
         groups: groups.map((group) => ({
           id: group.id,
+          parentGroupId: group.parentGroupId,
           name: group.name,
           cap: group.cap,
           floor: group.floor,

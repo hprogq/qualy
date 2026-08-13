@@ -23,6 +23,7 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
 import { fieldsOf } from '../entry/model.ts'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
+import { reviewEventMessage, reviewOutcomeMessage } from './events.ts'
 
 // One submission, judged. What was filed shows exactly as the round froze
 // it; the two decisions are the only writes. A rejection needs a word for
@@ -92,7 +93,7 @@ function Detail({ batchId }: { batchId: string }) {
               </p>
             </div>
             {review.state === 'completed' && review.outcome !== null && (
-              <Badge variant="outline">{review.outcome}</Badge>
+              <Badge variant="outline">{format(reviewOutcomeMessage(review.outcome))}</Badge>
             )}
           </header>
 
@@ -155,7 +156,12 @@ function Detail({ batchId }: { batchId: string }) {
                     >
                       <p className="flex flex-wrap items-baseline gap-x-2">
                         <span className="font-medium">
-                          {stage.nodeName ?? format(m.reviewStageSkipped)}
+                          {stage.nodeName ??
+                            format(
+                              stage.skipped === 'no-holder'
+                                ? m.reviewStageNoHolder
+                                : m.reviewStageSkipped,
+                            )}
                         </span>
                         {stage.index === review.chain.stageIndex && (
                           <span className="text-xs text-primary">{format(m.reviewStageHere)}</span>
@@ -167,6 +173,13 @@ function Detail({ batchId }: { batchId: string }) {
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">{stage.roleNames.join('、')}</p>
+                      {stage.nodeName !== null && (
+                        <p className="text-xs text-muted-foreground">
+                          {stage.reviewers.length === 0
+                            ? format(m.reviewStageNobody)
+                            : format(m.reviewStageReviewers, { who: stage.reviewers.join('、') })}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -177,14 +190,25 @@ function Detail({ batchId }: { batchId: string }) {
                     {format(m.reviewTrail)}
                   </p>
                   <ul className="flex flex-col gap-2 text-sm">
-                    {review.events.map((event, index) => (
-                      <li key={index}>
-                        <p className="text-xs text-muted-foreground">
-                          {event.kind} · {new Date(event.at).toLocaleString()}
-                        </p>
-                        {event.comment !== null && <p>{event.comment}</p>}
-                      </li>
-                    ))}
+                    {review.events.map((event, index) => {
+                      const said = reviewEventMessage(event.kind)
+                      return (
+                        <li key={index}>
+                          <p>
+                            {format(
+                              said.message,
+                              said.needsActor
+                                ? { who: event.actorName ?? format(m.eventSomebody) }
+                                : {},
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(event.at).toLocaleString()}
+                          </p>
+                          {event.comment !== null && <p className="pt-0.5">{event.comment}</p>}
+                        </li>
+                      )
+                    })}
                   </ul>
                 </section>
               )}
@@ -222,6 +246,13 @@ function Detail({ batchId }: { batchId: string }) {
               onClose={() => setSaying(null)}
               onDone={() => {
                 setSaying(null)
+                // an opinion moves nothing: the round stays where it is and
+                // so does the reader, with the new word already in the trail
+                if (saying === 'comment' || saying.startsWith('recommend-')) {
+                  void detail.refetch()
+                  toast.success(format(m.reviewSaid))
+                  return
+                }
                 decided()
               }}
             />

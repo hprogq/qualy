@@ -500,6 +500,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/hint',
       defaultMessage: 'File your claims here, and follow what happens to each one.',
     },
+    myEntriesGroupEmpty: {
+      id: 'assessment/entry/group-empty',
+      defaultMessage: 'Nothing to file in this group.',
+    },
     myEntriesEmpty: {
       id: 'assessment/entry/empty',
       defaultMessage: 'Nothing to file yet. Questions appear here once the round opens them.',
@@ -697,6 +701,51 @@ const i18n = definePluginMessages({
       id: 'assessment/review/suggest-toggle',
       defaultMessage: 'Attach a suggested version',
     },
+    eventSubmitted: { id: 'assessment/event/submitted', defaultMessage: '{who} submitted it' },
+    eventApproved: { id: 'assessment/event/approved', defaultMessage: '{who} approved this step' },
+    eventRejected: { id: 'assessment/event/rejected', defaultMessage: '{who} sent it back' },
+    eventEscalated: {
+      id: 'assessment/event/escalated',
+      defaultMessage: '{who} sent it up as a doubt',
+    },
+    eventComment: { id: 'assessment/event/comment', defaultMessage: '{who} left a note' },
+    eventRecommendApprove: {
+      id: 'assessment/event/recommend-approve',
+      defaultMessage: '{who} advised approving it',
+    },
+    eventRecommendReject: {
+      id: 'assessment/event/recommend-reject',
+      defaultMessage: '{who} advised sending it back',
+    },
+    eventWithdrawn: { id: 'assessment/event/withdrawn', defaultMessage: '{who} withdrew it' },
+    eventNoReviewer: {
+      id: 'assessment/event/no-reviewer',
+      defaultMessage: 'Nobody can review at this step yet; it is waiting for an appointment',
+    },
+    eventReviewerFound: {
+      id: 'assessment/event/reviewer-found',
+      defaultMessage: 'Somebody can review this step again; it is moving',
+    },
+    eventItemVoided: {
+      id: 'assessment/event/item-voided',
+      defaultMessage: 'The question was withdrawn, so this review ended',
+    },
+    eventOther: { id: 'assessment/event/other', defaultMessage: 'Something happened here' },
+    eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Somebody' },
+    outcomeApproved: { id: 'assessment/outcome/approved', defaultMessage: 'Approved' },
+    outcomeRejected: { id: 'assessment/outcome/rejected', defaultMessage: 'Sent back' },
+    outcomeCancelled: { id: 'assessment/outcome/cancelled', defaultMessage: 'Ended' },
+    outcomeOther: { id: 'assessment/outcome/other', defaultMessage: 'Closed' },
+    reviewStageReviewers: { id: 'assessment/review/stage-reviewers', defaultMessage: 'Now: {who}' },
+    reviewStageNobody: {
+      id: 'assessment/review/stage-nobody',
+      defaultMessage: 'Nobody can review here yet',
+    },
+    reviewSaid: { id: 'assessment/review/said', defaultMessage: 'Noted on this review.' },
+    reviewStageNoHolder: {
+      id: 'assessment/review/stage-no-holder',
+      defaultMessage: 'Skipped: nobody above this participant holds that role',
+    },
     reviewDecided: { id: 'assessment/review/decided', defaultMessage: 'Decision recorded.' },
     reviewClosedAlready: {
       id: 'assessment/review/closed-already',
@@ -788,6 +837,49 @@ const i18n = definePluginMessages({
     itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
     itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Cap' },
     itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Floor' },
+    itemsGroupsHint: {
+      id: 'assessment/items/groups-hint',
+      defaultMessage:
+        'Scores add up group by group. A group inside another is counted against its own ceiling first, then against its parent\u2019s.',
+    },
+    itemsGroupsEmpty: {
+      id: 'assessment/items/groups-empty',
+      defaultMessage: 'No groups yet. Questions need one to add up in.',
+    },
+    itemsGroupAddChild: { id: 'assessment/items/group-add-child', defaultMessage: 'Add inside' },
+    itemsGroupRemove: { id: 'assessment/items/group-remove', defaultMessage: 'Remove' },
+    itemsGroupItemCount: {
+      id: 'assessment/items/group-item-count',
+      defaultMessage: '{count, plural, one {# question} other {# questions}}',
+    },
+    itemsGroupsReasonHint: {
+      id: 'assessment/items/groups-reason-hint',
+      defaultMessage: 'Changing a ceiling in a running round changes what counts. Say why.',
+    },
+    itemsGroupRefusedHasItems: {
+      id: 'assessment/items/group-refused-has-items',
+      defaultMessage: 'still has questions in it, so it cannot be removed.',
+    },
+    itemsGroupRefusedHasChildren: {
+      id: 'assessment/items/group-refused-has-children',
+      defaultMessage: 'still has groups inside it, so it cannot be removed.',
+    },
+    itemsGroupRefusedFloorAboveCap: {
+      id: 'assessment/items/group-refused-floor-above-cap',
+      defaultMessage: 'has a floor above its ceiling.',
+    },
+    itemsGroupRefusedReason: {
+      id: 'assessment/items/group-refused-reason',
+      defaultMessage: 'A ceiling changed in a running round. Say why below.',
+    },
+    itemsGroupRefusedParent: {
+      id: 'assessment/items/group-refused-parent',
+      defaultMessage: 'cannot sit where it was put.',
+    },
+    itemsGroupRefusedOther: {
+      id: 'assessment/items/group-refused-other',
+      defaultMessage: 'could not be saved.',
+    },
     itemsGroupAdd: { id: 'assessment/items/group-add', defaultMessage: 'Add a group' },
     itemsGroupsSave: { id: 'assessment/items/groups-save', defaultMessage: 'Save groups' },
     itemsGroupsSaved: { id: 'assessment/items/groups-saved', defaultMessage: 'Groups saved.' },
@@ -855,10 +947,23 @@ const i18n = definePluginMessages({
       id: 'assessment/items/fixed-value-hint',
       defaultMessage: 'A signed amount, like 3.00 or -1.00.',
     },
+    itemsDoubtTitle: {
+      id: 'assessment/items/doubt-title',
+      defaultMessage: 'If sent up as a doubt',
+    },
+    itemsDoubtHint: {
+      id: 'assessment/items/doubt-hint',
+      defaultMessage:
+        'Only reached when a reviewer sends something up. The last step here decides; the ones before it may only advise.',
+    },
+    itemsDoubtEmpty: {
+      id: 'assessment/items/doubt-empty',
+      defaultMessage: 'No steps: reviewers cannot send anything up on this question.',
+    },
     itemsChainHint: {
       id: 'assessment/items/chain-hint',
       defaultMessage:
-        'Reviewed step by step, nearest first. Mark where the ordinary flow ends - the steps after it are only walked when a reviewer sends something up as a doubt.',
+        'Reviewed step by step, nearest first. Approval at the last step here finishes it.',
     },
     itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add a step' },
     itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Remove step' },
@@ -923,7 +1028,7 @@ const i18n = definePluginMessages({
     itemsReviewUncovered: {
       id: 'assessment/items/review-uncovered',
       defaultMessage:
-        'Nobody can review at {names}. Give someone one of these roles there, for that unit only - submissions from those participants will wait until you do.',
+        'Nobody can review at {names}. Give somebody one of these roles at those units - submissions from their participants wait until you do.',
     },
     itemsReviewNoUnits: {
       id: 'assessment/items/review-no-units',

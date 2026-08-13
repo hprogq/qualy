@@ -431,6 +431,8 @@ export interface ReviewEventRow {
   id: string
   kind: string
   actorId: string | null
+  /** who did it, by name: an id in a trail explains nothing to a reader */
+  actorName: string | null
   comment: string | null
   suggestedPayload: unknown
   createdAt: number
@@ -440,13 +442,23 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>
       k
-        .selectFrom('ReviewEvent')
-        .select(['id', 'kind', 'actorId', 'comment', 'suggestedPayload'])
-        .select([epoch('created_at').as('createdMs')])
-        .where('tenantId', '=', tenantId)
-        .where('reviewInstanceId', '=', instanceId)
-        .orderBy('createdAt')
-        .orderBy('id')
+        .selectFrom('ReviewEvent as re')
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
+        )
+        .select([
+          're.id',
+          're.kind',
+          're.actorId',
+          're.comment',
+          're.suggestedPayload',
+          'u.displayName as actorName',
+        ])
+        .select([epoch('re.created_at').as('createdMs')])
+        .where('re.tenantId', '=', tenantId)
+        .where('re.reviewInstanceId', '=', instanceId)
+        .orderBy('re.createdAt')
+        .orderBy('re.id')
         .execute(),
     )
     .pipe(
@@ -455,6 +467,7 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
           id: row.id,
           kind: row.kind,
           actorId: row.actorId,
+          actorName: row.actorName,
           comment: row.comment,
           suggestedPayload: row.suggestedPayload ?? null,
           createdAt: msOf(row.createdMs),
@@ -687,3 +700,41 @@ export const tenantsWithOpenRounds = () =>
         .execute(),
     )
     .pipe(Effect.map((rows) => rows.map((row) => row.tenantId)))
+
+/** the people a stage's roles are on right now, by name, for an explanation */
+export const holderNamesAt = (input: {
+  tenantId: string
+  batchId: string
+  nodeId: string
+  roleIds: readonly string[]
+}) =>
+  input.roleIds.length === 0
+    ? Effect.succeed([] as readonly string[])
+    : Effect.map(
+        reviewersAt({
+          tenantId: input.tenantId,
+          batchId: input.batchId,
+          nodeId: input.nodeId,
+          roleIds: input.roleIds,
+          // an explanation is about the stage, not about one filing
+          subjectUserId: '00000000-0000-0000-0000-000000000000',
+          actorId: '00000000-0000-0000-0000-000000000000',
+        }),
+        (ids) => ids,
+      ).pipe(
+        Effect.flatMap((ids) =>
+          ids.length === 0
+            ? Effect.succeed([] as readonly string[])
+            : db
+                .query((k) =>
+                  k
+                    .selectFrom('User')
+                    .select(['displayName'])
+                    .where('tenantId', '=', input.tenantId)
+                    .where('id', 'in', [...ids])
+                    .orderBy('displayName')
+                    .execute(),
+                )
+                .pipe(Effect.map((rows) => rows.map((row) => row.displayName))),
+        ),
+      )

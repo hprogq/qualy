@@ -1071,6 +1071,25 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 
 ② **`isoDate` 校验真实日期**。原来只验形状(`^\d{4}-\d{2}-\d{2}$`),`2026-02-31` 一路走到 postgres,由数据库以 `QueryFailed` 拒绝——那是 500,而它显然是 400。现在加一条往返校验(`new Date(...).toISOString().slice(0,10)` 必须等于原串),闰年也一并管住(`2024-02-29` 通过,`2025-02-29` 拒绝)。契约测试直接解码 schema,不写 HTTP 用例——请求会先被鉴权挡下,响应说明不了 schema 的事。
 
+**32.59 ScoreGroup 是树,结构真相只有 `parentGroupId`;封顶自内向外结算**(2026-08-13,用户裁决)。
+
+真实校规是分层封顶(体育 ≤4 在文体 ≤10 之内),平级分组表达不了,这是模型缺口而非界面问题。定案:
+
+- **结构真相唯一**:`score_groups.parent_group_id`(adjacency list),**不引入 ltree**。org 树的访问
+  模式是大量祖先/子树查询,ltree 合适;分数树是**节点极少、整体读进内存、频繁编辑与移动**的小树,
+  一次拖拽在 parentId 下是改一行、在 materialized path 下是重写整棵子树。不并存两套权威结构。
+- **数据库保证**:批次内复合外键 `(tenant_id, batch_id, parent_group_id) → (tenant_id, batch_id, id)`
+  - `unique (tenant_id, batch_id, id)`(对话 2 已建),`on delete restrict`——删除有子组的分组必须
+    由业务层先要求移走,不做隐式级联。
+- **环由服务层拒绝**(FK 不管环):替换写入时整棵提交树内校验(父在本批次、父非自身、无环),
+  scorer 另有一道防线,遇环按 defect 抛出而不是算出一个数。
+- **item 只能直属一个分组**;分组可以**同时**有直属 item 与子分组。
+- **递归语义冻结**:`raw(group) = Σ 直属 item 分 + Σ child.final`,`final = clamp(raw, floor, cap)`,
+  `total = Σ root.final`。封顶自内向外结算——顺序反了会静默丢掉一层限制。Breakdown 逐组给出
+  `itemsTotal / childrenTotal / raw / final` 与 `parentGroupId / depth`,不做递归 wire 类型
+  (客户端一行重建树,而递归 schema 不是一行)。
+- 层数不设硬上限(已被"一层不够"打过脸),但 UI 建议不超过三四层。
+
 **32.58 成员资格看锚点,不看 coverage;`nearestRole` 才是"上级管下级"的表达**(2026-08-13,用户裁决)。
 
 §14 与 §32.23 的"锚点精确匹配"曾被实现成 `org_node_id = 该节点 AND coverage = 'self'`。澄清:

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -14,6 +14,7 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { GroupTreeEditor } from './GroupTreeEditor.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
 import type { ItemDto } from '../entry/model.ts'
 
@@ -21,13 +22,6 @@ import type { ItemDto } from '../entry/model.ts'
 // configuration screen that can run a real round. The full configuration
 // travels as JSON on purpose: its shape belongs to the item type, and the
 // server answers with named problems when it cannot accept one.
-
-interface GroupRow {
-  id?: string
-  name: string
-  cap: string
-  floor: string
-}
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
@@ -63,47 +57,12 @@ function Editor({
     ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
     refetchInterval: 60_000,
   })
-  const [rows, setRows] = useState<GroupRow[]>([])
   const [editing, setEditing] = useState<{ item: ItemDto | null } | null>(null)
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
-
-  useEffect(() => {
-    if (groups.data !== undefined) {
-      setRows(
-        groups.data.groups.map((group) => ({
-          id: group.id,
-          name: group.name,
-          cap: group.cap ?? '',
-          floor: group.floor ?? '',
-        })),
-      )
-    }
-  }, [groups.data])
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   }
-
-  const saveGroups = useMutation({
-    mutationFn: () =>
-      run(
-        api.assessment.replaceScoreGroups({
-          params: { batchId },
-          payload: {
-            groups: rows.map((row) => ({
-              name: row.name,
-              cap: row.cap.trim() === '' ? null : row.cap.trim(),
-              floor: row.floor.trim() === '' ? null : row.floor.trim(),
-            })),
-          },
-        }),
-      ),
-    onSuccess: () => {
-      toast.success(format(m.itemsGroupsSaved))
-      refresh()
-    },
-    onError: (error) => toast.error(formatError(error)),
-  })
 
   const setStatus = useMutation({
     mutationFn: (itemId: string) =>
@@ -155,59 +114,12 @@ function Editor({
             <p className="pt-2 text-xs text-muted-foreground">{format(m.itemsStuckHint)}</p>
           </section>
         )}
-        <section className="rounded-lg border p-4">
-          <div className="flex items-center justify-between pb-3">
-            <h3 className="text-sm font-medium">{format(m.itemsGroupsTitle)}</h3>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRows([...rows, { name: '', cap: '', floor: '' }])}
-              >
-                {format(m.itemsGroupAdd)}
-              </Button>
-              <Button size="sm" disabled={saveGroups.isPending} onClick={() => saveGroups.mutate()}>
-                {format(m.itemsGroupsSave)}
-              </Button>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            {rows.map((row, index) => (
-              <div key={row.id ?? `new-${index}`} className="grid grid-cols-3 gap-2">
-                <Input
-                  aria-label={format(m.itemsGroupName)}
-                  placeholder={format(m.itemsGroupName)}
-                  value={row.name}
-                  onChange={(event) =>
-                    setRows(
-                      rows.map((r, i) => (i === index ? { ...r, name: event.target.value } : r)),
-                    )
-                  }
-                />
-                <Input
-                  aria-label={format(m.itemsGroupCap)}
-                  placeholder={format(m.itemsGroupCap)}
-                  value={row.cap}
-                  onChange={(event) =>
-                    setRows(
-                      rows.map((r, i) => (i === index ? { ...r, cap: event.target.value } : r)),
-                    )
-                  }
-                />
-                <Input
-                  aria-label={format(m.itemsGroupFloor)}
-                  placeholder={format(m.itemsGroupFloor)}
-                  value={row.floor}
-                  onChange={(event) =>
-                    setRows(
-                      rows.map((r, i) => (i === index ? { ...r, floor: event.target.value } : r)),
-                    )
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        </section>
+        <GroupTreeEditor
+          batchId={batchId}
+          batchStatus={batchStatus}
+          groups={groups.data?.groups ?? []}
+          onSaved={refresh}
+        />
 
         <section className="rounded-lg border p-4">
           <div className="flex items-center justify-between pb-3">

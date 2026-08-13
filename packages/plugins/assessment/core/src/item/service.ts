@@ -84,6 +84,7 @@ export interface ItemView {
 
 export interface ScoreGroupView {
   readonly id: string
+  readonly parentGroupId: string | null
   readonly name: string
   readonly cap: string | null
   readonly floor: string | null
@@ -111,6 +112,12 @@ export interface UpdateItemInput {
 
 export interface ScoreGroupSpec {
   readonly id?: string
+  /**
+   * The group this one adds up into. A tree, because the rules are one: a
+   * sports cap inside a wider activities cap is how a real regulation reads
+   * (§8.5 amended), and a flat list can only say one of the two.
+   */
+  readonly parentGroupId?: string | null
   readonly name: string
   readonly cap: string | null
   readonly floor: string | null
@@ -348,6 +355,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       Effect.map((rows) =>
         rows.map((row): ScoreGroupView => ({
           id: row.id,
+          parentGroupId: row.parentGroupId,
           name: row.name,
           cap: row.cap,
           floor: row.floor,
@@ -622,11 +630,46 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               refusals.push({ reason: 'floor-above-cap', groupId: spec.id ?? null, index })
             }
           }
+          // a group may only sit inside one of this batch's own, and the
+          // nesting has to be a tree: a cycle would make "what does this
+          // group add up to" a question with no answer
+          const known = new Set([
+            ...existingById.keys(),
+            ...specs.flatMap((spec) => (spec.id ? [spec.id] : [])),
+          ])
+          const parentOf = new Map<string, string | null>()
+          for (const [index, spec] of specs.entries()) {
+            const parent = spec.parentGroupId ?? null
+            if (parent !== null && !known.has(parent)) {
+              refusals.push({ reason: 'parent-not-in-batch', groupId: spec.id ?? null, index })
+            }
+            if (parent !== null && spec.id !== undefined && parent === spec.id) {
+              refusals.push({ reason: 'parent-is-self', groupId: spec.id, index })
+            }
+            if (spec.id !== undefined) parentOf.set(spec.id, parent)
+          }
+          for (const [index, spec] of specs.entries()) {
+            if (spec.id === undefined) continue
+            const seen = new Set<string>([spec.id])
+            let step = parentOf.get(spec.id) ?? null
+            while (step !== null) {
+              if (seen.has(step)) {
+                refusals.push({ reason: 'parent-cycle', groupId: spec.id, index })
+                break
+              }
+              seen.add(step)
+              step = parentOf.get(step) ?? null
+            }
+          }
+
           const submitted = new Set(specs.flatMap((spec) => (spec.id ? [spec.id] : [])))
           const removed = existing.filter((group) => !submitted.has(group.id))
           for (const group of removed) {
             if (group.itemCount > 0) {
               refusals.push({ reason: 'group-has-items', groupId: group.id })
+            }
+            if (specs.some((spec) => spec.parentGroupId === group.id)) {
+              refusals.push({ reason: 'group-has-children', groupId: group.id })
             }
           }
 
@@ -650,6 +693,12 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             }
             const order = spec.sortOrder ?? index
             if (before.sortOrder !== order) delta['sortOrder'] = [before.sortOrder, order]
+            const parent = spec.parentGroupId ?? null
+            if (before.parentGroupId !== parent) {
+              delta['parentGroupId'] = [before.parentGroupId, parent]
+              // moving a group inside another changes what a cap applies to
+              limitsChanged = true
+            }
             if (Object.keys(delta).length > 1) changed.push(delta)
           }
           const added = specs.filter((spec) => spec.id === undefined).map((spec) => spec.name)
@@ -674,6 +723,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               yield* insertGroup({
                 tenantId,
                 batchId,
+                parentGroupId: spec.parentGroupId ?? null,
                 name: spec.name,
                 cap: spec.cap,
                 floor: spec.floor,
@@ -684,6 +734,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 tenantId,
                 batchId,
                 id: spec.id,
+                parentGroupId: spec.parentGroupId ?? null,
                 name: spec.name,
                 cap: spec.cap,
                 floor: spec.floor,

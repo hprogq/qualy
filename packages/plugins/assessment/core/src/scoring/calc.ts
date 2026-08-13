@@ -12,6 +12,8 @@ import { formatAmount, scaledAmount } from './builtins.ts'
 
 export interface ScoreInputGroup {
   readonly id: string
+  /** the group this one adds up into; null is a top-level group */
+  readonly parentGroupId: string | null
   readonly name: string
   /** decimal strings as the columns hold them; null means unlimited */
   readonly cap: string | null
@@ -61,9 +63,16 @@ export interface BreakdownLine {
 
 export interface BreakdownGroup {
   readonly groupId: string
+  readonly parentGroupId: string | null
+  /** how deep in the tree, so a reader can indent without walking it */
+  readonly depth: number
   readonly name: string
-  /** what the items added up to, before the group's own limits */
+  /** this group's own questions */
   readonly itemsTotal: string
+  /** what the groups inside it came to, each already held to its own limits */
+  readonly childrenTotal: string
+  /** the two added, before this group's own ceiling or floor */
+  readonly raw: string
   readonly final: string
   readonly cap: string | null
   readonly floor: string | null
@@ -114,13 +123,43 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
     else bucket.push(entry)
   }
 
-  // the frozen order (§8.6): group, then the group's items, then each
-  // item's entries; a group's own adjustment closes its run
+  // Depth first through the tree (§8.5 amended): a group is worth its own
+  // items plus what its children came to after their own limits, and only
+  // then does its own cap or floor apply. That order is the whole point -
+  // a four-point cap on sport inside a ten-point cap on activities is two
+  // limits, and applying them in the other order silently drops one.
+  const childrenOf = new Map<string | null, ScoreInputGroup[]>()
+  for (const group of groups) {
+    const key = group.parentGroupId
+    const bucket = childrenOf.get(key)
+    if (bucket === undefined) childrenOf.set(key, [group])
+    else bucket.push(group)
+  }
+  // a parent naming a group that is not here would strand its children; they
+  // stand as roots rather than vanishing from the account
+  const present = new Set(groups.map((group) => group.id))
+  for (const group of groups) {
+    if (group.parentGroupId !== null && !present.has(group.parentGroupId)) {
+      const orphans = childrenOf.get(group.parentGroupId) ?? []
+      childrenOf.set(null, [...(childrenOf.get(null) ?? []), ...orphans])
+      childrenOf.delete(group.parentGroupId)
+    }
+  }
+
   const lines: BreakdownLine[] = []
   const groupViews: BreakdownGroup[] = []
   let total = 0n
 
-  for (const group of groups) {
+  // a cycle cannot be scored - "what does this group add up to" has no
+  // answer - and it cannot reach here through the api, which refuses one.
+  // Thrown rather than refused: it means the rows themselves are wrong.
+  const walking = new Set<string>()
+
+  const walk = (group: ScoreInputGroup, depth: number): bigint => {
+    if (walking.has(group.id)) {
+      throw new Error(`score groups form a cycle at ${group.id}`)
+    }
+    walking.add(group.id)
     let itemsTotal = 0n
     for (const item of items) {
       if (item.scoreGroupId !== group.id) continue
@@ -186,7 +225,16 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       itemsTotal += aggregator.fold(item.aggregator.config, approved)
     }
 
-    let final = itemsTotal
+    // children after this group's own items, each already held to its own
+    // limits, and their lines already written above this group's adjustment
+    let childrenTotal = 0n
+    for (const child of (childrenOf.get(group.id) ?? []).sort(byGroup)) {
+      childrenTotal += walk(child, depth + 1)
+    }
+    walking.delete(group.id)
+    const raw = itemsTotal + childrenTotal
+
+    let final = raw
     if (group.cap !== null) {
       const cap = scaledAmount(group.cap)
       if (final > cap) {
@@ -213,13 +261,21 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
     }
     groupViews.push({
       groupId: group.id,
+      parentGroupId: group.parentGroupId,
+      depth,
       name: group.name,
       itemsTotal: formatAmount(itemsTotal),
+      childrenTotal: formatAmount(childrenTotal),
+      raw: formatAmount(raw),
       final: formatAmount(final),
       cap: group.cap,
       floor: group.floor,
     })
-    total += final
+    return final
+  }
+
+  for (const root of (childrenOf.get(null) ?? []).sort(byGroup)) {
+    total += walk(root, 0)
   }
 
   return { total: formatAmount(total), groups: groupViews, lines }

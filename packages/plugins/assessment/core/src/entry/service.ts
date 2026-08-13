@@ -121,6 +121,7 @@ export interface EntryRoundView {
   readonly events: readonly {
     readonly kind: string
     readonly actorId: string | null
+    readonly actorName: string | null
     readonly comment: string | null
     readonly suggestedPayload: unknown
     readonly at: number
@@ -129,7 +130,14 @@ export interface EntryRoundView {
 
 export interface EntryHistoryView {
   readonly entry: EntryView
-  readonly revisions: readonly EntryRevisionView[]
+  readonly revisions: readonly (EntryRevisionView & {
+    /**
+     * The form this version was written under. History is read through the
+     * configuration it cited, never today's - and without it a reader meets
+     * the payload's internal keys instead of the questions they answered.
+     */
+    readonly formConfig: unknown
+  })[]
   readonly rounds: readonly EntryRoundView[]
 }
 
@@ -855,6 +863,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             if (Result.isFailure(reach)) return yield* new EntryNotFound()
           }
           const revisions = yield* entryRevisionsOf(tenantId, entryId)
+          const forms = new Map<string, unknown>()
+          for (const itemRevisionId of new Set(revisions.map((r) => r.itemRevisionId))) {
+            const cited = yield* revisionOf(tenantId, itemRevisionId)
+            forms.set(itemRevisionId, cited?.formConfig ?? null)
+          }
           const attachments = yield* attachmentsOfRevisions(
             tenantId,
             revisions.map((revision) => revision.id),
@@ -871,7 +884,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               as,
               participant,
             ),
-            revisions: revisions.map((revision): EntryRevisionView => ({
+            revisions: revisions.map((revision) => ({
               id: revision.id,
               revisionNo: revision.revisionNo,
               itemRevisionId: revision.itemRevisionId,
@@ -882,6 +895,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               subjectId: revision.subjectId,
               attachments: attachments.get(revision.id) ?? [],
               createdAt: revision.createdAt,
+              formConfig: forms.get(revision.itemRevisionId) ?? null,
             })),
             rounds: rounds.map((round): EntryRoundView => ({
               id: round.id,
@@ -894,6 +908,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               events: (events.get(round.id) ?? []).map((event) => ({
                 kind: event.kind,
                 actorId: event.actorId,
+                actorName: event.actorName,
                 comment: event.comment,
                 suggestedPayload: event.suggestedPayload,
                 at: event.createdAt,

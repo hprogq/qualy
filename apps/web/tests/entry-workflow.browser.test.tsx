@@ -107,11 +107,38 @@ const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
   ...over,
 })
 
+/** the reads every batch screen makes before it draws anything */
+const ambient = {
+  getBatch: () => Effect.succeed({ batch: batch() }),
+  listScoreGroups: () =>
+    Effect.succeed({
+      groups: [
+        {
+          id: GROUP_ID,
+          parentGroupId: null,
+          name: '文体活动',
+          cap: '10.00',
+          floor: null,
+          sortOrder: 0,
+          itemCount: 1,
+        },
+      ],
+      capabilities: { canManage: false },
+    }),
+  getMyResult: () =>
+    Effect.succeed({
+      mode: 'provisional' as const,
+      total: '0.00',
+      groups: [],
+      lines: [],
+    }),
+}
+
 const screen = (stubs: Stubs, route: string, elements: { path: string; element: unknown }[]) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
-      assessment: { getBatch: () => Effect.succeed({ batch: batch() }), ...stubs },
+      assessment: { ...ambient, ...stubs },
     }),
     routes: elements as never,
     route,
@@ -266,10 +293,27 @@ describe('judging a submission', () => {
       mode: 'normal' as const,
       stageIndex: 0,
       normalTerminal: 0,
-      stages: [{ index: 0, nodeName: '软件2023级2班', roleNames: ['审核员'], skipped: null }],
+      stages: [
+        {
+          index: 0,
+          nodeName: '软件2023级2班',
+          roleNames: ['审核员'],
+          reviewers: ['张老师'],
+          skipped: null,
+        },
+      ],
       decisions: ['approve', 'reject', 'comment'],
     },
-    events: [],
+    events: [
+      {
+        kind: 'submitted',
+        actorId: PARTICIPANT_ID,
+        actorName: '张三',
+        comment: null,
+        suggestedPayload: null,
+        at: '2026-03-03T00:00:00.000Z',
+      },
+    ],
     capabilities: { canDecide: true },
   }
 

@@ -29,6 +29,7 @@ import {
   inboxPage,
   instanceOf,
   chainNames,
+  holderNamesAt,
   reviewEventsOf,
   userMayReview,
   type InboxRow,
@@ -64,6 +65,8 @@ export interface ReviewChainView {
     readonly index: number
     readonly nodeName: string | null
     readonly roleNames: readonly string[]
+    /** who could act there today - the same question the queue asks */
+    readonly reviewers: readonly string[]
     readonly skipped: string | null
   }[]
   readonly decisions: readonly string[]
@@ -92,6 +95,7 @@ export interface ReviewDetailView {
   readonly events: readonly {
     readonly kind: string
     readonly actorId: string | null
+    readonly actorName: string | null
     readonly comment: string | null
     readonly suggestedPayload: unknown
     readonly at: number
@@ -187,6 +191,21 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         nodeIds: chain.stages.flatMap((stage) => (stage.nodeId === null ? [] : [stage.nodeId])),
         roleIds: chain.stages.flatMap((stage) => [...stage.roleIds]),
       })
+      // who is standing at each step right now: the one thing a chain cannot
+      // be read off its own snapshot, and the first thing anybody asks
+      const reviewersByStage = new Map<number, readonly string[]>()
+      for (const stage of chain.stages) {
+        if (stage.nodeId === null) continue
+        reviewersByStage.set(
+          stage.index,
+          yield* holderNamesAt({
+            tenantId,
+            batchId: row.batchId,
+            nodeId: stage.nodeId,
+            roleIds: stage.roleIds,
+          }),
+        )
+      }
       const here = chain.stages.find((stage) => stage.index === row.currentStageIndex)
       const atEnd = here === undefined ? true : isChainEnd(chain, here.index)
       const decisions: readonly string[] =
@@ -224,6 +243,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             index: stage.index,
             nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
             roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
+            reviewers: reviewersByStage.get(stage.index) ?? [],
             skipped: stage.skipped,
           })),
           decisions,
@@ -231,6 +251,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         events: events.map((event) => ({
           kind: event.kind,
           actorId: event.actorId,
+          actorName: event.actorName,
           comment: event.comment,
           suggestedPayload: event.suggestedPayload,
           at: event.createdAt,

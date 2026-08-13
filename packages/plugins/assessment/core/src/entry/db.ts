@@ -745,6 +745,7 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
           {
             kind: string
             actorId: string | null
+            actorName: string | null
             comment: string | null
             suggestedPayload: unknown
             createdAt: number
@@ -754,13 +755,23 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
     : db
         .query((k) =>
           k
-            .selectFrom('ReviewEvent')
-            .select(['reviewInstanceId', 'kind', 'actorId', 'comment', 'suggestedPayload'])
-            .select([epoch('created_at').as('createdMs')])
-            .where('tenantId', '=', tenantId)
-            .where('reviewInstanceId', 'in', [...instanceIds])
-            .orderBy('createdAt')
-            .orderBy('id')
+            .selectFrom('ReviewEvent as re')
+            .leftJoin('User as u', (join) =>
+              join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
+            )
+            .select([
+              're.reviewInstanceId',
+              're.kind',
+              're.actorId',
+              're.comment',
+              're.suggestedPayload',
+              'u.displayName as actorName',
+            ])
+            .select([epoch('re.created_at').as('createdMs')])
+            .where('re.tenantId', '=', tenantId)
+            .where('re.reviewInstanceId', 'in', [...instanceIds])
+            .orderBy('re.createdAt')
+            .orderBy('re.id')
             .execute(),
         )
         .pipe(
@@ -770,6 +781,7 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
               {
                 kind: string
                 actorId: string | null
+                actorName: string | null
                 comment: string | null
                 suggestedPayload: unknown
                 createdAt: number
@@ -779,6 +791,7 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
               const event = {
                 kind: row.kind,
                 actorId: row.actorId,
+                actorName: row.actorName,
                 comment: row.comment,
                 suggestedPayload: row.suggestedPayload ?? null,
                 createdAt: msOf(row.createdMs),

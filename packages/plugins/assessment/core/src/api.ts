@@ -341,6 +341,8 @@ const itemView = Schema.Struct({
 
 const scoreGroupView = Schema.Struct({
   id: Schema.String,
+  /** the group this one adds up into; null is a top-level group */
+  parentGroupId: Schema.NullOr(Schema.String),
   name: Schema.String,
   cap: Schema.NullOr(Schema.String),
   floor: Schema.NullOr(Schema.String),
@@ -370,6 +372,8 @@ const sortOrder = Schema.Number.check(
 
 const scoreGroupSpec = Schema.Struct({
   id: Schema.optional(id),
+  /** the group this one adds up into; absent or null is top level */
+  parentGroupId: Schema.optional(Schema.NullOr(id)),
   name: trimmedName(255),
   cap: Schema.optional(Schema.NullOr(decimalAmount)),
   floor: Schema.optional(Schema.NullOr(decimalAmount)),
@@ -452,6 +456,8 @@ const reviewDetailView = Schema.Struct({
         index: Schema.Number,
         nodeName: Schema.NullOr(Schema.String),
         roleNames: Schema.Array(Schema.String),
+        /** who holds those roles there today */
+        reviewers: Schema.Array(Schema.String),
         skipped: Schema.NullOr(Schema.String),
       }),
     ),
@@ -462,6 +468,7 @@ const reviewDetailView = Schema.Struct({
     Schema.Struct({
       kind: Schema.String,
       actorId: Schema.NullOr(Schema.String),
+      actorName: Schema.NullOr(Schema.String),
       comment: Schema.NullOr(Schema.String),
       suggestedPayload: configJson,
       at: Schema.String,
@@ -489,11 +496,17 @@ const myResultView = Schema.Struct({
   /** always provisional in M2; publication modes arrive with publication */
   mode: Schema.Literals(['provisional']),
   total: Schema.String,
+  // flat with a parent id rather than nested: the tree is one line of client
+  // code to rebuild, and a recursive wire schema is not
   groups: Schema.Array(
     Schema.Struct({
       groupId: Schema.String,
+      parentGroupId: Schema.NullOr(Schema.String),
+      depth: Schema.Number,
       name: Schema.String,
       itemsTotal: Schema.String,
+      childrenTotal: Schema.String,
+      raw: Schema.String,
       final: Schema.String,
       cap: Schema.NullOr(Schema.String),
       floor: Schema.NullOr(Schema.String),
@@ -718,7 +731,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ entryId: id }),
       success: Schema.Struct({
         entry: entryView,
-        revisions: Schema.Array(entryRevisionView),
+        revisions: Schema.Array(
+          Schema.Struct({
+            ...entryRevisionView.fields,
+            /** the form this version was written under, for reading it back */
+            formConfig: configJson,
+          }),
+        ),
         rounds: Schema.Array(
           Schema.Struct({
             id: Schema.String,
@@ -732,6 +751,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
               Schema.Struct({
                 kind: Schema.String,
                 actorId: Schema.NullOr(Schema.String),
+                actorName: Schema.NullOr(Schema.String),
                 comment: Schema.NullOr(Schema.String),
                 suggestedPayload: configJson,
                 at: Schema.String,

@@ -3477,6 +3477,7 @@ const reviewDto = (review: ReviewDetailView) => ({
   events: review.events.map((event) => ({
     kind: event.kind,
     actorId: event.actorId,
+    actorName: event.actorName,
     comment: event.comment,
     suggestedPayload: event.suggestedPayload,
     at: new Date(event.at).toISOString(),
@@ -4290,6 +4291,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             subjectId: revision.subjectId,
             attachments: revision.attachments,
             createdAt: new Date(revision.createdAt).toISOString(),
+            formConfig: revision.formConfig,
           })),
           rounds: history.rounds.map((round) => ({
             id: round.id,
@@ -4303,6 +4305,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             events: round.events.map((event) => ({
               kind: event.kind,
               actorId: event.actorId,
+              actorName: event.actorName,
               comment: event.comment,
               suggestedPayload: event.suggestedPayload,
               at: new Date(event.at).toISOString(),
@@ -4574,6 +4577,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           {
             groups: payload.groups.map((group) => ({
               ...(group.id !== undefined ? { id: group.id } : {}),
+              ...(group.parentGroupId !== undefined ? { parentGroupId: group.parentGroupId } : {}),
               name: group.name,
               cap: group.cap ?? null,
               floor: group.floor ?? null,

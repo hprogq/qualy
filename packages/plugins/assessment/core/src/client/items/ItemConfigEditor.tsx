@@ -62,10 +62,14 @@ const blankField = (key: string): FieldDraft => ({
 
 /** one step of the chain as the pen holds it */
 interface StageDraft {
+  /** stable while the panel is open, so identity never rides on an index */
+  key: string
   kind: 'roleAt' | 'nearestRole'
   nodeTypeId: string
   roleIds: string[]
   roleId: string
+  /** which list this step belongs to; the stored form is one list plus a terminal */
+  chain: 'normal' | 'escalation'
 }
 
 interface Draft {
@@ -76,16 +80,17 @@ interface Draft {
   fields: FieldDraft[]
   fixedValue: string
   stages: StageDraft[]
-  /** the step the ordinary flow ends at; the ones after it are the doubt chain */
-  normalTerminal: number
   reason: string
 }
 
-const blankStage = (options: ItemOptions): StageDraft => ({
+let minted = 0
+const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): StageDraft => ({
+  key: `s${(minted += 1)}`,
   kind: 'roleAt',
   nodeTypeId: options.orgTypes[0]?.id ?? '',
   roleIds: [],
   roleId: options.roles[0]?.id ?? '',
+  chain,
 })
 
 /** the stored configuration back into the pen; a shape this pen cannot hold starts fresh */
@@ -130,20 +135,29 @@ const draftOf = (
         normalTerminal?: number
       }
     | undefined
-  const stages = (policy?.stages ?? []).map((stage): StageDraft => {
+  const terminal = policy?.normalTerminal ?? 0
+  const stages = (policy?.stages ?? []).map((stage, index): StageDraft => {
     const selector = stage.selector ?? {}
+    // the stored form is one list with a marker; the screen shows two lists,
+    // because "where does the ordinary flow end" is not a thing anybody
+    // should have to hold in their head as an index
+    const chain = index <= terminal ? ('normal' as const) : ('escalation' as const)
     return selector.kind === 'nearestRole'
       ? {
+          key: `s${(minted += 1)}`,
           kind: 'nearestRole',
           nodeTypeId: options.orgTypes[0]?.id ?? '',
           roleIds: [],
           roleId: selector.roleId ?? options.roles[0]?.id ?? '',
+          chain,
         }
       : {
+          key: `s${(minted += 1)}`,
           kind: 'roleAt',
           nodeTypeId: selector.nodeTypeId ?? options.orgTypes[0]?.id ?? '',
           roleIds: selector.roleIds ?? [],
           roleId: options.roles[0]?.id ?? '',
+          chain,
         }
   })
   return {
@@ -153,8 +167,7 @@ const draftOf = (
     entrySource: config?.entrySource ?? 'student',
     fields: fields.length > 0 ? fields : [blankField('f1')],
     fixedValue: scoring?.calculator?.config?.value ?? '1.00',
-    stages: stages.length > 0 ? stages : [blankStage(options)],
-    normalTerminal: Math.min(policy?.normalTerminal ?? 0, Math.max(0, stages.length - 1)),
+    stages: stages.length > 0 ? stages : [blankStage(options, 'normal')],
     reason: '',
   }
 }
@@ -195,16 +208,22 @@ const configOf = (draft: Draft) => ({
     calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
     aggregator: { ref: 'sum@1', config: {} },
   },
-  reviewPolicy: {
-    stages: draft.stages.map((stage) => ({
-      selector:
-        stage.kind === 'roleAt'
-          ? { kind: 'roleAt', nodeTypeId: stage.nodeTypeId, roleIds: stage.roleIds }
-          : { kind: 'nearestRole', roleId: stage.roleId },
-      quorum: { type: 'any' },
-    })),
-    normalTerminal: draft.normalTerminal,
-  },
+  reviewPolicy: (() => {
+    const normal = draft.stages.filter((stage) => stage.chain === 'normal')
+    const escalation = draft.stages.filter((stage) => stage.chain === 'escalation')
+    return {
+      stages: [...normal, ...escalation].map((stage) => ({
+        selector:
+          stage.kind === 'roleAt'
+            ? { kind: 'roleAt', nodeTypeId: stage.nodeTypeId, roleIds: stage.roleIds }
+            : { kind: 'nearestRole', roleId: stage.roleId },
+        quorum: { type: 'any' },
+      })),
+      // where the ordinary flow ends is the last ordinary step; the author
+      // never sees this number, they see two lists
+      normalTerminal: Math.max(0, normal.length - 1),
+    }
+  })(),
 })
 
 export function ItemConfigEditor({
@@ -294,10 +313,42 @@ export function ItemConfigEditor({
     },
   })
 
-  const patchStage = (index: number, next: Partial<StageDraft>) =>
+  // by key, never by index: a step deleted above must not silently turn the
+  // step below it into something else
+  const patchStage = (key: string, next: Partial<StageDraft>) =>
     setDraft((previous) => ({
       ...previous,
-      stages: previous.stages.map((stage, at) => (at === index ? { ...stage, ...next } : stage)),
+      stages: previous.stages.map((stage) => (stage.key === key ? { ...stage, ...next } : stage)),
+    }))
+
+  const moveStage = (key: string, delta: -1 | 1) =>
+    setDraft((previous) => {
+      const stage = previous.stages.find((candidate) => candidate.key === key)
+      if (stage === undefined) return previous
+      const siblings = previous.stages.filter((candidate) => candidate.chain === stage.chain)
+      const at = siblings.findIndex((candidate) => candidate.key === key)
+      const target = at + delta
+      if (target < 0 || target >= siblings.length) return previous
+      const reordered = [...siblings]
+      const [moved] = reordered.splice(at, 1)
+      reordered.splice(target, 0, moved!)
+      const others = previous.stages.filter((candidate) => candidate.chain !== stage.chain)
+      return {
+        ...previous,
+        stages: stage.chain === 'normal' ? [...reordered, ...others] : [...others, ...reordered],
+      }
+    })
+
+  const addStage = (chain: 'normal' | 'escalation') =>
+    setDraft((previous) => ({
+      ...previous,
+      stages: [...previous.stages, blankStage(options, chain)],
+    }))
+
+  const removeStage = (key: string) =>
+    setDraft((previous) => ({
+      ...previous,
+      stages: previous.stages.filter((stage) => stage.key !== key),
     }))
 
   const stageReady = (stage: StageDraft) =>
@@ -309,7 +360,7 @@ export function ItemConfigEditor({
     draft.title.trim() !== '' &&
     draft.scoreGroupId !== '' &&
     draft.fixedValue.trim() !== '' &&
-    draft.stages.length > 0 &&
+    draft.stages.some((stage) => stage.chain === 'normal') &&
     draft.stages.every(stageReady) &&
     draft.fields.every((field) => field.label.trim() !== '')
 
@@ -575,44 +626,42 @@ export function ItemConfigEditor({
           </Field>
         </section>
 
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium">{format(m.itemsReviewTitle)}</h4>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setDraft((previous) => ({
-                  ...previous,
-                  stages: [...previous.stages, blankStage(options)],
-                }))
-              }
-            >
-              {format(m.itemsStageAdd)}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">{format(m.itemsChainHint)}</p>
-          {draft.stages.map((stage, index) => (
-            <StageEditor
-              key={index}
-              batchId={batchId}
-              index={index}
-              stage={stage}
-              options={options}
-              terminal={draft.normalTerminal}
-              removable={draft.stages.length > 1}
-              onChange={(next) => patchStage(index, next)}
-              onTerminal={() => patch({ normalTerminal: index })}
-              onRemove={() =>
-                setDraft((previous) => ({
-                  ...previous,
-                  stages: previous.stages.filter((_, at) => at !== index),
-                  normalTerminal: Math.min(previous.normalTerminal, previous.stages.length - 2),
-                }))
-              }
-            />
-          ))}
-        </section>
+        {(['normal', 'escalation'] as const).map((chain) => {
+          const steps = draft.stages.filter((stage) => stage.chain === chain)
+          return (
+            <section key={chain} className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">
+                  {format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
+                </h4>
+                <Button variant="outline" size="sm" onClick={() => addStage(chain)}>
+                  {format(m.itemsStageAdd)}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {format(chain === 'normal' ? m.itemsChainHint : m.itemsDoubtHint)}
+              </p>
+              {steps.length === 0 && chain === 'escalation' && (
+                <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
+              )}
+              {steps.map((stage, index) => (
+                <StageEditor
+                  key={stage.key}
+                  batchId={batchId}
+                  index={index}
+                  last={index === steps.length - 1}
+                  chain={chain}
+                  stage={stage}
+                  options={options}
+                  removable={chain === 'escalation' || steps.length > 1}
+                  onChange={(next) => patchStage(stage.key, next)}
+                  onMove={(delta) => moveStage(stage.key, delta)}
+                  onRemove={() => removeStage(stage.key)}
+                />
+              ))}
+            </section>
+          )
+        })}
 
         {item !== null && (
           <Field label={format(m.itemsFieldReason)}>
@@ -648,22 +697,24 @@ export function ItemConfigEditor({
 function StageEditor({
   batchId,
   index,
+  last,
+  chain,
   stage,
   options,
-  terminal,
   removable,
   onChange,
-  onTerminal,
+  onMove,
   onRemove,
 }: {
   batchId: string
   index: number
+  last: boolean
+  chain: 'normal' | 'escalation'
   stage: StageDraft
   options: ItemOptions
-  terminal: number
   removable: boolean
   onChange: (next: Partial<StageDraft>) => void
-  onTerminal: () => void
+  onMove: (delta: -1 | 1) => void
   onRemove: () => void
 }) {
   const query = useApiQuery(assessmentApi)
@@ -674,8 +725,8 @@ function StageEditor({
       params: { batchId },
       query: { nodeTypeId: stage.nodeTypeId, roleIds },
     }),
-    // only the level-anchored kind has units to count; the nearest-holder
-    // kind finds a person wherever they are, so there is nothing to survey
+    // only the level-anchored kind surveys units; the nearest-holder kind is
+    // previewed per participant instead, where its answer actually lives
     enabled: stage.kind === 'roleAt' && stage.nodeTypeId !== '' && roleIds.length > 0,
   })
   const uncovered = (coverage.data?.nodes ?? []).filter((node) => node.reviewers === 0)
@@ -685,23 +736,19 @@ function StageEditor({
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">
           {format(m.itemsStageNumber, { n: index + 1 })}
-          {index === terminal && (
+          {chain === 'normal' && last && (
             <span className="pl-2 text-xs font-normal text-muted-foreground">
               {format(m.itemsTerminalHere)}
             </span>
           )}
-          {index > terminal && (
-            <span className="pl-2 text-xs font-normal text-muted-foreground">
-              {format(m.itemsStageDoubt)}
-            </span>
-          )}
         </p>
         <div className="flex gap-1">
-          {index !== terminal && (
-            <Button variant="ghost" size="sm" onClick={onTerminal}>
-              {format(m.itemsTerminalMark)}
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => onMove(-1)}>
+            {format(m.itemsFieldUp)}
+          </Button>
+          <Button variant="ghost" size="sm" disabled={last} onClick={() => onMove(1)}>
+            {format(m.itemsFieldDown)}
+          </Button>
           {removable && (
             <Button variant="ghost" size="sm" onClick={onRemove}>
               {format(m.itemsStageRemove)}

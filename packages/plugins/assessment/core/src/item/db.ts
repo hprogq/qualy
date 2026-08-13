@@ -16,6 +16,8 @@ const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
 export interface ScoreGroupRow {
   id: string
+  /** the group this one adds up into; null is a top-level group */
+  parentGroupId: string | null
   name: string
   cap: string | null
   floor: string | null
@@ -29,7 +31,7 @@ export const groupsOf = (tenantId: string, batchId: string) =>
     .query((k) =>
       k
         .selectFrom('ScoreGroup')
-        .select(['id', 'name', 'sortOrder'])
+        .select(['id', 'parentGroupId', 'name', 'sortOrder'])
         .select([
           sql<string | null>`cap::text`.as('capText'),
           sql<string | null>`floor::text`.as('floorText'),
@@ -49,6 +51,7 @@ export const groupsOf = (tenantId: string, batchId: string) =>
       Effect.map((rows) =>
         rows.map((row): ScoreGroupRow => ({
           id: row.id as string,
+          parentGroupId: (row.parentGroupId as string | null) ?? null,
           name: row.name as string,
           cap: (row as { capText: string | null }).capText,
           floor: (row as { floorText: string | null }).floorText,
@@ -62,6 +65,7 @@ export const groupsOf = (tenantId: string, batchId: string) =>
 export const insertGroup = (input: {
   tenantId: string
   batchId: string
+  parentGroupId: string | null
   name: string
   cap: string | null
   floor: string | null
@@ -74,6 +78,7 @@ export const insertGroup = (input: {
         .values({
           tenantId: input.tenantId,
           batchId: input.batchId,
+          parentGroupId: input.parentGroupId,
           name: input.name,
           cap: input.cap,
           floor: input.floor,
@@ -88,6 +93,7 @@ export const updateGroup = (input: {
   tenantId: string
   batchId: string
   id: string
+  parentGroupId: string | null
   name: string
   cap: string | null
   floor: string | null
@@ -97,6 +103,7 @@ export const updateGroup = (input: {
     k
       .updateTable('ScoreGroup')
       .set({
+        parentGroupId: input.parentGroupId,
         name: input.name,
         cap: input.cap,
         floor: input.floor,

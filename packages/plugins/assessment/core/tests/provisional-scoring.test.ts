@@ -346,6 +346,105 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
     expect(result.archived.total).toBe('3.00')
   })
 
+  it('applies a nested cap inside its parent cap, innermost first', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-nested')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          // the shape a real regulation has: sport capped at 4 inside
+          // activities capped at 10 (assessment-design §8.5)
+          const g = yield* scoringBatch(f, {
+            groups: [{ name: '文体活动', cap: '10.00' }],
+            items: [],
+          })
+          const saved = yield* assessment.replaceScoreGroups(
+            f.t,
+            g.batch.id,
+            {
+              groups: [
+                { name: '文体活动', id: g.groupIds[0]!, cap: '10.00', floor: null },
+                { name: '体育活动', cap: '4.00', floor: null, parentGroupId: g.groupIds[0]! },
+                { name: '文艺活动', cap: '6.00', floor: null, parentGroupId: g.groupIds[0]! },
+              ],
+              reason: 'the regulation nests these',
+            },
+            admin,
+          )
+          const sport = saved.groups.find((group) => group.name === '体育活动')!.id
+          const arts = saved.groups.find((group) => group.name === '文艺活动')!.id
+          const item = (title: string, value: string, groupId: string) =>
+            assessment.createItem(
+              f.t,
+              g.batch.id,
+              {
+                itemType: 'evidence',
+                title,
+                scoreGroupId: groupId,
+                maxEntries: 1,
+                config: {
+                  entrySource: 'student',
+                  formConfig: { files: {} },
+                  scoringConfig: {
+                    calculator: { ref: 'fixed@1', config: { value } },
+                    aggregator: { ref: 'sum@1', config: {} },
+                  },
+                  reviewPolicy: {
+                    stages: [
+                      {
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                    normalTerminal: 0,
+                  },
+                },
+              },
+              admin,
+            )
+          // 2 + 3 + 2 = 7 under a cap of 4
+          const a = yield* item('校运动会', '2.00', sport)
+          const b = yield* item('篮球赛', '3.00', sport)
+          const c = yield* item('志愿裁判', '2.00', sport)
+          const d = yield* item('校园歌手赛', '2.00', arts)
+          for (const created of [a, b, c, d]) {
+            yield* approved(f, created.id, g.p1, f.s1)
+          }
+          const account = yield* assessment.getMyResult(f.t, g.batch.id, f.principal(f.s1))
+          return { account, sport, arts, parent: g.groupIds[0]! }
+        }),
+      ),
+    )
+
+    const groupOf = (id: string) => result.account.groups.find((group) => group.groupId === id)!
+    // the inner cap bites first: its own questions come to 7, it counts 4
+    expect(groupOf(result.sport)).toMatchObject({
+      itemsTotal: '7.00',
+      childrenTotal: '0.00',
+      raw: '7.00',
+      final: '4.00',
+      depth: 1,
+    })
+    expect(groupOf(result.arts)).toMatchObject({ itemsTotal: '2.00', final: '2.00' })
+    // the parent has no questions of its own: it is worth what its children
+    // came to after their own limits, and only then meets its own
+    expect(groupOf(result.parent)).toMatchObject({
+      itemsTotal: '0.00',
+      childrenTotal: '6.00',
+      raw: '6.00',
+      final: '6.00',
+      depth: 0,
+    })
+    // only the roots are counted once into the total - never the children again
+    expect(result.account.total).toBe('6.00')
+  })
+
   it('states a voided question to whoever has history on it, and to nobody else', async () => {
     const result = ok(
       await run(

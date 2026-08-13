@@ -4135,3 +4135,28 @@ frozen resolve、prettier、生产 smoke 全绿。
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` **623 passed / 17 skipped**;`pnpm test:browser`
 54;build、frozen resolve、prettier、生产 smoke 全绿。
+
+### 对话 8.5:按外部审计分级收口(2026-08-13)
+
+**P0 分数分组保存丢 id**:前端不回传 id → 后端理解为删旧建新 → 已挂题目的分组一改封顶就被
+`group-has-items` 拒。重写为分组树编辑器(保留 id、逐条回显拒绝、active 批次改封顶要求原因、
+删除连带子组)。
+
+**P0 嵌套分组**(裁决 assessment-design §32.59):`parentGroupId` 为唯一结构真相,不引入 ltree
+(分数树是节点极少、频繁移动的小树,拖拽在 parentId 下改一行,在 path 下要重写子树);服务层拒环、
+scorer 遇环抛 defect;复合外键 + RESTRICT 对话 2 已建,无需迁移。scorer 改递归并冻结
+`raw = Σ直属item + Σchild.final`、`final = clamp(raw, floor, cap)`、`total = Σroot.final`;
+Breakdown 逐组给 itemsTotal/childrenTotal/raw/final + parentGroupId/depth。敌意测试按真实校规:
+体育 2+3+2 cap4 → 4,文体 cap10 → 6。
+
+**P0/P1 删除步骤错移终点**:`normalTerminal` 按下标算,删前面的步骤会把疑点段首步变成普通终点。
+编辑器改两列表(常规审核 / 疑点上报)+ 稳定 key + 上下移,终点保存时派生,管理员不再看到该概念。
+
+**P1**:意见类动作(comment/recommend-*)不再误退出审核,只刷新详情;删除与 §32.58 冲突的
+「仅本级」文案;`no-such-level` 与 `no-holder` 分别成句;事件与结论走 presenter(服务端投影
+actorName),审核详情与条目历史共用,链路每段附当前可审人员名单;历史按 revision 自己的 formConfig
+显示字段标签(不再 f1/f2);附件对光栅图给缩略图与灯箱(不改 storage 的 attachment 语义——
+`<img>` 是子资源加载,svg 经 img 禁用脚本);我的填报按计分树分组并标出已得/封顶。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **624 passed / 17 skipped**;
+`pnpm test:browser` 54;build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。
