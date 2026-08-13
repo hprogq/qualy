@@ -61,6 +61,33 @@ export class MaterialRangeInvalid extends Schema.TaggedErrorClass<MaterialRangeI
   { httpApiStatus: 422, identifier: 'AssessmentMaterialRangeInvalid' },
 ) {}
 
+export class EntryNotFound extends Schema.TaggedErrorClass<EntryNotFound>()(
+  'ASSESSMENT_ENTRY_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentEntryNotFound' },
+) {}
+
+/**
+ * The resource policy said no: the action names itself and a stable reason.
+ *
+ * Deliberately one code for the whole matrix rather than one per row - what
+ * varies is the reason, and a screen renders reasons, not codes.
+ */
+export class EntryActionRefused extends Schema.TaggedErrorClass<EntryActionRefused>()(
+  'ASSESSMENT_ENTRY_ACTION_REFUSED',
+  { action: Schema.String, reason: Schema.String },
+  { httpApiStatus: 403, identifier: 'AssessmentEntryActionRefused' },
+) {}
+
+/** the filing itself cannot be read: field problems, named one by one */
+export class EntryPayloadInvalid extends Schema.TaggedErrorClass<EntryPayloadInvalid>()(
+  'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
+  {
+    issues: Schema.Array(Schema.Struct({ field: Schema.String, reason: Schema.String })),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentEntryPayloadInvalid' },
+) {}
+
 export class ItemNotFound extends Schema.TaggedErrorClass<ItemNotFound>()(
   'ASSESSMENT_ITEM_NOT_FOUND',
   {},

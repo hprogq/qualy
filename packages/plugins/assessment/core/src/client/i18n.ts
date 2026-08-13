@@ -1201,6 +1201,18 @@ const i18n = definePluginMessages({
       defaultMessage:
         'The new material window would leave existing entries outside it. Deal with those entries first.',
     },
+    ASSESSMENT_ENTRY_NOT_FOUND: {
+      id: 'assessment/error/entry-not-found',
+      defaultMessage: 'This entry no longer exists.',
+    },
+    ASSESSMENT_ENTRY_ACTION_REFUSED: {
+      id: 'assessment/error/entry-action-refused',
+      defaultMessage: 'This cannot be done to the entry right now.',
+    },
+    ASSESSMENT_ENTRY_PAYLOAD_INVALID: {
+      id: 'assessment/error/entry-payload-invalid',
+      defaultMessage: 'The filing could not be saved. Fix the fields listed and try again.',
+    },
     ASSESSMENT_ITEM_NOT_FOUND: {
       id: 'assessment/error/item-not-found',
       defaultMessage: 'This item no longer exists.',

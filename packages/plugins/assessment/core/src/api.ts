@@ -15,6 +15,9 @@ import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   AccessInvalid,
   AdvanceInvalid,
+  EntryActionRefused,
+  EntryNotFound,
+  EntryPayloadInvalid,
   ItemConfigInvalid,
   ItemNotFound,
   MaterialRangeInvalid,
@@ -355,7 +358,93 @@ const scoreGroupSpec = Schema.Struct({
   sortOrder: Schema.optional(sortOrder),
 })
 
+const entryRevisionView = Schema.Struct({
+  id: Schema.String,
+  revisionNo: Schema.Number,
+  itemRevisionId: Schema.String,
+  payload: configJson,
+  note: Schema.NullOr(Schema.String),
+  source: Schema.String,
+  actorId: Schema.String,
+  subjectId: Schema.String,
+  attachments: Schema.Array(
+    Schema.Struct({ attachmentId: Schema.String, position: Schema.Number }),
+  ),
+  createdAt: Schema.String,
+})
+
+const entryView = Schema.Struct({
+  id: Schema.String,
+  batchId: Schema.String,
+  itemId: Schema.String,
+  participantId: Schema.String,
+  status: Schema.Literals(['draft', 'in_review', 'approved', 'rejected', 'voided']),
+  source: Schema.Literals(['self', 'proxy', 'record', 'import', 'system']),
+  currentRevision: Schema.NullOr(entryRevisionView),
+  currentReviewInstanceId: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  capabilities: Schema.Struct({
+    canEdit: Schema.Boolean,
+    canSubmit: Schema.Boolean,
+    canWithdraw: Schema.Boolean,
+  }),
+})
+
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
+  .add(
+    HttpApiEndpoint.post('createEntry', '/assessment/entries', {
+      payload: Schema.Struct({
+        itemId: id,
+        participantId: id,
+        payload: configJson,
+        note: Schema.optional(boundedText(1000)),
+      }),
+      success: Schema.Struct({ entry: entryView }),
+      error: [
+        ItemNotFound,
+        BatchNotFound,
+        BatchReadOnly,
+        EntryActionRefused,
+        EntryPayloadInvalid,
+        AccessDenied,
+        BadRequest,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get('getEntry', '/assessment/entries/:entryId', {
+      params: Schema.Struct({ entryId: id }),
+      success: Schema.Struct({ entry: entryView }),
+      error: [EntryNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('reviseEntry', '/assessment/entries/:entryId/revisions', {
+      params: Schema.Struct({ entryId: id }),
+      payload: Schema.Struct({
+        payload: configJson,
+        note: Schema.optional(boundedText(1000)),
+      }),
+      success: Schema.Struct({ entry: entryView }),
+      error: [
+        EntryNotFound,
+        BatchReadOnly,
+        EntryActionRefused,
+        EntryPayloadInvalid,
+        AccessDenied,
+        BadRequest,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('setEntryStatus', '/assessment/entries/:entryId/status', {
+      params: Schema.Struct({ entryId: id }),
+      /** submit is status in_review; withdraw is status draft */
+      payload: Schema.Struct({ status: Schema.Literals(['in_review', 'draft']) }),
+      success: Schema.Struct({ entry: entryView }),
+      error: [EntryNotFound, BatchReadOnly, EntryActionRefused, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
   .add(
     HttpApiEndpoint.get('listItems', '/assessment/batches/:batchId/items', {
       params: Schema.Struct({ batchId: id }),

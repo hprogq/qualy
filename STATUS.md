@@ -3807,3 +3807,43 @@ schema 是对话 2 的)、`prettier --check .`、生产 smoke 全绿。
 policy 6、evidence driver 7、fixtures 3);`pnpm test:browser` 48;`pnpm build`、
 `pnpm qualy resolve --frozen-lockfile`(零写入)、`pnpm qualy generate`(无待生成)、
 `prettier --check .` 全绿。
+
+### M2 对话 4:Entry 与 ResourcePolicy,敌意测试先行(2026-08-13)
+
+开工前按审计要求补完 materialRange guard(`1ac15d9`):候选范围除了试解 live payload,还对**每个
+active 题的当前配置**跑 `driver.configIssues`(空窗口题点名拒),driver 缺失一律 fail closed
+(`item-type-not-installed`)。三臂各有用例。
+
+对话 4 本体(第三层授权从空槽变成真实规则):
+
+- **服务端决定谁在说话**:客户端永不提交 source/actor/subject。题目的 entrySource 决定路径——
+  student 题要求 participant 就是本人(替别人建 → `not-your-participant`);administrative 题走
+  record:staff 持 `assessment.entry.record`、经批次接受、**且授权锚点覆盖目标 participant 的冻结
+  锚点**(subtree 用冻结 path 对 grant 节点活 path 求 `<@`,self 对冻结节点 id,租户角色全域,
+  资源限定的授权必须是本批次)。审计的靶心用例:record 覆盖学院 A 的 staff 对学院 B 的学生 →
+  `participant-out-of-reach`。依据必填(`basis-required`);record 即 approved、零审核实例。
+- **生命周期矩阵(§10.4)整套落地**:draft 可编辑可提交;rejected 追加修订即回 draft;in_review
+  不可编辑(`entry-not-editable`)不可重复提交;withdraw = 取消当前轮(instance → completed/
+  cancelled + `cancelled-by-submitter` 事件)回 draft,修订不回滚;重新提交开 round 2。
+  `max_entries` 在批次行锁内计数(voided 除外)。excluded 的人历史照读、笔被收走
+  (`participant-not-active`);他人条目连存在都不可见(404)。
+- **submit 现场解析单 stage**:冻结 lineage 找最近的 nodeTypeId 节点 → 精确锚点 holder →
+  剔除 {subject, actor} → 空则拒 `reviewer-not-found`(测试:唯一审核人被撤职后拒;学生自己
+  戴上审核角色也拒——没人审自己的材料);链快照与节点/角色投影落 review_instances。
+- **附件与修订同呼吸**:driver 的 refs(accept + maxFileBytes)对 storage 可信 metadata 逐条校验
+  ——staged 必须是 actor 自己传的(`attachment-not-yours`),bound 只许本 entry 历史引用过的复用
+  (跨 entry 借用 → `attachment-cross-entry`),retired 拒;`Storage.bind` 经 ambient transaction
+  加入同一事务——**一好一坏的引用整单失败,entry 不存在、好附件仍是 staged**(实测)。
+- API 四端点(`POST /assessment/entries`、`GET/POST revisions/PUT status`),frozen-routes 同笔;
+  三个新码(`ENTRY_NOT_FOUND` 404 / `ENTRY_ACTION_REFUSED {action,reason}` 403 /
+  `ENTRY_PAYLOAD_INVALID {issues}` 422)进码表与双语 catalog。
+- Assessment service 现在依赖 Storage;测试 harness 统一经 `storageForTest()`(内存 backend +
+  真 storage service,与业务同库同事务)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **594 passed / 17 skipped(90 文件)**,
+entry-policy 敌意套件 6 例 34 断言全绿;`pnpm test:browser` 48;`pnpm build`、
+`pnpm qualy resolve --frozen-lockfile`(零写入)、`pnpm qualy generate`(无待生成)、
+`prettier --check .`、生产 smoke 全绿。
+
+**下一步**:对话 5(单 stage Review:inbox、detail、approve/reject、驳回建议稿、
+reject → revision → new round)。

@@ -23,7 +23,7 @@ import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
-import { catalogLayers } from './support/catalogs.ts'
+import { catalogLayers, storageForTest } from './support/catalogs.ts'
 import { schedulerLayer } from '../src/phase/scheduler.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
 
@@ -56,6 +56,7 @@ const stack = (url: string) => {
   ).pipe(Layer.provideMerge(assembledLayer), Layer.provideMerge(TestClock.layer()))
   return serviceLayer.pipe(
     Layer.provide(catalogLayers),
+    Layer.provide(storageForTest().pipe(Layer.provide(services))),
     Layer.provideMerge(services),
     // exactly the composition the descriptor declares
     (assessment) => Layer.merge(assessment, schedulerLayer.pipe(Layer.provide(assessment))),

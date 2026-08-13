@@ -3045,6 +3045,23 @@ hostile tests 必须先于 UI。
 
 `feat(assessment): enforce entry resource policies`
 
+落地记录（对话 4 完成时相对本节的偏离）：
+
+- **submit 时已解析单 stage 并做空审核人拒绝**（§11.2 的 resolver 前半提前到本对话）：从冻结
+  anchor_lineage 找最近的 selector.nodeTypeId 节点，精确锚点解析当前 holder，剔除
+  {subject, revision.actor} 后为空则拒（`reviewer-not-found`，冻结节点已被删除同答此因）；
+  effective_chain / current_node_id / current_node_path / current_role_ids 全部落快照。
+  inbox / decision / escalate 仍归对话 5。
+- 策略拒绝走一个码 `ASSESSMENT_ENTRY_ACTION_REFUSED {action, reason}`（403），不是每行一个码——
+  屏幕渲染的是 reason。payload 与附件问题走 `ASSESSMENT_ENTRY_PAYLOAD_INVALID {issues}`（422）。
+- record 的「依据必填」用 note 字段承载（`basis-required`）；record 条目不可 edit（更正走 void，
+  对话 7）。
+- GET entry 的读权 = 本人（含 excluded 读自己的历史，§32.56）或批次管理 reach；他人一律 404
+  不泄露存在性。staff 的条目读取归对话 5 的 inbox/detail。
+- 附件绑定与 EntryRevision 同事务经 ambient transaction 复用 Storage.bind；bound 附件只允许
+  **本 entry** 历史修订引用过的复用，staged 必须是 actor 自己上传的，accept/maxFileBytes 按
+  ref 对 storage 可信 metadata 校验。
+
 ### 对话 5：单 stage Review
 
 目标：

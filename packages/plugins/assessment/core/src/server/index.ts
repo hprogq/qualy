@@ -26,6 +26,8 @@ import { PARTICIPANT_ACTION_CODES, STAFF_CODES } from '../permissions.ts'
 import { ItemTypeCatalog, ScoringCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
+import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
+import { Storage } from '@qualy/plugin-storage/server'
 import {
   AccessInvalid,
   AdvanceInvalid,
@@ -735,6 +737,11 @@ export class Assessment extends Context.Service<
      * writes down what is already true.
      */
     readonly sweepDueBoundaries: Effect.Effect<SweepReport>
+    /** one person's claims on the round's questions, and their lifecycle */
+    readonly createEntry: EntryMethods['createEntry']
+    readonly getEntry: EntryMethods['getEntry']
+    readonly appendEntryRevision: EntryMethods['appendEntryRevision']
+    readonly setEntryStatus: EntryMethods['setEntryStatus']
     /** the score tree and the items on it; the save gauntlet lives behind these */
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
@@ -750,6 +757,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const rbac = yield* Rbac
   const itemTypes = yield* ItemTypeCatalog
   const scoring = yield* ScoringCatalog
+  const storage = yield* Storage
 
   const dieQuery = <A, E, R>(
     effect: Effect.Effect<A, E, R>,
@@ -1590,6 +1598,53 @@ export const make = Effect.fn('Assessment.make')(function* () {
     return { changes }
   })
 
+  const authorizeAction = Effect.fn('Assessment.authorizeEntryAction')(function* (
+    principal: Principal,
+    code: string,
+    batchId: string,
+    ctx?: GateContext,
+  ) {
+    // Layer one: authority in THIS batch, which is not the same question
+    // as authority in the tenant.
+    //
+    // A participant needs no grant, and could not be given one: their
+    // actions are not rbac permissions at all. Being on the roster is what
+    // those capabilities are made of. Everybody else holds what this batch
+    // accepted from the tenant and has not taken back, or what this batch
+    // granted directly.
+    //
+    // Which node it applies to is not asked yet: entries do not exist, so
+    // there is no object to locate. When they do, the participant's frozen
+    // lineage is what the scopes here get compared against.
+    const held = PARTICIPANT_ACTION_CODES.includes(code as never)
+      ? (yield* dieQuery(
+          withDb(activeParticipantByUser(principal.tenantId, batchId, principal.userId)),
+        )) !== null
+      : (yield* batchAuthority(principal.tenantId, batchId, principal.userId)).has(code)
+    if (!held) {
+      return {
+        allowed: false,
+        layer: 'authority',
+        reason: PARTICIPANT_ACTION_CODES.includes(code as never)
+          ? 'not-participant'
+          : 'permission-not-held',
+      } as const
+    }
+    // Layer two: the phase gate.
+    const batch = yield* dieQuery(withDb(oneBatch(principal.tenantId, batchId)))
+    if (!batch) return yield* new BatchNotFound()
+    const now = yield* Clock.currentTimeMillis
+    const view = yield* dieQuery(withDb(gateView(principal.tenantId, batch, now)))
+    const decision = decide(view, code, ctx)
+    if (!decision.allowed) {
+      return { allowed: false, layer: 'gate', reason: decision.reason } as const
+    }
+    // Layer three: the resource policy. Entries do not exist yet, so there
+    // is no object state to guard; the slot exists so callers already
+    // compose all three.
+    return { allowed: true } as const
+  })
+
   const itemMethods = makeItemMethods({
     withDb,
     requireBatchVisible,
@@ -1603,8 +1658,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
     },
   })
 
+  const entryMethods = makeEntryMethods({
+    withDb,
+    authorize: authorizeAction,
+    requireRosterReach,
+    parseRange,
+    itemTypes,
+    storage,
+  })
+
   return Assessment.of({
     ...itemMethods,
+    ...entryMethods,
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
       return yield* withDb(
         transaction(
@@ -2689,49 +2754,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return decide(view, code, ctx)
     }),
 
-    authorizeEntryAction: Effect.fn('Assessment.authorizeEntryAction')(
-      function* (principal, code, batchId, ctx) {
-        // Layer one: authority in THIS batch, which is not the same question
-        // as authority in the tenant.
-        //
-        // A participant needs no grant, and could not be given one: their
-        // actions are not rbac permissions at all. Being on the roster is what
-        // those capabilities are made of. Everybody else holds what this batch
-        // accepted from the tenant and has not taken back, or what this batch
-        // granted directly.
-        //
-        // Which node it applies to is not asked yet: entries do not exist, so
-        // there is no object to locate. When they do, the participant's frozen
-        // lineage is what the scopes here get compared against.
-        const held = PARTICIPANT_ACTION_CODES.includes(code as never)
-          ? (yield* dieQuery(
-              withDb(activeParticipantByUser(principal.tenantId, batchId, principal.userId)),
-            )) !== null
-          : (yield* batchAuthority(principal.tenantId, batchId, principal.userId)).has(code)
-        if (!held) {
-          return {
-            allowed: false,
-            layer: 'authority',
-            reason: PARTICIPANT_ACTION_CODES.includes(code as never)
-              ? 'not-participant'
-              : 'permission-not-held',
-          } as const
-        }
-        // Layer two: the phase gate.
-        const batch = yield* dieQuery(withDb(oneBatch(principal.tenantId, batchId)))
-        if (!batch) return yield* new BatchNotFound()
-        const now = yield* Clock.currentTimeMillis
-        const view = yield* dieQuery(withDb(gateView(principal.tenantId, batch, now)))
-        const decision = decide(view, code, ctx)
-        if (!decision.allowed) {
-          return { allowed: false, layer: 'gate', reason: decision.reason } as const
-        }
-        // Layer three: the resource policy. Entries do not exist yet, so there
-        // is no object state to guard; the slot exists so callers already
-        // compose all three.
-        return { allowed: true } as const
-      },
-    ),
+    authorizeEntryAction: authorizeAction,
 
     listTemplates: Effect.fn('Assessment.listTemplates')(function* (tenantId, filter, as) {
       yield* templatePermission(as)
@@ -3006,7 +3029,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
 export const serviceLayer: Layer.Layer<
   Assessment,
   never,
-  Orm | Rbac | ItemTypeCatalog | ScoringCatalog
+  Orm | Rbac | ItemTypeCatalog | ScoringCatalog | Storage
 > = Layer.effect(Assessment, make())
 
 // --- api ---
@@ -3023,6 +3046,33 @@ const parseInstant = (value: string) => {
 /** one of them or several: a repeated query parameter is a list either way */
 const listed = (value: string | readonly string[] | undefined): string[] =>
   value === undefined ? [] : typeof value === 'string' ? [value] : [...value]
+
+const entryDto = (entry: EntryView) => ({
+  id: entry.id,
+  batchId: entry.batchId,
+  itemId: entry.itemId,
+  participantId: entry.participantId,
+  status: entry.status,
+  source: entry.source,
+  currentRevision:
+    entry.currentRevision === null
+      ? null
+      : {
+          id: entry.currentRevision.id,
+          revisionNo: entry.currentRevision.revisionNo,
+          itemRevisionId: entry.currentRevision.itemRevisionId,
+          payload: entry.currentRevision.payload,
+          note: entry.currentRevision.note,
+          source: entry.currentRevision.source,
+          actorId: entry.currentRevision.actorId,
+          subjectId: entry.currentRevision.subjectId,
+          attachments: entry.currentRevision.attachments,
+          createdAt: new Date(entry.currentRevision.createdAt).toISOString(),
+        },
+  currentReviewInstanceId: entry.currentReviewInstanceId,
+  createdAt: new Date(entry.createdAt).toISOString(),
+  capabilities: entry.capabilities,
+})
 
 const itemDto = (item: ItemView) => ({
   id: item.id,
@@ -3697,6 +3747,64 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const principal = yield* CurrentUser
         yield* assessment.deleteTemplate(principal.tenantId, params.templateId, principal)
         return { ok: true as const }
+      }),
+    )
+    .handle(
+      'createEntry',
+      Effect.fn('assessment.createEntry.handler')(function* ({ payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const entry = yield* assessment.createEntry(
+          principal.tenantId,
+          {
+            itemId: payload.itemId,
+            participantId: payload.participantId,
+            payload: payload.payload,
+            ...(payload.note !== undefined ? { note: payload.note } : {}),
+          },
+          principal,
+        )
+        return { entry: entryDto(entry) }
+      }),
+    )
+    .handle(
+      'getEntry',
+      Effect.fn('assessment.getEntry.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const entry = yield* assessment.getEntry(principal.tenantId, params.entryId, principal)
+        return { entry: entryDto(entry) }
+      }),
+    )
+    .handle(
+      'reviseEntry',
+      Effect.fn('assessment.reviseEntry.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const entry = yield* assessment.appendEntryRevision(
+          principal.tenantId,
+          params.entryId,
+          {
+            payload: payload.payload,
+            ...(payload.note !== undefined ? { note: payload.note } : {}),
+          },
+          principal,
+        )
+        return { entry: entryDto(entry) }
+      }),
+    )
+    .handle(
+      'setEntryStatus',
+      Effect.fn('assessment.setEntryStatus.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const entry = yield* assessment.setEntryStatus(
+          principal.tenantId,
+          params.entryId,
+          payload.status,
+          principal,
+        )
+        return { entry: entryDto(entry) }
       }),
     )
     .handle(

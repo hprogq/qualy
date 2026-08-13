@@ -1,4 +1,8 @@
 import { Effect, Layer, Schema } from 'effect'
+import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
+import { registryLayer } from '@qualy/plugin-storage/server/registry'
+import { serviceLayer as storageOnlyLayer } from '@qualy/plugin-storage/server/service'
+import { backendLayer, memoryBackend, type MemoryBackend } from '@qualy/plugin-storage/testkit'
 import {
   ItemPayloadInvalid,
   ItemTypeCatalog,
@@ -24,6 +28,14 @@ export const testItemType: ItemTypeDriver = {
     // days from this date on, and the range sweep must notice when the
     // round no longer has any
     validFrom: Schema.optional(Schema.String),
+    // a stand-in for an attachment field: payload.files cites ids under
+    // these constraints
+    files: Schema.optional(
+      Schema.Struct({
+        maxFileBytes: Schema.optional(Schema.Number),
+        accept: Schema.optional(Schema.Array(Schema.String)),
+      }),
+    ),
   }),
   configIssues: (config, batch) => {
     const from = (config as { validFrom?: string }).validFrom
@@ -45,10 +57,34 @@ export const testItemType: ItemTypeDriver = {
             new ItemPayloadInvalid(required.map((field) => ({ field, reason: 'required' }))),
           )
     }),
-  attachmentRefs: () => [],
+  attachmentRefs: (config, payload) => {
+    const rules = (config as { files?: { maxFileBytes?: number; accept?: readonly string[] } })
+      .files
+    const cited = (payload as { files?: readonly string[] } | null)?.files ?? []
+    return cited.map((attachmentId) => ({
+      field: 'files',
+      attachmentId,
+      ...(rules?.accept !== undefined ? { accept: rules.accept } : {}),
+      ...(rules?.maxFileBytes !== undefined ? { maxFileBytes: rules.maxFileBytes } : {}),
+    }))
+  },
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },
 }
+
+/**
+ * Storage as a suite provides it: the service over a memory backend, no
+ * sweeper, no barrier. The backend is returned so a test can plant objects
+ * the way a browser upload would have.
+ */
+export const storageForTest = (backend: MemoryBackend = memoryBackend()) =>
+  storageOnlyLayer.pipe(
+    Layer.provideMerge(backendLayer(backend)),
+    Layer.provideMerge(registryLayer),
+    Layer.provideMerge(
+      Layer.succeed(StorageConfig, { defaultBackend: backend.code, limits: DEFAULT_LIMITS }),
+    ),
+  )
 
 export const catalogLayers = Layer.mergeAll(
   Layer.succeed(ItemTypeCatalog, new Map([[testItemType.id, testItemType]])),

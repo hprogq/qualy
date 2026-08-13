@@ -29,7 +29,7 @@ import {
   type PhaseSpecInput,
 } from '../src/server/index.ts'
 import { participantEvents, type PhaseRow } from '../src/server/db.ts'
-import { catalogLayers } from './support/catalogs.ts'
+import { catalogLayers, storageForTest } from './support/catalogs.ts'
 import { startBatch } from './support/lifecycle.ts'
 
 // The service against a real database: batch lifecycle with the one-statement
@@ -44,18 +44,21 @@ const catalog: readonly ActivePermission[] = compileCatalog([
 
 const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...entities] as const
 
-const stack = (url: string) =>
-  serviceLayer.pipe(
-    Layer.provideMerge(
-      booted(
-        rbacLayer.pipe(
-          Layer.provideMerge(Layer.mergeAll(uiLayer, databaseFor(url, { entities: closure }))),
-        ),
-        { catalog },
-      ),
+const stack = (url: string) => {
+  const services = booted(
+    rbacLayer.pipe(
+      Layer.provideMerge(Layer.mergeAll(uiLayer, databaseFor(url, { entities: closure }))),
     ),
-    Layer.provide(catalogLayers),
+    { catalog },
   )
+  return serviceLayer.pipe(
+    Layer.provideMerge(services),
+    Layer.provide(catalogLayers),
+    // one services value on purpose: the layer memo map shares it, so the
+    // storage stack runs on the same database as everything else
+    Layer.provide(storageForTest().pipe(Layer.provide(services))),
+  )
+}
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, Assessment | Rbac | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
