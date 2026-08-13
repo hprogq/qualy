@@ -84,3 +84,16 @@ export const fieldsOf = (
 /** the url the api serves bytes at, for stores without their own door */
 export const attachmentContentUrl = (attachmentId: string) =>
   `/api/assessment/attachments/${attachmentId}/content`
+
+/**
+ * The last day a half-open material range actually admits.
+ *
+ * The window is stored `[start, end)` - the day named by `end` is already
+ * outside it - so a date picker offering it would offer a day the server
+ * refuses.
+ */
+export const lastDay = (end: string): string => {
+  const at = new Date(`${end}T00:00:00Z`)
+  at.setUTCDate(at.getUTCDate() - 1)
+  return at.toISOString().slice(0, 10)
+}

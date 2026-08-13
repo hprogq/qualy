@@ -514,6 +514,44 @@ const i18n = definePluginMessages({
     entryWithdraw: { id: 'assessment/entry/withdraw', defaultMessage: 'Withdraw' },
     entrySave: { id: 'assessment/entry/save', defaultMessage: 'Save' },
     entryHistoryOpen: { id: 'assessment/entry/history-open', defaultMessage: 'History' },
+    entryIssueRequired: {
+      id: 'assessment/entry/issue-required',
+      defaultMessage: 'needs an answer',
+    },
+    entryIssueOutOfRange: {
+      id: 'assessment/entry/issue-out-of-range',
+      defaultMessage: 'is outside the dates this round counts',
+    },
+    entryIssueNotADate: {
+      id: 'assessment/entry/issue-not-a-date',
+      defaultMessage: 'is not a date',
+    },
+    entryIssueTooLong: { id: 'assessment/entry/issue-too-long', defaultMessage: 'is too long' },
+    entryIssueTooMany: {
+      id: 'assessment/entry/issue-too-many',
+      defaultMessage: 'has more files than allowed',
+    },
+    entryIssueFileTooLarge: {
+      id: 'assessment/entry/issue-file-too-large',
+      defaultMessage: 'has a file over the size limit',
+    },
+    entryIssueFileType: {
+      id: 'assessment/entry/issue-file-type',
+      defaultMessage: 'has a file of a kind this question does not take',
+    },
+    entryIssueFileMissing: {
+      id: 'assessment/entry/issue-file-missing',
+      defaultMessage: 'names a file that is no longer there',
+    },
+    entryIssueFileNotYours: {
+      id: 'assessment/entry/issue-file-not-yours',
+      defaultMessage: 'names a file somebody else uploaded',
+    },
+    entryIssueFileElsewhere: {
+      id: 'assessment/entry/issue-file-elsewhere',
+      defaultMessage: 'names a file already used by another entry',
+    },
+    entryIssueOther: { id: 'assessment/entry/issue-other', defaultMessage: 'cannot be accepted' },
     entryNote: { id: 'assessment/entry/note', defaultMessage: 'Note' },
     entryStatusDraft: { id: 'assessment/entry/status-draft', defaultMessage: 'Draft' },
     entryStatusInReview: { id: 'assessment/entry/status-in-review', defaultMessage: 'In review' },
@@ -696,11 +734,6 @@ const i18n = definePluginMessages({
     itemsFieldRemove: { id: 'assessment/items/form-remove', defaultMessage: 'Remove' },
     itemsFieldUp: { id: 'assessment/items/form-up', defaultMessage: 'Move up' },
     itemsFieldDown: { id: 'assessment/items/form-down', defaultMessage: 'Move down' },
-    itemsFieldKey: { id: 'assessment/items/field-key', defaultMessage: 'Field key' },
-    itemsFieldKeyHint: {
-      id: 'assessment/items/field-key-hint',
-      defaultMessage: 'Lowercase words joined by dashes. Not shown to participants.',
-    },
     itemsFieldLabel: { id: 'assessment/items/field-label', defaultMessage: 'Label' },
     itemsFieldType: { id: 'assessment/items/field-type', defaultMessage: 'Type' },
     itemsTypeText: { id: 'assessment/items/type-text', defaultMessage: 'Text' },
@@ -712,6 +745,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Longest text',
     },
     itemsFieldMinDate: { id: 'assessment/items/field-min-date', defaultMessage: 'Earliest date' },
+    itemsDateWindow: {
+      id: 'assessment/items/date-window',
+      defaultMessage: 'This round only counts material from {from} to {until}.',
+    },
     itemsFieldMaxDate: { id: 'assessment/items/field-max-date', defaultMessage: 'Latest date' },
     itemsFieldMaxCount: { id: 'assessment/items/field-max-count', defaultMessage: 'Most files' },
     itemsFieldMaxSize: {

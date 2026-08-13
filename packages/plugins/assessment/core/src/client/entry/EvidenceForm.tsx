@@ -5,6 +5,7 @@ import { Field } from '@qualy/ui/admin'
 import { Input } from '@qualy/ui/input'
 import { assessmentMessages as m } from '../i18n.ts'
 import { uploadFile, type UploadDoors, type UploadedFile } from './upload.ts'
+import { lastDay } from './model.ts'
 
 // The form an administrator composed, drawn field by field. The page hands
 // in the item's form configuration and gets back exactly the payload shape
@@ -36,6 +37,7 @@ export function EvidenceForm({
   onChange,
   doors,
   where,
+  materialRange,
   knownFiles = {},
   disabled = false,
 }: {
@@ -44,6 +46,8 @@ export function EvidenceForm({
   onChange: (next: EvidencePayload) => void
   doors: UploadDoors
   where: { batchId: string; itemId: string }
+  /** the round's window; what the server will accept is this ∩ the field's own */
+  materialRange?: { start: string; end: string } | undefined
   knownFiles?: KnownFiles
   disabled?: boolean
 }) {
@@ -77,6 +81,16 @@ export function EvidenceForm({
           )
         }
         if (field.type === 'date') {
+          // the picker offers exactly what the server will take: the field's
+          // own bounds narrowed by the round's material window
+          const floor = [field.min, materialRange?.start].filter(Boolean).sort().at(-1)
+          const ceiling = [
+            field.max,
+            materialRange === undefined ? undefined : lastDay(materialRange.end),
+          ]
+            .filter(Boolean)
+            .sort()
+            .at(0)
           return (
             <Field key={field.key} label={field.label}>
               {(id) => (
@@ -84,8 +98,8 @@ export function EvidenceForm({
                   id={id}
                   type="date"
                   value={(value[field.key] as string | undefined) ?? ''}
-                  min={field.min}
-                  max={field.max}
+                  min={floor}
+                  max={ceiling}
                   disabled={disabled}
                   onChange={(event) => setField(field.key, event.target.value)}
                 />

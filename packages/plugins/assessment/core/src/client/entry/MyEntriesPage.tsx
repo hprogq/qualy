@@ -23,12 +23,18 @@ export default function MyEntriesPage() {
   const { format } = useI18n()
   return (
     <BatchScreen title={format(m.myEntriesTab)} description={format(m.myEntriesHint)}>
-      {(batch) => <Body batchId={batch.id} />}
+      {(batch) => <Body batchId={batch.id} materialRange={batch.materialRange} />}
     </BatchScreen>
   )
 }
 
-function Body({ batchId }: { batchId: string }) {
+function Body({
+  batchId,
+  materialRange,
+}: {
+  batchId: string
+  materialRange: { start: string; end: string }
+}) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -196,6 +202,7 @@ function Body({ batchId }: { batchId: string }) {
       {editing !== null && mine.data !== undefined && (
         <EntryDialog
           batchId={batchId}
+          materialRange={materialRange}
           participantId={mine.data.participantId}
           item={editing.item}
           entry={editing.entry}

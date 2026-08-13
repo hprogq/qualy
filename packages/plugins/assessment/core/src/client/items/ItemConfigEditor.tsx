@@ -11,7 +11,7 @@ import { NativeSelect } from '@qualy/ui/native-select'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import type { ItemDto } from '../entry/model.ts'
+import { lastDay, type ItemDto } from '../entry/model.ts'
 
 // One question, composed rather than typed: the fields participants will
 // fill, what each approved entry counts, and who reviews at which level.
@@ -36,8 +36,19 @@ interface FieldDraft {
   accept: string
 }
 
-const blankField = (): FieldDraft => ({
-  key: '',
+/**
+ * The key is the payload's own word for a field, so it is minted once and
+ * never reused: renaming one would leave every filed answer pointing at a
+ * field that no longer exists. Numbering walks forward past deleted fields
+ * for the same reason. Nobody types it - the label is what a person writes.
+ */
+const nextKey = (fields: readonly FieldDraft[]): string => {
+  const used = fields.map((field) => Number(/^f(\d+)$/.exec(field.key)?.[1] ?? 0))
+  return `f${Math.max(0, ...used) + 1}`
+}
+
+const blankField = (key: string): FieldDraft => ({
+  key,
   type: 'text',
   label: '',
   required: false,
@@ -103,7 +114,7 @@ const draftOf = (
     scoreGroupId: item?.scoreGroupId ?? groups[0]?.id ?? '',
     maxEntries: String(item?.maxEntries ?? 1),
     entrySource: config?.entrySource ?? 'student',
-    fields: fields.length > 0 ? fields : [blankField()],
+    fields: fields.length > 0 ? fields : [blankField('f1')],
     fixedValue: scoring?.calculator?.config?.value ?? '1.00',
     reviewNodeTypeId: stage?.nodeTypeId ?? options.orgTypes[0]?.id ?? '',
     reviewRoleIds: stage?.roleIds ?? [],
@@ -164,6 +175,7 @@ const configOf = (draft: Draft) => ({
 
 export function ItemConfigEditor({
   batchId,
+  materialRange,
   item,
   groups,
   options,
@@ -171,6 +183,8 @@ export function ItemConfigEditor({
   onSaved,
 }: {
   batchId: string
+  /** the round's own window; a date field can only narrow it, never widen it */
+  materialRange: { start: string; end: string }
   item: ItemDto | null
   groups: readonly { id: string; name: string }[]
   options: ItemOptions
@@ -251,7 +265,7 @@ export function ItemConfigEditor({
     draft.fixedValue.trim() !== '' &&
     draft.reviewNodeTypeId !== '' &&
     draft.reviewRoleIds.length > 0 &&
-    draft.fields.every((field) => field.key.trim() !== '' && field.label.trim() !== '')
+    draft.fields.every((field) => field.label.trim() !== '')
 
   return (
     <SidePanel
@@ -331,7 +345,7 @@ export function ItemConfigEditor({
               onClick={() =>
                 setDraft((previous) => ({
                   ...previous,
-                  fields: [...previous.fields, blankField()],
+                  fields: [...previous.fields, blankField(nextKey(previous.fields))],
                 }))
               }
             >
@@ -369,15 +383,6 @@ export function ItemConfigEditor({
                   )}
                 </Field>
               </div>
-              <Field label={format(m.itemsFieldKey)} hint={format(m.itemsFieldKeyHint)}>
-                {(id) => (
-                  <Input
-                    id={id}
-                    value={field.key}
-                    onChange={(event) => patchField(index, { key: event.target.value })}
-                  />
-                )}
-              </Field>
               {field.type === 'text' && (
                 <Field label={format(m.itemsFieldMaxLength)}>
                   {(id) => (
@@ -392,27 +397,42 @@ export function ItemConfigEditor({
                 </Field>
               )}
               {field.type === 'date' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={format(m.itemsFieldMinDate)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        type="date"
-                        value={field.min}
-                        onChange={(event) => patchField(index, { min: event.target.value })}
-                      />
-                    )}
-                  </Field>
-                  <Field label={format(m.itemsFieldMaxDate)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        type="date"
-                        value={field.max}
-                        onChange={(event) => patchField(index, { max: event.target.value })}
-                      />
-                    )}
-                  </Field>
+                <div className="flex flex-col gap-1">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label={format(m.itemsFieldMinDate)}>
+                      {(id) => (
+                        <Input
+                          id={id}
+                          type="date"
+                          value={field.min}
+                          min={materialRange.start}
+                          max={lastDay(materialRange.end)}
+                          onChange={(event) => patchField(index, { min: event.target.value })}
+                        />
+                      )}
+                    </Field>
+                    <Field label={format(m.itemsFieldMaxDate)}>
+                      {(id) => (
+                        <Input
+                          id={id}
+                          type="date"
+                          value={field.max}
+                          min={materialRange.start}
+                          max={lastDay(materialRange.end)}
+                          onChange={(event) => patchField(index, { max: event.target.value })}
+                        />
+                      )}
+                    </Field>
+                  </div>
+                  {/* the round decides the outer window; a bound outside it
+                      changes nothing, and silence about that is how a date
+                      the form seemed to accept came back refused */}
+                  <p className="text-xs text-muted-foreground">
+                    {format(m.itemsDateWindow, {
+                      from: materialRange.start,
+                      until: lastDay(materialRange.end),
+                    })}
+                  </p>
                 </div>
               )}
               {field.type === 'attachment' && (

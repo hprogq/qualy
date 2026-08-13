@@ -33,12 +33,22 @@ export default function ItemSettingsPage() {
   const { format } = useI18n()
   return (
     <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)}>
-      {(batch) => <Editor batchId={batch.id} batchStatus={batch.status} />}
+      {(batch) => (
+        <Editor batchId={batch.id} batchStatus={batch.status} materialRange={batch.materialRange} />
+      )}
     </BatchScreen>
   )
 }
 
-function Editor({ batchId, batchStatus }: { batchId: string; batchStatus: string }) {
+function Editor({
+  batchId,
+  batchStatus,
+  materialRange,
+}: {
+  batchId: string
+  batchStatus: string
+  materialRange: { start: string; end: string }
+}) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -236,6 +246,7 @@ function Editor({ batchId, batchStatus }: { batchId: string; batchStatus: string
       {editing !== null && options.data !== undefined && (
         <ItemConfigEditor
           batchId={batchId}
+          materialRange={materialRange}
           item={editing.item}
           groups={(groups.data?.groups ?? []).map((group) => ({ id: group.id, name: group.name }))}
           options={options.data}

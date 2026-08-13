@@ -25,7 +25,7 @@ export default function RecordPage() {
     <BatchScreen title={format(m.recordTab)} description={format(m.recordHint)}>
       {(batch) =>
         batch.capabilities.record ? (
-          <Recorder batchId={batch.id} />
+          <Recorder batchId={batch.id} materialRange={batch.materialRange} />
         ) : (
           <p className="text-sm text-muted-foreground">{format(m.recordNoStanding)}</p>
         )
@@ -34,7 +34,13 @@ export default function RecordPage() {
   )
 }
 
-function Recorder({ batchId }: { batchId: string }) {
+function Recorder({
+  batchId,
+  materialRange,
+}: {
+  batchId: string
+  materialRange: { start: string; end: string }
+}) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -133,6 +139,7 @@ function Recorder({ batchId }: { batchId: string }) {
                   run(api.assessment.completeAttachmentUpload({ params: { reservationId } })),
               }}
               where={{ batchId, itemId: item.id }}
+              materialRange={materialRange}
             />
           )}
           <Field label={format(m.recordBasis)} hint={format(m.recordBasisHint)}>
