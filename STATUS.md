@@ -3925,3 +3925,28 @@ M2 显式简化 effective facts = approved EntryRevision.payload 逐字;将来 R
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` **605 passed / 17 skipped**(review-flow 7 例);
 browser 48;build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。
+
+### 对话 6:唯一 scorer 与 provisional result(2026-08-13)
+
+`calcParticipant` 落地为纯函数(src/scoring/calc.ts):无时钟、无查询、无浮点,排序在函数内部
+(§8.6 冻结顺序),同输入逐字节同输出由测试冻结。算术全程 1e4 定点 bigint,`scaledAmount` 进、
+`formatAmount` 出(canonical 串,至少两位小数);ScoringDriver 收编为判别联合,calculator 带
+`amountOf`、aggregator 带 `fold`,fixed@1/sum@1 是真算术。缺驱动 = 装配故障(defect),不是
+业务拒绝。
+
+- 状态映射:approved → entry 行(provenance:entryId/entryRevisionId/calculatorRef);
+  rejected → excluded-evidence 0.00 行;draft/in_review 无行;题 voided → 本人有历史时一条
+  item-voided 行、不进聚合。组 cap/floor 是可见调整行(grp:{id}:cap/:floor,值为差额)。
+- `collectParticipantScoreInput` 独立成段:M2 生效事实 = approved payload 逐字(§32.57),
+  未来 adjudication 只换收集段,scorer 不动。
+- `GET /assessment/batches/{batchId}/my-result`:只回答本人,成员行存在即可读(excluded 含),
+  非成员 404;恒 provisional。
+- 测试(tests/provisional-scoring.test.ts,3 例,走真实流程:审核通过、行政录入、驳回):
+  +3 通过 − 1 行政 = **"2.00"**,驳回 0.00 行、草稿无行、两次调用深相等、外人 404;
+  cap 2.00 压 +3 → −1.00 调整行、floor 0.00 托 −1 → +1.00 调整行,总分 "2.00";
+  voided 题对有历史者一条 0.00 行、对无历史者无行。lineId 逐字断言。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **608 passed / 17 skipped**;browser 48;
+build、frozen resolve、generate(无待生成)、prettier、生产 smoke 全绿。
+
+下一步:对话 7(题目作废动作 + 历史/附件授权闭环)。

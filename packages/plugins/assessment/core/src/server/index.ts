@@ -28,6 +28,7 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
+import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
   AccessInvalid,
@@ -747,6 +748,8 @@ export class Assessment extends Context.Service<
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
     readonly decideReview: ReviewMethods['decideReview']
+    /** one's own provisional standing, from the one scorer */
+    readonly getMyResult: ScoringMethods['getMyResult']
     /** the score tree and the items on it; the save gauntlet lives behind these */
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
@@ -1689,10 +1692,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
     itemTypes,
   })
 
+  const scoringMethods = makeScoringMethods({
+    withDb,
+    catalogs: { calculators: scoring.calculators, aggregators: scoring.aggregators },
+  })
+
   return Assessment.of({
     ...itemMethods,
     ...entryMethods,
     ...reviewMethods,
+    ...scoringMethods,
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
       return yield* withDb(
         transaction(
@@ -3907,6 +3916,20 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'getMyResult',
+      Effect.fn('assessment.getMyResult.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const result = yield* assessment.getMyResult(principal.tenantId, params.batchId, principal)
+        return {
+          mode: result.mode,
+          total: result.total,
+          groups: result.groups,
+          lines: result.lines,
+        }
       }),
     )
     .handle(

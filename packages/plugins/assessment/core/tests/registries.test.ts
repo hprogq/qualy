@@ -102,6 +102,7 @@ describe('the scoring registry', () => {
       kind: 'calculator',
       ref: 'fixed@1',
       configSchema: Schema.Struct({}),
+      amountOf: () => 0n,
     }
     expect(() =>
       compileOf(Scoring.provider)([
@@ -115,11 +116,16 @@ describe('the scoring registry', () => {
     const catalog = scoringCatalogOf([
       {
         pluginId: '@qualy/a',
-        value: { kind: 'calculator', ref: 'x@1', configSchema: Schema.Struct({}) },
+        value: {
+          kind: 'calculator',
+          ref: 'x@1',
+          configSchema: Schema.Struct({}),
+          amountOf: () => 0n,
+        },
       },
       {
         pluginId: '@qualy/b',
-        value: { kind: 'aggregator', ref: 'x@1', configSchema: Schema.Struct({}) },
+        value: { kind: 'aggregator', ref: 'x@1', configSchema: Schema.Struct({}), fold: () => 0n },
       },
     ])
     expect(catalog.calculators.has('x@1')).toBe(true)
@@ -129,7 +135,12 @@ describe('the scoring registry', () => {
   it('refuses a ref that is not name@version', () => {
     for (const ref of ['fixed', 'fixed@0', 'fixed@1.2', 'Fixed@1', 'fixed@v1', '@1']) {
       expect(() =>
-        Scoring.driver({ kind: 'calculator', ref, configSchema: Schema.Struct({}) }),
+        Scoring.driver({
+          kind: 'calculator',
+          ref,
+          configSchema: Schema.Struct({}),
+          amountOf: () => 0n,
+        }),
       ).toThrow(/name@version/)
     }
   })

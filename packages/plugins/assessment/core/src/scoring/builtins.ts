@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import type { ScoringDriver } from '../plugin.ts'
+import type { AggregatorDriver, CalculatorDriver, ScoringDriver } from '../plugin.ts'
 
 // The two pieces of arithmetic every deployment starts with, declared here
 // and computed by the scoring engine.
@@ -41,20 +41,38 @@ export const scaledAmount = (value: string): bigint => {
   return sign * (whole * 10000n + fraction)
 }
 
+/**
+ * A scaled integer back as canonical text: at least two decimal places, and
+ * exactly as many more as the amount actually carries. `30000n` is `"3.00"`
+ * on every machine, every time - string equality is amount equality.
+ */
+export const formatAmount = (value: bigint): string => {
+  const sign = value < 0n ? '-' : ''
+  const magnitude = value < 0n ? -value : value
+  const whole = magnitude / 10000n
+  const fraction = (magnitude % 10000n)
+    .toString()
+    .padStart(4, '0')
+    .replace(/0{1,2}$/, '')
+  return `${sign}${whole}.${fraction.padEnd(2, '0')}`
+}
+
 /** approved entry = this amount, exactly as configured */
-export const fixed1: ScoringDriver = {
+export const fixed1: CalculatorDriver = {
   kind: 'calculator',
   ref: 'fixed@1',
   configSchema: Schema.Struct({ value: decimalString }),
+  amountOf: (config) => scaledAmount((config as { value: string }).value),
 }
 
 /** entry lines add up; the group tree's floor and cap do the rest */
-export const sum1: ScoringDriver = {
+export const sum1: AggregatorDriver = {
   kind: 'aggregator',
   ref: 'sum@1',
   // nothing to configure: what sum@1 does is its name, and the limits it
   // honors live on the score groups
   configSchema: Schema.Struct({}),
+  fold: (_config, amounts) => amounts.reduce((total, amount) => total + amount, 0n),
 }
 
 export const builtinScoringDrivers = [fixed1, sum1] as const

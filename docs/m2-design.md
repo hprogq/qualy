@@ -3137,6 +3137,32 @@ hostile tests 必须先于 UI。
 
 `feat(assessment): add provisional scoring`
 
+落地记录（对话 6 完成时相对本节的偏离）：
+
+- **calcParticipant 是纯函数，排序在函数里**（src/scoring/calc.ts）：分组、题目、条目都在函数内
+  重排（§8.6 的冻结顺序：group.sortOrder → item.sortOrder → entry.createdAt → entry.id，并列时
+  按 id），喂它的查询不承担确定性；同输入两次调用深比较逐字节相等由测试冻结。行的产生顺序 =
+  分组一段一段走：该组各题的 entry/excluded 行 → 该组自己的 cap/floor 调整行收尾。
+- **算术全程 1e4 定点 bigint**：`scaledAmount`（对话 3 已有）进、`formatAmount` 出——canonical
+  串至少两位小数、按实际精度最多四位（`30000n → "3.00"`，`31250n → "3.125"`）。驱动接口收编进
+  声明：`ScoringDriver` 变判别联合，calculator 带 `amountOf(config, {payload}) → bigint`、
+  aggregator 带 `fold(config, amounts) → bigint`；fixed@1/sum@1 是真算术不再是占位。缺驱动是
+  装配故障：throw（defect），不是业务拒绝——配置保存时已对目录校验过。
+- **状态→行的映射**：approved → `entry:{entryId}` 行（provenance 带 entryId/entryRevisionId/
+  calculatorRef）；rejected → 同 lineId 的 `excluded-evidence` 0.00 行（正式提交又被正式拒绝，
+  是账目的一部分而不是缺席）；draft/in_review → 无行；题 voided → 不进聚合，本人有任何条目时
+  一条 `item:{itemId}:voided` 0.00 行（作废动作本身归对话 7，测试先用 SQL 造状态钉死 scorer
+  的答案）。组限额是**可见的调整行**（`grp:{id}:cap` / `:floor`，值是差额），组视图同时给
+  itemsTotal 与 final。
+- **effective facts = approved EntryRevision.payload 逐字**（§32.57 同轮落档）：
+  `collectParticipantScoreInput` 是独立的收集段（scoring/service.ts），未来 adjudication 只换
+  这一段；行的 payload 现在就随输入携带，fixed@1 不读它，但读 payload 的 calculator 到来时
+  收集段不用改。
+- `/my-result` 只回答本人：成员行存在即可读（excluded 仍读自己参加过的那轮，§32.56），
+  非成员 `ASSESSMENT_PARTICIPANT_NOT_FOUND`；响应恒 `mode: 'provisional'`。staff 侧的他人
+  结果视图不在本对话（归公示/管理面）。
+- 未配置过的题（无 currentRevision）不进账目——它没有算术也不可能有条目。
+
 ### 对话 7：题目作废 + 历史/附件授权闭环
 
 目标：

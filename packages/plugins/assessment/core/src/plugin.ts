@@ -100,17 +100,29 @@ export class ItemTypeCatalog extends Context.Service<
  * frozen run cites the exact arithmetic it used, and a change that would
  * alter any result is a new version beside the old one, not an edit.
  *
- * Only the declaration lives here - ref, role and the shape of acceptable
- * configuration. The functions arrive with the scoring engine; until then
- * this catalog exists to validate an item's scoring_config against the
- * references that are actually installed.
+ * The arithmetic is pure and exact: amounts are integers scaled by 1e4,
+ * never floats, and a driver computes the same answer for the same input
+ * forever - a frozen run must be replayable to the digit.
  */
-export interface ScoringDriver {
-  readonly kind: 'calculator' | 'aggregator'
+export interface CalculatorDriver {
+  readonly kind: 'calculator'
   readonly ref: string
   /** validates the config an item revision stores under this reference */
   readonly configSchema: Schema.Top
+  /** what one approved entry contributes, scaled by 1e4 */
+  readonly amountOf: (config: unknown, fact: { readonly payload: unknown }) => bigint
 }
+
+export interface AggregatorDriver {
+  readonly kind: 'aggregator'
+  readonly ref: string
+  /** validates the config an item revision stores under this reference */
+  readonly configSchema: Schema.Top
+  /** folds an item's entry amounts into the item's amount, scaled by 1e4 */
+  readonly fold: (config: unknown, amounts: readonly bigint[]) => bigint
+}
+
+export type ScoringDriver = CalculatorDriver | AggregatorDriver
 
 /** every scoring driver this assembly's plugins declare, in plugin order */
 export const ScoringDeclarations = ExtensionPoint.make<ScoringDriver>(

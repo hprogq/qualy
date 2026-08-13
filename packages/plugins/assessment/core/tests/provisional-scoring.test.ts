@@ -1,0 +1,303 @@
+import { sql } from 'kysely'
+import { Effect } from 'effect'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import { Assessment, type PhaseSpecInput } from '../src/server/index.ts'
+import { errorOf, GATED, ok, one, run, seed, type Seeded } from './support/round.ts'
+
+// The one scorer, fed through the real flow: entries filed, reviewed and
+// recorded the way the product does it, then read back as the provisional
+// account. Every expected number is written as the exact string the wire
+// must carry - "2.00" is the answer, 2 and 1.9999999 are both wrong.
+
+const REVIEW_OPEN = [...GATED, 'assessment.review.process']
+
+const phase = (over: Partial<PhaseSpecInput> & { phaseKey: string }): PhaseSpecInput => ({
+  displayName: over.phaseKey,
+  permissionProfile: [],
+  ...over,
+})
+
+interface ItemSpec {
+  title: string
+  value: string
+  group: number
+  entrySource: 'student' | 'administrative'
+}
+
+/** a running round with the given groups and fixed-amount items */
+const scoringBatch = (
+  f: Seeded,
+  spec: {
+    groups: readonly { name: string; cap?: string | null; floor?: string | null }[]
+    items: readonly ItemSpec[]
+  },
+) =>
+  Effect.gen(function* () {
+    const assessment = yield* Assessment
+    const admin = f.principal(f.admin)
+    const batch = yield* assessment.createBatch(
+      f.t,
+      {
+        name: 'Round',
+        materialRange: { start: '2026-03-01', end: '2026-09-01' },
+        import: { orgNodeIds: [f.root], userTypeIds: [f.studentType] },
+      },
+      admin,
+    )
+    yield* assessment.replacePlan(
+      f.t,
+      batch.id,
+      {
+        specs: [
+          phase({ phaseKey: 'entry', permissionProfile: [...REVIEW_OPEN] }),
+          phase({ phaseKey: 'archive' }),
+        ],
+      },
+      admin,
+    )
+    const saved = yield* assessment.replaceScoreGroups(
+      f.t,
+      batch.id,
+      {
+        groups: spec.groups.map((group) => ({
+          name: group.name,
+          cap: group.cap ?? null,
+          floor: group.floor ?? null,
+        })),
+      },
+      admin,
+    )
+    const groupIds = spec.groups.map(
+      (group) => saved.groups.find((row) => row.name === group.name)!.id,
+    )
+    const items: string[] = []
+    for (const item of spec.items) {
+      const created = yield* assessment.createItem(
+        f.t,
+        batch.id,
+        {
+          itemType: 'evidence',
+          title: item.title,
+          scoreGroupId: groupIds[item.group]!,
+          maxEntries: 1,
+          config: {
+            entrySource: item.entrySource,
+            formConfig: { files: {} },
+            scoringConfig: {
+              calculator: { ref: 'fixed@1', config: { value: item.value } },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: {
+              stages: [
+                {
+                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                  quorum: { type: 'any' },
+                },
+              ],
+              normalTerminal: 0,
+            },
+          },
+        },
+        admin,
+      )
+      items.push(created.id)
+    }
+    const plan = yield* assessment.getPlan(f.t, batch.id, admin)
+    yield* assessment.schedulePhase(f.t, batch.id, plan[0]!.id, Date.now() + 3_600_000, admin)
+    yield* assessment.advancePhase(
+      f.t,
+      batch.id,
+      { to: plan[0]!.id, force: true, reason: 'test enters the phase' },
+      admin,
+    )
+    const pOf = (userId: string) =>
+      Effect.map(
+        runSql(
+          sql`select id from batch_participants where batch_id = ${batch.id} and user_id = ${userId}`,
+        ),
+        (result) => one<{ id: string }>(result).id,
+      )
+    return { batch, groupIds, items, p1: yield* pOf(f.s1), p2: yield* pOf(f.s2) }
+  })
+
+/** file, submit and have the class reviewer approve one student entry */
+const approved = (f: Seeded, itemId: string, participantId: string, who: string) =>
+  Effect.gen(function* () {
+    const assessment = yield* Assessment
+    const as = f.principal(who)
+    const entry = yield* assessment.createEntry(f.t, { itemId, participantId, payload: {} }, as)
+    const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
+    yield* assessment.decideReview(
+      f.t,
+      sent.currentReviewInstanceId!,
+      { decision: 'approve' },
+      f.principal(f.reviewer),
+    )
+    return entry.id
+  })
+
+describe.runIf(postgresAvailable)('the provisional account', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-provisional-scoring')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('adds the account up exactly, counts refusals at zero and drafts not at all', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-account')
+          const assessment = yield* Assessment
+          const g = yield* scoringBatch(f, {
+            groups: [{ name: '文体', cap: '10.00' }],
+            items: [
+              { title: '退役复学', value: '3.00', group: 0, entrySource: 'student' },
+              { title: '违纪扣分', value: '-1.00', group: 0, entrySource: 'administrative' },
+              { title: '志愿服务', value: '2.00', group: 0, entrySource: 'student' },
+              { title: '晨读打卡', value: '1.00', group: 0, entrySource: 'student' },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const veteran = yield* approved(f, g.items[0]!, g.p1, f.s1)
+          const deduction = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.items[1]!, participantId: g.p1, payload: {}, note: '校纪字〔2026〕3号' },
+            f.principal(f.recorder),
+          )
+          const volunteer = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.items[2]!, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, volunteer.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', comment: 'no evidence attached' },
+            f.principal(f.reviewer),
+          )
+          yield* assessment.createEntry(
+            f.t,
+            { itemId: g.items[3]!, participantId: g.p1, payload: {} },
+            s1,
+          )
+
+          const first = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          const second = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+
+          const outsider = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Latecomer', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const notInRound = yield* Effect.exit(
+            assessment.getMyResult(f.t, g.batch.id, f.principal(outsider)),
+          )
+          return { first, second, veteran, deduction, volunteer, notInRound }
+        }),
+      ),
+    )
+
+    expect(result.first.mode).toBe('provisional')
+    expect(result.first.total).toBe('2.00')
+    expect(result.first.groups).toHaveLength(1)
+    expect(result.first.groups[0]).toMatchObject({ itemsTotal: '2.00', final: '2.00' })
+    expect(result.first.lines.map((line) => [line.lineId, line.kind, line.value])).toEqual([
+      [`entry:${result.veteran}`, 'entry', '3.00'],
+      [`entry:${result.deduction.id}`, 'entry', '-1.00'],
+      [`entry:${result.volunteer.id}`, 'excluded-evidence', '0.00'],
+    ])
+    const provenance = result.first.lines[0]!.provenance
+    expect(provenance?.calculatorRef).toBe('fixed@1')
+    expect(provenance?.entryId).toBe(result.veteran)
+    expect(provenance?.entryRevisionId).toBeDefined()
+    // byte-identical on the same facts
+    expect(result.second).toEqual(result.first)
+    expect(errorOf<{ _tag: string }>(result.notInRound)?._tag).toBe(
+      'ASSESSMENT_PARTICIPANT_NOT_FOUND',
+    )
+  })
+
+  it('holds a group to its cap and lifts one to its floor, as visible adjustments', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-limits')
+          const assessment = yield* Assessment
+          const g = yield* scoringBatch(f, {
+            groups: [
+              { name: '加分', cap: '2.00' },
+              { name: '扣分', floor: '0.00' },
+            ],
+            items: [
+              { title: '获奖', value: '3.00', group: 0, entrySource: 'student' },
+              { title: '违纪', value: '-1.00', group: 1, entrySource: 'administrative' },
+            ],
+          })
+          const award = yield* approved(f, g.items[0]!, g.p1, f.s1)
+          const penalty = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.items[1]!, participantId: g.p1, payload: {}, note: '校纪字〔2026〕7号' },
+            f.principal(f.recorder),
+          )
+          const account = yield* assessment.getMyResult(f.t, g.batch.id, f.principal(f.s1))
+          return { account, award, penalty, groupIds: g.groupIds }
+        }),
+      ),
+    )
+
+    expect(result.account.total).toBe('2.00')
+    expect(result.account.groups.map((group) => [group.itemsTotal, group.final])).toEqual([
+      ['3.00', '2.00'],
+      ['-1.00', '0.00'],
+    ])
+    expect(result.account.lines.map((line) => [line.lineId, line.kind, line.value])).toEqual([
+      [`entry:${result.award}`, 'entry', '3.00'],
+      [`grp:${result.groupIds[0]}:cap`, 'group-adjustment', '-1.00'],
+      [`entry:${result.penalty.id}`, 'entry', '-1.00'],
+      [`grp:${result.groupIds[1]}:floor`, 'group-adjustment', '1.00'],
+    ])
+  })
+
+  it('states a voided question to whoever has history on it, and to nobody else', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-voided')
+          const assessment = yield* Assessment
+          const g = yield* scoringBatch(f, {
+            groups: [{ name: '文体', cap: '10.00' }],
+            items: [{ title: '退役复学', value: '3.00', group: 0, entrySource: 'student' }],
+          })
+          yield* approved(f, g.items[0]!, g.p1, f.s1)
+          // the void act itself is a later conversation; the scorer's answer
+          // to a voided question is frozen now
+          yield* runSql(sql`
+            update assessment_items
+            set status = 'voided', voided_at = now(), voided_by = ${f.admin},
+                void_reason = 'policy withdrawn for the term'
+            where id = ${g.items[0]}`)
+          const withHistory = yield* assessment.getMyResult(f.t, g.batch.id, f.principal(f.s1))
+          const without = yield* assessment.getMyResult(f.t, g.batch.id, f.principal(f.s2))
+          return { withHistory, without, itemId: g.items[0]! }
+        }),
+      ),
+    )
+
+    expect(result.withHistory.total).toBe('0.00')
+    expect(result.withHistory.lines.map((line) => [line.lineId, line.kind, line.value])).toEqual([
+      [`item:${result.itemId}:voided`, 'item-voided', '0.00'],
+    ])
+    expect(result.without.total).toBe('0.00')
+    expect(result.without.lines).toEqual([])
+  })
+})

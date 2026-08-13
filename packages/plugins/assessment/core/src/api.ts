@@ -438,7 +438,48 @@ const reviewDetailView = Schema.Struct({
   capabilities: Schema.Struct({ canDecide: Schema.Boolean }),
 })
 
+const breakdownLine = Schema.Struct({
+  lineId: Schema.String,
+  kind: Schema.Literals(['entry', 'excluded-evidence', 'item-voided', 'group-adjustment']),
+  label: Schema.String,
+  value: Schema.String,
+  itemId: Schema.optional(Schema.String),
+  provenance: Schema.optional(
+    Schema.Struct({
+      entryId: Schema.optional(Schema.String),
+      entryRevisionId: Schema.optional(Schema.String),
+      calculatorRef: Schema.optional(Schema.String),
+    }),
+  ),
+})
+
+const myResultView = Schema.Struct({
+  /** always provisional in M2; publication modes arrive with publication */
+  mode: Schema.Literals(['provisional']),
+  total: Schema.String,
+  groups: Schema.Array(
+    Schema.Struct({
+      groupId: Schema.String,
+      name: Schema.String,
+      itemsTotal: Schema.String,
+      final: Schema.String,
+      cap: Schema.NullOr(Schema.String),
+      floor: Schema.NullOr(Schema.String),
+    }),
+  ),
+  lines: Schema.Array(breakdownLine),
+})
+
 export const assessmentApiGroup = HttpApiGroup.make('assessment')
+  .add(
+    // the caller's own standing in the round, computed on request by the
+    // one scorer; never anybody else's through this path
+    HttpApiEndpoint.get('getMyResult', '/assessment/batches/:batchId/my-result', {
+      params: Schema.Struct({ batchId: id }),
+      success: myResultView,
+      error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
   .add(
     // the caller's own queue; there is nothing here to name or filter by
     // another person, so the path carries no batch and no user
