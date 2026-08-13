@@ -3061,6 +3061,13 @@ hostile tests 必须先于 UI。
 - 附件绑定与 EntryRevision 同事务经 ambient transaction 复用 Storage.bind；bound 附件只允许
   **本 entry** 历史修订引用过的复用，staged 必须是 actor 自己上传的，accept/maxFileBytes 按
   ref 对 storage 可信 metadata 校验。
+- 收口一轮（外部审计六条）：**submit 按受审 EntryRevision 自己引用的 ItemRevision 解码并取其
+  review_policy**（不是 item 当前配置——一轮审核的 schema 与链必须与它审的那个 revision 同源）；
+  附件校验先对全部 attachmentId 排序取 `pg_advisory_xact_lock` 再读（两个批次没有共同锁，
+  storage 的 bind 对同 owner 幂等，并发下同一 staged 文件曾可进两个 entry）；participantId 查询
+  显式带 batchId（他轮成员行答 `participant-not-found`，不再靠外键变 500）；note 的 wire 上限收到
+  列宽 500；同一 payload 里一个附件出现两次（含跨字段）拒 `duplicate-attachment`；
+  **maxFileBytes/accept 对复用的 bound 附件同样生效**（收紧后的限制不豁免旧文件）。
 
 ### 对话 5：单 stage Review
 

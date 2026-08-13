@@ -397,7 +397,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         itemId: id,
         participantId: id,
         payload: configJson,
-        note: Schema.optional(boundedText(1000)),
+        note: Schema.optional(boundedText(500)),
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [
@@ -423,7 +423,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ entryId: id }),
       payload: Schema.Struct({
         payload: configJson,
-        note: Schema.optional(boundedText(1000)),
+        note: Schema.optional(boundedText(500)),
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [

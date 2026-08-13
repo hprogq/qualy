@@ -3847,3 +3847,30 @@ entry-policy 敌意套件 6 例 34 断言全绿;`pnpm test:browser` 48;`pnpm bui
 
 **下一步**:对话 5(单 stage Review:inbox、detail、approve/reject、驳回建议稿、
 reject → revision → new round)。
+
+### 对话 4 收口:受审语义锚定与五处边界(2026-08-13)
+
+外部审计六条全部核实成立。最重的一条是我把 submit 写歪了:payload 校验与 review_policy 取的是
+**item 当前配置**,而 ReviewInstance.revisionId 钉的是学生的旧 revision——一轮审核的 schema、链与
+受审内容必须同源于该 EntryRevision 引用的那个 ItemRevision。已改正;测试从两个方向自证:配置在
+提交前被收紧并指向无人持有的角色后,旧 revision 照样提交成功,且实例快照里的链是旧角色不是新的
+(旧代码下这条测试会以 entry-not-submittable 失败)。
+
+- **跨批次并发绑定**:两个批次各锁各的批次行,storage 的 bind 对同 owner 幂等——并发下同一 staged
+  文件曾可同时进两个 entry 的历史。现在附件校验先对排序后的 attachmentId 取
+  `pg_advisory_xact_lock` 再读 metadata/history。竞态用例:两轮同刻引同一文件,恰一成功、
+  另一 `attachment-cross-entry`、关系表只有一个 entry family。
+- **participantId 显式同批次**:他轮成员行在策略层答 `participant-not-found`,不再走到外键变 500。
+- **note 上限统一 500**(wire 曾放 1000,列只有 500——超长会炸成 500)。
+- **跨字段重复附件**:同一 payload 一个文件出现两次直接拒 `duplicate-attachment`(原先 bind 去重了
+  但关系表主键仍会撞出 500);不静默去重——文件到底背书哪个字段不能由迭代顺序决定。
+- **复用附件不豁免现行限制**:bound 分支曾在 history 命中后直接 continue,跳过了
+  maxFileBytes/accept;现在字段现行规则对所有引用生效(限额收紧后旧 15MiB 文件不能再被复用)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` **598 passed / 17 skipped**(entry-policy
+10 例);`pnpm test:browser` 48;`pnpm build`、`pnpm qualy resolve --frozen-lockfile`(零写入)、
+`pnpm qualy generate`(无待生成)、`prettier --check .`、生产 smoke 全绿。
+
+审计留给对话 5 的开工约束照单记下:**submit 的到站检查、inbox、approve/reject 权限必须同一份
+「当前可行动 reviewer 集合」语义**(exact grant ∩ batch accepted review.process − deny ∩ PhaseGate
+∩ 自审排除),不允许 submit 与 inbox 各写一套 SQL。

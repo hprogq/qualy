@@ -670,6 +670,232 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     expect(result.freshState).toBe('staged')
   })
 
+  it('judges a submission by the configuration its revision cites, not today\u2019s', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ep-anchor')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          // the item moves on: a stricter form and a policy pointing at a
+          // role nobody holds, saved after the student's revision existed
+          const ghostRole = randomUUID()
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: {
+                entrySource: 'student',
+                formConfig: { required: ['certificate'], files: {} },
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  stages: [
+                    {
+                      selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [ghostRole] },
+                      quorum: { type: 'any' },
+                    },
+                  ],
+                  normalTerminal: 0,
+                },
+              },
+              reason: 'tightened after filing',
+            },
+            s1.userId === f.admin ? s1 : f.principal(f.admin),
+          )
+          // submitting the old revision: judged by ITS configuration - the
+          // payload decodes under the old form, and the chain resolves to
+          // the old role's holder, so this succeeds. Under today's config it
+          // would fail both ways.
+          const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instance = yield* runSql(
+            sql`select effective_chain from review_instances where id = ${submitted.currentReviewInstanceId}`,
+          )
+          const chain = one<{ effective_chain: { stages: { selector: { roleIds: string[] } }[] } }>(
+            instance,
+          ).effective_chain
+          return { submitted, chainRoles: chain.stages[0]!.selector.roleIds, ghostRole }
+        }),
+      ),
+    )
+
+    expect(result.submitted.status).toBe('in_review')
+    expect(result.chainRoles).toEqual([expect.any(String)])
+    expect(result.chainRoles).not.toContain(result.ghostRole)
+  })
+
+  it('lets one staged file into exactly one entry, however the requests race', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ep-race')
+          const assessment = yield* Assessment
+          const a = yield* runningBatch(f)
+          const b = yield* runningBatch(f)
+          const s1 = f.principal(f.s1)
+          const file = yield* staged(f.t, f.s1)
+          const pOf = (batchId: string) =>
+            Effect.map(
+              runSql(
+                sql`select id from batch_participants where batch_id = ${batchId} and user_id = ${f.s1}`,
+              ),
+              (result_) => one<{ id: string }>(result_).id,
+            )
+          const pa = yield* pOf(a.batch.id)
+          const pb = yield* pOf(b.batch.id)
+          // two rounds, one file, at the same moment: the batch locks do not
+          // meet, only the attachment lock stands between this and a file
+          // bound into two histories
+          const [left, right] = yield* Effect.all(
+            [
+              Effect.exit(
+                assessment.createEntry(
+                  f.t,
+                  { itemId: a.item.id, participantId: pa, payload: { files: [file] } },
+                  s1,
+                ),
+              ),
+              Effect.exit(
+                assessment.createEntry(
+                  f.t,
+                  { itemId: b.item.id, participantId: pb, payload: { files: [file] } },
+                  s1,
+                ),
+              ),
+            ],
+            { concurrency: 'unbounded' },
+          )
+          const relations = yield* runSql(
+            sql`select count(distinct er.entry_id)::int as n
+                from entry_revision_attachments era
+                join entry_revisions er on er.id = era.revision_id
+                where era.attachment_id = ${file}`,
+          )
+          return { left, right, families: one<{ n: number }>(relations).n }
+        }),
+      ),
+    )
+
+    const outcomes = [result.left, result.right]
+    expect(outcomes.filter(Exit.isSuccess)).toHaveLength(1)
+    const refused = outcomes.find(Exit.isFailure)!
+    const issues = errorOf<{ issues: readonly { reason: string }[] }>(refused)
+    expect(issues?.issues.map((issue) => issue.reason)).toContain('attachment-cross-entry')
+    expect(result.families).toBe(1)
+  })
+
+  it('refuses a participant of another round before anything reaches the database', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ep-xbatch')
+          const assessment = yield* Assessment
+          const a = yield* runningBatch(f)
+          const b = yield* runningBatch(f)
+          const pInB = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from batch_participants where batch_id = ${b.batch.id} and user_id = ${f.s1}`,
+            ),
+          ).id
+          // the same person, the wrong round's membership row: a policy
+          // refusal, never a foreign-key surprise
+          const crossed = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: a.item.id, participantId: pInB, payload: {} },
+              f.principal(f.s1),
+            ),
+          )
+          return { crossed }
+        }),
+      ),
+    )
+
+    expect(refusalOf(result.crossed)?._tag).toBe('ASSESSMENT_ENTRY_ACTION_REFUSED')
+    expect(refusalOf(result.crossed)?.reason).toBe('participant-not-found')
+  })
+
+  it('refuses one file claiming to back two fields, and re-holds re-used files to current limits', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ep-dupes')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          const file = yield* staged(f.t, f.s1, 4096)
+          // the test driver cites payload.files twice when asked twice; a
+          // duplicate across fields is simulated by repeating the id, which
+          // the driver leaves undeduplicated across ref entries
+          const doubled = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: { files: [file, file] } },
+              s1,
+            ),
+          )
+          // bind it once, then tighten the field's limit under the file
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: { files: [file] } },
+            s1,
+          )
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: {
+                entrySource: 'student',
+                formConfig: { files: { maxFileBytes: 1024 } },
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  stages: [
+                    {
+                      selector: {
+                        kind: 'roleAt',
+                        nodeTypeId: f.classType,
+                        roleIds: [f.reviewRole],
+                      },
+                      quorum: { type: 'any' },
+                    },
+                  ],
+                  normalTerminal: 0,
+                },
+              },
+              reason: 'limit lowered mid-round',
+            },
+            admin,
+          )
+          const reusedOverLimit = yield* Effect.exit(
+            assessment.appendEntryRevision(f.t, entry.id, { payload: { files: [file] } }, s1),
+          )
+          return { doubled, reusedOverLimit }
+        }),
+      ),
+    )
+
+    const doubledIssues = errorOf<{ issues: readonly { reason: string }[] }>(result.doubled)
+    expect(doubledIssues?.issues.map((issue) => issue.reason)).toContain('duplicate-attachment')
+    const reuseIssues = errorOf<{ issues: readonly { reason: string }[] }>(result.reusedOverLimit)
+    expect(reuseIssues?.issues.map((issue) => issue.reason)).toContain('attachment-too-large')
+  })
+
   it('keeps reading rights and acting rights apart', async () => {
     const result = ok(
       await run(

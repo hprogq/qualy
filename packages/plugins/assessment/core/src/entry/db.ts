@@ -300,7 +300,7 @@ export interface ParticipantAnchor {
   anchorLineage: readonly { nodeId: string; nodeTypeId: string }[]
 }
 
-export const participantOf = (tenantId: string, participantId: string) =>
+export const participantOf = (tenantId: string, batchId: string, participantId: string) =>
   db
     .query((k) =>
       k
@@ -308,6 +308,10 @@ export const participantOf = (tenantId: string, participantId: string) =>
         .select(['id', 'userId', 'status', 'assessmentAnchorNodeId', 'anchorLineage'])
         .select([sql<string>`anchor_path::text`.as('anchorPathText')])
         .where('tenantId', '=', tenantId)
+        // the batch is part of the identity: the same person holds a row per
+        // round, and a row from another round must read as nothing here
+        // rather than travel on to the foreign key
+        .where('batchId', '=', batchId)
         .where('id', '=', participantId)
         .executeTakeFirst(),
     )
@@ -453,6 +457,30 @@ export const nodePathOf = (tenantId: string, nodeId: string) =>
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => (row ? String((row as Record<string, unknown>)['pathText']) : null)))
+
+/**
+ * Serializes work on these attachments across every batch.
+ *
+ * Entry writes serialize on their batch row, but two batches share no lock,
+ * and storage's bind is deliberately idempotent for the owner - so without
+ * this, two rounds could each read "staged, never cited" and both bind the
+ * same file. Sorted before locking so two requests holding overlapping sets
+ * cannot deadlock.
+ */
+export const lockAttachments = (tenantId: string, attachmentIds: readonly string[]) => {
+  const ordered = [...new Set(attachmentIds)].sort()
+  return ordered.length === 0
+    ? Effect.void
+    : db.query((k) =>
+        sql`
+          select pg_advisory_xact_lock(
+            ('x' || substr(md5('assessment:attachment:' || ${tenantId} || ':' || ids.id), 1, 16))::bit(64)::bigint
+          )
+          from unnest(${sql.val(`{${ordered.join(',')}}`)}::uuid[]) with ordinality as ids(id, ord)
+          order by ids.ord
+        `.execute(k),
+      )
+}
 
 export const nextRoundNo = (tenantId: string, entryId: string) =>
   db

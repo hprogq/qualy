@@ -18,6 +18,7 @@ import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/
 import {
   cancelReviewInstance,
   entryAttachmentHistory,
+  lockAttachments,
   entryCountOf,
   entryOf,
   entryRevisionOf,
@@ -207,7 +208,27 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   }) =>
     Effect.gen(function* () {
       const issues: { field: string; reason: string }[] = []
-      const seen = new Set<string>()
+
+      // one file, one field: a duplicate across fields would collide in the
+      // relation's key anyway, and quietly picking a field for it would make
+      // "which claim does this document back" a matter of iteration order
+      const counted = new Map<string, number>()
+      for (const ref of input.refs) {
+        counted.set(ref.attachmentId, (counted.get(ref.attachmentId) ?? 0) + 1)
+      }
+      for (const ref of input.refs) {
+        if ((counted.get(ref.attachmentId) ?? 0) > 1) {
+          issues.push({ field: ref.field, reason: 'duplicate-attachment' })
+        }
+      }
+      if (issues.length > 0) return yield* Effect.fail(new EntryPayloadInvalid({ issues }))
+
+      // serialize across batches before reading anything: batch locks do not
+      // cover two rounds citing one file at the same moment
+      yield* lockAttachments(
+        input.tenantId,
+        input.refs.map((ref) => ref.attachmentId),
+      )
       const toBind: { attachmentId: string; ownerUserId: string }[] = []
       const history =
         input.entryId === null
@@ -215,8 +236,6 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           : yield* entryAttachmentHistory(input.tenantId, input.entryId)
 
       for (const ref of input.refs) {
-        if (seen.has(ref.attachmentId)) continue
-        seen.add(ref.attachmentId)
         const meta = yield* Effect.result(
           storage.metadata({ tenantId: input.tenantId, attachmentId: ref.attachmentId }),
         )
@@ -229,6 +248,20 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           issues.push({ field: ref.field, reason: 'attachment-retired' })
           continue
         }
+        // the field's current rules hold for every citation, re-used ones
+        // included: a limit tightened after the first upload is a limit, not
+        // a suggestion grandfathered away
+        if (ref.maxFileBytes !== undefined && attachment.size > BigInt(ref.maxFileBytes)) {
+          issues.push({ field: ref.field, reason: 'attachment-too-large' })
+          continue
+        }
+        if (
+          ref.accept !== undefined &&
+          !acceptable(ref.accept, attachment.declaredMime, attachment.filename)
+        ) {
+          issues.push({ field: ref.field, reason: 'attachment-type' })
+          continue
+        }
         if (attachment.status === 'bound') {
           // reuse is an entry keeping its own history, never borrowing
           // another's (assessment-design §5.14)
@@ -239,17 +272,6 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         }
         if (attachment.ownerUserId !== input.actorId) {
           issues.push({ field: ref.field, reason: 'attachment-not-yours' })
-          continue
-        }
-        if (ref.maxFileBytes !== undefined && attachment.size > BigInt(ref.maxFileBytes)) {
-          issues.push({ field: ref.field, reason: 'attachment-too-large' })
-          continue
-        }
-        if (
-          ref.accept !== undefined &&
-          !acceptable(ref.accept, attachment.declaredMime, attachment.filename)
-        ) {
-          issues.push({ field: ref.field, reason: 'attachment-type' })
           continue
         }
         toBind.push({ attachmentId: ref.attachmentId, ownerUserId: attachment.ownerUserId })
@@ -335,7 +357,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       const entry = yield* entryOf(tenantId, entryId)
       if (entry === null) return null
       const item = yield* itemOf(tenantId, entry.itemId)
-      const participant = yield* participantOf(tenantId, entry.participantId)
+      const participant = yield* participantOf(tenantId, entry.batchId, entry.participantId)
       return { entry, item: item!, participant: participant! }
     })
 
@@ -349,7 +371,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             const locked = yield* lockBatch(tenantId, item.batchId)
             if (!locked) return yield* new BatchNotFound()
             if (locked.status === 'archived') return yield* new BatchReadOnly()
-            const participant = yield* participantOf(tenantId, input.participantId)
+            const participant = yield* participantOf(tenantId, item.batchId, input.participantId)
             if (participant === null) return yield* refuse('create', 'participant-not-found')
             if (participant.status !== 'active') {
               return yield* refuse('create', 'participant-not-active')
@@ -578,17 +600,17 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               if (entry.currentRevisionId === null) {
                 return yield* refuse(action, 'entry-not-submittable')
               }
-              const itemRevision =
-                item.currentRevisionId === null
-                  ? null
-                  : yield* revisionOf(tenantId, item.currentRevisionId)
+              const current = yield* entryRevisionOf(tenantId, entry.currentRevisionId)
+              // The round judges this revision, so everything about the round
+              // comes from the item revision THIS revision cites - its form,
+              // its chain - never from whatever the item says today. A newer
+              // configuration reaches an entry the way everything does:
+              // through its next revision.
+              const itemRevision = yield* revisionOf(tenantId, current!.itemRevisionId)
               if (itemRevision === null) return yield* refuse(action, 'item-not-configured')
-              // the current content must still read under the configuration
-              // it will be judged by
               const batch = yield* oneBatch(tenantId, entry.batchId)
               const driver = driverOf(item)
               if (driver === undefined) return yield* refuse(action, 'item-type-not-installed')
-              const current = yield* entryRevisionOf(tenantId, entry.currentRevisionId)
               const readable = yield* Effect.result(
                 driver.decodePayload(itemRevision.formConfig, current!.payload, {
                   materialRange: deps.parseRange(String(batch!.materialRange)),
