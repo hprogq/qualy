@@ -3240,6 +3240,36 @@ hostile tests 必须先于 UI。
 
 `feat(web): add assessment entry workflow`
 
+落地记录（对话 8 完成时相对本节的偏离）：
+
+- **对话 1 缓下的两块随本对话闭合**。①浏览器驱动聚合：新增 `Ui.browser('./client/upload.ts')`
+  （ui-registry 的 external 相扩展点，与 `Ui.i18n` 同一条聚合通道）——收集器把声明的模块以
+  副作用 import 编进 virtual:qualy/plugins，storage-local/cos 据此把各自的 upload driver 注册进
+  bundle，active 集只带被选中的 provider，`--all` 超集两个都带；apps/web 依赖照纪律二补齐。
+  ②本地上传门：核心 storage 增 `receiveUpload(reservationId, body)`（reservation 归核心，校验
+  issued/未过期后把字节交给 backend 的可选 `receive` 能力；oversize 是票的拒绝
+  `ReservationInvalid('oversized')` 不是磁盘故障），storage-local 经 `Api.routes` 挂
+  `PUT /api/storage/local/uploads/:reservationId`——**reservationId 即完整凭证**（与云端签名
+  URL 同一信任形状：不可猜、单用途、会过期），204/404/410/503。
+- **attachment HTTP 边界四条中的三条**：uploads（准入 = item active ∩「active 成员或持
+  accepted entry.record」；字段规则仍在 bind 处统一执行）、complete、GET（descriptor：
+  redirect 后端给短时 url，stream 后端指向 `/content`；**descriptor 不花费流**——磁盘 open 即开
+  fd，未读即泄漏，故显式 destroy）+ `GET .../content`（`HttpApiSchema.StreamUint8Array()`，
+  redirect 后端在此答 404——bytes 不经过本进程）。DELETE（staged 主动放弃）不做：staged 过期
+  由 sweeper 回收，先不给界面第二条删除路径。
+- **页面**：工作区 rail 新增「个人」（我的填报、我的成绩）与「工作」（审核、代为登记）两组，
+  管理组加「项目配置」。我的填报 = listItems ∪ listMyEntries 按题合卡（my-entries 响应带
+  `participantId`，首次填报由此指名成员行）；表单按 formConfig 逐字段渲染（text/date/attachment），
+  上传走 provider-neutral 的 `upload(ticket, file)`;历史与驳回建议只读展示（无套用、无复制）。
+  审核收件箱**按批次过滤租户级 API 的结果**（队列是跨批次的，工作区分片只是视图）；退回必填
+  意见、可附建议稿（建议表单不给上传门——建议不长出新证据）。行政登记页向持 record 权限者开放
+  名册（**listParticipants 放宽为 manage ∪ accepted entry.record**——登记者必须能指名对象，写入
+  仍查锚定 reach，这是有意的收窄级放宽）。项目配置 = 分组行编辑 + 题目结构化基础字段 +
+  完整配置 JSON 文本域（服务端以 ItemConfigInvalid 逐条答复），停用/启用/删除齐备。
+- 浏览器用例 5 条（申报→提交、经过与建议只读、队列→详情→通过、退回必填意见、成绩单含
+  调整行），总 53。
+- 本对话与两次 P0 收口累计新增门禁面：node 619 / browser 53。
+
 ### 对话 9：M2 收官审计
 
 不要再加业务能力。

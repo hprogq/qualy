@@ -345,6 +345,15 @@ importers:
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../../packages/plugins/base/rbac
+      '@qualy/plugin-storage':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/storage
+      '@qualy/plugin-storage-cos':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/storage-cos
+      '@qualy/plugin-storage-local':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/storage-local
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../packages/web/ui
@@ -989,6 +998,9 @@ importers:
       '@qualy/plugin-storage':
         specifier: workspace:*
         version: link:../storage
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../ui-registry
       cos-js-sdk-v5:
         specifier: 'catalog:'
         version: 1.10.1
@@ -1008,15 +1020,24 @@ importers:
 
   packages/plugins/infra/storage-local:
     dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
       '@qualy/plugin-storage':
         specifier: workspace:*
         version: link:../storage
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../ui-registry
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.4
 
   packages/plugins/infra/ui-registry:
     dependencies:

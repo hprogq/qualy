@@ -45,6 +45,21 @@ export const I18nCatalogs = ExtensionPoint.make<{ readonly module: string }>(
   { phase: 'external' },
 )
 
+/**
+ * A browser module loaded for its side effects when the app boots.
+ *
+ * The same external channel as i18n: the browser build splices a plain
+ * import of the module into the aggregate. It exists for provider halves
+ * that must announce themselves before any screen asks - an upload driver
+ * registering the way to spend its own grants is the founding case. Kept
+ * deliberately narrow: no exports are read, nothing is keyed, and a module
+ * that needs either is a component or a catalog, not this.
+ */
+export const BrowserModules = ExtensionPoint.make<{ readonly module: string }>(
+  '@qualy/plugin-ui-registry/browser-modules',
+  { phase: 'external' },
+)
+
 export interface PageOptions {
   readonly id: NamespacedId
   readonly path: string
@@ -104,6 +119,9 @@ export const Ui = {
 
   /** names the module exporting `catalogs` (and optionally `errorMessages`) */
   i18n: (module: string): PluginFeature => Plugin.contribute(I18nCatalogs, { module }),
+
+  /** declares a module the browser runs at boot for its side effects */
+  browser: (module: string): PluginFeature => Plugin.contribute(BrowserModules, { module }),
 
   /**
    * The owner's interpretation: the registry, already populated.

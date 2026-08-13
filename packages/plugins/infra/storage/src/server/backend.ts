@@ -1,5 +1,5 @@
 import type { Effect } from 'effect'
-import type { BackendUnavailable } from '../errors.ts'
+import type { BackendUnavailable, ReservationInvalid } from '../errors.ts'
 import type { UploadGrant } from '../upload.ts'
 
 // What a place to keep bytes has to be able to do, and nothing more.
@@ -87,4 +87,17 @@ export interface StorageBackend {
 
   /** deleting what is not there is success: a sweep must be repeatable */
   readonly delete: (key: string) => Effect.Effect<void, BackendUnavailable>
+
+  /**
+   * Takes an upload's bytes over an open connection, for stores that have no
+   * door of their own. A cloud bucket receives directly and never implements
+   * this; a disk cannot, so the deployment's http boundary hands the body
+   * here. The store itself still enforces the reserved ceiling.
+   */
+  readonly receive?: (input: {
+    readonly reservationId: string
+    readonly key: string
+    readonly maxBytes: bigint
+    readonly body: AsyncIterable<Uint8Array>
+  }) => Effect.Effect<void, BackendUnavailable | ReservationInvalid>
 }

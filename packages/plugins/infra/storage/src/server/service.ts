@@ -19,6 +19,7 @@ import {
   insertAttachment,
   insertReservation,
   nextAttachmentId,
+  reservationById,
   reservationOf,
   retireAttachment,
   type AttachmentRow,
@@ -149,6 +150,17 @@ export class Storage extends Context.Service<
       readonly tenantId: string
       readonly attachmentId: string
     }) => Effect.Effect<void, AttachmentNotFound | AttachmentInvalid>
+    /**
+     * Takes an upload's bytes for a store that has no door of its own.
+     *
+     * The reservation id is the whole credential, exactly as a signed url
+     * would be: unguessable, single-purpose and expiring. The reserved size
+     * is enforced by the store while it reads.
+     */
+    readonly receiveUpload: (input: {
+      readonly reservationId: string
+      readonly body: AsyncIterable<Uint8Array>
+    }) => Effect.Effect<void, ReservationNotFound | ReservationInvalid | BackendUnavailable>
   }
 >()('@qualy/plugin-storage/Storage') {}
 
@@ -431,12 +443,41 @@ const make = () =>
         Effect.withSpan('Storage.retire'),
       )
 
+    const receiveUpload = (input: { reservationId: string; body: AsyncIterable<Uint8Array> }) =>
+      Effect.gen(function* () {
+        const reservation = yield* reservationById(input.reservationId)
+        if (reservation === null) return yield* Effect.fail(new ReservationNotFound())
+        const now = yield* Clock.currentTimeMillis
+        if (reservation.status !== 'issued') {
+          return yield* Effect.fail(new ReservationInvalid({ reason: 'failed' }))
+        }
+        if (reservation.grantExpiresAt <= now) {
+          return yield* Effect.fail(new ReservationInvalid({ reason: 'expired' }))
+        }
+        const backend = yield* backends.resolve(reservation.backend)
+        if (backend.receive === undefined) {
+          // a store with its own door never lands here; a grant naming this
+          // deployment's disk always resolves a backend that can receive
+          return yield* Effect.fail(new ReservationInvalid({ reason: 'failed' }))
+        }
+        yield* backend.receive({
+          reservationId: reservation.id,
+          key: reservation.storageKey,
+          maxBytes: reservation.reservedBytes,
+          body: input.body,
+        })
+      }).pipe(
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+        Effect.withSpan('Storage.receiveUpload'),
+      )
+
     return Storage.of({
       prepareUpload: (input) => withDb(prepareUpload(input)),
       completeUpload: (input) => withDb(completeUpload(input)),
       metadata: (input) => withDb(metadata(input)),
       bind: (input) => withDb(bind(input)),
       open: (input, authorize) => withDb(open(input, authorize)),
+      receiveUpload: (input) => withDb(receiveUpload(input)),
       retire: (input) => withDb(retire(input)).pipe(Effect.asVoid),
     })
   })

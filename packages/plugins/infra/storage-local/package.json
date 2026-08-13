@@ -13,8 +13,11 @@
     "./config": "./src/server/config.ts"
   },
   "dependencies": {
+    "@qualy/api-kit": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-storage": "workspace:*",
-    "effect": "catalog:"
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "effect": "catalog:",
+    "kysely": "catalog:"
   }
 }

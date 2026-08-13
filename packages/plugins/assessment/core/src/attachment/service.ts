@@ -2,7 +2,9 @@ import { Effect } from 'effect'
 import type { Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AttachmentMeta, AttachmentOpen, Storage } from '@qualy/plugin-storage/server'
-import { AttachmentUnavailable } from '../server/errors.ts'
+import type { UploadTicket } from '@qualy/plugin-storage/upload'
+import { AttachmentUnavailable, EntryActionRefused, ItemNotFound } from '../server/errors.ts'
+import { itemOf } from '../item/db.ts'
 import { userMayReview } from '../review/db.ts'
 import { citingEntries, citingInstances } from './db.ts'
 
@@ -18,18 +20,61 @@ import { citingEntries, citingInstances } from './db.ts'
 // attachment answers the same question the same way: retirement stops new
 // citations, never the reading of history.
 
+export interface AttachmentUploadInput {
+  readonly batchId: string
+  readonly itemId: string
+  readonly filename: string
+  readonly declaredMime: string
+  readonly size: bigint
+}
+
+export interface AttachmentMetaView {
+  readonly id: string
+  readonly filename: string
+  readonly declaredMime: string
+  readonly size: string
+  readonly status: string
+}
+
+export interface AttachmentDescriptor extends AttachmentMetaView {
+  readonly delivery:
+    | { readonly kind: 'redirect'; readonly url: string; readonly expiresInSeconds: number }
+    | { readonly kind: 'content' }
+}
+
 export interface AttachmentMethods {
   readonly openAttachment: (
     tenantId: string,
     attachmentId: string,
     as: Principal,
   ) => Effect.Effect<AttachmentOpen, AttachmentUnavailable>
+  readonly prepareAttachmentUpload: (
+    tenantId: string,
+    input: AttachmentUploadInput,
+    as: Principal,
+  ) => Effect.Effect<UploadTicket, ItemNotFound | EntryActionRefused>
+  readonly completeAttachmentUpload: (
+    tenantId: string,
+    reservationId: string,
+    as: Principal,
+  ) => Effect.Effect<AttachmentMetaView, AttachmentUnavailable | EntryActionRefused>
+  readonly describeAttachment: (
+    tenantId: string,
+    attachmentId: string,
+    as: Principal,
+  ) => Effect.Effect<AttachmentDescriptor, AttachmentUnavailable>
 }
 
 export interface AttachmentDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
   readonly storage: Storage['Service']
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
+  /** may this person put material into this batch at all: an active member, or staff who records */
+  readonly uploadStanding: (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+  ) => Effect.Effect<boolean>
 }
 
 export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods => {
@@ -78,5 +123,77 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
       )
   })
 
-  return { openAttachment }
+  const metaView = (meta: AttachmentMeta): AttachmentMetaView => ({
+    id: meta.id,
+    filename: meta.filename,
+    declaredMime: meta.declaredMime,
+    size: meta.size.toString(),
+    status: meta.status,
+  })
+
+  const refuse = (reason: string) => new EntryActionRefused({ action: 'upload', reason })
+
+  const prepareAttachmentUpload: AttachmentMethods['prepareAttachmentUpload'] = Effect.fn(
+    'Assessment.prepareAttachmentUpload',
+  )(function* (tenantId, input, as) {
+    // the ticket names the question it is for, so admission is the
+    // question's: a live item in a round this person may put material into.
+    // What the file may back is still decided at bind, where the field's
+    // own rules hold every citation.
+    const item = yield* withDb(itemOf(tenantId, input.itemId)).pipe(
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
+    if (item === null || item.batchId !== input.batchId) return yield* new ItemNotFound()
+    if (item.status !== 'active') return yield* refuse('item-not-active')
+    if (!(yield* deps.uploadStanding(tenantId, input.batchId, as))) {
+      return yield* refuse('not-participant')
+    }
+    return yield* deps.storage
+      .prepareUpload({
+        tenantId,
+        ownerUserId: as.userId,
+        filename: input.filename,
+        declaredMime: input.declaredMime,
+        size: input.size,
+      })
+      .pipe(
+        Effect.catchTag('STORAGE_UPLOAD_REFUSED', (refused) => refuse(refused.reason)),
+        Effect.catchTag('STORAGE_BACKEND_UNAVAILABLE', (error) => Effect.die(error)),
+      )
+  })
+
+  const completeAttachmentUpload: AttachmentMethods['completeAttachmentUpload'] = Effect.fn(
+    'Assessment.completeAttachmentUpload',
+  )(function* (tenantId, reservationId, as) {
+    return yield* deps.storage
+      .completeUpload({ tenantId, ownerUserId: as.userId, reservationId })
+      .pipe(
+        Effect.map(metaView),
+        Effect.catchTag('STORAGE_RESERVATION_NOT_FOUND', () => new AttachmentUnavailable()),
+        Effect.catchTag('STORAGE_RESERVATION_INVALID', (refused) => refuse(refused.reason)),
+        Effect.catchTag('STORAGE_BACKEND_UNAVAILABLE', (error) => Effect.die(error)),
+      )
+  })
+
+  const describeAttachment: AttachmentMethods['describeAttachment'] = Effect.fn(
+    'Assessment.describeAttachment',
+  )(function* (tenantId, attachmentId, as) {
+    const opened = yield* openAttachment(tenantId, attachmentId, as)
+    if (opened.target.kind === 'redirect') {
+      return {
+        ...metaView(opened.meta),
+        delivery: {
+          kind: 'redirect' as const,
+          url: opened.target.url,
+          expiresInSeconds: opened.target.expiresInSeconds,
+        },
+      }
+    }
+    // describing must not spend the stream: a disk opens a descriptor
+    // eagerly, and an unread one is a leak
+    ;(opened.target.body as { destroy?: () => void }).destroy?.()
+    return { ...metaView(opened.meta), delivery: { kind: 'content' as const } }
+  })
+
+  return { openAttachment, prepareAttachmentUpload, completeAttachmentUpload, describeAttachment }
 }

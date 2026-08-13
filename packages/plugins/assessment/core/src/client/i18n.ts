@@ -491,6 +491,196 @@ const i18n = definePluginMessages({
       id: 'assessment/overview/placeholder',
       defaultMessage: 'Nothing here yet.',
     },
+    // ------------------------------------------------------------------
+    // one's own filings
+    navGroupPersonal: { id: 'assessment/nav-group/personal', defaultMessage: 'My part' },
+    navGroupWork: { id: 'assessment/nav-group/work', defaultMessage: 'Handling' },
+    myEntriesTab: { id: 'assessment/entry/tab', defaultMessage: 'My entries' },
+    myEntriesHint: {
+      id: 'assessment/entry/hint',
+      defaultMessage: 'File your claims here, and follow what happens to each one.',
+    },
+    myEntriesEmpty: {
+      id: 'assessment/entry/empty',
+      defaultMessage: 'Nothing to file yet. Questions appear here once the round opens them.',
+    },
+    itemVoided: {
+      id: 'assessment/entry/item-voided',
+      defaultMessage: 'This question was withdrawn and no longer counts.',
+    },
+    entryNew: { id: 'assessment/entry/new', defaultMessage: 'File a claim' },
+    entryEdit: { id: 'assessment/entry/edit', defaultMessage: 'Edit' },
+    entrySubmit: { id: 'assessment/entry/submit', defaultMessage: 'Submit' },
+    entryWithdraw: { id: 'assessment/entry/withdraw', defaultMessage: 'Withdraw' },
+    entrySave: { id: 'assessment/entry/save', defaultMessage: 'Save' },
+    entryHistoryOpen: { id: 'assessment/entry/history-open', defaultMessage: 'History' },
+    entryNote: { id: 'assessment/entry/note', defaultMessage: 'Note' },
+    entryStatusDraft: { id: 'assessment/entry/status-draft', defaultMessage: 'Draft' },
+    entryStatusInReview: { id: 'assessment/entry/status-in-review', defaultMessage: 'In review' },
+    entryStatusApproved: { id: 'assessment/entry/status-approved', defaultMessage: 'Approved' },
+    entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Sent back' },
+    entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Void' },
+    entryFilePick: { id: 'assessment/entry/file-pick', defaultMessage: 'Add a file' },
+    entryFileUploading: { id: 'assessment/entry/file-uploading', defaultMessage: 'Uploading…' },
+    entryFileRemove: { id: 'assessment/entry/file-remove', defaultMessage: 'Remove' },
+    entryFileFailed: {
+      id: 'assessment/entry/file-failed',
+      defaultMessage: 'The upload did not finish. Try the file again.',
+    },
+    entryFileUnnamed: { id: 'assessment/entry/file-unnamed', defaultMessage: 'Attached file' },
+    entryHistoryTitle: {
+      id: 'assessment/entry/history-title',
+      defaultMessage: 'The whole account',
+    },
+    entryHistoryRound: { id: 'assessment/entry/history-round', defaultMessage: 'Round {round}' },
+    entryHistoryRevision: {
+      id: 'assessment/entry/history-revision',
+      defaultMessage: 'Version {no}',
+    },
+    entrySuggestionTitle: {
+      id: 'assessment/entry/suggestion-title',
+      defaultMessage: 'What the reviewer suggested',
+    },
+    entrySuggestionHint: {
+      id: 'assessment/entry/suggestion-hint',
+      defaultMessage: 'For reference only. Edit your own entry and submit it again.',
+    },
+    // ------------------------------------------------------------------
+    // the review queue
+    reviewTab: { id: 'assessment/review/tab', defaultMessage: 'Reviewing' },
+    reviewHint: {
+      id: 'assessment/review/hint',
+      defaultMessage: 'Submissions waiting for your decision, oldest first.',
+    },
+    reviewEmpty: { id: 'assessment/review/empty', defaultMessage: 'Nothing waiting for you.' },
+    reviewOpen: { id: 'assessment/review/open', defaultMessage: 'Open' },
+    reviewDetailTab: { id: 'assessment/review/detail-tab', defaultMessage: 'Review' },
+    reviewApprove: { id: 'assessment/review/approve', defaultMessage: 'Approve' },
+    reviewReject: { id: 'assessment/review/reject', defaultMessage: 'Send back' },
+    reviewRejectTitle: {
+      id: 'assessment/review/reject-title',
+      defaultMessage: 'Send this back',
+    },
+    reviewComment: { id: 'assessment/review/comment', defaultMessage: 'A word for the student' },
+    reviewCommentHint: {
+      id: 'assessment/review/comment-hint',
+      defaultMessage: 'Say what to fix. This is required when sending back.',
+    },
+    reviewSuggestToggle: {
+      id: 'assessment/review/suggest-toggle',
+      defaultMessage: 'Attach a suggested version',
+    },
+    reviewDecided: { id: 'assessment/review/decided', defaultMessage: 'Decision recorded.' },
+    reviewClosedAlready: {
+      id: 'assessment/review/closed-already',
+      defaultMessage: 'This round was already closed by someone else.',
+    },
+    reviewSubmittedBy: {
+      id: 'assessment/review/submitted-by',
+      defaultMessage: '{name} · round {round}',
+    },
+    reviewPayloadTitle: { id: 'assessment/review/payload-title', defaultMessage: 'What was filed' },
+    reviewFiles: { id: 'assessment/review/files', defaultMessage: 'Files' },
+    reviewDownload: { id: 'assessment/review/download', defaultMessage: 'Download' },
+    // ------------------------------------------------------------------
+    // one's own provisional standing
+    resultTab: { id: 'assessment/result/tab', defaultMessage: 'My standing' },
+    resultHint: {
+      id: 'assessment/result/hint',
+      defaultMessage: 'Where your approved claims put you right now. Nothing here is final.',
+    },
+    resultProvisional: {
+      id: 'assessment/result/provisional',
+      defaultMessage: 'Provisional',
+    },
+    resultTotal: { id: 'assessment/result/total', defaultMessage: 'Total' },
+    resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'From items' },
+    resultGroupFinal: { id: 'assessment/result/group-final', defaultMessage: 'Counted' },
+    resultLineExcluded: {
+      id: 'assessment/result/line-excluded',
+      defaultMessage: 'Sent back · not counted',
+    },
+    resultLineVoided: {
+      id: 'assessment/result/line-voided',
+      defaultMessage: 'Question withdrawn · not counted',
+    },
+    resultLineAdjustment: {
+      id: 'assessment/result/line-adjustment',
+      defaultMessage: 'Group limit',
+    },
+    resultEmpty: {
+      id: 'assessment/result/empty',
+      defaultMessage: 'Nothing counts yet. Approved claims appear here.',
+    },
+    // ------------------------------------------------------------------
+    // recording on someone's behalf
+    recordTab: { id: 'assessment/record/tab', defaultMessage: 'Record for someone' },
+    recordHint: {
+      id: 'assessment/record/hint',
+      defaultMessage:
+        'File an administrative fact about a participant. It takes effect at once, with its basis.',
+    },
+    recordEmpty: {
+      id: 'assessment/record/empty',
+      defaultMessage: 'No administrative questions in this round.',
+    },
+    recordWho: { id: 'assessment/record/who', defaultMessage: 'About whom' },
+    recordWhoPlaceholder: {
+      id: 'assessment/record/who-placeholder',
+      defaultMessage: 'Search the roster by name',
+    },
+    recordBasis: { id: 'assessment/record/basis', defaultMessage: 'Basis' },
+    recordBasisHint: {
+      id: 'assessment/record/basis-hint',
+      defaultMessage: 'The document this fact rests on, e.g. a file number. Required.',
+    },
+    recordSubmit: { id: 'assessment/record/submit', defaultMessage: 'Record it' },
+    recordDone: { id: 'assessment/record/done', defaultMessage: 'Recorded.' },
+    // ------------------------------------------------------------------
+    // configuring the questions
+    itemsTab: { id: 'assessment/items/tab', defaultMessage: 'Questions' },
+    itemsHint: {
+      id: 'assessment/items/hint',
+      defaultMessage: 'The questions this round asks, and the groups their scores add up in.',
+    },
+    itemsGroupsTitle: { id: 'assessment/items/groups-title', defaultMessage: 'Score groups' },
+    itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
+    itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Cap' },
+    itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Floor' },
+    itemsGroupAdd: { id: 'assessment/items/group-add', defaultMessage: 'Add a group' },
+    itemsGroupsSave: { id: 'assessment/items/groups-save', defaultMessage: 'Save groups' },
+    itemsGroupsSaved: { id: 'assessment/items/groups-saved', defaultMessage: 'Groups saved.' },
+    itemsListTitle: { id: 'assessment/items/list-title', defaultMessage: 'Questions' },
+    itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
+    itemsEditTitle: { id: 'assessment/items/edit-title', defaultMessage: 'The question' },
+    itemsFieldTitle: { id: 'assessment/items/field-title', defaultMessage: 'Title' },
+    itemsFieldGroup: { id: 'assessment/items/field-group', defaultMessage: 'Score group' },
+    itemsFieldMax: {
+      id: 'assessment/items/field-max',
+      defaultMessage: 'Entries per person',
+    },
+    itemsFieldConfig: { id: 'assessment/items/field-config', defaultMessage: 'Configuration' },
+    itemsFieldConfigHint: {
+      id: 'assessment/items/field-config-hint',
+      defaultMessage: 'The full configuration, as JSON: form, scoring and review chain.',
+    },
+    itemsFieldReason: { id: 'assessment/items/field-reason', defaultMessage: 'Reason' },
+    itemsConfigUnreadable: {
+      id: 'assessment/items/config-unreadable',
+      defaultMessage: 'That is not readable JSON yet.',
+    },
+    itemsSaved: { id: 'assessment/items/saved', defaultMessage: 'Question saved.' },
+    itemsVoid: { id: 'assessment/items/void', defaultMessage: 'Withdraw' },
+    itemsVoidTitle: { id: 'assessment/items/void-title', defaultMessage: 'Withdraw this question' },
+    itemsVoidHint: {
+      id: 'assessment/items/void-hint',
+      defaultMessage:
+        'Open entries end here; decided ones keep their outcome. Say why - everyone affected reads it.',
+    },
+    itemsVoidReason: { id: 'assessment/items/void-reason', defaultMessage: 'Reason' },
+    itemsRestore: { id: 'assessment/items/restore', defaultMessage: 'Reopen' },
+    itemsDelete: { id: 'assessment/items/delete', defaultMessage: 'Delete' },
+    itemsStatusVoided: { id: 'assessment/items/status-voided', defaultMessage: 'Withdrawn' },
     tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Staffs' },
     tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Settings' },
     settingsHint: {

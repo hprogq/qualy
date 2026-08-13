@@ -3,7 +3,11 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { commonErrorCodes } from '@qualy/i18n-contract'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
-import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
+import {
+  BrowserModules,
+  I18nCatalogs,
+  UiSurfaceDeclarations,
+} from '@qualy/plugin-ui-registry/plugin'
 import { LoginDriverDeclarations } from '@qualy/auth-contract/plugin'
 import { componentKey, type ClientComponentRef } from '@qualy/ui-contract'
 import { currentResolution, readEntries, resolvePackageDir } from '@qualy/assembly/host'
@@ -32,6 +36,8 @@ export interface WebPluginEntry {
   i18nModule?: string
   hasCatalogs: boolean
   hasErrorMessages: boolean
+  /** modules the browser imports at boot for their side effects, absolute */
+  browserModules: string[]
 }
 
 const componentRefs = (descriptor: PluginDescriptor): ClientComponentRef[] => {
@@ -147,13 +153,28 @@ export async function collectWebPlugins(
       }
     }
 
-    if (Object.keys(components).length > 0 || hasCatalogs || hasErrorMessages) {
+    const browserModules: string[] = []
+    for (const declared of Plugin.contributionsOf(descriptor, BrowserModules)) {
+      const resolved = path.resolve(packageDir, 'src', declared.module)
+      if (!resolved.startsWith(packageDir + path.sep) || !fs.existsSync(resolved)) {
+        throw new Error(`${entry.name}: browser module ${declared.module} does not exist`)
+      }
+      browserModules.push(resolved)
+    }
+
+    if (
+      Object.keys(components).length > 0 ||
+      hasCatalogs ||
+      hasErrorMessages ||
+      browserModules.length > 0
+    ) {
       found.push({
         name: entry.name,
         components,
         ...(i18nModule === undefined ? {} : { i18nModule }),
         hasCatalogs,
         hasErrorMessages,
+        browserModules,
       })
     }
   }
@@ -180,6 +201,10 @@ export async function buildPluginModuleSource(
   const errorSpreads: string[] = []
   for (const entry of await collectWebPlugins(options)) {
     const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
+    for (const module of entry.browserModules) {
+      // for its side effects: a provider half announcing itself at boot
+      imports.push(`import ${JSON.stringify(specifier(module, options.fromDir))}`)
+    }
     for (const [key, file] of Object.entries(entry.components)) {
       // a real dynamic import per key: the edge Vite splits chunks on
       componentEntries.push(
@@ -235,6 +260,7 @@ export async function buildPluginScanSource(
     for (const file of Object.values(entry.components))
       modules.add(specifier(file, options.fromDir))
     if (entry.i18nModule) modules.add(specifier(entry.i18nModule, options.fromDir))
+    for (const module of entry.browserModules) modules.add(specifier(module, options.fromDir))
   }
   return [...modules].map((file) => `import ${JSON.stringify(file)}`).join('\n') + '\n'
 }

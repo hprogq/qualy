@@ -81,6 +81,26 @@ const plugin = Plugin.define(
       // taking part, handling other people's work, running the batch.
       {
         key: navigationGroups.key,
+        id: 'assessment/batch-personal',
+        value: {
+          id: 'assessment/batch-personal',
+          label: message('assessment/nav-group/personal', 'My part'),
+          order: 22,
+        },
+        visibility: PUBLIC,
+      },
+      {
+        key: navigationGroups.key,
+        id: 'assessment/batch-work',
+        value: {
+          id: 'assessment/batch-work',
+          label: message('assessment/nav-group/work', 'Handling'),
+          order: 26,
+        },
+        visibility: PUBLIC,
+      },
+      {
+        key: navigationGroups.key,
         id: 'assessment/batch-admin',
         value: {
           id: 'assessment/batch-admin',
@@ -150,6 +170,58 @@ const plugin = Plugin.define(
     title: message('assessment/navigation/settings', 'Settings'),
     visibility: permissionOf('assessment.batch.manage'),
   }),
+  // Taking part: one's own filings and where they stand. Anybody the round
+  // admits may open these; what each contains is decided per reader.
+  Ui.page({
+    id: 'assessment/batch-my-entries',
+    path: '/assessment/batches/:batchId/my-entries',
+    component: Ui.react('./client/entry/MyEntriesPage.tsx'),
+    layout: WORKSPACE_SHELL,
+    title: message('assessment/entry/tab', 'My entries'),
+    visibility: AUTHENTICATED,
+  }),
+  Ui.page({
+    id: 'assessment/batch-my-result',
+    path: '/assessment/batches/:batchId/my-result',
+    component: Ui.react('./client/result/MyResultPage.tsx'),
+    layout: WORKSPACE_SHELL,
+    title: message('assessment/result/tab', 'My standing'),
+    visibility: AUTHENTICATED,
+  }),
+  // Handling other people's work: the queue, one submission, and recording
+  // administrative facts. Behind the permissions those acts answer to.
+  Ui.page({
+    id: 'assessment/batch-reviews',
+    path: '/assessment/batches/:batchId/reviews',
+    component: Ui.react('./client/review/ReviewInboxPage.tsx'),
+    layout: WORKSPACE_SHELL,
+    title: message('assessment/review/tab', 'Reviewing'),
+    visibility: permissionOf('assessment.review.process'),
+  }),
+  Ui.page({
+    id: 'assessment/review-instance',
+    path: '/assessment/batches/:batchId/reviews/:instanceId',
+    component: Ui.react('./client/review/ReviewInstancePage.tsx'),
+    layout: WORKSPACE_SHELL,
+    title: message('assessment/review/detail-tab', 'Review'),
+    visibility: permissionOf('assessment.review.process'),
+  }),
+  Ui.page({
+    id: 'assessment/batch-record',
+    path: '/assessment/batches/:batchId/record',
+    component: Ui.react('./client/record/RecordPage.tsx'),
+    layout: WORKSPACE_SHELL,
+    title: message('assessment/record/tab', 'Record for someone'),
+    visibility: permissionOf('assessment.entry.record'),
+  }),
+  Ui.page({
+    id: 'assessment/batch-items',
+    path: '/assessment/batches/:batchId/items',
+    component: Ui.react('./client/items/ItemSettingsPage.tsx'),
+    layout: WORKSPACE_SHELL,
+    title: message('assessment/items/tab', 'Questions'),
+    visibility: permissionOf('assessment.batch.manage'),
+  }),
   // What the rail offers inside a batch, and the bar that says which batch it
   // is. Both are contributions to the workspace shell: it renders them and
   // knows nothing about batches, and this plugin names no shell of its own.
@@ -169,6 +241,71 @@ const plugin = Plugin.define(
           order: 0,
         },
         visibility: AUTHENTICATED,
+      },
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-my-entries/rail',
+        value: {
+          id: 'assessment/batch-my-entries/rail',
+          label: message('assessment/entry/tab', 'My entries'),
+          target: { kind: 'page', pageId: 'assessment/batch-my-entries' },
+          icon: 'file-text',
+          order: 2,
+          group: 'assessment/batch-personal',
+        },
+        visibility: AUTHENTICATED,
+      },
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-my-result/rail',
+        value: {
+          id: 'assessment/batch-my-result/rail',
+          label: message('assessment/result/tab', 'My standing'),
+          target: { kind: 'page', pageId: 'assessment/batch-my-result' },
+          icon: 'chart-column',
+          order: 4,
+          group: 'assessment/batch-personal',
+        },
+        visibility: AUTHENTICATED,
+      },
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-reviews/rail',
+        value: {
+          id: 'assessment/batch-reviews/rail',
+          label: message('assessment/review/tab', 'Reviewing'),
+          target: { kind: 'page', pageId: 'assessment/batch-reviews' },
+          icon: 'inbox',
+          order: 6,
+          group: 'assessment/batch-work',
+        },
+        visibility: permissionOf('assessment.review.process'),
+      },
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-record/rail',
+        value: {
+          id: 'assessment/batch-record/rail',
+          label: message('assessment/record/tab', 'Record for someone'),
+          target: { kind: 'page', pageId: 'assessment/batch-record' },
+          icon: 'pen-line',
+          order: 8,
+          group: 'assessment/batch-work',
+        },
+        visibility: permissionOf('assessment.entry.record'),
+      },
+      {
+        key: workspaceNavigation.key,
+        id: 'assessment/batch-items/rail',
+        value: {
+          id: 'assessment/batch-items/rail',
+          label: message('assessment/items/tab', 'Questions'),
+          target: { kind: 'page', pageId: 'assessment/batch-items' },
+          icon: 'list-checks',
+          order: 15,
+          group: 'assessment/batch-admin',
+        },
+        visibility: permissionOf('assessment.batch.manage'),
       },
       {
         key: workspaceNavigation.key,

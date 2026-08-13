@@ -140,7 +140,7 @@ export interface EntryMethods {
     page: { cursor?: string; limit?: string },
     as: Principal,
   ) => Effect.Effect<
-    { entries: readonly EntryView[]; nextCursor: string | null },
+    { participantId: string; entries: readonly EntryView[]; nextCursor: string | null },
     BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
   >
   readonly getEntryHistory: (
@@ -819,6 +819,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               ? yield* entryCreatedIso(tenantId, last.id)
               : null
           return {
+            participantId: membership.id,
             entries,
             nextCursor:
               lastIso !== null && last !== undefined

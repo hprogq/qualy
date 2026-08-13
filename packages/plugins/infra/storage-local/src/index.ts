@@ -1,9 +1,12 @@
 import { Effect, Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
+import { Api } from '@qualy/api-kit/plugin'
 import { Storage } from '@qualy/plugin-storage/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { StorageBackends } from '@qualy/plugin-storage/server'
 import { localBackend } from './server/backend.ts'
 import { config, LocalStorageConfig } from './server/config.ts'
+import { routes } from './server/routes.ts'
 
 // Keeping attachments on the machine that serves them.
 //
@@ -26,7 +29,11 @@ const plugin = Plugin.define(
   '@qualy/plugin-storage-local',
   { dependsOn: ['@qualy/plugin-storage'], config },
   Storage.backend({ code: 'local', uploadDriver: 'local' }),
+  // the browser half announces how to spend this provider's grants
+  Ui.browser('./client/upload.ts'),
   Plugin.layer(registration),
+  // the door the grants point at; a grant is the credential, not a session
+  Api.routes(routes),
 )
 
 export default plugin

@@ -1,6 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Storage } from '@qualy/plugin-storage/plugin'
+import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { StorageBackends } from '@qualy/plugin-storage/server'
 import { cosBackend } from './server/backend.ts'
 import { config, CosStorageConfig } from './server/config.ts'
@@ -26,6 +27,8 @@ const plugin = Plugin.define(
   '@qualy/plugin-storage-cos',
   { dependsOn: ['@qualy/plugin-storage'], config },
   Storage.backend({ code: 'cos', uploadDriver: 'cos' }),
+  // the browser half announces how to spend this provider's grants
+  Ui.browser('./client/upload.ts'),
   Plugin.layer(registration),
 )
 

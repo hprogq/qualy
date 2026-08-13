@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/unstable/httpapi'
 import {
   BadRequest,
   boundedText,
@@ -27,6 +27,7 @@ import {
   BatchNotFound,
   ParticipantInvalid,
   ParticipantNotFound,
+  AttachmentUnavailable,
   ReviewConflict,
   ReviewNotFound,
   BatchReadOnly,
@@ -542,12 +543,84 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // permission to put one file in, for one question of one round; the
+    // grant is provider-shaped and the page never looks inside it
+    HttpApiEndpoint.post('prepareAttachmentUpload', '/assessment/attachments/uploads', {
+      payload: Schema.Struct({
+        batchId: id,
+        itemId: id,
+        filename: trimmedName(255),
+        declaredMime: boundedText(127),
+        /** decimal bytes; a string because numbers this size deserve exactness */
+        size: Schema.String.check(Schema.isPattern(/^[1-9]\d{0,11}$/)),
+      }),
+      success: Schema.Struct({
+        reservationId: Schema.String,
+        attachmentId: Schema.String,
+        grant: Schema.Struct({ driver: Schema.String, payload: configJson }),
+        expiresAt: Schema.String,
+      }),
+      error: [ItemNotFound, EntryActionRefused, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the bytes have arrived; the ticket becomes a staged file
+    HttpApiEndpoint.post(
+      'completeAttachmentUpload',
+      '/assessment/attachments/uploads/:reservationId/complete',
+      {
+        params: Schema.Struct({ reservationId: id }),
+        success: Schema.Struct({
+          id: Schema.String,
+          filename: Schema.String,
+          declaredMime: Schema.String,
+          size: Schema.String,
+          status: Schema.String,
+        }),
+        error: [AttachmentUnavailable, EntryActionRefused, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // what the file is and how to fetch it: a short-lived url for stores
+    // that sign their own, or this api's own content door
+    HttpApiEndpoint.get('describeAttachment', '/assessment/attachments/:attachmentId', {
+      params: Schema.Struct({ attachmentId: id }),
+      success: Schema.Struct({
+        id: Schema.String,
+        filename: Schema.String,
+        declaredMime: Schema.String,
+        size: Schema.String,
+        status: Schema.String,
+        delivery: Schema.Union([
+          Schema.Struct({
+            kind: Schema.Literals(['redirect']),
+            url: Schema.String,
+            expiresInSeconds: Schema.Number,
+          }),
+          Schema.Struct({ kind: Schema.Literals(['content']) }),
+        ]),
+      }),
+      error: [AttachmentUnavailable, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the bytes themselves, for deployments whose store has no public door
+    HttpApiEndpoint.get('getAttachmentContent', '/assessment/attachments/:attachmentId/content', {
+      params: Schema.Struct({ attachmentId: id }),
+      success: HttpApiSchema.StreamUint8Array(),
+      error: [AttachmentUnavailable, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     // the way back in after a refresh: everything the caller has filed in
     // this round, whatever state it is in now
     HttpApiEndpoint.get('listMyEntries', '/assessment/batches/:batchId/my-entries', {
       params: Schema.Struct({ batchId: id }),
       query: Schema.Struct(pageQuery),
       success: Schema.Struct({
+        /** the caller's own membership row: what a first filing names */
+        participantId: Schema.String,
         entries: Schema.Array(entryView),
         nextCursor: Schema.NullOr(Schema.String),
       }),

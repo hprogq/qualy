@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { ReservationInvalid } from '@qualy/plugin-storage/errors'
 import fs from 'node:fs'
 import { constants as fsConstants } from 'node:fs'
 import { link, mkdir, open, rm, stat as statFile } from 'node:fs/promises'
@@ -23,6 +24,9 @@ import type { LocalUploadPayload } from '../payload.ts'
 const fault = (operation: string) => (cause: unknown) => backendFailure(operation, cause)
 
 /** the temporary file an upload accumulates in, named for its ticket */
+/** the one failure that is the ticket's, not the disk's */
+class Oversized extends Error {}
+
 const stagingPath = (root: string, reservationId: string) => path.join(root, '.tmp', reservationId)
 
 const objectPath = (root: string, key: string) => path.join(root, key)
@@ -46,7 +50,7 @@ export interface LocalReceiver {
     readonly key: string
     readonly maxBytes: bigint
     readonly body: AsyncIterable<Uint8Array>
-  }) => Effect.Effect<ReceivedUpload, BackendUnavailable>
+  }) => Effect.Effect<ReceivedUpload, BackendUnavailable | ReservationInvalid>
 }
 
 const install = async (root: string, key: string, from: string) => {
@@ -82,7 +86,7 @@ const receiveInto = async (
       size += BigInt(chunk.byteLength)
       // stopping at the limit rather than after it: the whole point of a
       // declared size is that nobody gets to write past it
-      if (size > input.maxBytes) throw new Error('upload exceeds the reserved size')
+      if (size > input.maxBytes) throw new Oversized()
       digest.update(chunk)
       await handle.write(chunk)
     }
@@ -104,7 +108,13 @@ const receiveInto = async (
 
 export const localReceiver = (root: string): LocalReceiver => ({
   receive: (input) =>
-    Effect.tryPromise({ try: () => receiveInto(root, input), catch: fault('receive') }),
+    Effect.tryPromise({
+      try: () => receiveInto(root, input),
+      catch: (cause) =>
+        cause instanceof Oversized
+          ? new ReservationInvalid({ reason: 'oversized' })
+          : fault('receive')(cause),
+    }),
 })
 
 /**
@@ -133,6 +143,11 @@ const statLocal = async (root: string, key: string): Promise<BlobStat | null> =>
 
 export const localBackend = (root: string): StorageBackend => ({
   code: 'local',
+
+  // the same receiving the standalone receiver does, on the registered
+  // backend so core storage's upload door can hand bytes to whichever store
+  // a reservation names
+  receive: (input) => Effect.asVoid(localReceiver(root).receive(input)),
 
   prepareUpload: (request) =>
     Effect.succeed({

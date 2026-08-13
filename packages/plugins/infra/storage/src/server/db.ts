@@ -310,6 +310,23 @@ export const reservationOf = (input: { tenantId: string; ownerUserId: string; id
  * ticket a sweeper holds is on its way to being deleted, and turning it into
  * an attachment would race that delete.
  */
+/**
+ * The reservation behind a bare id, for the upload door: the id arrived as
+ * the whole credential, so there is no tenant or owner to scope by yet -
+ * the row itself says whose it is.
+ */
+export const reservationById = (id: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('UploadReservation')
+        .select(reservationColumns)
+        .select(reservationInstants)
+        .where('id', '=', id)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row ? toReservation(row as Record<string, unknown>) : null)))
+
 export const completeReservation = (input: { id: string; now: number }) =>
   db
     .query((k) =>

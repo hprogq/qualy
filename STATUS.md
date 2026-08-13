@@ -4038,3 +4038,26 @@ tests/void-races.test.ts:create/edit/submit/updateItem/decision 五路与 void �
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` **617 passed / 17 skipped**;browser 48;
 build、frozen resolve、prettier、生产 smoke 全绿。
+
+### 对话 8:前端真实竖切(2026-08-13)
+
+- **对话 1 的两笔欠账随本对话闭合**:`Ui.browser` 聚合通道(收集器把 provider 的浏览器半边以
+  副作用 import 编进 virtual module,active 集只带选中的 provider)与本地上传门
+  (`PUT /api/storage/local/uploads/:reservationId`,reservationId 即完整凭证;核心
+  `receiveUpload` 校验票据、oversize 答 `oversized` 而非后端故障;storage-local 测试 2 例)。
+- **attachment HTTP 边界**:uploads(准入=item active ∩ 成员或 record 权限)/complete/
+  descriptor(redirect 给短时 url、stream 指向 /content,descriptor 显式 destroy 未读流)/
+  content(StreamUint8Array;redirect 后端答 404)。DELETE 缓予 sweeper。
+- **页面**:rail 新增「个人」(我的填报、我的成绩)与「工作」(审核、代为登记),管理组加
+  「项目配置」。我的填报按题合卡、表单按 formConfig 渲染、上传 provider-neutral、历史与驳回
+  建议只读;审核收件箱按批次过滤租户级队列,退回必填意见、建议稿不开上传门;行政登记
+  (listParticipants 放宽为 manage ∪ accepted record,写入仍查 reach);项目配置=分组编辑+
+  结构化基础+配置 JSON(服务端逐条答复)。my-entries 响应新增 participantId 供首次填报指名。
+- 浏览器用例 +5(申报→提交、建议只读、队列→通过、退回必填意见、成绩单调整行)。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` **619 passed / 17 skipped**;
+`pnpm test:browser` **53**;build、frozen resolve、generate(无待生成)、prettier、生产 smoke
+全绿。
+
+下一步:对话 9(M2 收官审计:hostile matrix 复审、migration 重放、frozen routes/error gate、
+死代码清理、assessment-design 增补、验收报告)。

@@ -1,4 +1,4 @@
-import { Clock, Context, Effect, Layer, Result } from 'effect'
+import { Clock, Context, Effect, Layer, Result, Stream } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -32,6 +32,7 @@ import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
+  AttachmentUnavailable,
   AccessInvalid,
   AdvanceInvalid,
   BatchNoParticipants,
@@ -755,6 +756,9 @@ export class Assessment extends Context.Service<
     readonly getMyResult: ScoringMethods['getMyResult']
     /** the bytes of a business material, for whoever its story admits */
     readonly openAttachment: AttachmentMethods['openAttachment']
+    readonly prepareAttachmentUpload: AttachmentMethods['prepareAttachmentUpload']
+    readonly completeAttachmentUpload: AttachmentMethods['completeAttachmentUpload']
+    readonly describeAttachment: AttachmentMethods['describeAttachment']
     /** the score tree and the items on it; the save gauntlet lives behind these */
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
@@ -1711,6 +1715,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
     storage,
     rosterReach: (as, tenantId, batchId) =>
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
+    // who may put material in at all: an active member, or staff whose
+    // accepted authority includes recording on others' behalf
+    uploadStanding: (tenantId, batchId, as) =>
+      Effect.gen(function* () {
+        const member = yield* dieQuery(
+          withDb(activeParticipantByUser(tenantId, batchId, as.userId)),
+        )
+        if (member !== null) return true
+        return (yield* batchAuthority(tenantId, batchId, as.userId)).has('assessment.entry.record')
+      }),
   })
 
   return Assessment.of({
@@ -2865,7 +2879,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        yield* requireRosterReach(as, tenantId, batchId)
+        // administering the roster reads it; so does recording on it - a
+        // staff member filing an administrative fact has to be able to name
+        // whom it is about. The write itself still checks anchored reach.
+        const recorder = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
+          'assessment.entry.record',
+        )
+        if (!recorder) yield* requireRosterReach(as, tenantId, batchId)
         return yield* dieQuery(withDb(listParticipantsPage(tenantId, batchId, filter)))
       },
     ),
@@ -3823,6 +3843,72 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
+      'prepareAttachmentUpload',
+      Effect.fn('assessment.prepareAttachmentUpload.handler')(function* ({ payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const ticket = yield* assessment.prepareAttachmentUpload(
+          principal.tenantId,
+          {
+            batchId: payload.batchId,
+            itemId: payload.itemId,
+            filename: payload.filename,
+            declaredMime: payload.declaredMime,
+            size: BigInt(payload.size),
+          },
+          principal,
+        )
+        return {
+          reservationId: ticket.reservationId,
+          attachmentId: ticket.attachmentId,
+          grant: { driver: ticket.grant.driver, payload: ticket.grant.payload },
+          expiresAt: new Date(ticket.expiresAt).toISOString(),
+        }
+      }),
+    )
+    .handle(
+      'completeAttachmentUpload',
+      Effect.fn('assessment.completeAttachmentUpload.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.completeAttachmentUpload(
+          principal.tenantId,
+          params.reservationId,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'describeAttachment',
+      Effect.fn('assessment.describeAttachment.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.describeAttachment(
+          principal.tenantId,
+          params.attachmentId,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'getAttachmentContent',
+      Effect.fn('assessment.getAttachmentContent.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const opened = yield* assessment.openAttachment(
+          principal.tenantId,
+          params.attachmentId,
+          principal,
+        )
+        if (opened.target.kind === 'redirect') {
+          // a store that signs its own urls has no bytes to hand this
+          // process; the descriptor endpoint already said where to go
+          return yield* new AttachmentUnavailable()
+        }
+        return Stream.fromAsyncIterable(opened.target.body, (error) => error)
+      }),
+    )
+    .handle(
       'listMyEntries',
       Effect.fn('assessment.listMyEntries.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
@@ -3836,7 +3922,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
-        return { entries: page.entries.map(entryDto), nextCursor: page.nextCursor }
+        return {
+          participantId: page.participantId,
+          entries: page.entries.map(entryDto),
+          nextCursor: page.nextCursor,
+        }
       }),
     )
     .handle(
