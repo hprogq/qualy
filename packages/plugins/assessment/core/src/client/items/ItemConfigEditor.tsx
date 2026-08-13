@@ -3,7 +3,9 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { ChevronDownIcon } from 'lucide-react'
 import { Feedback, Field, SidePanel } from '@qualy/ui/admin'
+import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
@@ -390,6 +392,7 @@ export function ItemConfigEditor({
       }
     >
       <div className="flex flex-col gap-5">
+        {actions !== undefined && <div className="flex justify-end">{actions}</div>}
         <Field label={format(m.itemsFieldTitle)}>
           {(id) => (
             <Input
@@ -442,9 +445,12 @@ export function ItemConfigEditor({
           )}
         </Field>
 
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium">{format(m.itemsFormTitle)}</h4>
+        <Section
+          title={format(m.itemsFormTitle)}
+          summary={format(m.itemsSummaryFields, { count: draft.fields.length })}
+          defaultOpen={item === null}
+        >
+          <div className="flex justify-end">
             <Button
               variant="outline"
               size="sm"
@@ -620,10 +626,13 @@ export function ItemConfigEditor({
               </div>
             </div>
           ))}
-        </section>
+        </Section>
 
-        <section className="flex flex-col gap-3">
-          <h4 className="text-sm font-medium">{format(m.itemsScoringTitle)}</h4>
+        <Section
+          title={format(m.itemsScoringTitle)}
+          summary={format(m.itemsSummaryScoring, { value: draft.fixedValue })}
+          defaultOpen={item === null}
+        >
           <Field label={format(m.itemsFixedValue)} hint={format(m.itemsFixedValueHint)}>
             {(id) => (
               <Input
@@ -633,23 +642,29 @@ export function ItemConfigEditor({
               />
             )}
           </Field>
-        </section>
+        </Section>
 
         {(['normal', 'escalation'] as const).map((chain) => {
           const steps = draft.stages.filter((stage) => stage.chain === chain)
           return (
-            <section key={chain} className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium">
-                  {format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
-                </h4>
+            <Section
+              key={chain}
+              title={format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
+              summary={
+                steps.length === 0
+                  ? format(m.itemsSummaryNone)
+                  : format(m.itemsSummarySteps, { count: steps.length })
+              }
+              defaultOpen={item === null && chain === 'normal'}
+            >
+              <div className="flex justify-end">
                 <Button variant="outline" size="sm" onClick={() => addStage(chain)}>
                   {format(m.itemsStageAdd)}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {format(chain === 'normal' ? m.itemsChainHint : m.itemsDoubtHint)}
-              </p>
+              {chain === 'escalation' && (
+                <p className="text-xs text-muted-foreground">{format(m.itemsDoubtHint)}</p>
+              )}
               {steps.length === 0 && chain === 'escalation' && (
                 <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
               )}
@@ -668,7 +683,7 @@ export function ItemConfigEditor({
                   onRemove={() => removeStage(stage.key)}
                 />
               ))}
-            </section>
+            </Section>
           )
         })}
 
@@ -695,6 +710,41 @@ export function ItemConfigEditor({
         )}
       </div>
     </SidePanel>
+  )
+}
+
+/** one part of the question, closed to a summary line until it is needed */
+function Section({
+  title,
+  summary,
+  defaultOpen,
+  children,
+}: {
+  title: string
+  summary: string
+  defaultOpen: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <section className="rounded-lg border">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+        onClick={() => setOpen((previous) => !previous)}
+        aria-expanded={open}
+      >
+        <span className="text-sm font-medium">{title}</span>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {!open && <span className="truncate">{summary}</span>}
+          <ChevronDownIcon
+            aria-hidden
+            className={cn('size-3.5 transition-transform', open && 'rotate-180')}
+          />
+        </span>
+      </button>
+      {open && <div className="flex flex-col gap-3 border-t px-3 py-3">{children}</div>}
+    </section>
   )
 }
 

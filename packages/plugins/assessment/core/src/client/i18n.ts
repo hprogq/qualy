@@ -720,11 +720,11 @@ const i18n = definePluginMessages({
     eventWithdrawn: { id: 'assessment/event/withdrawn', defaultMessage: '{who} withdrew it' },
     eventNoReviewer: {
       id: 'assessment/event/no-reviewer',
-      defaultMessage: 'Nobody can review at this step yet; it is waiting for an appointment',
+      defaultMessage: 'No reviewer at this step yet; waiting',
     },
     eventReviewerFound: {
       id: 'assessment/event/reviewer-found',
-      defaultMessage: 'Somebody can review this step again; it is moving',
+      defaultMessage: 'A reviewer is available again; the review continues',
     },
     eventItemVoided: {
       id: 'assessment/event/item-voided',
@@ -818,11 +818,11 @@ const i18n = definePluginMessages({
     itemsHint: {
       id: 'assessment/items/hint',
       defaultMessage:
-        'Compose the paper: how it is grouped, what each group is worth at most, and how each question is filed and reviewed.',
+        'Arrange this round\u2019s groups and questions, and set how each question is filed and reviewed.',
     },
     itemsStuckTitle: {
       id: 'assessment/items/stuck-title',
-      defaultMessage: 'Waiting on an appointment',
+      defaultMessage: 'These steps have no reviewer',
     },
     itemsStuckRow: {
       id: 'assessment/items/stuck-row',
@@ -831,65 +831,62 @@ const i18n = definePluginMessages({
     },
     itemsStuckHint: {
       id: 'assessment/items/stuck-hint',
-      defaultMessage:
-        'Give somebody one of these roles at that unit and they start moving again by themselves, within a minute.',
-    },
-    itemsOutlineTitle: { id: 'assessment/items/outline-title', defaultMessage: 'The paper' },
-    itemsOutlineEmpty: {
-      id: 'assessment/items/outline-empty',
-      defaultMessage: 'Nothing here yet. Add a group, then put questions in it.',
+      defaultMessage: 'Grant one of these roles at the unit and the submissions continue.',
     },
     itemsOutlineOrphans: {
       id: 'assessment/items/outline-orphans',
-      defaultMessage: 'Whose group is gone',
+      defaultMessage: 'Group deleted',
     },
-    itemsOutlineAddItem: { id: 'assessment/items/outline-add-item', defaultMessage: '+ question' },
-    itemsOutlineAddGroup: { id: 'assessment/items/outline-add-group', defaultMessage: '+ group' },
-    itemsCapChip: { id: 'assessment/items/cap-chip', defaultMessage: 'up to {value}' },
+    itemsOutlineAddItem: {
+      id: 'assessment/items/outline-add-item',
+      defaultMessage: 'Add question',
+    },
+    itemsOutlineAddGroup: {
+      id: 'assessment/items/outline-add-group',
+      defaultMessage: 'Add subgroup',
+    },
+    itemsCapChip: { id: 'assessment/items/cap-chip', defaultMessage: 'up to {value} pts' },
+    itemsScoreChip: { id: 'assessment/items/score-chip', defaultMessage: '{value} pts' },
+    itemsSheetEmpty: {
+      id: 'assessment/items/sheet-empty',
+      defaultMessage: 'No groups yet. Add one, then write questions into it.',
+    },
+    itemsSummaryFields: {
+      id: 'assessment/items/summary-fields',
+      defaultMessage: '{count, plural, one {# field} other {# fields}}',
+    },
+    itemsSummaryScoring: {
+      id: 'assessment/items/summary-scoring',
+      defaultMessage: '{value} pts on approval',
+    },
+    itemsSummarySteps: {
+      id: 'assessment/items/summary-steps',
+      defaultMessage: '{count, plural, one {# step} other {# steps}}',
+    },
+    itemsSummaryNone: { id: 'assessment/items/summary-none', defaultMessage: 'Not set' },
     itemsChipRecorded: { id: 'assessment/items/chip-recorded', defaultMessage: 'recorded' },
     itemsGroupUnnamed: { id: 'assessment/items/group-unnamed', defaultMessage: 'Untitled group' },
-    itemsGroupTopLevel: { id: 'assessment/items/group-top-level', defaultMessage: 'Top level' },
-    itemsGroupInside: { id: 'assessment/items/group-inside', defaultMessage: 'Inside {parent}' },
+    itemsGroupInside: {
+      id: 'assessment/items/group-inside',
+      defaultMessage: 'Inside \u201c{parent}\u201d',
+    },
     itemsGroupNew: { id: 'assessment/items/group-new', defaultMessage: 'New group' },
-    itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'The group' },
+    itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'Group settings' },
     itemsGroupCapHint: {
       id: 'assessment/items/group-cap-hint',
-      defaultMessage: 'At most this much counts from here. Leave empty for no ceiling.',
+      defaultMessage: 'Leave empty for no ceiling.',
     },
     itemsGroupFloorHint: {
       id: 'assessment/items/group-floor-hint',
-      defaultMessage: 'Never counts below this. Leave empty for no floor.',
+      defaultMessage: 'Leave empty for no floor.',
     },
-    itemsPickSomething: {
-      id: 'assessment/items/pick-something',
-      defaultMessage: 'Pick a group or a question on the left',
-    },
-    itemsPickHint: {
-      id: 'assessment/items/pick-hint',
-      defaultMessage: 'What you choose opens here, beside the paper rather than over it.',
-    },
-    itemsGroupsTitle: { id: 'assessment/items/groups-title', defaultMessage: 'Score groups' },
     itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
     itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Cap' },
     itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Floor' },
-    itemsGroupsHint: {
-      id: 'assessment/items/groups-hint',
-      defaultMessage:
-        'Scores add up group by group. A group inside another is counted against its own ceiling first, then against its parent\u2019s.',
-    },
-    itemsGroupsEmpty: {
-      id: 'assessment/items/groups-empty',
-      defaultMessage: 'No groups yet. Questions need one to add up in.',
-    },
-    itemsGroupAddChild: { id: 'assessment/items/group-add-child', defaultMessage: 'Add inside' },
     itemsGroupRemove: { id: 'assessment/items/group-remove', defaultMessage: 'Remove' },
-    itemsGroupItemCount: {
-      id: 'assessment/items/group-item-count',
-      defaultMessage: '{count, plural, one {# question} other {# questions}}',
-    },
     itemsGroupsReasonHint: {
       id: 'assessment/items/groups-reason-hint',
-      defaultMessage: 'Changing a ceiling in a running round changes what counts. Say why.',
+      defaultMessage: 'The round is running; changes need a reason.',
     },
     itemsGroupRefusedHasItems: {
       id: 'assessment/items/group-refused-has-items',
@@ -988,43 +985,35 @@ const i18n = definePluginMessages({
     },
     itemsDoubtHint: {
       id: 'assessment/items/doubt-hint',
-      defaultMessage:
-        'Only reached when a reviewer sends something up. The last step here decides; the ones before it may only advise.',
+      defaultMessage: 'Entered when a reviewer raises a doubt; the last step decides.',
     },
     itemsDoubtEmpty: {
       id: 'assessment/items/doubt-empty',
-      defaultMessage: 'No steps: reviewers cannot send anything up on this question.',
-    },
-    itemsChainHint: {
-      id: 'assessment/items/chain-hint',
-      defaultMessage:
-        'Reviewed step by step, nearest first. Approval at the last step here finishes it.',
+      defaultMessage: 'Without steps, reviewers cannot raise a doubt here.',
     },
     itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add a step' },
     itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Remove step' },
     itemsStageNumber: { id: 'assessment/items/stage-number', defaultMessage: 'Step {n}' },
-    itemsStageKind: { id: 'assessment/items/stage-kind', defaultMessage: 'Who reviews' },
+    itemsStageKind: {
+      id: 'assessment/items/stage-kind',
+      defaultMessage: 'How the reviewer is found',
+    },
     itemsStageRoleAt: {
       id: 'assessment/items/stage-role-at',
-      defaultMessage: 'Roles at a level',
+      defaultMessage: 'At a chosen level',
     },
     itemsStageNearestRole: {
       id: 'assessment/items/stage-nearest-role',
-      defaultMessage: 'The nearest holder of one role',
+      defaultMessage: 'Nearest holder, walking up',
     },
     itemsStageNearestHint: {
       id: 'assessment/items/stage-nearest-hint',
-      defaultMessage:
-        'Walks outward from the participant until somebody holds this role - for roles that cover everything below them, like a counsellor.',
+      defaultMessage: 'Walks up from the participant\u2019s unit to the nearest holder.',
     },
     itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
     itemsTerminalHere: {
       id: 'assessment/items/terminal-here',
-      defaultMessage: 'Approved here ends it',
-    },
-    itemsTerminalMark: {
-      id: 'assessment/items/terminal-mark',
-      defaultMessage: 'End the ordinary flow at this step',
+      defaultMessage: 'Approval here completes the review',
     },
     itemsStageDoubt: {
       id: 'assessment/items/stage-doubt',
@@ -1052,7 +1041,7 @@ const i18n = definePluginMessages({
     reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
     reviewEscalatedHere: {
       id: 'assessment/review/escalated-here',
-      defaultMessage: 'Sent up as a doubt; only the end of the chain decides it.',
+      defaultMessage: 'A doubt is on its way up; the end of the chain decides.',
     },
     itemsReviewTitle: { id: 'assessment/items/review-title', defaultMessage: 'Review' },
     itemsReviewCovered: {
