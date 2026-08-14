@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@qualy/ui/resizable'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -21,6 +22,20 @@ import type { ItemDto } from '../entry/model.ts'
 // Composing a round with the paper always in sight: its structure down the
 // left, the selected part opened for editing on the right. A drag in the
 // tree is persisted here - the tree only says what should now come where.
+
+/** whether two columns fit side by side; below that the rail stacks on top */
+const useTwoColumns = () => {
+  const [wide, setWide] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  )
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px)')
+    const onChange = () => setWide(query.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+  return wide
+}
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
@@ -56,6 +71,7 @@ function Editor({
   })
   const [selection, setSelection] = useState<TreeSelection | null>(null)
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
+  const twoColumns = useTwoColumns()
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -216,6 +232,7 @@ function Editor({
   })
 
   const roots = (allGroups as readonly TreeGroup[]).filter((group) => group.parentGroupId === null)
+  const questionCount = allItems.filter((item) => item.status === 'active').length
   const capSum =
     roots.length > 0 && roots.every((group) => group.cap !== null)
       ? String(roots.reduce((cents, group) => cents + Math.round(Number(group.cap) * 100), 0) / 100)
@@ -227,6 +244,87 @@ function Editor({
     selection?.kind === 'group'
       ? (allGroups.find((group) => group.id === selection.id) ?? null)
       : null
+
+  const rail = (
+    <div className="flex min-h-0 flex-col lg:h-full">
+      <div className="flex items-center gap-2 border-b px-4 py-2.5">
+        <span className="text-sm font-medium">{format(m.itemsTreeTitle)}</span>
+        <span className="flex-1" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-1.5 text-xs text-primary"
+          onClick={() => addGroup.mutate(null)}
+        >
+          {format(m.itemsGroupAdd)}
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        <PaperTree
+          groups={allGroups as readonly TreeGroup[]}
+          items={allItems}
+          selection={selection}
+          onSelect={setSelection}
+          onAddItem={(groupId) => addItem.mutate(groupId)}
+          onAddGroup={(parentId) => addGroup.mutate(parentId)}
+          onMoveItem={(itemId, groupId, orderedItemIds) =>
+            moveItem.mutate({ itemId, groupId, orderedItemIds })
+          }
+          onReorderGroups={(parentId, orderedGroupIds) =>
+            reorderGroups.mutate({ parentId, orderedGroupIds })
+          }
+        />
+      </div>
+      <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
+        {capSum === null
+          ? format(m.itemsTreeSummaryNoCap, { count: questionCount })
+          : format(m.itemsTreeSummary, { count: questionCount, sum: capSum })}
+      </p>
+    </div>
+  )
+
+  const editorArea = (
+    <>
+      {selection === null && (
+        <div className="flex min-h-64 items-center justify-center">
+          <p className="text-sm text-muted-foreground">{format(m.itemsPickTarget)}</p>
+        </div>
+      )}
+
+      {selectedGroup !== null && (
+        <GroupEditor
+          key={selectedGroup.id}
+          batchId={batchId}
+          batchStatus={batchStatus}
+          groups={allGroups as readonly TreeGroup[]}
+          editing={selectedGroup as TreeGroup}
+          onDone={refresh}
+        />
+      )}
+
+      {selectedItem !== null && options.data !== undefined && (
+        <ItemConfigEditor
+          key={selectedItem.id}
+          batchId={batchId}
+          materialRange={materialRange}
+          item={selectedItem}
+          groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
+          options={options.data}
+          actions={
+            <QuestionActions
+              item={selectedItem}
+              batchStatus={batchStatus}
+              busy={restore.isPending || remove.isPending}
+              onVoid={() => setVoiding(selectedItem)}
+              onRestore={() => restore.mutate(selectedItem.id)}
+              onDelete={() => remove.mutate(selectedItem.id)}
+            />
+          }
+          onSaved={refresh}
+        />
+      )}
+    </>
+  )
 
   return (
     <AsyncSection
@@ -240,9 +338,10 @@ function Editor({
         void groups.refetch()
         void items.refetch()
       }}
-      skeleton={<Skeleton className="h-96 w-full" />}
+      skeleton={<Skeleton className="m-6 h-96" />}
+      className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         {(alerts.data?.groups ?? []).length > 0 && (
           <section className="mx-6 mt-4 flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
             <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -264,88 +363,22 @@ function Editor({
           </section>
         )}
 
-        {/* the one line, floor to ceiling: the rail's cell stretches with the
-            row, so the border is the divider the whole way down */}
-        <div className="grid min-h-[calc(100dvh-16rem)] lg:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
-          <aside className="border-b bg-muted/30 lg:border-r lg:border-b-0">
-            <div className="flex flex-col lg:sticky lg:top-0 lg:max-h-dvh">
-              <div className="flex items-center gap-2 border-b px-4 py-3">
-                <span className="text-sm font-medium">{format(m.itemsTreeTitle)}</span>
-                <span className="flex-1" />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-1.5 text-xs text-primary"
-                  onClick={() => addGroup.mutate(null)}
-                >
-                  {format(m.itemsGroupAdd)}
-                </Button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-2">
-                <PaperTree
-                  groups={allGroups as readonly TreeGroup[]}
-                  items={allItems}
-                  selection={selection}
-                  onSelect={setSelection}
-                  onAddItem={(groupId) => addItem.mutate(groupId)}
-                  onAddGroup={(parentId) => addGroup.mutate(parentId)}
-                  onMoveItem={(itemId, groupId, orderedItemIds) =>
-                    moveItem.mutate({ itemId, groupId, orderedItemIds })
-                  }
-                  onReorderGroups={(parentId, orderedGroupIds) =>
-                    reorderGroups.mutate({ parentId, orderedGroupIds })
-                  }
-                />
-              </div>
-              {capSum !== null && (
-                <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
-                  {format(m.itemsCapSum, { sum: capSum })}
-                </p>
-              )}
-            </div>
-          </aside>
-
-          <div className="min-w-0 px-6 py-6 lg:px-8">
-            {selection === null && (
-              <div className="flex min-h-64 items-center justify-center">
-                <p className="text-sm text-muted-foreground">{format(m.itemsPickTarget)}</p>
-              </div>
-            )}
-
-            {selectedGroup !== null && (
-              <GroupEditor
-                key={selectedGroup.id}
-                batchId={batchId}
-                batchStatus={batchStatus}
-                groups={allGroups as readonly TreeGroup[]}
-                editing={selectedGroup as TreeGroup}
-                onDone={refresh}
-              />
-            )}
-
-            {selectedItem !== null && options.data !== undefined && (
-              <ItemConfigEditor
-                key={selectedItem.id}
-                batchId={batchId}
-                materialRange={materialRange}
-                item={selectedItem}
-                groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
-                options={options.data}
-                actions={
-                  <QuestionActions
-                    item={selectedItem}
-                    batchStatus={batchStatus}
-                    busy={restore.isPending || remove.isPending}
-                    onVoid={() => setVoiding(selectedItem)}
-                    onRestore={() => restore.mutate(selectedItem.id)}
-                    onDelete={() => remove.mutate(selectedItem.id)}
-                  />
-                }
-                onSaved={refresh}
-              />
-            )}
+        {twoColumns ? (
+          <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+            <ResizablePanel defaultSize="26" minSize="16" maxSize="44">
+              {rail}
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel defaultSize="74" minSize="40">
+              <div className="h-full overflow-y-auto px-8 py-6">{editorArea}</div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <div className="flex flex-col">
+            <div className="border-b">{rail}</div>
+            <div className="px-4 py-5">{editorArea}</div>
           </div>
-        </div>
+        )}
       </div>
 
       {voiding !== null && (

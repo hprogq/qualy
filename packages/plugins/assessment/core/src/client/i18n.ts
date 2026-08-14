@@ -1064,8 +1064,15 @@ const i18n = definePluginMessages({
       id: 'assessment/items/pick-something',
       defaultMessage: 'Pick a group or question on the left to edit.',
     },
+    itemsTreeSummary: {
+      id: 'assessment/items/tree-summary',
+      defaultMessage: '{count, plural, one {# question} other {# questions}}, {sum} pts in all',
+    },
+    itemsTreeSummaryNoCap: {
+      id: 'assessment/items/tree-summary-no-cap',
+      defaultMessage: '{count, plural, one {# question} other {# questions}}',
+    },
     itemsTreeTitle: { id: 'assessment/items/tree-title', defaultMessage: 'Structure' },
-    itemsPreviewToggle: { id: 'assessment/items/preview-toggle', defaultMessage: 'Preview' },
     itemsPreviewTitle: {
       id: 'assessment/items/preview-title',
       defaultMessage: 'Participant view',
@@ -1093,10 +1100,6 @@ const i18n = definePluginMessages({
     itemsPreviewUpload: {
       id: 'assessment/items/preview-upload',
       defaultMessage: '{count, plural, one {Up to # file} other {Up to # files}}',
-    },
-    itemsCapSum: {
-      id: 'assessment/items/cap-sum',
-      defaultMessage: 'Ceilings add up to {sum}',
     },
     itemsUntitled: { id: 'assessment/items/untitled', defaultMessage: 'Untitled question' },
     itemsDefaultFieldLabel: {

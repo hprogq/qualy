@@ -97,3 +97,7 @@ export const lastDay = (end: string): string => {
   at.setUTCDate(at.getUTCDate() - 1)
   return at.toISOString().slice(0, 10)
 }
+
+/** amounts render without their bookkeeping zeros: 10.0000 reads as 10 */
+export const trimAmount = (value: string): string =>
+  value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value

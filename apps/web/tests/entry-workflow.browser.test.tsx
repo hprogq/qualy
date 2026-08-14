@@ -448,10 +448,11 @@ describe('reading one’s standing', () => {
       [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
     )
 
-    await expect.element(page.getByText('2.00', { exact: true })).toBeVisible()
+    // amounts render without their bookkeeping zeros
+    await expect.element(page.getByText('2', { exact: true })).toBeVisible()
     await expect.element(page.getByText('实时预览')).toBeVisible()
-    await expect.element(page.getByText('3.00', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('3', { exact: true })).toBeVisible()
     await expect.element(page.getByText('分组限额')).toBeVisible()
-    await expect.element(page.getByText('-1.00', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('-1', { exact: true })).toBeVisible()
   })
 })

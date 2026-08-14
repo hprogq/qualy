@@ -7,6 +7,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { trimAmount } from '../entry/model.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 
 // Where one's approved claims put them right now, straight from the one
@@ -49,7 +50,7 @@ function Standing({ batchId }: { batchId: string }) {
               <span className="text-sm text-muted-foreground">{format(m.resultTotal)}</span>
               <Badge variant="outline">{format(m.resultProvisional)}</Badge>
             </div>
-            <span className="text-2xl font-semibold tabular-nums">{data.total}</span>
+            <span className="text-2xl font-semibold tabular-nums">{trimAmount(data.total)}</span>
           </header>
 
           {data.lines.length === 0 && (
@@ -68,10 +69,10 @@ function Standing({ batchId }: { batchId: string }) {
                   <h3 className="text-sm font-medium">{group.name}</h3>
                   <p className="text-sm tabular-nums">
                     <span className="pr-3 text-muted-foreground">
-                      {format(m.resultGroupItems)} {group.itemsTotal}
+                      {format(m.resultGroupItems)} {trimAmount(group.itemsTotal)}
                     </span>
                     <span className="font-medium">
-                      {format(m.resultGroupFinal)} {group.final}
+                      {format(m.resultGroupFinal)} {trimAmount(group.final)}
                     </span>
                   </p>
                 </div>
@@ -96,7 +97,7 @@ function Standing({ batchId }: { batchId: string }) {
                           </span>
                         )}
                       </span>
-                      <span className="tabular-nums">{line.value}</span>
+                      <span className="tabular-nums">{trimAmount(line.value)}</span>
                     </li>
                   ))}
                 </ul>

@@ -14,7 +14,13 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntryHistory } from './EntryHistory.tsx'
-import { entryStatusMessage, entryStatusVariant, type EntryDto, type ItemDto } from './model.ts'
+import {
+  trimAmount,
+  entryStatusMessage,
+  entryStatusVariant,
+  type EntryDto,
+  type ItemDto,
+} from './model.ts'
 
 // One's own filings, question by question. Each card answers the only three
 // things a participant came to ask: what is this question, where does my
@@ -143,8 +149,8 @@ function Body({
                 <h3 className="text-sm font-medium">{group.name}</h3>
                 {score !== undefined && (
                   <p className="text-sm tabular-nums text-muted-foreground">
-                    {score.final}
-                    {score.cap !== null && ` / ${score.cap}`}
+                    {trimAmount(score.final)}
+                    {score.cap !== null && ` / ${trimAmount(score.cap)}`}
                   </p>
                 )}
               </div>
@@ -172,7 +178,7 @@ function Body({
                             {item.status === 'voided'
                               ? format(m.itemVoided)
                               : fixedValue !== undefined
-                                ? format(m.entryCountsFor, { value: fixedValue })
+                                ? format(m.entryCountsFor, { value: trimAmount(fixedValue) })
                                 : null}
                           </p>
                         </div>

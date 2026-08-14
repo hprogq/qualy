@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { ChevronDownIcon } from 'lucide-react'
+import { ChevronDownIcon, FolderPlusIcon, PlusIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { cn } from '@qualy/ui/cn'
 import { assessmentMessages as m } from '../i18n.ts'
-import type { ItemDto } from '../entry/model.ts'
+import { trimAmount, type ItemDto } from '../entry/model.ts'
 
 // The paper's structure, always on screen while one part of it is edited.
 // Sections numbered the way an exam numbers them, each question a line with
@@ -171,7 +172,7 @@ export function PaperTree({
             negative ? 'text-destructive' : 'text-muted-foreground',
           )}
         >
-          {amount === undefined ? '—' : negative ? amount : `+${amount}`}
+          {amount === undefined ? '—' : negative ? trimAmount(amount) : `+${trimAmount(amount)}`}
         </span>
       </button>
     )
@@ -244,32 +245,44 @@ export function PaperTree({
           </span>
           {group.cap !== null && (
             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-              {format(m.itemsCapChip, { value: group.cap })}
+              {format(m.itemsCapChip, { value: trimAmount(group.cap) })}
             </span>
           )}
           <span className="ml-auto flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/heading:opacity-100">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 px-1 text-[11px]"
-              onClick={(event) => {
-                event.stopPropagation()
-                onAddItem(group.id)
-              }}
-            >
-              {format(m.itemsOutlineAddItem)}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 px-1 text-[11px]"
-              onClick={(event) => {
-                event.stopPropagation()
-                onAddGroup(group.id)
-              }}
-            >
-              {format(m.itemsOutlineAddGroup)}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-5 p-0"
+                  aria-label={format(m.itemsOutlineAddItem)}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onAddItem(group.id)
+                  }}
+                >
+                  <PlusIcon aria-hidden className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{format(m.itemsOutlineAddItem)}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-5 p-0"
+                  aria-label={format(m.itemsOutlineAddGroup)}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onAddGroup(group.id)
+                  }}
+                >
+                  <FolderPlusIcon aria-hidden className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{format(m.itemsOutlineAddGroup)}</TooltipContent>
+            </Tooltip>
           </span>
         </div>
         {!isFolded && (own.length > 0 || children.length > 0) && (
@@ -283,19 +296,23 @@ export function PaperTree({
   }
 
   return (
-    <div className="flex flex-col">
-      {groups.length === 0 && orphans.length === 0 && (
-        <p className="px-2 py-8 text-center text-sm text-muted-foreground">
-          {format(m.itemsSheetEmpty)}
-        </p>
-      )}
-      {(childrenOf.get(null) ?? []).map((group) => renderGroup(group, 0))}
-      {orphans.length > 0 && (
-        <section className="pt-4">
-          <p className="px-2 pb-1 text-xs text-muted-foreground">{format(m.itemsOutlineOrphans)}</p>
-          {orphans.map((item) => renderQuestion(item, 0))}
-        </section>
-      )}
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <div className="flex flex-col">
+        {groups.length === 0 && orphans.length === 0 && (
+          <p className="px-2 py-8 text-center text-sm text-muted-foreground">
+            {format(m.itemsSheetEmpty)}
+          </p>
+        )}
+        {(childrenOf.get(null) ?? []).map((group) => renderGroup(group, 0))}
+        {orphans.length > 0 && (
+          <section className="pt-4">
+            <p className="px-2 pb-1 text-xs text-muted-foreground">
+              {format(m.itemsOutlineOrphans)}
+            </p>
+            {orphans.map((item) => renderQuestion(item, 0))}
+          </section>
+        )}
+      </div>
+    </TooltipProvider>
   )
 }

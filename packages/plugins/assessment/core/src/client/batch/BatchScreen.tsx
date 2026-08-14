@@ -45,7 +45,7 @@ export function BatchScreen({
   const batch = detail.data?.batch
 
   return (
-    <>
+    <div className={flush ? 'flex min-h-full flex-col' : undefined}>
       {/* Edge to edge, cutting the content area in two: a band inset inside
           the page's own width is a card pretending to be a header, and it
           reads as one more box among the boxes below it. */}
@@ -62,16 +62,20 @@ export function BatchScreen({
           <PageHeader title={title} description={description} variant="banner" />
         </PageContainer>
       </div>
-      <PageContainer size={size} className={flush ? 'px-0 py-0' : 'space-y-5'}>
+      <PageContainer
+        size={size}
+        className={flush ? 'flex min-h-0 flex-1 flex-col px-0 py-0' : 'space-y-5'}
+      >
         <AsyncSection
           pending={detail.isPending}
           error={detail.isError ? formatError(detail.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void detail.refetch()}
+          {...(flush ? { className: 'flex min-h-0 flex-1 flex-col' } : {})}
         >
           {batch && (
-            <div className={flush ? 'flex flex-col' : 'flex flex-col gap-4'}>
+            <div className={flush ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col gap-4'}>
               {batch.status === 'draft' && (
                 <p
                   className={
@@ -88,6 +92,6 @@ export function BatchScreen({
           )}
         </AsyncSection>
       </PageContainer>
-    </>
+    </div>
   )
 }

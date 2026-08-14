@@ -4243,3 +4243,22 @@ catalogs 7;build、prettier、生产 smoke 全绿。
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` 624 passed / 17 skipped;`pnpm test:browser` 54;
 catalogs 7;build、prettier、生产 smoke 全绿。
+
+### 题目配置页第五轮:可调分栏与细节修整(2026-08-13,按用户逐条反馈)
+
+- **可调整分栏**:@qualy/ui 新增 `resizable`(react-resizable-panels v4,实查其 API 为
+  Group/Panel/Separator,分数字符串为百分比);桌面端左右两栏用 ResizablePanelGroup,拖动中缝
+  调宽,各栏内部独立滚动;窄屏(<1024px,matchMedia hook)退化为上下堆叠。
+- **占满高度**:BatchScreen flush 模式改为 `min-h-full` 弹性链(壳的 main 是确定高度的滚动容器),
+  分栏区 `flex-1`,中缝从上到下贯通。
+- **分数显示去尾零**:新增 `trimAmount`(10.0000 → 10),铺到结构栏封顶与分值、编辑器预览、
+  我的填报分组小计、成绩明细(总分/分组/逐行);浏览器用例断言同步(2.00 → 2)。
+- **结构栏**:去掉底色用默认色;悬停操作换成两个图标(＋题目 / 文件夹＋子分组)带 tooltip,
+  不再挤压分组名;页脚改为「共 X 题,满分 Y 分」(题数计全部启用题目,不计分组;顶层分组未全部
+  设封顶时只显示题数)。
+- **参评人员界面预览**:取消折叠,默认显示;xl 以下堆叠到编辑器下方(窄屏适配)。
+- **填报字段选项卡**:改为手风琴——每个字段折叠为一行(标签、类型、必填星号),点开才出设置,
+  新增字段自动展开;不再默认铺开所有字段的全部设置。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` 624 passed / 17 skipped;`pnpm test:browser` 54;
+catalogs 7;build、prettier、生产 smoke 全绿。
