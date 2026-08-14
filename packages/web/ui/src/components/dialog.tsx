@@ -77,12 +77,18 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 /**
- * The scrollable middle of a dialog. Spacing belongs to DialogContent's own
- * p-4/gap-4 rhythm - this adds nothing visual, only the overflow.
+ * The scrollable middle of a dialog. It continues DialogContent's own gap-4
+ * rhythm one level down (the scroll wrapper takes its children out of the
+ * content grid), and trades a margin for padding at net zero so a focus
+ * ring at the scroll edge has room instead of being clipped.
  */
 function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div data-slot="dialog-body" className={cn('min-h-0 overflow-y-auto', className)} {...props} />
+    <div
+      data-slot="dialog-body"
+      className={cn('-m-1 grid min-h-0 gap-4 overflow-y-auto p-1', className)}
+      {...props}
+    />
   )
 }
 

@@ -214,6 +214,7 @@ function ThemeChoicePicker() {
   return (
     <ToggleGroup
       type="single"
+      spacing={0}
       variant="outline"
       size="sm"
       value={choice}

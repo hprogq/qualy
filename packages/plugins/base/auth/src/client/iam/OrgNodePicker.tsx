@@ -108,6 +108,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
             {context.scope !== undefined && (
               <ToggleGroup
                 type="single"
+                spacing={0}
                 value={context.scope}
                 onValueChange={(next) =>
                   next && context.onScopeChange?.(next as 'self' | 'subtree')

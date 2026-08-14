@@ -150,6 +150,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           </Select>
           <ToggleGroup
             type="single"
+            spacing={0}
             value={scope}
             onValueChange={(next) => next && setScope(next as 'self' | 'subtree')}
             variant="outline"

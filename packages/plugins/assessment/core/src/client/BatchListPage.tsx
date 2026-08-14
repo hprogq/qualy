@@ -146,6 +146,7 @@ export default function BatchListPage() {
               type="single"
               variant="outline"
               size="sm"
+              spacing={0}
               value={statusFilter}
               aria-label={format(m.filterStatus)}
               // a filter group always has an answer: clicking the active item
