@@ -4279,3 +4279,11 @@ catalogs 7;build、prettier、生产 smoke 全绿。
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` 624 passed / 17 skipped;`pnpm test:browser` 54;
 build、prettier、生产 smoke 全绿。
+
+### UI 换装第二轮:radix-nova 预设(2026-08-13,继续试装)
+
+`npx shadcn apply b48` → **radix-nova**(直角些、描边输入框,仍无阴影,Inter 不变)。流程同上一轮:
+toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩展名、theme.css 去重、
+自有导出(LoadingScreen/PageLoading/DialogBody)移植回新文件。单独 commit,revert 即回 Luma。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test:browser` 54;build、prettier、生产 smoke 全绿。
