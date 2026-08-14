@@ -4,6 +4,7 @@ import { PageLink, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
+import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
 import {
   Empty,
@@ -220,7 +221,12 @@ export default function BatchListPage() {
                 </EmptyContent>
               </Empty>
             ) : (
-              <div className="flex flex-col gap-8">
+              <div
+                className={cn(
+                  'flex flex-col gap-8 transition-opacity',
+                  batches.isPlaceholderData && batches.isFetching && 'opacity-50',
+                )}
+              >
                 {/* grouped by what the reader is looking for: what is running
                     now, what is about to, what is still being set up, and
                     what is over - and the last of those needs a line each
