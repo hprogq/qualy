@@ -46,7 +46,7 @@ export function BatchScreen({
       {/* Edge to edge, cutting the content area in two: a band inset inside
           the page's own width is a card pretending to be a header, and it
           reads as one more box among the boxes below it. */}
-      <div className="relative overflow-hidden border-b bg-background">
+      <div className="relative shrink-0 overflow-hidden border-b bg-background">
         {/* Hairlines in one direction, widely spaced, gathered at the far
             corner and gone by the time they reach the words: crossed the
             other way they read as graph paper, and evenly spread they read as
@@ -66,9 +66,10 @@ export function BatchScreen({
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void detail.refetch()}
+          className="flex flex-1 flex-col"
         >
           {batch && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-1 flex-col gap-4">
               {batch.status === 'draft' && (
                 <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
                   {format(m.draftBanner)}

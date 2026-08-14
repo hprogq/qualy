@@ -321,8 +321,9 @@ function Editor({
         void items.refetch()
       }}
       skeleton={<Skeleton className="h-96 w-full" />}
+      className="flex flex-1 flex-col"
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-1 flex-col gap-5">
         {(alerts.data?.groups ?? []).length > 0 && (
           <section className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
             <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -347,13 +348,13 @@ function Editor({
         {/* the paper's structure and the part being written, divided by a
             handle that can be dragged rather than a line drawn down the page */}
         {twoColumns ? (
-          <ResizablePanelGroup orientation="horizontal" className="items-stretch">
+          <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 items-stretch">
             <ResizablePanel defaultSize="28" minSize="18" maxSize="46">
-              {rail}
+              <div className="h-full overflow-y-auto">{rail}</div>
             </ResizablePanel>
             <ResizableHandle withHandle className="mx-4" />
             <ResizablePanel defaultSize="72" minSize="40">
-              {editorArea}
+              <div className="h-full overflow-y-auto">{editorArea}</div>
             </ResizablePanel>
           </ResizablePanelGroup>
         ) : (
