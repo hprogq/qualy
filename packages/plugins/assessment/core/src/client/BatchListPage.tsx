@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { PageLink, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -66,8 +66,8 @@ export default function BatchListPage() {
     setPageIndex(0)
   }, [settledSearch, statusFilter])
 
-  const batches = useQuery(
-    query.assessment.listBatches.queryOptions({
+  const batches = useQuery({
+    ...query.assessment.listBatches.queryOptions({
       query: {
         ...(settledSearch !== '' ? { q: settledSearch } : {}),
         ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
@@ -75,7 +75,11 @@ export default function BatchListPage() {
         limit: String(PAGE_SIZE),
       },
     }),
-  )
+    // switching a filter re-keys the query; without a carried answer the
+    // capabilities blink to false and the draft button jumps out from
+    // under the pointer that is about to press it
+    placeholderData: keepPreviousData,
+  })
 
   // said by the server, not guessed here: a control the api would refuse is
   // not drawn, and this reader's own list is still theirs to read
