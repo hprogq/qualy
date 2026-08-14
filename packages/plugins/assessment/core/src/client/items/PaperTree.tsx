@@ -26,9 +26,25 @@ export interface TreeGroup {
 export type TreeSelection =
   | { kind: 'group'; id: string }
   | { kind: 'item'; id: string }
-  /** composed in the editor and not yet saved, so it is nowhere in the tree */
-  | { kind: 'new-group'; parentId: string | null }
-  | { kind: 'new-item'; groupId: string }
+  /** one being composed; it stands in the tree before it stands in the round */
+  | { kind: 'draft'; localId: string }
+
+/**
+ * Something composed and not yet saved.
+ *
+ * It is drawn where it will land, so pressing add twice reads as two
+ * questions waiting rather than as a button that did nothing the second
+ * time. The title follows what is being typed next door.
+ */
+export interface TreeDraft {
+  localId: string
+  kind: 'item' | 'group'
+  /** the group an unsaved question will file under */
+  groupId?: string
+  /** the parent an unsaved group will sit inside; null is top level */
+  parentId?: string | null
+  title: string
+}
 
 /** a drop about to happen, so the row can draw the line where it would land */
 interface DropMark {
@@ -45,6 +61,7 @@ const amountOf = (item: ItemDto): string | undefined =>
 export function PaperTree({
   groups,
   items,
+  drafts,
   selection,
   onSelect,
   onAddItem,
@@ -54,9 +71,10 @@ export function PaperTree({
 }: {
   groups: readonly TreeGroup[]
   items: readonly ItemDto[]
+  drafts: readonly TreeDraft[]
   selection: TreeSelection | null
   onSelect: (next: TreeSelection) => void
-  /** pressing add creates the thing at once; the page owns that write */
+  /** pressing add composes one; the page owns the draft it stands for */
   onAddItem: (groupId: string) => void
   /** absent while the tree's version is unknown, so no write is offered yet */
   onAddGroup: ((parentId: string | null) => void) | undefined
@@ -189,9 +207,39 @@ export function PaperTree({
     )
   }
 
+  const renderDraft = (draft: TreeDraft, depth: number) => {
+    const selected = selection?.kind === 'draft' && selection.localId === draft.localId
+    return (
+      <button
+        key={draft.localId}
+        type="button"
+        onClick={() => onSelect({ kind: 'draft', localId: draft.localId })}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-md border border-dashed py-1.5 pr-2 text-left text-sm transition-colors',
+          selected
+            ? 'border-primary/50 bg-background shadow-sm'
+            : 'border-transparent hover:bg-accent/50',
+        )}
+        style={{ paddingLeft: `${depth * 0.9 + (draft.kind === 'item' ? 1.6 : 0.25)}rem` }}
+      >
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+          {draft.title.trim() === ''
+            ? format(draft.kind === 'item' ? m.itemsUntitled : m.itemsGroupUnnamed)
+            : draft.title}
+        </span>
+        <span className="shrink-0 rounded bg-muted px-1 py-px text-[11px] text-muted-foreground">
+          {format(m.itemsStatusComposing)}
+        </span>
+      </button>
+    )
+  }
+
   const renderGroup = (group: TreeGroup, depth: number) => {
     const own = itemsOf(group.id)
     const children = childrenOf.get(group.id) ?? []
+    const inside = drafts.filter(
+      (draft) => (draft.kind === 'item' ? draft.groupId : draft.parentId) === group.id,
+    )
     const selected = selection?.kind === 'group' && selection.id === group.id
     const marked = drop?.key === `g:${group.id}` ? drop.edge : null
     const isFolded = folded.has(group.id)
@@ -296,10 +344,16 @@ export function PaperTree({
             </Tooltip>
           </span>
         </div>
-        {!isFolded && (own.length > 0 || children.length > 0) && (
+        {!isFolded && (own.length > 0 || children.length > 0 || inside.length > 0) && (
           <div>
             {own.map((item) => renderQuestion(item, depth))}
+            {inside
+              .filter((draft) => draft.kind === 'item')
+              .map((draft) => renderDraft(draft, depth))}
             {children.map((child) => renderGroup(child, depth + 1))}
+            {inside
+              .filter((draft) => draft.kind === 'group')
+              .map((draft) => renderDraft(draft, depth + 1))}
           </div>
         )}
       </section>
@@ -309,12 +363,15 @@ export function PaperTree({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col">
-        {groups.length === 0 && orphans.length === 0 && (
+        {groups.length === 0 && orphans.length === 0 && drafts.length === 0 && (
           <p className="px-2 py-8 text-center text-sm text-muted-foreground">
             {format(m.itemsSheetEmpty)}
           </p>
         )}
         {(childrenOf.get(null) ?? []).map((group) => renderGroup(group, 0))}
+        {drafts
+          .filter((draft) => draft.kind === 'group' && (draft.parentId ?? null) === null)
+          .map((draft) => renderDraft(draft, 0))}
         {orphans.length > 0 && (
           <section className="pt-4">
             <p className="px-2 pb-1 text-xs text-muted-foreground">

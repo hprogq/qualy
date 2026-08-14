@@ -968,6 +968,7 @@ const i18n = definePluginMessages({
     },
     itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
     itemsPublish: { id: 'assessment/items/publish', defaultMessage: 'Publish' },
+    itemsStatusComposing: { id: 'assessment/items/status-composing', defaultMessage: 'Draft' },
     itemsStatusDraft: { id: 'assessment/items/status-draft', defaultMessage: 'Unpublished' },
     itemsPublished: { id: 'assessment/items/published', defaultMessage: 'Published.' },
     itemsFieldAdd: { id: 'assessment/items/form-add', defaultMessage: 'Add a field' },

@@ -16,7 +16,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { GroupEditor } from './GroupEditor.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
-import { PaperTree, type TreeGroup, type TreeSelection } from './PaperTree.tsx'
+import { PaperTree, type TreeDraft, type TreeGroup, type TreeSelection } from './PaperTree.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import type { ItemDto } from '../entry/model.ts'
@@ -24,6 +24,9 @@ import type { ItemDto } from '../entry/model.ts'
 // Composing a round with the paper always in sight: its structure down the
 // left, the selected part opened for editing on the right. A drag in the
 // tree is persisted here - the tree only says what should now come where.
+
+/** a counter, so two things composed in one session never share a handle */
+let composed = 0
 
 /** whether two columns fit side by side; below that the rail stacks on top */
 const useTwoColumns = () => {
@@ -72,6 +75,9 @@ function Editor({
     refetchInterval: 60_000,
   })
   const [selection, setSelection] = useState<TreeSelection | null>(null)
+  // what has been composed and not yet saved. Each press of add puts one more
+  // here, so the tree shows what is waiting rather than swallowing the press.
+  const [drafts, setDrafts] = useState<readonly TreeDraft[]>([])
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
   // a drop that crosses groups on a running round waits here for its sentence
   const [pendingMove, setPendingMove] = useState<{
@@ -80,6 +86,32 @@ function Editor({
     orderedItemIds: readonly string[]
   } | null>(null)
   const twoColumns = useTwoColumns()
+
+  // one more thing being composed, selected so it can be written straight away
+  const compose = (
+    where: { kind: 'item'; groupId: string } | { kind: 'group'; parentId: string | null },
+  ) => {
+    const localId = `local-${(composed += 1)}`
+    setDrafts((current) => [
+      ...current,
+      where.kind === 'item'
+        ? { localId, kind: 'item', groupId: where.groupId, title: '' }
+        : { localId, kind: 'group', parentId: where.parentId, title: '' },
+    ])
+    setSelection({ kind: 'draft', localId })
+  }
+
+  const closeDraft = (localId: string) => {
+    setDrafts((current) => current.filter((draft) => draft.localId !== localId))
+    setSelection((current) =>
+      current?.kind === 'draft' && current.localId === localId ? null : current,
+    )
+  }
+
+  const titleDraft = (localId: string, title: string) =>
+    setDrafts((current) =>
+      current.map((draft) => (draft.localId === localId ? { ...draft, title } : draft)),
+    )
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -206,7 +238,7 @@ function Editor({
           variant="ghost"
           size="sm"
           className="h-6 px-1.5 text-xs text-primary"
-          onClick={() => setSelection({ kind: 'new-group', parentId: null })}
+          onClick={() => compose({ kind: 'group', parentId: null })}
         >
           {format(m.itemsGroupAdd)}
         </Button>
@@ -215,15 +247,14 @@ function Editor({
         <PaperTree
           groups={allGroups as readonly TreeGroup[]}
           items={allItems}
+          drafts={drafts}
           selection={selection}
           onSelect={setSelection}
-          onAddItem={(groupId) => setSelection({ kind: 'new-item', groupId })}
+          onAddItem={(groupId) => compose({ kind: 'item', groupId })}
           // the tree cannot be written until its version has arrived: asking
           // the api to accept a guessed one is a conflict nobody can act on
           onAddGroup={
-            groupsVersion === null
-              ? undefined
-              : (parentId) => setSelection({ kind: 'new-group', parentId })
+            groupsVersion === null ? undefined : (parentId) => compose({ kind: 'group', parentId })
           }
           onMoveItem={(itemId, groupId, orderedItemIds) => {
             const moved = allItems.find((item) => item.id === itemId)
@@ -247,8 +278,10 @@ function Editor({
     </div>
   )
 
-  const composingGroup = selection?.kind === 'new-group'
-  const composingItem = selection?.kind === 'new-item'
+  const composing =
+    selection?.kind === 'draft'
+      ? (drafts.find((draft) => draft.localId === selection.localId) ?? null)
+      : null
 
   const editorArea = (
     <>
@@ -258,33 +291,40 @@ function Editor({
         </div>
       )}
 
-      {(selectedGroup !== null || composingGroup) && (
+      {(selectedGroup !== null || composing?.kind === 'group') && (
         <GroupEditor
-          key={selectedGroup?.id ?? 'new-group'}
+          key={selectedGroup?.id ?? composing?.localId ?? 'group'}
           batchId={batchId}
           batchStatus={batchStatus}
           groups={allGroups as readonly TreeGroup[]}
           version={groupsVersion ?? 0}
           editing={selectedGroup as TreeGroup | null}
-          parentId={selection?.kind === 'new-group' ? selection.parentId : null}
-          onCancel={() => setSelection(null)}
+          parentId={composing?.kind === 'group' ? (composing.parentId ?? null) : null}
+          onTitleChange={
+            composing === null ? undefined : (title) => titleDraft(composing.localId, title)
+          }
+          onCancel={() => (composing === null ? setSelection(null) : closeDraft(composing.localId))}
           onDone={(groupId) => {
+            if (composing !== null) closeDraft(composing.localId)
             setSelection(groupId === null ? null : { kind: 'group', id: groupId })
             refresh()
           }}
         />
       )}
 
-      {(selectedItem !== null || composingItem) && options.data !== undefined && (
+      {(selectedItem !== null || composing?.kind === 'item') && options.data !== undefined && (
         <ItemConfigEditor
-          key={selectedItem?.id ?? 'new-item'}
+          key={selectedItem?.id ?? composing?.localId ?? 'item'}
           batchId={batchId}
           batchStatus={batchStatus}
           materialRange={materialRange}
           item={selectedItem}
           groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
-          defaultGroupId={selection?.kind === 'new-item' ? selection.groupId : undefined}
+          defaultGroupId={composing?.kind === 'item' ? composing.groupId : undefined}
           options={options.data}
+          onTitleChange={
+            composing === null ? undefined : (title) => titleDraft(composing.localId, title)
+          }
           actions={
             selectedItem === null ? undefined : (
               <QuestionActions
@@ -298,8 +338,9 @@ function Editor({
               />
             )
           }
-          onCancel={() => setSelection(null)}
+          onCancel={() => (composing === null ? setSelection(null) : closeDraft(composing.localId))}
           onSaved={(itemId) => {
+            if (composing !== null) closeDraft(composing.localId)
             setSelection({ kind: 'item', id: itemId })
             refresh()
           }}

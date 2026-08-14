@@ -187,6 +187,7 @@ export default {
   'assessment/items/reason-hint': '批次进行中，本次改动会影响计分口径，相关人员都会看到这句话。',
   'assessment/items/new': '新建题目',
   'assessment/items/publish': '发布',
+  'assessment/items/status-composing': '草稿',
   'assessment/items/status-draft': '未发布',
   'assessment/items/published': '已发布。',
   'assessment/items/field-title': '标题',

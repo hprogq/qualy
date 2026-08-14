@@ -229,6 +229,7 @@ export function ItemConfigEditor({
   defaultGroupId,
   options,
   actions,
+  onTitleChange,
   onCancel,
   onSaved,
 }: {
@@ -244,6 +245,8 @@ export function ItemConfigEditor({
   options: ItemOptions
   /** what can be done to the question as a whole, drawn beside its title */
   actions?: React.ReactNode
+  /** told the name as it is typed, so a row standing for this reads true */
+  onTitleChange?: ((title: string) => void) | undefined
   onCancel: () => void
   onSaved: (itemId: string) => void
 }) {
@@ -443,7 +446,10 @@ export function ItemConfigEditor({
                     id={id}
                     value={draft.title}
                     placeholder={format(m.itemsTitlePlaceholder)}
-                    onChange={(event) => patch({ title: event.target.value })}
+                    onChange={(event) => {
+                      patch({ title: event.target.value })
+                      onTitleChange?.(event.target.value)
+                    }}
                   />
                 )}
               </Field>

@@ -25,6 +25,7 @@ export function GroupEditor({
   version,
   editing,
   parentId,
+  onTitleChange,
   onCancel,
   onDone,
 }: {
@@ -37,6 +38,8 @@ export function GroupEditor({
   editing: TreeGroup | null
   /** where a new group goes; ignored when editing */
   parentId: string | null
+  /** told the name as it is typed, so a row standing for this reads true */
+  onTitleChange?: ((title: string) => void) | undefined
   onCancel: () => void
   onDone: (groupId: string | null) => void
 }) {
@@ -155,7 +158,16 @@ export function GroupEditor({
 
       <div className="flex max-w-md flex-col gap-4">
         <Field label={format(m.itemsGroupName)}>
-          {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
+          {(id) => (
+            <Input
+              id={id}
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value)
+                onTitleChange?.(event.target.value)
+              }}
+            />
+          )}
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={format(m.itemsGroupCap)} hint={format(m.itemsGroupCapHint)}>
