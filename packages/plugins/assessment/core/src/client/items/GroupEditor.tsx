@@ -22,30 +22,26 @@ export function GroupEditor({
   batchStatus,
   groups,
   editing,
-  parentId,
   onDone,
 }: {
   batchId: string
   batchStatus: string
   groups: readonly TreeGroup[]
-  /** the group being edited, or null when composing a new one */
-  editing: TreeGroup | null
-  /** where a new group goes; ignored when editing */
-  parentId: string | null
+  editing: TreeGroup
   onDone: () => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
-  const [name, setName] = useState(editing?.name ?? '')
-  const [cap, setCap] = useState(editing?.cap ?? '')
-  const [floor, setFloor] = useState(editing?.floor ?? '')
+  const [name, setName] = useState(editing.name)
+  const [cap, setCap] = useState(editing.cap ?? '')
+  const [floor, setFloor] = useState(editing.floor ?? '')
   const [reason, setReason] = useState('')
   const [refusals, setRefusals] = useState<readonly { reason: string; groupId: string | null }[]>(
     [],
   )
 
-  const parent = groups.find((group) => group.id === (editing?.parentGroupId ?? parentId)) ?? null
+  const parent = groups.find((group) => group.id === editing.parentGroupId) ?? null
 
   const specOf = (group: TreeGroup) => ({
     id: group.id,
@@ -69,14 +65,13 @@ export function GroupEditor({
         floor: floor.trim() === '' ? null : floor.trim(),
       }
       const edited = groups.map((group) =>
-        group.id === editing?.id ? { ...specOf(group), ...values } : specOf(group),
+        group.id === editing.id ? { ...specOf(group), ...values } : specOf(group),
       )
-      const created = editing === null ? [{ parentGroupId: parentId, ...values }] : []
       return run(
         api.assessment.replaceScoreGroups({
           params: { batchId },
           payload: {
-            groups: [...edited, ...created],
+            groups: edited,
             ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
           },
         }),
@@ -96,7 +91,7 @@ export function GroupEditor({
         api.assessment.replaceScoreGroups({
           params: { batchId },
           payload: {
-            groups: groups.filter((group) => group.id !== editing?.id).map(specOf),
+            groups: groups.filter((group) => group.id !== editing.id).map(specOf),
             ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
           },
         }),
@@ -118,20 +113,18 @@ export function GroupEditor({
             {parent !== null && ` · ${format(m.itemsGroupInside, { parent: parent.name })}`}
           </p>
           <h3 className="truncate text-lg font-semibold">
-            {name.trim() === '' ? format(m.itemsGroupNew) : name}
+            {name.trim() === '' ? format(m.itemsGroupUnnamed) : name}
           </h3>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {editing !== null && (
-            <Button
-              variant="ghost"
-              className="text-destructive"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate()}
-            >
-              {format(m.itemsGroupRemove)}
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            className="text-destructive"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            {format(m.itemsGroupRemove)}
+          </Button>
           <Button disabled={save.isPending || name.trim() === ''} onClick={() => save.mutate()}>
             {format(m.entrySave)}
           </Button>

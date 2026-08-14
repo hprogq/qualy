@@ -20,12 +20,15 @@ export function BatchScreen({
   title,
   description,
   size = 'default',
+  flush = false,
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
   title: string
   description?: string
   size?: 'default' | 'wide' | 'full'
+  /** edge to edge: the section draws its own columns across the whole width */
+  flush?: boolean
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
 }) {
@@ -59,7 +62,7 @@ export function BatchScreen({
           <PageHeader title={title} description={description} variant="banner" />
         </PageContainer>
       </div>
-      <PageContainer size={size} className="space-y-5">
+      <PageContainer size={size} className={flush ? 'px-0 py-0' : 'space-y-5'}>
         <AsyncSection
           pending={detail.isPending}
           error={detail.isError ? formatError(detail.error) : null}
@@ -68,9 +71,15 @@ export function BatchScreen({
           onRetry={() => void detail.refetch()}
         >
           {batch && (
-            <div className="flex flex-col gap-4">
+            <div className={flush ? 'flex flex-col' : 'flex flex-col gap-4'}>
               {batch.status === 'draft' && (
-                <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                <p
+                  className={
+                    flush
+                      ? 'mx-6 mt-4 rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground'
+                      : 'rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground'
+                  }
+                >
                   {format(m.draftBanner)}
                 </p>
               )}

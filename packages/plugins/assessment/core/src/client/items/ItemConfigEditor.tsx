@@ -2,7 +2,14 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, XIcon } from 'lucide-react'
+import {
+  ArrowRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PanelRightIcon,
+  PlusIcon,
+  XIcon,
+} from 'lucide-react'
 import { Feedback, Field } from '@qualy/ui/admin'
 import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
@@ -102,12 +109,8 @@ const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): Stage
 })
 
 /** the stored configuration back into the pen; a shape this pen cannot hold starts fresh */
-const draftOf = (
-  item: ItemDto | null,
-  groups: readonly { id: string }[],
-  options: ItemOptions,
-): Draft => {
-  const revision = item?.currentRevision ?? null
+const draftOf = (item: ItemDto, groups: readonly { id: string }[], options: ItemOptions): Draft => {
+  const revision = item.currentRevision
   const config = revision as {
     entrySource?: 'student' | 'administrative'
     formConfig?: unknown
@@ -170,9 +173,9 @@ const draftOf = (
         }
   })
   return {
-    title: item?.title ?? '',
-    scoreGroupId: item?.scoreGroupId ?? groups[0]?.id ?? '',
-    maxEntries: item === null ? '1' : item.maxEntries === null ? '' : String(item.maxEntries),
+    title: item.title,
+    scoreGroupId: item.scoreGroupId !== '' ? item.scoreGroupId : (groups[0]?.id ?? ''),
+    maxEntries: item.maxEntries === null ? '' : String(item.maxEntries),
     entrySource: config?.entrySource ?? 'student',
     description: String((config?.displayConfig as { description?: unknown })?.description ?? ''),
     fields: fields.length > 0 ? fields : [blankField('f1')],
@@ -244,7 +247,6 @@ export function ItemConfigEditor({
   materialRange,
   item,
   groups,
-  defaultGroupId,
   options,
   actions,
   onSaved,
@@ -252,10 +254,8 @@ export function ItemConfigEditor({
   batchId: string
   /** the round's own window; a date field can only narrow it, never widen it */
   materialRange: { start: string; end: string }
-  item: ItemDto | null
+  item: ItemDto
   groups: readonly { id: string; name: string }[]
-  /** the group a new question was opened inside */
-  defaultGroupId?: string | undefined
   options: ItemOptions
   /** what can be done to the question as a whole, drawn beside its title */
   actions?: React.ReactNode
@@ -264,15 +264,11 @@ export function ItemConfigEditor({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
-  const [draft, setDraft] = useState<Draft>(() => {
-    const seeded = draftOf(item, groups, options)
-    return defaultGroupId === undefined ? seeded : { ...seeded, scoreGroupId: defaultGroupId }
-  })
+  const [draft, setDraft] = useState<Draft>(() => draftOf(item, groups, options))
   const [problem, setProblem] = useState<string | null>(null)
   const [issues, setIssues] = useState<readonly { path: string; reason: string }[]>([])
-  const [expandedStage, setExpandedStage] = useState<string | null>(
-    item === null ? (draft.stages[0]?.key ?? null) : null,
-  )
+  const [expandedStage, setExpandedStage] = useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const patch = (next: Partial<Draft>) => setDraft((previous) => ({ ...previous, ...next }))
   const patchField = (index: number, next: Partial<FieldDraft>) =>
@@ -295,20 +291,6 @@ export function ItemConfigEditor({
       const config = configOf(draft)
       const maxEntries =
         draft.maxEntries.trim() === '' ? null : Math.max(1, Number(draft.maxEntries))
-      if (item === null) {
-        return run(
-          api.assessment.createItem({
-            params: { batchId },
-            payload: {
-              itemType: 'evidence',
-              title: draft.title.trim(),
-              scoreGroupId: draft.scoreGroupId,
-              maxEntries,
-              config: config as never,
-            },
-          }),
-        )
-      }
       return run(
         api.assessment.updateItem({
           params: { itemId: item.id },
@@ -389,119 +371,133 @@ export function ItemConfigEditor({
     draft.fields.every((field) => field.label.trim() !== '')
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">{format(m.itemsEditTitle)}</p>
-          <h3 className="truncate text-lg font-semibold">
-            {draft.title.trim() === '' ? format(m.itemsNew) : draft.title}
-          </h3>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {actions}
-          <Button disabled={save.isPending || !ready} onClick={() => save.mutate()}>
-            {format(m.entrySave)}
-          </Button>
-        </div>
-      </header>
-
-      <Feedback message={problem} />
-      {issues.length > 0 && (
-        <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
-          {issues.map((issue, index) => (
-            <li key={index}>
-              {issue.path}: {issue.reason}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <Tabs defaultValue="basics">
-        <TabsList variant="line" className="w-full justify-start border-b">
-          <TabsTrigger value="basics" className="flex-none">
-            {format(m.itemsTabBasics)}
-          </TabsTrigger>
-          <TabsTrigger value="fields" className="flex-none">
-            {format(m.itemsTabFields)}
-          </TabsTrigger>
-          <TabsTrigger value="scoring" className="flex-none">
-            {format(m.itemsTabScoring)}
-          </TabsTrigger>
-          <TabsTrigger value="review" className="flex-none">
-            {format(m.itemsTabReview)}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="basics" className="pt-3">
-          <div className="flex max-w-2xl flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={format(m.itemsFieldTitle)}>
-                {(id) => (
-                  <Input
-                    id={id}
-                    value={draft.title}
-                    onChange={(event) => patch({ title: event.target.value })}
-                  />
-                )}
-              </Field>
-              <Field label={format(m.itemsFieldMax)}>
-                {(id) => (
-                  <Input
-                    id={id}
-                    type="number"
-                    min={1}
-                    value={draft.maxEntries}
-                    placeholder={format(m.itemsFieldMaxUnlimited)}
-                    onChange={(event) => patch({ maxEntries: event.target.value })}
-                  />
-                )}
-              </Field>
-              <Field label={format(m.itemsFieldGroup)}>
-                {(id) => (
-                  <NativeSelect
-                    id={id}
-                    value={draft.scoreGroupId}
-                    onChange={(event) => patch({ scoreGroupId: event.target.value })}
-                  >
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                )}
-              </Field>
-              <Field label={format(m.itemsFieldEntrySource)}>
-                {(id) => (
-                  <NativeSelect
-                    id={id}
-                    value={draft.entrySource}
-                    onChange={(event) =>
-                      patch({ entrySource: event.target.value as Draft['entrySource'] })
-                    }
-                  >
-                    <option value="student">{format(m.itemsEntrySourceStudent)}</option>
-                    <option value="administrative">
-                      {format(m.itemsEntrySourceAdministrative)}
-                    </option>
-                  </NativeSelect>
-                )}
-              </Field>
-            </div>
-            <Field
-              label={format(m.itemsFieldDescription)}
-              hint={format(m.itemsFieldDescriptionHint)}
+    <div className={previewOpen ? 'xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(19rem,22rem)]' : ''}>
+      <div
+        className={
+          previewOpen ? 'flex min-w-0 flex-col gap-4 xl:pr-8' : 'flex min-w-0 flex-col gap-4'
+        }
+      >
+        <header className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">{format(m.itemsEditTitle)}</p>
+            <h3 className="truncate text-lg font-semibold">
+              {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
+            </h3>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Button
+              variant={previewOpen ? 'secondary' : 'ghost'}
+              size="sm"
+              className="hidden xl:inline-flex"
+              aria-expanded={previewOpen}
+              onClick={() => setPreviewOpen((open) => !open)}
             >
-              {(id) => (
-                <Textarea
-                  id={id}
-                  rows={3}
-                  value={draft.description}
-                  onChange={(event) => patch({ description: event.target.value })}
-                />
-              )}
-            </Field>
-            {item !== null && (
+              <PanelRightIcon aria-hidden className="size-3.5" />
+              {format(m.itemsPreviewToggle)}
+            </Button>
+            {actions}
+            <Button disabled={save.isPending || !ready} onClick={() => save.mutate()}>
+              {format(m.entrySave)}
+            </Button>
+          </div>
+        </header>
+
+        <Feedback message={problem} />
+        {issues.length > 0 && (
+          <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+            {issues.map((issue, index) => (
+              <li key={index}>
+                {issue.path}: {issue.reason}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <Tabs defaultValue="basics">
+          <TabsList variant="line" className="w-full justify-start border-b">
+            <TabsTrigger value="basics" className="flex-none">
+              {format(m.itemsTabBasics)}
+            </TabsTrigger>
+            <TabsTrigger value="fields" className="flex-none">
+              {format(m.itemsTabFields)}
+            </TabsTrigger>
+            <TabsTrigger value="scoring" className="flex-none">
+              {format(m.itemsTabScoring)}
+            </TabsTrigger>
+            <TabsTrigger value="review" className="flex-none">
+              {format(m.itemsTabReview)}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="basics" className="pt-3">
+            <div className="flex max-w-2xl flex-col gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={format(m.itemsFieldTitle)}>
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={draft.title}
+                      onChange={(event) => patch({ title: event.target.value })}
+                    />
+                  )}
+                </Field>
+                <Field label={format(m.itemsFieldMax)}>
+                  {(id) => (
+                    <Input
+                      id={id}
+                      type="number"
+                      min={1}
+                      value={draft.maxEntries}
+                      placeholder={format(m.itemsFieldMaxUnlimited)}
+                      onChange={(event) => patch({ maxEntries: event.target.value })}
+                    />
+                  )}
+                </Field>
+                <Field label={format(m.itemsFieldGroup)}>
+                  {(id) => (
+                    <NativeSelect
+                      id={id}
+                      value={draft.scoreGroupId}
+                      onChange={(event) => patch({ scoreGroupId: event.target.value })}
+                    >
+                      {groups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  )}
+                </Field>
+                <Field label={format(m.itemsFieldEntrySource)}>
+                  {(id) => (
+                    <NativeSelect
+                      id={id}
+                      value={draft.entrySource}
+                      onChange={(event) =>
+                        patch({ entrySource: event.target.value as Draft['entrySource'] })
+                      }
+                    >
+                      <option value="student">{format(m.itemsEntrySourceStudent)}</option>
+                      <option value="administrative">
+                        {format(m.itemsEntrySourceAdministrative)}
+                      </option>
+                    </NativeSelect>
+                  )}
+                </Field>
+              </div>
+              <Field
+                label={format(m.itemsFieldDescription)}
+                hint={format(m.itemsFieldDescriptionHint)}
+              >
+                {(id) => (
+                  <Textarea
+                    id={id}
+                    rows={3}
+                    value={draft.description}
+                    onChange={(event) => patch({ description: event.target.value })}
+                  />
+                )}
+              </Field>
               <Field label={format(m.itemsFieldReason)}>
                 {(id) => (
                   <Input
@@ -511,284 +507,376 @@ export function ItemConfigEditor({
                   />
                 )}
               </Field>
-            )}
-          </div>
-        </TabsContent>
+            </div>
+          </TabsContent>
 
-        <TabsContent value="fields" className="pt-3">
-          <div className="flex max-w-2xl flex-col gap-3">
-            {draft.fields.length === 0 && (
-              <p className="text-sm text-muted-foreground">{format(m.itemsFormEmpty)}</p>
-            )}
-            {draft.fields.map((field, index) => (
-              <div key={field.key} className="flex flex-col gap-3 rounded-lg border p-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={format(m.itemsFieldLabel)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        value={field.label}
-                        onChange={(event) => patchField(index, { label: event.target.value })}
-                      />
-                    )}
-                  </Field>
-                  <Field label={format(m.itemsFieldType)}>
-                    {(id) => (
-                      <NativeSelect
-                        id={id}
-                        value={field.type}
-                        onChange={(event) =>
-                          patchField(index, { type: event.target.value as FieldDraft['type'] })
-                        }
-                      >
-                        <option value="text">{format(m.itemsTypeText)}</option>
-                        <option value="date">{format(m.itemsTypeDate)}</option>
-                        <option value="attachment">{format(m.itemsTypeAttachment)}</option>
-                      </NativeSelect>
-                    )}
-                  </Field>
-                </div>
-                {field.type === 'text' && (
-                  <Field label={format(m.itemsFieldMaxLength)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        type="number"
-                        min={1}
-                        value={field.maxLength}
-                        onChange={(event) => patchField(index, { maxLength: event.target.value })}
-                      />
-                    )}
-                  </Field>
-                )}
-                {field.type === 'date' && (
-                  <div className="flex flex-col gap-1">
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label={format(m.itemsFieldMinDate)}>
-                        {(id) => (
-                          <Input
-                            id={id}
-                            type="date"
-                            value={field.min}
-                            min={materialRange.start}
-                            max={lastDay(materialRange.end)}
-                            onChange={(event) => patchField(index, { min: event.target.value })}
-                          />
-                        )}
-                      </Field>
-                      <Field label={format(m.itemsFieldMaxDate)}>
-                        {(id) => (
-                          <Input
-                            id={id}
-                            type="date"
-                            value={field.max}
-                            min={materialRange.start}
-                            max={lastDay(materialRange.end)}
-                            onChange={(event) => patchField(index, { max: event.target.value })}
-                          />
-                        )}
-                      </Field>
-                    </div>
-                    {/* the round decides the outer window; a bound outside it
-                        changes nothing, and silence about that is how a date
-                        the form seemed to accept came back refused */}
-                    <p className="text-xs text-muted-foreground">
-                      {format(m.itemsDateWindow, {
-                        from: materialRange.start,
-                        until: lastDay(materialRange.end),
-                      })}
-                    </p>
-                  </div>
-                )}
-                {field.type === 'attachment' && (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label={format(m.itemsFieldMaxCount)}>
-                        {(id) => (
-                          <Input
-                            id={id}
-                            type="number"
-                            min={1}
-                            value={field.maxCount}
-                            onChange={(event) =>
-                              patchField(index, { maxCount: event.target.value })
-                            }
-                          />
-                        )}
-                      </Field>
-                      <Field label={format(m.itemsFieldMaxSize)}>
-                        {(id) => (
-                          <Input
-                            id={id}
-                            type="number"
-                            min={1}
-                            value={field.maxSizeMb}
-                            onChange={(event) =>
-                              patchField(index, { maxSizeMb: event.target.value })
-                            }
-                          />
-                        )}
-                      </Field>
-                    </div>
-                    <Field label={format(m.itemsFieldAccept)} hint={format(m.itemsFieldAcceptHint)}>
+          <TabsContent value="fields" className="pt-3">
+            <div className="flex max-w-2xl flex-col divide-y">
+              {draft.fields.length === 0 && (
+                <p className="text-sm text-muted-foreground">{format(m.itemsFormEmpty)}</p>
+              )}
+              {draft.fields.map((field, index) => (
+                <div key={field.key} className="flex flex-col gap-3 py-4 first:pt-0">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label={format(m.itemsFieldLabel)}>
                       {(id) => (
                         <Input
                           id={id}
-                          value={field.accept}
-                          placeholder=".pdf, image/*"
-                          onChange={(event) => patchField(index, { accept: event.target.value })}
+                          value={field.label}
+                          onChange={(event) => patchField(index, { label: event.target.value })}
                         />
                       )}
                     </Field>
-                  </>
-                )}
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={field.required}
-                      onCheckedChange={(next) => patchField(index, { required: next === true })}
-                    />
-                    {format(m.itemsFieldRequired)}
-                  </label>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={index === 0}
-                      onClick={() => moveField(index, -1)}
-                    >
-                      {format(m.itemsFieldUp)}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={index === draft.fields.length - 1}
-                      onClick={() => moveField(index, 1)}
-                    >
-                      {format(m.itemsFieldDown)}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setDraft((previous) => ({
-                          ...previous,
-                          fields: previous.fields.filter((_, at) => at !== index),
-                        }))
-                      }
-                    >
-                      {format(m.itemsFieldRemove)}
-                    </Button>
+                    <Field label={format(m.itemsFieldType)}>
+                      {(id) => (
+                        <NativeSelect
+                          id={id}
+                          value={field.type}
+                          onChange={(event) =>
+                            patchField(index, { type: event.target.value as FieldDraft['type'] })
+                          }
+                        >
+                          <option value="text">{format(m.itemsTypeText)}</option>
+                          <option value="date">{format(m.itemsTypeDate)}</option>
+                          <option value="attachment">{format(m.itemsTypeAttachment)}</option>
+                        </NativeSelect>
+                      )}
+                    </Field>
                   </div>
-                </div>
-              </div>
-            ))}
-            <div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setDraft((previous) => ({
-                    ...previous,
-                    fields: [...previous.fields, blankField(nextKey(previous.fields))],
-                  }))
-                }
-              >
-                <PlusIcon aria-hidden className="size-3.5" />
-                {format(m.itemsFieldAdd)}
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="scoring" className="pt-3">
-          <div className="max-w-xs">
-            <Field label={format(m.itemsFixedValue)} hint={format(m.itemsFixedValueHint)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={draft.fixedValue}
-                  onChange={(event) => patch({ fixedValue: event.target.value })}
-                />
-              )}
-            </Field>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="review" className="pt-3">
-          <div className="flex flex-col gap-8">
-            {(['normal', 'escalation'] as const).map((chain) => {
-              const steps = draft.stages.filter((stage) => stage.chain === chain)
-              return (
-                <section key={chain} className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <h4 className="text-sm font-medium">
-                        {format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
-                      </h4>
-                      {chain === 'escalation' && (
-                        <p className="pt-0.5 text-xs text-muted-foreground">
-                          {format(m.itemsDoubtHint)}
-                        </p>
+                  {field.type === 'text' && (
+                    <Field label={format(m.itemsFieldMaxLength)}>
+                      {(id) => (
+                        <Input
+                          id={id}
+                          type="number"
+                          min={1}
+                          value={field.maxLength}
+                          onChange={(event) => patchField(index, { maxLength: event.target.value })}
+                        />
                       )}
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => addStage(chain)}>
-                      <PlusIcon aria-hidden className="size-3.5" />
-                      {format(m.itemsStageAdd)}
-                    </Button>
-                  </div>
-                  {steps.length === 0 && chain === 'escalation' ? (
-                    <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {chain === 'normal' && (
-                        <>
-                          <FlowNode
-                            title={format(m.itemsFlowSubmit)}
-                            sub={format(m.itemsFlowSubmitBy)}
-                          />
-                          <FlowArrow />
-                        </>
-                      )}
-                      {steps.map((stage, index) => (
-                        <div key={stage.key} className="flex items-center gap-2">
-                          {index > 0 && <FlowArrow />}
-                          <StageCard
-                            batchId={batchId}
-                            index={index}
-                            last={index === steps.length - 1}
-                            chain={chain}
-                            stage={stage}
-                            options={options}
-                            removable={chain === 'escalation' || steps.length > 1}
-                            expanded={expandedStage === stage.key}
-                            onToggle={() =>
-                              setExpandedStage((open) => (open === stage.key ? null : stage.key))
-                            }
-                            onChange={(next) => patchStage(stage.key, next)}
-                            onMove={(delta) => moveStage(stage.key, delta)}
-                            onRemove={() => removeStage(stage.key)}
-                          />
-                        </div>
-                      ))}
-                      {chain === 'normal' && (
-                        <>
-                          <FlowArrow />
-                          <FlowNode
-                            title={format(m.itemsFlowDone)}
-                            sub={format(m.itemsFlowDoneSub)}
-                            tone="done"
-                          />
-                        </>
-                      )}
+                    </Field>
+                  )}
+                  {field.type === 'date' && (
+                    <div className="flex flex-col gap-1">
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label={format(m.itemsFieldMinDate)}>
+                          {(id) => (
+                            <Input
+                              id={id}
+                              type="date"
+                              value={field.min}
+                              min={materialRange.start}
+                              max={lastDay(materialRange.end)}
+                              onChange={(event) => patchField(index, { min: event.target.value })}
+                            />
+                          )}
+                        </Field>
+                        <Field label={format(m.itemsFieldMaxDate)}>
+                          {(id) => (
+                            <Input
+                              id={id}
+                              type="date"
+                              value={field.max}
+                              min={materialRange.start}
+                              max={lastDay(materialRange.end)}
+                              onChange={(event) => patchField(index, { max: event.target.value })}
+                            />
+                          )}
+                        </Field>
+                      </div>
+                      {/* the round decides the outer window; a bound outside it
+                        changes nothing, and silence about that is how a date
+                        the form seemed to accept came back refused */}
+                      <p className="text-xs text-muted-foreground">
+                        {format(m.itemsDateWindow, {
+                          from: materialRange.start,
+                          until: lastDay(materialRange.end),
+                        })}
+                      </p>
                     </div>
                   )}
-                </section>
-              )
-            })}
+                  {field.type === 'attachment' && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label={format(m.itemsFieldMaxCount)}>
+                          {(id) => (
+                            <Input
+                              id={id}
+                              type="number"
+                              min={1}
+                              value={field.maxCount}
+                              onChange={(event) =>
+                                patchField(index, { maxCount: event.target.value })
+                              }
+                            />
+                          )}
+                        </Field>
+                        <Field label={format(m.itemsFieldMaxSize)}>
+                          {(id) => (
+                            <Input
+                              id={id}
+                              type="number"
+                              min={1}
+                              value={field.maxSizeMb}
+                              onChange={(event) =>
+                                patchField(index, { maxSizeMb: event.target.value })
+                              }
+                            />
+                          )}
+                        </Field>
+                      </div>
+                      <Field
+                        label={format(m.itemsFieldAccept)}
+                        hint={format(m.itemsFieldAcceptHint)}
+                      >
+                        {(id) => (
+                          <Input
+                            id={id}
+                            value={field.accept}
+                            placeholder=".pdf, image/*"
+                            onChange={(event) => patchField(index, { accept: event.target.value })}
+                          />
+                        )}
+                      </Field>
+                    </>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={field.required}
+                        onCheckedChange={(next) => patchField(index, { required: next === true })}
+                      />
+                      {format(m.itemsFieldRequired)}
+                    </label>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={index === 0}
+                        onClick={() => moveField(index, -1)}
+                      >
+                        {format(m.itemsFieldUp)}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={index === draft.fields.length - 1}
+                        onClick={() => moveField(index, 1)}
+                      >
+                        {format(m.itemsFieldDown)}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setDraft((previous) => ({
+                            ...previous,
+                            fields: previous.fields.filter((_, at) => at !== index),
+                          }))
+                        }
+                      >
+                        {format(m.itemsFieldRemove)}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setDraft((previous) => ({
+                      ...previous,
+                      fields: [...previous.fields, blankField(nextKey(previous.fields))],
+                    }))
+                  }
+                >
+                  <PlusIcon aria-hidden className="size-3.5" />
+                  {format(m.itemsFieldAdd)}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="scoring" className="pt-3">
+            <div className="max-w-xs">
+              <Field label={format(m.itemsFixedValue)} hint={format(m.itemsFixedValueHint)}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={draft.fixedValue}
+                    onChange={(event) => patch({ fixedValue: event.target.value })}
+                  />
+                )}
+              </Field>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="review" className="pt-3">
+            <div className="flex flex-col gap-8">
+              {(['normal', 'escalation'] as const).map((chain) => {
+                const steps = draft.stages.filter((stage) => stage.chain === chain)
+                return (
+                  <section key={chain} className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-sm font-medium">
+                          {format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
+                        </h4>
+                        {chain === 'escalation' && (
+                          <p className="pt-0.5 text-xs text-muted-foreground">
+                            {format(m.itemsDoubtHint)}
+                          </p>
+                        )}
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => addStage(chain)}>
+                        <PlusIcon aria-hidden className="size-3.5" />
+                        {format(m.itemsStageAdd)}
+                      </Button>
+                    </div>
+                    {steps.length === 0 && chain === 'escalation' ? (
+                      <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {chain === 'normal' && (
+                          <>
+                            <FlowNode
+                              title={format(m.itemsFlowSubmit)}
+                              sub={format(m.itemsFlowSubmitBy)}
+                            />
+                            <FlowArrow />
+                          </>
+                        )}
+                        {steps.map((stage, index) => (
+                          <div key={stage.key} className="flex items-center gap-2">
+                            {index > 0 && <FlowArrow />}
+                            <StageCard
+                              batchId={batchId}
+                              index={index}
+                              last={index === steps.length - 1}
+                              chain={chain}
+                              stage={stage}
+                              options={options}
+                              removable={chain === 'escalation' || steps.length > 1}
+                              expanded={expandedStage === stage.key}
+                              onToggle={() =>
+                                setExpandedStage((open) => (open === stage.key ? null : stage.key))
+                              }
+                              onChange={(next) => patchStage(stage.key, next)}
+                              onMove={(delta) => moveStage(stage.key, delta)}
+                              onRemove={() => removeStage(stage.key)}
+                            />
+                          </div>
+                        ))}
+                        {chain === 'normal' && (
+                          <>
+                            <FlowArrow />
+                            <FlowNode
+                              title={format(m.itemsFlowDone)}
+                              sub={format(m.itemsFlowDoneSub)}
+                              tone="done"
+                            />
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                )
+              })}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {previewOpen && (
+        <aside className="hidden xl:block xl:border-l xl:pl-6">
+          <ParticipantPreview draft={draft} options={options} />
+        </aside>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The filing screen this draft produces, drawn from the draft alone: the
+ * participant's card with its fields, and the path a submission takes. It
+ * answers "what will they see" without saving anything.
+ */
+function ParticipantPreview({ draft, options }: { draft: Draft; options: ItemOptions }) {
+  const { format } = useI18n()
+  const normal = draft.stages.filter((stage) => stage.chain === 'normal')
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-medium">{format(m.itemsPreviewTitle)}</p>
+        <p className="text-xs text-muted-foreground">{format(m.itemsPreviewLive)}</p>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 shadow-sm">
+        <div className="flex flex-col gap-2">
+          <h4 className="text-sm font-semibold">
+            {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
+          </h4>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {draft.maxEntries.trim() === ''
+                ? format(m.itemsPreviewNoMax)
+                : format(m.itemsPreviewMax, { count: Number(draft.maxEntries) })}
+            </span>
+            <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {format(m.itemsPreviewValue, { value: draft.fixedValue })}
+            </span>
           </div>
-        </TabsContent>
-      </Tabs>
+          {draft.description.trim() !== '' && (
+            <p className="text-xs text-muted-foreground">{draft.description}</p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2.5 border-t pt-3">
+          {draft.fields.map((field) => (
+            <div key={field.key} className="flex flex-col gap-1">
+              <p className="text-xs text-muted-foreground">
+                {field.label.trim() === '' ? '—' : field.label}
+                {field.required && <span className="pl-0.5 text-destructive">*</span>}
+              </p>
+              {field.type === 'attachment' ? (
+                <div className="flex h-9 items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
+                  {format(m.itemsPreviewUpload, { count: Number(field.maxCount) || 1 })}
+                </div>
+              ) : (
+                <div className="h-8 rounded-md border bg-muted/20" />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {normal.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border p-3">
+          <p className="text-xs font-medium">{format(m.itemsPreviewChain)}</p>
+          {normal.map((stage, index) => {
+            const levelName =
+              options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ?? ''
+            const roleNames =
+              stage.kind === 'roleAt'
+                ? options.roles
+                    .filter((role) => stage.roleIds.includes(role.id))
+                    .map((role) => role.name)
+                    .join('，')
+                : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
+            return (
+              <p key={stage.key} className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium">
+                  {index + 1}
+                </span>
+                {stage.kind === 'roleAt'
+                  ? `${levelName}\u3000${roleNames}`
+                  : `${format(m.itemsStageWalkUp)}\u3000${roleNames}`}
+              </p>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

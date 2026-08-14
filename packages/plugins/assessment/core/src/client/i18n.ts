@@ -856,7 +856,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/group-inside',
       defaultMessage: 'Inside \u201c{parent}\u201d',
     },
-    itemsGroupNew: { id: 'assessment/items/group-new', defaultMessage: 'New group' },
     itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'Group settings' },
     itemsGroupCapHint: {
       id: 'assessment/items/group-cap-hint',
@@ -902,7 +901,6 @@ const i18n = definePluginMessages({
     itemsGroupsSave: { id: 'assessment/items/groups-save', defaultMessage: 'Save groups' },
     itemsGroupsSaved: { id: 'assessment/items/groups-saved', defaultMessage: 'Groups saved.' },
     itemsListTitle: { id: 'assessment/items/list-title', defaultMessage: 'Questions' },
-    itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
     itemsEditTitle: { id: 'assessment/items/edit-title', defaultMessage: 'Question' },
     itemsFieldTitle: { id: 'assessment/items/field-title', defaultMessage: 'Title' },
     itemsFieldGroup: { id: 'assessment/items/field-group', defaultMessage: 'Score group' },
@@ -1065,6 +1063,45 @@ const i18n = definePluginMessages({
     itemsPickTarget: {
       id: 'assessment/items/pick-something',
       defaultMessage: 'Pick a group or question on the left to edit.',
+    },
+    itemsTreeTitle: { id: 'assessment/items/tree-title', defaultMessage: 'Structure' },
+    itemsPreviewToggle: { id: 'assessment/items/preview-toggle', defaultMessage: 'Preview' },
+    itemsPreviewTitle: {
+      id: 'assessment/items/preview-title',
+      defaultMessage: 'Participant view',
+    },
+    itemsPreviewLive: {
+      id: 'assessment/items/preview-live',
+      defaultMessage: 'Follows this draft',
+    },
+    itemsPreviewChain: {
+      id: 'assessment/items/preview-chain',
+      defaultMessage: 'After submitting, it passes',
+    },
+    itemsPreviewMax: {
+      id: 'assessment/items/preview-max',
+      defaultMessage: '{count, plural, one {At most # entry} other {At most # entries}}',
+    },
+    itemsPreviewNoMax: {
+      id: 'assessment/items/preview-no-max',
+      defaultMessage: 'No entry limit',
+    },
+    itemsPreviewValue: {
+      id: 'assessment/items/preview-value',
+      defaultMessage: '{value} pts on approval',
+    },
+    itemsPreviewUpload: {
+      id: 'assessment/items/preview-upload',
+      defaultMessage: '{count, plural, one {Up to # file} other {Up to # files}}',
+    },
+    itemsCapSum: {
+      id: 'assessment/items/cap-sum',
+      defaultMessage: 'Ceilings add up to {sum}',
+    },
+    itemsUntitled: { id: 'assessment/items/untitled', defaultMessage: 'Untitled question' },
+    itemsDefaultFieldLabel: {
+      id: 'assessment/items/default-field-label',
+      defaultMessage: 'Details',
     },
     itemsReviewCovered: {
       id: 'assessment/items/review-covered',

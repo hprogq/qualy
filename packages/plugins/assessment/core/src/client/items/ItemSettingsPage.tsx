@@ -25,7 +25,7 @@ import type { ItemDto } from '../entry/model.ts'
 export default function ItemSettingsPage() {
   const { format } = useI18n()
   return (
-    <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)} size="wide">
+    <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)} size="full" flush>
       {(batch) => (
         <Editor batchId={batch.id} batchStatus={batch.status} materialRange={batch.materialRange} />
       )}
@@ -79,6 +79,82 @@ function Editor({
 
   const allGroups = groups.data?.groups ?? []
   const allItems = (items.data?.items ?? []) as readonly ItemDto[]
+
+  const addItem = useMutation({
+    mutationFn: (groupId: string) =>
+      run(
+        api.assessment.createItem({
+          params: { batchId },
+          payload: {
+            itemType: 'evidence',
+            title: format(m.itemsUntitled),
+            scoreGroupId: groupId,
+            maxEntries: 1,
+            config: {
+              entrySource: 'student',
+              formConfig: {
+                fields: [{ key: 'f1', type: 'text', label: format(m.itemsDefaultFieldLabel) }],
+              },
+              scoringConfig: {
+                calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                aggregator: { ref: 'sum@1', config: {} },
+              },
+              reviewPolicy: {
+                stages: [
+                  {
+                    selector: {
+                      kind: 'roleAt',
+                      nodeTypeId: options.data?.orgTypes[0]?.id ?? '',
+                      roleIds: [options.data?.roles[0]?.id ?? ''],
+                    },
+                    quorum: { type: 'any' },
+                  },
+                ],
+                normalTerminal: 0,
+              },
+            } as never,
+          },
+        }),
+      ),
+    onSuccess: (result: { item: { id: string } }) => {
+      setSelection({ kind: 'item', id: result.item.id })
+      refresh()
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+
+  const addGroup = useMutation({
+    mutationFn: (parentId: string | null) =>
+      run(
+        api.assessment.replaceScoreGroups({
+          params: { batchId },
+          payload: {
+            groups: [
+              ...allGroups.map((group) => ({
+                id: group.id,
+                parentGroupId: group.parentGroupId,
+                name: group.name,
+                cap: group.cap,
+                floor: group.floor,
+              })),
+              {
+                parentGroupId: parentId,
+                name: format(m.itemsGroupUnnamed),
+                cap: null,
+                floor: null,
+              },
+            ],
+          },
+        }),
+      ),
+    onSuccess: (result: { groups: readonly { id: string }[] }) => {
+      const known = new Set(allGroups.map((group) => group.id))
+      const created = result.groups.find((group) => !known.has(group.id))
+      if (created !== undefined) setSelection({ kind: 'group', id: created.id })
+      refresh()
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
 
   // a drop, made durable: only the rows whose place actually changed are
   // written, so an idle drag costs nothing
@@ -139,6 +215,12 @@ function Editor({
     },
   })
 
+  const roots = (allGroups as readonly TreeGroup[]).filter((group) => group.parentGroupId === null)
+  const capSum =
+    roots.length > 0 && roots.every((group) => group.cap !== null)
+      ? String(roots.reduce((cents, group) => cents + Math.round(Number(group.cap) * 100), 0) / 100)
+      : null
+
   const selectedItem =
     selection?.kind === 'item' ? (allItems.find((item) => item.id === selection.id) ?? null) : null
   const selectedGroup =
@@ -160,9 +242,9 @@ function Editor({
       }}
       skeleton={<Skeleton className="h-96 w-full" />}
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col">
         {(alerts.data?.groups ?? []).length > 0 && (
-          <section className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+          <section className="mx-6 mt-4 flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
             <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-destructive">{format(m.itemsStuckTitle)}</p>
@@ -182,68 +264,86 @@ function Editor({
           </section>
         )}
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(19rem,23rem)_minmax(0,1fr)]">
-          <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-9rem)] lg:self-start lg:overflow-y-auto">
-            <div className="rounded-lg border bg-card p-3">
-              <PaperTree
-                groups={allGroups as readonly TreeGroup[]}
-                items={allItems}
-                selection={selection}
-                onSelect={setSelection}
-                onMoveItem={(itemId, groupId, orderedItemIds) =>
-                  moveItem.mutate({ itemId, groupId, orderedItemIds })
-                }
-                onReorderGroups={(parentId, orderedGroupIds) =>
-                  reorderGroups.mutate({ parentId, orderedGroupIds })
-                }
-              />
+        {/* the one line, floor to ceiling: the rail's cell stretches with the
+            row, so the border is the divider the whole way down */}
+        <div className="grid min-h-[calc(100dvh-16rem)] lg:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
+          <aside className="border-b bg-muted/30 lg:border-r lg:border-b-0">
+            <div className="flex flex-col lg:sticky lg:top-0 lg:max-h-dvh">
+              <div className="flex items-center gap-2 border-b px-4 py-3">
+                <span className="text-sm font-medium">{format(m.itemsTreeTitle)}</span>
+                <span className="flex-1" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-xs text-primary"
+                  onClick={() => addGroup.mutate(null)}
+                >
+                  {format(m.itemsGroupAdd)}
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                <PaperTree
+                  groups={allGroups as readonly TreeGroup[]}
+                  items={allItems}
+                  selection={selection}
+                  onSelect={setSelection}
+                  onAddItem={(groupId) => addItem.mutate(groupId)}
+                  onAddGroup={(parentId) => addGroup.mutate(parentId)}
+                  onMoveItem={(itemId, groupId, orderedItemIds) =>
+                    moveItem.mutate({ itemId, groupId, orderedItemIds })
+                  }
+                  onReorderGroups={(parentId, orderedGroupIds) =>
+                    reorderGroups.mutate({ parentId, orderedGroupIds })
+                  }
+                />
+              </div>
+              {capSum !== null && (
+                <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
+                  {format(m.itemsCapSum, { sum: capSum })}
+                </p>
+              )}
             </div>
           </aside>
 
-          <div className="min-w-0 rounded-lg border bg-card p-5">
+          <div className="min-w-0 px-6 py-6 lg:px-8">
             {selection === null && (
               <div className="flex min-h-64 items-center justify-center">
                 <p className="text-sm text-muted-foreground">{format(m.itemsPickTarget)}</p>
               </div>
             )}
 
-            {(selection?.kind === 'group' || selection?.kind === 'new-group') && (
+            {selectedGroup !== null && (
               <GroupEditor
-                key={selection.kind === 'group' ? selection.id : 'new-group'}
+                key={selectedGroup.id}
                 batchId={batchId}
                 batchStatus={batchStatus}
                 groups={allGroups as readonly TreeGroup[]}
-                editing={(selectedGroup as TreeGroup | null) ?? null}
-                parentId={selection.kind === 'new-group' ? selection.parentId : null}
+                editing={selectedGroup as TreeGroup}
                 onDone={refresh}
               />
             )}
 
-            {(selection?.kind === 'item' || selection?.kind === 'new-item') &&
-              options.data !== undefined && (
-                <ItemConfigEditor
-                  key={selection.kind === 'item' ? selection.id : `new:${selection.groupId}`}
-                  batchId={batchId}
-                  materialRange={materialRange}
-                  item={selectedItem}
-                  groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
-                  defaultGroupId={selection.kind === 'new-item' ? selection.groupId : undefined}
-                  options={options.data}
-                  actions={
-                    selectedItem === null ? undefined : (
-                      <QuestionActions
-                        item={selectedItem}
-                        batchStatus={batchStatus}
-                        busy={restore.isPending || remove.isPending}
-                        onVoid={() => setVoiding(selectedItem)}
-                        onRestore={() => restore.mutate(selectedItem.id)}
-                        onDelete={() => remove.mutate(selectedItem.id)}
-                      />
-                    )
-                  }
-                  onSaved={refresh}
-                />
-              )}
+            {selectedItem !== null && options.data !== undefined && (
+              <ItemConfigEditor
+                key={selectedItem.id}
+                batchId={batchId}
+                materialRange={materialRange}
+                item={selectedItem}
+                groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
+                options={options.data}
+                actions={
+                  <QuestionActions
+                    item={selectedItem}
+                    batchStatus={batchStatus}
+                    busy={restore.isPending || remove.isPending}
+                    onVoid={() => setVoiding(selectedItem)}
+                    onRestore={() => restore.mutate(selectedItem.id)}
+                    onDelete={() => remove.mutate(selectedItem.id)}
+                  />
+                }
+                onSaved={refresh}
+              />
+            )}
           </div>
         </div>
       </div>

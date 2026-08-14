@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PlusIcon } from 'lucide-react'
+import { ChevronDownIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
@@ -22,20 +22,13 @@ export interface TreeGroup {
   sortOrder: number
 }
 
-export type TreeSelection =
-  | { kind: 'group'; id: string }
-  | { kind: 'new-group'; parentId: string | null }
-  | { kind: 'item'; id: string }
-  | { kind: 'new-item'; groupId: string }
+export type TreeSelection = { kind: 'group' | 'item'; id: string }
 
 /** a drop about to happen, so the row can draw the line where it would land */
 interface DropMark {
   key: string
   edge: 'before' | 'after' | 'into'
 }
-
-const NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
-const numeral = (index: number) => NUMERALS[index] ?? String(index + 1)
 
 const amountOf = (item: ItemDto): string | undefined =>
   (
@@ -48,6 +41,8 @@ export function PaperTree({
   items,
   selection,
   onSelect,
+  onAddItem,
+  onAddGroup,
   onMoveItem,
   onReorderGroups,
 }: {
@@ -55,6 +50,9 @@ export function PaperTree({
   items: readonly ItemDto[]
   selection: TreeSelection | null
   onSelect: (next: TreeSelection) => void
+  /** pressing add creates the thing at once; the page owns that write */
+  onAddItem: (groupId: string) => void
+  onAddGroup: (parentId: string | null) => void
   /** the question now belongs to this group, its siblings in this order */
   onMoveItem: (itemId: string, groupId: string, orderedItemIds: readonly string[]) => void
   /** this parent's groups now come in this order */
@@ -62,6 +60,7 @@ export function PaperTree({
 }) {
   const { format } = useI18n()
   const [drop, setDrop] = useState<DropMark | null>(null)
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
 
   const childrenOf = new Map<string | null, TreeGroup[]>()
   for (const group of [...groups].sort((a, b) => a.sortOrder - b.sortOrder)) {
@@ -117,7 +116,7 @@ export function PaperTree({
 
   // -- rendering ------------------------------------------------------------
 
-  const renderQuestion = (item: ItemDto, number: number) => {
+  const renderQuestion = (item: ItemDto, depth: number) => {
     const selected = selection?.kind === 'item' && selection.id === item.id
     const amount = amountOf(item)
     const negative = amount !== undefined && amount.startsWith('-')
@@ -146,20 +145,13 @@ export function PaperTree({
         }}
         onClick={() => onSelect({ kind: 'item', id: item.id })}
         className={cn(
-          'flex w-full cursor-pointer items-baseline gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-          selected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent/60',
+          'flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent py-1.5 pr-2 text-left text-sm transition-colors',
+          selected ? 'border-border bg-background shadow-sm' : 'hover:bg-accent/50',
           marked === 'before' && 'shadow-[0_-2px_0_0_var(--primary)]',
           marked === 'after' && 'shadow-[0_2px_0_0_var(--primary)]',
         )}
+        style={{ paddingLeft: `${depth * 0.9 + 1.6}rem` }}
       >
-        <span
-          className={cn(
-            'w-4 shrink-0 text-right text-xs tabular-nums',
-            selected ? 'text-primary-foreground/70' : 'text-muted-foreground',
-          )}
-        >
-          {number}
-        </span>
         <span
           className={cn(
             'min-w-0 flex-1 truncate',
@@ -169,23 +161,14 @@ export function PaperTree({
           {item.title}
         </span>
         {item.currentRevision?.entrySource === 'administrative' && (
-          <span
-            className={cn(
-              'shrink-0 rounded px-1 py-px text-[11px]',
-              selected ? 'bg-primary-foreground/15' : 'bg-muted text-muted-foreground',
-            )}
-          >
+          <span className="shrink-0 rounded bg-muted px-1 py-px text-[11px] text-muted-foreground">
             {format(m.itemsChipRecorded)}
           </span>
         )}
         <span
           className={cn(
             'shrink-0 text-xs tabular-nums',
-            selected
-              ? 'text-primary-foreground/80'
-              : negative
-                ? 'text-destructive'
-                : 'text-muted-foreground',
+            negative ? 'text-destructive' : 'text-muted-foreground',
           )}
         >
           {amount === undefined ? '—' : negative ? amount : `+${amount}`}
@@ -194,13 +177,14 @@ export function PaperTree({
     )
   }
 
-  const renderGroup = (group: TreeGroup, index: number, depth: number) => {
+  const renderGroup = (group: TreeGroup, depth: number) => {
     const own = itemsOf(group.id)
     const children = childrenOf.get(group.id) ?? []
     const selected = selection?.kind === 'group' && selection.id === group.id
     const marked = drop?.key === `g:${group.id}` ? drop.edge : null
+    const isFolded = folded.has(group.id)
     return (
-      <section key={group.id} className={cn(depth === 0 ? 'pt-5 first:pt-0' : 'pt-2')}>
+      <section key={group.id} className={cn(depth === 0 && 'pt-1.5 first:pt-0')}>
         <div
           draggable
           onDragStart={(event) => {
@@ -227,30 +211,39 @@ export function PaperTree({
             else if (drag.id !== group.id) dropGroup(drag.id, group, edgeOf(event))
           }}
           className={cn(
-            'group/heading flex cursor-pointer items-baseline gap-2 rounded-md px-2 py-1.5',
-            selected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent/60',
+            'group/heading flex cursor-pointer items-center gap-1.5 rounded-md border border-transparent py-1.5 pr-2',
+            selected ? 'border-border bg-background shadow-sm' : 'hover:bg-accent/50',
             marked === 'into' && 'ring-2 ring-primary/50',
             marked === 'before' && 'shadow-[0_-2px_0_0_var(--primary)]',
             marked === 'after' && 'shadow-[0_2px_0_0_var(--primary)]',
           )}
+          style={{ paddingLeft: `${depth * 0.9 + 0.25}rem` }}
           onClick={() => onSelect({ kind: 'group', id: group.id })}
         >
-          <span
-            className={cn(
-              'min-w-0 truncate',
-              depth === 0 ? 'text-sm font-semibold' : 'text-sm font-medium',
-            )}
+          <button
+            type="button"
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent"
+            aria-expanded={!isFolded}
+            onClick={(event) => {
+              event.stopPropagation()
+              setFolded((previous) => {
+                const next = new Set(previous)
+                if (next.has(group.id)) next.delete(group.id)
+                else next.add(group.id)
+                return next
+              })
+            }}
           >
-            {depth === 0 && `${numeral(index)}、`}
+            <ChevronDownIcon
+              aria-hidden
+              className={cn('size-3 transition-transform', isFolded && '-rotate-90')}
+            />
+          </button>
+          <span className="min-w-0 truncate text-sm font-medium">
             {group.name === '' ? format(m.itemsGroupUnnamed) : group.name}
           </span>
           {group.cap !== null && (
-            <span
-              className={cn(
-                'shrink-0 text-xs tabular-nums',
-                selected ? 'text-primary-foreground/80' : 'text-muted-foreground',
-              )}
-            >
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {format(m.itemsCapChip, { value: group.cap })}
             </span>
           )}
@@ -258,10 +251,10 @@ export function PaperTree({
             <Button
               variant="ghost"
               size="sm"
-              className={cn('h-5 px-1 text-[11px]', selected && 'hover:bg-primary-foreground/15')}
+              className="h-5 px-1 text-[11px]"
               onClick={(event) => {
                 event.stopPropagation()
-                onSelect({ kind: 'new-item', groupId: group.id })
+                onAddItem(group.id)
               }}
             >
               {format(m.itemsOutlineAddItem)}
@@ -269,20 +262,20 @@ export function PaperTree({
             <Button
               variant="ghost"
               size="sm"
-              className={cn('h-5 px-1 text-[11px]', selected && 'hover:bg-primary-foreground/15')}
+              className="h-5 px-1 text-[11px]"
               onClick={(event) => {
                 event.stopPropagation()
-                onSelect({ kind: 'new-group', parentId: group.id })
+                onAddGroup(group.id)
               }}
             >
               {format(m.itemsOutlineAddGroup)}
             </Button>
           </span>
         </div>
-        {(own.length > 0 || children.length > 0) && (
-          <div className={cn(depth > 0 && 'border-l border-border/60', 'ml-2 pl-2')}>
-            {own.map((item, at) => renderQuestion(item, at + 1))}
-            {children.map((child, at) => renderGroup(child, at, depth + 1))}
+        {!isFolded && (own.length > 0 || children.length > 0) && (
+          <div>
+            {own.map((item) => renderQuestion(item, depth))}
+            {children.map((child) => renderGroup(child, depth + 1))}
           </div>
         )}
       </section>
@@ -296,24 +289,13 @@ export function PaperTree({
           {format(m.itemsSheetEmpty)}
         </p>
       )}
-      {(childrenOf.get(null) ?? []).map((group, index) => renderGroup(group, index, 0))}
+      {(childrenOf.get(null) ?? []).map((group) => renderGroup(group, 0))}
       {orphans.length > 0 && (
-        <section className="pt-5">
+        <section className="pt-4">
           <p className="px-2 pb-1 text-xs text-muted-foreground">{format(m.itemsOutlineOrphans)}</p>
-          {orphans.map((item, at) => renderQuestion(item, at + 1))}
+          {orphans.map((item) => renderQuestion(item, 0))}
         </section>
       )}
-      <div className="pt-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          onClick={() => onSelect({ kind: 'new-group', parentId: null })}
-        >
-          <PlusIcon aria-hidden className="size-3.5" />
-          {format(m.itemsGroupAdd)}
-        </Button>
-      </div>
     </div>
   )
 }
