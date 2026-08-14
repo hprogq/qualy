@@ -4,6 +4,7 @@ import { PageLink, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
+import { Spinner } from '@qualy/ui/spinner'
 import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
 import {
@@ -147,6 +148,9 @@ export default function BatchListPage() {
                 <SearchIcon />
               </InputGroupAddon>
             </InputGroup>
+            {batches.isFetching && !batches.isPending && (
+              <Spinner aria-label={format(commonMessages.loading)} className="ml-auto size-4" />
+            )}
             <ToggleGroup
               type="single"
               variant="outline"
@@ -223,8 +227,8 @@ export default function BatchListPage() {
             ) : (
               <div
                 className={cn(
-                  'flex flex-col gap-8 transition-opacity',
-                  batches.isPlaceholderData && batches.isFetching && 'opacity-50',
+                  'flex flex-col gap-8 transition-opacity duration-300',
+                  batches.isFetching && 'opacity-50',
                 )}
               >
                 {/* grouped by what the reader is looking for: what is running
