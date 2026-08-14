@@ -25,7 +25,7 @@ export function PageContainer({
   return (
     <div
       data-slot="page-container"
-      className={cn('mx-auto w-full px-6 py-6', widths[size], className)}
+      className={cn('mx-auto w-full flex-1 px-6 py-6', widths[size], className)}
       {...props}
     />
   )

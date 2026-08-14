@@ -20,15 +20,12 @@ export function BatchScreen({
   title,
   description,
   size = 'default',
-  flush = false,
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
   title: string
   description?: string
   size?: 'default' | 'wide' | 'full'
-  /** edge to edge: the section draws its own columns across the whole width */
-  flush?: boolean
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
 }) {
@@ -45,7 +42,7 @@ export function BatchScreen({
   const batch = detail.data?.batch
 
   return (
-    <div className={flush ? 'flex min-h-full flex-col' : undefined}>
+    <>
       {/* Edge to edge, cutting the content area in two: a band inset inside
           the page's own width is a card pretending to be a header, and it
           reads as one more box among the boxes below it. */}
@@ -62,28 +59,18 @@ export function BatchScreen({
           <PageHeader title={title} description={description} variant="banner" />
         </PageContainer>
       </div>
-      <PageContainer
-        size={size}
-        className={flush ? 'flex min-h-0 flex-1 flex-col px-0 py-0' : 'space-y-5'}
-      >
+      <PageContainer size={size} className="flex flex-col gap-5">
         <AsyncSection
           pending={detail.isPending}
           error={detail.isError ? formatError(detail.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void detail.refetch()}
-          {...(flush ? { className: 'flex min-h-0 flex-1 flex-col' } : {})}
         >
           {batch && (
-            <div className={flush ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col gap-4'}>
+            <div className="flex flex-col gap-4">
               {batch.status === 'draft' && (
-                <p
-                  className={
-                    flush
-                      ? 'mx-6 mt-4 rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground'
-                      : 'rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground'
-                  }
-                >
+                <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
                   {format(m.draftBanner)}
                 </p>
               )}
@@ -92,6 +79,6 @@ export function BatchScreen({
           )}
         </AsyncSection>
       </PageContainer>
-    </div>
+    </>
   )
 }

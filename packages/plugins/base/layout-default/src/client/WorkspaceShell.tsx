@@ -234,7 +234,7 @@ function CapableWorkspaceShell() {
         {/* always scroll, never auto: the roster fills the viewport and the
             overview overflows, and left to themselves the two would put their
             headings in different places (see AppShell for why not a gutter) */}
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-scroll">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-scroll">
           <Outlet />
         </main>
       </div>
