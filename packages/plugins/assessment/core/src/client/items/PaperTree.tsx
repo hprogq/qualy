@@ -23,7 +23,12 @@ export interface TreeGroup {
   sortOrder: number
 }
 
-export type TreeSelection = { kind: 'group' | 'item'; id: string }
+export type TreeSelection =
+  | { kind: 'group'; id: string }
+  | { kind: 'item'; id: string }
+  /** composed in the editor and not yet saved, so it is nowhere in the tree */
+  | { kind: 'new-group'; parentId: string | null }
+  | { kind: 'new-item'; groupId: string }
 
 /** a drop about to happen, so the row can draw the line where it would land */
 interface DropMark {
@@ -162,6 +167,11 @@ export function PaperTree({
         >
           {item.title}
         </span>
+        {item.status === 'draft' && (
+          <span className="shrink-0 rounded bg-muted px-1 py-px text-[11px] text-muted-foreground">
+            {format(m.itemsStatusDraft)}
+          </span>
+        )}
         {item.currentRevision?.entrySource === 'administrative' && (
           <span className="shrink-0 rounded bg-muted px-1 py-px text-[11px] text-muted-foreground">
             {format(m.itemsChipRecorded)}

@@ -544,7 +544,15 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               !sameJson(current.scoringConfig, input.config.scoringConfig)
             const semanticChange = scoringChanged || fieldDiff['scoreGroupId'] !== undefined
             const reason = input.reason?.trim() ?? ''
-            if (locked.status === 'active' && semanticChange && reason === '') {
+            // A question nobody has been asked yet has produced no facts to
+            // explain (§32.60), so composing one inside a running round is
+            // still just composing.
+            if (
+              locked.status === 'active' &&
+              item.status !== 'draft' &&
+              semanticChange &&
+              reason === ''
+            ) {
               return yield* new ItemConfigInvalid({
                 issues: [{ path: 'reason', reason: 'reason-required' }],
               })

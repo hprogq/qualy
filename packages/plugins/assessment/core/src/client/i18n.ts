@@ -871,6 +871,7 @@ const i18n = definePluginMessages({
       id: 'assessment/items/group-inside',
       defaultMessage: 'Inside \u201c{parent}\u201d',
     },
+    itemsGroupNew: { id: 'assessment/items/group-new', defaultMessage: 'New group' },
     itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'Group settings' },
     itemsGroupCapHint: {
       id: 'assessment/items/group-cap-hint',
@@ -939,6 +940,36 @@ const i18n = definePluginMessages({
       id: 'assessment/items/entry-source-administrative',
       defaultMessage: 'Staff record it, with a basis',
     },
+    itemsFieldUnnamed: { id: 'assessment/items/field-unnamed', defaultMessage: 'Untitled field' },
+    itemsFieldEdit: { id: 'assessment/items/field-edit', defaultMessage: 'Edit field' },
+    itemsFieldSettings: {
+      id: 'assessment/items/field-settings',
+      defaultMessage: 'Field settings',
+    },
+    itemsStageSettings: {
+      id: 'assessment/items/stage-settings',
+      defaultMessage: 'Step settings',
+    },
+    itemsTitlePlaceholder: {
+      id: 'assessment/items/title-placeholder',
+      defaultMessage: 'e.g. Award in a discipline competition',
+    },
+    itemsPreviewShow: { id: 'assessment/items/preview-show', defaultMessage: 'Show preview' },
+    itemsPreviewHide: { id: 'assessment/items/preview-hide', defaultMessage: 'Hide preview' },
+    itemsMoveReasonTitle: {
+      id: 'assessment/items/move-reason-title',
+      defaultMessage: 'Why this question moved',
+    },
+    itemsReasonTitle: { id: 'assessment/items/reason-title', defaultMessage: 'Why this changed' },
+    itemsReasonHint: {
+      id: 'assessment/items/reason-hint',
+      defaultMessage:
+        'The round is running and this changes what counts. Everyone affected reads this.',
+    },
+    itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
+    itemsPublish: { id: 'assessment/items/publish', defaultMessage: 'Publish' },
+    itemsStatusDraft: { id: 'assessment/items/status-draft', defaultMessage: 'Unpublished' },
+    itemsPublished: { id: 'assessment/items/published', defaultMessage: 'Published.' },
     itemsFieldAdd: { id: 'assessment/items/form-add', defaultMessage: 'Add a field' },
     itemsFieldRemove: { id: 'assessment/items/form-remove', defaultMessage: 'Remove' },
     itemsFieldUp: { id: 'assessment/items/form-up', defaultMessage: 'Move up' },

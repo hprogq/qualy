@@ -648,6 +648,17 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             },
             f.principal,
           )
+          // the rule is about a question the round has already asked: one
+          // still being composed has promised nobody anything (§32.60)
+          const composing = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              item.id,
+              { config: studentConfig({ value: '4.00' }) },
+              f.principal,
+            ),
+          )
+          yield* assessment.setItemStatus(f.tenant, item.id, { status: 'active' }, f.principal)
           const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
           yield* assessment.schedulePhase(
             f.tenant,
@@ -720,7 +731,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             },
             f.principal,
           )
-          return { silent, spoken, renamed, capSilent, capSpoken }
+          return { composing, silent, spoken, renamed, capSilent, capSpoken }
         }),
       ),
     )
@@ -729,8 +740,11 @@ describe.runIf(postgresAvailable)('item configuration', () => {
       (errorOf<{ issues?: readonly { reason: string }[] }>(exit)?.issues ?? []).map(
         (issue) => issue.reason,
       )
+    // composing an unpublished question needs no explanation
+    expect(result.composing._tag).toBe('Success')
     expect(issuesOf(result.silent)).toContain('reason-required')
-    expect(result.spoken.currentRevision?.revisionNo).toBe(2)
+    // the composing edit appended its own revision, so the spoken one is third
+    expect(result.spoken.currentRevision?.revisionNo).toBe(3)
     expect(result.renamed.title).toBe('worth five')
     const refusalsOf = (exit: Exit.Exit<unknown, unknown>) =>
       (errorOf<{ refusals?: readonly { reason: string }[] }>(exit)?.refusals ?? []).map(

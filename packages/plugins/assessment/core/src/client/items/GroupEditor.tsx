@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -23,6 +24,8 @@ export function GroupEditor({
   groups,
   version,
   editing,
+  parentId,
+  onCancel,
   onDone,
 }: {
   batchId: string
@@ -30,21 +33,25 @@ export function GroupEditor({
   groups: readonly TreeGroup[]
   /** the tree these groups were read at; a save states it and can be refused */
   version: number
-  editing: TreeGroup
-  onDone: () => void
+  /** null while a group is being composed and has never been saved */
+  editing: TreeGroup | null
+  /** where a new group goes; ignored when editing */
+  parentId: string | null
+  onCancel: () => void
+  onDone: (groupId: string | null) => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
-  const [name, setName] = useState(editing.name)
-  const [cap, setCap] = useState(editing.cap ?? '')
-  const [floor, setFloor] = useState(editing.floor ?? '')
+  const [name, setName] = useState(editing?.name ?? '')
+  const [cap, setCap] = useState(editing?.cap ?? '')
+  const [floor, setFloor] = useState(editing?.floor ?? '')
   const [reason, setReason] = useState('')
   const [refusals, setRefusals] = useState<readonly { reason: string; groupId: string | null }[]>(
     [],
   )
 
-  const parent = groups.find((group) => group.id === editing.parentGroupId) ?? null
+  const parent = groups.find((group) => group.id === (editing?.parentGroupId ?? parentId)) ?? null
 
   const specOf = (group: TreeGroup) => ({
     id: group.id,
@@ -68,13 +75,16 @@ export function GroupEditor({
         floor: floor.trim() === '' ? null : floor.trim(),
       }
       const edited = groups.map((group) =>
-        group.id === editing.id ? { ...specOf(group), ...values } : specOf(group),
+        group.id === editing?.id ? { ...specOf(group), ...values } : specOf(group),
       )
+      // one being composed joins the tree the same way every other row is
+      // written: as part of the whole set the api replaces
+      const created = editing === null ? [{ parentGroupId: parentId, ...values }] : []
       return run(
         api.assessment.replaceScoreGroups({
           params: { batchId },
           payload: {
-            groups: edited,
+            groups: [...edited, ...created],
             expectedVersion: version,
             ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
           },
@@ -82,9 +92,11 @@ export function GroupEditor({
       )
     },
     onMutate: () => setRefusals([]),
-    onSuccess: () => {
+    onSuccess: (result: { groups: readonly { id: string; name: string }[] }) => {
       toast.success(format(m.itemsGroupsSaved))
-      onDone()
+      const known = new Set(groups.map((group) => group.id))
+      const landed = editing?.id ?? result.groups.find((group) => !known.has(group.id))?.id ?? null
+      onDone(landed)
     },
     onError,
   })
@@ -95,7 +107,7 @@ export function GroupEditor({
         api.assessment.replaceScoreGroups({
           params: { batchId },
           payload: {
-            groups: groups.filter((group) => group.id !== editing.id).map(specOf),
+            groups: groups.filter((group) => group.id !== editing?.id).map(specOf),
             expectedVersion: version,
             ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
           },
@@ -104,7 +116,7 @@ export function GroupEditor({
     onMutate: () => setRefusals([]),
     onSuccess: () => {
       toast.success(format(m.itemsGroupsSaved))
-      onDone()
+      onDone(null)
     },
     onError,
   })
@@ -114,7 +126,7 @@ export function GroupEditor({
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">
-            {format(m.itemsGroupEditing)}
+            {format(editing === null ? m.itemsGroupNew : m.itemsGroupEditing)}
             {parent !== null && ` · ${format(m.itemsGroupInside, { parent: parent.name })}`}
           </p>
           <h3 className="truncate text-lg font-semibold">
@@ -122,13 +134,18 @@ export function GroupEditor({
           </h3>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button
-            variant="ghost"
-            className="text-destructive"
-            disabled={remove.isPending}
-            onClick={() => remove.mutate()}
-          >
-            {format(m.itemsGroupRemove)}
+          {editing !== null && (
+            <Button
+              variant="ghost"
+              className="text-destructive"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              {format(m.itemsGroupRemove)}
+            </Button>
+          )}
+          <Button variant="outline" onClick={onCancel}>
+            {format(commonMessages.cancel)}
           </Button>
           <Button disabled={save.isPending || name.trim() === ''} onClick={() => save.mutate()}>
             {format(m.entrySave)}

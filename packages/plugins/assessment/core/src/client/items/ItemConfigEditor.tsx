@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import {
   ArrowRightIcon,
   ChevronDownIcon,
@@ -21,45 +22,11 @@ import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { lastDay, trimAmount, type ItemDto } from '../entry/model.ts'
-
-// One question, composed rather than typed: the fields participants will
-// fill, what each approved entry counts, and who reviews at which level.
-// The editor builds the same configuration object the api validates, so the
-// server stays the judge and this stays a pen.
-//
-// The review chain is drawn as what it is - a path from submission to a
-// finished review - with one step open for editing at a time and the rest
-// folded to what they resolve to.
-
-export interface ItemOptions {
-  readonly orgTypes: readonly { id: string; code: string; name: string }[]
-  readonly roles: readonly { id: string; name: string }[]
-}
-
-interface FieldDraft {
-  key: string
-  type: 'text' | 'date' | 'attachment'
-  label: string
-  required: boolean
-  maxLength: string
-  min: string
-  max: string
-  maxCount: string
-  maxSizeMb: string
-  accept: string
-}
-
-/**
- * The key is the payload's own word for a field, so it is minted once and
- * never reused: renaming one would leave every filed answer pointing at a
- * field that no longer exists. Numbering walks forward past deleted fields
- * for the same reason. Nobody types it - the label is what a person writes.
- */
-const nextKey = (fields: readonly FieldDraft[]): string => {
-  const used = fields.map((field) => Number(/^f(\d+)$/.exec(field.key)?.[1] ?? 0))
-  return `f${Math.max(0, ...used) + 1}`
-}
+import { trimAmount, type ItemDto } from '../entry/model.ts'
+import { FieldList, FieldSheet, type FieldDraft } from './FieldSheet.tsx'
+import { StageSheet, type StageDraft } from './StageSheet.tsx'
+import { ReasonDialog } from './ReasonDialog.tsx'
+import type { ItemOptions } from './options.ts'
 
 const blankField = (key: string): FieldDraft => ({
   key,
@@ -74,16 +41,34 @@ const blankField = (key: string): FieldDraft => ({
   accept: '',
 })
 
-/** one step of the chain as the pen holds it */
-interface StageDraft {
-  /** stable while the editor is open, so identity never rides on an index */
-  key: string
-  kind: 'roleAt' | 'nearestRole'
-  nodeTypeId: string
-  roleIds: string[]
-  roleId: string
-  /** which list this step belongs to; the stored form is one list plus a terminal */
-  chain: 'normal' | 'escalation'
+let minted = 0
+const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): StageDraft => ({
+  key: `s${(minted += 1)}`,
+  kind: 'roleAt',
+  nodeTypeId: options.orgTypes[0]?.id ?? '',
+  roleIds: [],
+  roleId: options.roles[0]?.id ?? '',
+  chain,
+})
+
+// One question, composed rather than typed: the fields participants will
+// fill, what each approved entry counts, and who reviews at which level.
+// The editor builds the same configuration object the api validates, so the
+// server stays the judge and this stays a pen.
+//
+// The review chain is drawn as what it is - a path from submission to a
+// finished review - with one step open for editing at a time and the rest
+// folded to what they resolve to.
+
+/**
+ * The key is the payload's own word for a field, so it is minted once and
+ * never reused: renaming one would leave every filed answer pointing at a
+ * field that no longer exists. Numbering walks forward past deleted fields
+ * for the same reason. Nobody types it - the label is what a person writes.
+ */
+const nextKey = (fields: readonly FieldDraft[]): string => {
+  const used = fields.map((field) => Number(/^f(\d+)$/.exec(field.key)?.[1] ?? 0))
+  return `f${Math.max(0, ...used) + 1}`
 }
 
 interface Draft {
@@ -95,28 +80,15 @@ interface Draft {
   fields: FieldDraft[]
   fixedValue: string
   stages: StageDraft[]
-  reason: string
 }
 
-const FIELD_TYPE_LABEL = {
-  text: m.itemsTypeText,
-  date: m.itemsTypeDate,
-  attachment: m.itemsTypeAttachment,
-} as const
-
-let minted = 0
-const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): StageDraft => ({
-  key: `s${(minted += 1)}`,
-  kind: 'roleAt',
-  nodeTypeId: options.orgTypes[0]?.id ?? '',
-  roleIds: [],
-  roleId: options.roles[0]?.id ?? '',
-  chain,
-})
-
 /** the stored configuration back into the pen; a shape this pen cannot hold starts fresh */
-const draftOf = (item: ItemDto, groups: readonly { id: string }[], options: ItemOptions): Draft => {
-  const revision = item.currentRevision
+const draftOf = (
+  item: ItemDto | null,
+  groups: readonly { id: string }[],
+  options: ItemOptions,
+): Draft => {
+  const revision = item?.currentRevision ?? null
   const config = revision as {
     entrySource?: 'student' | 'administrative'
     formConfig?: unknown
@@ -179,15 +151,15 @@ const draftOf = (item: ItemDto, groups: readonly { id: string }[], options: Item
         }
   })
   return {
-    title: item.title,
-    scoreGroupId: item.scoreGroupId !== '' ? item.scoreGroupId : (groups[0]?.id ?? ''),
-    maxEntries: item.maxEntries === null ? '' : String(item.maxEntries),
+    title: item?.title ?? '',
+    scoreGroupId:
+      item !== null && item.scoreGroupId !== '' ? item.scoreGroupId : (groups[0]?.id ?? ''),
+    maxEntries: item === null ? '1' : item.maxEntries === null ? '' : String(item.maxEntries),
     entrySource: config?.entrySource ?? 'student',
     description: String((config?.displayConfig as { description?: unknown })?.description ?? ''),
     fields: fields.length > 0 ? fields : [blankField('f1')],
     fixedValue: scoring?.calculator?.config?.value ?? '1.00',
     stages: stages.length > 0 ? stages : [blankStage(options, 'normal')],
-    reason: '',
   }
 }
 
@@ -250,53 +222,72 @@ const configOf = (draft: Draft) => ({
 
 export function ItemConfigEditor({
   batchId,
+  batchStatus,
   materialRange,
   item,
   groups,
+  defaultGroupId,
   options,
   actions,
+  onCancel,
   onSaved,
 }: {
   batchId: string
+  batchStatus: string
   /** the round's own window; a date field can only narrow it, never widen it */
   materialRange: { start: string; end: string }
-  item: ItemDto
+  /** null while a question is being composed and has never been saved */
+  item: ItemDto | null
   groups: readonly { id: string; name: string }[]
+  /** the group a new question was opened inside */
+  defaultGroupId?: string | undefined
   options: ItemOptions
   /** what can be done to the question as a whole, drawn beside its title */
   actions?: React.ReactNode
-  onSaved: () => void
+  onCancel: () => void
+  onSaved: (itemId: string) => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
-  const [draft, setDraft] = useState<Draft>(() => draftOf(item, groups, options))
+  const [draft, setDraft] = useState<Draft>(() => {
+    const seeded = draftOf(item, groups, options)
+    return defaultGroupId === undefined ? seeded : { ...seeded, scoreGroupId: defaultGroupId }
+  })
   const [problem, setProblem] = useState<string | null>(null)
   const [issues, setIssues] = useState<readonly { path: string; reason: string }[]>([])
-  const [expandedStage, setExpandedStage] = useState<string | null>(null)
   const [openField, setOpenField] = useState<string | null>(null)
+  const [openStage, setOpenStage] = useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(true)
+  const [askingReason, setAskingReason] = useState(false)
 
   const patch = (next: Partial<Draft>) => setDraft((previous) => ({ ...previous, ...next }))
-  const patchField = (index: number, next: Partial<FieldDraft>) =>
+
+  const patchField = (key: string, next: Partial<FieldDraft>) =>
     setDraft((previous) => ({
       ...previous,
-      fields: previous.fields.map((field, at) => (at === index ? { ...field, ...next } : field)),
+      fields: previous.fields.map((field) => (field.key === key ? { ...field, ...next } : field)),
     }))
-  const moveField = (index: number, delta: -1 | 1) =>
-    setDraft((previous) => {
-      const fields = [...previous.fields]
-      const target = index + delta
-      if (target < 0 || target >= fields.length) return previous
-      const [moved] = fields.splice(index, 1)
-      fields.splice(target, 0, moved!)
-      return { ...previous, fields }
-    })
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: (reason: string | null) => {
       const config = configOf(draft)
       const maxEntries =
         draft.maxEntries.trim() === '' ? null : Math.max(1, Number(draft.maxEntries))
+      if (item === null) {
+        return run(
+          api.assessment.createItem({
+            params: { batchId },
+            payload: {
+              itemType: 'evidence',
+              title: draft.title.trim(),
+              scoreGroupId: draft.scoreGroupId,
+              maxEntries,
+              config: config as never,
+            },
+          }),
+        )
+      }
       return run(
         api.assessment.updateItem({
           params: { itemId: item.id },
@@ -305,7 +296,7 @@ export function ItemConfigEditor({
             scoreGroupId: draft.scoreGroupId,
             maxEntries,
             config: config as never,
-            ...(draft.reason.trim() === '' ? {} : { reason: draft.reason.trim() }),
+            ...(reason === null ? {} : { reason }),
           },
         }),
       )
@@ -314,14 +305,16 @@ export function ItemConfigEditor({
       setProblem(null)
       setIssues([])
     },
-    onSuccess: () => {
+    onSuccess: (result: { item: { id: string } }) => {
       toast.success(format(m.itemsSaved))
-      onSaved()
+      setAskingReason(false)
+      onSaved(result.item.id)
     },
     onError: (error: unknown) => {
       const config = error as { issues?: readonly { path: string; reason: string }[] }
       if (Array.isArray(config.issues)) setIssues(config.issues)
       setProblem(formatError(error))
+      setAskingReason(false)
     },
   })
 
@@ -354,14 +347,8 @@ export function ItemConfigEditor({
   const addStage = (chain: 'normal' | 'escalation') => {
     const stage = blankStage(options, chain)
     setDraft((previous) => ({ ...previous, stages: [...previous.stages, stage] }))
-    setExpandedStage(stage.key)
+    setOpenStage(stage.key)
   }
-
-  const removeStage = (key: string) =>
-    setDraft((previous) => ({
-      ...previous,
-      stages: previous.stages.filter((stage) => stage.key !== key),
-    }))
 
   const stageReady = (stage: StageDraft) =>
     stage.kind === 'roleAt'
@@ -376,19 +363,35 @@ export function ItemConfigEditor({
     draft.stages.every(stageReady) &&
     draft.fields.every((field) => field.label.trim() !== '')
 
+  // A live question's scoring or placement changing is a change to what a
+  // round already promised, and the api refuses it without a sentence saying
+  // why. One never published has promised nothing yet.
+  const needsReason = item !== null && item.status !== 'draft' && batchStatus === 'active'
+
+  const field = draft.fields.find((one) => one.key === openField) ?? null
+  const stage = draft.stages.find((one) => one.key === openStage) ?? null
+
   return (
-    <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(19rem,22rem)]">
-      <div className="flex min-w-0 flex-col gap-4 xl:pr-8">
+    <div className={previewOpen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-6' : ''}>
+      <div className="flex min-w-0 flex-col gap-4">
         <header className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">{format(m.itemsEditTitle)}</p>
+            <p className="text-xs text-muted-foreground">
+              {item === null ? format(m.itemsNew) : format(m.itemsEditTitle)}
+            </p>
             <h3 className="truncate text-lg font-semibold">
               {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
             </h3>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {actions}
-            <Button disabled={save.isPending || !ready} onClick={() => save.mutate()}>
+            <Button variant="outline" onClick={onCancel}>
+              {format(commonMessages.cancel)}
+            </Button>
+            <Button
+              disabled={save.isPending || !ready}
+              onClick={() => (needsReason ? setAskingReason(true) : save.mutate(null))}
+            >
               {format(m.entrySave)}
             </Button>
           </div>
@@ -406,45 +409,58 @@ export function ItemConfigEditor({
         )}
 
         <Tabs defaultValue="basics">
-          <TabsList variant="line" className="w-full justify-start border-b">
-            <TabsTrigger value="basics" className="flex-none">
-              {format(m.itemsTabBasics)}
-            </TabsTrigger>
-            <TabsTrigger value="fields" className="flex-none">
-              {format(m.itemsTabFields)}
-            </TabsTrigger>
-            <TabsTrigger value="scoring" className="flex-none">
-              {format(m.itemsTabScoring)}
-            </TabsTrigger>
-            <TabsTrigger value="review" className="flex-none">
-              {format(m.itemsTabReview)}
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between gap-2 border-b">
+            <TabsList variant="line" className="justify-start">
+              <TabsTrigger value="basics" className="flex-none">
+                {format(m.itemsTabBasics)}
+              </TabsTrigger>
+              <TabsTrigger value="fields" className="flex-none">
+                {format(m.itemsTabFields)}
+              </TabsTrigger>
+              <TabsTrigger value="scoring" className="flex-none">
+                {format(m.itemsTabScoring)}
+              </TabsTrigger>
+              <TabsTrigger value="review" className="flex-none">
+                {format(m.itemsTabReview)}
+              </TabsTrigger>
+            </TabsList>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mb-1 hidden shrink-0 text-xs text-muted-foreground lg:inline-flex"
+              aria-expanded={previewOpen}
+              onClick={() => setPreviewOpen((open) => !open)}
+            >
+              {format(previewOpen ? m.itemsPreviewHide : m.itemsPreviewShow)}
+            </Button>
+          </div>
 
-          <TabsContent value="basics" className="pt-3">
-            <div className="flex max-w-2xl flex-col gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={format(m.itemsFieldTitle)}>
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={draft.title}
-                      onChange={(event) => patch({ title: event.target.value })}
-                    />
-                  )}
-                </Field>
-                <Field label={format(m.itemsFieldMax)}>
-                  {(id) => (
-                    <Input
-                      id={id}
-                      type="number"
-                      min={1}
-                      value={draft.maxEntries}
-                      placeholder={format(m.itemsFieldMaxUnlimited)}
-                      onChange={(event) => patch({ maxEntries: event.target.value })}
-                    />
-                  )}
-                </Field>
+          <TabsContent value="basics" className="pt-4">
+            <div className="flex max-w-2xl flex-col gap-5">
+              <Field label={format(m.itemsFieldTitle)}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={draft.title}
+                    placeholder={format(m.itemsTitlePlaceholder)}
+                    onChange={(event) => patch({ title: event.target.value })}
+                  />
+                )}
+              </Field>
+              <Field
+                label={format(m.itemsFieldDescription)}
+                hint={format(m.itemsFieldDescriptionHint)}
+              >
+                {(id) => (
+                  <Textarea
+                    id={id}
+                    rows={3}
+                    value={draft.description}
+                    onChange={(event) => patch({ description: event.target.value })}
+                  />
+                )}
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-3">
                 <Field label={format(m.itemsFieldGroup)}>
                   {(id) => (
                     <NativeSelect
@@ -476,258 +492,50 @@ export function ItemConfigEditor({
                     </NativeSelect>
                   )}
                 </Field>
-              </div>
-              <Field
-                label={format(m.itemsFieldDescription)}
-                hint={format(m.itemsFieldDescriptionHint)}
-              >
-                {(id) => (
-                  <Textarea
-                    id={id}
-                    rows={3}
-                    value={draft.description}
-                    onChange={(event) => patch({ description: event.target.value })}
-                  />
-                )}
-              </Field>
-              <Field label={format(m.itemsFieldReason)}>
-                {(id) => (
-                  <Input
-                    id={id}
-                    value={draft.reason}
-                    onChange={(event) => patch({ reason: event.target.value })}
-                  />
-                )}
-              </Field>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="fields" className="pt-3">
-            <div className="flex max-w-2xl flex-col divide-y">
-              {draft.fields.length === 0 && (
-                <p className="text-sm text-muted-foreground">{format(m.itemsFormEmpty)}</p>
-              )}
-              {draft.fields.map((field, index) => (
-                <div key={field.key}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-md px-1 py-2.5 text-left text-sm transition-colors hover:bg-accent/50"
-                    aria-expanded={openField === field.key}
-                    onClick={() => setOpenField((open) => (open === field.key ? null : field.key))}
-                  >
-                    <span className="min-w-0 flex-1 truncate">
-                      {field.label.trim() === '' ? '—' : field.label}
-                      {field.required && <span className="pl-0.5 text-destructive">*</span>}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {format(FIELD_TYPE_LABEL[field.type])}
-                    </span>
-                    <ChevronDownIcon
-                      aria-hidden
-                      className={cn(
-                        'size-3.5 shrink-0 text-muted-foreground transition-transform',
-                        openField === field.key && 'rotate-180',
-                      )}
+                <Field label={format(m.itemsFieldMax)}>
+                  {(id) => (
+                    <Input
+                      id={id}
+                      type="number"
+                      min={1}
+                      value={draft.maxEntries}
+                      placeholder={format(m.itemsFieldMaxUnlimited)}
+                      onChange={(event) => patch({ maxEntries: event.target.value })}
                     />
-                  </button>
-                  {openField === field.key && (
-                    <div className="flex flex-col gap-3 px-1 pt-1 pb-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <Field label={format(m.itemsFieldLabel)}>
-                          {(id) => (
-                            <Input
-                              id={id}
-                              value={field.label}
-                              onChange={(event) => patchField(index, { label: event.target.value })}
-                            />
-                          )}
-                        </Field>
-                        <Field label={format(m.itemsFieldType)}>
-                          {(id) => (
-                            <NativeSelect
-                              id={id}
-                              value={field.type}
-                              onChange={(event) =>
-                                patchField(index, {
-                                  type: event.target.value as FieldDraft['type'],
-                                })
-                              }
-                            >
-                              <option value="text">{format(m.itemsTypeText)}</option>
-                              <option value="date">{format(m.itemsTypeDate)}</option>
-                              <option value="attachment">{format(m.itemsTypeAttachment)}</option>
-                            </NativeSelect>
-                          )}
-                        </Field>
-                      </div>
-                      {field.type === 'text' && (
-                        <Field label={format(m.itemsFieldMaxLength)}>
-                          {(id) => (
-                            <Input
-                              id={id}
-                              type="number"
-                              min={1}
-                              value={field.maxLength}
-                              onChange={(event) =>
-                                patchField(index, { maxLength: event.target.value })
-                              }
-                            />
-                          )}
-                        </Field>
-                      )}
-                      {field.type === 'date' && (
-                        <div className="flex flex-col gap-1">
-                          <div className="grid grid-cols-2 gap-3">
-                            <Field label={format(m.itemsFieldMinDate)}>
-                              {(id) => (
-                                <Input
-                                  id={id}
-                                  type="date"
-                                  value={field.min}
-                                  min={materialRange.start}
-                                  max={lastDay(materialRange.end)}
-                                  onChange={(event) =>
-                                    patchField(index, { min: event.target.value })
-                                  }
-                                />
-                              )}
-                            </Field>
-                            <Field label={format(m.itemsFieldMaxDate)}>
-                              {(id) => (
-                                <Input
-                                  id={id}
-                                  type="date"
-                                  value={field.max}
-                                  min={materialRange.start}
-                                  max={lastDay(materialRange.end)}
-                                  onChange={(event) =>
-                                    patchField(index, { max: event.target.value })
-                                  }
-                                />
-                              )}
-                            </Field>
-                          </div>
-                          {/* the round decides the outer window; a bound outside it
-                        changes nothing, and silence about that is how a date
-                        the form seemed to accept came back refused */}
-                          <p className="text-xs text-muted-foreground">
-                            {format(m.itemsDateWindow, {
-                              from: materialRange.start,
-                              until: lastDay(materialRange.end),
-                            })}
-                          </p>
-                        </div>
-                      )}
-                      {field.type === 'attachment' && (
-                        <>
-                          <div className="grid grid-cols-2 gap-3">
-                            <Field label={format(m.itemsFieldMaxCount)}>
-                              {(id) => (
-                                <Input
-                                  id={id}
-                                  type="number"
-                                  min={1}
-                                  value={field.maxCount}
-                                  onChange={(event) =>
-                                    patchField(index, { maxCount: event.target.value })
-                                  }
-                                />
-                              )}
-                            </Field>
-                            <Field label={format(m.itemsFieldMaxSize)}>
-                              {(id) => (
-                                <Input
-                                  id={id}
-                                  type="number"
-                                  min={1}
-                                  value={field.maxSizeMb}
-                                  onChange={(event) =>
-                                    patchField(index, { maxSizeMb: event.target.value })
-                                  }
-                                />
-                              )}
-                            </Field>
-                          </div>
-                          <Field
-                            label={format(m.itemsFieldAccept)}
-                            hint={format(m.itemsFieldAcceptHint)}
-                          >
-                            {(id) => (
-                              <Input
-                                id={id}
-                                value={field.accept}
-                                placeholder=".pdf, image/*"
-                                onChange={(event) =>
-                                  patchField(index, { accept: event.target.value })
-                                }
-                              />
-                            )}
-                          </Field>
-                        </>
-                      )}
-                      <div className="flex items-center justify-between">
-                        <label className="flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={field.required}
-                            onCheckedChange={(next) =>
-                              patchField(index, { required: next === true })
-                            }
-                          />
-                          {format(m.itemsFieldRequired)}
-                        </label>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={index === 0}
-                            onClick={() => moveField(index, -1)}
-                          >
-                            {format(m.itemsFieldUp)}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={index === draft.fields.length - 1}
-                            onClick={() => moveField(index, 1)}
-                          >
-                            {format(m.itemsFieldDown)}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setDraft((previous) => ({
-                                ...previous,
-                                fields: previous.fields.filter((_, at) => at !== index),
-                              }))
-                            }
-                          >
-                            {format(m.itemsFieldRemove)}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
                   )}
-                </div>
-              ))}
-              <div className="pt-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const key = nextKey(draft.fields)
-                    patch({ fields: [...draft.fields, blankField(key)] })
-                    setOpenField(key)
-                  }}
-                >
-                  <PlusIcon aria-hidden className="size-3.5" />
-                  {format(m.itemsFieldAdd)}
-                </Button>
+                </Field>
               </div>
             </div>
           </TabsContent>
 
-          <TabsContent value="scoring" className="pt-3">
+          <TabsContent value="fields" className="pt-4">
+            <FieldList
+              fields={draft.fields}
+              onReorder={(orderedKeys) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  fields: orderedKeys.flatMap((key) => {
+                    const found = previous.fields.find((one) => one.key === key)
+                    return found === undefined ? [] : [found]
+                  }),
+                }))
+              }
+              onEdit={setOpenField}
+              onRemove={(key) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  fields: previous.fields.filter((one) => one.key !== key),
+                }))
+              }
+              onAdd={() => {
+                const key = nextKey(draft.fields)
+                patch({ fields: [...draft.fields, blankField(key)] })
+                setOpenField(key)
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="scoring" className="pt-4">
             <div className="max-w-xs">
               <Field label={format(m.itemsFixedValue)} hint={format(m.itemsFixedValueHint)}>
                 {(id) => (
@@ -741,10 +549,10 @@ export function ItemConfigEditor({
             </div>
           </TabsContent>
 
-          <TabsContent value="review" className="pt-3">
+          <TabsContent value="review" className="pt-4">
             <div className="flex flex-col gap-8">
               {(['normal', 'escalation'] as const).map((chain) => {
-                const steps = draft.stages.filter((stage) => stage.chain === chain)
+                const steps = draft.stages.filter((one) => one.chain === chain)
                 return (
                   <section key={chain} className="flex flex-col gap-3">
                     <div className="flex items-center justify-between gap-2">
@@ -766,7 +574,9 @@ export function ItemConfigEditor({
                     {steps.length === 0 && chain === 'escalation' ? (
                       <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-2">
+                      // a long chain runs off the side rather than wrapping into
+                      // something that no longer reads as one path
+                      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-2">
                         {chain === 'normal' && (
                           <>
                             <FlowNode
@@ -776,24 +586,24 @@ export function ItemConfigEditor({
                             <FlowArrow />
                           </>
                         )}
-                        {steps.map((stage, index) => (
-                          <div key={stage.key} className="flex items-center gap-2">
+                        {steps.map((one, index) => (
+                          <div key={one.key} className="flex shrink-0 items-center gap-2">
                             {index > 0 && <FlowArrow />}
                             <StageCard
-                              batchId={batchId}
                               index={index}
                               last={index === steps.length - 1}
                               chain={chain}
-                              stage={stage}
+                              stage={one}
                               options={options}
                               removable={chain === 'escalation' || steps.length > 1}
-                              expanded={expandedStage === stage.key}
-                              onToggle={() =>
-                                setExpandedStage((open) => (open === stage.key ? null : stage.key))
+                              onOpen={() => setOpenStage(one.key)}
+                              onMove={(delta) => moveStage(one.key, delta)}
+                              onRemove={() =>
+                                setDraft((previous) => ({
+                                  ...previous,
+                                  stages: previous.stages.filter((s) => s.key !== one.key),
+                                }))
                               }
-                              onChange={(next) => patchStage(stage.key, next)}
-                              onMove={(delta) => moveStage(stage.key, delta)}
-                              onRemove={() => removeStage(stage.key)}
                             />
                           </div>
                         ))}
@@ -817,11 +627,160 @@ export function ItemConfigEditor({
         </Tabs>
       </div>
 
-      <aside className="mt-6 border-t pt-6 xl:mt-0 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-6">
-        <ParticipantPreview draft={draft} options={options} />
-      </aside>
+      {previewOpen && (
+        <aside className="mt-6 border-t pt-6 lg:mt-0 lg:border-t-0 lg:pt-0">
+          <ParticipantPreview draft={draft} options={options} />
+        </aside>
+      )}
+
+      {field !== null && (
+        <FieldSheet
+          field={field}
+          materialRange={materialRange}
+          onChange={(next) => patchField(field.key, next)}
+          onClose={() => setOpenField(null)}
+        />
+      )}
+
+      {stage !== null && (
+        <StageSheet
+          batchId={batchId}
+          stage={stage}
+          options={options}
+          onChange={(next) => patchStage(stage.key, next)}
+          onClose={() => setOpenStage(null)}
+        />
+      )}
+
+      {askingReason && (
+        <ReasonDialog
+          title={format(m.itemsReasonTitle)}
+          description={format(m.itemsReasonHint)}
+          busy={save.isPending}
+          onConfirm={(reason) => save.mutate(reason)}
+          onClose={() => setAskingReason(false)}
+        />
+      )}
     </div>
   )
+}
+
+/** one step of the chain, as the path reads it; its settings are a panel away */
+function StageCard({
+  index,
+  last,
+  chain,
+  stage,
+  options,
+  removable,
+  onOpen,
+  onMove,
+  onRemove,
+}: {
+  index: number
+  last: boolean
+  chain: 'normal' | 'escalation'
+  stage: StageDraft
+  options: ItemOptions
+  removable: boolean
+  onOpen: () => void
+  onMove: (delta: -1 | 1) => void
+  onRemove: () => void
+}) {
+  const { format } = useI18n()
+  const levelName = options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ?? ''
+  const roleNames =
+    stage.kind === 'roleAt'
+      ? options.roles
+          .filter((role) => stage.roleIds.includes(role.id))
+          .map((role) => role.name)
+          .join('、')
+      : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
+
+  return (
+    <div className="w-52 shrink-0 rounded-lg border bg-card p-3">
+      <div className="flex items-center gap-1.5">
+        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-foreground text-[10px] font-medium text-background">
+          {index + 1}
+        </span>
+        <span className="text-sm font-medium">{format(m.itemsStageNumber, { n: index + 1 })}</span>
+        {chain === 'normal' && last && (
+          <span className="text-xs text-primary">{format(m.itemsTerminalHere)}</span>
+        )}
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 pt-2 text-sm">
+        {stage.kind === 'roleAt' ? (
+          <>
+            <dt className="text-muted-foreground">{format(m.itemsStageLevelShort)}</dt>
+            <dd className="truncate">{levelName}</dd>
+          </>
+        ) : (
+          <>
+            <dt className="text-muted-foreground">{format(m.itemsStageKindShort)}</dt>
+            <dd className="truncate">{format(m.itemsStageWalkUp)}</dd>
+          </>
+        )}
+        <dt className="text-muted-foreground">{format(m.itemsStageRolesShort)}</dt>
+        <dd className="truncate">{roleNames === '' ? '—' : roleNames}</dd>
+      </dl>
+      <div className="flex items-center justify-between pt-2">
+        <button
+          type="button"
+          className="text-xs text-primary underline-offset-2 hover:underline"
+          onClick={onOpen}
+        >
+          {format(m.itemsStageExpand)}
+        </button>
+        <span className="flex items-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="size-6 p-0"
+            disabled={index === 0}
+            onClick={() => onMove(-1)}
+            aria-label={format(m.itemsFieldUp)}
+          >
+            <ChevronLeftIcon aria-hidden className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="size-6 p-0"
+            disabled={last}
+            onClick={() => onMove(1)}
+            aria-label={format(m.itemsFieldDown)}
+          >
+            <ChevronRightIcon aria-hidden className="size-3.5" />
+          </Button>
+          {removable && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="size-6 p-0"
+              onClick={onRemove}
+              aria-label={format(m.itemsStageRemove)}
+            >
+              <XIcon aria-hidden className="size-3.5" />
+            </Button>
+          )}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/** an endpoint of the path: where a submission enters, where it leaves */
+function FlowNode({ title, sub, tone }: { title: string; sub: string; tone?: 'done' }) {
+  return (
+    <div className="flex shrink-0 flex-col px-1 text-center">
+      <p className={cn('text-sm font-medium', tone === 'done' && 'text-primary')}>{title}</p>
+      <p className="text-xs text-muted-foreground">{sub}</p>
+    </div>
+  )
+}
+
+function FlowArrow() {
+  return <ArrowRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground/50" />
 }
 
 /**
@@ -903,249 +862,6 @@ function ParticipantPreview({ draft, options }: { draft: Draft; options: ItemOpt
           })}
         </div>
       )}
-    </div>
-  )
-}
-
-/** an endpoint of the path: where a submission enters, where it leaves */
-function FlowNode({ title, sub, tone }: { title: string; sub: string; tone?: 'done' }) {
-  return (
-    <div className="flex shrink-0 flex-col px-1 text-center">
-      <p className={cn('text-sm font-medium', tone === 'done' && 'text-primary')}>{title}</p>
-      <p className="text-xs text-muted-foreground">{sub}</p>
-    </div>
-  )
-}
-
-function FlowArrow() {
-  return <ArrowRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground/50" />
-}
-
-/**
- * One step of the chain: folded, what it resolves to; open, the fields that
- * compose it, plus the one thing an author cannot know by looking - whether
- * anybody actually holds these roles at these units in this round. Asked
- * live, of the same definition the queue asks.
- */
-function StageCard({
-  batchId,
-  index,
-  last,
-  chain,
-  stage,
-  options,
-  removable,
-  expanded,
-  onToggle,
-  onChange,
-  onMove,
-  onRemove,
-}: {
-  batchId: string
-  index: number
-  last: boolean
-  chain: 'normal' | 'escalation'
-  stage: StageDraft
-  options: ItemOptions
-  removable: boolean
-  expanded: boolean
-  onToggle: () => void
-  onChange: (next: Partial<StageDraft>) => void
-  onMove: (delta: -1 | 1) => void
-  onRemove: () => void
-}) {
-  const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
-  const roleIds = stage.kind === 'roleAt' ? stage.roleIds : [stage.roleId]
-  const coverage = useQuery({
-    ...query.assessment.reviewCoverage.queryOptions({
-      params: { batchId },
-      query: { nodeTypeId: stage.nodeTypeId, roleIds },
-    }),
-    // only the level-anchored kind surveys units; the nearest-holder kind is
-    // answered per participant, where its answer actually lives
-    enabled: stage.kind === 'roleAt' && stage.nodeTypeId !== '' && roleIds.length > 0,
-  })
-  const uncovered = (coverage.data?.nodes ?? []).filter((node) => node.reviewers === 0)
-  const levelName = options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ?? ''
-  const roleNames =
-    stage.kind === 'roleAt'
-      ? options.roles
-          .filter((role) => stage.roleIds.includes(role.id))
-          .map((role) => role.name)
-          .join('、')
-      : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
-
-  const header = (
-    <div className="flex items-center gap-1.5">
-      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-foreground text-[10px] font-medium text-background">
-        {index + 1}
-      </span>
-      <span className="text-sm font-medium">{format(m.itemsStageNumber, { n: index + 1 })}</span>
-      {chain === 'normal' && last && (
-        <span className="text-xs text-primary">{format(m.itemsTerminalHere)}</span>
-      )}
-    </div>
-  )
-
-  if (!expanded) {
-    return (
-      <div className="w-52 rounded-lg border bg-card p-3">
-        <div className="flex items-center justify-between gap-1">{header}</div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 pt-2 text-sm">
-          {stage.kind === 'roleAt' ? (
-            <>
-              <dt className="text-muted-foreground">{format(m.itemsStageLevelShort)}</dt>
-              <dd className="truncate">{levelName}</dd>
-            </>
-          ) : (
-            <>
-              <dt className="text-muted-foreground">{format(m.itemsStageKindShort)}</dt>
-              <dd className="truncate">{format(m.itemsStageWalkUp)}</dd>
-            </>
-          )}
-          <dt className="text-muted-foreground">{format(m.itemsStageRolesShort)}</dt>
-          <dd className="truncate">{roleNames === '' ? '—' : roleNames}</dd>
-        </dl>
-        <button
-          type="button"
-          className="pt-2 text-xs text-primary underline-offset-2 hover:underline"
-          onClick={onToggle}
-        >
-          {format(m.itemsStageExpand)}
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="w-64 rounded-lg border border-foreground/40 bg-card p-3 shadow-sm">
-      <div className="flex items-center justify-between gap-1">
-        {header}
-        <div className="flex items-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0"
-            disabled={index === 0}
-            onClick={() => onMove(-1)}
-            aria-label={format(m.itemsFieldUp)}
-          >
-            <ChevronLeftIcon aria-hidden className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0"
-            disabled={last}
-            onClick={() => onMove(1)}
-            aria-label={format(m.itemsFieldDown)}
-          >
-            <ChevronRightIcon aria-hidden className="size-3.5" />
-          </Button>
-          {removable && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0"
-              onClick={onRemove}
-              aria-label={format(m.itemsStageRemove)}
-            >
-              <XIcon aria-hidden className="size-3.5" />
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 pt-3">
-        <Field label={format(m.itemsStageKind)}>
-          {(id) => (
-            <NativeSelect
-              id={id}
-              value={stage.kind}
-              onChange={(event) => onChange({ kind: event.target.value as StageDraft['kind'] })}
-            >
-              <option value="roleAt">{format(m.itemsStageRoleAt)}</option>
-              <option value="nearestRole">{format(m.itemsStageNearestRole)}</option>
-            </NativeSelect>
-          )}
-        </Field>
-
-        {stage.kind === 'roleAt' ? (
-          <>
-            <Field label={format(m.itemsReviewLevel)}>
-              {(id) => (
-                <NativeSelect
-                  id={id}
-                  value={stage.nodeTypeId}
-                  onChange={(event) => onChange({ nodeTypeId: event.target.value })}
-                >
-                  {options.orgTypes.map((orgType) => (
-                    <option key={orgType.id} value={orgType.id}>
-                      {orgType.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              )}
-            </Field>
-            <Field label={format(m.itemsReviewRoles)} hint={format(m.itemsReviewRolesHint)}>
-              {() => (
-                <div className="flex flex-col gap-1.5">
-                  {options.roles.map((role) => (
-                    <label key={role.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={stage.roleIds.includes(role.id)}
-                        onCheckedChange={(next) =>
-                          onChange({
-                            roleIds:
-                              next === true
-                                ? [...stage.roleIds, role.id]
-                                : stage.roleIds.filter((id) => id !== role.id),
-                          })
-                        }
-                      />
-                      {role.name}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </Field>
-            {coverage.data !== undefined && (
-              <p
-                className={
-                  uncovered.length > 0
-                    ? 'text-xs text-destructive'
-                    : 'text-xs text-muted-foreground'
-                }
-              >
-                {coverage.data.nodes.length === 0
-                  ? format(m.itemsReviewNoUnits)
-                  : uncovered.length === 0
-                    ? format(m.itemsReviewCovered, { count: coverage.data.nodes.length })
-                    : format(m.itemsReviewUncovered, {
-                        names: uncovered.map((node) => node.name).join('、'),
-                      })}
-              </p>
-            )}
-          </>
-        ) : (
-          <Field label={format(m.itemsStageRole)} hint={format(m.itemsStageNearestHint)}>
-            {(id) => (
-              <NativeSelect
-                id={id}
-                value={stage.roleId}
-                onChange={(event) => onChange({ roleId: event.target.value })}
-              >
-                {options.roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            )}
-          </Field>
-        )}
-      </div>
     </div>
   )
 }
