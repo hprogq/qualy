@@ -4,6 +4,7 @@ import {
   BadRequest,
   boundedText,
   changed,
+  expectedVersion,
   kebabCode,
   pageQuery,
   countedPageOf,
@@ -23,6 +24,7 @@ import {
   ItemNotFound,
   MaterialRangeInvalid,
   ScoreGroupInvalid,
+  ScoreGroupVersionConflict,
   BatchNoParticipants,
   BatchNotFound,
   ParticipantInvalid,
@@ -334,7 +336,7 @@ const itemView = Schema.Struct({
   scoreGroupId: Schema.String,
   maxEntries: Schema.NullOr(Schema.Number),
   sortOrder: Schema.Number,
-  status: Schema.Literals(['active', 'voided']),
+  status: Schema.Literals(['draft', 'active', 'voided']),
   currentRevision: Schema.NullOr(itemRevisionView),
   createdAt: Schema.String,
 })
@@ -372,11 +374,21 @@ const sortOrder = Schema.Number.check(
 
 const scoreGroupSpec = Schema.Struct({
   id: Schema.optional(id),
-  /** the group this one adds up into; absent or null is top level */
-  parentGroupId: Schema.optional(Schema.NullOr(id)),
+  /**
+   * The group this one adds up into; null is top level.
+   *
+   * Stated rather than optional: a payload that left it out moved every group
+   * it named to the top, so forgetting the field flattened the tree.
+   */
+  parentGroupId: Schema.NullOr(id),
   name: trimmedName(255),
-  cap: Schema.optional(Schema.NullOr(decimalAmount)),
-  floor: Schema.optional(Schema.NullOr(decimalAmount)),
+  /**
+   * Stated for the same reason as the parent: a set replacement reads an
+   * absent limit as no limit, so leaving these out lifted every ceiling it
+   * touched. Null is the way to say a group has none.
+   */
+  cap: Schema.NullOr(decimalAmount),
+  floor: Schema.NullOr(decimalAmount),
   sortOrder: Schema.optional(sortOrder),
 })
 
@@ -456,8 +468,8 @@ const reviewDetailView = Schema.Struct({
         index: Schema.Number,
         nodeName: Schema.NullOr(Schema.String),
         roleNames: Schema.Array(Schema.String),
-        /** who holds those roles there today */
-        reviewers: Schema.Array(Schema.String),
+        /** who holds those roles there today; null when this response left it unresolved */
+        reviewers: Schema.NullOr(Schema.Array(Schema.String)),
         skipped: Schema.NullOr(Schema.String),
       }),
     ),
@@ -882,6 +894,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ batchId: id }),
       success: Schema.Struct({
         groups: Schema.Array(scoreGroupView),
+        /** what a save of this tree has to state it was composed against */
+        version: Schema.Number,
         capabilities: Schema.Struct({ canManage: Schema.Boolean }),
       }),
       error: [AccessDenied, BatchNotFound],
@@ -892,11 +906,19 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ batchId: id }),
       payload: Schema.Struct({
         groups: Schema.Array(scoreGroupSpec),
+        expectedVersion,
         /** why, when a cap or floor moves on a running round */
         reason: Schema.optional(boundedText(500)),
       }),
-      success: Schema.Struct({ groups: Schema.Array(scoreGroupView) }),
-      error: [AccessDenied, BatchNotFound, BatchReadOnly, ScoreGroupInvalid, BadRequest],
+      success: Schema.Struct({ groups: Schema.Array(scoreGroupView), version: Schema.Number }),
+      error: [
+        AccessDenied,
+        BatchNotFound,
+        BatchReadOnly,
+        ScoreGroupInvalid,
+        ScoreGroupVersionConflict,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

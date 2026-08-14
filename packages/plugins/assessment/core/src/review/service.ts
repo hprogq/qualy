@@ -65,8 +65,12 @@ export interface ReviewChainView {
     readonly index: number
     readonly nodeName: string | null
     readonly roleNames: readonly string[]
-    /** who could act there today - the same question the queue asks */
-    readonly reviewers: readonly string[]
+    /**
+     * who could act there today - the same question the queue asks; null
+     * when this response did not resolve them, which an empty list would
+     * misreport as an empty stage
+     */
+    readonly reviewers: readonly string[] | null
     readonly skipped: string | null
   }[]
   readonly decisions: readonly string[]
@@ -179,7 +183,19 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       return open
     })
 
-  const assembleDetail = (tenantId: string, row: ReviewInstanceDetailRow, canDecide: boolean) =>
+  /**
+   * One round as a reader sees it. Naming the people at each stage costs a
+   * query or two per stage, so whether to do it is the caller's: a page load
+   * pays for it, the decision path does not - that one runs inside the batch
+   * lock, where the critical section would otherwise grow with however many
+   * stages an administrator configured, and every other reviewer in the batch
+   * waits behind it.
+   */
+  const assembleDetail = (
+    tenantId: string,
+    row: ReviewInstanceDetailRow,
+    view: { canDecide: boolean; resolveReviewers: boolean },
+  ) =>
     Effect.gen(function* () {
       const revision = (yield* entryRevisionOf(tenantId, row.revisionId))!
       const itemRevision = yield* revisionOf(tenantId, row.itemRevisionId)
@@ -192,24 +208,30 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         roleIds: chain.stages.flatMap((stage) => [...stage.roleIds]),
       })
       // who is standing at each step right now: the one thing a chain cannot
-      // be read off its own snapshot, and the first thing anybody asks
+      // be read off its own snapshot, and the first thing anybody asks. The
+      // round's own subject and author go in so a stage never names somebody
+      // the queue and the decision endpoint would refuse.
       const reviewersByStage = new Map<number, readonly string[]>()
-      for (const stage of chain.stages) {
-        if (stage.nodeId === null) continue
-        reviewersByStage.set(
-          stage.index,
-          yield* holderNamesAt({
-            tenantId,
-            batchId: row.batchId,
-            nodeId: stage.nodeId,
-            roleIds: stage.roleIds,
-          }),
-        )
+      if (view.resolveReviewers) {
+        for (const stage of chain.stages) {
+          if (stage.nodeId === null) continue
+          reviewersByStage.set(
+            stage.index,
+            yield* holderNamesAt({
+              tenantId,
+              batchId: row.batchId,
+              nodeId: stage.nodeId,
+              roleIds: stage.roleIds,
+              subjectUserId: row.subjectUserId,
+              actorId: row.actorId,
+            }),
+          )
+        }
       }
       const here = chain.stages.find((stage) => stage.index === row.currentStageIndex)
       const atEnd = here === undefined ? true : isChainEnd(chain, here.index)
       const decisions: readonly string[] =
-        !canDecide || here === undefined
+        !view.canDecide || here === undefined
           ? []
           : row.mode === 'escalated' && !atEnd
             ? ['comment', 'recommend-approve', 'recommend-reject', 'escalate']
@@ -243,7 +265,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             index: stage.index,
             nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
             roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
-            reviewers: reviewersByStage.get(stage.index) ?? [],
+            reviewers: view.resolveReviewers ? (reviewersByStage.get(stage.index) ?? []) : null,
             skipped: stage.skipped,
           })),
           decisions,
@@ -256,7 +278,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           suggestedPayload: event.suggestedPayload,
           at: event.createdAt,
         })),
-        capabilities: { canDecide },
+        capabilities: { canDecide: view.canDecide },
       } satisfies ReviewDetailView
     })
 
@@ -330,7 +352,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     const gate = yield* deps.reviewGate(tenantId, row.batchId)
     const canDecide =
       judge && row.state === 'active' && row.batchStatus === 'active' && gate.allowed
-    return yield* dieQuery(withDb(assembleDetail(tenantId, row, canDecide)))
+    return yield* dieQuery(
+      withDb(assembleDetail(tenantId, row, { canDecide, resolveReviewers: true })),
+    )
   })
 
   const decideReview: ReviewMethods['decideReview'] = Effect.fn('Assessment.decideReview')(
@@ -405,7 +429,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             if (action === 'comment' || action.startsWith('recommend-')) {
               yield* say(action)
               const written = (yield* instanceOf(tenantId, instanceId))!
-              return yield* assembleDetail(tenantId, written, true)
+              return yield* assembleDetail(tenantId, written, {
+                canDecide: true,
+                resolveReviewers: false,
+              })
             }
 
             // ending the round: a rejection at any stage, or an approval at
@@ -430,7 +457,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 to: action === 'approve' ? 'approved' : 'rejected',
               })
               const written = (yield* instanceOf(tenantId, instanceId))!
-              return yield* assembleDetail(tenantId, written, false)
+              return yield* assembleDetail(tenantId, written, {
+                canDecide: false,
+                resolveReviewers: false,
+              })
             }
 
             // onward: the next stage that resolved to a unit
@@ -472,7 +502,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               })
             }
             const written = (yield* instanceOf(tenantId, instanceId))!
-            return yield* assembleDetail(tenantId, written, false)
+            return yield* assembleDetail(tenantId, written, {
+              canDecide: false,
+              resolveReviewers: false,
+            })
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )

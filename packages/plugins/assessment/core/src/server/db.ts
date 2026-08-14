@@ -47,7 +47,7 @@ export const lockBatch = (tenantId: string, batchId: string) =>
     .query((k) =>
       k
         .selectFrom('AssessmentBatch')
-        .select(['id', 'status', 'configRevision'])
+        .select(['id', 'status', 'configRevision', 'scoreGroupsVersion'])
         .where('tenantId', '=', tenantId)
         .where('id', '=', batchId)
         .forUpdate()

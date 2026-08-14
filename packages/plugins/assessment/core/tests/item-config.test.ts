@@ -149,10 +149,13 @@ const draftBatch = (
     const groups = yield* assessment.replaceScoreGroups(
       f.tenant,
       batch.id,
-      { groups: [{ name: '文体', cap: '10.00', floor: null }] },
+      {
+        groups: [{ name: '文体', parentGroupId: null, cap: '10.00', floor: null }],
+        expectedVersion: 1,
+      },
       f.principal,
     )
-    return { batch, groupId: groups.groups[0]!.id }
+    return { batch, groupId: groups.groups[0]!.id, groupsVersion: groups.version }
   })
 
 const studentConfig = (over: Partial<Record<string, unknown>> = {}) => ({
@@ -221,7 +224,8 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     )
 
     expect(result.created.currentRevision?.revisionNo).toBe(1)
-    expect(result.created.status).toBe('active')
+    // composed as a draft; asking it of the round is a separate, deliberate act
+    expect(result.created.status).toBe('draft')
     expect(result.revised.currentRevision?.revisionNo).toBe(2)
     expect(result.revised.currentRevision?.reason).toBe('loosened the form')
     // the first revision is untouched history, not an edit in place
@@ -520,7 +524,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
         Effect.gen(function* () {
           const f = yield* seed('item-groups')
           const assessment = yield* Assessment
-          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const { batch, groupId, groupsVersion } = yield* draftBatch(f, 'Round')
           yield* assessment.createItem(
             f.tenant,
             batch.id,
@@ -538,17 +542,36 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             batch.id,
             {
               groups: [
-                { id: groupId, name: '文体活动', cap: '10.00', floor: '0.00' },
-                { name: '品德', cap: null, floor: '0.00' },
+                { id: groupId, name: '文体活动', parentGroupId: null, cap: '10.00', floor: '0.00' },
+                { name: '品德', parentGroupId: null, cap: null, floor: '0.00' },
               ],
+              expectedVersion: groupsVersion,
             },
             f.principal,
+          )
+          // a save composed against the tree as it was before the rename:
+          // refused whatever else it says
+          const stale = yield* Effect.exit(
+            assessment.replaceScoreGroups(
+              f.tenant,
+              batch.id,
+              {
+                groups: [
+                  { id: groupId, name: '文体活动', parentGroupId: null, cap: null, floor: null },
+                ],
+                expectedVersion: groupsVersion,
+              },
+              f.principal,
+            ),
           )
           const orphaning = yield* Effect.exit(
             assessment.replaceScoreGroups(
               f.tenant,
               batch.id,
-              { groups: [{ name: 'only the new one', cap: null, floor: null }] },
+              {
+                groups: [{ name: 'only the new one', parentGroupId: null, cap: null, floor: null }],
+                expectedVersion: renamed.version,
+              },
               f.principal,
             ),
           )
@@ -556,7 +579,18 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             assessment.replaceScoreGroups(
               f.tenant,
               batch.id,
-              { groups: [{ id: groupId, name: '文体活动', cap: '5.00', floor: '10.00' }] },
+              {
+                groups: [
+                  {
+                    id: groupId,
+                    name: '文体活动',
+                    parentGroupId: null,
+                    cap: '5.00',
+                    floor: '10.00',
+                  },
+                ],
+                expectedVersion: renamed.version,
+              },
               f.principal,
             ),
           )
@@ -564,11 +598,16 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             assessment.replaceScoreGroups(
               f.tenant,
               batch.id,
-              { groups: [{ id: randomUUID(), name: 'ghost', cap: null, floor: null }] },
+              {
+                groups: [
+                  { id: randomUUID(), name: 'ghost', parentGroupId: null, cap: null, floor: null },
+                ],
+                expectedVersion: renamed.version,
+              },
               f.principal,
             ),
           )
-          return { renamed, orphaning, contradiction, stray, groupId }
+          return { renamed, stale, orphaning, contradiction, stray, groupId }
         }),
       ),
     )
@@ -580,6 +619,10 @@ describe.runIf(postgresAvailable)('item configuration', () => {
         errorOf<{ refusals?: readonly { reason: string; groupId: string | null }[] }>(exit)
           ?.refusals ?? []
       ).map((refusal) => refusal.reason)
+    expect(tagOf(result.stale)).toBe('ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT')
+    expect(errorOf<{ currentVersion?: number }>(result.stale)?.currentVersion).toBe(
+      result.renamed.version,
+    )
     expect(refusalsOf(result.orphaning)).toContain('group-has-items')
     expect(refusalsOf(result.contradiction)).toContain('floor-above-cap')
     expect(refusalsOf(result.stray)).toContain('group-not-found')
@@ -592,7 +635,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
         Effect.gen(function* () {
           const f = yield* seed('item-reason')
           const assessment = yield* Assessment
-          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const { batch, groupId, groupsVersion } = yield* draftBatch(f, 'Round')
           const item = yield* assessment.createItem(
             f.tenant,
             batch.id,
@@ -656,7 +699,12 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             assessment.replaceScoreGroups(
               f.tenant,
               batch.id,
-              { groups: [{ id: groupId, name: '文体', cap: '6.00', floor: null }] },
+              {
+                groups: [
+                  { id: groupId, name: '文体', parentGroupId: null, cap: '6.00', floor: null },
+                ],
+                expectedVersion: groupsVersion,
+              },
               f.principal,
             ),
           )
@@ -664,7 +712,10 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             f.tenant,
             batch.id,
             {
-              groups: [{ id: groupId, name: '文体', cap: '6.00', floor: null }],
+              groups: [
+                { id: groupId, name: '文体', parentGroupId: null, cap: '6.00', floor: null },
+              ],
+              expectedVersion: groupsVersion,
               reason: 'ceiling lowered by the college',
             },
             f.principal,
@@ -752,7 +803,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
         Effect.gen(function* () {
           const f = yield* seed('item-noop')
           const assessment = yield* Assessment
-          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const { batch, groupId, groupsVersion } = yield* draftBatch(f, 'Round')
           // one config value, used for both saves: the helper mints fresh
           // role ids per call, and "identical" must actually mean identical
           const config = studentConfig()
@@ -782,7 +833,12 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           yield* assessment.replaceScoreGroups(
             f.tenant,
             batch.id,
-            { groups: [{ id: groupId, name: '文体', cap: '10.00', floor: null }] },
+            {
+              groups: [
+                { id: groupId, name: '文体', parentGroupId: null, cap: '10.00', floor: null },
+              ],
+              expectedVersion: groupsVersion,
+            },
             f.principal,
           )
           const after = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
@@ -817,6 +873,8 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             },
             f.principal,
           )
+          // live means published: a draft question is outside every window check
+          yield* assessment.setItemStatus(f.tenant, item.id, { status: 'active' }, f.principal)
           // a live entry that the current form still reads
           const participant = one<{ id: string }>(
             yield* runSql(sql`
@@ -862,8 +920,9 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const ghostGroup = groupId
           const ghostItem = one<{ id: string }>(
             yield* runSql(sql`
-              insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id)
-              values (${f.tenant}, ${batch.id}, 'ghost', 'orphaned question', ${ghostGroup})
+              insert into assessment_items
+                (tenant_id, batch_id, item_type, title, score_group_id, status)
+              values (${f.tenant}, ${batch.id}, 'ghost', 'orphaned question', ${ghostGroup}, 'active')
               returning id`),
           ).id
           yield* runSql(sql`

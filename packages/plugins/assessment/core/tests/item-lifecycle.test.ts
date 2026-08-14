@@ -46,6 +46,40 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           // a running round: its question cannot be deleted, only voided
           const g = yield* runningBatch(f)
           const activeDelete = yield* Effect.exit(assessment.deleteItem(f.t, g.item.id, admin))
+          const unpublished = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '从未提出的题',
+              scoreGroupId: g.item.scoreGroupId,
+              maxEntries: 1,
+              config: {
+                entrySource: 'student',
+                formConfig: { files: {} },
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  stages: [
+                    {
+                      selector: {
+                        kind: 'roleAt',
+                        nodeTypeId: f.classType,
+                        roleIds: [f.reviewRole],
+                      },
+                      quorum: { type: 'any' },
+                    },
+                  ],
+                  normalTerminal: 0,
+                },
+              },
+            },
+            admin,
+          )
+          const draftDelete = yield* Effect.exit(assessment.deleteItem(f.t, unpublished.id, admin))
+          const draftGone = yield* Effect.exit(assessment.getItem(f.t, unpublished.id, admin))
           const blankReason = yield* Effect.exit(
             assessment.setItemStatus(f.t, g.item.id, { status: 'voided', reason: '   ' }, admin),
           )
@@ -75,7 +109,10 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           const groups = yield* assessment.replaceScoreGroups(
             f.t,
             draft.id,
-            { groups: [{ name: '文体', cap: '10.00', floor: null }] },
+            {
+              groups: [{ name: '文体', parentGroupId: null, cap: '10.00', floor: null }],
+              expectedVersion: 1,
+            },
             admin,
           )
           const item = yield* assessment.createItem(
@@ -115,12 +152,25 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           )
           yield* assessment.deleteItem(f.t, item.id, admin)
           const gone = yield* Effect.exit(assessment.getItem(f.t, item.id, admin))
-          return { activeDelete, blankReason, byStudent, restoreActive, draftVoid, gone }
+          return {
+            activeDelete,
+            draftDelete,
+            draftGone,
+            blankReason,
+            byStudent,
+            restoreActive,
+            draftVoid,
+            gone,
+          }
         }),
       ),
     )
 
-    expect(refusalOf(result.activeDelete)?.reason).toBe('batch-not-draft')
+    // a published question keeps its record: void it, never delete it
+    expect(refusalOf(result.activeDelete)?.reason).toBe('item-published')
+    // one never published was never asked, so it may simply go
+    expect(result.draftDelete._tag).toBe('Success')
+    expect(errorOf<{ _tag: string }>(result.draftGone)?._tag).toBe('ASSESSMENT_ITEM_NOT_FOUND')
     expect(refusalOf(result.blankReason)?.reason).toBe('reason-required')
     expect(errorOf<{ _tag: string }>(result.byStudent)?._tag).toBe('ACCESS_DENIED')
     expect(refusalOf(result.restoreActive)?.reason).toBe('item-not-voided')

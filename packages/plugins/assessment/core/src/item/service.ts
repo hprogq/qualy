@@ -11,6 +11,7 @@ import {
   ItemConfigInvalid,
   ItemNotFound,
   ScoreGroupInvalid,
+  ScoreGroupVersionConflict,
 } from '../server/errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
@@ -22,6 +23,7 @@ import {
   setEntryState,
 } from '../entry/db.ts'
 import {
+  bumpScoreGroupsVersion,
   deleteGroups,
   deleteItemRows,
   groupsOf,
@@ -35,6 +37,7 @@ import {
   nextRevisionNo,
   revisionOf,
   revisionsOf,
+  scoreGroupsVersionOf,
   setCurrentRevision,
   setItemLifecycle,
   updateGroup,
@@ -77,7 +80,7 @@ export interface ItemView {
   readonly scoreGroupId: string
   readonly maxEntries: number | null
   readonly sortOrder: number
-  readonly status: 'active' | 'voided'
+  readonly status: 'draft' | 'active' | 'voided'
   readonly currentRevision: ItemRevisionView | null
   readonly createdAt: EpochMillis
 }
@@ -116,8 +119,11 @@ export interface ScoreGroupSpec {
    * The group this one adds up into. A tree, because the rules are one: a
    * sports cap inside a wider activities cap is how a real regulation reads
    * (§8.5 amended), and a flat list can only say one of the two.
+   *
+   * Never absent: leaving it out used to read as "top level", which turned a
+   * partial payload into a flattening of the whole tree.
    */
-  readonly parentGroupId?: string | null
+  readonly parentGroupId: string | null
   readonly name: string
   readonly cap: string | null
   readonly floor: string | null
@@ -126,6 +132,8 @@ export interface ScoreGroupSpec {
 
 export interface ReplaceScoreGroupsInput {
   readonly groups: readonly ScoreGroupSpec[]
+  /** the tree's version as the caller read it; a stale one is refused */
+  readonly expectedVersion: number
   readonly reason?: string
 }
 
@@ -133,7 +141,8 @@ export type CreateItemError = BatchNotFound | BatchReadOnly | AccessDenied | Ite
 export type ItemLifecycleError = ItemNotFound | BatchReadOnly | AccessDenied | ItemActionRefused
 export type UpdateItemError =
   ItemNotFound | BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
-export type ReplaceGroupsError = BatchNotFound | BatchReadOnly | AccessDenied | ScoreGroupInvalid
+export type ReplaceGroupsError =
+  BatchNotFound | BatchReadOnly | AccessDenied | ScoreGroupInvalid | ScoreGroupVersionConflict
 
 export interface ItemMethods {
   readonly listItems: (
@@ -177,7 +186,11 @@ export interface ItemMethods {
     batchId: string,
     as: Principal,
   ) => Effect.Effect<
-    { groups: readonly ScoreGroupView[]; capabilities: { canManage: boolean } },
+    {
+      groups: readonly ScoreGroupView[]
+      version: number
+      capabilities: { canManage: boolean }
+    },
     BatchNotFound | AccessDenied
   >
   readonly replaceScoreGroups: (
@@ -185,7 +198,7 @@ export interface ItemMethods {
     batchId: string,
     input: ReplaceScoreGroupsInput,
     as: Principal,
-  ) => Effect.Effect<{ groups: readonly ScoreGroupView[] }, ReplaceGroupsError>
+  ) => Effect.Effect<{ groups: readonly ScoreGroupView[]; version: number }, ReplaceGroupsError>
 }
 
 /** what the item methods borrow from the service that owns authorization */
@@ -370,14 +383,19 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       yield* deps.requireBatchVisible(tenantId, batchId, as)
       return yield* withDb(
         Effect.gen(function* () {
-          const rows = yield* itemsOf(tenantId, batchId)
+          const manage = yield* canManage(as, tenantId, batchId)
+          // a draft question is not yet asked of anybody: whoever composes
+          // the paper sees it, nobody else learns it exists
+          const rows = (yield* itemsOf(tenantId, batchId)).filter(
+            (row) => manage || row.status !== 'draft',
+          )
           const revisions = yield* revisionsOf(
             tenantId,
             rows.map((row) => row.id),
           )
           return {
             items: rows.map((row) => toView(row, revisions.get(row.id) ?? null)),
-            capabilities: { canManage: yield* canManage(as, tenantId, batchId) },
+            capabilities: { canManage: manage },
           }
         }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       )
@@ -589,8 +607,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       yield* deps.requireBatchVisible(tenantId, batchId, as)
       return yield* withDb(
         Effect.gen(function* () {
+          const version = yield* scoreGroupsVersionOf(tenantId, batchId)
+          if (version === null) return yield* new BatchNotFound()
           return {
             groups: yield* groupsView(tenantId, batchId),
+            version,
             capabilities: { canManage: yield* canManage(as, tenantId, batchId) },
           }
         }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
@@ -612,6 +633,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           if (!locked) return yield* new BatchNotFound()
           yield* deps.requireRosterReach(as, tenantId, batchId)
           if (locked.status === 'archived') return yield* new BatchReadOnly()
+          // the whole tree arrives at once, so a payload composed against an
+          // older one silently removes whatever it never saw; refused before
+          // anything in it is read
+          const version = locked.scoreGroupsVersion
+          if (version !== input.expectedVersion) {
+            return yield* new ScoreGroupVersionConflict({ currentVersion: version })
+          }
 
           const existing = yield* groupsOf(tenantId, batchId)
           const existingById = new Map(existing.map((group) => [group.id, group]))
@@ -639,7 +667,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           ])
           const parentOf = new Map<string, string | null>()
           for (const [index, spec] of specs.entries()) {
-            const parent = spec.parentGroupId ?? null
+            const parent = spec.parentGroupId
             if (parent !== null && !known.has(parent)) {
               refusals.push({ reason: 'parent-not-in-batch', groupId: spec.id ?? null, index })
             }
@@ -693,7 +721,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             }
             const order = spec.sortOrder ?? index
             if (before.sortOrder !== order) delta['sortOrder'] = [before.sortOrder, order]
-            const parent = spec.parentGroupId ?? null
+            const parent = spec.parentGroupId
             if (before.parentGroupId !== parent) {
               delta['parentGroupId'] = [before.parentGroupId, parent]
               // moving a group inside another changes what a cap applies to
@@ -711,19 +739,20 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             refusals.push({ reason: 'reason-required', groupId: null })
           }
           if (refusals.length > 0) return yield* new ScoreGroupInvalid({ refusals })
-          if (isNoOp) return { groups: yield* groupsView(tenantId, batchId) }
+          if (isNoOp) return { groups: yield* groupsView(tenantId, batchId), version }
 
-          yield* deleteGroups(
-            tenantId,
-            batchId,
-            removed.map((group) => group.id),
-          )
+          // the surviving rows move first, the departing ones go last: the
+          // parent key is RESTRICT and not deferrable, so a group whose child
+          // is being reparented away can only leave once that child has
+          // actually moved. Nothing points the other way - a spec naming a
+          // removed group as its parent is refused above, and a group being
+          // inserted has no id for anything to name yet.
           for (const [index, spec] of specs.entries()) {
             if (spec.id === undefined) {
               yield* insertGroup({
                 tenantId,
                 batchId,
-                parentGroupId: spec.parentGroupId ?? null,
+                parentGroupId: spec.parentGroupId,
                 name: spec.name,
                 cap: spec.cap,
                 floor: spec.floor,
@@ -734,7 +763,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 tenantId,
                 batchId,
                 id: spec.id,
-                parentGroupId: spec.parentGroupId ?? null,
+                parentGroupId: spec.parentGroupId,
                 name: spec.name,
                 cap: spec.cap,
                 floor: spec.floor,
@@ -742,6 +771,12 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               })
             }
           }
+          yield* deleteGroups(
+            tenantId,
+            batchId,
+            removed.map((group) => group.id),
+          )
+          yield* bumpScoreGroupsVersion(tenantId, batchId)
           yield* deps.recordConfigChange(
             tenantId,
             batchId,
@@ -758,7 +793,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             as.userId,
             reason === '' ? null : reason,
           )
-          return { groups: yield* groupsView(tenantId, batchId) }
+          return { groups: yield* groupsView(tenantId, batchId), version: version + 1 }
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
     )
@@ -779,10 +814,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             const locked = yield* lockBatch(tenantId, item.batchId)
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
             yield* deps.requireRosterReach(as, tenantId, item.batchId)
-            // deletion is for questions nothing ever happened to: a draft
-            // round, and not one entry. Anything more is a void, which keeps
-            // the record.
-            if (locked!.status !== 'draft') return yield* refuse('delete', 'batch-not-draft')
+            // deletion is for questions nothing ever happened to: one never
+            // published, or any question in a round that has not started -
+            // and in neither case with a single entry against it. Anything
+            // more is a void, which keeps the record.
+            if (item.status !== 'draft' && locked!.status !== 'draft') {
+              return yield* refuse('delete', 'item-published')
+            }
             if (yield* itemHasEntries(tenantId, itemId)) {
               return yield* refuse('delete', 'item-has-entries')
             }
@@ -806,7 +844,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             const locked = yield* lockBatch(tenantId, item.batchId)
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
             yield* deps.requireRosterReach(as, tenantId, item.batchId)
-            if (locked!.status === 'draft') {
+            if (input.status === 'voided' && locked!.status === 'draft') {
               // a draft round has no facts to keep; the ceremony would
               // record nothing - delete instead
               return yield* refuse('void', 'batch-draft')
@@ -856,16 +894,23 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 reason,
               )
             } else {
-              // restore reopens the question for new work and nothing else:
-              // entries voided with it stay voided, cancelled rounds stay
-              // cancelled - what happened, happened
+              // Publishing asks the question of the round for the first time;
+              // restoring reopens one that was withdrawn. Both are the same
+              // write, and neither reaches backwards: entries voided with a
+              // question stay voided, cancelled rounds stay cancelled.
+              const publishing = item.status === 'draft'
               const moved = yield* setItemLifecycle({ tenantId, itemId, to: 'active' })
-              if (!moved) return yield* refuse('restore', 'item-not-voided')
+              if (!moved) {
+                return yield* refuse(
+                  publishing ? 'publish' : 'restore',
+                  publishing ? 'item-not-draft' : 'item-not-voided',
+                )
+              }
               yield* deps.recordConfigChange(
                 tenantId,
                 item.batchId,
                 locked!.status,
-                { restoredItem: itemId },
+                publishing ? { publishedItem: itemId } : { restoredItem: itemId },
                 as.userId,
                 null,
               )

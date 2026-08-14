@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useApi,
@@ -46,7 +46,13 @@ function Detail({ batchId }: { batchId: string }) {
   const run = useRunApi()
   const navigate = usePageNavigate()
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  // names in a row are punctuated the way the reader's language punctuates a
+  // list, which is not the same mark in every one
+  const listed = useMemo(
+    () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
+    [locale],
+  )
   const detail = useQuery(
     query.assessment.getReviewInstance.queryOptions({ params: { instanceId } }),
   )
@@ -172,12 +178,16 @@ function Detail({ batchId }: { batchId: string }) {
                           </span>
                         )}
                       </p>
-                      <p className="text-xs text-muted-foreground">{stage.roleNames.join('、')}</p>
-                      {stage.nodeName !== null && (
+                      <p className="text-xs text-muted-foreground">
+                        {listed.format(stage.roleNames)}
+                      </p>
+                      {stage.nodeName !== null && stage.reviewers !== null && (
                         <p className="text-xs text-muted-foreground">
                           {stage.reviewers.length === 0
                             ? format(m.reviewStageNobody)
-                            : format(m.reviewStageReviewers, { who: stage.reviewers.join('、') })}
+                            : format(m.reviewStageReviewers, {
+                                who: listed.format(stage.reviewers),
+                              })}
                         </p>
                       )}
                     </li>

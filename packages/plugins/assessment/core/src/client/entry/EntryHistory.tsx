@@ -111,25 +111,44 @@ export function EntryHistory({ entryId, onClose }: { entryId: string; onClose: (
 }
 
 /**
- * Business data as the person filed it, under the names they answered. The
- * payload's keys are the form's internal handles - a reader should never
- * meet them, so a field with no label in the cited form is not shown at all.
+ * Business data as the person filed it, under the names they answered.
+ *
+ * The account is of what was filed, so every value in the payload gets a
+ * row: a form edited afterwards no longer names some of them, and those
+ * stand under their raw handle rather than leaving the history short. Only
+ * labels are free text - the keys are what the form guarantees unique.
  */
 function PayloadLines({ payload, formConfig }: { payload: unknown; formConfig?: unknown }) {
+  const { format } = useI18n()
   if (typeof payload !== 'object' || payload === null) return null
   const record = payload as Record<string, unknown>
-  const fields = fieldsOf(formConfig ?? null).filter((field) => field.type !== 'attachment')
-  const rows = fields.flatMap((field) => {
-    const value = record[field.key]
-    return typeof value === 'string' && value !== '' ? [{ label: field.label, value }] : []
+  const fields = fieldsOf(formConfig ?? null)
+  const named = fields.filter((field) => field.type !== 'attachment')
+  const labels = new Map(named.map((field) => [field.key, field.label]))
+  // cited files are listed as files, not as a line of ids
+  const cited = new Set(
+    fields.filter((field) => field.type === 'attachment').map((field) => field.key),
+  )
+  const keys = [
+    ...named.map((field) => field.key),
+    ...Object.keys(record).filter((key) => !labels.has(key) && !cited.has(key)),
+  ]
+  const rows = keys.flatMap((key) => {
+    const value = record[key]
+    // a field somebody filled and then cleared is part of what they filed:
+    // the row stands and says it is empty, rather than reading as a field
+    // that was never there
+    return typeof value === 'string' ? [{ key, label: labels.get(key) ?? key, value }] : []
   })
   if (rows.length === 0) return null
   return (
     <dl className="pt-1">
       {rows.map((row) => (
-        <div key={row.label} className="flex gap-2">
+        <div key={row.key} className="flex gap-2">
           <dt className="text-muted-foreground">{row.label}</dt>
-          <dd>{row.value}</dd>
+          <dd className={row.value === '' ? 'text-muted-foreground' : undefined}>
+            {row.value === '' ? format(m.entryFieldCleared) : row.value}
+          </dd>
         </div>
       ))}
     </dl>

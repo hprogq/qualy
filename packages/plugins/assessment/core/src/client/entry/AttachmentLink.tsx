@@ -15,6 +15,11 @@ import { attachmentContentUrl } from './model.ts'
 // loaded this way has scripting disabled by the image spec - so a photograph
 // of a certificate can be looked at without a reviewer downloading it, while
 // anything that could execute stays a download.
+//
+// The preview is the original drawn small - there is no derived size to ask
+// for - so a page citing a dozen files must not fetch a dozen originals to
+// paint: each one waits for the scroll that reaches it, decodes off the main
+// thread, and holds its box from the start so nothing moves when it lands.
 
 const LOOKS_LIKE_A_PHOTOGRAPH = new Set([
   'image/jpeg',
@@ -47,7 +52,15 @@ export function AttachmentLink({ attachmentId }: { attachmentId: string }) {
             onClick={() => setOpen(true)}
             aria-label={data.filename}
           >
-            <img src={href} alt={data.filename} className="max-h-40 max-w-full object-contain" />
+            <img
+              src={href}
+              alt={data.filename}
+              width={160}
+              height={160}
+              loading="lazy"
+              decoding="async"
+              className="max-h-40 max-w-full object-contain"
+            />
           </button>
           {open && (
             <div
@@ -60,6 +73,7 @@ export function AttachmentLink({ attachmentId }: { attachmentId: string }) {
               <img
                 src={href}
                 alt={data.filename}
+                decoding="async"
                 className="max-h-full max-w-full object-contain"
               />
             </div>

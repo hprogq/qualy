@@ -4577,12 +4577,13 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           {
             groups: payload.groups.map((group) => ({
               ...(group.id !== undefined ? { id: group.id } : {}),
-              ...(group.parentGroupId !== undefined ? { parentGroupId: group.parentGroupId } : {}),
+              parentGroupId: group.parentGroupId,
               name: group.name,
-              cap: group.cap ?? null,
-              floor: group.floor ?? null,
+              cap: group.cap,
+              floor: group.floor,
               ...(group.sortOrder !== undefined ? { sortOrder: group.sortOrder } : {}),
             })),
+            expectedVersion: payload.expectedVersion,
             ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
           },
           principal,

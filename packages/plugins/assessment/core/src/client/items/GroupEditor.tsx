@@ -21,12 +21,15 @@ export function GroupEditor({
   batchId,
   batchStatus,
   groups,
+  version,
   editing,
   onDone,
 }: {
   batchId: string
   batchStatus: string
   groups: readonly TreeGroup[]
+  /** the tree these groups were read at; a save states it and can be refused */
+  version: number
   editing: TreeGroup
   onDone: () => void
 }) {
@@ -72,6 +75,7 @@ export function GroupEditor({
           params: { batchId },
           payload: {
             groups: edited,
+            expectedVersion: version,
             ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
           },
         }),
@@ -92,6 +96,7 @@ export function GroupEditor({
           params: { batchId },
           payload: {
             groups: groups.filter((group) => group.id !== editing.id).map(specOf),
+            expectedVersion: version,
             ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
           },
         }),
@@ -168,6 +173,7 @@ export function GroupEditor({
 }
 
 const GROUP_REFUSALS: Record<string, MessageDescriptor> = {
+  'group-not-found': m.itemsGroupRefusedNotFound,
   'group-has-items': m.itemsGroupRefusedHasItems,
   'group-has-children': m.itemsGroupRefusedHasChildren,
   'floor-above-cap': m.itemsGroupRefusedFloorAboveCap,

@@ -123,6 +123,7 @@ const ambient = {
           itemCount: 1,
         },
       ],
+      version: 1,
       capabilities: { canManage: false },
     }),
   getMyResult: () =>

@@ -164,6 +164,9 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
     for (const item of items) {
       if (item.scoreGroupId !== group.id) continue
       const entries = entriesByItem.get(item.id) ?? []
+      // a question never published was never asked: it is absent from the
+      // account entirely, not present at zero
+      if (item.status === 'draft') continue
       if (item.status !== 'active') {
         // the question was withdrawn from scoring; whoever has history on
         // it sees that stated rather than silently missing

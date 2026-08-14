@@ -116,6 +116,30 @@ export const updateGroup = (input: {
       .execute(),
   )
 
+/** the version a save of the whole tree must state, or null if no such batch */
+export const scoreGroupsVersionOf = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentBatch')
+        .select('scoreGroupsVersion')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', batchId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row === undefined ? null : Number(row.scoreGroupsVersion))))
+
+/** serialized by the batch row lock the replacement already holds */
+export const bumpScoreGroupsVersion = (tenantId: string, batchId: string) =>
+  db.query((k) =>
+    k
+      .updateTable('AssessmentBatch')
+      .set({ scoreGroupsVersion: sql`score_groups_version + 1`, updatedAt: sql`now()` })
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', batchId)
+      .execute(),
+  )
+
 export const deleteGroups = (tenantId: string, batchId: string, ids: readonly string[]) =>
   ids.length === 0
     ? Effect.void
@@ -149,7 +173,7 @@ export interface ItemRow {
   scoreGroupId: string
   maxEntries: number | null
   sortOrder: number
-  status: 'active' | 'voided'
+  status: 'draft' | 'active' | 'voided'
   currentRevisionId: string | null
   createdAt: number
 }
@@ -551,7 +575,13 @@ export const deleteItemRows = (tenantId: string, itemId: string) =>
     )
   })
 
-/** active -> voided with its record, or voided -> active clean; CAS on the from-status */
+/**
+ * active -> voided with its record, or draft/voided -> active clean.
+ *
+ * The CAS names the states the move is legal from, so publishing a draft and
+ * restoring a voided question are the same write with different origins, and
+ * neither can move a question that somebody else already moved.
+ */
 export const setItemLifecycle = (
   input:
     | { tenantId: string; itemId: string; to: 'voided'; actorId: string; reason: string }
@@ -580,7 +610,7 @@ export const setItemLifecycle = (
         )
         .where('tenantId', '=', input.tenantId)
         .where('id', '=', input.itemId)
-        .where('status', '=', input.to === 'voided' ? 'active' : 'voided')
+        .where('status', 'in', input.to === 'voided' ? ['active'] : ['draft', 'voided'])
         .returning(['id'])
         .executeTakeFirst(),
     )

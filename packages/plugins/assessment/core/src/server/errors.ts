@@ -161,6 +161,20 @@ export class ScoreGroupInvalid extends Schema.TaggedErrorClass<ScoreGroupInvalid
   { httpApiStatus: 422, identifier: 'AssessmentScoreGroupInvalid' },
 ) {}
 
+/**
+ * The tree changed since the caller read it.
+ *
+ * A save sends every group, so omission is how it removes one: applied on top
+ * of somebody else's save it would delete what that save added. The current
+ * version travels with the refusal so a client can re-read and retry rather
+ * than guess.
+ */
+export class ScoreGroupVersionConflict extends Schema.TaggedErrorClass<ScoreGroupVersionConflict>()(
+  'ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT',
+  { currentVersion: Schema.Number },
+  { httpApiStatus: 409, identifier: 'AssessmentScoreGroupVersionConflict' },
+) {}
+
 export class TemplateNotFound extends Schema.TaggedErrorClass<TemplateNotFound>()(
   'ASSESSMENT_TEMPLATE_NOT_FOUND',
   {},

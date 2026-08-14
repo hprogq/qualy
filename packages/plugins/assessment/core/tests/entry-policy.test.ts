@@ -97,6 +97,13 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
             },
             admin,
           )
+          // an administrative question only records once it is published
+          yield* assessment.setItemStatus(
+            f.t,
+            deduction.id,
+            { status: 'active' },
+            f.principal(f.admin),
+          )
           const recorder = f.principal(f.recorder)
           const inReach = yield* assessment.createEntry(
             f.t,

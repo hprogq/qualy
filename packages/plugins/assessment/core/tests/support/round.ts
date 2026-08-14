@@ -249,7 +249,10 @@ export const runningBatch = (f: Seeded, over?: { profile?: readonly string[] }) 
     const groups = yield* assessment.replaceScoreGroups(
       f.t,
       batch.id,
-      { groups: [{ name: '文体', cap: '10.00', floor: null }] },
+      {
+        groups: [{ name: '文体', parentGroupId: null, cap: '10.00', floor: null }],
+        expectedVersion: 1,
+      },
       f.principal(f.admin),
     )
     const item = yield* assessment.createItem(
@@ -280,6 +283,9 @@ export const runningBatch = (f: Seeded, over?: { profile?: readonly string[] }) 
       },
       f.principal(f.admin),
     )
+    // a question is composed as a draft and asked on purpose; a round under
+    // test is one whose questions have been published
+    yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, f.principal(f.admin))
     const plan = yield* assessment.getPlan(f.t, batch.id, f.principal(f.admin))
     yield* assessment.schedulePhase(
       f.t,

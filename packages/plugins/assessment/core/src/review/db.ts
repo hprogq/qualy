@@ -701,40 +701,41 @@ export const tenantsWithOpenRounds = () =>
     )
     .pipe(Effect.map((rows) => rows.map((row) => row.tenantId)))
 
-/** the people a stage's roles are on right now, by name, for an explanation */
+/**
+ * The people a stage's roles are on right now, by name, for an explanation.
+ * The round's own subject and author are required rather than optional: the
+ * explanation answers the same question the queue and the decision endpoint
+ * answer, and a stage that named somebody those two refuse would be
+ * explaining a queue nobody has.
+ */
 export const holderNamesAt = (input: {
   tenantId: string
   batchId: string
   nodeId: string
   roleIds: readonly string[]
+  subjectUserId: string
+  actorId: string
 }) =>
-  input.roleIds.length === 0
-    ? Effect.succeed([] as readonly string[])
-    : Effect.map(
-        reviewersAt({
-          tenantId: input.tenantId,
-          batchId: input.batchId,
-          nodeId: input.nodeId,
-          roleIds: input.roleIds,
-          // an explanation is about the stage, not about one filing
-          subjectUserId: '00000000-0000-0000-0000-000000000000',
-          actorId: '00000000-0000-0000-0000-000000000000',
-        }),
-        (ids) => ids,
-      ).pipe(
-        Effect.flatMap((ids) =>
-          ids.length === 0
-            ? Effect.succeed([] as readonly string[])
-            : db
-                .query((k) =>
-                  k
-                    .selectFrom('User')
-                    .select(['displayName'])
-                    .where('tenantId', '=', input.tenantId)
-                    .where('id', 'in', [...ids])
-                    .orderBy('displayName')
-                    .execute(),
-                )
-                .pipe(Effect.map((rows) => rows.map((row) => row.displayName))),
-        ),
-      )
+  Effect.gen(function* () {
+    if (input.roleIds.length === 0) return [] as readonly string[]
+    const ids = yield* reviewersAt({
+      tenantId: input.tenantId,
+      batchId: input.batchId,
+      nodeId: input.nodeId,
+      roleIds: input.roleIds,
+      subjectUserId: input.subjectUserId,
+      actorId: input.actorId,
+    })
+    if (ids.length === 0) return [] as readonly string[]
+    const rows = yield* db.query((k) =>
+      k
+        .selectFrom('User')
+        .select(['displayName'])
+        .where('tenantId', '=', input.tenantId)
+        .where('id', 'in', [...ids])
+        .orderBy('displayName')
+        .execute(),
+    )
+    const names: readonly string[] = rows.map((row) => row.displayName)
+    return names
+  })

@@ -51,7 +51,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
+          'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-hidden rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
           className,
         )}
         {...props}
@@ -81,12 +81,18 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
  * rhythm one level down (the scroll wrapper takes its children out of the
  * content grid), and trades a margin for padding at net zero so a focus
  * ring at the scroll edge has room instead of being clipped.
+ *
+ * The height cap belongs here rather than on DialogContent: the content box
+ * is centred with a -50% translate, so once it outgrows the viewport its top
+ * edge leaves the screen and cannot be scrolled back into reach. Capping the
+ * body instead leaves the header and footer outside the scroll region, and a
+ * body shorter than the cap is laid out exactly as if the cap were absent.
  */
 function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="dialog-body"
-      className={cn('-m-1 grid min-h-0 gap-4 overflow-y-auto p-1', className)}
+      className={cn('-m-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-1', className)}
       {...props}
     />
   )

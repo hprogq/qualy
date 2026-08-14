@@ -63,9 +63,11 @@ const scoringBatch = (
       {
         groups: spec.groups.map((group) => ({
           name: group.name,
+          parentGroupId: null,
           cap: group.cap ?? null,
           floor: group.floor ?? null,
         })),
+        expectedVersion: 1,
       },
       admin,
     )
@@ -102,6 +104,8 @@ const scoringBatch = (
         },
         admin,
       )
+      // composed as a draft, then asked: an account is only about live questions
+      yield* assessment.setItemStatus(f.t, created.id, { status: 'active' }, admin)
       items.push(created.id)
     }
     const plan = yield* assessment.getPlan(f.t, batch.id, admin)
@@ -365,10 +369,17 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             g.batch.id,
             {
               groups: [
-                { name: '文体活动', id: g.groupIds[0]!, cap: '10.00', floor: null },
+                {
+                  name: '文体活动',
+                  id: g.groupIds[0]!,
+                  parentGroupId: null,
+                  cap: '10.00',
+                  floor: null,
+                },
                 { name: '体育活动', cap: '4.00', floor: null, parentGroupId: g.groupIds[0]! },
                 { name: '文艺活动', cap: '6.00', floor: null, parentGroupId: g.groupIds[0]! },
               ],
+              expectedVersion: 2,
               reason: 'the regulation nests these',
             },
             admin,
@@ -414,6 +425,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
           const c = yield* item('志愿裁判', '2.00', sport)
           const d = yield* item('校园歌手赛', '2.00', arts)
           for (const created of [a, b, c, d]) {
+            yield* assessment.setItemStatus(f.t, created.id, { status: 'active' }, admin)
             yield* approved(f, created.id, g.p1, f.s1)
           }
           const account = yield* assessment.getMyResult(f.t, g.batch.id, f.principal(f.s1))

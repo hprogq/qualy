@@ -54,6 +54,11 @@ export const AssessmentBatch = defineEntity({
     // monotonic counter behind the append-only config event log; a ScoreRun
     // freezes the value it read, which is what makes stale runs detectable
     configRevision: p.integer().default(0),
+    // the score tree is written as a whole set, so a save states the version
+    // it was composed against and every accepted one moves it on: without it
+    // the later of two concurrent full-tree payloads deletes what the earlier
+    // added, because omission is how the set says "removed"
+    scoreGroupsVersion: p.integer().default(1),
     // the low-risk sugar switch (§9): a participant who has not submitted
     // anything yet may have an anchor change synced without the diff panel.
     // A config slot only until entries exist to define "first submission".
@@ -696,7 +701,7 @@ export const AssessmentItem = defineEntity({
     // how many entries one participant may hold; null is unlimited
     maxEntries: p.integer().nullable(),
     sortOrder: p.integer().default(0),
-    status: p.string().length(16).defaultRaw(`'active'`),
+    status: p.string().length(16).defaultRaw(`'draft'`),
     voidedAt: p.datetime().nullable(),
     voidedBy: p.uuid().nullable(),
     voidReason: p.string().length(500).nullable(),
@@ -709,7 +714,10 @@ export const AssessmentItem = defineEntity({
       expression: `item_type ~ '^[a-z0-9]+(?:[.-][a-z0-9]+)*$'`,
     },
     { name: 'chk_assessment_items_title_not_blank', expression: `btrim(title) <> ''` },
-    { name: 'chk_assessment_items_status', expression: `status IN ('active', 'voided')` },
+    {
+      name: 'chk_assessment_items_status',
+      expression: `status IN ('draft', 'active', 'voided')`,
+    },
     {
       name: 'chk_assessment_items_max_entries_positive',
       expression: 'max_entries IS NULL OR max_entries >= 1',
@@ -721,7 +729,7 @@ export const AssessmentItem = defineEntity({
     // false passes
     {
       name: 'chk_assessment_items_void_state_shape',
-      expression: `(status = 'active' AND voided_at IS NULL AND voided_by IS NULL AND void_reason IS NULL) OR (status = 'voided' AND voided_at IS NOT NULL AND voided_by IS NOT NULL AND btrim(void_reason) <> '')`,
+      expression: `(status <> 'voided' AND voided_at IS NULL AND voided_by IS NULL AND void_reason IS NULL) OR (status = 'voided' AND voided_at IS NOT NULL AND voided_by IS NOT NULL AND btrim(void_reason) <> '')`,
     },
   ],
   indexes: [

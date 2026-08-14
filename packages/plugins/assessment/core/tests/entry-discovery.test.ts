@@ -57,6 +57,15 @@ describe.runIf(postgresAvailable)('finding entries again', () => {
             },
             f.principal(f.admin),
           )
+          // both extra questions are asked of the round, not left in draft
+          for (const created of [second, third]) {
+            yield* assessment.setItemStatus(
+              f.t,
+              created.id,
+              { status: 'active' },
+              f.principal(f.admin),
+            )
+          }
           const draft = yield* assessment.createEntry(
             f.t,
             { itemId: g.item.id, participantId: g.p1, payload: {} },

@@ -95,6 +95,9 @@ function Editor({
 
   const allGroups = groups.data?.groups ?? []
   const allItems = (items.data?.items ?? []) as readonly ItemDto[]
+  // every save states the tree it was composed against; before the first read
+  // lands there is nothing to state, and the api refuses rather than guess
+  const groupsVersion = groups.data?.version ?? null
 
   const addItem = useMutation({
     mutationFn: (groupId: string) =>
@@ -160,6 +163,7 @@ function Editor({
                 floor: null,
               },
             ],
+            expectedVersion: groupsVersion ?? 0,
           },
         }),
       ),
@@ -221,6 +225,7 @@ function Editor({
                   ? input.orderedGroupIds.indexOf(group.id)
                   : group.sortOrder,
             })),
+            expectedVersion: groupsVersion ?? 0,
           },
         }),
       ),
@@ -266,7 +271,9 @@ function Editor({
           selection={selection}
           onSelect={setSelection}
           onAddItem={(groupId) => addItem.mutate(groupId)}
-          onAddGroup={(parentId) => addGroup.mutate(parentId)}
+          // the tree cannot be written until its version has arrived: asking
+          // the api to accept a guessed one is a conflict nobody can act on
+          onAddGroup={groupsVersion === null ? undefined : (parentId) => addGroup.mutate(parentId)}
           onMoveItem={(itemId, groupId, orderedItemIds) =>
             moveItem.mutate({ itemId, groupId, orderedItemIds })
           }
@@ -297,6 +304,7 @@ function Editor({
           batchId={batchId}
           batchStatus={batchStatus}
           groups={allGroups as readonly TreeGroup[]}
+          version={groupsVersion ?? 0}
           editing={selectedGroup as TreeGroup}
           onDone={refresh}
         />

@@ -275,6 +275,18 @@ const includedAt = defineMessage<{ time: string }>()({
   defaultMessage: 'On the list since {time}',
 })
 
+// a group whose own limit moved it says both numbers, so the one that counts
+// is never an unexplained figure next to what its questions came to
+const groupCapped = defineMessage<{ raw: string; cap: string }>()({
+  id: 'assessment/result/group-capped',
+  defaultMessage: 'Adds up to {raw}, held to the group limit {cap}',
+})
+
+const groupFloored = defineMessage<{ raw: string; floor: string }>()({
+  id: 'assessment/result/group-floored',
+  defaultMessage: 'Adds up to {raw}, lifted to the group minimum {floor}',
+})
+
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
@@ -500,10 +512,6 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/hint',
       defaultMessage: 'File your claims here, and follow what happens to each one.',
     },
-    myEntriesGroupEmpty: {
-      id: 'assessment/entry/group-empty',
-      defaultMessage: 'Nothing to file in this group.',
-    },
     myEntriesEmpty: {
       id: 'assessment/entry/empty',
       defaultMessage: 'Nothing to file yet. Questions appear here once the round opens them.',
@@ -638,6 +646,7 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/file-failed',
       defaultMessage: 'The upload did not finish. Try the file again.',
     },
+    entryFieldCleared: { id: 'assessment/entry/field-cleared', defaultMessage: 'left empty' },
     entryFileUnnamed: { id: 'assessment/entry/file-unnamed', defaultMessage: 'Attached file' },
     entryHistoryTitle: {
       id: 'assessment/entry/history-title',
@@ -771,7 +780,13 @@ const i18n = definePluginMessages({
     },
     resultTotal: { id: 'assessment/result/total', defaultMessage: 'Total' },
     resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'From questions' },
+    resultGroupChildren: {
+      id: 'assessment/result/group-children',
+      defaultMessage: 'From groups inside',
+    },
     resultGroupFinal: { id: 'assessment/result/group-final', defaultMessage: 'Counted' },
+    resultGroupCapped: groupCapped,
+    resultGroupFloored: groupFloored,
     resultLineExcluded: {
       id: 'assessment/result/line-excluded',
       defaultMessage: 'Sent back · not counted',
@@ -892,6 +907,10 @@ const i18n = definePluginMessages({
     itemsGroupRefusedParent: {
       id: 'assessment/items/group-refused-parent',
       defaultMessage: 'cannot sit where it was put.',
+    },
+    itemsGroupRefusedNotFound: {
+      id: 'assessment/items/group-refused-not-found',
+      defaultMessage: 'is no longer in this round. Refresh to see the current groups.',
     },
     itemsGroupRefusedOther: {
       id: 'assessment/items/group-refused-other',
@@ -1905,6 +1924,11 @@ const i18n = definePluginMessages({
     ASSESSMENT_SCORE_GROUP_INVALID: {
       id: 'assessment/error/score-group-invalid',
       defaultMessage: 'Could not save the score groups. Fix the problems listed and try again.',
+    },
+    ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT: {
+      id: 'assessment/error/score-group-version-conflict',
+      defaultMessage:
+        'Someone else changed the score groups while you were editing. Refresh and make your change again.',
     },
   }),
   locales: {

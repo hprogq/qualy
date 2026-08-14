@@ -53,7 +53,8 @@ export function PaperTree({
   onSelect: (next: TreeSelection) => void
   /** pressing add creates the thing at once; the page owns that write */
   onAddItem: (groupId: string) => void
-  onAddGroup: (parentId: string | null) => void
+  /** absent while the tree's version is unknown, so no write is offered yet */
+  onAddGroup: ((parentId: string | null) => void) | undefined
   /** the question now belongs to this group, its siblings in this order */
   onMoveItem: (itemId: string, groupId: string, orderedItemIds: readonly string[]) => void
   /** this parent's groups now come in this order */
@@ -275,7 +276,7 @@ export function PaperTree({
                   aria-label={format(m.itemsOutlineAddGroup)}
                   onClick={(event) => {
                     event.stopPropagation()
-                    onAddGroup(group.id)
+                    onAddGroup?.(group.id)
                   }}
                 >
                   <FolderPlusIcon aria-hidden className="size-3" />
