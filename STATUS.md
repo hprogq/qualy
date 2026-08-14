@@ -4262,3 +4262,20 @@ catalogs 7;build、prettier、生产 smoke 全绿。
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test` 624 passed / 17 skipped;`pnpm test:browser` 54;
 catalogs 7;build、prettier、生产 smoke 全绿。
+
+### UI 换装:radix-luma 预设(2026-08-13,用户要求试看,可能换回)
+
+用户先指出 Input 阴影非 shadcn 新基线样式,随后给出 preset 码要求整体换成 Luma 看效果。
+
+- 经 `npx shadcn apply b1VlIttI` 应用(在 packages/web/ui,临时放 vite.config 通过框架检测,用毕即删);
+  preset 解析为 **radix-luma**(radix 原语版 Luma,与本仓库原语一致,无需迁移 Base UI)。
+- 35 个组件 + theme.css + utils 被官方源整体重写(胶囊圆角、填充式输入框、无阴影、Inter Variable 字体,
+  新增依赖 @fontsource-variable/inter 与 shadcn 包的 tailwind 基底);toast 在 radix-luma 注册表缺失,
+  应用期间暂移出目录后原样保留(sonner 路线)。
+- 修整:registry 的 `@/` 别名导入全部改回 NodeNext 相对路径 + `.ts` 扩展(35 文件,脚本处理);
+  theme.css 去掉重复的 tw-animate 导入;apply 抹掉的自有导出移植回新文件
+  (spinner 的 LoadingScreen/PageLoading、dialog 的 DialogBody)。
+- 单独一个 commit,如要换回样式直接 revert 即可。
+
+**门禁(实际执行)**:typecheck 零错;`pnpm test` 624 passed / 17 skipped;`pnpm test:browser` 54;
+build、prettier、生产 smoke 全绿。

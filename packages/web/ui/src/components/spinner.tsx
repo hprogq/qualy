@@ -1,11 +1,10 @@
-import * as React from 'react'
-import { Loader2Icon } from 'lucide-react'
-
 import { cn } from '../lib/utils.ts'
+import { Loader2Icon } from 'lucide-react'
 
 function Spinner({ className, ...props }: React.ComponentProps<'svg'>) {
   return (
     <Loader2Icon
+      data-slot="spinner"
       role="status"
       aria-label="Loading"
       className={cn('size-4 animate-spin', className)}
@@ -14,7 +13,7 @@ function Spinner({ className, ...props }: React.ComponentProps<'svg'>) {
   )
 }
 
-// fills the viewport; for app-level boot and layout transitions
+// the two loading surfaces the app composes from the spinner
 function LoadingScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -23,7 +22,7 @@ function LoadingScreen() {
   )
 }
 
-// fills the content area of a page without claiming the whole viewport
+/** fills the content area of a page without claiming the whole viewport */
 function PageLoading() {
   return (
     <div className="flex items-center justify-center py-24">
