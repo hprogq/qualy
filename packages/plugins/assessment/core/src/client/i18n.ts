@@ -846,24 +846,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Add subgroup',
     },
     itemsCapChip: { id: 'assessment/items/cap-chip', defaultMessage: 'up to {value} pts' },
-    itemsScoreChip: { id: 'assessment/items/score-chip', defaultMessage: '{value} pts' },
     itemsSheetEmpty: {
       id: 'assessment/items/sheet-empty',
       defaultMessage: 'No groups yet. Add one, then write questions into it.',
     },
-    itemsSummaryFields: {
-      id: 'assessment/items/summary-fields',
-      defaultMessage: '{count, plural, one {# field} other {# fields}}',
-    },
-    itemsSummaryScoring: {
-      id: 'assessment/items/summary-scoring',
-      defaultMessage: '{value} pts on approval',
-    },
-    itemsSummarySteps: {
-      id: 'assessment/items/summary-steps',
-      defaultMessage: '{count, plural, one {# step} other {# steps}}',
-    },
-    itemsSummaryNone: { id: 'assessment/items/summary-none', defaultMessage: 'Not set' },
     itemsChipRecorded: { id: 'assessment/items/chip-recorded', defaultMessage: 'recorded' },
     itemsGroupUnnamed: { id: 'assessment/items/group-unnamed', defaultMessage: 'Untitled group' },
     itemsGroupInside: {
@@ -917,7 +903,7 @@ const i18n = definePluginMessages({
     itemsGroupsSaved: { id: 'assessment/items/groups-saved', defaultMessage: 'Groups saved.' },
     itemsListTitle: { id: 'assessment/items/list-title', defaultMessage: 'Questions' },
     itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
-    itemsEditTitle: { id: 'assessment/items/edit-title', defaultMessage: 'The question' },
+    itemsEditTitle: { id: 'assessment/items/edit-title', defaultMessage: 'Question' },
     itemsFieldTitle: { id: 'assessment/items/field-title', defaultMessage: 'Title' },
     itemsFieldGroup: { id: 'assessment/items/field-group', defaultMessage: 'Score group' },
     itemsFieldMax: {
@@ -936,7 +922,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/entry-source-administrative',
       defaultMessage: 'Staff record it, with a basis',
     },
-    itemsFormTitle: { id: 'assessment/items/form-title', defaultMessage: 'Form fields' },
     itemsFieldAdd: { id: 'assessment/items/form-add', defaultMessage: 'Add a field' },
     itemsFieldRemove: { id: 'assessment/items/form-remove', defaultMessage: 'Remove' },
     itemsFieldUp: { id: 'assessment/items/form-up', defaultMessage: 'Move up' },
@@ -970,7 +955,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/field-accept-hint',
       defaultMessage: 'Comma-separated, like .pdf, image/*. Empty accepts anything.',
     },
-    itemsScoringTitle: { id: 'assessment/items/scoring-title', defaultMessage: 'Scoring' },
     itemsFixedValue: {
       id: 'assessment/items/fixed-value',
       defaultMessage: 'Each approved entry counts',
@@ -1013,7 +997,7 @@ const i18n = definePluginMessages({
     itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
     itemsTerminalHere: {
       id: 'assessment/items/terminal-here',
-      defaultMessage: 'Approval here completes the review',
+      defaultMessage: 'Done on approval',
     },
     itemsStageDoubt: {
       id: 'assessment/items/stage-doubt',
@@ -1043,7 +1027,45 @@ const i18n = definePluginMessages({
       id: 'assessment/review/escalated-here',
       defaultMessage: 'A doubt is on its way up; the end of the chain decides.',
     },
-    itemsReviewTitle: { id: 'assessment/items/review-title', defaultMessage: 'Review' },
+    itemsReviewTitle: {
+      id: 'assessment/items/review-title',
+      defaultMessage: 'Ordinary review',
+    },
+    itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basics' },
+    itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Form fields' },
+    itemsTabScoring: { id: 'assessment/items/tab-scoring', defaultMessage: 'Scoring' },
+    itemsTabReview: { id: 'assessment/items/tab-review', defaultMessage: 'Review chain' },
+    itemsFieldDescription: {
+      id: 'assessment/items/field-description',
+      defaultMessage: 'Filing instructions',
+    },
+    itemsFieldDescriptionHint: {
+      id: 'assessment/items/field-description-hint',
+      defaultMessage: 'Shown under the question when filing.',
+    },
+    itemsFieldMaxUnlimited: {
+      id: 'assessment/items/field-max-unlimited',
+      defaultMessage: 'Empty for no limit',
+    },
+    itemsFlowSubmit: { id: 'assessment/items/flow-submit', defaultMessage: 'Submitted' },
+    itemsFlowSubmitBy: {
+      id: 'assessment/items/flow-submit-by',
+      defaultMessage: 'by the participant',
+    },
+    itemsFlowDone: { id: 'assessment/items/flow-done', defaultMessage: 'Review complete' },
+    itemsFlowDoneSub: {
+      id: 'assessment/items/flow-done-sub',
+      defaultMessage: 'approved entries count',
+    },
+    itemsStageExpand: { id: 'assessment/items/stage-expand', defaultMessage: 'Edit' },
+    itemsStageLevelShort: { id: 'assessment/items/stage-level-short', defaultMessage: 'Level' },
+    itemsStageRolesShort: { id: 'assessment/items/stage-roles-short', defaultMessage: 'Roles' },
+    itemsStageKindShort: { id: 'assessment/items/stage-kind-short', defaultMessage: 'How' },
+    itemsStageWalkUp: { id: 'assessment/items/stage-walk-up', defaultMessage: 'Walks up' },
+    itemsPickTarget: {
+      id: 'assessment/items/pick-something',
+      defaultMessage: 'Pick a group or question on the left to edit.',
+    },
     itemsReviewCovered: {
       id: 'assessment/items/review-covered',
       defaultMessage:

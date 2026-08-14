@@ -2,40 +2,36 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
-import { Field, FormDialog } from '@qualy/ui/admin'
+import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import type { SheetGroup } from './PaperSheet.tsx'
+import type { TreeGroup } from './PaperTree.tsx'
 
-// One section of the paper: its name and its limits. Three fields, so a
-// dialog rather than a pane.
+// One section of the paper: its name and its limits.
 //
 // Saving sends the whole tree because that is what the api takes - and every
 // row keeps the id it came with, which is what tells the server this is the
 // same group rather than a new one replacing it.
 
-export function GroupDialog({
+export function GroupEditor({
   batchId,
   batchStatus,
   groups,
   editing,
   parentId,
-  onClose,
   onDone,
 }: {
   batchId: string
   batchStatus: string
-  groups: readonly SheetGroup[]
+  groups: readonly TreeGroup[]
   /** the group being edited, or null when composing a new one */
-  editing: SheetGroup | null
+  editing: TreeGroup | null
   /** where a new group goes; ignored when editing */
   parentId: string | null
-  onClose: () => void
   onDone: () => void
 }) {
   const api = useApi(assessmentApi)
@@ -51,7 +47,7 @@ export function GroupDialog({
 
   const parent = groups.find((group) => group.id === (editing?.parentGroupId ?? parentId)) ?? null
 
-  const specOf = (group: SheetGroup) => ({
+  const specOf = (group: TreeGroup) => ({
     id: group.id,
     parentGroupId: group.parentGroupId,
     name: group.name,
@@ -114,39 +110,35 @@ export function GroupDialog({
   })
 
   return (
-    <FormDialog
-      open
-      title={editing === null ? format(m.itemsGroupNew) : format(m.itemsGroupEditing)}
-      {...(parent !== null
-        ? { description: format(m.itemsGroupInside, { parent: parent.name }) }
-        : {})}
-      onClose={onClose}
-      footer={
-        <div className="flex w-full items-center justify-between gap-2">
-          <div>
-            {editing !== null && (
-              <Button
-                variant="ghost"
-                className="text-destructive"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate()}
-              >
-                {format(m.itemsGroupRemove)}
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.cancel)}
-            </Button>
-            <Button disabled={save.isPending || name.trim() === ''} onClick={() => save.mutate()}>
-              {format(m.entrySave)}
-            </Button>
-          </div>
+    <div className="flex flex-col gap-4">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">
+            {format(m.itemsGroupEditing)}
+            {parent !== null && ` · ${format(m.itemsGroupInside, { parent: parent.name })}`}
+          </p>
+          <h3 className="truncate text-lg font-semibold">
+            {name.trim() === '' ? format(m.itemsGroupNew) : name}
+          </h3>
         </div>
-      }
-    >
-      <div className="flex flex-col gap-4">
+        <div className="flex shrink-0 items-center gap-1.5">
+          {editing !== null && (
+            <Button
+              variant="ghost"
+              className="text-destructive"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              {format(m.itemsGroupRemove)}
+            </Button>
+          )}
+          <Button disabled={save.isPending || name.trim() === ''} onClick={() => save.mutate()}>
+            {format(m.entrySave)}
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex max-w-md flex-col gap-4">
         <Field label={format(m.itemsGroupName)}>
           {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
         </Field>
@@ -178,7 +170,7 @@ export function GroupDialog({
           </ul>
         )}
       </div>
-    </FormDialog>
+    </div>
   )
 }
 

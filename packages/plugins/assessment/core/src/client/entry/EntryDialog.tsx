@@ -64,6 +64,10 @@ export function EntryDialog({
   const labelOf = (key: string) => fields.find((field) => field.key === key)?.label ?? key
 
   const fields = fieldsOf(item.currentRevision?.formConfig)
+  const description = String(
+    (item.currentRevision?.displayConfig as { description?: unknown } | undefined)?.description ??
+      '',
+  ).trim()
 
   const doors = {
     prepare: (input: {
@@ -103,6 +107,7 @@ export function EntryDialog({
   return (
     <FormDialog open title={item.title} onClose={onClose}>
       <div className="flex flex-col gap-4">
+        {description !== '' && <p className="text-sm text-muted-foreground">{description}</p>}
         <EvidenceForm
           fields={fields}
           value={payload}

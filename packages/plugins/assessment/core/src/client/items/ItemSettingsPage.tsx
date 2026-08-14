@@ -12,23 +12,20 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { GroupDialog } from './GroupDialog.tsx'
+import { GroupEditor } from './GroupEditor.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
-import { PaperSheet, type SheetGroup } from './PaperSheet.tsx'
+import { PaperTree, type TreeGroup, type TreeSelection } from './PaperTree.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import type { ItemDto } from '../entry/model.ts'
 
-// The round's paper. The sheet is the whole resting state; a question's
-// details open in a drawer over the margin and a group's in a small dialog,
-// so the paper never leaves the screen while a part of it is being written.
-
-type QuestionEditing = { item: ItemDto | null; groupId?: string }
-type GroupEditing = { group: SheetGroup | null; parentId: string | null }
+// Composing a round with the paper always in sight: its structure down the
+// left, the selected part opened for editing on the right. A drag in the
+// tree is persisted here - the tree only says what should now come where.
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
   return (
-    <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)}>
+    <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)} size="wide">
       {(batch) => (
         <Editor batchId={batch.id} batchStatus={batch.status} materialRange={batch.materialRange} />
       )}
@@ -57,8 +54,7 @@ function Editor({
     ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
     refetchInterval: 60_000,
   })
-  const [question, setQuestion] = useState<QuestionEditing | null>(null)
-  const [group, setGroup] = useState<GroupEditing | null>(null)
+  const [selection, setSelection] = useState<TreeSelection | null>(null)
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
 
   const refresh = () => {
@@ -75,7 +71,7 @@ function Editor({
   const remove = useMutation({
     mutationFn: (itemId: string) => run(api.assessment.deleteItem({ params: { itemId } })),
     onSuccess: () => {
-      setQuestion(null)
+      setSelection(null)
       refresh()
     },
     onError: (error) => toast.error(formatError(error)),
@@ -83,6 +79,72 @@ function Editor({
 
   const allGroups = groups.data?.groups ?? []
   const allItems = (items.data?.items ?? []) as readonly ItemDto[]
+
+  // a drop, made durable: only the rows whose place actually changed are
+  // written, so an idle drag costs nothing
+  const moveItem = useMutation({
+    mutationFn: async (input: {
+      itemId: string
+      groupId: string
+      orderedItemIds: readonly string[]
+    }) => {
+      for (const [index, id] of input.orderedItemIds.entries()) {
+        const current = allItems.find((item) => item.id === id)
+        if (current === undefined) continue
+        const movedGroup = id === input.itemId && current.scoreGroupId !== input.groupId
+        if (current.sortOrder !== index || movedGroup) {
+          await run(
+            api.assessment.updateItem({
+              params: { itemId: id },
+              payload: {
+                sortOrder: index,
+                ...(movedGroup ? { scoreGroupId: input.groupId } : {}),
+              },
+            }),
+          )
+        }
+      }
+    },
+    onSuccess: refresh,
+    onError: (error) => {
+      toast.error(formatError(error))
+      refresh()
+    },
+  })
+
+  const reorderGroups = useMutation({
+    mutationFn: (input: { parentId: string | null; orderedGroupIds: readonly string[] }) =>
+      run(
+        api.assessment.replaceScoreGroups({
+          params: { batchId },
+          payload: {
+            groups: allGroups.map((group) => ({
+              id: group.id,
+              parentGroupId: group.parentGroupId,
+              name: group.name,
+              cap: group.cap,
+              floor: group.floor,
+              sortOrder:
+                group.parentGroupId === input.parentId
+                  ? input.orderedGroupIds.indexOf(group.id)
+                  : group.sortOrder,
+            })),
+          },
+        }),
+      ),
+    onSuccess: refresh,
+    onError: (error) => {
+      toast.error(formatError(error))
+      refresh()
+    },
+  })
+
+  const selectedItem =
+    selection?.kind === 'item' ? (allItems.find((item) => item.id === selection.id) ?? null) : null
+  const selectedGroup =
+    selection?.kind === 'group'
+      ? (allGroups.find((group) => group.id === selection.id) ?? null)
+      : null
 
   return (
     <AsyncSection
@@ -120,58 +182,71 @@ function Editor({
           </section>
         )}
 
-        <PaperSheet
-          groups={allGroups}
-          items={allItems}
-          onEditGroup={(edited) => setGroup({ group: edited, parentId: null })}
-          onAddGroup={(parentId) => setGroup({ group: null, parentId })}
-          onAddItem={(groupId) => setQuestion({ item: null, groupId })}
-          onEditItem={(item) => setQuestion({ item })}
-        />
-      </div>
-
-      {question !== null && options.data !== undefined && (
-        <ItemConfigEditor
-          batchId={batchId}
-          materialRange={materialRange}
-          item={question.item}
-          groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
-          defaultGroupId={question.groupId}
-          options={options.data}
-          actions={
-            question.item === null ? undefined : (
-              <QuestionActions
-                item={question.item}
-                batchStatus={batchStatus}
-                busy={restore.isPending || remove.isPending}
-                onVoid={() => setVoiding(question.item)}
-                onRestore={() => restore.mutate(question.item!.id)}
-                onDelete={() => remove.mutate(question.item!.id)}
+        <div className="grid gap-4 lg:grid-cols-[minmax(19rem,23rem)_minmax(0,1fr)]">
+          <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-9rem)] lg:self-start lg:overflow-y-auto">
+            <div className="rounded-lg border bg-card p-3">
+              <PaperTree
+                groups={allGroups as readonly TreeGroup[]}
+                items={allItems}
+                selection={selection}
+                onSelect={setSelection}
+                onMoveItem={(itemId, groupId, orderedItemIds) =>
+                  moveItem.mutate({ itemId, groupId, orderedItemIds })
+                }
+                onReorderGroups={(parentId, orderedGroupIds) =>
+                  reorderGroups.mutate({ parentId, orderedGroupIds })
+                }
               />
-            )
-          }
-          onClose={() => setQuestion(null)}
-          onSaved={() => {
-            setQuestion(null)
-            refresh()
-          }}
-        />
-      )}
+            </div>
+          </aside>
 
-      {group !== null && (
-        <GroupDialog
-          batchId={batchId}
-          batchStatus={batchStatus}
-          groups={allGroups}
-          editing={group.group}
-          parentId={group.parentId}
-          onClose={() => setGroup(null)}
-          onDone={() => {
-            setGroup(null)
-            refresh()
-          }}
-        />
-      )}
+          <div className="min-w-0 rounded-lg border bg-card p-5">
+            {selection === null && (
+              <div className="flex min-h-64 items-center justify-center">
+                <p className="text-sm text-muted-foreground">{format(m.itemsPickTarget)}</p>
+              </div>
+            )}
+
+            {(selection?.kind === 'group' || selection?.kind === 'new-group') && (
+              <GroupEditor
+                key={selection.kind === 'group' ? selection.id : 'new-group'}
+                batchId={batchId}
+                batchStatus={batchStatus}
+                groups={allGroups as readonly TreeGroup[]}
+                editing={(selectedGroup as TreeGroup | null) ?? null}
+                parentId={selection.kind === 'new-group' ? selection.parentId : null}
+                onDone={refresh}
+              />
+            )}
+
+            {(selection?.kind === 'item' || selection?.kind === 'new-item') &&
+              options.data !== undefined && (
+                <ItemConfigEditor
+                  key={selection.kind === 'item' ? selection.id : `new:${selection.groupId}`}
+                  batchId={batchId}
+                  materialRange={materialRange}
+                  item={selectedItem}
+                  groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
+                  defaultGroupId={selection.kind === 'new-item' ? selection.groupId : undefined}
+                  options={options.data}
+                  actions={
+                    selectedItem === null ? undefined : (
+                      <QuestionActions
+                        item={selectedItem}
+                        batchStatus={batchStatus}
+                        busy={restore.isPending || remove.isPending}
+                        onVoid={() => setVoiding(selectedItem)}
+                        onRestore={() => restore.mutate(selectedItem.id)}
+                        onDelete={() => remove.mutate(selectedItem.id)}
+                      />
+                    )
+                  }
+                  onSaved={refresh}
+                />
+              )}
+          </div>
+        </div>
+      </div>
 
       {voiding !== null && (
         <VoidQuestionDialog
@@ -179,7 +254,6 @@ function Editor({
           onClose={() => setVoiding(null)}
           onDone={() => {
             setVoiding(null)
-            setQuestion(null)
             refresh()
           }}
         />
@@ -208,12 +282,12 @@ function QuestionActions({
     <div className="flex items-center gap-1">
       {item.status === 'voided' && <Badge variant="outline">{format(m.itemsStatusVoided)}</Badge>}
       {item.status === 'active' && batchStatus !== 'draft' && (
-        <Button variant="ghost" size="sm" onClick={onVoid}>
+        <Button variant="outline" size="sm" onClick={onVoid}>
           {format(m.itemsVoid)}
         </Button>
       )}
       {item.status === 'voided' && (
-        <Button variant="ghost" size="sm" disabled={busy} onClick={onRestore}>
+        <Button variant="outline" size="sm" disabled={busy} onClick={onRestore}>
           {format(m.itemsRestore)}
         </Button>
       )}
