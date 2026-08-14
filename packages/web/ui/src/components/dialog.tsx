@@ -76,14 +76,13 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-/** the scrollable middle of a dialog whose header and footer stay put */
+/**
+ * The scrollable middle of a dialog. Spacing belongs to DialogContent's own
+ * p-4/gap-4 rhythm - this adds nothing visual, only the overflow.
+ */
 function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="dialog-body"
-      className={cn('flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-6', className)}
-      {...props}
-    />
+    <div data-slot="dialog-body" className={cn('min-h-0 overflow-y-auto', className)} {...props} />
   )
 }
 
