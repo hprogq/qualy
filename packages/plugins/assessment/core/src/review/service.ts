@@ -21,7 +21,18 @@ import {
   setEntryState,
 } from '../entry/db.ts'
 import type { GateDecision } from '../phase/gate.ts'
-import { holdersOf, isChainEnd, isTerminal, stageAt } from './chain.ts'
+import {
+  doubtOpen,
+  enterableFrom,
+  holdersOf,
+  isRouteEnd,
+  nextAfter,
+  routeOf,
+  stageById,
+  type ResolvedPolicy,
+  type ResolvedStage,
+  type ReviewRoute,
+} from './chain.ts'
 import { nodePathOf } from '../entry/db.ts'
 import {
   activeReviewBatches,
@@ -57,22 +68,27 @@ export interface ReviewInboxItem {
   readonly submittedAt: number
 }
 
+export interface ReviewStageView {
+  readonly id: string
+  readonly index: number
+  readonly nodeName: string | null
+  readonly roleNames: readonly string[]
+  /**
+   * who could act there today - the same question the queue asks; null when
+   * this response did not resolve them, which an empty list would misreport
+   * as an empty stage
+   */
+  readonly reviewers: readonly string[] | null
+  readonly skipped: string | null
+}
+
 export interface ReviewChainView {
-  readonly mode: 'normal' | 'escalated'
-  readonly stageIndex: number
-  readonly normalTerminal: number
-  readonly stages: readonly {
-    readonly index: number
-    readonly nodeName: string | null
-    readonly roleNames: readonly string[]
-    /**
-     * who could act there today - the same question the queue asks; null
-     * when this response did not resolve them, which an empty list would
-     * misreport as an empty stage
-     */
-    readonly reviewers: readonly string[] | null
-    readonly skipped: string | null
-  }[]
+  /** which of the two routes this round is walking */
+  readonly route: 'normal' | 'doubt'
+  /** the step it is standing at, by name */
+  readonly stageId: string
+  readonly normal: readonly ReviewStageView[]
+  readonly doubt: readonly ReviewStageView[]
   readonly decisions: readonly string[]
 }
 
@@ -108,13 +124,42 @@ export interface ReviewDetailView {
 }
 
 /**
- * What a reviewer can say (§14). The ordinary stages carry the round:
- * approve moves it on, reject ends it, escalate hands it upward as a doubt.
- * Inside an escalated round the middle stages may only advise - the decision
- * belongs to the end of the chain.
+ * What a reviewer can say (§14, §32.62).
+ *
+ * On the ordinary route: approve carries the round on and ends it at the
+ * last step, reject ends it, and raising a doubt hands it to the other route
+ * entirely - it does not carry on from where it was. On the doubt route the
+ * middle steps may only advise and forward; the decision belongs to the end
+ * of that route.
  */
 export type ReviewDecision =
-  'approve' | 'reject' | 'escalate' | 'comment' | 'recommend-approve' | 'recommend-reject'
+  | 'approve'
+  | 'reject'
+  | 'raise-doubt'
+  | 'forward'
+  | 'comment'
+  | 'recommend-approve'
+  | 'recommend-reject'
+
+/**
+ * What may be said from where the round stands.
+ *
+ * One function, asked by the reader and by the writer, so a button that
+ * appears is a button that works.
+ */
+const decisionsAt = (
+  policy: ResolvedPolicy,
+  here: ResolvedStage,
+): readonly ReviewDecision[] => {
+  if (here.route === 'doubt') {
+    return isRouteEnd(policy, here)
+      ? ['approve', 'reject', 'comment']
+      : ['comment', 'recommend-approve', 'recommend-reject', 'forward']
+  }
+  return doubtOpen(policy)
+    ? ['approve', 'reject', 'raise-doubt', 'comment']
+    : ['approve', 'reject', 'comment']
+}
 
 export interface ReviewDecisionInput {
   readonly decision: ReviewDecision
@@ -201,22 +246,23 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const itemRevision = yield* revisionOf(tenantId, row.itemRevisionId)
       const attachments = yield* revisionAttachmentsOf(tenantId, row.revisionId)
       const events = yield* reviewEventsOf(tenantId, row.id)
-      const chain = row.effectiveChain
+      const policy = row.effectivePolicy
+      const everyStage = [...policy.normal, ...policy.doubt]
       const names = yield* chainNames({
         tenantId,
-        nodeIds: chain.stages.flatMap((stage) => (stage.nodeId === null ? [] : [stage.nodeId])),
-        roleIds: chain.stages.flatMap((stage) => [...stage.roleIds]),
+        nodeIds: everyStage.flatMap((stage) => (stage.nodeId === null ? [] : [stage.nodeId])),
+        roleIds: everyStage.flatMap((stage) => [...stage.roleIds]),
       })
-      // who is standing at each step right now: the one thing a chain cannot
+      // who is standing at each step right now: the one thing a route cannot
       // be read off its own snapshot, and the first thing anybody asks. The
-      // round's own subject and author go in so a stage never names somebody
+      // round's own subject and author go in so a step never names somebody
       // the queue and the decision endpoint would refuse.
-      const reviewersByStage = new Map<number, readonly string[]>()
+      const reviewersByStage = new Map<string, readonly string[]>()
       if (view.resolveReviewers) {
-        for (const stage of chain.stages) {
+        for (const stage of everyStage) {
           if (stage.nodeId === null) continue
           reviewersByStage.set(
-            stage.index,
+            stage.id,
             yield* holderNamesAt({
               tenantId,
               batchId: row.batchId,
@@ -228,16 +274,17 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           )
         }
       }
-      const here = chain.stages.find((stage) => stage.index === row.currentStageIndex)
-      const atEnd = here === undefined ? true : isChainEnd(chain, here.index)
+      const here = stageById(policy, row.currentRoute, row.currentStageId)
       const decisions: readonly string[] =
-        !view.canDecide || here === undefined
-          ? []
-          : row.mode === 'escalated' && !atEnd
-            ? ['comment', 'recommend-approve', 'recommend-reject', 'escalate']
-            : atEnd
-              ? ['approve', 'reject', 'comment']
-              : ['approve', 'reject', 'escalate', 'comment']
+        !view.canDecide || here === null ? [] : decisionsAt(policy, here)
+      const stageView = (stage: ResolvedStage): ReviewStageView => ({
+        id: stage.id,
+        index: stage.index,
+        nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
+        roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
+        reviewers: view.resolveReviewers ? (reviewersByStage.get(stage.id) ?? []) : null,
+        skipped: stage.skipped,
+      })
       return {
         id: row.id,
         state: row.state,
@@ -258,16 +305,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         },
         form: { itemType: row.itemType, formConfig: itemRevision?.formConfig ?? null },
         chain: {
-          mode: row.mode,
-          stageIndex: row.currentStageIndex,
-          normalTerminal: chain.normalTerminal,
-          stages: chain.stages.map((stage) => ({
-            index: stage.index,
-            nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
-            roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
-            reviewers: view.resolveReviewers ? (reviewersByStage.get(stage.index) ?? []) : null,
-            skipped: stage.skipped,
-          })),
+          route: row.currentRoute,
+          stageId: row.currentStageId,
+          normal: policy.normal.map(stageView),
+          doubt: policy.doubt.map(stageView),
           decisions,
         },
         events: events.map((event) => ({
@@ -380,20 +421,14 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             const gate = yield* deps.reviewGate(tenantId, row.batchId)
             if (!gate.allowed) return yield* refuse(action, gate.reason)
 
-            const chain = row.effectiveChain
-            const here = chain.stages.find((stage) => stage.index === row.currentStageIndex)
-            if (here === undefined) return yield* refuse(action, 'chain-unreadable')
-            // Where in the chain this round stands decides what may be said
-            // here (§14): an ordinary stage carries or ends the round; a
-            // middle stage of an escalated round may only advise, because
-            // the decision belongs to the end of the chain.
-            const atChainEnd = isChainEnd(chain, here.index)
-            const allowed: readonly ReviewDecision[] =
-              row.mode === 'escalated' && !atChainEnd
-                ? ['comment', 'recommend-approve', 'recommend-reject', 'escalate']
-                : atChainEnd
-                  ? ['approve', 'reject', 'comment']
-                  : ['approve', 'reject', 'escalate', 'comment']
+            const policy = row.effectivePolicy
+            const here = stageById(policy, row.currentRoute, row.currentStageId)
+            if (here === null) return yield* refuse(action, 'chain-unreadable')
+            // Where this round stands decides what may be said here (§14,
+            // §32.62): an ordinary step carries or ends the round and may
+            // hand it to the doubt route; a middle step of the doubt route
+            // may only advise, because the decision belongs to its end.
+            const allowed = decisionsAt(policy, here)
             if (!allowed.includes(action)) return yield* refuse(action, 'decision-not-available')
 
             const comment = input.comment?.trim() ?? ''
@@ -420,6 +455,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 reviewInstanceId: instanceId,
                 kind,
                 actorId: as.userId,
+                // where it was said, so a round re-routed onto a newer policy
+                // can still answer "which level approved this"
+                route: here.route,
+                stageId: here.id,
                 comment: comment === '' ? null : comment,
                 ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
               })
@@ -435,12 +474,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               })
             }
 
-            // ending the round: a rejection at any stage, or an approval at
-            // the last stage the ordinary flow reaches
-            const ends =
-              action === 'reject' ||
-              (action === 'approve' &&
-                (row.mode === 'escalated' ? atChainEnd : isTerminal(chain, here.index)))
+            // ending the round: a rejection wherever it may be said, or an
+            // approval at the last step of the route being walked
+            const ends = action === 'reject' || (action === 'approve' && isRouteEnd(policy, here))
             if (ends) {
               // first writer wins; everyone else is told the round has closed
               const won = yield* completeInstance({
@@ -463,8 +499,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               })
             }
 
-            // onward: the next stage that resolved to a unit
-            const next = stageAt(chain, here.index + 1)
+            // onward: raising a doubt leaves the ordinary route for the
+            // first step of the other one; everything else walks its own
+            // route to the next step that resolved to a unit
+            const next: ResolvedStage | null =
+              action === 'raise-doubt' ? enterableFrom(policy, 'doubt', 0) : nextAfter(policy, here)
             if (next === null || next.nodeId === null) {
               return yield* refuse(action, 'chain-ends-here')
             }
@@ -483,22 +522,31 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             const moved = yield* advanceReviewInstance({
               tenantId,
               instanceId,
-              fromStageIndex: here.index,
-              toStageIndex: next.index,
+              fromRoute: here.route,
+              fromStageId: here.id,
+              toRoute: next.route,
+              toStageId: next.id,
               roleIds: next.roleIds,
               nodeId: next.nodeId,
               nodePath,
               state: holders.length > 0 ? 'active' : 'blocked',
-              mode: action === 'escalate' ? 'escalated' : row.mode,
             })
             if (!moved) return yield* new ReviewConflict()
-            yield* say(action === 'escalate' ? 'escalated' : 'approved')
+            yield* say(
+              action === 'raise-doubt'
+                ? 'doubt-raised'
+                : action === 'forward'
+                  ? 'forwarded'
+                  : 'approved',
+            )
             if (holders.length === 0) {
               yield* insertReviewEvent({
                 tenantId,
                 reviewInstanceId: instanceId,
                 kind: 'assignee-not-found',
                 actorId: null,
+                route: next.route,
+                stageId: next.id,
               })
             }
             const written = (yield* instanceOf(tenantId, instanceId))!

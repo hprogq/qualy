@@ -51,9 +51,17 @@ const blankField = (key: string): FieldDraft => ({
   accept: '',
 })
 
-let minted = 0
-const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): StageDraft => ({
-  key: `s${(minted += 1)}`,
+/**
+ * A step's permanent name. Saved with the policy, because whether an
+ * in-flight round can carry on under a newer one is answered by asking
+ * whether the step it stands at is still there - a question positions
+ * cannot answer, and a handle minted fresh on every load answers wrongly.
+ */
+const nextStageId = (): string =>
+  `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+
+const blankStage = (options: ItemOptions, chain: 'normal' | 'doubt'): StageDraft => ({
+  key: nextStageId(),
   kind: 'roleAt',
   nodeTypeId: options.orgTypes[0]?.id ?? '',
   roleIds: [],
@@ -131,39 +139,7 @@ const draftOf = (
     : []
   const scoring = config?.scoringConfig as
     { calculator?: { config?: { value?: string } } } | undefined
-  const policy = config?.reviewPolicy as
-    | {
-        stages?: {
-          selector?: { kind?: string; nodeTypeId?: string; roleIds?: string[]; roleId?: string }
-        }[]
-        normalTerminal?: number
-      }
-    | undefined
-  const terminal = policy?.normalTerminal ?? 0
-  const stages = (policy?.stages ?? []).map((stage, index): StageDraft => {
-    const selector = stage.selector ?? {}
-    // the stored form is one list with a marker; the screen shows two paths,
-    // because "where does the ordinary flow end" is not a thing anybody
-    // should have to hold in their head as an index
-    const chain = index <= terminal ? ('normal' as const) : ('escalation' as const)
-    return selector.kind === 'nearestRole'
-      ? {
-          key: `s${(minted += 1)}`,
-          kind: 'nearestRole',
-          nodeTypeId: options.orgTypes[0]?.id ?? '',
-          roleIds: [],
-          roleId: selector.roleId ?? options.roles[0]?.id ?? '',
-          chain,
-        }
-      : {
-          key: `s${(minted += 1)}`,
-          kind: 'roleAt',
-          nodeTypeId: selector.nodeTypeId ?? options.orgTypes[0]?.id ?? '',
-          roleIds: selector.roleIds ?? [],
-          roleId: options.roles[0]?.id ?? '',
-          chain,
-        }
-  })
+  const stages = stagesOf(config?.reviewPolicy, options)
   return {
     title: item?.title ?? '',
     scoreGroupId:
@@ -177,6 +153,72 @@ const draftOf = (
     stages: stages.length > 0 ? stages : [blankStage(options, 'normal')],
   }
 }
+
+/**
+ * The stored policy back into the pen, whichever version wrote it.
+ *
+ * A policy written as one list with `normalTerminal` in it is read as the
+ * split it always described, and its steps keep the names they are known by
+ * elsewhere - the same names the round rows were backfilled with - so
+ * opening an old question in the editor does not silently rebuild its
+ * policy out of new steps.
+ */
+const stagesOf = (stored: unknown, options: ItemOptions): StageDraft[] => {
+  const held = stored as
+    | {
+        normal?: { stages?: StoredStage[] }
+        doubt?: { stages?: StoredStage[] }
+        stages?: StoredStage[]
+        normalTerminal?: number
+      }
+    | undefined
+  const draftOne = (stage: StoredStage, chain: 'normal' | 'doubt', id: string): StageDraft =>
+    stage.selector?.kind === 'nearestRole'
+      ? {
+          key: id,
+          kind: 'nearestRole',
+          nodeTypeId: options.orgTypes[0]?.id ?? '',
+          roleIds: [],
+          roleId: stage.selector.roleId ?? options.roles[0]?.id ?? '',
+          chain,
+        }
+      : {
+          key: id,
+          kind: 'roleAt',
+          nodeTypeId: stage.selector?.nodeTypeId ?? options.orgTypes[0]?.id ?? '',
+          roleIds: stage.selector?.roleIds ?? [],
+          roleId: options.roles[0]?.id ?? '',
+          chain,
+        }
+  if (Array.isArray(held?.normal?.stages) || Array.isArray(held?.doubt?.stages)) {
+    return [
+      ...(held?.normal?.stages ?? []).map((stage, index) =>
+        draftOne(stage, 'normal', stage.id ?? `legacy-${index}`),
+      ),
+      ...(held?.doubt?.stages ?? []).map((stage, index) =>
+        draftOne(stage, 'doubt', stage.id ?? `legacy-${index}`),
+      ),
+    ]
+  }
+  const terminal = held?.normalTerminal ?? 0
+  return (held?.stages ?? []).map((stage, index) =>
+    draftOne(stage, index > terminal ? 'doubt' : 'normal', stage.id ?? `legacy-${index}`),
+  )
+}
+
+interface StoredStage {
+  id?: string
+  selector?: { kind?: string; nodeTypeId?: string; roleIds?: string[]; roleId?: string }
+}
+
+const storedStage = (stage: StageDraft) => ({
+  id: stage.key,
+  selector:
+    stage.kind === 'roleAt'
+      ? { kind: 'roleAt', nodeTypeId: stage.nodeTypeId, roleIds: stage.roleIds }
+      : { kind: 'nearestRole', roleId: stage.roleId },
+  quorum: { type: 'any' },
+})
 
 /** the pen back into the configuration the api validates */
 const configOf = (draft: Draft) => ({
@@ -218,22 +260,10 @@ const configOf = (draft: Draft) => ({
   ...(draft.description.trim() !== ''
     ? { displayConfig: { description: draft.description.trim() } }
     : {}),
-  reviewPolicy: (() => {
-    const normal = draft.stages.filter((stage) => stage.chain === 'normal')
-    const escalation = draft.stages.filter((stage) => stage.chain === 'escalation')
-    return {
-      stages: [...normal, ...escalation].map((stage) => ({
-        selector:
-          stage.kind === 'roleAt'
-            ? { kind: 'roleAt', nodeTypeId: stage.nodeTypeId, roleIds: stage.roleIds }
-            : { kind: 'nearestRole', roleId: stage.roleId },
-        quorum: { type: 'any' },
-      })),
-      // where the ordinary flow ends is the last ordinary step; the author
-      // never sees this number, they see two paths
-      normalTerminal: Math.max(0, normal.length - 1),
-    }
-  })(),
+  reviewPolicy: {
+    normal: { stages: draft.stages.filter((one) => one.chain === 'normal').map(storedStage) },
+    doubt: { stages: draft.stages.filter((one) => one.chain === 'doubt').map(storedStage) },
+  },
 })
 
 /**
@@ -453,7 +483,7 @@ export function ItemConfigEditor({
    * asking them to do the insertion themselves, one press at a time, in a
    * chain whose order is its whole meaning.
    */
-  const addStage = (chain: 'normal' | 'escalation', at?: number) => {
+  const addStage = (chain: 'normal' | 'doubt', at?: number) => {
     const stage = blankStage(options, chain)
     setDraft((previous) => {
       const own = previous.stages.filter((one) => one.chain === chain)
@@ -815,7 +845,7 @@ export function ItemConfigEditor({
                   }))
                 }
               />
-              {draft.stages.some((one) => one.chain === 'escalation') ? (
+              {draft.stages.some((one) => one.chain === 'doubt') ? (
                 <div className="flex flex-col gap-3 border-t pt-4">
                   <div>
                     <h4 className="text-sm font-medium">{format(m.itemsDoubtTitle)}</h4>
@@ -825,11 +855,11 @@ export function ItemConfigEditor({
                   </div>
                   <ChainFlow
                     batchId={batchId}
-                    chain="escalation"
-                    steps={draft.stages.filter((one) => one.chain === 'escalation')}
+                    chain="doubt"
+                    steps={draft.stages.filter((one) => one.chain === 'doubt')}
                     options={options}
                     onOpen={setOpenStage}
-                    onAdd={(at) => addStage('escalation', at)}
+                    onAdd={(at) => addStage('doubt', at)}
                     onRemove={(key) =>
                       setDraft((previous) => ({
                         ...previous,
@@ -842,7 +872,7 @@ export function ItemConfigEditor({
                 <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs font-medium">
                   <InlineAdd
                     label={format(m.itemsDoubtAddStep)}
-                    onClick={() => addStage('escalation')}
+                    onClick={() => addStage('doubt')}
                   />
                   <span className="font-normal text-muted-foreground">
                     {format(m.itemsDoubtEmpty)}
@@ -999,7 +1029,7 @@ function ScoringSummary({
 
 /**
  * The path a submission takes, drawn as one line from where it enters to
- * where it leaves. Both paths get both ends: an escalation that starts and
+ * where it leaves. Both routes get both ends: a doubt route that starts and
  * finishes nowhere is a row of boxes, not a route.
  *
  * Markers on their own track, labels under them. Drawn as a row of columns
@@ -1021,7 +1051,7 @@ function ChainFlow({
   onRemove,
 }: {
   batchId: string
-  chain: 'normal' | 'escalation'
+  chain: 'normal' | 'doubt'
   steps: readonly StageDraft[]
   options: ItemOptions
   onOpen: (key: string) => void
@@ -1053,7 +1083,7 @@ function ChainFlow({
           batchId={batchId}
           stage={one}
           options={options}
-          removable={chain === 'escalation' || steps.length > 1}
+          removable={chain === 'doubt' || steps.length > 1}
           onOpen={() => onOpen(one.key)}
           onRemove={() => onRemove(one.key)}
         />

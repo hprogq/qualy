@@ -379,3 +379,150 @@ describe.runIf(postgresAvailable)('the management-anchor rebuild', () => {
     }
   })
 })
+
+// Splitting the doubt route off the ordinary one changes how a round says
+// where it stands: a position into one list becomes a route plus the step's
+// own name. Rounds already open have to arrive on the other side standing
+// exactly where they were, and replaying the lineage into an empty database
+// says nothing about that.
+
+const ROUTES = '20260815070000_review-routes.sql'
+
+describe.runIf(postgresAvailable)('the review-routes migration', () => {
+  it('lands every open round on the route and step it was already standing at', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, ROUTES))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-review-routes-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file !== ROUTES) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('review-routes-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('routes', 'Routes') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, code, name) values ($1, 'class', 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'routes', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Zhang San', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Old rounds', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '文体') returning id`,
+        [tenant, batch],
+      )
+      const item = await one(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+         values ($1, $2, 'evidence', '退役复学', $3, 'active') returning id`,
+        [tenant, batch, group],
+      )
+      const itemRevision = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 1, 'student', '{}', '{}', '{}', '{}', $3) returning id`,
+        [tenant, item, user],
+      )
+      const participant = await one(
+        `insert into batch_participants (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage, user_type_id)
+         values ($1, $2, $3, $4, (select path from org_nodes where id = $4), '[]'::jsonb, $5)
+         returning id`,
+        [tenant, batch, user, node, userType],
+      )
+
+      // three stages in one list with the marker after the first: stage 0 is
+      // the ordinary route, stages 1 and 2 are what escalation walked
+      const chain = JSON.stringify({
+        normalTerminal: 0,
+        stages: [0, 1, 2].map((index) => ({
+          index,
+          selector: { kind: 'roleAt', nodeTypeId: orgType, roleIds: [] },
+          quorum: { type: 'any' },
+          roleIds: [],
+          nodeId: node,
+          skipped: null,
+        })),
+      })
+
+      const openRound = async (stageIndex: number, mode: 'normal' | 'escalated') => {
+        const entry = await one(
+          `insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+           values ($1, $2, $3, $4, 'self', 'in_review') returning id`,
+          [tenant, batch, item, participant],
+        )
+        const revision = await one(
+          `insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+           values ($1, $2, $3, $4, 1, '{}', $5, $5, 'self') returning id`,
+          [tenant, entry, item, itemRevision, user],
+        )
+        return one(
+          `insert into review_instances
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain,
+              mode, current_stage_index, current_role_ids, current_node_id, current_node_path)
+           values ($1, $2, $3, 1, 'initial', 'participant', $4::jsonb, $5, $6, '{}', $7,
+                   (select path from org_nodes where id = $7))
+           returning id`,
+          [tenant, entry, revision, chain, mode, stageIndex, node],
+        )
+      }
+
+      const ordinary = await openRound(0, 'normal')
+      const escalated = await openRound(2, 'escalated')
+      // the state the new model has no word for: escalated, but standing at
+      // or before the marker. It keeps its step and stays on the ordinary
+      // route rather than being moved to a level nobody sent it to.
+      const halfway = await openRound(0, 'escalated')
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const standing = async (id: string) =>
+        db.row<{ current_route: string; current_stage_id: string }>(
+          `select current_route, current_stage_id from review_instances where id = $1`,
+          [id],
+        )
+      expect(await standing(ordinary)).toEqual({
+        current_route: 'normal',
+        current_stage_id: 'legacy-0',
+      })
+      expect(await standing(escalated)).toEqual({
+        current_route: 'doubt',
+        current_stage_id: 'legacy-2',
+      })
+      expect(await standing(halfway)).toEqual({
+        current_route: 'normal',
+        current_stage_id: 'legacy-0',
+      })
+
+      const gone = await db.query(
+        `select column_name from information_schema.columns
+         where table_name = 'review_instances' and column_name in ('mode', 'current_stage_index')`,
+      )
+      expect(gone.rows).toHaveLength(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+})

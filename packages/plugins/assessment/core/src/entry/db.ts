@@ -463,8 +463,10 @@ export const insertReviewInstance = (input: {
   entryId: string
   revisionId: string
   roundNo: number
-  effectiveChain: unknown
-  stageIndex: number
+  /** both routes, resolved and frozen for the whole round */
+  effectivePolicy: unknown
+  route: 'normal' | 'doubt'
+  stageId: string
   roleIds: readonly string[]
   nodeId: string
   nodePath: string
@@ -475,10 +477,11 @@ export const insertReviewInstance = (input: {
       sql<{ id: string }>`
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain,
-           current_stage_index, state, current_role_ids, current_node_id, current_node_path)
+           current_route, current_stage_id, state, current_role_ids, current_node_id,
+           current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
-                'initial', 'participant', ${jsonb(input.effectiveChain)},
-                ${input.stageIndex}, ${input.state},
+                'initial', 'participant', ${jsonb(input.effectivePolicy)},
+                ${input.route}, ${input.stageId}, ${input.state},
                 ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},
                 ${input.nodePath}::ltree)
         returning id
@@ -487,36 +490,38 @@ export const insertReviewInstance = (input: {
     .pipe(Effect.map(({ rows }) => String(rows[0]!.id)))
 
 /**
- * Moves an open round to the stage it just entered, whether that came of an
- * approval carrying it onward or of somebody escalating. Conditional on the
- * round still standing where the caller read it, so two decisions on one
- * round cannot both advance it.
+ * Moves an open round to the step it just entered, whether that came of an
+ * approval carrying it onward or of a doubt handing it to the other route.
+ * Conditional on the round still standing where the caller read it, so two
+ * decisions on one round cannot both advance it.
  */
 export const advanceReviewInstance = (input: {
   tenantId: string
   instanceId: string
-  fromStageIndex: number
-  toStageIndex: number
+  fromRoute: 'normal' | 'doubt'
+  fromStageId: string
+  toRoute: 'normal' | 'doubt'
+  toStageId: string
   roleIds: readonly string[]
   nodeId: string
   nodePath: string
   state: 'active' | 'blocked'
-  mode: 'normal' | 'escalated'
 }) =>
   db
     .query((k) =>
       sql<{ id: string }>`
         update review_instances
-        set current_stage_index = ${input.toStageIndex},
+        set current_route = ${input.toRoute},
+            current_stage_id = ${input.toStageId},
             current_role_ids = ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[],
             current_node_id = ${input.nodeId},
             current_node_path = ${input.nodePath}::ltree,
-            state = ${input.state},
-            mode = ${input.mode}
+            state = ${input.state}
         where tenant_id = ${input.tenantId}
           and id = ${input.instanceId}
           and state in ('active', 'blocked')
-          and current_stage_index = ${input.fromStageIndex}
+          and current_route = ${input.fromRoute}
+          and current_stage_id = ${input.fromStageId}
         returning id
       `.execute(k),
     )
@@ -556,6 +561,9 @@ export const insertReviewEvent = (input: {
   reviewInstanceId: string
   kind: string
   actorId: string | null
+  /** where the round was standing; omitted for events that belong to the round */
+  route?: 'normal' | 'doubt' | null
+  stageId?: string | null
   comment?: string | null
   suggestedPayload?: unknown
 }) =>
@@ -567,6 +575,8 @@ export const insertReviewEvent = (input: {
         reviewInstanceId: input.reviewInstanceId,
         kind: input.kind,
         actorId: input.actorId,
+        route: input.route ?? null,
+        stageId: input.stageId ?? null,
         comment: input.comment ?? null,
         ...(input.suggestedPayload !== undefined
           ? { suggestedPayload: jsonb(input.suggestedPayload) }

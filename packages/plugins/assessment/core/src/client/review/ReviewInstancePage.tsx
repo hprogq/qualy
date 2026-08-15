@@ -150,49 +150,21 @@ function Detail({ batchId }: { batchId: string }) {
                 <p className="pb-2 text-xs font-medium text-muted-foreground">
                   {format(m.reviewChainTitle)}
                 </p>
-                <ol className="flex flex-col gap-2 text-sm">
-                  {review.chain.stages.map((stage) => (
-                    <li
-                      key={stage.index}
-                      className={
-                        stage.index === review.chain.stageIndex
-                          ? 'rounded-md bg-accent/60 px-2 py-1'
-                          : 'px-2 py-1'
-                      }
-                    >
-                      <p className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="font-medium">
-                          {stage.nodeName ??
-                            format(
-                              stage.skipped === 'no-holder'
-                                ? m.reviewStageNoHolder
-                                : m.reviewStageSkipped,
-                            )}
-                        </span>
-                        {stage.index === review.chain.stageIndex && (
-                          <span className="text-xs text-primary">{format(m.reviewStageHere)}</span>
-                        )}
-                        {stage.index > review.chain.normalTerminal && (
-                          <span className="text-xs text-muted-foreground">
-                            {format(m.itemsStageDoubt)}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {listed.format(stage.roleNames)}
-                      </p>
-                      {stage.nodeName !== null && stage.reviewers !== null && (
-                        <p className="text-xs text-muted-foreground">
-                          {stage.reviewers.length === 0
-                            ? format(m.reviewStageNobody)
-                            : format(m.reviewStageReviewers, {
-                                who: listed.format(stage.reviewers),
-                              })}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ol>
+                {/* two routes, drawn as two: the doubt one is not the tail
+                    of the ordinary one and never was somewhere a submission
+                    walks on its way through */}
+                <Route
+                  title={format(m.reviewRouteNormal)}
+                  stages={review.chain.normal}
+                  here={review.chain.route === 'normal' ? review.chain.stageId : null}
+                />
+                {review.chain.doubt.length > 0 && (
+                  <Route
+                    title={format(m.reviewRouteDoubt)}
+                    stages={review.chain.doubt}
+                    here={review.chain.route === 'doubt' ? review.chain.stageId : null}
+                  />
+                )}
               </section>
               {review.events.length > 0 && (
                 <section className="rounded-lg border p-4">
@@ -225,8 +197,8 @@ function Detail({ batchId }: { batchId: string }) {
             </aside>
           </div>
 
-          {review.chain.mode === 'escalated' && (
-            <p className="text-sm text-muted-foreground">{format(m.reviewEscalatedHere)}</p>
+          {review.chain.route === 'doubt' && (
+            <p className="text-sm text-muted-foreground">{format(m.reviewOnDoubtRoute)}</p>
           )}
           {review.chain.decisions.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
@@ -290,10 +262,65 @@ function JudgedPayload({ payload, formConfig }: { payload: unknown; formConfig: 
   )
 }
 
+/** one route, in order, with the step this round is standing at marked */
+function Route({
+  title,
+  stages,
+  here,
+}: {
+  title: string
+  stages: readonly {
+    id: string
+    nodeName: string | null
+    roleNames: readonly string[]
+    reviewers: readonly string[] | null
+    skipped: string | null
+  }[]
+  /** the step being stood at, or null when the round is on the other route */
+  here: string | null
+}) {
+  const { format, locale } = useI18n()
+  const listed = new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' })
+  return (
+    <div className="flex flex-col gap-1 pt-1 first:pt-0">
+      <p className="px-2 text-xs font-medium text-muted-foreground">{title}</p>
+      <ol className="flex flex-col gap-2 text-sm">
+        {stages.map((stage) => (
+          <li
+            key={stage.id}
+            className={stage.id === here ? 'rounded-md bg-accent/60 px-2 py-1' : 'px-2 py-1'}
+          >
+            <p className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-medium">
+                {stage.nodeName ??
+                  format(
+                    stage.skipped === 'no-holder' ? m.reviewStageNoHolder : m.reviewStageSkipped,
+                  )}
+              </span>
+              {stage.id === here && (
+                <span className="text-xs text-primary">{format(m.reviewStageHere)}</span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">{listed.format(stage.roleNames)}</p>
+            {stage.nodeName !== null && stage.reviewers !== null && (
+              <p className="text-xs text-muted-foreground">
+                {stage.reviewers.length === 0
+                  ? format(m.reviewStageNobody)
+                  : format(m.reviewStageReviewers, { who: listed.format(stage.reviewers) })}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 /** what each decision is called on a button and at the top of its dialog */
 const SAYINGS: Record<string, MessageDescriptor> = {
   reject: m.reviewReject,
-  escalate: m.reviewEscalate,
+  'raise-doubt': m.reviewRaiseDoubt,
+  forward: m.reviewForward,
   comment: m.reviewCommentAction,
   'recommend-approve': m.reviewRecommendApprove,
   'recommend-reject': m.reviewRecommendReject,

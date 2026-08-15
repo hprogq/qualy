@@ -4579,3 +4579,31 @@ entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 633 passed / 17 skipped;
 `pnpm test:browser` 54 passed。
+
+### Review v2 第一半:两条路线,步骤有永久 id(2026-08-15)
+
+施工顺序第三步。`normalTerminal` 从写入路径消失,疑点链不再是普通链的后缀。
+
+- **`reviewPolicy` 升为 `{normal:{stages},doubt:{stages}}`**,每个 stage 带永久 `id`。
+  写入只接受这一种形状——旧形状(`stages` + `normalTerminal`)在保存时被 `policy-version-legacy` 拒绝。
+  **读取两种都认**:`readPolicy()` 把旧形状按 marker 切成两条,步骤名确定性派生为 `legacy-<在那张单子里的下标>`。
+  历史不回写(item revision 不可变),而派生是确定的,所以同样的字节每次读出同样的两条路线。
+- **`ReviewInstance` 改为 `current_route` + `current_stage_id`**,去掉 `mode` 与 `current_stage_index`;
+  `effective_chain` 列名保留(改名要重写每一轮已开的审核,买不到东西),内容变成 normal + doubt 两条已解析路线。
+  `ReviewEvent` 补 `route` / `stage_id`——reroute 之后「哪一级审过」只有靠它才答得出来。
+- **状态机**:普通路线任一级可 approve / reject / comment,有可进入的疑点路线时多一个 `raise-doubt`;
+  `raise-doubt` **直接跳到 `doubt[0]`**,不是沿原链往后走。疑点路线中间级只能
+  comment / recommend-* / `forward`,末级才能 approve / reject。`escalate` 更名 `raise-doubt`(普通侧)
+  与 `forward`(疑点侧),事件同名;旧事件 `escalated` 的译法保留,历史照旧读得出来。
+- **迁移 `20260815070000_review-routes.sql`** 带数据步骤,配升级测试(建旧库形态 → 跑迁移 → 断言):
+  普通轮落 `normal/legacy-0`,已上报且站在 marker 之后的落 `doubt/legacy-2`。
+  **一种旧状态在新模型里没有对应**:已上报但仍站在 marker 之前——新模型里提交疑点就离开普通路线了。
+  这种轮子保留原步骤、留在普通路线(最不失真的读法,也是唯一不会把它送到没人派它去的层级的读法),
+  测试把这条钉住。
+- 编辑器现在写 v2,读两种;`StageDraft.key` 从「浏览器句柄」变成真的会存下去的步骤名。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 647 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成(手写迁移已让库与实体一致)。
+
+**下一步**:`ReviewInstance.policyRevisionId`(新一轮取当前策略版本,而不是被审 EntryRevision 当年那版)、
+影响分析器、`needs_revision` 与 `EntryEvent`、reroute 传播、编辑器影响弹窗。

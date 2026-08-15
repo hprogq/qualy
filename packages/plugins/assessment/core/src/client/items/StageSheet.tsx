@@ -17,14 +17,18 @@ import type { ItemOptions } from './options.ts'
 // and would crowd the path if it were opened in place.
 
 export interface StageDraft {
-  /** stable while the editor is open, so identity never rides on an index */
+  /**
+   * This step's permanent name, saved with the policy and kept across edits.
+   * Also what the editor holds it by while it is open: two identities for
+   * one step is one more than a step can have.
+   */
   key: string
   kind: 'roleAt' | 'nearestRole'
   nodeTypeId: string
   roleIds: string[]
   roleId: string
-  /** which list this step belongs to; the stored form is one list plus a terminal */
-  chain: 'normal' | 'escalation'
+  /** which of the two routes this step belongs to; they share no steps */
+  chain: 'normal' | 'doubt'
 }
 
 export function StageSheet({

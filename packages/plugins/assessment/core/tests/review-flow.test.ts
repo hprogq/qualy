@@ -533,4 +533,126 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.page2.nextCursor).toBeNull()
     expect(errorOf<{ _tag: string }>(result.tampered)?._tag).toBe('BAD_REQUEST')
   })
+
+  it('hands a doubt to the other route, where the middle only advises', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-doubt')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const admin = f.principal(f.admin)
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const at = (id: string) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+            quorum: { type: 'any' },
+          })
+          // one ordinary step and two doubt steps, all landing on the same
+          // level: this case is about the machine, not about the org
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '有疑点的题',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: 1,
+              config: {
+                entrySource: 'student',
+                formConfig: {},
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  normal: { stages: [at('n1')] },
+                  doubt: { stages: [at('d1'), at('d2')] },
+                },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+          const reviewer = f.principal(f.reviewer)
+
+          const onNormal = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
+          // forwarding belongs to the doubt route; it is not on offer here
+          const forwardTooSoon = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'forward', comment: 'x' },
+              reviewer,
+            ),
+          )
+          const raised = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'raise-doubt', comment: '拿不准，转疑点' },
+            reviewer,
+          )
+          // the middle of the doubt route may only advise
+          const decidedTooSoon = yield* Effect.exit(
+            assessment.decideReview(f.t, instanceId, { decision: 'approve' }, reviewer),
+          )
+          const advised = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'recommend-approve', comment: '建议通过' },
+            reviewer,
+          )
+          const forwarded = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'forward', comment: '转下一级' },
+            reviewer,
+          )
+          const settled = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'approve' },
+            reviewer,
+          )
+          return { onNormal, forwardTooSoon, raised, decidedTooSoon, advised, forwarded, settled }
+        }),
+      ),
+    )
+
+    // the ordinary route offers the doubt; it does not offer to forward
+    expect(result.onNormal.chain.route).toBe('normal')
+    expect(result.onNormal.chain.stageId).toBe('n1')
+    expect([...result.onNormal.chain.decisions].sort()).toEqual([
+      'approve',
+      'comment',
+      'raise-doubt',
+      'reject',
+    ])
+    expect(refusalOf(result.forwardTooSoon)?.reason).toBe('decision-not-available')
+
+    // raising it leaves the ordinary route entirely rather than carrying on
+    expect(result.raised.chain.route).toBe('doubt')
+    expect(result.raised.chain.stageId).toBe('d1')
+    expect(refusalOf(result.decidedTooSoon)?.reason).toBe('decision-not-available')
+    // an opinion moves nothing
+    expect(result.advised.chain.stageId).toBe('d1')
+    expect(result.forwarded.chain.stageId).toBe('d2')
+    expect(result.settled.outcome).toBe('approved')
+    expect(result.settled.events.map((event) => event.kind)).toEqual([
+      'submitted',
+      'doubt-raised',
+      'recommend-approve',
+      'forwarded',
+      'approved',
+    ])
+  })
 })

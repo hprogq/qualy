@@ -269,12 +269,15 @@ const itemConfig = (f: { classType: string; reviewRole: string }) => ({
     aggregator: { ref: 'sum@1', config: {} },
   },
   reviewPolicy: {
-    stages: [
-      {
-        selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
-        quorum: { type: 'any' },
-      },
-    ],
-    normalTerminal: 0,
+    normal: {
+      stages: [
+        {
+          id: 's1',
+          selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+          quorum: { type: 'any' },
+        },
+      ],
+    },
+    doubt: { stages: [] },
   },
 })

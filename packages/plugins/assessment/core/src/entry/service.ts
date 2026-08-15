@@ -47,7 +47,7 @@ import {
   type EntryRow,
   type ParticipantAnchor,
 } from './db.ts'
-import { holdersOf, resolveChain, stageAt, type ReviewPolicy } from '../review/chain.ts'
+import { enterableFrom, holdersOf, readPolicy, resolvePolicy } from '../review/chain.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
 //
@@ -688,23 +688,17 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 return yield* refuse(action, 'entry-not-submittable')
               }
 
-              // the one stage, resolved from the frozen lineage: the nearest
-              // ancestor of the stage's node type, held to the same reviewer
-              // definition the inbox and the decisions ask - the arrival
-              // check may not find a judge the queue would never show
-              // The whole chain, resolved once against this person's frozen
-              // lineage and snapshotted: the stages past the ordinary
-              // terminal are the doubt chain of the same list, and an
-              // escalation must not re-resolve an organization that has
-              // moved since (§14).
-              const policy = itemRevision.reviewPolicy as ReviewPolicy
-              const chain = yield* resolveChain({
+              // Both routes, resolved once against this person's frozen
+              // lineage and snapshotted. The doubt route is resolved here
+              // too, though most rounds never reach it: raising a doubt must
+              // not re-resolve an organization that has moved since (§14).
+              const policy = yield* resolvePolicy({
                 tenantId,
                 batchId: entry.batchId,
-                policy,
+                policy: readPolicy(itemRevision.reviewPolicy),
                 lineage: participant.anchorLineage,
               })
-              const first = stageAt(chain, 0)
+              const first = enterableFrom(policy, 'normal', 0)
               // every stage named a level this person sits under none of:
               // there is nowhere to anchor a round, and no later grant can
               // supply it - the configuration itself is wrong here
@@ -730,8 +724,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 entryId,
                 revisionId: entry.currentRevisionId,
                 roundNo,
-                effectiveChain: chain,
-                stageIndex: first.index,
+                effectivePolicy: policy,
+                route: 'normal',
+                stageId: first.id,
                 roleIds: first.roleIds,
                 nodeId: first.nodeId!,
                 nodePath,
@@ -742,6 +737,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 reviewInstanceId: instanceId,
                 kind: 'submitted',
                 actorId: as.userId,
+                route: 'normal',
+                stageId: first.id,
               })
               if (arrived === 'blocked') {
                 yield* insertReviewEvent({
@@ -749,6 +746,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   reviewInstanceId: instanceId,
                   kind: 'assignee-not-found',
                   actorId: null,
+                  route: 'normal',
+                  stageId: first.id,
                 })
               }
               const moved = yield* setEntryState({

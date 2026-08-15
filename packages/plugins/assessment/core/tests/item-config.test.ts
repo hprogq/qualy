@@ -166,13 +166,16 @@ const studentConfig = (over: Partial<Record<string, unknown>> = {}) => ({
     aggregator: { ref: 'sum@1', config: {} },
   },
   reviewPolicy: {
-    stages: [
-      {
-        selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
-        quorum: { type: 'any' },
-      },
-    ],
-    normalTerminal: 0,
+    normal: {
+      stages: [
+        {
+          id: 's1',
+          selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
+          quorum: { type: 'any' },
+        },
+      ],
+    },
+    doubt: { stages: [] },
   },
   ...over,
 })
@@ -276,7 +279,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               },
             }),
             badPolicy: yield* create({
-              reviewPolicy: { stages: [], normalTerminal: 0 },
+              reviewPolicy: { normal: { stages: [] }, doubt: { stages: [] } },
             }),
             strayGroup: yield* create({ scoreGroupId: randomUUID() }),
           }
@@ -318,42 +321,49 @@ describe.runIf(postgresAvailable)('item configuration', () => {
                 f.principal,
               ),
             )
-          const stage = {
+          const stage = (id: string) => ({
+            id,
             selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
             quorum: { type: 'any' },
-          }
+          })
+          const routes = (normal: unknown[], doubt: unknown[] = []) => ({
+            normal: { stages: normal },
+            doubt: { stages: doubt },
+          })
           return {
-            twoStages: yield* create({ stages: [stage, stage], normalTerminal: 0 }, 'student'),
+            twoRoutes: yield* create(
+              routes([stage('n1'), stage('n2')], [stage('d1')]),
+              'student',
+            ),
             unknownSelector: yield* create(
-              {
-                stages: [{ selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } }],
-                normalTerminal: 0,
-              },
+              routes([{ id: 'n1', selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } }]),
               'student',
             ),
             nearestRole: yield* create(
-              {
-                stages: [
-                  {
-                    selector: { kind: 'nearestRole', roleId: randomUUID() },
-                    quorum: { type: 'any' },
-                  },
-                ],
-                normalTerminal: 0,
-              },
+              routes([
+                {
+                  id: 'n1',
+                  selector: { kind: 'nearestRole', roleId: randomUUID() },
+                  quorum: { type: 'any' },
+                },
+              ]),
               'student',
             ),
             quorumAll: yield* create(
-              { stages: [{ ...stage, quorum: { type: 'all' } }], normalTerminal: 0 },
+              routes([{ ...stage('n1'), quorum: { type: 'all' } }]),
               'student',
             ),
-            laterTerminal: yield* create({ stages: [stage], normalTerminal: 1 }, 'student'),
+            unnamedStage: yield* create(
+              routes([{ selector: stage('n1').selector, quorum: { type: 'any' } }]),
+              'student',
+            ),
+            oneListWithAMarker: yield* create(
+              { stages: [stage('n1')], normalTerminal: 0 },
+              'student',
+            ),
             // the trusted path never walks the chain on the way in, but an
             // appeal resolves it from this very revision: it must be there
-            administrativeChain: yield* create(
-              { stages: [stage], normalTerminal: 0 },
-              'administrative',
-            ),
+            administrativeChain: yield* create(routes([stage('n1')]), 'administrative'),
             administrativeEmpty: yield* create({}, 'administrative'),
           }
         }),
@@ -364,13 +374,15 @@ describe.runIf(postgresAvailable)('item configuration', () => {
       (errorOf<{ issues?: readonly { path: string; reason: string }[] }>(exit)?.issues ?? []).map(
         (issue) => issue.reason,
       )
-    // the chain the domain describes is stored as written
-    expect(Exit.isSuccess(result.twoStages)).toBe(true)
+    // the two routes the domain describes are stored as written
+    expect(Exit.isSuccess(result.twoRoutes)).toBe(true)
     expect(Exit.isSuccess(result.nearestRole)).toBe(true)
     expect(issuesOf(result.quorumAll)).toContain('policy-quorum-not-counted')
     // and what is outside the grammar is still named and refused
     expect(issuesOf(result.unknownSelector)).toContain('policy-selector-kind')
-    expect(issuesOf(result.laterTerminal)).toContain('policy-terminal-in-chain')
+    expect(issuesOf(result.unnamedStage)).toContain('policy-stage-id-required')
+    // one list with a marker in it is read forever and written never again
+    expect(issuesOf(result.oneListWithAMarker)).toEqual(['policy-version-legacy'])
     expect(Exit.isSuccess(result.administrativeChain)).toBe(true)
     expect(issuesOf(result.administrativeEmpty)).toContain('policy-stages-required')
   })

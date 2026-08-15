@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
 import { db } from '../server/db.ts'
-import type { ResolvedChain } from './chain.ts'
+import { readResolved, type ResolvedPolicy } from './chain.ts'
 
 // The review rows and the one definition of who may judge them.
 //
@@ -172,9 +172,9 @@ export interface ReviewInstanceDetailRow {
   id: string
   state: 'active' | 'blocked' | 'completed'
   outcome: string | null
-  mode: 'normal' | 'escalated'
-  currentStageIndex: number
-  effectiveChain: ResolvedChain
+  currentRoute: 'normal' | 'doubt'
+  currentStageId: string
+  effectivePolicy: ResolvedPolicy
   roundNo: number
   entryId: string
   revisionId: string
@@ -222,8 +222,8 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'ri.id',
           'ri.state',
           'ri.outcome',
-          'ri.mode',
-          'ri.currentStageIndex',
+          'ri.currentRoute',
+          'ri.currentStageId',
           'ri.effectiveChain',
           'ri.roundNo',
           'ri.entryId',
@@ -257,9 +257,10 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               id: row.id,
               state: row.state as ReviewInstanceDetailRow['state'],
               outcome: row.outcome,
-              mode: row.mode as ReviewInstanceDetailRow['mode'],
-              currentStageIndex: row.currentStageIndex,
-              effectiveChain: row.effectiveChain as unknown as ResolvedChain,
+              currentRoute: row.currentRoute as ReviewInstanceDetailRow['currentRoute'],
+              currentStageId: row.currentStageId,
+              // rounds opened before the split stored one list with a marker
+              effectivePolicy: readResolved(row.effectiveChain),
               roundNo: row.roundNo,
               entryId: row.entryId,
               revisionId: row.revisionId,

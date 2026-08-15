@@ -154,8 +154,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     const instanceId = (
       await db.row<{ id: string }>(
         `insert into review_instances
-           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path)
-         values ($1, $2, $3, 1, 'initial', 'participant', '{"stages":[]}', $4::uuid[], $5,
+           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
+         values ($1, $2, $3, 1, 'initial', 'participant', '{"normal":[],"doubt":[]}', 'class', $4::uuid[], $5,
                  (select path from org_nodes where id = $5))
          returning id`,
         [f.tenantId, e.entryId, e.revisionId, `{${randomUUID()}}`, f.nodeId],
@@ -172,10 +172,15 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     )
 
     const instance = await db.row<Record<string, unknown>>(
-      `select state, mode, round_no, array_length(current_role_ids, 1) as roles from review_instances where id = $1`,
+      `select state, current_route, round_no, array_length(current_role_ids, 1) as roles from review_instances where id = $1`,
       [instanceId],
     )
-    expect(instance).toMatchObject({ state: 'active', mode: 'normal', round_no: 1, roles: 1 })
+    expect(instance).toMatchObject({
+      state: 'active',
+      current_route: 'normal',
+      round_no: 1,
+      roles: 1,
+    })
   })
 
   it('refuses an entry citing an item from another batch', async () => {
@@ -253,8 +258,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
+           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4))`,
           [f.tenantId, second.entryId, first.revisionId, f.nodeId],
         ),
@@ -353,9 +358,9 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     const open = () =>
       db.query(
         `insert into review_instances
-           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path)
+           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
          values ($1, $2, $3, (select coalesce(max(round_no), 0) + 1 from review_instances where entry_id = $2),
-                 'initial', 'participant', '{}', '{}', $4, (select path from org_nodes where id = $4))`,
+                 'initial', 'participant', '{}', 'class', '{}', $4, (select path from org_nodes where id = $4))`,
         [f.tenantId, e.entryId, e.revisionId, f.nodeId],
       )
     await open()
@@ -481,8 +486,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path, state)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, state)
+           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4), 'completed')`,
           [f.tenantId, e.entryId, e.revisionId, f.nodeId],
         ),
@@ -493,8 +498,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path, state, completed_at)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, state, completed_at)
+           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4), 'completed', now())`,
           [f.tenantId, e.entryId, e.revisionId, f.nodeId],
         ),
@@ -505,8 +510,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_role_ids, current_node_id, current_node_path, outcome)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, outcome)
+           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4), 'approved')`,
           [f.tenantId, e.entryId, e.revisionId, f.nodeId],
         ),

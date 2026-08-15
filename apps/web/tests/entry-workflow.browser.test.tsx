@@ -293,11 +293,11 @@ describe('judging a submission', () => {
       formConfig: { fields: [{ key: 'summary', type: 'text', label: '事项说明' }] },
     },
     chain: {
-      mode: 'normal' as const,
-      stageIndex: 0,
-      normalTerminal: 0,
-      stages: [
+      route: 'normal' as const,
+      stageId: 'class',
+      normal: [
         {
+          id: 'class',
           index: 0,
           nodeName: '软件2023级2班',
           roleNames: ['审核员'],
@@ -305,6 +305,7 @@ describe('judging a submission', () => {
           skipped: null,
         },
       ],
+      doubt: [],
       decisions: ['approve', 'reject', 'comment'],
     },
     events: [

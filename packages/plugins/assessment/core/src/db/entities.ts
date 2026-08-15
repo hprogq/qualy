@@ -989,9 +989,14 @@ export const ReviewInstance = defineEntity({
     roundNo: p.integer(),
     origin: p.string().length(16),
     initiator: p.string().length(16),
+    // both routes, resolved once against this participant's frozen lineage
+    // and frozen with the round. The column keeps its old name: what it
+    // holds grew a second route, and renaming it would cost a rewrite of
+    // every round ever opened to buy nothing.
     effectiveChain: p.json<Record<string, unknown>>(),
-    mode: p.string().length(16).defaultRaw(`'normal'`),
-    currentStageIndex: p.integer().default(0),
+    currentRoute: p.string().length(16).defaultRaw(`'normal'`),
+    /** the step by its permanent name, never by its position (§32.62) */
+    currentStageId: p.string().length(63),
     state: p.string().length(16).defaultRaw(`'active'`),
     outcome: p.string().length(31).nullable(),
     currentRoleIds: p.array().columnType('uuid[]'),
@@ -1010,14 +1015,13 @@ export const ReviewInstance = defineEntity({
       name: 'chk_review_instances_initiator',
       expression: `initiator IN ('participant', 'staff')`,
     },
-    { name: 'chk_review_instances_mode', expression: `mode IN ('normal', 'escalated')` },
+    {
+      name: 'chk_review_instances_route',
+      expression: `current_route IN ('normal', 'doubt')`,
+    },
     {
       name: 'chk_review_instances_state',
       expression: `state IN ('active', 'blocked', 'completed')`,
-    },
-    {
-      name: 'chk_review_instances_stage_non_negative',
-      expression: 'current_stage_index >= 0',
     },
     // a completed round says when and how it ended; an open one says neither.
     // The open arm is spelled <> 'completed' rather than IN ('active',
@@ -1081,6 +1085,15 @@ export const ReviewEvent = defineEntity({
     tenantId: tenantOf('review_events_tenant_id_tenants_id_fkey'),
     reviewInstanceId: p.uuid(),
     kind: p.string().length(31),
+    /**
+     * Where the round was standing when this was said. Null on events that
+     * belong to the round rather than to a step, and on everything recorded
+     * before rounds had two routes. Without it, "which level approved this"
+     * stops being answerable the moment a round is re-routed onto a new
+     * policy, because position no longer identifies anything.
+     */
+    route: p.string().length(16).nullable(),
+    stageId: p.string().length(63).nullable(),
     actorId: p.uuid().nullable(),
     comment: p.text().nullable(),
     suggestedPayload: p.json<Record<string, unknown>>().nullable(),

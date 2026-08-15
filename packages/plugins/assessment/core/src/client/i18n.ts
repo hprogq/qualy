@@ -713,6 +713,14 @@ const i18n = definePluginMessages({
     eventSubmitted: { id: 'assessment/event/submitted', defaultMessage: '{who} submitted it' },
     eventApproved: { id: 'assessment/event/approved', defaultMessage: '{who} approved this step' },
     eventRejected: { id: 'assessment/event/rejected', defaultMessage: '{who} sent it back' },
+    eventDoubtRaised: {
+      id: 'assessment/event/doubt-raised',
+      defaultMessage: '{who} raised a doubt',
+    },
+    eventForwarded: {
+      id: 'assessment/event/forwarded',
+      defaultMessage: '{who} passed it on',
+    },
     eventEscalated: {
       id: 'assessment/event/escalated',
       defaultMessage: '{who} sent it up as a doubt',
@@ -1071,7 +1079,10 @@ const i18n = definePluginMessages({
       id: 'assessment/review/stage-skipped',
       defaultMessage: 'Skipped: no such unit above this participant',
     },
-    reviewEscalate: { id: 'assessment/review/escalate', defaultMessage: 'Send up as a doubt' },
+    reviewRaiseDoubt: { id: 'assessment/review/raise-doubt', defaultMessage: 'Raise a doubt' },
+    reviewForward: { id: 'assessment/review/forward', defaultMessage: 'Pass it on' },
+    reviewRouteNormal: { id: 'assessment/review/route-normal', defaultMessage: 'Ordinary review' },
+    reviewRouteDoubt: { id: 'assessment/review/route-doubt', defaultMessage: 'Doubt review' },
     reviewCommentAction: {
       id: 'assessment/review/comment-action',
       defaultMessage: 'Leave a note',
@@ -1085,8 +1096,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'Advise sending back',
     },
     reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
-    reviewEscalatedHere: {
-      id: 'assessment/review/escalated-here',
+    reviewOnDoubtRoute: {
+      id: 'assessment/review/on-doubt-route',
       defaultMessage: 'A doubt is on its way up; the end of the chain decides.',
     },
     itemsReviewTitle: {

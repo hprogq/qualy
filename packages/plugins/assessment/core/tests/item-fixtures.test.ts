@@ -45,13 +45,16 @@ describe('the first two real configurations', () => {
           aggregator: { ref: 'sum@1', config: {} },
         },
         reviewPolicy: {
-          stages: [
-            {
-              selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
-              quorum: { type: 'any' },
-            },
-          ],
-          normalTerminal: 0,
+          normal: {
+            stages: [
+              {
+                id: 's1',
+                selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
+                quorum: { type: 'any' },
+              },
+            ],
+          },
+          doubt: { stages: [] },
         },
       }),
     )
@@ -73,13 +76,16 @@ describe('the first two real configurations', () => {
           aggregator: { ref: 'sum@1', config: {} },
         },
         reviewPolicy: {
-          stages: [
-            {
-              selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
-              quorum: { type: 'any' },
-            },
-          ],
-          normalTerminal: 0,
+          normal: {
+            stages: [
+              {
+                id: 's1',
+                selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
+                quorum: { type: 'any' },
+              },
+            ],
+          },
+          doubt: { stages: [] },
         },
       }),
     )

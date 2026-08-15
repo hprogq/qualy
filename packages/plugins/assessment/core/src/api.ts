@@ -436,6 +436,17 @@ const reviewInboxItem = Schema.Struct({
   submittedAt: Schema.String,
 })
 
+/** one step of a route, named by the id it keeps across policy edits */
+const reviewStageView = Schema.Struct({
+  id: Schema.String,
+  index: Schema.Number,
+  nodeName: Schema.NullOr(Schema.String),
+  roleNames: Schema.Array(Schema.String),
+  /** who holds those roles there today; null when this response left it unresolved */
+  reviewers: Schema.NullOr(Schema.Array(Schema.String)),
+  skipped: Schema.NullOr(Schema.String),
+})
+
 const reviewDetailView = Schema.Struct({
   id: Schema.String,
   state: Schema.Literals(['active', 'blocked', 'completed']),
@@ -458,22 +469,13 @@ const reviewDetailView = Schema.Struct({
     ),
   }),
   form: Schema.Struct({ itemType: Schema.String, formConfig: configJson }),
-  /** where the round stands in its chain, and what the chain is */
+  /** where the round stands, and what both routes are */
   chain: Schema.Struct({
-    mode: Schema.Literals(['normal', 'escalated']),
-    stageIndex: Schema.Number,
-    normalTerminal: Schema.Number,
-    stages: Schema.Array(
-      Schema.Struct({
-        index: Schema.Number,
-        nodeName: Schema.NullOr(Schema.String),
-        roleNames: Schema.Array(Schema.String),
-        /** who holds those roles there today; null when this response left it unresolved */
-        reviewers: Schema.NullOr(Schema.Array(Schema.String)),
-        skipped: Schema.NullOr(Schema.String),
-      }),
-    ),
-    /** what this reader may say here, already narrowed by mode and position */
+    route: Schema.Literals(['normal', 'doubt']),
+    stageId: Schema.String,
+    normal: Schema.Array(reviewStageView),
+    doubt: Schema.Array(reviewStageView),
+    /** what this reader may say here, already narrowed by route and position */
     decisions: Schema.Array(Schema.String),
   }),
   events: Schema.Array(
@@ -640,7 +642,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         decision: Schema.Literals([
           'approve',
           'reject',
-          'escalate',
+          'raise-doubt',
+          'forward',
           'comment',
           'recommend-approve',
           'recommend-reject',

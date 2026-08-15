@@ -46,13 +46,16 @@ const compose = (f: Seeded, batchId: string, scoreGroupId: string, title: string
             aggregator: { ref: 'sum@1', config: {} },
           },
           reviewPolicy: {
-            stages: [
-              {
-                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
-                quorum: { type: 'any' },
-              },
-            ],
-            normalTerminal: 0,
+            normal: {
+              stages: [
+                {
+                  id: 's1',
+                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                  quorum: { type: 'any' },
+                },
+              ],
+            },
+            doubt: { stages: [] },
           },
         },
       },
@@ -98,17 +101,20 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
                   aggregator: { ref: 'sum@1', config: {} },
                 },
                 reviewPolicy: {
-                  stages: [
-                    {
-                      selector: {
-                        kind: 'roleAt',
-                        nodeTypeId: f.classType,
-                        roleIds: [f.reviewRole],
+                  normal: {
+                    stages: [
+                      {
+                        id: 's1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
                       },
-                      quorum: { type: 'any' },
-                    },
-                  ],
-                  normalTerminal: 0,
+                    ],
+                  },
+                  doubt: { stages: [] },
                 },
               },
             },
@@ -167,17 +173,20 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
                   aggregator: { ref: 'sum@1', config: {} },
                 },
                 reviewPolicy: {
-                  stages: [
-                    {
-                      selector: {
-                        kind: 'roleAt',
-                        nodeTypeId: f.classType,
-                        roleIds: [f.reviewRole],
+                  normal: {
+                    stages: [
+                      {
+                        id: 's1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
                       },
-                      quorum: { type: 'any' },
-                    },
-                  ],
-                  normalTerminal: 0,
+                    ],
+                  },
+                  doubt: { stages: [] },
                 },
               },
             },

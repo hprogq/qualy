@@ -271,13 +271,16 @@ export const runningBatch = (f: Seeded, over?: { profile?: readonly string[] }) 
             aggregator: { ref: 'sum@1', config: {} },
           },
           reviewPolicy: {
-            stages: [
-              {
-                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
-                quorum: { type: 'any' },
-              },
-            ],
-            normalTerminal: 0,
+            normal: {
+              stages: [
+                {
+                  id: 'class',
+                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                  quorum: { type: 'any' },
+                },
+              ],
+            },
+            doubt: { stages: [] },
           },
         },
       },

@@ -81,17 +81,20 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
                   aggregator: { ref: 'sum@1', config: {} },
                 },
                 reviewPolicy: {
-                  stages: [
-                    {
-                      selector: {
-                        kind: 'roleAt',
-                        nodeTypeId: f.classType,
-                        roleIds: [f.reviewRole],
+                  normal: {
+                    stages: [
+                      {
+                        id: 's1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
                       },
-                      quorum: { type: 'any' },
-                    },
-                  ],
-                  normalTerminal: 0,
+                    ],
+                  },
+                  doubt: { stages: [] },
                 },
               },
             },
@@ -321,7 +324,9 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
           const noSuchLevel = yield* runSql(sql`
             update assessment_item_revisions
             set review_policy = jsonb_set(
-              review_policy, '{stages,0,selector,nodeTypeId}', to_jsonb(gen_random_uuid()::text))
+              review_policy,
+              '{normal,stages,0,selector,nodeTypeId}',
+              to_jsonb(gen_random_uuid()::text))
             where id = (select current_revision_id from assessment_items where id = ${g.item.id})`)
           void noSuchLevel
           const second = yield* assessment.createEntry(
@@ -462,13 +467,16 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
                   aggregator: { ref: 'sum@1', config: {} },
                 },
                 reviewPolicy: {
-                  stages: [
-                    {
-                      selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [ghostRole] },
-                      quorum: { type: 'any' },
-                    },
-                  ],
-                  normalTerminal: 0,
+                  normal: {
+                    stages: [
+                      {
+                        id: 's1',
+                        selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [ghostRole] },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
+                  doubt: { stages: [] },
                 },
               },
               reason: 'tightened after filing',
@@ -483,10 +491,10 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
           const instance = yield* runSql(
             sql`select effective_chain from review_instances where id = ${submitted.currentReviewInstanceId}`,
           )
-          const chain = one<{ effective_chain: { stages: { selector: { roleIds: string[] } }[] } }>(
-            instance,
-          ).effective_chain
-          return { submitted, chainRoles: chain.stages[0]!.selector.roleIds, ghostRole }
+          const frozen = one<{
+            effective_chain: { normal: { selector: { roleIds: string[] } }[] }
+          }>(instance).effective_chain
+          return { submitted, chainRoles: frozen.normal[0]!.selector.roleIds, ghostRole }
         }),
       ),
     )
@@ -628,17 +636,20 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
                   aggregator: { ref: 'sum@1', config: {} },
                 },
                 reviewPolicy: {
-                  stages: [
-                    {
-                      selector: {
-                        kind: 'roleAt',
-                        nodeTypeId: f.classType,
-                        roleIds: [f.reviewRole],
+                  normal: {
+                    stages: [
+                      {
+                        id: 's1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
                       },
-                      quorum: { type: 'any' },
-                    },
-                  ],
-                  normalTerminal: 0,
+                    ],
+                  },
+                  doubt: { stages: [] },
                 },
               },
               reason: 'limit lowered mid-round',
