@@ -7,6 +7,7 @@ import { AsyncSection, PageHeader } from '@qualy/ui/admin'
 import { cn } from '@qualy/ui/cn'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Portal } from '@qualy/ui/portal'
+import { Resizing } from '@qualy/ui/reveal'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { BatchDto } from '../phase/model.ts'
@@ -43,7 +44,7 @@ export function BatchScreen({
   title,
   description,
   size = 'default',
-  banner = true,
+  banner,
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
@@ -51,10 +52,11 @@ export function BatchScreen({
   description?: string
   size?: 'default' | 'wide' | 'full'
   /**
-   * Whether the section itself still names the page. False hands the band to
-   * whatever the section has opened, which names it through `BatchBanner`.
+   * Which heading the band is showing. Passing this at all declares that the
+   * section hands the band over, which is what reserves room for both
+   * headings - a section that only ever shows its own name pays nothing.
    */
-  banner?: boolean
+  banner?: 'section' | 'open'
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
 }) {
@@ -62,6 +64,9 @@ export function BatchScreen({
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
+  // the section's own name is what shows unless it says otherwise
+  const showing = banner ?? 'section'
+  const handsOver = banner !== undefined
 
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
@@ -85,24 +90,35 @@ export function BatchScreen({
           aria-hidden
           className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:repeating-linear-gradient(-45deg,currentColor_0_1px,transparent_1px_24px)] [mask-image:radial-gradient(130%_115%_at_100%_0%,black,transparent_62%)]"
         />
-        {/* both headings in one grid cell: the band keeps whichever height it
-            needs and neither arrival shoves the other down the page */}
-        <PageContainer size={size} className="relative grid py-6">
-          <div
-            className={cn(
-              'col-start-1 row-start-1 transition-opacity duration-200',
-              banner ? 'opacity-100' : 'pointer-events-none opacity-0',
-            )}
-          >
-            <PageHeader title={title} description={description} variant="banner" />
-          </div>
-          <div
-            ref={setSlot}
-            className={cn(
-              'col-start-1 row-start-1 transition-opacity duration-200',
-              banner ? 'pointer-events-none opacity-0' : 'opacity-100',
-            )}
-          />
+        {/* Two headings crossfading where they stand. A band that hands over
+            keeps room for both, so the swap moves nothing at all - the few
+            pixels between them are not worth watching travel. Resizing is
+            the fallback for a heading that genuinely outgrows that room,
+            which is copy wrapping on a narrow window. */}
+        <PageContainer size={size} className="relative py-6">
+          <Resizing>
+            <div className={cn('relative', handsOver && 'min-h-18')}>
+              <div
+                className={cn(
+                  'transition-opacity duration-200',
+                  showing === 'section'
+                    ? 'opacity-100'
+                    : 'pointer-events-none absolute inset-x-0 top-0 opacity-0',
+                )}
+              >
+                <PageHeader title={title} description={description} variant="banner" />
+              </div>
+              <div
+                ref={setSlot}
+                className={cn(
+                  'transition-opacity duration-200',
+                  showing === 'section'
+                    ? 'pointer-events-none absolute inset-x-0 top-0 opacity-0'
+                    : 'opacity-100',
+                )}
+              />
+            </div>
+          </Resizing>
         </PageContainer>
       </div>
       <PageContainer size={size} className="flex flex-col gap-5">

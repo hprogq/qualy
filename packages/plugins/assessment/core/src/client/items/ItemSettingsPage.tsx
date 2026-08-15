@@ -68,7 +68,7 @@ export default function ItemSettingsPage() {
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
       size="wide"
-      banner={view.open === null}
+      banner={view.open === null ? 'section' : 'open'}
     >
       {(batch) => (
         <Editor

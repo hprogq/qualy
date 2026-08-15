@@ -4307,9 +4307,15 @@ toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩�
   这条路径(TreeDraft 收缩为只描述未保存的题目,GroupDraft/held 的分组分支一并移除)。
 - **文案**:「封顶/保底」全量改为「上限/下限」(中英两侧),`assessment/items/sibling-position`
   改为 `paper-position`(右上角上下键改为在整卷所有题目间切换,不再限于同分组)。
-- **顶部 banner 是同一个位置**:BatchScreen 的横幅带里两个标题叠在同一 grid 格,`BatchBanner`
-  经 portal 把题目的面包屑/标题/状态/操作送进去,两者 200ms 交叉淡入淡出;正文自己左右移动。
+- **顶部 banner 是同一个位置**:BatchScreen 的横幅带里两个标题在同一处交叉淡入淡出(200ms),
+  `BatchBanner` 经 portal 把题目的面包屑/标题/状态/操作送进去;正文自己左右移动。
   新增 `@qualy/ui/portal`(react-dom 入 @qualy/ui peerDependencies)。
+  **带高不许动**:`banner` 由布尔改 `section | open`,**传了这个属性就等于声明本节会交出横幅**,
+  据此给带内容留出两个标题都放得下的高度(min-h-18),实测三态恒 121px、零位移;
+  `@qualy/ui/reveal` 的 `Resizing` 只作兜底(窄窗口文案折行才真的要动)。
+  **Drill 不再 `mode="wait"`**:排队会让新屏幕在旧屏幕退场完成前根本不存在,
+  它要填的横幅就空 200ms(第二次进入时肉眼可见「先变空再变新」);改为两屏在同一 grid 格交叠,
+  退场那屏 `pointerEvents: none`。
 - **切换动画**:`@qualy/ui/reveal` 新增 `Drill`,由调用方显式声明 `move`——
   `in/out` 左右推进退出、`next/previous` 上下移动(整卷翻题)、`none` 不做任何动画(保存后原地落回,
   不再表演一次到达);`prefers-reduced-motion` 下只留淡入淡出。
