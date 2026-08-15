@@ -100,10 +100,7 @@ export function FieldList({
       {/* the columns need the width; narrower than that a field is its name
           with what it accepts written underneath */}
       <div
-        className={cn(
-          'hidden border-b px-0.5 pb-2 text-[11.5px] text-muted-foreground sm:grid',
-          COLUMNS,
-        )}
+        className={cn('hidden border-b px-0.5 pb-2 text-xs text-muted-foreground sm:grid', COLUMNS)}
       >
         <span />
         <span>{format(m.itemsFieldLabel)}</span>
@@ -144,7 +141,7 @@ export function FieldList({
               className={cn(
                 'cursor-pointer border-b border-border/60 px-0.5 transition-colors hover:bg-accent/30',
                 'grid grid-cols-[1rem_minmax(0,1fr)_1.5rem] items-center gap-x-3 gap-y-0.5 py-2',
-                'sm:h-10.5 sm:py-0',
+                'sm:py-1.5',
                 COLUMNS_AT_SM,
                 marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
                 marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
@@ -154,16 +151,16 @@ export function FieldList({
                 aria-hidden
                 className="size-3.5 cursor-grab text-muted-foreground/60"
               />
-              <span className="min-w-0 truncate text-[13.5px]">
+              <span className="min-w-0 truncate text-sm">
                 {field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
               </span>
-              <span className="hidden text-[13px] sm:block">
+              <span className="hidden text-sm sm:block">
                 {format(FIELD_TYPE_LABEL[field.type])}
               </span>
-              <span className="hidden text-[12.5px] text-muted-foreground sm:block">
+              <span className="hidden text-xs text-muted-foreground sm:block">
                 {field.required ? format(m.itemsFieldRequired) : ''}
               </span>
-              <span className="hidden truncate text-[12.5px] text-muted-foreground sm:block">
+              <span className="hidden truncate text-xs text-muted-foreground sm:block">
                 {limitOf(field)}
               </span>
               <ChevronDownIcon
@@ -174,7 +171,7 @@ export function FieldList({
                 )}
               />
               {/* what the columns would have said, on its own line */}
-              <span className="col-start-2 text-[11.5px] text-muted-foreground sm:hidden">
+              <span className="col-start-2 text-xs text-muted-foreground sm:hidden">
                 {[
                   format(FIELD_TYPE_LABEL[field.type]),
                   field.required ? format(m.itemsFieldRequired) : '',
@@ -196,14 +193,12 @@ export function FieldList({
         )
       })}
 
-      <button
-        type="button"
-        className="flex items-center gap-1.5 px-0.5 pt-3 text-[12.8px] font-medium transition-colors hover:text-muted-foreground"
-        onClick={onAdd}
-      >
-        <PlusIcon aria-hidden className="size-3.5" />
-        {format(m.itemsFieldAdd)}
-      </button>
+      <div className="pt-2">
+        <Button variant="ghost" size="sm" className="-ml-2" onClick={onAdd}>
+          <PlusIcon aria-hidden />
+          {format(m.itemsFieldAdd)}
+        </Button>
+      </div>
     </div>
   )
 }

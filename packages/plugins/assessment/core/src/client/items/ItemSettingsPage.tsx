@@ -17,7 +17,8 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
 import { GroupEditor } from './GroupEditor.tsx'
 import { PaperStart } from './PaperStart.tsx'
-import { itemCeiling, StructureTable, structureRows, type StructureRow } from './StructureTable.tsx'
+import { StructureTable } from './StructureTable.tsx'
+import { itemCeiling, structureRows, type StructureRow } from './structure.ts'
 import type { GroupTarget, Placement, TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
 import type { Draft as QuestionDraft } from './ItemConfigEditor.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
@@ -404,7 +405,6 @@ function Editor({
           paper?.id ?? null,
         )}
         paper={everyQuestion}
-        onStep={(itemId) => onQuestion(itemId)}
         defaultGroupId={writing?.groupId}
         options={options.data}
         held={writing === null ? undefined : held[writing.localId]}
@@ -636,31 +636,26 @@ function PaperSummary({
   ].join(' · ')
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border px-4.5 py-4">
+    <section className="flex flex-col gap-3 rounded-lg border p-4">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
         {/* the paper's name leads and its two limits sit under it, because
             labelling every value turns one sentence into a row of forms */}
         <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-1">
-            <h3 className="min-w-0 truncate text-[15px] font-semibold">
+            <h3 className="min-w-0 truncate text-sm font-semibold">
               {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
             </h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
-              onClick={onEdit}
-            >
-              <PencilIcon aria-hidden className="size-3" />
+            <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={onEdit}>
+              <PencilIcon aria-hidden />
               {format(m.paperEdit)}
             </Button>
           </div>
-          <p className="text-[13px] tabular-nums text-muted-foreground">{limits}</p>
+          <p className="text-sm tabular-nums text-muted-foreground">{limits}</p>
         </div>
 
         <div className="flex min-w-0 flex-col gap-0.5 max-sm:w-full sm:shrink-0 sm:items-end sm:text-right">
           {sum !== null && (
-            <p className="flex items-baseline gap-1.5 text-[13px] font-medium sm:whitespace-nowrap">
+            <p className="flex items-baseline gap-1.5 text-sm font-medium sm:whitespace-nowrap">
               {matches && <CheckIcon aria-hidden className="size-3.5" />}
               {matches
                 ? format(m.paperCapMatch, { sum })
@@ -670,7 +665,7 @@ function PaperSummary({
             </p>
           )}
           {sum === null && roots.length > 0 && (
-            <p className="text-[13px] font-medium">{format(m.paperCapUnset)}</p>
+            <p className="text-sm font-medium">{format(m.paperCapUnset)}</p>
           )}
           <p className="text-xs text-muted-foreground">
             {format(m.paperTally, {

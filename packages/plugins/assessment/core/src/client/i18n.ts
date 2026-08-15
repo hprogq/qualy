@@ -1360,8 +1360,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/paper-position',
       defaultMessage: 'Question {index} of {total}',
     },
-    itemsPrevious: { id: 'assessment/items/previous', defaultMessage: 'Previous question' },
-    itemsNext: { id: 'assessment/items/next', defaultMessage: 'Next question' },
     itemsPublishedVersion: {
       id: 'assessment/items/published-version',
       defaultMessage: 'Published, version {no}',

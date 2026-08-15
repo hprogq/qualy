@@ -4366,3 +4366,27 @@ toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 626 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过。
+
+### 换主题暴露的问题:尺寸交还给主题(2026-08-15)
+
+用户换了 shadcn preset(输入框与按钮变为 h-9 胶囊形)后题目配置页错位——根因是这几屏里
+写死了一批高度与字号,主题一动就全乱。**规则:控件的尺寸归主题,页面只说布局。**
+
+- 手搓的 `<button className="size-7 …">` 一律换成真的 `Button` + 官方尺寸档
+  (`xs / sm / icon-xs / icon-sm / icon`):行内 ⋮、卷面「编辑卷面」、分组行的「子分组 / 题目」、
+  返回箭头、审核步骤的删除、字段表的「添加字段」。
+- 删掉所有 `h-7 / h-8 / h-9 / size-5.5 / size-6.5 / h-9.5 / h-10.5` 之类的高度覆盖;
+  表格行改用 padding,高度由主题的字号与控件决定。
+- 任意字号 `text-[11px] … text-[15px]` 全部并回 `text-xs / text-sm / text-base / text-lg`。
+- 列表页的状态筛选也换成 `Choice`(shadcn Select),与其他控件同形。
+- 空态两张卡:此前是 `<button>` 里塞一个假按钮 `<span>`,改为普通卡片 + 真 `Button`。
+- **仍然写死的两处**:审核链条里的分隔竖线(纯装饰)与右栏预览里模拟输入框的 `h-9`
+  ——后者是「跟输入框一样高」的意思,没有 token 可引,主题若再改输入框高度需要跟着改。
+- 顺带:题目页右上角只留 ⋮ / 取消 / 保存,**去掉上下切题按钮**(位置信息仍在面包屑那行,
+  按钮本身没意义且移动端会挤到第二行);对应的 `itemsPrevious/itemsNext` 文案一并删除。
+- 顺带修 Fast Refresh:`StructureTable.tsx` 既导出组件又导出 `itemCeiling/structureRows`,
+  违反「一个模块只导出组件」,每次改动整页重载;行模型拆到 `items/structure.ts`。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 626 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过。新主题下三屏截图核对:控件同高、胶囊形一致、
+390px 视口 `scrollWidth` = 390。

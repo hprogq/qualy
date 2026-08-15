@@ -345,8 +345,6 @@ export default {
   'assessment/items/structure-open': '打开',
   'assessment/items/back': '返回结构',
   'assessment/items/paper-position': '第 {index} 题，共 {total} 题',
-  'assessment/items/previous': '上一题',
-  'assessment/items/next': '下一题',
   'assessment/items/published-version': '已发布，第 {no} 版',
   'assessment/items/draft-version': '未发布，第 {no} 版',
   'assessment/items/field-col-limit': '限制',

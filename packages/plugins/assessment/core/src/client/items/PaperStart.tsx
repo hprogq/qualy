@@ -4,6 +4,7 @@ import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog } from '@qualy/ui/admin'
+import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
@@ -35,38 +36,28 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
         {/* the suggested route carries the darker edge and the filled button;
             two identical cards make the reader choose before they know what
             either one does */}
-        <button
-          type="button"
-          className="flex w-74 flex-col gap-2.5 rounded-lg border border-foreground/20 p-4.5 text-left shadow-xs transition-colors hover:bg-accent/40"
-          onClick={() => setWizard(true)}
-        >
-          <span className="flex items-center gap-2">
+        <div className="flex w-74 flex-col gap-3 rounded-lg border border-foreground/20 p-4 shadow-xs">
+          <p className="flex items-center gap-2">
             <span className="text-sm font-semibold">{format(m.paperStartGuided)}</span>
-            <span className="rounded-full bg-primary px-1.75 py-px text-[11px] font-medium text-primary-foreground">
-              {format(m.paperStartSuggested)}
-            </span>
-          </span>
-          <span className="flex-1 text-[13px] leading-relaxed text-muted-foreground">
+            <Badge>{format(m.paperStartSuggested)}</Badge>
+          </p>
+          <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
             {format(m.paperStartGuidedHint)}
-          </span>
-          <span className="flex h-8 items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground">
+          </p>
+          <Button className="w-full" onClick={() => setWizard(true)}>
             {format(m.paperStartAction)}
-          </span>
-        </button>
+          </Button>
+        </div>
 
-        <button
-          type="button"
-          className="flex w-74 flex-col gap-2.5 rounded-lg border p-4.5 text-left transition-colors hover:bg-accent/40"
-          onClick={() => setBlank(true)}
-        >
-          <span className="text-sm font-semibold">{format(m.paperStartBlank)}</span>
-          <span className="flex-1 text-[13px] leading-relaxed text-muted-foreground">
+        <div className="flex w-74 flex-col gap-3 rounded-lg border p-4">
+          <p className="text-sm font-semibold">{format(m.paperStartBlank)}</p>
+          <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
             {format(m.paperStartBlankHint)}
-          </span>
-          <span className="flex h-8 items-center justify-center rounded-lg border text-sm font-medium">
+          </p>
+          <Button variant="outline" className="w-full" onClick={() => setBlank(true)}>
             {format(m.itemsGroupNew)}
-          </span>
-        </button>
+          </Button>
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">{format(m.paperStartReassure)}</p>

@@ -9,7 +9,6 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ChevronUpIcon,
   EllipsisVerticalIcon,
   PlusIcon,
   XIcon,
@@ -235,7 +234,6 @@ export function ItemConfigEditor({
   trail,
   placement,
   paper,
-  onStep,
   held,
   onHold,
   onDirty,
@@ -259,14 +257,12 @@ export function ItemConfigEditor({
   /** the limits this question's score has to pass through */
   placement: Placement
   /**
-   * Every question of the round, in the order the paper reads them.
-   *
-   * Stepping runs the whole paper rather than the group: an author reading
-   * through what a round asks does not stop at a group boundary, and the
-   * groups are already on the structure screen for whoever wants them.
+   * Every question of the round, in the order the paper reads them, so this
+   * one can say which of them it is. Counted across the whole paper rather
+   * than the group: an author reading through what a round asks does not
+   * stop at a group boundary.
    */
   paper: readonly { id: string; title: string }[]
-  onStep: (itemId: string, move: 'next' | 'previous') => void
   /** what was being composed when this last unmounted, if anything */
   held?: Draft | undefined
   /** every keystroke, so the page can hand the same composition back later */
@@ -454,11 +450,6 @@ export function ItemConfigEditor({
   const stage = draft.stages.find((one) => one.key === openStage) ?? null
 
   const at = paper.findIndex((one) => one.id === item?.id)
-  const step = (delta: -1 | 1) => {
-    const next = paper[at + delta]
-    if (next !== undefined) onStep(next.id, delta === -1 ? 'previous' : 'next')
-  }
-
   // what this question can contribute before any group has its say
   const entries = draft.maxEntries.trim() === '' ? null : Number(draft.maxEntries)
   const each = Number(draft.fixedValue.trim())
@@ -480,14 +471,15 @@ export function ItemConfigEditor({
               <StandingChip item={item} />
             </div>
             <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 aria-label={format(m.itemsBack)}
-                className="flex size-5 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-foreground"
+                className="shrink-0"
                 onClick={onCancel}
               >
-                <ArrowLeftIcon aria-hidden className="size-3.5" />
-              </button>
+                <ArrowLeftIcon aria-hidden />
+              </Button>
               <span className="min-w-0 truncate">
                 {trail.map((name, index) => (
                   <span key={`${index}:${name}`}>
@@ -509,34 +501,17 @@ export function ItemConfigEditor({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {at >= 0 && paper.length > 1 && (
-              <span className="flex gap-0.5">
-                <StepButton
-                  label={format(m.itemsPrevious)}
-                  disabled={at === 0}
-                  onClick={() => step(-1)}
-                >
-                  <ChevronUpIcon aria-hidden className="size-3.5" />
-                </StepButton>
-                <StepButton
-                  label={format(m.itemsNext)}
-                  disabled={at === paper.length - 1}
-                  onClick={() => step(1)}
-                >
-                  <ChevronDownIcon aria-hidden className="size-3.5" />
-                </StepButton>
-              </span>
-            )}
             {menu !== undefined && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
+                  <Button
+                    variant="outline"
+                    size="icon"
                     aria-label={format(m.structureRowMenu)}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className="shrink-0 text-muted-foreground"
                   >
-                    <EllipsisVerticalIcon aria-hidden className="size-3.5" />
-                  </button>
+                    <EllipsisVerticalIcon aria-hidden />
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   {menu}
@@ -679,7 +654,7 @@ export function ItemConfigEditor({
                 <div className="w-38">
                   <Field label={format(m.itemsFixedValue)}>
                     {(id) => (
-                      <InputGroup className="h-9">
+                      <InputGroup>
                         <InputGroupInput
                           id={id}
                           className="tabular-nums"
@@ -706,7 +681,7 @@ export function ItemConfigEditor({
                           value={draft.maxEntries}
                           onChange={(event) => patch({ maxEntries: event.target.value })}
                         />
-                        <label className="flex items-center gap-2 text-[12.5px] whitespace-nowrap text-muted-foreground">
+                        <label className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
                           <Checkbox
                             checked={entries === null}
                             onCheckedChange={(next) =>
@@ -763,7 +738,7 @@ export function ItemConfigEditor({
               {draft.stages.some((one) => one.chain === 'escalation') ? (
                 <div className="flex flex-col gap-3 border-t pt-4">
                   <div>
-                    <h4 className="text-[13px] font-medium">{format(m.itemsDoubtTitle)}</h4>
+                    <h4 className="text-sm font-medium">{format(m.itemsDoubtTitle)}</h4>
                     <p className="pt-0.5 text-xs text-muted-foreground">
                       {format(m.itemsDoubtHint)}
                     </p>
@@ -784,7 +759,7 @@ export function ItemConfigEditor({
                   />
                 </div>
               ) : (
-                <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-[12.8px] font-medium">
+                <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs font-medium">
                   <InlineAdd
                     label={format(m.itemsDoubtAddStep)}
                     onClick={() => addStage('escalation')}
@@ -848,7 +823,7 @@ function Section({
   return (
     <section className="grid gap-x-7 gap-y-4 border-t py-6 first-of-type:border-t-0 md:grid-cols-[10.5rem_minmax(0,1fr)]">
       <div className="flex flex-col gap-1.5">
-        <h3 className="text-[13.5px] font-semibold">{title}</h3>
+        <h3 className="text-sm font-semibold">{title}</h3>
         <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>
       </div>
       <div className="min-w-0">{children}</div>
@@ -861,13 +836,13 @@ function StandingChip({ item }: { item: ItemDto | null }) {
   const { format } = useI18n()
   if (item === null) {
     return (
-      <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] whitespace-nowrap">
+      <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs whitespace-nowrap">
         {format(m.itemsNew)}
       </span>
     )
   }
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] whitespace-nowrap">
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-xs whitespace-nowrap">
       <span
         aria-hidden
         className={cn(
@@ -881,30 +856,6 @@ function StandingChip({ item }: { item: ItemDto | null }) {
             no: item.currentRevision?.revisionNo ?? 1,
           })}
     </span>
-  )
-}
-
-function StepButton({
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string
-  disabled: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      className="flex size-6.5 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
-      onClick={onClick}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -947,15 +898,13 @@ function ScoringSummary({
   return (
     <div className="flex items-center gap-3.5 rounded-lg bg-muted px-3.5 py-3">
       <div className="flex shrink-0 flex-col gap-0.5">
-        <p className="text-[11.5px] whitespace-nowrap text-muted-foreground">
-          {format(m.itemsCeiling)}
-        </p>
+        <p className="text-xs whitespace-nowrap text-muted-foreground">{format(m.itemsCeiling)}</p>
         <p className="text-base font-semibold tabular-nums">
           {ceiling === null ? format(m.structureUnlimited) : ceiling}
         </p>
       </div>
       <div aria-hidden className="h-7 w-px bg-border" />
-      <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         {entries === null
           ? format(m.itemsCeilingHowAny)
           : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: entries })}
@@ -1044,7 +993,7 @@ function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
         type="button"
         aria-label={label}
         title={label}
-        className="absolute top-0 left-1/2 flex size-5.5 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/gap:opacity-100 focus-visible:opacity-100"
+        className="absolute top-0 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/gap:opacity-100 focus-visible:opacity-100"
         onClick={onAdd}
       >
         <PlusIcon aria-hidden className="size-3" />
@@ -1057,10 +1006,10 @@ function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
 function Endpoint({ title, sub, mark }: { title: string; sub: string; mark: React.ReactNode }) {
   return (
     <div className="flex w-24 shrink-0 flex-col gap-1.5">
-      <span className="flex size-5.5 items-center justify-center rounded-full border text-muted-foreground">
+      <span className="flex size-6 items-center justify-center rounded-full border text-muted-foreground">
         {mark}
       </span>
-      <p className="text-[13px] font-medium">{title}</p>
+      <p className="text-sm font-medium">{title}</p>
       <p className="text-xs text-muted-foreground">{sub}</p>
     </div>
   )
@@ -1102,7 +1051,7 @@ function StageColumn({
     <div className="group flex w-44 shrink-0 flex-col gap-1.5 pl-3.5">
       <span
         className={cn(
-          'flex size-5.5 items-center justify-center rounded-full text-[11px] font-medium',
+          'flex size-6 items-center justify-center rounded-full text-xs font-medium',
           settled
             ? 'bg-foreground text-background'
             : 'border border-dashed border-destructive/60 text-destructive',
@@ -1113,7 +1062,7 @@ function StageColumn({
       <button
         type="button"
         className={cn(
-          'text-left text-[13px] font-medium underline-offset-4 hover:underline',
+          'text-left text-sm font-medium underline-offset-4 hover:underline',
           !settled && 'text-destructive',
         )}
         onClick={onOpen}
@@ -1129,12 +1078,11 @@ function StageColumn({
         <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <Button
             variant="ghost"
-            size="sm"
-            className="size-6 p-0"
+            size="icon-xs"
             onClick={onRemove}
             aria-label={format(m.itemsStageRemove)}
           >
-            <XIcon aria-hidden className="size-3.5" />
+            <XIcon aria-hidden />
           </Button>
         </span>
       )}
@@ -1185,12 +1133,12 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
   const { format } = useI18n()
   return (
     <>
-      <p className="pb-3 text-[12.5px] font-semibold">{format(m.itemsPreviewTitle)}</p>
+      <p className="pb-3 text-xs font-semibold">{format(m.itemsPreviewTitle)}</p>
       <div className="flex flex-col gap-2.5 rounded-lg bg-background p-3.5">
         <h4 className="text-sm font-semibold">
           {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
         </h4>
-        <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {draft.description.trim() === '' ? '' : `${draft.description.trim()} `}
           {draft.maxEntries.trim() === ''
             ? format(m.itemsPreviewNoMax)
@@ -1201,16 +1149,16 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
         <div className="flex flex-col gap-2.5">
           {draft.fields.map((field) => (
             <div key={field.key} className="flex flex-col gap-1">
-              <p className="text-[11.5px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {field.label.trim() === '' ? '—' : field.label}
                 {field.required && <span className="pl-0.5 text-destructive">*</span>}
               </p>
               {field.type === 'attachment' ? (
-                <div className="flex h-8.5 items-center justify-center rounded-lg border border-dashed text-[11.5px] text-muted-foreground">
+                <div className="flex h-9 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
                   {format(m.itemsPreviewUpload, { count: Number(field.maxCount) || 1 })}
                 </div>
               ) : (
-                <div className="h-7.5 rounded-lg border" />
+                <div className="h-9 rounded-lg border" />
               )}
             </div>
           ))}
@@ -1226,7 +1174,7 @@ function Placed({ ceiling, placement }: { ceiling: string | null; placement: Pla
   const innermost = placement.sections[0]
   return (
     <div className="mt-4 flex flex-col gap-2 border-t pt-3.5">
-      <p className="text-[12.5px] font-semibold">{format(m.itemsPlacementTitle)}</p>
+      <p className="text-xs font-semibold">{format(m.itemsPlacementTitle)}</p>
       <Amount
         label={format(m.itemsCeiling)}
         value={ceiling === null ? format(m.structureUnlimited) : ceiling}
@@ -1256,7 +1204,7 @@ function Placed({ ceiling, placement }: { ceiling: string | null; placement: Pla
 
 function Amount({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3 text-[12.5px]">
+    <div className="flex justify-between gap-3 text-xs">
       <span className="min-w-0 truncate text-muted-foreground">{label}</span>
       <span className="shrink-0 tabular-nums">{value}</span>
     </div>
@@ -1269,7 +1217,7 @@ function Versions({ item }: { item: ItemDto | null }) {
   const revision = item?.currentRevision ?? null
   return (
     <div className="mt-4 flex flex-col gap-1.5 border-t pt-3.5">
-      <p className="text-[12.5px] font-semibold">{format(m.itemsVersionTitle)}</p>
+      <p className="text-xs font-semibold">{format(m.itemsVersionTitle)}</p>
       <p className="text-xs leading-relaxed text-muted-foreground">
         {revision === null
           ? format(m.itemsVersionNew)
