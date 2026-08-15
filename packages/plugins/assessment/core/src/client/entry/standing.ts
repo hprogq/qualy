@@ -1,6 +1,6 @@
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../i18n.ts'
-import { trimAmount, type EntryDto, type ItemDto } from './model.ts'
+import { amountOf, trimAmount, unitsOf, type EntryDto, type ItemDto } from './model.ts'
 
 // The round as a participant reads it: one row per group and per question,
 // each already carrying what its line has to say.
@@ -70,8 +70,7 @@ export const itemScore = (standing: Standing | null, itemId: string): string | n
   if (standing === null) return null
   const lines = standing.lines.filter((line) => line.kind === 'entry' && line.itemId === itemId)
   if (lines.length === 0) return null
-  const cents = lines.reduce((sum, line) => sum + Math.round(Number(line.value) * 100), 0)
-  return trimAmount(String(cents / 100))
+  return amountOf(lines.reduce((sum, line) => sum + unitsOf(line.value), 0))
 }
 
 /** what one filed claim was granted, when it was granted anything */

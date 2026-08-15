@@ -171,21 +171,15 @@ function Body({
   // scored is part of how their round adds up, and a group whose total
   // includes it while nothing on screen names it is a group that cannot be
   // read. A question still being composed is nobody's to answer.
-  const scored = useMemo(
-    () =>
-      new Set((standing.data?.lines ?? []).flatMap((line) => (line.itemId ? [line.itemId] : []))),
-    [standing.data],
-  )
+  // Every question of the round this person takes part in, whoever fills it
+  // in. One the school records is still theirs to read - it is how their
+  // round adds up, and "somebody else writes this one" is a fact about the
+  // question, not a reason to hide it. A question still being composed is
+  // the only one nobody outside the paper can see.
   const visible = useMemo(
     () =>
-      ((items.data?.items ?? []) as readonly ItemDto[]).filter(
-        (item) =>
-          item.status !== 'draft' &&
-          (item.currentRevision?.entrySource === 'student' ||
-            scored.has(item.id) ||
-            (entriesByItem.get(item.id)?.length ?? 0) > 0),
-      ),
-    [items.data, entriesByItem, scored],
+      ((items.data?.items ?? []) as readonly ItemDto[]).filter((item) => item.status !== 'draft'),
+    [items.data],
   )
 
   const rows = useMemo(

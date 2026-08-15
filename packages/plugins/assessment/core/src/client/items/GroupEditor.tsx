@@ -11,6 +11,7 @@ import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { Choice } from './Choice.tsx'
+import { trimAmount } from '../entry/model.ts'
 import type { TreeGroup } from './paper.ts'
 
 // One section of the paper: its name and its two limits.
@@ -52,8 +53,11 @@ export function GroupEditor({
   const run = useRunApi()
   const { format, formatError } = useI18n()
   const [name, setName] = useState(editing?.name ?? '')
-  const [cap, setCap] = useState(editing?.cap ?? '')
-  const [floor, setFloor] = useState(editing?.floor ?? '')
+  // the stored form carries four places; the box shows what was meant
+  const [cap, setCap] = useState(editing?.cap === null ? '' : trimAmount(editing?.cap ?? ''))
+  const [floor, setFloor] = useState(
+    editing?.floor === null ? '' : trimAmount(editing?.floor ?? ''),
+  )
   const [parent, setParent] = useState(editing?.parentGroupId ?? parentId ?? '')
   const [reason, setReason] = useState('')
   const [refusals, setRefusals] = useState<readonly { reason: string; groupId: string | null }[]>(

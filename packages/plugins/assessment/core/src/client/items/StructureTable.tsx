@@ -21,7 +21,7 @@ import {
 import { Input } from '@qualy/ui/input'
 import { Choice } from './Choice.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
-import { trimAmount, type ItemDto } from '../entry/model.ts'
+import { trimAmount } from '../entry/model.ts'
 import type { StructureRow } from './structure.ts'
 
 // The whole paper, one row at a time.
@@ -298,7 +298,7 @@ function GroupRow({
         </span>
         {row.subtotal !== undefined && (
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {format(m.structureSubtotal, { sum: trimAmount(row.subtotal) })}
+            {format(m.structureSubtotal, { sum: row.subtotal })}
           </span>
         )}
         {row.count !== undefined && (

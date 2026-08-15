@@ -24,7 +24,7 @@ import type { GroupTarget, Placement, TreeDraft, TreeGroup, TreeSelection } from
 import type { Draft as QuestionDraft } from './ItemConfigEditor.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
-import { trimAmount, type ItemDto } from '../entry/model.ts'
+import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 
 // Composing a round: the paper's structure, and one question opened out.
 //
@@ -434,8 +434,12 @@ function Editor({
           // screen has nothing to show between the save and the refetch. The
           // reader stays where they were, so nothing travels.
           await refresh()
-          if (writing !== null) closeDraft(writing.localId)
+          // and the question is named before the draft is let go: the other
+          // order leaves one render with neither, which is the structure, so
+          // the screen travels out to the list and back in again on a press
+          // that never left the question
           onQuestion(itemId)
+          if (writing !== null) closeDraft(writing.localId)
         }}
       />
     ) : null
@@ -607,7 +611,7 @@ const placementOf = (
 
   return {
     sections,
-    subtotal: subtotal === null ? null : String(subtotal),
+    subtotal: subtotal === null ? null : amountOf(subtotal),
     total: groups.find((one) => one.id === paperId)?.cap ?? null,
   }
 }
@@ -638,10 +642,10 @@ function PaperSummary({
 }) {
   const { format } = useI18n()
   const capped = roots.length > 0 && roots.every((group) => group.cap !== null)
-  const cents = roots.reduce((total, group) => total + Math.round(Number(group.cap ?? 0) * 100), 0)
-  const total = paper.cap === null ? null : Math.round(Number(paper.cap) * 100)
-  const sum = capped ? trimAmount(String(cents / 100)) : null
-  const over = sum !== null && total !== null && cents > total
+  const held = roots.reduce((total, group) => total + unitsOf(group.cap ?? 0), 0)
+  const total = paper.cap === null ? null : unitsOf(paper.cap)
+  const sum = capped ? amountOf(held) : null
+  const over = sum !== null && total !== null && held > total
 
   const limits = [
     `${format(m.paperTotal)} ${paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}`,
@@ -679,7 +683,7 @@ function PaperSummary({
             <div
               key={group.id}
               style={{
-                width: `${Math.min(100, (Math.round(Number(group.cap) * 100) / Math.max(cents, total)) * 100)}%`,
+                width: `${Math.min(100, (unitsOf(group.cap ?? 0) / Math.max(held, total)) * 100)}%`,
                 background: `var(--chart-${(index % 4) + 2})`,
               }}
             />

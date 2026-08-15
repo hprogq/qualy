@@ -1,4 +1,4 @@
-import type { ItemDto } from '../entry/model.ts'
+import { amountOf, unitsOf, type ItemDto } from '../entry/model.ts'
 import type { TreeDraft, TreeGroup } from './paper.ts'
 
 // The paper as rows: what the table draws, worked out away from the drawing.
@@ -28,7 +28,7 @@ export interface StructureRow {
   count?: number | undefined
 }
 
-const amountOf = (item: ItemDto): string | undefined =>
+const eachOf = (item: ItemDto): string | undefined =>
   (
     item.currentRevision?.scoringConfig as
       { calculator?: { config?: { value?: string } } } | undefined
@@ -39,12 +39,15 @@ const stepsOf = (item: ItemDto): number | undefined => {
   return Array.isArray(policy?.stages) ? policy.stages.length : undefined
 }
 
-/** what one question can contribute at most: its value times what one person may file */
+/**
+ * What one question can contribute at most, in whole ten-thousandths: its
+ * value times what one person may file. Counted rather than floated, because
+ * 0.1 three times is not 0.3 in a float and this number is printed.
+ */
 export const itemCeiling = (item: ItemDto): number | null => {
-  const each = amountOf(item)
+  const each = eachOf(item)
   if (each === undefined || item.maxEntries === null) return null
-  const value = Number(each)
-  return Number.isFinite(value) ? value * item.maxEntries : null
+  return unitsOf(each) * item.maxEntries
 }
 
 /** the paper walked into rows, numbered the way a reader would number it */
@@ -97,7 +100,7 @@ export const structureRows = (
         kind: 'item',
         id: item.id,
         name: item.title,
-        each: amountOf(item),
+        each: eachOf(item),
         most: item.maxEntries === null ? undefined : String(item.maxEntries),
         source: item.currentRevision?.entrySource,
         steps: stepsOf(item),
@@ -127,7 +130,7 @@ export const structureRows = (
         id: group.id,
         name: group.name,
         cap: group.cap,
-        subtotal: inside.ceiling === null ? undefined : String(inside.ceiling),
+        subtotal: inside.ceiling === null ? undefined : amountOf(inside.ceiling),
         count: inside.count,
       })
       walk(group.id, ordinal, depth + 1)

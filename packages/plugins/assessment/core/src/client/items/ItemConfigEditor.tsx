@@ -25,7 +25,7 @@ import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { trimAmount, type ItemDto } from '../entry/model.ts'
+import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 import { Choice } from './Choice.tsx'
 import { FieldList, type FieldDraft } from './FieldTable.tsx'
 import { StageSheet, type StageDraft } from './StageSheet.tsx'
@@ -161,7 +161,8 @@ const draftOf = (
     entrySource: config?.entrySource ?? 'student',
     description: String((config?.displayConfig as { description?: unknown })?.description ?? ''),
     fields: fields.length > 0 ? fields : [blankField('f1')],
-    fixedValue: scoring?.calculator?.config?.value ?? '1.00',
+    // 100.0000 is how it is stored, not how anybody types it
+    fixedValue: trimAmount(scoring?.calculator?.config?.value ?? '1'),
     stages: stages.length > 0 ? stages : [blankStage(options, 'normal')],
   }
 }
@@ -482,7 +483,9 @@ export function ItemConfigEditor({
   const entries = draft.maxEntries.trim() === '' ? null : Number(draft.maxEntries)
   const each = Number(draft.fixedValue.trim())
   const ceiling =
-    entries === null || !Number.isFinite(each) ? null : trimAmount(String(each * entries))
+    entries === null || !Number.isFinite(each)
+      ? null
+      : amountOf(unitsOf(draft.fixedValue.trim()) * entries)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1025,7 +1028,7 @@ function ChainFlow({
  */
 function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <div className="group/gap relative flex min-w-8 flex-1 items-start pt-2.75">
+    <div className="group/gap relative flex w-12 shrink-0 items-start pt-3">
       <div className="h-px w-full bg-border" />
       <button
         type="button"
@@ -1043,7 +1046,7 @@ function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
 /** where a submission enters the path, and where it leaves it */
 function Endpoint({ title, sub, mark }: { title: string; sub: string; mark: React.ReactNode }) {
   return (
-    <div className="flex w-24 shrink-0 flex-col gap-1.5">
+    <div className="flex w-24 min-w-24 shrink-0 flex-col gap-1.5">
       <span className="flex size-6 items-center justify-center rounded-full border text-muted-foreground">
         {mark}
       </span>
@@ -1086,7 +1089,7 @@ function StageColumn({
   const settled = roleNames !== '' && where !== ''
 
   return (
-    <div className="group flex w-44 shrink-0 flex-col gap-1.5 pl-3.5">
+    <div className="group flex w-44 min-w-44 shrink-0 flex-col gap-1.5">
       <span
         className={cn(
           'flex size-6 items-center justify-center rounded-full text-xs font-medium',
@@ -1100,7 +1103,7 @@ function StageColumn({
       <button
         type="button"
         className={cn(
-          'text-left text-sm font-medium underline-offset-4 hover:underline',
+          'min-w-0 text-left text-sm font-medium break-words underline-offset-4 hover:underline',
           !settled && 'text-destructive',
         )}
         onClick={onOpen}

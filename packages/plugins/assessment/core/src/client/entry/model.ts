@@ -101,3 +101,19 @@ export const lastDay = (end: string): string => {
 /** amounts render without their bookkeeping zeros: 10.0000 reads as 10 */
 export const trimAmount = (value: string): string =>
   value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value
+
+/**
+ * Amounts are counted, not floated.
+ *
+ * They are stored to four places, and every sum this product shows is money
+ * in all but name: 0.1 three times is 0.30000000000000004 in a float, and a
+ * screen that prints that has lied about somebody's marks. So arithmetic
+ * happens on whole ten-thousandths and comes back out through `amountOf`.
+ */
+export const unitsOf = (value: string | number): number => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.round(parsed * 10_000) : 0
+}
+
+/** whole ten-thousandths back into something to read */
+export const amountOf = (units: number): string => trimAmount((units / 10_000).toFixed(4))
