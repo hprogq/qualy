@@ -344,21 +344,6 @@ const i18n = definePluginMessages({
     batchSummary,
     batchSummaryDraft,
     backToList: { id: 'assessment/batch/back', defaultMessage: 'All batches' },
-    columnName: { id: 'assessment/batch/column-name', defaultMessage: 'Name' },
-    columnStatus: { id: 'assessment/batch/column-status', defaultMessage: 'Status' },
-    columnMaterialRange: {
-      id: 'assessment/batch/column-material-range',
-      defaultMessage: 'Materials accepted',
-    },
-    columnParticipants: {
-      id: 'assessment/batch/column-participants',
-      defaultMessage: 'Participants',
-    },
-    columnCurrentPhase: {
-      id: 'assessment/batch/column-current-phase',
-      defaultMessage: 'Current stage',
-    },
-    columnCreatedAt: { id: 'assessment/batch/column-created-at', defaultMessage: 'Created' },
 
     // the batch form
     nameLabel: { id: 'assessment/batch/name', defaultMessage: 'Name' },
@@ -446,7 +431,6 @@ const i18n = definePluginMessages({
 
     // ------------------------------------------------------------------
     // the stage plan
-    sectionsLabel: { id: 'assessment/batch/sections', defaultMessage: 'Batch sections' },
     switchBatch: { id: 'assessment/batch/switch', defaultMessage: 'Switch batch' },
     notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started yet' },
     plannedStart: { id: 'assessment/batch/planned-start', defaultMessage: 'Starts' },
@@ -479,7 +463,6 @@ const i18n = definePluginMessages({
     bareSinceHours,
     bareSinceMinutes,
     bareSinceSeconds,
-    endsUnknown: { id: 'assessment/batch/ends-unknown', defaultMessage: 'No end time set' },
     enterBatch: { id: 'assessment/batch/enter', defaultMessage: 'Open' },
     configureBatch: { id: 'assessment/batch/configure', defaultMessage: 'Keep setting up' },
     draftHint: {
@@ -699,15 +682,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/counts-for',
       defaultMessage: 'Counts {value} when approved',
     },
-    entryUpdatedAt: { id: 'assessment/entry/updated-at', defaultMessage: 'Filed {when}' },
     reviewOpen: { id: 'assessment/review/open', defaultMessage: 'Open' },
     reviewDetailTab: { id: 'assessment/review/detail-tab', defaultMessage: 'Review' },
     reviewApprove: { id: 'assessment/review/approve', defaultMessage: 'Approve' },
     reviewReject: { id: 'assessment/review/reject', defaultMessage: 'Send back' },
-    reviewRejectTitle: {
-      id: 'assessment/review/reject-title',
-      defaultMessage: 'Send this back',
-    },
     reviewComment: {
       id: 'assessment/review/comment',
       defaultMessage: 'A word for whoever filed it',
@@ -778,17 +756,12 @@ const i18n = definePluginMessages({
       defaultMessage: 'Skipped: nobody above this participant holds that role',
     },
     reviewDecided: { id: 'assessment/review/decided', defaultMessage: 'Decision recorded.' },
-    reviewClosedAlready: {
-      id: 'assessment/review/closed-already',
-      defaultMessage: 'This round was already closed by someone else.',
-    },
     reviewSubmittedBy: {
       id: 'assessment/review/submitted-by',
       defaultMessage: '{name} · round {round}',
     },
     reviewPayloadTitle: { id: 'assessment/review/payload-title', defaultMessage: 'What was filed' },
     reviewFiles: { id: 'assessment/review/files', defaultMessage: 'Files' },
-    reviewDownload: { id: 'assessment/review/download', defaultMessage: 'Download' },
     // ------------------------------------------------------------------
     // one's own provisional standing
     resultTab: { id: 'assessment/result/tab', defaultMessage: 'My standing' },
@@ -838,10 +811,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'No administrative questions in this round.',
     },
     recordWho: { id: 'assessment/record/who', defaultMessage: 'About whom' },
-    recordWhoPlaceholder: {
-      id: 'assessment/record/who-placeholder',
-      defaultMessage: 'Search the roster by name',
-    },
     recordBasis: { id: 'assessment/record/basis', defaultMessage: 'Basis' },
     recordBasisHint: {
       id: 'assessment/record/basis-hint',
@@ -870,10 +839,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/stuck-hint',
       defaultMessage: 'Grant one of these roles at the unit and the submissions continue.',
     },
-    itemsOutlineOrphans: {
-      id: 'assessment/items/outline-orphans',
-      defaultMessage: 'Group deleted',
-    },
     itemsOutlineAddItem: {
       id: 'assessment/items/outline-add-item',
       defaultMessage: 'Add question',
@@ -883,16 +848,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Add subgroup',
     },
     itemsCapChip: { id: 'assessment/items/cap-chip', defaultMessage: 'up to {value} pts' },
-    itemsSheetEmpty: {
-      id: 'assessment/items/sheet-empty',
-      defaultMessage: 'No groups yet. Add one, then write questions into it.',
-    },
-    itemsChipRecorded: { id: 'assessment/items/chip-recorded', defaultMessage: 'recorded' },
     itemsGroupUnnamed: { id: 'assessment/items/group-unnamed', defaultMessage: 'Untitled group' },
-    itemsGroupInside: {
-      id: 'assessment/items/group-inside',
-      defaultMessage: 'Inside \u201c{parent}\u201d',
-    },
     itemsGroupNew: { id: 'assessment/items/group-new', defaultMessage: 'New group' },
     itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'Group settings' },
     itemsGroupCapHint: {
@@ -948,11 +904,8 @@ const i18n = definePluginMessages({
       id: 'assessment/items/group-refused-other',
       defaultMessage: 'could not be saved.',
     },
-    itemsGroupAdd: { id: 'assessment/items/group-add', defaultMessage: 'Add a group' },
-    itemsGroupsSave: { id: 'assessment/items/groups-save', defaultMessage: 'Save groups' },
     itemsGroupsSaved: { id: 'assessment/items/groups-saved', defaultMessage: 'Groups saved.' },
     itemsListTitle: { id: 'assessment/items/list-title', defaultMessage: 'Questions' },
-    itemsEditTitle: { id: 'assessment/items/edit-title', defaultMessage: 'Question' },
     itemsFieldTitle: { id: 'assessment/items/field-title', defaultMessage: 'Title' },
     itemsFieldGroup: { id: 'assessment/items/field-group', defaultMessage: 'Score group' },
     itemsFieldMax: {
@@ -972,11 +925,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Staff record it, with a basis',
     },
     itemsFieldUnnamed: { id: 'assessment/items/field-unnamed', defaultMessage: 'Untitled field' },
-    itemsFieldEdit: { id: 'assessment/items/field-edit', defaultMessage: 'Edit field' },
-    itemsFieldSettings: {
-      id: 'assessment/items/field-settings',
-      defaultMessage: 'Field settings',
-    },
     itemsStageSettings: {
       id: 'assessment/items/stage-settings',
       defaultMessage: 'Step settings',
@@ -985,8 +933,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/title-placeholder',
       defaultMessage: 'e.g. Award in a discipline competition',
     },
-    itemsPreviewShow: { id: 'assessment/items/preview-show', defaultMessage: 'Show preview' },
-    itemsPreviewHide: { id: 'assessment/items/preview-hide', defaultMessage: 'Hide preview' },
     itemsMoveReasonTitle: {
       id: 'assessment/items/move-reason-title',
       defaultMessage: 'Why this question moved',
@@ -1008,8 +954,6 @@ const i18n = definePluginMessages({
     itemsPublished: { id: 'assessment/items/published', defaultMessage: 'Published.' },
     itemsFieldAdd: { id: 'assessment/items/form-add', defaultMessage: 'Add a field' },
     itemsFieldRemove: { id: 'assessment/items/form-remove', defaultMessage: 'Remove' },
-    itemsFieldUp: { id: 'assessment/items/form-up', defaultMessage: 'Move up' },
-    itemsFieldDown: { id: 'assessment/items/form-down', defaultMessage: 'Move down' },
     itemsFieldLabel: { id: 'assessment/items/field-label', defaultMessage: 'Label' },
     itemsFieldType: { id: 'assessment/items/field-type', defaultMessage: 'Type' },
     itemsTypeText: { id: 'assessment/items/type-text', defaultMessage: 'Text' },
@@ -1043,10 +987,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/fixed-value',
       defaultMessage: 'Each approved entry counts',
     },
-    itemsFixedValueHint: {
-      id: 'assessment/items/fixed-value-hint',
-      defaultMessage: 'A signed amount, like 3.00 or -1.00.',
-    },
     itemsDoubtTitle: {
       id: 'assessment/items/doubt-title',
       defaultMessage: 'Doubt review',
@@ -1061,7 +1001,6 @@ const i18n = definePluginMessages({
     },
     itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add a step' },
     itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Remove step' },
-    itemsStageNumber: { id: 'assessment/items/stage-number', defaultMessage: 'Step {n}' },
     itemsStageKind: {
       id: 'assessment/items/stage-kind',
       defaultMessage: 'How the reviewer is found',
@@ -1079,10 +1018,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Walks up from the participant\u2019s unit to the nearest holder.',
     },
     itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
-    itemsTerminalHere: {
-      id: 'assessment/items/terminal-here',
-      defaultMessage: 'Done on approval',
-    },
     reviewChainTitle: { id: 'assessment/review/chain-title', defaultMessage: 'Review route' },
     reviewStageHere: { id: 'assessment/review/stage-here', defaultMessage: 'Now here' },
     reviewStageSkipped: {
@@ -1110,10 +1045,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/on-doubt-route',
       defaultMessage: 'This is in doubt review; the last step decides.',
     },
-    itemsReviewTitle: {
-      id: 'assessment/items/review-title',
-      defaultMessage: 'Ordinary review',
-    },
     itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basics' },
     itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Form fields' },
     itemsTabScoring: { id: 'assessment/items/tab-scoring', defaultMessage: 'Scoring' },
@@ -1121,14 +1052,6 @@ const i18n = definePluginMessages({
     itemsFieldDescription: {
       id: 'assessment/items/field-description',
       defaultMessage: 'Filing instructions',
-    },
-    itemsFieldDescriptionHint: {
-      id: 'assessment/items/field-description-hint',
-      defaultMessage: 'Shown under the question when filing.',
-    },
-    itemsFieldMaxUnlimited: {
-      id: 'assessment/items/field-max-unlimited',
-      defaultMessage: 'Empty for no limit',
     },
     itemsFlowSubmit: { id: 'assessment/items/flow-submit', defaultMessage: 'Submitted' },
     itemsFlowSubmitBy: {
@@ -1140,19 +1063,7 @@ const i18n = definePluginMessages({
       id: 'assessment/items/flow-done-sub',
       defaultMessage: 'approved entries count',
     },
-    itemsStageExpand: { id: 'assessment/items/stage-expand', defaultMessage: 'Edit' },
-    itemsStageLevelShort: { id: 'assessment/items/stage-level-short', defaultMessage: 'Level' },
-    itemsStageRolesShort: { id: 'assessment/items/stage-roles-short', defaultMessage: 'Roles' },
-    itemsStageKindShort: { id: 'assessment/items/stage-kind-short', defaultMessage: 'How' },
     itemsStageWalkUp: { id: 'assessment/items/stage-walk-up', defaultMessage: 'Walks up' },
-    itemsPickTarget: {
-      id: 'assessment/items/pick-something',
-      defaultMessage: 'Pick a group or question on the left to edit.',
-    },
-    itemsTreeSummary: {
-      id: 'assessment/items/tree-summary',
-      defaultMessage: '{count, plural, one {# question} other {# questions}}, {sum} pts in all',
-    },
     itemsTreeSummaryNoCap: {
       id: 'assessment/items/tree-summary-no-cap',
       defaultMessage: '{count, plural, one {# question} other {# questions}}',
@@ -1237,7 +1148,6 @@ const i18n = definePluginMessages({
     structureStatusAll: { id: 'assessment/items/structure-status-all', defaultMessage: 'All' },
     structureStatusLive: { id: 'assessment/items/structure-status-live', defaultMessage: 'Live' },
     structureNew: { id: 'assessment/items/structure-new', defaultMessage: 'New' },
-    structureNewGroup: { id: 'assessment/items/structure-new-group', defaultMessage: 'Group' },
     structureNewItem: { id: 'assessment/items/structure-new-item', defaultMessage: 'Question' },
     structureColOrdinal: { id: 'assessment/items/structure-col-ordinal', defaultMessage: 'No.' },
     structureColName: { id: 'assessment/items/structure-col-name', defaultMessage: 'Name' },
@@ -1306,14 +1216,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/preview-title',
       defaultMessage: 'Participant view',
     },
-    itemsPreviewLive: {
-      id: 'assessment/items/preview-live',
-      defaultMessage: 'Follows this draft',
-    },
-    itemsPreviewChain: {
-      id: 'assessment/items/preview-chain',
-      defaultMessage: 'After submitting, it passes',
-    },
     itemsPreviewMax: {
       id: 'assessment/items/preview-max',
       defaultMessage: '{count, plural, one {At most # entry} other {At most # entries}}',
@@ -1331,10 +1233,6 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, one {Up to # file} other {Up to # files}}',
     },
     itemsUntitled: { id: 'assessment/items/untitled', defaultMessage: 'Untitled question' },
-    itemsDefaultFieldLabel: {
-      id: 'assessment/items/default-field-label',
-      defaultMessage: 'Details',
-    },
     itemsReviewCovered: {
       id: 'assessment/items/review-covered',
       defaultMessage:
@@ -1362,16 +1260,7 @@ const i18n = definePluginMessages({
       id: 'assessment/items/form-empty',
       defaultMessage: 'No fields yet. A question needs at least one.',
     },
-    itemsFieldConfig: { id: 'assessment/items/field-config', defaultMessage: 'Configuration' },
-    itemsFieldConfigHint: {
-      id: 'assessment/items/field-config-hint',
-      defaultMessage: 'The full configuration, as JSON: form, scoring and review route.',
-    },
     itemsFieldReason: { id: 'assessment/items/field-reason', defaultMessage: 'Reason' },
-    itemsConfigUnreadable: {
-      id: 'assessment/items/config-unreadable',
-      defaultMessage: 'That is not readable JSON yet.',
-    },
     itemsSaved: { id: 'assessment/items/saved', defaultMessage: 'Question saved.' },
     itemsVoid: { id: 'assessment/items/void', defaultMessage: 'Withdraw' },
     itemsVoidTitle: { id: 'assessment/items/void-title', defaultMessage: 'Withdraw this question' },
@@ -1663,7 +1552,6 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/file-room',
       defaultMessage: '{count, plural, one {# more allowed} other {# more allowed}}',
     },
-    entryFilePreview: { id: 'assessment/entry/file-preview', defaultMessage: 'Preview' },
     entryDateWithin: {
       id: 'assessment/entry/date-within',
       defaultMessage: 'Must fall between {start} and {end}',
@@ -1685,7 +1573,6 @@ const i18n = definePluginMessages({
       id: 'assessment/settings/note-hint',
       defaultMessage: 'Seen by whoever works on this batch.',
     },
-    enrolledLabel: { id: 'assessment/settings/enrolled', defaultMessage: 'Taking part' },
     settingsUnsaved: { id: 'assessment/settings/unsaved', defaultMessage: 'Not saved yet' },
     settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'This round' },
     settingsLifecycleHint: {
@@ -1705,7 +1592,6 @@ const i18n = definePluginMessages({
     colOpens: { id: 'assessment/plan/col-opens', defaultMessage: 'Opens' },
     colPlannedStart: { id: 'assessment/plan/col-start', defaultMessage: 'Starts' },
     colStatus: { id: 'assessment/plan/col-status', defaultMessage: 'Status' },
-    colActions: { id: 'assessment/plan/col-actions', defaultMessage: 'Actions' },
     descriptionLabel: { id: 'assessment/phase/description', defaultMessage: 'What it is for' },
     entryNoteLabel: { id: 'assessment/phase/entry-note', defaultMessage: 'Waiting on' },
     entryNoteHint: {
@@ -1742,7 +1628,6 @@ const i18n = definePluginMessages({
     moveDown: { id: 'assessment/plan/move-down', defaultMessage: 'Move down' },
     done: { id: 'assessment/action/done', defaultMessage: 'Done' },
     pendingShort,
-    schedule: { id: 'assessment/schedule/action', defaultMessage: 'Schedule' },
     goSchedule: { id: 'assessment/schedule/go', defaultMessage: 'Set a time' },
     scheduleTitle,
     describeTitle,
@@ -1915,40 +1800,6 @@ const i18n = definePluginMessages({
     },
     participantActive: { id: 'assessment/roster/active', defaultMessage: 'Taking part' },
     excludedBadge: { id: 'assessment/roster/excluded', defaultMessage: 'Removed' },
-    diffTitle: {
-      id: 'assessment/roster/diff-title',
-      defaultMessage: 'Changes in the organization',
-    },
-    diffEmpty: {
-      id: 'assessment/roster/diff-empty',
-      defaultMessage: 'The roster matches the organization; nothing to review.',
-    },
-    diffArrivals: { id: 'assessment/roster/arrivals', defaultMessage: 'New in these units' },
-    diffArrivalsHint: {
-      id: 'assessment/roster/arrivals-hint',
-      defaultMessage:
-        'People who joined the selected units after the roster was generated; add them to include them in this batch.',
-    },
-    diffDeparted: { id: 'assessment/roster/departed', defaultMessage: 'No longer in these units' },
-    diffDepartedHint: {
-      id: 'assessment/roster/departed-hint',
-      defaultMessage:
-        'People who left the selected units but remain on the roster; removing them keeps everything they submitted.',
-    },
-    diffAnchor: { id: 'assessment/roster/anchor-changed', defaultMessage: 'Moved to another unit' },
-    diffAnchorHint: {
-      id: 'assessment/roster/anchor-changed-hint',
-      defaultMessage:
-        'People who moved to another unit within scope; applying the move hands review to the new unit.',
-    },
-    diffUserType: { id: 'assessment/roster/type-changed', defaultMessage: 'Changed user type' },
-    diffScope: { id: 'assessment/roster/scope-integrity', defaultMessage: 'Units that are gone' },
-    diffScopeHint: {
-      id: 'assessment/roster/scope-integrity-hint',
-      defaultMessage:
-        'Units that were removed from the organization; they enroll nobody until the scope is adjusted.',
-    },
-    include: { id: 'assessment/roster/include', defaultMessage: 'Add to this batch' },
     exclude: { id: 'assessment/roster/exclude', defaultMessage: 'Remove' },
     excludeTitle: {
       id: 'assessment/roster/exclude-title',
@@ -1960,11 +1811,6 @@ const i18n = definePluginMessages({
         'They stop taking part from now on. Everything they have submitted stays, and they can be added again later.',
     },
     restore: { id: 'assessment/roster/restore', defaultMessage: 'Bring back' },
-    applyAnchor: { id: 'assessment/roster/apply-anchor', defaultMessage: 'Apply the move' },
-    typeNotEnrolled: {
-      id: 'assessment/roster/type-not-enrolled',
-      defaultMessage: 'Their new user type is not part of this batch.',
-    },
     participantCount,
     alsoActiveIn,
     noBusinessNoShort: {
@@ -2020,7 +1866,6 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Turning something off applies to this batch only and leaves their role in the organization unchanged.',
     },
-    accessWithheld: { id: 'assessment/access/withheld', defaultMessage: 'Withheld' },
     accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from this batch' },
     accessRemoveTitle: {
       id: 'assessment/access/remove-title',
