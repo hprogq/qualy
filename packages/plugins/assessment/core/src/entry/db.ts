@@ -522,7 +522,17 @@ export const advanceReviewInstance = (input: {
     )
     .pipe(Effect.map(({ rows }) => rows.length > 0))
 
-/** ends the open round, if it is still open; the loser of a race writes nothing */
+/**
+ * Ends the open round, if it is still open; the loser of a race writes
+ * nothing.
+ *
+ * Open means `active` or `blocked`. Blocked is a round waiting for somebody
+ * to be appointed to the level it stands at - a running state, not a
+ * conclusion - and the partial unique index that admits one open round per
+ * entry counts it as one. Ending only `active` rounds left every blocked one
+ * unendable: the person who filed it could not withdraw it, and nobody could
+ * be appointed to release it either, so the claim was stuck for good.
+ */
 export const cancelReviewInstance = (input: {
   tenantId: string
   instanceId: string
@@ -535,7 +545,7 @@ export const cancelReviewInstance = (input: {
         .set({ state: 'completed', outcome: input.outcome, completedAt: sql`now()` })
         .where('tenantId', '=', input.tenantId)
         .where('id', '=', input.instanceId)
-        .where('state', '=', 'active')
+        .where('state', 'in', ['active', 'blocked'])
         .returning(['id'])
         .executeTakeFirst(),
     )

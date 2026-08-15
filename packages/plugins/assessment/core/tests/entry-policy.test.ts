@@ -233,6 +233,58 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     expect(result.events).toEqual(['submitted', 'cancelled-by-submitter', 'submitted'])
   })
 
+  it('lets a submission waiting on an empty level be withdrawn like any other', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ep-blocked-withdraw')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          yield* runSql(
+            sql`update role_grants set revoked_at = now() where user_id = ${f.reviewer}`,
+          )
+          const waiting = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const state = yield* runSql(
+            sql`select state from review_instances where entry_id = ${entry.id}`,
+          )
+          // Waiting for somebody to be appointed is a running state, not a
+          // conclusion. Refusing to end it left the claim stuck for good:
+          // its owner could not take it back, and no reviewer existed to
+          // move it on.
+          const back = yield* assessment.setEntryStatus(f.t, entry.id, 'draft', s1)
+          const after = yield* runSql(sql`
+            select state, outcome from review_instances where entry_id = ${entry.id}`)
+          const said = yield* runSql(sql`
+            select kind from review_events
+            where review_instance_id = (
+              select id from review_instances where entry_id = ${entry.id})
+            order by created_at, id`)
+          return {
+            waiting,
+            state: one<{ state: string }>(state),
+            back,
+            after: one<{ state: string; outcome: string | null }>(after),
+            said: (said as { rows: { kind: string }[] }).rows.map((row) => row.kind),
+          }
+        }),
+      ),
+    )
+
+    expect(result.waiting.status).toBe('in_review')
+    expect(result.state.state).toBe('blocked')
+    expect(result.back.status).toBe('draft')
+    expect(result.back.currentReviewInstanceId).toBeNull()
+    expect(result.after).toEqual({ state: 'completed', outcome: 'cancelled' })
+    expect(result.said).toEqual(['submitted', 'assignee-not-found', 'cancelled-by-submitter'])
+  })
+
   it('takes a submission into a stage nobody can judge yet, and lets it wait', async () => {
     const result = ok(
       await run(
