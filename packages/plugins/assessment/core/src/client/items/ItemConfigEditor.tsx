@@ -24,6 +24,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@q
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
+import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../i18n.ts'
 import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 import { Choice } from './Choice.tsx'
@@ -416,20 +417,20 @@ export function ItemConfigEditor({
    * asking them to do the insertion themselves, one press at a time, in a
    * chain whose order is its whole meaning.
    */
-  const addStage = (
-    chain: 'normal' | 'escalation',
-    beside?: { key: string; side: 'before' | 'after' },
-  ) => {
+  /**
+   * A step goes where the author pointed, not on the end.
+   *
+   * Adding to the end and expecting people to walk it up with arrows is
+   * asking them to do the insertion themselves, one press at a time, in a
+   * chain whose order is its whole meaning.
+   */
+  const addStage = (chain: 'normal' | 'escalation', at?: number) => {
     const stage = blankStage(options, chain)
     setDraft((previous) => {
       const own = previous.stages.filter((one) => one.chain === chain)
       const others = previous.stages.filter((one) => one.chain !== chain)
-      const at =
-        beside === undefined
-          ? own.length
-          : own.findIndex((one) => one.key === beside.key) + (beside.side === 'after' ? 1 : 0)
       const placed = [...own]
-      placed.splice(at < 0 ? own.length : at, 0, stage)
+      placed.splice(at ?? own.length, 0, stage)
       return {
         ...previous,
         stages: chain === 'normal' ? [...placed, ...others] : [...others, ...placed],
@@ -765,7 +766,7 @@ export function ItemConfigEditor({
                 steps={draft.stages.filter((one) => one.chain === 'normal')}
                 options={options}
                 onOpen={setOpenStage}
-                onAdd={(beside) => addStage('normal', beside)}
+                onAdd={(at) => addStage('normal', at)}
                 onRemove={(key) =>
                   setDraft((previous) => ({
                     ...previous,
@@ -787,7 +788,7 @@ export function ItemConfigEditor({
                     steps={draft.stages.filter((one) => one.chain === 'escalation')}
                     options={options}
                     onOpen={setOpenStage}
-                    onAdd={(beside) => addStage('escalation', beside)}
+                    onAdd={(at) => addStage('escalation', at)}
                     onRemove={(key) =>
                       setDraft((previous) => ({
                         ...previous,
@@ -960,9 +961,14 @@ function ScoringSummary({
  * where it leaves. Both paths get both ends: an escalation that starts and
  * finishes nowhere is a row of boxes, not a route.
  *
- * A step opens its own settings. Between every pair of them - and at both
- * ends - is a place to put another one, so a step goes where it belongs
- * rather than on the end and then walked up with arrows.
+ * Markers on their own track, labels under them. Drawn as a row of columns
+ * instead, the line between two of them runs from the end of one column to
+ * the start of the next - which is nowhere near either marker, and leaves a
+ * long blank wherever a label was short. Here each line starts at the marker
+ * it leaves and ends at the marker it reaches.
+ *
+ * Every line is also where another step can go, which is one place per gap:
+ * before the first, between any two, after the last.
  */
 function ChainFlow({
   batchId,
@@ -978,87 +984,144 @@ function ChainFlow({
   steps: readonly StageDraft[]
   options: ItemOptions
   onOpen: (key: string) => void
-  onAdd: (beside?: { key: string; side: 'before' | 'after' }) => void
+  /** put one more here: 0 before the first step, steps.length after the last */
+  onAdd: (at: number) => void
   onRemove: (key: string) => void
 }) {
   const { format } = useI18n()
-  const first = steps[0]
+  const nodes = [
+    {
+      key: 'start',
+      mark: (
+        <Marker>
+          <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" />
+        </Marker>
+      ),
+      label: (
+        <NodeLabel
+          title={format(chain === 'normal' ? m.itemsFlowSubmit : m.itemsDoubtRaised)}
+          sub={format(chain === 'normal' ? m.itemsFlowSubmitBy : m.itemsDoubtRaisedBy)}
+        />
+      ),
+    },
+    ...steps.map((one, index) => ({
+      key: one.key,
+      mark: <StageMarker stage={one} options={options} index={index} />,
+      label: (
+        <StageLabel
+          batchId={batchId}
+          stage={one}
+          options={options}
+          removable={chain === 'escalation' || steps.length > 1}
+          onOpen={() => onOpen(one.key)}
+          onRemove={() => onRemove(one.key)}
+        />
+      ),
+    })),
+    {
+      key: 'end',
+      mark: (
+        <Marker>
+          <CheckIcon aria-hidden className="size-3" />
+        </Marker>
+      ),
+      label: (
+        <NodeLabel
+          title={format(chain === 'normal' ? m.itemsFlowDone : m.itemsDoubtSettled)}
+          sub={format(chain === 'normal' ? m.itemsFlowDoneSub : m.itemsDoubtSettledSub)}
+        />
+      ),
+    },
+  ]
+
   return (
-    <div className="-mx-1 flex items-start overflow-x-auto px-1 pb-1">
-      <Endpoint
-        title={format(chain === 'normal' ? m.itemsFlowSubmit : m.itemsDoubtRaised)}
-        sub={format(chain === 'normal' ? m.itemsFlowSubmitBy : m.itemsDoubtRaisedBy)}
-        mark={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" />}
-      />
-      <Gap
-        label={format(m.itemsStageAdd)}
-        onAdd={() => onAdd(first === undefined ? undefined : { key: first.key, side: 'before' })}
-      />
-      {steps.map((one, index) => (
-        <div key={one.key} className="flex shrink-0 items-start">
-          <StageColumn
-            batchId={batchId}
-            index={index}
-            stage={one}
-            options={options}
-            removable={chain === 'escalation' || steps.length > 1}
-            onOpen={() => onOpen(one.key)}
-            onRemove={() => onRemove(one.key)}
-          />
-          <Gap
-            label={format(m.itemsStageAdd)}
-            onAdd={() => onAdd({ key: one.key, side: 'after' })}
-          />
-        </div>
-      ))}
-      <Endpoint
-        title={format(chain === 'normal' ? m.itemsFlowDone : m.itemsDoubtSettled)}
-        sub={format(chain === 'normal' ? m.itemsFlowDoneSub : m.itemsDoubtSettledSub)}
-        mark={<CheckIcon aria-hidden className="size-3" />}
-      />
+    <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <div className="grid w-max" style={{ gridTemplateColumns: `repeat(${nodes.length}, 11rem)` }}>
+        {nodes.map((node, index) => (
+          <div key={`mark:${node.key}`} className="flex items-center">
+            {node.mark}
+            {index < nodes.length - 1 && (
+              <Gap label={format(m.itemsStageAdd)} onAdd={() => onAdd(index)} />
+            )}
+          </div>
+        ))}
+        {nodes.map((node) => (
+          <div key={`label:${node.key}`} className="flex min-w-0 flex-col gap-1 pt-2 pr-6">
+            {node.label}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
 /**
- * The line between two steps, and the place to put one more.
+ * The line from one marker to the next, and the place to put one more step.
  *
- * The button only shows itself when the gap is pointed at, so a chain at
+ * The button only shows itself when the line is pointed at, so a chain at
  * rest reads as a line rather than as a row of plus signs.
  */
 function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <div className="group/gap relative flex w-12 shrink-0 items-start pt-3">
-      <div className="h-px w-full bg-border" />
+    <span className="group/gap relative flex h-6 flex-1 items-center">
+      <span aria-hidden className="h-px w-full bg-border" />
       <button
         type="button"
         aria-label={label}
         title={label}
-        className="absolute top-0 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/gap:opacity-100 focus-visible:opacity-100"
+        className="absolute left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/gap:opacity-100 focus-visible:opacity-100"
         onClick={onAdd}
       >
         <PlusIcon aria-hidden className="size-3" />
       </button>
-    </div>
+    </span>
   )
 }
 
 /** where a submission enters the path, and where it leaves it */
-function Endpoint({ title, sub, mark }: { title: string; sub: string; mark: React.ReactNode }) {
+function Marker({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex w-24 min-w-24 shrink-0 flex-col gap-1.5">
-      <span className="flex size-6 items-center justify-center rounded-full border text-muted-foreground">
-        {mark}
-      </span>
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-xs text-muted-foreground">{sub}</p>
-    </div>
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full border text-muted-foreground">
+      {children}
+    </span>
   )
 }
 
-function StageColumn({
-  batchId,
+function NodeLabel({ title, sub }: { title: string; sub: string }) {
+  return (
+    <>
+      <p className="text-sm font-medium">{title}</p>
+      <p className="text-xs text-muted-foreground">{sub}</p>
+    </>
+  )
+}
+
+/** a step's own marker: its place in the order, or that it has none yet */
+function StageMarker({
+  stage,
+  options,
   index,
+}: {
+  stage: StageDraft
+  options: ItemOptions
+  index: number
+}) {
+  return (
+    <span
+      className={cn(
+        'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium',
+        settledStage(stage, options)
+          ? 'bg-foreground text-background'
+          : 'border border-dashed border-destructive/60 text-destructive',
+      )}
+    >
+      {index + 1}
+    </span>
+  )
+}
+
+function StageLabel({
+  batchId,
   stage,
   options,
   removable,
@@ -1066,7 +1129,6 @@ function StageColumn({
   onRemove,
 }: {
   batchId: string
-  index: number
   stage: StageDraft
   options: ItemOptions
   removable: boolean
@@ -1074,32 +1136,9 @@ function StageColumn({
   onRemove: () => void
 }) {
   const { format } = useI18n()
-  const levelName = options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ?? ''
-  const roleNames =
-    stage.kind === 'roleAt'
-      ? options.roles
-          .filter((role) => stage.roleIds.includes(role.id))
-          .map((role) => role.name)
-          .join(format(m.listSeparator))
-      : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
-  const where = stage.kind === 'roleAt' ? levelName : format(m.itemsStageWalkUp)
-  // A step nobody has finished naming cannot say who reviews at it, and a
-  // dash in that space reads as a word rather than as an absence. It says
-  // what it is instead, and looks unfinished until it is.
-  const settled = roleNames !== '' && where !== ''
-
+  const settled = settledStage(stage, options)
   return (
-    <div className="group flex w-44 min-w-44 shrink-0 flex-col gap-1.5">
-      <span
-        className={cn(
-          'flex size-6 items-center justify-center rounded-full text-xs font-medium',
-          settled
-            ? 'bg-foreground text-background'
-            : 'border border-dashed border-destructive/60 text-destructive',
-        )}
-      >
-        {index + 1}
-      </span>
+    <div className="group flex min-w-0 flex-col gap-1">
       <button
         type="button"
         className={cn(
@@ -1108,7 +1147,7 @@ function StageColumn({
         )}
         onClick={onOpen}
       >
-        {settled ? `${where} / ${roleNames}` : format(m.itemsStageUnset)}
+        {settled ? whoReviews(stage, options, format) : format(m.itemsStageUnset)}
       </button>
       {settled ? (
         <StageCoverage batchId={batchId} stage={stage} />
@@ -1129,6 +1168,38 @@ function StageColumn({
       )}
     </div>
   )
+}
+
+/**
+ * A step nobody has finished naming cannot say who reviews at it, and a dash
+ * in that space reads as a word rather than as an absence.
+ */
+const settledStage = (stage: StageDraft, options: ItemOptions): boolean => {
+  const where = stage.kind === 'roleAt' ? stage.nodeTypeId !== '' : true
+  const who =
+    stage.kind === 'roleAt'
+      ? options.roles.some((role) => stage.roleIds.includes(role.id))
+      : options.roles.some((role) => role.id === stage.roleId)
+  return where && who
+}
+
+const whoReviews = (
+  stage: StageDraft,
+  options: ItemOptions,
+  format: (message: MessageDescriptor) => string,
+): string => {
+  const where =
+    stage.kind === 'roleAt'
+      ? (options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ?? '')
+      : format(m.itemsStageWalkUp)
+  const who =
+    stage.kind === 'roleAt'
+      ? options.roles
+          .filter((role) => stage.roleIds.includes(role.id))
+          .map((role) => role.name)
+          .join(format(m.listSeparator))
+      : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
+  return `${where} / ${who}`
 }
 
 /**
