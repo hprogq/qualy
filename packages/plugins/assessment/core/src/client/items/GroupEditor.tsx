@@ -24,6 +24,7 @@ import type { TreeGroup } from './paper.ts'
 // same group rather than a new one replacing it.
 
 export function GroupEditor({
+  open,
   batchId,
   batchStatus,
   groups,
@@ -33,6 +34,8 @@ export function GroupEditor({
   onClose,
   onDone,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   batchId: string
   batchStatus: string
   groups: readonly TreeGroup[]
@@ -158,7 +161,7 @@ export function GroupEditor({
 
   return (
     <SidePanel
-      open
+      open={open}
       title={format(editing === null ? m.itemsGroupNew : m.itemsGroupEditing)}
       onClose={onClose}
       footer={

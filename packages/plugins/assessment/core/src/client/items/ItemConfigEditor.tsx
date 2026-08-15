@@ -13,7 +13,8 @@ import {
   PlusIcon,
   XIcon,
 } from 'lucide-react'
-import { Feedback, Field } from '@qualy/ui/admin'
+import { Feedback, Field, PageHeader } from '@qualy/ui/admin'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -448,6 +449,9 @@ export function ItemConfigEditor({
     (scoringMoved || placementMoved)
 
   const stage = draft.stages.find((one) => one.key === openStage) ?? null
+  const lingeringStage = useLingering(stage)
+  // once asked, it stays mounted so closing it is a close and not a vanish
+  const askedOnce = useLingering(askingReason ? true : null) === true
 
   const at = paper.findIndex((one) => one.id === item?.id)
   // what this question can contribute before any group has its say
@@ -462,24 +466,29 @@ export function ItemConfigEditor({
           two lines every section heading has, name over context, so taking
           the band over changes what it says and not where anything sits. */}
       <BatchBanner>
-        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-1">
-          <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2.5">
-              <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
+        <PageHeader
+          variant="banner"
+          title={
+            <>
+              <span className="min-w-0 truncate">
                 {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
-              </h1>
+              </span>
               <StandingChip item={item} />
-            </div>
-            <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-              <Button
-                variant="ghost"
-                size="icon-xs"
+            </>
+          }
+          description={
+            <>
+              {/* text-sized rather than a button's own size: a control as tall
+                  as a control in a line of prose makes that line taller than
+                  the same line in the heading it hands over from */}
+              <button
+                type="button"
                 aria-label={format(m.itemsBack)}
-                className="shrink-0"
+                className="shrink-0 transition-colors hover:text-foreground"
                 onClick={onCancel}
               >
-                <ArrowLeftIcon aria-hidden />
-              </Button>
+                <ArrowLeftIcon aria-hidden className="size-3.5" />
+              </button>
               <span className="min-w-0 truncate">
                 {trail.map((name, index) => (
                   <span key={`${index}:${name}`}>
@@ -498,51 +507,53 @@ export function ItemConfigEditor({
                   </span>
                 </>
               )}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {menu !== undefined && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label={format(m.structureRowMenu)}
-                    className="shrink-0 text-muted-foreground"
-                  >
-                    <EllipsisVerticalIcon aria-hidden />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  {menu}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <Button variant="outline" onClick={onCancel}>
-              {format(commonMessages.cancel)}
-            </Button>
-            {/* pressable even when it cannot go through: the press is how
-                the reader asks what is wrong, and the answer is right here */}
-            <Button
-              disabled={save.isPending}
-              onClick={() => {
-                if (missing.length > 0) {
-                  setProblem(
-                    format(m.itemsCannotSave, {
-                      reasons: missing.join(format(m.listSeparator)),
-                    }),
-                  )
-                  return
-                }
-                setProblem(null)
-                if (needsReason) setAskingReason(true)
-                else save.mutate(null)
-              }}
-            >
-              {format(m.entrySave)}
-            </Button>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <>
+              {menu !== undefined && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label={format(m.structureRowMenu)}
+                      className="shrink-0 text-muted-foreground"
+                    >
+                      <EllipsisVerticalIcon aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    {menu}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <Button variant="outline" onClick={onCancel}>
+                {format(commonMessages.cancel)}
+              </Button>
+              {/* pressable even when it cannot go through: the press is how
+                  the reader asks what is wrong, and the answer is right here */}
+              <Button
+                disabled={save.isPending}
+                onClick={() => {
+                  if (missing.length > 0) {
+                    setProblem(
+                      format(m.itemsCannotSave, {
+                        reasons: missing.join(format(m.listSeparator)),
+                      }),
+                    )
+                    return
+                  }
+                  setProblem(null)
+                  if (needsReason) setAskingReason(true)
+                  else save.mutate(null)
+                }}
+              >
+                {format(m.entrySave)}
+              </Button>
+            </>
+          }
+        />
       </BatchBanner>
 
       <div className="grid min-h-0 flex-1 gap-x-9 xl:grid-cols-[minmax(0,1fr)_19.5rem]">
@@ -782,18 +793,21 @@ export function ItemConfigEditor({
         </aside>
       </div>
 
-      {stage !== null && (
+      {/* kept mounted while it shuts, or it would vanish rather than close */}
+      {lingeringStage !== null && (
         <StageSheet
+          open={stage !== null}
           batchId={batchId}
-          stage={stage}
+          stage={lingeringStage}
           options={options}
-          onChange={(next) => patchStage(stage.key, next)}
+          onChange={(next) => patchStage(lingeringStage.key, next)}
           onClose={() => setOpenStage(null)}
         />
       )}
 
-      {askingReason && (
+      {askedOnce && (
         <ReasonDialog
+          open={askingReason}
           title={format(m.itemsReasonTitle)}
           description={format(m.itemsReasonHint)}
           busy={save.isPending}

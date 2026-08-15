@@ -16,10 +16,13 @@ import type { ItemDto } from '../entry/model.ts'
 // everyone who filed under it reads it.
 
 export function VoidQuestionDialog({
+  open,
   item,
   onClose,
   onDone,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   item: ItemDto
   onClose: () => void
   onDone: () => void
@@ -43,7 +46,7 @@ export function VoidQuestionDialog({
 
   return (
     <FormDialog
-      open
+      open={open}
       title={format(m.itemsVoidTitle)}
       description={format(m.itemsVoidHint)}
       onClose={onClose}

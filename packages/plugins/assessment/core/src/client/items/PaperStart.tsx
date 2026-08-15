@@ -5,6 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
@@ -22,6 +23,7 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
   const { format } = useI18n()
   const [wizard, setWizard] = useState(false)
   const [blank, setBlank] = useState(false)
+  const opened = useLingering(wizard ? 'guided' : blank ? 'blank' : null)
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 py-16">
@@ -62,13 +64,15 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
 
       <p className="text-xs text-muted-foreground">{format(m.paperStartReassure)}</p>
 
-      {(wizard || blank) && (
+      {/* kept mounted while it shuts, or it would vanish rather than close */}
+      {opened !== null && (
         <PaperWizard
+          open={wizard || blank}
           batchId={batchId}
           /* the blank route asks the same two things and simply leaves the
              ceiling empty; a second dialog for that would be a second answer
              to one question */
-          capped={wizard}
+          capped={opened === 'guided'}
           onClose={() => {
             setWizard(false)
             setBlank(false)
@@ -81,11 +85,14 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
 }
 
 function PaperWizard({
+  open,
   batchId,
   capped,
   onClose,
   onCreated,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   batchId: string
   capped: boolean
   onClose: () => void
@@ -124,7 +131,7 @@ function PaperWizard({
 
   return (
     <FormDialog
-      open
+      open={open}
       title={format(m.paperCreateTitle)}
       description={format(m.paperCreateHint)}
       onClose={onClose}

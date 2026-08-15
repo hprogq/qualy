@@ -61,8 +61,15 @@ export function PageHeader({
   actions,
   variant = 'plain',
 }: {
-  title: string
-  description?: string
+  /**
+   * Usually the page's name. Takes a node so a heading that has something to
+   * say beside the name - a standing, a chip - is still this heading rather
+   * than a second one built to look like it: two headings assembled
+   * separately drift apart by a few pixels, and in a band that hands over
+   * from one to the other those pixels are a jump.
+   */
+  title: ReactNode
+  description?: ReactNode
   actions?: ReactNode
   /**
    * The heading of a band that spans the content area, rather than a line of
@@ -81,9 +88,15 @@ export function PageHeader({
         variant === 'banner' && 'py-1',
       )}
     >
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      <div className="min-w-0 space-y-1">
+        <h1 className="flex min-w-0 items-center gap-2.5 text-lg font-semibold tracking-tight">
+          {title}
+        </h1>
+        {description !== undefined && description !== '' && (
+          <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+            {description}
+          </p>
+        )}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>

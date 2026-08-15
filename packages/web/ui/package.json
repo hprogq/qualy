@@ -59,7 +59,8 @@
     "./tooltip": "./src/components/tooltip.tsx",
     "./textarea": "./src/components/textarea.tsx",
     "./toast": "./src/components/toast.tsx",
-    "./portal": "./src/components/portal.tsx"
+    "./portal": "./src/components/portal.tsx",
+    "./use-lingering": "./src/hooks/use-lingering.ts"
   },
   "peerDependencies": {
     "react": "catalog:",

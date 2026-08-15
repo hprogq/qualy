@@ -28,12 +28,15 @@ export interface StageDraft {
 }
 
 export function StageSheet({
+  open,
   batchId,
   stage,
   options,
   onChange,
   onClose,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   batchId: string
   stage: StageDraft
   options: ItemOptions
@@ -56,7 +59,7 @@ export function StageSheet({
 
   return (
     <SidePanel
-      open
+      open={open}
       title={format(m.itemsStageSettings)}
       onClose={onClose}
       footer={

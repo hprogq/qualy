@@ -14,12 +14,15 @@ import { assessmentMessages as m } from '../i18n.ts'
 // reads as one more optional field and is filled in with a shrug.
 
 export function ReasonDialog({
+  open,
   title,
   description,
   busy,
   onConfirm,
   onClose,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   title: string
   description: string
   busy: boolean
@@ -31,7 +34,7 @@ export function ReasonDialog({
 
   return (
     <FormDialog
-      open
+      open={open}
       title={title}
       description={description}
       onClose={onClose}

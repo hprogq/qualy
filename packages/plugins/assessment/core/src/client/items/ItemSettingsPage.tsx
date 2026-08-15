@@ -9,6 +9,7 @@ import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@qualy/ui/dropdown-menu'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
@@ -139,6 +140,8 @@ function Editor({
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
   // the group whose panel is open over the structure, if any
   const [group, setGroup] = useState<GroupTarget | null>(null)
+  const lingeringGroup = useLingering(group)
+  const lingeringVoid = useLingering(voiding)
   // set by the open editor: publishing what is on screen would be a lie while
   // the screen says something the round has not been told
   const [unsaved, setUnsaved] = useState(false)
@@ -148,6 +151,7 @@ function Editor({
     groupId: string
     orderedItemIds: readonly string[]
   } | null>(null)
+  const lingeringMove = useLingering(pendingMove)
   /** which screen was on show last commit, which is what says which way it moved */
   const wasAt = useRef(STRUCTURE)
 
@@ -506,15 +510,21 @@ function Editor({
         </Drill>
       </div>
 
-      {group !== null && (
+      {/* kept mounted while it shuts, or it would vanish rather than close */}
+      {lingeringGroup !== null && (
         <GroupEditor
-          key={group.kind === 'edit' ? group.group.id : `new:${group.parentId}`}
+          key={
+            lingeringGroup.kind === 'edit'
+              ? lingeringGroup.group.id
+              : `new:${lingeringGroup.parentId}`
+          }
+          open={group !== null}
           batchId={batchId}
           batchStatus={batchStatus}
           groups={allGroups as readonly TreeGroup[]}
           version={groupsVersion ?? 0}
-          editing={group.kind === 'edit' ? group.group : null}
-          parentId={group.kind === 'new' ? group.parentId : null}
+          editing={lingeringGroup.kind === 'edit' ? lingeringGroup.group : null}
+          parentId={lingeringGroup.kind === 'new' ? lingeringGroup.parentId : null}
           onClose={() => setGroup(null)}
           onDone={() => {
             setGroup(null)
@@ -523,13 +533,14 @@ function Editor({
         />
       )}
 
-      {pendingMove !== null && (
+      {lingeringMove !== null && (
         <ReasonDialog
+          open={pendingMove !== null}
           title={format(m.itemsMoveReasonTitle)}
           description={format(m.itemsReasonHint)}
           busy={moveItem.isPending}
           onConfirm={(reason) => {
-            moveItem.mutate({ ...pendingMove, reason })
+            moveItem.mutate({ ...lingeringMove, reason })
             setPendingMove(null)
           }}
           onClose={() => {
@@ -539,9 +550,10 @@ function Editor({
         />
       )}
 
-      {voiding !== null && (
+      {lingeringVoid !== null && (
         <VoidQuestionDialog
-          item={voiding}
+          open={voiding !== null}
+          item={lingeringVoid}
           onClose={() => setVoiding(null)}
           onDone={() => {
             setVoiding(null)

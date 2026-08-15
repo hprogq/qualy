@@ -4413,3 +4413,19 @@ toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 627 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过。
+
+### 两处收口:横幅同高与浮层退场动画(2026-08-15)
+
+- **横幅又差几 px**:不是右上角按钮撑的(它们 36px,比左侧两行文字矮)——是**返回箭头**。
+  它是 24px 的 icon 按钮,塞在 20px 的文字行里,把那一行撑到 24px,于是比另一个横幅高 4px。
+  **根治**:`PageHeader` 的 title/description 放宽为 ReactNode,题目横幅改为走同一个 PageHeader
+  (此前是照着它另写了一遍——两份分别拼出来的标题必然会差几像素);返回箭头改为与文字同尺寸的
+  内联按钮,不再撑行。实测列表 / 题目 / 返回三态恒 109px。
+- **浮层关闭没有退场动画**:写法都是 `{x !== null && <Panel/>}`,x 一变 null 整个组件即刻卸载,
+  Radix 的关闭动画没有载体。新增 `@qualy/ui/use-lingering`:留住最后一次的值,
+  面板改为常挂 + `open` 控制,关闭时还有东西可画。分组 Sheet、审核步骤 Sheet、
+  两个原因对话框、停用题目对话框、卷面创建向导**六处同病**一并修掉。
+  实测:按下取消 60ms 后节点仍在且 `data-state="closed"`,700ms 后由 Radix 自行卸载。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 627 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过。
