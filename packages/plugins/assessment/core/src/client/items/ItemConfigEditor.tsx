@@ -758,7 +758,19 @@ export function ItemConfigEditor({
             </div>
           </Section>
 
-          <Section title={format(m.itemsTabReview)} hint={format(m.itemsChainHintNew)}>
+          {/* A recorded question still carries a chain: recording does not
+              walk it, but a later challenge resolves the chain from this very
+              revision, so a question saved without one would be history with
+              no way back. What differs is when it runs, which is what the
+              hint has to say. */}
+          <Section
+            title={format(m.itemsTabReview)}
+            hint={format(
+              draft.entrySource === 'administrative'
+                ? m.itemsChainHintRecorded
+                : m.itemsChainHintNew,
+            )}
+          >
             <div className="flex flex-col gap-5">
               <ChainFlow
                 batchId={batchId}

@@ -4,11 +4,13 @@ import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { Input } from '@qualy/ui/input'
+import { Textarea } from '@qualy/ui/textarea'
 import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { Basis } from './Basis.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
 import { chainLength, eachWorth, roomLeft } from './standing.ts'
 import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
@@ -43,6 +45,7 @@ export function EntryDialog({
   participantId,
   item,
   entry,
+  trail,
   siblings,
   onClose,
   onSaved,
@@ -56,6 +59,8 @@ export function EntryDialog({
   participantId: string
   item: ItemDto
   entry: EntryDto | null
+  /** the sections above the question, so the modal says where it is */
+  trail: readonly string[]
   /** what this person has already put into this question, to not repeat it */
   siblings: readonly EntryDto[]
   onClose: () => void
@@ -73,10 +78,6 @@ export function EntryDialog({
 
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const labelOf = (key: string) => fields.find((field) => field.key === key)?.label ?? key
-  const description = String(
-    (item.currentRevision?.displayConfig as { description?: unknown } | undefined)?.description ??
-      '',
-  ).trim()
   const each = eachWorth(item)
   const steps = chainLength(item)
   const room = roomLeft(item, siblings)
@@ -136,8 +137,19 @@ export function EntryDialog({
     <FormDialog
       open={open}
       size="wide"
-      title={entry === null ? format(m.entryNew) : format(m.entryEdit)}
-      description={item.title}
+      title={
+        <span className="flex flex-wrap items-center gap-2.5">
+          {entry === null
+            ? format(m.entryNth, { n: siblings.filter((one) => one.status !== 'voided').length + 1 })
+            : format(m.entryEdit)}
+          {each !== undefined && (
+            <Badge variant="secondary" className="font-normal">
+              {format(m.entryCountsFor, { value: trimAmount(each) })}
+            </Badge>
+          )}
+        </span>
+      }
+      description={[...trail, item.title].join(' › ')}
       onClose={onClose}
       footer={
         <div className="flex w-full flex-wrap items-center gap-3">
@@ -153,10 +165,7 @@ export function EntryDialog({
       }
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="flex min-w-0 flex-col gap-4">
-          {description !== '' && (
-            <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
-          )}
+        <div className="flex min-w-0 flex-col gap-5">
           <EvidenceForm
             fields={fields}
             value={payload}
@@ -167,7 +176,7 @@ export function EntryDialog({
           />
           <Field label={format(m.entryNote)}>
             {(id) => (
-              <Input id={id} value={note} onChange={(event) => setNote(event.target.value)} />
+              <Textarea id={id} value={note} onChange={(event) => setNote(event.target.value)} />
             )}
           </Field>
           <Feedback message={problem} />
@@ -184,38 +193,47 @@ export function EntryDialog({
         </div>
 
         <aside className="flex min-w-0 flex-col gap-4">
-          <div className="flex flex-col gap-2 rounded-xl bg-muted p-4">
-            <p className="text-sm font-semibold">{format(m.entryTerms)}</p>
-            {each !== undefined && (
-              <p className="text-xs text-muted-foreground">
-                {format(m.entryCountsFor, { value: trimAmount(each) })}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {item.maxEntries === null
-                ? format(m.itemsPreviewNoMax)
-                : format(m.myEntriesRoom, { most: item.maxEntries, used: siblings.length })}
-            </p>
-            {steps > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {format(m.entryAfterSubmit, { count: steps })}
-              </p>
-            )}
-            {room !== null && room <= 1 && entry === null && (
-              <p className="text-xs text-muted-foreground">{format(m.entryLastRoom)}</p>
-            )}
-          </div>
+          <Basis compact />
 
           {siblings.length > 0 && (
             <div className="flex flex-col gap-2 rounded-xl border p-4">
               <p className="text-sm font-semibold">{format(m.entryAlreadyFiled)}</p>
               {siblings.map((one) => (
-                <p key={one.id} className="truncate text-xs text-muted-foreground">
-                  {summary(one, item)}
+                <p
+                  key={one.id}
+                  className="flex items-center gap-2 text-xs text-muted-foreground"
+                >
+                  <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                  <span className="truncate">{summary(one, item)}</span>
                 </p>
               ))}
               <p className="border-t pt-2 text-xs leading-relaxed text-muted-foreground">
                 {format(m.entryNoDuplicates)}
+                {room !== null && room <= 1 && entry === null && ` ${format(m.entryLastRoom)}`}
+              </p>
+            </div>
+          )}
+
+          {steps > 0 && (
+            <div className="flex flex-col gap-2.5 rounded-xl border p-4">
+              <p className="text-sm font-semibold">{format(m.entryFlow)}</p>
+              {/* Who each step lands on is the round's business and not this
+                  reader's to be told - the roles are named nowhere they can
+                  read. How many hands it passes through before it counts is
+                  what changes whether they submit now. */}
+              {Array.from({ length: steps }, (_, index) => (
+                <span key={index} className="flex items-center gap-2 text-xs">
+                  <span
+                    aria-hidden
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[0.625rem] font-medium"
+                  >
+                    {index + 1}
+                  </span>
+                  {format(m.entryFlowStep, { n: index + 1 })}
+                </span>
+              ))}
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {format(m.entryFlowNote)}
               </p>
             </div>
           )}

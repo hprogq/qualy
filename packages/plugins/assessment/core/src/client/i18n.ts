@@ -1152,6 +1152,10 @@ const i18n = definePluginMessages({
       id: 'assessment/items/chain-hint-new',
       defaultMessage: 'Step by step after submitting; approval at the last step counts it.',
     },
+    itemsChainHintRecorded: {
+      id: 'assessment/items/chain-hint-recorded',
+      defaultMessage: 'A record counts at once. This chain is walked only if somebody contests it.',
+    },
     structureDragHint: {
       id: 'assessment/items/structure-drag-hint',
       defaultMessage: 'Drag a row to reorder it or move it into another group.',
@@ -1486,7 +1490,7 @@ const i18n = definePluginMessages({
     },
     myEntriesGroupBadge: { id: 'assessment/entry/group-badge', defaultMessage: 'Section' },
     myEntriesItemBadge: { id: 'assessment/entry/item-badge', defaultMessage: 'Question' },
-    myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'Recorded for you' },
+    myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'No filing needed' },
     myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open to you' },
     myEntriesInGroup: { id: 'assessment/entry/in-group', defaultMessage: 'Yours here' },
     myEntriesHolds: { id: 'assessment/entry/holds', defaultMessage: 'Inside this section' },
@@ -1521,6 +1525,14 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, one {# reviewer} other {# reviewers in turn}}',
     },
     myEntriesFiled: { id: 'assessment/entry/filed', defaultMessage: 'What you have filed' },
+    myEntriesRecordedFiled: {
+      id: 'assessment/entry/recorded-filed',
+      defaultMessage: 'What has been recorded',
+    },
+    myEntriesRecordedNone: {
+      id: 'assessment/entry/recorded-none',
+      defaultMessage: 'Nothing recorded here yet.',
+    },
     myEntriesFiledCount: {
       id: 'assessment/entry/filed-count',
       defaultMessage:
@@ -1562,6 +1574,49 @@ const i18n = definePluginMessages({
       defaultMessage: 'A draft stays under this question until you submit it.',
     },
     entrySaveDraft: { id: 'assessment/entry/save-draft', defaultMessage: 'Save as draft' },
+    myEntriesWindow: { id: 'assessment/entry/window', defaultMessage: 'Material window' },
+    myEntriesWindowValue: {
+      id: 'assessment/entry/window-value',
+      defaultMessage: '{start} to {end}',
+    },
+    myEntriesFilterAll: { id: 'assessment/entry/filter-all', defaultMessage: 'All' },
+    myEntriesFilterTodo: {
+      id: 'assessment/entry/filter-todo',
+      defaultMessage: 'Waiting on you',
+    },
+    myEntriesFilterNone: {
+      id: 'assessment/entry/filter-none',
+      defaultMessage: 'Nothing is waiting on you.',
+    },
+    myEntriesHeadroom: {
+      id: 'assessment/entry/headroom',
+      defaultMessage: '{value} to the cap',
+    },
+    myEntriesBasis: { id: 'assessment/entry/basis', defaultMessage: 'Scoring basis' },
+    myEntriesBasisSoon: {
+      id: 'assessment/entry/basis-soon',
+      defaultMessage: 'The wording this is scored against will be shown here.',
+    },
+    entryNth: { id: 'assessment/entry/nth', defaultMessage: 'Claim {n}' },
+    entryFlow: { id: 'assessment/entry/flow', defaultMessage: 'After you submit' },
+    entryFlowStep: { id: 'assessment/entry/flow-step', defaultMessage: 'Reviewer {n}' },
+    entryFlowNote: {
+      id: 'assessment/entry/flow-note',
+      defaultMessage: 'You can withdraw and change it until the first reviewer acts.',
+    },
+    entryFileDrop: {
+      id: 'assessment/entry/file-drop',
+      defaultMessage: 'Drop files here, or click to choose',
+    },
+    entryFileRoom: {
+      id: 'assessment/entry/file-room',
+      defaultMessage: '{count, plural, one {# more allowed} other {# more allowed}}',
+    },
+    entryFilePreview: { id: 'assessment/entry/file-preview', defaultMessage: 'Preview' },
+    entryDateWithin: {
+      id: 'assessment/entry/date-within',
+      defaultMessage: 'Must fall between {start} and {end}',
+    },
 
     tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Staffs' },
     tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Settings' },

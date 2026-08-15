@@ -98,7 +98,12 @@ export function PageHeader({
           </p>
         )}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {/* capped at the header's own width so what a page puts here wraps
+          instead of running off the edge: a flex item that may not shrink is
+          sized to its content, and its own wrapping never gets a chance */}
+      {actions && (
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   )
 }
@@ -210,16 +215,31 @@ export function Feedback({
 export function Field({
   label,
   hint,
+  required = false,
   children,
 }: {
   label: string
-  hint?: string
+  hint?: ReactNode
+  /**
+   * Marks the label with the usual asterisk. Hidden from the accessible
+   * name, which is the label itself - a control called "Title *" is what a
+   * screen reader would then have to read out, and what a test would have to
+   * ask for.
+   */
+  required?: boolean
   children: (id: string) => ReactNode
 }) {
   const id = useId()
   return (
     <FormField>
-      <FormFieldLabel htmlFor={id}>{label}</FormFieldLabel>
+      <FormFieldLabel htmlFor={id}>
+        {label}
+        {required && (
+          <span aria-hidden className="text-destructive">
+            *
+          </span>
+        )}
+      </FormFieldLabel>
       {children(id)}
       {hint && <FormFieldDescription>{hint}</FormFieldDescription>}
     </FormField>
@@ -400,8 +420,13 @@ export function FormDialog({
   footer,
 }: {
   open: boolean
-  title: string
-  description?: string
+  /**
+   * Takes a node so a title with something beside it - a chip saying what
+   * the thing being filled in is worth - is still this title rather than a
+   * second heading built to look like it.
+   */
+  title: ReactNode
+  description?: ReactNode
   /**
    * How much room the task needs. `wide` is for a form that has something to
    * say beside it - the terms it is answering, what was already answered -

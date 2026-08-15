@@ -1,6 +1,7 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/inter';
+@import 'react-photo-view/dist/react-photo-view.css';
 
 @custom-variant dark (&:is(.dark *));
 

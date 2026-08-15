@@ -98,6 +98,23 @@ export const lastDay = (end: string): string => {
   return at.toISOString().slice(0, 10)
 }
 
+/** what a file weighs, at the precision anybody reads it at */
+export const sizeLabel = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** the file types this product will draw rather than only offer to download */
+export const LOOKS_LIKE_A_PHOTOGRAPH: ReadonlySet<string> = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+])
+
 /** amounts render without their bookkeeping zeros: 10.0000 reads as 10 */
 export const trimAmount = (value: string): string =>
   value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value

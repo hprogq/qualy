@@ -5,6 +5,7 @@ import { cn } from '@qualy/ui/cn'
 import { PencilIcon, PlusIcon } from 'lucide-react'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
+import { Basis } from './Basis.tsx'
 import { entryStatusMessage, fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
 import {
   chainLength,
@@ -55,6 +56,11 @@ export function ItemDetail({
   const drafts = live.filter((entry) => entry.status === 'draft')
   const filed = live.filter((entry) => entry.status !== 'draft')
   const draft = drafts[0]
+  // Recording takes effect on the spot; the chain configured on the question
+  // is the way back in if somebody contests it, not a queue this claim sits
+  // in. Naming it here would tell the reader to wait for something that is
+  // not going to happen.
+  const recorded = item.currentRevision?.entrySource === 'administrative'
 
   return (
     <div className="flex flex-col gap-5">
@@ -75,12 +81,12 @@ export function ItemDetail({
                 ? format(m.itemsPreviewNoMax)
                 : format(m.myEntriesRoom, { most: item.maxEntries, used: live.length })}
             </Badge>
-            {steps > 0 && (
+            {steps > 0 && !recorded && (
               <Badge variant="secondary" className="font-normal">
                 {format(m.myEntriesChain, { count: steps })}
               </Badge>
             )}
-            {item.currentRevision?.entrySource === 'administrative' && (
+            {recorded && (
               <Badge variant="outline" className="font-normal">
                 {format(m.myEntriesRecorded)}
               </Badge>
@@ -106,6 +112,8 @@ export function ItemDetail({
 
       {description !== '' && <p className="text-sm leading-relaxed text-pretty">{description}</p>}
 
+      <Basis />
+
       {item.status === 'voided' && (
         <p className="rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
           {format(m.itemVoided)}
@@ -113,18 +121,24 @@ export function ItemDetail({
       )}
 
       <div className="flex items-baseline justify-between gap-3 border-b pb-2">
-        <h3 className="text-sm font-semibold">{format(m.myEntriesFiled)}</h3>
+        <h3 className="text-sm font-semibold">
+          {format(recorded ? m.myEntriesRecordedFiled : m.myEntriesFiled)}
+        </h3>
         <p className="text-xs text-muted-foreground">
-          {format(m.myEntriesFiledCount, {
-            filed: filed.length,
-            drafts: drafts.length,
-            room: room ?? -1,
-          })}
+          {recorded
+            ? format(m.myEntriesRows, { count: filed.length })
+            : format(m.myEntriesFiledCount, {
+                filed: filed.length,
+                drafts: drafts.length,
+                room: room ?? -1,
+              })}
         </p>
       </div>
 
       {live.length === 0 && (
-        <p className="text-sm text-muted-foreground">{format(m.myEntriesNoneYet)}</p>
+        <p className="text-sm text-muted-foreground">
+          {format(recorded ? m.myEntriesRecordedNone : m.myEntriesNoneYet)}
+        </p>
       )}
 
       {drafts.map((entry) => (
@@ -194,19 +208,27 @@ function FiledEntry({
         {score !== null && <p className="text-sm tabular-nums">{score}</p>}
       </div>
 
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+      {/* The label column is fixed rather than sized to the longest label:
+          two claims under the same question then read as one table, and the
+          answers line up down the pane instead of stepping in and out with
+          whatever each one happened to be asked. */}
+      <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[6rem_minmax(0,1fr)]">
         {fields.map((field) => {
           const value = payload[field.key]
           return (
-            <div key={field.key} className="col-span-2 grid grid-cols-subgrid">
+            <div key={field.key} className="sm:col-span-2 sm:grid sm:grid-cols-subgrid">
               <dt className="text-muted-foreground">{field.label}</dt>
               <dd className="min-w-0">
                 {field.type === 'attachment' ? (
-                  <span className="flex flex-wrap gap-2">
-                    {(Array.isArray(value) ? value : []).map((id) => (
-                      <AttachmentLink key={String(id)} attachmentId={String(id)} />
-                    ))}
-                  </span>
+                  Array.isArray(value) && value.length > 0 ? (
+                    <span className="flex flex-col gap-2">
+                      {value.map((id) => (
+                        <AttachmentLink key={String(id)} attachmentId={String(id)} />
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">{format(m.entryFieldCleared)}</span>
+                  )
                 ) : (
                   <span className={cn(field.type === 'date' && 'tabular-nums')}>
                     {typeof value === 'string' && value !== ''
