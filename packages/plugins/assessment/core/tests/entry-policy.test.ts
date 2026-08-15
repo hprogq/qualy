@@ -438,7 +438,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     expect(result.freshState).toBe('staged')
   })
 
-  it('judges a submission by the configuration its revision cites, not today\u2019s', async () => {
+  it('submits into today\u2019s procedure, and holds the draft to today\u2019s form', async () => {
     const result = ok(
       await run(
         db.url,
@@ -447,25 +447,59 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
           const assessment = yield* Assessment
           const g = yield* runningBatch(f)
           const s1 = f.principal(f.s1)
+          const admin = f.principal(f.admin)
           const entry = yield* assessment.createEntry(
             f.t,
             { itemId: g.item.id, participantId: g.p1, payload: {} },
             s1,
           )
-          // the item moves on: a stricter form and a policy pointing at a
-          // role nobody holds, saved after the student's revision existed
-          const ghostRole = randomUUID()
+          const config = (over: Record<string, unknown>) => ({
+            entrySource: 'student' as const,
+            formConfig: { files: {} },
+            scoringConfig: {
+              calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: {
+              normal: {
+                stages: [
+                  {
+                    id: 's1',
+                    selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                    quorum: { type: 'any' },
+                  },
+                ],
+              },
+              doubt: { stages: [] },
+            },
+            ...over,
+          })
+
+          // the form gains something this draft has never been asked for
           yield* assessment.updateItem(
             f.t,
             g.item.id,
             {
-              config: {
-                entrySource: 'student',
-                formConfig: { required: ['certificate'], files: {} },
-                scoringConfig: {
-                  calculator: { ref: 'fixed@1', config: { value: '3.00' } },
-                  aggregator: { ref: 'sum@1', config: {} },
-                },
+              config: config({ formConfig: { required: ['certificate'], files: {} } }),
+              reason: 'tightened after filing',
+            },
+            admin,
+          )
+          // nothing has begun for this draft, so there is nothing to
+          // grandfather: it is simply not finished
+          const stale = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'in_review', s1),
+          )
+
+          // the form goes back and the procedure moves instead: a level
+          // nobody holds, which is exactly what an administrator edits a
+          // question to fix
+          const ghostRole = randomUUID()
+          const moved = yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: config({
                 reviewPolicy: {
                   normal: {
                     stages: [
@@ -478,30 +512,48 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
                   },
                   doubt: { stages: [] },
                 },
-              },
-              reason: 'tightened after filing',
+              }),
+              reason: 'rerouted after filing',
             },
-            s1.userId === f.admin ? s1 : f.principal(f.admin),
+            admin,
           )
-          // submitting the old revision: judged by ITS configuration - the
-          // payload decodes under the old form, and the chain resolves to
-          // the old role's holder, so this succeeds. Under today's config it
-          // would fail both ways.
           const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
-          const instance = yield* runSql(
-            sql`select effective_chain from review_instances where id = ${submitted.currentReviewInstanceId}`,
-          )
-          const frozen = one<{
+          const round = one<{
             effective_chain: { normal: { selector: { roleIds: string[] } }[] }
-          }>(instance).effective_chain
-          return { submitted, chainRoles: frozen.normal[0]!.selector.roleIds, ghostRole }
+            policy_revision_id: string
+            state: string
+          }>(
+            yield* runSql(sql`
+              select effective_chain, policy_revision_id, state from review_instances
+              where id = ${submitted.currentReviewInstanceId}`),
+          )
+          // what is being judged is still the filing as it was written
+          const judged = one<{ item_revision_id: string }>(
+            yield* runSql(sql`
+              select item_revision_id from entry_revisions
+              where id = ${submitted.currentRevision!.id}`),
+          )
+          return {
+            stale,
+            submitted,
+            round,
+            judged,
+            ghostRole,
+            liveRevision: moved.currentRevision!.id,
+          }
         }),
       ),
     )
 
+    expect(refusalOf(result.stale)?.reason).toBe('entry-needs-revision')
+    // the round walks the procedure in force when it opened, and says so
     expect(result.submitted.status).toBe('in_review')
-    expect(result.chainRoles).toEqual([expect.any(String)])
-    expect(result.chainRoles).not.toContain(result.ghostRole)
+    expect(result.round.policy_revision_id).toBe(result.liveRevision)
+    expect(result.round.effective_chain.normal[0]!.selector.roleIds).toEqual([result.ghostRole])
+    // nobody holds that role there, so it waits rather than refusing
+    expect(result.round.state).toBe('blocked')
+    // and the filing under judgment is still the one that was written
+    expect(result.judged.item_revision_id).not.toBe(result.liveRevision)
   })
 
   it('lets one staged file into exactly one entry, however the requests race', async () => {

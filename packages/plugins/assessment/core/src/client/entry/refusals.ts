@@ -15,6 +15,7 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'participant-out-of-reach': m.refuseOutOfReach,
   'entry-not-editable': m.refuseNotEditable,
   'entry-not-submittable': m.refuseNotSubmittable,
+  'entry-needs-revision': m.refuseNeedsRevision,
   'entry-not-withdrawable': m.refuseNotWithdrawable,
   'max-entries-reached': m.refuseMaxEntries,
   'item-not-active': m.refuseItemVoided,

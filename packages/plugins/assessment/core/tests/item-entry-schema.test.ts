@@ -154,11 +154,11 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     const instanceId = (
       await db.row<{ id: string }>(
         `insert into review_instances
-           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
-         values ($1, $2, $3, 1, 'initial', 'participant', '{"normal":[],"doubt":[]}', 'class', $4::uuid[], $5,
+           (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
+         values ($1, $2, $3, 1, 'initial', 'participant', $6, '{"normal":[],"doubt":[]}', 'class', $4::uuid[], $5,
                  (select path from org_nodes where id = $5))
          returning id`,
-        [f.tenantId, e.entryId, e.revisionId, `{${randomUUID()}}`, f.nodeId],
+        [f.tenantId, e.entryId, e.revisionId, `{${randomUUID()}}`, f.nodeId, g.itemRevisionId],
       )
     ).id
     await db.query(`update entries set current_review_instance_id = $1 where id = $2`, [
@@ -258,10 +258,10 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
+           values ($1, $2, $3, 1, 'initial', 'participant', $5, '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4))`,
-          [f.tenantId, second.entryId, first.revisionId, f.nodeId],
+          [f.tenantId, second.entryId, first.revisionId, f.nodeId, g.itemRevisionId],
         ),
       ),
     ).toBe('23503')
@@ -358,10 +358,10 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     const open = () =>
       db.query(
         `insert into review_instances
-           (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
+           (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
          values ($1, $2, $3, (select coalesce(max(round_no), 0) + 1 from review_instances where entry_id = $2),
-                 'initial', 'participant', '{}', 'class', '{}', $4, (select path from org_nodes where id = $4))`,
-        [f.tenantId, e.entryId, e.revisionId, f.nodeId],
+                 'initial', 'participant', $5, '{}', 'class', '{}', $4, (select path from org_nodes where id = $4))`,
+        [f.tenantId, e.entryId, e.revisionId, f.nodeId, g.itemRevisionId],
       )
     await open()
     // the double submit: a second open round is refused by the partial unique
@@ -486,10 +486,10 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, state)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, state)
+           values ($1, $2, $3, 1, 'initial', 'participant', $5, '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4), 'completed')`,
-          [f.tenantId, e.entryId, e.revisionId, f.nodeId],
+          [f.tenantId, e.entryId, e.revisionId, f.nodeId, g.itemRevisionId],
         ),
       ),
     ).toBe('23514')
@@ -498,10 +498,10 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, state, completed_at)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, state, completed_at)
+           values ($1, $2, $3, 1, 'initial', 'participant', $5, '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4), 'completed', now())`,
-          [f.tenantId, e.entryId, e.revisionId, f.nodeId],
+          [f.tenantId, e.entryId, e.revisionId, f.nodeId, g.itemRevisionId],
         ),
       ),
     ).toBe('23514')
@@ -510,10 +510,10 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into review_instances
-             (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, outcome)
-           values ($1, $2, $3, 1, 'initial', 'participant', '{}', 'class', '{}', $4,
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path, outcome)
+           values ($1, $2, $3, 1, 'initial', 'participant', $5, '{}', 'class', '{}', $4,
                    (select path from org_nodes where id = $4), 'approved')`,
-          [f.tenantId, e.entryId, e.revisionId, f.nodeId],
+          [f.tenantId, e.entryId, e.revisionId, f.nodeId, g.itemRevisionId],
         ),
       ),
     ).toBe('23514')

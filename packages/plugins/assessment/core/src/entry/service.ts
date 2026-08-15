@@ -669,23 +669,38 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 return yield* refuse(action, 'entry-not-submittable')
               }
               const current = yield* entryRevisionOf(tenantId, entry.currentRevisionId)
-              // The round judges this revision, so everything about the round
-              // comes from the item revision THIS revision cites - its form,
-              // its chain - never from whatever the item says today. A newer
-              // configuration reaches an entry the way everything does:
-              // through its next revision.
-              const itemRevision = yield* revisionOf(tenantId, current!.itemRevisionId)
-              if (itemRevision === null) return yield* refuse(action, 'item-not-configured')
+              // Two versions of the question, two different jobs (§32.62).
+              // What was written is read as an answer to the form it was
+              // written under; what happens to it now - which form it has to
+              // satisfy, whose route it walks - is the question as it stands
+              // today. Nothing has begun yet, so there is nothing to
+              // grandfather: a draft that has been sitting since before the
+              // form gained a required field is a draft that is not finished.
+              const written = yield* revisionOf(tenantId, current!.itemRevisionId)
+              const live =
+                item.currentRevisionId === null
+                  ? null
+                  : yield* revisionOf(tenantId, item.currentRevisionId)
+              if (written === null || live === null) {
+                return yield* refuse(action, 'item-not-configured')
+              }
               const batch = yield* oneBatch(tenantId, entry.batchId)
               const driver = driverOf(item)
               if (driver === undefined) return yield* refuse(action, 'item-type-not-installed')
+              const carried =
+                driver.projectPayload === undefined
+                  ? current!.payload
+                  : driver.projectPayload(written.formConfig, live.formConfig, current!.payload)
               const readable = yield* Effect.result(
-                driver.decodePayload(itemRevision.formConfig, current!.payload, {
+                driver.decodePayload(live.formConfig, carried, {
                   materialRange: deps.parseRange(String(batch!.materialRange)),
                 }),
               )
               if (Result.isFailure(readable)) {
-                return yield* refuse(action, 'entry-not-submittable')
+                // not "you cannot submit": the form asks for something this
+                // draft does not have yet, and the way on is to go and fill
+                // it in
+                return yield* refuse(action, 'entry-needs-revision')
               }
 
               // Both routes, resolved once against this person's frozen
@@ -695,7 +710,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               const policy = yield* resolvePolicy({
                 tenantId,
                 batchId: entry.batchId,
-                policy: readPolicy(itemRevision.reviewPolicy),
+                policy: readPolicy(live.reviewPolicy),
                 lineage: participant.anchorLineage,
               })
               const first = enterableFrom(policy, 'normal', 0)
@@ -724,6 +739,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 entryId,
                 revisionId: entry.currentRevisionId,
                 roundNo,
+                policyRevisionId: live.id,
                 effectivePolicy: policy,
                 route: 'normal',
                 stageId: first.id,

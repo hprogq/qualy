@@ -40,6 +40,7 @@ export default {
   'assessment/entry/refuse-out-of-reach': '这名参评人员不在你负责的单位范围内。',
   'assessment/entry/refuse-not-editable': '正在审核中，先撤回才能修改。',
   'assessment/entry/refuse-not-submittable': '只有草稿可以提交。',
+  'assessment/entry/refuse-needs-revision': '这道题的表单改过了，请按现在的要求补充后再提交。',
   'assessment/entry/refuse-not-withdrawable': '已有审核结论，无法撤回。',
   'assessment/entry/refuse-max-entries': '这个题目允许的条数已经填满了。',
   'assessment/entry/refuse-item-voided': '这个题目已经停用。',

@@ -393,7 +393,9 @@ describe.runIf(postgresAvailable)('the review-routes migration', () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, ROUTES))).toBe(true)
     const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-review-routes-'))
     for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== ROUTES) {
+      // everything before the one under test; the two that follow it are
+      // part of the run being proved, not of the shape it starts from
+      if (file.endsWith('.sql') && file < ROUTES) {
         fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
       }
     }

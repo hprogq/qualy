@@ -989,6 +989,17 @@ export const ReviewInstance = defineEntity({
     roundNo: p.integer(),
     origin: p.string().length(16),
     initiator: p.string().length(16),
+    /**
+     * Which version of the question's review policy this round is walking.
+     *
+     * Not the version the judged filing was written under. Those are two
+     * different facts about one round: what is being judged, and by what
+     * procedure. A round opened today follows the procedure in force today,
+     * which is what lets an administrator fix a level nobody holds by
+     * editing the question rather than by asking every waiting student to
+     * refile (§32.62).
+     */
+    policyRevisionId: p.uuid(),
     // both routes, resolved once against this participant's frozen lineage
     // and frozen with the round. The column keeps its old name: what it
     // holds grew a second route, and renaming it would cost a rewrite of
@@ -1219,6 +1230,8 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
   `alter table review_instances add constraint fk_review_instances_revision
      foreign key (tenant_id, entry_id, revision_id) references entry_revisions (tenant_id, entry_id, id) on delete cascade`,
+  `alter table review_instances add constraint fk_review_instances_policy_revision
+     foreign key (tenant_id, policy_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
 ]

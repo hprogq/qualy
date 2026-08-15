@@ -4607,3 +4607,30 @@ entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此�
 
 **下一步**:`ReviewInstance.policyRevisionId`(新一轮取当前策略版本,而不是被审 EntryRevision 当年那版)、
 影响分析器、`needs_revision` 与 `EntryEvent`、reroute 传播、编辑器影响弹窗。
+
+### 一轮审核走的是它开启时的程序(2026-08-15)
+
+施工顺序第四、五步。此前「审什么」和「按什么程序审」是同一个事实:一轮从被审 EntryRevision
+所引用的那版 item revision 解析路线。分开之后,管理员改审核链才有可能作用于后续轮次
+——否则改完链,新开的轮子照样按学生当年填写时那版走。
+
+- **`review_instances.policy_revision_id`**(新列 + 复合外键 restrict)。已开的轮子回填为它们
+  实际走过的那版(就是那个被引用的 item revision),行为一字未变,只是把事实写到了能被读到的地方。
+- **提交取当前策略**:`resolvePolicy(readPolicy(item.currentRevision.reviewPolicy))`,
+  不再取 `entryRevision.itemRevisionId` 那版。被审的内容仍然是写下来的那份
+  (`entry_revisions.item_revision_id` 不动,审核人看到的仍是学生当时填的那张表单)。
+- **草稿提交要过今天的表单**:旧 payload 先按身份投影到当前 formConfig,再按当前 formConfig 校验;
+  不通过就 `entry-needs-revision`(「这道题的表单改过了,请按现在的要求补充后再提交」),
+  而不是含糊的「不能提交」。**尚未进入审核的东西没有什么可 grandfather 的**——一份在表单加了必填项
+  之前就搁着的草稿,就是还没填完。已在审 / 已通过的条目不受影响。
+
+测试改写了原来那条「按它自己引用的配置判定,不按今天的」——那正是本次推翻的语义。新测试两段:
+①表单收紧后旧草稿提交被 `entry-needs-revision` 拒;②表单还原、只改审核链指向没人持有的角色后,
+提交成功、`policy_revision_id` = 当前版本、冻结路线里是新角色、轮子落 `blocked`(没人持有,等着,
+不是拒绝),而 `entry_revisions.item_revision_id` 仍指向旧版本。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 647 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成。
+
+**下一步**:影响分析器(两次 PATCH + `impactToken` + `expectedRevisionId`)、
+`needs_revision` 与 `EntryEvent`、reroute 传播、编辑器影响弹窗。

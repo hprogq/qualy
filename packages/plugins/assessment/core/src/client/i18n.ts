@@ -580,6 +580,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-not-editable',
       defaultMessage: 'It is being reviewed. Withdraw it first to change it.',
     },
+    refuseNeedsRevision: {
+      id: 'assessment/entry/refuse-needs-revision',
+      defaultMessage: 'The form has changed since this draft. Fill in what it now asks for.',
+    },
     refuseNotSubmittable: {
       id: 'assessment/entry/refuse-not-submittable',
       defaultMessage: 'Only a draft can be submitted.',

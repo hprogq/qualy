@@ -463,6 +463,8 @@ export const insertReviewInstance = (input: {
   entryId: string
   revisionId: string
   roundNo: number
+  /** which version of the question's review policy this round walks */
+  policyRevisionId: string
   /** both routes, resolved and frozen for the whole round */
   effectivePolicy: unknown
   route: 'normal' | 'doubt'
@@ -476,11 +478,13 @@ export const insertReviewInstance = (input: {
     .query((k) =>
       sql<{ id: string }>`
         insert into review_instances
-          (tenant_id, entry_id, revision_id, round_no, origin, initiator, effective_chain,
+          (tenant_id, entry_id, revision_id, round_no, origin, initiator,
+           policy_revision_id, effective_chain,
            current_route, current_stage_id, state, current_role_ids, current_node_id,
            current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
-                'initial', 'participant', ${jsonb(input.effectivePolicy)},
+                'initial', 'participant', ${input.policyRevisionId},
+                ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
                 ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},
                 ${input.nodePath}::ltree)
