@@ -4390,3 +4390,26 @@ toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩�
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 626 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过。新主题下三屏截图核对:控件同高、胶囊形一致、
 390px 视口 `scrollWidth` = 390。
+
+### 顶部卷面块瘦身 + Fast Refresh 门禁(2026-08-15)
+
+用户指出顶部那张卡「又想矮又想显示全,别扭还占地方」。**根因是它说的话下面二十像素处
+全都又说了一遍**:几道题、几个顶层分组、几道未发布、每段值多少——那就是下面那张表。
+
+- 删掉重复的统计与材料时间范围,只留表回答不了的两件事:整卷值多少,以及各分段已经占掉多少。
+  条形图给一眼的比例,右侧一句 `各分段已占 75 / 100` 给数字。
+- 真出错才占一行:`各分段上限合计 {sum},已超出满分 {total}`(destructive)、
+  或「有顶层分组未设上限」。稳态不占空间。
+- 从五行带框卡片降到两行;不再用边框(与下面那张表的边框打架),改浅色底面板,
+  与白底的表格区分开——先前去掉边框后「和底下混在一起分不清」。
+- 删除 `paperTally / paperCapMatch / paperCapSum / paperCapSumFree / paperNameLabel`,
+  新增 `paperAllocated / paperAllocatedFree / paperCapOver`。
+- 列表页「新建」按钮改回默认档:与搜索框、状态筛选同为主题的 36px(此前 sm=32px 差 4px)。
+
+**Fast Refresh 门禁**:同类问题两次(`itemCeiling`、`FIELD_TYPE_LABEL`)——
+新增 `tools/tests/fast-refresh.test.ts`:插件 client 目录下,**导出了组件的 .tsx 不得再导出别的值**
+(类型会被擦除,不算)。顺带把 auth 的 `OrgTree.shapeOf` 收回文件内(本就无外部消费者)。
+共享 web 包不在门禁范围:它们是有意把 hooks 与 Provider 放在一起发布,拆不拆是另一个问题。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 627 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过。

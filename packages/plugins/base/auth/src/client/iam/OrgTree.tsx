@@ -23,7 +23,7 @@ interface Shape {
 }
 
 /** a node whose parent is absent is a root here: a reader may start midway down */
-export const shapeOf = (nodes: readonly OrgTreeNode[]): Shape => {
+const shapeOf = (nodes: readonly OrgTreeNode[]): Shape => {
   const known = new Set(nodes.map((node) => node.id))
   const childrenOf = new Map<string, OrgTreeNode[]>()
   const roots: OrgTreeNode[] = []

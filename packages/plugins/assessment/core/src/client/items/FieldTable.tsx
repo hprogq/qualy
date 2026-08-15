@@ -31,7 +31,9 @@ export interface FieldDraft {
   accept: string
 }
 
-export const FIELD_TYPE_LABEL = {
+// a module that exports anything but components cannot be hot-replaced, and
+// nothing outside this file needs it
+const FIELD_TYPE_LABEL = {
   text: m.itemsTypeText,
   date: m.itemsTypeDate,
   attachment: m.itemsTypeAttachment,

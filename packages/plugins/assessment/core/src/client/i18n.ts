@@ -1233,14 +1233,6 @@ const i18n = definePluginMessages({
     },
     paperFloorNone: { id: 'assessment/items/paper-floor-none', defaultMessage: 'no lower limit' },
     paperEdit: { id: 'assessment/items/paper-edit', defaultMessage: 'Edit the paper' },
-    paperCapSum: {
-      id: 'assessment/items/paper-cap-sum',
-      defaultMessage: 'Sections add up to {sum} of {total}',
-    },
-    paperCapSumFree: {
-      id: 'assessment/items/paper-cap-sum-free',
-      defaultMessage: 'Sections add up to {sum}; the paper has no upper limit',
-    },
     itemsTreeTitle: { id: 'assessment/items/tree-title', defaultMessage: 'Structure' },
     itemsPreviewTitle: {
       id: 'assessment/items/preview-title',
@@ -1327,21 +1319,23 @@ const i18n = definePluginMessages({
     itemsStatusVoided: { id: 'assessment/items/status-voided', defaultMessage: 'Withdrawn' },
 
     /** what the whole paper adds up to, read above its structure */
-    paperNameLabel: { id: 'assessment/items/paper-name-label', defaultMessage: 'Paper name' },
-    paperCapMatch: {
-      id: 'assessment/items/paper-cap-match',
-      defaultMessage: 'Sections add up to {sum}, matching the total',
+    /** what goes between two things named in a row; a locale picks its own */
+    paperAllocated: {
+      id: 'assessment/items/paper-allocated',
+      defaultMessage: 'Sections hold {sum} of {total}',
+    },
+    paperAllocatedFree: {
+      id: 'assessment/items/paper-allocated-free',
+      defaultMessage: 'Sections hold {sum}',
+    },
+    paperCapOver: {
+      id: 'assessment/items/paper-cap-over',
+      defaultMessage: 'Sections add up to {sum}, past the total {total}',
     },
     paperCapUnset: {
       id: 'assessment/items/paper-cap-unset',
       defaultMessage: 'Some top sections have no upper limit, so the paper has none either',
     },
-    paperTally: {
-      id: 'assessment/items/paper-tally',
-      defaultMessage:
-        '{questions, plural, one {# question} other {# questions}} in {sections, plural, one {# top section} other {# top sections}}, {unpublished, plural, =0 {all published} other {# not published}}, evidence dated {from} to {until}',
-    },
-    /** what goes between two things named in a row; a locale picks its own */
     listSeparator: { id: 'assessment/items/list-separator', defaultMessage: ', ' },
     structureSubtotal: {
       id: 'assessment/items/structure-subtotal',

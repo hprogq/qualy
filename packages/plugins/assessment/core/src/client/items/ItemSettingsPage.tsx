@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, PencilIcon, TriangleAlertIcon } from 'lucide-react'
+import { PencilIcon, TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -444,8 +444,6 @@ function Editor({
         <PaperSummary
           paper={paper as TreeGroup}
           roots={roots as readonly TreeGroup[]}
-          items={allItems}
-          materialRange={materialRange}
           onEdit={() => setGroup({ kind: 'edit', group: paper as TreeGroup })}
         />
         <StructureTable
@@ -602,32 +600,37 @@ const placementOf = (
   }
 }
 
-/** what the whole paper adds up to, and whether that is what it says it is */
+/**
+ * The paper itself, above its own structure.
+ *
+ * Almost everything this used to say is said again twenty pixels below it:
+ * how many questions there are, how many sections, which are unpublished,
+ * what each section is worth - that is the table. Repeating it here bought
+ * nothing and cost a boxed block of prose at the top of every visit.
+ *
+ * What is left is what the table cannot answer: what the whole round is
+ * worth, and how much of that has been handed out to sections so far. The
+ * bar answers the second at a glance and the caption puts a number on it.
+ * Anything actually wrong - sections adding up past the total, a section
+ * with no limit at all - earns a line of its own, because an exception is
+ * worth space and a steady state is not.
+ */
 function PaperSummary({
   paper,
   roots,
-  items,
-  materialRange,
   onEdit,
 }: {
   paper: TreeGroup
   roots: readonly TreeGroup[]
-  items: readonly ItemDto[]
-  materialRange: { start: string; end: string }
   onEdit: () => void
 }) {
   const { format } = useI18n()
   const capped = roots.length > 0 && roots.every((group) => group.cap !== null)
   const cents = roots.reduce((total, group) => total + Math.round(Number(group.cap ?? 0) * 100), 0)
+  const total = paper.cap === null ? null : Math.round(Number(paper.cap) * 100)
   const sum = capped ? trimAmount(String(cents / 100)) : null
-  const matches =
-    sum !== null && paper.cap !== null && cents === Math.round(Number(paper.cap) * 100)
-  const unpublished = items.filter((item) => item.status === 'draft').length
-  // the bar runs the length of the paper when the paper has one, so the part
-  // nobody has handed out yet is visible as the part nobody has handed out
-  const span = paper.cap === null ? cents : Math.max(cents, Math.round(Number(paper.cap) * 100))
+  const over = sum !== null && total !== null && cents > total
 
-  // what the paper is worth, said the way anyone would say it out loud
   const limits = [
     `${format(m.paperTotal)} ${paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}`,
     paper.floor === null
@@ -636,82 +639,49 @@ function PaperSummary({
   ].join(' · ')
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-        {/* the paper's name leads and its two limits sit under it, because
-            labelling every value turns one sentence into a row of forms */}
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <div className="flex min-w-0 items-center gap-1">
-            <h3 className="min-w-0 truncate text-sm font-semibold">
-              {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
-            </h3>
-            <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={onEdit}>
-              <PencilIcon aria-hidden />
-              {format(m.paperEdit)}
-            </Button>
-          </div>
-          <p className="text-sm tabular-nums text-muted-foreground">{limits}</p>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-0.5 max-sm:w-full sm:shrink-0 sm:items-end sm:text-right">
-          {sum !== null && (
-            <p className="flex items-baseline gap-1.5 text-sm font-medium sm:whitespace-nowrap">
-              {matches && <CheckIcon aria-hidden className="size-3.5" />}
-              {matches
-                ? format(m.paperCapMatch, { sum })
-                : paper.cap === null
-                  ? format(m.paperCapSumFree, { sum })
-                  : format(m.paperCapSum, { sum, total: trimAmount(paper.cap) })}
-            </p>
-          )}
-          {sum === null && roots.length > 0 && (
-            <p className="text-sm font-medium">{format(m.paperCapUnset)}</p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            {format(m.paperTally, {
-              questions: items.length,
-              sections: roots.length,
-              unpublished,
-              from: materialRange.start,
-              until: materialRange.end,
-            })}
+    <section className="flex flex-col gap-2.5 rounded-lg bg-muted/60 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 className="min-w-0 truncate text-sm font-semibold">
+          {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
+        </h3>
+        <p className="text-xs tabular-nums text-muted-foreground">{limits}</p>
+        <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={onEdit}>
+          <PencilIcon aria-hidden />
+          {format(m.paperEdit)}
+        </Button>
+        <span className="flex-1" />
+        {sum !== null && (
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {total === null
+              ? format(m.paperAllocatedFree, { sum })
+              : format(m.paperAllocated, { sum, total: trimAmount(paper.cap!) })}
           </p>
-        </div>
+        )}
       </div>
 
-      {sum !== null && cents > 0 && (
-        <div className="flex flex-col gap-2">
-          {/* measured against the paper, not against the sections themselves:
-              filling the bar with sections adding up to 75 of 100 would draw
-              a full round out of one that is a quarter unallocated */}
-          <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-muted">
-            {roots.map((group, index) => (
-              <div
-                key={group.id}
-                style={{
-                  width: `${(Math.round(Number(group.cap) * 100) / span) * 100}%`,
-                  background: `var(--chart-${(index % 4) + 2})`,
-                }}
-              />
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {roots.map((group, index) => (
-              <span
-                key={group.id}
-                className="flex items-center gap-1.5 text-xs whitespace-nowrap text-foreground/75"
-              >
-                <span
-                  aria-hidden
-                  className="size-2 rounded-xs"
-                  style={{ background: `var(--chart-${(index % 4) + 2})` }}
-                />
-                {group.name.trim() === '' ? format(m.itemsGroupUnnamed) : group.name}
-                <span className="tabular-nums text-muted-foreground">{trimAmount(group.cap!)}</span>
-              </span>
-            ))}
-          </div>
+      {/* measured against the paper, so the part nobody has handed out yet
+          reads as the part nobody has handed out */}
+      {sum !== null && total !== null && total > 0 && (
+        <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-background">
+          {roots.map((group, index) => (
+            <div
+              key={group.id}
+              style={{
+                width: `${Math.min(100, (Math.round(Number(group.cap) * 100) / Math.max(cents, total)) * 100)}%`,
+                background: `var(--chart-${(index % 4) + 2})`,
+              }}
+            />
+          ))}
         </div>
+      )}
+
+      {over && (
+        <p className="text-xs font-medium text-destructive">
+          {format(m.paperCapOver, { sum: sum!, total: trimAmount(paper.cap!) })}
+        </p>
+      )}
+      {sum === null && roots.length > 0 && (
+        <p className="text-xs text-muted-foreground">{format(m.paperCapUnset)}</p>
       )}
     </section>
   )

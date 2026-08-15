@@ -152,7 +152,7 @@ export function StructureTable({
             a menu anybody can read once the paper is deep. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm">
+            <Button>
               <PlusIcon aria-hidden />
               {format(m.structureNew)}
               <ChevronDownIcon aria-hidden className="opacity-70" />
