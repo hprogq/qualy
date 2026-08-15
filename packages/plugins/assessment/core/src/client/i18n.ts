@@ -497,7 +497,7 @@ const i18n = definePluginMessages({
     tabOverview: { id: 'assessment/overview/tab', defaultMessage: 'Overview' },
     overviewHint: {
       id: 'assessment/overview/hint',
-      defaultMessage: 'Where this batch stands, and what you can do in it right now.',
+      defaultMessage: 'Where this batch stands, and what is waiting on you.',
     },
     overviewPlaceholder: {
       id: 'assessment/overview/placeholder',
@@ -510,7 +510,7 @@ const i18n = definePluginMessages({
     myEntriesTab: { id: 'assessment/entry/tab', defaultMessage: 'My entries' },
     myEntriesHint: {
       id: 'assessment/entry/hint',
-      defaultMessage: 'File your claims here, and follow what happens to each one.',
+      defaultMessage: 'Your claims, and where each one has got to.',
     },
     myEntriesEmpty: {
       id: 'assessment/entry/empty',
@@ -611,7 +611,7 @@ const i18n = definePluginMessages({
     },
     refuseBasisRequired: {
       id: 'assessment/entry/refuse-basis-required',
-      defaultMessage: 'A recorded fact needs its basis.',
+      defaultMessage: 'A record needs its basis.',
     },
     refuseNotParticipant: {
       id: 'assessment/entry/refuse-not-participant',
@@ -647,7 +647,6 @@ const i18n = definePluginMessages({
     entryStatusApproved: { id: 'assessment/entry/status-approved', defaultMessage: 'Approved' },
     entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Sent back' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Void' },
-    entryFilePick: { id: 'assessment/entry/file-pick', defaultMessage: 'Add a file' },
     entryFileUploading: { id: 'assessment/entry/file-uploading', defaultMessage: 'Uploading…' },
     entryFileRemove: { id: 'assessment/entry/file-remove', defaultMessage: 'Remove' },
     entryFileFailed: {
@@ -709,7 +708,10 @@ const i18n = definePluginMessages({
       id: 'assessment/review/reject-title',
       defaultMessage: 'Send this back',
     },
-    reviewComment: { id: 'assessment/review/comment', defaultMessage: 'A word for the student' },
+    reviewComment: {
+      id: 'assessment/review/comment',
+      defaultMessage: 'A word for whoever filed it',
+    },
     reviewCommentHint: {
       id: 'assessment/review/comment-hint',
       defaultMessage: 'Say what to fix. This is required when sending back.',
@@ -723,7 +725,7 @@ const i18n = definePluginMessages({
     eventRejected: { id: 'assessment/event/rejected', defaultMessage: '{who} sent it back' },
     eventReturnedForRevision: {
       id: 'assessment/event/returned-for-revision',
-      defaultMessage: '{who} asked for more and sent it back',
+      defaultMessage: '{who} sent it back for more',
     },
     eventDoubtRaised: {
       id: 'assessment/event/doubt-raised',
@@ -735,7 +737,7 @@ const i18n = definePluginMessages({
     },
     eventEscalated: {
       id: 'assessment/event/escalated',
-      defaultMessage: '{who} sent it up as a doubt',
+      defaultMessage: '{who} raised a doubt',
     },
     eventComment: { id: 'assessment/event/comment', defaultMessage: '{who} left a note' },
     eventRecommendApprove: {
@@ -829,7 +831,7 @@ const i18n = definePluginMessages({
     recordHint: {
       id: 'assessment/record/hint',
       defaultMessage:
-        'File an administrative fact about a participant. It takes effect at once, with its basis.',
+        'Record something about a participant. It needs a basis and takes effect at once.',
     },
     recordEmpty: {
       id: 'assessment/record/empty',
@@ -998,7 +1000,7 @@ const i18n = definePluginMessages({
     itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
     itemsPublishAfterSave: {
       id: 'assessment/items/publish-after-save',
-      defaultMessage: 'Save first; publishing sends the saved version.',
+      defaultMessage: 'Save it first, then publish.',
     },
     itemsPublish: { id: 'assessment/items/publish', defaultMessage: 'Publish' },
     itemsStatusComposing: { id: 'assessment/items/status-composing', defaultMessage: 'Draft' },
@@ -1047,15 +1049,15 @@ const i18n = definePluginMessages({
     },
     itemsDoubtTitle: {
       id: 'assessment/items/doubt-title',
-      defaultMessage: 'If sent up as a doubt',
+      defaultMessage: 'Doubt review',
     },
     itemsDoubtHint: {
       id: 'assessment/items/doubt-hint',
-      defaultMessage: 'Entered when a reviewer raises a doubt; the last step decides.',
+      defaultMessage: 'Where a reviewer sends what they cannot judge; the last step decides.',
     },
     itemsDoubtEmpty: {
       id: 'assessment/items/doubt-empty',
-      defaultMessage: 'Without steps, reviewers cannot raise a doubt here.',
+      defaultMessage: 'With no steps here, a reviewer cannot raise a doubt.',
     },
     itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add a step' },
     itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Remove step' },
@@ -1081,11 +1083,7 @@ const i18n = definePluginMessages({
       id: 'assessment/items/terminal-here',
       defaultMessage: 'Done on approval',
     },
-    itemsStageDoubt: {
-      id: 'assessment/items/stage-doubt',
-      defaultMessage: 'Only reached by escalation',
-    },
-    reviewChainTitle: { id: 'assessment/review/chain-title', defaultMessage: 'The chain' },
+    reviewChainTitle: { id: 'assessment/review/chain-title', defaultMessage: 'Review route' },
     reviewStageHere: { id: 'assessment/review/stage-here', defaultMessage: 'Now here' },
     reviewStageSkipped: {
       id: 'assessment/review/stage-skipped',
@@ -1110,7 +1108,7 @@ const i18n = definePluginMessages({
     reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
     reviewOnDoubtRoute: {
       id: 'assessment/review/on-doubt-route',
-      defaultMessage: 'A doubt is on its way up; the end of the chain decides.',
+      defaultMessage: 'This is in doubt review; the last step decides.',
     },
     itemsReviewTitle: {
       id: 'assessment/items/review-title',
@@ -1119,7 +1117,7 @@ const i18n = definePluginMessages({
     itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basics' },
     itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Form fields' },
     itemsTabScoring: { id: 'assessment/items/tab-scoring', defaultMessage: 'Scoring' },
-    itemsTabReview: { id: 'assessment/items/tab-review', defaultMessage: 'Review chain' },
+    itemsTabReview: { id: 'assessment/items/tab-review', defaultMessage: 'Review route' },
     itemsFieldDescription: {
       id: 'assessment/items/field-description',
       defaultMessage: 'Filing instructions',
@@ -1173,7 +1171,7 @@ const i18n = definePluginMessages({
     },
     itemsChainHintNew: {
       id: 'assessment/items/chain-hint-new',
-      defaultMessage: 'Step by step after submitting; approval at the last step counts it.',
+      defaultMessage: 'In order after submitting; the last step decides.',
     },
     itemsImpactTitle: {
       id: 'assessment/items/impact-title',
@@ -1181,7 +1179,7 @@ const i18n = definePluginMessages({
     },
     itemsImpactHint: {
       id: 'assessment/items/impact-hint',
-      defaultMessage: 'Say what should happen to it. Nothing is saved until you do.',
+      defaultMessage: 'Choose what happens to it, then save.',
     },
     itemsImpactInReview: {
       id: 'assessment/items/impact-in-review',
@@ -1222,15 +1220,11 @@ const i18n = definePluginMessages({
     itemsImpactStageGone: {
       id: 'assessment/items/impact-stage-gone',
       defaultMessage:
-        '{count} of them are standing at a step this route no longer has, and stay where they are.',
-    },
-    itemsImpactOrder: {
-      id: 'assessment/items/impact-order',
-      defaultMessage: 'An entry sent back is not moved: its next submission follows the new route.',
+        '{count} of them stand at a step this route no longer has, and stay where they are.',
     },
     itemsChainHintRecorded: {
       id: 'assessment/items/chain-hint-recorded',
-      defaultMessage: 'A record counts at once. This chain is walked only if somebody contests it.',
+      defaultMessage: 'A record counts at once; this runs only if somebody contests it.',
     },
     structureDragHint: {
       id: 'assessment/items/structure-drag-hint',
@@ -1271,8 +1265,7 @@ const i18n = definePluginMessages({
     },
     paperStartHint: {
       id: 'assessment/items/paper-start-hint',
-      defaultMessage:
-        'Every question sits inside a group, and the outermost group is what the round is worth.',
+      defaultMessage: 'Name it and set the total; sections and questions come after.',
     },
     paperStartGuided: {
       id: 'assessment/items/paper-start-guided',
@@ -1280,7 +1273,7 @@ const i18n = definePluginMessages({
     },
     paperStartGuidedHint: {
       id: 'assessment/items/paper-start-guided-hint',
-      defaultMessage: 'Two answers, then add sections and questions in any order.',
+      defaultMessage: 'Sections and questions can be added and removed at any time afterwards.',
     },
     paperStartSuggested: {
       id: 'assessment/items/paper-start-suggested',
@@ -1291,19 +1284,14 @@ const i18n = definePluginMessages({
       id: 'assessment/items/paper-start-blank-hint',
       defaultMessage: 'No total for now. Set one whenever the rules are settled.',
     },
-    paperStartReassure: {
-      id: 'assessment/items/paper-start-reassure',
-      defaultMessage:
-        'Nothing here is final: the structure can be rearranged until the round opens.',
-    },
     paperDefaultName: {
       id: 'assessment/items/paper-default-name',
-      defaultMessage: 'This round',
+      defaultMessage: 'This batch',
     },
     paperCreateTitle: { id: 'assessment/items/paper-create-title', defaultMessage: 'The paper' },
     paperCreateHint: {
       id: 'assessment/items/paper-create-hint',
-      defaultMessage: 'The outermost group of the round. Its upper limit is the total.',
+      defaultMessage: 'Name it and set the total.',
     },
     paperCreate: { id: 'assessment/items/paper-create', defaultMessage: 'Create' },
     paperTotal: { id: 'assessment/items/paper-total', defaultMessage: 'Total' },
@@ -1354,8 +1342,7 @@ const i18n = definePluginMessages({
     },
     itemsReviewUncovered: {
       id: 'assessment/items/review-uncovered',
-      defaultMessage:
-        'Nobody can review at {names}. Give somebody one of these roles at those units - submissions from their participants wait until you do.',
+      defaultMessage: '{names}: nobody holds any of these roles yet, so submissions there wait.',
     },
     itemsReviewNoUnits: {
       id: 'assessment/items/review-no-units',
@@ -1378,7 +1365,7 @@ const i18n = definePluginMessages({
     itemsFieldConfig: { id: 'assessment/items/field-config', defaultMessage: 'Configuration' },
     itemsFieldConfigHint: {
       id: 'assessment/items/field-config-hint',
-      defaultMessage: 'The full configuration, as JSON: form, scoring and review chain.',
+      defaultMessage: 'The full configuration, as JSON: form, scoring and review route.',
     },
     itemsFieldReason: { id: 'assessment/items/field-reason', defaultMessage: 'Reason' },
     itemsConfigUnreadable: {
@@ -1495,12 +1482,12 @@ const i18n = definePluginMessages({
       id: 'assessment/items/stage-unset-hint',
       defaultMessage: 'Say where and who reviews here.',
     },
-    itemsDoubtRaised: { id: 'assessment/items/doubt-raised', defaultMessage: 'Escalated' },
+    itemsDoubtRaised: { id: 'assessment/items/doubt-raised', defaultMessage: 'Doubt raised' },
     itemsDoubtRaisedBy: { id: 'assessment/items/doubt-raised-by', defaultMessage: 'By a reviewer' },
-    itemsDoubtSettled: { id: 'assessment/items/doubt-settled', defaultMessage: 'Settled' },
+    itemsDoubtSettled: { id: 'assessment/items/doubt-settled', defaultMessage: 'Doubt settled' },
     itemsDoubtSettledSub: {
       id: 'assessment/items/doubt-settled-sub',
-      defaultMessage: 'Back to the outcome',
+      defaultMessage: 'The last step decides',
     },
     itemsCannotSave: {
       id: 'assessment/items/cannot-save',
@@ -1522,7 +1509,7 @@ const i18n = definePluginMessages({
     },
     itemsDoubtAddStep: {
       id: 'assessment/items/doubt-add-step',
-      defaultMessage: 'Set up escalation',
+      defaultMessage: 'Add a doubt step',
     },
     itemsPlacementTitle: {
       id: 'assessment/items/placement-title',
@@ -1540,12 +1527,11 @@ const i18n = definePluginMessages({
     itemsVersionTitle: { id: 'assessment/items/version-title', defaultMessage: 'Versions' },
     itemsVersionNote: {
       id: 'assessment/items/version-note',
-      defaultMessage:
-        'Version {no}, saved {date}. Saving makes a new one; entries already filed keep the version they were filed under.',
+      defaultMessage: 'Version {no}, saved {date}.',
     },
     itemsVersionNew: {
       id: 'assessment/items/version-new',
-      defaultMessage: 'Nothing saved yet. The first save becomes version 1.',
+      defaultMessage: 'Not saved yet.',
     },
     paperStartAction: { id: 'assessment/items/paper-start-action', defaultMessage: 'Start' },
 
@@ -1554,11 +1540,6 @@ const i18n = definePluginMessages({
     myEntriesRows: {
       id: 'assessment/entry/rows',
       defaultMessage: '{count, plural, =0 {none} one {# entry} other {# entries}}',
-    },
-    myEntriesTodo: {
-      id: 'assessment/entry/todo',
-      defaultMessage:
-        '{count, plural, =0 {Nothing waiting on you} one {# waiting on you} other {# waiting on you}}',
     },
     myEntriesQuestions: {
       id: 'assessment/entry/questions',
@@ -1590,7 +1571,7 @@ const i18n = definePluginMessages({
     myEntriesGroupTotal: { id: 'assessment/entry/group-total', defaultMessage: 'Section total' },
     myEntriesMakeupNote: {
       id: 'assessment/entry/makeup-note',
-      defaultMessage: 'Only approved entries count. The limits apply when the round is settled.',
+      defaultMessage: 'Approved entries only.',
     },
     myEntriesRoom: {
       id: 'assessment/entry/room',
@@ -1612,7 +1593,7 @@ const i18n = definePluginMessages({
     myEntriesFiledCount: {
       id: 'assessment/entry/filed-count',
       defaultMessage:
-        '{filed, plural, =0 {nothing submitted} one {# submitted} other {# submitted}}, {drafts, plural, =0 {no draft} other {# draft}}',
+        '{filed, plural, =0 {nothing submitted} other {# submitted}}{drafts, plural, =0 {} other {, # draft}}',
     },
     myEntriesNoneYet: {
       id: 'assessment/entry/none-yet',
@@ -1626,12 +1607,6 @@ const i18n = definePluginMessages({
     myEntriesResumeDraft: {
       id: 'assessment/entry/resume-draft',
       defaultMessage: 'Keep filling in the draft',
-    },
-    entryTerms: { id: 'assessment/entry/terms', defaultMessage: 'What this question takes' },
-    entryAfterSubmit: {
-      id: 'assessment/entry/after-submit',
-      defaultMessage:
-        'Once submitted, {count, plural, one {# person reviews it} other {# people review it in turn}}.',
     },
     entryLastRoom: {
       id: 'assessment/entry/last-room',
@@ -1647,7 +1622,7 @@ const i18n = definePluginMessages({
     },
     entryDraftKept: {
       id: 'assessment/entry/draft-kept',
-      defaultMessage: 'A draft stays under this question until you submit it.',
+      defaultMessage: 'A draft can be picked up again any time.',
     },
     entrySaveDraft: { id: 'assessment/entry/save-draft', defaultMessage: 'Save as draft' },
     myEntriesWindow: { id: 'assessment/entry/window', defaultMessage: 'Material window' },
@@ -1671,7 +1646,7 @@ const i18n = definePluginMessages({
     myEntriesBasis: { id: 'assessment/entry/basis', defaultMessage: 'Scoring basis' },
     myEntriesBasisSoon: {
       id: 'assessment/entry/basis-soon',
-      defaultMessage: 'The wording this is scored against will be shown here.',
+      defaultMessage: 'No clause linked yet.',
     },
     entryNth: { id: 'assessment/entry/nth', defaultMessage: 'Claim {n}' },
     entryFlow: { id: 'assessment/entry/flow', defaultMessage: 'After you submit' },
@@ -1715,7 +1690,7 @@ const i18n = definePluginMessages({
     settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'This round' },
     settingsLifecycleHint: {
       id: 'assessment/settings/lifecycle-hint',
-      defaultMessage: 'Closing it keeps everything and stops the work; each step asks first.',
+      defaultMessage: 'An archived batch is read-only: no more filing, no more reviewing.',
     },
     phasesHint: {
       id: 'assessment/phase/hint',

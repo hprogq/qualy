@@ -403,7 +403,7 @@ describe('judging a submission', () => {
     await page.getByRole('button', { name: '退回', exact: true }).click()
     const confirm = page.getByRole('dialog').getByRole('button', { name: '退回', exact: true })
     await expect.element(confirm).toBeDisabled()
-    await page.getByLabelText('给学生的说明').fill('证明日期与填报不符，请核对。')
+    await page.getByLabelText('给申报人的说明').fill('证明日期与填报不符，请核对。')
     await expect.element(confirm).toBeEnabled()
     await confirm.click()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce())

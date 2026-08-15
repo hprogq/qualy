@@ -62,8 +62,6 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{format(m.paperStartReassure)}</p>
-
       {/* kept mounted while it shuts, or it would vanish rather than close */}
       {opened !== null && (
         <PaperWizard

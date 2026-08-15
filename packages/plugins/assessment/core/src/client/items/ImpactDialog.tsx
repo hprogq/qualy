@@ -159,12 +159,6 @@ export function ImpactDialog({
             )}
           </div>
         )}
-
-        {asked.form && asked.review && (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {format(m.itemsImpactOrder)}
-          </p>
-        )}
       </div>
     </FormDialog>
   )
