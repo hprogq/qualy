@@ -22,7 +22,18 @@ export interface ScoreGroupRow {
   cap: string | null
   floor: string | null
   sortOrder: number
-  itemCount: number
+  /**
+   * The questions this group actually asks: the number a reader is given.
+   * A draft has been composed and asked of nobody, a voided one has been
+   * withdrawn, and neither is worth anything against this group's cap.
+   */
+  activeItemCount: number
+  /**
+   * Every question filed under this group, whatever state each is in. The
+   * other reading, and the one removal needs: a group somebody is still
+   * composing into is a group in use.
+   */
+  heldItemCount: number
   createdAt: number
 }
 
@@ -36,10 +47,18 @@ export const groupsOf = (tenantId: string, batchId: string) =>
           sql<string | null>`cap::text`.as('capText'),
           sql<string | null>`floor::text`.as('floorText'),
           epoch('score_groups.created_at').as('createdMs'),
+          // two counts because two things are being asked, and one number
+          // cannot answer both: what the group holds decides whether it may
+          // be removed, what it asks is what a reader is told
           sql<string>`(select count(*) from assessment_items ai
              where ai.tenant_id = score_groups.tenant_id
                and ai.batch_id = score_groups.batch_id
-               and ai.score_group_id = score_groups.id)`.as('itemCount'),
+               and ai.score_group_id = score_groups.id)`.as('heldCount'),
+          sql<string>`(select count(*) from assessment_items ai
+             where ai.tenant_id = score_groups.tenant_id
+               and ai.batch_id = score_groups.batch_id
+               and ai.score_group_id = score_groups.id
+               and ai.status = 'active')`.as('activeCount'),
         ])
         .where('tenantId', '=', tenantId)
         .where('batchId', '=', batchId)
@@ -56,7 +75,8 @@ export const groupsOf = (tenantId: string, batchId: string) =>
           cap: (row as { capText: string | null }).capText,
           floor: (row as { floorText: string | null }).floorText,
           sortOrder: row.sortOrder as number,
-          itemCount: Number((row as { itemCount: unknown }).itemCount),
+          activeItemCount: Number((row as { activeCount: unknown }).activeCount),
+          heldItemCount: Number((row as { heldCount: unknown }).heldCount),
           createdAt: msOf((row as { createdMs: unknown }).createdMs),
         })),
       ),
@@ -420,6 +440,39 @@ export const itemHasEntries = (tenantId: string, itemId: string) =>
         .select('id')
         .where('tenantId', '=', tenantId)
         .where('itemId', '=', itemId)
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/**
+ * Whether some phase's item allowance names this item and nothing else.
+ *
+ * An allowance with no rows means "every item", so the cascade behind
+ * phase_item_scopes may narrow an allowance but must never empty one: the
+ * last row leaving would open the phase to every question in the round
+ * instead of closing it. Only the plan may hand an allowance back.
+ */
+export const itemAloneInPhaseScope = (tenantId: string, itemId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('PhaseItemScope as scope')
+        .select('scope.phaseId')
+        .where('scope.tenantId', '=', tenantId)
+        .where('scope.itemId', '=', itemId)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('PhaseItemScope as sibling')
+                .select(sql<number>`1`.as('one'))
+                .whereRef('sibling.tenantId', '=', 'scope.tenantId')
+                .whereRef('sibling.phaseId', '=', 'scope.phaseId')
+                .where('sibling.itemId', '<>', itemId),
+            ),
+          ),
+        )
         .limit(1)
         .executeTakeFirst(),
     )

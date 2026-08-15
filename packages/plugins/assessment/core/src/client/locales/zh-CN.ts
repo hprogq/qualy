@@ -186,6 +186,7 @@ export default {
   'assessment/items/reason-title': '这次改动的原因',
   'assessment/items/reason-hint': '批次进行中，本次改动会影响计分口径，相关人员都会看到这句话。',
   'assessment/items/new': '新建题目',
+  'assessment/items/publish-after-save': '请先保存，发布下发的是已保存的版本。',
   'assessment/items/publish': '发布',
   'assessment/items/status-composing': '草稿',
   'assessment/items/status-draft': '未发布',

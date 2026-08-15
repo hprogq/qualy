@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -14,9 +14,10 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { GroupEditor } from './GroupEditor.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
+import { GroupEditor, type GroupDraft } from './GroupEditor.tsx'
 import { PaperTree, type TreeDraft, type TreeGroup, type TreeSelection } from './PaperTree.tsx'
+import type { Draft as QuestionDraft } from './ItemConfigEditor.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import type { ItemDto } from '../entry/model.ts'
@@ -24,6 +25,20 @@ import type { ItemDto } from '../entry/model.ts'
 // Composing a round with the paper always in sight: its structure down the
 // left, the selected part opened for editing on the right. A drag in the
 // tree is persisted here - the tree only says what should now come where.
+
+/**
+ * What a refused publish or restore actually says.
+ *
+ * The api answers with the save's own refusal, whose sentence is about
+ * saving; nobody pressed save. The question's own problems are what the
+ * reader needs, so they are named when the refusal carries them.
+ */
+const refusedPublish = (error: unknown, fallback: (value: unknown) => string): string => {
+  const issues = (error as { issues?: readonly { path: string; reason: string }[] }).issues
+  return Array.isArray(issues) && issues.length > 0
+    ? issues.map((issue) => `${issue.path}: ${issue.reason}`).join('; ')
+    : fallback(error)
+}
 
 /** a counter, so two things composed in one session never share a handle */
 let composed = 0
@@ -78,7 +93,11 @@ function Editor({
   // what has been composed and not yet saved. Each press of add puts one more
   // here, so the tree shows what is waiting rather than swallowing the press.
   const [drafts, setDrafts] = useState<readonly TreeDraft[]>([])
+  const [held, setHeld] = useState<Readonly<Record<string, QuestionDraft | GroupDraft>>>({})
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
+  // set by the open editor: publishing what is on screen would be a lie while
+  // the screen says something the round has not been told
+  const [unsaved, setUnsaved] = useState(false)
   // a drop that crosses groups on a running round waits here for its sentence
   const [pendingMove, setPendingMove] = useState<{
     itemId: string
@@ -103,25 +122,30 @@ function Editor({
 
   const closeDraft = (localId: string) => {
     setDrafts((current) => current.filter((draft) => draft.localId !== localId))
+    setHeld((current) => {
+      const { [localId]: gone, ...rest } = current
+      return rest
+    })
     setSelection((current) =>
       current?.kind === 'draft' && current.localId === localId ? null : current,
     )
   }
 
-  const titleDraft = (localId: string, title: string) =>
+  const hold = useCallback((localId: string, composition: QuestionDraft | GroupDraft) => {
+    setHeld((current) => ({ ...current, [localId]: composition }))
+    const title = 'title' in composition ? composition.title : composition.name
     setDrafts((current) =>
       current.map((draft) => (draft.localId === localId ? { ...draft, title } : draft)),
     )
+  }, [])
 
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
-  }
+  const refresh = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
 
   const restore = useMutation({
     mutationFn: (itemId: string) =>
       run(api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } })),
-    onSuccess: refresh,
-    onError: (error) => toast.error(formatError(error)),
+    onSuccess: () => void refresh(),
+    onError: (error) => toast.error(refusedPublish(error, formatError)),
   })
 
   // publishing and restoring are the same write; they are separate here
@@ -131,9 +155,9 @@ function Editor({
       run(api.assessment.setItemStatus({ params: { itemId }, payload: { status: 'active' } })),
     onSuccess: () => {
       toast.success(format(m.itemsPublished))
-      refresh()
+      void refresh()
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => toast.error(refusedPublish(error, formatError)),
   })
 
   const remove = useMutation({
@@ -180,7 +204,7 @@ function Editor({
         }
       }
     },
-    onSuccess: refresh,
+    onSuccess: () => void refresh(),
     onError: (error) => {
       toast.error(formatError(error))
       refresh()
@@ -208,7 +232,7 @@ function Editor({
           },
         }),
       ),
-    onSuccess: refresh,
+    onSuccess: () => void refresh(),
     onError: (error) => {
       toast.error(formatError(error))
       refresh()
@@ -258,8 +282,9 @@ function Editor({
           }
           onMoveItem={(itemId, groupId, orderedItemIds) => {
             const moved = allItems.find((item) => item.id === itemId)
+            if (moved?.status === 'voided') return
             const crosses = moved !== undefined && moved.scoreGroupId !== groupId
-            if (crosses && batchStatus === 'active' && moved.status !== 'draft') {
+            if (crosses && batchStatus === 'active' && moved.status === 'active') {
               setPendingMove({ itemId, groupId, orderedItemIds })
               return
             }
@@ -283,6 +308,18 @@ function Editor({
       ? (drafts.find((draft) => draft.localId === selection.localId) ?? null)
       : null
 
+  // stable for as long as the same thing is being composed: the editor keeps
+  // this in an effect's dependencies, and a new function every render would
+  // hand it back its own state forever
+  const composingId = composing?.localId ?? null
+  const onHold = useMemo(
+    () =>
+      composingId === null
+        ? undefined
+        : (composition: QuestionDraft | GroupDraft) => hold(composingId, composition),
+    [hold, composingId],
+  )
+
   const editorArea = (
     <>
       {selection === null && (
@@ -300,14 +337,15 @@ function Editor({
           version={groupsVersion ?? 0}
           editing={selectedGroup as TreeGroup | null}
           parentId={composing?.kind === 'group' ? (composing.parentId ?? null) : null}
-          onTitleChange={
-            composing === null ? undefined : (title) => titleDraft(composing.localId, title)
+          held={
+            composing === null ? undefined : (held[composing.localId] as GroupDraft | undefined)
           }
+          onHold={onHold}
           onCancel={() => (composing === null ? setSelection(null) : closeDraft(composing.localId))}
-          onDone={(groupId) => {
+          onDone={async (groupId) => {
+            await refresh()
             if (composing !== null) closeDraft(composing.localId)
             setSelection(groupId === null ? null : { kind: 'group', id: groupId })
-            refresh()
           }}
         />
       )}
@@ -322,15 +360,18 @@ function Editor({
           groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
           defaultGroupId={composing?.kind === 'item' ? composing.groupId : undefined}
           options={options.data}
-          onTitleChange={
-            composing === null ? undefined : (title) => titleDraft(composing.localId, title)
+          held={
+            composing === null ? undefined : (held[composing.localId] as QuestionDraft | undefined)
           }
+          onHold={onHold}
+          onDirty={setUnsaved}
           actions={
             selectedItem === null ? undefined : (
               <QuestionActions
                 item={selectedItem}
                 batchStatus={batchStatus}
                 busy={restore.isPending || remove.isPending || publish.isPending}
+                unsaved={unsaved}
                 onPublish={() => publish.mutate(selectedItem.id)}
                 onVoid={() => setVoiding(selectedItem)}
                 onRestore={() => restore.mutate(selectedItem.id)}
@@ -339,10 +380,12 @@ function Editor({
             )
           }
           onCancel={() => (composing === null ? setSelection(null) : closeDraft(composing.localId))}
-          onSaved={(itemId) => {
+          onSaved={async (itemId) => {
+            // the created row has to be in hand before it can be selected, or
+            // the pane has nothing to show between the save and the refetch
+            await refresh()
             if (composing !== null) closeDraft(composing.localId)
             setSelection({ kind: 'item', id: itemId })
-            refresh()
           }}
         />
       )}
@@ -442,6 +485,7 @@ function QuestionActions({
   item,
   batchStatus,
   busy,
+  unsaved,
   onPublish,
   onVoid,
   onRestore,
@@ -450,6 +494,8 @@ function QuestionActions({
   item: ItemDto
   batchStatus: string
   busy: boolean
+  /** the pane holds edits the round has not been told about */
+  unsaved: boolean
   onPublish: () => void
   onVoid: () => void
   onRestore: () => void
@@ -462,7 +508,7 @@ function QuestionActions({
       {item.status === 'voided' && <Badge variant="outline">{format(m.itemsStatusVoided)}</Badge>}
       {/* one never published leaves without a trace; one published keeps its
           record and can only be withdrawn */}
-      {item.status === 'draft' && (
+      {(item.status === 'draft' || batchStatus === 'draft') && (
         <Button
           variant="ghost"
           size="sm"
@@ -474,7 +520,13 @@ function QuestionActions({
         </Button>
       )}
       {item.status === 'draft' && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={onPublish}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || unsaved}
+          title={unsaved ? format(m.itemsPublishAfterSave) : undefined}
+          onClick={onPublish}
+        >
           {format(m.itemsPublish)}
         </Button>
       )}

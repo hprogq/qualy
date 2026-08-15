@@ -147,7 +147,7 @@ export function AsyncSection({
       )
     }
     return (
-      <div className={cn('flex justify-center py-8', className)}>
+      <div className={cn('flex items-center justify-center py-8', className)}>
         <Spinner aria-label={loadingLabel} />
       </div>
     )

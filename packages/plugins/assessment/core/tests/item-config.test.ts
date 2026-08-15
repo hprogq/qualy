@@ -613,7 +613,9 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     )
 
     expect(result.renamed.groups.map((group) => group.name)).toEqual(['文体活动', '品德'])
-    expect(result.renamed.groups[0]!.itemCount).toBe(1)
+    // the count is the questions the group asks, and this one is still being
+    // composed; that it is nonetheless held is what the refusal below says
+    expect(result.renamed.groups[0]!.itemCount).toBe(0)
     const refusalsOf = (exit: Exit.Exit<unknown, unknown>) =>
       (
         errorOf<{ refusals?: readonly { reason: string; groupId: string | null }[] }>(exit)
@@ -636,6 +638,18 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const f = yield* seed('item-reason')
           const assessment = yield* Assessment
           const { batch, groupId, groupsVersion } = yield* draftBatch(f, 'Round')
+          // the round runs before anything is composed: a draft round asks
+          // nobody for a reason, so an exemption tested under one would be
+          // carried by the round's status instead of the question's
+          const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+          yield* assessment.schedulePhase(
+            f.tenant,
+            batch.id,
+            plan[0]!.id,
+            Date.now() + 3_600_000,
+            f.principal,
+          )
+          const running = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
           const item = yield* assessment.createItem(
             f.tenant,
             batch.id,
@@ -649,25 +663,25 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             f.principal,
           )
           // the rule is about a question the round has already asked: one
-          // still being composed has promised nobody anything (§32.60)
+          // still being composed has promised nobody anything (§32.60).
+          // Worth three becomes worth four with nothing said.
           const composing = yield* Effect.exit(
             assessment.updateItem(
               f.tenant,
               item.id,
-              { config: studentConfig({ value: '4.00' }) },
+              {
+                config: studentConfig({
+                  scoringConfig: {
+                    calculator: { ref: 'fixed@1', config: { value: '4.00' } },
+                    aggregator: { ref: 'sum@1', config: {} },
+                  },
+                }),
+              },
               f.principal,
             ),
           )
           yield* assessment.setItemStatus(f.tenant, item.id, { status: 'active' }, f.principal)
-          const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
-          yield* assessment.schedulePhase(
-            f.tenant,
-            batch.id,
-            plan[0]!.id,
-            Date.now() + 3_600_000,
-            f.principal,
-          )
-          // worth three becomes worth five, silently: refused
+          // worth four becomes worth five, silently: refused
           const silent = yield* Effect.exit(
             assessment.updateItem(
               f.tenant,
@@ -731,7 +745,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             },
             f.principal,
           )
-          return { composing, silent, spoken, renamed, capSilent, capSpoken }
+          return { running, composing, silent, spoken, renamed, capSilent, capSpoken }
         }),
       ),
     )
@@ -740,6 +754,9 @@ describe.runIf(postgresAvailable)('item configuration', () => {
       (errorOf<{ issues?: readonly { reason: string }[] }>(exit)?.issues ?? []).map(
         (issue) => issue.reason,
       )
+    // the exemption belongs to the question, so the round has to have been
+    // running when the composing edit went through
+    expect(result.running.status).toBe('active')
     // composing an unpublished question needs no explanation
     expect(result.composing._tag).toBe('Success')
     expect(issuesOf(result.silent)).toContain('reason-required')

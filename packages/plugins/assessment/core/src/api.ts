@@ -585,7 +585,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     // voiding keeps every record and stops the counting; restoring reopens
-    // the question for new work and revives nothing
+    // the question for new work and revives nothing. Putting a question on
+    // the round answers for its configuration too, so it refuses the way a
+    // save of that configuration would
     HttpApiEndpoint.put('setItemStatus', '/assessment/items/:itemId/status', {
       params: Schema.Struct({ itemId: id }),
       payload: Schema.Union([
@@ -593,7 +595,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         Schema.Struct({ status: Schema.Literals(['active']) }),
       ]),
       success: Schema.Struct({ item: itemView }),
-      error: [ItemNotFound, BatchReadOnly, ItemActionRefused, AccessDenied, BadRequest],
+      error: [
+        ItemNotFound,
+        BatchReadOnly,
+        ItemActionRefused,
+        ItemConfigInvalid,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

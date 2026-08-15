@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -18,6 +18,13 @@ import type { TreeGroup } from './PaperTree.tsx'
 // row keeps the id it came with, which is what tells the server this is the
 // same group rather than a new one replacing it.
 
+/** a group being composed, as the page holds it between visits */
+export interface GroupDraft {
+  name: string
+  cap: string
+  floor: string
+}
+
 export function GroupEditor({
   batchId,
   batchStatus,
@@ -25,7 +32,8 @@ export function GroupEditor({
   version,
   editing,
   parentId,
-  onTitleChange,
+  held,
+  onHold,
   onCancel,
   onDone,
 }: {
@@ -38,21 +46,27 @@ export function GroupEditor({
   editing: TreeGroup | null
   /** where a new group goes; ignored when editing */
   parentId: string | null
-  /** told the name as it is typed, so a row standing for this reads true */
-  onTitleChange?: ((title: string) => void) | undefined
+  /** what was being composed when this last unmounted, if anything */
+  held?: GroupDraft | undefined
+  /** every keystroke, so the page can hand the same composition back later */
+  onHold?: ((draft: GroupDraft) => void) | undefined
   onCancel: () => void
   onDone: (groupId: string | null) => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
-  const [name, setName] = useState(editing?.name ?? '')
-  const [cap, setCap] = useState(editing?.cap ?? '')
-  const [floor, setFloor] = useState(editing?.floor ?? '')
+  const [name, setName] = useState(held?.name ?? editing?.name ?? '')
+  const [cap, setCap] = useState(held?.cap ?? editing?.cap ?? '')
+  const [floor, setFloor] = useState(held?.floor ?? editing?.floor ?? '')
   const [reason, setReason] = useState('')
   const [refusals, setRefusals] = useState<readonly { reason: string; groupId: string | null }[]>(
     [],
   )
+
+  useEffect(() => {
+    onHold?.({ name, cap, floor })
+  }, [name, cap, floor, onHold])
 
   const parent = groups.find((group) => group.id === (editing?.parentGroupId ?? parentId)) ?? null
 
@@ -158,16 +172,7 @@ export function GroupEditor({
 
       <div className="flex max-w-md flex-col gap-4">
         <Field label={format(m.itemsGroupName)}>
-          {(id) => (
-            <Input
-              id={id}
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value)
-                onTitleChange?.(event.target.value)
-              }}
-            />
-          )}
+          {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={format(m.itemsGroupCap)} hint={format(m.itemsGroupCapHint)}>

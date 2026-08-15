@@ -73,7 +73,7 @@ export function ImportDialog({
           <DialogTitle>{format(m.importTitle)}</DialogTitle>
           <DialogDescription>{format(m.importHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="min-h-[58vh]">
+        <DialogBody className="h-[58vh]">
           <UiSlot
             token={peopleImportPicker}
             context={{ value: selection, onChange: setSelection }}

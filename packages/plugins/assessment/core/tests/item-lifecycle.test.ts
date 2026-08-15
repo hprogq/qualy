@@ -14,15 +14,51 @@ import {
   runningBatch,
   seed,
   staged,
+  type Seeded,
 } from './support/round.ts'
 
-// The end of a question's life, and who may still read the files it leaves
-// behind. Deletion is for rounds where nothing happened; voiding keeps every
-// record and stops the counting; restoring reopens the question and revives
-// nothing. Attachments answer to their story: subject, judges, batch
-// administrators - and nobody else, whatever else they hold.
+// A question's whole life. It is composed as a draft that only the people
+// running the round can see, and published on purpose; deletion is for
+// rounds where nothing happened; voiding keeps every record and stops the
+// counting; restoring reopens the question and revives nothing. Attachments
+// answer to their story: subject, judges, batch administrators - and nobody
+// else, whatever else they hold.
 
 const REVIEW_OPEN = [...GATED, 'assessment.review.process']
+
+/** another question on a round the fixture already runs, composed as a draft */
+const compose = (f: Seeded, batchId: string, scoreGroupId: string, title: string, value: string) =>
+  Effect.gen(function* () {
+    const assessment = yield* Assessment
+    return yield* assessment.createItem(
+      f.t,
+      batchId,
+      {
+        itemType: 'evidence',
+        title,
+        scoreGroupId,
+        maxEntries: 1,
+        config: {
+          entrySource: 'student',
+          formConfig: { files: {} },
+          scoringConfig: {
+            calculator: { ref: 'fixed@1', config: { value } },
+            aggregator: { ref: 'sum@1', config: {} },
+          },
+          reviewPolicy: {
+            stages: [
+              {
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+            normalTerminal: 0,
+          },
+        },
+      },
+      f.principal(f.admin),
+    )
+  })
 
 describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
@@ -150,8 +186,41 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           const draftVoid = yield* Effect.exit(
             assessment.setItemStatus(f.t, item.id, { status: 'voided', reason: 'why not' }, admin),
           )
+
+          // a supplementary stage that opens this question alone: taking the
+          // question would leave the stage open to every question instead
+          const supplementary = one<{ id: string }>(
+            yield* runSql(
+              sql`insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name)
+                  values (${f.t}, ${draft.id}, 90, 'supplementary', 'Supplementary') returning id`,
+            ),
+          ).id
+          yield* runSql(
+            sql`insert into phase_item_scopes (tenant_id, phase_id, item_id)
+                values (${f.t}, ${supplementary}, ${item.id})`,
+          )
+          const onlyInScope = yield* Effect.exit(assessment.deleteItem(f.t, item.id, admin))
+          // with a second question in the same allowance, the delete narrows it
+          const neighbour = one<{ id: string }>(
+            yield* runSql(
+              sql`insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id)
+                  values (${f.t}, ${draft.id}, 'evidence', 'neighbour question', ${groups.groups[0]!.id})
+                  returning id`,
+            ),
+          ).id
+          yield* runSql(
+            sql`insert into phase_item_scopes (tenant_id, phase_id, item_id)
+                values (${f.t}, ${supplementary}, ${neighbour})`,
+          )
+
           yield* assessment.deleteItem(f.t, item.id, admin)
           const gone = yield* Effect.exit(assessment.getItem(f.t, item.id, admin))
+          const stillScoped = one<{ remaining: number }>(
+            yield* runSql(
+              sql`select count(*)::int as remaining from phase_item_scopes
+                   where tenant_id = ${f.t} and phase_id = ${supplementary}`,
+            ),
+          ).remaining
           return {
             activeDelete,
             draftDelete,
@@ -160,6 +229,8 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             byStudent,
             restoreActive,
             draftVoid,
+            onlyInScope,
+            stillScoped,
             gone,
           }
         }),
@@ -175,6 +246,10 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(errorOf<{ _tag: string }>(result.byStudent)?._tag).toBe('ACCESS_DENIED')
     expect(refusalOf(result.restoreActive)?.reason).toBe('item-not-voided')
     expect(refusalOf(result.draftVoid)?.reason).toBe('batch-draft')
+    // the last question a stage names cannot leave silently; once the stage
+    // names another, the same delete only narrows what it opens
+    expect(refusalOf(result.onlyInScope)?.reason).toBe('item-last-in-phase-scope')
+    expect(result.stillScoped).toBe(1)
     expect(errorOf<{ _tag: string }>(result.gone)?._tag).toBe('ASSESSMENT_ITEM_NOT_FOUND')
   })
 
@@ -391,5 +466,176 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(refused(result.othersPending)).toBe('ASSESSMENT_ATTACHMENT_NOT_FOUND')
     expect(opened(result.excludedRetired).meta.id).toBeDefined()
     expect(refused(result.crossTenant)).toBe('ASSESSMENT_ATTACHMENT_NOT_FOUND')
+  })
+
+  it('asks a composed question once, and keeps the asking apart from a reopening', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('il-publish')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f)
+          const composed = yield* compose(f, g.batch.id, g.item.scoreGroupId, '志愿服务', '2.00')
+          const beforeStudent = yield* assessment.listItems(f.t, g.batch.id, f.principal(f.s1))
+          const beforeAdmin = yield* assessment.listItems(f.t, g.batch.id, admin)
+          const published = yield* assessment.setItemStatus(
+            f.t,
+            composed.id,
+            { status: 'active' },
+            admin,
+          )
+          const afterStudent = yield* assessment.listItems(f.t, g.batch.id, f.principal(f.s1))
+          const again = yield* Effect.exit(
+            assessment.setItemStatus(f.t, composed.id, { status: 'active' }, admin),
+          )
+          yield* assessment.setItemStatus(
+            f.t,
+            composed.id,
+            { status: 'voided', reason: 'withdrawn for the term' },
+            admin,
+          )
+          const restored = yield* assessment.setItemStatus(
+            f.t,
+            composed.id,
+            { status: 'active' },
+            admin,
+          )
+          const revisions = (yield* runSql(sql`
+              select diff from batch_config_revisions
+              where batch_id = ${g.batch.id} order by revision`)) as {
+            rows: { diff: Record<string, unknown> }[]
+          }
+          return {
+            composed,
+            asked: g.item.id,
+            beforeStudent: beforeStudent.items.map((row) => row.id),
+            studentManages: beforeStudent.capabilities.canManage,
+            beforeAdmin: beforeAdmin.items.map((row) => row.id),
+            adminManages: beforeAdmin.capabilities.canManage,
+            published,
+            afterStudent: afterStudent.items.map((row) => row.id),
+            again,
+            restored,
+            diffs: revisions.rows.map((row) => row.diff),
+          }
+        }),
+      ),
+    )
+
+    expect(result.composed.status).toBe('draft')
+    // whoever composes the paper sees the question; the round's own people
+    // are told about it when it is asked of them, and not before
+    expect(result.beforeStudent).toEqual([result.asked])
+    expect(result.studentManages).toBe(false)
+    expect(result.beforeAdmin).toContain(result.composed.id)
+    expect(result.adminManages).toBe(true)
+    expect(result.published.status).toBe('active')
+    expect(result.afterStudent).toContain(result.composed.id)
+    // asking is a change to what the round asks, and the round's history
+    // carries it as its own act
+    expect(result.diffs).toContainEqual({ publishedItem: result.composed.id })
+    // Asking an already asked question comes back as a refused restore: the
+    // service names the act by the status it started from, and an active
+    // question did not start from a draft.
+    expect(refusalOf(result.again)?.reason).toBe('item-not-voided')
+    expect(errorOf<{ action: string }>(result.again)?.action).toBe('restore')
+    // reopening a withdrawn question is the same write, and the record still
+    // tells the two apart
+    expect(result.restored.status).toBe('active')
+    expect(result.diffs).toContainEqual({ restoredItem: result.composed.id })
+    expect(result.diffs.filter((diff) => 'publishedItem' in diff)).toHaveLength(1)
+  })
+
+  it('leaves a question nobody was asked out of the account, and states a withdrawn one', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('il-account')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          // the asked question is answered, the answer approved, and the
+          // question then withdrawn: that is the branch with history on it
+          const filed = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, filed.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'approve' },
+            f.principal(f.reviewer),
+          )
+          yield* assessment.setItemStatus(
+            f.t,
+            g.item.id,
+            { status: 'voided', reason: 'policy withdrawn for the term' },
+            admin,
+          )
+          // a question composed and never asked, in the same group
+          const composed = yield* compose(f, g.batch.id, g.item.scoreGroupId, '晨读打卡', '5.00')
+          const answering = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: composed.id, participantId: g.p1, payload: {} },
+              s1,
+            ),
+          )
+          const account = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          // An approved entry cannot reach a question still being composed
+          // through the api: createEntry refuses it above, and setItemStatus
+          // has no way back to draft. The scorer's own guard is written for
+          // rows that got there anyway, so it is reached the only way it can
+          // be reached - by writing them.
+          const planted = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+              values (${f.t}, ${g.batch.id}, ${composed.id}, ${g.p1}, 'self', 'approved')
+              returning id`),
+          ).id
+          const revision = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+              values (${f.t}, ${planted}, ${composed.id}, ${composed.currentRevision!.id}, 1,
+                      '{}', ${f.s1}, ${f.s1}, 'self')
+              returning id`),
+          ).id
+          yield* runSql(
+            sql`update entries set current_revision_id = ${revision} where id = ${planted}`,
+          )
+          const withPlanted = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          // and the same row once the question is asked, so that the silence
+          // above is the draft status and not an entry the account never saw
+          yield* assessment.setItemStatus(f.t, composed.id, { status: 'active' }, admin)
+          const onceAsked = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          return { voided: g.item.id, planted, answering, account, withPlanted, onceAsked }
+        }),
+      ),
+    )
+
+    expect(refusalOf(result.answering)?.reason).toBe('item-not-active')
+    const linesOf = (account: {
+      lines: readonly { lineId: string; kind: string; value: string }[]
+    }) => account.lines.map((line) => [line.lineId, line.kind, line.value])
+    // the withdrawn question is stated at zero to whoever has history on it
+    expect(linesOf(result.account)).toEqual([
+      [`item:${result.voided}:voided`, 'item-voided', '0.00'],
+    ])
+    expect(result.account.total).toBe('0.00')
+    // a question never asked is absent from the account entirely, approved
+    // entry or not: at zero it would read as asked and come to nothing
+    expect(linesOf(result.withPlanted)).toEqual(linesOf(result.account))
+    expect(result.withPlanted.total).toBe('0.00')
+    expect(linesOf(result.onceAsked)).toEqual([
+      [`item:${result.voided}:voided`, 'item-voided', '0.00'],
+      [`entry:${result.planted}`, 'entry', '5.00'],
+    ])
+    expect(result.onceAsked.total).toBe('5.00')
   })
 })

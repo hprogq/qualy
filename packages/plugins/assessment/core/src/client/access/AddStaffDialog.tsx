@@ -99,7 +99,7 @@ export function AddStaffDialog({
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="flex min-h-[58vh] flex-col gap-5">
+        <DialogBody className="flex h-[58vh] flex-col gap-5">
           <Steps
             steps={STEPS.map((label) => format(label))}
             current={step}

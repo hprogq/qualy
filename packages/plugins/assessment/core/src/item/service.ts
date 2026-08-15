@@ -30,6 +30,7 @@ import {
   insertGroup,
   insertItem,
   insertItemRevision,
+  itemAloneInPhaseScope,
   itemHasEntries,
   itemOf,
   itemsOf,
@@ -139,6 +140,12 @@ export interface ReplaceScoreGroupsInput {
 
 export type CreateItemError = BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
 export type ItemLifecycleError = ItemNotFound | BatchReadOnly | AccessDenied | ItemActionRefused
+/**
+ * Putting a question on the round runs its configuration through the same
+ * trial a saved one faces, so it refuses in the same words rather than in a
+ * second vocabulary for the same problem.
+ */
+export type ItemStatusError = ItemLifecycleError | ItemConfigInvalid
 export type UpdateItemError =
   ItemNotFound | BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
 export type ReplaceGroupsError =
@@ -180,7 +187,7 @@ export interface ItemMethods {
     itemId: string,
     input: { status: 'voided'; reason: string } | { status: 'active' },
     as: Principal,
-  ) => Effect.Effect<ItemView, ItemLifecycleError>
+  ) => Effect.Effect<ItemView, ItemStatusError>
   readonly listScoreGroups: (
     tenantId: string,
     batchId: string,
@@ -284,23 +291,27 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     )
 
   /**
-   * The §6.3 gauntlet for one configuration, ending in the next revision.
+   * The §6.3 gauntlet for one configuration: everything it cites, the window
+   * it has to fit inside, and every live entry it would have to read.
    *
    * Runs inside the caller's transaction, after the batch row is locked. The
    * compatibility trial reads the current revision of every in-review or
-   * approved entry and asks the new configuration's own driver to decode it:
-   * a configuration that cannot read what it governs is refused with the
-   * entries named, and the way forward is void-and-replace, not a save that
+   * approved entry and asks the configuration's own driver to decode it: a
+   * configuration that cannot read what it governs is named with the entries
+   * it would strand, and the way forward is void-and-replace, not a save that
    * strands them.
+   *
+   * Every road to a live question goes through here - writing a configuration,
+   * and putting one on the round by publishing or restoring the question that
+   * holds it - because the window a form has to fit can move while a question
+   * that is not live is not being looked at.
    */
-  const appendRevision = (input: {
+  const issuesOf = (input: {
     tenantId: string
     item: ItemRow
     current: ItemRevisionRow | null
     materialRange: MaterialRange
     config: ItemConfigInput
-    actorId: string
-    reason: string | null
   }) =>
     Effect.gen(function* () {
       const issues = [...(yield* validateItemConfig(catalogs, input.item.itemType, input.config))]
@@ -337,6 +348,25 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           }
         }
       }
+      return issues
+    })
+
+  /**
+   * One configuration through the gauntlet, ending in the next revision.
+   * Nothing is ever updated in place: fixing a configuration is appending the
+   * next one.
+   */
+  const appendRevision = (input: {
+    tenantId: string
+    item: ItemRow
+    current: ItemRevisionRow | null
+    materialRange: MaterialRange
+    config: ItemConfigInput
+    actorId: string
+    reason: string | null
+  }) =>
+    Effect.gen(function* () {
+      const issues = yield* issuesOf(input)
       if (issues.length > 0) return yield* new ItemConfigInvalid({ issues })
 
       // a byte-identical configuration is not a new version of anything:
@@ -373,7 +403,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           cap: row.cap,
           floor: row.floor,
           sortOrder: row.sortOrder,
-          itemCount: row.itemCount,
+          // the questions the group asks, not the ones filed under it: this
+          // view reaches everybody who may read the round, and a draft is
+          // neither theirs to see nor worth anything against the cap
+          itemCount: row.activeItemCount,
         })),
       ),
     )
@@ -472,14 +505,16 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       yield* deps.requireBatchVisible(tenantId, found.batchId, as)
       return yield* withDb(
         Effect.gen(function* () {
+          const manage = yield* canManage(as, tenantId, found.batchId)
+          // the rule the list applies, applied to the one: a draft question is
+          // not yet asked of anybody, so to a reader who does not compose the
+          // paper it does not exist - naming its id must not be a way in
+          if (found.status === 'draft' && !manage) return yield* new ItemNotFound()
           const revision =
             found.currentRevisionId === null
               ? null
               : yield* revisionOf(tenantId, found.currentRevisionId)
-          return {
-            ...toView(found, revision),
-            manageable: yield* canManage(as, tenantId, found.batchId),
-          }
+          return { ...toView(found, revision), manageable: manage }
         }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       )
     },
@@ -499,7 +534,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             // only the state read under the lock is trusted: a void landing
             // between the locate read and the lock must be seen, or an edit
             // would quietly reconfigure a question that no longer runs
-            const item = (yield* itemOf(tenantId, itemId))!
+            const item = yield* itemOf(tenantId, itemId)
+            if (item === null) return yield* new ItemNotFound()
             // a voided question keeps its history; un-voiding it is its own
             // act, not a side effect of an edit
             if (item.status === 'voided') {
@@ -701,7 +737,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           const submitted = new Set(specs.flatMap((spec) => (spec.id ? [spec.id] : [])))
           const removed = existing.filter((group) => !submitted.has(group.id))
           for (const group of removed) {
-            if (group.itemCount > 0) {
+            // every question counts here, and not the number the same group
+            // shows a reader: one still being composed is as good a reason to
+            // keep the group as one already asked
+            if (group.heldItemCount > 0) {
               refusals.push({ reason: 'group-has-items', groupId: group.id })
             }
             if (specs.some((spec) => spec.parentGroupId === group.id)) {
@@ -814,23 +853,39 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            const located = yield* itemOf(tenantId, itemId)
+            if (located === null) return yield* new ItemNotFound()
+            yield* deps
+              .requireBatchVisible(tenantId, located.batchId, as)
+              .pipe(Effect.catchTag('ACCESS_DENIED', () => new ItemNotFound()))
+            const locked = yield* lockBatch(tenantId, located.batchId)
+            // a question cannot outlive the round it belongs to, so a round
+            // that is gone answers the only question asked here
+            if (locked === null) return yield* new ItemNotFound()
+            if (locked.status === 'archived') return yield* new BatchReadOnly()
+            yield* deps.requireRosterReach(as, tenantId, located.batchId)
+            // only the state read under the lock decides: a publish landing
+            // between the locate read and the lock must be seen, or a question
+            // that has since been asked would be deleted on the strength of
+            // having been a draft a moment ago
             const item = yield* itemOf(tenantId, itemId)
             if (item === null) return yield* new ItemNotFound()
-            yield* deps
-              .requireBatchVisible(tenantId, item.batchId, as)
-              .pipe(Effect.catchTag('ACCESS_DENIED', () => new ItemNotFound()))
-            const locked = yield* lockBatch(tenantId, item.batchId)
-            if (locked!.status === 'archived') return yield* new BatchReadOnly()
-            yield* deps.requireRosterReach(as, tenantId, item.batchId)
             // deletion is for questions nothing ever happened to: one never
             // published, or any question in a round that has not started -
             // and in neither case with a single entry against it. Anything
             // more is a void, which keeps the record.
-            if (item.status !== 'draft' && locked!.status !== 'draft') {
+            if (item.status !== 'draft' && locked.status !== 'draft') {
               return yield* refuse('delete', 'item-published')
             }
             if (yield* itemHasEntries(tenantId, itemId)) {
               return yield* refuse('delete', 'item-has-entries')
+            }
+            // a supplementary phase that opens only this question would be
+            // left with an empty allowance, which opens every question in the
+            // round instead. Widening a phase is the plan's decision to make,
+            // never a side effect of removing a question
+            if (yield* itemAloneInPhaseScope(tenantId, itemId)) {
+              return yield* refuse('delete', 'item-last-in-phase-scope')
             }
             yield* deleteItemRows(tenantId, itemId)
           }),
@@ -844,15 +899,23 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            const located = yield* itemOf(tenantId, itemId)
+            if (located === null) return yield* new ItemNotFound()
+            yield* deps
+              .requireBatchVisible(tenantId, located.batchId, as)
+              .pipe(Effect.catchTag('ACCESS_DENIED', () => new ItemNotFound()))
+            const locked = yield* lockBatch(tenantId, located.batchId)
+            // a question cannot outlive the round it belongs to
+            if (locked === null) return yield* new ItemNotFound()
+            if (locked.status === 'archived') return yield* new BatchReadOnly()
+            yield* deps.requireRosterReach(as, tenantId, located.batchId)
+            // where the question stands is read under the lock, never before
+            // it: whether this call publishes or restores, what it may say no
+            // to, and what it writes down afterwards all follow from that one
+            // answer, and the locate read above can already be out of date
             const item = yield* itemOf(tenantId, itemId)
             if (item === null) return yield* new ItemNotFound()
-            yield* deps
-              .requireBatchVisible(tenantId, item.batchId, as)
-              .pipe(Effect.catchTag('ACCESS_DENIED', () => new ItemNotFound()))
-            const locked = yield* lockBatch(tenantId, item.batchId)
-            if (locked!.status === 'archived') return yield* new BatchReadOnly()
-            yield* deps.requireRosterReach(as, tenantId, item.batchId)
-            if (input.status === 'voided' && locked!.status === 'draft') {
+            if (input.status === 'voided' && locked.status === 'draft') {
               // a draft round has no facts to keep; the ceremony would
               // record nothing - delete instead
               return yield* refuse('void', 'batch-draft')
@@ -896,7 +959,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               yield* deps.recordConfigChange(
                 tenantId,
                 item.batchId,
-                locked!.status,
+                locked.status,
                 { voidedItem: itemId },
                 as.userId,
                 reason,
@@ -907,6 +970,34 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               // write, and neither reaches backwards: entries voided with a
               // question stay voided, cancelled rounds stay cancelled.
               const publishing = item.status === 'draft'
+              // Both are also the moment the configuration becomes live, and
+              // it has never been judged as a live one: a draft was composed
+              // under no such trial, and the round's window is re-read only
+              // against the questions it is already asking. So it faces the
+              // save's own gauntlet here, and is refused in the save's own
+              // words.
+              const current =
+                item.currentRevisionId === null
+                  ? null
+                  : yield* revisionOf(tenantId, item.currentRevisionId)
+              if (current === null) {
+                return yield* refuse(publishing ? 'publish' : 'restore', 'item-not-configured')
+              }
+              const batch = yield* oneBatch(tenantId, item.batchId)
+              const issues = yield* issuesOf({
+                tenantId,
+                item,
+                current,
+                materialRange: deps.parseRange(String(batch!.materialRange)),
+                config: {
+                  entrySource: current.entrySource,
+                  formConfig: current.formConfig,
+                  scoringConfig: current.scoringConfig,
+                  reviewPolicy: current.reviewPolicy,
+                  displayConfig: current.displayConfig,
+                },
+              })
+              if (issues.length > 0) return yield* new ItemConfigInvalid({ issues })
               const moved = yield* setItemLifecycle({ tenantId, itemId, to: 'active' })
               if (!moved) {
                 return yield* refuse(
@@ -917,7 +1008,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               yield* deps.recordConfigChange(
                 tenantId,
                 item.batchId,
-                locked!.status,
+                locked.status,
                 publishing ? { publishedItem: itemId } : { restoredItem: itemId },
                 as.userId,
                 null,

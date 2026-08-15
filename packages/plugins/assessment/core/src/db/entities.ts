@@ -466,8 +466,11 @@ export const PhaseTemplate = defineEntity({
 // a scoped supplementary phase's item allowance; empty means unrestricted.
 // item_id carries a real key to assessment_items (cascade: only a draft
 // item with no business facts can be hard-deleted, and a phase allowance
-// naming it should go with it). Same-batch membership is the service's
-// check, like the participant allowance.
+// naming it should go with it). Since empty reads as unrestricted, the
+// cascade may narrow an allowance but never empty one: deleting the last
+// item a phase names is refused in the item service before it gets here.
+// Same-batch membership is the service's check, like the participant
+// allowance.
 export const PhaseItemScope = defineEntity({
   name: 'PhaseItemScope',
   tableName: 'phase_item_scopes',

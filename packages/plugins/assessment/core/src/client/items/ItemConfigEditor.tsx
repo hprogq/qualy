@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -66,12 +66,9 @@ const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): Stage
  * field that no longer exists. Numbering walks forward past deleted fields
  * for the same reason. Nobody types it - the label is what a person writes.
  */
-const nextKey = (fields: readonly FieldDraft[]): string => {
-  const used = fields.map((field) => Number(/^f(\d+)$/.exec(field.key)?.[1] ?? 0))
-  return `f${Math.max(0, ...used) + 1}`
-}
+const nextKey = (): string => `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
-interface Draft {
+export interface Draft {
   title: string
   scoreGroupId: string
   maxEntries: string
@@ -229,7 +226,9 @@ export function ItemConfigEditor({
   defaultGroupId,
   options,
   actions,
-  onTitleChange,
+  held,
+  onHold,
+  onDirty,
   onCancel,
   onSaved,
 }: {
@@ -245,8 +244,12 @@ export function ItemConfigEditor({
   options: ItemOptions
   /** what can be done to the question as a whole, drawn beside its title */
   actions?: React.ReactNode
-  /** told the name as it is typed, so a row standing for this reads true */
-  onTitleChange?: ((title: string) => void) | undefined
+  /** what was being composed when this last unmounted, if anything */
+  held?: Draft | undefined
+  /** every keystroke, so the page can hand the same composition back later */
+  onHold?: ((draft: Draft) => void) | undefined
+  /** whether the pane holds edits the round has not been told about yet */
+  onDirty?: ((dirty: boolean) => void) | undefined
   onCancel: () => void
   onSaved: (itemId: string) => void
 }) {
@@ -254,9 +257,24 @@ export function ItemConfigEditor({
   const run = useRunApi()
   const { format, formatError } = useI18n()
   const [draft, setDraft] = useState<Draft>(() => {
+    if (held !== undefined) return held
     const seeded = draftOf(item, groups, options)
     return defaultGroupId === undefined ? seeded : { ...seeded, scoreGroupId: defaultGroupId }
   })
+  // the page keeps what is being composed, so selecting another row and
+  // coming back finds the work rather than a blank form
+  useEffect(() => {
+    onHold?.(draft)
+  }, [draft, onHold])
+
+  // what the round would be told if this were saved now, against what it was
+  // told last: publishing a question while the pane says something else would
+  // ship the older answer under the newer one's name
+  const saved = item === null ? null : JSON.stringify(draftOf(item, groups, options))
+  const dirty = saved !== null && JSON.stringify(draft) !== saved
+  useEffect(() => {
+    onDirty?.(dirty)
+  }, [dirty, onDirty])
   const [problem, setProblem] = useState<string | null>(null)
   const [issues, setIssues] = useState<readonly { path: string; reason: string }[]>([])
   const [openField, setOpenField] = useState<string | null>(null)
@@ -366,10 +384,19 @@ export function ItemConfigEditor({
     draft.stages.every(stageReady) &&
     draft.fields.every((field) => field.label.trim() !== '')
 
-  // A live question's scoring or placement changing is a change to what a
-  // round already promised, and the api refuses it without a sentence saying
-  // why. One never published has promised nothing yet.
-  const needsReason = item !== null && item.status !== 'draft' && batchStatus === 'active'
+  // The api asks for a sentence when a live question's scoring or placement
+  // moves, and only then. Asking any wider trains people to invent one.
+  const scoringMoved =
+    item?.currentRevision !== null &&
+    item?.currentRevision !== undefined &&
+    JSON.stringify(configOf(draft).scoringConfig) !==
+      JSON.stringify(item.currentRevision.scoringConfig)
+  const placementMoved = item !== null && draft.scoreGroupId !== item.scoreGroupId
+  const needsReason =
+    item !== null &&
+    item.status === 'active' &&
+    batchStatus === 'active' &&
+    (scoringMoved || placementMoved)
 
   const field = draft.fields.find((one) => one.key === openField) ?? null
   const stage = draft.stages.find((one) => one.key === openStage) ?? null
@@ -446,10 +473,7 @@ export function ItemConfigEditor({
                     id={id}
                     value={draft.title}
                     placeholder={format(m.itemsTitlePlaceholder)}
-                    onChange={(event) => {
-                      patch({ title: event.target.value })
-                      onTitleChange?.(event.target.value)
-                    }}
+                    onChange={(event) => patch({ title: event.target.value })}
                   />
                 )}
               </Field>
@@ -534,7 +558,7 @@ export function ItemConfigEditor({
                 }))
               }
               onAdd={() => {
-                const key = nextKey(draft.fields)
+                const key = nextKey()
                 patch({ fields: [...draft.fields, blankField(key)] })
                 setOpenField(key)
               }}

@@ -967,6 +967,10 @@ const i18n = definePluginMessages({
         'The round is running and this changes what counts. Everyone affected reads this.',
     },
     itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
+    itemsPublishAfterSave: {
+      id: 'assessment/items/publish-after-save',
+      defaultMessage: 'Save first; publishing sends the saved version.',
+    },
     itemsPublish: { id: 'assessment/items/publish', defaultMessage: 'Publish' },
     itemsStatusComposing: { id: 'assessment/items/status-composing', defaultMessage: 'Draft' },
     itemsStatusDraft: { id: 'assessment/items/status-draft', defaultMessage: 'Unpublished' },
