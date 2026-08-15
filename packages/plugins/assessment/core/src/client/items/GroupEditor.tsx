@@ -10,7 +10,7 @@ import { toast } from '@qualy/ui/toast'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import type { TreeGroup } from './PaperTree.tsx'
+import type { TreeGroup } from './paper.ts'
 
 // One section of the paper: its name and its limits.
 //
@@ -215,4 +215,5 @@ const GROUP_REFUSALS: Record<string, MessageDescriptor> = {
   'parent-not-in-batch': m.itemsGroupRefusedParent,
   'parent-is-self': m.itemsGroupRefusedParent,
   'parent-cycle': m.itemsGroupRefusedParent,
+  'one-paper-only': m.itemsGroupRefusedOnePaper,
 }

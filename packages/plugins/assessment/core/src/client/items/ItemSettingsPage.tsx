@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@qualy/ui/resizable'
 import { Separator } from '@qualy/ui/separator'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -16,11 +15,13 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
 import { GroupEditor, type GroupDraft } from './GroupEditor.tsx'
-import { PaperTree, type TreeDraft, type TreeGroup, type TreeSelection } from './PaperTree.tsx'
+import { PaperStart } from './PaperStart.tsx'
+import { StructureTable, structureRows, type StructureRow } from './StructureTable.tsx'
+import type { TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
 import type { Draft as QuestionDraft } from './ItemConfigEditor.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
-import type { ItemDto } from '../entry/model.ts'
+import { trimAmount, type ItemDto } from '../entry/model.ts'
 
 // Composing a round with the paper always in sight: its structure down the
 // left, the selected part opened for editing on the right. A drag in the
@@ -42,20 +43,6 @@ const refusedPublish = (error: unknown, fallback: (value: unknown) => string): s
 
 /** a counter, so two things composed in one session never share a handle */
 let composed = 0
-
-/** whether two columns fit side by side; below that the rail stacks on top */
-const useTwoColumns = () => {
-  const [wide, setWide] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
-  )
-  useEffect(() => {
-    const query = window.matchMedia('(min-width: 1024px)')
-    const onChange = () => setWide(query.matches)
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [])
-  return wide
-}
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
@@ -104,7 +91,6 @@ function Editor({
     groupId: string
     orderedItemIds: readonly string[]
   } | null>(null)
-  const twoColumns = useTwoColumns()
 
   // one more thing being composed, selected so it can be written straight away
   const compose = (
@@ -239,7 +225,11 @@ function Editor({
     },
   })
 
-  const roots = (allGroups as readonly TreeGroup[]).filter((group) => group.parentGroupId === null)
+  const paper = (allGroups as readonly TreeGroup[]).find((group) => group.parentGroupId === null)
+  const roots = (allGroups as readonly TreeGroup[]).filter(
+    (group) => group.parentGroupId === (paper?.id ?? null),
+  )
+  const rows = structureRows(allGroups as readonly TreeGroup[], allItems, drafts, paper?.id ?? null)
   const questionCount = allItems.filter((item) => item.status === 'active').length
   const capSum =
     roots.length > 0 && roots.every((group) => group.cap !== null)
@@ -253,55 +243,61 @@ function Editor({
       ? (allGroups.find((group) => group.id === selection.id) ?? null)
       : null
 
-  const rail = (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-2 border-b px-2 pb-2">
-        <span className="text-sm font-medium">{format(m.itemsTreeTitle)}</span>
-        <span className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5 text-xs text-primary"
-          onClick={() => compose({ kind: 'group', parentId: null })}
-        >
-          {format(m.itemsGroupAdd)}
-        </Button>
-      </div>
-      <div className="py-2">
-        <PaperTree
-          groups={allGroups as readonly TreeGroup[]}
-          items={allItems}
-          drafts={drafts}
-          selection={selection}
-          onSelect={setSelection}
-          onAddItem={(groupId) => compose({ kind: 'item', groupId })}
-          // the tree cannot be written until its version has arrived: asking
-          // the api to accept a guessed one is a conflict nobody can act on
-          onAddGroup={
-            groupsVersion === null ? undefined : (parentId) => compose({ kind: 'group', parentId })
-          }
-          onMoveItem={(itemId, groupId, orderedItemIds) => {
-            const moved = allItems.find((item) => item.id === itemId)
-            if (moved?.status === 'voided') return
-            const crosses = moved !== undefined && moved.scoreGroupId !== groupId
-            if (crosses && batchStatus === 'active' && moved.status === 'active') {
-              setPendingMove({ itemId, groupId, orderedItemIds })
-              return
-            }
-            moveItem.mutate({ itemId, groupId, orderedItemIds, reason: null })
-          }}
-          onReorderGroups={(parentId, orderedGroupIds) =>
-            reorderGroups.mutate({ parentId, orderedGroupIds })
-          }
-        />
-      </div>
-      <p className="border-t px-2 pt-2 text-xs text-muted-foreground">
-        {capSum === null
-          ? format(m.itemsTreeSummaryNoCap, { count: questionCount })
-          : format(m.itemsTreeSummary, { count: questionCount, sum: capSum })}
-      </p>
-    </div>
-  )
+  const openRow = (row: StructureRow) => {
+    if (row.kind === 'group') setSelection({ kind: 'group', id: row.id })
+    else if (row.kind === 'item') setSelection({ kind: 'item', id: row.id })
+    else setSelection({ kind: 'draft', localId: row.id })
+  }
+
+  // a dropped row lands where the line was drawn: inside a group, or beside
+  // the row it was dropped on, in that row's own group
+  const moveRow = (
+    dragged: StructureRow,
+    target: StructureRow,
+    edge: 'before' | 'after' | 'into',
+  ) => {
+    if (dragged.kind === 'draft') return
+    const parentOf = (row: StructureRow): string | null =>
+      row.kind === 'group'
+        ? ((allGroups.find((one) => one.id === row.id)?.parentGroupId as string | null) ?? null)
+        : ((allItems.find((one) => one.id === row.id)?.scoreGroupId as string | null) ?? null)
+    const landing = edge === 'into' ? target.id : parentOf(target)
+    if (landing === null) return
+
+    if (dragged.kind === 'item') {
+      const siblings = allItems
+        .filter((one) => one.scoreGroupId === landing && one.id !== dragged.id)
+        .map((one) => one.id)
+      const at = edge === 'into' ? siblings.length : siblings.indexOf(target.id)
+      siblings.splice(at < 0 ? siblings.length : edge === 'before' ? at : at + 1, 0, dragged.id)
+      const moved = allItems.find((one) => one.id === dragged.id)
+      if (moved?.status === 'voided') return
+      if (
+        moved !== undefined &&
+        moved.scoreGroupId !== landing &&
+        batchStatus === 'active' &&
+        moved.status === 'active'
+      ) {
+        setPendingMove({ itemId: dragged.id, groupId: landing, orderedItemIds: siblings })
+        return
+      }
+      moveItem.mutate({
+        itemId: dragged.id,
+        groupId: landing,
+        orderedItemIds: siblings,
+        reason: null,
+      })
+      return
+    }
+
+    const siblings = (allGroups as readonly TreeGroup[])
+      .filter((one) => one.parentGroupId === landing && one.id !== dragged.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((one) => one.id)
+    const at = edge === 'into' ? siblings.length : siblings.indexOf(target.id)
+    siblings.splice(at < 0 ? siblings.length : edge === 'before' ? at : at + 1, 0, dragged.id)
+    reorderGroups.mutate({ parentId: landing, orderedGroupIds: siblings })
+  }
 
   const composing =
     selection?.kind === 'draft'
@@ -358,6 +354,10 @@ function Editor({
           materialRange={materialRange}
           item={selectedItem}
           groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
+          trail={trailOf(
+            allGroups as readonly TreeGroup[],
+            selectedItem?.scoreGroupId ?? composing?.groupId ?? null,
+          )}
           defaultGroupId={composing?.kind === 'item' ? composing.groupId : undefined}
           options={options.data}
           held={
@@ -431,22 +431,27 @@ function Editor({
 
         {/* the paper's structure and the part being written, divided by a
             handle that can be dragged rather than a line drawn down the page */}
-        {twoColumns ? (
-          <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 items-stretch">
-            <ResizablePanel defaultSize="28" minSize="18" maxSize="46">
-              <div className="h-full overflow-y-auto">{rail}</div>
-            </ResizablePanel>
-            <ResizableHandle withHandle className="mx-4" />
-            <ResizablePanel defaultSize="72" minSize="40">
-              <div className="h-full overflow-y-auto">{editorArea}</div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+        {paper === undefined ? (
+          <PaperStart batchId={batchId} onCreated={() => void refresh()} />
+        ) : selection === null ? (
+          <>
+            <PaperHeader
+              paper={paper as TreeGroup}
+              roots={roots as readonly TreeGroup[]}
+              questionCount={questionCount}
+              onEdit={() => setSelection({ kind: 'group', id: paper.id })}
+            />
+            <StructureTable
+              rows={rows}
+              selectedKey={null}
+              onOpen={openRow}
+              onAddGroup={(parentId) => compose({ kind: 'group', parentId: parentId ?? paper.id })}
+              onAddItem={(groupId) => compose({ kind: 'item', groupId: groupId ?? paper.id })}
+              onMove={moveRow}
+            />
+          </>
         ) : (
-          <div className="flex flex-col gap-5">
-            {rail}
-            <Separator />
-            {editorArea}
-          </div>
+          editorArea
         )}
       </div>
 
@@ -477,6 +482,68 @@ function Editor({
         />
       )}
     </AsyncSection>
+  )
+}
+
+/** where something sits, read from the outermost group inwards */
+const trailOf = (groups: readonly TreeGroup[], groupId: string | null): string => {
+  const names: string[] = []
+  let at = groupId
+  const seen = new Set<string>()
+  while (at !== null && !seen.has(at)) {
+    seen.add(at)
+    const group = groups.find((one) => one.id === at)
+    if (group === undefined) break
+    names.unshift(group.name)
+    at = group.parentGroupId
+  }
+  return names.join(' \u203a ')
+}
+
+/** the paper itself: what the round is called, what it is worth, where it stands */
+function PaperHeader({
+  paper,
+  roots,
+  questionCount,
+  onEdit,
+}: {
+  paper: TreeGroup
+  roots: readonly TreeGroup[]
+  questionCount: number
+  onEdit: () => void
+}) {
+  const { format } = useI18n()
+  const capped = roots.every((group) => group.cap !== null)
+  const sum = capped
+    ? trimAmount(
+        String(
+          roots.reduce((cents, group) => cents + Math.round(Number(group.cap) * 100), 0) / 100,
+        ),
+      )
+    : null
+  return (
+    <section className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b pb-4">
+      <h3 className="text-lg font-semibold">
+        {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
+      </h3>
+      <p className="text-sm tabular-nums text-muted-foreground">
+        {paper.cap === null
+          ? format(m.structureUncapped)
+          : format(m.paperTotal) + ' ' + trimAmount(paper.cap)}
+      </p>
+      <Button variant="ghost" size="sm" className="text-xs" onClick={onEdit}>
+        {format(m.paperEdit)}
+      </Button>
+      <span className="flex-1" />
+      <p className="text-xs text-muted-foreground">
+        {format(m.itemsTreeSummaryNoCap, { count: questionCount })}
+        {sum !== null &&
+          ' \u00b7 ' +
+            (paper.cap === null
+              ? format(m.paperCapSumFree, { sum })
+              : format(m.paperCapSum, { sum, total: trimAmount(paper.cap) }))}
+      </p>
+    </section>
   )
 }
 

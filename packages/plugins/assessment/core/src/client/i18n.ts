@@ -913,6 +913,10 @@ const i18n = definePluginMessages({
       id: 'assessment/items/group-refused-not-found',
       defaultMessage: 'is no longer in this round. Refresh to see the current groups.',
     },
+    itemsGroupRefusedOnePaper: {
+      id: 'assessment/items/group-refused-one-paper',
+      defaultMessage: 'must sit inside the round, which already has its outermost group.',
+    },
     itemsGroupRefusedOther: {
       id: 'assessment/items/group-refused-other',
       defaultMessage: 'could not be saved.',
@@ -1126,6 +1130,107 @@ const i18n = definePluginMessages({
     itemsTreeSummaryNoCap: {
       id: 'assessment/items/tree-summary-no-cap',
       defaultMessage: '{count, plural, one {# question} other {# questions}}',
+    },
+    itemsBasicsHint: {
+      id: 'assessment/items/basics-hint',
+      defaultMessage: 'The title and the note appear on the filing screen.',
+    },
+    itemsFieldsHint: {
+      id: 'assessment/items/fields-hint',
+      defaultMessage: 'Filled in this order. Drag to change it.',
+    },
+    itemsScoringHint: {
+      id: 'assessment/items/scoring-hint',
+      defaultMessage: 'Every approved entry counts for this. A deduction is a negative number.',
+    },
+    itemsChainHintNew: {
+      id: 'assessment/items/chain-hint-new',
+      defaultMessage: 'Step by step after submitting; approval at the last step counts it.',
+    },
+    structureDragHint: {
+      id: 'assessment/items/structure-drag-hint',
+      defaultMessage: 'Drag a row to reorder it or move it into another group.',
+    },
+    structureSearch: {
+      id: 'assessment/items/structure-search',
+      defaultMessage: 'Find a group or question',
+    },
+    structureStatusAll: { id: 'assessment/items/structure-status-all', defaultMessage: 'All' },
+    structureStatusLive: { id: 'assessment/items/structure-status-live', defaultMessage: 'Live' },
+    structureNewGroup: { id: 'assessment/items/structure-new-group', defaultMessage: 'Group' },
+    structureNewItem: { id: 'assessment/items/structure-new-item', defaultMessage: 'Question' },
+    structureColOrdinal: { id: 'assessment/items/structure-col-ordinal', defaultMessage: 'No.' },
+    structureColName: { id: 'assessment/items/structure-col-name', defaultMessage: 'Name' },
+    structureColEach: { id: 'assessment/items/structure-col-each', defaultMessage: 'Each' },
+    structureColMost: { id: 'assessment/items/structure-col-most', defaultMessage: 'Per person' },
+    structureColSource: { id: 'assessment/items/structure-col-source', defaultMessage: 'Filed by' },
+    structureColChain: { id: 'assessment/items/structure-col-chain', defaultMessage: 'Review' },
+    structureColStatus: { id: 'assessment/items/structure-col-status', defaultMessage: 'Status' },
+    structureNoMatch: {
+      id: 'assessment/items/structure-no-match',
+      defaultMessage: 'Nothing here matches.',
+    },
+    structureUncapped: { id: 'assessment/items/structure-uncapped', defaultMessage: 'no ceiling' },
+    structureUnlimited: { id: 'assessment/items/structure-unlimited', defaultMessage: 'any' },
+    structureSteps: {
+      id: 'assessment/items/structure-steps',
+      defaultMessage: '{count, plural, one {# step} other {# steps}}',
+    },
+    paperStartTitle: {
+      id: 'assessment/items/paper-start-title',
+      defaultMessage: 'Start this round a paper',
+    },
+    paperStartHint: {
+      id: 'assessment/items/paper-start-hint',
+      defaultMessage:
+        'Every question sits inside a group, and the outermost group is what the round is worth.',
+    },
+    paperStartGuided: {
+      id: 'assessment/items/paper-start-guided',
+      defaultMessage: 'Name it and set the total',
+    },
+    paperStartGuidedHint: {
+      id: 'assessment/items/paper-start-guided-hint',
+      defaultMessage: 'Two answers, then add sections and questions in any order.',
+    },
+    paperStartSuggested: {
+      id: 'assessment/items/paper-start-suggested',
+      defaultMessage: 'suggested',
+    },
+    paperStartBlank: { id: 'assessment/items/paper-start-blank', defaultMessage: 'Leave it open' },
+    paperStartBlankHint: {
+      id: 'assessment/items/paper-start-blank-hint',
+      defaultMessage: 'No total for now. Set one whenever the rules are settled.',
+    },
+    paperStartReassure: {
+      id: 'assessment/items/paper-start-reassure',
+      defaultMessage:
+        'Nothing here is final: the structure can be rearranged until the round opens.',
+    },
+    paperDefaultName: {
+      id: 'assessment/items/paper-default-name',
+      defaultMessage: 'This round',
+    },
+    paperCreateTitle: { id: 'assessment/items/paper-create-title', defaultMessage: 'The paper' },
+    paperCreateHint: {
+      id: 'assessment/items/paper-create-hint',
+      defaultMessage: 'The outermost group of the round. Its ceiling is the total.',
+    },
+    paperCreate: { id: 'assessment/items/paper-create', defaultMessage: 'Create' },
+    paperTotal: { id: 'assessment/items/paper-total', defaultMessage: 'Total' },
+    paperTotalHint: {
+      id: 'assessment/items/paper-total-hint',
+      defaultMessage: 'The sections inside cannot add up past it. Empty means no ceiling.',
+    },
+    paperFloorNone: { id: 'assessment/items/paper-floor-none', defaultMessage: 'no floor' },
+    paperEdit: { id: 'assessment/items/paper-edit', defaultMessage: 'Edit the paper' },
+    paperCapSum: {
+      id: 'assessment/items/paper-cap-sum',
+      defaultMessage: 'Sections add up to {sum} of {total}',
+    },
+    paperCapSumFree: {
+      id: 'assessment/items/paper-cap-sum-free',
+      defaultMessage: 'Sections add up to {sum}; the paper has no ceiling',
     },
     itemsTreeTitle: { id: 'assessment/items/tree-title', defaultMessage: 'Structure' },
     itemsPreviewTitle: {

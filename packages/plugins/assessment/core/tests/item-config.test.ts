@@ -543,7 +543,9 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             {
               groups: [
                 { id: groupId, name: '文体活动', parentGroupId: null, cap: '10.00', floor: '0.00' },
-                { name: '品德', parentGroupId: null, cap: null, floor: '0.00' },
+                // a section joins the paper rather than standing beside it:
+                // a round has one outermost group
+                { name: '品德', parentGroupId: groupId, cap: null, floor: '0.00' },
               ],
               expectedVersion: groupsVersion,
             },

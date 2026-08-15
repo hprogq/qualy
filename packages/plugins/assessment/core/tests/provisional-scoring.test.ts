@@ -57,17 +57,30 @@ const scoringBatch = (
       },
       admin,
     )
+    const withPaper = yield* assessment.replaceScoreGroups(
+      f.t,
+      batch.id,
+      {
+        groups: [{ name: '本轮', parentGroupId: null, cap: null, floor: null }],
+        expectedVersion: 1,
+      },
+      admin,
+    )
+    const paperId = withPaper.groups.find((row) => row.name === '本轮')!.id
     const saved = yield* assessment.replaceScoreGroups(
       f.t,
       batch.id,
       {
-        groups: spec.groups.map((group) => ({
-          name: group.name,
-          parentGroupId: null,
-          cap: group.cap ?? null,
-          floor: group.floor ?? null,
-        })),
-        expectedVersion: 1,
+        groups: [
+          { id: paperId, name: '本轮', parentGroupId: null, cap: null, floor: null },
+          ...spec.groups.map((group) => ({
+            name: group.name,
+            parentGroupId: paperId,
+            cap: group.cap ?? null,
+            floor: group.floor ?? null,
+          })),
+        ],
+        expectedVersion: withPaper.version,
       },
       admin,
     )
@@ -129,6 +142,8 @@ const scoringBatch = (
       )
     return {
       batch,
+      paperId,
+      version: saved.version,
       groupIds,
       items,
       planId: plan[0]!.id,
@@ -217,15 +232,18 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
           const notInRound = yield* Effect.exit(
             assessment.getMyResult(f.t, g.batch.id, f.principal(outsider)),
           )
-          return { first, second, veteran, deduction, volunteer, notInRound }
+          return { first, second, veteran, deduction, volunteer, notInRound, groupIds: g.groupIds }
         }),
       ),
     )
 
     expect(result.first.mode).toBe('provisional')
     expect(result.first.total).toBe('2.00')
-    expect(result.first.groups).toHaveLength(1)
-    expect(result.first.groups[0]).toMatchObject({ itemsTotal: '2.00', final: '2.00' })
+    const section = result.first.groups.find((group) => group.groupId === result.groupIds[0])!
+    expect(section).toMatchObject({ itemsTotal: '2.00', final: '2.00' })
+    // the paper adds up what its sections came to and has no ceiling of its own
+    const wholePaper = result.first.groups.find((group) => group.parentGroupId === null)!
+    expect(wholePaper).toMatchObject({ childrenTotal: '2.00', final: '2.00' })
     expect(result.first.lines.map((line) => [line.lineId, line.kind, line.value])).toEqual([
       [`entry:${result.veteran}`, 'entry', '3.00'],
       [`entry:${result.deduction.id}`, 'entry', '-1.00'],
@@ -272,7 +290,11 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
     )
 
     expect(result.account.total).toBe('2.00')
-    expect(result.account.groups.map((group) => [group.itemsTotal, group.final])).toEqual([
+    expect(
+      result.account.groups
+        .filter((group) => group.parentGroupId !== null)
+        .map((group) => [group.itemsTotal, group.final]),
+    ).toEqual([
       ['3.00', '2.00'],
       ['-1.00', '0.00'],
     ])
@@ -369,17 +391,18 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             g.batch.id,
             {
               groups: [
+                { id: g.paperId, name: '本轮', parentGroupId: null, cap: null, floor: null },
                 {
                   name: '文体活动',
                   id: g.groupIds[0]!,
-                  parentGroupId: null,
+                  parentGroupId: g.paperId,
                   cap: '10.00',
                   floor: null,
                 },
                 { name: '体育活动', cap: '4.00', floor: null, parentGroupId: g.groupIds[0]! },
                 { name: '文艺活动', cap: '6.00', floor: null, parentGroupId: g.groupIds[0]! },
               ],
-              expectedVersion: 2,
+              expectedVersion: g.version,
               reason: 'the regulation nests these',
             },
             admin,
@@ -441,7 +464,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
       childrenTotal: '0.00',
       raw: '7.00',
       final: '4.00',
-      depth: 1,
+      depth: 2,
     })
     expect(groupOf(result.arts)).toMatchObject({ itemsTotal: '2.00', final: '2.00' })
     // the parent has no questions of its own: it is worth what its children
@@ -451,7 +474,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
       childrenTotal: '6.00',
       raw: '6.00',
       final: '6.00',
-      depth: 0,
+      depth: 1,
     })
     // only the roots are counted once into the total - never the children again
     expect(result.account.total).toBe('6.00')

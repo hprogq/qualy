@@ -734,6 +734,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             }
           }
 
+          // The round has one paper, and the paper is the group everything
+          // else sits inside: its ceiling is what the whole round is worth.
+          // A second group with no parent would be a second paper.
+          if (specs.filter((spec) => (spec.parentGroupId ?? null) === null).length > 1) {
+            refusals.push({ reason: 'one-paper-only', groupId: null })
+          }
+
           const submitted = new Set(specs.flatMap((spec) => (spec.id ? [spec.id] : [])))
           const removed = existing.filter((group) => !submitted.has(group.id))
           for (const group of removed) {

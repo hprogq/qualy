@@ -17,7 +17,6 @@ import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { NativeSelect } from '@qualy/ui/native-select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
@@ -226,6 +225,7 @@ export function ItemConfigEditor({
   defaultGroupId,
   options,
   actions,
+  trail,
   held,
   onHold,
   onDirty,
@@ -244,6 +244,8 @@ export function ItemConfigEditor({
   options: ItemOptions
   /** what can be done to the question as a whole, drawn beside its title */
   actions?: React.ReactNode
+  /** where this sits in the paper, said above the name */
+  trail?: string | undefined
   /** what was being composed when this last unmounted, if anything */
   held?: Draft | undefined
   /** every keystroke, so the page can hand the same composition back later */
@@ -407,7 +409,11 @@ export function ItemConfigEditor({
         <header className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">
-              {item === null ? format(m.itemsNew) : format(m.itemsEditTitle)}
+              {trail === undefined || trail === ''
+                ? item === null
+                  ? format(m.itemsNew)
+                  : format(m.itemsEditTitle)
+                : trail}
             </p>
             <h3 className="truncate text-lg font-semibold">
               {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
@@ -438,223 +444,207 @@ export function ItemConfigEditor({
           </ul>
         )}
 
-        <Tabs defaultValue="basics">
-          <div className="flex items-center justify-between gap-2 border-b">
-            <TabsList variant="line" className="justify-start">
-              <TabsTrigger value="basics" className="flex-none">
-                {format(m.itemsTabBasics)}
-              </TabsTrigger>
-              <TabsTrigger value="fields" className="flex-none">
-                {format(m.itemsTabFields)}
-              </TabsTrigger>
-              <TabsTrigger value="scoring" className="flex-none">
-                {format(m.itemsTabScoring)}
-              </TabsTrigger>
-              <TabsTrigger value="review" className="flex-none">
-                {format(m.itemsTabReview)}
-              </TabsTrigger>
-            </TabsList>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mb-1 hidden shrink-0 text-xs text-muted-foreground lg:inline-flex"
-              aria-expanded={previewOpen}
-              onClick={() => setPreviewOpen((open) => !open)}
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden shrink-0 text-xs text-muted-foreground lg:inline-flex"
+            aria-expanded={previewOpen}
+            onClick={() => setPreviewOpen((open) => !open)}
+          >
+            {format(previewOpen ? m.itemsPreviewHide : m.itemsPreviewShow)}
+          </Button>
+        </div>
+
+        <Section title={format(m.itemsTabBasics)} hint={format(m.itemsBasicsHint)}>
+          <div className="flex max-w-2xl flex-col gap-5">
+            <Field label={format(m.itemsFieldTitle)}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={draft.title}
+                  placeholder={format(m.itemsTitlePlaceholder)}
+                  onChange={(event) => patch({ title: event.target.value })}
+                />
+              )}
+            </Field>
+            <Field
+              label={format(m.itemsFieldDescription)}
+              hint={format(m.itemsFieldDescriptionHint)}
             >
-              {format(previewOpen ? m.itemsPreviewHide : m.itemsPreviewShow)}
-            </Button>
-          </div>
-
-          <TabsContent value="basics" className="pt-4">
-            <div className="flex max-w-2xl flex-col gap-5">
-              <Field label={format(m.itemsFieldTitle)}>
+              {(id) => (
+                <Textarea
+                  id={id}
+                  rows={3}
+                  value={draft.description}
+                  onChange={(event) => patch({ description: event.target.value })}
+                />
+              )}
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label={format(m.itemsFieldGroup)}>
                 {(id) => (
-                  <Input
+                  <NativeSelect
                     id={id}
-                    value={draft.title}
-                    placeholder={format(m.itemsTitlePlaceholder)}
-                    onChange={(event) => patch({ title: event.target.value })}
-                  />
-                )}
-              </Field>
-              <Field
-                label={format(m.itemsFieldDescription)}
-                hint={format(m.itemsFieldDescriptionHint)}
-              >
-                {(id) => (
-                  <Textarea
-                    id={id}
-                    rows={3}
-                    value={draft.description}
-                    onChange={(event) => patch({ description: event.target.value })}
-                  />
-                )}
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Field label={format(m.itemsFieldGroup)}>
-                  {(id) => (
-                    <NativeSelect
-                      id={id}
-                      value={draft.scoreGroupId}
-                      onChange={(event) => patch({ scoreGroupId: event.target.value })}
-                    >
-                      {groups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  )}
-                </Field>
-                <Field label={format(m.itemsFieldEntrySource)}>
-                  {(id) => (
-                    <NativeSelect
-                      id={id}
-                      value={draft.entrySource}
-                      onChange={(event) =>
-                        patch({ entrySource: event.target.value as Draft['entrySource'] })
-                      }
-                    >
-                      <option value="student">{format(m.itemsEntrySourceStudent)}</option>
-                      <option value="administrative">
-                        {format(m.itemsEntrySourceAdministrative)}
+                    value={draft.scoreGroupId}
+                    onChange={(event) => patch({ scoreGroupId: event.target.value })}
+                  >
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
                       </option>
-                    </NativeSelect>
-                  )}
-                </Field>
-                <Field label={format(m.itemsFieldMax)}>
-                  {(id) => (
-                    <Input
-                      id={id}
-                      type="number"
-                      min={1}
-                      value={draft.maxEntries}
-                      placeholder={format(m.itemsFieldMaxUnlimited)}
-                      onChange={(event) => patch({ maxEntries: event.target.value })}
-                    />
-                  )}
-                </Field>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="fields" className="pt-4">
-            <FieldList
-              fields={draft.fields}
-              onReorder={(orderedKeys) =>
-                setDraft((previous) => ({
-                  ...previous,
-                  fields: orderedKeys.flatMap((key) => {
-                    const found = previous.fields.find((one) => one.key === key)
-                    return found === undefined ? [] : [found]
-                  }),
-                }))
-              }
-              onEdit={setOpenField}
-              onRemove={(key) =>
-                setDraft((previous) => ({
-                  ...previous,
-                  fields: previous.fields.filter((one) => one.key !== key),
-                }))
-              }
-              onAdd={() => {
-                const key = nextKey()
-                patch({ fields: [...draft.fields, blankField(key)] })
-                setOpenField(key)
-              }}
-            />
-          </TabsContent>
-
-          <TabsContent value="scoring" className="pt-4">
-            <div className="max-w-xs">
-              <Field label={format(m.itemsFixedValue)} hint={format(m.itemsFixedValueHint)}>
+                    ))}
+                  </NativeSelect>
+                )}
+              </Field>
+              <Field label={format(m.itemsFieldEntrySource)}>
+                {(id) => (
+                  <NativeSelect
+                    id={id}
+                    value={draft.entrySource}
+                    onChange={(event) =>
+                      patch({ entrySource: event.target.value as Draft['entrySource'] })
+                    }
+                  >
+                    <option value="student">{format(m.itemsEntrySourceStudent)}</option>
+                    <option value="administrative">
+                      {format(m.itemsEntrySourceAdministrative)}
+                    </option>
+                  </NativeSelect>
+                )}
+              </Field>
+              <Field label={format(m.itemsFieldMax)}>
                 {(id) => (
                   <Input
                     id={id}
-                    value={draft.fixedValue}
-                    onChange={(event) => patch({ fixedValue: event.target.value })}
+                    type="number"
+                    min={1}
+                    value={draft.maxEntries}
+                    placeholder={format(m.itemsFieldMaxUnlimited)}
+                    onChange={(event) => patch({ maxEntries: event.target.value })}
                   />
                 )}
               </Field>
             </div>
-          </TabsContent>
+          </div>
+        </Section>
 
-          <TabsContent value="review" className="pt-4">
-            <div className="flex flex-col gap-8">
-              {(['normal', 'escalation'] as const).map((chain) => {
-                const steps = draft.stages.filter((one) => one.chain === chain)
-                return (
-                  <section key={chain} className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h4 className="text-sm font-medium">
-                          {format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
-                        </h4>
-                        {chain === 'escalation' && (
-                          <p className="pt-0.5 text-xs text-muted-foreground">
-                            {format(m.itemsDoubtHint)}
-                          </p>
-                        )}
-                      </div>
-                      <Button variant="outline" size="sm" onClick={() => addStage(chain)}>
-                        <PlusIcon aria-hidden className="size-3.5" />
-                        {format(m.itemsStageAdd)}
-                      </Button>
+        <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
+          <FieldList
+            fields={draft.fields}
+            onReorder={(orderedKeys) =>
+              setDraft((previous) => ({
+                ...previous,
+                fields: orderedKeys.flatMap((key) => {
+                  const found = previous.fields.find((one) => one.key === key)
+                  return found === undefined ? [] : [found]
+                }),
+              }))
+            }
+            onEdit={setOpenField}
+            onRemove={(key) =>
+              setDraft((previous) => ({
+                ...previous,
+                fields: previous.fields.filter((one) => one.key !== key),
+              }))
+            }
+            onAdd={() => {
+              const key = nextKey()
+              patch({ fields: [...draft.fields, blankField(key)] })
+              setOpenField(key)
+            }}
+          />
+        </Section>
+
+        <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>
+          <div className="max-w-xs">
+            <Field label={format(m.itemsFixedValue)} hint={format(m.itemsFixedValueHint)}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={draft.fixedValue}
+                  onChange={(event) => patch({ fixedValue: event.target.value })}
+                />
+              )}
+            </Field>
+          </div>
+        </Section>
+
+        <Section title={format(m.itemsTabReview)} hint={format(m.itemsChainHintNew)}>
+          <div className="flex flex-col gap-8">
+            {(['normal', 'escalation'] as const).map((chain) => {
+              const steps = draft.stages.filter((one) => one.chain === chain)
+              return (
+                <section key={chain} className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-sm font-medium">
+                        {format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
+                      </h4>
+                      {chain === 'escalation' && (
+                        <p className="pt-0.5 text-xs text-muted-foreground">
+                          {format(m.itemsDoubtHint)}
+                        </p>
+                      )}
                     </div>
-                    {steps.length === 0 && chain === 'escalation' ? (
-                      <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
-                    ) : (
-                      // a long chain runs off the side rather than wrapping into
-                      // something that no longer reads as one path
-                      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-2">
-                        {chain === 'normal' && (
-                          <>
-                            <FlowNode
-                              title={format(m.itemsFlowSubmit)}
-                              sub={format(m.itemsFlowSubmitBy)}
-                            />
-                            <FlowArrow />
-                          </>
-                        )}
-                        {steps.map((one, index) => (
-                          <div key={one.key} className="flex shrink-0 items-center gap-2">
-                            {index > 0 && <FlowArrow />}
-                            <StageCard
-                              index={index}
-                              last={index === steps.length - 1}
-                              chain={chain}
-                              stage={one}
-                              options={options}
-                              removable={chain === 'escalation' || steps.length > 1}
-                              onOpen={() => setOpenStage(one.key)}
-                              onMove={(delta) => moveStage(one.key, delta)}
-                              onRemove={() =>
-                                setDraft((previous) => ({
-                                  ...previous,
-                                  stages: previous.stages.filter((s) => s.key !== one.key),
-                                }))
-                              }
-                            />
-                          </div>
-                        ))}
-                        {chain === 'normal' && (
-                          <>
-                            <FlowArrow />
-                            <FlowNode
-                              title={format(m.itemsFlowDone)}
-                              sub={format(m.itemsFlowDoneSub)}
-                              tone="done"
-                            />
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </section>
-                )
-              })}
-            </div>
-          </TabsContent>
-        </Tabs>
+                    <Button variant="outline" size="sm" onClick={() => addStage(chain)}>
+                      <PlusIcon aria-hidden className="size-3.5" />
+                      {format(m.itemsStageAdd)}
+                    </Button>
+                  </div>
+                  {steps.length === 0 && chain === 'escalation' ? (
+                    <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
+                  ) : (
+                    // a long chain runs off the side rather than wrapping into
+                    // something that no longer reads as one path
+                    <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-2">
+                      {chain === 'normal' && (
+                        <>
+                          <FlowNode
+                            title={format(m.itemsFlowSubmit)}
+                            sub={format(m.itemsFlowSubmitBy)}
+                          />
+                          <FlowArrow />
+                        </>
+                      )}
+                      {steps.map((one, index) => (
+                        <div key={one.key} className="flex shrink-0 items-center gap-2">
+                          {index > 0 && <FlowArrow />}
+                          <StageCard
+                            index={index}
+                            last={index === steps.length - 1}
+                            chain={chain}
+                            stage={one}
+                            options={options}
+                            removable={chain === 'escalation' || steps.length > 1}
+                            onOpen={() => setOpenStage(one.key)}
+                            onMove={(delta) => moveStage(one.key, delta)}
+                            onRemove={() =>
+                              setDraft((previous) => ({
+                                ...previous,
+                                stages: previous.stages.filter((s) => s.key !== one.key),
+                              }))
+                            }
+                          />
+                        </div>
+                      ))}
+                      {chain === 'normal' && (
+                        <>
+                          <FlowArrow />
+                          <FlowNode
+                            title={format(m.itemsFlowDone)}
+                            sub={format(m.itemsFlowDoneSub)}
+                            tone="done"
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        </Section>
       </div>
 
       {previewOpen && (
@@ -692,6 +682,27 @@ export function ItemConfigEditor({
         />
       )}
     </div>
+  )
+}
+
+/** one part of the question, with the single line that says what it decides */
+function Section({
+  title,
+  hint,
+  children,
+}: {
+  title: string
+  hint: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-3 border-t pt-5 first-of-type:border-t-0 first-of-type:pt-0">
+      <div>
+        <h4 className="text-sm font-medium">{title}</h4>
+        <p className="pt-0.5 text-xs text-muted-foreground">{hint}</p>
+      </div>
+      {children}
+    </section>
   )
 }
 
