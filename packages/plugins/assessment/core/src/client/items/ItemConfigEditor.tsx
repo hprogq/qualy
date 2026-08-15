@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -223,6 +223,22 @@ const configOf = (draft: Draft) => ({
   })(),
 })
 
+/**
+ * A composition reduced to what a save would actually send.
+ *
+ * The handles the pen uses to tell one field or one review step from another
+ * are its own bookkeeping - they are minted fresh every time a stored
+ * question is read back into it, and they never leave the browser. Comparing
+ * them would be comparing two readings rather than two questions.
+ */
+const stated = (draft: Draft): string =>
+  JSON.stringify({
+    title: draft.title.trim(),
+    scoreGroupId: draft.scoreGroupId,
+    maxEntries: draft.maxEntries.trim() === '' ? null : Math.max(1, Number(draft.maxEntries)),
+    config: configOf(draft),
+  })
+
 export function ItemConfigEditor({
   batchId,
   batchStatus,
@@ -287,11 +303,19 @@ export function ItemConfigEditor({
     onHold?.(draft)
   }, [draft, onHold])
 
-  // what the round would be told if this were saved now, against what it was
+  // What the round would be told if this were saved now, against what it was
   // told last: publishing a question while the pane says something else would
-  // ship the older answer under the newer one's name
-  const saved = item === null ? null : JSON.stringify(draftOf(item, groups, options))
-  const dirty = saved !== null && JSON.stringify(draft) !== saved
+  // ship the older answer under the newer one's name.
+  //
+  // Compared as what a save would send, not as the pen holding it. The pen
+  // mints a fresh handle for every review step each time it reads a question
+  // back, so comparing the two pens said "changed" for ever, and every saved
+  // question refused to publish because it thought it was unsaved.
+  const wasSaid = useMemo(
+    () => (item === null ? null : stated(draftOf(item, groups, options))),
+    [item, groups, options],
+  )
+  const dirty = wasSaid !== null && stated(draft) !== wasSaid
   useEffect(() => {
     onDirty?.(dirty)
   }, [dirty, onDirty])

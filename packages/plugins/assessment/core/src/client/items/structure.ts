@@ -81,15 +81,19 @@ export const structureRows = (
     return { count, ceiling }
   }
 
+  // Only sections are numbered, so only sections count. A question sharing a
+  // level with them used to take a number nothing showed, and the section
+  // after it appeared to start at two.
+  // Only sections are numbered, so only sections count. A question sharing a
+  // level with them used to take a number nothing showed, and the section
+  // after it appeared to start at two.
   const walk = (parentId: string, prefix: string, depth: number) => {
     let counter = 0
     for (const item of items.filter((one) => one.scoreGroupId === parentId)) {
-      counter += 1
-      const ordinal = prefix === '' ? String(counter) : `${prefix}.${counter}`
       rows.push({
         key: `i:${item.id}`,
         depth,
-        ordinal,
+        ordinal: '',
         kind: 'item',
         id: item.id,
         name: item.title,
@@ -101,11 +105,10 @@ export const structureRows = (
       })
     }
     for (const draft of drafts.filter((one) => one.groupId === parentId)) {
-      counter += 1
       rows.push({
         key: `d:${draft.localId}`,
         depth,
-        ordinal: prefix === '' ? String(counter) : `${prefix}.${counter}`,
+        ordinal: '',
         kind: 'draft',
         id: draft.localId,
         name: draft.title,

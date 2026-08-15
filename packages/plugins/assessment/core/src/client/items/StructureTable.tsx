@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   ChevronDownIcon,
   EllipsisVerticalIcon,
+  FolderIcon,
   FolderPlusIcon,
   FilePlusIcon,
   PlusIcon,
@@ -265,21 +266,27 @@ function GroupRow({
     <div
       {...handlers}
       className={cn(
-        'flex cursor-pointer items-center gap-2 border-b bg-muted/50 px-3 py-1.5 transition-colors last:border-b-0 max-md:flex-wrap md:gap-3',
+        'cursor-pointer border-b bg-muted/50 px-3 py-2.5 transition-colors last:border-b-0',
+        'flex flex-wrap items-center gap-2',
+        // the same last column as a question row, so every menu down the
+        // table sits on one line rather than wherever its row's words ended
+        'md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto_1.75rem] md:gap-3',
         selected ? 'bg-primary/10' : 'hover:bg-muted',
         mark,
       )}
       style={{ paddingLeft: `${row.depth * 1.25 + 0.75}rem` }}
     >
-      <span className="hidden w-14 shrink-0 text-xs tabular-nums text-muted-foreground md:block">
+      <span className="hidden text-xs tabular-nums text-muted-foreground md:block">
         {row.ordinal}
       </span>
       <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className="flex min-w-0 items-center gap-2">
-          <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
           <span className="text-xs tabular-nums text-muted-foreground md:hidden">
             {row.ordinal}
           </span>
+          {/* what a section is, rather than a chevron promising a fold that
+              these rows do not do */}
+          <FolderIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 truncate text-sm font-semibold">
             {row.name.trim() === '' ? format(m.itemsGroupUnnamed) : row.name}
           </span>
@@ -303,20 +310,22 @@ function GroupRow({
       {/* the two things a section can gain are one press away on a pointer
           and one more press away in the menu, which is where they live when
           there is no room for them */}
-      <RowButton
-        label={format(m.structureRowAddGroup)}
-        onClick={(event) => {
-          event.stopPropagation()
-          onAddGroup()
-        }}
-      />
-      <RowButton
-        label={format(m.structureNewItem)}
-        onClick={(event) => {
-          event.stopPropagation()
-          onAddItem()
-        }}
-      />
+      <span className="hidden items-center gap-2 md:flex">
+        <RowButton
+          label={format(m.structureRowAddGroup)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onAddGroup()
+          }}
+        />
+        <RowButton
+          label={format(m.structureNewItem)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onAddItem()
+          }}
+        />
+      </span>
       <RowMenu>
         <DropdownMenuItem onSelect={onOpen}>{format(m.structureOpen)}</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddGroup}>{format(m.itemsOutlineAddGroup)}</DropdownMenuItem>
@@ -423,6 +432,12 @@ function ItemRow({
         style={{ paddingLeft: `${row.depth * 1.25 + 0.75}rem` }}
       >
         <span className="flex items-center gap-2">
+          {row.depth > 0 && (
+            <span
+              aria-hidden
+              className="mt-[-0.35rem] mr-2 size-2 shrink-0 rounded-bl-[3px] border-b border-l"
+            />
+          )}
           {name}
           <span className="flex-1" />
           <StatusPill status={row.status} />
@@ -446,9 +461,18 @@ function ItemRow({
       >
         <span />
         <span
-          className="flex min-w-0 items-center"
+          className="flex min-w-0 items-center gap-2"
           style={{ paddingLeft: `${row.depth * 1.25}rem` }}
         >
+          {/* the guide is what tells a question inside a section from one
+              sitting straight on the paper; indentation alone is a gap the
+              eye has nothing to measure against */}
+          {row.depth > 0 && (
+            <span
+              aria-hidden
+              className="mt-[-0.35rem] mr-2 size-2 shrink-0 rounded-bl-[3px] border-b border-l"
+            />
+          )}
           {name}
         </span>
         <span className="text-right tabular-nums">{each}</span>
@@ -496,12 +520,7 @@ function RowButton({
   onClick: (event: React.MouseEvent) => void
 }) {
   return (
-    <Button
-      variant="outline"
-      size="xs"
-      className="hidden shrink-0 md:inline-flex"
-      onClick={onClick}
-    >
+    <Button variant="outline" size="xs" className="shrink-0" onClick={onClick}>
       <PlusIcon aria-hidden />
       {label}
     </Button>
@@ -523,7 +542,15 @@ function RowMenu({ children }: { children: React.ReactNode }) {
           <EllipsisVerticalIcon aria-hidden />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
+      {/* A portal's events travel up the React tree, not the DOM one, so a
+          press in here reaches the row this menu was opened from - which
+          opened the question every time somebody published one from the
+          list. */}
+      <DropdownMenuContent
+        align="end"
+        className="w-40"
+        onClick={(event) => event.stopPropagation()}
+      >
         {children}
       </DropdownMenuContent>
     </DropdownMenu>
