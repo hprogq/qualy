@@ -37,8 +37,10 @@ export const FIELD_TYPE_LABEL = {
   attachment: m.itemsTypeAttachment,
 } as const
 
-/** the five columns a field line reads across */
+/** the five columns a field line reads across, once there is room for them */
 const COLUMNS = 'grid-cols-[1rem_minmax(0,1fr)_6.25rem_3.25rem_12.5rem_1.5rem] gap-3'
+const COLUMNS_AT_SM =
+  'sm:grid-cols-[1rem_minmax(0,1fr)_6.25rem_3.25rem_12.5rem_1.5rem] sm:gap-x-3 sm:gap-y-0'
 
 export function FieldList({
   fields,
@@ -95,7 +97,14 @@ export function FieldList({
 
   return (
     <div className="flex flex-col">
-      <div className={cn('grid border-b px-0.5 pb-2 text-[11.5px] text-muted-foreground', COLUMNS)}>
+      {/* the columns need the width; narrower than that a field is its name
+          with what it accepts written underneath */}
+      <div
+        className={cn(
+          'hidden border-b px-0.5 pb-2 text-[11.5px] text-muted-foreground sm:grid',
+          COLUMNS,
+        )}
+      >
         <span />
         <span>{format(m.itemsFieldLabel)}</span>
         <span>{format(m.itemsFieldType)}</span>
@@ -133,8 +142,10 @@ export function FieldList({
               }}
               onClick={() => onOpen(open ? null : field.key)}
               className={cn(
-                'grid h-10.5 cursor-pointer items-center border-b border-border/60 px-0.5 transition-colors hover:bg-accent/30',
-                COLUMNS,
+                'cursor-pointer border-b border-border/60 px-0.5 transition-colors hover:bg-accent/30',
+                'grid grid-cols-[1rem_minmax(0,1fr)_1.5rem] items-center gap-x-3 gap-y-0.5 py-2',
+                'sm:h-10.5 sm:py-0',
+                COLUMNS_AT_SM,
                 marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
                 marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
               )}
@@ -146,11 +157,15 @@ export function FieldList({
               <span className="min-w-0 truncate text-[13.5px]">
                 {field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
               </span>
-              <span className="text-[13px]">{format(FIELD_TYPE_LABEL[field.type])}</span>
-              <span className="text-[12.5px] text-muted-foreground">
+              <span className="hidden text-[13px] sm:block">
+                {format(FIELD_TYPE_LABEL[field.type])}
+              </span>
+              <span className="hidden text-[12.5px] text-muted-foreground sm:block">
                 {field.required ? format(m.itemsFieldRequired) : ''}
               </span>
-              <span className="truncate text-[12.5px] text-muted-foreground">{limitOf(field)}</span>
+              <span className="hidden truncate text-[12.5px] text-muted-foreground sm:block">
+                {limitOf(field)}
+              </span>
               <ChevronDownIcon
                 aria-hidden
                 className={cn(
@@ -158,6 +173,16 @@ export function FieldList({
                   open && 'rotate-180',
                 )}
               />
+              {/* what the columns would have said, on its own line */}
+              <span className="col-start-2 text-[11.5px] text-muted-foreground sm:hidden">
+                {[
+                  format(FIELD_TYPE_LABEL[field.type]),
+                  field.required ? format(m.itemsFieldRequired) : '',
+                  limitOf(field),
+                ]
+                  .filter((fact) => fact !== '')
+                  .join(` ${format(m.listSeparator).trim()} `)}
+              </span>
             </div>
             {open && (
               <FieldSettings

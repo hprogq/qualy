@@ -1,8 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
-import { cn } from '../lib/utils.ts'
-
 // The entrance a screen makes: a short fade and lift, once, on mount.
 // Deliberately subtle - page content should arrive, not perform.
 export function Reveal({
@@ -102,32 +100,24 @@ export function Resizing({ className, children }: { className?: string; children
 // all, and only whoever changed the screen knows which happened.
 export type DrillMove = 'in' | 'out' | 'next' | 'previous' | 'none'
 
-/** how far the arriving screen starts from where it settles, and where the leaving one ends */
-const OFFSET: Record<DrillMove, { axis: 'x' | 'y'; from: number; to: number }> = {
-  in: { axis: 'x', from: 26, to: -14 },
-  out: { axis: 'x', from: -26, to: 14 },
-  next: { axis: 'y', from: 18, to: -10 },
-  previous: { axis: 'y', from: -18, to: 10 },
-  none: { axis: 'x', from: 0, to: 0 },
+/** how far the arriving screen starts from where it settles */
+const OFFSET: Record<DrillMove, { axis: 'x' | 'y'; from: number }> = {
+  in: { axis: 'x', from: 26 },
+  out: { axis: 'x', from: -26 },
+  next: { axis: 'y', from: 18 },
+  previous: { axis: 'y', from: -18 },
+  none: { axis: 'x', from: 0 },
 }
 
 interface Going {
   axis: 'x' | 'y'
   from: number
-  to: number
   fade: boolean
 }
 
 const drilling = {
   enter: (going: Going) => ({ opacity: going.fade ? 0 : 1, [going.axis]: going.from }),
-  settled: { opacity: 1, x: 0, y: 0, pointerEvents: 'auto' as const },
-  leave: (going: Going) => ({
-    opacity: going.fade ? 0 : 1,
-    [going.axis]: going.to,
-    // on its way out it is scenery, and a click meant for what is arriving
-    // must not land on it
-    pointerEvents: 'none' as const,
-  }),
+  settled: { opacity: 1, x: 0, y: 0 },
 }
 
 export function Drill({
@@ -153,26 +143,24 @@ export function Drill({
         ? { ...OFFSET.none, fade: true }
         : { ...OFFSET[move], fade: true }
 
-  // The two screens cross over in one grid cell rather than queueing. Waiting
-  // for the old one to finish leaving would mean the new one does not exist
-  // yet, and anything it is expected to fill - a heading band it renders
-  // into, say - would sit empty for the length of the exit.
+  // Only what arrives is drawn. The screen being left is gone in the same
+  // commit, which is what keeps the two out of each other's way: held on
+  // screen together they show through one another and fight over how tall
+  // the page is, and held apart in sequence the arriving screen does not
+  // exist yet - so anything it is expected to fill, a heading band it
+  // renders into, sits empty for the length of the exit. The direction it
+  // comes from is enough to say which way the reader went.
   return (
-    <div className={cn('grid', className)}>
-      <AnimatePresence custom={going} initial={false}>
-        <motion.div
-          key={drillKey}
-          custom={going}
-          className="col-start-1 row-start-1 flex min-w-0 flex-col"
-          variants={drilling}
-          initial="enter"
-          animate="settled"
-          exit="leave"
-          transition={{ duration: move === 'none' ? 0 : 0.2, ease: [0.22, 0.61, 0.36, 1] }}
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
-    </div>
+    <motion.div
+      key={drillKey}
+      custom={going}
+      className={className}
+      variants={drilling}
+      initial="enter"
+      animate="settled"
+      transition={{ duration: move === 'none' ? 0 : 0.2, ease: [0.22, 0.61, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
   )
 }

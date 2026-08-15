@@ -436,58 +436,66 @@ export function ItemConfigEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* the page's own band says which question this is; nothing above the
-          content repeats it */}
+      {/* The page's own band says which question this is - built to the same
+          two lines every section heading has, name over context, so taking
+          the band over changes what it says and not where anything sits. */}
       <BatchBanner>
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              aria-label={format(m.itemsBack)}
-              className="flex size-6.5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              onClick={onCancel}
-            >
-              <ArrowLeftIcon aria-hidden className="size-3.5" />
-            </button>
-            <p className="min-w-0 truncate text-[12.5px] text-muted-foreground">
-              {trail.map((name, index) => (
-                <span key={`${index}:${name}`}>
-                  {index > 0 && <span className="px-1.5 text-muted-foreground/60">&rsaquo;</span>}
-                  {name}
-                </span>
-              ))}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-1">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2.5">
+              <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">
+                {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
+              </h1>
+              <StandingChip item={item} />
+            </div>
+            <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+              <button
+                type="button"
+                aria-label={format(m.itemsBack)}
+                className="flex size-5 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-foreground"
+                onClick={onCancel}
+              >
+                <ArrowLeftIcon aria-hidden className="size-3.5" />
+              </button>
+              <span className="min-w-0 truncate">
+                {trail.map((name, index) => (
+                  <span key={`${index}:${name}`}>
+                    {index > 0 && <span className="px-1.5 text-muted-foreground/60">&rsaquo;</span>}
+                    {name}
+                  </span>
+                ))}
+              </span>
+              {at >= 0 && paper.length > 1 && (
+                <>
+                  <span aria-hidden className="text-muted-foreground/50">
+                    &middot;
+                  </span>
+                  <span className="shrink-0">
+                    {format(m.itemsPaperPosition, { index: at + 1, total: paper.length })}
+                  </span>
+                </>
+              )}
             </p>
-            <span className="flex-1" />
-            {at >= 0 && paper.length > 1 && (
-              <>
-                <p className="text-[12.5px] whitespace-nowrap text-muted-foreground">
-                  {format(m.itemsPaperPosition, { index: at + 1, total: paper.length })}
-                </p>
-                <span className="flex gap-0.5">
-                  <StepButton
-                    label={format(m.itemsPrevious)}
-                    disabled={at === 0}
-                    onClick={() => step(-1)}
-                  >
-                    <ChevronUpIcon aria-hidden className="size-3.5" />
-                  </StepButton>
-                  <StepButton
-                    label={format(m.itemsNext)}
-                    disabled={at === paper.length - 1}
-                    onClick={() => step(1)}
-                  >
-                    <ChevronDownIcon aria-hidden className="size-3.5" />
-                  </StepButton>
-                </span>
-              </>
-            )}
           </div>
-          <div className="flex items-center gap-3">
-            <h2 className="min-w-0 truncate text-[22px] font-semibold tracking-tight">
-              {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
-            </h2>
-            <StandingChip item={item} />
-            <span className="flex-1" />
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {at >= 0 && paper.length > 1 && (
+              <span className="flex gap-0.5">
+                <StepButton
+                  label={format(m.itemsPrevious)}
+                  disabled={at === 0}
+                  onClick={() => step(-1)}
+                >
+                  <ChevronUpIcon aria-hidden className="size-3.5" />
+                </StepButton>
+                <StepButton
+                  label={format(m.itemsNext)}
+                  disabled={at === paper.length - 1}
+                  onClick={() => step(1)}
+                >
+                  <ChevronDownIcon aria-hidden className="size-3.5" />
+                </StepButton>
+              </span>
+            )}
             {menu !== undefined && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

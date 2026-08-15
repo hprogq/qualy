@@ -52,9 +52,9 @@ export function BatchScreen({
   description?: string
   size?: 'default' | 'wide' | 'full'
   /**
-   * Which heading the band is showing. Passing this at all declares that the
-   * section hands the band over, which is what reserves room for both
-   * headings - a section that only ever shows its own name pays nothing.
+   * Which heading the band is showing. A section that opens one of its own
+   * rows hands the band to it and says so here; anything it hands over is
+   * expected to keep the band's own shape, so the swap moves nothing.
    */
   banner?: 'section' | 'open'
   /** rendered once the batch is loaded, because a section without one is blank */
@@ -66,7 +66,6 @@ export function BatchScreen({
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   // the section's own name is what shows unless it says otherwise
   const showing = banner ?? 'section'
-  const handsOver = banner !== undefined
 
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
@@ -90,20 +89,25 @@ export function BatchScreen({
           aria-hidden
           className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:repeating-linear-gradient(-45deg,currentColor_0_1px,transparent_1px_24px)] [mask-image:radial-gradient(130%_115%_at_100%_0%,black,transparent_62%)]"
         />
-        {/* Two headings crossfading where they stand. A band that hands over
-            keeps room for both, so the swap moves nothing at all - the few
-            pixels between them are not worth watching travel. Resizing is
-            the fallback for a heading that genuinely outgrows that room,
-            which is copy wrapping on a narrow window. */}
+        {/* Two headings changing places where they stand. Whatever takes the
+            band over is built to the same shape as the section's own
+            heading, so the swap moves nothing; Resizing is the fallback for
+            a heading that genuinely outgrows it, which is copy wrapping on a
+            narrow window rather than anything the swap itself does.
+
+            Only the heading being left behind fades. Handing the band over,
+            that reads as a crossfade, because the one arriving renders in
+            the same breath. Taking it back, the one leaving is already gone
+            - the screen it belonged to left with it - so a fade in would be
+            a fade up from nothing, which is the band blinking. */}
         <PageContainer size={size} className="relative py-6">
           <Resizing>
-            <div className={cn('relative', handsOver && 'min-h-18')}>
+            <div className="relative">
               <div
                 className={cn(
-                  'transition-opacity duration-200',
                   showing === 'section'
                     ? 'opacity-100'
-                    : 'pointer-events-none absolute inset-x-0 top-0 opacity-0',
+                    : 'pointer-events-none absolute inset-x-0 top-0 opacity-0 transition-opacity duration-200',
                 )}
               >
                 <PageHeader title={title} description={description} variant="banner" />
@@ -111,10 +115,9 @@ export function BatchScreen({
               <div
                 ref={setSlot}
                 className={cn(
-                  'transition-opacity duration-200',
                   showing === 'section'
                     ? 'pointer-events-none absolute inset-x-0 top-0 opacity-0'
-                    : 'opacity-100',
+                    : 'opacity-100 transition-opacity duration-200',
                 )}
               />
             </div>

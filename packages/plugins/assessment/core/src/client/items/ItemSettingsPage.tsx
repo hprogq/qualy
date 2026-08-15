@@ -67,7 +67,6 @@ export default function ItemSettingsPage() {
     <BatchScreen
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
-      size="wide"
       banner={view.open === null ? 'section' : 'open'}
     >
       {(batch) => (
@@ -591,28 +590,44 @@ function PaperSummary({
   const matches =
     sum !== null && paper.cap !== null && cents === Math.round(Number(paper.cap) * 100)
   const unpublished = items.filter((item) => item.status === 'draft').length
+  // the bar runs the length of the paper when the paper has one, so the part
+  // nobody has handed out yet is visible as the part nobody has handed out
+  const span = paper.cap === null ? cents : Math.max(cents, Math.round(Number(paper.cap) * 100))
+
+  // what the paper is worth, said the way anyone would say it out loud
+  const limits = [
+    `${format(m.paperTotal)} ${paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}`,
+    paper.floor === null
+      ? format(m.paperFloorNone)
+      : `${format(m.itemsGroupFloor)} ${trimAmount(paper.floor)}`,
+  ].join(' · ')
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border px-4.5 py-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-6 gap-y-1">
-          <Readout label={format(m.paperNameLabel)} strong>
-            {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
-          </Readout>
-          <Readout label={format(m.paperTotal)}>
-            {paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}
-          </Readout>
-          <Readout label={format(m.itemsGroupFloor)}>
-            {paper.floor === null ? format(m.paperFloorNone) : trimAmount(paper.floor)}
-          </Readout>
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onEdit}>
-            <PencilIcon aria-hidden className="size-3.5" />
-            {format(m.paperEdit)}
-          </Button>
+    <section className="flex flex-col gap-3 rounded-lg border px-4.5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+        {/* the paper's name leads and its two limits sit under it, because
+            labelling every value turns one sentence into a row of forms */}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-1">
+            <h3 className="min-w-0 truncate text-[15px] font-semibold">
+              {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+              onClick={onEdit}
+            >
+              <PencilIcon aria-hidden className="size-3" />
+              {format(m.paperEdit)}
+            </Button>
+          </div>
+          <p className="text-[13px] tabular-nums text-muted-foreground">{limits}</p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-0.5">
+
+        <div className="flex min-w-0 flex-col gap-0.5 max-sm:w-full sm:shrink-0 sm:items-end sm:text-right">
           {sum !== null && (
-            <p className="flex items-center gap-1.5 text-[13.5px] font-medium whitespace-nowrap">
+            <p className="flex items-baseline gap-1.5 text-[13px] font-medium sm:whitespace-nowrap">
               {matches && <CheckIcon aria-hidden className="size-3.5" />}
               {matches
                 ? format(m.paperCapMatch, { sum })
@@ -622,7 +637,7 @@ function PaperSummary({
             </p>
           )}
           {sum === null && roots.length > 0 && (
-            <p className="text-[13.5px] font-medium whitespace-nowrap">{format(m.paperCapUnset)}</p>
+            <p className="text-[13px] font-medium">{format(m.paperCapUnset)}</p>
           )}
           <p className="text-xs text-muted-foreground">
             {format(m.paperTally, {
@@ -637,13 +652,16 @@ function PaperSummary({
       </div>
 
       {sum !== null && cents > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full">
+        <div className="flex flex-col gap-2">
+          {/* measured against the paper, not against the sections themselves:
+              filling the bar with sections adding up to 75 of 100 would draw
+              a full round out of one that is a quarter unallocated */}
+          <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-muted">
             {roots.map((group, index) => (
               <div
                 key={group.id}
                 style={{
-                  width: `${(Math.round(Number(group.cap) * 100) / cents) * 100}%`,
+                  width: `${(Math.round(Number(group.cap) * 100) / span) * 100}%`,
                   background: `var(--chart-${(index % 4) + 2})`,
                 }}
               />
@@ -668,32 +686,6 @@ function PaperSummary({
         </div>
       )}
     </section>
-  )
-}
-
-/**
- * One fact about the paper, read rather than edited.
- *
- * Drawn as text: a box around it looks like a field, and a field that cannot
- * be typed into is a promise the screen does not keep. Changing any of it
- * goes through the same panel every other section uses.
- */
-function Readout({
-  label,
-  strong,
-  children,
-}: {
-  label: string
-  strong?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className={cn('min-w-0 truncate text-sm tabular-nums', strong && 'font-medium')}>
-        {children}
-      </span>
-    </span>
   )
 }
 

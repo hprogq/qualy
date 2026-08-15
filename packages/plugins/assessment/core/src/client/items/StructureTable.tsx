@@ -237,15 +237,18 @@ export function StructureTable({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">{format(m.itemsTreeTitle)}</h3>
-        <p className="text-xs text-muted-foreground">{format(m.structureDragHint)}</p>
+        {/* dragging is a pointer's trick, so the line about it is for pointers */}
+        <p className="hidden text-xs text-muted-foreground md:block">
+          {format(m.structureDragHint)}
+        </p>
         <span className="flex-1" />
-        <div className="relative">
+        <div className="relative max-sm:w-full">
           <SearchIcon
             aria-hidden
             className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
           />
           <Input
-            className="h-7 w-49 pl-7 text-xs"
+            className="h-7 pl-7 text-xs max-sm:w-full sm:w-49"
             value={search}
             placeholder={format(m.structureSearch)}
             onChange={(event) => setSearch(event.target.value)}
@@ -275,11 +278,15 @@ export function StructureTable({
         </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border">
-        <div className="min-w-3xl">
+      {/* Columns need a screen wide enough to hold them. Narrower than that,
+          the same rows read as lines - name and standing on top, everything
+          the columns would have said underneath - because a table nobody can
+          see the right-hand end of is worse than no table. */}
+      <div className="rounded-lg border md:overflow-x-auto">
+        <div className="md:min-w-3xl">
           <div
             className={cn(
-              'grid border-b bg-muted/60 px-3 py-2 text-[11.5px] font-medium text-muted-foreground',
+              'hidden border-b bg-muted/60 px-3 py-2 text-[11.5px] font-medium text-muted-foreground md:grid',
               COLUMNS,
             )}
           >
@@ -365,21 +372,24 @@ function GroupRow({
     <div
       {...handlers}
       className={cn(
-        'flex h-9 cursor-pointer items-center gap-3 border-b bg-muted/50 px-3 transition-colors last:border-b-0',
+        'flex cursor-pointer items-center gap-2 border-b bg-muted/50 px-3 transition-colors last:border-b-0 max-md:flex-wrap max-md:py-2 md:h-9 md:gap-3',
         selected ? 'bg-primary/10' : 'hover:bg-muted',
         mark,
       )}
+      style={{ paddingLeft: `${row.depth * 1.25 + 0.75}rem` }}
     >
-      <span className="w-14 shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
+      <span className="hidden w-14 shrink-0 text-[11.5px] tabular-nums text-muted-foreground md:block">
         {row.ordinal}
       </span>
-      <span
-        className="flex min-w-0 flex-1 items-center gap-2"
-        style={{ paddingLeft: `${row.depth * 1.25}rem` }}
-      >
-        <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate text-[13px] font-semibold">
-          {row.name.trim() === '' ? format(m.itemsGroupUnnamed) : row.name}
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+          <span className="text-[11.5px] tabular-nums text-muted-foreground md:hidden">
+            {row.ordinal}
+          </span>
+          <span className="min-w-0 truncate text-[13px] font-semibold">
+            {row.name.trim() === '' ? format(m.itemsGroupUnnamed) : row.name}
+          </span>
         </span>
         <span className="shrink-0 rounded-md border bg-background px-1.5 py-px text-[11px] tabular-nums">
           {row.cap === null || row.cap === undefined
@@ -397,6 +407,9 @@ function GroupRow({
           </span>
         )}
       </span>
+      {/* the two things a section can gain are one press away on a pointer
+          and one more press away in the menu, which is where they live when
+          there is no room for them */}
       <RowButton
         label={format(m.structureRowAddGroup)}
         onClick={(event) => {
@@ -444,77 +457,115 @@ function ItemRow({
 }) {
   const { format } = useI18n()
   const composing = row.kind === 'draft'
-  return (
-    <div
-      {...handlers}
+  const each = row.each === undefined ? '' : trimAmount(row.each)
+  const most = composing ? '' : row.most === undefined ? format(m.structureUnlimited) : row.most
+  const source =
+    row.source === undefined
+      ? ''
+      : format(
+          row.source === 'student' ? m.itemsEntrySourceStudent : m.itemsEntrySourceAdministrative,
+        )
+  const steps = row.steps === undefined ? '' : format(m.structureSteps, { count: row.steps })
+  const name = (
+    <span
       className={cn(
-        'grid h-9.5 cursor-pointer items-center border-b border-l-2 px-3 text-[13px] transition-colors last:border-b-0',
-        COLUMNS,
-        row.status === 'draft' || composing
-          ? 'border-l-foreground/35'
-          : row.status === 'voided'
-            ? 'border-l-muted-foreground/30 bg-muted/25'
-            : 'border-l-transparent',
-        selected ? 'bg-primary/10' : 'hover:bg-accent/40',
-        mark,
+        'min-w-0 truncate',
+        row.status === 'voided' && 'text-muted-foreground line-through',
+        composing && 'text-muted-foreground',
       )}
     >
-      <span />
-      <span className="flex min-w-0 items-center" style={{ paddingLeft: `${row.depth * 1.25}rem` }}>
-        <span
-          className={cn(
-            'min-w-0 truncate',
-            row.status === 'voided' && 'text-muted-foreground line-through',
-            composing && 'text-muted-foreground',
-          )}
-        >
-          {row.name.trim() === '' ? format(m.itemsUntitled) : row.name}
-        </span>
-      </span>
-      <span className="text-right tabular-nums">
-        {row.each === undefined ? '' : trimAmount(row.each)}
-      </span>
-      <span className="text-right tabular-nums text-muted-foreground">
-        {composing ? '' : row.most === undefined ? format(m.structureUnlimited) : row.most}
-      </span>
-      <span className="truncate text-[12.5px] text-muted-foreground">
-        {row.source === undefined
-          ? ''
-          : format(
-              row.source === 'student'
-                ? m.itemsEntrySourceStudent
-                : m.itemsEntrySourceAdministrative,
-            )}
-      </span>
-      <span className="truncate text-[12.5px] text-muted-foreground">
-        {row.steps === undefined ? '' : format(m.structureSteps, { count: row.steps })}
-      </span>
-      <StatusPill status={row.status} />
-      {composing ? (
-        <span />
-      ) : (
-        <RowMenu>
-          <DropdownMenuItem onSelect={onOpen}>{format(m.structureOpen)}</DropdownMenuItem>
-          {row.status === 'draft' && (
-            <DropdownMenuItem onSelect={onPublish}>{format(m.itemsPublish)}</DropdownMenuItem>
-          )}
-          {row.status === 'active' && (
-            <DropdownMenuItem onSelect={onVoid}>{format(m.itemsVoid)}</DropdownMenuItem>
-          )}
-          {row.status === 'voided' && (
-            <DropdownMenuItem onSelect={onRestore}>{format(m.itemsRestore)}</DropdownMenuItem>
-          )}
-          {row.status === 'draft' && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-                {format(m.itemsDelete)}
-              </DropdownMenuItem>
-            </>
-          )}
-        </RowMenu>
+      {row.name.trim() === '' ? format(m.itemsUntitled) : row.name}
+    </span>
+  )
+  const menu = composing ? null : (
+    <RowMenu>
+      <DropdownMenuItem onSelect={onOpen}>{format(m.structureOpen)}</DropdownMenuItem>
+      {row.status === 'draft' && (
+        <DropdownMenuItem onSelect={onPublish}>{format(m.itemsPublish)}</DropdownMenuItem>
       )}
-    </div>
+      {row.status === 'active' && (
+        <DropdownMenuItem onSelect={onVoid}>{format(m.itemsVoid)}</DropdownMenuItem>
+      )}
+      {row.status === 'voided' && (
+        <DropdownMenuItem onSelect={onRestore}>{format(m.itemsRestore)}</DropdownMenuItem>
+      )}
+      {row.status === 'draft' && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+            {format(m.itemsDelete)}
+          </DropdownMenuItem>
+        </>
+      )}
+    </RowMenu>
+  )
+  const standing = cn(
+    row.status === 'draft' || composing
+      ? 'border-l-foreground/35'
+      : row.status === 'voided'
+        ? 'border-l-muted-foreground/30 bg-muted/25'
+        : 'border-l-transparent',
+    selected ? 'bg-primary/10' : 'hover:bg-accent/40',
+  )
+
+  // Narrow: name and standing on one line, everything the columns would have
+  // said on the next, each still carrying the column's own word so a number
+  // on its own never has to be guessed at.
+  const facts = [
+    each === '' ? '' : `${format(m.structureColEach)} ${each}`,
+    most === '' ? '' : `${format(m.structureColMost)} ${most}`,
+    source,
+    steps,
+  ].filter((fact) => fact !== '')
+
+  return (
+    <>
+      <div
+        {...handlers}
+        className={cn(
+          'flex cursor-pointer flex-col gap-1 border-b border-l-2 py-2 pr-2 text-[13px] transition-colors last:border-b-0 md:hidden',
+          standing,
+          mark,
+        )}
+        style={{ paddingLeft: `${row.depth * 1.25 + 0.75}rem` }}
+      >
+        <span className="flex items-center gap-2">
+          {name}
+          <span className="flex-1" />
+          <StatusPill status={row.status} />
+          {menu}
+        </span>
+        {facts.length > 0 && (
+          <span className="text-[11.5px] text-muted-foreground">
+            {facts.join(` ${format(m.listSeparator).trim()} `)}
+          </span>
+        )}
+      </div>
+
+      <div
+        {...handlers}
+        className={cn(
+          'hidden h-9.5 cursor-pointer items-center border-b border-l-2 px-3 text-[13px] transition-colors last:border-b-0 md:grid',
+          COLUMNS,
+          standing,
+          mark,
+        )}
+      >
+        <span />
+        <span
+          className="flex min-w-0 items-center"
+          style={{ paddingLeft: `${row.depth * 1.25}rem` }}
+        >
+          {name}
+        </span>
+        <span className="text-right tabular-nums">{each}</span>
+        <span className="text-right tabular-nums text-muted-foreground">{most}</span>
+        <span className="truncate text-[12.5px] text-muted-foreground">{source}</span>
+        <span className="truncate text-[12.5px] text-muted-foreground">{steps}</span>
+        <StatusPill status={row.status} />
+        {menu ?? <span />}
+      </div>
+    </>
   )
 }
 
@@ -554,7 +605,7 @@ function RowButton({
   return (
     <button
       type="button"
-      className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border bg-background px-2 text-[11.5px] font-medium whitespace-nowrap transition-colors hover:bg-accent"
+      className="hidden h-6 shrink-0 items-center gap-1 rounded-md border bg-background px-2 text-[11.5px] font-medium whitespace-nowrap transition-colors hover:bg-accent md:inline-flex"
       onClick={onClick}
     >
       <PlusIcon aria-hidden className="size-2.5" />
