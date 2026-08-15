@@ -572,6 +572,16 @@ export const liveBatchPayloads = (tenantId: string, batchId: string) =>
  * Draft and rejected entries are absent on purpose - they re-enter through
  * the new form, so the new configuration owes them nothing.
  */
+/**
+ * Every answer to this question that is not a draft, with the form it was
+ * written under.
+ *
+ * The form comes along because asking whether an answer survives a new
+ * configuration means reading it as an answer to the old one first: which
+ * field each slot belonged to, and whether that field is still the same
+ * question. Without it the only thing to compare is slot names, and a
+ * reordered or trimmed form reads as a broken one.
+ */
 export const liveEntryPayloads = (tenantId: string, itemId: string) =>
   db
     .query((k) =>
@@ -582,7 +592,20 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
             .onRef('EntryRevision.tenantId', '=', 'Entry.tenantId')
             .onRef('EntryRevision.id', '=', 'Entry.currentRevisionId'),
         )
-        .select(['Entry.id as entryId', 'EntryRevision.payload as payload'])
+        .innerJoin('AssessmentItemRevision', (join) =>
+          join
+            .onRef('AssessmentItemRevision.tenantId', '=', 'EntryRevision.tenantId')
+            .onRef('AssessmentItemRevision.id', '=', 'EntryRevision.itemRevisionId'),
+        )
+        .select([
+          'Entry.id as entryId',
+          'Entry.status as status',
+          'Entry.currentReviewInstanceId as reviewInstanceId',
+          'EntryRevision.id as entryRevisionId',
+          'EntryRevision.payload as payload',
+          'AssessmentItemRevision.id as itemRevisionId',
+          'AssessmentItemRevision.formConfig as formConfig',
+        ])
         .where('Entry.tenantId', '=', tenantId)
         .where('Entry.itemId', '=', itemId)
         .where('Entry.status', 'in', ['in_review', 'approved'])
@@ -590,10 +613,19 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
     )
     .pipe(
       Effect.map((rows) =>
-        rows.map((row) => ({
-          entryId: String((row as Record<string, unknown>)['entryId']),
-          payload: (row as Record<string, unknown>)['payload'],
-        })),
+        rows.map((row) => {
+          const one = row as Record<string, unknown>
+          return {
+            entryId: String(one['entryId']),
+            status: String(one['status']) as 'in_review' | 'approved',
+            reviewInstanceId:
+              one['reviewInstanceId'] === null ? null : String(one['reviewInstanceId']),
+            entryRevisionId: String(one['entryRevisionId']),
+            payload: one['payload'],
+            itemRevisionId: String(one['itemRevisionId']),
+            formConfig: one['formConfig'],
+          }
+        }),
       ),
     )
 

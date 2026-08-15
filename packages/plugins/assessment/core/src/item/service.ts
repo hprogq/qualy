@@ -338,8 +338,17 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       if (issues.length === 0 && driver !== undefined) {
         const live = yield* liveEntryPayloads(input.tenantId, input.item.id)
         for (const entry of live) {
+          // read as an answer to the form it was written under, then offered
+          // to the new one. Handing the raw payload straight to the new form
+          // calls a deleted field unknown and a reordered form broken, so
+          // edits that cost nobody anything were refused as if they stranded
+          // every filing.
+          const carried =
+            driver.projectPayload === undefined
+              ? entry.payload
+              : driver.projectPayload(entry.formConfig, input.config.formConfig, entry.payload)
           const decoded = yield* Effect.result(
-            driver.decodePayload(input.config.formConfig, entry.payload, {
+            driver.decodePayload(input.config.formConfig, carried, {
               materialRange: input.materialRange,
             }),
           )

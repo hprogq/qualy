@@ -71,6 +71,17 @@ export interface ItemTypeDriver {
     payload: unknown,
     batch: BatchContext,
   ) => Effect.Effect<unknown, ItemPayloadInvalid>
+  /**
+   * One answer, written under an older configuration, read as an answer to a
+   * newer one - by whatever the driver treats as a field's identity.
+   *
+   * Only for asking whether a stored answer would still be acceptable under
+   * a configuration it was not written under. Reading it back raw would call
+   * a deleted field an unknown one and a reordered form a broken one, which
+   * says a safe edit is unsafe. A driver without one gets its payloads read
+   * as they were written.
+   */
+  readonly projectPayload?: (fromConfig: unknown, toConfig: unknown, payload: unknown) => unknown
   readonly attachmentRefs: (config: unknown, payload: unknown) => readonly AttachmentRef[]
   /** who acts: students filing, staff working a task, or nobody (derived) */
   readonly interaction: 'entry' | 'task' | 'derived'

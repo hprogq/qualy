@@ -19,6 +19,12 @@ import { lastDay } from '../entry/model.ts'
 // controls unfolded eight times is not a form anybody can read.
 
 export interface FieldDraft {
+  /**
+   * What this field is called across revisions. Minted with the key and
+   * never changed; a field written before identities existed carries its
+   * key here, because that is what identified it then.
+   */
+  id: string
   key: string
   type: 'text' | 'date' | 'attachment'
   label: string

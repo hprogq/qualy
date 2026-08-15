@@ -20,6 +20,25 @@ const fieldKey = Schema.String.check(
   Schema.isMaxLength(63),
 )
 
+/**
+ * A field's permanent name for itself, as opposed to `key`, which is where
+ * its answer sits in the payload.
+ *
+ * The two are minted equal and both immutable, so on the face of it one
+ * would do. They are separate because they answer different questions once
+ * a form has been edited a few times. `key` has to keep pointing at the same
+ * slot in payloads written years ago; `id` has to say whether the field an
+ * administrator is looking at now is the same field it was in the previous
+ * revision - which is what decides whether a stored answer carries over,
+ * and which is not true when the type underneath it changed.
+ *
+ * Optional because forms written before identities existed have none. Those
+ * fall back to their key, which is what identified them then and still does
+ * - see `fieldIdentity`. Nothing is rewritten: an item revision is immutable,
+ * and a history that gains fields it was not saved with is not history.
+ */
+const fieldId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(63))
+
 /** an administrator-authored label: business data, not a message catalog key */
 const label = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100))
 
@@ -34,6 +53,7 @@ const isoDate = Schema.String.check(
 )
 
 const textField = Schema.Struct({
+  id: Schema.optional(fieldId),
   key: fieldKey,
   type: Schema.Literal('text'),
   label,
@@ -42,6 +62,7 @@ const textField = Schema.Struct({
 })
 
 const dateField = Schema.Struct({
+  id: Schema.optional(fieldId),
   key: fieldKey,
   type: Schema.Literal('date'),
   label,
@@ -51,6 +72,7 @@ const dateField = Schema.Struct({
 })
 
 const attachmentField = Schema.Struct({
+  id: Schema.optional(fieldId),
   key: fieldKey,
   type: Schema.Literal('attachment'),
   label,
@@ -66,6 +88,13 @@ const field = Schema.Union([textField, dateField, attachmentField])
 export type EvidenceField = typeof field.Type
 
 /**
+ * What this field is called across revisions: its own id, or - for a form
+ * written before ids - the key it has always been known by.
+ */
+export const fieldIdentity = (entry: { id?: string | undefined; key: string }): string =>
+  entry.id ?? entry.key
+
+/**
  * What an administrator writes: an ordered, non-empty list of fields with
  * distinct keys, and a date field whose own bounds are in order.
  */
@@ -75,6 +104,8 @@ export const evidenceConfig = Schema.Struct({
       if (fields.length === 0) return 'at least one field'
       const keys = new Set(fields.map((entry) => entry.key))
       if (keys.size !== fields.length) return 'field keys must be distinct'
+      const ids = new Set(fields.map(fieldIdentity))
+      if (ids.size !== fields.length) return 'field identities must be distinct'
       for (const entry of fields) {
         if (entry.type === 'date' && entry.min !== undefined && entry.max !== undefined) {
           if (entry.min > entry.max) return 'a date field’s min must not exceed its max'
@@ -241,6 +272,46 @@ const attachmentRefs = (config: unknown, payload: unknown): readonly AttachmentR
 }
 
 /**
+ * An answer written under one version of the form, read as an answer to the
+ * next one.
+ *
+ * Matched by identity, never by position and never by slot: a form whose
+ * fields were reordered is the same three questions, and a slot that was
+ * emptied by a deletion is not an answer to whatever was added afterwards.
+ * A field whose type changed is treated as gone - "2026-04-12" is not an
+ * answer to a question that is now asking for text.
+ *
+ * This is a reading, not a write. Nothing filed is altered; the projection
+ * exists so that "would this answer still be acceptable" can be asked of a
+ * configuration the answer was not written under.
+ */
+const project = (fromConfig: unknown, toConfig: unknown, payload: unknown): unknown => {
+  const to = decodeConfig(toConfig)
+  if (to === null) return payload
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload
+  const record = payload as Record<string, unknown>
+  const from = decodeConfig(fromConfig)
+  const was = new Map<string, { key: string; type: string | undefined }>(
+    from === null
+      ? // the form it was written under is unreadable here, so the slot is
+        // all there is to go on - which is what identity meant before ids
+        Object.keys(record).map((key) => [key, { key, type: undefined }] as const)
+      : from.fields.map(
+          (one) => [fieldIdentity(one), { key: one.key, type: one.type as string }] as const,
+        ),
+  )
+  const projected: Record<string, unknown> = {}
+  for (const entry of to.fields) {
+    const before = was.get(fieldIdentity(entry))
+    if (before === undefined) continue
+    if (before.type !== undefined && before.type !== entry.type) continue
+    const value = record[before.key]
+    if (value !== undefined) projected[entry.key] = value
+  }
+  return projected
+}
+
+/**
  * What the schema cannot see: a date field against the round it will run in.
  *
  * A window that misses the material range entirely is well-formed and
@@ -276,6 +347,7 @@ export const evidenceDriver: ItemTypeDriver = {
   configSchema: evidenceConfig,
   configIssues,
   decodePayload: decode,
+  projectPayload: project,
   attachmentRefs,
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },

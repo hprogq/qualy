@@ -180,3 +180,52 @@ describe('what a payload must satisfy', () => {
     ).toEqual([])
   })
 })
+
+describe('an answer read against the next version of the form', () => {
+  const project = (from: unknown, to: unknown, payload: unknown) =>
+    evidenceDriver.projectPayload!(from, to, payload)
+
+  const named = (id: string, key: string, type: string, over: Record<string, unknown> = {}) => ({
+    id,
+    key,
+    type,
+    label: id,
+    ...(type === 'attachment' ? { maxCount: 1 } : {}),
+    ...over,
+  })
+
+  it('follows a field wherever it moved, and drops the ones that are gone', () => {
+    const before = { fields: [named('a', 'k1', 'text'), named('b', 'k2', 'text')] }
+    // reordered, one deleted, one added: the same two questions, differently
+    // arranged, plus one nobody has answered
+    const after = { fields: [named('b', 'k2', 'text'), named('c', 'k3', 'text')] }
+    expect(project(before, after, { k1: 'first', k2: 'second' })).toEqual({ k2: 'second' })
+  })
+
+  it('does not follow a field whose key moved to another question', () => {
+    // the slot is the same word; the question behind it is a different one,
+    // so nothing carries. This is the case a slot-name match gets wrong.
+    const before = { fields: [named('a', 'shared', 'text')] }
+    const after = { fields: [named('b', 'shared', 'text')] }
+    expect(project(before, after, { shared: 'mine' })).toEqual({})
+  })
+
+  it('treats a retyped field as a different question', () => {
+    const before = { fields: [named('a', 'k1', 'text')] }
+    const after = { fields: [named('a', 'k1', 'date')] }
+    expect(project(before, after, { k1: 'not a date' })).toEqual({})
+  })
+
+  it('identifies a form written before ids by the keys it always had', () => {
+    const before = { fields: [{ key: 'k1', type: 'text', label: 'old' }] }
+    const after = { fields: [named('k1', 'k1', 'text'), named('new', 'k2', 'text')] }
+    expect(project(before, after, { k1: 'kept' })).toEqual({ k1: 'kept' })
+  })
+
+  it('refuses two fields that answer to the same identity', () => {
+    const clashing = {
+      fields: [named('same', 'k1', 'text'), named('same', 'k2', 'text')],
+    }
+    expect(Exit.isSuccess(decode(clashing, {}))).toBe(false)
+  })
+})

@@ -36,6 +36,9 @@ import type { ItemOptions } from './options.ts'
 import type { Placement } from './paper.ts'
 
 const blankField = (key: string): FieldDraft => ({
+  // minted together and both immutable: the key is where the answer sits,
+  // the id is what says this is still the same question next revision
+  id: key,
   key,
   type: 'text',
   label: '',
@@ -70,8 +73,12 @@ const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): Stage
 /**
  * The key is the payload's own word for a field, so it is minted once and
  * never reused: renaming one would leave every filed answer pointing at a
- * field that no longer exists. Numbering walks forward past deleted fields
- * for the same reason. Nobody types it - the label is what a person writes.
+ * field that no longer exists. Nobody types it - the label is what a person
+ * writes.
+ *
+ * Not a counter. `f1` is a name the next question of the next round would
+ * mint as well, and a name two different questions answer to is the one
+ * thing a permanent identity may not be.
  */
 const nextKey = (): string => `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
@@ -103,6 +110,9 @@ const draftOf = (
   const fields = Array.isArray((config?.formConfig as { fields?: unknown[] })?.fields)
     ? ((config!.formConfig as { fields: Record<string, unknown>[] }).fields.map(
         (field): FieldDraft => ({
+          // a form saved before identities existed is not rewritten to gain
+          // them: its key is its identity, which is what it always was
+          id: String(field['id'] ?? field['key'] ?? ''),
           key: String(field['key'] ?? ''),
           type: (field['type'] as FieldDraft['type']) ?? 'text',
           label: String(field['label'] ?? ''),
@@ -161,7 +171,7 @@ const draftOf = (
     maxEntries: item === null ? '1' : item.maxEntries === null ? '' : String(item.maxEntries),
     entrySource: config?.entrySource ?? 'student',
     description: String((config?.displayConfig as { description?: unknown })?.description ?? ''),
-    fields: fields.length > 0 ? fields : [blankField('f1')],
+    fields: fields.length > 0 ? fields : [blankField(nextKey())],
     // 100.0000 is how it is stored, not how anybody types it
     fixedValue: trimAmount(scoring?.calculator?.config?.value ?? '1'),
     stages: stages.length > 0 ? stages : [blankStage(options, 'normal')],
@@ -173,6 +183,7 @@ const configOf = (draft: Draft) => ({
   entrySource: draft.entrySource,
   formConfig: {
     fields: draft.fields.map((field) => ({
+      id: field.id.trim() === '' ? field.key.trim() : field.id.trim(),
       key: field.key.trim(),
       type: field.type,
       label: field.label.trim(),
@@ -329,11 +340,29 @@ export function ItemConfigEditor({
 
   const patch = (next: Partial<Draft>) => setDraft((previous) => ({ ...previous, ...next }))
 
-  const patchField = (key: string, next: Partial<FieldDraft>) =>
+  /**
+   * Changing what a field asks for is not editing that field.
+   *
+   * "2026-04-12" is not an answer to a question now asking for text, so a
+   * type change mints a new key and a new identity: the old field is gone
+   * and a new one stands in its place, and nothing already filed is carried
+   * into it. Everything else about a field - its label, its bounds, whether
+   * it is required - is an edit of the same question.
+   */
+  const patchField = (key: string, next: Partial<FieldDraft>) => {
+    const standing = draft.fields.find((one) => one.key === key)
+    const retyped = standing !== undefined && next.type !== undefined && next.type !== standing.type
+    const minted = retyped ? nextKey() : null
     setDraft((previous) => ({
       ...previous,
-      fields: previous.fields.map((field) => (field.key === key ? { ...field, ...next } : field)),
+      fields: previous.fields.map((field) =>
+        field.key === key
+          ? { ...field, ...next, ...(minted === null ? {} : { id: minted, key: minted }) }
+          : field,
+      ),
     }))
+    if (minted !== null) setOpenField((open) => (open === key ? minted : open))
+  }
 
   const save = useMutation({
     mutationFn: (reason: string | null) => {
