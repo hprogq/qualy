@@ -1127,6 +1127,76 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
   (客户端一行重建树,而递归 schema 不是一行)。
 - 层数不设硬上限(已被"一层不够"打过脸),但 UI 建议不超过三四层。
 
+**32.62 配置改了，已有条目怎么办由管理员当场决定；疑点链与普通链彻底分家**（2026-08-15，用户裁决）。
+
+推翻两处原有语义。**第一处**：此前「配置版本不可变、旧提交引用旧版本」是全部答案——管理员改完题目，
+在途与已通过的条目一律沿用旧配置，管理员没有任何手段作用于它们。方向不变（历史永远按旧版本解释），
+缺的是**配置变更如何作用于既有业务对象**这一层显式迁移机制。**第二处**：§14 把疑点链定义为普通链在
+`normalTerminal` 之后的后缀，现在改为两条互不重叠的链。
+
+一、**三个版本引用分开**。`AssessmentItemRevision` 一张表不拆，继续同时保存 form/scoring/review 三份配置；
+分开的是谁引用它：`EntryRevision.itemRevisionId` =「这个人当时按什么表单填的」；
+`ReviewInstance.policyRevisionId` =「这一轮按哪版审核政策走」；`AssessmentItem.currentRevisionId` =
+「现在新填、新开的审核轮该用哪版」。**新开一轮审核取当前策略版本，不取被审 EntryRevision 当年那版**——
+内容没变就没有理由强迫内容换版本，而管理员改审核链正是为了让新的轮次走新链。
+
+二、**字段与审核步骤都有永久身份**。字段 = `id`（不变、不复用）+ `key`（payload 槽位，同样不可改）；
+改类型视为删旧字段 + 建新字段（新 id 新 key）。审核步骤 `PolicyStage.id` 同理。身份不变 = 修改，
+身份不同 = 替换——这是在途审核能否自动迁到新链的唯一判据，**禁止按数组下标迁移**。
+写在旧版本里、没有身份的字段与步骤，以它们当时的标识（字段的 key、步骤的下标）确定性派生身份，
+**不回写历史**：item revision 不可变，一段后来长出字段的历史不是历史。
+
+三、**保存不再硬拒绝，改为影响分析 + 显式传播**。`issuesOf()` 拿新表单直接 decode 旧 payload、
+一条不兼容就禁止保存的做法取消。读旧 payload 前先按字段身份**投影**到新表单（驱动的 `projectPayload`），
+于是删字段、换顺序、改 label、加可选字段一律无影响；只有真正读不通的才进影响报告。
+保存分两次同一个 PATCH：第一次不带 `effects`，安全就直接存，需要决定就 409 带影响报告返回；
+第二次带上管理员的选择与 `impactToken`（第一次分析结果的哈希，期间有条目状态变化就重新报告）。
+`expectedRevisionId` 一并引入（Item 此前没有乐观并发，score group 有）。
+**表单与审核链是两个独立选择，不得合并成一个「应用新配置」。**
+表单：在途/已通过各自「继续」或「打回」；审核链：「仅新轮次」/「仅迁移 BLOCKED」/「迁移全部在途」。
+同一条条目两者都命中时，**打回优先于迁移**（既然要重填，新提交自然走新链）。
+`scoringConfig` 不进这套选项——它仍是当前规则的全局计分语义（要 reason，不打回、不迁移），
+正式 ScoreRun 时再单独定义计分快照，否则这次改动会从审核治理扩成计分版本治理。
+
+四、**打回不是驳回**。新增条目状态 `needs_revision`（界面「待补充材料」）与 `EntryEvent`
+（`revision-required` 等，记 old/new item revision 与配置变更 id）。理由：`approved → needs_revision`
+时已经没有 open ReviewInstance，只 UPDATE 状态会在历史里留一段无法解释的变化；而把它记成 `rejected`
+会让「驳回率」统计吃进管理员的配置调整。
+
+五、**在途审核的迁移是新开一轮，不是覆盖快照**。旧实例 `outcome='superseded'` 收尾，新实例
+`origin='reroute'`、`supersedesInstanceId` 指回去、`revisionId` 不变、`policyRevisionId` 指新版本。
+当前 stage 的 id 在新策略里仍在就从同一步继续（正是「这一级没人所以回来改这一级」的场景）；
+id 不在了**不许猜**，影响报告点名，管理员在「保持旧链」与「从新链起点重来」之间选。
+`UPDATE review_instances SET effective_chain = ...` 是被禁止的写法——它毁掉「当时为什么走到这里」。
+
+六、**疑点链独立**。`reviewPolicy` 升为 `{version: 2, normal: {stages}, doubt: {stages}}`，
+`normalTerminal` 删除。普通审核任一级可「提交疑点」（`escalate` 更名 `raise-doubt`），
+路线切到 `doubt[0]`；疑点链中间级只建议、链尾作最终决定（这条约束不变）。
+**申诉直接新开一轮、只走疑点链**（`origin='appeal'`、`route='doubt'`、`policyRevisionId` 取当前版本），
+不再「越过 normalTerminal 沿同一条链继续」。ADR-2「审核中的不确定」与「学生申诉」概念分立由此回到实现：
+**存储仍统一为 review round（§15 不变），路线分离**。
+`ReviewInstance` 随之改为 `effectivePolicy`（同一份冻结 lineage 一次解析出 normal + doubt 两条）
+\+ `currentRoute` + `currentStageId`，去掉 `mode` / `currentStageIndex` / `effectiveChain`；
+`ReviewEvent` 补 `route` / `stageId`，否则 reroute 之后「哪一级审过」无从回答。
+
+七、**BLOCKED 是运行态，不是终态**（已实现）。`cancelReviewInstance` 只认 `active`，导致
+「本级暂无审核人，等待中」的条目学生撤不回、也没有审核人能推进——死锁。开放集合与
+`uq_review_instances_open`（`active`/`blocked` 都算 open）对齐。
+管理员另有独立的干预口（`return-for-revision` / `reroute`，权限用 `assessment.batch.manage`），
+**不得让管理员冒充审核人点驳回**——`decideReview()` 要求调用者真是当前 stage 的审核人，这条保留。
+
+八、**`nearestRole` 找不到持有人必须 BLOCKED，不能跳过**。`resolveChain` 现在把它记成
+`skipped: 'no-holder'`，而 `stageAt()` 跳过一切 `nodeId === null` 的步骤，与 ADR 0007「职位空缺应
+BLOCKED」冲突。解析结果改为三态：`resolved` / `skip('no-such-level')` / `blocked('no-holder')`，
+只有前者之外的 `no-such-level` 可跳过。（依赖 `current_node_id` 可空，随 Review v2 一起改。）
+
+九、**巡检与配置迁移分工不混**：换届、离职、改任命 → patrol 自动 `active ↔ blocked`，不动 policy；
+「应该由什么节点审」变了 → 显式 policy reroute。
+
+施工顺序（每步可独立测试）：BLOCKED 撤回 → 字段/步骤永久身份 → ReviewPolicy v2 →
+`ReviewInstance.policyRevisionId`/`currentStageId` → 提交取当前策略 → 影响分析器 →
+`needs_revision`/`EntryEvent` → reroute 传播 → 编辑器影响弹窗。进度见 STATUS.md。
+
 **32.58 成员资格看锚点,不看 coverage;`nearestRole` 才是"上级管下级"的表达**(2026-08-13,用户裁决)。
 
 §14 与 §32.23 的"锚点精确匹配"曾被实现成 `org_node_id = 该节点 AND coverage = 'self'`。澄清:

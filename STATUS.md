@@ -4547,3 +4547,35 @@ toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 627 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过(staged web assets)。
+
+### 配置变更治理与 Review v2:第一、二步(2026-08-15)
+
+用户裁决整套模型(记入 docs/assessment-design.md §32.62,九条,含施工顺序)。**方向不变**——
+历史永远按旧版本解释,新版本是否作用于未结束的业务由管理员显式选择,并用新的 revision / round 表达,
+不修改历史。本次落地施工顺序的前两步。
+
+**① BLOCKED 的撤回死锁**(已修,`fa8f44e`)。`cancelReviewInstance` 只认 `active`,而提交时若当前
+节点无人,实例落 `blocked` + 条目 `in_review`——于是学生撤不回(`entry-not-withdrawable`),
+也没有审核人能推进,条目永久卡死。blocked 是「等人被任命」的运行态,`uq_review_instances_open`
+本来就把它算作 open,收尾语句现在与之一致。新增升级测试:吊销唯一持有人 → 提交 → 断言 blocked →
+撤回 → 断言 `completed/cancelled`,事件序列 `submitted, assignee-not-found, cancelled-by-submitter`。
+
+**② 字段永久身份 + payload 投影**(已做,`e92985b`)。
+- 字段带 `id`(永不改、永不复用)与 `key`(payload 槽位,同样不可改),新字段两者同值。
+  **旧表单不回写**:没有 `id` 的字段以 `key` 为身份——那本来就是它当时的身份,而 item revision 不可变。
+- **改类型 = 删旧字段 + 建新字段**(编辑器改 type 时重新铸 id 与 key):`2026-04-12` 不是一道现在要求
+  文本的题的答案。
+- 驱动新增 `projectPayload(fromConfig, toConfig, payload)`:按身份投影,不按位置、不按槽位名。
+  `issuesOf()` 先投影再 decode,于是**删字段、换顺序、改 label、加可选字段一律不再被判为
+  `incompatible-entry`**。`liveEntryPayloads` 随之带回每条 payload 自己那版 `formConfig`
+  (以及 status / reviewInstanceId,影响分析器下一步要用)。
+- 编辑器首个字段不再是字面量 `f1`——`f1` 是下一道题也会铸出的名字,而一个身份不能有两个主人。
+
+**剩余七步未做**:ReviewPolicy v2(normal/doubt 分家、stage 永久 id)、
+`ReviewInstance.policyRevisionId` / `currentRoute` / `currentStageId`、提交取当前策略、
+影响分析器(两次 PATCH + `impactToken` + `expectedRevisionId`)、`needs_revision` 与 `EntryEvent`、
+reroute 传播、编辑器影响弹窗。这些都要动 schema(review_instances 列改名与数据转换、entries 状态枚举、
+entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此没有半途落地。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 633 passed / 17 skipped;
+`pnpm test:browser` 54 passed。
