@@ -655,4 +655,104 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       'approved',
     ])
   })
+
+  it('lets an administrator hand a claim back without pretending to judge it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-return')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const admin = f.principal(f.admin)
+          const reviewer = f.principal(f.reviewer)
+
+          // one waiting on an empty level: the deadlock this exists for
+          const stuck = yield* submitted(f, g, g.p1, f.s1)
+          yield* runSql(
+            sql`update role_grants set revoked_at = now() where user_id = ${f.reviewer}`,
+          )
+          const blocked = yield* submitted(f, g, g.p2, f.s2)
+          const strangerTried = yield* Effect.exit(
+            assessment.interveneOnEntry(
+              f.t,
+              blocked.entryId,
+              { kind: 'return-for-revision', reason: '不该由我说了算' },
+              f.principal(f.s2),
+            ),
+          )
+          const wordless = yield* Effect.exit(
+            assessment.interveneOnEntry(
+              f.t,
+              blocked.entryId,
+              { kind: 'return-for-revision', reason: '   ' },
+              admin,
+            ),
+          )
+          const returned = yield* assessment.interveneOnEntry(
+            f.t,
+            blocked.entryId,
+            { kind: 'return-for-revision', reason: '本级暂无审核人，请补充后重新提交' },
+            admin,
+          )
+          const round = one<{ state: string; outcome: string }>(
+            yield* runSql(sql`
+              select state, outcome from review_instances where id = ${blocked.instanceId}`),
+          )
+          const said = yield* runSql(sql`
+            select kind from review_events where review_instance_id = ${blocked.instanceId}
+            order by created_at, id`)
+          const logged = yield* runSql(sql`
+            select kind, reason from entry_events where entry_id = ${blocked.entryId}`)
+          // handed back is not rejected: it is the owner's to finish again
+          const asOwner = yield* assessment.getEntry(f.t, blocked.entryId, f.principal(f.s2))
+          const revised = yield* assessment.appendEntryRevision(
+            f.t,
+            blocked.entryId,
+            { payload: {} },
+            f.principal(f.s2),
+          )
+
+          // and one that was already through: an administrator can ask for
+          // more even after it counted, and it is still not a rejection
+          yield* runSql(sql`update role_grants set revoked_at = null where user_id = ${f.reviewer}`)
+          yield* assessment.decideReview(f.t, stuck.instanceId, { decision: 'approve' }, reviewer)
+          const afterApproval = yield* assessment.interveneOnEntry(
+            f.t,
+            stuck.entryId,
+            { kind: 'return-for-revision', reason: '证书需要重新上传' },
+            admin,
+          )
+
+          return {
+            strangerTried,
+            wordless,
+            returned,
+            round,
+            said: (said as { rows: { kind: string }[] }).rows.map((row) => row.kind),
+            logged: one<{ kind: string; reason: string }>(logged),
+            asOwner,
+            revised,
+            afterApproval,
+          }
+        }),
+      ),
+    )
+
+    expect(errorOf<{ _tag: string }>(result.strangerTried)?._tag).toBe('ACCESS_DENIED')
+    expect(refusalOf(result.wordless)?.reason).toBe('reason-required')
+    expect(result.returned.status).toBe('needs_revision')
+    expect(result.returned.currentReviewInstanceId).toBeNull()
+    // the capability is the owner's, and an administrator reading it is not
+    // being offered the pen
+    expect(result.returned.capabilities.canEdit).toBe(false)
+    expect(result.asOwner.capabilities.canEdit).toBe(true)
+    // the round ends as superseded, not as a rejection anybody made
+    expect(result.round).toEqual({ state: 'completed', outcome: 'superseded' })
+    expect(result.said).toEqual(['submitted', 'assignee-not-found', 'returned-for-revision'])
+    expect(result.logged.kind).toBe('revision-required')
+    expect(result.logged.reason).toBe('本级暂无审核人，请补充后重新提交')
+    expect(result.revised.status).toBe('draft')
+    expect(result.afterApproval.status).toBe('needs_revision')
+  })
 })

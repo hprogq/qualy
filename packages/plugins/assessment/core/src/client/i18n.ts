@@ -640,6 +640,10 @@ const i18n = definePluginMessages({
     entryNote: { id: 'assessment/entry/note', defaultMessage: 'Note' },
     entryStatusDraft: { id: 'assessment/entry/status-draft', defaultMessage: 'Draft' },
     entryStatusInReview: { id: 'assessment/entry/status-in-review', defaultMessage: 'In review' },
+    entryStatusNeedsRevision: {
+      id: 'assessment/entry/status-needs-revision',
+      defaultMessage: 'More needed',
+    },
     entryStatusApproved: { id: 'assessment/entry/status-approved', defaultMessage: 'Approved' },
     entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Sent back' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Void' },
@@ -717,6 +721,10 @@ const i18n = definePluginMessages({
     eventSubmitted: { id: 'assessment/event/submitted', defaultMessage: '{who} submitted it' },
     eventApproved: { id: 'assessment/event/approved', defaultMessage: '{who} approved this step' },
     eventRejected: { id: 'assessment/event/rejected', defaultMessage: '{who} sent it back' },
+    eventReturnedForRevision: {
+      id: 'assessment/event/returned-for-revision',
+      defaultMessage: '{who} asked for more and sent it back',
+    },
     eventDoubtRaised: {
       id: 'assessment/event/doubt-raised',
       defaultMessage: '{who} raised a doubt',

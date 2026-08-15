@@ -412,7 +412,15 @@ const entryView = Schema.Struct({
   batchId: Schema.String,
   itemId: Schema.String,
   participantId: Schema.String,
-  status: Schema.Literals(['draft', 'in_review', 'approved', 'rejected', 'voided']),
+  status: Schema.Literals([
+    'draft',
+    'in_review',
+    /** sent back for more, which is not a rejection (§32.62) */
+    'needs_revision',
+    'approved',
+    'rejected',
+    'voided',
+  ]),
   source: Schema.Literals(['self', 'proxy', 'record', 'import', 'system']),
   currentRevision: Schema.NullOr(entryRevisionView),
   currentReviewInstanceId: Schema.NullOr(Schema.String),
@@ -762,6 +770,16 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             formConfig: configJson,
           }),
         ),
+        /** what happened to the claim that no round explains (§32.62) */
+        events: Schema.Array(
+          Schema.Struct({
+            kind: Schema.String,
+            actorId: Schema.NullOr(Schema.String),
+            actorName: Schema.NullOr(Schema.String),
+            reason: Schema.NullOr(Schema.String),
+            at: Schema.String,
+          }),
+        ),
         rounds: Schema.Array(
           Schema.Struct({
             id: Schema.String,
@@ -837,6 +855,22 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ entryId: id }),
       /** submit is status in_review; withdraw is status draft */
       payload: Schema.Struct({ status: Schema.Literals(['in_review', 'draft']) }),
+      success: Schema.Struct({ entry: entryView }),
+      error: [EntryNotFound, BatchReadOnly, EntryActionRefused, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // What somebody who may change the round's arrangements can do to a claim
+    // without pretending to be its reviewer. Judging stays behind
+    // decideReview, which keeps asking whether the caller really holds the
+    // level the round is standing at (§32.62).
+    HttpApiEndpoint.post('interveneOnEntry', '/assessment/entries/:entryId/interventions', {
+      params: Schema.Struct({ entryId: id }),
+      payload: Schema.Struct({
+        kind: Schema.Literals(['return-for-revision']),
+        /** what the person filing it has to act on; never optional */
+        reason: boundedText(500),
+      }),
       success: Schema.Struct({ entry: entryView }),
       error: [EntryNotFound, BatchReadOnly, EntryActionRefused, AccessDenied, BadRequest],
     }).middleware(Authenticated),

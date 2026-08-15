@@ -25,6 +25,7 @@ import {
   entriesOfParticipantPage,
   entryAttachmentHistory,
   entryCreatedIso,
+  entryEventsOf,
   entryRevisionsOf,
   eventsOfRounds,
   roundsOfEntry,
@@ -33,6 +34,7 @@ import {
   entryOf,
   entryRevisionOf,
   insertEntry,
+  insertEntryEvent,
   insertEntryRevision,
   insertReviewEvent,
   insertReviewInstance,
@@ -110,6 +112,23 @@ export type ReviseEntryError =
   EntryNotFound | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
 export type EntryStatusError = EntryNotFound | BatchReadOnly | EntryActionRefused
 
+/**
+ * What an administrator may do to a claim without pretending to be its
+ * reviewer.
+ *
+ * Sending one back is not a rejection and not a decision: it is the round's
+ * own arrangements changing under a claim, and the person who may change
+ * those arrangements saying so. Judging stays with whoever actually holds
+ * the level - `decideReview` still refuses anybody else, administrator or
+ * not (§32.62).
+ */
+export interface InterveneInput {
+  readonly kind: 'return-for-revision'
+  readonly reason: string
+}
+
+export type InterveneError = EntryNotFound | BatchReadOnly | EntryActionRefused | AccessDenied
+
 export interface EntryRoundView {
   readonly id: string
   readonly roundNo: number
@@ -139,6 +158,19 @@ export interface EntryHistoryView {
     readonly formConfig: unknown
   })[]
   readonly rounds: readonly EntryRoundView[]
+  /**
+   * What happened to the claim that no round explains - being sent back
+   * because the question changed, most of all. Its own list rather than a
+   * pseudo-round, because there is no round to put it in and it is not a
+   * decision anybody made about the evidence.
+   */
+  readonly events: readonly {
+    readonly kind: string
+    readonly actorId: string | null
+    readonly actorName: string | null
+    readonly reason: string | null
+    readonly at: number
+  }[]
 }
 
 export interface EntryMethods {
@@ -178,6 +210,12 @@ export interface EntryMethods {
     to: 'in_review' | 'draft',
     as: Principal,
   ) => Effect.Effect<EntryView, EntryStatusError>
+  readonly interveneOnEntry: (
+    tenantId: string,
+    entryId: string,
+    input: InterveneInput,
+    as: Principal,
+  ) => Effect.Effect<EntryView, InterveneError>
 }
 
 type ActionDecision =
@@ -385,7 +423,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       // discovery, not authorization: what the screen may offer, decided by
       // ownership and state alone. The gate is asked again at the act.
       capabilities: {
-        canEdit: active && (entry.status === 'draft' || entry.status === 'rejected'),
+        canEdit:
+          active &&
+          (entry.status === 'draft' ||
+            entry.status === 'rejected' ||
+            entry.status === 'needs_revision'),
         canSubmit: active && entry.status === 'draft',
         canWithdraw: active && entry.status === 'in_review',
       },
@@ -578,7 +620,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           if (entry.source === 'record' || entry.source === 'import') {
             return yield* refuse('edit', 'entry-not-editable')
           }
-          if (entry.status !== 'draft' && entry.status !== 'rejected') {
+          if (
+            entry.status !== 'draft' &&
+            entry.status !== 'rejected' &&
+            entry.status !== 'needs_revision'
+          ) {
             return yield* refuse('edit', 'entry-not-editable')
           }
           if (item.status !== 'active') return yield* refuse('edit', 'item-not-active')
@@ -622,11 +668,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             revisionId,
             refs.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
           )
-          // a rejected entry re-enters work through its next revision
+          // a rejected entry, or one an administrator sent back, re-enters
+          // work through its next revision
           yield* setEntryState({
             tenantId,
             entryId,
-            from: ['draft', 'rejected'],
+            from: ['draft', 'rejected', 'needs_revision'],
             to: 'draft',
             currentRevisionId: revisionId,
           })
@@ -892,6 +939,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             tenantId,
             rounds.map((round) => round.id),
           )
+          const ownEvents = yield* entryEventsOf(tenantId, entryId)
           return {
             entry: view(
               entry,
@@ -929,11 +977,104 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 at: event.createdAt,
               })),
             })),
+            events: ownEvents.map((event) => ({
+              kind: event.kind,
+              actorId: event.actorId,
+              actorName: event.actorName,
+              reason: event.reason,
+              at: event.createdAt,
+            })),
           }
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
     },
   )
+
+  /**
+   * The round's arrangements changed under a claim, and somebody who may
+   * change them says so.
+   *
+   * Deliberately not `decideReview`: that one asks whether the caller really
+   * holds the level the round is standing at, and it should keep asking. An
+   * administrator whose level has nobody in it does not become that level's
+   * reviewer by having the power to fix the question - they end the round and
+   * hand the claim back, in those words.
+   *
+   * The review phase gate is not consulted either. This is how a claim
+   * stranded on an empty level gets out, and a gate that has since closed is
+   * exactly the situation it has to work in.
+   */
+  const interveneOnEntry: EntryMethods['interveneOnEntry'] = Effect.fn(
+    'Assessment.interveneOnEntry',
+  )(function* (tenantId, entryId, input, as) {
+    return yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const located = yield* entryOf(tenantId, entryId)
+          if (located === null) return yield* new EntryNotFound()
+          const locked = yield* lockBatch(tenantId, located.batchId)
+          if (locked!.status === 'archived') return yield* new BatchReadOnly()
+          // re-asked on the locked connection, like every other write here
+          yield* deps.requireRosterReach(as, tenantId, located.batchId)
+          const reason = input.reason.trim()
+          if (reason === '') return yield* refuse('return', 'reason-required')
+          const loaded = yield* loadEntry(tenantId, entryId)
+          if (loaded === null) return yield* new EntryNotFound()
+          const { entry, participant } = loaded
+          if (entry.status !== 'in_review' && entry.status !== 'approved') {
+            return yield* refuse('return', 'entry-not-returnable')
+          }
+          // a recorded fact is not its subject's to rewrite, so handing it
+          // back would leave it somewhere nobody can act: those are corrected
+          // by voiding and recording again
+          if (entry.source === 'record' || entry.source === 'import') {
+            return yield* refuse('return', 'entry-not-returnable')
+          }
+          if (entry.currentReviewInstanceId !== null) {
+            const ended = yield* cancelReviewInstance({
+              tenantId,
+              instanceId: entry.currentReviewInstanceId,
+              outcome: 'superseded',
+            })
+            if (ended) {
+              yield* insertReviewEvent({
+                tenantId,
+                reviewInstanceId: entry.currentReviewInstanceId,
+                kind: 'returned-for-revision',
+                actorId: as.userId,
+                comment: reason,
+              })
+            }
+          }
+          const moved = yield* setEntryState({
+            tenantId,
+            entryId,
+            from: ['in_review', 'approved'],
+            to: 'needs_revision',
+            currentReviewInstanceId: null,
+          })
+          if (!moved) return yield* refuse('return', 'entry-not-returnable')
+          // an approved claim sent back has no open round to record this in,
+          // and it is not a rejection: it gets its own line in the entry's
+          // own log
+          yield* insertEntryEvent({
+            tenantId,
+            entryId,
+            kind: 'revision-required',
+            actorId: as.userId,
+            reason,
+          })
+          const written = (yield* entryOf(tenantId, entryId))!
+          return view(
+            written,
+            yield* revisionView(tenantId, written.currentRevisionId),
+            as,
+            participant,
+          )
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+    )
+  })
 
   return {
     listMyEntries,
@@ -942,5 +1083,6 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     getEntry,
     appendEntryRevision,
     setEntryStatus,
+    interveneOnEntry,
   }
 }

@@ -23,7 +23,7 @@ export interface EntryDto {
   batchId: string
   itemId: string
   participantId: string
-  status: 'draft' | 'in_review' | 'approved' | 'rejected' | 'voided'
+  status: 'draft' | 'in_review' | 'needs_revision' | 'approved' | 'rejected' | 'voided'
   source: string
   currentRevision: EntryRevisionDto | null
   currentReviewInstanceId: string | null
@@ -57,6 +57,7 @@ export interface ItemDto {
 export const entryStatusMessage: Record<EntryDto['status'], MessageDescriptor> = {
   draft: m.entryStatusDraft,
   in_review: m.entryStatusInReview,
+  needs_revision: m.entryStatusNeedsRevision,
   approved: m.entryStatusApproved,
   rejected: m.entryStatusRejected,
   voided: m.entryStatusVoided,
@@ -68,6 +69,7 @@ export const entryStatusVariant: Record<
 > = {
   draft: 'outline',
   in_review: 'secondary',
+  needs_revision: 'destructive',
   approved: 'default',
   rejected: 'destructive',
   voided: 'outline',

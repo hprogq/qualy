@@ -4634,3 +4634,34 @@ entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此�
 
 **下一步**:影响分析器(两次 PATCH + `impactToken` + `expectedRevisionId`)、
 `needs_revision` 与 `EntryEvent`、reroute 传播、编辑器影响弹窗。
+
+### 打回不是驳回:`needs_revision` 与条目自己的日志(2026-08-15)
+
+施工顺序第七步,外加 §32.62 第七条里管理员的独立干预口——两者互为前提:一个状态没有生产者
+就是死代码,一个干预没有落点就无处可去。
+
+- **条目状态新增 `needs_revision`**(界面「待补充材料」)。**不复用 `rejected`**:否则以后统计
+  驳回率,会把管理员的配置调整与流程干预全算成审核驳回。`canEdit` 与 `appendEntryRevision`
+  接纳这个状态,改一版就回到 `draft`。
+- **`entry_events` 表**(append-only)。已通过的条目被退回时**没有 open ReviewInstance 可记**,
+  只 UPDATE 状态会在历史里留一段无法解释的变化。`cause_revision_id` 预留给下一步的配置传播
+  (由那一步写入),现在只由手工干预写 `kind='revision-required'` + 理由。
+- **`POST /assessment/entries/{entryId}/interventions`**(`kind: 'return-for-revision'`,理由必填)。
+  权限走 `requireRosterReach`(能改这道题的人本来就该能把被它卡住的条目退回),**不受审核阶段闸门约束**
+  ——这正是「卡住的条目怎么出来」的出口,而闸门已经关了恰恰是它要工作的场景。
+  **`decideReview` 一字未动**:它仍然要求调用者真是当前 stage 的审核人,管理员不会因为有权改题
+  就变成那一级的审核人。旧轮以 `outcome='superseded'` 收尾,不是 rejected。
+- **登记/导入来源的条目不可退回**(`entry-not-returnable`):它们不是本人能改的,退回就是把条目
+  丢到没人能动的地方;这类错误照旧走作废后重新登记。
+- `getEntryHistory` 现在带上条目自己的事件,历史面板单独渲染,不伪装成一轮审核。
+
+新测试:陌生人干预 `ACCESS_DENIED`;空理由 `reason-required`;卡在无人层级的条目被退回后
+状态 `needs_revision`、轮次 `completed/superseded`、事件序列
+`submitted, assignee-not-found, returned-for-revision`、条目日志记下 `revision-required` 与理由;
+本人再存一版即回到 `draft`;已通过的条目同样可以被要求补充。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 648 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成。
+
+**下一步**:影响分析器(两次 PATCH + `impactToken` + `expectedRevisionId`)、reroute 传播、
+编辑器影响弹窗。

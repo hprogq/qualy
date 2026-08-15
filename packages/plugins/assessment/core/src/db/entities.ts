@@ -841,7 +841,11 @@ export const Entry = defineEntity({
   checks: [
     {
       name: 'chk_entries_status',
-      expression: `status IN ('draft', 'in_review', 'approved', 'rejected', 'voided')`,
+      // needs_revision is not a rejection: it is what an administrator's
+      // intervention or a configuration change leaves behind, and counting
+      // it as one would put every such change into the rejection rate
+      // (§32.62)
+      expression: `status IN ('draft', 'in_review', 'needs_revision', 'approved', 'rejected', 'voided')`,
     },
     {
       name: 'chk_entries_source',
@@ -872,6 +876,43 @@ export const Entry = defineEntity({
       name: 'idx_entries_tenant_batch_item_status',
       expression:
         'create index idx_entries_tenant_batch_item_status on entries (tenant_id, batch_id, item_id, status)',
+    },
+  ],
+})
+
+/**
+ * What happened to a claim that no review round can explain.
+ *
+ * A claim's story is otherwise told by its rounds: submitted, judged, ended.
+ * But an approved claim sent back because the question changed under it has
+ * no open round to record that in, and writing it into the rejections would
+ * mean an administrator's edit shows up in the rejection rate. So the entry
+ * itself gets a log, append-only like every other one here.
+ */
+export const EntryEvent = defineEntity({
+  name: 'EntryEvent',
+  tableName: 'entry_events',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('entry_events_tenant_id_tenants_id_fkey'),
+    entryId: p.uuid(),
+    kind: p.string().length(31),
+    /** null when nobody in particular did it - a sweep, a scheduled step */
+    actorId: p.uuid().nullable(),
+    reason: p.string().length(500).nullable(),
+    /**
+     * The item revision that caused this, when a configuration change did.
+     * Null for an intervention somebody performed by hand.
+     */
+    causeRevisionId: p.uuid().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [{ name: 'chk_entry_events_kind_format', expression: `kind ~ ${CODE}` }],
+  indexes: [
+    {
+      name: 'idx_entry_events_tenant_entry_created',
+      expression:
+        'create index idx_entry_events_tenant_entry_created on entry_events (tenant_id, entry_id, created_at)',
     },
   ],
 })
@@ -1234,6 +1275,10 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, policy_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
+  `alter table entry_events add constraint fk_entry_events_entry
+     foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
+  `alter table entry_events add constraint fk_entry_events_cause_revision
+     foreign key (tenant_id, cause_revision_id) references assessment_item_revisions (tenant_id, id) on delete set null (cause_revision_id)`,
 ]
 
 export const entities = [
@@ -1256,6 +1301,7 @@ export const entities = [
   AssessmentItem,
   AssessmentItemRevision,
   Entry,
+  EntryEvent,
   EntryRevision,
   EntryRevisionAttachment,
   ReviewInstance,

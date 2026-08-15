@@ -65,6 +65,26 @@ export function EntryHistory({
                 )}
               </section>
             ))}
+            {/* What happened to the claim that no round explains. Kept apart
+                from the rounds rather than dressed up as one: nobody judged
+                the evidence here, the question changed under it. */}
+            {data.events.map((event, index) => {
+              const said = reviewEventMessage(event.kind)
+              return (
+                <section key={`own:${index}`} className="rounded-md border p-3">
+                  <p>
+                    {format(
+                      said.message,
+                      said.needsActor ? { who: event.actorName ?? format(m.eventSomebody) } : {},
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(event.at).toLocaleString()}
+                  </p>
+                  {event.reason !== null && <p className="pt-0.5">{event.reason}</p>}
+                </section>
+              )
+            })}
             {data.rounds.map((round) => (
               <section key={round.id} className="rounded-md border p-3">
                 <p className="flex items-center gap-2 font-medium">

@@ -53,8 +53,14 @@ export function ItemDetail({
   const room = roomLeft(item, entries)
   const steps = chainLength(item)
   const live = entries.filter((entry) => entry.status !== 'voided')
-  const drafts = live.filter((entry) => entry.status === 'draft')
-  const filed = live.filter((entry) => entry.status !== 'draft')
+  // both are the reader's to finish: one they have not sent yet, one that
+  // came back asking for more
+  const drafts = live.filter(
+    (entry) => entry.status === 'draft' || entry.status === 'needs_revision',
+  )
+  const filed = live.filter(
+    (entry) => entry.status !== 'draft' && entry.status !== 'needs_revision',
+  )
   const draft = drafts[0]
   // Recording takes effect on the spot; the chain configured on the question
   // is the way back in if somebody contests it, not a queue this claim sits
@@ -146,7 +152,7 @@ export function ItemDetail({
           key={entry.id}
           className="flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3"
         >
-          <Standing status="draft" />
+          <Standing status={entry.status} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-sm">{summary(entry, item)}</span>
             <span className="text-xs text-muted-foreground">

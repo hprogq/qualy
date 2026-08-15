@@ -14,7 +14,14 @@ const msOf = (value: unknown): number =>
 
 const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
-export type EntryStatus = 'draft' | 'in_review' | 'approved' | 'rejected' | 'voided'
+export type EntryStatus =
+  | 'draft'
+  | 'in_review'
+  /** sent back because the question changed under it, or by an intervention */
+  | 'needs_revision'
+  | 'approved'
+  | 'rejected'
+  | 'voided'
 export type EntrySource = 'self' | 'proxy' | 'record' | 'import' | 'system'
 
 export interface EntryRow {
@@ -560,6 +567,37 @@ export const cancelReviewInstance = (input: {
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/**
+ * Something that happened to a claim which no review round explains.
+ *
+ * Append-only, like every other log here. The reason it exists at all: an
+ * approved claim sent back because the question changed has no open round to
+ * record that in, and writing it into the rejections would put an
+ * administrator's edit into the rejection rate (§32.62).
+ */
+export const insertEntryEvent = (input: {
+  tenantId: string
+  entryId: string
+  kind: string
+  actorId: string | null
+  reason?: string | null
+  /** the item revision that caused it, when a configuration change did */
+  causeRevisionId?: string | null
+}) =>
+  db.query((k) =>
+    k
+      .insertInto('EntryEvent')
+      .values({
+        tenantId: input.tenantId,
+        entryId: input.entryId,
+        kind: input.kind,
+        actorId: input.actorId,
+        reason: input.reason ?? null,
+        causeRevisionId: input.causeRevisionId ?? null,
+      } as never)
+      .execute(),
+  )
+
 export const insertReviewEvent = (input: {
   tenantId: string
   reviewInstanceId: string
@@ -756,6 +794,38 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
           revisionId: row.revisionId,
           createdAt: msOf(row.createdMs),
           completedAt: row.completedMs == null ? null : msOf(row.completedMs),
+        })),
+      ),
+    )
+
+/**
+ * The claim's own log, oldest first: what happened to it that no round
+ * explains.
+ */
+export const entryEventsOf = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryEvent as ee')
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'ee.tenantId').onRef('u.id', '=', 'ee.actorId'),
+        )
+        .select(['ee.kind', 'ee.actorId', 'ee.reason', 'u.displayName as actorName'])
+        .select([epoch('ee.created_at').as('createdMs')])
+        .where('ee.tenantId', '=', tenantId)
+        .where('ee.entryId', '=', entryId)
+        .orderBy('ee.createdAt')
+        .orderBy('ee.id')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => ({
+          kind: row.kind,
+          actorId: row.actorId,
+          actorName: row.actorName,
+          reason: row.reason,
+          createdAt: msOf(row.createdMs),
         })),
       ),
     )

@@ -821,6 +821,7 @@ export class Assessment extends Context.Service<
     readonly getEntry: EntryMethods['getEntry']
     readonly appendEntryRevision: EntryMethods['appendEntryRevision']
     readonly setEntryStatus: EntryMethods['setEntryStatus']
+    readonly interveneOnEntry: EntryMethods['interveneOnEntry']
     /** the single review stage: a queue answered, a round closed exactly once */
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
@@ -4293,6 +4294,13 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             createdAt: new Date(revision.createdAt).toISOString(),
             formConfig: revision.formConfig,
           })),
+          events: history.events.map((event) => ({
+            kind: event.kind,
+            actorId: event.actorId,
+            actorName: event.actorName,
+            reason: event.reason,
+            at: new Date(event.at).toISOString(),
+          })),
           rounds: history.rounds.map((round) => ({
             id: round.id,
             roundNo: round.roundNo,
@@ -4367,6 +4375,20 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal.tenantId,
           params.entryId,
           payload.status,
+          principal,
+        )
+        return { entry: entryDto(entry) }
+      }),
+    )
+    .handle(
+      'interveneOnEntry',
+      Effect.fn('assessment.interveneOnEntry.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const entry = yield* assessment.interveneOnEntry(
+          principal.tenantId,
+          params.entryId,
+          payload,
           principal,
         )
         return { entry: entryDto(entry) }

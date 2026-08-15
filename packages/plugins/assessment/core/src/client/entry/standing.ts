@@ -34,10 +34,11 @@ export interface Standing {
 }
 
 /** the one word a row says about itself beside its name */
-export type RowTag = 'voided' | 'draft' | 'in_review' | 'recorded' | 'open'
+export type RowTag = 'voided' | 'needs_revision' | 'draft' | 'in_review' | 'recorded' | 'open'
 
 export const ROW_TAG: Record<RowTag, MessageDescriptor> = {
   voided: m.itemVoided,
+  needs_revision: m.entryStatusNeedsRevision,
   draft: m.entryStatusDraft,
   in_review: m.entryStatusInReview,
   recorded: m.myEntriesRecorded,
@@ -190,6 +191,7 @@ const itemRow = (
 ): StructureRow => {
   const granted = itemScore(standing, item.id)
   const drafts = entries.filter((entry) => entry.status === 'draft').length
+  const sentBack = entries.filter((entry) => entry.status === 'needs_revision').length
   const pending = entries.filter((entry) => entry.status === 'in_review').length
   return {
     id: item.id,
@@ -203,7 +205,11 @@ const itemRow = (
     tag:
       item.status === 'voided'
         ? 'voided'
-        : drafts > 0
+        : // what is waiting on the reader, hardest first: something sent
+          // back is a thing they were told to do
+          sentBack > 0
+          ? 'needs_revision'
+          : drafts > 0
           ? 'draft'
           : pending > 0
             ? 'in_review'
@@ -212,7 +218,7 @@ const itemRow = (
               : mayFile(item, entries)
                 ? 'open'
                 : null,
-    todo: item.status !== 'voided' && (drafts > 0 || mayFile(item, entries)),
+    todo: item.status !== 'voided' && (sentBack > 0 || drafts > 0 || mayFile(item, entries)),
     trail,
     parentId: item.scoreGroupId,
   }

@@ -213,6 +213,7 @@ describe('filing a claim', () => {
         getEntryHistory: () =>
           Effect.succeed({
             entry: entry({ status: 'rejected' }),
+            events: [],
             revisions: [
               {
                 id: REVISION_ID,
