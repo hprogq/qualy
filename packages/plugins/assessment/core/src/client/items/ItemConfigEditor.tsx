@@ -21,12 +21,12 @@ import { Checkbox } from '@qualy/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Input } from '@qualy/ui/input'
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@qualy/ui/input-group'
-import { NativeSelect } from '@qualy/ui/native-select'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { trimAmount, type ItemDto } from '../entry/model.ts'
+import { Choice } from './Choice.tsx'
 import { FieldList, type FieldDraft } from './FieldTable.tsx'
 import { StageSheet, type StageDraft } from './StageSheet.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
@@ -387,9 +387,32 @@ export function ItemConfigEditor({
       }
     })
 
-  const addStage = (chain: 'normal' | 'escalation') => {
+  /**
+   * A step goes where the author points, not on the end.
+   *
+   * Adding to the end and expecting people to walk it up with arrows is
+   * asking them to do the insertion themselves, one press at a time, in a
+   * chain whose order is its whole meaning.
+   */
+  const addStage = (
+    chain: 'normal' | 'escalation',
+    beside?: { key: string; side: 'before' | 'after' },
+  ) => {
     const stage = blankStage(options, chain)
-    setDraft((previous) => ({ ...previous, stages: [...previous.stages, stage] }))
+    setDraft((previous) => {
+      const own = previous.stages.filter((one) => one.chain === chain)
+      const others = previous.stages.filter((one) => one.chain !== chain)
+      const at =
+        beside === undefined
+          ? own.length
+          : own.findIndex((one) => one.key === beside.key) + (beside.side === 'after' ? 1 : 0)
+      const placed = [...own]
+      placed.splice(at < 0 ? own.length : at, 0, stage)
+      return {
+        ...previous,
+        stages: chain === 'normal' ? [...placed, ...others] : [...others, ...placed],
+      }
+    })
     setOpenStage(stage.key)
   }
 
@@ -398,13 +421,21 @@ export function ItemConfigEditor({
       ? stage.nodeTypeId !== '' && stage.roleIds.length > 0
       : stage.roleId !== ''
 
-  const ready =
-    draft.title.trim() !== '' &&
-    draft.scoreGroupId !== '' &&
-    draft.fixedValue.trim() !== '' &&
-    draft.stages.some((stage) => stage.chain === 'normal') &&
-    draft.stages.every(stageReady) &&
-    draft.fields.every((field) => field.label.trim() !== '')
+  /**
+   * Everything standing between this and a save, in the words of the thing
+   * that is missing.
+   *
+   * Collected rather than reduced to a boolean, because a button that is
+   * merely dead tells the reader they have done something wrong without ever
+   * saying what - and the answer is always known here.
+   */
+  const missing: string[] = [
+    draft.title.trim() === '' ? format(m.itemsNeedTitle) : '',
+    draft.scoreGroupId === '' ? format(m.itemsNeedGroup) : '',
+    draft.fixedValue.trim() === '' ? format(m.itemsNeedValue) : '',
+    draft.fields.some((field) => field.label.trim() === '') ? format(m.itemsNeedFieldLabel) : '',
+    draft.stages.some((stage) => !stageReady(stage)) ? format(m.itemsNeedStage) : '',
+  ].filter((one) => one !== '')
 
   // The api asks for a sentence when a live question's scoring or placement
   // moves, and only then. Asking any wider trains people to invent one.
@@ -515,9 +546,23 @@ export function ItemConfigEditor({
             <Button variant="outline" onClick={onCancel}>
               {format(commonMessages.cancel)}
             </Button>
+            {/* pressable even when it cannot go through: the press is how
+                the reader asks what is wrong, and the answer is right here */}
             <Button
-              disabled={save.isPending || !ready}
-              onClick={() => (needsReason ? setAskingReason(true) : save.mutate(null))}
+              disabled={save.isPending}
+              onClick={() => {
+                if (missing.length > 0) {
+                  setProblem(
+                    format(m.itemsCannotSave, {
+                      reasons: missing.join(format(m.listSeparator)),
+                    }),
+                  )
+                  return
+                }
+                setProblem(null)
+                if (needsReason) setAskingReason(true)
+                else save.mutate(null)
+              }}
             >
               {format(m.entrySave)}
             </Button>
@@ -557,33 +602,28 @@ export function ItemConfigEditor({
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={format(m.itemsFieldGroup)}>
                   {(id) => (
-                    <NativeSelect
+                    <Choice
                       id={id}
                       value={draft.scoreGroupId}
-                      onChange={(event) => patch({ scoreGroupId: event.target.value })}
-                    >
-                      {groups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                      options={groups.map((group) => ({ value: group.id, label: group.name }))}
+                      onChange={(scoreGroupId) => patch({ scoreGroupId })}
+                    />
                   )}
                 </Field>
                 <Field label={format(m.itemsFieldEntrySource)}>
                   {(id) => (
-                    <NativeSelect
+                    <Choice
                       id={id}
                       value={draft.entrySource}
-                      onChange={(event) =>
-                        patch({ entrySource: event.target.value as Draft['entrySource'] })
-                      }
-                    >
-                      <option value="student">{format(m.itemsEntrySourceStudent)}</option>
-                      <option value="administrative">
-                        {format(m.itemsEntrySourceAdministrative)}
-                      </option>
-                    </NativeSelect>
+                      options={[
+                        { value: 'student', label: format(m.itemsEntrySourceStudent) },
+                        {
+                          value: 'administrative',
+                          label: format(m.itemsEntrySourceAdministrative),
+                        },
+                      ]}
+                      onChange={(next) => patch({ entrySource: next as Draft['entrySource'] })}
+                    />
                   )}
                 </Field>
               </div>
@@ -684,9 +724,13 @@ export function ItemConfigEditor({
                     {(id) => (
                       // one calculator so far; the control is here because the
                       // choice belongs to the question, not because it is empty
-                      <NativeSelect id={id} value="fixed" disabled>
-                        <option value="fixed">{format(m.itemsScoringMethodFixed)}</option>
-                      </NativeSelect>
+                      <Choice
+                        id={id}
+                        value="fixed"
+                        disabled
+                        options={[{ value: 'fixed', label: format(m.itemsScoringMethodFixed) }]}
+                        onChange={() => undefined}
+                      />
                     )}
                   </Field>
                 </div>
@@ -708,7 +752,7 @@ export function ItemConfigEditor({
                 steps={draft.stages.filter((one) => one.chain === 'normal')}
                 options={options}
                 onOpen={setOpenStage}
-                onMove={moveStage}
+                onAdd={(beside) => addStage('normal', beside)}
                 onRemove={(key) =>
                   setDraft((previous) => ({
                     ...previous,
@@ -716,7 +760,7 @@ export function ItemConfigEditor({
                   }))
                 }
               />
-              {draft.stages.some((one) => one.chain === 'escalation') && (
+              {draft.stages.some((one) => one.chain === 'escalation') ? (
                 <div className="flex flex-col gap-3 border-t pt-4">
                   <div>
                     <h4 className="text-[13px] font-medium">{format(m.itemsDoubtTitle)}</h4>
@@ -730,7 +774,7 @@ export function ItemConfigEditor({
                     steps={draft.stages.filter((one) => one.chain === 'escalation')}
                     options={options}
                     onOpen={setOpenStage}
-                    onMove={moveStage}
+                    onAdd={(beside) => addStage('escalation', beside)}
                     onRemove={(key) =>
                       setDraft((previous) => ({
                         ...previous,
@@ -739,22 +783,17 @@ export function ItemConfigEditor({
                     }
                   />
                 </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-[12.8px] font-medium">
+                  <InlineAdd
+                    label={format(m.itemsDoubtAddStep)}
+                    onClick={() => addStage('escalation')}
+                  />
+                  <span className="font-normal text-muted-foreground">
+                    {format(m.itemsDoubtEmpty)}
+                  </span>
+                </div>
               )}
-              <div className="flex flex-wrap items-center gap-2.5 text-[12.8px] font-medium">
-                <InlineAdd label={format(m.itemsStageAdd)} onClick={() => addStage('normal')} />
-                {!draft.stages.some((one) => one.chain === 'escalation') && (
-                  <>
-                    <span aria-hidden className="h-3 w-px bg-border" />
-                    <InlineAdd
-                      label={format(m.itemsDoubtAddStep)}
-                      onClick={() => addStage('escalation')}
-                    />
-                    <span className="font-normal text-muted-foreground">
-                      {format(m.itemsDoubtEmpty)}
-                    </span>
-                  </>
-                )}
-              </div>
             </div>
           </Section>
         </div>
@@ -928,8 +967,12 @@ function ScoringSummary({
 
 /**
  * The path a submission takes, drawn as one line from where it enters to
- * where it leaves. A step opens its own settings; the controls that reorder
- * or drop it appear when it is pointed at, so the path stays a path.
+ * where it leaves. Both paths get both ends: an escalation that starts and
+ * finishes nowhere is a row of boxes, not a route.
+ *
+ * A step opens its own settings. Between every pair of them - and at both
+ * ends - is a place to put another one, so a step goes where it belongs
+ * rather than on the end and then walked up with arrows.
  */
 function ChainFlow({
   batchId,
@@ -937,7 +980,7 @@ function ChainFlow({
   steps,
   options,
   onOpen,
-  onMove,
+  onAdd,
   onRemove,
 }: {
   batchId: string
@@ -945,54 +988,67 @@ function ChainFlow({
   steps: readonly StageDraft[]
   options: ItemOptions
   onOpen: (key: string) => void
-  onMove: (key: string, delta: -1 | 1) => void
+  onAdd: (beside?: { key: string; side: 'before' | 'after' }) => void
   onRemove: (key: string) => void
 }) {
   const { format } = useI18n()
+  const first = steps[0]
   return (
     <div className="-mx-1 flex items-start overflow-x-auto px-1 pb-1">
-      {chain === 'normal' && (
-        <Endpoint
-          title={format(m.itemsFlowSubmit)}
-          sub={format(m.itemsFlowSubmitBy)}
-          mark={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" />}
-        />
-      )}
+      <Endpoint
+        title={format(chain === 'normal' ? m.itemsFlowSubmit : m.itemsDoubtRaised)}
+        sub={format(chain === 'normal' ? m.itemsFlowSubmitBy : m.itemsDoubtRaisedBy)}
+        mark={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" />}
+      />
+      <Gap
+        label={format(m.itemsStageAdd)}
+        onAdd={() => onAdd(first === undefined ? undefined : { key: first.key, side: 'before' })}
+      />
       {steps.map((one, index) => (
         <div key={one.key} className="flex shrink-0 items-start">
-          <Rule />
           <StageColumn
             batchId={batchId}
             index={index}
             stage={one}
             options={options}
-            first={index === 0}
-            last={index === steps.length - 1}
             removable={chain === 'escalation' || steps.length > 1}
             onOpen={() => onOpen(one.key)}
-            onMove={(delta) => onMove(one.key, delta)}
             onRemove={() => onRemove(one.key)}
+          />
+          <Gap
+            label={format(m.itemsStageAdd)}
+            onAdd={() => onAdd({ key: one.key, side: 'after' })}
           />
         </div>
       ))}
-      {chain === 'normal' && (
-        <>
-          <Rule />
-          <Endpoint
-            title={format(m.itemsFlowDone)}
-            sub={format(m.itemsFlowDoneSub)}
-            mark={<CheckIcon aria-hidden className="size-3" />}
-          />
-        </>
-      )}
+      <Endpoint
+        title={format(chain === 'normal' ? m.itemsFlowDone : m.itemsDoubtSettled)}
+        sub={format(chain === 'normal' ? m.itemsFlowDoneSub : m.itemsDoubtSettledSub)}
+        mark={<CheckIcon aria-hidden className="size-3" />}
+      />
     </div>
   )
 }
 
-function Rule() {
+/**
+ * The line between two steps, and the place to put one more.
+ *
+ * The button only shows itself when the gap is pointed at, so a chain at
+ * rest reads as a line rather than as a row of plus signs.
+ */
+function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <div className="min-w-6 flex-1 pt-2.75">
-      <div className="h-px bg-border" />
+    <div className="group/gap relative flex min-w-8 flex-1 items-start pt-2.75">
+      <div className="h-px w-full bg-border" />
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        className="absolute top-0 left-1/2 flex size-5.5 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/gap:opacity-100 focus-visible:opacity-100"
+        onClick={onAdd}
+      >
+        <PlusIcon aria-hidden className="size-3" />
+      </button>
     </div>
   )
 }
@@ -1015,22 +1071,16 @@ function StageColumn({
   index,
   stage,
   options,
-  first,
-  last,
   removable,
   onOpen,
-  onMove,
   onRemove,
 }: {
   batchId: string
   index: number
   stage: StageDraft
   options: ItemOptions
-  first: boolean
-  last: boolean
   removable: boolean
   onOpen: () => void
-  onMove: (delta: -1 | 1) => void
   onRemove: () => void
 }) {
   const { format } = useI18n()
@@ -1043,44 +1093,40 @@ function StageColumn({
           .join(format(m.listSeparator))
       : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
   const where = stage.kind === 'roleAt' ? levelName : format(m.itemsStageWalkUp)
+  // A step nobody has finished naming cannot say who reviews at it, and a
+  // dash in that space reads as a word rather than as an absence. It says
+  // what it is instead, and looks unfinished until it is.
+  const settled = roleNames !== '' && where !== ''
 
   return (
     <div className="group flex w-44 shrink-0 flex-col gap-1.5 pl-3.5">
-      <span className="flex size-5.5 items-center justify-center rounded-full bg-foreground text-[11px] font-medium text-background">
+      <span
+        className={cn(
+          'flex size-5.5 items-center justify-center rounded-full text-[11px] font-medium',
+          settled
+            ? 'bg-foreground text-background'
+            : 'border border-dashed border-destructive/60 text-destructive',
+        )}
+      >
         {index + 1}
       </span>
       <button
         type="button"
-        className="text-left text-[13px] font-medium underline-offset-4 hover:underline"
+        className={cn(
+          'text-left text-[13px] font-medium underline-offset-4 hover:underline',
+          !settled && 'text-destructive',
+        )}
         onClick={onOpen}
       >
-        {where === '' ? format(m.itemsStageNumber, { n: index + 1 }) : where}
-        {' / '}
-        {roleNames === '' ? '—' : roleNames}
+        {settled ? `${where} / ${roleNames}` : format(m.itemsStageUnset)}
       </button>
-      <StageCoverage batchId={batchId} stage={stage} />
-      <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="size-6 p-0"
-          disabled={first}
-          onClick={() => onMove(-1)}
-          aria-label={format(m.itemsFieldUp)}
-        >
-          <ChevronLeftIcon aria-hidden className="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="size-6 p-0"
-          disabled={last}
-          onClick={() => onMove(1)}
-          aria-label={format(m.itemsFieldDown)}
-        >
-          <ChevronRightIcon aria-hidden className="size-3.5" />
-        </Button>
-        {removable && (
+      {settled ? (
+        <StageCoverage batchId={batchId} stage={stage} />
+      ) : (
+        <p className="text-xs text-muted-foreground">{format(m.itemsStageUnsetHint)}</p>
+      )}
+      {removable && (
+        <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <Button
             variant="ghost"
             size="sm"
@@ -1090,8 +1136,8 @@ function StageColumn({
           >
             <XIcon aria-hidden className="size-3.5" />
           </Button>
-        )}
-      </span>
+        </span>
+      )}
     </div>
   )
 }

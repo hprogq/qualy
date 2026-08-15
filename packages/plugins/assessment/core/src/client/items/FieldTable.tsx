@@ -6,7 +6,7 @@ import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { cn } from '@qualy/ui/cn'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Choice } from './Choice.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
 import { lastDay } from '../entry/model.ts'
 
@@ -236,16 +236,17 @@ function FieldSettings({
       </Field>
       <Field label={format(m.itemsFieldType)}>
         {(id) => (
-          <NativeSelect
+          <Choice
             id={id}
             className="bg-background"
             value={field.type}
-            onChange={(event) => onChange({ type: event.target.value as FieldDraft['type'] })}
-          >
-            <option value="text">{format(m.itemsTypeText)}</option>
-            <option value="date">{format(m.itemsTypeDate)}</option>
-            <option value="attachment">{format(m.itemsTypeAttachment)}</option>
-          </NativeSelect>
+            options={[
+              { value: 'text', label: format(m.itemsTypeText) },
+              { value: 'date', label: format(m.itemsTypeDate) },
+              { value: 'attachment', label: format(m.itemsTypeAttachment) },
+            ]}
+            onChange={(next) => onChange({ type: next as FieldDraft['type'] })}
+          />
         )}
       </Field>
 

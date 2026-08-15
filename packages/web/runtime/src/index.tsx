@@ -286,9 +286,23 @@ export function usePageNavigate() {
 // selected, what was searched for, which anchor is in view. Keeping it here
 // rather than in useState is what makes an administration screen linkable and
 // survivable across a reload.
-export function usePageQueryState(key: string, fallback = ''): [string, (next: string) => void] {
+export function usePageQueryState(
+  key: string,
+  fallback = '',
+  options?: {
+    /**
+     * Whether changing it is somewhere to come back to.
+     *
+     * A filter is not: nobody presses back expecting the search box to empty
+     * one letter at a time. Opening a record is - the reader went somewhere,
+     * and back is how anybody leaves.
+     */
+    history?: 'replace' | 'push'
+  },
+): [string, (next: string) => void] {
   const [params, setParams] = useSearchParams()
   const value = params.get(key) ?? fallback
+  const history = options?.history ?? 'replace'
   const set = useCallback(
     (next: string) => {
       setParams(
@@ -298,11 +312,10 @@ export function usePageQueryState(key: string, fallback = ''): [string, (next: s
           else updated.set(key, next)
           return updated
         },
-        // navigating a filter is not a place in history to go back to
-        { replace: true },
+        { replace: history === 'replace' },
       )
     },
-    [key, fallback, setParams],
+    [key, fallback, history, setParams],
   )
   return [value, set]
 }

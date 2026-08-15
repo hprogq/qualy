@@ -5,8 +5,8 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
-import { NativeSelect } from '@qualy/ui/native-select'
 import { assessmentApi } from '../api.ts'
+import { Choice } from './Choice.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { ItemOptions } from './options.ts'
 
@@ -67,14 +67,15 @@ export function StageSheet({
     >
       <Field label={format(m.itemsStageKind)}>
         {(id) => (
-          <NativeSelect
+          <Choice
             id={id}
             value={stage.kind}
-            onChange={(event) => onChange({ kind: event.target.value as StageDraft['kind'] })}
-          >
-            <option value="roleAt">{format(m.itemsStageRoleAt)}</option>
-            <option value="nearestRole">{format(m.itemsStageNearestRole)}</option>
-          </NativeSelect>
+            options={[
+              { value: 'roleAt', label: format(m.itemsStageRoleAt) },
+              { value: 'nearestRole', label: format(m.itemsStageNearestRole) },
+            ]}
+            onChange={(next) => onChange({ kind: next as StageDraft['kind'] })}
+          />
         )}
       </Field>
 
@@ -82,17 +83,15 @@ export function StageSheet({
         <>
           <Field label={format(m.itemsReviewLevel)}>
             {(id) => (
-              <NativeSelect
+              <Choice
                 id={id}
                 value={stage.nodeTypeId}
-                onChange={(event) => onChange({ nodeTypeId: event.target.value })}
-              >
-                {options.orgTypes.map((orgType) => (
-                  <option key={orgType.id} value={orgType.id}>
-                    {orgType.name}
-                  </option>
-                ))}
-              </NativeSelect>
+                options={options.orgTypes.map((orgType) => ({
+                  value: orgType.id,
+                  label: orgType.name,
+                }))}
+                onChange={(nodeTypeId) => onChange({ nodeTypeId })}
+              />
             )}
           </Field>
           <Field label={format(m.itemsReviewRoles)} hint={format(m.itemsReviewRolesHint)}>
@@ -136,17 +135,12 @@ export function StageSheet({
       ) : (
         <Field label={format(m.itemsStageRole)} hint={format(m.itemsStageNearestHint)}>
           {(id) => (
-            <NativeSelect
+            <Choice
               id={id}
               value={stage.roleId}
-              onChange={(event) => onChange({ roleId: event.target.value })}
-            >
-              {options.roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </NativeSelect>
+              options={options.roles.map((role) => ({ value: role.id, label: role.name }))}
+              onChange={(roleId) => onChange({ roleId })}
+            />
           )}
         </Field>
       )}

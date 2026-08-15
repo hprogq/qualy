@@ -882,6 +882,11 @@ const i18n = definePluginMessages({
       defaultMessage: 'Leave empty for no lower limit.',
     },
     itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
+    itemsGroupParent: { id: 'assessment/items/group-parent', defaultMessage: 'Sits inside' },
+    itemsGroupParentHint: {
+      id: 'assessment/items/group-parent-hint',
+      defaultMessage: 'Move it by choosing another section.',
+    },
     itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Upper limit' },
     itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Lower limit' },
     itemsGroupRemove: { id: 'assessment/items/group-remove', defaultMessage: 'Remove' },
@@ -1157,6 +1162,7 @@ const i18n = definePluginMessages({
     },
     structureStatusAll: { id: 'assessment/items/structure-status-all', defaultMessage: 'All' },
     structureStatusLive: { id: 'assessment/items/structure-status-live', defaultMessage: 'Live' },
+    structureNew: { id: 'assessment/items/structure-new', defaultMessage: 'New' },
     structureNewGroup: { id: 'assessment/items/structure-new-group', defaultMessage: 'Group' },
     structureNewItem: { id: 'assessment/items/structure-new-item', defaultMessage: 'Question' },
     structureColOrdinal: { id: 'assessment/items/structure-col-ordinal', defaultMessage: 'No.' },
@@ -1411,6 +1417,36 @@ const i18n = definePluginMessages({
       id: 'assessment/items/review-uncovered-count',
       defaultMessage:
         '{count, plural, one {# unit has no reviewer} other {# units have no reviewer}}',
+    },
+    itemsStageUnset: { id: 'assessment/items/stage-unset', defaultMessage: 'Not set up yet' },
+    itemsStageUnsetHint: {
+      id: 'assessment/items/stage-unset-hint',
+      defaultMessage: 'Say where and who reviews here.',
+    },
+    itemsDoubtRaised: { id: 'assessment/items/doubt-raised', defaultMessage: 'Escalated' },
+    itemsDoubtRaisedBy: { id: 'assessment/items/doubt-raised-by', defaultMessage: 'By a reviewer' },
+    itemsDoubtSettled: { id: 'assessment/items/doubt-settled', defaultMessage: 'Settled' },
+    itemsDoubtSettledSub: {
+      id: 'assessment/items/doubt-settled-sub',
+      defaultMessage: 'Back to the outcome',
+    },
+    itemsCannotSave: {
+      id: 'assessment/items/cannot-save',
+      defaultMessage: 'Not saved yet: {reasons}.',
+    },
+    itemsNeedTitle: { id: 'assessment/items/need-title', defaultMessage: 'the title is empty' },
+    itemsNeedGroup: { id: 'assessment/items/need-group', defaultMessage: 'no section chosen' },
+    itemsNeedValue: {
+      id: 'assessment/items/need-value',
+      defaultMessage: 'no value per approved entry',
+    },
+    itemsNeedFieldLabel: {
+      id: 'assessment/items/need-field-label',
+      defaultMessage: 'a form field has no name',
+    },
+    itemsNeedStage: {
+      id: 'assessment/items/need-stage',
+      defaultMessage: 'a review step is not set up',
     },
     itemsDoubtAddStep: {
       id: 'assessment/items/doubt-add-step',

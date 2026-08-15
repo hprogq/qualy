@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { ChevronDownIcon, EllipsisVerticalIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  EllipsisVerticalIcon,
+  FolderPlusIcon,
+  FilePlusIcon,
+  PlusIcon,
+  SearchIcon,
+} from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
@@ -264,18 +271,31 @@ export function StructureTable({
           <option value="active">{format(m.structureStatusLive)}</option>
           <option value="voided">{format(m.itemsStatusVoided)}</option>
         </NativeSelect>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onAddGroup(null)}
-        >
-          {format(m.structureNewGroup)}
-        </Button>
-        <Button size="sm" className="h-7 text-xs" onClick={() => onAddItem(null)}>
-          <PlusIcon aria-hidden className="size-3.5" />
-          {format(m.structureNewItem)}
-        </Button>
+        {/* One press to make something, one more to say what. Two buttons
+            side by side made the reader choose between them before they had
+            been told they were choosing at all. Where it lands is settled in
+            the form that opens - the paper to begin with, and any section
+            from there - because a menu of every section in the paper is not
+            a menu anybody can read once the paper is deep. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" className="h-7 text-xs">
+              <PlusIcon aria-hidden className="size-3.5" />
+              {format(m.structureNew)}
+              <ChevronDownIcon aria-hidden className="size-3.5 opacity-70" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onSelect={() => onAddItem(null)}>
+              <FilePlusIcon aria-hidden />
+              {format(m.itemsNew)}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onAddGroup(null)}>
+              <FolderPlusIcon aria-hidden />
+              {format(m.itemsGroupNew)}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Columns need a screen wide enough to hold them. Narrower than that,

@@ -10,6 +10,7 @@ import { toast } from '@qualy/ui/toast'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { Choice } from './Choice.tsx'
 import type { TreeGroup } from './paper.ts'
 
 // One section of the paper: its name and its two limits.
@@ -50,12 +51,39 @@ export function GroupEditor({
   const [name, setName] = useState(editing?.name ?? '')
   const [cap, setCap] = useState(editing?.cap ?? '')
   const [floor, setFloor] = useState(editing?.floor ?? '')
+  const [parent, setParent] = useState(editing?.parentGroupId ?? parentId ?? '')
   const [reason, setReason] = useState('')
   const [refusals, setRefusals] = useState<readonly { reason: string; groupId: string | null }[]>(
     [],
   )
 
-  const parent = groups.find((group) => group.id === (editing?.parentGroupId ?? parentId)) ?? null
+  /**
+   * Where this section may sit.
+   *
+   * Anywhere but inside itself: a section cannot be its own ancestor, and
+   * offering the move only to have the round refuse it teaches nothing. The
+   * paper is not offered a parent at all - the outermost section is the one
+   * thing there can only be one of.
+   */
+  const inside = new Set<string>()
+  if (editing !== null) {
+    inside.add(editing.id)
+    for (let found = true; found;) {
+      found = false
+      for (const group of groups) {
+        if (
+          group.parentGroupId !== null &&
+          inside.has(group.parentGroupId) &&
+          !inside.has(group.id)
+        ) {
+          inside.add(group.id)
+          found = true
+        }
+      }
+    }
+  }
+  const destinations = groups.filter((group) => !inside.has(group.id))
+  const movable = editing === null || editing.parentGroupId !== null
 
   const specOf = (group: TreeGroup) => ({
     id: group.id,
@@ -77,13 +105,16 @@ export function GroupEditor({
         name: name.trim(),
         cap: cap.trim() === '' ? null : cap.trim(),
         floor: floor.trim() === '' ? null : floor.trim(),
+        // the paper keeps the one thing that makes it the paper
+        ...(movable ? { parentGroupId: parent === '' ? null : parent } : {}),
       }
       const edited = groups.map((group) =>
         group.id === editing?.id ? { ...specOf(group), ...values } : specOf(group),
       )
       // one being composed joins the tree the same way every other row is
       // written: as part of the whole set the api replaces
-      const created = editing === null ? [{ parentGroupId: parentId, ...values }] : []
+      const created =
+        editing === null ? [{ parentGroupId: parent === '' ? null : parent, ...values }] : []
       return run(
         api.assessment.replaceScoreGroups({
           params: { batchId },
@@ -129,9 +160,6 @@ export function GroupEditor({
     <SidePanel
       open
       title={format(editing === null ? m.itemsGroupNew : m.itemsGroupEditing)}
-      description={
-        parent === null ? undefined : format(m.itemsGroupInside, { parent: parent.name })
-      }
       onClose={onClose}
       footer={
         <>
@@ -162,6 +190,21 @@ export function GroupEditor({
           <Input id={id} autoFocus value={name} onChange={(event) => setName(event.target.value)} />
         )}
       </Field>
+      {movable && (
+        <Field label={format(m.itemsGroupParent)} hint={format(m.itemsGroupParentHint)}>
+          {(id) => (
+            <Choice
+              id={id}
+              value={parent}
+              options={destinations.map((group) => ({
+                value: group.id,
+                label: group.name.trim() === '' ? format(m.itemsGroupUnnamed) : group.name,
+              }))}
+              onChange={setParent}
+            />
+          )}
+        </Field>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label={format(m.itemsGroupCap)} hint={format(m.itemsGroupCapHint)}>
           {(id) => <Input id={id} value={cap} onChange={(event) => setCap(event.target.value)} />}

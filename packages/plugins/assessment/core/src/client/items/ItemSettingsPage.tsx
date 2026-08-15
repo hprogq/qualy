@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, PencilIcon, TriangleAlertIcon } from 'lucide-react'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -33,13 +33,26 @@ import { trimAmount, type ItemDto } from '../entry/model.ts'
 // three fields, so it opens in a panel over the structure instead: nothing
 // about it is worth losing sight of the tree for.
 //
-// Which move happened is stated at the point the screen changes rather than
-// inferred afterwards, because a save that lands on the question already
-// open must not perform an arrival the reader did not ask for.
-interface View {
-  open: TreeSelection | null
-  move: DrillMove
+// Which question is open is in the address, so a reload, a shared link and
+// the browser's own back button all land where the reader was. A question
+// still being composed has no id to put there and stays where it is.
+//
+// Which way the screen moved is worked out from where it was a moment ago
+// rather than recorded at each press: back and forward are moves nobody in
+// this file gets told about, and they deserve the same direction as the
+// buttons that do the same thing.
+const moveBetween = (from: string, to: string, questions: readonly { id: string }[]): DrillMove => {
+  if (from === to) return 'none'
+  if (from === STRUCTURE) return 'in'
+  if (to === STRUCTURE) return 'out'
+  // a question being composed became the saved question: the reader pressed
+  // save and is looking at the same thing, so nothing arrives
+  if (from.startsWith('draft:') && to.startsWith('item:')) return 'none'
+  const at = (key: string) => questions.findIndex((one) => `item:${one.id}` === key)
+  return at(to) < at(from) ? 'previous' : 'next'
 }
+
+const STRUCTURE = 'structure'
 
 /**
  * What a refused publish or restore actually says.
@@ -60,22 +73,27 @@ let composed = 0
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
-  // held out here because the band at the top of the page is the one the open
-  // question speaks through, and the page has to know when to give it up
-  const [view, setView] = useState<View>({ open: null, move: 'none' })
+  // Both held out here because the band at the top of the page is the one the
+  // open question speaks through, and the page has to know when to give it
+  // up. The saved one is in the address; the one still being composed cannot
+  // be, so it is the only piece of this kept in memory.
+  const [question, setQuestion] = usePageQueryState('question', '', { history: 'push' })
+  const [composing, setComposing] = useState<string | null>(null)
   return (
     <BatchScreen
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
-      banner={view.open === null ? 'section' : 'open'}
+      banner={question === '' && composing === null ? 'section' : 'open'}
     >
       {(batch) => (
         <Editor
           batchId={batch.id}
           batchStatus={batch.status}
           materialRange={batch.materialRange}
-          view={view}
-          onView={setView}
+          question={question}
+          onQuestion={setQuestion}
+          composing={composing}
+          onComposing={setComposing}
         />
       )}
     </BatchScreen>
@@ -86,14 +104,20 @@ function Editor({
   batchId,
   batchStatus,
   materialRange,
-  view,
-  onView,
+  question,
+  onQuestion,
+  composing: composingId,
+  onComposing,
 }: {
   batchId: string
   batchStatus: string
   materialRange: { start: string; end: string }
-  view: View
-  onView: (view: View) => void
+  /** the saved question the address says is open, or '' for the structure */
+  question: string
+  onQuestion: (itemId: string) => void
+  /** the unsaved question being written, which has no id to put in the address */
+  composing: string | null
+  onComposing: (localId: string | null) => void
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -123,15 +147,30 @@ function Editor({
     groupId: string
     orderedItemIds: readonly string[]
   } | null>(null)
+  /** which screen was on show last commit, which is what says which way it moved */
+  const wasAt = useRef(STRUCTURE)
 
-  const selection = view.open
-  const open = (next: TreeSelection | null, move: DrillMove) => onView({ open: next, move })
+  const selection: TreeSelection | null =
+    composingId !== null
+      ? { kind: 'draft', localId: composingId }
+      : question !== ''
+        ? { kind: 'item', id: question }
+        : null
+  const drillKey =
+    composingId !== null ? `draft:${composingId}` : question !== '' ? `item:${question}` : STRUCTURE
+
+  /** leave whatever is open and go back to the structure */
+  const close = () => {
+    onComposing(null)
+    onQuestion('')
+  }
 
   // one more question being composed, opened so it can be written straight away
   const compose = (groupId: string) => {
     const localId = `local-${(composed += 1)}`
     setDrafts((current) => [...current, { localId, groupId, title: '' }])
-    open({ kind: 'draft', localId }, 'in')
+    onQuestion('')
+    onComposing(localId)
   }
 
   const closeDraft = (localId: string) => {
@@ -140,7 +179,7 @@ function Editor({
       const { [localId]: gone, ...rest } = current
       return rest
     })
-    if (selection?.kind === 'draft' && selection.localId === localId) open(null, 'out')
+    if (composingId === localId) onComposing(null)
   }
 
   const hold = useCallback((localId: string, composition: QuestionDraft) => {
@@ -176,7 +215,7 @@ function Editor({
   const remove = useMutation({
     mutationFn: (itemId: string) => run(api.assessment.deleteItem({ params: { itemId } })),
     onSuccess: () => {
-      open(null, 'out')
+      close()
       refresh()
     },
     onError: (error) => toast.error(formatError(error)),
@@ -267,12 +306,19 @@ function Editor({
     row.kind === 'item' ? [{ id: row.id, title: row.name }] : [],
   )
 
+  // worked out from where the screen was a moment ago, so the browser's own
+  // back and forward move the same way the buttons that do the same thing do
+  const move = moveBetween(wasAt.current, drillKey, everyQuestion)
+  useEffect(() => {
+    wasAt.current = drillKey
+  }, [drillKey])
+
   const openRow = (row: StructureRow) => {
     if (row.kind === 'group') {
       const found = (allGroups as readonly TreeGroup[]).find((one) => one.id === row.id)
       if (found !== undefined) setGroup({ kind: 'edit', group: found })
-    } else if (row.kind === 'item') open({ kind: 'item', id: row.id }, 'in')
-    else open({ kind: 'draft', localId: row.id }, 'in')
+    } else if (row.kind === 'item') onQuestion(row.id)
+    else onComposing(row.id)
   }
 
   // a dropped row lands where the line was drawn: inside a group, or beside
@@ -325,15 +371,12 @@ function Editor({
     reorderGroups.mutate({ parentId: landing, orderedGroupIds: siblings })
   }
 
-  const composing =
-    selection?.kind === 'draft'
-      ? (drafts.find((draft) => draft.localId === selection.localId) ?? null)
-      : null
+  const writing =
+    composingId === null ? null : (drafts.find((one) => one.localId === composingId) ?? null)
 
   // stable for as long as the same thing is being composed: the editor keeps
   // this in an effect's dependencies, and a new function every render would
   // hand it back its own state forever
-  const composingId = composing?.localId ?? null
   const onHold = useMemo(
     () =>
       composingId === null
@@ -342,12 +385,12 @@ function Editor({
     [hold, composingId],
   )
 
-  const openGroupId = selectedItem?.scoreGroupId ?? composing?.groupId ?? null
+  const openGroupId = selectedItem?.scoreGroupId ?? writing?.groupId ?? null
 
   const editorArea =
-    (selectedItem !== null || composing !== null) && options.data !== undefined ? (
+    (selectedItem !== null || writing !== null) && options.data !== undefined ? (
       <ItemConfigEditor
-        key={selectedItem?.id ?? composing?.localId ?? 'item'}
+        key={selectedItem?.id ?? writing?.localId ?? 'item'}
         batchId={batchId}
         batchStatus={batchStatus}
         materialRange={materialRange}
@@ -361,10 +404,10 @@ function Editor({
           paper?.id ?? null,
         )}
         paper={everyQuestion}
-        onStep={(itemId, move) => open({ kind: 'item', id: itemId }, move)}
-        defaultGroupId={composing?.groupId}
+        onStep={(itemId) => onQuestion(itemId)}
+        defaultGroupId={writing?.groupId}
         options={options.data}
-        held={composing === null ? undefined : held[composing.localId]}
+        held={writing === null ? undefined : held[writing.localId]}
         onHold={onHold}
         onDirty={setUnsaved}
         menu={
@@ -381,14 +424,14 @@ function Editor({
             />
           )
         }
-        onCancel={() => (composing === null ? open(null, 'out') : closeDraft(composing.localId))}
+        onCancel={() => (writing === null ? close() : closeDraft(writing.localId))}
         onSaved={async (itemId) => {
           // the created row has to be in hand before it can be opened, or the
           // screen has nothing to show between the save and the refetch. The
           // reader stays where they were, so nothing travels.
           await refresh()
-          if (composing !== null) closeDraft(composing.localId)
-          open({ kind: 'item', id: itemId }, 'none')
+          if (writing !== null) closeDraft(writing.localId)
+          onQuestion(itemId)
         }}
       />
     ) : null
@@ -460,17 +503,7 @@ function Editor({
           </section>
         )}
 
-        <Drill
-          move={view.move}
-          drillKey={
-            selection === null
-              ? 'structure'
-              : selection.kind === 'draft'
-                ? `draft:${selection.localId}`
-                : `item:${selection.id}`
-          }
-          className="flex flex-1 flex-col"
-        >
+        <Drill move={move} drillKey={drillKey} className="flex flex-1 flex-col">
           {selection === null ? structure : editorArea}
         </Drill>
       </div>
