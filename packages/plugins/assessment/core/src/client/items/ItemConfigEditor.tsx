@@ -30,6 +30,7 @@ import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 import { Choice } from './Choice.tsx'
 import { FieldList, type FieldDraft } from './FieldTable.tsx'
 import { StageSheet, type StageDraft } from './StageSheet.tsx'
+import { ImpactDialog, type ChangeEffects, type ChangeImpact } from './ImpactDialog.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { BatchBanner } from '../batch/BatchScreen.tsx'
 import type { ItemOptions } from './options.ts'
@@ -367,6 +368,12 @@ export function ItemConfigEditor({
   const [openField, setOpenField] = useState<string | null>(null)
   const [openStage, setOpenStage] = useState<string | null>(null)
   const [askingReason, setAskingReason] = useState(false)
+  // what a save would disturb, when the server hands it back to be answered.
+  // The reason travels with it: the first pass may already have carried one,
+  // and answering the question does not make the round stop needing it.
+  const [impact, setImpact] = useState<ChangeImpact | null>(null)
+  const [draftReason, setDraftReason] = useState<string | null>(null)
+  const lingeringImpact = useLingering(impact)
 
   const patch = (next: Partial<Draft>) => setDraft((previous) => ({ ...previous, ...next }))
 
@@ -395,7 +402,7 @@ export function ItemConfigEditor({
   }
 
   const save = useMutation({
-    mutationFn: (reason: string | null) => {
+    mutationFn: ({ reason, effects }: { reason: string | null; effects?: ChangeEffects }) => {
       const config = configOf(draft)
       const maxEntries =
         draft.maxEntries.trim() === '' ? null : Math.max(1, Number(draft.maxEntries))
@@ -421,25 +428,40 @@ export function ItemConfigEditor({
             scoreGroupId: draft.scoreGroupId,
             maxEntries,
             config: config as never,
+            // which version this edit was composed against: two people with
+            // the same question open must not both save over each other
+            expectedRevisionId: item.currentRevision?.id ?? null,
             ...(reason === null ? {} : { reason }),
+            ...(effects === undefined ? {} : { effects }),
           },
         }),
       )
     },
-    onMutate: () => {
+    onMutate: ({ reason }) => {
       setProblem(null)
       setIssues([])
+      setDraftReason(reason)
     },
     onSuccess: (result: { item: { id: string } }) => {
       toast.success(format(m.itemsSaved))
       setAskingReason(false)
+      setImpact(null)
       onSaved(result.item.id)
     },
     onError: (error: unknown) => {
+      // not a refusal: the save is waiting to be told what should happen to
+      // the work it would disturb, and asks in its own dialog
+      const asked = error as { _tag?: string } & ChangeImpact
+      if (asked?._tag === 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED') {
+        setAskingReason(false)
+        setImpact({ impactToken: asked.impactToken, form: asked.form, review: asked.review })
+        return
+      }
       const config = error as { issues?: readonly { path: string; reason: string }[] }
       if (Array.isArray(config.issues)) setIssues(config.issues)
       setProblem(formatError(error))
       setAskingReason(false)
+      setImpact(null)
     },
   })
 
@@ -633,7 +655,7 @@ export function ItemConfigEditor({
                   }
                   setProblem(null)
                   if (needsReason) setAskingReason(true)
-                  else save.mutate(null)
+                  else save.mutate({ reason: null })
                 }}
               >
                 {format(m.entrySave)}
@@ -910,8 +932,19 @@ export function ItemConfigEditor({
           title={format(m.itemsReasonTitle)}
           description={format(m.itemsReasonHint)}
           busy={save.isPending}
-          onConfirm={(reason) => save.mutate(reason)}
+          onConfirm={(reason) => save.mutate({ reason })}
           onClose={() => setAskingReason(false)}
+        />
+      )}
+
+      {/* kept mounted while it shuts, or it would vanish rather than close */}
+      {lingeringImpact !== null && (
+        <ImpactDialog
+          open={impact !== null}
+          impact={lingeringImpact}
+          busy={save.isPending}
+          onConfirm={(effects) => save.mutate({ reason: draftReason, effects })}
+          onClose={() => setImpact(null)}
         />
       )}
     </div>

@@ -210,14 +210,14 @@ const itemRow = (
           sentBack > 0
           ? 'needs_revision'
           : drafts > 0
-          ? 'draft'
-          : pending > 0
-            ? 'in_review'
-            : item.currentRevision?.entrySource === 'administrative'
-              ? 'recorded'
-              : mayFile(item, entries)
-                ? 'open'
-                : null,
+            ? 'draft'
+            : pending > 0
+              ? 'in_review'
+              : item.currentRevision?.entrySource === 'administrative'
+                ? 'recorded'
+                : mayFile(item, entries)
+                  ? 'open'
+                  : null,
     todo: item.status !== 'voided' && (sentBack > 0 || drafts > 0 || mayFile(item, entries)),
     trail,
     parentId: item.scoreGroupId,

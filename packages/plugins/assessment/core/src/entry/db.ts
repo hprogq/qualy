@@ -470,6 +470,11 @@ export const insertReviewInstance = (input: {
   entryId: string
   revisionId: string
   roundNo: number
+  /** why this round exists; 'initial' is a submission, 'reroute' a policy change */
+  origin?: 'initial' | 'reroute'
+  initiator?: 'participant' | 'staff'
+  /** the round this one replaced, when a policy change opened it */
+  supersedesInstanceId?: string | null
   /** which version of the question's review policy this round walks */
   policyRevisionId: string
   /** both routes, resolved and frozen for the whole round */
@@ -486,11 +491,12 @@ export const insertReviewInstance = (input: {
       sql<{ id: string }>`
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator,
-           policy_revision_id, effective_chain,
+           supersedes_instance_id, policy_revision_id, effective_chain,
            current_route, current_stage_id, state, current_role_ids, current_node_id,
            current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
-                'initial', 'participant', ${input.policyRevisionId},
+                ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
+                ${input.supersedesInstanceId ?? null}, ${input.policyRevisionId},
                 ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
                 ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},

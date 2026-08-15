@@ -4665,3 +4665,51 @@ entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此�
 
 **下一步**:影响分析器(两次 PATCH + `impactToken` + `expectedRevisionId`)、reroute 传播、
 编辑器影响弹窗。
+
+### 配置变更的影响分析与传播(2026-08-15)
+
+施工顺序最后三步一次落地——它们咬合太紧,分开会留下「409 里的选项没人执行」这种半成品。
+
+**保存不再硬拒绝**。`issuesOf()` 里那段「拿新表单 decode 每条在审/已通过的 payload,
+一条读不通就 `incompatible-entry` 禁止保存」删掉了。它把顺序调整、删字段、加可选字段
+一并当成会毁掉现存条目的改动,而真正有破坏性的改动它又只会说「不行」。
+
+**两次同一个 PATCH**:
+- 第一次不带 `effects`。安全就直接存;会影响在途工作就 **409 `ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED`**,
+  带上影响报告(表单:在审/已通过各自的总数与不兼容数;审核:在途数、其中卡住数、
+  当前环节仍在新策略里的数、环节已消失的数)。**整个事务回滚**——提问期间什么都没做一半。
+- 第二次带上选择与 `impactToken`。token 是第一次统计时那份状态的哈希(条目 id/状态/版本 +
+  轮次 id/状态/路线/环节)。**对话框开着的时候审核人还在干活**,拿一份已经变了的状态去执行
+  一个没人看过的操作是不行的:对不上就重新返回最新报告。
+- `expectedRevisionId` 一并引入(Item 此前没有乐观并发,score group 早就有):
+  两个管理员开着同一道题,第二个人是在回答一份已经不存在的状态画出来的报告。
+  不符 → `item-revision-conflict`。
+
+**两个选择,不合并**。表单:在审/已通过各自「保持原样」或「打回」;
+审核:「仅新轮次」/「仅迁移卡住的」/「迁移全部在途」。
+**打回优先于迁移**,写死不商量:被打回的条目要重新提交,那一轮自然走新策略,
+迁移它正要离开的那一轮是没人会看见的工作。
+
+**迁移是新开一轮,不是改快照**。旧轮 `outcome='superseded'` 收尾 + `rerouted` 事件;
+新轮 `origin='reroute'`、`initiator='staff'`、`supersedes_instance_id` 指回去、
+`revisionId` 不变、`policy_revision_id` 指新版本、按**同一个 stage id** 落位。
+`UPDATE review_instances SET effective_chain = ...` 是被禁止的写法——它毁掉「当时为什么走到这里」。
+当前环节在新策略里没有了就**不猜**:留在原处(计入 `keptOnOldPolicy`),
+影响报告里点名有几条这样。
+一次改动的选择与结果一并进 `batch_config_revisions` 的 diff(`propagation` 与 `propagationResult`)。
+
+**编辑器**:保存带 `expectedRevisionId`;收到 409 弹影响对话框(两组单选,按报告决定显示哪几组),
+确认后原样重发同一份配置 + 选择。理由跟着走——回答了问题不代表这一轮不再需要理由。
+
+新测试:①第一次保存返回报告且**库里一动没动**(条目仍 in_review、版本仍是 1);
+②带过期 token 的第二次再次被挡回;③正确 token + 「在审打回」→ 保存成功、条目 `needs_revision`、
+条目日志的 `cause_revision_id` = 新版本;④不影响任何人的改动直接保存,不问;
+⑤`expectedRevisionId` 过期 → `item-revision-conflict`;
+⑥卡住的轮次迁移:旧轮 `completed/superseded`、新轮 `origin='reroute'` 且 `supersedes` 指回旧轮、
+停在同一个 stage id、条目指向新轮、新审核人的收件箱里能看到它。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 650 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;
+`prettier --check` 全绿。
+
+§32.62 的九条至此全部落地。

@@ -8,6 +8,7 @@ import {
   ItemActionRefused,
   BatchNotFound,
   BatchReadOnly,
+  ItemChangeDecisionRequired,
   ItemConfigInvalid,
   ItemNotFound,
   ScoreGroupInvalid,
@@ -18,10 +19,23 @@ import { scaledAmount } from '../scoring/builtins.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
   cancelReviewInstance,
+  insertEntryEvent,
   insertReviewEvent,
+  insertReviewInstance,
+  nextRoundNo,
+  nodePathOf,
   openEntriesOfItem,
+  participantOf,
   setEntryState,
 } from '../entry/db.ts'
+import { enterableFrom, holdersOf, readPolicy, resolvePolicy, routeOf } from '../review/chain.ts'
+import {
+  decisionNeeded,
+  impactOf,
+  missingDecisions,
+  type ChangeEffects,
+  type Incompatible,
+} from './impact.ts'
 import {
   bumpScoreGroupsVersion,
   deleteGroups,
@@ -36,6 +50,7 @@ import {
   itemsOf,
   liveEntryPayloads,
   nextRevisionNo,
+  openRoundsOfItem,
   revisionOf,
   revisionsOf,
   scoreGroupsVersionOf,
@@ -45,6 +60,7 @@ import {
   updateItemFields,
   type ItemRevisionRow,
   type ItemRow,
+  type OpenRoundRow,
 } from './db.ts'
 
 // What a batch asks, managed: the score tree (one level of it), the items on
@@ -112,6 +128,10 @@ export interface UpdateItemInput {
   readonly sortOrder?: number
   readonly config?: ItemConfigInput
   readonly reason?: string
+  /** which version this edit was composed against; a stale one is refused */
+  readonly expectedRevisionId?: string | null
+  /** what should happen to work already under way (§32.62) */
+  readonly effects?: ChangeEffects
 }
 
 export interface ScoreGroupSpec {
@@ -147,7 +167,12 @@ export type ItemLifecycleError = ItemNotFound | BatchReadOnly | AccessDenied | I
  */
 export type ItemStatusError = ItemLifecycleError | ItemConfigInvalid
 export type UpdateItemError =
-  ItemNotFound | BatchNotFound | BatchReadOnly | AccessDenied | ItemConfigInvalid
+  | ItemNotFound
+  | BatchNotFound
+  | BatchReadOnly
+  | AccessDenied
+  | ItemChangeDecisionRequired
+  | ItemConfigInvalid
 export type ReplaceGroupsError =
   BatchNotFound | BatchReadOnly | AccessDenied | ScoreGroupInvalid | ScoreGroupVersionConflict
 
@@ -294,17 +319,17 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
    * The §6.3 gauntlet for one configuration: everything it cites, the window
    * it has to fit inside, and every live entry it would have to read.
    *
-   * Runs inside the caller's transaction, after the batch row is locked. The
-   * compatibility trial reads the current revision of every in-review or
-   * approved entry and asks the configuration's own driver to decode it: a
-   * configuration that cannot read what it governs is named with the entries
-   * it would strand, and the way forward is void-and-replace, not a save that
-   * strands them.
+   * Runs inside the caller's transaction, after the batch row is locked.
    *
    * Every road to a live question goes through here - writing a configuration,
    * and putting one on the round by publishing or restoring the question that
    * holds it - because the window a form has to fit can move while a question
    * that is not live is not being looked at.
+   *
+   * What it no longer does is refuse a configuration because a live entry
+   * could not be read under it. That was a hard gate whose only way forward
+   * was void-and-replace; it is now an impact report the administrator
+   * answers (§32.62, and `impactUnder` below).
    */
   const issuesOf = (input: {
     tenantId: string
@@ -335,29 +360,256 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             .map((issue) => ({ path: issue.path, reason: issue.reason })),
         )
       }
-      if (issues.length === 0 && driver !== undefined) {
-        const live = yield* liveEntryPayloads(input.tenantId, input.item.id)
-        for (const entry of live) {
-          // read as an answer to the form it was written under, then offered
-          // to the new one. Handing the raw payload straight to the new form
-          // calls a deleted field unknown and a reordered form broken, so
-          // edits that cost nobody anything were refused as if they stranded
-          // every filing.
+      return issues
+    })
+
+  /**
+   * What this configuration would disturb, counted from the state under the
+   * batch lock (§32.62).
+   *
+   * Every live answer is read through the form it was written under before
+   * being offered to the new one, so a deletion or a reordering is the no-op
+   * it actually is; only what still fails is work this change would strand.
+   */
+  const impactUnder = (input: {
+    tenantId: string
+    item: ItemRow
+    current: ItemRevisionRow | null
+    materialRange: MaterialRange
+    config: ItemConfigInput
+  }) =>
+    Effect.gen(function* () {
+      const driver = catalogs.itemTypes.get(input.item.itemType) as ItemTypeDriver | undefined
+      const live = yield* liveEntryPayloads(input.tenantId, input.item.id)
+      const rounds = yield* openRoundsOfItem(input.tenantId, input.item.id)
+      const refusals: Incompatible[] = []
+      if (driver !== undefined) {
+        for (const row of live) {
           const carried =
             driver.projectPayload === undefined
-              ? entry.payload
-              : driver.projectPayload(entry.formConfig, input.config.formConfig, entry.payload)
+              ? row.payload
+              : driver.projectPayload(row.formConfig, input.config.formConfig, row.payload)
           const decoded = yield* Effect.result(
             driver.decodePayload(input.config.formConfig, carried, {
               materialRange: input.materialRange,
             }),
           )
-          if (Result.isFailure(decoded)) {
-            issues.push({ path: `entries.${entry.entryId}`, reason: 'incompatible-entry' })
-          }
+          if (Result.isFailure(decoded)) refusals.push({ entryId: row.entryId, status: row.status })
         }
       }
-      return issues
+      return {
+        live,
+        rounds,
+        incompatible: refusals as readonly Incompatible[],
+        impact: impactOf({
+          currentRevisionId: input.current?.id ?? null,
+          currentConfig: input.current,
+          nextConfig: input.config,
+          live,
+          rounds,
+          incompatible: refusals,
+        }),
+      }
+    })
+
+  /**
+   * The answer, carried out.
+   *
+   * Order is fixed and not negotiable: sending a claim back happens first,
+   * and a claim sent back is never also re-routed. It is going to be filed
+   * again, and the round that opens then walks the policy in force at that
+   * moment - re-routing the round it is leaving would be work nobody ever
+   * sees.
+   */
+  const propagate = (input: {
+    tenantId: string
+    item: ItemRow
+    newRevisionId: string
+    effects: ChangeEffects
+    live: readonly { entryId: string; status: 'in_review' | 'approved' }[]
+    rounds: readonly OpenRoundRow[]
+    incompatible: readonly Incompatible[]
+    nextPolicy: unknown
+    actorId: string
+    reason: string | null
+  }) =>
+    Effect.gen(function* () {
+      const form = input.effects.form
+      const sendBack = new Set(
+        input.incompatible
+          .filter((row) =>
+            row.status === 'in_review' ? form?.inReview === 'return' : form?.approved === 'return',
+          )
+          .map((row) => row.entryId),
+      )
+
+      let returnedInReview = 0
+      let returnedApproved = 0
+      for (const row of input.live) {
+        if (!sendBack.has(row.entryId)) continue
+        const open = input.rounds.find((round) => round.entryId === row.entryId)
+        if (open !== undefined) {
+          const ended = yield* cancelReviewInstance({
+            tenantId: input.tenantId,
+            instanceId: open.id,
+            outcome: 'superseded',
+          })
+          if (ended) {
+            yield* insertReviewEvent({
+              tenantId: input.tenantId,
+              reviewInstanceId: open.id,
+              kind: 'returned-for-revision',
+              actorId: input.actorId,
+              route: open.route,
+              stageId: open.stageId,
+              comment: input.reason,
+            })
+          }
+        }
+        const moved = yield* setEntryState({
+          tenantId: input.tenantId,
+          entryId: row.entryId,
+          from: ['in_review', 'approved'],
+          to: 'needs_revision',
+          currentReviewInstanceId: null,
+        })
+        if (!moved) continue
+        yield* insertEntryEvent({
+          tenantId: input.tenantId,
+          entryId: row.entryId,
+          kind: 'revision-required',
+          actorId: input.actorId,
+          reason: input.reason,
+          causeRevisionId: input.newRevisionId,
+        })
+        if (row.status === 'in_review') returnedInReview += 1
+        else returnedApproved += 1
+      }
+
+      const choice = input.effects.review?.open ?? 'keep'
+      const moving =
+        choice === 'keep'
+          ? []
+          : input.rounds
+              .filter((round) => !sendBack.has(round.entryId))
+              .filter((round) => choice === 'reroute-all' || round.state === 'blocked')
+
+      let rerouted = 0
+      let keptOnOldPolicy = 0
+      for (const round of moving) {
+        const participant = yield* participantOf(
+          input.tenantId,
+          input.item.batchId,
+          round.participantId,
+        )
+        if (participant === null) {
+          keptOnOldPolicy += 1
+          continue
+        }
+        const resolved = yield* resolvePolicy({
+          tenantId: input.tenantId,
+          batchId: input.item.batchId,
+          policy: readPolicy(input.nextPolicy),
+          lineage: participant.anchorLineage,
+        })
+        // the step it is standing at, by name. If the new policy still has
+        // it, the round carries on from there - which is the whole point of
+        // "this level has nobody, so I am editing this level".
+        const here = routeOf(resolved, round.route).find((stage) => stage.id === round.stageId)
+        const landing =
+          here !== undefined && here.nodeId !== null
+            ? here
+            : here !== undefined
+              ? enterableFrom(resolved, round.route, here.index)
+              : input.effects.review?.missingCurrentStage === 'restart-route'
+                ? enterableFrom(resolved, round.route, 0)
+                : null
+        if (landing === null || landing.nodeId === null) {
+          // no guessing: a round whose step is gone stays where it is unless
+          // the administrator said to start its route over
+          keptOnOldPolicy += 1
+          continue
+        }
+        const nodePath = yield* nodePathOf(input.tenantId, landing.nodeId)
+        if (nodePath === null) {
+          keptOnOldPolicy += 1
+          continue
+        }
+        const ended = yield* cancelReviewInstance({
+          tenantId: input.tenantId,
+          instanceId: round.id,
+          outcome: 'superseded',
+        })
+        if (!ended) {
+          keptOnOldPolicy += 1
+          continue
+        }
+        yield* insertReviewEvent({
+          tenantId: input.tenantId,
+          reviewInstanceId: round.id,
+          kind: 'rerouted',
+          actorId: input.actorId,
+          route: round.route,
+          stageId: round.stageId,
+          comment: input.reason,
+        })
+        const holders = yield* holdersOf({
+          tenantId: input.tenantId,
+          batchId: input.item.batchId,
+          stage: landing,
+          subjectUserId: participant.userId,
+          actorId: participant.userId,
+        })
+        const roundNo = yield* nextRoundNo(input.tenantId, round.entryId)
+        // a new round, never an edit to the old one: "why did it go there"
+        // has to survive the change that moved it
+        const opened = yield* insertReviewInstance({
+          tenantId: input.tenantId,
+          entryId: round.entryId,
+          revisionId: round.revisionId,
+          roundNo,
+          origin: 'reroute',
+          initiator: 'staff',
+          supersedesInstanceId: round.id,
+          policyRevisionId: input.newRevisionId,
+          effectivePolicy: resolved,
+          route: landing.route,
+          stageId: landing.id,
+          roleIds: landing.roleIds,
+          nodeId: landing.nodeId,
+          nodePath,
+          state: holders.length > 0 ? 'active' : 'blocked',
+        })
+        yield* insertReviewEvent({
+          tenantId: input.tenantId,
+          reviewInstanceId: opened,
+          kind: 'rerouted',
+          actorId: input.actorId,
+          route: landing.route,
+          stageId: landing.id,
+          comment: input.reason,
+        })
+        if (holders.length === 0) {
+          yield* insertReviewEvent({
+            tenantId: input.tenantId,
+            reviewInstanceId: opened,
+            kind: 'assignee-not-found',
+            actorId: null,
+            route: landing.route,
+            stageId: landing.id,
+          })
+        }
+        yield* setEntryState({
+          tenantId: input.tenantId,
+          entryId: round.entryId,
+          from: ['in_review'],
+          to: 'in_review',
+          currentReviewInstanceId: opened,
+        })
+        rerouted += 1
+      }
+
+      return { returnedInReview, returnedApproved, rerouted, keptOnOldPolicy }
     })
 
   /**
@@ -615,14 +867,51 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 },
               })
             }
+            // Which version this edit was composed against. Without it two
+            // administrators with the same question open both save, and the
+            // second is answering an impact report drawn from a state that
+            // stopped existing while they were reading it.
+            if (
+              input.expectedRevisionId !== undefined &&
+              input.expectedRevisionId !== (item.currentRevisionId ?? null)
+            ) {
+              return yield* new ItemConfigInvalid({
+                issues: [{ path: 'expectedRevisionId', reason: 'item-revision-conflict' }],
+              })
+            }
+
             if (input.config !== undefined) {
               const batch = yield* oneBatch(tenantId, item.batchId)
+              const materialRange = deps.parseRange(String(batch!.materialRange))
+              const config = input.config
+              const counted = yield* impactUnder({
+                tenantId,
+                item,
+                current,
+                materialRange,
+                config,
+              })
+              // A save that would disturb work under way comes back with what
+              // it would disturb rather than going ahead or refusing. The
+              // whole transaction rolls back, so nothing was half done while
+              // the question was being asked.
+              if (missingDecisions(counted.impact, input.effects)) {
+                return yield* new ItemChangeDecisionRequired(counted.impact)
+              }
+              // and the answer is only carried out against the state it was
+              // drawn from: reviewers keep working while a dialog is open
+              if (
+                input.effects !== undefined &&
+                input.effects.impactToken !== counted.impact.impactToken
+              ) {
+                return yield* new ItemChangeDecisionRequired(counted.impact)
+              }
               const appended = yield* appendRevision({
                 tenantId,
                 item,
                 current,
-                materialRange: deps.parseRange(String(batch!.materialRange)),
-                config: input.config,
+                materialRange,
+                config,
                 actorId: as.userId,
                 reason: input.reason ?? null,
               })
@@ -630,6 +919,27 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 fieldDiff['config'] = {
                   oldRevisionId: current?.id ?? null,
                   newRevisionId: appended.revisionId,
+                }
+                const decided = decisionNeeded(counted.impact)
+                if (input.effects !== undefined && (decided.form || decided.review)) {
+                  const result = yield* propagate({
+                    tenantId,
+                    item,
+                    newRevisionId: appended.revisionId,
+                    effects: input.effects,
+                    live: counted.live,
+                    rounds: counted.rounds,
+                    incompatible: counted.incompatible,
+                    nextPolicy: config.reviewPolicy,
+                    actorId: as.userId,
+                    reason: input.reason ?? null,
+                  })
+                  // one change, one line: what was chosen and what it did
+                  fieldDiff['propagation'] = {
+                    form: input.effects.form ?? null,
+                    review: input.effects.review ?? null,
+                  }
+                  fieldDiff['propagationResult'] = result
                 }
               }
             }

@@ -331,12 +331,11 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             doubt: { stages: doubt },
           })
           return {
-            twoRoutes: yield* create(
-              routes([stage('n1'), stage('n2')], [stage('d1')]),
-              'student',
-            ),
+            twoRoutes: yield* create(routes([stage('n1'), stage('n2')], [stage('d1')]), 'student'),
             unknownSelector: yield* create(
-              routes([{ id: 'n1', selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } }]),
+              routes([
+                { id: 'n1', selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } },
+              ]),
               'student',
             ),
             nearestRole: yield* create(
@@ -387,7 +386,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(issuesOf(result.administrativeEmpty)).toContain('policy-stages-required')
   })
 
-  it('refuses a save that live entries could not survive, naming them', async () => {
+  it('hands back what a save would disturb, and carries out the answer', async () => {
     const result = ok(
       await run(
         db.url,
@@ -408,8 +407,8 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             f.principal,
           )
           // a live entry whose payload has no certificate, written directly:
-          // the entry api arrives later, the compatibility rule is now. The
-          // student is already on the roster - creation imported the node
+          // the entry api arrives later, the impact rule is now. The student
+          // is already on the roster - creation imported the node
           const participant = one<{ id: string }>(
             yield* runSql(sql`
               select id from batch_participants
@@ -432,34 +431,150 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             sql`update entries set current_revision_id = ${revision} where id = ${entry}`,
           )
 
-          const tightened = yield* Effect.exit(
+          const tighter = studentConfig({ formConfig: { required: ['certificate'] } })
+          // first pass, no answer: the save comes back with what it would do
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.tenant, item.id, { config: tighter }, f.principal),
+          )
+          const report = errorOf<{
+            impactToken: string
+            form: { inReview: { total: number; incompatible: number } }
+          }>(asked)!
+          // nothing was half done while the question was being asked
+          const untouched = one<{ status: string; revision_no: number }>(
+            yield* runSql(sql`
+              select e.status, r.revision_no from entries e
+              join assessment_items i on i.id = e.item_id
+              join assessment_item_revisions r on r.id = i.current_revision_id
+              where e.id = ${entry}`),
+          )
+          // an answer drawn from a state that has moved is not carried out
+          const stale = yield* Effect.exit(
             assessment.updateItem(
               f.tenant,
               item.id,
-              { config: studentConfig({ formConfig: { required: ['certificate'] } }) },
+              {
+                config: tighter,
+                effects: {
+                  impactToken: 'counted-something-else',
+                  form: { inReview: 'return', approved: 'keep' },
+                },
+              },
               f.principal,
             ),
           )
-          // a draft entry is outside the trial: it re-enters through the new form
-          yield* runSql(sql`update entries set status = 'draft' where id = ${entry}`)
-          const afterDraft = yield* assessment.updateItem(
+          const saved = yield* assessment.updateItem(
             f.tenant,
             item.id,
-            { config: studentConfig({ formConfig: { required: ['certificate'] } }) },
+            {
+              config: tighter,
+              reason: '新增证书编号',
+              effects: {
+                impactToken: report.impactToken,
+                form: { inReview: 'return', approved: 'keep' },
+              },
+            },
             f.principal,
           )
-          return { entry, tightened, afterDraft }
+          const after = one<{ status: string }>(
+            yield* runSql(sql`select status from entries where id = ${entry}`),
+          )
+          const logged = one<{ kind: string; cause_revision_id: string }>(
+            yield* runSql(sql`
+              select kind, cause_revision_id from entry_events where entry_id = ${entry}`),
+          )
+          return { asked, report, untouched, stale, saved, after, logged }
         }),
       ),
     )
 
-    expect(tagOf(result.tightened)).toBe('ASSESSMENT_ITEM_CONFIG_INVALID')
-    const issues = errorOf<{ issues: readonly { path: string; reason: string }[] }>(
-      result.tightened,
-    )!.issues
-    expect(issues).toEqual([{ path: `entries.${result.entry}`, reason: 'incompatible-entry' }])
-    // the refused save appended nothing: the successful one is revision 2
-    expect(result.afterDraft.currentRevision?.revisionNo).toBe(2)
+    expect(tagOf(result.asked)).toBe('ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED')
+    expect(result.report.form.inReview).toEqual({ total: 1, incompatible: 1 })
+    expect(result.untouched).toEqual({ status: 'in_review', revision_no: 1 })
+    expect(tagOf(result.stale)).toBe('ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED')
+    // the answered save goes through, and the claim is asked for more rather
+    // than rejected by anybody
+    expect(result.saved.currentRevision?.revisionNo).toBe(2)
+    expect(result.after.status).toBe('needs_revision')
+    expect(result.logged.kind).toBe('revision-required')
+    expect(result.logged.cause_revision_id).toBe(result.saved.currentRevision!.id)
+  })
+
+  it('saves without asking when the change disturbs nothing', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-quiet')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const item = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: '退役复学',
+              scoreGroupId: groupId,
+              maxEntries: 1,
+              config: studentConfig({ formConfig: { required: ['certificate'] } }),
+            },
+            f.principal,
+          )
+          // a live entry that the looser form reads perfectly well
+          const participant = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from batch_participants
+              where batch_id = ${batch.id} and user_id = ${f.student}`),
+          ).id
+          const entry = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+              values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'approved')
+              returning id`),
+          ).id
+          const revision = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+              values (${f.tenant}, ${entry}, ${item.id}, ${item.currentRevision!.id}, 1,
+                      '{"certificate":"yes"}', ${f.student}, ${f.student}, 'self')
+              returning id`),
+          ).id
+          yield* runSql(
+            sql`update entries set current_revision_id = ${revision} where id = ${entry}`,
+          )
+          const loosened = yield* assessment.updateItem(
+            f.tenant,
+            item.id,
+            { config: studentConfig({ formConfig: { required: [] } }) },
+            f.principal,
+          )
+          // and an edit composed against a version somebody else replaced
+          const conflicting = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              item.id,
+              {
+                config: studentConfig({ formConfig: { required: ['note'] } }),
+                expectedRevisionId: item.currentRevision!.id,
+              },
+              f.principal,
+            ),
+          )
+          const still = one<{ status: string }>(
+            yield* runSql(sql`select status from entries where id = ${entry}`),
+          )
+          return { loosened, conflicting, still }
+        }),
+      ),
+    )
+
+    expect(result.loosened.currentRevision?.revisionNo).toBe(2)
+    expect(result.still.status).toBe('approved')
+    expect(
+      errorOf<{ issues: readonly { reason: string }[] }>(result.conflicting)!.issues.map(
+        (issue) => issue.reason,
+      ),
+    ).toContain('item-revision-conflict')
   })
 
   it('moves the config revision and appends an event only once the batch is active', async () => {

@@ -755,4 +755,131 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.revised.status).toBe('draft')
     expect(result.afterApproval.status).toBe('needs_revision')
   })
+
+  it('carries a stranded round onto the level the administrator just fixed', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-reroute')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const admin = f.principal(f.admin)
+
+          // the level the question names has nobody in it
+          yield* runSql(
+            sql`update role_grants set revoked_at = now() where user_id = ${f.reviewer}`,
+          )
+          const stuck = yield* submitted(f, g, g.p1, f.s1)
+
+          // somebody who does hold a level here, under a different role
+          const standIn = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status)
+              values (${f.t}, 'stand-in', 'Stand-in reviewer', 'org', 'active') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${standIn}, p.id from permissions p
+            where p.code = 'assessment.review.process'`)
+          const grant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${f.recorder}, ${standIn}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, f.recorder, grant)
+
+          // the same step, pointed at the role somebody actually holds
+          const fixed = {
+            entrySource: 'student' as const,
+            formConfig: {},
+            scoringConfig: {
+              calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: {
+              normal: {
+                stages: [
+                  {
+                    id: 'class',
+                    selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [standIn] },
+                    quorum: { type: 'any' },
+                  },
+                ],
+              },
+              doubt: { stages: [] },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.t, g.item.id, { config: fixed }, admin),
+          )
+          const report = errorOf<{
+            impactToken: string
+            review: { open: number; blocked: number; sameStageMappable: number }
+          }>(asked)!
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: fixed,
+              reason: '原审核角色无人在岗',
+              effects: {
+                impactToken: report.impactToken,
+                review: { open: 'reroute-blocked', missingCurrentStage: 'refuse' },
+              },
+            },
+            admin,
+          )
+
+          const rounds = yield* runSql(sql`
+            select id, round_no, state, outcome, origin, current_stage_id, supersedes_instance_id
+            from review_instances where entry_id = ${stuck.entryId} order by round_no`)
+          const entry = yield* assessment.getEntry(f.t, stuck.entryId, f.principal(f.s1))
+          // and the new round is one the stand-in can actually work
+          const queue = yield* assessment.listReviewInbox(f.t, {}, f.principal(f.recorder))
+          return {
+            report,
+            oldId: stuck.instanceId,
+            rounds: (
+              rounds as {
+                rows: {
+                  id: string
+                  round_no: number
+                  state: string
+                  outcome: string | null
+                  origin: string
+                  current_stage_id: string
+                  supersedes_instance_id: string | null
+                }[]
+              }
+            ).rows,
+            entry,
+            queue: queue.items,
+          }
+        }),
+      ),
+    )
+
+    expect(result.report.review).toMatchObject({ open: 1, blocked: 1, sameStageMappable: 1 })
+    // the round it was standing in ends as superseded, never edited in place
+    expect(result.rounds[0]).toMatchObject({
+      round_no: 1,
+      state: 'completed',
+      outcome: 'superseded',
+      origin: 'initial',
+    })
+    // and a new one opens at the same step, under the new policy
+    expect(result.rounds[1]).toMatchObject({
+      round_no: 2,
+      state: 'active',
+      origin: 'reroute',
+      current_stage_id: 'class',
+      supersedes_instance_id: result.oldId,
+    })
+    expect(result.entry.status).toBe('in_review')
+    expect(result.entry.currentReviewInstanceId).toBe(
+      result.rounds[1]!.round_no === 2 ? result.entry.currentReviewInstanceId : null,
+    )
+    expect(result.queue.map((one) => one.entryId)).toEqual([result.entry.id])
+  })
 })

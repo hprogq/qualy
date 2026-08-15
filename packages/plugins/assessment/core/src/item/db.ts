@@ -582,6 +582,64 @@ export const liveBatchPayloads = (tenantId: string, batchId: string) =>
  * question. Without it the only thing to compare is slot names, and a
  * reordered or trimmed form reads as a broken one.
  */
+export interface LiveEntryRow {
+  entryId: string
+  status: 'in_review' | 'approved'
+  reviewInstanceId: string | null
+  entryRevisionId: string
+  payload: unknown
+  itemRevisionId: string
+  formConfig: unknown
+}
+
+/** every round of this question still open, with where it is standing */
+export interface OpenRoundRow {
+  id: string
+  entryId: string
+  revisionId: string
+  participantId: string
+  state: 'active' | 'blocked'
+  route: 'normal' | 'doubt'
+  stageId: string
+}
+
+export const openRoundsOfItem = (tenantId: string, itemId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance as ri')
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .select([
+          'ri.id',
+          'ri.entryId',
+          'ri.revisionId',
+          'ri.state',
+          'ri.currentRoute',
+          'ri.currentStageId',
+          'e.participantId',
+        ])
+        .where('ri.tenantId', '=', tenantId)
+        .where('e.itemId', '=', itemId)
+        .where('ri.state', 'in', ['active', 'blocked'])
+        .orderBy('ri.id')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): OpenRoundRow => ({
+          id: String(row.id),
+          entryId: String(row.entryId),
+          revisionId: String(row.revisionId),
+          participantId: String(row.participantId),
+          state: row.state as OpenRoundRow['state'],
+          route: row.currentRoute as OpenRoundRow['route'],
+          stageId: String(row.currentStageId),
+        })),
+      ),
+    )
+
 export const liveEntryPayloads = (tenantId: string, itemId: string) =>
   db
     .query((k) =>
@@ -613,11 +671,11 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
     )
     .pipe(
       Effect.map((rows) =>
-        rows.map((row) => {
+        rows.map((row): LiveEntryRow => {
           const one = row as Record<string, unknown>
           return {
             entryId: String(one['entryId']),
-            status: String(one['status']) as 'in_review' | 'approved',
+            status: String(one['status']) as LiveEntryRow['status'],
             reviewInstanceId:
               one['reviewInstanceId'] === null ? null : String(one['reviewInstanceId']),
             entryRevisionId: String(one['entryRevisionId']),

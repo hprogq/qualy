@@ -140,7 +140,9 @@ export function EntryDialog({
       title={
         <span className="flex flex-wrap items-center gap-2.5">
           {entry === null
-            ? format(m.entryNth, { n: siblings.filter((one) => one.status !== 'voided').length + 1 })
+            ? format(m.entryNth, {
+                n: siblings.filter((one) => one.status !== 'voided').length + 1,
+              })
             : format(m.entryEdit)}
           {each !== undefined && (
             <Badge variant="secondary" className="font-normal">
@@ -199,11 +201,11 @@ export function EntryDialog({
             <div className="flex flex-col gap-2 rounded-xl border p-4">
               <p className="text-sm font-semibold">{format(m.entryAlreadyFiled)}</p>
               {siblings.map((one) => (
-                <p
-                  key={one.id}
-                  className="flex items-center gap-2 text-xs text-muted-foreground"
-                >
-                  <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                <p key={one.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span
+                    aria-hidden
+                    className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60"
+                  />
                   <span className="truncate">{summary(one, item)}</span>
                 </p>
               ))}

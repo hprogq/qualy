@@ -147,10 +147,7 @@ export type ReviewDecision =
  * One function, asked by the reader and by the writer, so a button that
  * appears is a button that works.
  */
-const decisionsAt = (
-  policy: ResolvedPolicy,
-  here: ResolvedStage,
-): readonly ReviewDecision[] => {
+const decisionsAt = (policy: ResolvedPolicy, here: ResolvedStage): readonly ReviewDecision[] => {
   if (here.route === 'doubt') {
     return isRouteEnd(policy, here)
       ? ['approve', 'reject', 'comment']

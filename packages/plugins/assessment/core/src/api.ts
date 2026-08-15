@@ -20,6 +20,7 @@ import {
   EntryNotFound,
   EntryPayloadInvalid,
   ItemActionRefused,
+  ItemChangeDecisionRequired,
   ItemConfigInvalid,
   ItemNotFound,
   MaterialRangeInvalid,
@@ -350,6 +351,32 @@ const scoreGroupView = Schema.Struct({
   floor: Schema.NullOr(Schema.String),
   sortOrder: Schema.Number,
   itemCount: Schema.Number,
+})
+
+/**
+ * An administrator's answer to an impact report.
+ *
+ * Two separate choices on purpose: what happens to the answers already
+ * filed, and what happens to the reviews already running. Merged into one
+ * "apply the new configuration" they would force a guess on whichever the
+ * administrator did not mean.
+ */
+const changeEffects = Schema.Struct({
+  /** the state the report was drawn from; a stale one is refused */
+  impactToken: Schema.String,
+  form: Schema.optional(
+    Schema.Struct({
+      inReview: Schema.Literals(['keep', 'return']),
+      approved: Schema.Literals(['keep', 'return']),
+    }),
+  ),
+  review: Schema.optional(
+    Schema.Struct({
+      open: Schema.Literals(['keep', 'reroute-blocked', 'reroute-all']),
+      /** a round whose current step the new policy no longer has */
+      missingCurrentStage: Schema.Literals(['refuse', 'restart-route']),
+    }),
+  ),
 })
 
 const itemConfigPayload = Schema.Struct({
@@ -921,6 +948,19 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           sortOrder: Schema.optional(sortOrder),
           config: Schema.optional(itemConfigPayload),
           reason: Schema.optional(boundedText(500)),
+          /**
+           * Which version this edit was composed against. Two administrators
+           * with the same question open would otherwise both save, and the
+           * second would be answering an impact report drawn from a state
+           * that no longer exists.
+           */
+          expectedRevisionId: Schema.optional(Schema.NullOr(id)),
+          /**
+           * What should happen to work already under way. Absent on the
+           * first pass: a save that would disturb something comes back with
+           * the impact report and is sent again with this filled in.
+           */
+          effects: Schema.optional(changeEffects),
         },
         ['title', 'scoreGroupId', 'maxEntries', 'sortOrder', 'config'],
       ),
@@ -930,6 +970,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         ItemNotFound,
         BatchNotFound,
         BatchReadOnly,
+        ItemChangeDecisionRequired,
         ItemConfigInvalid,
         BadRequest,
       ],

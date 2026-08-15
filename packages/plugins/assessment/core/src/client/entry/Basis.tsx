@@ -11,7 +11,9 @@ import { assessmentMessages as m } from '../i18n.ts'
 export function Basis({ compact = false }: { compact?: boolean }) {
   const { format } = useI18n()
   return (
-    <section className={cn('flex flex-col gap-2 rounded-xl bg-muted/60', compact ? 'p-3.5' : 'p-4')}>
+    <section
+      className={cn('flex flex-col gap-2 rounded-xl bg-muted/60', compact ? 'p-3.5' : 'p-4')}
+    >
       <p className="text-sm font-semibold">{format(m.myEntriesBasis)}</p>
       <p className="border-l-2 border-muted-foreground/30 pl-3 text-sm leading-relaxed text-pretty text-muted-foreground">
         {format(m.myEntriesBasisSoon)}

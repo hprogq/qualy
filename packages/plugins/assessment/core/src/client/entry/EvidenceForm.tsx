@@ -12,12 +12,7 @@ import { Spinner } from '@qualy/ui/spinner'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { uploadFile, type UploadDoors, type UploadedFile } from './upload.ts'
-import {
-  attachmentContentUrl,
-  lastDay,
-  LOOKS_LIKE_A_PHOTOGRAPH,
-  sizeLabel,
-} from './model.ts'
+import { attachmentContentUrl, lastDay, LOOKS_LIKE_A_PHOTOGRAPH, sizeLabel } from './model.ts'
 
 // The form an administrator composed, drawn field by field. The page hands
 // in the item's form configuration and gets back exactly the payload shape
@@ -301,4 +296,3 @@ function CitedFile({
     />
   )
 }
-

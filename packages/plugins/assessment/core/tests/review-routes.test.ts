@@ -30,7 +30,11 @@ describe('reading a stored policy', () => {
     // everything up to and including the marker was the ordinary flow;
     // everything after it was what an escalation walked
     const policy = readPolicy({
-      stages: [{ selector, quorum }, { selector, quorum }, { selector, quorum }],
+      stages: [
+        { selector, quorum },
+        { selector, quorum },
+        { selector, quorum },
+      ],
       normalTerminal: 1,
     })
     expect(policy.normal.map((one) => one.id)).toEqual(['legacy-0', 'legacy-1'])
@@ -40,7 +44,12 @@ describe('reading a stored policy', () => {
   it('names a step written before names by where it sat in that one list', () => {
     // the same derivation the round rows were backfilled with, so a round
     // standing at position 2 still finds position 2
-    const policy = readPolicy({ stages: [{ selector, quorum }, { selector, quorum }] })
+    const policy = readPolicy({
+      stages: [
+        { selector, quorum },
+        { selector, quorum },
+      ],
+    })
     expect(policy.normal.map((one) => one.id)).toEqual(['legacy-0'])
     expect(policy.doubt.map((one) => one.id)).toEqual(['legacy-1'])
   })
@@ -54,7 +63,16 @@ describe('reading a stored policy', () => {
       ],
     })
     expect(frozen.normal).toEqual([
-      { id: 'legacy-0', route: 'normal', index: 0, selector, quorum, roleIds: ['role'], nodeId: 'a', skipped: null },
+      {
+        id: 'legacy-0',
+        route: 'normal',
+        index: 0,
+        selector,
+        quorum,
+        roleIds: ['role'],
+        nodeId: 'a',
+        skipped: null,
+      },
     ])
     expect(frozen.doubt.map((one) => ({ id: one.id, index: one.index }))).toEqual([
       { id: 'legacy-1', index: 0 },
@@ -80,7 +98,11 @@ const stage = (id: string, route: 'normal' | 'doubt', index: number, nodeId: str
 
 describe('walking a resolved policy', () => {
   const policy: ResolvedPolicy = {
-    normal: [stage('n1', 'normal', 0, 'a'), stage('n2', 'normal', 1, null), stage('n3', 'normal', 2, 'c')],
+    normal: [
+      stage('n1', 'normal', 0, 'a'),
+      stage('n2', 'normal', 1, null),
+      stage('n3', 'normal', 2, 'c'),
+    ],
     doubt: [stage('d1', 'doubt', 0, 'x'), stage('d2', 'doubt', 1, 'y')],
   }
 

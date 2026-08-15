@@ -1041,6 +1041,8 @@ export const ReviewInstance = defineEntity({
      * refile (§32.62).
      */
     policyRevisionId: p.uuid(),
+    /** the round this one replaced, when a policy change opened it */
+    supersedesInstanceId: p.uuid().nullable(),
     // both routes, resolved once against this participant's frozen lineage
     // and frozen with the round. The column keeps its old name: what it
     // holds grew a second route, and renaming it would cost a rewrite of
@@ -1061,7 +1063,10 @@ export const ReviewInstance = defineEntity({
     { name: 'chk_review_instances_round_positive', expression: 'round_no >= 1' },
     {
       name: 'chk_review_instances_origin',
-      expression: `origin IN ('initial', 'appeal', 'reopen')`,
+      // reroute: the same filing, walked again under a newer policy because
+      // an administrator said so. A new round rather than an edit to the old
+      // one, so "why did it go there" survives (§32.62)
+      expression: `origin IN ('initial', 'appeal', 'reopen', 'reroute')`,
     },
     {
       name: 'chk_review_instances_initiator',
@@ -1273,6 +1278,8 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, entry_id, revision_id) references entry_revisions (tenant_id, entry_id, id) on delete cascade`,
   `alter table review_instances add constraint fk_review_instances_policy_revision
      foreign key (tenant_id, policy_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
+  `alter table review_instances add constraint fk_review_instances_supersedes
+     foreign key (tenant_id, supersedes_instance_id) references review_instances (tenant_id, id) on delete set null (supersedes_instance_id)`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
   `alter table entry_events add constraint fk_entry_events_entry

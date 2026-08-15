@@ -69,4 +69,3 @@ export function AttachmentLink({ attachmentId }: { attachmentId: string }) {
     </PhotoProvider>
   )
 }
-

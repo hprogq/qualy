@@ -4574,6 +4574,10 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}),
             ...(payload.config !== undefined ? { config: configInput(payload.config) } : {}),
             ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
+            ...(payload.expectedRevisionId !== undefined
+              ? { expectedRevisionId: payload.expectedRevisionId }
+              : {}),
+            ...(payload.effects !== undefined ? { effects: payload.effects } : {}),
           },
           principal,
         )

@@ -1175,6 +1175,59 @@ const i18n = definePluginMessages({
       id: 'assessment/items/chain-hint-new',
       defaultMessage: 'Step by step after submitting; approval at the last step counts it.',
     },
+    itemsImpactTitle: {
+      id: 'assessment/items/impact-title',
+      defaultMessage: 'This change reaches work already under way',
+    },
+    itemsImpactHint: {
+      id: 'assessment/items/impact-hint',
+      defaultMessage: 'Say what should happen to it. Nothing is saved until you do.',
+    },
+    itemsImpactInReview: {
+      id: 'assessment/items/impact-in-review',
+      defaultMessage: '{count} of {total} entries in review no longer fit the form',
+    },
+    itemsImpactApproved: {
+      id: 'assessment/items/impact-approved',
+      defaultMessage: '{count} of {total} approved entries no longer fit the form',
+    },
+    itemsImpactKeepEntries: {
+      id: 'assessment/items/impact-keep-entries',
+      defaultMessage: 'Leave them as they are',
+    },
+    itemsImpactKeepApproved: {
+      id: 'assessment/items/impact-keep-approved',
+      defaultMessage: 'Leave the results standing',
+    },
+    itemsImpactReturnEntries: {
+      id: 'assessment/items/impact-return-entries',
+      defaultMessage: 'Ask for more and send them back',
+    },
+    itemsImpactRounds: {
+      id: 'assessment/items/impact-rounds',
+      defaultMessage: '{open} reviews are running, {blocked} of them waiting for a reviewer',
+    },
+    itemsImpactRoundsKeep: {
+      id: 'assessment/items/impact-rounds-keep',
+      defaultMessage: 'Only new reviews follow the new route',
+    },
+    itemsImpactRoundsBlocked: {
+      id: 'assessment/items/impact-rounds-blocked',
+      defaultMessage: 'Also move the ones waiting for a reviewer',
+    },
+    itemsImpactRoundsAll: {
+      id: 'assessment/items/impact-rounds-all',
+      defaultMessage: 'Move every running review',
+    },
+    itemsImpactStageGone: {
+      id: 'assessment/items/impact-stage-gone',
+      defaultMessage:
+        '{count} of them are standing at a step this route no longer has, and stay where they are.',
+    },
+    itemsImpactOrder: {
+      id: 'assessment/items/impact-order',
+      defaultMessage: 'An entry sent back is not moved: its next submission follows the new route.',
+    },
     itemsChainHintRecorded: {
       id: 'assessment/items/chain-hint-recorded',
       defaultMessage: 'A record counts at once. This chain is walked only if somebody contests it.',
@@ -2382,6 +2435,10 @@ const i18n = definePluginMessages({
     ASSESSMENT_ITEM_NOT_FOUND: {
       id: 'assessment/error/item-not-found',
       defaultMessage: 'This question no longer exists.',
+    },
+    ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED: {
+      id: 'assessment/error/item-change-decision-required',
+      defaultMessage: 'Say what should happen to the work already under way.',
     },
     ASSESSMENT_ITEM_CONFIG_INVALID: {
       id: 'assessment/error/item-config-invalid',

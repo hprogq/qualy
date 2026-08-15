@@ -146,6 +146,36 @@ export class ItemConfigInvalid extends Schema.TaggedErrorClass<ItemConfigInvalid
   { httpApiStatus: 422, identifier: 'AssessmentItemConfigInvalid' },
 ) {}
 
+/**
+ * A configuration that is fine in itself and would disturb work already
+ * under way, handed back with what it would disturb (§32.62).
+ *
+ * Not a refusal: the save is waiting for an answer, not being turned down.
+ * The counts come with a token for the state they were counted from, and
+ * the answer is only executed if that state has not moved since - a dialog
+ * is open for as long as somebody thinks, and reviewers keep working.
+ */
+export class ItemChangeDecisionRequired extends Schema.TaggedErrorClass<ItemChangeDecisionRequired>()(
+  'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED',
+  {
+    currentRevisionId: Schema.NullOr(Schema.String),
+    impactToken: Schema.String,
+    form: Schema.Struct({
+      changed: Schema.Boolean,
+      inReview: Schema.Struct({ total: Schema.Number, incompatible: Schema.Number }),
+      approved: Schema.Struct({ total: Schema.Number, incompatible: Schema.Number }),
+    }),
+    review: Schema.Struct({
+      changed: Schema.Boolean,
+      open: Schema.Number,
+      blocked: Schema.Number,
+      sameStageMappable: Schema.Number,
+      stageRemoved: Schema.Number,
+    }),
+  },
+  { httpApiStatus: 409, identifier: 'AssessmentItemChangeDecisionRequired' },
+) {}
+
 /** a score-tree write that cannot be accepted, row by row */
 export class ScoreGroupInvalid extends Schema.TaggedErrorClass<ScoreGroupInvalid>()(
   'ASSESSMENT_SCORE_GROUP_INVALID',
