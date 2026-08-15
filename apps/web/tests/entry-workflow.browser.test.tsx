@@ -181,7 +181,9 @@ describe('filing a claim', () => {
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     await page.getByRole('button', { name: '去申报' }).click()
     await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
-    await page.getByRole('button', { name: '保存' }).click()
+    // keeping it is one press and handing it on is another, so a claim can be
+    // written down before anybody is asked to look at it
+    await page.getByRole('button', { name: '存为草稿' }).click()
     await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
     expect(created.mock.calls[0]![0].payload).toMatchObject({
       itemId: ITEM_ID,
@@ -189,7 +191,7 @@ describe('filing a claim', () => {
       payload: { summary: '2024 年入伍，2026 年退役复学' },
     })
 
-    await page.getByRole('button', { name: '提交' }).click()
+    await page.getByRole('button', { name: '提交' }).first().click()
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
   })
 

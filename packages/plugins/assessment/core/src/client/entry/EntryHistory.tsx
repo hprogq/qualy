@@ -15,14 +15,23 @@ import { reviewEventMessage, reviewOutcomeMessage } from '../review/events.ts'
 // every round it went through, and what was said in them. A rejection's
 // suggestion shows here read-only - advice to act on, never a button.
 
-export function EntryHistory({ entryId, onClose }: { entryId: string; onClose: () => void }) {
+export function EntryHistory({
+  open,
+  entryId,
+  onClose,
+}: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
+  entryId: string
+  onClose: () => void
+}) {
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
   const history = useQuery(query.assessment.getEntryHistory.queryOptions({ params: { entryId } }))
   const data = history.data
 
   return (
-    <SidePanel open title={format(m.entryHistoryTitle)} onClose={onClose}>
+    <SidePanel open={open} title={format(m.entryHistoryTitle)} onClose={onClose}>
       <AsyncSection
         pending={history.isPending}
         error={history.error ? formatError(history.error) : null}

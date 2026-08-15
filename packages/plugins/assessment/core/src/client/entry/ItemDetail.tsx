@@ -1,0 +1,269 @@
+import { useI18n } from '@qualy/web-i18n'
+import { Badge } from '@qualy/ui/badge'
+import { Button } from '@qualy/ui/button'
+import { cn } from '@qualy/ui/cn'
+import { PencilIcon, PlusIcon } from 'lucide-react'
+import { assessmentMessages as m } from '../i18n.ts'
+import { AttachmentLink } from './AttachmentLink.tsx'
+import { entryStatusMessage, fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
+import {
+  chainLength,
+  eachWorth,
+  entryScore,
+  mayFile,
+  roomLeft,
+  type Standing,
+  type StructureRow,
+} from './standing.ts'
+
+// One question, and what this person has put into it.
+//
+// The question's own terms come first - what a claim is worth, how many are
+// allowed, how many people have to agree - because those are what decide
+// whether it is worth filing another. Then the claims themselves, each shown
+// as the answers that were given rather than as a row to expand.
+
+export function ItemDetail({
+  row,
+  entries,
+  standing,
+  busy,
+  onFile,
+  onHistory,
+  onStatus,
+}: {
+  row: StructureRow
+  entries: readonly EntryDto[]
+  standing: Standing | null
+  busy: boolean
+  onFile: (entry: EntryDto | null) => void
+  onHistory: (entryId: string) => void
+  onStatus: (entryId: string, status: 'in_review' | 'draft') => void
+}) {
+  const { format } = useI18n()
+  const item = row.item
+  if (item === undefined) return null
+
+  const description = String(
+    (item.currentRevision?.displayConfig as { description?: unknown } | undefined)?.description ??
+      '',
+  ).trim()
+  const each = eachWorth(item)
+  const room = roomLeft(item, entries)
+  const steps = chainLength(item)
+  const live = entries.filter((entry) => entry.status !== 'voided')
+  const drafts = live.filter((entry) => entry.status === 'draft')
+  const filed = live.filter((entry) => entry.status !== 'draft')
+  const draft = drafts[0]
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-2">
+          {row.trail.length > 0 && (
+            <p className="truncate text-xs text-muted-foreground">{row.trail.join(' › ')}</p>
+          )}
+          <h2 className="min-w-0 text-xl font-semibold tracking-tight">{item.title}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {each !== undefined && (
+              <Badge variant="secondary" className="font-normal">
+                {format(m.entryCountsFor, { value: trimAmount(each) })}
+              </Badge>
+            )}
+            <Badge variant="secondary" className="font-normal">
+              {item.maxEntries === null
+                ? format(m.itemsPreviewNoMax)
+                : format(m.myEntriesRoom, { most: item.maxEntries, used: live.length })}
+            </Badge>
+            {steps > 0 && (
+              <Badge variant="secondary" className="font-normal">
+                {format(m.myEntriesChain, { count: steps })}
+              </Badge>
+            )}
+            {item.currentRevision?.entrySource === 'administrative' && (
+              <Badge variant="outline" className="font-normal">
+                {format(m.myEntriesRecorded)}
+              </Badge>
+            )}
+          </div>
+        </div>
+        {/* a draft already holds one of the question's places, so finishing it
+            is open even once there is no room for another */}
+        {draft !== undefined && item.status === 'active' ? (
+          <Button className="shrink-0" onClick={() => onFile(draft)}>
+            <PencilIcon aria-hidden />
+            {format(m.myEntriesResumeDraft)}
+          </Button>
+        ) : (
+          mayFile(item, entries) && (
+            <Button className="shrink-0" onClick={() => onFile(null)}>
+              <PlusIcon aria-hidden />
+              {format(m.entryNew)}
+            </Button>
+          )
+        )}
+      </div>
+
+      {description !== '' && <p className="text-sm leading-relaxed text-pretty">{description}</p>}
+
+      {item.status === 'voided' && (
+        <p className="rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
+          {format(m.itemVoided)}
+        </p>
+      )}
+
+      <div className="flex items-baseline justify-between gap-3 border-b pb-2">
+        <h3 className="text-sm font-semibold">{format(m.myEntriesFiled)}</h3>
+        <p className="text-xs text-muted-foreground">
+          {format(m.myEntriesFiledCount, {
+            filed: filed.length,
+            drafts: drafts.length,
+            room: room ?? -1,
+          })}
+        </p>
+      </div>
+
+      {live.length === 0 && (
+        <p className="text-sm text-muted-foreground">{format(m.myEntriesNoneYet)}</p>
+      )}
+
+      {drafts.map((entry) => (
+        <div
+          key={entry.id}
+          className="flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3"
+        >
+          <Standing status="draft" />
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-sm">{summary(entry, item)}</span>
+            <span className="text-xs text-muted-foreground">
+              {format(m.myEntriesDraftSaved, { when: when(entry) })}
+            </span>
+          </span>
+          <Button variant="outline" size="sm" onClick={() => onFile(entry)}>
+            {format(m.myEntriesResume)}
+          </Button>
+          {entry.capabilities.canSubmit && (
+            <Button size="sm" disabled={busy} onClick={() => onStatus(entry.id, 'in_review')}>
+              {format(m.entrySubmit)}
+            </Button>
+          )}
+        </div>
+      ))}
+
+      {filed.map((entry) => (
+        <FiledEntry
+          key={entry.id}
+          entry={entry}
+          item={item}
+          score={entryScore(standing, entry.id)}
+          busy={busy}
+          onHistory={() => onHistory(entry.id)}
+          onWithdraw={() => onStatus(entry.id, 'draft')}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** one claim, shown as the answers that were given */
+function FiledEntry({
+  entry,
+  item,
+  score,
+  busy,
+  onHistory,
+  onWithdraw,
+}: {
+  entry: EntryDto
+  item: ItemDto
+  score: string | null
+  busy: boolean
+  onHistory: () => void
+  onWithdraw: () => void
+}) {
+  const { format } = useI18n()
+  const fields = fieldsOf(item.currentRevision?.formConfig)
+  const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
+
+  return (
+    <div className="flex flex-col gap-3 border-b pb-4 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-3">
+        <Standing status={entry.status} />
+        <p className="text-xs whitespace-nowrap text-muted-foreground">{when(entry)}</p>
+        <span className="flex-1" />
+        {score !== null && <p className="text-sm tabular-nums">{score}</p>}
+      </div>
+
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+        {fields.map((field) => {
+          const value = payload[field.key]
+          return (
+            <div key={field.key} className="col-span-2 grid grid-cols-subgrid">
+              <dt className="text-muted-foreground">{field.label}</dt>
+              <dd className="min-w-0">
+                {field.type === 'attachment' ? (
+                  <span className="flex flex-wrap gap-2">
+                    {(Array.isArray(value) ? value : []).map((id) => (
+                      <AttachmentLink key={String(id)} attachmentId={String(id)} />
+                    ))}
+                  </span>
+                ) : (
+                  <span className={cn(field.type === 'date' && 'tabular-nums')}>
+                    {typeof value === 'string' && value !== ''
+                      ? value
+                      : format(m.entryFieldCleared)}
+                  </span>
+                )}
+              </dd>
+            </div>
+          )
+        })}
+      </dl>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={onHistory}>
+          {format(m.entryHistoryOpen)}
+        </Button>
+        {entry.capabilities.canWithdraw && (
+          <Button variant="outline" size="sm" disabled={busy} onClick={onWithdraw}>
+            {format(m.entryWithdraw)}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** where a claim stands, as a dot and a word */
+function Standing({ status }: { status: EntryDto['status'] }) {
+  const { format } = useI18n()
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap">
+      <span
+        aria-hidden
+        className={cn(
+          'size-1.5 rounded-full',
+          status === 'approved'
+            ? 'bg-foreground'
+            : status === 'rejected'
+              ? 'bg-destructive'
+              : 'bg-muted-foreground/50',
+        )}
+      />
+      {format(entryStatusMessage[status])}
+    </span>
+  )
+}
+
+/** the first answer this claim gave, which is how its owner recognises it */
+const summary = (entry: EntryDto, item: ItemDto): string => {
+  const fields = fieldsOf(item.currentRevision?.formConfig)
+  const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
+  const said = fields
+    .map((field) => payload[field.key])
+    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+  return said.length === 0 ? item.title : said.join('　')
+}
+
+const when = (entry: EntryDto): string =>
+  new Date(entry.currentRevision?.createdAt ?? entry.createdAt).toLocaleString()

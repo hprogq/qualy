@@ -3,7 +3,6 @@ import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { commonMessages } from '@qualy/web-i18n/messages'
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -11,11 +10,15 @@ import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
-import { fieldsOf, type EntryDto, type ItemDto } from './model.ts'
+import { chainLength, eachWorth, roomLeft } from './standing.ts'
+import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
 
-// Filing or revising one claim. The form is whatever the administrator
-// composed; the dialog only adds the note and carries the refusals back in
-// the reader's language.
+// Filing or revising one claim, without leaving the question it belongs to.
+//
+// The form is whatever the administrator composed; this adds the note, the
+// terms of the question beside it, and the two ways out - keep it as a draft,
+// or hand it to the first reviewer. Both are one press, because a claim saved
+// but not submitted is the common case and should not need explaining.
 
 /** the payload refusals the driver can raise, as sentences about one field */
 const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
@@ -34,14 +37,18 @@ const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
 }
 
 export function EntryDialog({
+  open,
   batchId,
   materialRange,
   participantId,
   item,
   entry,
+  siblings,
   onClose,
   onSaved,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   batchId: string
   /** the round's window, so a date picker cannot offer a day this round refuses */
   materialRange: { start: string; end: string }
@@ -49,6 +56,8 @@ export function EntryDialog({
   participantId: string
   item: ItemDto
   entry: EntryDto | null
+  /** what this person has already put into this question, to not repeat it */
+  siblings: readonly EntryDto[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -61,13 +70,16 @@ export function EntryDialog({
   const [note, setNote] = useState(entry?.currentRevision?.note ?? '')
   const [problem, setProblem] = useState<string | null>(null)
   const [issues, setIssues] = useState<readonly { field: string; reason: string }[]>([])
-  const labelOf = (key: string) => fields.find((field) => field.key === key)?.label ?? key
 
   const fields = fieldsOf(item.currentRevision?.formConfig)
+  const labelOf = (key: string) => fields.find((field) => field.key === key)?.label ?? key
   const description = String(
     (item.currentRevision?.displayConfig as { description?: unknown } | undefined)?.description ??
       '',
   ).trim()
+  const each = eachWorth(item)
+  const steps = chainLength(item)
+  const room = roomLeft(item, siblings)
 
   const doors = {
     prepare: (input: {
@@ -81,15 +93,31 @@ export function EntryDialog({
       run(api.assessment.completeAttachmentUpload({ params: { reservationId } })),
   }
 
+  /**
+   * Writing it down, and then - if that is what was asked for - handing it on.
+   *
+   * Submitting is two calls because the round keeps them separate: a claim
+   * exists before anybody is asked to look at it. Doing them in one press is
+   * this screen's job, not the reader's.
+   */
   const save = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (andSubmit: boolean) => {
       const body = { payload, ...(note.trim() === '' ? {} : { note: note.trim() }) }
-      if (entry === null) {
-        return run(
-          api.assessment.createEntry({ payload: { itemId: item.id, participantId, ...body } }),
-        )
-      }
-      return run(api.assessment.reviseEntry({ params: { entryId: entry.id }, payload: body }))
+      const saved =
+        entry === null
+          ? await run(
+              api.assessment.createEntry({ payload: { itemId: item.id, participantId, ...body } }),
+            )
+          : await run(api.assessment.reviseEntry({ params: { entryId: entry.id }, payload: body }))
+      if (!andSubmit) return saved
+      const entryId = (saved as { entry?: { id?: string } }).entry?.id ?? entry?.id
+      if (entryId === undefined) return saved
+      return run(
+        api.assessment.setEntryStatus({
+          params: { entryId },
+          payload: { status: 'in_review' },
+        }),
+      )
     },
     onMutate: () => {
       setProblem(null)
@@ -97,47 +125,111 @@ export function EntryDialog({
     },
     onSuccess: onSaved,
     onError: (error: unknown) => {
-      const payload = error as { issues?: readonly { field: string; reason: string }[] }
-      if (Array.isArray(payload.issues)) setIssues(payload.issues)
+      const raised = error as { issues?: readonly { field: string; reason: string }[] }
+      if (Array.isArray(raised.issues)) setIssues(raised.issues)
       const refusal = entryRefusalMessage(error)
       setProblem(refusal === null ? formatError(error) : format(refusal))
     },
   })
 
   return (
-    <FormDialog open title={item.title} onClose={onClose}>
-      <div className="flex flex-col gap-4">
-        {description !== '' && <p className="text-sm text-muted-foreground">{description}</p>}
-        <EvidenceForm
-          fields={fields}
-          value={payload}
-          onChange={setPayload}
-          doors={doors}
-          where={{ batchId, itemId: item.id }}
-          materialRange={materialRange}
-        />
-        <Field label={format(m.entryNote)}>
-          {(id) => <Input id={id} value={note} onChange={(event) => setNote(event.target.value)} />}
-        </Field>
-        <Feedback message={problem} />
-        {issues.length > 0 && (
-          <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
-            {issues.map((issue, index) => (
-              <li key={index}>
-                {labelOf(issue.field)} {format(ISSUE_SENTENCES[issue.reason] ?? m.entryIssueOther)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+    <FormDialog
+      open={open}
+      size="wide"
+      title={entry === null ? format(m.entryNew) : format(m.entryEdit)}
+      description={item.title}
+      onClose={onClose}
+      footer={
+        <div className="flex w-full flex-wrap items-center gap-3">
+          <p className="text-xs text-muted-foreground">{format(m.entryDraftKept)}</p>
+          <span className="flex-1" />
+          <Button variant="outline" disabled={save.isPending} onClick={() => save.mutate(false)}>
+            {format(m.entrySaveDraft)}
           </Button>
-          <Button disabled={save.isPending} onClick={() => save.mutate()}>
-            {format(m.entrySave)}
+          <Button disabled={save.isPending} onClick={() => save.mutate(true)}>
+            {format(m.entrySubmit)}
           </Button>
         </div>
+      }
+    >
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+          {description !== '' && (
+            <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+          )}
+          <EvidenceForm
+            fields={fields}
+            value={payload}
+            onChange={setPayload}
+            doors={doors}
+            where={{ batchId, itemId: item.id }}
+            materialRange={materialRange}
+          />
+          <Field label={format(m.entryNote)}>
+            {(id) => (
+              <Input id={id} value={note} onChange={(event) => setNote(event.target.value)} />
+            )}
+          </Field>
+          <Feedback message={problem} />
+          {issues.length > 0 && (
+            <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+              {issues.map((issue, index) => (
+                <li key={index}>
+                  {labelOf(issue.field)}{' '}
+                  {format(ISSUE_SENTENCES[issue.reason] ?? m.entryIssueOther)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-col gap-2 rounded-xl bg-muted p-4">
+            <p className="text-sm font-semibold">{format(m.entryTerms)}</p>
+            {each !== undefined && (
+              <p className="text-xs text-muted-foreground">
+                {format(m.entryCountsFor, { value: trimAmount(each) })}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {item.maxEntries === null
+                ? format(m.itemsPreviewNoMax)
+                : format(m.myEntriesRoom, { most: item.maxEntries, used: siblings.length })}
+            </p>
+            {steps > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {format(m.entryAfterSubmit, { count: steps })}
+              </p>
+            )}
+            {room !== null && room <= 1 && entry === null && (
+              <p className="text-xs text-muted-foreground">{format(m.entryLastRoom)}</p>
+            )}
+          </div>
+
+          {siblings.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-xl border p-4">
+              <p className="text-sm font-semibold">{format(m.entryAlreadyFiled)}</p>
+              {siblings.map((one) => (
+                <p key={one.id} className="truncate text-xs text-muted-foreground">
+                  {summary(one, item)}
+                </p>
+              ))}
+              <p className="border-t pt-2 text-xs leading-relaxed text-muted-foreground">
+                {format(m.entryNoDuplicates)}
+              </p>
+            </div>
+          )}
+        </aside>
       </div>
     </FormDialog>
   )
+}
+
+const summary = (entry: EntryDto, item: ItemDto): string => {
+  const fields = fieldsOf(item.currentRevision?.formConfig)
+  const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
+  const said = fields
+    .map((field) => payload[field.key])
+    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+  return said.length === 0 ? item.title : said.join('　')
 }

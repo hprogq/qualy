@@ -1469,6 +1469,100 @@ const i18n = definePluginMessages({
     },
     paperStartAction: { id: 'assessment/items/paper-start-action', defaultMessage: 'Start' },
 
+    /** the filing screen: the round's structure, and one's own claims in it */
+    myEntriesCounted: { id: 'assessment/entry/counted', defaultMessage: 'Counted' },
+    myEntriesRows: {
+      id: 'assessment/entry/rows',
+      defaultMessage: '{count, plural, =0 {none} one {# entry} other {# entries}}',
+    },
+    myEntriesTodo: {
+      id: 'assessment/entry/todo',
+      defaultMessage:
+        '{count, plural, =0 {Nothing waiting on you} one {# waiting on you} other {# waiting on you}}',
+    },
+    myEntriesQuestions: {
+      id: 'assessment/entry/questions',
+      defaultMessage: '{count, plural, one {# question} other {# questions}}',
+    },
+    myEntriesGroupBadge: { id: 'assessment/entry/group-badge', defaultMessage: 'Section' },
+    myEntriesItemBadge: { id: 'assessment/entry/item-badge', defaultMessage: 'Question' },
+    myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'Recorded for you' },
+    myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open to you' },
+    myEntriesInGroup: { id: 'assessment/entry/in-group', defaultMessage: 'Yours here' },
+    myEntriesHolds: { id: 'assessment/entry/holds', defaultMessage: 'Inside this section' },
+    myEntriesHoldsCount: {
+      id: 'assessment/entry/holds-count',
+      defaultMessage: '{count, plural, one {# row} other {# rows}}',
+    },
+    myEntriesHoldsEmpty: {
+      id: 'assessment/entry/holds-empty',
+      defaultMessage: 'Nothing in this section is yours to answer.',
+    },
+    myEntriesMakeup: { id: 'assessment/entry/makeup', defaultMessage: 'How it adds up' },
+    myEntriesFromItems: {
+      id: 'assessment/entry/from-items',
+      defaultMessage: 'From questions here',
+    },
+    myEntriesFromChildren: {
+      id: 'assessment/entry/from-children',
+      defaultMessage: 'From sections inside',
+    },
+    myEntriesGroupTotal: { id: 'assessment/entry/group-total', defaultMessage: 'Section total' },
+    myEntriesMakeupNote: {
+      id: 'assessment/entry/makeup-note',
+      defaultMessage: 'Only approved entries count. The limits apply when the round is settled.',
+    },
+    myEntriesRoom: {
+      id: 'assessment/entry/room',
+      defaultMessage: '{used} of {most} filed',
+    },
+    myEntriesChain: {
+      id: 'assessment/entry/chain',
+      defaultMessage: '{count, plural, one {# reviewer} other {# reviewers in turn}}',
+    },
+    myEntriesFiled: { id: 'assessment/entry/filed', defaultMessage: 'What you have filed' },
+    myEntriesFiledCount: {
+      id: 'assessment/entry/filed-count',
+      defaultMessage:
+        '{filed, plural, =0 {nothing submitted} one {# submitted} other {# submitted}}, {drafts, plural, =0 {no draft} other {# draft}}',
+    },
+    myEntriesNoneYet: {
+      id: 'assessment/entry/none-yet',
+      defaultMessage: 'Nothing filed here yet.',
+    },
+    myEntriesDraftSaved: {
+      id: 'assessment/entry/draft-saved',
+      defaultMessage: 'Not submitted, saved {when}',
+    },
+    myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Keep filling in' },
+    myEntriesResumeDraft: {
+      id: 'assessment/entry/resume-draft',
+      defaultMessage: 'Keep filling in the draft',
+    },
+    entryTerms: { id: 'assessment/entry/terms', defaultMessage: 'What this question takes' },
+    entryAfterSubmit: {
+      id: 'assessment/entry/after-submit',
+      defaultMessage:
+        'Once submitted, {count, plural, one {# person reviews it} other {# people review it in turn}}.',
+    },
+    entryLastRoom: {
+      id: 'assessment/entry/last-room',
+      defaultMessage: 'This is the last one this question will take from you.',
+    },
+    entryAlreadyFiled: {
+      id: 'assessment/entry/already-filed',
+      defaultMessage: 'Already filed here',
+    },
+    entryNoDuplicates: {
+      id: 'assessment/entry/no-duplicates',
+      defaultMessage: 'Do not file the same achievement twice.',
+    },
+    entryDraftKept: {
+      id: 'assessment/entry/draft-kept',
+      defaultMessage: 'A draft stays under this question until you submit it.',
+    },
+    entrySaveDraft: { id: 'assessment/entry/save-draft', defaultMessage: 'Save as draft' },
+
     tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Staffs' },
     tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Settings' },
     settingsHint: {

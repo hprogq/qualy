@@ -1,54 +1,122 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import {
+  useApi,
+  useApiQuery,
+  usePageQueryState,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Badge } from '@qualy/ui/badge'
-import { Button } from '@qualy/ui/button'
+import { cn } from '@qualy/ui/cn'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntryHistory } from './EntryHistory.tsx'
-import {
-  trimAmount,
-  entryStatusMessage,
-  entryStatusVariant,
-  type EntryDto,
-  type ItemDto,
-} from './model.ts'
+import { GroupDetail } from './GroupDetail.tsx'
+import { ItemDetail } from './ItemDetail.tsx'
+import { ROW_TAG, standingRows, type Standing, type StructureRow } from './standing.ts'
+import { trimAmount, type EntryDto, type ItemDto } from './model.ts'
 
-// One's own filings, question by question. Each card answers the only three
-// things a participant came to ask: what is this question, where does my
-// claim on it stand, and what can I do to it right now.
+// One's own filings: the round's structure down the left, and whatever is
+// selected in it opened on the right.
+//
+// The structure is one list rather than three screens. A group and a question
+// are both rows in it, because a participant reading down what a round asks
+// of them does not think of the groups as a different kind of place - they
+// think "what is in here, and what have I done about it". Selecting a group
+// answers the first, selecting a question answers the second.
 
 export default function MyEntriesPage() {
   const { format } = useI18n()
+  const [selected, setSelected] = usePageQueryState('open')
   return (
-    <BatchScreen title={format(m.myEntriesTab)} description={format(m.myEntriesHint)}>
-      {(batch) => <Body batchId={batch.id} materialRange={batch.materialRange} />}
+    <BatchScreen
+      title={format(m.myEntriesTab)}
+      description={format(m.myEntriesHint)}
+      size="wide"
+      actions={<Totals />}
+    >
+      {(batch) => (
+        <Body
+          batchId={batch.id}
+          materialRange={batch.materialRange}
+          selected={selected}
+          onSelect={setSelected}
+        />
+      )}
     </BatchScreen>
   )
 }
 
-/** a score group as this screen reads it, already placed in the tree */
-interface GroupRow {
-  id: string
-  parentGroupId: string | null
-  name: string
-  depth: number
+/**
+ * What the round has granted so far, beside the page's own name.
+ *
+ * A score, then two counts - said as counts rather than as amounts, because
+ * what a submission will be worth is not decided until somebody approves it,
+ * and a number in the same shape as the granted one would read as a promise.
+ */
+function Totals() {
+  const { format } = useI18n()
+  const query = useApiQuery(assessmentApi)
+  // rendered beside the heading rather than inside the loaded batch, so it
+  // reads the route for itself
+  const { batchId } = usePageRouteParams('batchId')
+  const standing = useQuery(query.assessment.getMyResult.queryOptions({ params: { batchId } }))
+  const mine = useQuery(
+    query.assessment.listMyEntries.queryOptions({ params: { batchId }, query: {} }),
+  )
+  const entries = (mine.data?.entries ?? []) as readonly EntryDto[]
+  const pending = entries.filter((entry) => entry.status === 'in_review').length
+  const drafts = entries.filter((entry) => entry.status === 'draft').length
+
+  return (
+    <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+      <Stat
+        label={format(m.myEntriesCounted)}
+        value={standing.data === undefined ? '—' : trimAmount(standing.data.total)}
+        strong
+      />
+      <Stat
+        label={format(m.entryStatusInReview)}
+        value={format(m.myEntriesRows, { count: pending })}
+      />
+      <Stat label={format(m.entryStatusDraft)} value={format(m.myEntriesRows, { count: drafts })} />
+    </div>
+  )
+}
+
+function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
+      <span
+        className={cn('tabular-nums', strong ? 'text-lg font-semibold' : 'text-sm font-medium')}
+      >
+        {value}
+      </span>
+    </span>
+  )
 }
 
 function Body({
   batchId,
   materialRange,
+  selected,
+  onSelect,
 }: {
   batchId: string
   materialRange: { start: string; end: string }
+  /** which row of the structure is open, by id; '' is the first one that is */
+  selected: string
+  onSelect: (id: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -64,8 +132,10 @@ function Body({
   const mine = useQuery(
     query.assessment.listMyEntries.queryOptions({ params: { batchId }, query: {} }),
   )
-  const [editing, setEditing] = useState<{ item: ItemDto; entry: EntryDto | null } | null>(null)
+  const [filing, setFiling] = useState<{ item: ItemDto; entry: EntryDto | null } | null>(null)
+  const lingeringFiling = useLingering(filing)
   const [history, setHistory] = useState<string | null>(null)
+  const lingeringHistory = useLingering(history)
 
   const entriesByItem = useMemo(() => {
     const grouped = new Map<string, EntryDto[]>()
@@ -96,84 +166,43 @@ function Body({
     },
   })
 
-  // questions this person files themselves; what staff recorded about them
-  // still shows through their own entry rows below the same card
+  // Questions this person files themselves, anything already filed about
+  // them, and anything that has scored - a question the school recorded and
+  // scored is part of how their round adds up, and a group whose total
+  // includes it while nothing on screen names it is a group that cannot be
+  // read. A question still being composed is nobody's to answer.
+  const scored = useMemo(
+    () =>
+      new Set((standing.data?.lines ?? []).flatMap((line) => (line.itemId ? [line.itemId] : []))),
+    [standing.data],
+  )
   const visible = useMemo(
     () =>
       ((items.data?.items ?? []) as readonly ItemDto[]).filter(
         (item) =>
-          // a draft question reaches this screen only for a reader who also
-          // composes the paper, and it is not theirs to file either
           item.status !== 'draft' &&
           (item.currentRevision?.entrySource === 'student' ||
+            scored.has(item.id) ||
             (entriesByItem.get(item.id)?.length ?? 0) > 0),
       ),
-    [items.data, entriesByItem],
+    [items.data, entriesByItem, scored],
   )
 
-  // the score tree, as the filing screen reads it: a group, then the groups
-  // inside it, then the questions that file under each
-  const tree = useMemo(() => {
-    const childrenOf = new Map<string | null, GroupRow[]>()
-    for (const group of groups.data?.groups ?? []) {
-      const bucket = childrenOf.get(group.parentGroupId)
-      const row = {
-        id: group.id,
-        parentGroupId: group.parentGroupId,
-        name: group.name,
-        depth: 0,
-      }
-      if (bucket === undefined) childrenOf.set(group.parentGroupId, [row])
-      else bucket.push(row)
-    }
-    const out: GroupRow[] = []
-    const walk = (parent: string | null, depth: number) => {
-      for (const group of childrenOf.get(parent) ?? []) {
-        out.push({ ...group, depth })
-        walk(group.id, depth + 1)
-      }
-    }
-    walk(null, 0)
-    return out
-  }, [groups.data])
-
-  // a group earns its heading by holding questions, or by holding a group
-  // that does. The rest of the paper is a structure this participant can put
-  // nothing into, and a filing screen is not the place to read it.
-  const filled = useMemo(() => {
-    const parentOf = new Map(tree.map((group) => [group.id, group.parentGroupId]))
-    const found = new Set<string>()
-    for (const item of visible) {
-      let at: string | null = item.scoreGroupId
-      while (at !== null && !found.has(at)) {
-        found.add(at)
-        at = parentOf.get(at) ?? null
-      }
-    }
-    return found
-  }, [tree, visible])
-
-  // a question whose group is missing from the response is still a question
-  // this participant may file; it stands on its own rather than falling out
-  // of the loop below
-  const placed = useMemo(() => new Set(tree.map((group) => group.id)), [tree])
-  const loose = visible.filter((item) => !placed.has(item.scoreGroupId))
-
-  const standingOf = (groupId: string) =>
-    (standing.data?.groups ?? []).find((group) => group.groupId === groupId)
-
-  const card = (item: ItemDto) => (
-    <QuestionCard
-      key={item.id}
-      item={item}
-      entries={entriesByItem.get(item.id) ?? []}
-      busy={setStatus.isPending}
-      onFile={() => setEditing({ item, entry: null })}
-      onEdit={(entry) => setEditing({ item, entry })}
-      onHistory={setHistory}
-      onStatus={(entryId, status) => setStatus.mutate({ entryId, status })}
-    />
+  const rows = useMemo(
+    () =>
+      standingRows({
+        groups: groups.data?.groups ?? [],
+        items: visible,
+        entriesByItem,
+        standing: (standing.data ?? null) as Standing | null,
+      }),
+    [groups.data, visible, entriesByItem, standing.data],
   )
+
+  // the address names a row; before it names one, the first question there is
+  // to answer is a better place to land than an empty pane
+  const fallback = rows.find((row) => row.kind === 'item') ?? rows[0]
+  const open = rows.find((row) => row.id === selected) ?? fallback ?? null
 
   return (
     <AsyncSection
@@ -196,157 +225,150 @@ function Body({
         void standing.refetch()
       }}
       skeleton={
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
+        <div className="flex gap-6">
+          <Skeleton className="h-96 w-94 shrink-0" />
+          <Skeleton className="h-96 flex-1" />
         </div>
       }
+      className="flex flex-1 flex-col"
     >
-      <div className="flex flex-col gap-6">
-        {visible.length === 0 && (
-          <p className="text-sm text-muted-foreground">{format(m.myEntriesEmpty)}</p>
-        )}
-        {loose.length > 0 && <div className="flex flex-col gap-4">{loose.map(card)}</div>}
-        {tree
-          .filter((group) => filled.has(group.id))
-          .map((group) => {
-            const own = visible.filter((item) => item.scoreGroupId === group.id)
-            const score = standingOf(group.id)
-            return (
-              <section key={group.id} style={{ marginLeft: `${group.depth * 1.25}rem` }}>
-                <div className="flex items-baseline justify-between border-b pb-1">
-                  <h3 className="text-sm font-medium">{group.name}</h3>
-                  {score !== undefined && (
-                    <p className="text-sm tabular-nums text-muted-foreground">
-                      {trimAmount(score.final)}
-                      {score.cap !== null && ` / ${trimAmount(score.cap)}`}
-                    </p>
-                  )}
-                </div>
-                {own.length > 0 && <div className="flex flex-col gap-4 pt-3">{own.map(card)}</div>}
-              </section>
-            )
-          })}
-      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{format(m.myEntriesEmpty)}</p>
+      ) : (
+        <div className="flex flex-1 flex-col gap-6 lg:flex-row">
+          <Structure rows={rows} openId={open?.id ?? null} onOpen={onSelect} />
 
-      {editing !== null && mine.data !== undefined && (
+          <div className="min-w-0 flex-1">
+            {open?.kind === 'group' && (
+              <GroupDetail
+                key={open.id}
+                row={open}
+                rows={rows}
+                standing={(standing.data ?? null) as Standing | null}
+                onOpen={onSelect}
+              />
+            )}
+            {open?.kind === 'item' && (
+              <ItemDetail
+                key={open.id}
+                row={open}
+                entries={entriesByItem.get(open.id) ?? []}
+                standing={(standing.data ?? null) as Standing | null}
+                busy={setStatus.isPending}
+                onFile={(entry) => setFiling({ item: open.item!, entry })}
+                onHistory={setHistory}
+                onStatus={(entryId, status) => setStatus.mutate({ entryId, status })}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* kept mounted while it shuts, or it would vanish rather than close */}
+      {lingeringFiling !== null && mine.data !== undefined && (
         <EntryDialog
+          key={lingeringFiling.entry?.id ?? `new:${lingeringFiling.item.id}`}
+          open={filing !== null}
           batchId={batchId}
           materialRange={materialRange}
           participantId={mine.data.participantId}
-          item={editing.item}
-          entry={editing.entry}
-          onClose={() => setEditing(null)}
+          item={lingeringFiling.item}
+          entry={lingeringFiling.entry}
+          siblings={(entriesByItem.get(lingeringFiling.item.id) ?? []).filter(
+            (one) => one.id !== lingeringFiling.entry?.id,
+          )}
+          onClose={() => setFiling(null)}
           onSaved={() => {
-            setEditing(null)
+            setFiling(null)
             refresh()
           }}
         />
       )}
-      {history !== null && <EntryHistory entryId={history} onClose={() => setHistory(null)} />}
+      {lingeringHistory !== null && (
+        <EntryHistory
+          open={history !== null}
+          entryId={lingeringHistory}
+          onClose={() => setHistory(null)}
+        />
+      )}
     </AsyncSection>
   )
 }
 
-function QuestionCard({
-  item,
-  entries,
-  busy,
-  onFile,
-  onEdit,
-  onHistory,
-  onStatus,
+/**
+ * The round, as one list of rows to choose from.
+ *
+ * Groups and questions sit at the same indent scale rather than as headings
+ * over lists, so the depth of the paper reads the way it is written and a
+ * question two levels down is reachable in one press.
+ */
+function Structure({
+  rows,
+  openId,
+  onOpen,
 }: {
-  item: ItemDto
-  entries: readonly EntryDto[]
-  busy: boolean
-  onFile: () => void
-  onEdit: (entry: EntryDto) => void
-  onHistory: (entryId: string) => void
-  onStatus: (entryId: string, status: 'in_review' | 'draft') => void
+  rows: readonly StructureRow[]
+  openId: string | null
+  onOpen: (id: string) => void
 }) {
   const { format } = useI18n()
-  const live = entries.filter((entry) => entry.status !== 'voided')
-  const mayFile =
-    item.status === 'active' &&
-    item.currentRevision?.entrySource === 'student' &&
-    (item.maxEntries === null || live.length < item.maxEntries)
-  const fixedValue = (
-    item.currentRevision?.scoringConfig as
-      { calculator?: { config?: { value?: string } } } | undefined
-  )?.calculator?.config?.value
+  const questions = rows.filter((row) => row.kind === 'item').length
+  const todo = rows.filter((row) => row.todo).length
 
   return (
-    <section className="rounded-lg border p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium">{item.title}</h3>
-          <p className="pt-0.5 text-xs text-muted-foreground">
-            {item.status === 'voided'
-              ? format(m.itemVoided)
-              : fixedValue !== undefined
-                ? format(m.entryCountsFor, { value: trimAmount(fixedValue) })
-                : null}
-          </p>
-        </div>
-        {mayFile && (
-          <Button size="sm" onClick={onFile}>
-            {format(m.entryNew)}
-          </Button>
-        )}
+    <div className="flex shrink-0 flex-col gap-2.5 lg:w-94">
+      <div className="flex items-center gap-3 px-0.5">
+        <p className="text-sm font-medium">{format(m.myEntriesTodo, { count: todo })}</p>
+        <span className="flex-1" />
+        <p className="text-xs whitespace-nowrap text-muted-foreground">
+          {format(m.myEntriesQuestions, { count: questions })}
+        </p>
       </div>
-      {entries.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-2">
-          {entries.map((entry) => (
-            <li
-              key={entry.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2"
+      <ul className="flex flex-col gap-0.5 rounded-xl border p-1.5">
+        {rows.map((row) => (
+          <li key={row.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(row.id)}
+              style={{ paddingLeft: `${row.depth * 0.875 + 0.625}rem` }}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-lg border-l-2 py-1.5 pr-2.5 text-left transition-colors',
+                openId === row.id
+                  ? 'border-l-foreground bg-accent'
+                  : 'border-l-transparent hover:bg-accent/50',
+              )}
             >
-              <div className="flex items-center gap-2 text-sm">
-                <Badge variant={entryStatusVariant[entry.status]}>
-                  {format(entryStatusMessage[entry.status])}
-                </Badge>
-                <span className="text-muted-foreground">
-                  {format(m.entryUpdatedAt, {
-                    when: new Date(entry.createdAt).toLocaleDateString(),
-                  })}
-                </span>
-                {entry.currentRevision?.note !== null &&
-                  entry.currentRevision?.note !== undefined && (
-                    <span className="hidden max-w-48 truncate text-muted-foreground sm:inline">
-                      {entry.currentRevision.note}
+              {row.kind === 'group' ? (
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{row.name}</span>
+              ) : (
+                <>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-1.5 shrink-0 rounded-full',
+                      row.todo ? 'bg-foreground' : 'bg-muted-foreground/40',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>
+                  {row.tag !== null && (
+                    <span className="max-w-28 shrink-0 truncate text-xs text-muted-foreground">
+                      {format(ROW_TAG[row.tag])}
                     </span>
                   )}
-              </div>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" onClick={() => onHistory(entry.id)}>
-                  {format(m.entryHistoryOpen)}
-                </Button>
-                {entry.capabilities.canEdit && item.status === 'active' && (
-                  <Button variant="outline" size="sm" onClick={() => onEdit(entry)}>
-                    {format(m.entryEdit)}
-                  </Button>
+                </>
+              )}
+              <span
+                className={cn(
+                  'shrink-0 text-xs tabular-nums',
+                  row.kind === 'group' ? 'text-muted-foreground' : 'text-foreground',
                 )}
-                {entry.capabilities.canSubmit && item.status === 'active' && (
-                  <Button size="sm" disabled={busy} onClick={() => onStatus(entry.id, 'in_review')}>
-                    {format(m.entrySubmit)}
-                  </Button>
-                )}
-                {entry.capabilities.canWithdraw && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => onStatus(entry.id, 'draft')}
-                  >
-                    {format(m.entryWithdraw)}
-                  </Button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+              >
+                {row.right}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

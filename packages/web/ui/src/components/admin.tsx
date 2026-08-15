@@ -394,6 +394,7 @@ export function FormDialog({
   open,
   title,
   description,
+  size = 'default',
   onClose,
   children,
   footer,
@@ -401,13 +402,20 @@ export function FormDialog({
   open: boolean
   title: string
   description?: string
+  /**
+   * How much room the task needs. `wide` is for a form that has something to
+   * say beside it - the terms it is answering, what was already answered -
+   * which at the default width would sit under the form instead of next to
+   * it and stop being context.
+   */
+  size?: 'default' | 'wide'
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={size === 'wide' ? 'sm:max-w-4xl' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

@@ -43,6 +43,7 @@ export function BatchBanner({ children }: { children: ReactNode }) {
 export function BatchScreen({
   title,
   description,
+  actions,
   size = 'default',
   banner,
   children,
@@ -50,6 +51,8 @@ export function BatchScreen({
   /** which of the batch's pages this is; the bar above says which batch */
   title: string
   description?: string
+  /** what the section says about itself beside its name, at a glance */
+  actions?: ReactNode
   size?: 'default' | 'wide' | 'full'
   /**
    * Which heading the band is showing. A section that opens one of its own
@@ -110,7 +113,12 @@ export function BatchScreen({
                     : 'pointer-events-none absolute inset-x-0 top-0 opacity-0 transition-opacity duration-200',
                 )}
               >
-                <PageHeader title={title} description={description} variant="banner" />
+                <PageHeader
+                  title={title}
+                  description={description}
+                  actions={actions}
+                  variant="banner"
+                />
               </div>
               <div
                 ref={setSlot}
