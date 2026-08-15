@@ -284,7 +284,7 @@ const groupCapped = defineMessage<{ raw: string; cap: string }>()({
 
 const groupFloored = defineMessage<{ raw: string; floor: string }>()({
   id: 'assessment/result/group-floored',
-  defaultMessage: 'Adds up to {raw}, lifted to the group minimum {floor}',
+  defaultMessage: 'Adds up to {raw}, lifted to the group lower limit {floor}',
 })
 
 const i18n = definePluginMessages({
@@ -875,15 +875,15 @@ const i18n = definePluginMessages({
     itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'Group settings' },
     itemsGroupCapHint: {
       id: 'assessment/items/group-cap-hint',
-      defaultMessage: 'Leave empty for no ceiling.',
+      defaultMessage: 'Leave empty for no upper limit.',
     },
     itemsGroupFloorHint: {
       id: 'assessment/items/group-floor-hint',
-      defaultMessage: 'Leave empty for no floor.',
+      defaultMessage: 'Leave empty for no lower limit.',
     },
     itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
-    itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Cap' },
-    itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Floor' },
+    itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Upper limit' },
+    itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Lower limit' },
     itemsGroupRemove: { id: 'assessment/items/group-remove', defaultMessage: 'Remove' },
     itemsGroupsReasonHint: {
       id: 'assessment/items/groups-reason-hint',
@@ -899,11 +899,11 @@ const i18n = definePluginMessages({
     },
     itemsGroupRefusedFloorAboveCap: {
       id: 'assessment/items/group-refused-floor-above-cap',
-      defaultMessage: 'has a floor above its ceiling.',
+      defaultMessage: 'has a lower limit above its upper limit.',
     },
     itemsGroupRefusedReason: {
       id: 'assessment/items/group-refused-reason',
-      defaultMessage: 'A ceiling changed in a running round. Say why below.',
+      defaultMessage: 'An upper limit changed in a running round. Say why below.',
     },
     itemsGroupRefusedParent: {
       id: 'assessment/items/group-refused-parent',
@@ -1170,7 +1170,10 @@ const i18n = definePluginMessages({
       id: 'assessment/items/structure-no-match',
       defaultMessage: 'Nothing here matches.',
     },
-    structureUncapped: { id: 'assessment/items/structure-uncapped', defaultMessage: 'no ceiling' },
+    structureUncapped: {
+      id: 'assessment/items/structure-uncapped',
+      defaultMessage: 'no upper limit',
+    },
     structureUnlimited: { id: 'assessment/items/structure-unlimited', defaultMessage: 'any' },
     structureSteps: {
       id: 'assessment/items/structure-steps',
@@ -1214,15 +1217,15 @@ const i18n = definePluginMessages({
     paperCreateTitle: { id: 'assessment/items/paper-create-title', defaultMessage: 'The paper' },
     paperCreateHint: {
       id: 'assessment/items/paper-create-hint',
-      defaultMessage: 'The outermost group of the round. Its ceiling is the total.',
+      defaultMessage: 'The outermost group of the round. Its upper limit is the total.',
     },
     paperCreate: { id: 'assessment/items/paper-create', defaultMessage: 'Create' },
     paperTotal: { id: 'assessment/items/paper-total', defaultMessage: 'Total' },
     paperTotalHint: {
       id: 'assessment/items/paper-total-hint',
-      defaultMessage: 'The sections inside cannot add up past it. Empty means no ceiling.',
+      defaultMessage: 'The sections inside cannot add up past it. Empty means no upper limit.',
     },
-    paperFloorNone: { id: 'assessment/items/paper-floor-none', defaultMessage: 'no floor' },
+    paperFloorNone: { id: 'assessment/items/paper-floor-none', defaultMessage: 'no lower limit' },
     paperEdit: { id: 'assessment/items/paper-edit', defaultMessage: 'Edit the paper' },
     paperCapSum: {
       id: 'assessment/items/paper-cap-sum',
@@ -1230,7 +1233,7 @@ const i18n = definePluginMessages({
     },
     paperCapSumFree: {
       id: 'assessment/items/paper-cap-sum-free',
-      defaultMessage: 'Sections add up to {sum}; the paper has no ceiling',
+      defaultMessage: 'Sections add up to {sum}; the paper has no upper limit',
     },
     itemsTreeTitle: { id: 'assessment/items/tree-title', defaultMessage: 'Structure' },
     itemsPreviewTitle: {
@@ -1316,6 +1319,128 @@ const i18n = definePluginMessages({
     itemsRestore: { id: 'assessment/items/restore', defaultMessage: 'Reopen' },
     itemsDelete: { id: 'assessment/items/delete', defaultMessage: 'Delete' },
     itemsStatusVoided: { id: 'assessment/items/status-voided', defaultMessage: 'Withdrawn' },
+
+    /** what the whole paper adds up to, read above its structure */
+    paperNameLabel: { id: 'assessment/items/paper-name-label', defaultMessage: 'Paper name' },
+    paperCapMatch: {
+      id: 'assessment/items/paper-cap-match',
+      defaultMessage: 'Sections add up to {sum}, matching the total',
+    },
+    paperCapUnset: {
+      id: 'assessment/items/paper-cap-unset',
+      defaultMessage: 'Some top sections have no upper limit, so the paper has none either',
+    },
+    paperTally: {
+      id: 'assessment/items/paper-tally',
+      defaultMessage:
+        '{questions, plural, one {# question} other {# questions}} in {sections, plural, one {# top section} other {# top sections}}, {unpublished, plural, =0 {all published} other {# not published}}, evidence dated {from} to {until}',
+    },
+    /** what goes between two things named in a row; a locale picks its own */
+    listSeparator: { id: 'assessment/items/list-separator', defaultMessage: ', ' },
+    structureSubtotal: {
+      id: 'assessment/items/structure-subtotal',
+      defaultMessage: 'holds {sum}',
+    },
+    structureRowAddGroup: {
+      id: 'assessment/items/structure-row-add-group',
+      defaultMessage: 'Subgroup',
+    },
+    structureRowMenu: { id: 'assessment/items/structure-row-menu', defaultMessage: 'More' },
+    structureOpen: { id: 'assessment/items/structure-open', defaultMessage: 'Open' },
+
+    /** one question, opened out of the structure */
+    itemsBack: { id: 'assessment/items/back', defaultMessage: 'Back to the structure' },
+    itemsPaperPosition: {
+      id: 'assessment/items/paper-position',
+      defaultMessage: 'Question {index} of {total}',
+    },
+    itemsPrevious: { id: 'assessment/items/previous', defaultMessage: 'Previous question' },
+    itemsNext: { id: 'assessment/items/next', defaultMessage: 'Next question' },
+    itemsPublishedVersion: {
+      id: 'assessment/items/published-version',
+      defaultMessage: 'Published, version {no}',
+    },
+    itemsDraftVersion: {
+      id: 'assessment/items/draft-version',
+      defaultMessage: 'Unpublished, version {no}',
+    },
+    itemsFieldColLimit: { id: 'assessment/items/field-col-limit', defaultMessage: 'Limits' },
+    itemsLimitNone: { id: 'assessment/items/limit-none', defaultMessage: 'no limit' },
+    itemsLimitMaxLength: {
+      id: 'assessment/items/limit-max-length',
+      defaultMessage: 'up to {count} characters',
+    },
+    itemsLimitDates: { id: 'assessment/items/limit-dates', defaultMessage: '{from} to {until}' },
+    itemsLimitFiles: {
+      id: 'assessment/items/limit-files',
+      defaultMessage: '{count, plural, one {# file} other {up to # files}}',
+    },
+    itemsFixedValueUnit: { id: 'assessment/items/fixed-value-unit', defaultMessage: 'pts' },
+    itemsMaxEntriesAny: { id: 'assessment/items/max-entries-any', defaultMessage: 'No limit' },
+    itemsScoringMethod: { id: 'assessment/items/scoring-method', defaultMessage: 'How it counts' },
+    itemsScoringMethodFixed: {
+      id: 'assessment/items/scoring-method-fixed',
+      defaultMessage: 'Fixed value per entry',
+    },
+    itemsCeiling: {
+      id: 'assessment/items/ceiling',
+      defaultMessage: 'Most this question can count',
+    },
+    itemsCeilingHow: {
+      id: 'assessment/items/ceiling-how',
+      defaultMessage: '{value} × {count, plural, one {# entry} other {# entries}}.',
+    },
+    itemsCeilingHowAny: {
+      id: 'assessment/items/ceiling-how-any',
+      defaultMessage: 'No limit on entries, so this question has no upper limit of its own.',
+    },
+    itemsCeilingSectionCapped: {
+      id: 'assessment/items/ceiling-section-capped',
+      defaultMessage: '{name} up to {value}',
+    },
+    itemsCeilingSectionFree: {
+      id: 'assessment/items/ceiling-section-free',
+      defaultMessage: '{name} has no upper limit',
+    },
+    itemsCeilingNote: {
+      id: 'assessment/items/ceiling-note',
+      defaultMessage: 'Section limits: {chain}. Anything past them is cut at settlement.',
+    },
+    /** the same answer as itemsReviewUncovered, in the width a chain step has */
+    itemsReviewUncoveredCount: {
+      id: 'assessment/items/review-uncovered-count',
+      defaultMessage:
+        '{count, plural, one {# unit has no reviewer} other {# units have no reviewer}}',
+    },
+    itemsDoubtAddStep: {
+      id: 'assessment/items/doubt-add-step',
+      defaultMessage: 'Set up escalation',
+    },
+    itemsPlacementTitle: {
+      id: 'assessment/items/placement-title',
+      defaultMessage: 'Where it counts',
+    },
+    itemsPlacementSubtotal: {
+      id: 'assessment/items/placement-subtotal',
+      defaultMessage: '{name} subtotal',
+    },
+    itemsPlacementCap: {
+      id: 'assessment/items/placement-cap',
+      defaultMessage: '{name} upper limit',
+    },
+    itemsPlacementPaper: { id: 'assessment/items/placement-paper', defaultMessage: 'Round total' },
+    itemsVersionTitle: { id: 'assessment/items/version-title', defaultMessage: 'Versions' },
+    itemsVersionNote: {
+      id: 'assessment/items/version-note',
+      defaultMessage:
+        'Version {no}, saved {date}. Saving makes a new one; entries already filed keep the version they were filed under.',
+    },
+    itemsVersionNew: {
+      id: 'assessment/items/version-new',
+      defaultMessage: 'Nothing saved yet. The first save becomes version 1.',
+    },
+    paperStartAction: { id: 'assessment/items/paper-start-action', defaultMessage: 'Start' },
+
     tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Staffs' },
     tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Settings' },
     settingsHint: {

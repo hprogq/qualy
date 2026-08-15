@@ -1,31 +1,45 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { TriangleAlertIcon } from 'lucide-react'
+import { CheckIcon, PencilIcon, TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Separator } from '@qualy/ui/separator'
-import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { cn } from '@qualy/ui/cn'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@qualy/ui/dropdown-menu'
+import { Drill, type DrillMove } from '@qualy/ui/reveal'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { ItemConfigEditor } from './ItemConfigEditor.tsx'
-import { GroupEditor, type GroupDraft } from './GroupEditor.tsx'
+import { GroupEditor } from './GroupEditor.tsx'
 import { PaperStart } from './PaperStart.tsx'
-import { StructureTable, structureRows, type StructureRow } from './StructureTable.tsx'
-import type { TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
+import { itemCeiling, StructureTable, structureRows, type StructureRow } from './StructureTable.tsx'
+import type { GroupTarget, Placement, TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
 import type { Draft as QuestionDraft } from './ItemConfigEditor.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import { trimAmount, type ItemDto } from '../entry/model.ts'
 
-// Composing a round with the paper always in sight: its structure down the
-// left, the selected part opened for editing on the right. A drag in the
-// tree is persisted here - the tree only says what should now come where.
+// Composing a round: the paper's structure, and one question opened out.
+//
+// Opening a question is a level down, not a different screen - the structure
+// it was opened from is the same page, and going back lands on the row that
+// was pressed, so the content area travels sideways and says so. Stepping to
+// the next question is a shorter move up or down the same stack. A group is
+// three fields, so it opens in a panel over the structure instead: nothing
+// about it is worth losing sight of the tree for.
+//
+// Which move happened is stated at the point the screen changes rather than
+// inferred afterwards, because a save that lands on the question already
+// open must not perform an arrival the reader did not ask for.
+interface View {
+  open: TreeSelection | null
+  move: DrillMove
+}
 
 /**
  * What a refused publish or restore actually says.
@@ -46,10 +60,24 @@ let composed = 0
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
+  // held out here because the band at the top of the page is the one the open
+  // question speaks through, and the page has to know when to give it up
+  const [view, setView] = useState<View>({ open: null, move: 'none' })
   return (
-    <BatchScreen title={format(m.itemsTab)} description={format(m.itemsHint)}>
+    <BatchScreen
+      title={format(m.itemsTab)}
+      description={format(m.itemsHint)}
+      size="wide"
+      banner={view.open === null}
+    >
       {(batch) => (
-        <Editor batchId={batch.id} batchStatus={batch.status} materialRange={batch.materialRange} />
+        <Editor
+          batchId={batch.id}
+          batchStatus={batch.status}
+          materialRange={batch.materialRange}
+          view={view}
+          onView={setView}
+        />
       )}
     </BatchScreen>
   )
@@ -59,10 +87,14 @@ function Editor({
   batchId,
   batchStatus,
   materialRange,
+  view,
+  onView,
 }: {
   batchId: string
   batchStatus: string
   materialRange: { start: string; end: string }
+  view: View
+  onView: (view: View) => void
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -76,12 +108,13 @@ function Editor({
     ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
     refetchInterval: 60_000,
   })
-  const [selection, setSelection] = useState<TreeSelection | null>(null)
   // what has been composed and not yet saved. Each press of add puts one more
   // here, so the tree shows what is waiting rather than swallowing the press.
   const [drafts, setDrafts] = useState<readonly TreeDraft[]>([])
-  const [held, setHeld] = useState<Readonly<Record<string, QuestionDraft | GroupDraft>>>({})
+  const [held, setHeld] = useState<Readonly<Record<string, QuestionDraft>>>({})
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
+  // the group whose panel is open over the structure, if any
+  const [group, setGroup] = useState<GroupTarget | null>(null)
   // set by the open editor: publishing what is on screen would be a lie while
   // the screen says something the round has not been told
   const [unsaved, setUnsaved] = useState(false)
@@ -92,18 +125,14 @@ function Editor({
     orderedItemIds: readonly string[]
   } | null>(null)
 
-  // one more thing being composed, selected so it can be written straight away
-  const compose = (
-    where: { kind: 'item'; groupId: string } | { kind: 'group'; parentId: string | null },
-  ) => {
+  const selection = view.open
+  const open = (next: TreeSelection | null, move: DrillMove) => onView({ open: next, move })
+
+  // one more question being composed, opened so it can be written straight away
+  const compose = (groupId: string) => {
     const localId = `local-${(composed += 1)}`
-    setDrafts((current) => [
-      ...current,
-      where.kind === 'item'
-        ? { localId, kind: 'item', groupId: where.groupId, title: '' }
-        : { localId, kind: 'group', parentId: where.parentId, title: '' },
-    ])
-    setSelection({ kind: 'draft', localId })
+    setDrafts((current) => [...current, { localId, groupId, title: '' }])
+    open({ kind: 'draft', localId }, 'in')
   }
 
   const closeDraft = (localId: string) => {
@@ -112,16 +141,15 @@ function Editor({
       const { [localId]: gone, ...rest } = current
       return rest
     })
-    setSelection((current) =>
-      current?.kind === 'draft' && current.localId === localId ? null : current,
-    )
+    if (selection?.kind === 'draft' && selection.localId === localId) open(null, 'out')
   }
 
-  const hold = useCallback((localId: string, composition: QuestionDraft | GroupDraft) => {
+  const hold = useCallback((localId: string, composition: QuestionDraft) => {
     setHeld((current) => ({ ...current, [localId]: composition }))
-    const title = 'title' in composition ? composition.title : composition.name
     setDrafts((current) =>
-      current.map((draft) => (draft.localId === localId ? { ...draft, title } : draft)),
+      current.map((draft) =>
+        draft.localId === localId ? { ...draft, title: composition.title } : draft,
+      ),
     )
   }, [])
 
@@ -149,7 +177,7 @@ function Editor({
   const remove = useMutation({
     mutationFn: (itemId: string) => run(api.assessment.deleteItem({ params: { itemId } })),
     onSuccess: () => {
-      setSelection(null)
+      open(null, 'out')
       refresh()
     },
     onError: (error) => toast.error(formatError(error)),
@@ -230,23 +258,22 @@ function Editor({
     (group) => group.parentGroupId === (paper?.id ?? null),
   )
   const rows = structureRows(allGroups as readonly TreeGroup[], allItems, drafts, paper?.id ?? null)
-  const questionCount = allItems.filter((item) => item.status === 'active').length
-  const capSum =
-    roots.length > 0 && roots.every((group) => group.cap !== null)
-      ? String(roots.reduce((cents, group) => cents + Math.round(Number(group.cap) * 100), 0) / 100)
-      : null
 
   const selectedItem =
     selection?.kind === 'item' ? (allItems.find((item) => item.id === selection.id) ?? null) : null
-  const selectedGroup =
-    selection?.kind === 'group'
-      ? (allGroups.find((group) => group.id === selection.id) ?? null)
-      : null
+
+  // every question of the round in the order the structure reads them, which
+  // is the order the arrows in the band step through
+  const everyQuestion = rows.flatMap((row) =>
+    row.kind === 'item' ? [{ id: row.id, title: row.name }] : [],
+  )
 
   const openRow = (row: StructureRow) => {
-    if (row.kind === 'group') setSelection({ kind: 'group', id: row.id })
-    else if (row.kind === 'item') setSelection({ kind: 'item', id: row.id })
-    else setSelection({ kind: 'draft', localId: row.id })
+    if (row.kind === 'group') {
+      const found = (allGroups as readonly TreeGroup[]).find((one) => one.id === row.id)
+      if (found !== undefined) setGroup({ kind: 'edit', group: found })
+    } else if (row.kind === 'item') open({ kind: 'item', id: row.id }, 'in')
+    else open({ kind: 'draft', localId: row.id }, 'in')
   }
 
   // a dropped row lands where the line was drawn: inside a group, or beside
@@ -312,85 +339,90 @@ function Editor({
     () =>
       composingId === null
         ? undefined
-        : (composition: QuestionDraft | GroupDraft) => hold(composingId, composition),
+        : (composition: QuestionDraft) => hold(composingId, composition),
     [hold, composingId],
   )
 
-  const editorArea = (
-    <>
-      {selection === null && (
-        <div className="flex min-h-64 items-center justify-center">
-          <p className="text-sm text-muted-foreground">{format(m.itemsPickTarget)}</p>
-        </div>
-      )}
+  const openGroupId = selectedItem?.scoreGroupId ?? composing?.groupId ?? null
 
-      {(selectedGroup !== null || composing?.kind === 'group') && (
-        <GroupEditor
-          key={selectedGroup?.id ?? composing?.localId ?? 'group'}
-          batchId={batchId}
-          batchStatus={batchStatus}
-          groups={allGroups as readonly TreeGroup[]}
-          version={groupsVersion ?? 0}
-          editing={selectedGroup as TreeGroup | null}
-          parentId={composing?.kind === 'group' ? (composing.parentId ?? null) : null}
-          held={
-            composing === null ? undefined : (held[composing.localId] as GroupDraft | undefined)
-          }
-          onHold={onHold}
-          onCancel={() => (composing === null ? setSelection(null) : closeDraft(composing.localId))}
-          onDone={async (groupId) => {
-            await refresh()
-            if (composing !== null) closeDraft(composing.localId)
-            setSelection(groupId === null ? null : { kind: 'group', id: groupId })
-          }}
-        />
-      )}
+  const editorArea =
+    (selectedItem !== null || composing !== null) && options.data !== undefined ? (
+      <ItemConfigEditor
+        key={selectedItem?.id ?? composing?.localId ?? 'item'}
+        batchId={batchId}
+        batchStatus={batchStatus}
+        materialRange={materialRange}
+        item={selectedItem}
+        groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
+        trail={trailOf(allGroups as readonly TreeGroup[], openGroupId)}
+        placement={placementOf(
+          allGroups as readonly TreeGroup[],
+          allItems,
+          openGroupId,
+          paper?.id ?? null,
+        )}
+        paper={everyQuestion}
+        onStep={(itemId, move) => open({ kind: 'item', id: itemId }, move)}
+        defaultGroupId={composing?.groupId}
+        options={options.data}
+        held={composing === null ? undefined : held[composing.localId]}
+        onHold={onHold}
+        onDirty={setUnsaved}
+        menu={
+          selectedItem === null ? undefined : (
+            <QuestionActions
+              item={selectedItem}
+              batchStatus={batchStatus}
+              busy={restore.isPending || remove.isPending || publish.isPending}
+              unsaved={unsaved}
+              onPublish={() => publish.mutate(selectedItem.id)}
+              onVoid={() => setVoiding(selectedItem)}
+              onRestore={() => restore.mutate(selectedItem.id)}
+              onDelete={() => remove.mutate(selectedItem.id)}
+            />
+          )
+        }
+        onCancel={() => (composing === null ? open(null, 'out') : closeDraft(composing.localId))}
+        onSaved={async (itemId) => {
+          // the created row has to be in hand before it can be opened, or the
+          // screen has nothing to show between the save and the refetch. The
+          // reader stays where they were, so nothing travels.
+          await refresh()
+          if (composing !== null) closeDraft(composing.localId)
+          open({ kind: 'item', id: itemId }, 'none')
+        }}
+      />
+    ) : null
 
-      {(selectedItem !== null || composing?.kind === 'item') && options.data !== undefined && (
-        <ItemConfigEditor
-          key={selectedItem?.id ?? composing?.localId ?? 'item'}
-          batchId={batchId}
-          batchStatus={batchStatus}
+  const structure =
+    paper === undefined ? (
+      <PaperStart batchId={batchId} onCreated={() => void refresh()} />
+    ) : (
+      <div className="flex flex-1 flex-col gap-4">
+        <PaperSummary
+          paper={paper as TreeGroup}
+          roots={roots as readonly TreeGroup[]}
+          items={allItems}
           materialRange={materialRange}
-          item={selectedItem}
-          groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
-          trail={trailOf(
-            allGroups as readonly TreeGroup[],
-            selectedItem?.scoreGroupId ?? composing?.groupId ?? null,
-          )}
-          defaultGroupId={composing?.kind === 'item' ? composing.groupId : undefined}
-          options={options.data}
-          held={
-            composing === null ? undefined : (held[composing.localId] as QuestionDraft | undefined)
-          }
-          onHold={onHold}
-          onDirty={setUnsaved}
-          actions={
-            selectedItem === null ? undefined : (
-              <QuestionActions
-                item={selectedItem}
-                batchStatus={batchStatus}
-                busy={restore.isPending || remove.isPending || publish.isPending}
-                unsaved={unsaved}
-                onPublish={() => publish.mutate(selectedItem.id)}
-                onVoid={() => setVoiding(selectedItem)}
-                onRestore={() => restore.mutate(selectedItem.id)}
-                onDelete={() => remove.mutate(selectedItem.id)}
-              />
-            )
-          }
-          onCancel={() => (composing === null ? setSelection(null) : closeDraft(composing.localId))}
-          onSaved={async (itemId) => {
-            // the created row has to be in hand before it can be selected, or
-            // the pane has nothing to show between the save and the refetch
-            await refresh()
-            if (composing !== null) closeDraft(composing.localId)
-            setSelection({ kind: 'item', id: itemId })
-          }}
+          onEdit={() => setGroup({ kind: 'edit', group: paper as TreeGroup })}
         />
-      )}
-    </>
-  )
+        <StructureTable
+          rows={rows}
+          selectedKey={null}
+          onOpen={openRow}
+          onAddGroup={(parentId) => setGroup({ kind: 'new', parentId: parentId ?? paper.id })}
+          onAddItem={(groupId) => compose(groupId ?? paper.id)}
+          onMove={moveRow}
+          onPublish={(itemId) => publish.mutate(itemId)}
+          onVoid={(itemId) => {
+            const item = allItems.find((one) => one.id === itemId)
+            if (item !== undefined) setVoiding(item)
+          }}
+          onRestore={(itemId) => restore.mutate(itemId)}
+          onDelete={(itemId) => remove.mutate(itemId)}
+        />
+      </div>
+    )
 
   return (
     <AsyncSection
@@ -408,7 +440,7 @@ function Editor({
       className="flex flex-1 flex-col"
     >
       <div className="flex flex-1 flex-col gap-5">
-        {(alerts.data?.groups ?? []).length > 0 && (
+        {(alerts.data?.groups ?? []).length > 0 && selection === null && (
           <section className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
             <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
@@ -418,7 +450,7 @@ function Editor({
                   <li key={`${row.nodeId}:${row.roleNames.join(',')}`}>
                     {format(m.itemsStuckRow, {
                       unit: row.nodeName,
-                      roles: row.roleNames.join('、'),
+                      roles: row.roleNames.join(format(m.listSeparator)),
                       count: row.waiting,
                     })}
                   </li>
@@ -429,31 +461,37 @@ function Editor({
           </section>
         )}
 
-        {/* the paper's structure and the part being written, divided by a
-            handle that can be dragged rather than a line drawn down the page */}
-        {paper === undefined ? (
-          <PaperStart batchId={batchId} onCreated={() => void refresh()} />
-        ) : selection === null ? (
-          <>
-            <PaperHeader
-              paper={paper as TreeGroup}
-              roots={roots as readonly TreeGroup[]}
-              questionCount={questionCount}
-              onEdit={() => setSelection({ kind: 'group', id: paper.id })}
-            />
-            <StructureTable
-              rows={rows}
-              selectedKey={null}
-              onOpen={openRow}
-              onAddGroup={(parentId) => compose({ kind: 'group', parentId: parentId ?? paper.id })}
-              onAddItem={(groupId) => compose({ kind: 'item', groupId: groupId ?? paper.id })}
-              onMove={moveRow}
-            />
-          </>
-        ) : (
-          editorArea
-        )}
+        <Drill
+          move={view.move}
+          drillKey={
+            selection === null
+              ? 'structure'
+              : selection.kind === 'draft'
+                ? `draft:${selection.localId}`
+                : `item:${selection.id}`
+          }
+          className="flex flex-1 flex-col"
+        >
+          {selection === null ? structure : editorArea}
+        </Drill>
       </div>
+
+      {group !== null && (
+        <GroupEditor
+          key={group.kind === 'edit' ? group.group.id : `new:${group.parentId}`}
+          batchId={batchId}
+          batchStatus={batchStatus}
+          groups={allGroups as readonly TreeGroup[]}
+          version={groupsVersion ?? 0}
+          editing={group.kind === 'edit' ? group.group : null}
+          parentId={group.kind === 'new' ? group.parentId : null}
+          onClose={() => setGroup(null)}
+          onDone={() => {
+            setGroup(null)
+            void refresh()
+          }}
+        />
+      )}
 
       {pendingMove !== null && (
         <ReasonDialog
@@ -486,7 +524,7 @@ function Editor({
 }
 
 /** where something sits, read from the outermost group inwards */
-const trailOf = (groups: readonly TreeGroup[], groupId: string | null): string => {
+const trailOf = (groups: readonly TreeGroup[], groupId: string | null): readonly string[] => {
   const names: string[] = []
   let at = groupId
   const seen = new Set<string>()
@@ -497,53 +535,165 @@ const trailOf = (groups: readonly TreeGroup[], groupId: string | null): string =
     names.unshift(group.name)
     at = group.parentGroupId
   }
-  return names.join(' \u203a ')
+  return names
 }
 
-/** the paper itself: what the round is called, what it is worth, where it stands */
-function PaperHeader({
+/** the ceilings one question's score passes through, innermost group first */
+const placementOf = (
+  groups: readonly TreeGroup[],
+  items: readonly ItemDto[],
+  groupId: string | null,
+  paperId: string | null,
+): Placement => {
+  const sections: { id: string; name: string; cap: string | null }[] = []
+  let at = groupId
+  const seen = new Set<string>()
+  while (at !== null && at !== paperId && !seen.has(at)) {
+    seen.add(at)
+    const group = groups.find((one) => one.id === at)
+    if (group === undefined) break
+    sections.push({ id: group.id, name: group.name, cap: group.cap })
+    at = group.parentGroupId
+  }
+
+  let subtotal: number | null = 0
+  for (const item of items.filter((one) => one.scoreGroupId === groupId)) {
+    const most = itemCeiling(item)
+    if (most === null) subtotal = null
+    else if (subtotal !== null) subtotal += most
+  }
+
+  return {
+    sections,
+    subtotal: subtotal === null ? null : String(subtotal),
+    total: groups.find((one) => one.id === paperId)?.cap ?? null,
+  }
+}
+
+/** what the whole paper adds up to, and whether that is what it says it is */
+function PaperSummary({
   paper,
   roots,
-  questionCount,
+  items,
+  materialRange,
   onEdit,
 }: {
   paper: TreeGroup
   roots: readonly TreeGroup[]
-  questionCount: number
+  items: readonly ItemDto[]
+  materialRange: { start: string; end: string }
   onEdit: () => void
 }) {
   const { format } = useI18n()
-  const capped = roots.every((group) => group.cap !== null)
-  const sum = capped
-    ? trimAmount(
-        String(
-          roots.reduce((cents, group) => cents + Math.round(Number(group.cap) * 100), 0) / 100,
-        ),
-      )
-    : null
+  const capped = roots.length > 0 && roots.every((group) => group.cap !== null)
+  const cents = roots.reduce((total, group) => total + Math.round(Number(group.cap ?? 0) * 100), 0)
+  const sum = capped ? trimAmount(String(cents / 100)) : null
+  const matches =
+    sum !== null && paper.cap !== null && cents === Math.round(Number(paper.cap) * 100)
+  const unpublished = items.filter((item) => item.status === 'draft').length
+
   return (
-    <section className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b pb-4">
-      <h3 className="text-lg font-semibold">
-        {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
-      </h3>
-      <p className="text-sm tabular-nums text-muted-foreground">
-        {paper.cap === null
-          ? format(m.structureUncapped)
-          : format(m.paperTotal) + ' ' + trimAmount(paper.cap)}
-      </p>
-      <Button variant="ghost" size="sm" className="text-xs" onClick={onEdit}>
-        {format(m.paperEdit)}
-      </Button>
-      <span className="flex-1" />
-      <p className="text-xs text-muted-foreground">
-        {format(m.itemsTreeSummaryNoCap, { count: questionCount })}
-        {sum !== null &&
-          ' \u00b7 ' +
-            (paper.cap === null
-              ? format(m.paperCapSumFree, { sum })
-              : format(m.paperCapSum, { sum, total: trimAmount(paper.cap) }))}
-      </p>
+    <section className="flex flex-col gap-3 rounded-lg border px-4.5 py-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-6 gap-y-1">
+          <Readout label={format(m.paperNameLabel)} strong>
+            {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
+          </Readout>
+          <Readout label={format(m.paperTotal)}>
+            {paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}
+          </Readout>
+          <Readout label={format(m.itemsGroupFloor)}>
+            {paper.floor === null ? format(m.paperFloorNone) : trimAmount(paper.floor)}
+          </Readout>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onEdit}>
+            <PencilIcon aria-hidden className="size-3.5" />
+            {format(m.paperEdit)}
+          </Button>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-0.5">
+          {sum !== null && (
+            <p className="flex items-center gap-1.5 text-[13.5px] font-medium whitespace-nowrap">
+              {matches && <CheckIcon aria-hidden className="size-3.5" />}
+              {matches
+                ? format(m.paperCapMatch, { sum })
+                : paper.cap === null
+                  ? format(m.paperCapSumFree, { sum })
+                  : format(m.paperCapSum, { sum, total: trimAmount(paper.cap) })}
+            </p>
+          )}
+          {sum === null && roots.length > 0 && (
+            <p className="text-[13.5px] font-medium whitespace-nowrap">{format(m.paperCapUnset)}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {format(m.paperTally, {
+              questions: items.length,
+              sections: roots.length,
+              unpublished,
+              from: materialRange.start,
+              until: materialRange.end,
+            })}
+          </p>
+        </div>
+      </div>
+
+      {sum !== null && cents > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full">
+            {roots.map((group, index) => (
+              <div
+                key={group.id}
+                style={{
+                  width: `${(Math.round(Number(group.cap) * 100) / cents) * 100}%`,
+                  background: `var(--chart-${(index % 4) + 2})`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {roots.map((group, index) => (
+              <span
+                key={group.id}
+                className="flex items-center gap-1.5 text-xs whitespace-nowrap text-foreground/75"
+              >
+                <span
+                  aria-hidden
+                  className="size-2 rounded-xs"
+                  style={{ background: `var(--chart-${(index % 4) + 2})` }}
+                />
+                {group.name.trim() === '' ? format(m.itemsGroupUnnamed) : group.name}
+                <span className="tabular-nums text-muted-foreground">{trimAmount(group.cap!)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
+  )
+}
+
+/**
+ * One fact about the paper, read rather than edited.
+ *
+ * Drawn as text: a box around it looks like a field, and a field that cannot
+ * be typed into is a promise the screen does not keep. Changing any of it
+ * goes through the same panel every other section uses.
+ */
+function Readout({
+  label,
+  strong,
+  children,
+}: {
+  label: string
+  strong?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
+      <span className={cn('min-w-0 truncate text-sm tabular-nums', strong && 'font-medium')}>
+        {children}
+      </span>
+    </span>
   )
 }
 
@@ -570,43 +720,30 @@ function QuestionActions({
 }) {
   const { format } = useI18n()
   return (
-    <div className="flex items-center gap-1.5">
-      {item.status === 'draft' && <Badge variant="secondary">{format(m.itemsStatusDraft)}</Badge>}
-      {item.status === 'voided' && <Badge variant="outline">{format(m.itemsStatusVoided)}</Badge>}
+    <>
+      {item.status === 'draft' && (
+        <DropdownMenuItem disabled={busy || unsaved} onSelect={onPublish}>
+          {unsaved ? format(m.itemsPublishAfterSave) : format(m.itemsPublish)}
+        </DropdownMenuItem>
+      )}
+      {item.status === 'active' && batchStatus !== 'draft' && (
+        <DropdownMenuItem onSelect={onVoid}>{format(m.itemsVoid)}</DropdownMenuItem>
+      )}
+      {item.status === 'voided' && (
+        <DropdownMenuItem disabled={busy} onSelect={onRestore}>
+          {format(m.itemsRestore)}
+        </DropdownMenuItem>
+      )}
       {/* one never published leaves without a trace; one published keeps its
           record and can only be withdrawn */}
       {(item.status === 'draft' || batchStatus === 'draft') && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-destructive"
-          disabled={busy}
-          onClick={onDelete}
-        >
-          {format(m.itemsDelete)}
-        </Button>
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" disabled={busy} onSelect={onDelete}>
+            {format(m.itemsDelete)}
+          </DropdownMenuItem>
+        </>
       )}
-      {item.status === 'draft' && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy || unsaved}
-          title={unsaved ? format(m.itemsPublishAfterSave) : undefined}
-          onClick={onPublish}
-        >
-          {format(m.itemsPublish)}
-        </Button>
-      )}
-      {item.status === 'active' && batchStatus !== 'draft' && (
-        <Button variant="outline" size="sm" onClick={onVoid}>
-          {format(m.itemsVoid)}
-        </Button>
-      )}
-      {item.status === 'voided' && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={onRestore}>
-          {format(m.itemsRestore)}
-        </Button>
-      )}
-    </div>
+    </>
   )
 }

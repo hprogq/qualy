@@ -4,10 +4,13 @@ import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import {
-  ArrowRightIcon,
+  ArrowLeftIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
+  EllipsisVerticalIcon,
   PlusIcon,
   XIcon,
 } from 'lucide-react'
@@ -15,17 +18,21 @@ import { Feedback, Field } from '@qualy/ui/admin'
 import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Input } from '@qualy/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@qualy/ui/input-group'
 import { NativeSelect } from '@qualy/ui/native-select'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { trimAmount, type ItemDto } from '../entry/model.ts'
-import { FieldList, FieldSheet, type FieldDraft } from './FieldSheet.tsx'
+import { FieldList, type FieldDraft } from './FieldTable.tsx'
 import { StageSheet, type StageDraft } from './StageSheet.tsx'
 import { ReasonDialog } from './ReasonDialog.tsx'
+import { BatchBanner } from '../batch/BatchScreen.tsx'
 import type { ItemOptions } from './options.ts'
+import type { Placement } from './paper.ts'
 
 const blankField = (key: string): FieldDraft => ({
   key,
@@ -224,8 +231,11 @@ export function ItemConfigEditor({
   groups,
   defaultGroupId,
   options,
-  actions,
+  menu,
   trail,
+  placement,
+  paper,
+  onStep,
   held,
   onHold,
   onDirty,
@@ -242,10 +252,21 @@ export function ItemConfigEditor({
   /** the group a new question was opened inside */
   defaultGroupId?: string | undefined
   options: ItemOptions
-  /** what can be done to the question as a whole, drawn beside its title */
-  actions?: React.ReactNode
-  /** where this sits in the paper, said above the name */
-  trail?: string | undefined
+  /** what else can be done to the question, as the rows of its own menu */
+  menu?: React.ReactNode
+  /** where this sits in the paper, outermost group first */
+  trail: readonly string[]
+  /** the limits this question's score has to pass through */
+  placement: Placement
+  /**
+   * Every question of the round, in the order the paper reads them.
+   *
+   * Stepping runs the whole paper rather than the group: an author reading
+   * through what a round asks does not stop at a group boundary, and the
+   * groups are already on the structure screen for whoever wants them.
+   */
+  paper: readonly { id: string; title: string }[]
+  onStep: (itemId: string, move: 'next' | 'previous') => void
   /** what was being composed when this last unmounted, if anything */
   held?: Draft | undefined
   /** every keystroke, so the page can hand the same composition back later */
@@ -281,7 +302,6 @@ export function ItemConfigEditor({
   const [issues, setIssues] = useState<readonly { path: string; reason: string }[]>([])
   const [openField, setOpenField] = useState<string | null>(null)
   const [openStage, setOpenStage] = useState<string | null>(null)
-  const [previewOpen, setPreviewOpen] = useState(true)
   const [askingReason, setAskingReason] = useState(false)
 
   const patch = (next: Partial<Draft>) => setDraft((previous) => ({ ...previous, ...next }))
@@ -400,27 +420,90 @@ export function ItemConfigEditor({
     batchStatus === 'active' &&
     (scoringMoved || placementMoved)
 
-  const field = draft.fields.find((one) => one.key === openField) ?? null
   const stage = draft.stages.find((one) => one.key === openStage) ?? null
 
+  const at = paper.findIndex((one) => one.id === item?.id)
+  const step = (delta: -1 | 1) => {
+    const next = paper[at + delta]
+    if (next !== undefined) onStep(next.id, delta === -1 ? 'previous' : 'next')
+  }
+
+  // what this question can contribute before any group has its say
+  const entries = draft.maxEntries.trim() === '' ? null : Number(draft.maxEntries)
+  const each = Number(draft.fixedValue.trim())
+  const ceiling =
+    entries === null || !Number.isFinite(each) ? null : trimAmount(String(each * entries))
+
   return (
-    <div className={previewOpen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-6' : ''}>
-      <div className="flex min-w-0 flex-col gap-4">
-        <header className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">
-              {trail === undefined || trail === ''
-                ? item === null
-                  ? format(m.itemsNew)
-                  : format(m.itemsEditTitle)
-                : trail}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* the page's own band says which question this is; nothing above the
+          content repeats it */}
+      <BatchBanner>
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              aria-label={format(m.itemsBack)}
+              className="flex size-6.5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              onClick={onCancel}
+            >
+              <ArrowLeftIcon aria-hidden className="size-3.5" />
+            </button>
+            <p className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+              {trail.map((name, index) => (
+                <span key={`${index}:${name}`}>
+                  {index > 0 && <span className="px-1.5 text-muted-foreground/60">&rsaquo;</span>}
+                  {name}
+                </span>
+              ))}
             </p>
-            <h3 className="truncate text-lg font-semibold">
-              {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
-            </h3>
+            <span className="flex-1" />
+            {at >= 0 && paper.length > 1 && (
+              <>
+                <p className="text-[12.5px] whitespace-nowrap text-muted-foreground">
+                  {format(m.itemsPaperPosition, { index: at + 1, total: paper.length })}
+                </p>
+                <span className="flex gap-0.5">
+                  <StepButton
+                    label={format(m.itemsPrevious)}
+                    disabled={at === 0}
+                    onClick={() => step(-1)}
+                  >
+                    <ChevronUpIcon aria-hidden className="size-3.5" />
+                  </StepButton>
+                  <StepButton
+                    label={format(m.itemsNext)}
+                    disabled={at === paper.length - 1}
+                    onClick={() => step(1)}
+                  >
+                    <ChevronDownIcon aria-hidden className="size-3.5" />
+                  </StepButton>
+                </span>
+              </>
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {actions}
+          <div className="flex items-center gap-3">
+            <h2 className="min-w-0 truncate text-[22px] font-semibold tracking-tight">
+              {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
+            </h2>
+            <StandingChip item={item} />
+            <span className="flex-1" />
+            {menu !== undefined && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={format(m.structureRowMenu)}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <EllipsisVerticalIcon aria-hidden className="size-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {menu}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button variant="outline" onClick={onCancel}>
               {format(commonMessages.cancel)}
             </Button>
@@ -431,236 +514,251 @@ export function ItemConfigEditor({
               {format(m.entrySave)}
             </Button>
           </div>
-        </header>
-
-        <Feedback message={problem} />
-        {issues.length > 0 && (
-          <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
-            {issues.map((issue, index) => (
-              <li key={index}>
-                {issue.path}: {issue.reason}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden shrink-0 text-xs text-muted-foreground lg:inline-flex"
-            aria-expanded={previewOpen}
-            onClick={() => setPreviewOpen((open) => !open)}
-          >
-            {format(previewOpen ? m.itemsPreviewHide : m.itemsPreviewShow)}
-          </Button>
         </div>
+      </BatchBanner>
 
-        <Section title={format(m.itemsTabBasics)} hint={format(m.itemsBasicsHint)}>
-          <div className="flex max-w-2xl flex-col gap-5">
-            <Field label={format(m.itemsFieldTitle)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={draft.title}
-                  placeholder={format(m.itemsTitlePlaceholder)}
-                  onChange={(event) => patch({ title: event.target.value })}
-                />
+      <div className="grid min-h-0 flex-1 gap-x-9 xl:grid-cols-[minmax(0,1fr)_19.5rem]">
+        <div className="flex min-w-0 flex-col">
+          {(problem !== null || issues.length > 0) && (
+            <div className="flex flex-col gap-2 pt-4">
+              <Feedback message={problem} />
+              {issues.length > 0 && (
+                <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+                  {issues.map((issue, index) => (
+                    <li key={index}>
+                      {issue.path}: {issue.reason}
+                    </li>
+                  ))}
+                </ul>
               )}
-            </Field>
-            <Field
-              label={format(m.itemsFieldDescription)}
-              hint={format(m.itemsFieldDescriptionHint)}
-            >
-              {(id) => (
-                <Textarea
-                  id={id}
-                  rows={3}
-                  value={draft.description}
-                  onChange={(event) => patch({ description: event.target.value })}
-                />
-              )}
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label={format(m.itemsFieldGroup)}>
-                {(id) => (
-                  <NativeSelect
-                    id={id}
-                    value={draft.scoreGroupId}
-                    onChange={(event) => patch({ scoreGroupId: event.target.value })}
-                  >
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                )}
-              </Field>
-              <Field label={format(m.itemsFieldEntrySource)}>
-                {(id) => (
-                  <NativeSelect
-                    id={id}
-                    value={draft.entrySource}
-                    onChange={(event) =>
-                      patch({ entrySource: event.target.value as Draft['entrySource'] })
-                    }
-                  >
-                    <option value="student">{format(m.itemsEntrySourceStudent)}</option>
-                    <option value="administrative">
-                      {format(m.itemsEntrySourceAdministrative)}
-                    </option>
-                  </NativeSelect>
-                )}
-              </Field>
-              <Field label={format(m.itemsFieldMax)}>
+            </div>
+          )}
+
+          <Section title={format(m.itemsTabBasics)} hint={format(m.itemsBasicsHint)}>
+            <div className="flex flex-col gap-4">
+              <Field label={format(m.itemsFieldTitle)}>
                 {(id) => (
                   <Input
                     id={id}
-                    type="number"
-                    min={1}
-                    value={draft.maxEntries}
-                    placeholder={format(m.itemsFieldMaxUnlimited)}
-                    onChange={(event) => patch({ maxEntries: event.target.value })}
+                    value={draft.title}
+                    placeholder={format(m.itemsTitlePlaceholder)}
+                    onChange={(event) => patch({ title: event.target.value })}
+                  />
+                )}
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={format(m.itemsFieldGroup)}>
+                  {(id) => (
+                    <NativeSelect
+                      id={id}
+                      value={draft.scoreGroupId}
+                      onChange={(event) => patch({ scoreGroupId: event.target.value })}
+                    >
+                      {groups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  )}
+                </Field>
+                <Field label={format(m.itemsFieldEntrySource)}>
+                  {(id) => (
+                    <NativeSelect
+                      id={id}
+                      value={draft.entrySource}
+                      onChange={(event) =>
+                        patch({ entrySource: event.target.value as Draft['entrySource'] })
+                      }
+                    >
+                      <option value="student">{format(m.itemsEntrySourceStudent)}</option>
+                      <option value="administrative">
+                        {format(m.itemsEntrySourceAdministrative)}
+                      </option>
+                    </NativeSelect>
+                  )}
+                </Field>
+              </div>
+              <Field label={format(m.itemsFieldDescription)}>
+                {(id) => (
+                  <Textarea
+                    id={id}
+                    rows={3}
+                    value={draft.description}
+                    onChange={(event) => patch({ description: event.target.value })}
                   />
                 )}
               </Field>
             </div>
-          </div>
-        </Section>
+          </Section>
 
-        <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
-          <FieldList
-            fields={draft.fields}
-            onReorder={(orderedKeys) =>
-              setDraft((previous) => ({
-                ...previous,
-                fields: orderedKeys.flatMap((key) => {
-                  const found = previous.fields.find((one) => one.key === key)
-                  return found === undefined ? [] : [found]
-                }),
-              }))
-            }
-            onEdit={setOpenField}
-            onRemove={(key) =>
-              setDraft((previous) => ({
-                ...previous,
-                fields: previous.fields.filter((one) => one.key !== key),
-              }))
-            }
-            onAdd={() => {
-              const key = nextKey()
-              patch({ fields: [...draft.fields, blankField(key)] })
-              setOpenField(key)
-            }}
-          />
-        </Section>
+          <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
+            <FieldList
+              fields={draft.fields}
+              materialRange={materialRange}
+              openKey={openField}
+              onOpen={setOpenField}
+              onChange={patchField}
+              onReorder={(orderedKeys) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  fields: orderedKeys.flatMap((key) => {
+                    const found = previous.fields.find((one) => one.key === key)
+                    return found === undefined ? [] : [found]
+                  }),
+                }))
+              }
+              onRemove={(key) => {
+                setDraft((previous) => ({
+                  ...previous,
+                  fields: previous.fields.filter((one) => one.key !== key),
+                }))
+                setOpenField(null)
+              }}
+              onAdd={() => {
+                const key = nextKey()
+                patch({ fields: [...draft.fields, blankField(key)] })
+                setOpenField(key)
+              }}
+            />
+          </Section>
 
-        <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>
-          <div className="max-w-xs">
-            <Field label={format(m.itemsFixedValue)} hint={format(m.itemsFixedValueHint)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={draft.fixedValue}
-                  onChange={(event) => patch({ fixedValue: event.target.value })}
-                />
-              )}
-            </Field>
-          </div>
-        </Section>
-
-        <Section title={format(m.itemsTabReview)} hint={format(m.itemsChainHintNew)}>
-          <div className="flex flex-col gap-8">
-            {(['normal', 'escalation'] as const).map((chain) => {
-              const steps = draft.stages.filter((one) => one.chain === chain)
-              return (
-                <section key={chain} className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <h4 className="text-sm font-medium">
-                        {format(chain === 'normal' ? m.itemsReviewTitle : m.itemsDoubtTitle)}
-                      </h4>
-                      {chain === 'escalation' && (
-                        <p className="pt-0.5 text-xs text-muted-foreground">
-                          {format(m.itemsDoubtHint)}
-                        </p>
-                      )}
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => addStage(chain)}>
-                      <PlusIcon aria-hidden className="size-3.5" />
-                      {format(m.itemsStageAdd)}
-                    </Button>
-                  </div>
-                  {steps.length === 0 && chain === 'escalation' ? (
-                    <p className="text-sm text-muted-foreground">{format(m.itemsDoubtEmpty)}</p>
-                  ) : (
-                    // a long chain runs off the side rather than wrapping into
-                    // something that no longer reads as one path
-                    <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-2">
-                      {chain === 'normal' && (
-                        <>
-                          <FlowNode
-                            title={format(m.itemsFlowSubmit)}
-                            sub={format(m.itemsFlowSubmitBy)}
-                          />
-                          <FlowArrow />
-                        </>
-                      )}
-                      {steps.map((one, index) => (
-                        <div key={one.key} className="flex shrink-0 items-center gap-2">
-                          {index > 0 && <FlowArrow />}
-                          <StageCard
-                            index={index}
-                            last={index === steps.length - 1}
-                            chain={chain}
-                            stage={one}
-                            options={options}
-                            removable={chain === 'escalation' || steps.length > 1}
-                            onOpen={() => setOpenStage(one.key)}
-                            onMove={(delta) => moveStage(one.key, delta)}
-                            onRemove={() =>
-                              setDraft((previous) => ({
-                                ...previous,
-                                stages: previous.stages.filter((s) => s.key !== one.key),
-                              }))
+          <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>
+            <div className="flex flex-col gap-4">
+              {/* the width belongs to the wrapper: a field stretches whatever
+                  control it is given to its own width */}
+              <div className="flex flex-wrap items-start gap-5">
+                <div className="w-38">
+                  <Field label={format(m.itemsFixedValue)}>
+                    {(id) => (
+                      <InputGroup className="h-9">
+                        <InputGroupInput
+                          id={id}
+                          className="tabular-nums"
+                          value={draft.fixedValue}
+                          onChange={(event) => patch({ fixedValue: event.target.value })}
+                        />
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupText>{format(m.itemsFixedValueUnit)}</InputGroupText>
+                        </InputGroupAddon>
+                      </InputGroup>
+                    )}
+                  </Field>
+                </div>
+                <div className="w-60">
+                  <Field label={format(m.itemsFieldMax)}>
+                    {(id) => (
+                      <div className="flex items-center gap-2.5">
+                        <Input
+                          id={id}
+                          type="number"
+                          min={1}
+                          className="w-24 tabular-nums"
+                          disabled={entries === null}
+                          value={draft.maxEntries}
+                          onChange={(event) => patch({ maxEntries: event.target.value })}
+                        />
+                        <label className="flex items-center gap-2 text-[12.5px] whitespace-nowrap text-muted-foreground">
+                          <Checkbox
+                            checked={entries === null}
+                            onCheckedChange={(next) =>
+                              patch({ maxEntries: next === true ? '' : '1' })
                             }
                           />
-                        </div>
-                      ))}
-                      {chain === 'normal' && (
-                        <>
-                          <FlowArrow />
-                          <FlowNode
-                            title={format(m.itemsFlowDone)}
-                            sub={format(m.itemsFlowDoneSub)}
-                            tone="done"
-                          />
-                        </>
-                      )}
-                    </div>
-                  )}
-                </section>
-              )
-            })}
+                          {format(m.itemsMaxEntriesAny)}
+                        </label>
+                      </div>
+                    )}
+                  </Field>
+                </div>
+                <div className="w-44">
+                  <Field label={format(m.itemsScoringMethod)}>
+                    {(id) => (
+                      // one calculator so far; the control is here because the
+                      // choice belongs to the question, not because it is empty
+                      <NativeSelect id={id} value="fixed" disabled>
+                        <option value="fixed">{format(m.itemsScoringMethodFixed)}</option>
+                      </NativeSelect>
+                    )}
+                  </Field>
+                </div>
+              </div>
+              <ScoringSummary
+                ceiling={ceiling}
+                entries={entries}
+                each={draft.fixedValue}
+                placement={placement}
+              />
+            </div>
+          </Section>
+
+          <Section title={format(m.itemsTabReview)} hint={format(m.itemsChainHintNew)}>
+            <div className="flex flex-col gap-5">
+              <ChainFlow
+                batchId={batchId}
+                chain="normal"
+                steps={draft.stages.filter((one) => one.chain === 'normal')}
+                options={options}
+                onOpen={setOpenStage}
+                onMove={moveStage}
+                onRemove={(key) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    stages: previous.stages.filter((one) => one.key !== key),
+                  }))
+                }
+              />
+              {draft.stages.some((one) => one.chain === 'escalation') && (
+                <div className="flex flex-col gap-3 border-t pt-4">
+                  <div>
+                    <h4 className="text-[13px] font-medium">{format(m.itemsDoubtTitle)}</h4>
+                    <p className="pt-0.5 text-xs text-muted-foreground">
+                      {format(m.itemsDoubtHint)}
+                    </p>
+                  </div>
+                  <ChainFlow
+                    batchId={batchId}
+                    chain="escalation"
+                    steps={draft.stages.filter((one) => one.chain === 'escalation')}
+                    options={options}
+                    onOpen={setOpenStage}
+                    onMove={moveStage}
+                    onRemove={(key) =>
+                      setDraft((previous) => ({
+                        ...previous,
+                        stages: previous.stages.filter((one) => one.key !== key),
+                      }))
+                    }
+                  />
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-2.5 text-[12.8px] font-medium">
+                <InlineAdd label={format(m.itemsStageAdd)} onClick={() => addStage('normal')} />
+                {!draft.stages.some((one) => one.chain === 'escalation') && (
+                  <>
+                    <span aria-hidden className="h-3 w-px bg-border" />
+                    <InlineAdd
+                      label={format(m.itemsDoubtAddStep)}
+                      onClick={() => addStage('escalation')}
+                    />
+                    <span className="font-normal text-muted-foreground">
+                      {format(m.itemsDoubtEmpty)}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </Section>
+        </div>
+
+        <aside className="flex min-w-0 flex-col py-6">
+          <div className="flex flex-col rounded-xl bg-muted p-4">
+            <ParticipantPreview draft={draft} />
+            <Placed ceiling={ceiling} placement={placement} />
+            <Versions item={item} />
           </div>
-        </Section>
-      </div>
-
-      {previewOpen && (
-        <aside className="mt-6 border-t pt-6 lg:mt-0 lg:border-t-0 lg:pt-0">
-          <ParticipantPreview draft={draft} options={options} />
         </aside>
-      )}
-
-      {field !== null && (
-        <FieldSheet
-          field={field}
-          materialRange={materialRange}
-          onChange={(next) => patchField(field.key, next)}
-          onClose={() => setOpenField(null)}
-        />
-      )}
+      </div>
 
       {stage !== null && (
         <StageSheet
@@ -685,7 +783,12 @@ export function ItemConfigEditor({
   )
 }
 
-/** one part of the question, with the single line that says what it decides */
+/**
+ * One part of the question: what it decides on the left, the controls that
+ * decide it on the right. No box around either - a rule between two parts is
+ * enough to separate them, and a screen of rounded boxes inside rounded
+ * boxes is what these controls used to disappear into.
+ */
 function Section({
   title,
   hint,
@@ -696,33 +799,227 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-3 border-t pt-5 first-of-type:border-t-0 first-of-type:pt-0">
-      <div>
-        <h4 className="text-sm font-medium">{title}</h4>
-        <p className="pt-0.5 text-xs text-muted-foreground">{hint}</p>
+    <section className="grid gap-x-7 gap-y-4 border-t py-6 first-of-type:border-t-0 md:grid-cols-[10.5rem_minmax(0,1fr)]">
+      <div className="flex flex-col gap-1.5">
+        <h3 className="text-[13.5px] font-semibold">{title}</h3>
+        <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>
       </div>
-      {children}
+      <div className="min-w-0">{children}</div>
     </section>
   )
 }
 
-/** one step of the chain, as the path reads it; its settings are a panel away */
-function StageCard({
-  index,
-  last,
+/** where the question stands, and which version of it is on screen */
+function StandingChip({ item }: { item: ItemDto | null }) {
+  const { format } = useI18n()
+  if (item === null) {
+    return (
+      <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] whitespace-nowrap">
+        {format(m.itemsNew)}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] whitespace-nowrap">
+      <span
+        aria-hidden
+        className={cn(
+          'size-1.5 rounded-full',
+          item.status === 'active' ? 'bg-foreground' : 'bg-muted-foreground/60',
+        )}
+      />
+      {item.status === 'voided'
+        ? format(m.itemsStatusVoided)
+        : format(item.status === 'active' ? m.itemsPublishedVersion : m.itemsDraftVersion, {
+            no: item.currentRevision?.revisionNo ?? 1,
+          })}
+    </span>
+  )
+}
+
+function StepButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  disabled: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      className="flex size-6.5 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+
+function InlineAdd({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-1.5 transition-colors hover:text-muted-foreground"
+      onClick={onClick}
+    >
+      <PlusIcon aria-hidden className="size-3.5" />
+      {label}
+    </button>
+  )
+}
+
+/** the arithmetic behind the number, so nobody has to reconstruct it */
+function ScoringSummary({
+  ceiling,
+  entries,
+  each,
+  placement,
+}: {
+  ceiling: string | null
+  entries: number | null
+  each: string
+  placement: Placement
+}) {
+  const { format } = useI18n()
+  const chain = placement.sections
+    .map((section) =>
+      section.cap === null
+        ? format(m.itemsCeilingSectionFree, { name: section.name })
+        : format(m.itemsCeilingSectionCapped, {
+            name: section.name,
+            value: trimAmount(section.cap),
+          }),
+    )
+    .join(format(m.listSeparator))
+  return (
+    <div className="flex items-center gap-3.5 rounded-lg bg-muted px-3.5 py-3">
+      <div className="flex shrink-0 flex-col gap-0.5">
+        <p className="text-[11.5px] whitespace-nowrap text-muted-foreground">
+          {format(m.itemsCeiling)}
+        </p>
+        <p className="text-base font-semibold tabular-nums">
+          {ceiling === null ? format(m.structureUnlimited) : ceiling}
+        </p>
+      </div>
+      <div aria-hidden className="h-7 w-px bg-border" />
+      <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+        {entries === null
+          ? format(m.itemsCeilingHowAny)
+          : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: entries })}
+        {chain !== '' && ` ${format(m.itemsCeilingNote, { chain })}`}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * The path a submission takes, drawn as one line from where it enters to
+ * where it leaves. A step opens its own settings; the controls that reorder
+ * or drop it appear when it is pointed at, so the path stays a path.
+ */
+function ChainFlow({
+  batchId,
   chain,
+  steps,
+  options,
+  onOpen,
+  onMove,
+  onRemove,
+}: {
+  batchId: string
+  chain: 'normal' | 'escalation'
+  steps: readonly StageDraft[]
+  options: ItemOptions
+  onOpen: (key: string) => void
+  onMove: (key: string, delta: -1 | 1) => void
+  onRemove: (key: string) => void
+}) {
+  const { format } = useI18n()
+  return (
+    <div className="-mx-1 flex items-start overflow-x-auto px-1 pb-1">
+      {chain === 'normal' && (
+        <Endpoint
+          title={format(m.itemsFlowSubmit)}
+          sub={format(m.itemsFlowSubmitBy)}
+          mark={<span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" />}
+        />
+      )}
+      {steps.map((one, index) => (
+        <div key={one.key} className="flex shrink-0 items-start">
+          <Rule />
+          <StageColumn
+            batchId={batchId}
+            index={index}
+            stage={one}
+            options={options}
+            first={index === 0}
+            last={index === steps.length - 1}
+            removable={chain === 'escalation' || steps.length > 1}
+            onOpen={() => onOpen(one.key)}
+            onMove={(delta) => onMove(one.key, delta)}
+            onRemove={() => onRemove(one.key)}
+          />
+        </div>
+      ))}
+      {chain === 'normal' && (
+        <>
+          <Rule />
+          <Endpoint
+            title={format(m.itemsFlowDone)}
+            sub={format(m.itemsFlowDoneSub)}
+            mark={<CheckIcon aria-hidden className="size-3" />}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+function Rule() {
+  return (
+    <div className="min-w-6 flex-1 pt-2.75">
+      <div className="h-px bg-border" />
+    </div>
+  )
+}
+
+/** where a submission enters the path, and where it leaves it */
+function Endpoint({ title, sub, mark }: { title: string; sub: string; mark: React.ReactNode }) {
+  return (
+    <div className="flex w-24 shrink-0 flex-col gap-1.5">
+      <span className="flex size-5.5 items-center justify-center rounded-full border text-muted-foreground">
+        {mark}
+      </span>
+      <p className="text-[13px] font-medium">{title}</p>
+      <p className="text-xs text-muted-foreground">{sub}</p>
+    </div>
+  )
+}
+
+function StageColumn({
+  batchId,
+  index,
   stage,
   options,
+  first,
+  last,
   removable,
   onOpen,
   onMove,
   onRemove,
 }: {
+  batchId: string
   index: number
-  last: boolean
-  chain: 'normal' | 'escalation'
   stage: StageDraft
   options: ItemOptions
+  first: boolean
+  last: boolean
   removable: boolean
   onOpen: () => void
   onMove: (delta: -1 | 1) => void
@@ -735,174 +1032,198 @@ function StageCard({
       ? options.roles
           .filter((role) => stage.roleIds.includes(role.id))
           .map((role) => role.name)
-          .join('、')
+          .join(format(m.listSeparator))
       : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
+  const where = stage.kind === 'roleAt' ? levelName : format(m.itemsStageWalkUp)
 
   return (
-    <div className="w-52 shrink-0 rounded-lg border bg-card p-3">
-      <div className="flex items-center gap-1.5">
-        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-foreground text-[10px] font-medium text-background">
-          {index + 1}
-        </span>
-        <span className="text-sm font-medium">{format(m.itemsStageNumber, { n: index + 1 })}</span>
-        {chain === 'normal' && last && (
-          <span className="text-xs text-primary">{format(m.itemsTerminalHere)}</span>
-        )}
-      </div>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 pt-2 text-sm">
-        {stage.kind === 'roleAt' ? (
-          <>
-            <dt className="text-muted-foreground">{format(m.itemsStageLevelShort)}</dt>
-            <dd className="truncate">{levelName}</dd>
-          </>
-        ) : (
-          <>
-            <dt className="text-muted-foreground">{format(m.itemsStageKindShort)}</dt>
-            <dd className="truncate">{format(m.itemsStageWalkUp)}</dd>
-          </>
-        )}
-        <dt className="text-muted-foreground">{format(m.itemsStageRolesShort)}</dt>
-        <dd className="truncate">{roleNames === '' ? '—' : roleNames}</dd>
-      </dl>
-      <div className="flex items-center justify-between pt-2">
-        <button
-          type="button"
-          className="text-xs text-primary underline-offset-2 hover:underline"
-          onClick={onOpen}
+    <div className="group flex w-44 shrink-0 flex-col gap-1.5 pl-3.5">
+      <span className="flex size-5.5 items-center justify-center rounded-full bg-foreground text-[11px] font-medium text-background">
+        {index + 1}
+      </span>
+      <button
+        type="button"
+        className="text-left text-[13px] font-medium underline-offset-4 hover:underline"
+        onClick={onOpen}
+      >
+        {where === '' ? format(m.itemsStageNumber, { n: index + 1 }) : where}
+        {' / '}
+        {roleNames === '' ? '—' : roleNames}
+      </button>
+      <StageCoverage batchId={batchId} stage={stage} />
+      <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="size-6 p-0"
+          disabled={first}
+          onClick={() => onMove(-1)}
+          aria-label={format(m.itemsFieldUp)}
         >
-          {format(m.itemsStageExpand)}
-        </button>
-        <span className="flex items-center">
+          <ChevronLeftIcon aria-hidden className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="size-6 p-0"
+          disabled={last}
+          onClick={() => onMove(1)}
+          aria-label={format(m.itemsFieldDown)}
+        >
+          <ChevronRightIcon aria-hidden className="size-3.5" />
+        </Button>
+        {removable && (
           <Button
             variant="ghost"
             size="sm"
             className="size-6 p-0"
-            disabled={index === 0}
-            onClick={() => onMove(-1)}
-            aria-label={format(m.itemsFieldUp)}
+            onClick={onRemove}
+            aria-label={format(m.itemsStageRemove)}
           >
-            <ChevronLeftIcon aria-hidden className="size-3.5" />
+            <XIcon aria-hidden className="size-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0"
-            disabled={last}
-            onClick={() => onMove(1)}
-            aria-label={format(m.itemsFieldDown)}
-          >
-            <ChevronRightIcon aria-hidden className="size-3.5" />
-          </Button>
-          {removable && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0"
-              onClick={onRemove}
-              aria-label={format(m.itemsStageRemove)}
-            >
-              <XIcon aria-hidden className="size-3.5" />
-            </Button>
-          )}
-        </span>
-      </div>
+        )}
+      </span>
     </div>
   )
-}
-
-/** an endpoint of the path: where a submission enters, where it leaves */
-function FlowNode({ title, sub, tone }: { title: string; sub: string; tone?: 'done' }) {
-  return (
-    <div className="flex shrink-0 flex-col px-1 text-center">
-      <p className={cn('text-sm font-medium', tone === 'done' && 'text-primary')}>{title}</p>
-      <p className="text-xs text-muted-foreground">{sub}</p>
-    </div>
-  )
-}
-
-function FlowArrow() {
-  return <ArrowRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground/50" />
 }
 
 /**
- * The filing screen this draft produces, drawn from the draft alone: the
- * participant's card with its fields, and the path a submission takes. It
+ * Whether anybody can actually act at this step. A chain whose second step
+ * has no reviewer in two of twelve units strands whoever files there, and
+ * nothing in the step's own settings would say so.
+ */
+function StageCoverage({ batchId, stage }: { batchId: string; stage: StageDraft }) {
+  const query = useApiQuery(assessmentApi)
+  const { format } = useI18n()
+  const roleIds = stage.kind === 'roleAt' ? stage.roleIds : [stage.roleId]
+  const coverage = useQuery({
+    ...query.assessment.reviewCoverage.queryOptions({
+      params: { batchId },
+      query: { nodeTypeId: stage.nodeTypeId, roleIds },
+    }),
+    // only the level-anchored kind surveys units; the nearest-holder kind is
+    // answered per participant, where its answer actually lives
+    enabled: stage.kind === 'roleAt' && stage.nodeTypeId !== '' && roleIds.length > 0,
+  })
+  if (coverage.data === undefined) return null
+  const uncovered = coverage.data.nodes.filter((node) => node.reviewers === 0)
+  return (
+    <p
+      className={cn('text-xs', uncovered.length > 0 ? 'text-destructive' : 'text-muted-foreground')}
+    >
+      {coverage.data.nodes.length === 0
+        ? format(m.itemsReviewNoUnits)
+        : uncovered.length === 0
+          ? format(m.itemsReviewCovered, { count: coverage.data.nodes.length })
+          : // named in the step's own panel, where there is room for a list;
+            // here the count is what fits and what the reader acts on
+            format(m.itemsReviewUncoveredCount, { count: uncovered.length })}
+    </p>
+  )
+}
+
+/**
+ * The filing screen this draft produces, drawn from the draft alone. It
  * answers "what will they see" without saving anything.
  */
-function ParticipantPreview({ draft, options }: { draft: Draft; options: ItemOptions }) {
+function ParticipantPreview({ draft }: { draft: Draft }) {
   const { format } = useI18n()
-  const normal = draft.stages.filter((stage) => stage.chain === 'normal')
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-sm font-medium">{format(m.itemsPreviewTitle)}</p>
-        <p className="text-xs text-muted-foreground">{format(m.itemsPreviewLive)}</p>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 shadow-sm">
-        <div className="flex flex-col gap-2">
-          <h4 className="text-sm font-semibold">
-            {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
-          </h4>
-          <div className="flex flex-wrap gap-1.5">
-            <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              {draft.maxEntries.trim() === ''
-                ? format(m.itemsPreviewNoMax)
-                : format(m.itemsPreviewMax, { count: Number(draft.maxEntries) })}
-            </span>
-            <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              {format(m.itemsPreviewValue, { value: trimAmount(draft.fixedValue.trim()) })}
-            </span>
-          </div>
-          {draft.description.trim() !== '' && (
-            <p className="text-xs text-muted-foreground">{draft.description}</p>
-          )}
-        </div>
-        <div className="flex flex-col gap-2.5 border-t pt-3">
+    <>
+      <p className="pb-3 text-[12.5px] font-semibold">{format(m.itemsPreviewTitle)}</p>
+      <div className="flex flex-col gap-2.5 rounded-lg bg-background p-3.5">
+        <h4 className="text-sm font-semibold">
+          {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
+        </h4>
+        <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+          {draft.description.trim() === '' ? '' : `${draft.description.trim()} `}
+          {draft.maxEntries.trim() === ''
+            ? format(m.itemsPreviewNoMax)
+            : format(m.itemsPreviewMax, { count: Number(draft.maxEntries) })}
+          {format(m.listSeparator)}
+          {format(m.itemsPreviewValue, { value: trimAmount(draft.fixedValue.trim()) })}
+        </p>
+        <div className="flex flex-col gap-2.5">
           {draft.fields.map((field) => (
             <div key={field.key} className="flex flex-col gap-1">
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11.5px] text-muted-foreground">
                 {field.label.trim() === '' ? '—' : field.label}
                 {field.required && <span className="pl-0.5 text-destructive">*</span>}
               </p>
               {field.type === 'attachment' ? (
-                <div className="flex h-9 items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
+                <div className="flex h-8.5 items-center justify-center rounded-lg border border-dashed text-[11.5px] text-muted-foreground">
                   {format(m.itemsPreviewUpload, { count: Number(field.maxCount) || 1 })}
                 </div>
               ) : (
-                <div className="h-8 rounded-md border bg-muted/20" />
+                <div className="h-7.5 rounded-lg border" />
               )}
             </div>
           ))}
         </div>
       </div>
+    </>
+  )
+}
 
-      {normal.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border p-3">
-          <p className="text-xs font-medium">{format(m.itemsPreviewChain)}</p>
-          {normal.map((stage, index) => {
-            const levelName =
-              options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ?? ''
-            const roleNames =
-              stage.kind === 'roleAt'
-                ? options.roles
-                    .filter((role) => stage.roleIds.includes(role.id))
-                    .map((role) => role.name)
-                    .join('，')
-                : (options.roles.find((role) => role.id === stage.roleId)?.name ?? '')
-            return (
-              <p key={stage.key} className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium">
-                  {index + 1}
-                </span>
-                {stage.kind === 'roleAt'
-                  ? `${levelName}\u3000${roleNames}`
-                  : `${format(m.itemsStageWalkUp)}\u3000${roleNames}`}
-              </p>
-            )
-          })}
-        </div>
+/** every ceiling this question's score has to pass through, innermost first */
+function Placed({ ceiling, placement }: { ceiling: string | null; placement: Placement }) {
+  const { format } = useI18n()
+  const innermost = placement.sections[0]
+  return (
+    <div className="mt-4 flex flex-col gap-2 border-t pt-3.5">
+      <p className="text-[12.5px] font-semibold">{format(m.itemsPlacementTitle)}</p>
+      <Amount
+        label={format(m.itemsCeiling)}
+        value={ceiling === null ? format(m.structureUnlimited) : ceiling}
+      />
+      {innermost !== undefined && placement.subtotal !== null && (
+        <Amount
+          label={format(m.itemsPlacementSubtotal, { name: innermost.name })}
+          value={trimAmount(placement.subtotal)}
+        />
       )}
+      {placement.sections.map((section) =>
+        section.cap === null ? null : (
+          <Amount
+            key={section.id}
+            label={format(m.itemsPlacementCap, { name: section.name })}
+            value={trimAmount(section.cap)}
+          />
+        ),
+      )}
+      <Amount
+        label={format(m.itemsPlacementPaper)}
+        value={placement.total === null ? format(m.structureUncapped) : trimAmount(placement.total)}
+      />
+    </div>
+  )
+}
+
+function Amount({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-[12.5px]">
+      <span className="min-w-0 truncate text-muted-foreground">{label}</span>
+      <span className="shrink-0 tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+/** what saving does to entries already filed, said before it is pressed */
+function Versions({ item }: { item: ItemDto | null }) {
+  const { format } = useI18n()
+  const revision = item?.currentRevision ?? null
+  return (
+    <div className="mt-4 flex flex-col gap-1.5 border-t pt-3.5">
+      <p className="text-[12.5px] font-semibold">{format(m.itemsVersionTitle)}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {revision === null
+          ? format(m.itemsVersionNew)
+          : format(m.itemsVersionNote, {
+              no: revision.revisionNo,
+              date: revision.createdAt.slice(0, 10),
+            })}
+      </p>
     </div>
   )
 }

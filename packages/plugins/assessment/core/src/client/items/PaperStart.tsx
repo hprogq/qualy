@@ -23,34 +23,49 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
   const [blank, setBlank] = useState(false)
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h3 className="text-base font-medium">{format(m.paperStartTitle)}</h3>
-        <p className="pt-1 text-sm text-muted-foreground">{format(m.paperStartHint)}</p>
+    <div className="flex flex-1 flex-col items-center justify-center gap-6 py-16">
+      <div className="flex max-w-140 flex-col gap-2 text-center">
+        <h3 className="text-lg font-semibold">{format(m.paperStartTitle)}</h3>
+        <p className="text-sm leading-relaxed text-pretty text-muted-foreground">
+          {format(m.paperStartHint)}
+        </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="flex flex-wrap justify-center gap-4">
+        {/* the suggested route carries the darker edge and the filled button;
+            two identical cards make the reader choose before they know what
+            either one does */}
         <button
           type="button"
-          className="flex flex-col gap-1.5 rounded-lg border p-4 text-left transition-colors hover:bg-accent/40"
+          className="flex w-74 flex-col gap-2.5 rounded-lg border border-foreground/20 p-4.5 text-left shadow-xs transition-colors hover:bg-accent/40"
           onClick={() => setWizard(true)}
         >
-          <span className="flex items-center gap-2 text-sm font-medium">
-            {format(m.paperStartGuided)}
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-normal text-primary">
+          <span className="flex items-center gap-2">
+            <span className="text-sm font-semibold">{format(m.paperStartGuided)}</span>
+            <span className="rounded-full bg-primary px-1.75 py-px text-[11px] font-medium text-primary-foreground">
               {format(m.paperStartSuggested)}
             </span>
           </span>
-          <span className="text-xs text-muted-foreground">{format(m.paperStartGuidedHint)}</span>
+          <span className="flex-1 text-[13px] leading-relaxed text-muted-foreground">
+            {format(m.paperStartGuidedHint)}
+          </span>
+          <span className="flex h-8 items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground">
+            {format(m.paperStartAction)}
+          </span>
         </button>
 
         <button
           type="button"
-          className="flex flex-col gap-1.5 rounded-lg border p-4 text-left transition-colors hover:bg-accent/40"
+          className="flex w-74 flex-col gap-2.5 rounded-lg border p-4.5 text-left transition-colors hover:bg-accent/40"
           onClick={() => setBlank(true)}
         >
-          <span className="text-sm font-medium">{format(m.paperStartBlank)}</span>
-          <span className="text-xs text-muted-foreground">{format(m.paperStartBlankHint)}</span>
+          <span className="text-sm font-semibold">{format(m.paperStartBlank)}</span>
+          <span className="flex-1 text-[13px] leading-relaxed text-muted-foreground">
+            {format(m.paperStartBlankHint)}
+          </span>
+          <span className="flex h-8 items-center justify-center rounded-lg border text-sm font-medium">
+            {format(m.itemsGroupNew)}
+          </span>
         </button>
       </div>
 

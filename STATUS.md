@@ -4287,3 +4287,33 @@ toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩�
 自有导出(LoadingScreen/PageLoading/DialogBody)移植回新文件。单独 commit,revert 即回 Luma。
 
 **门禁(实际执行)**:typecheck 零错;`pnpm test:browser` 54;build、prettier、生产 smoke 全绿。
+
+### 题目配置照设计稿重做(2026-08-15)
+
+设计稿 claude.ai/design 项目 66ce1d7d「题目配置.dc.html」,采用其中 **2a/2w**(空态与创建卷面)、
+**3a**(结构列表)、**4a**(题目详情重做)三屏;`page-container` 由 default 改 **wide**(1440)。
+
+- **空态(2a)**:居中两张卡(推荐路径带深色描边与实心按钮),第三张「从已有批次复制」未做——
+  后端无复制端点,不画不能用的入口。
+- **结构(3a)**:卷面摘要改为一行只读文本(总分名称/上限/下限 + 铅笔图标的「编辑卷面」)+ 顶层分组
+  配额色条与图例(取 `--chart-2..5`,`--chart-1` 在白底上看不见);结构表按设计稿改八列 grid,
+  分组行自带「子分组 / 题目」两个按钮与 ⋮ 菜单(打开/发布/停用/重新启用/删除,全部接真实 mutation),
+  题目行左侧状态色条 + 圆点状态胶囊;只有分组带编号。
+- **题目详情(4a)**:整页左标题右内容的分节版式(168px 说明列 + 内容列,节间只有一条细线),
+  右侧 312px 灰底面板放「参评人员界面 / 计分位置 / 版本」;填报字段由侧栏抽屉改为**表格 + 行内展开**
+  (FieldSheet.tsx 改名 FieldTable.tsx);计分区加「分」后缀、「不限条数」勾选与本题上限说明;
+  审核链条画成一条横线(起点/步骤/终点),每步实时显示 `reviewCoverage` 覆盖情况。
+- **分组编辑改 Sheet**:三个字段不值得离开结构,GroupEditor 由整页改 SidePanel;随之删掉「分组草稿」
+  这条路径(TreeDraft 收缩为只描述未保存的题目,GroupDraft/held 的分组分支一并移除)。
+- **文案**:「封顶/保底」全量改为「上限/下限」(中英两侧),`assessment/items/sibling-position`
+  改为 `paper-position`(右上角上下键改为在整卷所有题目间切换,不再限于同分组)。
+- **顶部 banner 是同一个位置**:BatchScreen 的横幅带里两个标题叠在同一 grid 格,`BatchBanner`
+  经 portal 把题目的面包屑/标题/状态/操作送进去,两者 200ms 交叉淡入淡出;正文自己左右移动。
+  新增 `@qualy/ui/portal`(react-dom 入 @qualy/ui peerDependencies)。
+- **切换动画**:`@qualy/ui/reveal` 新增 `Drill`,由调用方显式声明 `move`——
+  `in/out` 左右推进退出、`next/previous` 上下移动(整卷翻题)、`none` 不做任何动画(保存后原地落回,
+  不再表演一次到达);`prefers-reduced-motion` 下只留淡入淡出。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 626 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过并 stage 到 client-dist;prettier 已跑。
+过程中用一次性 Vitest Browser 截图夹具核对三屏还原度(用毕删除,未入库)。
