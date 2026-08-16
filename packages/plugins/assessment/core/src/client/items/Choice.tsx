@@ -22,7 +22,7 @@ export function Choice({
   id?: string
   /** empty means nothing is chosen yet, which is what the placeholder is for */
   value: string
-  options: readonly { value: string; label: string }[]
+  options: readonly { value: string; label: string; description?: string }[]
   placeholder?: string
   disabled?: boolean
   className?: string
@@ -35,7 +35,7 @@ export function Choice({
       </SelectTrigger>
       <SelectContent>
         {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
+          <SelectItem key={option.value} value={option.value} description={option.description}>
             {option.label}
           </SelectItem>
         ))}

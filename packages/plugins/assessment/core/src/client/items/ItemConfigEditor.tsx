@@ -776,8 +776,8 @@ export function ItemConfigEditor({
               </Field>
               <Field
                 label={format(m.itemsKind)}
-                // the type name names, its own line explains: what the
-                // chosen kind means stands right under the choice
+                // the name names, the grey line in the list explains; under
+                // the closed control the chosen kind's own line remains
                 hint={format(
                   draft.itemType === 'constant'
                     ? m.itemsKindConstantHint
@@ -793,9 +793,21 @@ export function ItemConfigEditor({
                     // what a question is cannot change once claims exist on it
                     disabled={item !== null}
                     options={[
-                      { value: 'evidence', label: format(m.itemsKindEvidence) },
-                      { value: 'declaration', label: format(m.itemsKindDeclaration) },
-                      { value: 'constant', label: format(m.itemsKindConstant) },
+                      {
+                        value: 'evidence',
+                        label: format(m.itemsKindEvidence),
+                        description: format(m.itemsKindEvidenceHint),
+                      },
+                      {
+                        value: 'declaration',
+                        label: format(m.itemsKindDeclaration),
+                        description: format(m.itemsKindDeclarationHint),
+                      },
+                      {
+                        value: 'constant',
+                        label: format(m.itemsKindConstant),
+                        description: format(m.itemsKindConstantHint),
+                      },
                     ]}
                     onChange={(next) => patch({ itemType: next as Draft['itemType'] })}
                   />
@@ -919,9 +931,15 @@ export function ItemConfigEditor({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="sum">{format(m.itemsFoldingSum)}</SelectItem>
-                          <SelectItem value="max">{format(m.itemsFoldingMax)}</SelectItem>
-                          <SelectItem value="top-n">{format(m.itemsFoldingTopN)}</SelectItem>
+                          <SelectItem value="sum" description={format(m.itemsFoldingSumHint)}>
+                            {format(m.itemsFoldingSum)}
+                          </SelectItem>
+                          <SelectItem value="max" description={format(m.itemsFoldingMaxHint)}>
+                            {format(m.itemsFoldingMax)}
+                          </SelectItem>
+                          <SelectItem value="top-n" description={format(m.itemsFoldingTopNHint)}>
+                            {format(m.itemsFoldingTopN)}
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     )}

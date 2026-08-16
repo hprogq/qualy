@@ -99,8 +99,20 @@ function SelectLabel({ className, ...props }: React.ComponentProps<typeof Select
 function SelectItem({
   className,
   children,
+  description,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Item>) {
+}: React.ComponentProps<typeof SelectPrimitive.Item> & {
+  /**
+   * A grey second line under the label, shown in the open list only: the
+   * closed trigger echoes ItemText alone, so the choice stays one line where
+   * the room is one line and explains itself where there is room to.
+   *
+   * The column overrides the base class's `items-center` (aimed at the last
+   * span for the one-line case) with an important `items-start`, or the two
+   * rows would be centered against each other.
+   */
+  description?: React.ReactNode
+}) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
@@ -115,7 +127,14 @@ function SelectItem({
           <CheckIcon className="pointer-events-none" />
         </SelectPrimitive.ItemIndicator>
       </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      {description === undefined ? (
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      ) : (
+        <span className="flex min-w-0 flex-col gap-0.5 text-left items-start!">
+          <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+          <span className="text-xs text-muted-foreground">{description}</span>
+        </span>
+      )}
     </SelectPrimitive.Item>
   )
 }

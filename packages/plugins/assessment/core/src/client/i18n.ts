@@ -1155,6 +1155,18 @@ const i18n = definePluginMessages({
       defaultMessage: 'The highest few count',
     },
     itemsFoldingN: { id: 'assessment/items/folding-n', defaultMessage: 'How many' },
+    itemsFoldingSumHint: {
+      id: 'assessment/items/folding-sum-hint',
+      defaultMessage: 'Every approved filing counts',
+    },
+    itemsFoldingMaxHint: {
+      id: 'assessment/items/folding-max-hint',
+      defaultMessage: 'One filing counts: the highest',
+    },
+    itemsFoldingTopNHint: {
+      id: 'assessment/items/folding-top-n-hint',
+      defaultMessage: 'The N highest count, added up',
+    },
     resultNotCounted: {
       id: 'assessment/result/not-counted',
       defaultMessage: 'Approved; the question counts other filings instead',

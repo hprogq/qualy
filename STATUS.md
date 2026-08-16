@@ -5255,3 +5255,15 @@ resubmit 更名。本轮不动 schema,全部零迁移。
 **§32.65 唯一剩件:⑤ 补件机制**(SupplementRequest/Response/Attachment 三表、
 ReviewInstance 增 awaiting_supplement、受限 requirement builder、事件与能力),
 单独会话开工。
+
+### 下拉选项两行制(2026-08-16)
+
+- `SelectItem` 增 `description`:灰色小字第二行只出现在展开列表里(Radix 的 ItemText
+  才回显进关闭态的触发器,所以关闭时保持一行)。两处坑:①基类为单行场景写了
+  `*:[span]:last:items-center`,纵向布局下就是水平居中——列容器以 `items-start!` 压回
+  左对齐;②JSX 三元的表达式位置不能同时放注释和元素(vite 当场拒绝),说明并进 JSDoc。
+- 题目类型(填报型/确认型/自动型)与「多条如何计分」(逐条累加/只计最高一条/取最高 N 条
+  相加)两处选择器都换成两行制,每项带一句灰字说明;关闭态下方仍保留选中项的说明行。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 666 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
