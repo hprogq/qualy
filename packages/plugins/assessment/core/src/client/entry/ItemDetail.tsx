@@ -39,6 +39,7 @@ export function ItemDetail({
   standing,
   busy,
   onFile,
+  onDeclare,
   onHistory,
   onStatus,
   onAppeal,
@@ -48,6 +49,8 @@ export function ItemDetail({
   standing: Standing | null
   busy: boolean
   onFile: (entry: EntryDto | null) => void
+  /** a declaration's one press: file and hand on, no dialog */
+  onDeclare: () => void
   onHistory: (entryId: string) => void
   onStatus: (entryId: string, status: 'in_review' | 'draft' | 'voided') => void
   onAppeal: (entry: EntryDto) => void
@@ -80,6 +83,8 @@ export function ItemDetail({
   const recorded = item.currentRevision?.entrySource === 'administrative'
   // granted to everybody on the roster: nothing to file, nothing to wait for
   const granted = item.itemType === 'constant'
+  // declared, not composed: the press is the filing, so no dialog ever opens
+  const declared = item.itemType === 'declaration'
 
   return (
     <div className="flex flex-col gap-5">
@@ -126,7 +131,14 @@ export function ItemDetail({
             the reader wants to know. Questions that were never this
             person's to file - recorded ones, withdrawn ones - show nothing,
             because there the button never existed. */}
-        {granted ? null : draft !== undefined && item.status === 'active' ? (
+        {granted ? null : declared ? (
+          mayFile(item, entries) && draft === undefined ? (
+            <Button className="shrink-0" disabled={busy} onClick={onDeclare}>
+              <PlusIcon aria-hidden />
+              {format(m.entryDeclare)}
+            </Button>
+          ) : null
+        ) : draft !== undefined && item.status === 'active' ? (
           <Button className="shrink-0" onClick={() => onFile(draft)}>
             <PencilIcon aria-hidden />
             {format(m.myEntriesResumeDraft)}
@@ -202,9 +214,11 @@ export function ItemDetail({
               {format(m.myEntriesDraftSaved, { when: when(entry) })}
             </span>
           </span>
-          <Button variant="outline" size="sm" onClick={() => onFile(entry)}>
-            {format(m.myEntriesResume)}
-          </Button>
+          {!declared && (
+            <Button variant="outline" size="sm" onClick={() => onFile(entry)}>
+              {format(m.myEntriesResume)}
+            </Button>
+          )}
           <Offered
             can={entry.capabilities.submit}
             busy={busy}
@@ -261,6 +275,7 @@ function FiledEntry({
   onAppeal: () => void
 }) {
   const { format } = useI18n()
+  const declared = item.itemType === 'declaration'
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
 
@@ -316,12 +331,14 @@ function FiledEntry({
         <Button variant="outline" size="sm" onClick={onHistory}>
           {format(m.entryHistoryOpen)}
         </Button>
-        <Offered
-          can={entry.capabilities.edit}
-          busy={busy}
-          label={format(m.entryEdit)}
-          onPress={onEdit}
-        />
+        {!declared && (
+          <Offered
+            can={entry.capabilities.edit}
+            busy={busy}
+            label={format(m.entryEdit)}
+            onPress={onEdit}
+          />
+        )}
         {/* a rejected filing may go back as it stands; the round said no to
             the filing and the answer may be "look again" */}
         {entry.status !== 'draft' && (

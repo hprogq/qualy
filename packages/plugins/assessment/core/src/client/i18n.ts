@@ -1071,6 +1071,15 @@ const i18n = definePluginMessages({
       defaultMessage: 'Walks up from the participant\u2019s unit to the nearest holder.',
     },
     itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
+    entryDeclare: { id: 'assessment/entry/declare', defaultMessage: 'Claim it' },
+    entryDeclaredFiled: {
+      id: 'assessment/entry/declared-filed',
+      defaultMessage: 'Claimed; it goes to review.',
+    },
+    entryDeclaredCounted: {
+      id: 'assessment/entry/declared-counted',
+      defaultMessage: 'Claimed and counted.',
+    },
     myEntriesGranted: {
       id: 'assessment/entry/granted',
       defaultMessage: 'Granted; nothing to file',
@@ -1091,6 +1100,15 @@ const i18n = definePluginMessages({
     itemsKindConstant: {
       id: 'assessment/items/kind-constant',
       defaultMessage: 'Granted to everybody',
+    },
+    itemsDeclaredHint: {
+      id: 'assessment/items/declared-hint',
+      defaultMessage: 'One press claims it; nothing is written',
+    },
+    itemsDeclaredBody: {
+      id: 'assessment/items/declared-body',
+      defaultMessage:
+        'Participants claim this question with one press. Say what they are claiming in the description above.',
     },
     itemsGrantedTitle: { id: 'assessment/items/granted-title', defaultMessage: 'Who gets it' },
     itemsGrantedHint: {

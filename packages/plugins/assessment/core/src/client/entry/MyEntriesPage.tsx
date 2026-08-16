@@ -186,6 +186,44 @@ function Body({
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   }
 
+  /**
+   * A declaration filed in its one press: created and handed on in the same
+   * breath. The dialog never opens - there is nothing in it to fill - and
+   * the toast says what the press amounted to, which depends on whether the
+   * question reviews its claims at all.
+   */
+  const declare = useMutation({
+    mutationFn: async (input: { itemId: string }) => {
+      if (mine.data === undefined) throw new Error('roster not loaded')
+      const created = await run(
+        api.assessment.createEntry({
+          payload: {
+            itemId: input.itemId,
+            participantId: mine.data.participantId,
+            payload: {},
+          },
+        }),
+      )
+      const sent = await run(
+        api.assessment.setEntryStatus({
+          params: { entryId: created.entry.id },
+          payload: { status: 'in_review' },
+        }),
+      )
+      return sent.entry
+    },
+    onSuccess: (entry) => {
+      toast.success(
+        format(entry.status === 'approved' ? m.entryDeclaredCounted : m.entryDeclaredFiled),
+      )
+      refresh()
+    },
+    onError: (error: unknown) => {
+      const refusal = entryRefusalMessage(error)
+      toast.error(refusal === null ? formatError(error) : format(refusal))
+    },
+  })
+
   const setStatus = useMutation({
     mutationFn: (input: { entryId: string; status: 'in_review' | 'draft' | 'voided' }) =>
       run(
@@ -281,8 +319,9 @@ function Body({
                   row={open}
                   entries={entriesByItem.get(open.id) ?? []}
                   standing={(standing.data ?? null) as Standing | null}
-                  busy={setStatus.isPending}
+                  busy={setStatus.isPending || declare.isPending}
                   onFile={(entry) => setFiling({ item: open.item!, entry, trail: open.trail })}
+                  onDeclare={() => declare.mutate({ itemId: open.id })}
                   onHistory={setHistory}
                   onStatus={(entryId, status) => setStatus.mutate({ entryId, status })}
                   onAppeal={setAppealing}

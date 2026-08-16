@@ -20,7 +20,7 @@ import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@qualy/ui/input-group'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
@@ -608,6 +608,7 @@ export function ItemConfigEditor({
    * saying what - and the answer is always known here.
    */
   const granted = draft.itemType === 'constant'
+  const declaredKind = draft.itemType === 'declaration'
   const fielded = draft.itemType === 'evidence'
   const routed = !granted && draft.reviewMode === 'workflow'
   const missing: string[] = [
@@ -837,7 +838,12 @@ export function ItemConfigEditor({
               <p className="text-sm text-muted-foreground">{format(m.itemsGrantedBody)}</p>
             </Section>
           )}
-          {!granted && (
+          {declaredKind && (
+            <Section title={format(m.itemsTabFields)} hint={format(m.itemsDeclaredHint)}>
+              <p className="text-sm text-muted-foreground">{format(m.itemsDeclaredBody)}</p>
+            </Section>
+          )}
+          {fielded && (
             <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
               <FieldList
                 fields={draft.fields}
@@ -894,17 +900,19 @@ export function ItemConfigEditor({
                 <div className="w-52">
                   <Field label={format(m.itemsFolding)} hint={format(m.itemsFoldingHint)}>
                     {(id) => (
-                      <NativeSelect
-                        id={id}
+                      <Select
                         value={draft.folding}
-                        onChange={(event) =>
-                          patch({ folding: event.target.value as Draft['folding'] })
-                        }
+                        onValueChange={(next) => patch({ folding: next as Draft['folding'] })}
                       >
-                        <option value="sum">{format(m.itemsFoldingSum)}</option>
-                        <option value="max">{format(m.itemsFoldingMax)}</option>
-                        <option value="top-n">{format(m.itemsFoldingTopN)}</option>
-                      </NativeSelect>
+                        <SelectTrigger id={id} className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sum">{format(m.itemsFoldingSum)}</SelectItem>
+                          <SelectItem value="max">{format(m.itemsFoldingMax)}</SelectItem>
+                          <SelectItem value="top-n">{format(m.itemsFoldingTopN)}</SelectItem>
+                        </SelectContent>
+                      </Select>
                     )}
                   </Field>
                 </div>
@@ -1513,23 +1521,31 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
           {format(m.listSeparator)}
           {format(m.itemsPreviewValue, { value: trimAmount(draft.fixedValue.trim()) })}
         </p>
-        <div className="flex flex-col gap-2.5">
-          {draft.fields.map((field) => (
-            <div key={field.key} className="flex flex-col gap-1">
-              <p className="text-xs text-muted-foreground">
-                {field.label.trim() === '' ? '—' : field.label}
-                {field.required && <span className="pl-0.5 text-destructive">*</span>}
-              </p>
-              {field.type === 'attachment' ? (
-                <div className="flex h-9 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
-                  {format(m.itemsPreviewUpload, { count: Number(field.maxCount) || 1 })}
-                </div>
-              ) : (
-                <div className="h-9 rounded-lg border" />
-              )}
-            </div>
-          ))}
-        </div>
+        {draft.itemType === 'constant' ? (
+          <p className="text-xs text-muted-foreground">{format(m.itemsGrantedBody)}</p>
+        ) : draft.itemType === 'declaration' ? (
+          <span className="inline-flex h-8 w-fit items-center rounded-4xl bg-primary px-3.5 text-xs font-medium text-primary-foreground">
+            {format(m.entryDeclare)}
+          </span>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {draft.fields.map((field) => (
+              <div key={field.key} className="flex flex-col gap-1">
+                <p className="text-xs text-muted-foreground">
+                  {field.label.trim() === '' ? '—' : field.label}
+                  {field.required && <span className="pl-0.5 text-destructive">*</span>}
+                </p>
+                {field.type === 'attachment' ? (
+                  <div className="flex h-9 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+                    {format(m.itemsPreviewUpload, { count: Number(field.maxCount) || 1 })}
+                  </div>
+                ) : (
+                  <div className="h-9 rounded-lg border" />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   )
