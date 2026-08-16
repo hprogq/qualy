@@ -727,17 +727,13 @@ const i18n = definePluginMessages({
       id: 'assessment/event/returned-for-revision',
       defaultMessage: '{who} sent it back for more',
     },
-    eventDoubtRaised: {
-      id: 'assessment/event/doubt-raised',
-      defaultMessage: '{who} raised a doubt',
-    },
     eventForwarded: {
       id: 'assessment/event/forwarded',
       defaultMessage: '{who} passed it on',
     },
     eventEscalated: {
       id: 'assessment/event/escalated',
-      defaultMessage: '{who} raised a doubt',
+      defaultMessage: '{who} escalated it for review',
     },
     eventComment: { id: 'assessment/event/comment', defaultMessage: '{who} left a note' },
     eventRecommendApprove: {
@@ -1009,17 +1005,17 @@ const i18n = definePluginMessages({
       id: 'assessment/items/fixed-value',
       defaultMessage: 'Each approved entry counts',
     },
-    itemsDoubtTitle: {
-      id: 'assessment/items/doubt-title',
-      defaultMessage: 'Doubt review',
+    itemsEscalationTitle: {
+      id: 'assessment/items/escalation-title',
+      defaultMessage: 'Escalation route',
     },
-    itemsDoubtHint: {
-      id: 'assessment/items/doubt-hint',
+    itemsEscalationHint: {
+      id: 'assessment/items/escalation-hint',
       defaultMessage: 'Where a reviewer sends what they cannot judge; the last step decides.',
     },
-    itemsDoubtEmpty: {
-      id: 'assessment/items/doubt-empty',
-      defaultMessage: 'With no steps here, a reviewer cannot raise a doubt.',
+    itemsEscalationEmpty: {
+      id: 'assessment/items/escalation-empty',
+      defaultMessage: 'With no steps here, a reviewer cannot escalate.',
     },
     itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add a step' },
     itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Remove step' },
@@ -1046,17 +1042,20 @@ const i18n = definePluginMessages({
       id: 'assessment/review/stage-skipped',
       defaultMessage: 'Skipped: no such unit above this participant',
     },
-    reviewRaiseDoubt: { id: 'assessment/review/raise-doubt', defaultMessage: 'Raise a doubt' },
+    reviewEscalate: { id: 'assessment/review/escalate', defaultMessage: 'Escalate for review' },
     reviewRouteNormal: { id: 'assessment/review/route-normal', defaultMessage: 'Ordinary review' },
-    reviewRouteDoubt: { id: 'assessment/review/route-doubt', defaultMessage: 'Doubt review' },
+    reviewRouteEscalation: {
+      id: 'assessment/review/route-escalation',
+      defaultMessage: 'Escalation',
+    },
     reviewCommentAction: {
       id: 'assessment/review/comment-action',
       defaultMessage: 'Leave a note',
     },
     reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
-    reviewOnDoubtRoute: {
-      id: 'assessment/review/on-doubt-route',
-      defaultMessage: 'This is in doubt review; the last step decides.',
+    reviewOnEscalationRoute: {
+      id: 'assessment/review/on-escalation-route',
+      defaultMessage: 'This has been escalated; the last step decides.',
     },
     itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basics' },
     itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Form fields' },
@@ -1384,11 +1383,14 @@ const i18n = definePluginMessages({
       id: 'assessment/items/stage-unset-hint',
       defaultMessage: 'Say where and who reviews here.',
     },
-    itemsDoubtRaised: { id: 'assessment/items/doubt-raised', defaultMessage: 'Doubt raised' },
-    itemsDoubtRaisedBy: { id: 'assessment/items/doubt-raised-by', defaultMessage: 'By a reviewer' },
-    itemsDoubtSettled: { id: 'assessment/items/doubt-settled', defaultMessage: 'Doubt settled' },
-    itemsDoubtSettledSub: {
-      id: 'assessment/items/doubt-settled-sub',
+    itemsEscalated: { id: 'assessment/items/escalated', defaultMessage: 'Escalated' },
+    itemsEscalationBy: { id: 'assessment/items/escalation-by', defaultMessage: 'By a reviewer' },
+    itemsEscalationSettled: {
+      id: 'assessment/items/escalation-settled',
+      defaultMessage: 'Escalation settled',
+    },
+    itemsEscalationSettledSub: {
+      id: 'assessment/items/escalation-settled-sub',
       defaultMessage: 'The last step decides',
     },
     itemsCannotSave: {
@@ -1409,9 +1411,9 @@ const i18n = definePluginMessages({
       id: 'assessment/items/need-stage',
       defaultMessage: 'a review step is not set up',
     },
-    itemsDoubtAddStep: {
-      id: 'assessment/items/doubt-add-step',
-      defaultMessage: 'Add a doubt step',
+    itemsEscalationAddStep: {
+      id: 'assessment/items/escalation-add-step',
+      defaultMessage: 'Add an escalation step',
     },
     itemsPlacementTitle: {
       id: 'assessment/items/placement-title',
@@ -2023,9 +2025,9 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/entry-resubmit',
       defaultMessage: 'Ask for a settled entry to be looked at again.',
     },
-    'permission-hint.assessment.review.raise-doubt': {
-      id: 'assessment/permission-hint/review-raise-doubt',
-      defaultMessage: 'Let a reviewer hand something they cannot judge to the doubt route.',
+    'permission-hint.assessment.review.escalate': {
+      id: 'assessment/permission-hint/review-escalate',
+      defaultMessage: 'Let a reviewer hand on a matter they cannot settle.',
     },
     'permission-hint.assessment.review.process': {
       id: 'assessment/permission-hint/review-process',
@@ -2078,9 +2080,9 @@ const i18n = definePluginMessages({
       id: 'assessment/permission/entry-resubmit',
       defaultMessage: 'Ask for another look',
     },
-    'permission.assessment.review.raise-doubt': {
-      id: 'assessment/permission/review-raise-doubt',
-      defaultMessage: 'Raise a doubt',
+    'permission.assessment.review.escalate': {
+      id: 'assessment/permission/review-escalate',
+      defaultMessage: 'Escalate for review',
     },
     'permission.assessment.review.process': {
       id: 'assessment/permission/review-process',

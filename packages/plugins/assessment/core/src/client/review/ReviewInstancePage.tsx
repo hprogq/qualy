@@ -150,7 +150,7 @@ function Detail({ batchId }: { batchId: string }) {
                 <p className="pb-2 text-xs font-medium text-muted-foreground">
                   {format(m.reviewChainTitle)}
                 </p>
-                {/* two routes, drawn as two: the doubt one is not the tail
+                {/* two routes, drawn as two: the escalation one is not the tail
                     of the ordinary one and never was somewhere a submission
                     walks on its way through */}
                 <Route
@@ -158,11 +158,11 @@ function Detail({ batchId }: { batchId: string }) {
                   stages={review.chain.normal}
                   here={review.chain.route === 'normal' ? review.chain.stageId : null}
                 />
-                {review.chain.doubt.length > 0 && (
+                {review.chain.escalation.length > 0 && (
                   <Route
-                    title={format(m.reviewRouteDoubt)}
-                    stages={review.chain.doubt}
-                    here={review.chain.route === 'doubt' ? review.chain.stageId : null}
+                    title={format(m.reviewRouteEscalation)}
+                    stages={review.chain.escalation}
+                    here={review.chain.route === 'escalation' ? review.chain.stageId : null}
                   />
                 )}
               </section>
@@ -197,8 +197,8 @@ function Detail({ batchId }: { batchId: string }) {
             </aside>
           </div>
 
-          {review.chain.route === 'doubt' && (
-            <p className="text-sm text-muted-foreground">{format(m.reviewOnDoubtRoute)}</p>
+          {review.chain.route === 'escalation' && (
+            <p className="text-sm text-muted-foreground">{format(m.reviewOnEscalationRoute)}</p>
           )}
           {review.chain.decisions.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
@@ -319,7 +319,7 @@ function Route({
 /** what each decision is called on a button and at the top of its dialog */
 const SAYINGS: Record<string, MessageDescriptor> = {
   reject: m.reviewReject,
-  'raise-doubt': m.reviewRaiseDoubt,
+  escalate: m.reviewEscalate,
   comment: m.reviewCommentAction,
 }
 

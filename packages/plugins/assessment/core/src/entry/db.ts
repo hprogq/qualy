@@ -505,7 +505,7 @@ export const insertReviewInstance = (input: {
   policyRevisionId: string
   /** both routes, resolved and frozen for the whole round */
   effectivePolicy: unknown
-  route: 'normal' | 'doubt'
+  route: 'normal' | 'escalation'
   stageId: string
   roleIds: readonly string[]
   nodeId: string
@@ -536,16 +536,16 @@ export const insertReviewInstance = (input: {
 
 /**
  * Moves an open round to the step it just entered, whether that came of an
- * approval carrying it onward or of a doubt handing it to the other route.
+ * approval carrying it onward or of an escalation handing it to the other route.
  * Conditional on the round still standing where the caller read it, so two
  * decisions on one round cannot both advance it.
  */
 export const advanceReviewInstance = (input: {
   tenantId: string
   instanceId: string
-  fromRoute: 'normal' | 'doubt'
+  fromRoute: 'normal' | 'escalation'
   fromStageId: string
-  toRoute: 'normal' | 'doubt'
+  toRoute: 'normal' | 'escalation'
   toStageId: string
   roleIds: readonly string[]
   nodeId: string
@@ -638,7 +638,7 @@ export const insertReviewEvent = (input: {
   kind: string
   actorId: string | null
   /** where the round was standing; omitted for events that belong to the round */
-  route?: 'normal' | 'doubt' | null
+  route?: 'normal' | 'escalation' | null
   stageId?: string | null
   comment?: string | null
   suggestedPayload?: unknown

@@ -2,7 +2,7 @@
 // of assessment-design §14, and nothing outside it.
 //
 // Two routes per item, each ordered from the nearest reviewer outward: the
-// ordinary one a submission walks, and the doubt one it is handed to when a
+// ordinary one a submission walks, and the escalation one it is handed to when a
 // reviewer says they cannot judge it - which is also the only route an
 // appeal ever walks. They share no steps (§32.62). Every step carries a
 // permanent id, so a later policy can be asked whether the step an in-flight
@@ -101,7 +101,7 @@ const STAGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const checkRoute = (
   issues: PolicyIssue[],
   policy: Record<string, unknown>,
-  route: 'normal' | 'doubt',
+  route: 'normal' | 'escalation',
   seen: Set<string>,
 ): void => {
   const held = policy[route]
@@ -152,10 +152,10 @@ export const validateReviewPolicy = (
   if ('stages' in policy || 'normalTerminal' in policy) {
     return [{ path: 'reviewPolicy', reason: 'policy-version-legacy' }]
   }
-  unknownKeys(issues, policy, 'reviewPolicy', ['normal', 'doubt'])
+  unknownKeys(issues, policy, 'reviewPolicy', ['normal', 'escalation'])
   const seen = new Set<string>()
   checkRoute(issues, policy, 'normal', seen)
-  checkRoute(issues, policy, 'doubt', seen)
+  checkRoute(issues, policy, 'escalation', seen)
 
   const normal = (policy['normal'] as { stages?: unknown } | undefined)?.stages
   if (!Array.isArray(normal) || normal.length === 0) {

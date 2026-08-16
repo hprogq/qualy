@@ -21,8 +21,8 @@ import {
 // standing, acceptance, the gate, distance - and watch the queue, the
 // decision and the submission refuse together.
 
-const REVIEW_OPEN = [...GATED, 'assessment.review.process', 'assessment.review.raise-doubt']
-/** the same round with the doubt door shut, as an appeal window has it */
+const REVIEW_OPEN = [...GATED, 'assessment.review.process', 'assessment.review.escalate']
+/** the same round with escalation shut off, as an appeal window has it */
 const NO_DOUBTS = [...GATED, 'assessment.review.process']
 
 /** an accepted source carrying review.process, the way a sync would write it */
@@ -536,12 +536,12 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(errorOf<{ _tag: string }>(result.tampered)?._tag).toBe('BAD_REQUEST')
   })
 
-  it('hands a doubt to the other route, where the middle only advises', async () => {
+  it('hands an escalation to the other route, and takes only one', async () => {
     const result = ok(
       await run(
         db.url,
         Effect.gen(function* () {
-          const f = yield* seed('rv-doubt')
+          const f = yield* seed('rv-escalation')
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const admin = f.principal(f.admin)
@@ -551,7 +551,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
             quorum: { type: 'any' },
           })
-          // one ordinary step and two doubt steps, all landing on the same
+          // one ordinary step and two escalation steps, all landing on the same
           // level: this case is about the machine, not about the org
           const item = yield* assessment.createItem(
             f.t,
@@ -570,7 +570,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
                 },
                 reviewPolicy: {
                   normal: { stages: [at('n1')] },
-                  doubt: { stages: [at('d1'), at('d2')] },
+                  escalation: { stages: [at('d1'), at('d2')] },
                 },
               },
             },
@@ -591,17 +591,17 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const raised = yield* assessment.decideReview(
             f.t,
             instanceId,
-            { decision: 'raise-doubt', comment: '拿不准，提请复核' },
+            { decision: 'escalate', comment: '拿不准，提请复核' },
             reviewer,
           )
-          // the doubt route is a review chain like the other one: approving
+          // the escalation route is a review chain like the other one: approving
           // a middle step passes it on, and during filing any step may end it
-          const inDoubt = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
-          const noSecondDoubt = yield* Effect.exit(
+          const escalated = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
+          const noSecondEscalation = yield* Effect.exit(
             assessment.decideReview(
               f.t,
               instanceId,
-              { decision: 'raise-doubt', comment: '再上一次' },
+              { decision: 'escalate', comment: '再上一次' },
               reviewer,
             ),
           )
@@ -617,31 +617,31 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { decision: 'approve' },
             reviewer,
           )
-          return { onNormal, raised, inDoubt, noSecondDoubt, passedOn, settled }
+          return { onNormal, raised, escalated, noSecondEscalation, passedOn, settled }
         }),
       ),
     )
 
-    // the ordinary route offers the doubt; it does not offer to forward
+    // the ordinary route offers to escalate; the escalation route does not
     expect(result.onNormal.chain.route).toBe('normal')
     expect(result.onNormal.chain.stageId).toBe('n1')
     expect([...result.onNormal.chain.decisions].sort()).toEqual([
       'approve',
       'comment',
-      'raise-doubt',
+      'escalate',
       'reject',
     ])
     // raising it leaves the ordinary route entirely rather than carrying on
-    expect(result.raised.chain.route).toBe('doubt')
+    expect(result.raised.chain.route).toBe('escalation')
     expect(result.raised.chain.stageId).toBe('d1')
-    // a filing-time doubt can be ended anywhere, and cannot be raised twice
-    expect([...result.inDoubt.chain.decisions].sort()).toEqual(['approve', 'comment', 'reject'])
-    expect(refusalOf(result.noSecondDoubt)?.reason).toBe('decision-not-available')
+    // a filing-time escalation can be ended anywhere, and happens only once
+    expect([...result.escalated.chain.decisions].sort()).toEqual(['approve', 'comment', 'reject'])
+    expect(refusalOf(result.noSecondEscalation)?.reason).toBe('decision-not-available')
     expect(result.passedOn.chain.stageId).toBe('d2')
     expect(result.settled.outcome).toBe('approved')
     expect(result.settled.events.map((event) => event.kind)).toEqual([
       'submitted',
-      'doubt-raised',
+      'escalated',
       'approved',
       'approved',
     ])
@@ -798,7 +798,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
                   },
                 ],
               },
-              doubt: { stages: [] },
+              escalation: { stages: [] },
             },
           }
           const asked = yield* Effect.exit(
@@ -874,14 +874,14 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.queue.map((one) => one.entryId)).toEqual([result.entry.id])
   })
 
-  it('walks an appeal down the doubt route, endable only at its last step', async () => {
+  it('walks an appeal down the escalation route, endable only at its last step', async () => {
     const result = ok(
       await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seed('rv-appeal')
           const assessment = yield* Assessment
-          // an appeal window: no filing, no doubts to raise, only appeals
+          // an appeal window: no escalating, only appeals and the reviews of them
           const g = yield* runningBatch(f, {
             profile: [
               'assessment.entry.create',
@@ -914,7 +914,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
                 },
                 reviewPolicy: {
                   normal: { stages: [at('n1')] },
-                  doubt: { stages: [at('d1'), at('d2')] },
+                  escalation: { stages: [at('d1'), at('d2')] },
                 },
               },
             },
@@ -930,12 +930,12 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const first = sent.currentReviewInstanceId!
-          // the doubt door is shut in this window, so the reviewer decides
-          const doubtShut = yield* Effect.exit(
+          // escalating is shut off in this window, so the reviewer decides
+          const escalationShut = yield* Effect.exit(
             assessment.decideReview(
               f.t,
               first,
-              { decision: 'raise-doubt', comment: '想上报' },
+              { decision: 'escalate', comment: '想上报' },
               reviewer,
             ),
           )
@@ -980,7 +980,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
                    appealed_instance_id, outcome
             from review_instances where entry_id = ${entry.id} order by round_no`)
           return {
-            doubtShut,
+            escalationShut,
             stranger,
             wordless,
             appealed,
@@ -1008,19 +1008,19 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       ),
     )
 
-    // the phase, not the policy, is what shut the doubt door
-    expect(refusalOf(result.doubtShut)?.reason).toBe('phase-closed')
+    // the phase, not the policy, is what shut escalating off
+    expect(refusalOf(result.escalationShut)?.reason).toBe('phase-closed')
     expect(errorOf<{ _tag: string }>(result.stranger)?._tag).toBe('ASSESSMENT_REVIEW_NOT_FOUND')
     expect(refusalOf(result.wordless)?.reason).toBe('reason-required')
     expect(refusalOf(result.again)?.reason).toBe('review-already-open')
 
-    // the appeal opens on the doubt route against the very same filing
-    expect(result.appealed.chain.route).toBe('doubt')
+    // the appeal opens on the escalation route against the very same filing
+    expect(result.appealed.chain.route).toBe('escalation')
     expect(result.appealed.chain.stageId).toBe('d1')
     expect(result.rows[1]).toMatchObject({
       round_no: 2,
       origin: 'appeal',
-      current_route: 'doubt',
+      current_route: 'escalation',
       reject_policy: 'terminal-only',
       revision_id: result.rows[0]!.revision_id,
       appealed_instance_id: result.firstId,

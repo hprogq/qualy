@@ -28,7 +28,7 @@ import {
 } from '../entry/db.ts'
 import type { GateDecision } from '../phase/gate.ts'
 import {
-  doubtOpen,
+  escalationOpen,
   enterableFrom,
   holdersOf,
   readPolicy,
@@ -92,11 +92,11 @@ export interface ReviewStageView {
 
 export interface ReviewChainView {
   /** which of the two routes this round is walking */
-  readonly route: 'normal' | 'doubt'
+  readonly route: 'normal' | 'escalation'
   /** the step it is standing at, by name */
   readonly stageId: string
   readonly normal: readonly ReviewStageView[]
-  readonly doubt: readonly ReviewStageView[]
+  readonly escalation: readonly ReviewStageView[]
   readonly decisions: readonly string[]
 }
 
@@ -136,7 +136,7 @@ export interface ReviewDetailView {
  *
  * Both routes are real review chains: approve carries the round to the next
  * step of the route it is on and ends it at the last one, reject ends it
- * wherever reject is on offer. Raising a doubt hands the round to the other
+ * wherever reject is on offer. Escalating hands the round to the other
  * route entirely rather than carrying on from where it was, so it is only
  * ever offered on the ordinary one.
  *
@@ -145,7 +145,7 @@ export interface ReviewDetailView {
  * word for it meant a reviewer had to know which kind of chain they were
  * standing in before they knew which button meant what.
  */
-export type ReviewDecision = 'approve' | 'reject' | 'raise-doubt' | 'comment'
+export type ReviewDecision = 'approve' | 'reject' | 'escalate' | 'comment'
 
 /**
  * What may be said from where the round stands.
@@ -162,14 +162,14 @@ const decisionsAt = (
   policy: ResolvedPolicy,
   here: ResolvedStage,
   round: { rejectPolicy: 'any-stage' | 'terminal-only' },
-  mayRaiseDoubt: boolean,
+  mayEscalate: boolean,
 ): readonly ReviewDecision[] => {
   const endable = round.rejectPolicy === 'any-stage' || isRouteEnd(policy, here)
-  if (here.route === 'doubt') {
+  if (here.route === 'escalation') {
     return endable ? ['approve', 'reject', 'comment'] : ['approve', 'comment']
   }
   const said: ReviewDecision[] = endable ? ['approve', 'reject'] : ['approve']
-  if (mayRaiseDoubt && doubtOpen(policy)) said.push('raise-doubt')
+  if (mayEscalate && escalationOpen(policy)) said.push('escalate')
   said.push('comment')
   return said
 }
@@ -220,8 +220,8 @@ export interface ReviewDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
   /** the phase gate's word on assessment.review.process in this batch, now */
   readonly reviewGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
-  /** and on assessment.review.raise-doubt, which a phase opens separately */
-  readonly raiseDoubtGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
+  /** and on assessment.review.raise-escalation, which a phase opens separately */
+  readonly escalateGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
   /** administrative reach over the batch, the same door getEntry uses */
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
   readonly parseRange: (text: string) => { start: string; end: string }
@@ -275,7 +275,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const assembleDetail = (
     tenantId: string,
     row: ReviewInstanceDetailRow,
-    view: { canDecide: boolean; mayRaiseDoubt?: boolean; resolveReviewers: boolean },
+    view: { canDecide: boolean; mayEscalate?: boolean; resolveReviewers: boolean },
   ) =>
     Effect.gen(function* () {
       const revision = (yield* entryRevisionOf(tenantId, row.revisionId))!
@@ -283,7 +283,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const attachments = yield* revisionAttachmentsOf(tenantId, row.revisionId)
       const events = yield* reviewEventsOf(tenantId, row.id)
       const policy = row.effectivePolicy
-      const everyStage = [...policy.normal, ...policy.doubt]
+      const everyStage = [...policy.normal, ...policy.escalation]
       const names = yield* chainNames({
         tenantId,
         nodeIds: everyStage.flatMap((stage) => (stage.nodeId === null ? [] : [stage.nodeId])),
@@ -314,7 +314,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const decisions: readonly string[] =
         !view.canDecide || here === null
           ? []
-          : decisionsAt(policy, here, row, view.mayRaiseDoubt === true)
+          : decisionsAt(policy, here, row, view.mayEscalate === true)
       const stageView = (stage: ResolvedStage): ReviewStageView => ({
         id: stage.id,
         index: stage.index,
@@ -346,7 +346,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           route: row.currentRoute,
           stageId: row.currentStageId,
           normal: policy.normal.map(stageView),
-          doubt: policy.doubt.map(stageView),
+          escalation: policy.escalation.map(stageView),
           decisions,
         },
         events: events.map((event) => ({
@@ -431,15 +431,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     const gate = yield* deps.reviewGate(tenantId, row.batchId)
     const canDecide =
       judge && row.state === 'active' && row.batchStatus === 'active' && gate.allowed
-    // turning an ordinary review into a doubt is its own thing a phase opens
-    // and closes: during an appeal window there is nothing to raise a doubt
-    // about, because an appeal is already on the doubt route
-    const doubtGate = yield* deps.raiseDoubtGate(tenantId, row.batchId)
+    // turning an ordinary review into an escalation is its own thing a phase opens
+    // and closes: during an appeal window there is nothing to escalate
+    // about, because an appeal is already on the escalation route
+    const escalationDecision = yield* deps.escalateGate(tenantId, row.batchId)
     return yield* dieQuery(
       withDb(
         assembleDetail(tenantId, row, {
           canDecide,
-          mayRaiseDoubt: doubtGate.allowed,
+          mayEscalate: escalationDecision.allowed,
           resolveReviewers: true,
         }),
       ),
@@ -474,20 +474,20 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             if (here === null) return yield* refuse(action, 'chain-unreadable')
             // Where this round stands decides what may be said here (§14,
             // §32.62): an ordinary step carries or ends the round and may
-            // hand it to the doubt route; a middle step of the doubt route
+            // hand it to the escalation route; a middle step of the escalation route
             // may only advise, because the decision belongs to its end.
-            const doubtGate =
-              action === 'raise-doubt'
-                ? yield* deps.raiseDoubtGate(tenantId, row.batchId)
+            const escalationDecision =
+              action === 'escalate'
+                ? yield* deps.escalateGate(tenantId, row.batchId)
                 : { allowed: true as const }
-            const allowed = decisionsAt(policy, here, row, doubtGate.allowed)
+            const allowed = decisionsAt(policy, here, row, escalationDecision.allowed)
             if (!allowed.includes(action)) {
-              // a doubt refused by the phase says so in the phase's own
+              // an escalation refused by the phase says so in the phase's own
               // words; anything else is simply not on offer here
               return yield* refuse(
                 action,
-                action === 'raise-doubt' && !doubtGate.allowed
-                  ? (doubtGate as { reason: string }).reason
+                action === 'escalate' && !escalationDecision.allowed
+                  ? (escalationDecision as { reason: string }).reason
                   : 'decision-not-available',
               )
             }
@@ -560,11 +560,13 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               })
             }
 
-            // onward: raising a doubt leaves the ordinary route for the
+            // onward: escalating leaves the ordinary route for the
             // first step of the other one; everything else walks its own
             // route to the next step that resolved to a unit
             const next: ResolvedStage | null =
-              action === 'raise-doubt' ? enterableFrom(policy, 'doubt', 0) : nextAfter(policy, here)
+              action === 'escalate'
+                ? enterableFrom(policy, 'escalation', 0)
+                : nextAfter(policy, here)
             if (next === null || next.nodeId === null) {
               return yield* refuse(action, 'chain-ends-here')
             }
@@ -593,7 +595,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               state: holders.length > 0 ? 'active' : 'blocked',
             })
             if (!moved) return yield* new ReviewConflict()
-            yield* say(action === 'raise-doubt' ? 'doubt-raised' : 'approved')
+            yield* say(action === 'escalate' ? 'escalated' : 'approved')
             if (holders.length === 0) {
               yield* insertReviewEvent({
                 tenantId,
@@ -665,7 +667,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    * Contesting a decision that has already been made.
    *
    * A round of its own, against the same filing: nothing was rewritten, and
-   * what is being disputed is the conclusion. It opens on the doubt route
+   * what is being disputed is the conclusion. It opens on the escalation route
    * with only its last step able to end it, and both of those are frozen on
    * the round rather than read from whatever phase is in force when somebody
    * later presses a button (§32.63).
@@ -732,9 +734,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               policy: readPolicy(live.reviewPolicy),
               lineage: participant.anchorLineage,
             })
-            // an appeal walks the doubt route and nothing else; a question
+            // an appeal walks the escalation route and nothing else; a question
             // with none configured has nowhere to hear one
-            const first = enterableFrom(policy, 'doubt', 0)
+            const first = enterableFrom(policy, 'escalation', 0)
             if (first === null || first.nodeId === null) {
               return yield* refuse('appeal', 'review-level-missing')
             }
@@ -761,7 +763,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               rejectPolicy: 'terminal-only',
               policyRevisionId: live.id,
               effectivePolicy: policy,
-              route: 'doubt',
+              route: 'escalation',
               stageId: first.id,
               roleIds: first.roleIds,
               nodeId: first.nodeId,
@@ -773,7 +775,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               reviewInstanceId: opened,
               kind: 'appealed',
               actorId: as.userId,
-              route: 'doubt',
+              route: 'escalation',
               stageId: first.id,
               comment: reason,
             })
@@ -783,7 +785,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 reviewInstanceId: opened,
                 kind: 'assignee-not-found',
                 actorId: null,
-                route: 'doubt',
+                route: 'escalation',
                 stageId: first.id,
               })
             }

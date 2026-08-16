@@ -599,7 +599,7 @@ export interface OpenRoundRow {
   revisionId: string
   participantId: string
   state: 'active' | 'blocked'
-  route: 'normal' | 'doubt'
+  route: 'normal' | 'escalation'
   stageId: string
   /** carried into the round that replaces it: an appeal stays an appeal */
   rejectPolicy: 'any-stage' | 'terminal-only'

@@ -54,7 +54,7 @@ describe('the first two real configurations', () => {
               },
             ],
           },
-          doubt: { stages: [] },
+          escalation: { stages: [] },
         },
       }),
     )
@@ -85,7 +85,7 @@ describe('the first two real configurations', () => {
               },
             ],
           },
-          doubt: { stages: [] },
+          escalation: { stages: [] },
         },
       }),
     )

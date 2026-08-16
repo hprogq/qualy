@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  doubtOpen,
+  escalationOpen,
   enterableFrom,
   isRouteEnd,
   nextAfter,
@@ -20,10 +20,10 @@ describe('reading a stored policy', () => {
   it('reads two routes as two routes', () => {
     const policy = readPolicy({
       normal: { stages: [{ id: 'n1', selector, quorum }] },
-      doubt: { stages: [{ id: 'd1', selector, quorum }] },
+      escalation: { stages: [{ id: 'd1', selector, quorum }] },
     })
     expect(policy.normal.map((one) => one.id)).toEqual(['n1'])
-    expect(policy.doubt.map((one) => one.id)).toEqual(['d1'])
+    expect(policy.escalation.map((one) => one.id)).toEqual(['d1'])
   })
 
   it('splits one list with a marker in it where the marker says', () => {
@@ -38,7 +38,7 @@ describe('reading a stored policy', () => {
       normalTerminal: 1,
     })
     expect(policy.normal.map((one) => one.id)).toEqual(['legacy-0', 'legacy-1'])
-    expect(policy.doubt.map((one) => one.id)).toEqual(['legacy-2'])
+    expect(policy.escalation.map((one) => one.id)).toEqual(['legacy-2'])
   })
 
   it('names a step written before names by where it sat in that one list', () => {
@@ -51,7 +51,7 @@ describe('reading a stored policy', () => {
       ],
     })
     expect(policy.normal.map((one) => one.id)).toEqual(['legacy-0'])
-    expect(policy.doubt.map((one) => one.id)).toEqual(['legacy-1'])
+    expect(policy.escalation.map((one) => one.id)).toEqual(['legacy-1'])
   })
 
   it('reads a round frozen before the split the same way', () => {
@@ -74,18 +74,23 @@ describe('reading a stored policy', () => {
         skipped: null,
       },
     ])
-    expect(frozen.doubt.map((one) => ({ id: one.id, index: one.index }))).toEqual([
+    expect(frozen.escalation.map((one) => ({ id: one.id, index: one.index }))).toEqual([
       { id: 'legacy-1', index: 0 },
     ])
   })
 
   it('gives nothing for a policy that is not one', () => {
-    expect(readPolicy(null)).toEqual({ normal: [], doubt: [] })
-    expect(readPolicy('a chain, honest')).toEqual({ normal: [], doubt: [] })
+    expect(readPolicy(null)).toEqual({ normal: [], escalation: [] })
+    expect(readPolicy('a chain, honest')).toEqual({ normal: [], escalation: [] })
   })
 })
 
-const stage = (id: string, route: 'normal' | 'doubt', index: number, nodeId: string | null) => ({
+const stage = (
+  id: string,
+  route: 'normal' | 'escalation',
+  index: number,
+  nodeId: string | null,
+) => ({
   id,
   route,
   index,
@@ -103,7 +108,7 @@ describe('walking a resolved policy', () => {
       stage('n2', 'normal', 1, null),
       stage('n3', 'normal', 2, 'c'),
     ],
-    doubt: [stage('d1', 'doubt', 0, 'x'), stage('d2', 'doubt', 1, 'y')],
+    escalation: [stage('d1', 'escalation', 0, 'x'), stage('d2', 'escalation', 1, 'y')],
   }
 
   it('steps over a level this person sits under no unit of', () => {
@@ -113,21 +118,23 @@ describe('walking a resolved policy', () => {
   it('knows the end of a route without looking at the other one', () => {
     expect(isRouteEnd(policy, policy.normal[2]!)).toBe(true)
     // the last ordinary step is the end of the ordinary route even though
-    // the doubt route has steps after it - they are not after it
-    expect(isRouteEnd(policy, policy.doubt[0]!)).toBe(false)
-    expect(isRouteEnd(policy, policy.doubt[1]!)).toBe(true)
+    // the escalation route has steps after it - they are not after it
+    expect(isRouteEnd(policy, policy.escalation[0]!)).toBe(false)
+    expect(isRouteEnd(policy, policy.escalation[1]!)).toBe(true)
   })
 
   it('finds a step by name, and only in the route it belongs to', () => {
     expect(stageById(policy, 'normal', 'n3')?.index).toBe(2)
-    expect(stageById(policy, 'doubt', 'n3')).toBeNull()
+    expect(stageById(policy, 'escalation', 'n3')).toBeNull()
   })
 
-  it('offers a doubt only when there is a route to raise it onto', () => {
-    expect(doubtOpen(policy)).toBe(true)
-    expect(doubtOpen({ normal: policy.normal, doubt: [] })).toBe(false)
-    // a doubt route none of whose steps resolved is no route at all
-    expect(doubtOpen({ normal: policy.normal, doubt: [stage('d1', 'doubt', 0, null)] })).toBe(false)
-    expect(enterableFrom(policy, 'doubt', 0)?.id).toBe('d1')
+  it('offers escalating only when there is a route to escalate onto', () => {
+    expect(escalationOpen(policy)).toBe(true)
+    expect(escalationOpen({ normal: policy.normal, escalation: [] })).toBe(false)
+    // an escalation route none of whose steps resolved is no route at all
+    expect(
+      escalationOpen({ normal: policy.normal, escalation: [stage('d1', 'escalation', 0, null)] }),
+    ).toBe(false)
+    expect(enterableFrom(policy, 'escalation', 0)?.id).toBe('d1')
   })
 })

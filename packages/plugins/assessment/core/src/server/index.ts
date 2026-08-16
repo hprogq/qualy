@@ -1774,13 +1774,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
         return decide(view, 'assessment.review.process', undefined)
       }),
-    raiseDoubtGate: (tenantId, batchId) =>
+    escalateGate: (tenantId, batchId) =>
       Effect.gen(function* () {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
         const now = yield* Clock.currentTimeMillis
         const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
-        return decide(view, 'assessment.review.raise-doubt', undefined)
+        return decide(view, 'assessment.review.escalate', undefined)
       }),
     rosterReach: (as, tenantId, batchId) =>
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),

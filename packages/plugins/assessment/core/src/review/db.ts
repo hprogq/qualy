@@ -172,7 +172,7 @@ export interface ReviewInstanceDetailRow {
   id: string
   state: 'active' | 'blocked' | 'completed'
   outcome: string | null
-  currentRoute: 'normal' | 'doubt'
+  currentRoute: 'normal' | 'escalation'
   currentStageId: string
   rejectPolicy: 'any-stage' | 'terminal-only'
   effectivePolicy: ResolvedPolicy

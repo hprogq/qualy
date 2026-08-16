@@ -380,7 +380,7 @@ describe.runIf(postgresAvailable)('the management-anchor rebuild', () => {
   })
 })
 
-// Splitting the doubt route off the ordinary one changes how a round says
+// Splitting the escalation route off the ordinary one changes how a round says
 // where it stands: a position into one list becomes a route plus the step's
 // own name. Rounds already open have to arrive on the other side standing
 // exactly where they were, and replaying the lineage into an empty database
@@ -510,7 +510,7 @@ describe.runIf(postgresAvailable)('the review-routes migration', () => {
         current_stage_id: 'legacy-0',
       })
       expect(await standing(escalated)).toEqual({
-        current_route: 'doubt',
+        current_route: 'escalation',
         current_stage_id: 'legacy-2',
       })
       expect(await standing(halfway)).toEqual({

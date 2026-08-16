@@ -1127,6 +1127,27 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
   (客户端一行重建树,而递归 schema 不是一行)。
 - 层数不设硬上限(已被"一层不够"打过脸),但 UI 建议不超过三四层。
 
+**32.64 那条路线叫升级（escalation），不叫疑点**（2026-08-16，用户裁决）。
+
+命名裁决，语义不变。「疑点」把这件事说成「发现了当事人的问题」，带调查取证意味；「上报」又像行政层级汇报。
+实际语义是：**当前审核人无法作出判断，于是把事项交给另一个决策机制**——工作流领域里这就是 escalation。
+
+- **中文 UI**：提请复核 / 复核流程（与「常规审核」并列的短标签用「复核」）。
+- **英文 UI**：Escalate for review / Escalation route。
+- **代码与存储**：`escalation`。`ReviewRoute = 'normal' | 'escalation'`，
+  `ReviewDecision` 的 `raise-doubt` → `escalate`，事件 kind `doubt-raised` → `escalated`
+  （**与拆分之前的历史事件同名，两者本来就是同一件事**），
+  阶段动作码 `assessment.review.raise-doubt` → `assessment.review.escalate`。
+- **迁移只改被查询读的值**：`review_instances.current_route`、`review_events.route`、
+  `review_events.kind`、`batch_phases.permission_profile` 与 `phase_templates.phases` 里的动作码。
+  **不改** `review_instances.effective_chain` 与 item revision 的 `reviewPolicy`——它们按规矩不可变，
+  读取侧同时认 `doubt` 与 `escalation`，用的正是已经在读「一张单子加一个 marker」那版的同一个接缝。
+- 顺带取消 `doubt` 与 `escalated` 两个事件 kind 并存的局面:此后只有 `escalated`。
+
+三个概念此后不要混为一谈（现在只实现第一个，其余出现真实需求再说）：
+材料看不明白、无法判断 → **复核**；材料可能不真实或前后不一致 → 核查；
+多人对规则解释有分歧 → 裁定。
+
 **32.63 申诉是一轮走疑点链、只有链尾能驳回的审核；阶段开关是四个独立动作**（2026-08-16，用户裁决）。
 
 不做两套审核状态机。同一个 Review 引擎、三类独立动作、两种 ReviewInstance 行为模式。

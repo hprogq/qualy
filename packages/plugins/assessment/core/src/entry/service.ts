@@ -758,8 +758,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               }
 
               // Both routes, resolved once against this person's frozen
-              // lineage and snapshotted. The doubt route is resolved here
-              // too, though most rounds never reach it: raising a doubt must
+              // lineage and snapshotted. The escalation route is resolved here
+              // too, though most rounds never reach it: escalating must
               // not re-resolve an organization that has moved since (§14).
               const policy = yield* resolvePolicy({
                 tenantId,

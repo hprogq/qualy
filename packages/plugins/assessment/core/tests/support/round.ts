@@ -280,7 +280,7 @@ export const runningBatch = (f: Seeded, over?: { profile?: readonly string[] }) 
                 },
               ],
             },
-            doubt: { stages: [] },
+            escalation: { stages: [] },
           },
         },
       },

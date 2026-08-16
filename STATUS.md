@@ -4798,3 +4798,26 @@ CLAUDE 的「界面文案是引导,不是说明」此前只在新写的地方被
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 651 passed / 17 skipped;
 `pnpm test:browser` 54 passed(两处按标签取控件的断言同步);`catalogs.test` 全语言完整。
+
+### 疑点改叫升级/复核,连代码一起(2026-08-16)
+
+裁决记入 §32.64。上一次只改了中文,这次按用户的完整方案把英文 UI 与代码领域名一起换成 escalation
+——「当前审核人无法判断,于是把事项交给另一个决策机制」在工作流领域就叫 escalation,
+而「疑点」把它说成了对当事人的调查。
+
+- 中文 UI:提请复核 / 复核流程(短标签「复核」);英文 UI:Escalate for review / Escalation route。
+- 代码:`ReviewRoute = 'normal' | 'escalation'`、`ReviewDecision` 的 `raise-doubt` → `escalate`、
+  事件 kind `doubt-raised` → **`escalated`**(与拆分前的历史事件同名——本来就是同一件事,
+  客户端不必再为一个概念挂两条译法)、阶段动作码 `assessment.review.escalate`。
+- 迁移 `20260816010000_review-escalation-naming.sql` **只改被查询读的值**:
+  `current_route`、`review_events.route` 与 `kind`、`batch_phases.permission_profile`
+  与 `phase_templates.phases` 里的动作码。**不改** `effective_chain` 与 item revision 的
+  `reviewPolicy`——按规矩不可变,读取侧同时认 `doubt` 与 `escalation`,
+  用的是已经在读「一张单子加一个 marker」那版的同一个接缝。
+  写迁移踩到的一处:`check` 约束必须先 drop 再 update,否则行还没搬完就撞上仍写着旧值的约束
+  (升级测试直接红,不是靠眼睛看出来的)。
+- 上次说「阶段动作码存在 permission_profile 里,为改名去迁移那份数据不值当」——这次改的不只是文案,
+  是整套领域名,值当;那份数据是 jsonb 数组,逐元素替换一条语句。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 651 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;prettier 全绿。

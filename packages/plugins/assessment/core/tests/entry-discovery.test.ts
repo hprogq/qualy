@@ -278,6 +278,6 @@ const itemConfig = (f: { classType: string; reviewRole: string }) => ({
         },
       ],
     },
-    doubt: { stages: [] },
+    escalation: { stages: [] },
   },
 })

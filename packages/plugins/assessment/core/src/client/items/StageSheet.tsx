@@ -28,7 +28,7 @@ export interface StageDraft {
   roleIds: string[]
   roleId: string
   /** which of the two routes this step belongs to; they share no steps */
-  chain: 'normal' | 'doubt'
+  chain: 'normal' | 'escalation'
 }
 
 export function StageSheet({

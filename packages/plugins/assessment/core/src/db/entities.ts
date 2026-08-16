@@ -1051,7 +1051,7 @@ export const ReviewInstance = defineEntity({
      * Frozen when the round opens, never read from the phase in force at the
      * moment somebody presses a button (§32.63). An appeal opened in the
      * appeal window keeps its terminal-only rule after that window closes,
-     * and an ordinary review that raised a doubt during filing does not
+     * and an ordinary review that raised an escalation during filing does not
      * silently acquire one when the appeal window opens.
      */
     rejectPolicy: p.string().length(16).defaultRaw(`'any-stage'`),
@@ -1086,7 +1086,7 @@ export const ReviewInstance = defineEntity({
     },
     {
       name: 'chk_review_instances_route',
-      expression: `current_route IN ('normal', 'doubt')`,
+      expression: `current_route IN ('normal', 'escalation')`,
     },
     {
       name: 'chk_review_instances_reject_policy',

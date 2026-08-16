@@ -14,16 +14,20 @@ import { nearestRoleNode, reviewersAt } from './db.ts'
 // goes on - a level this person has no unit of cannot judge them, and the
 // round is still well defined without it.
 //
-// The ordinary route and the doubt route are two lists that share nothing.
-// They were one list with a marker in it, the stages past the marker being
-// the doubt chain; that made the ordinary route a prefix of the doubt route,
-// which is not what either of them means. Raising a doubt now leaves the
-// ordinary route entirely, and an appeal opens on the doubt route without
-// ever walking the ordinary one.
+// The ordinary route and the escalation route are two lists that share
+// nothing. They were one list with a marker in it, the stages past the marker
+// being where an escalation went; that made the ordinary route a prefix of
+// the other, which is not what either of them means. Escalating now leaves
+// the ordinary route entirely, and an appeal opens on the escalation route
+// without ever walking the ordinary one.
+//
+// Escalating is what this is: the reviewer standing here cannot settle it, so
+// the matter goes to whoever can. It is not a finding about the person who
+// filed it, which is what the word it replaced kept implying.
 
-export type ReviewRoute = 'normal' | 'doubt'
+export type ReviewRoute = 'normal' | 'escalation'
 
-export const REVIEW_ROUTES: readonly ReviewRoute[] = ['normal', 'doubt']
+export const REVIEW_ROUTES: readonly ReviewRoute[] = ['normal', 'escalation']
 
 export interface PolicyStage {
   /**
@@ -43,8 +47,8 @@ export interface PolicyStage {
 export interface ReviewPolicy {
   /** what a submission walks: approval at the last step counts it */
   readonly normal: readonly PolicyStage[]
-  /** where a doubt goes, and the only route an appeal ever walks */
-  readonly doubt: readonly PolicyStage[]
+  /** where an escalation goes, and the only route an appeal ever walks */
+  readonly escalation: readonly PolicyStage[]
 }
 
 /** one stage as the round froze it: where it landed, or why it did not */
@@ -62,7 +66,7 @@ export interface ResolvedStage {
 
 export interface ResolvedPolicy {
   readonly normal: readonly ResolvedStage[]
-  readonly doubt: readonly ResolvedStage[]
+  readonly escalation: readonly ResolvedStage[]
 }
 
 export const stageRoles = (selector: PolicyStage['selector']): readonly string[] =>
@@ -79,8 +83,11 @@ export const stageRoles = (selector: PolicyStage['selector']): readonly string[]
 export const legacyStageId = (flatIndex: number): string => `legacy-${flatIndex}`
 
 interface LegacyPolicy {
+  /** the one list with a marker in it, before the routes were two */
   stages?: readonly (Omit<PolicyStage, 'id'> & { id?: string })[]
   normalTerminal?: number
+  /** the escalation route while it was still called the doubt route */
+  doubt?: { stages?: unknown }
 }
 
 /**
@@ -88,44 +95,49 @@ interface LegacyPolicy {
  *
  * A policy written as one list with `normalTerminal` in it is read as the
  * split it always described: everything up to and including the marker is
- * the ordinary route, everything after it is the doubt route. Nothing is
- * rewritten - an item revision is immutable, and the reading is stable, so
- * the same stored bytes give the same two routes every time.
+ * the ordinary route, everything after it is the escalation route. One
+ * written while that route was called `doubt` is read under its new name.
+ * Nothing is rewritten - an item revision is immutable, and the reading is
+ * stable, so the same stored bytes give the same two routes every time.
  */
 export const readPolicy = (stored: unknown): ReviewPolicy => {
-  if (typeof stored !== 'object' || stored === null) return { normal: [], doubt: [] }
+  if (typeof stored !== 'object' || stored === null) return { normal: [], escalation: [] }
   const held = stored as {
     normal?: { stages?: unknown }
-    doubt?: { stages?: unknown }
+    escalation?: { stages?: unknown }
   } & LegacyPolicy
-  if (held.normal !== undefined || held.doubt !== undefined) {
+  const other = held.escalation ?? held.doubt
+  if (held.normal !== undefined || other !== undefined) {
     return {
       normal: Array.isArray(held.normal?.stages) ? (held.normal.stages as PolicyStage[]) : [],
-      doubt: Array.isArray(held.doubt?.stages) ? (held.doubt.stages as PolicyStage[]) : [],
+      escalation: Array.isArray(other?.stages) ? (other.stages as PolicyStage[]) : [],
     }
   }
   const stages = Array.isArray(held.stages) ? held.stages : []
   const terminal = typeof held.normalTerminal === 'number' ? held.normalTerminal : 0
   const named = stages.map((stage, index) => ({ ...stage, id: stage.id ?? legacyStageId(index) }))
-  return { normal: named.slice(0, terminal + 1), doubt: named.slice(terminal + 1) }
+  return { normal: named.slice(0, terminal + 1), escalation: named.slice(terminal + 1) }
 }
 
 interface LegacyResolved {
   stages?: readonly (Omit<ResolvedStage, 'id' | 'route'> & {
     id?: string
-    route?: ReviewRoute
+    route?: string
   })[]
   normalTerminal?: number
+  /** rounds frozen while the escalation route was called the doubt route */
+  doubt?: unknown
 }
 
-/** a round's frozen routes, read the same way, for rounds opened before the split */
+/** a round's frozen routes, read the same way, whichever names they were frozen under */
 export const readResolved = (stored: unknown): ResolvedPolicy => {
-  if (typeof stored !== 'object' || stored === null) return { normal: [], doubt: [] }
-  const held = stored as { normal?: unknown; doubt?: unknown } & LegacyResolved
-  if (Array.isArray(held.normal) || Array.isArray(held.doubt)) {
+  if (typeof stored !== 'object' || stored === null) return { normal: [], escalation: [] }
+  const held = stored as { normal?: unknown; escalation?: unknown } & LegacyResolved
+  const other = Array.isArray(held.escalation) ? held.escalation : held.doubt
+  if (Array.isArray(held.normal) || Array.isArray(other)) {
     return {
-      normal: Array.isArray(held.normal) ? (held.normal as readonly ResolvedStage[]) : [],
-      doubt: Array.isArray(held.doubt) ? (held.doubt as readonly ResolvedStage[]) : [],
+      normal: Array.isArray(held.normal) ? renamed(held.normal) : [],
+      escalation: Array.isArray(other) ? renamed(other) : [],
     }
   }
   const stages = Array.isArray(held.stages) ? held.stages : []
@@ -133,14 +145,21 @@ export const readResolved = (stored: unknown): ResolvedPolicy => {
   const named = stages.map((stage, index): ResolvedStage => ({
     ...stage,
     id: stage.id ?? legacyStageId(index),
-    route: index > terminal ? 'doubt' : 'normal',
+    route: index > terminal ? 'escalation' : 'normal',
     index: index > terminal ? index - terminal - 1 : index,
   }))
   return {
     normal: named.filter((stage) => stage.route === 'normal'),
-    doubt: named.filter((stage) => stage.route === 'doubt'),
+    escalation: named.filter((stage) => stage.route === 'escalation'),
   }
 }
+
+/** stages frozen under the old route name, answering to the new one */
+const renamed = (stages: readonly unknown[]): readonly ResolvedStage[] =>
+  stages.map((stage) => {
+    const one = stage as Omit<ResolvedStage, 'route'> & { route: string }
+    return { ...one, route: one.route === 'normal' ? 'normal' : 'escalation' }
+  })
 
 const resolveRoute = (input: {
   tenantId: string
@@ -191,8 +210,8 @@ const resolveRoute = (input: {
 /**
  * Both routes, resolved once against this person's frozen lineage.
  *
- * The doubt route is resolved up front with the ordinary one, even though
- * most rounds never touch it: raising a doubt must not re-resolve an
+ * The escalation route is resolved up front with the ordinary one, even
+ * though most rounds never touch it: escalating must not re-resolve an
  * organization that has moved since the round opened (§14).
  */
 export const resolvePolicy = (input: {
@@ -203,12 +222,16 @@ export const resolvePolicy = (input: {
 }) =>
   Effect.gen(function* () {
     const normal = yield* resolveRoute({ ...input, route: 'normal', stages: input.policy.normal })
-    const doubt = yield* resolveRoute({ ...input, route: 'doubt', stages: input.policy.doubt })
-    return { normal, doubt } satisfies ResolvedPolicy
+    const escalation = yield* resolveRoute({
+      ...input,
+      route: 'escalation',
+      stages: input.policy.escalation,
+    })
+    return { normal, escalation } satisfies ResolvedPolicy
   })
 
 export const routeOf = (policy: ResolvedPolicy, route: ReviewRoute): readonly ResolvedStage[] =>
-  route === 'normal' ? policy.normal : policy.doubt
+  route === 'normal' ? policy.normal : policy.escalation
 
 /** the stage a round is standing at, by the name it was recorded under */
 export const stageById = (
@@ -242,9 +265,9 @@ export const nextAfter = (policy: ResolvedPolicy, stage: ResolvedStage): Resolve
 export const isRouteEnd = (policy: ResolvedPolicy, stage: ResolvedStage): boolean =>
   nextAfter(policy, stage) === null
 
-/** whether a doubt can still be raised: there is a route to raise it onto */
-export const doubtOpen = (policy: ResolvedPolicy): boolean =>
-  enterableFrom(policy, 'doubt', 0) !== null
+/** whether escalating is possible at all: there is a route to escalate onto */
+export const escalationOpen = (policy: ResolvedPolicy): boolean =>
+  enterableFrom(policy, 'escalation', 0) !== null
 
 /** who could act at one resolved stage today, excluding the filing's own people */
 export const holdersOf = (input: {

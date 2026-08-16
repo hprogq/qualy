@@ -2,7 +2,7 @@ import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../i18n.ts'
 
 // What happened to a review, in words. The engine's own vocabulary -
-// submitted, doubt-raised, assignee-not-found - is how the domain talks to
+// submitted, escalated, assignee-not-found - is how the domain talks to
 // itself; a person reading the trail of their own filing should never meet
 // it. One map, used by every screen that shows a trail, so a new event kind
 // gains its sentence once.
@@ -11,10 +11,10 @@ const WITH_ACTOR: Record<string, MessageDescriptor> = {
   submitted: m.eventSubmitted,
   approved: m.eventApproved,
   rejected: m.eventRejected,
-  'doubt-raised': m.eventDoubtRaised,
-  forwarded: m.eventForwarded,
-  // rounds that escalated before the doubt route became its own thing
   escalated: m.eventEscalated,
+  // rounds that walked the escalation route while it was one list with a
+  // marker in it, and while it was called something else
+  forwarded: m.eventForwarded,
   comment: m.eventComment,
   'recommend-approve': m.eventRecommendApprove,
   'recommend-reject': m.eventRecommendReject,

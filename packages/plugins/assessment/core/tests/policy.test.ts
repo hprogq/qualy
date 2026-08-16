@@ -14,9 +14,9 @@ const stage = (over: Record<string, unknown> = {}) => ({
 })
 
 /** the two routes, with whatever this case is about in them */
-const policy = (normal: unknown[], doubt: unknown[] = []) => ({
+const policy = (normal: unknown[], escalation: unknown[] = []) => ({
   normal: { stages: normal },
-  doubt: { stages: doubt },
+  escalation: { stages: escalation },
 })
 
 const reasons = (entrySource: 'student' | 'administrative', value: unknown) =>
@@ -34,7 +34,7 @@ describe('the review policy shape', () => {
   })
 
   it('accepts two routes that share no steps', () => {
-    // the class monitor decides ordinarily; a doubt goes somewhere else
+    // the class monitor decides ordinarily; an escalation goes somewhere else
     // entirely rather than carrying on down the same list (§32.62)
     expect(
       reasons(
@@ -53,8 +53,8 @@ describe('the review policy shape', () => {
     ).toEqual([])
   })
 
-  it('accepts a policy with no doubt route at all', () => {
-    // nothing says a question must have one; raising a doubt is then simply
+  it('accepts a policy with no escalation route at all', () => {
+    // nothing says a question must have one; escalating is then simply
     // not offered
     expect(reasons('student', { normal: { stages: [stage()] } })).toEqual([])
   })
@@ -78,7 +78,7 @@ describe('the review policy shape', () => {
     expect(reasons('student', policy([stage({ quorum: { type: 'mostOf' } })]))).toContain(
       'policy-quorum-type',
     )
-    expect(reasons('student', { ...policy([stage()]), escalation: {} })).toContain(
+    expect(reasons('student', { ...policy([stage()]), sideChain: {} })).toContain(
       'policy-unknown-key',
     )
   })

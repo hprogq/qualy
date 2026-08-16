@@ -175,7 +175,7 @@ const studentConfig = (over: Partial<Record<string, unknown>> = {}) => ({
         },
       ],
     },
-    doubt: { stages: [] },
+    escalation: { stages: [] },
   },
   ...over,
 })
@@ -279,7 +279,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               },
             }),
             badPolicy: yield* create({
-              reviewPolicy: { normal: { stages: [] }, doubt: { stages: [] } },
+              reviewPolicy: { normal: { stages: [] }, escalation: { stages: [] } },
             }),
             strayGroup: yield* create({ scoreGroupId: randomUUID() }),
           }
@@ -326,9 +326,9 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
             quorum: { type: 'any' },
           })
-          const routes = (normal: unknown[], doubt: unknown[] = []) => ({
+          const routes = (normal: unknown[], escalation: unknown[] = []) => ({
             normal: { stages: normal },
-            doubt: { stages: doubt },
+            escalation: { stages: escalation },
           })
           return {
             twoRoutes: yield* create(routes([stage('n1'), stage('n2')], [stage('d1')]), 'student'),

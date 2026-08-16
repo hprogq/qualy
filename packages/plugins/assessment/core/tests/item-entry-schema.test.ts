@@ -155,7 +155,7 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await db.row<{ id: string }>(
         `insert into review_instances
            (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id, effective_chain, current_stage_id, current_role_ids, current_node_id, current_node_path)
-         values ($1, $2, $3, 1, 'initial', 'participant', $6, '{"normal":[],"doubt":[]}', 'class', $4::uuid[], $5,
+         values ($1, $2, $3, 1, 'initial', 'participant', $6, '{"normal":[],"escalation":[]}', 'class', $4::uuid[], $5,
                  (select path from org_nodes where id = $5))
          returning id`,
         [f.tenantId, e.entryId, e.revisionId, `{${randomUUID()}}`, f.nodeId, g.itemRevisionId],

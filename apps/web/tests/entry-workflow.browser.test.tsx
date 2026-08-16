@@ -311,7 +311,7 @@ describe('judging a submission', () => {
           skipped: null,
         },
       ],
-      doubt: [],
+      escalation: [],
       decisions: ['approve', 'reject', 'comment'],
     },
     events: [

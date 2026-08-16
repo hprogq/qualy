@@ -508,10 +508,10 @@ const reviewDetailView = Schema.Struct({
   form: Schema.Struct({ itemType: Schema.String, formConfig: configJson }),
   /** where the round stands, and what both routes are */
   chain: Schema.Struct({
-    route: Schema.Literals(['normal', 'doubt']),
+    route: Schema.Literals(['normal', 'escalation']),
     stageId: Schema.String,
     normal: Schema.Array(reviewStageView),
-    doubt: Schema.Array(reviewStageView),
+    escalation: Schema.Array(reviewStageView),
     /** what this reader may say here, already narrowed by route and position */
     decisions: Schema.Array(Schema.String),
   }),
@@ -676,7 +676,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('decideReview', '/assessment/review/instances/:instanceId/decisions', {
       params: Schema.Struct({ instanceId: id }),
       payload: Schema.Struct({
-        decision: Schema.Literals(['approve', 'reject', 'raise-doubt', 'comment']),
+        decision: Schema.Literals(['approve', 'reject', 'escalate', 'comment']),
         comment: Schema.optional(boundedText(2000)),
         suggestedPayload: Schema.optional(configJson),
       }),

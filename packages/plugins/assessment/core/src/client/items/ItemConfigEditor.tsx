@@ -61,7 +61,7 @@ const blankField = (key: string): FieldDraft => ({
 const nextStageId = (): string =>
   `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
-const blankStage = (options: ItemOptions, chain: 'normal' | 'doubt'): StageDraft => ({
+const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): StageDraft => ({
   key: nextStageId(),
   kind: 'roleAt',
   nodeTypeId: options.orgTypes[0]?.id ?? '',
@@ -168,12 +168,15 @@ const stagesOf = (stored: unknown, options: ItemOptions): StageDraft[] => {
   const held = stored as
     | {
         normal?: { stages?: StoredStage[] }
+        escalation?: { stages?: StoredStage[] }
+        /** the escalation route while it was still called the doubt route */
         doubt?: { stages?: StoredStage[] }
         stages?: StoredStage[]
         normalTerminal?: number
       }
     | undefined
-  const draftOne = (stage: StoredStage, chain: 'normal' | 'doubt', id: string): StageDraft =>
+  const other = held?.escalation ?? held?.doubt
+  const draftOne = (stage: StoredStage, chain: 'normal' | 'escalation', id: string): StageDraft =>
     stage.selector?.kind === 'nearestRole'
       ? {
           key: id,
@@ -191,19 +194,19 @@ const stagesOf = (stored: unknown, options: ItemOptions): StageDraft[] => {
           roleId: options.roles[0]?.id ?? '',
           chain,
         }
-  if (Array.isArray(held?.normal?.stages) || Array.isArray(held?.doubt?.stages)) {
+  if (Array.isArray(held?.normal?.stages) || Array.isArray(other?.stages)) {
     return [
       ...(held?.normal?.stages ?? []).map((stage, index) =>
         draftOne(stage, 'normal', stage.id ?? `legacy-${index}`),
       ),
-      ...(held?.doubt?.stages ?? []).map((stage, index) =>
-        draftOne(stage, 'doubt', stage.id ?? `legacy-${index}`),
+      ...(other?.stages ?? []).map((stage, index) =>
+        draftOne(stage, 'escalation', stage.id ?? `legacy-${index}`),
       ),
     ]
   }
   const terminal = held?.normalTerminal ?? 0
   return (held?.stages ?? []).map((stage, index) =>
-    draftOne(stage, index > terminal ? 'doubt' : 'normal', stage.id ?? `legacy-${index}`),
+    draftOne(stage, index > terminal ? 'escalation' : 'normal', stage.id ?? `legacy-${index}`),
   )
 }
 
@@ -263,7 +266,9 @@ const configOf = (draft: Draft) => ({
     : {}),
   reviewPolicy: {
     normal: { stages: draft.stages.filter((one) => one.chain === 'normal').map(storedStage) },
-    doubt: { stages: draft.stages.filter((one) => one.chain === 'doubt').map(storedStage) },
+    escalation: {
+      stages: draft.stages.filter((one) => one.chain === 'escalation').map(storedStage),
+    },
   },
 })
 
@@ -505,7 +510,7 @@ export function ItemConfigEditor({
    * asking them to do the insertion themselves, one press at a time, in a
    * chain whose order is its whole meaning.
    */
-  const addStage = (chain: 'normal' | 'doubt', at?: number) => {
+  const addStage = (chain: 'normal' | 'escalation', at?: number) => {
     const stage = blankStage(options, chain)
     setDraft((previous) => {
       const own = previous.stages.filter((one) => one.chain === chain)
@@ -867,21 +872,21 @@ export function ItemConfigEditor({
                   }))
                 }
               />
-              {draft.stages.some((one) => one.chain === 'doubt') ? (
+              {draft.stages.some((one) => one.chain === 'escalation') ? (
                 <div className="flex flex-col gap-3 border-t pt-4">
                   <div>
-                    <h4 className="text-sm font-medium">{format(m.itemsDoubtTitle)}</h4>
+                    <h4 className="text-sm font-medium">{format(m.itemsEscalationTitle)}</h4>
                     <p className="pt-0.5 text-xs text-muted-foreground">
-                      {format(m.itemsDoubtHint)}
+                      {format(m.itemsEscalationHint)}
                     </p>
                   </div>
                   <ChainFlow
                     batchId={batchId}
-                    chain="doubt"
-                    steps={draft.stages.filter((one) => one.chain === 'doubt')}
+                    chain="escalation"
+                    steps={draft.stages.filter((one) => one.chain === 'escalation')}
                     options={options}
                     onOpen={setOpenStage}
-                    onAdd={(at) => addStage('doubt', at)}
+                    onAdd={(at) => addStage('escalation', at)}
                     onRemove={(key) =>
                       setDraft((previous) => ({
                         ...previous,
@@ -893,11 +898,11 @@ export function ItemConfigEditor({
               ) : (
                 <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs font-medium">
                   <InlineAdd
-                    label={format(m.itemsDoubtAddStep)}
-                    onClick={() => addStage('doubt')}
+                    label={format(m.itemsEscalationAddStep)}
+                    onClick={() => addStage('escalation')}
                   />
                   <span className="font-normal text-muted-foreground">
-                    {format(m.itemsDoubtEmpty)}
+                    {format(m.itemsEscalationEmpty)}
                   </span>
                 </div>
               )}
@@ -1062,7 +1067,7 @@ function ScoringSummary({
 
 /**
  * The path a submission takes, drawn as one line from where it enters to
- * where it leaves. Both routes get both ends: a doubt route that starts and
+ * where it leaves. Both routes get both ends: an escalation route that starts and
  * finishes nowhere is a row of boxes, not a route.
  *
  * Markers on their own track, labels under them. Drawn as a row of columns
@@ -1084,7 +1089,7 @@ function ChainFlow({
   onRemove,
 }: {
   batchId: string
-  chain: 'normal' | 'doubt'
+  chain: 'normal' | 'escalation'
   steps: readonly StageDraft[]
   options: ItemOptions
   onOpen: (key: string) => void
@@ -1103,8 +1108,8 @@ function ChainFlow({
       ),
       label: (
         <NodeLabel
-          title={format(chain === 'normal' ? m.itemsFlowSubmit : m.itemsDoubtRaised)}
-          sub={format(chain === 'normal' ? m.itemsFlowSubmitBy : m.itemsDoubtRaisedBy)}
+          title={format(chain === 'normal' ? m.itemsFlowSubmit : m.itemsEscalated)}
+          sub={format(chain === 'normal' ? m.itemsFlowSubmitBy : m.itemsEscalationBy)}
         />
       ),
     },
@@ -1116,7 +1121,7 @@ function ChainFlow({
           batchId={batchId}
           stage={one}
           options={options}
-          removable={chain === 'doubt' || steps.length > 1}
+          removable={chain === 'escalation' || steps.length > 1}
           onOpen={() => onOpen(one.key)}
           onRemove={() => onRemove(one.key)}
         />
@@ -1131,8 +1136,8 @@ function ChainFlow({
       ),
       label: (
         <NodeLabel
-          title={format(chain === 'normal' ? m.itemsFlowDone : m.itemsDoubtSettled)}
-          sub={format(chain === 'normal' ? m.itemsFlowDoneSub : m.itemsDoubtSettledSub)}
+          title={format(chain === 'normal' ? m.itemsFlowDone : m.itemsEscalationSettled)}
+          sub={format(chain === 'normal' ? m.itemsFlowDoneSub : m.itemsEscalationSettledSub)}
         />
       ),
     },

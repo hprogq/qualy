@@ -113,7 +113,7 @@ export const PARTICIPANT_ACTION_CODES = [
  * identical ticks against every reviewing role and would buy nothing - what
  * varies is not who, it is when.
  */
-export const REVIEW_ACTION_CODES = ['assessment.review.raise-doubt'] as const
+export const REVIEW_ACTION_CODES = ['assessment.review.escalate'] as const
 
 export const STAFF_CODES = [
   'assessment.entry.proxy',
@@ -134,7 +134,7 @@ export const PHASE_GATED_CODES = [
   'assessment.entry.record',
   'assessment.entry.resubmit',
   'assessment.review.process',
-  'assessment.review.raise-doubt',
+  'assessment.review.escalate',
   'assessment.review.reopen',
   'assessment.result.view-peers',
   'assessment.ranking.view',
@@ -167,7 +167,7 @@ for (const code of PARTICIPANT_ACTION_CODES) {
 }
 
 // Same rule for a reviewer's own actions: standing at the level is what
-// makes somebody a reviewer, and a grantable "may raise a doubt" would offer
+// makes somebody a reviewer, and a grantable "may escalate" would offer
 // to make somebody one who is not.
 for (const code of REVIEW_ACTION_CODES) {
   if (declared.has(code)) {
