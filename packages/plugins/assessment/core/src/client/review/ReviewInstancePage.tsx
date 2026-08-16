@@ -62,6 +62,7 @@ import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.
 import { HistorySheet, VersionPicker } from './history.tsx'
 import { attachmentContentUrl } from '../entry/model.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
+import { Appear, CountdownRing, DoneMark, Drill, Stagger } from '@qualy/ui/reveal'
 
 // The workbench: one submission a screen, walked in a run.
 //
@@ -165,6 +166,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [writing, setWriting] = useState(false)
   const [openSibling, setOpenSibling] = useState<string | null>(null)
   const lingeringSibling = useLingering(openSibling)
+  // the pill has to keep its words while it animates out
+  const lingeringStaged = useLingering(deferred.pending)
   const [trailOpen, setTrailOpen] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
   // which earlier version the filing is read against; null is not comparing
@@ -421,7 +424,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
                   onMove={move}
                 />
-                <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_19rem]">
+                <Drill
+                  move="next"
+                  drillKey={instanceId}
+                  className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_19rem]"
+                >
                   <MainColumn
                     review={review}
                     comparing={comparing}
@@ -430,7 +437,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     onTrail={() => setTrailOpen(true)}
                   />
                   <ContextRail review={review} onOpenSibling={setOpenSibling} />
-                </div>
+                </Drill>
                 {review.capabilities.canDecide && decisions.length > 0 && (
                   <DecisionBar
                     review={review}
@@ -456,9 +463,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
           </div>
         </div>
 
-        {deferred.pending !== null && (
-          <UndoPill staged={deferred.pending} deadline={deferred.deadline} onUndo={undoStaged} />
-        )}
+        <Appear show={deferred.pending !== null} className="absolute bottom-20 left-[16rem] z-10">
+          {lingeringStaged !== null && (
+            <UndoPill staged={lingeringStaged} deadline={deferred.deadline} onUndo={undoStaged} />
+          )}
+        </Appear>
         {keysOpen && <KeysPanel onClose={() => setKeysOpen(false)} />}
         {writing && (
           <WritingBox
@@ -932,7 +941,7 @@ function MainColumn({
                 <dt className="text-sm whitespace-nowrap text-muted-foreground">{field.label}</dt>
                 <dd className="flex min-w-0 flex-col gap-0.5 text-sm">
                   <span className={cn(changed && 'font-medium')}>{now === '' ? '—' : now}</span>
-                  {changed && (
+                  <Appear show={changed}>
                     <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
                       <span className="shrink-0">{format(m.reviewComparePrevious)}</span>
                       {before === '' ? (
@@ -941,7 +950,7 @@ function MainColumn({
                         <span className="min-w-0 line-through">{before}</span>
                       )}
                     </span>
-                  )}
+                  </Appear>
                 </dd>
               </div>
             )
@@ -1426,6 +1435,7 @@ function UndoPill({
 }) {
   const { format } = useI18n()
   const [left, setLeft] = useState(() => Math.ceil((deadline - Date.now()) / 1000))
+  const started = useRef(Math.max(0, (deadline - Date.now()) / 1000))
   useEffect(() => {
     const tick = setInterval(
       () => setLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000))),
@@ -1434,10 +1444,10 @@ function UndoPill({
     return () => clearInterval(tick)
   }, [deadline])
   return (
-    <div className="absolute bottom-20 left-[16rem] z-10 flex items-center gap-3 rounded-xl border bg-background px-3.5 py-2.5 shadow-lg">
-      <span className="flex size-6 items-center justify-center rounded-full border text-xs tabular-nums">
+    <div className="flex items-center gap-3 rounded-xl border bg-background px-3.5 py-2.5 shadow-lg">
+      <CountdownRing seconds={5} remaining={started.current}>
         {left}
-      </span>
+      </CountdownRing>
       <p className="flex items-baseline gap-2 text-sm whitespace-nowrap">
         <span className="font-semibold">{staged.participantName}</span>
         {format(DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.reviewApprove)}
@@ -1534,10 +1544,13 @@ function DoneScreen({
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
-      <div className="flex w-full max-w-xl flex-col gap-5">
-        <h2 className="text-xl font-semibold tracking-tight">
-          {format(m.reviewDoneTitle, { count: log.length })}
-        </h2>
+      <Stagger className="flex w-full max-w-xl flex-col gap-5" step={0.08}>
+        <div className="flex items-center gap-4">
+          <DoneMark className="size-12 shrink-0" />
+          <h2 className="text-xl font-semibold tracking-tight">
+            {format(m.reviewDoneTitle, { count: log.length })}
+          </h2>
+        </div>
         <div className="flex items-end gap-6 border-y py-4">
           <DoneStat label={format(m.reviewApprove)} value={counts.approve} />
           <DoneStat label={format(m.reviewReject)} value={counts.reject} />
@@ -1602,7 +1615,7 @@ function DoneScreen({
             </p>
           </div>
         )}
-      </div>
+      </Stagger>
     </div>
   )
 }

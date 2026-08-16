@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { Children, useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+
+import { cn } from '../lib/utils.ts'
 
 // The entrance a screen makes: a short fade and lift, once, on mount.
 // Deliberately subtle - page content should arrive, not perform.
@@ -162,5 +164,171 @@ export function Drill({
     >
       {children}
     </motion.div>
+  )
+}
+
+// A ring that empties over a known span, with whatever it is counting in the
+// middle of it.
+//
+// For a window somebody may act inside: a number alone says how long is
+// left, but only after it has been read. The ring says it at a glance, and
+// it is the same fact drawn twice rather than decoration - which is why it
+// runs on the real deadline instead of a fixed loop. Reduced motion keeps
+// the number and drops the sweep.
+export function CountdownRing({
+  seconds,
+  remaining,
+  className,
+  children,
+}: {
+  /** how long the whole window is */
+  seconds: number
+  /** how much of it is left when this renders, for a ring that resumes right */
+  remaining: number
+  className?: string
+  children?: ReactNode
+}) {
+  const reduced = useReducedMotion()
+  const circumference = 2 * Math.PI * 11
+  const left = Math.max(0, Math.min(1, remaining / seconds))
+  return (
+    <span className={cn('relative flex size-6.5 items-center justify-center', className)}>
+      <svg viewBox="0 0 26 26" className="absolute inset-0 -rotate-90">
+        <circle cx="13" cy="13" r="11" fill="none" strokeWidth="2" className="stroke-border" />
+        <motion.circle
+          cx="13"
+          cy="13"
+          r="11"
+          fill="none"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="stroke-foreground"
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference * (1 - left) }}
+          animate={{
+            strokeDashoffset: reduced === true ? circumference * (1 - left) : circumference,
+          }}
+          transition={{ duration: reduced === true ? 0 : seconds * left, ease: 'linear' }}
+        />
+      </svg>
+      <span className="relative text-xs tabular-nums">{children}</span>
+    </span>
+  )
+}
+
+// The mark a finished run ends on: a ring drawn round once, then a tick
+// struck through it.
+//
+// The one place on these screens where an animation is the message. Clearing
+// a queue is the point of the work, and a static tick that was simply there
+// when the screen arrived says nothing happened. Drawn, it says you did that.
+export function DoneMark({ className }: { className?: string }) {
+  const reduced = useReducedMotion()
+  const still = reduced === true
+  return (
+    <svg viewBox="0 0 76 76" className={cn('size-16', className)} aria-hidden>
+      <circle cx="38" cy="38" r="32" fill="none" strokeWidth="2" className="stroke-border" />
+      <motion.circle
+        cx="38"
+        cy="38"
+        r="32"
+        fill="none"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="stroke-foreground"
+        transform="rotate(-90 38 38)"
+        initial={{ pathLength: still ? 1 : 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: still ? 0 : 0.62, ease: [0.4, 0, 0.2, 1] }}
+      />
+      <motion.path
+        d="M25 39.5 34 48.5 51.5 30"
+        fill="none"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="stroke-foreground"
+        initial={{ pathLength: still ? 1 : 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: still ? 0 : 0.38, delay: still ? 0 : 0.52, ease: [0.4, 0, 0.2, 1] }}
+      />
+    </svg>
+  )
+}
+
+// Children arriving one after another rather than all at once.
+//
+// For a screen whose parts are read in order - a mark, then what it means,
+// then what to do next. The stagger is what makes it an order rather than a
+// pile; anything whose parts are read at a glance should not use it.
+export function Stagger({
+  className,
+  delay = 0,
+  step = 0.07,
+  children,
+}: {
+  className?: string
+  /** held back until whatever comes before it has finished */
+  delay?: number
+  step?: number
+  children: ReactNode
+}) {
+  const reduced = useReducedMotion()
+  return (
+    <motion.div
+      className={className}
+      initial="hidden"
+      animate="shown"
+      variants={{
+        shown: {
+          transition: { staggerChildren: reduced === true ? 0 : step, delayChildren: delay },
+        },
+      }}
+    >
+      {Children.map(children, (child) => (
+        <motion.div
+          variants={{
+            hidden: { opacity: reduced === true ? 1 : 0, y: reduced === true ? 0 : 8 },
+            shown: { opacity: 1, y: 0 },
+          }}
+          transition={{ duration: reduced === true ? 0 : 0.32, ease: [0.4, 0, 0.2, 1] }}
+        >
+          {child}
+        </motion.div>
+      ))}
+    </motion.div>
+  )
+}
+
+// Something that comes and goes where it stands: a bar that offers to undo,
+// a strip that says what just happened.
+//
+// Not a dialog and not a toast - it belongs to the screen it is on and to a
+// moment that ends. Wrapped in presence so the going is drawn too; without
+// it the thing simply is not there any more, which reads as a glitch.
+export function Appear({
+  show,
+  className,
+  children,
+}: {
+  show: boolean
+  className?: string
+  children: ReactNode
+}) {
+  const reduced = useReducedMotion()
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className={className}
+          initial={{ opacity: 0, y: reduced === true ? 0 : 12, scale: reduced === true ? 1 : 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: reduced === true ? 0 : 8, scale: reduced === true ? 1 : 0.98 }}
+          transition={{ duration: reduced === true ? 0 : 0.18, ease: [0.4, 0, 0.2, 1] }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

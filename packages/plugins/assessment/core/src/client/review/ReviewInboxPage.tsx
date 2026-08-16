@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CheckIcon, CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
+import { CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -9,8 +9,9 @@ import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { DoneMark, Stagger } from '@qualy/ui/reveal'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -91,9 +92,9 @@ function Queue({
   )
   const itemOptions = useMemo(
     () =>
-      [...new Map(all.map((row) => [row.itemId, row.itemTitle])).entries()].sort(([, a], [, b]) =>
-        a.localeCompare(b),
-      ),
+      [...new Map(all.map((row) => [row.itemId, row.itemTitle])).entries()]
+        .map(([id, title]) => [id, title] as const)
+        .sort(([, a], [, b]) => a.localeCompare(b)),
     [all],
   )
   const unitOptions = useMemo(
@@ -102,7 +103,9 @@ function Queue({
         ...new Map(
           all.flatMap((row) => (row.unitId === null ? [] : [[row.unitId, row.unitName ?? '']])),
         ).entries(),
-      ].sort(([, a], [, b]) => (a as string).localeCompare(b as string)),
+      ]
+        .map(([id, name]) => [id, String(name)] as const)
+        .sort(([, a], [, b]) => a.localeCompare(b)),
     [all],
   )
 
@@ -125,43 +128,31 @@ function Queue({
               <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>
             </TabsList>
           </Tabs>
+          {/* every control on this row is the same height as the tabs beside
+              it: a row of filters that do not line up reads as two rows */}
           {view !== 'person' && (
-            <NativeSelect
-              aria-label={format(m.reviewFilterAllItems)}
-              className="h-8 w-auto text-xs"
+            <Filter
+              label={format(m.reviewFilterAllItems)}
               value={itemFilter}
-              onChange={(event) => setItemFilter(event.target.value)}
-            >
-              <option value="">{format(m.reviewFilterAllItems)}</option>
-              {itemOptions.map(([id, title]) => (
-                <option key={id} value={id}>
-                  {title}
-                </option>
-              ))}
-            </NativeSelect>
+              options={itemOptions}
+              onChange={setItemFilter}
+            />
           )}
           {view !== 'time' && unitOptions.length > 0 && (
-            <NativeSelect
-              aria-label={format(m.reviewFilterAllUnits)}
-              className="h-8 w-auto text-xs"
+            <Filter
+              label={format(m.reviewFilterAllUnits)}
               value={unitFilter}
-              onChange={(event) => setUnitFilter(event.target.value)}
-            >
-              <option value="">{format(m.reviewFilterAllUnits)}</option>
-              {unitOptions.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </NativeSelect>
+              options={unitOptions}
+              onChange={setUnitFilter}
+            />
           )}
           <div className="relative">
             <SearchIcon
               aria-hidden
-              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              className="h-8 w-56 pl-8 text-xs"
+              className="h-9 w-60 pl-8.5"
               value={search}
               placeholder={format(m.reviewSearchPlaceholder)}
               onChange={(event) => setSearch(event.target.value)}
@@ -176,7 +167,7 @@ function Queue({
           // arrived yet. The counter is what tells them apart
           (inbox.data?.handledToday ?? 0) > 0 ? (
             <EmptyScreen
-              icon={<CheckIcon aria-hidden className="size-5" />}
+              mark={<DoneMark />}
               title={format(m.reviewAllDoneTitle)}
               body={format(m.reviewAllDoneBody, { count: inbox.data?.handledToday ?? 0 })}
             />
@@ -479,16 +470,71 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
  * A quiet day, said in full: the screen a reviewer lands on when there is
  * nothing to do is the screen they see most often, so it gets the room.
  */
-function EmptyScreen({ icon, title, body }: { icon: ReactNode; title: string; body: string }) {
+function EmptyScreen({
+  icon,
+  mark,
+  title,
+  body,
+}: {
+  icon?: ReactNode
+  /** a drawn mark instead of a still icon, where the emptiness was earned */
+  mark?: ReactNode
+  title: string
+  body: string
+}) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5 py-16 text-center">
-      <span className="flex size-13 items-center justify-center rounded-full border text-muted-foreground">
-        {icon}
-      </span>
-      <div className="flex max-w-md flex-col gap-2">
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        <p className="text-sm leading-relaxed text-pretty text-muted-foreground">{body}</p>
-      </div>
+    <div className="flex flex-1 items-center justify-center py-16">
+      <Stagger className="flex max-w-md flex-col items-center gap-5 text-center" step={0.08}>
+        {mark ?? (
+          <span className="flex size-13 items-center justify-center rounded-full border text-muted-foreground">
+            {icon}
+          </span>
+        )}
+        <div className="flex flex-col gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <p className="text-sm leading-relaxed text-pretty text-muted-foreground">{body}</p>
+        </div>
+      </Stagger>
     </div>
   )
 }
+
+/**
+ * One narrowing of the queue: everything, or one of something.
+ *
+ * The empty value is the whole list rather than a blank, so the control
+ * always says what the reader is looking at instead of what they are not.
+ */
+function Filter({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: readonly (readonly [string, string])[]
+  onChange: (next: string) => void
+}) {
+  return (
+    <Select
+      value={value === '' ? ALL : value}
+      onValueChange={(next) => onChange(next === ALL ? '' : next)}
+    >
+      <SelectTrigger aria-label={label} className="max-w-52">
+        <SelectValue placeholder={label} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ALL}>{label}</SelectItem>
+        {options.map(([id, name]) => (
+          <SelectItem key={id} value={id}>
+            {name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+/** radix refuses an empty option value, so "no filter" needs a name of its own */
+const ALL = 'all'
