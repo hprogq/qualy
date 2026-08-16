@@ -33,6 +33,10 @@ import { layoutMessages as m } from './i18n.ts'
 
 const byOrder = (a: { order?: number }, b: { order?: number }) => (a.order ?? 0) - (b.order ?? 0)
 
+/** whether some other entry of the rail lives under this one's path */
+const hasEntriesBelow = (path: string, all: readonly string[]) =>
+  all.some((other) => other !== path && other.startsWith(`${path}/`))
+
 /** the entry's path with this route's parameters in it, or nothing if one is missing */
 const fill = (path: string, params: Readonly<Record<string, string | undefined>>) => {
   if (!path.includes(':')) return path
@@ -57,17 +61,28 @@ function RailEntry({
   label,
   icon,
   to,
+  exact,
 }: {
   /** the entry's own id, so whoever counts for it can find its badge */
   id: string
   label: ResolvedNavigationItem['label']
   icon?: string
   to: string
+  /**
+   * Whether only this exact path counts as being here.
+   *
+   * A section that opens one of its own rows navigates deeper - a queue to
+   * one submission, a list to one record - and the rail must stay lit while
+   * the reader is down there, or the workspace looks like it was left. So
+   * matching is by prefix, except for an entry that another entry lives
+   * underneath: the workspace root would otherwise be lit on every page.
+   */
+  exact: boolean
 }) {
   return (
     <li>
       <NavLink
-        end
+        end={exact}
         to={to}
         className={({ isActive }) =>
           cn(
@@ -130,6 +145,7 @@ function CapableWorkspaceShell() {
     return to === undefined ? [] : [{ ...item, to }]
   })
   const registered = new Set(groups.map((group) => group.id))
+  const paths = addressable.map((item) => item.to)
   const loose = addressable
     .filter((item) => item.group === undefined || !registered.has(item.group))
     .sort(byOrder)
@@ -183,6 +199,7 @@ function CapableWorkspaceShell() {
                 label={item.label}
                 icon={item.icon}
                 to={item.to}
+                exact={hasEntriesBelow(item.to, paths)}
               />
             ))}
           </ul>
@@ -200,6 +217,7 @@ function CapableWorkspaceShell() {
                   label={item.label}
                   icon={item.icon}
                   to={item.to}
+                  exact={hasEntriesBelow(item.to, paths)}
                 />
               ))}
             </ul>

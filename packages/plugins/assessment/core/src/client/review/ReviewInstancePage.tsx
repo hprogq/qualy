@@ -468,12 +468,13 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onClose={() => setWriting(false)}
           />
         )}
-        {lingeringSibling !== null && review?.context != null && (
+        {review !== undefined && (
           <SiblingSheet
             open={openSibling !== null}
             itemTitle={review.itemTitle}
             sibling={
-              review.context.siblings.find((one) => one.entryId === lingeringSibling) ?? null
+              (review.context?.siblings ?? []).find((one) => one.entryId === lingeringSibling) ??
+              null
             }
             onClose={() => setOpenSibling(null)}
           />
@@ -1387,20 +1388,21 @@ function SiblingSheet({
   onClose: () => void
 }) {
   const { format } = useI18n()
-  if (sibling === null) return null
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open && sibling !== null} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-baseline gap-2 text-sm">
             {itemTitle}
             <span className="text-xs font-normal text-muted-foreground">
-              {format(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther)}
+              {sibling === null
+                ? ''
+                : format(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther)}
             </span>
           </DialogTitle>
         </DialogHeader>
         <dl className="flex flex-col gap-2">
-          {sibling.values.map((pair) => (
+          {(sibling?.values ?? []).map((pair) => (
             <div key={pair.label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
               <dt className="text-sm whitespace-nowrap text-muted-foreground">{pair.label}</dt>
               <dd className="min-w-0 text-sm">{pair.value === '' ? '—' : pair.value}</dd>

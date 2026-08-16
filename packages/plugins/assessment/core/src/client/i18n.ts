@@ -1095,10 +1095,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Escalated',
     },
     reviewFilesCount: { id: 'assessment/review/files-count', defaultMessage: '{count} files' },
-    reviewEmptyRefresh: {
-      id: 'assessment/review/empty-refresh',
-      defaultMessage: 'New submissions appear here on their own.',
-    },
     reviewNoStandingHint: {
       id: 'assessment/review/no-standing-hint',
       defaultMessage: 'To take part, ask whoever runs this round to assign you a reviewing role.',
@@ -1222,23 +1218,23 @@ const i18n = definePluginMessages({
     reviewDownloadAll: { id: 'assessment/review/download-all', defaultMessage: 'Download all' },
     reviewTipApprove: {
       id: 'assessment/review/tip-approve',
-      defaultMessage: 'Counts it towards their score',
+      defaultMessage: 'Counts towards their score',
     },
     reviewTipReject: {
       id: 'assessment/review/tip-reject',
-      defaultMessage: 'Hands it back for them to revise',
+      defaultMessage: 'Goes back for them to revise',
     },
     reviewTipEscalate: {
       id: 'assessment/review/tip-escalate',
-      defaultMessage: 'Passes it to the escalation route',
+      defaultMessage: 'Goes to the escalation route',
     },
     reviewTipComment: {
       id: 'assessment/review/tip-comment',
-      defaultMessage: 'Leaves a word without moving it',
+      defaultMessage: 'Records a word; it stays with you',
     },
     reviewTipSubmit: {
       id: 'assessment/review/tip-submit',
-      defaultMessage: 'Sends the chosen decision',
+      defaultMessage: 'Sends what you chose',
     },
     reviewHintArmedApprove: {
       id: 'assessment/review/hint-armed-approve',
@@ -1263,41 +1259,19 @@ const i18n = definePluginMessages({
     },
     reviewAllDoneBody: {
       id: 'assessment/review/all-done-body',
-      defaultMessage: 'Handled {count} today. New submissions appear here.',
+      defaultMessage: '{count} handled today.',
     },
     reviewNothingTitle: {
       id: 'assessment/review/nothing-title',
-      defaultMessage: 'Nothing has reached your step yet',
+      defaultMessage: 'Nothing is waiting for you',
     },
     reviewNothingBody: {
       id: 'assessment/review/nothing-body',
-      defaultMessage: 'Whatever is filed and reaches your step appears here on its own.',
+      defaultMessage: 'New submissions appear here on their own.',
     },
     reviewNoRoleTitle: {
       id: 'assessment/review/no-role-title',
       defaultMessage: 'You review nothing in this round',
-    },
-    reviewNotHereTitle: {
-      id: 'assessment/review/not-here-title',
-      defaultMessage: 'Two that never reach a queue',
-    },
-    reviewWaitingAssign: {
-      id: 'assessment/review/waiting-assign',
-      defaultMessage: 'Waiting for a reviewer',
-    },
-    reviewWaitingAssignBody: {
-      id: 'assessment/review/waiting-assign-body',
-      defaultMessage:
-        'A step with nobody in it holds the submission until whoever runs the round staffs it.',
-    },
-    reviewTakenTitle: {
-      id: 'assessment/review/taken-title',
-      defaultMessage: 'Someone got there first',
-    },
-    reviewTakenBody: {
-      id: 'assessment/review/taken-body',
-      defaultMessage:
-        'Where several people may judge a step, the first decision stands and yours is refused.',
     },
     reviewFirstOne: {
       id: 'assessment/review/first-one',

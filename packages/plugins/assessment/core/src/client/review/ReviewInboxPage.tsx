@@ -174,24 +174,19 @@ function Queue({
         {all.length === 0 ? (
           // two different quiet days: everything handled, or nothing has
           // arrived yet. The counter is what tells them apart
-          <>
-            {(inbox.data?.handledToday ?? 0) > 0 ? (
-              <EmptyScreen
-                icon={<CheckIcon aria-hidden className="size-5" />}
-                title={format(m.reviewAllDoneTitle)}
-                body={format(m.reviewAllDoneBody, { count: inbox.data?.handledToday ?? 0 })}
-                foot={format(m.reviewEmptyRefresh)}
-              />
-            ) : (
-              <EmptyScreen
-                icon={<FileTextIcon aria-hidden className="size-5" />}
-                title={format(m.reviewNothingTitle)}
-                body={format(m.reviewNothingBody)}
-                foot={format(m.reviewEmptyRefresh)}
-              />
-            )}
-            <NeverHere />
-          </>
+          (inbox.data?.handledToday ?? 0) > 0 ? (
+            <EmptyScreen
+              icon={<CheckIcon aria-hidden className="size-5" />}
+              title={format(m.reviewAllDoneTitle)}
+              body={format(m.reviewAllDoneBody, { count: inbox.data?.handledToday ?? 0 })}
+            />
+          ) : (
+            <EmptyScreen
+              icon={<FileTextIcon aria-hidden className="size-5" />}
+              title={format(m.reviewNothingTitle)}
+              body={format(m.reviewNothingBody)}
+            />
+          )
         ) : rows.length === 0 ? (
           <p className="rounded-xl border px-5 py-4 text-sm text-muted-foreground">
             {format(m.reviewMatchesNone)}
@@ -484,17 +479,7 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
  * A quiet day, said in full: the screen a reviewer lands on when there is
  * nothing to do is the screen they see most often, so it gets the room.
  */
-function EmptyScreen({
-  icon,
-  title,
-  body,
-  foot,
-}: {
-  icon: ReactNode
-  title: string
-  body: string
-  foot?: string
-}) {
+function EmptyScreen({ icon, title, body }: { icon: ReactNode; title: string; body: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 py-16 text-center">
       <span className="flex size-13 items-center justify-center rounded-full border text-muted-foreground">
@@ -504,41 +489,6 @@ function EmptyScreen({
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         <p className="text-sm leading-relaxed text-pretty text-muted-foreground">{body}</p>
       </div>
-      {foot !== undefined && <p className="text-xs text-muted-foreground">{foot}</p>}
     </div>
-  )
-}
-
-/**
- * The two ways a submission exists without ever reaching anybody's queue.
- *
- * Under an empty queue on purpose: "there is nothing here" invites the
- * question "then where is everything", and these are the two answers that
- * are not somebody's mistake.
- */
-function NeverHere() {
-  const { format } = useI18n()
-  return (
-    <section className="flex flex-col gap-2.5 border-t pt-5">
-      <p className="text-xs font-medium text-muted-foreground">{format(m.reviewNotHereTitle)}</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="flex items-start gap-3 rounded-xl border p-4">
-          <Badge variant="secondary" className="shrink-0">
-            {format(m.reviewWaitingAssign)}
-          </Badge>
-          <p className="min-w-0 text-xs leading-relaxed text-pretty text-muted-foreground">
-            {format(m.reviewWaitingAssignBody)}
-          </p>
-        </div>
-        <div className="flex items-start gap-3 rounded-xl border p-4">
-          <Badge variant="secondary" className="shrink-0">
-            {format(m.reviewTakenTitle)}
-          </Badge>
-          <p className="min-w-0 text-xs leading-relaxed text-pretty text-muted-foreground">
-            {format(m.reviewTakenBody)}
-          </p>
-        </div>
-      </div>
-    </section>
   )
 }
