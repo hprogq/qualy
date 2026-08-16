@@ -481,7 +481,7 @@ export const hasOpenRound = (tenantId: string, entryId: string) =>
         .select('id')
         .where('tenantId', '=', tenantId)
         .where('entryId', '=', entryId)
-        .where('state', 'in', ['active', 'blocked'])
+        .where('state', 'in', ['active', 'blocked', 'awaiting_supplement'])
         .limit(1)
         .executeTakeFirst(),
     )
@@ -576,12 +576,16 @@ export const advanceReviewInstance = (input: {
  * Ends the open round, if it is still open; the loser of a race writes
  * nothing.
  *
- * Open means `active` or `blocked`. Blocked is a round waiting for somebody
- * to be appointed to the level it stands at - a running state, not a
- * conclusion - and the partial unique index that admits one open round per
- * entry counts it as one. Ending only `active` rounds left every blocked one
- * unendable: the person who filed it could not withdraw it, and nobody could
- * be appointed to release it either, so the claim was stuck for good.
+ * Open means `active`, `blocked` or `awaiting_supplement`. Blocked is a
+ * round waiting for somebody to be appointed to the level it stands at,
+ * awaiting_supplement one that paused itself to ask the person who filed for
+ * more backing - running states, not conclusions - and the partial unique
+ * index that admits one open round per entry counts all three. Ending only
+ * `active` rounds left every blocked one unendable: the person who filed it
+ * could not withdraw it, and nobody could be appointed to release it either,
+ * so the claim was stuck for good. A cancelled round's open supplement
+ * request needs no sweeping: answering requires the round to still be
+ * waiting, so the ask dies with the round by definition.
  */
 export const cancelReviewInstance = (input: {
   tenantId: string
@@ -595,7 +599,7 @@ export const cancelReviewInstance = (input: {
         .set({ state: 'completed', outcome: input.outcome, completedAt: sql`now()` })
         .where('tenantId', '=', input.tenantId)
         .where('id', '=', input.instanceId)
-        .where('state', 'in', ['active', 'blocked'])
+        .where('state', 'in', ['active', 'blocked', 'awaiting_supplement'])
         .returning(['id'])
         .executeTakeFirst(),
     )

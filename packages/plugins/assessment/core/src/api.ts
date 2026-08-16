@@ -450,6 +450,42 @@ const entryRevisionView = Schema.Struct({
   createdAt: Schema.String,
 })
 
+/**
+ * One asked-for piece of a supplement (§32.65 ⑤). The builder is
+ * deliberately this small - a text answer or files, nothing else - so an ask
+ * for more backing can never grow into a second form the filing was not
+ * written under.
+ */
+const supplementRequirement = Schema.Struct({
+  key: Schema.String,
+  label: Schema.String,
+  kind: Schema.Literals(['text', 'file']),
+  required: Schema.Boolean,
+})
+
+/** one ask a round made beyond the filing, with its answer when one came */
+const reviewSupplementView = Schema.Struct({
+  id: Schema.String,
+  requestNo: Schema.Number,
+  status: Schema.Literals(['open', 'answered', 'cancelled']),
+  instructions: Schema.String,
+  requirements: Schema.Array(supplementRequirement),
+  requestedBy: Schema.String,
+  requestedByName: Schema.NullOr(Schema.String),
+  requestedAt: Schema.String,
+  answeredAt: Schema.NullOr(Schema.String),
+  cancelledAt: Schema.NullOr(Schema.String),
+  response: Schema.NullOr(
+    Schema.Struct({
+      payload: configJson,
+      attachments: Schema.Array(
+        Schema.Struct({ attachmentId: Schema.String, position: Schema.Number }),
+      ),
+      respondedAt: Schema.String,
+    }),
+  ),
+})
+
 const entryView = Schema.Struct({
   id: Schema.String,
   batchId: Schema.String,
@@ -468,6 +504,21 @@ const entryView = Schema.Struct({
   currentRevision: Schema.NullOr(entryRevisionView),
   currentReviewInstanceId: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
+  /**
+   * The reviewer's open ask for more backing, when this claim's round is
+   * waiting on one. The ask itself is the whole capability to answer -
+   * deliberately not phase-gated (§32.65 ⑤).
+   */
+  supplement: Schema.NullOr(
+    Schema.Struct({
+      requestId: Schema.String,
+      instanceId: Schema.String,
+      requestNo: Schema.Number,
+      instructions: Schema.String,
+      requirements: Schema.Array(supplementRequirement),
+      requestedAt: Schema.String,
+    }),
+  ),
   /**
    * Each act in one of three states: offered, offered disabled with the
    * reason on hover, or not spoken of. Discovery through the same gate the
@@ -519,7 +570,7 @@ const reviewStageView = Schema.Struct({
 
 const reviewDetailView = Schema.Struct({
   id: Schema.String,
-  state: Schema.Literals(['active', 'blocked', 'completed']),
+  state: Schema.Literals(['active', 'blocked', 'awaiting_supplement', 'completed']),
   outcome: Schema.NullOr(Schema.String),
   roundNo: Schema.Number,
   entryId: Schema.String,
@@ -599,7 +650,14 @@ const reviewDetailView = Schema.Struct({
       at: Schema.String,
     }),
   ),
-  capabilities: Schema.Struct({ canDecide: Schema.Boolean }),
+  /** what this round asked for beyond the filing, and what came back */
+  supplements: Schema.Array(reviewSupplementView),
+  capabilities: Schema.Struct({
+    canDecide: Schema.Boolean,
+    canRequestSupplement: Schema.Boolean,
+    canCancelSupplement: Schema.Boolean,
+    canAnswerSupplement: Schema.Boolean,
+  }),
 })
 
 const breakdownLine = Schema.Struct({
@@ -1014,6 +1072,78 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         BadRequest,
       ],
     }).middleware(Authenticated),
+  )
+  .add(
+    // asking for more backing without moving the round: the reviewer's half
+    // of the supplement exchange (§32.65 ⑤). Keys are assigned server-side.
+    HttpApiEndpoint.post(
+      'requestSupplement',
+      '/assessment/review/instances/:instanceId/supplement-requests',
+      {
+        params: Schema.Struct({ instanceId: id }),
+        payload: Schema.Struct({
+          instructions: boundedText(2000),
+          requirements: Schema.Array(
+            Schema.Struct({
+              label: trimmedName(100),
+              kind: Schema.Literals(['text', 'file']),
+              required: Schema.Boolean,
+            }),
+          ),
+        }),
+        success: Schema.Struct({ review: reviewDetailView }),
+        error: [
+          ReviewNotFound,
+          ReviewConflict,
+          BatchReadOnly,
+          EntryActionRefused,
+          EntryPayloadInvalid,
+          AccessDenied,
+          BadRequest,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // taking the ask back; the round returns to the queue as it stood
+    HttpApiEndpoint.put(
+      'cancelSupplement',
+      '/assessment/review/supplement-requests/:requestId/status',
+      {
+        params: Schema.Struct({ requestId: id }),
+        payload: Schema.Struct({ status: Schema.Literals(['cancelled']) }),
+        success: Schema.Struct({ review: reviewDetailView }),
+        error: [
+          ReviewNotFound,
+          ReviewConflict,
+          BatchReadOnly,
+          EntryActionRefused,
+          AccessDenied,
+          BadRequest,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // the participant's half: the answer, keyed by the ask's own pieces
+    HttpApiEndpoint.post(
+      'answerSupplement',
+      '/assessment/review/supplement-requests/:requestId/responses',
+      {
+        params: Schema.Struct({ requestId: id }),
+        payload: Schema.Struct({ payload: configJson }),
+        success: Schema.Struct({ review: reviewDetailView }),
+        error: [
+          ReviewNotFound,
+          ReviewConflict,
+          BatchReadOnly,
+          EntryActionRefused,
+          EntryPayloadInvalid,
+          AccessDenied,
+          BadRequest,
+        ],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.get('listItems', '/assessment/batches/:batchId/items', {

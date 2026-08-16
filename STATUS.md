@@ -4561,6 +4561,7 @@ toast 暂移避开注册表缺口、35 文件别名导入改回相对路径+扩�
 撤回 → 断言 `completed/cancelled`,事件序列 `submitted, assignee-not-found, cancelled-by-submitter`。
 
 **② 字段永久身份 + payload 投影**(已做,`e92985b`)。
+
 - 字段带 `id`(永不改、永不复用)与 `key`(payload 槽位,同样不可改),新字段两者同值。
   **旧表单不回写**:没有 `id` 的字段以 `key` 为身份——那本来就是它当时的身份,而 item revision 不可变。
 - **改类型 = 删旧字段 + 建新字段**(编辑器改 type 时重新铸 id 与 key):`2026-04-12` 不是一道现在要求
@@ -4675,6 +4676,7 @@ entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此�
 一并当成会毁掉现存条目的改动,而真正有破坏性的改动它又只会说「不行」。
 
 **两次同一个 PATCH**:
+
 - 第一次不带 `effects`。安全就直接存;会影响在途工作就 **409 `ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED`**,
   带上影响报告(表单:在审/已通过各自的总数与不兼容数;审核:在途数、其中卡住数、
   当前环节仍在新策略里的数、环节已消失的数)。**整个事务回滚**——提问期间什么都没做一半。
@@ -4719,12 +4721,14 @@ entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此�
 CLAUDE 的「界面文案是引导,不是说明」此前只在新写的地方被遵守,存量里积了不少违规。这次逐条过。
 
 **删掉解释实现机制的句子**。它们归 docs/ 与代码注释:
+
 - 版本说明「保存会生成新版本,已提交的申报仍按原版本计分」→ 只留「第 N 版,X 保存」。
 - 「我的构成」下的「只有审核通过的条目计入。上限与下限在结算时生效。」→「仅统计已通过的条目。」
 - 影响对话框里那句「被打回的条目不参与迁移:它重新提交时自然走新流程。」——纯机制,**整条删除**。
 - 「卷面就是最外层分组」这类复述领域模型的 hint 全部换成下一步动作。
 
 **删掉自夸与自我安慰**:
+
 - 「所有数据将被妥善存档」→「归档后本批次只读,不能再填报或审核。」
 - 「结构在本轮开始前都可以重排,**现在选哪条都不算数**」——这条消息(`paper-start-reassure`)**整条删除**,
   它是在替设计意图辩护,不是在引导。
@@ -4829,6 +4833,7 @@ Assessment 只消费 RBAC 并维护批次对组织权限的接受状态。不做
 不做 level 数字。
 
 **RBAC 新增**:
+
 - `role_grant_rules(tenant_id, granter_role_id, target_role_id)`——granter → target 的 DAG,
   两个 tenant-scoped FK cascade。语义:「制度上这个岗位由谁任命」,与「你有没有这么大的权」
   (no-escalation)互不替代——学院管理员可以持有年级管理员的全部权限,仍不是任命学院管理员的人。
@@ -4936,6 +4941,7 @@ entity-parity/error-codes/catalogs/frozen-routes 全绿。
 **留占位不占列**;退回/复核事由**顺带建配置后端**;5 秒延迟提交 + ⌘Z 撤回**照做**。
 
 **后端**(schema 迁移 20260816054833_review-workbench):
+
 - `assessment_batches.review_reasons` jsonb:`{reject: [], escalate: []}` 两组事由标签,
   updateBatch 可改(计入配置事件日志),batchView 携带;`review_events.reason` 存选中标签原文——
   列表是报价不是历史,改列表永不改写已说过的话。
@@ -4951,6 +4957,7 @@ entity-parity/error-codes/catalogs/frozen-routes 全绿。
   而 formConfig 按原文存储,测试得以在 fixture driver 下携带 `fields`。
 
 **前端**:
+
 - 队列页(1a/1h/1i/1e):按题目/按提交时间/按参评人三种排法 + 题目/单位筛选 + 搜索;
   按题目分组的列头是该题真实字段标签;行级状态章(待我审核/第 N 轮/复核中);
   无职责与空队列两种空态分开说;30 秒自动刷新。
@@ -5015,17 +5022,20 @@ prettier 全绿。
 设计稿从 1a–1i 扩到 1a–1k,按新稿补齐,并处理口述的十项。UI 以设计稿为准。
 
 **后端**
+
 - `getEntryHistory` 开出审核人这道门:持有该条目**开放轮次**判断权的人可读它的完整经过
   (版本 + 各轮事件)。判定复用 `mayReview` 那一份 SQL(review/db.ts 的 `mayReviewEntry`),
   不新开概念,也不放宽给「去年审过」的人。陌生人照旧连存在都读不到(测试钉住)。
 
 **契约与外壳**
+
 - 新增 UI 插槽 `workspace-shell/navigation-badge`(many):外壳在每个导轨条目旁给出插槽并
   传入条目 id,谁拥有那一页谁回答自己的计数。原因写进契约注释:导航是**按 principal 投影
   一次**的 manifest,而「还剩几件」在人工作时一直在变,数字进不了 manifest。
   综测供 `QueueBadge`,只认自己的 id,零件时不画。
 
 **工作台(1b/1d/1j)**
+
 - 队列头部左侧加返回按钮——没有出口的工作台是死路。
 - 填报内容头部重做:第 N 版 + 时间、**对照 D**(与上一版逐字段比对,改动处左侧标线、
   下方给「上一版 …」删除线或「未填写」)、**版本 ⇧D** 打开 1j 版本选择(只列送审版之前的版本,
@@ -5039,11 +5049,13 @@ prettier 全绿。
 - 键盘面板补 D / ⇧D / H;退回弹层的建议快捷键从 ⌥S 改为 **⌥G**(S 已被别处占用)。
 
 **队列页(1a/1e)**
+
 - 分组按钮不再叫「连续审核」:改为「开始审核」+ 件数 Badge + ↵。
 - 空态改满屏三态:已全部处理完(带今日件数)、尚无可审条目、无审核职责;下方常驻
   「两种不进入队列的情况」(等待指派 / 已被他人处理)。
 
 **其他**
+
 - 同题其他条目弹层接 `useLingering`,关闭有动画。
 - 说明输入框 placeholder 由「写下说明」改「写下审核意见」类文案;清掉六个变成孤儿的 message。
 - `history.tsx` 只导出组件,数据钩子(`useEntryHistory`/`valuesOf`/`HistoryRevision`)
@@ -5164,7 +5176,7 @@ resubmit 更名。本轮不动 schema,全部零迁移。
 
 - **AggregatorDriver 换接口**:`fold(config, amounts) → bigint` 改为
   `aggregate(config, [{entryId, amount}]) → {total, entries: [{entryId, included,
-  effectiveAmount, reason}]}`。账目是产品(§8):「只取最高职务」必须能解释它留在零分的
+effectiveAmount, reason}]}`。账目是产品(§8):「只取最高职务」必须能解释它留在零分的
   每一行,裸总数不是可接受的答案。并列取舍按金额优先、同额按送入顺序——scorer 喂入的
   顺序本身确定(byEntry),同一事实永远选同一条。
 - **三个内建聚合器**:`sum@1`(原语义)、`max@1`(terms.md 明文:学生干部身兼多职按最高
@@ -5267,3 +5279,39 @@ ReviewInstance 增 awaiting_supplement、受限 requirement builder、事件与�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 666 passed / 17 skipped;
 `pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
+
+### 补件机制(2026-08-16,§32.65 待办⑤,至此 ①—⑥ 全部落地)
+
+- **三张表**:review_supplement_requests(instructions + requirements jsonb +
+  status open/answered/cancelled,部分唯一索引保证一轮同时只有一个 open 请求)、
+  review_supplement_responses(一请求一答复)、review_supplement_attachments(引用行,
+  FK 进 storage,restrict)。ReviewInstance 状态列拓宽到 varchar(31) 并增
+  **awaiting_supplement**——开放态:占唯一开放轮次槽位、进 hasOpenRound/影响分析/
+  cancelReviewInstance 的开放集,但不进审核队列,补件期间 decideReview 拒绝
+  (`awaiting-supplement`)。迁移 20260816124329_review-supplements(重跑 generate
+  确认零漂移)。
+- **状态机**:请求(当前 stage 任意审核人,同 decide 的 mayReview 谓词与阶段门;
+  active→awaiting 的条件更新即并发闸门)→ 回答(仅本人;**可回答性 = 请求 open ∧
+  轮次仍 awaiting**,刻意不过阶段门——轮次被撤回/重路由/作废时请求按定义失效,零清扫)
+  或撤回请求(审核人,awaiting→active)。requirement 仅文字+文件,key 服务端按位次派发
+  (f1..fn,≤8 项;文字 ≤2000 字、文件 ≤10 个);答复附件沿用申报的信任规则(自己的
+  staged 文件或本 entry 故事已引用过的),附件读取授权把补件引用并入 citing 集。
+  事件 supplement-requested/submitted/cancelled 入轮次 trail,请求说明随事件 comment。
+- **API**:`POST …/instances/{id}/supplement-requests`、
+  `PUT …/supplement-requests/{id}/status`、`POST …/supplement-requests/{id}/responses`
+  (frozen-routes 同笔);reviewDetailView 增 supplements + 能力四元组
+  (canDecide/canRequestSupplement/canCancelSupplement/canAnswerSupplement),
+  entryView 增 `supplement`(本人视角的开放请求)。错误码零新增,全走
+  EntryActionRefused/EntryPayloadInvalid 等既有码。
+- **UI**:工作台决定栏增「请对方补材料」(受限 builder 对话框:说明 + 逐项
+  文字/文件+必填);awaiting 时底栏换等待条 + 撤回请求;主栏新增「补充材料」区
+  逐请求呈现问与答。参评人 FiledEntry 卡出现琥珀色请求面板,「去补充」打开按
+  requirement 画的 EvidenceForm(文件上传复用既有 doors)。事件人话与拒绝词表
+  补齐 EN + zh-CN。
+- 测试:review-workbench 增两条(暂停-回答-回队全链路含权限/校验负例;撤回请求与
+  条目撤回压过 awaiting 轮次)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 668 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
+
+**§32.65 ①—⑥ 已全部落地;剩 ⑦(申诉收紧到首次公示后 + 补证策略配置)待触发。**

@@ -23,6 +23,9 @@ const WITH_ACTOR: Record<string, MessageDescriptor> = {
   'revision-required': m.eventReturnedForRevision,
   appealed: m.eventAppealed,
   'abandoned-by-submitter': m.eventAbandoned,
+  'supplement-requested': m.eventSupplementRequested,
+  'supplement-submitted': m.eventSupplementSubmitted,
+  'supplement-cancelled': m.eventSupplementCancelled,
 }
 
 const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {

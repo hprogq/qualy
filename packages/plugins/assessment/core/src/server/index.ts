@@ -837,6 +837,10 @@ export class Assessment extends Context.Service<
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
     readonly decideReview: ReviewMethods['decideReview']
     readonly appealReview: ReviewMethods['appealReview']
+    /** the supplement exchange: ask, take back, answer (§32.65 ⑤) */
+    readonly requestSupplement: ReviewMethods['requestSupplement']
+    readonly cancelSupplement: ReviewMethods['cancelSupplement']
+    readonly answerSupplement: ReviewMethods['answerSupplement']
     /** one's own provisional standing, from the one scorer */
     readonly getMyResult: ScoringMethods['getMyResult']
     /** the bytes of a business material, for whoever its story admits */
@@ -1809,6 +1813,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
     parseRange,
     itemTypes,
+    storage,
   })
 
   const scoringMethods = makeScoringMethods({
@@ -3504,6 +3509,17 @@ const entryDto = (entry: EntryView) => ({
         },
   currentReviewInstanceId: entry.currentReviewInstanceId,
   createdAt: new Date(entry.createdAt).toISOString(),
+  supplement:
+    entry.supplement === null
+      ? null
+      : {
+          requestId: entry.supplement.requestId,
+          instanceId: entry.supplement.instanceId,
+          requestNo: entry.supplement.requestNo,
+          instructions: entry.supplement.instructions,
+          requirements: entry.supplement.requirements,
+          requestedAt: new Date(entry.supplement.requestedAt).toISOString(),
+        },
   capabilities: entry.capabilities,
 })
 
@@ -3549,6 +3565,28 @@ const reviewDto = (review: ReviewDetailView) => ({
     comment: event.comment,
     suggestedPayload: event.suggestedPayload,
     at: new Date(event.at).toISOString(),
+  })),
+  supplements: review.supplements.map((supplement) => ({
+    id: supplement.id,
+    requestNo: supplement.requestNo,
+    status: supplement.status,
+    instructions: supplement.instructions,
+    requirements: supplement.requirements,
+    requestedBy: supplement.requestedBy,
+    requestedByName: supplement.requestedByName,
+    requestedAt: new Date(supplement.requestedAt).toISOString(),
+    answeredAt:
+      supplement.answeredAt === null ? null : new Date(supplement.answeredAt).toISOString(),
+    cancelledAt:
+      supplement.cancelledAt === null ? null : new Date(supplement.cancelledAt).toISOString(),
+    response:
+      supplement.response === null
+        ? null
+        : {
+            payload: supplement.response.payload,
+            attachments: supplement.response.attachments,
+            respondedAt: new Date(supplement.response.respondedAt).toISOString(),
+          },
   })),
   capabilities: review.capabilities,
 })
@@ -4601,6 +4639,47 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal.tenantId,
           params.instanceId,
           payload,
+          principal,
+        )
+        return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'requestSupplement',
+      Effect.fn('assessment.requestSupplement.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const review = yield* assessment.requestSupplement(
+          principal.tenantId,
+          params.instanceId,
+          { instructions: payload.instructions, requirements: payload.requirements },
+          principal,
+        )
+        return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'cancelSupplement',
+      Effect.fn('assessment.cancelSupplement.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const review = yield* assessment.cancelSupplement(
+          principal.tenantId,
+          params.requestId,
+          principal,
+        )
+        return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'answerSupplement',
+      Effect.fn('assessment.answerSupplement.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const review = yield* assessment.answerSupplement(
+          principal.tenantId,
+          params.requestId,
+          { payload: payload.payload },
           principal,
         )
         return { review: reviewDto(review) }

@@ -483,6 +483,174 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.queue.items.find((one) => one.itemTitle === '健康打卡')).toBeUndefined()
   })
 
+  it('pauses the round to ask for more, and the answer brings it back', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-supplement')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+
+          const asked = yield* assessment.requestSupplement(
+            f.t,
+            instanceId,
+            {
+              instructions: '证书信息看不清，请补充说明并附原件照片。',
+              requirements: [
+                { label: '情况说明', kind: 'text', required: true },
+                { label: '证书照片', kind: 'file', required: false },
+              ],
+            },
+            reviewer,
+          )
+          // out of everybody's queue while it waits, and undecidable
+          const queueWhileWaiting = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id },
+            reviewer,
+          )
+          const decideWhileWaiting = yield* Effect.exit(
+            assessment.decideReview(f.t, instanceId, { decision: 'approve' }, reviewer),
+          )
+          // the person who filed sees the ask on their own claim
+          const mine = yield* assessment.getEntry(f.t, entry.id, s1)
+          // held to the ask: the required piece must actually be there
+          const empty = yield* Effect.exit(
+            assessment.answerSupplement(f.t, mine.supplement!.requestId, { payload: {} }, s1),
+          )
+          // a classmate learns nothing, not even that the ask exists
+          const stranger = yield* Effect.exit(
+            assessment.answerSupplement(
+              f.t,
+              mine.supplement!.requestId,
+              { payload: { f1: 'x' } },
+              f.principal(f.s2),
+            ),
+          )
+          const answered = yield* assessment.answerSupplement(
+            f.t,
+            mine.supplement!.requestId,
+            { payload: { f1: '证书原件已交学院备案，照片随此说明。' } },
+            s1,
+          )
+          const queueAfter = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id },
+            reviewer,
+          )
+          const decided = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'approve' },
+            reviewer,
+          )
+          return {
+            asked,
+            queueWhileWaiting,
+            decideWhileWaiting,
+            mine,
+            empty,
+            stranger,
+            answered,
+            queueAfter,
+            decided,
+          }
+        }),
+      ),
+    )
+    expect(result.asked.state).toBe('awaiting_supplement')
+    expect(result.asked.capabilities.canCancelSupplement).toBe(true)
+    expect(result.asked.supplements).toHaveLength(1)
+    expect(result.asked.supplements[0]!.status).toBe('open')
+    // keys are the server's, positional and stable for the answer to name
+    expect(result.asked.supplements[0]!.requirements.map((one) => one.key)).toEqual(['f1', 'f2'])
+    expect(result.queueWhileWaiting.items).toHaveLength(0)
+    expect(errorOf<{ reason?: string }>(result.decideWhileWaiting)?.reason).toBe(
+      'awaiting-supplement',
+    )
+    expect(result.mine.supplement).toMatchObject({
+      instructions: '证书信息看不清，请补充说明并附原件照片。',
+    })
+    expect(
+      errorOf<{ issues: readonly { field: string; reason: string }[] }>(result.empty)?.issues[0],
+    ).toEqual({ field: 'f1', reason: 'required' })
+    expect(errorOf<{ _tag: string }>(result.stranger)?._tag).toBe('ASSESSMENT_REVIEW_NOT_FOUND')
+    // the answer reopens the round where it stood, with the answer beside it
+    expect(result.answered.state).toBe('active')
+    expect(result.answered.supplements[0]!.status).toBe('answered')
+    expect(result.answered.supplements[0]!.response).toMatchObject({
+      payload: { f1: '证书原件已交学院备案，照片随此说明。' },
+    })
+    expect(result.queueAfter.items).toHaveLength(1)
+    expect(result.decided.outcome).toBe('approved')
+  })
+
+  it('lets the ask be taken back, and a withdrawal close over it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-supplement-out')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const ask = (instanceId: string) =>
+            assessment.requestSupplement(
+              f.t,
+              instanceId,
+              {
+                instructions: '请补充说明。',
+                requirements: [{ label: '情况说明', kind: 'text', required: true }],
+              },
+              reviewer,
+            )
+          yield* ask(sent.currentReviewInstanceId!)
+          // withdrawing the claim closes the waiting round, and the ask dies
+          // with it - answerability is the round still waiting, by definition
+          const withdrawn = yield* assessment.setEntryStatus(f.t, entry.id, 'draft', s1)
+          const afterWithdraw = yield* assessment.getEntry(f.t, entry.id, s1)
+
+          const resent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const round2 = resent.currentReviewInstanceId!
+          const asked = yield* ask(round2)
+          const openRequestId = asked.supplements.find((one) => one.status === 'open')!.id
+          const cancelled = yield* assessment.cancelSupplement(f.t, openRequestId, reviewer)
+          const decided = yield* assessment.decideReview(
+            f.t,
+            round2,
+            { decision: 'approve' },
+            reviewer,
+          )
+          return { withdrawn, afterWithdraw, cancelled, decided }
+        }),
+      ),
+    )
+    expect(result.withdrawn.status).toBe('draft')
+    expect(result.afterWithdraw.supplement).toBeNull()
+    // taking the ask back returns the round to the queue as it stood
+    expect(result.cancelled.state).toBe('active')
+    expect(result.cancelled.supplements.find((one) => one.status === 'cancelled')).toBeDefined()
+    expect(result.cancelled.capabilities.canDecide).toBe(true)
+    expect(result.decided.outcome).toBe('approved')
+  })
+
   it('files a declaration in one press, through whatever review it configured', async () => {
     const result = ok(
       await run(

@@ -1068,7 +1068,7 @@ export const ReviewInstance = defineEntity({
     currentRoute: p.string().length(16).defaultRaw(`'normal'`),
     /** the step by its permanent name, never by its position (§32.62) */
     currentStageId: p.string().length(63),
-    state: p.string().length(16).defaultRaw(`'active'`),
+    state: p.string().length(31).defaultRaw(`'active'`),
     outcome: p.string().length(31).nullable(),
     currentRoleIds: p.array().columnType('uuid[]'),
     currentNodeId: p.uuid(),
@@ -1099,7 +1099,10 @@ export const ReviewInstance = defineEntity({
     },
     {
       name: 'chk_review_instances_state',
-      expression: `state IN ('active', 'blocked', 'completed')`,
+      // awaiting_supplement is an open state: the round paused itself to ask
+      // the person who filed for more backing, and it holds the entry's one
+      // open-round slot while it waits (§32.65 ⑤)
+      expression: `state IN ('active', 'blocked', 'awaiting_supplement', 'completed')`,
     },
     // a completed round says when and how it ended; an open one says neither.
     // The open arm is spelled <> 'completed' rather than IN ('active',
@@ -1136,7 +1139,7 @@ export const ReviewInstance = defineEntity({
       // spelled the way pg_get_indexdef reports it back: the comparator pairs
       // expression indexes textually, and any prettier spelling of this
       // predicate diffs against its own introspection forever
-      expression: `create unique index uq_review_instances_open_entry on review_instances (entry_id) where ((state)::text = ANY ((ARRAY['active'::character varying, 'blocked'::character varying])::text[]))`,
+      expression: `create unique index uq_review_instances_open_entry on review_instances (entry_id) where ((state)::text = ANY ((ARRAY['active'::character varying, 'blocked'::character varying, 'awaiting_supplement'::character varying])::text[]))`,
     },
     // the inbox join: open rounds standing at my node
     {
@@ -1187,6 +1190,140 @@ export const ReviewEvent = defineEntity({
       name: 'idx_review_events_tenant_instance_created',
       expression:
         'create index idx_review_events_tenant_instance_created on review_events (tenant_id, review_instance_id, created_at)',
+    },
+  ],
+})
+
+/**
+ * A reviewer asking for more backing without moving the round (§32.65 ⑤).
+ *
+ * The boundary it sits on: changing WHAT was claimed goes through rejection
+ * and a new revision; adding to WHY it should be believed goes through here,
+ * and the judged revision is never touched. The asked-for pieces live in
+ * `requirements` - a deliberately small builder of text and file asks, so a
+ * supplement can never grow into a second form the filing was not written
+ * under. The open request itself is the participant's whole capability to
+ * answer: no phase gate, because a round that paused itself to ask must not
+ * have the answer locked out by whatever the calendar did since.
+ */
+export const ReviewSupplementRequest = defineEntity({
+  name: 'ReviewSupplementRequest',
+  tableName: 'review_supplement_requests',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('review_supplement_requests_tenant_id_tenants_id_fkey'),
+    reviewInstanceId: p.uuid(),
+    requestNo: p.integer(),
+    /** who asked; a historical fact, deliberately without a foreign key */
+    requestedBy: p.uuid(),
+    /** what is wanted and why, said to the person who filed */
+    instructions: p.text(),
+    /** [{key, label, kind: 'text'|'file', required}] - text and file only */
+    requirements: p.json<readonly Record<string, unknown>[]>(),
+    status: p.string().length(16).defaultRaw(`'open'`),
+    answeredAt: p.datetime().nullable(),
+    cancelledAt: p.datetime().nullable(),
+    cancelledBy: p.uuid().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_review_supplement_requests_status',
+      expression: `status IN ('open', 'answered', 'cancelled')`,
+    },
+    { name: 'chk_review_supplement_requests_no_positive', expression: 'request_no >= 1' },
+    {
+      name: 'chk_review_supplement_requests_instructions_not_blank',
+      expression: `btrim(instructions) <> ''`,
+    },
+    // each conclusion carries its own facts and none of the other's; spelled
+    // as full arms for the same reason the item void shape is
+    {
+      name: 'chk_review_supplement_requests_lifecycle_shape',
+      expression: `(status = 'open' AND answered_at IS NULL AND cancelled_at IS NULL AND cancelled_by IS NULL) OR (status = 'answered' AND answered_at IS NOT NULL AND cancelled_at IS NULL AND cancelled_by IS NULL) OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancelled_by IS NOT NULL AND answered_at IS NULL)`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_review_supplement_requests_tenant_id_id',
+      expression:
+        'create unique index uq_review_supplement_requests_tenant_id_id on review_supplement_requests (tenant_id, id)',
+    },
+    {
+      name: 'uq_review_supplement_requests_tenant_instance_no',
+      expression:
+        'create unique index uq_review_supplement_requests_tenant_instance_no on review_supplement_requests (tenant_id, review_instance_id, request_no)',
+    },
+    // one open ask per round, held by the database: the round's own state
+    // says whether it is waiting, and two waiting requests would leave
+    // "answered which one" undefined. Spelled the way pg_get_indexdef
+    // reports it back, like the open-entry index above
+    {
+      name: 'uq_review_supplement_requests_open',
+      expression: `create unique index uq_review_supplement_requests_open on review_supplement_requests (review_instance_id) where ((status)::text = 'open'::text)`,
+    },
+  ],
+})
+
+/** the answer, whole: one response closes one request, exactly once */
+export const ReviewSupplementResponse = defineEntity({
+  name: 'ReviewSupplementResponse',
+  tableName: 'review_supplement_responses',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('review_supplement_responses_tenant_id_tenants_id_fkey'),
+    requestId: p.uuid(),
+    /** answers keyed by requirement key; file answers cite attachment ids */
+    payload: p.json<Record<string, unknown>>(),
+    /** the entry's own subject; the server derives it, never the client */
+    respondedBy: p.uuid(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'uq_review_supplement_responses_tenant_id_id',
+      expression:
+        'create unique index uq_review_supplement_responses_tenant_id_id on review_supplement_responses (tenant_id, id)',
+    },
+    {
+      name: 'uq_review_supplement_responses_tenant_request',
+      expression:
+        'create unique index uq_review_supplement_responses_tenant_request on review_supplement_responses (tenant_id, request_id)',
+    },
+  ],
+})
+
+/**
+ * Which attachments a supplement answer cites, as rows - the same reason
+ * entry_revision_attachments exists: a real key into storage, a reverse path
+ * for authorization, and a stable order.
+ */
+export const ReviewSupplementAttachment = defineEntity({
+  name: 'ReviewSupplementAttachment',
+  tableName: 'review_supplement_attachments',
+  properties: {
+    tenantId: tenantKeyOf('review_supplement_attachments_tenant_id_tenants_id_fkey'),
+    responseId: p.uuid().primary(),
+    attachmentId: p.uuid().primary(),
+    position: p.integer(),
+  },
+  checks: [
+    {
+      name: 'chk_review_supplement_attachments_position_non_negative',
+      expression: 'position >= 0',
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_review_supplement_attachments_tenant_response_position',
+      expression:
+        'create unique index uq_review_supplement_attachments_tenant_response_position on review_supplement_attachments (tenant_id, response_id, position)',
+    },
+    // the reverse question: which supplement answers cite this attachment
+    {
+      name: 'idx_review_supplement_attachments_tenant_attachment',
+      expression:
+        'create index idx_review_supplement_attachments_tenant_attachment on review_supplement_attachments (tenant_id, attachment_id)',
     },
   ],
 })
@@ -1309,6 +1446,16 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, appealed_instance_id) references review_instances (tenant_id, id) on delete set null (appealed_instance_id)`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
+  `alter table review_supplement_requests add constraint fk_review_supplement_requests_instance
+     foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
+  `alter table review_supplement_responses add constraint fk_review_supplement_responses_request
+     foreign key (tenant_id, request_id) references review_supplement_requests (tenant_id, id) on delete cascade`,
+  `alter table review_supplement_attachments add constraint fk_review_supplement_attachments_response
+     foreign key (tenant_id, response_id) references review_supplement_responses (tenant_id, id) on delete cascade`,
+  // into storage, like the entry citation rows: a cited file cannot be
+  // deleted out from under the answer that cites it
+  `alter table review_supplement_attachments add constraint fk_review_supplement_attachments_attachment
+     foreign key (tenant_id, attachment_id) references storage_attachments (tenant_id, id) on delete restrict`,
   `alter table entry_events add constraint fk_entry_events_entry
      foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
   `alter table entry_events add constraint fk_entry_events_cause_revision
@@ -1340,4 +1487,7 @@ export const entities = [
   EntryRevisionAttachment,
   ReviewInstance,
   ReviewEvent,
+  ReviewSupplementRequest,
+  ReviewSupplementResponse,
+  ReviewSupplementAttachment,
 ] as const

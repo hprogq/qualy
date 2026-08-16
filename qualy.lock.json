@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:b3748fb2d8f00350a166319f713bfeda016f0ade424a858b0ed2fd6c83bc42a3",
-  "resolutionHash": "sha256:21bfbc6ffe6cbd9f463739cd5d6313f951b2a2dcfd7181cf3eb73bf49248408a",
+  "resolutionHash": "sha256:9c4ad860805f1253afb29a7e7ba7879c3aefe869fb92738159c483283d127bfe",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -31,6 +31,9 @@
             "PhaseTemplate",
             "ReviewEvent",
             "ReviewInstance",
+            "ReviewSupplementAttachment",
+            "ReviewSupplementRequest",
+            "ReviewSupplementResponse",
             "RosterImport",
             "ScoreGroup"
           ],

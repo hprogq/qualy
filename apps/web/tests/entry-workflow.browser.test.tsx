@@ -105,6 +105,7 @@ const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
   },
   currentReviewInstanceId: null,
   createdAt: '2026-03-02T00:00:00.000Z',
+  supplement: null,
   capabilities: {
     edit: { state: 'available' as const, reason: null },
     submit: { state: 'available' as const, reason: null },
@@ -431,7 +432,13 @@ describe('judging a submission', () => {
         at: '2026-03-03T00:00:00.000Z',
       },
     ],
-    capabilities: { canDecide: true },
+    supplements: [],
+    capabilities: {
+      canDecide: true,
+      canRequestSupplement: true,
+      canCancelSupplement: false,
+      canAnswerSupplement: false,
+    },
   }
 
   const inboxRow = (over: Partial<Record<string, unknown>> = {}) => ({

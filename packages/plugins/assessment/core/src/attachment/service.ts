@@ -6,7 +6,12 @@ import type { UploadTicket } from '@qualy/plugin-storage/upload'
 import { AttachmentUnavailable, EntryActionRefused, ItemNotFound } from '../server/errors.ts'
 import { itemOf } from '../item/db.ts'
 import { userMayReview } from '../review/db.ts'
-import { citingEntries, citingInstances } from './db.ts'
+import {
+  citingEntries,
+  citingInstances,
+  supplementCitingEntries,
+  supplementCitingInstances,
+} from './db.ts'
 
 // The assessment attachment authorizer (§3.5): storage knows objects and
 // backends, this module knows why a person may read a business material.
@@ -84,12 +89,20 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
     Effect.gen(function* () {
       // one's own upload, before anything cites it
       if (meta.status === 'staged' && meta.ownerUserId === as.userId) return
-      const entries = yield* withDb(citingEntries(tenantId, meta.id))
+      // citations come from two places that tell one story: the filing's own
+      // revisions, and the supplement answers given on its rounds
+      const entries = [
+        ...(yield* withDb(citingEntries(tenantId, meta.id))),
+        ...(yield* withDb(supplementCitingEntries(tenantId, meta.id))),
+      ]
       if (entries.some((entry) => entry.subjectUserId === as.userId)) return
       for (const batchId of new Set(entries.map((entry) => entry.batchId))) {
         if (yield* deps.rosterReach(as, tenantId, batchId)) return
       }
-      const instances = yield* withDb(citingInstances(tenantId, meta.id))
+      const instances = [
+        ...(yield* withDb(citingInstances(tenantId, meta.id))),
+        ...(yield* withDb(supplementCitingInstances(tenantId, meta.id))),
+      ]
       for (const instance of instances) {
         const judge = yield* withDb(
           userMayReview({

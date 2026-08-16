@@ -598,7 +598,7 @@ export interface OpenRoundRow {
   entryId: string
   revisionId: string
   participantId: string
-  state: 'active' | 'blocked'
+  state: 'active' | 'blocked' | 'awaiting_supplement'
   route: 'normal' | 'escalation'
   stageId: string
   /** carried into the round that replaces it: an appeal stays an appeal */
@@ -625,7 +625,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
         ])
         .where('ri.tenantId', '=', tenantId)
         .where('e.itemId', '=', itemId)
-        .where('ri.state', 'in', ['active', 'blocked'])
+        .where('ri.state', 'in', ['active', 'blocked', 'awaiting_supplement'])
         .orderBy('ri.id')
         .execute(),
     )

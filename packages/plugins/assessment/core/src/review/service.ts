@@ -1,6 +1,7 @@
 import { Effect, Result } from 'effect'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
+import type { AttachmentMeta } from '@qualy/plugin-storage/server'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, pageSize, type BadRequest } from '@qualy/api-kit/schema'
 import type { ItemTypeDriver } from '../plugin.ts'
@@ -16,11 +17,13 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { itemOf, revisionOf } from '../item/db.ts'
 import {
   advanceReviewInstance,
+  entryAttachmentHistory,
   entryOf,
   entryRevisionOf,
   hasOpenRound,
   insertReviewEvent,
   insertReviewInstance,
+  lockAttachments,
   nextRoundNo,
   participantOf,
   revisionAttachmentsOf,
@@ -44,19 +47,30 @@ import {
 import { nodePathOf } from '../entry/db.ts'
 import {
   activeReviewBatches,
+  closeSupplementRequest,
   completeInstance,
   decisionsToday,
   inboxPage,
+  insertSupplementAttachments,
+  insertSupplementRequest,
+  insertSupplementResponse,
   instanceOf,
   chainNames,
   holderNamesAt,
+  nextSupplementNo,
   previousConclusion,
   reviewEventsOf,
   scoreGroupOf,
+  setInstanceSupplementState,
   siblingEntries,
+  supplementAttachmentHistory,
+  supplementRequestOf,
+  supplementsOf,
   userMayReview,
   type InboxRow,
   type ReviewInstanceDetailRow,
+  type SupplementRequirement,
+  type SupplementRow,
 } from './db.ts'
 
 // The single review stage, worked: a queue that is answered rather than
@@ -111,9 +125,12 @@ export interface ReviewChainView {
   readonly decisions: readonly string[]
 }
 
+/** one ask and its answer, as a reader sees them */
+export type ReviewSupplementView = SupplementRow
+
 export interface ReviewDetailView {
   readonly id: string
-  readonly state: 'active' | 'blocked' | 'completed'
+  readonly state: 'active' | 'blocked' | 'awaiting_supplement' | 'completed'
   readonly outcome: string | null
   readonly roundNo: number
   readonly entryId: string
@@ -144,7 +161,14 @@ export interface ReviewDetailView {
     readonly suggestedPayload: unknown
     readonly at: number
   }[]
-  readonly capabilities: { readonly canDecide: boolean }
+  /** what this round asked for beyond the filing, and what came back */
+  readonly supplements: readonly ReviewSupplementView[]
+  readonly capabilities: {
+    readonly canDecide: boolean
+    readonly canRequestSupplement: boolean
+    readonly canCancelSupplement: boolean
+    readonly canAnswerSupplement: boolean
+  }
 }
 
 /** what stands around the judged filing, resolved only for page reads */
@@ -254,6 +278,35 @@ export interface ReviewMethods {
     ReviewDetailView,
     ReviewNotFound | BatchReadOnly | EntryActionRefused | BatchNotFound
   >
+  readonly requestSupplement: (
+    tenantId: string,
+    instanceId: string,
+    input: {
+      instructions: string
+      requirements: readonly { label: string; kind: 'text' | 'file'; required: boolean }[]
+    },
+    as: Principal,
+  ) => Effect.Effect<
+    ReviewDetailView,
+    ReviewNotFound | ReviewConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
+  >
+  readonly cancelSupplement: (
+    tenantId: string,
+    requestId: string,
+    as: Principal,
+  ) => Effect.Effect<
+    ReviewDetailView,
+    ReviewNotFound | ReviewConflict | BatchReadOnly | EntryActionRefused
+  >
+  readonly answerSupplement: (
+    tenantId: string,
+    requestId: string,
+    input: { payload: unknown },
+    as: Principal,
+  ) => Effect.Effect<
+    ReviewDetailView,
+    ReviewNotFound | ReviewConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
+  >
 }
 
 /** who may act now, and why not; the same shape the entry acts pass through */
@@ -271,6 +324,18 @@ export interface ReviewDeps {
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
   readonly parseRange: (text: string) => { start: string; end: string }
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
+  /** the two storage doors a supplement answer walks, typed to what it uses */
+  readonly storage: {
+    readonly metadata: (input: {
+      readonly tenantId: string
+      readonly attachmentId: string
+    }) => Effect.Effect<AttachmentMeta, unknown>
+    readonly bind: (input: {
+      readonly tenantId: string
+      readonly attachmentId: string
+      readonly ownerUserId: string
+    }) => Effect.Effect<AttachmentMeta, unknown>
+  }
   /** the participant-action door, for the one act a participant does here */
   readonly authorize: (
     principal: Principal,
@@ -364,13 +429,26 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const assembleDetail = (
     tenantId: string,
     row: ReviewInstanceDetailRow,
-    view: { canDecide: boolean; mayEscalate?: boolean; resolveReviewers: boolean },
+    view: {
+      canDecide: boolean
+      mayEscalate?: boolean
+      resolveReviewers: boolean
+      canRequestSupplement?: boolean
+      canCancelSupplement?: boolean
+      /**
+       * The caller-side half of "may answer the open ask": the subject of a
+       * waiting round in a live batch. ANDed below with the ask actually
+       * being open - the request itself is the capability, never a phase.
+       */
+      answerable?: boolean
+    },
   ) =>
     Effect.gen(function* () {
       const revision = (yield* entryRevisionOf(tenantId, row.revisionId))!
       const itemRevision = yield* revisionOf(tenantId, row.itemRevisionId)
       const attachments = yield* revisionAttachmentsOf(tenantId, row.revisionId)
       const events = yield* reviewEventsOf(tenantId, row.id)
+      const supplements = yield* supplementsOf(tenantId, row.id)
       const policy = row.effectivePolicy
       const everyStage = [...policy.normal, ...policy.escalation]
       const names = yield* chainNames({
@@ -487,7 +565,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           suggestedPayload: event.suggestedPayload,
           at: event.createdAt,
         })),
-        capabilities: { canDecide: view.canDecide },
+        supplements,
+        capabilities: {
+          canDecide: view.canDecide,
+          canRequestSupplement: view.canRequestSupplement === true,
+          canCancelSupplement: view.canCancelSupplement === true,
+          canAnswerSupplement:
+            view.answerable === true &&
+            supplements.some((supplement) => supplement.status === 'open'),
+        },
       } satisfies ReviewDetailView
     })
 
@@ -598,6 +684,17 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           canDecide,
           mayEscalate: escalationDecision.allowed,
           resolveReviewers: true,
+          canRequestSupplement: canDecide,
+          canCancelSupplement:
+            judge &&
+            row.state === 'awaiting_supplement' &&
+            row.batchStatus === 'active' &&
+            gate.allowed,
+          // deliberately no phase gate: the open ask is the whole capability
+          answerable:
+            row.subjectUserId === as.userId &&
+            row.state === 'awaiting_supplement' &&
+            row.batchStatus === 'active',
         }),
       ),
     )
@@ -625,6 +722,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
             const gate = yield* deps.reviewGate(tenantId, row.batchId)
             if (!gate.allowed) return yield* refuse(action, gate.reason)
+            // a round that asked for more has nothing to decide until the
+            // answer comes back or the ask is taken back
+            if (row.state === 'awaiting_supplement') {
+              return yield* refuse(action, 'awaiting-supplement')
+            }
 
             const policy = row.effectivePolicy
             const here = stageById(policy, row.currentRoute, row.currentStageId)
@@ -716,6 +818,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               return yield* assembleDetail(tenantId, written, {
                 canDecide: true,
                 resolveReviewers: false,
+                canRequestSupplement: true,
               })
             }
 
@@ -994,5 +1097,381 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     },
   )
 
-  return { listReviewInbox, getReviewInstance, decideReview, appealReview }
+  /**
+   * The judge/admin/stranger triage every supplement door shares with
+   * decideReview: a judge acts, a reader is told they may not, a stranger
+   * learns nothing.
+   */
+  const requireJudge = (
+    tenantId: string,
+    row: ReviewInstanceDetailRow,
+    as: Principal,
+    action: string,
+  ) =>
+    Effect.gen(function* () {
+      const judge = yield* mayAct(tenantId, row, as)
+      if (judge) return
+      const admin = yield* deps.rosterReach(as, tenantId, row.batchId)
+      if (row.subjectUserId === as.userId || admin) {
+        return yield* refuse(action, 'not-reviewer')
+      }
+      return yield* new ReviewNotFound()
+    })
+
+  const MOST_REQUIREMENTS = 8
+  const TEXT_MOST = 2000
+  const FILES_MOST = 10
+
+  /**
+   * Asking the person who filed for more backing, without moving the round.
+   *
+   * The boundary (§32.65 ⑤): changing WHAT was claimed goes through a
+   * rejection and a new revision; adding to WHY it should be believed goes
+   * through here, and the judged revision never changes. The asks are a
+   * deliberately small builder - text and file, nothing else - so a
+   * supplement cannot grow into a second form the filing was not written
+   * under. The round steps aside into awaiting_supplement, which is what
+   * takes it out of everybody's queue while it waits.
+   */
+  const requestSupplement: ReviewMethods['requestSupplement'] = Effect.fn(
+    'Assessment.requestSupplement',
+  )(function* (tenantId, instanceId, input, as) {
+    return yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const row = yield* instanceOf(tenantId, instanceId)
+          if (row === null) return yield* new ReviewNotFound()
+          yield* requireJudge(tenantId, row, as, 'supplement-request')
+          const locked = yield* lockBatch(tenantId, row.batchId)
+          if (locked!.status === 'archived') return yield* new BatchReadOnly()
+          const gate = yield* deps.reviewGate(tenantId, row.batchId)
+          if (!gate.allowed) return yield* refuse('supplement-request', gate.reason)
+          if (row.state !== 'active') {
+            return yield* refuse(
+              'supplement-request',
+              row.state === 'awaiting_supplement' ? 'supplement-already-open' : 'review-not-open',
+            )
+          }
+          const instructions = input.instructions.trim()
+          const issues: { field: string; reason: string }[] = []
+          if (instructions === '') issues.push({ field: 'instructions', reason: 'required' })
+          if (input.requirements.length === 0) {
+            issues.push({ field: 'requirements', reason: 'required' })
+          }
+          if (input.requirements.length > MOST_REQUIREMENTS) {
+            issues.push({ field: 'requirements', reason: 'too-many' })
+          }
+          // keys are the server's: positional, stable for the answer to name
+          const requirements: SupplementRequirement[] = input.requirements.map((asked, index) => ({
+            key: `f${index + 1}`,
+            label: asked.label.trim(),
+            kind: asked.kind,
+            required: asked.required,
+          }))
+          for (const [index, asked] of requirements.entries()) {
+            if (asked.label === '') {
+              issues.push({ field: `requirements.${index}.label`, reason: 'required' })
+            }
+          }
+          if (issues.length > 0) return yield* new EntryPayloadInvalid({ issues })
+          // the state flip is the race gate: only one ask can pause the round
+          const paused = yield* setInstanceSupplementState({
+            tenantId,
+            instanceId,
+            from: 'active',
+            to: 'awaiting_supplement',
+          })
+          if (!paused) return yield* new ReviewConflict()
+          const requestNo = yield* nextSupplementNo(tenantId, instanceId)
+          yield* insertSupplementRequest({
+            tenantId,
+            reviewInstanceId: instanceId,
+            requestNo,
+            requestedBy: as.userId,
+            instructions,
+            requirements,
+          })
+          yield* insertReviewEvent({
+            tenantId,
+            reviewInstanceId: instanceId,
+            kind: 'supplement-requested',
+            actorId: as.userId,
+            route: row.currentRoute,
+            stageId: row.currentStageId,
+            comment: instructions,
+          })
+          const written = (yield* instanceOf(tenantId, instanceId))!
+          return yield* assembleDetail(tenantId, written, {
+            canDecide: false,
+            resolveReviewers: false,
+            canCancelSupplement: true,
+          })
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+    )
+  })
+
+  /** taking the ask back: the round returns to the queue as it stood */
+  const cancelSupplement: ReviewMethods['cancelSupplement'] = Effect.fn(
+    'Assessment.cancelSupplement',
+  )(function* (tenantId, requestId, as) {
+    return yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const request = yield* supplementRequestOf(tenantId, requestId)
+          if (request === null) return yield* new ReviewNotFound()
+          const row = yield* instanceOf(tenantId, request.reviewInstanceId)
+          if (row === null) return yield* new ReviewNotFound()
+          yield* requireJudge(tenantId, row, as, 'supplement-cancel')
+          const locked = yield* lockBatch(tenantId, row.batchId)
+          if (locked!.status === 'archived') return yield* new BatchReadOnly()
+          const gate = yield* deps.reviewGate(tenantId, row.batchId)
+          if (!gate.allowed) return yield* refuse('supplement-cancel', gate.reason)
+          if (request.status !== 'open' || row.state !== 'awaiting_supplement') {
+            return yield* refuse('supplement-cancel', 'request-not-open')
+          }
+          const closed = yield* closeSupplementRequest({
+            tenantId,
+            requestId,
+            outcome: 'cancelled',
+            cancelledBy: as.userId,
+          })
+          if (!closed) return yield* new ReviewConflict()
+          const resumed = yield* setInstanceSupplementState({
+            tenantId,
+            instanceId: row.id,
+            from: 'awaiting_supplement',
+            to: 'active',
+          })
+          if (!resumed) return yield* new ReviewConflict()
+          yield* insertReviewEvent({
+            tenantId,
+            reviewInstanceId: row.id,
+            kind: 'supplement-cancelled',
+            actorId: as.userId,
+            route: row.currentRoute,
+            stageId: row.currentStageId,
+          })
+          const written = (yield* instanceOf(tenantId, row.id))!
+          return yield* assembleDetail(tenantId, written, {
+            canDecide: true,
+            resolveReviewers: false,
+            canRequestSupplement: true,
+          })
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+    )
+  })
+
+  /**
+   * The supplement's files, held to storage's facts and bound in the
+   * caller's transaction. The short form of the entry service's
+   * bindAttachments, minus the per-field accept and size rules the
+   * restricted builder cannot express: a staged file must be the actor's
+   * own, a bound one may only be cited again inside this claim's own story,
+   * nothing retired is cited anew.
+   */
+  const bindSupplementFiles = (input: {
+    tenantId: string
+    entryId: string
+    actorId: string
+    refs: readonly { field: string; attachmentId: string }[]
+  }) =>
+    Effect.gen(function* () {
+      const issues: { field: string; reason: string }[] = []
+      const counted = new Map<string, number>()
+      for (const ref of input.refs) {
+        counted.set(ref.attachmentId, (counted.get(ref.attachmentId) ?? 0) + 1)
+      }
+      for (const ref of input.refs) {
+        if ((counted.get(ref.attachmentId) ?? 0) > 1) {
+          issues.push({ field: ref.field, reason: 'duplicate-attachment' })
+        }
+      }
+      if (issues.length > 0) return yield* Effect.fail(new EntryPayloadInvalid({ issues }))
+      yield* lockAttachments(
+        input.tenantId,
+        input.refs.map((ref) => ref.attachmentId),
+      )
+      const history = yield* entryAttachmentHistory(input.tenantId, input.entryId)
+      const supplementHistory = yield* supplementAttachmentHistory(input.tenantId, input.entryId)
+      const toBind: { attachmentId: string; ownerUserId: string }[] = []
+      for (const ref of input.refs) {
+        const meta = yield* Effect.result(
+          deps.storage.metadata({ tenantId: input.tenantId, attachmentId: ref.attachmentId }),
+        )
+        if (Result.isFailure(meta)) {
+          issues.push({ field: ref.field, reason: 'attachment-not-found' })
+          continue
+        }
+        const attachment = meta.success
+        if (attachment.status === 'retired') {
+          issues.push({ field: ref.field, reason: 'attachment-retired' })
+          continue
+        }
+        if (attachment.status === 'bound') {
+          if (!history.has(ref.attachmentId) && !supplementHistory.has(ref.attachmentId)) {
+            issues.push({ field: ref.field, reason: 'attachment-cross-entry' })
+          }
+          continue
+        }
+        if (attachment.ownerUserId !== input.actorId) {
+          issues.push({ field: ref.field, reason: 'attachment-not-yours' })
+          continue
+        }
+        toBind.push({ attachmentId: ref.attachmentId, ownerUserId: attachment.ownerUserId })
+      }
+      if (issues.length > 0) return yield* Effect.fail(new EntryPayloadInvalid({ issues }))
+      for (const target of toBind) {
+        const bound = yield* Effect.result(
+          deps.storage.bind({
+            tenantId: input.tenantId,
+            attachmentId: target.attachmentId,
+            ownerUserId: target.ownerUserId,
+          }),
+        )
+        if (Result.isFailure(bound)) {
+          return yield* Effect.fail(
+            new EntryPayloadInvalid({ issues: [{ field: '', reason: 'attachment-unavailable' }] }),
+          )
+        }
+      }
+    })
+
+  /**
+   * The answer. Only the entry's own subject gives it, and the open request
+   * is their whole standing to do so - deliberately no phase gate, because a
+   * round that paused itself to ask must not have the answer locked out by
+   * whatever the calendar did since. The original revision is never touched:
+   * the answer lives beside it, on the round that asked.
+   */
+  const answerSupplement: ReviewMethods['answerSupplement'] = Effect.fn(
+    'Assessment.answerSupplement',
+  )(function* (tenantId, requestId, input, as) {
+    return yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const request = yield* supplementRequestOf(tenantId, requestId)
+          if (request === null) return yield* new ReviewNotFound()
+          const row = yield* instanceOf(tenantId, request.reviewInstanceId)
+          if (row === null) return yield* new ReviewNotFound()
+          if (row.subjectUserId !== as.userId) {
+            // same admission rule as appealing: an administrator is told the
+            // act is not theirs, a stranger learns nothing
+            const admin = yield* deps.rosterReach(as, tenantId, row.batchId)
+            if (!admin) return yield* new ReviewNotFound()
+            return yield* refuse('supplement-answer', 'not-your-entry')
+          }
+          const locked = yield* lockBatch(tenantId, row.batchId)
+          if (locked!.status === 'archived') return yield* new BatchReadOnly()
+          if (request.status !== 'open' || row.state !== 'awaiting_supplement') {
+            return yield* refuse('supplement-answer', 'request-not-open')
+          }
+          // the answer held to the ask: exactly the asked-for pieces
+          const record = (input.payload ?? {}) as Record<string, unknown>
+          const issues: { field: string; reason: string }[] = []
+          const known = new Set(request.requirements.map((asked) => asked.key))
+          for (const key of Object.keys(record)) {
+            if (!known.has(key)) issues.push({ field: key, reason: 'not-asked' })
+          }
+          const normalized: Record<string, string | readonly string[]> = {}
+          const refs: { field: string; attachmentId: string }[] = []
+          for (const asked of request.requirements) {
+            const value = record[asked.key]
+            if (asked.kind === 'text') {
+              if (value !== undefined && typeof value !== 'string') {
+                issues.push({ field: asked.key, reason: 'unreadable' })
+                continue
+              }
+              const text = typeof value === 'string' ? value.trim() : ''
+              if (text === '') {
+                if (asked.required) issues.push({ field: asked.key, reason: 'required' })
+                continue
+              }
+              if (text.length > TEXT_MOST) {
+                issues.push({ field: asked.key, reason: 'too-long' })
+                continue
+              }
+              normalized[asked.key] = text
+            } else {
+              if (
+                value !== undefined &&
+                (!Array.isArray(value) || value.some((one) => typeof one !== 'string'))
+              ) {
+                issues.push({ field: asked.key, reason: 'unreadable' })
+                continue
+              }
+              const cited = Array.isArray(value) ? (value as readonly string[]) : []
+              if (cited.length === 0) {
+                if (asked.required) issues.push({ field: asked.key, reason: 'required' })
+                continue
+              }
+              if (cited.length > FILES_MOST) {
+                issues.push({ field: asked.key, reason: 'too-many' })
+                continue
+              }
+              normalized[asked.key] = cited
+              refs.push(...cited.map((attachmentId) => ({ field: asked.key, attachmentId })))
+            }
+          }
+          if (issues.length > 0) return yield* new EntryPayloadInvalid({ issues })
+          yield* bindSupplementFiles({
+            tenantId,
+            entryId: row.entryId,
+            actorId: as.userId,
+            refs,
+          })
+          const responseId = yield* insertSupplementResponse({
+            tenantId,
+            requestId,
+            payload: normalized,
+            respondedBy: as.userId,
+          })
+          yield* insertSupplementAttachments({
+            tenantId,
+            responseId,
+            attachmentIds: refs.map((ref) => ref.attachmentId),
+          })
+          const closed = yield* closeSupplementRequest({
+            tenantId,
+            requestId,
+            outcome: 'answered',
+          })
+          if (!closed) return yield* new ReviewConflict()
+          // back into the queue it left; if its stage emptied meanwhile the
+          // patrol writes it blocked, the same as any other active round
+          const resumed = yield* setInstanceSupplementState({
+            tenantId,
+            instanceId: row.id,
+            from: 'awaiting_supplement',
+            to: 'active',
+          })
+          if (!resumed) return yield* new ReviewConflict()
+          yield* insertReviewEvent({
+            tenantId,
+            reviewInstanceId: row.id,
+            kind: 'supplement-submitted',
+            actorId: as.userId,
+            route: row.currentRoute,
+            stageId: row.currentStageId,
+          })
+          const written = (yield* instanceOf(tenantId, row.id))!
+          return yield* assembleDetail(tenantId, written, {
+            canDecide: false,
+            resolveReviewers: false,
+          })
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+    )
+  })
+
+  return {
+    listReviewInbox,
+    getReviewInstance,
+    decideReview,
+    appealReview,
+    requestSupplement,
+    cancelSupplement,
+    answerSupplement,
+  }
 }

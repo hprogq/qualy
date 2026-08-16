@@ -56,6 +56,11 @@ import {
   readPolicy,
   resolvePolicy,
 } from '../review/chain.ts'
+import {
+  openSupplementsOfEntries,
+  type OpenSupplementRow,
+  type SupplementRequirement,
+} from '../review/db.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
 //
@@ -83,6 +88,16 @@ export interface EntryRevisionView {
   readonly createdAt: number
 }
 
+/** the open ask on this claim's round, for the screens that answer it */
+export interface EntrySupplementView {
+  readonly requestId: string
+  readonly instanceId: string
+  readonly requestNo: number
+  readonly instructions: string
+  readonly requirements: readonly SupplementRequirement[]
+  readonly requestedAt: number
+}
+
 export interface EntryView {
   readonly id: string
   readonly batchId: string
@@ -93,6 +108,13 @@ export interface EntryView {
   readonly currentRevision: EntryRevisionView | null
   readonly currentReviewInstanceId: string | null
   readonly createdAt: number
+  /**
+   * The reviewer's open ask for more backing, when the current round is
+   * waiting on one. Discovery only - answering re-checks everything - and
+   * null on write-path responses; the screens re-read through the gated
+   * paths, like the capabilities.
+   */
+  readonly supplement: EntrySupplementView | null
   readonly capabilities: {
     readonly edit: ActionAvailability
     readonly submit: ActionAvailability
@@ -458,6 +480,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     as: Principal,
     participant: ParticipantAnchor | null,
     gates?: EntryGates,
+    supplement?: OpenSupplementRow | null,
   ): EntryView => {
     const own = participant !== null && participant.userId === as.userId
     const active = own && participant.status === 'active'
@@ -481,6 +504,17 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       currentRevision: revision,
       currentReviewInstanceId: entry.currentReviewInstanceId,
       createdAt: entry.createdAt,
+      supplement:
+        supplement == null
+          ? null
+          : {
+              requestId: supplement.requestId,
+              instanceId: supplement.instanceId,
+              requestNo: supplement.requestNo,
+              instructions: supplement.instructions,
+              requirements: supplement.requirements,
+              requestedAt: supplement.requestedAt,
+            },
       // discovery, not authorization - the gate is asked again at the act -
       // but the same gate, so a button that renders enabled is a call that
       // goes through. Callers answering a write already hold the fresh row
@@ -676,11 +710,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             const reach = yield* Effect.result(deps.requireRosterReach(as, tenantId, entry.batchId))
             if (Result.isFailure(reach)) return yield* new EntryNotFound()
           }
+          const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
           return view(
             entry,
             yield* revisionView(tenantId, entry.currentRevisionId),
             as,
             participant,
+            undefined,
+            asked[0] ?? null,
           )
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
@@ -1041,6 +1078,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             limit: limit + 1,
           })
           const pageRows = rows.slice(0, limit)
+          const askedByEntry = new Map(
+            (yield* openSupplementsOfEntries(
+              tenantId,
+              pageRows.map((entry) => entry.id),
+            )).map((asked) => [asked.entryId, asked]),
+          )
           const entries: EntryView[] = []
           for (const entry of pageRows) {
             entries.push(
@@ -1050,6 +1093,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 as,
                 participant,
                 gates,
+                askedByEntry.get(entry.id) ?? null,
               ),
             )
           }
@@ -1107,12 +1151,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             rounds.map((round) => round.id),
           )
           const ownEvents = yield* entryEventsOf(tenantId, entryId)
+          const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
           return {
             entry: view(
               entry,
               yield* revisionView(tenantId, entry.currentRevisionId),
               as,
               participant,
+              undefined,
+              asked[0] ?? null,
             ),
             revisions: revisions.map((revision) => ({
               id: revision.id,

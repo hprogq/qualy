@@ -1167,11 +1167,13 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 显式存列而不是运行时判 `origin === 'appeal'`：以后 staff reopen 规则不同时，旧记录不用重新解释。
 
 三、**普通提交与申诉是两个接口、两个 domain command，底层共用一套开轮逻辑**。
+
 ```
 submitEntry  ──┐
                ├─→ 同一套开轮：解析策略、冻结路线、arrival check、写事件
 appealReview ──┘
 ```
+
 普通提交固定 `origin='initial' / route='normal' / rejectPolicy='any-stage'`；
 申诉固定 `origin='appeal' / route='doubt' / rejectPolicy='terminal-only'`。
 **这两组不给管理员配**：能配出「叫申诉但第一级就能打回」或「普通提交却只有链尾能驳回」的组合，
@@ -1191,11 +1193,13 @@ appealReview ──┘
 六、**疑点链是一条真正的审核链，取消 recommend/forward 词汇**。
 中间节点「通过」就等于「本级无异议，转下一节点」，不必再发明第二套词。
 决策集合收敛为：
+
 ```
 normal：approve / reject / comment（+ raise-doubt，若阶段开着且疑点链有可进入的步骤）
 doubt + any-stage：   approve / reject / comment
 doubt + terminal-only：中间 approve / comment；链尾 approve / reject / comment
 ```
+
 `ReviewDecision` 因此只剩 `approve | reject | raise-doubt | comment`。
 
 七、**提出疑点仍在同一轮里**，不新开 round：那还是「同一次审核中换处理路线」，
@@ -1309,4 +1313,6 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 - **maxEntries 语义不变**:它限制"同时持有多少件申报事实"(非 voided 计数),与"计几条分"无关。
 - **历史按版本讲**:一轮审核属于它所判的那个版本;round 视图携带 `origin/supersedesInstanceId/appealedInstanceId`,rerouted/superseded/appealed/abandoned 各有人话,空说明不占行。
 
-**已裁决、待实现**(触发即做,先记账):①聚合器可解释化(`AggregationResult` 逐条 included/reason)+ `max@1`(学生干部"最高职务计分",terms.md 明文)+ `top-n-sum@1`;②"基础分"不做 ScoreGroup.base,建模为 `derived` Item(constant driver,scorer 增加非 Entry 的 ScoreContribution,带 provenance);③ reviewPolicy 增加显式 `mode:'none'`(无需审核,提交即 approved,严禁用空 stages 暗示);④ declaration 轻题型(零字段一键申报);⑤补件机制 `ReviewSupplementRequest/Response`(受限 requirement builder:仅文字+文件;ReviewInstance 增 `awaiting_supplement`;申诉与普通审核共用;原 revision 永不因补件改动;开放的补件请求本身即回答能力,不受后续阶段变化锁死);⑥ `assessment.entry.resubmit` 更名为申诉语义的代码(migration + 码表同步);⑦申诉收紧到首次公示后 + 申诉可配置补证策略(`reason-only|allow-supplement`)。边界一句话:**改"申报了什么"走退回修改;只补"凭什么信"走补件;申诉冻结原材料,只挑战结论**。
+**已裁决**(①—⑥ 已实现,⑦ 待触发):①聚合器可解释化(`AggregationResult` 逐条 included/reason)+ `max@1`(学生干部"最高职务计分",terms.md 明文)+ `top-n-sum@1`;②"基础分"不做 ScoreGroup.base,建模为 `derived` Item(constant driver,scorer 增加非 Entry 的 ScoreContribution,带 provenance);③ reviewPolicy 增加显式 `mode:'none'`(无需审核,提交即 approved,严禁用空 stages 暗示);④ declaration 轻题型(零字段一键申报);⑤补件机制 `ReviewSupplementRequest/Response`(受限 requirement builder:仅文字+文件;ReviewInstance 增 `awaiting_supplement`;申诉与普通审核共用;原 revision 永不因补件改动;开放的补件请求本身即回答能力,不受后续阶段变化锁死);⑥ `assessment.entry.resubmit` 更名为申诉语义的代码(migration + 码表同步);⑦申诉收紧到首次公示后 + 申诉可配置补证策略(`reason-only|allow-supplement`)。边界一句话:**改"申报了什么"走退回修改;只补"凭什么信"走补件;申诉冻结原材料,只挑战结论**。
+
+⑤ 落地口径(2026-08-16):`awaiting_supplement` 是**开放态**——占 entry 的唯一开放轮次槽位,进 hasOpenRound / 影响分析 / cancelReviewInstance 的开放集,但不进审核队列(inbox 只取 active),补件期间 decideReview 一律拒绝(`awaiting-supplement`)。一轮同时只有一个 open 请求(部分唯一索引),暂停轮次的状态翻转即并发闸门。**可回答性 = 请求 open ∧ 轮次仍在 awaiting_supplement**:轮次被撤回/重路由/作废时请求按定义随之失效,不需要任何清扫;回答只验"本人 + 请求开放 + 批次未归档",刻意不过阶段门。requirement key 由服务端按位次派发(`f1..fn`,≤8 项),文字 ≤2000 字、文件 ≤10 个;回答的附件绑定沿用申报的信任规则(自己的 staged 文件,或本 entry 故事——含历次 revision 与历次补件——已引用过的文件),附件读取授权把补件引用并入 citing 集。请求/取消归当前 stage 的任意审核人(与 decide 同一 mayReview 谓词、同一阶段门),事件 `supplement-requested / supplement-submitted / supplement-cancelled` 记在轮次上,请求说明以 comment 随事件入 trail。路径:`POST …/instances/{id}/supplement-requests`、`PUT …/supplement-requests/{id}/status`、`POST …/supplement-requests/{id}/responses`。

@@ -58,6 +58,7 @@ import {
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
 import { RejectDialog, EscalateDialog, type WordedDecision } from './decision-dialogs.tsx'
+import { SupplementDialog } from './SupplementDialog.tsx'
 import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
 import { HistorySheet, VersionPicker } from './history.tsx'
 import { attachmentContentUrl } from '../entry/model.ts'
@@ -161,7 +162,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
   const [armed, setArmed] = useState<'approve' | 'comment' | null>(null)
   const [word, setWord] = useState('')
-  const [dialog, setDialog] = useState<'reject' | 'escalate' | null>(null)
+  const [dialog, setDialog] = useState<'reject' | 'escalate' | 'supplement' | null>(null)
   const [keysOpen, setKeysOpen] = useState(false)
   const [writing, setWriting] = useState(false)
   const [openSibling, setOpenSibling] = useState<string | null>(null)
@@ -217,6 +218,22 @@ function Workbench({ batch }: { batch: BatchDto }) {
     const next = remaining.find((row) => row.instanceId !== instanceId)
     if (next !== undefined) goTo(next.instanceId)
   }
+
+  /** taking the ask back; the round returns to the queue as it stood */
+  const withdrawSupplement = useMutation({
+    mutationFn: (requestId: string) =>
+      run(
+        api.assessment.cancelSupplement({
+          params: { requestId },
+          payload: { status: 'cancelled' },
+        }),
+      ),
+    onSuccess: () => {
+      toast.success(format(m.supplementWithdrawn))
+      refresh()
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
 
   /** a note moves nothing, so it goes out at once and the round stays put */
   const sayNote = useMutation({
@@ -459,6 +476,32 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     onSubmit={submitArmed}
                   />
                 )}
+                {review.state === 'awaiting_supplement' && (
+                  <footer className="flex flex-wrap items-center gap-3 border-t px-5 py-3">
+                    <InfoIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="flex min-w-0 flex-col">
+                      <p className="text-sm font-medium">{format(m.supplementWaitingTitle)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(m.supplementWaitingBody, { who: review.participantName })}
+                      </p>
+                    </div>
+                    <span className="flex-1" />
+                    {review.capabilities.canCancelSupplement &&
+                      (() => {
+                        const open = review.supplements.find((one) => one.status === 'open')
+                        return open === undefined ? null : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={withdrawSupplement.isPending}
+                            onClick={() => withdrawSupplement.mutate(open.id)}
+                          >
+                            {format(m.supplementWithdraw)}
+                          </Button>
+                        )
+                      })()}
+                  </footer>
+                )}
                 {review.state === 'completed' && review.outcome !== null && (
                   <div className="flex items-center gap-2 border-t px-5 py-3">
                     <Badge variant="outline">{format(reviewOutcomeMessage(review.outcome))}</Badge>
@@ -531,6 +574,17 @@ function Workbench({ batch }: { batch: BatchDto }) {
             reasons={batch.reviewReasons.escalate}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => stageDecision('escalate', worded)}
+          />
+        )}
+        {dialog === 'supplement' && review !== undefined && (
+          <SupplementDialog
+            open
+            instanceId={instanceId}
+            onClose={() => setDialog(null)}
+            onDone={() => {
+              setDialog(null)
+              refresh()
+            }}
           />
         )}
       </div>
@@ -1011,6 +1065,17 @@ function MainColumn({
         </section>
       )}
 
+      {review.supplements.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2.5 border-b pb-2">
+            <h3 className="text-sm font-semibold">{format(m.supplementSectionTitle)}</h3>
+          </div>
+          {review.supplements.map((supplement) => (
+            <SupplementCard key={supplement.id} supplement={supplement} />
+          ))}
+        </section>
+      )}
+
       {/* reserved: machine reading arrives later, and the reading order
           already keeps its place */}
       <section className="flex flex-col gap-1.5 rounded-xl border border-dashed p-4">
@@ -1018,6 +1083,70 @@ function MainColumn({
         <p className="text-sm text-muted-foreground">{format(m.reviewInsightSoon)}</p>
       </section>
     </main>
+  )
+}
+
+/** one ask and what came back, read like the filing above it */
+function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][number] }) {
+  const { format } = useI18n()
+  const answers = (supplement.response?.payload ?? {}) as Record<string, unknown>
+  return (
+    <div className="flex flex-col gap-2.5 rounded-xl border p-3.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-medium">
+          {format(m.supplementRequestHeading, { no: supplement.requestNo })}
+        </p>
+        <Badge variant={supplement.status === 'answered' ? 'default' : 'outline'}>
+          {format(
+            supplement.status === 'answered'
+              ? m.supplementStatusAnswered
+              : supplement.status === 'cancelled'
+                ? m.supplementStatusCancelled
+                : m.supplementStatusOpen,
+          )}
+        </Badge>
+        <span className="flex-1" />
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {timeLabel(supplement.requestedAt)}
+        </p>
+      </div>
+      <p className="border-l-2 border-border pl-2.5 text-sm leading-relaxed">
+        {supplement.instructions}
+      </p>
+      {supplement.response !== null && (
+        <dl className="flex flex-col gap-2">
+          {supplement.requirements.map((asked) => {
+            const value = answers[asked.key]
+            return (
+              <div key={asked.key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+                <dt className="text-sm whitespace-nowrap text-muted-foreground">{asked.label}</dt>
+                <dd className="min-w-0 text-sm">
+                  {asked.kind === 'file' ? (
+                    Array.isArray(value) && value.length > 0 ? (
+                      <span className="flex flex-wrap gap-3">
+                        {value.map((attachmentId) => (
+                          <AttachmentLink
+                            key={String(attachmentId)}
+                            attachmentId={String(attachmentId)}
+                            variant="preview"
+                          />
+                        ))}
+                      </span>
+                    ) : (
+                      '—'
+                    )
+                  ) : typeof value === 'string' && value !== '' ? (
+                    value
+                  ) : (
+                    '—'
+                  )}
+                </dd>
+              </div>
+            )
+          })}
+        </dl>
+      )}
+    </div>
   )
 }
 
@@ -1227,7 +1356,7 @@ function DecisionBar({
   busy: boolean
   onWord: (next: string) => void
   onArm: (next: 'approve' | 'comment' | null) => void
-  onDialog: (next: 'reject' | 'escalate') => void
+  onDialog: (next: 'reject' | 'escalate' | 'supplement') => void
   onExpand: () => void
   onSubmit: () => void
 }) {
@@ -1260,6 +1389,13 @@ function DecisionBar({
             </InputGroupButton>
           </InputGroupAddon>
         </InputGroup>
+        {review.capabilities.canRequestSupplement && (
+          <Explained why={format(m.reviewTipSupplement)}>
+            <Button variant="outline" onClick={() => onDialog('supplement')}>
+              {format(m.reviewSupplementAsk)}
+            </Button>
+          </Explained>
+        )}
         {decisions.includes('comment') && (
           <Explained why={format(m.reviewTipComment)}>
             <Button

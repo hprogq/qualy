@@ -170,7 +170,7 @@ export const userMayReview = (input: {
 
 export interface ReviewInstanceDetailRow {
   id: string
-  state: 'active' | 'blocked' | 'completed'
+  state: 'active' | 'blocked' | 'awaiting_supplement' | 'completed'
   outcome: string | null
   currentRoute: 'normal' | 'escalation'
   currentStageId: string
@@ -970,6 +970,370 @@ export const scoreGroupOf = (tenantId: string, groupId: string) =>
  * too. Open rounds only - having judged something last term is not standing
  * to read it today.
  */
+/** one asked-for piece of a supplement: text or file, nothing else */
+export interface SupplementRequirement {
+  key: string
+  label: string
+  kind: 'text' | 'file'
+  required: boolean
+}
+
+/** the requirements list off the jsonb, defensively */
+export const requirementsOf = (value: unknown): readonly SupplementRequirement[] =>
+  Array.isArray(value)
+    ? value.flatMap((one): SupplementRequirement[] => {
+        const record = (one ?? {}) as Record<string, unknown>
+        const kind = record['kind']
+        if (
+          typeof record['key'] !== 'string' ||
+          typeof record['label'] !== 'string' ||
+          (kind !== 'text' && kind !== 'file')
+        ) {
+          return []
+        }
+        return [
+          {
+            key: record['key'],
+            label: record['label'],
+            kind,
+            required: record['required'] === true,
+          },
+        ]
+      })
+    : []
+
+export interface SupplementRow {
+  id: string
+  requestNo: number
+  status: 'open' | 'answered' | 'cancelled'
+  instructions: string
+  requirements: readonly SupplementRequirement[]
+  requestedBy: string
+  requestedByName: string | null
+  requestedAt: number
+  answeredAt: number | null
+  cancelledAt: number | null
+  response: {
+    payload: unknown
+    attachments: readonly { attachmentId: string; position: number }[]
+    respondedAt: number
+  } | null
+}
+
+/** every ask this round made, oldest first, each with its answer if any */
+export const supplementsOf = (tenantId: string, instanceId: string) =>
+  Effect.gen(function* () {
+    const requests = yield* db.query((k) =>
+      k
+        .selectFrom('ReviewSupplementRequest as sr')
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'sr.tenantId').onRef('u.id', '=', 'sr.requestedBy'),
+        )
+        .leftJoin('ReviewSupplementResponse as re', (join) =>
+          join.onRef('re.tenantId', '=', 'sr.tenantId').onRef('re.requestId', '=', 'sr.id'),
+        )
+        .select([
+          'sr.id',
+          'sr.requestNo',
+          'sr.status',
+          'sr.instructions',
+          'sr.requirements',
+          'sr.requestedBy',
+          'u.displayName as requestedByName',
+          're.id as responseId',
+          're.payload as responsePayload',
+        ])
+        .select([
+          epoch('sr.created_at').as('requestedMs'),
+          epoch('sr.answered_at').as('answeredMs'),
+          epoch('sr.cancelled_at').as('cancelledMs'),
+          epoch('re.created_at').as('respondedMs'),
+        ])
+        .where('sr.tenantId', '=', tenantId)
+        .where('sr.reviewInstanceId', '=', instanceId)
+        .orderBy('sr.requestNo')
+        .execute(),
+    )
+    const responseIds = requests.flatMap((row) => (row.responseId === null ? [] : [row.responseId]))
+    const cited =
+      responseIds.length === 0
+        ? []
+        : yield* db.query((k) =>
+            k
+              .selectFrom('ReviewSupplementAttachment')
+              .select(['responseId', 'attachmentId', 'position'])
+              .where('tenantId', '=', tenantId)
+              .where('responseId', 'in', responseIds)
+              .orderBy('position')
+              .execute(),
+          )
+    return requests.map((row): SupplementRow => ({
+      id: row.id,
+      requestNo: row.requestNo,
+      status: row.status as SupplementRow['status'],
+      instructions: row.instructions,
+      requirements: requirementsOf(row.requirements),
+      requestedBy: row.requestedBy,
+      requestedByName: row.requestedByName,
+      requestedAt: msOf(row.requestedMs),
+      answeredAt: row.answeredMs == null ? null : msOf(row.answeredMs),
+      cancelledAt: row.cancelledMs == null ? null : msOf(row.cancelledMs),
+      response:
+        row.responseId === null
+          ? null
+          : {
+              payload: row.responsePayload,
+              attachments: cited
+                .filter((one) => one.responseId === row.responseId)
+                .map((one) => ({ attachmentId: one.attachmentId, position: one.position })),
+              respondedAt: msOf(row.respondedMs),
+            },
+    }))
+  })
+
+/** one request with the round it belongs to, for the answer and cancel doors */
+export interface SupplementRequestRow {
+  id: string
+  reviewInstanceId: string
+  requestNo: number
+  status: 'open' | 'answered' | 'cancelled'
+  instructions: string
+  requirements: readonly SupplementRequirement[]
+}
+
+export const supplementRequestOf = (tenantId: string, requestId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewSupplementRequest')
+        .select(['id', 'reviewInstanceId', 'requestNo', 'status', 'instructions', 'requirements'])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', requestId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : ({
+              id: row.id,
+              reviewInstanceId: row.reviewInstanceId,
+              requestNo: row.requestNo,
+              status: row.status as SupplementRequestRow['status'],
+              instructions: row.instructions,
+              requirements: requirementsOf(row.requirements),
+            } satisfies SupplementRequestRow),
+      ),
+    )
+
+export const nextSupplementNo = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      sql<{ next: string }>`
+        select coalesce(max(request_no), 0) + 1 as next from review_supplement_requests
+        where tenant_id = ${tenantId} and review_instance_id = ${instanceId}
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => Number(rows[0]!.next)))
+
+export const insertSupplementRequest = (input: {
+  tenantId: string
+  reviewInstanceId: string
+  requestNo: number
+  requestedBy: string
+  instructions: string
+  requirements: readonly SupplementRequirement[]
+}) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        insert into review_supplement_requests
+          (tenant_id, review_instance_id, request_no, requested_by, instructions, requirements)
+        values (${input.tenantId}, ${input.reviewInstanceId}, ${input.requestNo},
+                ${input.requestedBy}, ${input.instructions},
+                ${sql.val(JSON.stringify(input.requirements))}::jsonb)
+        returning id
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => String(rows[0]!.id)))
+
+/**
+ * The round pausing itself to ask, or picking work back up. Conditional on
+ * the state it is leaving, so two reviewers pressing at once cannot both
+ * succeed - the loser is told the round has moved.
+ */
+export const setInstanceSupplementState = (input: {
+  tenantId: string
+  instanceId: string
+  from: 'active' | 'awaiting_supplement'
+  to: 'active' | 'awaiting_supplement'
+}) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('ReviewInstance')
+        .set({ state: input.to })
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.instanceId)
+        .where('state', '=', input.from)
+        .returning(['id'])
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/** closes the ask, exactly once; the loser of a race writes nothing */
+export const closeSupplementRequest = (input: {
+  tenantId: string
+  requestId: string
+  outcome: 'answered' | 'cancelled'
+  cancelledBy?: string
+}) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('ReviewSupplementRequest')
+        .set(
+          input.outcome === 'answered'
+            ? { status: 'answered', answeredAt: sql`now()` }
+            : {
+                status: 'cancelled',
+                cancelledAt: sql`now()`,
+                cancelledBy: input.cancelledBy ?? null,
+              },
+        )
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.requestId)
+        .where('status', '=', 'open')
+        .returning(['id'])
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+export const insertSupplementResponse = (input: {
+  tenantId: string
+  requestId: string
+  payload: unknown
+  respondedBy: string
+}) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        insert into review_supplement_responses (tenant_id, request_id, payload, responded_by)
+        values (${input.tenantId}, ${input.requestId},
+                ${sql.val(JSON.stringify(input.payload))}::jsonb, ${input.respondedBy})
+        returning id
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => String(rows[0]!.id)))
+
+export const insertSupplementAttachments = (input: {
+  tenantId: string
+  responseId: string
+  attachmentIds: readonly string[]
+}) =>
+  input.attachmentIds.length === 0
+    ? Effect.void
+    : db.query((k) =>
+        k
+          .insertInto('ReviewSupplementAttachment')
+          .values(
+            input.attachmentIds.map(
+              (attachmentId, position) =>
+                ({
+                  tenantId: input.tenantId,
+                  responseId: input.responseId,
+                  attachmentId,
+                  position,
+                }) as never,
+            ),
+          )
+          .execute(),
+      )
+
+/**
+ * Every attachment a supplement answer of this entry's rounds ever cited.
+ * The reuse set beside entry_revision_attachments: a file already part of
+ * this claim's story may be cited again by a later answer, and only those.
+ */
+export const supplementAttachmentHistory = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewSupplementAttachment as rsa')
+        .innerJoin('ReviewSupplementResponse as re', (join) =>
+          join.onRef('re.tenantId', '=', 'rsa.tenantId').onRef('re.id', '=', 'rsa.responseId'),
+        )
+        .innerJoin('ReviewSupplementRequest as sr', (join) =>
+          join.onRef('sr.tenantId', '=', 're.tenantId').onRef('sr.id', '=', 're.requestId'),
+        )
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 'sr.tenantId').onRef('ri.id', '=', 'sr.reviewInstanceId'),
+        )
+        .select(['rsa.attachmentId'])
+        .where('rsa.tenantId', '=', tenantId)
+        .where('ri.entryId', '=', entryId)
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => new Set(rows.map((row) => String(row.attachmentId)))))
+
+/**
+ * The one open ask on the round an entry is currently in, for the entry
+ * screens: this is how the person who filed learns they are being asked.
+ * Answerability is exactly this join - request open AND round still waiting -
+ * so a round that was cancelled or re-routed under an open ask stops
+ * offering it without anybody sweeping.
+ */
+export interface OpenSupplementRow {
+  entryId: string
+  requestId: string
+  instanceId: string
+  requestNo: number
+  instructions: string
+  requirements: readonly SupplementRequirement[]
+  requestedAt: number
+}
+
+export const openSupplementsOfEntries = (tenantId: string, entryIds: readonly string[]) =>
+  entryIds.length === 0
+    ? Effect.succeed([] as readonly OpenSupplementRow[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('ReviewSupplementRequest as sr')
+            .innerJoin('ReviewInstance as ri', (join) =>
+              join
+                .onRef('ri.tenantId', '=', 'sr.tenantId')
+                .onRef('ri.id', '=', 'sr.reviewInstanceId'),
+            )
+            .select([
+              'ri.entryId',
+              'sr.id as requestId',
+              'sr.reviewInstanceId as instanceId',
+              'sr.requestNo',
+              'sr.instructions',
+              'sr.requirements',
+            ])
+            .select([epoch('sr.created_at').as('requestedMs')])
+            .where('sr.tenantId', '=', tenantId)
+            .where('sr.status', '=', 'open')
+            .where('ri.state', '=', 'awaiting_supplement')
+            .where('ri.entryId', 'in', [...entryIds])
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) =>
+            rows.map((row): OpenSupplementRow => ({
+              entryId: row.entryId,
+              requestId: row.requestId,
+              instanceId: row.instanceId,
+              requestNo: row.requestNo,
+              instructions: row.instructions,
+              requirements: requirementsOf(row.requirements),
+              requestedAt: msOf(row.requestedMs),
+            })),
+          ),
+        )
+
 export const mayReviewEntry = (input: { tenantId: string; userId: string; entryId: string }) =>
   db
     .query((k) =>
@@ -982,7 +1346,7 @@ export const mayReviewEntry = (input: { tenantId: string; userId: string; entryI
           join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
           where ri.tenant_id = ${input.tenantId}
             and ri.entry_id = ${input.entryId}
-            and ri.state in ('active', 'blocked')
+            and ri.state in ('active', 'blocked', 'awaiting_supplement')
             and ${mayReview({
               tenantId: sql`${input.tenantId}`,
               batchId: sql.ref('e.batch_id'),

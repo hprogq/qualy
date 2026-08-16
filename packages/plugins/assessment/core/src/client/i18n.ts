@@ -1433,6 +1433,127 @@ const i18n = definePluginMessages({
       id: 'assessment/review/esc-banner-body',
       defaultMessage: 'The last step decides; your opinion goes with it.',
     },
+    // the supplement exchange: ask for more backing, answer, take back
+    reviewSupplementAsk: {
+      id: 'assessment/review/supplement-ask',
+      defaultMessage: 'Request material',
+    },
+    reviewTipSupplement: {
+      id: 'assessment/review/tip-supplement',
+      defaultMessage: 'Asks for more backing; the filing stays as it is',
+    },
+    supplementDialogTitle: {
+      id: 'assessment/supplement/dialog-title',
+      defaultMessage: 'Request supporting material',
+    },
+    supplementDialogHint: {
+      id: 'assessment/supplement/dialog-hint',
+      defaultMessage: 'Say what to add. It returns to your queue once submitted.',
+    },
+    supplementInstructionsLabel: {
+      id: 'assessment/supplement/instructions-label',
+      defaultMessage: 'What to add, and why',
+    },
+    supplementPiecesLabel: {
+      id: 'assessment/supplement/pieces-label',
+      defaultMessage: 'What you are asking for',
+    },
+    supplementAddText: {
+      id: 'assessment/supplement/add-text',
+      defaultMessage: 'Written answer',
+    },
+    supplementAddFile: { id: 'assessment/supplement/add-file', defaultMessage: 'Files' },
+    supplementPieceLabel: {
+      id: 'assessment/supplement/piece-label',
+      defaultMessage: 'Name this piece',
+    },
+    supplementPieceRequired: {
+      id: 'assessment/supplement/piece-required',
+      defaultMessage: 'Required',
+    },
+    supplementPieceRemove: { id: 'assessment/supplement/piece-remove', defaultMessage: 'Remove' },
+    supplementSend: { id: 'assessment/supplement/send', defaultMessage: 'Send request' },
+    supplementSent: { id: 'assessment/supplement/sent', defaultMessage: 'Request sent.' },
+    supplementWaitingTitle: {
+      id: 'assessment/supplement/waiting-title',
+      defaultMessage: 'Waiting for requested material',
+    },
+    supplementWaitingBody: {
+      id: 'assessment/supplement/waiting-body',
+      defaultMessage: 'It returns to the queue once {who} submits.',
+    },
+    supplementWithdraw: {
+      id: 'assessment/supplement/withdraw',
+      defaultMessage: 'Withdraw request',
+    },
+    supplementWithdrawn: {
+      id: 'assessment/supplement/withdrawn',
+      defaultMessage: 'Request withdrawn.',
+    },
+    supplementSectionTitle: {
+      id: 'assessment/supplement/section-title',
+      defaultMessage: 'Requested material',
+    },
+    supplementRequestHeading: {
+      id: 'assessment/supplement/request-heading',
+      defaultMessage: 'Request {no}',
+    },
+    supplementStatusOpen: {
+      id: 'assessment/supplement/status-open',
+      defaultMessage: 'Waiting',
+    },
+    supplementStatusAnswered: {
+      id: 'assessment/supplement/status-answered',
+      defaultMessage: 'Submitted',
+    },
+    supplementStatusCancelled: {
+      id: 'assessment/supplement/status-cancelled',
+      defaultMessage: 'Withdrawn',
+    },
+    eventSupplementRequested: {
+      id: 'assessment/event/supplement-requested',
+      defaultMessage: '{who} asked for more material',
+    },
+    eventSupplementSubmitted: {
+      id: 'assessment/event/supplement-submitted',
+      defaultMessage: '{who} added the requested material',
+    },
+    eventSupplementCancelled: {
+      id: 'assessment/event/supplement-cancelled',
+      defaultMessage: '{who} withdrew the request',
+    },
+    entrySupplementTitle: {
+      id: 'assessment/entry/supplement-title',
+      defaultMessage: 'The reviewer asked for more material',
+    },
+    entrySupplementAnswer: {
+      id: 'assessment/entry/supplement-answer',
+      defaultMessage: 'Add material',
+    },
+    entrySupplementDialogTitle: {
+      id: 'assessment/entry/supplement-dialog-title',
+      defaultMessage: 'Add the requested material',
+    },
+    entrySupplementSent: {
+      id: 'assessment/entry/supplement-sent',
+      defaultMessage: 'Sent back to review.',
+    },
+    refuseSupplementOpen: {
+      id: 'assessment/refuse/supplement-open',
+      defaultMessage: 'Material has already been requested here.',
+    },
+    refuseRequestClosed: {
+      id: 'assessment/refuse/request-closed',
+      defaultMessage: 'This request is no longer open.',
+    },
+    refuseAwaitingSupplement: {
+      id: 'assessment/refuse/awaiting-supplement',
+      defaultMessage: 'Waiting for requested material.',
+    },
+    refuseReviewNotOpen: {
+      id: 'assessment/refuse/review-not-open',
+      defaultMessage: 'This round is not open for decisions.',
+    },
     // the keyboard panel
     reviewKeysTitle: { id: 'assessment/review/keys-title', defaultMessage: 'Keyboard' },
     reviewKeysToggle: {

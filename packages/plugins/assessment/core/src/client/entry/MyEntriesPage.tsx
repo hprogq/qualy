@@ -22,6 +22,7 @@ import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
+import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntryHistory } from './EntryHistory.tsx'
 import { GroupDetail } from './GroupDetail.tsx'
@@ -171,6 +172,8 @@ function Body({
   const lingeringHistory = useLingering(history)
   const [appealing, setAppealing] = useState<EntryDto | null>(null)
   const lingeringAppeal = useLingering(appealing)
+  const [answering, setAnswering] = useState<EntryDto | null>(null)
+  const lingeringAnswer = useLingering(answering)
 
   const entriesByItem = useMemo(() => {
     const grouped = new Map<string, EntryDto[]>()
@@ -325,6 +328,7 @@ function Body({
                   onHistory={setHistory}
                   onStatus={(entryId, status) => setStatus.mutate({ entryId, status })}
                   onAppeal={setAppealing}
+                  onSupplement={setAnswering}
                 />
               </Drill>
             )}
@@ -367,6 +371,18 @@ function Body({
           onClose={() => setAppealing(null)}
           onDone={() => {
             setAppealing(null)
+            refresh()
+          }}
+        />
+      )}
+      {lingeringAnswer?.supplement != null && (
+        <SupplementAnswerDialog
+          open={answering !== null}
+          entry={lingeringAnswer}
+          supplement={lingeringAnswer.supplement}
+          onClose={() => setAnswering(null)}
+          onDone={() => {
+            setAnswering(null)
             refresh()
           }}
         />

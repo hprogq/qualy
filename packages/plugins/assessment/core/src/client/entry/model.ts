@@ -18,6 +18,24 @@ export interface EntryRevisionDto {
   createdAt: string
 }
 
+/** one asked-for piece of a supplement: a written answer or files */
+export interface SupplementRequirementDto {
+  key: string
+  label: string
+  kind: 'text' | 'file'
+  required: boolean
+}
+
+/** the reviewer's open ask on this claim, if its round is waiting on one */
+export interface EntrySupplementDto {
+  requestId: string
+  instanceId: string
+  requestNo: number
+  instructions: string
+  requirements: readonly SupplementRequirementDto[]
+  requestedAt: string
+}
+
 export interface EntryDto {
   id: string
   batchId: string
@@ -28,6 +46,7 @@ export interface EntryDto {
   currentRevision: EntryRevisionDto | null
   currentReviewInstanceId: string | null
   createdAt: string
+  supplement: EntrySupplementDto | null
   capabilities: {
     edit: ActionAvailability
     submit: ActionAvailability

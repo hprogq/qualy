@@ -34,6 +34,10 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'participant-out-of-scope': m.refuseOutOfScope,
   'must-revise-first': m.refuseNeedsRevision,
   'entry-not-abandonable': m.refuseNotAbandonable,
+  'supplement-already-open': m.refuseSupplementOpen,
+  'request-not-open': m.refuseRequestClosed,
+  'awaiting-supplement': m.refuseAwaitingSupplement,
+  'review-not-open': m.refuseReviewNotOpen,
 }
 
 /** the sentence for a bare reason code, for a blocked act's tooltip */

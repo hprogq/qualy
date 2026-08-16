@@ -81,7 +81,9 @@ export function FileTile({
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate">{name}</span>
-        {meta !== undefined && <span className="truncate text-xs text-muted-foreground">{meta}</span>}
+        {meta !== undefined && (
+          <span className="truncate text-xs text-muted-foreground">{meta}</span>
+        )}
       </span>
       {actions !== undefined && <span className="flex shrink-0 items-center gap-1">{actions}</span>}
     </div>

@@ -43,6 +43,7 @@ export function ItemDetail({
   onHistory,
   onStatus,
   onAppeal,
+  onSupplement,
 }: {
   row: StructureRow
   entries: readonly EntryDto[]
@@ -54,6 +55,8 @@ export function ItemDetail({
   onHistory: (entryId: string) => void
   onStatus: (entryId: string, status: 'in_review' | 'draft' | 'voided') => void
   onAppeal: (entry: EntryDto) => void
+  /** answering the reviewer's ask for more material */
+  onSupplement: (entry: EntryDto) => void
 }) {
   const { format } = useI18n()
   const item = row.item
@@ -246,6 +249,7 @@ export function ItemDetail({
               onEdit={() => onFile(entry)}
               onStatus={(status) => onStatus(entry.id, status)}
               onAppeal={() => onAppeal(entry)}
+              onSupplement={() => onSupplement(entry)}
             />
           ))}
         </div>
@@ -264,6 +268,7 @@ function FiledEntry({
   onEdit,
   onStatus,
   onAppeal,
+  onSupplement,
 }: {
   entry: EntryDto
   item: ItemDto
@@ -273,6 +278,7 @@ function FiledEntry({
   onEdit: () => void
   onStatus: (status: 'in_review' | 'draft' | 'voided') => void
   onAppeal: () => void
+  onSupplement: () => void
 }) {
   const { format } = useI18n()
   const declared = item.itemType === 'declaration'
@@ -326,6 +332,22 @@ function FiledEntry({
           )
         })}
       </dl>
+
+      {/* the reviewer's ask sits on the claim it is about: what they wrote,
+          and the one press that answers it */}
+      {entry.supplement !== null && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-amber-500/10 px-3 py-2.5">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-sm font-medium">{format(m.entrySupplementTitle)}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {entry.supplement.instructions}
+            </span>
+          </span>
+          <Button size="sm" disabled={busy} onClick={onSupplement}>
+            {format(m.entrySupplementAnswer)}
+          </Button>
+        </div>
+      )}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         <Button variant="outline" size="sm" onClick={onHistory}>

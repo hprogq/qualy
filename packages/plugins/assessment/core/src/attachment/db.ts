@@ -49,6 +49,43 @@ export interface CitingInstanceRow {
   actorId: string
 }
 
+/** the entries whose supplement answers cite this file, same shape as above */
+export const supplementCitingEntries = (tenantId: string, attachmentId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewSupplementAttachment as rsa')
+        .innerJoin('ReviewSupplementResponse as re', (join) =>
+          join.onRef('re.tenantId', '=', 'rsa.tenantId').onRef('re.id', '=', 'rsa.responseId'),
+        )
+        .innerJoin('ReviewSupplementRequest as sr', (join) =>
+          join.onRef('sr.tenantId', '=', 're.tenantId').onRef('sr.id', '=', 're.requestId'),
+        )
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 'sr.tenantId').onRef('ri.id', '=', 'sr.reviewInstanceId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .select(['e.id as entryId', 'e.batchId', 'bp.userId as subjectUserId'])
+        .distinct()
+        .where('rsa.tenantId', '=', tenantId)
+        .where('rsa.attachmentId', '=', attachmentId)
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): CitingEntryRow => ({
+          entryId: row.entryId,
+          batchId: row.batchId,
+          subjectUserId: row.subjectUserId,
+        })),
+      ),
+    )
+
 /** the rounds that judged a revision citing this file, shaped for the reviewer predicate */
 export const citingInstances = (tenantId: string, attachmentId: string) =>
   db
@@ -79,6 +116,54 @@ export const citingInstances = (tenantId: string, attachmentId: string) =>
         .distinct()
         .where('ri.tenantId', '=', tenantId)
         .where('era.attachmentId', '=', attachmentId)
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): CitingInstanceRow => ({
+          batchId: row.batchId,
+          currentNodeId: row.currentNodeId,
+          currentRoleIds: row.currentRoleIds,
+          subjectUserId: row.subjectUserId,
+          actorId: row.actorId,
+        })),
+      ),
+    )
+
+/** the rounds whose supplement answers cite this file, same shape as above */
+export const supplementCitingInstances = (tenantId: string, attachmentId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewSupplementAttachment as rsa')
+        .innerJoin('ReviewSupplementResponse as re', (join) =>
+          join.onRef('re.tenantId', '=', 'rsa.tenantId').onRef('re.id', '=', 'rsa.responseId'),
+        )
+        .innerJoin('ReviewSupplementRequest as sr', (join) =>
+          join.onRef('sr.tenantId', '=', 're.tenantId').onRef('sr.id', '=', 're.requestId'),
+        )
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 'sr.tenantId').onRef('ri.id', '=', 'sr.reviewInstanceId'),
+        )
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .select([
+          'e.batchId',
+          'ri.currentNodeId',
+          'ri.currentRoleIds',
+          'bp.userId as subjectUserId',
+          'er.actorId',
+        ])
+        .distinct()
+        .where('rsa.tenantId', '=', tenantId)
+        .where('rsa.attachmentId', '=', attachmentId)
         .execute(),
     )
     .pipe(
