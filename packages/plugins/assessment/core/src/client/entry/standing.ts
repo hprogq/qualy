@@ -25,7 +25,13 @@ export interface Standing {
   }[]
   lines: readonly {
     lineId: string
-    kind: 'entry' | 'entry-not-counted' | 'excluded-evidence' | 'item-voided' | 'group-adjustment'
+    kind:
+      | 'entry'
+      | 'entry-not-counted'
+      | 'excluded-evidence'
+      | 'item-voided'
+      | 'group-adjustment'
+      | 'derived'
     label: string
     value: string
     itemId?: string | undefined

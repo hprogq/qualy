@@ -96,7 +96,11 @@ export interface Draft {
   title: string
   scoreGroupId: string
   maxEntries: string
+  /** what kind of question this is; frozen once created */
+  itemType: 'evidence' | 'constant'
   entrySource: 'student' | 'administrative'
+  /** whether submissions answer to a review route at all */
+  reviewMode: 'workflow' | 'none'
   description: string
   fields: FieldDraft[]
   fixedValue: string
@@ -155,7 +159,13 @@ const draftOf = (
     scoreGroupId:
       item !== null && item.scoreGroupId !== '' ? item.scoreGroupId : (groups[0]?.id ?? ''),
     maxEntries: item === null ? '1' : item.maxEntries === null ? '' : String(item.maxEntries),
+    itemType: item?.itemType === 'constant' ? 'constant' : 'evidence',
     entrySource: config?.entrySource ?? 'student',
+    reviewMode:
+      item?.itemType === 'constant' ||
+      (config?.reviewPolicy as { mode?: unknown } | undefined)?.mode === 'none'
+        ? 'none'
+        : 'workflow',
     description: String((config?.displayConfig as { description?: unknown })?.description ?? ''),
     fields: fields.length > 0 ? fields : [blankField(nextKey())],
     // 100.0000 is how it is stored, not how anybody types it
@@ -236,7 +246,24 @@ const storedStage = (stage: StageDraft) => ({
 })
 
 /** the pen back into the configuration the api validates */
-const configOf = (draft: Draft) => ({
+const configOf = (draft: Draft) =>
+  draft.itemType === 'constant'
+    ? {
+        // granted, never filed: no form, no route, only the amount
+        entrySource: 'administrative' as const,
+        formConfig: {},
+        scoringConfig: {
+          calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
+          aggregator: { ref: 'sum@1', config: {} },
+        },
+        ...(draft.description.trim() !== ''
+          ? { displayConfig: { description: draft.description.trim() } }
+          : {}),
+        reviewPolicy: { mode: 'none' },
+      }
+    : evidenceConfigOf(draft)
+
+const evidenceConfigOf = (draft: Draft) => ({
   entrySource: draft.entrySource,
   formConfig: {
     fields: draft.fields.map((field) => ({
@@ -280,12 +307,15 @@ const configOf = (draft: Draft) => ({
   ...(draft.description.trim() !== ''
     ? { displayConfig: { description: draft.description.trim() } }
     : {}),
-  reviewPolicy: {
-    normal: { stages: draft.stages.filter((one) => one.chain === 'normal').map(storedStage) },
-    escalation: {
-      stages: draft.stages.filter((one) => one.chain === 'escalation').map(storedStage),
-    },
-  },
+  reviewPolicy:
+    draft.reviewMode === 'none'
+      ? { mode: 'none' }
+      : {
+          normal: { stages: draft.stages.filter((one) => one.chain === 'normal').map(storedStage) },
+          escalation: {
+            stages: draft.stages.filter((one) => one.chain === 'escalation').map(storedStage),
+          },
+        },
 })
 
 /**
@@ -432,7 +462,7 @@ export function ItemConfigEditor({
           api.assessment.createItem({
             params: { batchId },
             payload: {
-              itemType: 'evidence',
+              itemType: draft.itemType,
               title: draft.title.trim(),
               scoreGroupId: draft.scoreGroupId,
               maxEntries,
@@ -554,12 +584,16 @@ export function ItemConfigEditor({
    * merely dead tells the reader they have done something wrong without ever
    * saying what - and the answer is always known here.
    */
+  const granted = draft.itemType === 'constant'
+  const routed = !granted && draft.reviewMode === 'workflow'
   const missing: string[] = [
     draft.title.trim() === '' ? format(m.itemsNeedTitle) : '',
     draft.scoreGroupId === '' ? format(m.itemsNeedGroup) : '',
     draft.fixedValue.trim() === '' ? format(m.itemsNeedValue) : '',
-    draft.fields.some((field) => field.label.trim() === '') ? format(m.itemsNeedFieldLabel) : '',
-    draft.stages.some((stage) => !stageReady(stage)) ? format(m.itemsNeedStage) : '',
+    !granted && draft.fields.some((field) => field.label.trim() === '')
+      ? format(m.itemsNeedFieldLabel)
+      : '',
+    routed && draft.stages.some((stage) => !stageReady(stage)) ? format(m.itemsNeedStage) : '',
   ].filter((one) => one !== '')
 
   // The api asks for a sentence when a live question's scoring or placement
@@ -715,6 +749,21 @@ export function ItemConfigEditor({
                   />
                 )}
               </Field>
+              <Field label={format(m.itemsKind)} hint={format(m.itemsKindHint)}>
+                {(id) => (
+                  <Choice
+                    id={id}
+                    value={draft.itemType}
+                    // what a question is cannot change once claims exist on it
+                    disabled={item !== null}
+                    options={[
+                      { value: 'evidence', label: format(m.itemsKindEvidence) },
+                      { value: 'constant', label: format(m.itemsKindConstant) },
+                    ]}
+                    onChange={(next) => patch({ itemType: next as Draft['itemType'] })}
+                  />
+                )}
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={format(m.itemsFieldGroup)}>
                   {(id) => (
@@ -726,22 +775,24 @@ export function ItemConfigEditor({
                     />
                   )}
                 </Field>
-                <Field label={format(m.itemsFieldEntrySource)}>
-                  {(id) => (
-                    <Choice
-                      id={id}
-                      value={draft.entrySource}
-                      options={[
-                        { value: 'student', label: format(m.itemsEntrySourceStudent) },
-                        {
-                          value: 'administrative',
-                          label: format(m.itemsEntrySourceAdministrative),
-                        },
-                      ]}
-                      onChange={(next) => patch({ entrySource: next as Draft['entrySource'] })}
-                    />
-                  )}
-                </Field>
+                {!granted && (
+                  <Field label={format(m.itemsFieldEntrySource)}>
+                    {(id) => (
+                      <Choice
+                        id={id}
+                        value={draft.entrySource}
+                        options={[
+                          { value: 'student', label: format(m.itemsEntrySourceStudent) },
+                          {
+                            value: 'administrative',
+                            label: format(m.itemsEntrySourceAdministrative),
+                          },
+                        ]}
+                        onChange={(next) => patch({ entrySource: next as Draft['entrySource'] })}
+                      />
+                    )}
+                  </Field>
+                )}
               </div>
               <Field label={format(m.itemsFieldDescription)}>
                 {(id) => (
@@ -756,37 +807,43 @@ export function ItemConfigEditor({
             </div>
           </Section>
 
-          <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
-            <FieldList
-              fields={draft.fields}
-              materialRange={materialRange}
-              openKey={openField}
-              onOpen={setOpenField}
-              onChange={patchField}
-              onReorder={(orderedKeys) =>
-                setDraft((previous) => ({
-                  ...previous,
-                  fields: orderedKeys.flatMap((key) => {
-                    const found = previous.fields.find((one) => one.key === key)
-                    return found === undefined ? [] : [found]
-                  }),
-                }))
-              }
-              onRemove={(key) => {
-                setDraft((previous) => ({
-                  ...previous,
-                  fields: previous.fields.filter((one) => one.key !== key),
-                }))
-                setOpenField(null)
-              }}
-              onAdd={() => {
-                const key = nextKey()
-                patch({ fields: [...draft.fields, blankField(key)] })
-                setOpenField(key)
-              }}
-            />
-          </Section>
-
+          {granted && (
+            <Section title={format(m.itemsGrantedTitle)} hint={format(m.itemsGrantedHint)}>
+              <p className="text-sm text-muted-foreground">{format(m.itemsGrantedBody)}</p>
+            </Section>
+          )}
+          {!granted && (
+            <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
+              <FieldList
+                fields={draft.fields}
+                materialRange={materialRange}
+                openKey={openField}
+                onOpen={setOpenField}
+                onChange={patchField}
+                onReorder={(orderedKeys) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    fields: orderedKeys.flatMap((key) => {
+                      const found = previous.fields.find((one) => one.key === key)
+                      return found === undefined ? [] : [found]
+                    }),
+                  }))
+                }
+                onRemove={(key) => {
+                  setDraft((previous) => ({
+                    ...previous,
+                    fields: previous.fields.filter((one) => one.key !== key),
+                  }))
+                  setOpenField(null)
+                }}
+                onAdd={() => {
+                  const key = nextKey()
+                  patch({ fields: [...draft.fields, blankField(key)] })
+                  setOpenField(key)
+                }}
+              />
+            </Section>
+          )}
           <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>
             <div className="flex flex-col gap-4">
               {/* the width belongs to the wrapper: a field stretches whatever
@@ -896,65 +953,82 @@ export function ItemConfigEditor({
               revision, so a question saved without one would be history with
               no way back. What differs is when it runs, which is what the
               hint has to say. */}
-          <Section
-            title={format(m.itemsTabReview)}
-            hint={format(
-              draft.entrySource === 'administrative'
-                ? m.itemsChainHintRecorded
-                : m.itemsChainHintNew,
-            )}
-          >
-            <div className="flex flex-col gap-5">
-              <ChainFlow
-                batchId={batchId}
-                chain="normal"
-                steps={draft.stages.filter((one) => one.chain === 'normal')}
-                options={options}
-                onOpen={setOpenStage}
-                onAdd={(at) => addStage('normal', at)}
-                onRemove={(key) =>
-                  setDraft((previous) => ({
-                    ...previous,
-                    stages: previous.stages.filter((one) => one.key !== key),
-                  }))
-                }
-              />
-              {draft.stages.some((one) => one.chain === 'escalation') ? (
-                <div className="flex flex-col gap-3 border-t pt-4">
-                  <div>
-                    <h4 className="text-sm font-medium">{format(m.itemsEscalationTitle)}</h4>
-                    <p className="pt-0.5 text-xs text-muted-foreground">
-                      {format(m.itemsEscalationHint)}
-                    </p>
-                  </div>
-                  <ChainFlow
-                    batchId={batchId}
-                    chain="escalation"
-                    steps={draft.stages.filter((one) => one.chain === 'escalation')}
-                    options={options}
-                    onOpen={setOpenStage}
-                    onAdd={(at) => addStage('escalation', at)}
-                    onRemove={(key) =>
-                      setDraft((previous) => ({
-                        ...previous,
-                        stages: previous.stages.filter((one) => one.key !== key),
-                      }))
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs font-medium">
-                  <InlineAdd
-                    label={format(m.itemsEscalationAddStep)}
-                    onClick={() => addStage('escalation')}
-                  />
-                  <span className="font-normal text-muted-foreground">
-                    {format(m.itemsEscalationEmpty)}
-                  </span>
-                </div>
+          {!granted && (
+            <Section
+              title={format(m.itemsTabReview)}
+              hint={format(
+                draft.entrySource === 'administrative'
+                  ? m.itemsChainHintRecorded
+                  : m.itemsChainHintNew,
               )}
-            </div>
-          </Section>
+            >
+              <div className="flex flex-col gap-5">
+                {/* "no review" is said, never implied by an empty route */}
+                <Choice
+                  value={draft.reviewMode}
+                  options={[
+                    { value: 'workflow', label: format(m.itemsReviewWorkflow) },
+                    { value: 'none', label: format(m.itemsReviewNone) },
+                  ]}
+                  onChange={(next) => patch({ reviewMode: next as Draft['reviewMode'] })}
+                />
+                {draft.reviewMode === 'none' ? (
+                  <p className="text-sm text-muted-foreground">{format(m.itemsReviewNoneHint)}</p>
+                ) : (
+                  <>
+                    <ChainFlow
+                      batchId={batchId}
+                      chain="normal"
+                      steps={draft.stages.filter((one) => one.chain === 'normal')}
+                      options={options}
+                      onOpen={setOpenStage}
+                      onAdd={(at) => addStage('normal', at)}
+                      onRemove={(key) =>
+                        setDraft((previous) => ({
+                          ...previous,
+                          stages: previous.stages.filter((one) => one.key !== key),
+                        }))
+                      }
+                    />
+                    {draft.stages.some((one) => one.chain === 'escalation') ? (
+                      <div className="flex flex-col gap-3 border-t pt-4">
+                        <div>
+                          <h4 className="text-sm font-medium">{format(m.itemsEscalationTitle)}</h4>
+                          <p className="pt-0.5 text-xs text-muted-foreground">
+                            {format(m.itemsEscalationHint)}
+                          </p>
+                        </div>
+                        <ChainFlow
+                          batchId={batchId}
+                          chain="escalation"
+                          steps={draft.stages.filter((one) => one.chain === 'escalation')}
+                          options={options}
+                          onOpen={setOpenStage}
+                          onAdd={(at) => addStage('escalation', at)}
+                          onRemove={(key) =>
+                            setDraft((previous) => ({
+                              ...previous,
+                              stages: previous.stages.filter((one) => one.key !== key),
+                            }))
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs font-medium">
+                        <InlineAdd
+                          label={format(m.itemsEscalationAddStep)}
+                          onClick={() => addStage('escalation')}
+                        />
+                        <span className="font-normal text-muted-foreground">
+                          {format(m.itemsEscalationEmpty)}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </Section>
+          )}
         </div>
 
         <aside className="flex min-w-0 flex-col py-6">

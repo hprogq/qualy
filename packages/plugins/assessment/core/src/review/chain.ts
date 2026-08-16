@@ -100,6 +100,12 @@ interface LegacyPolicy {
  * Nothing is rewritten - an item revision is immutable, and the reading is
  * stable, so the same stored bytes give the same two routes every time.
  */
+/** whether a stored policy says "no review at all", explicitly */
+export const policyModeOf = (stored: unknown): 'none' | 'workflow' =>
+  typeof stored === 'object' && stored !== null && (stored as { mode?: unknown }).mode === 'none'
+    ? 'none'
+    : 'workflow'
+
 export const readPolicy = (stored: unknown): ReviewPolicy => {
   if (typeof stored !== 'object' || stored === null) return { normal: [], escalation: [] }
   const held = stored as {

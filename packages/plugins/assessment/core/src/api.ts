@@ -610,6 +610,7 @@ const breakdownLine = Schema.Struct({
     'excluded-evidence',
     'item-voided',
     'group-adjustment',
+    'derived',
   ]),
   label: Schema.String,
   value: Schema.String,

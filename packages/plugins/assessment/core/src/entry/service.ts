@@ -49,7 +49,13 @@ import {
   type EntryRow,
   type ParticipantAnchor,
 } from './db.ts'
-import { enterableFrom, holdersOf, readPolicy, resolvePolicy } from '../review/chain.ts'
+import {
+  enterableFrom,
+  holdersOf,
+  policyModeOf,
+  readPolicy,
+  resolvePolicy,
+} from '../review/chain.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
 //
@@ -562,6 +568,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               return yield* refuse('create', 'participant-not-active')
             }
             if (item.status !== 'active') return yield* refuse('create', 'item-not-active')
+            // a derived question is granted, never filed: there is no claim
+            // for anybody - participant or staff - to create under it
+            if (driverOf(item)?.interaction === 'derived') {
+              return yield* refuse('create', 'item-not-fileable')
+            }
             const revision =
               item.currentRevisionId === null
                 ? null
@@ -835,6 +846,34 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 // draft does not have yet, and the way on is to go and fill
                 // it in
                 return yield* refuse(action, 'entry-needs-revision')
+              }
+
+              // A question that answers to nobody (§32.65, mode:'none'):
+              // the submission is the decision. Approved on the spot, said
+              // in the entry's own record, and no round ever exists - so
+              // there is nothing to withdraw and nothing to appeal.
+              if (policyModeOf(live.reviewPolicy) === 'none') {
+                const settled = yield* setEntryState({
+                  tenantId,
+                  entryId,
+                  from: ['draft', 'rejected'],
+                  to: 'approved',
+                })
+                if (!settled) return yield* refuse(action, 'entry-not-submittable')
+                yield* insertEntryEvent({
+                  tenantId,
+                  entryId,
+                  kind: 'auto-approved',
+                  actorId: as.userId,
+                })
+                const written = (yield* entryOf(tenantId, entryId))!
+                const { participant: after } = (yield* loadEntry(tenantId, entryId))!
+                return view(
+                  written,
+                  yield* revisionView(tenantId, written.currentRevisionId),
+                  as,
+                  after,
+                )
               }
 
               // Both routes, resolved once against this person's frozen

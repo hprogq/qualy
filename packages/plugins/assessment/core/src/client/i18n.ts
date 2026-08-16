@@ -1071,6 +1071,45 @@ const i18n = definePluginMessages({
       defaultMessage: 'Walks up from the participant\u2019s unit to the nearest holder.',
     },
     itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
+    myEntriesGranted: {
+      id: 'assessment/entry/granted',
+      defaultMessage: 'Granted; nothing to file',
+    },
+    itemsKind: { id: 'assessment/items/kind', defaultMessage: 'Kind of question' },
+    itemsKindHint: {
+      id: 'assessment/items/kind-hint',
+      defaultMessage: 'Fixed once the question exists',
+    },
+    itemsKindEvidence: {
+      id: 'assessment/items/kind-evidence',
+      defaultMessage: 'Filed with evidence',
+    },
+    itemsKindConstant: {
+      id: 'assessment/items/kind-constant',
+      defaultMessage: 'Granted to everybody',
+    },
+    itemsGrantedTitle: { id: 'assessment/items/granted-title', defaultMessage: 'Who gets it' },
+    itemsGrantedHint: {
+      id: 'assessment/items/granted-hint',
+      defaultMessage: 'Nobody files anything and nobody reviews it',
+    },
+    itemsGrantedBody: {
+      id: 'assessment/items/granted-body',
+      defaultMessage: 'Everybody on the roster is granted the amount below.',
+    },
+    itemsReviewWorkflow: {
+      id: 'assessment/items/review-workflow',
+      defaultMessage: 'Reviewed step by step',
+    },
+    itemsReviewNone: { id: 'assessment/items/review-none', defaultMessage: 'No review' },
+    itemsReviewNoneHint: {
+      id: 'assessment/items/review-none-hint',
+      defaultMessage: 'Submitting counts it at once.',
+    },
+    resultDerived: {
+      id: 'assessment/result/derived',
+      defaultMessage: 'Granted by the round',
+    },
     itemsFolding: { id: 'assessment/items/folding', defaultMessage: 'How approvals count' },
     itemsFoldingHint: {
       id: 'assessment/items/folding-hint',

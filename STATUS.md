@@ -5178,3 +5178,28 @@ resubmit 更名。本轮不动 schema,全部零迁移。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 662 passed / 17 skipped;
 `pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
+
+### 基础分与免审题:constant 题型 + reviewPolicy mode:'none'(2026-08-16,§32.65 待办②③)
+
+- **全员计分题型 `constant`**(interaction `derived`,core 自带并注册):没有填报、没有审核,
+  名单内每位参评人自动获得设定分值。基础分建模为 Item 而不是 ScoreGroup.base——
+  账目必须能逐条命名九分从哪来(裁决理由见 §32.65)。scorer 支持非 Entry 贡献:
+  `ScoreInputItem.derived` 由 item-type catalog 判定,Breakdown 新行类 `derived`
+  (lineId `derived:<itemId>`,带 calculatorRef provenance),成绩页的人话「本轮自动计入」。
+  对 derived 题创建条目被拒(`item-not-fileable`,创建即拒,不分参评人还是工作人员);
+  我的填报页该题显示「自动计入,无需申报」,无申报按钮。
+- **`reviewPolicy: {mode:'none'}` 显式免审**:「无需审核」必须说出来,空 stages 仍然是
+  配置错误(validator 维持 `policy-stages-required`,测试钉住)。免审题提交即 approved
+  (EntryEvent `auto-approved`),不建任何 ReviewInstance——没有轮次,自然没有撤回和申诉;
+  队列里也不出现(测试钉住)。撤回相当于放弃这条已计入的?不——approved 后 withdraw
+  hidden(能力矩阵原样适用)。
+- **题目编辑器**:基本信息新增「题目类型」(材料申报 / 全员计分,创建后不可改);
+  全员计分隐藏填报字段、审核、申报来源、条数上限,只留标题/分组/分值/说明;
+  材料申报的审核节新增「按审核流程处理 / 无需审核」二选,免审时隐藏链条编排,
+  校验项(字段必名、步骤必配)按类型与模式豁免。
+- 测试:constant 题 total 3.00 + derived 行 + 拒填;免审题提交即 approved、成绩即时 0.20、
+  队列无此件、空 stages 拒绝。test catalog 把 core 自己的 constantDriver 注册进 ItemTypeCatalog。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 664 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。无 schema 迁移
+(题型与政策模式都活在既有 jsonb 配置里)。

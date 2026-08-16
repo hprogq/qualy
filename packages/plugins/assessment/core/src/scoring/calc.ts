@@ -30,6 +30,8 @@ export interface ScoreInputItem {
   readonly createdAt: number
   readonly calculator: { readonly ref: string; readonly config: unknown }
   readonly aggregator: { readonly ref: string; readonly config: unknown }
+  /** nobody files anything: the amount is the round's own rule (§32.65) */
+  readonly derived?: boolean
 }
 
 export interface ScoreInputEntry {
@@ -57,6 +59,8 @@ export interface BreakdownLine {
     | 'excluded-evidence'
     | 'item-voided'
     | 'group-adjustment'
+    /** nobody filed it: the round grants it to everybody on the roster */
+    | 'derived'
   readonly label: string
   readonly value: string
   readonly itemId?: string
@@ -192,6 +196,21 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
         'calculator',
         item.calculator.ref,
       )
+      // a derived question grants its amount to everybody on the roster:
+      // there is nothing to file, nothing to review, and the line says so
+      if (item.derived === true) {
+        const amount = calculator.amountOf(item.calculator.config, { payload: null })
+        lines.push({
+          lineId: `derived:${item.id}`,
+          kind: 'derived',
+          label: item.title,
+          value: formatAmount(amount),
+          itemId: item.id,
+          provenance: { calculatorRef: item.calculator.ref },
+        })
+        itemsTotal += amount
+        continue
+      }
       const aggregator = resolve(
         catalogs.aggregators as ReadonlyMap<string, AggregatorDriver>,
         'aggregator',

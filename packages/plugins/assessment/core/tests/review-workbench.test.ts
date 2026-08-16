@@ -343,4 +343,143 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     // maxEntries is 1 on this question, and the abandoned claim freed it
     expect(result.again.id).not.toBe(result.abandoned.id)
   })
+
+  it('grants a constant question to everybody, and reviews nobody for it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-granted')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+
+          // the base points of terms.md: an item, so the account can name it
+          const base = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'constant',
+              title: '文体表现基础分',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: null,
+              config: {
+                entrySource: 'administrative',
+                formConfig: {},
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: { mode: 'none' },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, base.id, { status: 'active' }, admin)
+
+          // whoever stands on the roster is granted it - filing is refused
+          const filed = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: base.id, participantId: g.p1, payload: {} },
+              f.principal(f.s1),
+            ),
+          )
+          const standing = yield* assessment.getMyResult(f.t, g.batch.id, f.principal(f.s1))
+          return { filed, standing }
+        }),
+      ),
+    )
+    expect(errorOf<{ reason?: string }>(result.filed)?.reason).toBe('item-not-fileable')
+    expect(result.standing.total).toBe('3.00')
+    const line = result.standing.lines.find((one) => one.kind === 'derived')!
+    expect(line.label).toBe('文体表现基础分')
+    expect(line.value).toBe('3.00')
+  })
+
+  it('counts an unreviewed question the moment it is submitted', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-unreviewed')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+
+          const checkin = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '健康打卡',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: 5,
+              config: {
+                entrySource: 'student',
+                formConfig: { files: {} },
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '0.20' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                // said, never implied: an empty route stays a refusal
+                reviewPolicy: { mode: 'none' },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, checkin.id, { status: 'active' }, admin)
+
+          const emptyRoute = yield* Effect.exit(
+            assessment.createItem(
+              f.t,
+              g.batch.id,
+              {
+                itemType: 'evidence',
+                title: 'bad',
+                scoreGroupId: groups.groups[0]!.id,
+                maxEntries: 1,
+                config: {
+                  entrySource: 'student',
+                  formConfig: { files: {} },
+                  scoringConfig: {
+                    calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                    aggregator: { ref: 'sum@1', config: {} },
+                  },
+                  reviewPolicy: { normal: { stages: [] }, escalation: { stages: [] } },
+                },
+              },
+              admin,
+            ),
+          )
+
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: checkin.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const standing = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          const queue = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id },
+            f.principal(f.reviewer),
+          )
+          return { emptyRoute, sent, standing, queue }
+        }),
+      ),
+    )
+    // an empty stage list is a configuration mistake, not a quiet "no review"
+    expect(errorOf<{ _tag: string }>(result.emptyRoute)?._tag).toBe(
+      'ASSESSMENT_ITEM_CONFIG_INVALID',
+    )
+    // the submission is the decision: approved at once, no round anywhere
+    expect(result.sent.status).toBe('approved')
+    expect(result.sent.currentReviewInstanceId).toBeNull()
+    expect(result.standing.total).toBe('0.20')
+    expect(result.queue.items.find((one) => one.itemTitle === '健康打卡')).toBeUndefined()
+  })
 })

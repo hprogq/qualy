@@ -78,6 +78,8 @@ export function ItemDetail({
   // in. Naming it here would tell the reader to wait for something that is
   // not going to happen.
   const recorded = item.currentRevision?.entrySource === 'administrative'
+  // granted to everybody on the roster: nothing to file, nothing to wait for
+  const granted = item.itemType === 'constant'
 
   return (
     <div className="flex flex-col gap-5">
@@ -93,11 +95,17 @@ export function ItemDetail({
                 {format(m.entryCountsFor, { value: trimAmount(each) })}
               </Badge>
             )}
-            <Badge variant="secondary" className="font-normal">
-              {item.maxEntries === null
-                ? format(m.itemsPreviewNoMax)
-                : format(m.myEntriesRoom, { most: item.maxEntries, used: live.length })}
-            </Badge>
+            {granted ? (
+              <Badge variant="outline" className="font-normal">
+                {format(m.myEntriesGranted)}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="font-normal">
+                {item.maxEntries === null
+                  ? format(m.itemsPreviewNoMax)
+                  : format(m.myEntriesRoom, { most: item.maxEntries, used: live.length })}
+              </Badge>
+            )}
             {steps > 0 && !recorded && (
               <Badge variant="secondary" className="font-normal">
                 {format(m.myEntriesChain, { count: steps })}
@@ -118,7 +126,7 @@ export function ItemDetail({
             the reader wants to know. Questions that were never this
             person's to file - recorded ones, withdrawn ones - show nothing,
             because there the button never existed. */}
-        {draft !== undefined && item.status === 'active' ? (
+        {granted ? null : draft !== undefined && item.status === 'active' ? (
           <Button className="shrink-0" onClick={() => onFile(draft)}>
             <PencilIcon aria-hidden />
             {format(m.myEntriesResumeDraft)}

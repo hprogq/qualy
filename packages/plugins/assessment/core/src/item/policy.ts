@@ -152,6 +152,16 @@ export const validateReviewPolicy = (
   if ('stages' in policy || 'normalTerminal' in policy) {
     return [{ path: 'reviewPolicy', reason: 'policy-version-legacy' }]
   }
+  // "no review" is said, never implied: an empty stage list stays an error,
+  // because an administrator who forgot to configure the route must not
+  // discover it as submissions scoring themselves (§32.65)
+  if ('mode' in policy) {
+    return policy['mode'] === 'none'
+      ? Object.keys(policy).length === 1
+        ? []
+        : [{ path: 'reviewPolicy', reason: 'policy-not-an-object' }]
+      : [{ path: 'reviewPolicy', reason: 'policy-not-an-object' }]
+  }
   unknownKeys(issues, policy, 'reviewPolicy', ['normal', 'escalation'])
   const seen = new Set<string>()
   checkRoute(issues, policy, 'normal', seen)

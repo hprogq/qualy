@@ -35,6 +35,7 @@ export interface ScoringDeps {
     batchId: string,
     as: Principal,
   ) => Effect.Effect<void, AccessDenied>
+  readonly itemTypes: ReadonlyMap<string, { readonly interaction: string }>
   readonly catalogs: {
     readonly calculators: ReadonlyMap<string, { readonly kind: string }>
     readonly aggregators: ReadonlyMap<string, { readonly kind: string }>
@@ -81,6 +82,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
               createdAt: item.createdAt,
               calculator: scoring.calculator,
               aggregator: scoring.aggregator,
+              derived: deps.itemTypes.get(item.itemType)?.interaction === 'derived',
             },
           ]
         }),

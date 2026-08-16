@@ -1814,6 +1814,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const scoringMethods = makeScoringMethods({
     withDb,
     requireBatchVisible,
+    itemTypes,
     catalogs: { calculators: scoring.calculators, aggregators: scoring.aggregators },
   })
 

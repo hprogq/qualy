@@ -10,6 +10,7 @@ import {
   type ItemTypeDriver,
 } from '../../src/plugin.ts'
 import { builtinScoringDrivers } from '../../src/scoring/builtins.ts'
+import { constantDriver } from '../../src/item/constant.ts'
 
 // The two prepare-phase catalogs, as a suite provides them: the built-in
 // scoring references plus one deliberately simple item-type driver.
@@ -87,7 +88,14 @@ export const storageForTest = (backend: MemoryBackend = memoryBackend()) =>
   )
 
 export const catalogLayers = Layer.mergeAll(
-  Layer.succeed(ItemTypeCatalog, new Map([[testItemType.id, testItemType]])),
+  // the granted kind is core's own; the suites exercise it as shipped
+  Layer.succeed(
+    ItemTypeCatalog,
+    new Map([
+      [testItemType.id, testItemType],
+      [constantDriver.id, constantDriver],
+    ]),
+  ),
   Layer.succeed(ScoringCatalog, {
     calculators: new Map(
       builtinScoringDrivers
