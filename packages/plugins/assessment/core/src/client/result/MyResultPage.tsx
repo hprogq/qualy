@@ -154,6 +154,11 @@ function Standing({ batchId }: { batchId: string }) {
                             {format(m.resultLineExcluded)}
                           </span>
                         )}
+                        {line.kind === 'entry-not-counted' && (
+                          <span className="pl-2 text-xs text-muted-foreground">
+                            {format(m.resultNotCounted)}
+                          </span>
+                        )}
                         {line.kind === 'item-voided' && (
                           <span className="pl-2 text-xs text-muted-foreground">
                             {format(m.resultLineVoided)}

@@ -1,5 +1,10 @@
 import { Schema } from 'effect'
-import type { AggregatorDriver, CalculatorDriver, ScoringDriver } from '../plugin.ts'
+import type {
+  AggregationResult,
+  AggregatorDriver,
+  CalculatorDriver,
+  ScoringDriver,
+} from '../plugin.ts'
 
 // The two pieces of arithmetic every deployment starts with, declared here
 // and computed by the scoring engine.
@@ -65,6 +70,32 @@ export const fixed1: CalculatorDriver = {
   amountOf: (config) => scaledAmount((config as { value: string }).value),
 }
 
+/**
+ * The chosen few, everything else at zero with its reason. Selection is by
+ * amount, ties by input order - the scorer feeds entries in its one
+ * deterministic order, so the same facts pick the same lines every time.
+ */
+const pick = (
+  entries: readonly { readonly entryId: string; readonly amount: bigint }[],
+  most: number,
+): AggregationResult => {
+  const chosen = new Set(
+    [...entries.entries()]
+      .sort(([ai, a], [bi, b]) => (a.amount === b.amount ? ai - bi : a.amount > b.amount ? -1 : 1))
+      .slice(0, most)
+      .map(([index]) => index),
+  )
+  let total = 0n
+  const explained = entries.map((entry, index) => {
+    const included = chosen.has(index)
+    if (included) total += entry.amount
+    return included
+      ? { entryId: entry.entryId, included, effectiveAmount: entry.amount }
+      : { entryId: entry.entryId, included, effectiveAmount: 0n, reason: 'not-selected' as const }
+  })
+  return { total, entries: explained }
+}
+
 /** entry lines add up; the group tree's floor and cap do the rest */
 export const sum1: AggregatorDriver = {
   kind: 'aggregator',
@@ -72,7 +103,36 @@ export const sum1: AggregatorDriver = {
   // nothing to configure: what sum@1 does is its name, and the limits it
   // honors live on the score groups
   configSchema: Schema.Struct({}),
-  fold: (_config, amounts) => amounts.reduce((total, amount) => total + amount, 0n),
+  aggregate: (_config, entries) => ({
+    total: entries.reduce((total, entry) => total + entry.amount, 0n),
+    entries: entries.map((entry) => ({
+      entryId: entry.entryId,
+      included: true,
+      effectiveAmount: entry.amount,
+    })),
+  }),
 }
 
-export const builtinScoringDrivers = [fixed1, sum1] as const
+/**
+ * Only the highest counts (terms.md: an officer holding several posts is
+ * scored by the highest office, never cumulatively). A cap cannot say this -
+ * min(2 + 2, 3) is 3 where the policy answer is 2.
+ */
+export const max1: AggregatorDriver = {
+  kind: 'aggregator',
+  ref: 'max@1',
+  configSchema: Schema.Struct({}),
+  aggregate: (_config, entries) => pick(entries, 1),
+}
+
+/** the best few count: config says how many */
+export const topNSum1: AggregatorDriver = {
+  kind: 'aggregator',
+  ref: 'top-n-sum@1',
+  configSchema: Schema.Struct({
+    n: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 99 })),
+  }),
+  aggregate: (config, entries) => pick(entries, (config as { n: number }).n),
+}
+
+export const builtinScoringDrivers = [fixed1, sum1, max1, topNSum1] as const

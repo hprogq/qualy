@@ -20,6 +20,7 @@ import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Input } from '@qualy/ui/input'
+import { NativeSelect } from '@qualy/ui/native-select'
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@qualy/ui/input-group'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
@@ -99,6 +100,9 @@ export interface Draft {
   description: string
   fields: FieldDraft[]
   fixedValue: string
+  /** how approved lines fold into the item's amount */
+  folding: 'sum' | 'max' | 'top-n'
+  topN: string
   stages: StageDraft[]
 }
 
@@ -139,7 +143,12 @@ const draftOf = (
       ) ?? [])
     : []
   const scoring = config?.scoringConfig as
-    { calculator?: { config?: { value?: string } } } | undefined
+    | {
+        calculator?: { config?: { value?: string } }
+        aggregator?: { ref?: string; config?: { n?: number } }
+      }
+    | undefined
+  const aggregatorRef = scoring?.aggregator?.ref ?? 'sum@1'
   const stages = stagesOf(config?.reviewPolicy, options)
   return {
     title: item?.title ?? '',
@@ -151,6 +160,8 @@ const draftOf = (
     fields: fields.length > 0 ? fields : [blankField(nextKey())],
     // 100.0000 is how it is stored, not how anybody types it
     fixedValue: trimAmount(scoring?.calculator?.config?.value ?? '1'),
+    folding: aggregatorRef === 'max@1' ? 'max' : aggregatorRef === 'top-n-sum@1' ? 'top-n' : 'sum',
+    topN: String(scoring?.aggregator?.config?.n ?? 2),
     stages: stages.length > 0 ? stages : [blankStage(options, 'normal')],
   }
 }
@@ -259,7 +270,12 @@ const configOf = (draft: Draft) => ({
   },
   scoringConfig: {
     calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
-    aggregator: { ref: 'sum@1', config: {} },
+    aggregator:
+      draft.folding === 'max'
+        ? { ref: 'max@1', config: {} }
+        : draft.folding === 'top-n'
+          ? { ref: 'top-n-sum@1', config: { n: Math.max(1, Number(draft.topN) || 1) } }
+          : { ref: 'sum@1', config: {} },
   },
   ...(draft.description.trim() !== ''
     ? { displayConfig: { description: draft.description.trim() } }
@@ -793,6 +809,37 @@ export function ItemConfigEditor({
                     )}
                   </Field>
                 </div>
+                <div className="w-52">
+                  <Field label={format(m.itemsFolding)} hint={format(m.itemsFoldingHint)}>
+                    {(id) => (
+                      <NativeSelect
+                        id={id}
+                        value={draft.folding}
+                        onChange={(event) =>
+                          patch({ folding: event.target.value as Draft['folding'] })
+                        }
+                      >
+                        <option value="sum">{format(m.itemsFoldingSum)}</option>
+                        <option value="max">{format(m.itemsFoldingMax)}</option>
+                        <option value="top-n">{format(m.itemsFoldingTopN)}</option>
+                      </NativeSelect>
+                    )}
+                  </Field>
+                </div>
+                {draft.folding === 'top-n' && (
+                  <div className="w-28">
+                    <Field label={format(m.itemsFoldingN)}>
+                      {(id) => (
+                        <Input
+                          id={id}
+                          className="tabular-nums"
+                          value={draft.topN}
+                          onChange={(event) => patch({ topN: event.target.value })}
+                        />
+                      )}
+                    </Field>
+                  </div>
+                )}
                 <div className="w-60">
                   <Field label={format(m.itemsFieldMax)}>
                     {(id) => (

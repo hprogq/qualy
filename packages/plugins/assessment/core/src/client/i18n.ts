@@ -1071,6 +1071,25 @@ const i18n = definePluginMessages({
       defaultMessage: 'Walks up from the participant\u2019s unit to the nearest holder.',
     },
     itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
+    itemsFolding: { id: 'assessment/items/folding', defaultMessage: 'How approvals count' },
+    itemsFoldingHint: {
+      id: 'assessment/items/folding-hint',
+      defaultMessage: 'How several approved filings become this question\u2019s score',
+    },
+    itemsFoldingSum: { id: 'assessment/items/folding-sum', defaultMessage: 'Add them up' },
+    itemsFoldingMax: {
+      id: 'assessment/items/folding-max',
+      defaultMessage: 'Only the highest counts',
+    },
+    itemsFoldingTopN: {
+      id: 'assessment/items/folding-top-n',
+      defaultMessage: 'The highest few count',
+    },
+    itemsFoldingN: { id: 'assessment/items/folding-n', defaultMessage: 'How many' },
+    resultNotCounted: {
+      id: 'assessment/result/not-counted',
+      defaultMessage: 'Approved; the question counts other filings instead',
+    },
     reviewChainTitle: { id: 'assessment/review/chain-title', defaultMessage: 'Review route' },
     reviewStageHere: { id: 'assessment/review/stage-here', defaultMessage: 'Now here' },
     reviewStageSkipped: {

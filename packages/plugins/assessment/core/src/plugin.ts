@@ -129,8 +129,28 @@ export interface AggregatorDriver {
   readonly ref: string
   /** validates the config an item revision stores under this reference */
   readonly configSchema: Schema.Top
-  /** folds an item's entry amounts into the item's amount, scaled by 1e4 */
-  readonly fold: (config: unknown, amounts: readonly bigint[]) => bigint
+  /**
+   * Folds an item's approved amounts into the item's amount - and says, per
+   * entry, whether it counted. The account is the product (§8): a rule like
+   * "only the highest office counts" must be able to explain every line it
+   * left out, so a bare total is not an acceptable answer.
+   */
+  readonly aggregate: (
+    config: unknown,
+    entries: readonly { readonly entryId: string; readonly amount: bigint }[],
+  ) => AggregationResult
+}
+
+export interface AggregationResult {
+  readonly total: bigint
+  readonly entries: readonly {
+    readonly entryId: string
+    readonly included: boolean
+    /** what this entry contributed - 0n when it did not count */
+    readonly effectiveAmount: bigint
+    /** why it did not count, for the line that explains it */
+    readonly reason?: 'not-selected'
+  }[]
 }
 
 export type ScoringDriver = CalculatorDriver | AggregatorDriver

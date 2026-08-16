@@ -125,7 +125,12 @@ describe('the scoring registry', () => {
       },
       {
         pluginId: '@qualy/b',
-        value: { kind: 'aggregator', ref: 'x@1', configSchema: Schema.Struct({}), fold: () => 0n },
+        value: {
+          kind: 'aggregator',
+          ref: 'x@1',
+          configSchema: Schema.Struct({}),
+          aggregate: () => ({ total: 0n, entries: [] }),
+        },
       },
     ])
     expect(catalog.calculators.has('x@1')).toBe(true)

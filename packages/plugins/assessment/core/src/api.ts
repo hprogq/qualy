@@ -604,7 +604,13 @@ const reviewDetailView = Schema.Struct({
 
 const breakdownLine = Schema.Struct({
   lineId: Schema.String,
-  kind: Schema.Literals(['entry', 'excluded-evidence', 'item-voided', 'group-adjustment']),
+  kind: Schema.Literals([
+    'entry',
+    'entry-not-counted',
+    'excluded-evidence',
+    'item-voided',
+    'group-adjustment',
+  ]),
   label: Schema.String,
   value: Schema.String,
   itemId: Schema.optional(Schema.String),

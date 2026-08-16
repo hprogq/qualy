@@ -50,7 +50,13 @@ export interface ScoreInput {
 
 export interface BreakdownLine {
   readonly lineId: string
-  readonly kind: 'entry' | 'excluded-evidence' | 'item-voided' | 'group-adjustment'
+  readonly kind:
+    | 'entry'
+    /** approved, but the item's rule counted other lines instead */
+    | 'entry-not-counted'
+    | 'excluded-evidence'
+    | 'item-voided'
+    | 'group-adjustment'
   readonly label: string
   readonly value: string
   readonly itemId?: string
@@ -191,22 +197,12 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
         'aggregator',
         item.aggregator.ref,
       )
-      const approved: bigint[] = []
+      const approved: { entry: ScoreInputEntry; amount: bigint }[] = []
       for (const entry of entries) {
         if (entry.status === 'approved') {
-          const amount = calculator.amountOf(item.calculator.config, { payload: entry.payload })
-          approved.push(amount)
-          lines.push({
-            lineId: `entry:${entry.id}`,
-            kind: 'entry',
-            label: item.title,
-            value: formatAmount(amount),
-            itemId: item.id,
-            provenance: {
-              entryId: entry.id,
-              ...(entry.revisionId !== null ? { entryRevisionId: entry.revisionId } : {}),
-              calculatorRef: item.calculator.ref,
-            },
+          approved.push({
+            entry,
+            amount: calculator.amountOf(item.calculator.config, { payload: entry.payload }),
           })
         } else if (entry.status === 'rejected') {
           // it was formally submitted and formally refused: the refusal is
@@ -225,7 +221,30 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
         }
         // draft, in_review, voided: no line - nothing has been decided
       }
-      itemsTotal += aggregator.fold(item.aggregator.config, approved)
+      // The aggregator decides which approved lines count, and every line
+      // says what it contributed: a rule like "only the highest office" must
+      // be able to explain the offices it left at zero, or the account reads
+      // as an addition that does not add up.
+      const folded = aggregator.aggregate(
+        item.aggregator.config,
+        approved.map(({ entry, amount }) => ({ entryId: entry.id, amount })),
+      )
+      for (const [index, said] of folded.entries.entries()) {
+        const { entry } = approved[index]!
+        lines.push({
+          lineId: `entry:${entry.id}`,
+          kind: said.included ? 'entry' : 'entry-not-counted',
+          label: item.title,
+          value: formatAmount(said.effectiveAmount),
+          itemId: item.id,
+          provenance: {
+            entryId: entry.id,
+            ...(entry.revisionId !== null ? { entryRevisionId: entry.revisionId } : {}),
+            calculatorRef: item.calculator.ref,
+          },
+        })
+      }
+      itemsTotal += folded.total
     }
 
     // children after this group's own items, each already held to its own

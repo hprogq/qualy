@@ -5159,3 +5159,22 @@ resubmit 更名。本轮不动 schema,全部零迁移。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 658 passed / 17 skipped;
 `pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
+
+### 计分聚合可解释化:max@1 与 top-n-sum@1(2026-08-16,§32.65 待办①)
+
+- **AggregatorDriver 换接口**:`fold(config, amounts) → bigint` 改为
+  `aggregate(config, [{entryId, amount}]) → {total, entries: [{entryId, included,
+  effectiveAmount, reason}]}`。账目是产品(§8):「只取最高职务」必须能解释它留在零分的
+  每一行,裸总数不是可接受的答案。并列取舍按金额优先、同额按送入顺序——scorer 喂入的
+  顺序本身确定(byEntry),同一事实永远选同一条。
+- **三个内建聚合器**:`sum@1`(原语义)、`max@1`(terms.md 明文:学生干部身兼多职按最高
+  职务计分,不累计——cap 表达不了这个:min(2+2, 3)=3,政策答案是 2)、`top-n-sum@1`
+  (config `{n}`,取最高 N 条之和)。
+- **Breakdown 新行类 `entry-not-counted`**:已通过但按本题规则未计入,值 0.00,
+  provenance 照带;成绩页有它的人话(「已通过,本题按规则计入了其他条目」)。
+- **题目编辑器**接入「多条如何计分」:逐条累加 / 只计最高一条 / 计最高几条之和(带条数)。
+- 纯函数测试 aggregators.test.ts 钉住:max 总分 2.00 而非 4.00、并列稳定取先送、
+  top-n 计数、sum 不变;`maxEntries` 语义未动。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 662 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
