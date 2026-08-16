@@ -5,6 +5,7 @@ import {
   navigationGroups,
   workspaceContext,
   workspaceNavigation,
+  workspaceNavigationBadge,
   type ResolvedNavigationItem,
 } from '@qualy/ui-contract'
 import {
@@ -52,10 +53,13 @@ const fill = (path: string, params: Readonly<Record<string, string | undefined>>
 }
 
 function RailEntry({
+  id,
   label,
   icon,
   to,
 }: {
+  /** the entry's own id, so whoever counts for it can find its badge */
+  id: string
   label: ResolvedNavigationItem['label']
   icon?: string
   to: string
@@ -75,9 +79,12 @@ function RailEntry({
         }
       >
         <NavIcon name={icon} className="size-4 shrink-0" />
-        <span className="truncate">
+        <span className="min-w-0 flex-1 truncate">
           <LocalizedText value={label} />
         </span>
+        {/* a live number the manifest cannot carry: whoever owns the page
+            answers for it, and an entry nobody answers for shows nothing */}
+        <UiSlot token={workspaceNavigationBadge} context={{ navigationId: id }} />
       </NavLink>
     </li>
   )
@@ -170,7 +177,13 @@ function CapableWorkspaceShell() {
         {loose.length > 0 && (
           <ul className="flex flex-col gap-0.5">
             {loose.map((item) => (
-              <RailEntry key={item.id} label={item.label} icon={item.icon} to={item.to} />
+              <RailEntry
+                key={item.id}
+                id={item.id}
+                label={item.label}
+                icon={item.icon}
+                to={item.to}
+              />
             ))}
           </ul>
         )}
@@ -181,7 +194,13 @@ function CapableWorkspaceShell() {
             </p>
             <ul className="flex flex-col gap-0.5">
               {section.items.map((item) => (
-                <RailEntry key={item.id} label={item.label} icon={item.icon} to={item.to} />
+                <RailEntry
+                  key={item.id}
+                  id={item.id}
+                  label={item.label}
+                  icon={item.icon}
+                  to={item.to}
+                />
               ))}
             </ul>
           </section>

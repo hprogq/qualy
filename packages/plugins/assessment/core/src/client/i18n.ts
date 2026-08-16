@@ -679,10 +679,6 @@ const i18n = definePluginMessages({
     },
     // ------------------------------------------------------------------
     // the review queue
-    reviewNoStanding: {
-      id: 'assessment/review/no-standing',
-      defaultMessage: 'You have no reviewing role in this round.',
-    },
     recordNoStanding: {
       id: 'assessment/record/no-standing',
       defaultMessage: 'You have no recording authority in this round.',
@@ -692,7 +688,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/hint',
       defaultMessage: 'Submissions waiting for your decision, oldest first.',
     },
-    reviewEmpty: { id: 'assessment/review/empty', defaultMessage: 'Nothing waiting for you.' },
     reviewColumnItem: { id: 'assessment/review/column-item', defaultMessage: 'Question' },
     reviewColumnWho: { id: 'assessment/review/column-who', defaultMessage: 'From' },
     reviewColumnWhen: { id: 'assessment/review/column-when', defaultMessage: 'Submitted' },
@@ -1082,11 +1077,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/group-count',
       defaultMessage: '{count} waiting',
     },
-    reviewRunGroup: {
-      id: 'assessment/review/run-group',
-      defaultMessage: 'Review these {count} in a row',
-    },
-    reviewRunPerson: { id: 'assessment/review/run-person', defaultMessage: 'Review in a row' },
     reviewColumnParticipant: {
       id: 'assessment/review/column-participant',
       defaultMessage: 'Participant',
@@ -1128,10 +1118,6 @@ const i18n = definePluginMessages({
     reviewPreviousHint: {
       id: 'assessment/review/previous-hint',
       defaultMessage: 'Check the asked-for changes were made.',
-    },
-    reviewPayloadVersion: {
-      id: 'assessment/review/payload-version',
-      defaultMessage: 'Version {no}, submitted {at}',
     },
     reviewFilesKeys: {
       id: 'assessment/review/files-keys',
@@ -1196,7 +1182,123 @@ const i18n = definePluginMessages({
     },
     reviewUndo: { id: 'assessment/review/undo', defaultMessage: 'Undo' },
     reviewWriteMore: { id: 'assessment/review/write-more', defaultMessage: 'Write in a box' },
-    reviewSiblingOpen: { id: 'assessment/review/sibling-open', defaultMessage: 'Their claim' },
+    reviewBackToQueue: { id: 'assessment/review/back-to-queue', defaultMessage: 'Back to queue' },
+    reviewRunStart: { id: 'assessment/review/run-start', defaultMessage: 'Start reviewing' },
+    reviewFiled: { id: 'assessment/review/filed', defaultMessage: 'What was filed' },
+    reviewFiledVersion: {
+      id: 'assessment/review/filed-version',
+      defaultMessage: 'Version {no}\u3000{at}',
+    },
+    reviewCompare: { id: 'assessment/review/compare', defaultMessage: 'Compare' },
+    reviewPickVersion: { id: 'assessment/review/pick-version', defaultMessage: 'Version' },
+    reviewCompareCount: {
+      id: 'assessment/review/compare-count',
+      defaultMessage:
+        '{count, plural, =0 {No change against version {no}} one {# change against version {no}} other {# changes against version {no}}}',
+    },
+    reviewComparePrevious: { id: 'assessment/review/compare-previous', defaultMessage: 'Was' },
+    reviewCompareBlank: { id: 'assessment/review/compare-blank', defaultMessage: 'Not filled in' },
+    reviewVersionsTitle: {
+      id: 'assessment/review/versions-title',
+      defaultMessage: 'Which version to compare against',
+    },
+    reviewVersionsSubtitle: {
+      id: 'assessment/review/versions-subtitle',
+      defaultMessage: '{name}\u3000{item}, {count} versions',
+    },
+    reviewVersionName: { id: 'assessment/review/version-name', defaultMessage: 'Version {no}' },
+    reviewVersionJudged: {
+      id: 'assessment/review/version-judged',
+      defaultMessage: 'Being judged',
+    },
+    reviewVersionComparing: {
+      id: 'assessment/review/version-comparing',
+      defaultMessage: 'Comparing',
+    },
+    reviewVersionBy: { id: 'assessment/review/version-by', defaultMessage: 'Filed by {who}' },
+    reviewTrailTitle: { id: 'assessment/review/trail-title', defaultMessage: 'The whole story' },
+    reviewTrailOpen: { id: 'assessment/review/trail-open', defaultMessage: 'Full story' },
+    reviewTrailRound: { id: 'assessment/review/trail-round', defaultMessage: 'Round {no}' },
+    reviewDownloadAll: { id: 'assessment/review/download-all', defaultMessage: 'Download all' },
+    reviewTipApprove: {
+      id: 'assessment/review/tip-approve',
+      defaultMessage: 'Counts it towards their score',
+    },
+    reviewTipReject: {
+      id: 'assessment/review/tip-reject',
+      defaultMessage: 'Hands it back for them to revise',
+    },
+    reviewTipEscalate: {
+      id: 'assessment/review/tip-escalate',
+      defaultMessage: 'Passes it to the escalation route',
+    },
+    reviewTipComment: {
+      id: 'assessment/review/tip-comment',
+      defaultMessage: 'Leaves a word without moving it',
+    },
+    reviewTipSubmit: {
+      id: 'assessment/review/tip-submit',
+      defaultMessage: 'Sends the chosen decision',
+    },
+    reviewHintArmedApprove: {
+      id: 'assessment/review/hint-armed-approve',
+      defaultMessage: 'Approve counts it towards their score. Five seconds to take it back.',
+    },
+    reviewHintArmedComment: {
+      id: 'assessment/review/hint-armed-comment',
+      defaultMessage: 'A note is recorded and nothing moves.',
+    },
+    reviewHintPickFirst: {
+      id: 'assessment/review/hint-pick-first',
+      defaultMessage: 'Choose a decision, then submit.',
+    },
+    reviewHintLastStep: {
+      id: 'assessment/review/hint-last-step',
+      defaultMessage: 'This is the last step: approving ends the round.',
+    },
+    // the three ways a queue is empty
+    reviewAllDoneTitle: {
+      id: 'assessment/review/all-done-title',
+      defaultMessage: 'Everything waiting for you is handled',
+    },
+    reviewAllDoneBody: {
+      id: 'assessment/review/all-done-body',
+      defaultMessage: 'Handled {count} today. New submissions appear here.',
+    },
+    reviewNothingTitle: {
+      id: 'assessment/review/nothing-title',
+      defaultMessage: 'Nothing has reached your step yet',
+    },
+    reviewNothingBody: {
+      id: 'assessment/review/nothing-body',
+      defaultMessage: 'Whatever is filed and reaches your step appears here on its own.',
+    },
+    reviewNoRoleTitle: {
+      id: 'assessment/review/no-role-title',
+      defaultMessage: 'You review nothing in this round',
+    },
+    reviewNotHereTitle: {
+      id: 'assessment/review/not-here-title',
+      defaultMessage: 'Two that never reach a queue',
+    },
+    reviewWaitingAssign: {
+      id: 'assessment/review/waiting-assign',
+      defaultMessage: 'Waiting for a reviewer',
+    },
+    reviewWaitingAssignBody: {
+      id: 'assessment/review/waiting-assign-body',
+      defaultMessage:
+        'A step with nobody in it holds the submission until whoever runs the round staffs it.',
+    },
+    reviewTakenTitle: {
+      id: 'assessment/review/taken-title',
+      defaultMessage: 'Someone got there first',
+    },
+    reviewTakenBody: {
+      id: 'assessment/review/taken-body',
+      defaultMessage:
+        'Where several people may judge a step, the first decision stands and yours is refused.',
+    },
     reviewFirstOne: {
       id: 'assessment/review/first-one',
       defaultMessage: 'Already at the first one',
@@ -1247,6 +1349,15 @@ const i18n = definePluginMessages({
       id: 'assessment/review/key-files',
       defaultMessage: 'Open the numbered file',
     },
+    reviewKeyCompare: {
+      id: 'assessment/review/key-compare',
+      defaultMessage: 'Compare with the previous version',
+    },
+    reviewKeyVersions: {
+      id: 'assessment/review/key-versions',
+      defaultMessage: 'Choose which version to compare',
+    },
+    reviewKeyTrail: { id: 'assessment/review/key-trail', defaultMessage: 'Open the whole story' },
     reviewKeyCancel: {
       id: 'assessment/review/key-cancel',
       defaultMessage: 'Clear the choice, or close this panel',

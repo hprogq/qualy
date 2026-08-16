@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CornerDownLeftIcon, SearchIcon, ShieldIcon } from 'lucide-react'
+import { CheckIcon, CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -46,12 +46,11 @@ export default function ReviewInboxPage() {
           // said as what it is: no standing here, not an empty queue -
           // pretending otherwise makes permission problems look like quiet
           // days
-          <div className="flex items-center gap-3 rounded-xl border px-5 py-4">
-            <ShieldIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              {format(m.reviewNoStanding)} {format(m.reviewNoStandingHint)}
-            </p>
-          </div>
+          <EmptyScreen
+            icon={<ShieldIcon aria-hidden className="size-5" />}
+            title={format(m.reviewNoRoleTitle)}
+            body={format(m.reviewNoStandingHint)}
+          />
         )
       }
     </BatchScreen>
@@ -115,8 +114,9 @@ function Queue({
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void inbox.refetch()}
       skeleton={<Skeleton className="h-32 w-full" />}
+      className="flex flex-1 flex-col"
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-1 flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={view} onValueChange={onView}>
             <TabsList>
@@ -172,13 +172,26 @@ function Queue({
         </div>
 
         {all.length === 0 ? (
-          <div className="flex items-center gap-3 rounded-xl border px-5 py-4">
-            <p className="text-sm text-muted-foreground">{format(m.reviewEmpty)}</p>
-            <span className="flex-1" />
-            <p className="text-xs whitespace-nowrap text-muted-foreground">
-              {format(m.reviewEmptyRefresh)}
-            </p>
-          </div>
+          // two different quiet days: everything handled, or nothing has
+          // arrived yet. The counter is what tells them apart
+          <>
+            {(inbox.data?.handledToday ?? 0) > 0 ? (
+              <EmptyScreen
+                icon={<CheckIcon aria-hidden className="size-5" />}
+                title={format(m.reviewAllDoneTitle)}
+                body={format(m.reviewAllDoneBody, { count: inbox.data?.handledToday ?? 0 })}
+                foot={format(m.reviewEmptyRefresh)}
+              />
+            ) : (
+              <EmptyScreen
+                icon={<FileTextIcon aria-hidden className="size-5" />}
+                title={format(m.reviewNothingTitle)}
+                body={format(m.reviewNothingBody)}
+                foot={format(m.reviewEmptyRefresh)}
+              />
+            )}
+            <NeverHere />
+          </>
         ) : rows.length === 0 ? (
           <p className="rounded-xl border px-5 py-4 text-sm text-muted-foreground">
             {format(m.reviewMatchesNone)}
@@ -257,7 +270,10 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
               </span>
               <span className="flex-1" />
               <Button size="sm" variant="outline" onClick={() => open(group.rows[0]!, run)}>
-                {format(m.reviewRunGroup, { count: group.rows.length })}
+                {format(m.reviewRunStart)}
+                <Badge variant="secondary" className="tabular-nums">
+                  {group.rows.length}
+                </Badge>
                 <CornerDownLeftIcon aria-hidden />
               </Button>
             </header>
@@ -414,7 +430,10 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
                 {format(m.reviewGroupCount, { count: person.rows.length })}
               </span>
               <Button size="sm" variant="outline" onClick={() => open(person.rows[0]!, run)}>
-                {format(m.reviewRunPerson)}
+                {format(m.reviewRunStart)}
+                <Badge variant="secondary" className="tabular-nums">
+                  {person.rows.length}
+                </Badge>
                 <CornerDownLeftIcon aria-hidden />
               </Button>
             </header>
@@ -458,5 +477,68 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
         )
       })}
     </div>
+  )
+}
+
+/**
+ * A quiet day, said in full: the screen a reviewer lands on when there is
+ * nothing to do is the screen they see most often, so it gets the room.
+ */
+function EmptyScreen({
+  icon,
+  title,
+  body,
+  foot,
+}: {
+  icon: ReactNode
+  title: string
+  body: string
+  foot?: string
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-5 py-16 text-center">
+      <span className="flex size-13 items-center justify-center rounded-full border text-muted-foreground">
+        {icon}
+      </span>
+      <div className="flex max-w-md flex-col gap-2">
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <p className="text-sm leading-relaxed text-pretty text-muted-foreground">{body}</p>
+      </div>
+      {foot !== undefined && <p className="text-xs text-muted-foreground">{foot}</p>}
+    </div>
+  )
+}
+
+/**
+ * The two ways a submission exists without ever reaching anybody's queue.
+ *
+ * Under an empty queue on purpose: "there is nothing here" invites the
+ * question "then where is everything", and these are the two answers that
+ * are not somebody's mistake.
+ */
+function NeverHere() {
+  const { format } = useI18n()
+  return (
+    <section className="flex flex-col gap-2.5 border-t pt-5">
+      <p className="text-xs font-medium text-muted-foreground">{format(m.reviewNotHereTitle)}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex items-start gap-3 rounded-xl border p-4">
+          <Badge variant="secondary" className="shrink-0">
+            {format(m.reviewWaitingAssign)}
+          </Badge>
+          <p className="min-w-0 text-xs leading-relaxed text-pretty text-muted-foreground">
+            {format(m.reviewWaitingAssignBody)}
+          </p>
+        </div>
+        <div className="flex items-start gap-3 rounded-xl border p-4">
+          <Badge variant="secondary" className="shrink-0">
+            {format(m.reviewTakenTitle)}
+          </Badge>
+          <p className="min-w-0 text-xs leading-relaxed text-pretty text-muted-foreground">
+            {format(m.reviewTakenBody)}
+          </p>
+        </div>
+      </div>
+    </section>
   )
 }

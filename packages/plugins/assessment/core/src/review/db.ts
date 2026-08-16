@@ -961,3 +961,38 @@ export const scoreGroupOf = (tenantId: string, groupId: string) =>
           : { name: row.name, cap: row.cap === null ? null : String(row.cap) },
       ),
     )
+
+/**
+ * Whether this person may judge some open round of this claim right now.
+ *
+ * The door to the claim's whole history: reading how a filing got here is
+ * part of judging it, and the one definition of "may review" answers that
+ * too. Open rounds only - having judged something last term is not standing
+ * to read it today.
+ */
+export const mayReviewEntry = (input: { tenantId: string; userId: string; entryId: string }) =>
+  db
+    .query((k) =>
+      sql<{ ok: boolean }>`
+        select exists (
+          select 1
+          from review_instances ri
+          join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+          join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
+          join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
+          where ri.tenant_id = ${input.tenantId}
+            and ri.entry_id = ${input.entryId}
+            and ri.state in ('active', 'blocked')
+            and ${mayReview({
+              tenantId: sql`${input.tenantId}`,
+              batchId: sql.ref('e.batch_id'),
+              nodeId: sql.ref('ri.current_node_id'),
+              roleIds: sql.ref('ri.current_role_ids'),
+              userId: sql`${input.userId}`,
+              subjectUserId: sql.ref('bp.user_id'),
+              actorId: sql.ref('er.actor_id'),
+            })}
+        ) as ok
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.ok)))

@@ -1,5 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
+import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
-import type { assessmentApi } from '../api.ts'
+import { assessmentApi } from '../api.ts'
+import { fieldsOf } from '../entry/model.ts'
 
 // What the review screens agree on: the queue row, the three ways it is
 // laid out, and the run - the ordered slice of the queue a reviewer walks
@@ -157,3 +160,42 @@ export const timeLabel = (iso: string): string =>
 
 export const clockLabel = (iso: string): string =>
   new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+
+/** one version of a filing, as the history endpoint answers it */
+export interface HistoryRevision {
+  id: string
+  revisionNo: number
+  payload: unknown
+  formConfig: unknown
+  note: string | null
+  createdAt: string
+}
+
+/**
+ * Everything that ever happened to one claim.
+ *
+ * Asked on the entry rather than on the round: the versions and the rounds
+ * are one story, and the reviewer's standing to read it is the open round
+ * they already hold.
+ */
+export function useEntryHistory(entryId: string, enabled: boolean) {
+  const query = useApiQuery(assessmentApi)
+  return useQuery({
+    ...query.assessment.getEntryHistory.queryOptions({ params: { entryId } }),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+/** one filing's answers, under the labels of the form it was written on */
+export const valuesOf = (
+  formConfig: unknown,
+  payload: unknown,
+): readonly { key: string; label: string; value: string }[] =>
+  fieldsOf(formConfig)
+    .filter((field) => field.type !== 'attachment')
+    .map((field) => {
+      const record = (payload ?? {}) as Record<string, unknown>
+      const raw = record[field.key]
+      return { key: field.key, label: field.label, value: typeof raw === 'string' ? raw : '' }
+    })

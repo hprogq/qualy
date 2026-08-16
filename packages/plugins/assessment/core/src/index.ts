@@ -14,6 +14,7 @@ import {
   permissionOf,
   workspaceContext,
   workspaceNavigation,
+  workspaceNavigationBadge,
 } from '@qualy/ui-contract'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { ItemTypes, Scoring } from './plugin.ts'
@@ -375,6 +376,15 @@ const plugin = Plugin.define(
         id: 'assessment/batch-context',
         component: Ui.react('./client/batch/BatchContextBar.tsx'),
         visibility: AUTHENTICATED,
+      },
+      {
+        // how many are waiting, beside the rail entry that opens them: a
+        // number the manifest cannot carry, because it changes while the
+        // reviewer works
+        key: workspaceNavigationBadge.key,
+        id: 'assessment/reviews-waiting',
+        component: Ui.react('./client/review/QueueBadge.tsx'),
+        visibility: permissionOf('assessment.review.process'),
       },
     ],
   }),

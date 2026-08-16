@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ArrowLeftIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  DownloadIcon,
   InfoIcon,
   Maximize2Icon,
   TriangleAlertIcon,
@@ -48,12 +50,18 @@ import {
   summaryOf,
   timeLabel,
   clockLabel,
+  useEntryHistory,
+  valuesOf,
+  type HistoryRevision,
   type InboxItemDto,
 } from './model.ts'
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
 import { RejectDialog, EscalateDialog, type WordedDecision } from './decision-dialogs.tsx'
 import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
+import { HistorySheet, VersionPicker } from './history.tsx'
+import { attachmentContentUrl } from '../entry/model.ts'
+import { useLingering } from '@qualy/ui/use-lingering'
 
 // The workbench: one submission a screen, walked in a run.
 //
@@ -156,6 +164,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [keysOpen, setKeysOpen] = useState(false)
   const [writing, setWriting] = useState(false)
   const [openSibling, setOpenSibling] = useState<string | null>(null)
+  const lingeringSibling = useLingering(openSibling)
+  const [trailOpen, setTrailOpen] = useState(false)
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  // which earlier version the filing is read against; null is not comparing
+  const [comparing, setComparing] = useState<string | null>(null)
   const wordRef = useRef<HTMLInputElement | null>(null)
 
   /** stage a round-moving decision, log it, and put the next one on screen */
@@ -248,7 +261,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // cursor is in a box the letters belong to the text
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
-      if (dialog !== null) return
+      if (dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null) return
       // the photo viewer holds its own keys: Esc closes it, arrows page it
       if (document.querySelector('.PhotoView-Portal') !== null) return
       const mod = event.metaKey || event.ctrlKey
@@ -300,6 +313,19 @@ function Workbench({ batch }: { batch: BatchDto }) {
             setArmed('comment')
             wordRef.current?.focus()
           }
+          return
+        case 'd':
+          event.preventDefault()
+          setComparing((current) => (current === null ? 'previous' : null))
+          return
+        case 'D':
+          event.preventDefault()
+          setVersionsOpen(true)
+          return
+        case 'h':
+        case 'H':
+          event.preventDefault()
+          setTrailOpen(true)
           return
         case 'j':
         case 'J':
@@ -361,6 +387,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             currentId={instanceId}
             remainingCount={remaining.length}
             onOpen={goTo}
+            onBack={() => navigate('assessment/batch-reviews', { params: { batchId: batch.id } })}
           />
           <div className="flex min-h-0 min-w-0 flex-col border-t lg:border-t-0 lg:border-l">
             {done ? (
@@ -395,7 +422,13 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   onMove={move}
                 />
                 <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_19rem]">
-                  <MainColumn review={review} />
+                  <MainColumn
+                    review={review}
+                    comparing={comparing}
+                    onCompare={setComparing}
+                    onVersions={() => setVersionsOpen(true)}
+                    onTrail={() => setTrailOpen(true)}
+                  />
                   <ContextRail review={review} onOpenSibling={setOpenSibling} />
                 </div>
                 {review.capabilities.canDecide && decisions.length > 0 && (
@@ -435,12 +468,37 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onClose={() => setWriting(false)}
           />
         )}
-        {openSibling !== null && review?.context != null && (
+        {lingeringSibling !== null && review?.context != null && (
           <SiblingSheet
+            open={openSibling !== null}
             itemTitle={review.itemTitle}
-            sibling={review.context.siblings.find((one) => one.entryId === openSibling)!}
+            sibling={
+              review.context.siblings.find((one) => one.entryId === lingeringSibling) ?? null
+            }
             onClose={() => setOpenSibling(null)}
           />
+        )}
+        {review !== undefined && (
+          <>
+            <HistorySheet
+              open={trailOpen}
+              entryId={review.entryId}
+              onClose={() => setTrailOpen(false)}
+            />
+            <VersionPicker
+              open={versionsOpen}
+              entryId={review.entryId}
+              judgedRevisionNo={review.revision.revisionNo}
+              comparingId={comparing}
+              participantName={review.participantName}
+              itemTitle={review.itemTitle}
+              onPick={(revisionId) => {
+                setComparing(revisionId)
+                setVersionsOpen(false)
+              }}
+              onClose={() => setVersionsOpen(false)}
+            />
+          </>
         )}
 
         {dialog === 'reject' && review !== undefined && (
@@ -471,18 +529,29 @@ function QueueRail({
   currentId,
   remainingCount,
   onOpen,
+  onBack,
 }: {
   rows: readonly InboxItemDto[]
   log: readonly SessionEntry[]
   currentId: string
   remainingCount: number
   onOpen: (id: string) => void
+  onBack: () => void
 }) {
   const { format } = useI18n()
   const decided = new Map(log.map((entry) => [entry.instanceId, entry.decision]))
   return (
     <aside className="hidden min-h-0 flex-col lg:flex">
-      <div className="flex items-center gap-2 border-b px-3.5 py-2.5">
+      <div className="flex items-center gap-1.5 border-b py-2 pr-3.5 pl-2">
+        {/* the way out: a workbench with no door back is a dead end */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={format(m.reviewBackToQueue)}
+          onClick={onBack}
+        >
+          <ArrowLeftIcon aria-hidden />
+        </Button>
         <p className="text-xs font-semibold">{format(m.reviewQueueTitle)}</p>
         <Badge variant="secondary" className="tabular-nums">
           {remainingCount}
@@ -691,11 +760,48 @@ function EdgeButton({
 }
 
 /** the reading order: what was said, what was filed, what backs it up */
-function MainColumn({ review }: { review: ReviewDto }) {
+function MainColumn({
+  review,
+  comparing,
+  onCompare,
+  onVersions,
+  onTrail,
+}: {
+  review: ReviewDto
+  /** an earlier revision id, 'previous' for the one just before, or null */
+  comparing: string | null
+  onCompare: (next: string | null) => void
+  onVersions: () => void
+  onTrail: () => void
+}) {
   const { format } = useI18n()
   const fields = fieldsOf(review.form.formConfig).filter((field) => field.type !== 'attachment')
   const record = (review.revision.payload ?? {}) as Record<string, unknown>
   const previous = review.context?.previous ?? null
+  // the version being read against, resolved from the entry's own history;
+  // asked for only while a comparison is on
+  const history = useEntryHistory(review.entryId, comparing !== null)
+  const revisions = ((history.data as { revisions?: readonly HistoryRevision[] } | undefined)
+    ?.revisions ?? []) as readonly HistoryRevision[]
+  const earlier = revisions.filter((one) => one.revisionNo < review.revision.revisionNo)
+  const against =
+    comparing === null
+      ? null
+      : comparing === 'previous'
+        ? (earlier[earlier.length - 1] ?? null)
+        : (earlier.find((one) => one.id === comparing) ?? null)
+  const was = new Map(
+    against === null
+      ? []
+      : valuesOf(against.formConfig, against.payload).map((v) => [v.key, v.value]),
+  )
+  const changes =
+    against === null
+      ? 0
+      : fields.filter((field) => {
+          const now = typeof record[field.key] === 'string' ? (record[field.key] as string) : ''
+          return (was.get(field.key) ?? '') !== now
+        }).length
   return (
     <main className="flex min-w-0 flex-col gap-6 overflow-y-auto p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
@@ -775,28 +881,72 @@ function MainColumn({ review }: { review: ReviewDto }) {
       </section>
 
       <section className="flex flex-col gap-3">
-        <div className="flex items-baseline justify-between gap-3 border-b pb-2">
-          <h3 className="text-sm font-semibold">{format(m.reviewPayloadTitle)}</h3>
-          <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-            {format(m.reviewPayloadVersion, {
-              no: review.revision.revisionNo,
-              at: timeLabel(review.submittedAt),
-            })}
-          </p>
+        <div className="flex flex-col gap-1.5 border-b pb-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h3 className="text-sm font-semibold">{format(m.reviewPayloadTitle)}</h3>
+            <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+              {format(m.reviewFiledVersion, {
+                no: review.revision.revisionNo,
+                at: timeLabel(review.submittedAt),
+              })}
+            </p>
+            <span className="flex-1" />
+            {review.revision.revisionNo > 1 && (
+              <>
+                <Button
+                  variant={comparing === null ? 'ghost' : 'secondary'}
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => onCompare(comparing === null ? 'previous' : null)}
+                >
+                  {format(m.reviewCompare)}
+                  <Kbd>D</Kbd>
+                </Button>
+                <Button variant="ghost" size="sm" className="text-xs" onClick={onVersions}>
+                  {format(m.reviewPickVersion)}
+                  <Kbd>⇧D</Kbd>
+                </Button>
+              </>
+            )}
+          </div>
+          {against !== null && (
+            <p className="text-xs text-muted-foreground">
+              {format(m.reviewCompareCount, { count: changes, no: against.revisionNo })}
+            </p>
+          )}
         </div>
         <dl className="flex flex-col gap-2">
-          {fields.map((field) => (
-            <div key={field.key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
-              <dt className="text-sm whitespace-nowrap text-muted-foreground">{field.label}</dt>
-              <dd className="min-w-0 text-sm">
-                {typeof record[field.key] === 'string' && record[field.key] !== ''
-                  ? (record[field.key] as string)
-                  : '—'}
-              </dd>
-            </div>
-          ))}
+          {fields.map((field) => {
+            const now = typeof record[field.key] === 'string' ? (record[field.key] as string) : ''
+            const before = was.get(field.key) ?? ''
+            const changed = against !== null && before !== now
+            return (
+              <div
+                key={field.key}
+                className={cn(
+                  'grid grid-cols-[7rem_minmax(0,1fr)] gap-3 border-l-2 pl-2.5',
+                  changed ? 'border-l-foreground/40' : 'border-l-transparent',
+                )}
+              >
+                <dt className="text-sm whitespace-nowrap text-muted-foreground">{field.label}</dt>
+                <dd className="flex min-w-0 flex-col gap-0.5 text-sm">
+                  <span className={cn(changed && 'font-medium')}>{now === '' ? '—' : now}</span>
+                  {changed && (
+                    <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                      <span className="shrink-0">{format(m.reviewComparePrevious)}</span>
+                      {before === '' ? (
+                        <span>{format(m.reviewCompareBlank)}</span>
+                      ) : (
+                        <span className="min-w-0 line-through">{before}</span>
+                      )}
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )
+          })}
           {review.revision.note !== null && (
-            <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+            <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 pl-2.5">
               <dt className="text-sm whitespace-nowrap text-muted-foreground">
                 {format(m.entryNote)}
               </dt>
@@ -817,6 +967,21 @@ function MainColumn({ review }: { review: ReviewDto }) {
             <span className="hidden text-xs text-muted-foreground lg:block">
               {format(m.reviewFilesKeys)}
             </span>
+            <Button variant="ghost" size="sm" className="text-xs" asChild>
+              {/* one press per file, opened as downloads: a zip would be a
+                  server-side archive nobody asked for yet */}
+              <button
+                type="button"
+                onClick={() => {
+                  for (const attachment of review.revision.attachments) {
+                    window.open(attachmentContentUrl(attachment.attachmentId), '_blank')
+                  }
+                }}
+              >
+                <DownloadIcon aria-hidden />
+                {format(m.reviewDownloadAll)}
+              </button>
+            </Button>
           </div>
           {/* drawn large: reading the evidence is what this screen is for */}
           <ul className="flex flex-wrap gap-4">
@@ -1012,6 +1177,18 @@ function Route({
   )
 }
 
+/** a button that says what it does before it is pressed */
+function Explained({ why, children }: { why: string; children: ReactNode }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent>{why}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 /** the word box and the four choices; only ⌘↵ ever submits */
 function DecisionBar({
   review,
@@ -1040,6 +1217,9 @@ function DecisionBar({
 }) {
   const { format } = useI18n()
   const advising = review.chain.route === 'escalation' && !decisions.includes('reject')
+  // approving at the end of a route is the decision itself, not a hand-on
+  const route = review.chain.route === 'escalation' ? review.chain.escalation : review.chain.normal
+  const lastStep = route[route.length - 1]?.id === review.chain.stageId
   return (
     <footer className="flex flex-col gap-2 border-t px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -1065,55 +1245,77 @@ function DecisionBar({
           </InputGroupAddon>
         </InputGroup>
         {decisions.includes('comment') && (
-          <Button
-            variant={armed === 'comment' ? 'secondary' : 'outline'}
-            onClick={() => onArm(armed === 'comment' ? null : 'comment')}
-          >
-            {format(m.reviewActionNote)}
-            <Kbd>C</Kbd>
-          </Button>
+          <Explained why={format(m.reviewTipComment)}>
+            <Button
+              variant={armed === 'comment' ? 'secondary' : 'outline'}
+              onClick={() => onArm(armed === 'comment' ? null : 'comment')}
+            >
+              {format(m.reviewActionNote)}
+              <Kbd>C</Kbd>
+            </Button>
+          </Explained>
         )}
         {decisions.includes('escalate') && (
-          <Button variant="outline" onClick={() => onDialog('escalate')}>
-            {format(m.reviewEscalate)}
-            <Kbd>E</Kbd>
-          </Button>
+          <Explained why={format(m.reviewTipEscalate)}>
+            <Button variant="outline" onClick={() => onDialog('escalate')}>
+              {format(m.reviewEscalate)}
+              <Kbd>E</Kbd>
+            </Button>
+          </Explained>
         )}
         {decisions.includes('reject') && (
-          <Button
-            variant="outline"
-            className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
-            onClick={() => onDialog('reject')}
-          >
-            {format(m.reviewReject)}
-            <Kbd className="bg-rose-500/10 text-rose-700 dark:text-rose-300">R</Kbd>
-          </Button>
+          <Explained why={format(m.reviewTipReject)}>
+            <Button
+              variant="outline"
+              className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+              onClick={() => onDialog('reject')}
+            >
+              {format(m.reviewReject)}
+              <Kbd className="bg-rose-500/10 text-rose-700 dark:text-rose-300">R</Kbd>
+            </Button>
+          </Explained>
         )}
         {decisions.includes('approve') && (
-          <Button
-            variant="outline"
-            className={cn(
-              'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
-              armed === 'approve' && 'ring-2 ring-emerald-500/40',
-            )}
-            onClick={() => onArm(armed === 'approve' ? null : 'approve')}
-          >
-            {format(m.reviewApprove)}
-            <Kbd className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">A</Kbd>
-          </Button>
+          <Explained why={format(m.reviewTipApprove)}>
+            <Button
+              variant="outline"
+              className={cn(
+                'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
+                armed === 'approve' && 'ring-2 ring-emerald-500/40',
+              )}
+              onClick={() => onArm(armed === 'approve' ? null : 'approve')}
+            >
+              {format(m.reviewApprove)}
+              <Kbd className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">A</Kbd>
+            </Button>
+          </Explained>
         )}
         {/* the one solid on the bar: choosing is soft, committing is not */}
-        <Button
-          disabled={busy || armed === null}
-          className="bg-primary/90 hover:bg-primary"
-          onClick={onSubmit}
-        >
-          {format(m.reviewSubmitDecision)}
-          <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
-        </Button>
+        <Explained why={format(m.reviewTipSubmit)}>
+          <Button
+            disabled={busy || armed === null}
+            className="bg-primary/90 hover:bg-primary"
+            onClick={onSubmit}
+          >
+            {format(m.reviewSubmitDecision)}
+            <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
+          </Button>
+        </Explained>
       </div>
+      {/* what the bar says depends on what is chosen: a line that reads the
+          same whatever is about to happen is a line nobody reads */}
       <p className="text-xs text-muted-foreground">
-        {format(advising ? m.reviewSubmitHintAdvise : m.reviewSubmitHint)}
+        {format(
+          advising
+            ? m.reviewSubmitHintAdvise
+            : armed === 'approve'
+              ? lastStep
+                ? m.reviewHintLastStep
+                : m.reviewHintArmedApprove
+              : armed === 'comment'
+                ? m.reviewHintArmedComment
+                : m.reviewHintPickFirst,
+        )}
       </p>
     </footer>
   )
@@ -1173,17 +1375,21 @@ function WritingBox({
 
 /** one of the participant's other claims on this question, read in full */
 function SiblingSheet({
+  open,
   itemTitle,
   sibling,
   onClose,
 }: {
+  open: boolean
   itemTitle: string
-  sibling: NonNullable<ReviewDto['context']>['siblings'][number]
+  /** null once the claim it named is gone; the panel is shutting anyway */
+  sibling: NonNullable<ReviewDto['context']>['siblings'][number] | null
   onClose: () => void
 }) {
   const { format } = useI18n()
+  if (sibling === null) return null
   return (
-    <Dialog open onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-baseline gap-2 text-sm">
@@ -1257,6 +1463,9 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
     ['C', m.reviewKeyComment],
     ['J / K', m.reviewKeyMove],
     ['1–9', m.reviewKeyFiles],
+    ['D', m.reviewKeyCompare],
+    ['⇧D', m.reviewKeyVersions],
+    ['H', m.reviewKeyTrail],
     ['Esc', m.reviewKeyCancel],
   ]
   return (

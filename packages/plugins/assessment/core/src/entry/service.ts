@@ -233,6 +233,12 @@ export interface EntryDeps {
     batchId: string,
     ctx?: GateContext,
   ) => Effect.Effect<ActionDecision, BatchNotFound>
+  /** whoever may judge an open round of a claim may read how it got here */
+  readonly mayReviewEntry: (
+    as: Principal,
+    tenantId: string,
+    entryId: string,
+  ) => Effect.Effect<boolean>
   readonly requireRosterReach: (
     as: Principal,
     tenantId: string,
@@ -927,12 +933,18 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const loaded = yield* loadEntry(tenantId, entryId)
           if (loaded === null) return yield* new EntryNotFound()
           const { entry, participant } = loaded
-          // the same read rule as the entry itself (§32.56): the subject,
-          // or administrative reach - and nothing, not even existence,
-          // for anyone else
+          // the same read rule as the entry itself (§32.56), plus the one
+          // this screen exists for: whoever is judging an open round of this
+          // claim reads how it got here. Anyone else learns nothing, not
+          // even that it exists.
           if (participant.userId !== as.userId) {
-            const reach = yield* Effect.result(deps.requireRosterReach(as, tenantId, entry.batchId))
-            if (Result.isFailure(reach)) return yield* new EntryNotFound()
+            const judging = yield* deps.mayReviewEntry(as, tenantId, entryId)
+            if (!judging) {
+              const reach = yield* Effect.result(
+                deps.requireRosterReach(as, tenantId, entry.batchId),
+              )
+              if (Result.isFailure(reach)) return yield* new EntryNotFound()
+            }
           }
           const revisions = yield* entryRevisionsOf(tenantId, entryId)
           const forms = new Map<string, unknown>()

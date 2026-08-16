@@ -32,6 +32,7 @@ import { insertReviewEvent } from '../entry/db.ts'
 import {
   blockedGroups,
   chainNames,
+  mayReviewEntry,
   openInstances,
   reviewersAt,
   setInstanceState,
@@ -1775,6 +1776,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const entryMethods = makeEntryMethods({
     withDb,
     authorize: authorizeAction,
+    mayReviewEntry: (as, tenantId, entryId) =>
+      dieQuery(withDb(mayReviewEntry({ tenantId, userId: as.userId, entryId }))),
     requireRosterReach,
     requireBatchVisible,
     parseRange,

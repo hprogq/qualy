@@ -250,4 +250,37 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     // identity travels with the round for the header that names the person
     expect(result.round2.unitName).toBe('Class A1')
   })
+
+  it('opens the claim\u2019s whole story to whoever is judging it, and to nobody else', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-history')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+
+          // the reviewer holds the open round: reading how the filing got
+          // here is part of judging it
+          const forJudge = yield* assessment.getEntryHistory(f.t, entry.id, f.principal(f.reviewer))
+          // a classmate holds nothing, and learns nothing - not even that
+          // the claim exists
+          const forStranger = yield* Effect.exit(
+            assessment.getEntryHistory(f.t, entry.id, f.principal(f.s2)),
+          )
+          return { forJudge, forStranger }
+        }),
+      ),
+    )
+    expect(result.forJudge.rounds).toHaveLength(1)
+    expect(result.forJudge.revisions.length).toBeGreaterThan(0)
+    expect(errorOf<{ _tag: string }>(result.forStranger)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
+  })
 })

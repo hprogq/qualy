@@ -106,7 +106,7 @@ export function RejectDialog({
       const reachable = event.altKey || !typing
       if (event.metaKey || event.ctrlKey) return
       if (!reachable) return
-      if (event.key === 's' || event.key === 'S' || event.code === 'KeyS') {
+      if (event.key === 'g' || event.key === 'G' || event.code === 'KeyG') {
         event.preventDefault()
         setSuggesting((on) => !on)
         return
@@ -224,7 +224,7 @@ export function RejectDialog({
               {format(m.reviewSuggestToggle)}
               <KbdGroup>
                 <Kbd>⌥</Kbd>
-                <Kbd>S</Kbd>
+                <Kbd>G</Kbd>
               </KbdGroup>
             </label>
             {suggesting && (

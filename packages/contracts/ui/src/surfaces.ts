@@ -211,6 +211,25 @@ export const workspaceContext = defineUiSlot({
 })
 
 /**
+ * A live count beside a rail entry.
+ *
+ * The number cannot come with the entry: navigation is a manifest projection
+ * computed once per reader, and "how many are waiting for me" changes while
+ * they work. So the shell renders a slot next to each entry and passes it the
+ * entry's id; whoever owns that page answers for its own count and nothing
+ * else, and an entry nobody answers for simply has no badge.
+ */
+export const workspaceNavigationBadge = defineUiSlot({
+  key: 'workspace-shell/navigation-badge',
+  cardinality: 'many',
+})
+
+/** what the shell hands a badge: which rail entry it is standing beside */
+export interface NavigationBadgeContext {
+  readonly navigationId: string
+}
+
+/**
  * A person, wherever a screen shows one.
  *
  * Any list that names people renders this instead of spelling out a name, so

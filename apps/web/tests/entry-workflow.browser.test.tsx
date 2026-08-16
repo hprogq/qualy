@@ -112,6 +112,7 @@ const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
 /** the reads every batch screen makes before it draws anything */
 const ambient = {
   getBatch: () => Effect.succeed({ batch: batch() }),
+  getEntryHistory: () => Effect.succeed({ entry: entry(), revisions: [], events: [], rounds: [] }),
   listScoreGroups: () =>
     Effect.succeed({
       groups: [
