@@ -693,7 +693,7 @@ describe('the stage plan', () => {
     await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeVisible()
     await expect.element(panel.getByRole('checkbox', { name: '审核提交的内容' })).toBeVisible()
     // its own switch: an appeal window opens reviewing without opening doubts
-    await expect.element(panel.getByRole('checkbox', { name: '提交疑点' })).toBeVisible()
+    await expect.element(panel.getByRole('checkbox', { name: '提请复核' })).toBeVisible()
     for (const absent of ['登录', '管理组织架构', '管理测评批次', '查看角色']) {
       await expect.element(panel.getByRole('checkbox', { name: absent })).not.toBeInTheDocument()
     }

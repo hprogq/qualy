@@ -4786,3 +4786,15 @@ CLAUDE 的「界面文案是引导,不是说明」此前只在新写的地方被
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 651 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;
 `prettier --check` 全绿。
+
+### 疑点改叫复核(2026-08-16)
+
+界面上的「上报疑点 / 提交疑点」改为**提请复核**,「疑点审核 / 疑点流程」改为**复核流程**
+(与「常规审核」并列的短标签用**复核**)。**只改中文**:标识符、事件 kind(`doubt-raised`)、
+阶段动作码(`assessment.review.raise-doubt`)、英文 default 一律不动——
+它们是英文域名词,而且阶段动作码存在各批次的 `permission_profile` 数组里,
+为一次中文改名去迁移那份数据是把文案问题变成数据问题。中英文各自选词、不互相直译,
+本来就是本仓的译法规矩。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 651 passed / 17 skipped;
+`pnpm test:browser` 54 passed(两处按标签取控件的断言同步);`catalogs.test` 全语言完整。

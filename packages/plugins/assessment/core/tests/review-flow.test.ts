@@ -558,7 +558,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             g.batch.id,
             {
               itemType: 'evidence',
-              title: '有疑点的题',
+              title: '可提请复核的题',
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
@@ -591,7 +591,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const raised = yield* assessment.decideReview(
             f.t,
             instanceId,
-            { decision: 'raise-doubt', comment: '拿不准，转疑点' },
+            { decision: 'raise-doubt', comment: '拿不准，提请复核' },
             reviewer,
           )
           // the doubt route is a review chain like the other one: approving
