@@ -4929,3 +4929,57 @@ entity-parity/error-codes/catalogs/frozen-routes 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 654 passed / 17 skipped;
 `pnpm test:browser` 55 passed;prettier 全绿。无 schema 变更,不涉迁移。
+
+### 审核工作台:设计稿 1a–1i 全量落地(2026-08-16)
+
+按设计稿(审核页面.dc.html)实现审核工作的完整界面,三项开场裁决:智能审阅整套 AI 提示
+**留占位不占列**;退回/复核事由**顺带建配置后端**;5 秒延迟提交 + ⌘Z 撤回**照做**。
+
+**后端**(schema 迁移 20260816054833_review-workbench):
+- `assessment_batches.review_reasons` jsonb:`{reject: [], escalate: []}` 两组事由标签,
+  updateBatch 可改(计入配置事件日志),batchView 携带;`review_events.reason` 存选中标签原文——
+  列表是报价不是历史,改列表永不改写已说过的话。
+- decideReview 收 `reason`:批次配置了该动作的事由表时必填且必须在表内,未配置则不收;
+  approve/comment 不收。校验与写入同在批次锁内。
+- 队列行(listReviewInbox)携带填报本身:`values`(按题目表单字段投影,最多前三个非附件字段,
+  少则少显,从不写摘要)、学号、单位(id+名)、route、附件数;新增 `batchId` 过滤与
+  `handledToday`(按批次时区的当日决定数——日子属于时区,只有批次有时区)。
+- 审核详情携带 `businessNo`/`unitName` 与 `context`(仅页面读取解析,决定路径留 null 不进锁):
+  `worth`(通过后计/条数上限/组名与组上限/材料时间范围)、`siblings`(该参评人本题全部条目,
+  读各自最新版本)、`previous`(上一轮的结论:动作/事由/说明/人/时间)。
+- 实查:v4 `Schema.Struct` 默认忽略多余键(vendored Schema.test.ts:149 + node 实测),
+  而 formConfig 按原文存储,测试得以在 fixture driver 下携带 `fields`。
+
+**前端**:
+- 队列页(1a/1h/1i/1e):按题目/按提交时间/按参评人三种排法 + 题目/单位筛选 + 搜索;
+  按题目分组的列头是该题真实字段标签;行级状态章(待我审核/第 N 轮/复核中);
+  无职责与空队列两种空态分开说;30 秒自动刷新。
+- 工作台(1b/1d/1g):chrome="none" 全屏无 banner 无卡片;左侧连审队列(已决定的置灰带结论);
+  连审进度条与位置;参评人头部(头像/学号/单位/复核章/边缘禁用的上下翻页 + tooltip);
+  主栏 = 复核横幅 → 此前的意见(含上一轮结论块)→ 填报内容 → 编号材料(1–9 直达)→
+  智能审阅占位;侧栏 = 评分依据占位 → 审核链条(两条路各画各的)→ 该题配置 → 其他条目;
+  底部决定栏:说明框(与按钮同高)+ 备注/提请复核/退回(红底)/通过(绿底)+ 提交决定。
+  一组审完(1g):通过/退回/提请复核计数、用时、下一组、决定清单。
+- 键盘:A/R/E/C 只选择(全部 preventDefault,修掉 R 漏进弹层输入框的字母),⌘↵ 才提交,
+  ⌘Z 撤回,J/K 上下件,1–9 开材料,? 面板(shadcn Kbd 组件,新增 @qualy/ui/kbd),Esc 逐层退。
+  photo-view 打开时让位(它自带 Esc 关闭与左右键,实查 1.2.7 源码)。
+- 5 秒延迟提交(useDeferredDecision):暂存→倒计时药丸→到点经 typed client 发出;
+  期间 ⌘Z 撤回并回到那件;连续暂存则前一件立即发出;pagehide/路由离开经 sendBeacon
+  立即提交(带上 JSON body,cookie 随行);冲突/失败 toast 并从会话清单标记。
+- 弹层(1c/1f):事由标签单选(配置了才显示,必选)+ 必填说明 + Esc 取消带 Kbd;
+  退回弹层的修改建议:S 切换、数字键定位字段、输入框默认全空(placeholder 保持不变),
+  只有写了字的字段进入建议 payload,已写与未写样式分明;提请复核弹层画复核流转
+  (末端标"作出结论",其余"只能给出意见")。
+- 附件预览:PDF 走 DocumentLightbox——fetch 字节 + 显式 application/pdf 的 blob 进 iframe,
+  浏览器自带阅读器(Firefox 即 PDF.js、Chrome PDFium),不引 pdfjs-dist;下载纪律不破:
+  只有 LOOKS_LIKE_A_DOCUMENT(仅 pdf)才内联,html/svg 照旧只下载。Esc 关闭(Radix)。
+- 批次设置新增两组事由编辑器(chip + 添加/删除),与其他字段同一份保存。
+
+**测试**:node 新增 review-workbench.test.ts(队列行投影与当日计数;事由必选/越表/错位的
+三种拒绝;事由入事件;context 的 worth/siblings/previous);浏览器测试改走新流程
+(行即按钮、通过=选择+提交决定+撤回窗口、一组审完屏、退回弹层必填说明),
+批次 fixture 补 reviewReasons。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 656 passed / 17 skipped;
+`pnpm test:browser` 55 passed;`pnpm build` 通过;`pnpm qualy generate` 产出上述迁移后无漂移;
+prettier 全绿。

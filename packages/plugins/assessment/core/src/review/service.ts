@@ -45,11 +45,15 @@ import { nodePathOf } from '../entry/db.ts'
 import {
   activeReviewBatches,
   completeInstance,
+  decisionsToday,
   inboxPage,
   instanceOf,
   chainNames,
   holderNamesAt,
+  previousConclusion,
   reviewEventsOf,
+  scoreGroupOf,
+  siblingEntries,
   userMayReview,
   type InboxRow,
   type ReviewInstanceDetailRow,
@@ -72,7 +76,14 @@ export interface ReviewInboxItem {
   readonly itemId: string
   readonly itemTitle: string
   readonly participantName: string
+  readonly businessNo: string | null
+  readonly unitId: string | null
+  readonly unitName: string | null
   readonly roundNo: number
+  readonly route: 'normal' | 'escalation'
+  /** the filing's own answers under the question's real labels, never prose */
+  readonly values: readonly { readonly label: string; readonly value: string }[]
+  readonly attachmentCount: number
   readonly submittedAt: number
 }
 
@@ -110,6 +121,8 @@ export interface ReviewDetailView {
   readonly itemId: string
   readonly itemTitle: string
   readonly participantName: string
+  readonly businessNo: string | null
+  readonly unitName: string | null
   readonly submittedAt: number
   readonly completedAt: number | null
   readonly revision: {
@@ -120,15 +133,42 @@ export interface ReviewDetailView {
   }
   readonly form: { readonly itemType: string; readonly formConfig: unknown }
   readonly chain: ReviewChainView
+  /** the surroundings a page read resolves; a decision response leaves it null */
+  readonly context: ReviewContextView | null
   readonly events: readonly {
     readonly kind: string
     readonly actorId: string | null
     readonly actorName: string | null
+    readonly reason: string | null
     readonly comment: string | null
     readonly suggestedPayload: unknown
     readonly at: number
   }[]
   readonly capabilities: { readonly canDecide: boolean }
+}
+
+/** what stands around the judged filing, resolved only for page reads */
+export interface ReviewContextView {
+  readonly worth: {
+    readonly each: string | null
+    readonly maxEntries: number | null
+    readonly groupName: string | null
+    readonly groupCap: string | null
+    readonly materialRange: { readonly start: string; readonly end: string }
+  }
+  readonly siblings: readonly {
+    readonly entryId: string
+    readonly summary: string
+    readonly status: string
+    readonly current: boolean
+  }[]
+  readonly previous: {
+    readonly kind: string
+    readonly reason: string | null
+    readonly comment: string | null
+    readonly actorName: string | null
+    readonly at: number
+  } | null
 }
 
 /**
@@ -176,6 +216,8 @@ const decisionsAt = (
 
 export interface ReviewDecisionInput {
   readonly decision: ReviewDecision
+  /** one of the batch's configured labels; required when a list is configured */
+  readonly reason?: string
   readonly comment?: string
   readonly suggestedPayload?: unknown
 }
@@ -183,9 +225,12 @@ export interface ReviewDecisionInput {
 export interface ReviewMethods {
   readonly listReviewInbox: (
     tenantId: string,
-    page: { cursor?: string; limit?: string },
+    page: { cursor?: string; limit?: string; batchId?: string },
     as: Principal,
-  ) => Effect.Effect<{ items: readonly ReviewInboxItem[]; nextCursor: string | null }, BadRequest>
+  ) => Effect.Effect<
+    { items: readonly ReviewInboxItem[]; nextCursor: string | null; handledToday: number },
+    BadRequest
+  >
   readonly getReviewInstance: (
     tenantId: string,
     instanceId: string,
@@ -236,6 +281,50 @@ export interface ReviewDeps {
 }
 
 const refuse = (action: string, reason: string) => new EntryActionRefused({ action, reason })
+
+/**
+ * A filing's answers under its form's own labels, for a list column or a
+ * one-line sibling. The fields are the question's real fields in their own
+ * order - never a written summary - and attachment fields stay out because
+ * a count stands in for them.
+ */
+const summaryValues = (
+  formConfig: unknown,
+  payload: unknown,
+  most = 3,
+): readonly { label: string; value: string }[] => {
+  const fields = (formConfig as { fields?: unknown } | null)?.fields
+  if (!Array.isArray(fields)) return []
+  const record = (payload ?? {}) as Record<string, unknown>
+  const out: { label: string; value: string }[] = []
+  for (const field of fields as readonly {
+    key?: string
+    label?: string
+    type?: string
+  }[]) {
+    if (out.length >= most) break
+    if (field.type === 'attachment' || typeof field.key !== 'string') continue
+    const value = record[field.key]
+    out.push({
+      label: typeof field.label === 'string' ? field.label : field.key,
+      value:
+        typeof value === 'string'
+          ? value
+          : typeof value === 'number' || typeof value === 'boolean'
+            ? String(value)
+            : '',
+    })
+  }
+  return out
+}
+
+/** the batch's configured reason lists, read defensively off the jsonb */
+const reasonsOf = (value: unknown): { reject: readonly string[]; escalate: readonly string[] } => {
+  const read = (list: unknown): readonly string[] =>
+    Array.isArray(list) ? list.filter((one): one is string => typeof one === 'string') : []
+  const record = (value ?? {}) as Record<string, unknown>
+  return { reject: read(record['reject']), escalate: read(record['escalate']) }
+}
 
 export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const { withDb } = deps
@@ -315,6 +404,46 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         !view.canDecide || here === null
           ? []
           : decisionsAt(policy, here, row, view.mayEscalate === true)
+      // the surroundings only a page read pays for: the decision path runs
+      // inside the batch lock, where every extra query is somebody waiting
+      let context: ReviewContextView | null = null
+      if (view.resolveReviewers) {
+        const group = yield* scoreGroupOf(tenantId, row.scoreGroupId)
+        const each = (
+          itemRevision?.scoringConfig as
+            { calculator?: { config?: { value?: unknown } } } | undefined
+        )?.calculator?.config?.value
+        const others = yield* siblingEntries(tenantId, row.itemId, row.participantId)
+        const previous = yield* previousConclusion(tenantId, row.entryId, row.roundNo)
+        context = {
+          worth: {
+            each: typeof each === 'string' ? each : null,
+            maxEntries: row.maxEntries,
+            groupName: group?.name ?? null,
+            groupCap: group?.cap ?? null,
+            materialRange: deps.parseRange(row.batchMaterialRange),
+          },
+          siblings: others.map((one) => ({
+            entryId: one.entryId,
+            summary: summaryValues(one.formConfig, one.payload, 2)
+              .map((pair) => pair.value)
+              .filter((value) => value !== '')
+              .join(' · '),
+            status: one.status,
+            current: one.entryId === row.entryId,
+          })),
+          previous:
+            previous === null
+              ? null
+              : {
+                  kind: previous.kind,
+                  reason: previous.reason,
+                  comment: previous.comment,
+                  actorName: previous.actorName,
+                  at: previous.createdAt,
+                },
+        }
+      }
       const stageView = (stage: ResolvedStage): ReviewStageView => ({
         id: stage.id,
         index: stage.index,
@@ -333,6 +462,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         itemId: row.itemId,
         itemTitle: row.itemTitle,
         participantName: row.subjectName,
+        businessNo: row.subjectBusinessNo,
+        unitName: row.unitName,
         submittedAt: row.createdAt,
         completedAt: row.completedAt,
         revision: {
@@ -349,10 +480,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           escalation: policy.escalation.map(stageView),
           decisions,
         },
+        context,
         events: events.map((event) => ({
           kind: event.kind,
           actorId: event.actorId,
           actorName: event.actorName,
+          reason: event.reason,
           comment: event.comment,
           suggestedPayload: event.suggestedPayload,
           at: event.createdAt,
@@ -381,7 +514,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       if (key === null) return yield* cursorUnusable()
       const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
       const withWork = yield* dieQuery(withDb(activeReviewBatches(tenantId)))
-      const open = yield* openBatches(tenantId, withWork)
+      const asked =
+        page.batchId === undefined ? withWork : withWork.filter((one) => one === page.batchId)
+      const open = yield* openBatches(tenantId, asked)
       const rows = yield* dieQuery(
         withDb(
           inboxPage({
@@ -395,6 +530,24 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       )
       const pageRows: readonly InboxRow[] = rows.slice(0, limit)
       const last = pageRows[pageRows.length - 1]
+      // the day's count belongs to a batch: a day is a timezone's, and only
+      // a batch has one, so the cross-batch queue simply does not count
+      let handledToday = 0
+      if (page.batchId !== undefined) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, page.batchId)))
+        if (batch !== null) {
+          handledToday = yield* dieQuery(
+            withDb(
+              decisionsToday({
+                tenantId,
+                batchId: page.batchId,
+                userId: as.userId,
+                timezone: batch.timezone,
+              }),
+            ),
+          )
+        }
+      }
       return {
         items: pageRows.map((row) => ({
           instanceId: row.instanceId,
@@ -404,13 +557,20 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           itemId: row.itemId,
           itemTitle: row.itemTitle,
           participantName: row.participantName,
+          businessNo: row.businessNo,
+          unitId: row.unitId,
+          unitName: row.unitName,
           roundNo: row.roundNo,
+          route: row.route,
+          values: summaryValues(row.formConfig, row.payload),
+          attachmentCount: row.attachmentCount,
           submittedAt: row.submittedAt,
         })),
         nextCursor:
           rows.length > limit && last !== undefined
             ? encodeQueryCursor(fingerprint, [last.submittedAtIso, last.instanceId])
             : null,
+        handledToday,
       }
     },
   )
@@ -500,6 +660,32 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 issues: [{ field: 'comment', reason: 'required' }],
               })
             }
+            // the label is picked, not invented: it must come off the batch's
+            // configured list for this act, and when a list is configured the
+            // act does not go through without one
+            const reason = input.reason?.trim() ?? ''
+            const offered =
+              action === 'reject'
+                ? reasonsOf(row.batchReviewReasons).reject
+                : action === 'escalate'
+                  ? reasonsOf(row.batchReviewReasons).escalate
+                  : []
+            if (action === 'reject' || action === 'escalate') {
+              if (offered.length > 0 && reason === '') {
+                return yield* new EntryPayloadInvalid({
+                  issues: [{ field: 'reason', reason: 'required' }],
+                })
+              }
+              if (reason !== '' && !offered.includes(reason)) {
+                return yield* new EntryPayloadInvalid({
+                  issues: [{ field: 'reason', reason: 'not-offered' }],
+                })
+              }
+            } else if (reason !== '') {
+              return yield* new EntryPayloadInvalid({
+                issues: [{ field: 'reason', reason: 'not-allowed' }],
+              })
+            }
             let suggestion: unknown
             if (input.suggestedPayload !== undefined) {
               if (action !== 'reject') {
@@ -520,6 +706,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 // can still answer "which level approved this"
                 route: here.route,
                 stageId: here.id,
+                reason: reason === '' ? null : reason,
                 comment: comment === '' ? null : comment,
                 ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
               })

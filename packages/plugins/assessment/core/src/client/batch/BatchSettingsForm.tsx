@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { RotateCcwIcon, Trash2Icon } from 'lucide-react'
+import { PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -9,6 +9,7 @@ import { Button } from '@qualy/ui/button'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
+import { Badge } from '@qualy/ui/badge'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
@@ -72,6 +73,80 @@ function LifecycleRow({
   )
 }
 
+/**
+ * One list of pickable labels: chips with a remove, and a box to add one.
+ * Order is presentation order in the reviewer's dialog; duplicates fold.
+ */
+function ReasonList({
+  id,
+  reasons,
+  disabled,
+  onChange,
+}: {
+  id: string
+  reasons: readonly string[]
+  disabled: boolean
+  onChange: (next: readonly string[]) => void
+}) {
+  const { format } = useI18n()
+  const [draft, setDraft] = useState('')
+  const add = () => {
+    const label = draft.trim()
+    if (label === '') return
+    if (!reasons.includes(label)) onChange([...reasons, label])
+    setDraft('')
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {reasons.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {reasons.map((reason) => (
+            <Badge key={reason} variant="outline" className="gap-1 pr-1">
+              {reason}
+              {!disabled && (
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => onChange(reasons.filter((one) => one !== reason))}
+                >
+                  <XIcon aria-hidden className="size-3" />
+                  <span className="sr-only">{reason}</span>
+                </button>
+              )}
+            </Badge>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          className="h-8 max-w-56 text-sm"
+          value={draft}
+          disabled={disabled}
+          placeholder={format(m.settingsReasonPlaceholder)}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              add()
+            }
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled || draft.trim() === ''}
+          onClick={add}
+        >
+          <PlusIcon aria-hidden />
+          {format(m.settingsReasonAdd)}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -83,6 +158,10 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const [name, setName] = useState(batch.name)
   const [description, setDescription] = useState(batch.descriptionMd ?? '')
   const [range, setRange] = useState(batch.materialRange)
+  const [rejectReasons, setRejectReasons] = useState<readonly string[]>(batch.reviewReasons.reject)
+  const [escalateReasons, setEscalateReasons] = useState<readonly string[]>(
+    batch.reviewReasons.escalate,
+  )
   const [failure, setFailure] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<'archive' | 'delete' | null>(null)
   const [reopening, setReopening] = useState(false)
@@ -93,6 +172,8 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     setName(batch.name)
     setDescription(batch.descriptionMd ?? '')
     setRange(batch.materialRange)
+    setRejectReasons(batch.reviewReasons.reject)
+    setEscalateReasons(batch.reviewReasons.escalate)
   }, [batch])
 
   const settle = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -119,6 +200,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
             name,
             descriptionMd: description.trim() === '' ? null : description,
             materialRange: range,
+            reviewReasons: { reject: rejectReasons, escalate: escalateReasons },
           },
         }),
       ),
@@ -198,7 +280,9 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     name === batch.name &&
     description === (batch.descriptionMd ?? '') &&
     range.start === batch.materialRange.start &&
-    range.end === batch.materialRange.end
+    range.end === batch.materialRange.end &&
+    JSON.stringify(rejectReasons) === JSON.stringify(batch.reviewReasons.reject) &&
+    JSON.stringify(escalateReasons) === JSON.stringify(batch.reviewReasons.escalate)
 
   return (
     <div className="flex flex-col">
@@ -245,6 +329,26 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                   value={description}
                   disabled={!editable}
                   onChange={(event) => setDescription(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={format(m.settingsRejectReasons)} hint={format(m.settingsReasonsHint)}>
+              {(id) => (
+                <ReasonList
+                  id={id}
+                  reasons={rejectReasons}
+                  disabled={!editable}
+                  onChange={setRejectReasons}
+                />
+              )}
+            </Field>
+            <Field label={format(m.settingsEscalateReasons)} hint={format(m.settingsReasonsEmpty)}>
+              {(id) => (
+                <ReasonList
+                  id={id}
+                  reasons={escalateReasons}
+                  disabled={!editable}
+                  onChange={setEscalateReasons}
                 />
               )}
             </Field>

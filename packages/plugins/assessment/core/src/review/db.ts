@@ -191,8 +191,16 @@ export interface ReviewInstanceDetailRow {
   participantId: string
   subjectUserId: string
   subjectName: string
+  subjectBusinessNo: string | null
+  /** the unit the participant stands in, by the live tree; null if it went */
+  unitName: string | null
   actorId: string
   itemRevisionId: string
+  maxEntries: number | null
+  scoreGroupId: string
+  batchMaterialRange: string
+  /** {reject?: string[], escalate?: string[]} as configured on the batch */
+  batchReviewReasons: unknown
 }
 
 /** an instance with everything around it that reading or judging it needs */
@@ -219,6 +227,11 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
         .innerJoin('EntryRevision as er', (join) =>
           join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
         )
+        .leftJoin('OrgNode as un', (join) =>
+          join
+            .onRef('un.tenantId', '=', 'bp.tenantId')
+            .onRef('un.id', '=', 'bp.assessmentAnchorNodeId'),
+        )
         .select([
           'ri.id',
           'ri.state',
@@ -234,16 +247,22 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'ri.currentRoleIds',
           'e.batchId',
           'b.status as batchStatus',
+          'b.reviewReasons as batchReviewReasons',
           'e.itemId',
           'i.title as itemTitle',
           'i.itemType',
+          'i.maxEntries',
+          'i.scoreGroupId',
           'e.participantId',
           'bp.userId as subjectUserId',
           'su.displayName as subjectName',
+          'su.businessNo as subjectBusinessNo',
+          'un.name as unitName',
           'er.actorId',
           'er.itemRevisionId',
         ])
         .select([
+          sql<string>`b.material_range::text`.as('batchMaterialRange'),
           epoch('ri.created_at').as('createdMs'),
           epoch('ri.completed_at').as('completedMs'),
         ])
@@ -279,8 +298,14 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               participantId: row.participantId,
               subjectUserId: row.subjectUserId,
               subjectName: row.subjectName,
+              subjectBusinessNo: row.subjectBusinessNo,
+              unitName: row.unitName,
               actorId: row.actorId,
               itemRevisionId: row.itemRevisionId,
+              maxEntries: row.maxEntries,
+              scoreGroupId: row.scoreGroupId,
+              batchMaterialRange: String(row.batchMaterialRange),
+              batchReviewReasons: row.batchReviewReasons ?? {},
             } satisfies ReviewInstanceDetailRow),
       ),
     )
@@ -293,7 +318,16 @@ export interface InboxRow {
   itemId: string
   itemTitle: string
   participantName: string
+  businessNo: string | null
+  unitId: string | null
+  unitName: string | null
   roundNo: number
+  route: 'normal' | 'escalation'
+  /** the judged revision's answers, for the service to project into columns */
+  payload: unknown
+  /** the form those answers were filed under, for the labels */
+  formConfig: unknown
+  attachmentCount: number
   submittedAt: number
   submittedAtIso: string
 }
@@ -352,19 +386,39 @@ export const inboxPage = (input: {
             .innerJoin('EntryRevision as er', (join) =>
               join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
             )
+            .innerJoin('AssessmentItemRevision as ir', (join) =>
+              join
+                .onRef('ir.tenantId', '=', 'er.tenantId')
+                .onRef('ir.id', '=', 'er.itemRevisionId'),
+            )
+            .leftJoin('OrgNode as un', (join) =>
+              join
+                .onRef('un.tenantId', '=', 'bp.tenantId')
+                .onRef('un.id', '=', 'bp.assessmentAnchorNodeId'),
+            )
             .select([
               'ri.id as instanceId',
               'ri.entryId',
               'ri.roundNo',
+              'ri.currentRoute',
               'e.batchId',
               'b.name as batchName',
               'e.itemId',
               'i.title as itemTitle',
               'su.displayName as participantName',
+              'su.businessNo',
+              'un.id as unitId',
+              'un.name as unitName',
+              'er.payload',
+              'ir.formConfig',
             ])
             .select([
               epoch('ri.created_at').as('submittedMs'),
               sql<string>`ri.created_at::text`.as('submittedIso'),
+              sql<string>`(
+                select count(*) from entry_revision_attachments era
+                where era.tenant_id = ri.tenant_id and era.revision_id = ri.revision_id
+              )`.as('attachmentCount'),
             ])
             .where('ri.tenantId', '=', input.tenantId)
             .where('ri.state', '=', 'active')
@@ -400,7 +454,14 @@ export const inboxPage = (input: {
               itemId: row.itemId,
               itemTitle: row.itemTitle,
               participantName: row.participantName,
+              businessNo: row.businessNo,
+              unitId: row.unitId,
+              unitName: row.unitName,
               roundNo: row.roundNo,
+              route: row.currentRoute as InboxRow['route'],
+              payload: row.payload,
+              formConfig: row.formConfig,
+              attachmentCount: Number(row.attachmentCount ?? 0),
               submittedAt: msOf(row.submittedMs),
               submittedAtIso: row.submittedIso,
             })),
@@ -437,6 +498,7 @@ export interface ReviewEventRow {
   actorId: string | null
   /** who did it, by name: an id in a trail explains nothing to a reader */
   actorName: string | null
+  reason: string | null
   comment: string | null
   suggestedPayload: unknown
   createdAt: number
@@ -454,6 +516,7 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
           're.id',
           're.kind',
           're.actorId',
+          're.reason',
           're.comment',
           're.suggestedPayload',
           'u.displayName as actorName',
@@ -472,6 +535,7 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
           kind: row.kind,
           actorId: row.actorId,
           actorName: row.actorName,
+          reason: row.reason,
           comment: row.comment,
           suggestedPayload: row.suggestedPayload ?? null,
           createdAt: msOf(row.createdMs),
@@ -743,3 +807,157 @@ export const holderNamesAt = (input: {
     const names: readonly string[] = rows.map((row) => row.displayName)
     return names
   })
+
+/** one claim beside the judged one: what it says and where it stands */
+export interface SiblingEntryRow {
+  entryId: string
+  status: string
+  /** the latest revision's answers; null for a claim never yet written */
+  payload: unknown
+  /** the form those answers were filed under, for the labels */
+  formConfig: unknown
+}
+
+/**
+ * Every claim this participant holds on this question, the judged one
+ * included. Read from each entry's own latest revision - what the person
+ * has said, not what some round froze - because the aside answers "what
+ * else are they claiming here", which is a present-tense question.
+ */
+export const siblingEntries = (tenantId: string, itemId: string, participantId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry as e')
+        .leftJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'e.tenantId').onRef('er.id', '=', 'e.currentRevisionId'),
+        )
+        .leftJoin('AssessmentItemRevision as ir', (join) =>
+          join.onRef('ir.tenantId', '=', 'er.tenantId').onRef('ir.id', '=', 'er.itemRevisionId'),
+        )
+        .select(['e.id as entryId', 'e.status', 'er.payload', 'ir.formConfig'])
+        .where('e.tenantId', '=', tenantId)
+        .where('e.itemId', '=', itemId)
+        .where('e.participantId', '=', participantId)
+        .where('e.status', '<>', 'voided')
+        .orderBy('e.createdAt')
+        .orderBy('e.id')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): SiblingEntryRow => ({
+          entryId: row.entryId,
+          status: row.status,
+          payload: row.payload ?? null,
+          formConfig: row.formConfig ?? null,
+        })),
+      ),
+    )
+
+/** how the round before this one ended, with the word that ended it */
+export interface PreviousConclusionRow {
+  kind: string
+  reason: string | null
+  comment: string | null
+  actorName: string | null
+  createdAt: number
+}
+
+/**
+ * The previous round's concluding word on the same entry: the latest event
+ * that decided something on the newest earlier instance. Shown over a
+ * resubmission so the reviewer reads it against what was asked last time.
+ */
+export const previousConclusion = (tenantId: string, entryId: string, beforeRound: number) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewEvent as re')
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 're.tenantId').onRef('ri.id', '=', 're.reviewInstanceId'),
+        )
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
+        )
+        .select(['re.kind', 're.reason', 're.comment', 'u.displayName as actorName'])
+        .select([epoch('re.created_at').as('createdMs')])
+        .where('re.tenantId', '=', tenantId)
+        .where('ri.entryId', '=', entryId)
+        .where('ri.roundNo', '<', beforeRound)
+        .where('re.kind', 'in', [
+          'approved',
+          'rejected',
+          'returned-for-revision',
+          'revision-required',
+          'cancelled-by-submitter',
+        ])
+        .orderBy('ri.roundNo', 'desc')
+        .orderBy('re.createdAt', 'desc')
+        .orderBy('re.id', 'desc')
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : ({
+              kind: row.kind,
+              reason: row.reason,
+              comment: row.comment,
+              actorName: row.actorName,
+              createdAt: msOf(row.createdMs),
+            } satisfies PreviousConclusionRow),
+      ),
+    )
+
+/**
+ * Decisions this person recorded on this batch today, on the batch's own
+ * calendar. "Today" is the batch timezone's day, not the server's: the
+ * counter greets whoever sits down in the morning, and mornings are local.
+ */
+export const decisionsToday = (input: {
+  tenantId: string
+  batchId: string
+  userId: string
+  timezone: string
+}) =>
+  db
+    .query((k) =>
+      sql<{ count: string }>`
+        select count(*) as count
+        from review_events re
+        join review_instances ri
+          on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
+        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+        where re.tenant_id = ${input.tenantId}
+          and e.batch_id = ${input.batchId}
+          and re.actor_id = ${input.userId}
+          and re.kind in ('approved', 'rejected', 'escalated', 'comment',
+                          'recommend-approve', 'recommend-reject')
+          and re.created_at >=
+            date_trunc('day', now() at time zone ${input.timezone}) at time zone ${input.timezone}
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => Number(rows[0]!.count)))
+
+/** the group a question adds into, for the aside that says what it may total */
+export const scoreGroupOf = (tenantId: string, groupId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ScoreGroup')
+        .select(['name'])
+        .select([sql<string | null>`cap::text`.as('cap')])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', groupId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : { name: row.name, cap: row.cap === null ? null : String(row.cap) },
+      ),
+    )

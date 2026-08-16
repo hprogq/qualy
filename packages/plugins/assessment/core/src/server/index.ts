@@ -166,6 +166,11 @@ export interface BatchDetail {
   readonly currentPhaseName: string | null
   readonly participantCount: number
   readonly createdAt: EpochMillis
+  /** the labels a reviewer picks a reason from, one list per act */
+  readonly reviewReasons: {
+    readonly reject: readonly string[]
+    readonly escalate: readonly string[]
+  }
 }
 
 /**
@@ -230,6 +235,10 @@ export interface UpdateBatchInput {
   readonly descriptionMd?: string | null
   readonly materialRange?: MaterialRange
   readonly timezone?: string
+  readonly reviewReasons?: {
+    readonly reject: readonly string[]
+    readonly escalate: readonly string[]
+  }
   readonly reason?: string
 }
 
@@ -866,6 +875,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
       ),
     ) as never
 
+  /** the configured reason lists, read defensively off the jsonb */
+  const readReviewReasons = (
+    value: unknown,
+  ): { reject: readonly string[]; escalate: readonly string[] } => {
+    const read = (list: unknown): readonly string[] =>
+      Array.isArray(list) ? list.filter((one): one is string => typeof one === 'string') : []
+    const record = (value ?? {}) as Record<string, unknown>
+    return { reject: read(record['reject']), escalate: read(record['escalate']) }
+  }
+
   /**
    * A batch as a reader receives it.
    *
@@ -895,6 +914,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         currentPhaseName: phase?.displayName ?? null,
         participantCount: batch.participantCount,
         createdAt: batch.createdAt,
+        reviewReasons: readReviewReasons(batch.reviewReasons),
       } satisfies BatchDetail
     })
 
@@ -2003,6 +2023,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (input.timezone !== undefined && input.timezone !== before.timezone) {
               diff.timezone = [before.timezone, input.timezone]
             }
+            // the lists are offer, not history: events copied the label they
+            // used, so editing these never rewrites anything already said
+            const reasonLists =
+              input.reviewReasons === undefined
+                ? undefined
+                : {
+                    reject: [...new Set(input.reviewReasons.reject)],
+                    escalate: [...new Set(input.reviewReasons.escalate)],
+                  }
+            if (reasonLists !== undefined) {
+              const current = readReviewReasons(before.reviewReasons)
+              if (
+                JSON.stringify(current) !==
+                JSON.stringify({ reject: reasonLists.reject, escalate: reasonLists.escalate })
+              ) {
+                diff.reviewReasons = [current, reasonLists]
+              }
+            }
             if (input.materialRange !== undefined) {
               const current = parseRange(before.materialRange)
               if (
@@ -2064,6 +2102,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   }
                 : {}),
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+              ...(reasonLists !== undefined ? { reviewReasons: reasonLists } : {}),
             })
 
             yield* recordConfigChange(
@@ -3474,15 +3513,35 @@ const reviewDto = (review: ReviewDetailView) => ({
   itemId: review.itemId,
   itemTitle: review.itemTitle,
   participantName: review.participantName,
+  businessNo: review.businessNo,
+  unitName: review.unitName,
   submittedAt: new Date(review.submittedAt).toISOString(),
   completedAt: review.completedAt === null ? null : new Date(review.completedAt).toISOString(),
   revision: review.revision,
   form: review.form,
   chain: review.chain,
+  context:
+    review.context === null
+      ? null
+      : {
+          worth: review.context.worth,
+          siblings: review.context.siblings,
+          previous:
+            review.context.previous === null
+              ? null
+              : {
+                  kind: review.context.previous.kind,
+                  reason: review.context.previous.reason,
+                  comment: review.context.previous.comment,
+                  actorName: review.context.previous.actorName,
+                  at: new Date(review.context.previous.at).toISOString(),
+                },
+        },
   events: review.events.map((event) => ({
     kind: event.kind,
     actorId: event.actorId,
     actorName: event.actorName,
+    reason: event.reason,
     comment: event.comment,
     suggestedPayload: event.suggestedPayload,
     at: new Date(event.at).toISOString(),
@@ -3546,6 +3605,7 @@ const toBatchDto = (detail: BatchDetail) => ({
   currentPhaseId: detail.currentPhaseId,
   currentPhaseName: detail.currentPhaseName,
   participantCount: detail.participantCount,
+  reviewReasons: detail.reviewReasons,
   createdAt: new Date(detail.createdAt).toISOString(),
 })
 
@@ -4408,6 +4468,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           {
             ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
             ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            ...(query.batchId !== undefined ? { batchId: query.batchId } : {}),
           },
           principal,
         )
@@ -4417,6 +4478,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             submittedAt: new Date(item.submittedAt).toISOString(),
           })),
           nextCursor: page.nextCursor,
+          handledToday: page.handledToday,
         }
       }),
     )
@@ -4443,6 +4505,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.instanceId,
           {
             decision: payload.decision,
+            ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
             ...(payload.comment !== undefined ? { comment: payload.comment } : {}),
             ...(payload.suggestedPayload !== undefined
               ? { suggestedPayload: payload.suggestedPayload }

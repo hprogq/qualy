@@ -45,6 +45,7 @@ export function BatchScreen({
   description,
   actions,
   size = 'default',
+  chrome = 'band',
   banner,
   children,
 }: {
@@ -54,6 +55,12 @@ export function BatchScreen({
   /** what the section says about itself beside its name, at a glance */
   actions?: ReactNode
   size?: 'default' | 'wide' | 'full'
+  /**
+   * `none` drops the band and the page gutters: the section owns the whole
+   * content area and draws its own edges. For a workbench that fills the
+   * screen, where a heading band would only push the work down.
+   */
+  chrome?: 'band' | 'none'
   /**
    * Which heading the band is showing. A section that opens one of its own
    * rows hands the band to it and says so here; anything it hands over is
@@ -77,6 +84,21 @@ export function BatchScreen({
     staleTime: 30_000,
   })
   const batch = detail.data?.batch
+
+  if (chrome === 'none') {
+    return (
+      <AsyncSection
+        pending={detail.isPending}
+        error={detail.isError ? formatError(detail.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void detail.refetch()}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {batch && children(batch)}
+      </AsyncSection>
+    )
+  }
 
   return (
     <BannerSlot.Provider value={slot}>

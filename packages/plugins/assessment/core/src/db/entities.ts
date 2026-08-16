@@ -64,6 +64,11 @@ export const AssessmentBatch = defineEntity({
     // A config slot only until entries exist to define "first submission".
     // projection of the phase queue, never authoritative
     currentPhaseId: p.uuid().nullable(),
+    // the labels a reviewer picks a reason from, one list per act:
+    // {reject: string[], escalate: string[]}. Configuration, not history -
+    // the chosen label is copied onto the review event, so editing these
+    // lists never rewrites what anybody already said
+    reviewReasons: p.json<Record<string, unknown>>().defaultRaw(`'{}'`),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
@@ -1168,6 +1173,10 @@ export const ReviewEvent = defineEntity({
     route: p.string().length(16).nullable(),
     stageId: p.string().length(63).nullable(),
     actorId: p.uuid().nullable(),
+    // the label picked from the batch's configured reason list, copied here
+    // verbatim: the event must keep saying what was said even after the
+    // list is edited
+    reason: p.string().length(100).nullable(),
     comment: p.text().nullable(),
     suggestedPayload: p.json<Record<string, unknown>>().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),

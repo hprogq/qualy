@@ -1,264 +1,907 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronDownIcon, ChevronUpIcon, InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import {
   useApi,
   useApiQuery,
   usePageNavigate,
+  usePageQueryState,
   usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { AsyncSection } from '@qualy/ui/admin'
+import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { Checkbox } from '@qualy/ui/checkbox'
+import { cn } from '@qualy/ui/cn'
+import { Kbd } from '@qualy/ui/kbd'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Textarea } from '@qualy/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
-import { fieldsOf } from '../entry/model.ts'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
+import { Basis } from '../entry/Basis.tsx'
+import { entryStatusMessage, fieldsOf, lastDay, trimAmount, type EntryDto } from '../entry/model.ts'
 import { reviewEventMessage, reviewOutcomeMessage } from './events.ts'
+import { readRunScope, runRows, timeLabel, clockLabel, type InboxItemDto } from './model.ts'
+import type { BatchDto } from '../phase/model.ts'
+import type { ReviewDto } from './model.ts'
+import { RejectDialog, EscalateDialog, type WordedDecision } from './decision-dialogs.tsx'
+import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
 
-// One submission, judged. What was filed shows exactly as the round froze
-// it; the two decisions are the only writes. A rejection needs a word for
-// the student and may carry a suggested version - built on the same form,
-// allowed to rearrange the cited files but never to add new ones.
+// The workbench: one submission a screen, walked in a run.
+//
+// Everything said before this round sits on top so it needs no scrolling,
+// the filing and its materials follow, and what the question is worth stands
+// beside them. Letters choose a decision, ⌘↵ stages it, and for five seconds
+// it can be taken back; then it is submitted and the next one is already on
+// screen. Sending back and escalating each carry a word, so they open their
+// dialog instead of arming silently.
+
+/** one decision this sitting, wherever it has got to */
+interface SessionEntry {
+  readonly instanceId: string
+  readonly participantName: string
+  readonly itemTitle: string
+  readonly decision: 'approve' | 'reject' | 'escalate'
+  readonly status: 'waiting' | 'sent' | 'failed'
+}
 
 export default function ReviewInstancePage() {
   const { format } = useI18n()
   return (
-    <BatchScreen title={format(m.reviewDetailTab)}>
-      {(batch) => <Detail batchId={batch.id} />}
+    <BatchScreen title={format(m.reviewDetailTab)} size="full" chrome="none">
+      {(batch) => <Workbench batch={batch} />}
     </BatchScreen>
   )
 }
 
-function Detail({ batchId }: { batchId: string }) {
+function Workbench({ batch }: { batch: BatchDto }) {
   const { instanceId } = usePageRouteParams('instanceId')
+  const [runRaw] = usePageQueryState('run')
+  const scope = readRunScope(runRaw)
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const navigate = usePageNavigate()
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
-  // names in a row are punctuated the way the reader's language punctuates a
-  // list, which is not the same mark in every one
-  const listed = useMemo(
-    () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
-    [locale],
-  )
+  const { format, formatError } = useI18n()
+
+  const inbox = useQuery({
+    ...query.assessment.listReviewInbox.queryOptions({ query: { batchId: batch.id } }),
+    refetchInterval: 30_000,
+  })
   const detail = useQuery(
     query.assessment.getReviewInstance.queryOptions({ params: { instanceId } }),
   )
-  const [saying, setSaying] = useState<string | null>(null)
   const review = detail.data?.review
 
-  const decided = () => {
+  // this sitting's decisions, newest last; the queue rail and the closing
+  // screen both read it
+  const [log, setLog] = useState<readonly SessionEntry[]>([])
+  const startedAt = useRef(Date.now())
+  const decidedIds = useMemo(() => new Set(log.map((entry) => entry.instanceId)), [log])
+
+  const scopeRows = useMemo(
+    () =>
+      runRows(
+        (inbox.data?.items ?? []).filter((row) => row.batchId === batch.id),
+        scope,
+      ),
+    [inbox.data, batch.id, scope],
+  )
+  const remaining = useMemo(
+    () => scopeRows.filter((row) => !decidedIds.has(row.instanceId)),
+    [scopeRows, decidedIds],
+  )
+  const currentIndex = remaining.findIndex((row) => row.instanceId === instanceId)
+  const total = log.length + remaining.length
+
+  const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
-    toast.success(format(m.reviewDecided))
-    navigate('assessment/batch-reviews', { params: { batchId } })
   }
 
-  const approve = useMutation({
+  const mark = (id: string, status: SessionEntry['status']) =>
+    setLog((current) =>
+      current.map((entry) => (entry.instanceId === id ? { ...entry, status } : entry)),
+    )
+
+  const deferred = useDeferredDecision({
+    onCommitted: (staged) => {
+      mark(staged.instanceId, 'sent')
+      refresh()
+    },
+    onFailed: (staged, error) => {
+      mark(staged.instanceId, 'failed')
+      toast.error(formatError(error))
+      refresh()
+    },
+  })
+
+  const goTo = (id: string) =>
+    navigate('assessment/review-instance', {
+      params: { batchId: batch.id, instanceId: id },
+      search: runRaw === '' ? {} : { run: runRaw },
+    })
+
+  const [armed, setArmed] = useState<'approve' | 'comment' | null>(null)
+  const [word, setWord] = useState('')
+  const [dialog, setDialog] = useState<'reject' | 'escalate' | null>(null)
+  const [keysOpen, setKeysOpen] = useState(false)
+  const wordRef = useRef<HTMLTextAreaElement | null>(null)
+
+  /** stage a round-moving decision, log it, and put the next one on screen */
+  const stageDecision = (decision: 'approve' | 'reject' | 'escalate', worded?: WordedDecision) => {
+    if (review === undefined) return
+    const staged: StagedDecision = {
+      instanceId,
+      decision,
+      participantName: review.participantName,
+      payload: {
+        decision,
+        ...(worded?.reason !== undefined ? { reason: worded.reason } : {}),
+        ...(worded !== undefined
+          ? { comment: worded.comment }
+          : word.trim() !== ''
+            ? { comment: word.trim() }
+            : {}),
+        ...(worded?.suggestedPayload !== undefined
+          ? { suggestedPayload: worded.suggestedPayload }
+          : {}),
+      },
+    }
+    setLog((current) => [
+      ...current,
+      {
+        instanceId,
+        participantName: review.participantName,
+        itemTitle: review.itemTitle,
+        decision,
+        status: 'waiting',
+      },
+    ])
+    deferred.stage(staged)
+    setArmed(null)
+    setWord('')
+    setDialog(null)
+    const next = remaining.find((row) => row.instanceId !== instanceId)
+    if (next !== undefined) goTo(next.instanceId)
+  }
+
+  /** a note moves nothing, so it goes out at once and the round stays put */
+  const sayNote = useMutation({
     mutationFn: () =>
       run(
         api.assessment.decideReview({
           params: { instanceId },
-          payload: { decision: 'approve' },
+          payload: { decision: 'comment', comment: word.trim() },
         }),
       ),
-    onSuccess: decided,
+    onSuccess: () => {
+      toast.success(format(m.reviewSaid))
+      setArmed(null)
+      setWord('')
+      void detail.refetch()
+    },
     onError: (error) => toast.error(formatError(error)),
   })
 
+  const decisions = review?.chain.decisions ?? []
+  const submitArmed = () => {
+    if (armed === 'approve' && decisions.includes('approve')) {
+      stageDecision('approve')
+      return
+    }
+    if (armed === 'comment' && decisions.includes('comment')) {
+      if (word.trim() === '') {
+        wordRef.current?.focus()
+        return
+      }
+      sayNote.mutate()
+      return
+    }
+    toast.info(format(m.reviewPickDecision))
+  }
+
+  const undoStaged = () => {
+    const staged = deferred.undo()
+    if (staged === null) return
+    setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+    goTo(staged.instanceId)
+  }
+
+  const move = (step: 1 | -1) => {
+    const at = currentIndex === -1 ? 0 : currentIndex + step
+    const next = remaining[Math.max(0, Math.min(remaining.length - 1, at))]
+    if (next !== undefined && next.instanceId !== instanceId) goTo(next.instanceId)
+  }
+
+  // the letters are choices, never acts: only ⌘↵ submits, and while the
+  // cursor is in a box the letters belong to the text
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (dialog !== null) return
+      // the photo viewer holds its own keys: Esc closes it, arrows page it
+      if (document.querySelector('.PhotoView-Portal') !== null) return
+      const mod = event.metaKey || event.ctrlKey
+      if (mod && event.key === 'Enter') {
+        event.preventDefault()
+        submitArmed()
+        return
+      }
+      if (mod && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        undoStaged()
+        return
+      }
+      const typing =
+        event.target instanceof HTMLElement &&
+        event.target.closest('input, textarea, [contenteditable]') !== null
+      if (typing) {
+        if (event.key === 'Escape' && event.target instanceof HTMLElement) event.target.blur()
+        return
+      }
+      switch (event.key) {
+        case '?':
+          event.preventDefault()
+          setKeysOpen((open) => !open)
+          return
+        case 'a':
+        case 'A':
+          event.preventDefault()
+          if (decisions.includes('approve')) setArmed('approve')
+          return
+        case 'r':
+        case 'R':
+          // swallowed before the dialog opens, or the letter lands in the
+          // box it is about to focus
+          event.preventDefault()
+          if (decisions.includes('reject')) setDialog('reject')
+          return
+        case 'e':
+        case 'E':
+          event.preventDefault()
+          if (decisions.includes('escalate')) setDialog('escalate')
+          return
+        case 'c':
+        case 'C':
+          event.preventDefault()
+          if (decisions.includes('comment')) {
+            setArmed('comment')
+            wordRef.current?.focus()
+          }
+          return
+        case 'j':
+        case 'J':
+          event.preventDefault()
+          move(1)
+          return
+        case 'k':
+        case 'K':
+          event.preventDefault()
+          move(-1)
+          return
+        case 'Escape':
+          if (keysOpen) setKeysOpen(false)
+          else setArmed(null)
+          return
+        default: {
+          const slot = Number(event.key)
+          if (Number.isInteger(slot) && slot >= 1 && slot <= 9) {
+            event.preventDefault()
+            document
+              .querySelector(`[data-file-slot="${slot}"]`)
+              ?.querySelector<HTMLElement>('img, a, button')
+              ?.click()
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', down)
+    return () => window.removeEventListener('keydown', down)
+  })
+
+  const [measure, height] = useRestOfTheWindow()
+  // over only when this sitting decided something: an already-closed round
+  // opened from elsewhere is a page to read, not a run to finish
+  const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
+
   return (
     <AsyncSection
-      pending={detail.isPending}
+      pending={inbox.isPending && detail.isPending}
       error={detail.error ? formatError(detail.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
-      onRetry={() => void detail.refetch()}
-      skeleton={<Skeleton className="h-48 w-full" />}
+      onRetry={() => {
+        void inbox.refetch()
+        void detail.refetch()
+      }}
+      skeleton={<Skeleton className="h-96 w-full" />}
+      className="flex flex-1 flex-col"
     >
-      {review !== undefined && (
-        <div className="flex flex-col gap-5">
-          <header className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-base font-medium">{review.itemTitle}</h3>
-              <p className="text-sm text-muted-foreground">
-                {format(m.reviewSubmittedBy, {
-                  name: review.participantName,
-                  round: review.roundNo,
-                })}
-              </p>
-            </div>
-            {review.state === 'completed' && review.outcome !== null && (
-              <Badge variant="outline">{format(reviewOutcomeMessage(review.outcome))}</Badge>
-            )}
-          </header>
-
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-            <section className="rounded-lg border p-4">
-              <h4 className="pb-3 text-sm font-medium">{format(m.reviewPayloadTitle)}</h4>
-              <JudgedPayload
-                payload={review.revision.payload}
-                formConfig={review.form.formConfig}
+      <div
+        ref={measure}
+        style={height === null ? undefined : { height }}
+        className="relative flex min-h-96 flex-col"
+      >
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
+          <QueueRail
+            rows={scopeRows}
+            log={log}
+            currentId={instanceId}
+            remainingCount={remaining.length}
+            onOpen={goTo}
+          />
+          <div className="flex min-h-0 min-w-0 flex-col border-t lg:border-t-0 lg:border-l">
+            {done ? (
+              <DoneScreen
+                batchId={batch.id}
+                log={log}
+                startedAt={startedAt.current}
+                inboxRows={(inbox.data?.items ?? []).filter(
+                  (row) => row.batchId === batch.id && !decidedIds.has(row.instanceId),
+                )}
               />
-              {review.revision.note !== null && (
-                <p className="pt-3 text-sm text-muted-foreground">{review.revision.note}</p>
-              )}
-              {review.revision.attachments.length > 0 && (
-                <div className="pt-4">
-                  <p className="pb-1 text-xs font-medium text-muted-foreground">
-                    {format(m.reviewFiles)}
-                  </p>
-                  <ul className="flex flex-col gap-1">
-                    {review.revision.attachments.map((attachment) => (
-                      <li key={attachment.attachmentId}>
-                        <AttachmentLink attachmentId={attachment.attachmentId} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </section>
-
-            <aside className="flex flex-col gap-4">
-              <section className="rounded-lg border p-4 text-sm">
-                <dl className="flex flex-col gap-2">
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-muted-foreground">{format(m.reviewApplicant)}</dt>
-                    <dd className="font-medium">{review.participantName}</dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-muted-foreground">{format(m.reviewRound)}</dt>
-                    <dd>{review.roundNo}</dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-muted-foreground">{format(m.reviewSubmittedAt)}</dt>
-                    <dd>{new Date(review.submittedAt).toLocaleString()}</dd>
-                  </div>
-                </dl>
-              </section>
-              <section className="rounded-lg border p-4">
-                <p className="pb-2 text-xs font-medium text-muted-foreground">
-                  {format(m.reviewChainTitle)}
-                </p>
-                {/* two routes, drawn as two: the escalation one is not the tail
-                    of the ordinary one and never was somewhere a submission
-                    walks on its way through */}
-                <Route
-                  title={format(m.reviewRouteNormal)}
-                  stages={review.chain.normal}
-                  here={review.chain.route === 'normal' ? review.chain.stageId : null}
-                />
-                {review.chain.escalation.length > 0 && (
-                  <Route
-                    title={format(m.reviewRouteEscalation)}
-                    stages={review.chain.escalation}
-                    here={review.chain.route === 'escalation' ? review.chain.stageId : null}
+            ) : review === undefined ? (
+              <div className="p-6">
+                <Skeleton className="h-64 w-full" />
+              </div>
+            ) : (
+              <>
+                {scopeRows.length > 0 && (
+                  <RunStrip
+                    at={log.length + (currentIndex === -1 ? 1 : currentIndex + 1)}
+                    total={total}
+                    log={log}
+                    batchId={batch.id}
                   />
                 )}
-              </section>
-              {review.events.length > 0 && (
-                <section className="rounded-lg border p-4">
-                  <p className="pb-2 text-xs font-medium text-muted-foreground">
-                    {format(m.reviewTrail)}
-                  </p>
-                  <ul className="flex flex-col gap-2 text-sm">
-                    {review.events.map((event, index) => {
-                      const said = reviewEventMessage(event.kind)
-                      return (
-                        <li key={index}>
-                          <p>
-                            {format(
-                              said.message,
-                              said.needsActor
-                                ? { who: event.actorName ?? format(m.eventSomebody) }
-                                : {},
-                            )}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(event.at).toLocaleString()}
-                          </p>
-                          {event.comment !== null && <p className="pt-0.5">{event.comment}</p>}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </section>
-              )}
-            </aside>
+                <PersonStrip
+                  review={review}
+                  at={currentIndex === -1 ? null : currentIndex + 1}
+                  of={remaining.length}
+                  canPrev={currentIndex > 0}
+                  canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
+                  onMove={move}
+                />
+                <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_19rem]">
+                  <MainColumn review={review} />
+                  <ContextRail review={review} />
+                </div>
+                {review.capabilities.canDecide && decisions.length > 0 && (
+                  <DecisionBar
+                    review={review}
+                    decisions={decisions}
+                    armed={armed}
+                    word={word}
+                    wordRef={wordRef}
+                    busy={sayNote.isPending}
+                    onWord={setWord}
+                    onArm={setArmed}
+                    onDialog={setDialog}
+                    onSubmit={submitArmed}
+                  />
+                )}
+                {review.state === 'completed' && review.outcome !== null && (
+                  <div className="flex items-center gap-2 border-t px-5 py-3">
+                    <Badge variant="outline">{format(reviewOutcomeMessage(review.outcome))}</Badge>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-
-          {review.chain.route === 'escalation' && (
-            <p className="text-sm text-muted-foreground">{format(m.reviewOnEscalationRoute)}</p>
-          )}
-          {review.chain.decisions.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-2">
-              {review.chain.decisions
-                .filter((decision) => decision !== 'approve')
-                .map((decision) => (
-                  <Button key={decision} variant="outline" onClick={() => setSaying(decision)}>
-                    {format(SAYINGS[decision] ?? m.reviewCommentAction)}
-                  </Button>
-                ))}
-              {review.chain.decisions.includes('approve') && (
-                <Button disabled={approve.isPending} onClick={() => approve.mutate()}>
-                  {format(m.reviewApprove)}
-                </Button>
-              )}
-            </div>
-          )}
-
-          {saying !== null && (
-            <SayDialog
-              batchId={batchId}
-              instanceId={instanceId}
-              itemId={review.itemId}
-              decision={saying}
-              formConfig={review.form.formConfig}
-              judgedPayload={review.revision.payload}
-              onClose={() => setSaying(null)}
-              onDone={() => {
-                setSaying(null)
-                // an opinion moves nothing: the round stays where it is and
-                // so does the reader, with the new word already in the trail
-                if (saying === 'comment' || saying.startsWith('recommend-')) {
-                  void detail.refetch()
-                  toast.success(format(m.reviewSaid))
-                  return
-                }
-                decided()
-              }}
-            />
-          )}
         </div>
-      )}
+
+        {deferred.pending !== null && (
+          <UndoPill staged={deferred.pending} deadline={deferred.deadline} onUndo={undoStaged} />
+        )}
+        {keysOpen && <KeysPanel onClose={() => setKeysOpen(false)} />}
+
+        {dialog === 'reject' && review !== undefined && (
+          <RejectDialog
+            review={review}
+            reasons={batch.reviewReasons.reject}
+            onClose={() => setDialog(null)}
+            onConfirm={(worded) => stageDecision('reject', worded)}
+          />
+        )}
+        {dialog === 'escalate' && review !== undefined && (
+          <EscalateDialog
+            review={review}
+            reasons={batch.reviewReasons.escalate}
+            onClose={() => setDialog(null)}
+            onConfirm={(worded) => stageDecision('escalate', worded)}
+          />
+        )}
+      </div>
     </AsyncSection>
   )
 }
 
-function JudgedPayload({ payload, formConfig }: { payload: unknown; formConfig: unknown }) {
-  const fields = fieldsOf(formConfig)
-  const record = (payload ?? {}) as Record<string, unknown>
+/** the run's own rows down the left, decided ones dimmed with their word */
+function QueueRail({
+  rows,
+  log,
+  currentId,
+  remainingCount,
+  onOpen,
+}: {
+  rows: readonly InboxItemDto[]
+  log: readonly SessionEntry[]
+  currentId: string
+  remainingCount: number
+  onOpen: (id: string) => void
+}) {
+  const { format } = useI18n()
+  const decided = new Map(log.map((entry) => [entry.instanceId, entry.decision]))
   return (
-    <dl className="flex flex-col gap-1 text-sm">
-      {fields
-        .filter((field) => field.type !== 'attachment')
-        .map((field) => (
-          <div key={field.key} className="flex gap-3">
-            <dt className="min-w-28 text-muted-foreground">{field.label}</dt>
-            <dd>{typeof record[field.key] === 'string' ? (record[field.key] as string) : '—'}</dd>
-          </div>
+    <aside className="hidden min-h-0 flex-col lg:flex">
+      <div className="flex items-center gap-2 border-b px-3.5 py-2.5">
+        <p className="text-xs font-semibold">{format(m.reviewQueueTitle)}</p>
+        <Badge variant="secondary" className="tabular-nums">
+          {remainingCount}
+        </Badge>
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        {rows.map((row) => {
+          const said = decided.get(row.instanceId)
+          const current = row.instanceId === currentId
+          return (
+            <li key={row.instanceId}>
+              <button
+                type="button"
+                disabled={said !== undefined}
+                onClick={() => onOpen(row.instanceId)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors',
+                  current
+                    ? 'border-l-foreground bg-accent'
+                    : 'border-l-transparent hover:bg-accent/50',
+                  said !== undefined && 'opacity-50',
+                )}
+              >
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className={cn('truncate text-sm', current && 'font-semibold')}>
+                    {row.participantName}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">{row.itemTitle}</span>
+                </span>
+                {said !== undefined ? (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {format(DECISION_LABEL[said])}
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {clockLabel(row.submittedAt)}
+                  </span>
+                )}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </aside>
+  )
+}
+
+const DECISION_LABEL: Record<SessionEntry['decision'], MessageDescriptor> = {
+  approve: m.reviewApprove,
+  reject: m.reviewReject,
+  escalate: m.reviewEscalate,
+}
+
+/** where the run stands: a thin band of what is done and what is left */
+function RunStrip({
+  at,
+  total,
+  log,
+  batchId,
+}: {
+  at: number
+  total: number
+  log: readonly SessionEntry[]
+  batchId: string
+}) {
+  const { format } = useI18n()
+  const navigate = usePageNavigate()
+  return (
+    <div className="flex items-center gap-3 border-b bg-muted/40 px-4 py-2">
+      <p className="shrink-0 text-xs text-muted-foreground tabular-nums">
+        {format(m.reviewRunPosition, { at, count: total })}
+      </p>
+      <span className="flex min-w-0 flex-1 gap-1">
+        {Array.from({ length: Math.min(total, 60) }, (_, index) => (
+          <span
+            key={index}
+            className={cn(
+              'h-1 flex-1 rounded-full',
+              index < log.length ? 'bg-foreground' : 'bg-border',
+            )}
+          />
         ))}
-    </dl>
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="shrink-0 text-xs text-muted-foreground"
+        onClick={() => navigate('assessment/batch-reviews', { params: { batchId } })}
+      >
+        {format(m.reviewRunExit)}
+      </Button>
+    </div>
+  )
+}
+
+/** who is being judged, and this round's standing at a glance */
+function PersonStrip({
+  review,
+  at,
+  of,
+  canPrev,
+  canNext,
+  onMove,
+}: {
+  review: ReviewDto
+  at: number | null
+  of: number
+  canPrev: boolean
+  canNext: boolean
+  onMove: (step: 1 | -1) => void
+}) {
+  const { format } = useI18n()
+  return (
+    <header className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+      <Avatar className="size-9">
+        <AvatarFallback>{review.participantName.slice(0, 1)}</AvatarFallback>
+      </Avatar>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex items-baseline gap-2.5">
+          <h2 className="text-base font-semibold whitespace-nowrap">{review.participantName}</h2>
+          {review.businessNo !== null && (
+            <span className="text-xs text-muted-foreground tabular-nums">{review.businessNo}</span>
+          )}
+          {review.unitName !== null && (
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
+              {review.unitName}
+            </span>
+          )}
+        </div>
+        <p className="min-w-0 truncate text-xs text-muted-foreground">
+          {review.context?.worth.groupName !== null && review.context?.worth.groupName !== undefined
+            ? `${review.context.worth.groupName} › ${review.itemTitle}`
+            : review.itemTitle}
+        </p>
+      </div>
+      <span className="flex-1" />
+      {review.chain.route === 'escalation' && (
+        <Badge variant="outline">
+          <TriangleAlertIcon aria-hidden />
+          {format(m.reviewRouteEscalation)}
+        </Badge>
+      )}
+      {at !== null && (
+        <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+          {format(m.reviewRunPosition, { at, count: of })}
+        </p>
+      )}
+      <span className="flex gap-1">
+        <EdgeButton
+          can={canPrev}
+          why={format(m.reviewFirstOne)}
+          label="K"
+          onPress={() => onMove(-1)}
+        >
+          <ChevronUpIcon aria-hidden />
+        </EdgeButton>
+        <EdgeButton can={canNext} why={format(m.reviewLastOne)} label="J" onPress={() => onMove(1)}>
+          <ChevronDownIcon aria-hidden />
+        </EdgeButton>
+      </span>
+    </header>
+  )
+}
+
+/**
+ * A pager that stays where it is at the edge: disabled with the reason on
+ * hover, because a vanished control reads as a broken screen. The disabled
+ * button swallows pointer events, so the tooltip hangs on the span around it.
+ */
+function EdgeButton({
+  can,
+  why,
+  label,
+  onPress,
+  children,
+}: {
+  can: boolean
+  why: string
+  label: string
+  onPress: () => void
+  children: ReactNode
+}) {
+  if (can) {
+    return (
+      <Button variant="outline" size="icon-sm" onClick={onPress}>
+        {children}
+        <span className="sr-only">{label}</span>
+      </Button>
+    )
+  }
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span tabIndex={0}>
+            <Button variant="outline" size="icon-sm" disabled className="pointer-events-none">
+              {children}
+              <span className="sr-only">{label}</span>
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{why}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+/** the reading order: what was said, what was filed, what backs it up */
+function MainColumn({ review }: { review: ReviewDto }) {
+  const { format } = useI18n()
+  const fields = fieldsOf(review.form.formConfig).filter((field) => field.type !== 'attachment')
+  const record = (review.revision.payload ?? {}) as Record<string, unknown>
+  const previous = review.context?.previous ?? null
+  return (
+    <main className="flex min-w-0 flex-col gap-6 overflow-y-auto p-5">
+      {review.chain.route === 'escalation' && review.state !== 'completed' && (
+        <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
+          <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="text-sm font-medium">{format(m.reviewEscBannerTitle)}</p>
+            <p className="text-sm text-muted-foreground">{format(m.reviewEscBannerBody)}</p>
+          </div>
+        </div>
+      )}
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2.5 border-b pb-2">
+          <h3 className="text-sm font-semibold">{format(m.reviewPrior)}</h3>
+          <Badge variant="secondary">{format(m.reviewStateRound, { round: review.roundNo })}</Badge>
+        </div>
+        {previous !== null && (
+          <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium">{format(m.reviewPreviousTitle)}</p>
+              <Badge variant="outline">
+                {format(reviewEventMessage(previous.kind).message, {
+                  who: previous.actorName ?? format(m.eventSomebody),
+                })}
+              </Badge>
+              {previous.reason !== null && <Badge variant="outline">{previous.reason}</Badge>}
+              <span className="flex-1" />
+              <p className="text-xs text-muted-foreground tabular-nums">{timeLabel(previous.at)}</p>
+            </div>
+            {previous.comment !== null && (
+              <p className="border-l-2 border-muted-foreground/30 pl-3 text-sm leading-relaxed">
+                {previous.comment}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">{format(m.reviewPreviousHint)}</p>
+          </div>
+        )}
+        {review.events.length === 0 ? (
+          <p className="text-sm text-muted-foreground">—</p>
+        ) : (
+          <ol className="flex flex-col gap-2.5">
+            {review.events.map((event, index) => {
+              const said = reviewEventMessage(event.kind)
+              return (
+                <li key={index} className="flex gap-3">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground tabular-nums">
+                    {index + 1}
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <p className="text-sm">
+                        {format(
+                          said.message,
+                          said.needsActor
+                            ? { who: event.actorName ?? format(m.eventSomebody) }
+                            : {},
+                        )}
+                      </p>
+                      {event.reason !== null && <Badge variant="outline">{event.reason}</Badge>}
+                      <span className="flex-1" />
+                      <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                        {timeLabel(event.at)}
+                      </p>
+                    </div>
+                    {event.comment !== null && (
+                      <p className="border-l-2 border-border pl-2.5 text-sm leading-relaxed">
+                        {event.comment}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-baseline justify-between gap-3 border-b pb-2">
+          <h3 className="text-sm font-semibold">{format(m.reviewPayloadTitle)}</h3>
+          <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+            {format(m.reviewPayloadVersion, {
+              no: review.revision.revisionNo,
+              at: timeLabel(review.submittedAt),
+            })}
+          </p>
+        </div>
+        <dl className="flex flex-col gap-2">
+          {fields.map((field) => (
+            <div key={field.key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+              <dt className="text-sm whitespace-nowrap text-muted-foreground">{field.label}</dt>
+              <dd className="min-w-0 text-sm">
+                {typeof record[field.key] === 'string' && record[field.key] !== ''
+                  ? (record[field.key] as string)
+                  : '—'}
+              </dd>
+            </div>
+          ))}
+          {review.revision.note !== null && (
+            <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+              <dt className="text-sm whitespace-nowrap text-muted-foreground">
+                {format(m.entryNote)}
+              </dt>
+              <dd className="min-w-0 text-sm">{review.revision.note}</dd>
+            </div>
+          )}
+        </dl>
+      </section>
+
+      {review.revision.attachments.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2.5 border-b pb-2">
+            <h3 className="text-sm font-semibold">{format(m.reviewFiles)}</h3>
+            <span className="text-xs text-muted-foreground">
+              {format(m.reviewFilesCount, { count: review.revision.attachments.length })}
+            </span>
+            <span className="flex-1" />
+            <span className="hidden text-xs text-muted-foreground lg:block">
+              {format(m.reviewFilesKeys)}
+            </span>
+          </div>
+          <ul className="flex flex-wrap gap-3">
+            {review.revision.attachments.map((attachment, index) => (
+              <li
+                key={attachment.attachmentId}
+                data-file-slot={index + 1}
+                className="flex items-start gap-1.5"
+              >
+                {index < 9 && <Kbd className="mt-1">{index + 1}</Kbd>}
+                <AttachmentLink attachmentId={attachment.attachmentId} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* reserved: machine reading arrives later, and the reading order
+          already keeps its place */}
+      <section className="flex flex-col gap-1.5 rounded-xl border border-dashed p-4">
+        <p className="text-sm font-medium">{format(m.reviewInsight)}</p>
+        <p className="text-sm text-muted-foreground">{format(m.reviewInsightSoon)}</p>
+      </section>
+    </main>
+  )
+}
+
+/** what stands beside the filing: the terms it is judged under */
+function ContextRail({ review }: { review: ReviewDto }) {
+  const { format, locale } = useI18n()
+  const listed = useMemo(
+    () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
+    [locale],
+  )
+  const context = review.context
+  return (
+    <aside className="flex min-w-0 flex-col gap-4 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
+      <Basis compact />
+
+      <section className="flex flex-col gap-2.5 rounded-xl border p-3.5">
+        <p className="text-sm font-semibold">{format(m.reviewChainTitle)}</p>
+        <Route
+          title={format(m.reviewRouteNormal)}
+          stages={review.chain.normal}
+          here={review.chain.route === 'normal' ? review.chain.stageId : null}
+          listed={listed}
+        />
+        {review.chain.escalation.length > 0 && (
+          <Route
+            title={format(m.reviewRouteEscalation)}
+            stages={review.chain.escalation}
+            here={review.chain.route === 'escalation' ? review.chain.stageId : null}
+            listed={listed}
+          />
+        )}
+      </section>
+
+      {context !== null && (
+        <section className="flex flex-col gap-2 rounded-xl border p-3.5 text-sm">
+          <p className="font-semibold">{format(m.reviewAboutTitle)}</p>
+          {context.worth.each !== null && (
+            <AboutRow label={format(m.reviewAboutEach)} value={trimAmount(context.worth.each)} />
+          )}
+          {context.worth.maxEntries !== null && (
+            <AboutRow label={format(m.reviewAboutMax)} value={String(context.worth.maxEntries)} />
+          )}
+          {context.worth.groupCap !== null && (
+            <AboutRow
+              label={format(m.reviewAboutGroupCap)}
+              value={trimAmount(context.worth.groupCap)}
+            />
+          )}
+          <AboutRow
+            label={format(m.reviewAboutRange)}
+            value={`${context.worth.materialRange.start} — ${lastDay(context.worth.materialRange.end)}`}
+          />
+        </section>
+      )}
+
+      {context !== null && context.siblings.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-xl border p-3.5">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold">{format(m.reviewSiblingsTitle)}</p>
+            <span className="flex-1" />
+            <span className="text-xs whitespace-nowrap text-muted-foreground">
+              {format(m.reviewSiblingsCount, { count: context.siblings.length })}
+            </span>
+          </div>
+          <ul className="flex flex-col gap-1.5">
+            {context.siblings.map((sibling) => (
+              <li key={sibling.entryId} className="flex items-center gap-2 text-sm">
+                <span
+                  aria-hidden
+                  className={cn(
+                    'size-1.5 shrink-0 rounded-full',
+                    sibling.current ? 'bg-foreground' : 'bg-muted-foreground/40',
+                  )}
+                />
+                <span className={cn('min-w-0 flex-1 truncate', sibling.current && 'font-medium')}>
+                  {sibling.current && `${format(m.reviewSiblingThis)} · `}
+                  {sibling.summary === '' ? review.itemTitle : sibling.summary}
+                </span>
+                <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                  {format(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {context.worth.maxEntries !== null &&
+            context.siblings.length >= context.worth.maxEntries && (
+              <p className="border-t pt-2 text-xs text-muted-foreground">
+                {format(m.reviewSiblingsFull)}
+              </p>
+            )}
+        </section>
+      )}
+    </aside>
+  )
+}
+
+function AboutRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="whitespace-nowrap text-muted-foreground">{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
   )
 }
 
@@ -267,28 +910,22 @@ function Route({
   title,
   stages,
   here,
+  listed,
 }: {
   title: string
-  stages: readonly {
-    id: string
-    nodeName: string | null
-    roleNames: readonly string[]
-    reviewers: readonly string[] | null
-    skipped: string | null
-  }[]
-  /** the step being stood at, or null when the round is on the other route */
+  stages: ReviewDto['chain']['normal']
   here: string | null
+  listed: Intl.ListFormat
 }) {
-  const { format, locale } = useI18n()
-  const listed = new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' })
+  const { format } = useI18n()
   return (
-    <div className="flex flex-col gap-1 pt-1 first:pt-0">
-      <p className="px-2 text-xs font-medium text-muted-foreground">{title}</p>
-      <ol className="flex flex-col gap-2 text-sm">
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      <ol className="flex flex-col gap-1.5 text-sm">
         {stages.map((stage) => (
           <li
             key={stage.id}
-            className={stage.id === here ? 'rounded-md bg-accent/60 px-2 py-1' : 'px-2 py-1'}
+            className={cn('rounded-md px-2 py-1', stage.id === here && 'bg-accent/60')}
           >
             <p className="flex flex-wrap items-baseline gap-x-2">
               <span className="font-medium">
@@ -316,109 +953,320 @@ function Route({
   )
 }
 
-/** what each decision is called on a button and at the top of its dialog */
-const SAYINGS: Record<string, MessageDescriptor> = {
-  reject: m.reviewReject,
-  escalate: m.reviewEscalate,
-  comment: m.reviewCommentAction,
+/** the word box and the four choices; only ⌘↵ ever submits */
+function DecisionBar({
+  review,
+  decisions,
+  armed,
+  word,
+  wordRef,
+  busy,
+  onWord,
+  onArm,
+  onDialog,
+  onSubmit,
+}: {
+  review: ReviewDto
+  decisions: readonly string[]
+  armed: 'approve' | 'comment' | null
+  word: string
+  wordRef: RefObject<HTMLTextAreaElement | null>
+  busy: boolean
+  onWord: (next: string) => void
+  onArm: (next: 'approve' | 'comment' | null) => void
+  onDialog: (next: 'reject' | 'escalate') => void
+  onSubmit: () => void
+}) {
+  const { format } = useI18n()
+  const advising = review.chain.route === 'escalation' && !decisions.includes('reject')
+  return (
+    <footer className="flex flex-col gap-2 border-t px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Textarea
+          ref={wordRef}
+          rows={1}
+          value={word}
+          placeholder={format(
+            advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
+          )}
+          className="h-9 min-h-9 min-w-48 flex-1 resize-none py-2"
+          onChange={(event) => onWord(event.target.value)}
+        />
+        {decisions.includes('comment') && (
+          <Button
+            variant={armed === 'comment' ? 'secondary' : 'outline'}
+            onClick={() => onArm(armed === 'comment' ? null : 'comment')}
+          >
+            {format(m.reviewActionNote)}
+            <Kbd>C</Kbd>
+          </Button>
+        )}
+        {decisions.includes('escalate') && (
+          <Button variant="outline" onClick={() => onDialog('escalate')}>
+            {format(m.reviewEscalate)}
+            <Kbd>E</Kbd>
+          </Button>
+        )}
+        {decisions.includes('reject') && (
+          <Button
+            className="bg-destructive text-white hover:bg-destructive/90 [&_kbd]:bg-white/20 [&_kbd]:text-white"
+            onClick={() => onDialog('reject')}
+          >
+            {format(m.reviewReject)}
+            <Kbd>R</Kbd>
+          </Button>
+        )}
+        {decisions.includes('approve') && (
+          <Button
+            className={cn(
+              'bg-emerald-600 text-white hover:bg-emerald-600/90 [&_kbd]:bg-white/20 [&_kbd]:text-white',
+              armed === 'approve' && 'ring-2 ring-emerald-600/40',
+            )}
+            onClick={() => onArm(armed === 'approve' ? null : 'approve')}
+          >
+            {format(m.reviewApprove)}
+            <Kbd>A</Kbd>
+          </Button>
+        )}
+        <Button disabled={busy || armed === null} onClick={onSubmit}>
+          {format(m.reviewSubmitDecision)}
+          <Kbd>⌘↵</Kbd>
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {format(advising ? m.reviewSubmitHintAdvise : m.reviewSubmitHint)}
+      </p>
+    </footer>
+  )
+}
+
+/** the five seconds a decision can still be taken back */
+function UndoPill({
+  staged,
+  deadline,
+  onUndo,
+}: {
+  staged: StagedDecision
+  deadline: number
+  onUndo: () => void
+}) {
+  const { format } = useI18n()
+  const [left, setLeft] = useState(() => Math.ceil((deadline - Date.now()) / 1000))
+  useEffect(() => {
+    const tick = setInterval(
+      () => setLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000))),
+      200,
+    )
+    return () => clearInterval(tick)
+  }, [deadline])
+  return (
+    <div className="absolute bottom-20 left-[16rem] z-10 flex items-center gap-3 rounded-xl border bg-background px-3.5 py-2.5 shadow-lg">
+      <span className="flex size-6 items-center justify-center rounded-full border text-xs tabular-nums">
+        {left}
+      </span>
+      <p className="text-sm whitespace-nowrap">
+        <span className="font-semibold">{staged.participantName}</span>
+        {' · '}
+        {format(DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.reviewApprove)}
+      </p>
+      <p className="text-xs whitespace-nowrap text-muted-foreground">
+        {format(m.reviewUndoPending, { seconds: left })}
+      </p>
+      <Button variant="outline" size="sm" onClick={onUndo}>
+        {format(m.reviewUndo)}
+        <Kbd>⌘Z</Kbd>
+      </Button>
+    </div>
+  )
+}
+
+/** the keyboard, spelled out; ? brings it and takes it away */
+function KeysPanel({ onClose }: { onClose: () => void }) {
+  const { format } = useI18n()
+  const keys: readonly [string, MessageDescriptor][] = [
+    ['⌘↵', m.reviewKeySubmit],
+    ['⌘Z', m.reviewKeyUndo],
+    ['A', m.reviewKeyApprove],
+    ['R', m.reviewKeyReject],
+    ['E', m.reviewKeyEscalate],
+    ['C', m.reviewKeyComment],
+    ['J / K', m.reviewKeyMove],
+    ['1–9', m.reviewKeyFiles],
+    ['Esc', m.reviewKeyCancel],
+  ]
+  return (
+    <div className="absolute right-4 bottom-20 z-10 flex w-80 flex-col gap-2.5 rounded-xl border bg-background p-4 shadow-lg">
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-semibold">{format(m.reviewKeysTitle)}</p>
+        <span className="flex-1" />
+        <button
+          type="button"
+          className="text-xs text-muted-foreground hover:text-foreground"
+          onClick={onClose}
+        >
+          {format(m.reviewKeysToggle)}
+        </button>
+      </div>
+      <dl className="flex flex-col gap-1.5">
+        {keys.map(([key, message]) => (
+          <div key={key} className="flex items-center gap-3">
+            <dt className="w-14 shrink-0">
+              <Kbd className="w-full justify-center">{key}</Kbd>
+            </dt>
+            <dd className="min-w-0 flex-1 truncate text-sm">{format(message)}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="border-t pt-2 text-xs leading-relaxed text-muted-foreground">
+        {format(m.reviewKeysFoot)}
+      </p>
+    </div>
+  )
+}
+
+/** the run is over: what was decided, and where to go next (1g) */
+function DoneScreen({
+  batchId,
+  log,
+  startedAt,
+  inboxRows,
+}: {
+  batchId: string
+  log: readonly SessionEntry[]
+  startedAt: number
+  inboxRows: readonly InboxItemDto[]
+}) {
+  const { format } = useI18n()
+  const navigate = usePageNavigate()
+  const counts = {
+    approve: log.filter((entry) => entry.decision === 'approve').length,
+    reject: log.filter((entry) => entry.decision === 'reject').length,
+    escalate: log.filter((entry) => entry.decision === 'escalate').length,
+  }
+  const spent = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+  const spentLabel = `${Math.floor(spent / 60)}:${String(spent % 60).padStart(2, '0')}`
+  // the nearest next run: the fullest question still waiting
+  const next = (() => {
+    const byItem = new Map<string, { title: string; rows: InboxItemDto[] }>()
+    for (const row of inboxRows) {
+      const group = byItem.get(row.itemId)
+      if (group === undefined) byItem.set(row.itemId, { title: row.itemTitle, rows: [row] })
+      else group.rows.push(row)
+    }
+    return [...byItem.entries()].sort((a, b) => b[1].rows.length - a[1].rows.length)[0] ?? null
+  })()
+
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
+      <div className="flex w-full max-w-xl flex-col gap-5">
+        <h2 className="text-xl font-semibold tracking-tight">
+          {format(m.reviewDoneTitle, { count: log.length })}
+        </h2>
+        <div className="flex items-end gap-6 border-y py-4">
+          <DoneStat label={format(m.reviewApprove)} value={counts.approve} />
+          <DoneStat label={format(m.reviewReject)} value={counts.reject} />
+          <DoneStat label={format(m.reviewEscalate)} value={counts.escalate} />
+          <span className="flex-1" />
+          <DoneStat label={format(m.reviewDoneSpent)} value={spentLabel} />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {next !== null && (
+            <Button
+              onClick={() =>
+                navigate('assessment/review-instance', {
+                  params: { batchId, instanceId: next[1].rows[0]!.instanceId },
+                  search: { run: `item:${next[0]}` },
+                })
+              }
+            >
+              {format(m.reviewDoneNext, { title: next[1].title, count: next[1].rows.length })}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => navigate('assessment/batch-reviews', { params: { batchId } })}
+          >
+            {format(m.reviewDoneBack)}
+          </Button>
+          <span className="flex-1" />
+          <p className="text-xs whitespace-nowrap text-muted-foreground">
+            {format(m.reviewDoneLeft, { count: inboxRows.length })}
+          </p>
+        </div>
+        {log.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-4">
+            <p className="text-sm font-medium">{format(m.reviewDoneList)}</p>
+            <ul className="flex flex-col gap-1.5">
+              {log.map((entry) => (
+                <li key={entry.instanceId} className="flex items-center gap-2.5 text-sm">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-1.5 shrink-0 rounded-full',
+                      entry.decision === 'reject'
+                        ? 'bg-destructive'
+                        : entry.decision === 'escalate'
+                          ? 'bg-muted-foreground/60'
+                          : 'bg-foreground',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {entry.participantName} · {entry.itemTitle}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {format(DECISION_LABEL[entry.decision])}
+                    {entry.status === 'failed' && ' ✕'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="border-t pt-2 text-xs text-muted-foreground">
+              {format(m.reviewDoneFinal)}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DoneStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
+      <span className="text-lg leading-none font-semibold tabular-nums">{value}</span>
+    </span>
+  )
 }
 
 /**
- * Everything a reviewer says except a plain approval: a word is required,
- * and a rejection may carry a suggested version of the filing.
+ * However much of the window is left below wherever this lands, so the
+ * workbench fills the screen and scrolls inside its own panes - the same
+ * measurement my-entries makes, for the same reason.
  */
-function SayDialog({
-  batchId,
-  instanceId,
-  itemId,
-  decision,
-  formConfig,
-  judgedPayload,
-  onClose,
-  onDone,
-}: {
-  batchId: string
-  instanceId: string
-  itemId: string
-  decision: string
-  formConfig: unknown
-  judgedPayload: unknown
-  onClose: () => void
-  onDone: () => void
-}) {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { format, formatError } = useI18n()
-  const [comment, setComment] = useState('')
-  const [suggesting, setSuggesting] = useState(false)
-  const [suggestion, setSuggestion] = useState<EvidencePayload>(
-    () => (judgedPayload as EvidencePayload | null) ?? {},
-  )
-  const [problem, setProblem] = useState<string | null>(null)
+function useRestOfTheWindow(): [(node: HTMLDivElement | null) => void, number | null] {
+  const [node, setNode] = useState<HTMLDivElement | null>(null)
+  const [height, setHeight] = useState<number | null>(null)
 
-  const say = useMutation({
-    mutationFn: () =>
-      run(
-        api.assessment.decideReview({
-          params: { instanceId },
-          payload: {
-            decision: decision as 'reject',
-            comment: comment.trim(),
-            ...(suggesting && decision === 'reject' ? { suggestedPayload: suggestion } : {}),
-          },
-        }),
-      ),
-    onSuccess: onDone,
-    onError: (error) => setProblem(formatError(error)),
-  })
-
-  return (
-    <FormDialog
-      open
-      title={format(SAYINGS[decision] ?? m.reviewSayTitle)}
-      onClose={onClose}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
-          </Button>
-          <Button disabled={say.isPending || comment.trim() === ''} onClick={() => say.mutate()}>
-            {format(SAYINGS[decision] ?? m.reviewSayTitle)}
-          </Button>
-        </div>
+  useEffect(() => {
+    if (node === null) return
+    const beside = window.matchMedia('(min-width: 64rem)')
+    const measure = () => {
+      if (!beside.matches) {
+        setHeight(null)
+        return
       }
-    >
-      <div className="flex flex-col gap-4">
-        <Field label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
-          {(id) => (
-            <Textarea
-              id={id}
-              value={comment}
-              rows={3}
-              onChange={(event) => setComment(event.target.value)}
-            />
-          )}
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={suggesting} onCheckedChange={(next) => setSuggesting(next === true)} />
-          {format(m.reviewSuggestToggle)}
-        </label>
-        {suggesting && decision === 'reject' && (
-          <EvidenceForm
-            fields={fieldsOf(formConfig).filter((field) => field.type !== 'attachment')}
-            value={suggestion}
-            onChange={setSuggestion}
-            doors={{
-              // a suggestion may never grow the evidence, so there is no
-              // door to upload through here
-              prepare: () => Promise.reject(new Error('suggestions cite existing files only')),
-              complete: () => Promise.reject(new Error('suggestions cite existing files only')),
-            }}
-            where={{ batchId, itemId }}
-          />
-        )}
-        <Feedback message={problem} />
-      </div>
-    </FormDialog>
-  )
+      const room = window.innerHeight - node.getBoundingClientRect().top
+      setHeight(Math.max(360, Math.round(room)))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    beside.addEventListener('change', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+      beside.removeEventListener('change', measure)
+    }
+  }, [node])
+
+  return [setNode, height]
 }

@@ -640,6 +640,8 @@ export const insertReviewEvent = (input: {
   /** where the round was standing; omitted for events that belong to the round */
   route?: 'normal' | 'escalation' | null
   stageId?: string | null
+  /** the configured label the actor picked, copied verbatim */
+  reason?: string | null
   comment?: string | null
   suggestedPayload?: unknown
 }) =>
@@ -653,6 +655,7 @@ export const insertReviewEvent = (input: {
         actorId: input.actorId,
         route: input.route ?? null,
         stageId: input.stageId ?? null,
+        reason: input.reason ?? null,
         comment: input.comment ?? null,
         ...(input.suggestedPayload !== undefined
           ? { suggestedPayload: jsonb(input.suggestedPayload) }

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
@@ -7,7 +8,13 @@ import { FileTile } from '@qualy/ui/dropzone'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { attachmentContentUrl, LOOKS_LIKE_A_PHOTOGRAPH, sizeLabel } from './model.ts'
+import { DocumentLightbox } from './DocumentLightbox.tsx'
+import {
+  attachmentContentUrl,
+  LOOKS_LIKE_A_DOCUMENT,
+  LOOKS_LIKE_A_PHOTOGRAPH,
+  sizeLabel,
+} from './model.ts'
 
 // A cited file, by its own name, and - when it is a picture - as a picture.
 //
@@ -46,13 +53,24 @@ export function AttachmentLink({
     data?.delivery.kind === 'redirect' ? data.delivery.url : attachmentContentUrl(attachmentId)
   const name = data?.filename ?? format(m.entryFileUnnamed)
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
+  const isDocument = data !== undefined && LOOKS_LIKE_A_DOCUMENT.has(data.declaredMime)
+  const [reading, setReading] = useState(false)
+  const lightbox = reading && data !== undefined && (
+    <DocumentLightbox
+      href={href}
+      mime={data.declaredMime}
+      name={name}
+      onClose={() => setReading(false)}
+    />
+  )
 
   if (compact) {
     return (
       <PhotoProvider maskOpacity={0.85}>
         <span className="flex min-w-0 items-center gap-1.5">
           <PaperclipIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-          {/* a picture opens where it stands; anything else is a download */}
+          {/* a picture or a document opens where it stands; anything else
+              is a download */}
           {isImage ? (
             <PhotoView src={href}>
               <button
@@ -62,6 +80,14 @@ export function AttachmentLink({
                 {name}
               </button>
             </PhotoView>
+          ) : isDocument ? (
+            <button
+              type="button"
+              onClick={() => setReading(true)}
+              className="min-w-0 cursor-pointer truncate text-left underline-offset-2 hover:underline"
+            >
+              {name}
+            </button>
           ) : (
             <a
               href={href}
@@ -73,7 +99,8 @@ export function AttachmentLink({
               {name}
             </a>
           )}
-          {isImage && (
+          {lightbox}
+          {(isImage || isDocument) && (
             <a
               href={href}
               download={data?.filename}
@@ -105,6 +132,15 @@ export function AttachmentLink({
                 className="size-full cursor-zoom-in object-cover"
               />
             </PhotoView>
+          ) : isDocument ? (
+            <button
+              type="button"
+              onClick={() => setReading(true)}
+              className="flex size-full cursor-pointer items-center justify-center"
+            >
+              <FileTextIcon aria-hidden className="size-4" />
+              <span className="sr-only">{name}</span>
+            </button>
           ) : (
             <FileTextIcon aria-hidden className="size-4" />
           )
@@ -120,6 +156,7 @@ export function AttachmentLink({
           </Button>
         }
       />
+      {lightbox}
     </PhotoProvider>
   )
 }

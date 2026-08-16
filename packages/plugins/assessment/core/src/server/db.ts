@@ -69,6 +69,8 @@ export interface BatchRow {
   /** people currently on the roster; zero until the batch is activated */
   participantCount: number
   createdAt: number
+  /** {reject?: string[], escalate?: string[]} as configured on the batch */
+  reviewReasons: unknown
   /** whether the reader this row was selected for may administer it */
   manageable: boolean
 }
@@ -84,6 +86,7 @@ const batchSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
       'status',
       'configRevision',
       'currentPhaseId',
+      'reviewReasons',
     ])
     .select([
       sql<string>`material_range::text`.as('materialRange'),
@@ -491,6 +494,7 @@ export const updateBatchFields = (
     materialEnd?: string
     timezone?: string
     status?: string
+    reviewReasons?: { reject: readonly string[]; escalate: readonly string[] }
   },
 ) =>
   db.query((k) =>
@@ -506,6 +510,9 @@ export const updateBatchFields = (
           : {}),
         ...(fields.timezone !== undefined ? { timezone: fields.timezone } : {}),
         ...(fields.status !== undefined ? { status: fields.status } : {}),
+        ...(fields.reviewReasons !== undefined
+          ? { reviewReasons: sql`${JSON.stringify(fields.reviewReasons)}::jsonb` }
+          : {}),
         updatedAt: sql`now()`,
       } as never)
       .where('tenantId', '=', tenantId)

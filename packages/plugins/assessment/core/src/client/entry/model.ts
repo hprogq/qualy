@@ -122,6 +122,14 @@ export const LOOKS_LIKE_A_PHOTOGRAPH: ReadonlySet<string> = new Set([
   'image/avif',
 ])
 
+/**
+ * The types shown in the document previewer. Deliberately short: a pdf in
+ * an iframe is the browser's own sandboxed viewer, while html or svg loaded
+ * as a document would run - those stay downloads, which is the whole reason
+ * the bytes are served as one.
+ */
+export const LOOKS_LIKE_A_DOCUMENT: ReadonlySet<string> = new Set(['application/pdf'])
+
 /** amounts render without their bookkeeping zeros: 10.0000 reads as 10 */
 export const trimAmount = (value: string): string =>
   value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value

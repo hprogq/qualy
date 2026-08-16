@@ -1053,6 +1053,305 @@ const i18n = definePluginMessages({
       defaultMessage: 'Leave a note',
     },
     reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
+    // the review queue, laid out three ways
+    reviewStatPending: { id: 'assessment/review/stat-pending', defaultMessage: 'Waiting for me' },
+    reviewStatToday: { id: 'assessment/review/stat-today', defaultMessage: 'Handled today' },
+    reviewTabByItem: { id: 'assessment/review/tab-by-item', defaultMessage: 'By question' },
+    reviewTabByTime: { id: 'assessment/review/tab-by-time', defaultMessage: 'By submitted' },
+    reviewTabByPerson: {
+      id: 'assessment/review/tab-by-person',
+      defaultMessage: 'By participant',
+    },
+    reviewFilterAllItems: {
+      id: 'assessment/review/filter-all-items',
+      defaultMessage: 'All questions',
+    },
+    reviewFilterAllUnits: {
+      id: 'assessment/review/filter-all-units',
+      defaultMessage: 'All units',
+    },
+    reviewSearchPlaceholder: {
+      id: 'assessment/review/search-placeholder',
+      defaultMessage: 'Search name, number or content',
+    },
+    reviewMatchesNone: {
+      id: 'assessment/review/matches-none',
+      defaultMessage: 'Nothing waiting matches.',
+    },
+    reviewGroupCount: {
+      id: 'assessment/review/group-count',
+      defaultMessage: '{count} waiting',
+    },
+    reviewRunGroup: {
+      id: 'assessment/review/run-group',
+      defaultMessage: 'Review these {count} in a row',
+    },
+    reviewRunPerson: { id: 'assessment/review/run-person', defaultMessage: 'Review in a row' },
+    reviewColumnParticipant: {
+      id: 'assessment/review/column-participant',
+      defaultMessage: 'Participant',
+    },
+    reviewColumnTime: { id: 'assessment/review/column-time', defaultMessage: 'Time' },
+    reviewColumnSummary: { id: 'assessment/review/column-summary', defaultMessage: 'Summary' },
+    reviewColumnState: { id: 'assessment/review/column-state', defaultMessage: 'Status' },
+    reviewColumnFiles: { id: 'assessment/review/column-files', defaultMessage: 'Files' },
+    reviewStateWaiting: {
+      id: 'assessment/review/state-waiting',
+      defaultMessage: 'Waiting for me',
+    },
+    reviewStateRound: { id: 'assessment/review/state-round', defaultMessage: 'Round {round}' },
+    reviewStateEscalated: {
+      id: 'assessment/review/state-escalated',
+      defaultMessage: 'Escalated',
+    },
+    reviewFilesCount: { id: 'assessment/review/files-count', defaultMessage: '{count} files' },
+    reviewEmptyRefresh: {
+      id: 'assessment/review/empty-refresh',
+      defaultMessage: 'New submissions appear here; this list refreshes every 30 seconds.',
+    },
+    reviewNoStandingHint: {
+      id: 'assessment/review/no-standing-hint',
+      defaultMessage: 'To take part, ask whoever runs this round to assign you a reviewing role.',
+    },
+    // the workbench: one submission, judged in a run
+    reviewQueueTitle: { id: 'assessment/review/queue-title', defaultMessage: 'Queue' },
+    reviewRunPosition: {
+      id: 'assessment/review/run-position',
+      defaultMessage: '{at} of {count} in this run',
+    },
+    reviewRunExit: { id: 'assessment/review/run-exit', defaultMessage: 'Leave the run' },
+    reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Said so far' },
+    reviewPreviousTitle: {
+      id: 'assessment/review/previous-title',
+      defaultMessage: 'Last round\u2019s conclusion',
+    },
+    reviewPreviousHint: {
+      id: 'assessment/review/previous-hint',
+      defaultMessage: 'This submission came after it; check the asked-for changes were made.',
+    },
+    reviewPayloadVersion: {
+      id: 'assessment/review/payload-version',
+      defaultMessage: 'Version {no}, submitted {at}',
+    },
+    reviewFilesKeys: {
+      id: 'assessment/review/files-keys',
+      defaultMessage: 'Press 1\u20139 to open a file',
+    },
+    reviewInsight: { id: 'assessment/review/insight', defaultMessage: 'Smart review' },
+    reviewInsightSoon: {
+      id: 'assessment/review/insight-soon',
+      defaultMessage: 'Hints will appear here, pointing at what deserves a human look.',
+    },
+    reviewAboutTitle: { id: 'assessment/review/about-title', defaultMessage: 'This question' },
+    reviewAboutEach: {
+      id: 'assessment/review/about-each',
+      defaultMessage: 'Counts when approved',
+    },
+    reviewAboutMax: {
+      id: 'assessment/review/about-max',
+      defaultMessage: 'Entries per person',
+    },
+    reviewAboutGroupCap: { id: 'assessment/review/about-group-cap', defaultMessage: 'Group cap' },
+    reviewAboutRange: {
+      id: 'assessment/review/about-range',
+      defaultMessage: 'Material window',
+    },
+    reviewSiblingsTitle: {
+      id: 'assessment/review/siblings-title',
+      defaultMessage: 'Their other claims',
+    },
+    reviewSiblingsCount: {
+      id: 'assessment/review/siblings-count',
+      defaultMessage: '{count} on this question',
+    },
+    reviewSiblingThis: { id: 'assessment/review/sibling-this', defaultMessage: 'This one' },
+    reviewSiblingsFull: {
+      id: 'assessment/review/siblings-full',
+      defaultMessage: 'Approving this one reaches their limit on this question.',
+    },
+    reviewCommentPlaceholder: {
+      id: 'assessment/review/comment-placeholder',
+      defaultMessage: 'Say why; required to send back or escalate',
+    },
+    reviewCommentPlaceholderAdvise: {
+      id: 'assessment/review/comment-placeholder-advise',
+      defaultMessage: 'Your opinion; it travels to the deciding step',
+    },
+    reviewActionNote: { id: 'assessment/review/action-note', defaultMessage: 'Note' },
+    reviewSubmitDecision: {
+      id: 'assessment/review/submit-decision',
+      defaultMessage: 'Submit decision',
+    },
+    reviewSubmitHint: {
+      id: 'assessment/review/submit-hint',
+      defaultMessage:
+        'Approval counts it in; sending back lets them revise; escalation hands it over.',
+    },
+    reviewSubmitHintAdvise: {
+      id: 'assessment/review/submit-hint-advise',
+      defaultMessage: 'Your opinion travels with the round; nothing moves.',
+    },
+    reviewPickDecision: {
+      id: 'assessment/review/pick-decision',
+      defaultMessage: 'Choose a decision first.',
+    },
+    reviewUndo: { id: 'assessment/review/undo', defaultMessage: 'Undo' },
+    reviewFirstOne: {
+      id: 'assessment/review/first-one',
+      defaultMessage: 'Already at the first one',
+    },
+    reviewLastOne: {
+      id: 'assessment/review/last-one',
+      defaultMessage: 'Already at the last one',
+    },
+    reviewUndoPending: {
+      id: 'assessment/review/undo-pending',
+      defaultMessage: 'Submitting in {seconds}s; undo until then',
+    },
+    reviewEscBannerTitle: {
+      id: 'assessment/review/esc-banner-title',
+      defaultMessage: 'This round is on the escalation route',
+    },
+    reviewEscBannerBody: {
+      id: 'assessment/review/esc-banner-body',
+      defaultMessage: 'The last step decides; what you say travels with the round.',
+    },
+    // the keyboard panel
+    reviewKeysTitle: { id: 'assessment/review/keys-title', defaultMessage: 'Keyboard' },
+    reviewKeysToggle: {
+      id: 'assessment/review/keys-toggle',
+      defaultMessage: '? opens and closes this panel',
+    },
+    reviewKeysFoot: {
+      id: 'assessment/review/keys-foot',
+      defaultMessage:
+        'Letters only choose; \u2318\u21b5 submits. While typing, letters go to the text.',
+    },
+    reviewKeySubmit: {
+      id: 'assessment/review/key-submit',
+      defaultMessage: 'Submit \u2014 the only key that does',
+    },
+    reviewKeyUndo: {
+      id: 'assessment/review/key-undo',
+      defaultMessage: 'Undo the last one, within 5 seconds',
+    },
+    reviewKeyApprove: { id: 'assessment/review/key-approve', defaultMessage: 'Choose approve' },
+    reviewKeyReject: { id: 'assessment/review/key-reject', defaultMessage: 'Choose send back' },
+    reviewKeyEscalate: {
+      id: 'assessment/review/key-escalate',
+      defaultMessage: 'Choose escalate',
+    },
+    reviewKeyComment: { id: 'assessment/review/key-comment', defaultMessage: 'Choose note' },
+    reviewKeyMove: { id: 'assessment/review/key-move', defaultMessage: 'Next, previous' },
+    reviewKeyFiles: {
+      id: 'assessment/review/key-files',
+      defaultMessage: 'Open the numbered file',
+    },
+    reviewKeyCancel: {
+      id: 'assessment/review/key-cancel',
+      defaultMessage: 'Clear the choice, or close this panel',
+    },
+    // a run finished
+    reviewDoneTitle: {
+      id: 'assessment/review/done-title',
+      defaultMessage: 'All {count} in this run are done',
+    },
+    reviewDoneSpent: { id: 'assessment/review/done-spent', defaultMessage: 'Time' },
+    reviewDoneNext: {
+      id: 'assessment/review/done-next',
+      defaultMessage: 'Next: {title} ({count})',
+    },
+    reviewDoneBack: { id: 'assessment/review/done-back', defaultMessage: 'Back to the queue' },
+    reviewDoneLeft: {
+      id: 'assessment/review/done-left',
+      defaultMessage: '{count} left in the queue',
+    },
+    reviewDoneList: {
+      id: 'assessment/review/done-list',
+      defaultMessage: 'This run\u2019s decisions',
+    },
+    reviewDoneFinal: {
+      id: 'assessment/review/done-final',
+      defaultMessage: 'Submitted for good. To correct one, say so on its record.',
+    },
+    // the two dialogs that carry a word
+    reviewRejectTitle: {
+      id: 'assessment/review/reject-title',
+      defaultMessage: 'Send back to {name}',
+    },
+    reviewRejectSubtitle: {
+      id: 'assessment/review/reject-subtitle',
+      defaultMessage: '{item}, version {no}. They can revise and resubmit.',
+    },
+    reviewReasonLabel: { id: 'assessment/review/reason-label', defaultMessage: 'Reason' },
+    reviewReasonHint: {
+      id: 'assessment/review/reason-hint',
+      defaultMessage: 'Pick one; it goes on the record',
+    },
+    reviewSuggestField: { id: 'assessment/review/suggest-field', defaultMessage: 'Field' },
+    reviewSuggestTheirs: { id: 'assessment/review/suggest-theirs', defaultMessage: 'As filed' },
+    reviewSuggestMine: { id: 'assessment/review/suggest-mine', defaultMessage: 'Suggested' },
+    reviewSuggestKeep: { id: 'assessment/review/suggest-keep', defaultMessage: 'Unchanged' },
+    reviewSuggestHint: {
+      id: 'assessment/review/suggest-hint',
+      defaultMessage: 'A suggestion only; theirs to take or not.',
+    },
+    reviewRejectFoot: {
+      id: 'assessment/review/reject-foot',
+      defaultMessage: 'Sending back ends this round; a resubmission starts a new one.',
+    },
+    reviewRejectConfirm: {
+      id: 'assessment/review/reject-confirm',
+      defaultMessage: 'Send back',
+    },
+    reviewEscalateSubtitle: {
+      id: 'assessment/review/escalate-subtitle',
+      defaultMessage: '{name} \u00b7 {item}. The escalation route concludes it from here.',
+    },
+    reviewEscalateCommentLabel: {
+      id: 'assessment/review/escalate-comment-label',
+      defaultMessage: 'What to check',
+    },
+    reviewEscalateCommentHint: {
+      id: 'assessment/review/escalate-comment-hint',
+      defaultMessage: 'The participant never sees this',
+    },
+    reviewEscalateFlow: { id: 'assessment/review/escalate-flow', defaultMessage: 'Where it goes' },
+    reviewEscalateStageAdvise: {
+      id: 'assessment/review/escalate-stage-advise',
+      defaultMessage: 'Opinions only',
+    },
+    reviewEscalateStageDecide: {
+      id: 'assessment/review/escalate-stage-decide',
+      defaultMessage: 'Decides',
+    },
+    reviewEscalateFoot: {
+      id: 'assessment/review/escalate-foot',
+      defaultMessage: 'It leaves your queue once submitted.',
+    },
+    // the reason lists, configured with the batch
+    settingsReasons: { id: 'assessment/settings/reasons', defaultMessage: 'Review reasons' },
+    settingsReasonsHint: {
+      id: 'assessment/settings/reasons-hint',
+      defaultMessage: 'The labels a reviewer picks from when sending back or escalating.',
+    },
+    settingsRejectReasons: {
+      id: 'assessment/settings/reject-reasons',
+      defaultMessage: 'Send-back reasons',
+    },
+    settingsEscalateReasons: {
+      id: 'assessment/settings/escalate-reasons',
+      defaultMessage: 'Escalation reasons',
+    },
+    settingsReasonPlaceholder: {
+      id: 'assessment/settings/reason-placeholder',
+      defaultMessage: 'New reason',
+    },
+    settingsReasonAdd: { id: 'assessment/settings/reason-add', defaultMessage: 'Add' },
+    settingsReasonsEmpty: {
+      id: 'assessment/settings/reasons-empty',
+      defaultMessage: 'With none configured, a written note is all that is asked.',
+    },
     reviewOnEscalationRoute: {
       id: 'assessment/review/on-escalation-route',
       defaultMessage: 'This has been escalated; the last step decides.',

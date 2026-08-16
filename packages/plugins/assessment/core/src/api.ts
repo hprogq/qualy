@@ -72,6 +72,16 @@ export const isoDate = Schema.String.check(
 
 const materialRange = Schema.Struct({ start: isoDate, end: isoDate })
 
+/**
+ * The labels a reviewer picks a reason from, one list per act. Configured on
+ * the batch; the chosen label is copied onto the review event, so these
+ * lists are offer, not history.
+ */
+const reviewReasons = Schema.Struct({
+  reject: Schema.Array(Schema.String),
+  escalate: Schema.Array(Schema.String),
+})
+
 const batchStatus = Schema.Literals(['draft', 'active', 'archived'])
 
 /** where a batch has got to, as a list draws it: one line per stage */
@@ -127,6 +137,7 @@ const batchListView = Schema.Struct({
  */
 const batchView = Schema.Struct({
   ...batchFields,
+  reviewReasons,
   capabilities: Schema.Struct({
     personal: Schema.Boolean,
     review: Schema.Boolean,
@@ -469,7 +480,19 @@ const reviewInboxItem = Schema.Struct({
   itemId: Schema.String,
   itemTitle: Schema.String,
   participantName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  /** the unit the participant stands in, for grouping and the unit filter */
+  unitId: Schema.NullOr(Schema.String),
+  unitName: Schema.NullOr(Schema.String),
   roundNo: Schema.Number,
+  route: Schema.Literals(['normal', 'escalation']),
+  /**
+   * The filing itself, projected: the judged revision's own answers under
+   * the question's real field labels, never a written summary. Attachment
+   * fields stay out - the count stands in for them.
+   */
+  values: Schema.Array(Schema.Struct({ label: Schema.String, value: Schema.String })),
+  attachmentCount: Schema.Number,
   submittedAt: Schema.String,
 })
 
@@ -494,6 +517,8 @@ const reviewDetailView = Schema.Struct({
   itemId: Schema.String,
   itemTitle: Schema.String,
   participantName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  unitName: Schema.NullOr(Schema.String),
   submittedAt: Schema.String,
   completedAt: Schema.NullOr(Schema.String),
   /** exactly what is being judged: the revision the round froze, not the entry's latest */
@@ -506,6 +531,43 @@ const reviewDetailView = Schema.Struct({
     ),
   }),
   form: Schema.Struct({ itemType: Schema.String, formConfig: configJson }),
+  /**
+   * What stands around the judged filing: the question's own numbers, the
+   * participant's other claims on it, and the previous round's conclusion
+   * when there was one. Loaded for a page read; a decision response leaves
+   * it null rather than paying for it inside the batch lock.
+   */
+  context: Schema.NullOr(
+    Schema.Struct({
+      worth: Schema.Struct({
+        /** what one approved entry counts, when the question is a fixed amount */
+        each: Schema.NullOr(Schema.String),
+        maxEntries: Schema.NullOr(Schema.Number),
+        groupName: Schema.NullOr(Schema.String),
+        groupCap: Schema.NullOr(Schema.String),
+        materialRange,
+      }),
+      /** every claim this participant has on this question, this one included */
+      siblings: Schema.Array(
+        Schema.Struct({
+          entryId: Schema.String,
+          summary: Schema.String,
+          status: Schema.String,
+          current: Schema.Boolean,
+        }),
+      ),
+      /** how the previous round ended, shown so a resubmission is read against it */
+      previous: Schema.NullOr(
+        Schema.Struct({
+          kind: Schema.String,
+          reason: Schema.NullOr(Schema.String),
+          comment: Schema.NullOr(Schema.String),
+          actorName: Schema.NullOr(Schema.String),
+          at: Schema.String,
+        }),
+      ),
+    }),
+  ),
   /** where the round stands, and what both routes are */
   chain: Schema.Struct({
     route: Schema.Literals(['normal', 'escalation']),
@@ -520,6 +582,7 @@ const reviewDetailView = Schema.Struct({
       kind: Schema.String,
       actorId: Schema.NullOr(Schema.String),
       actorName: Schema.NullOr(Schema.String),
+      reason: Schema.NullOr(Schema.String),
       comment: Schema.NullOr(Schema.String),
       suggestedPayload: configJson,
       at: Schema.String,
@@ -657,10 +720,20 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // the caller's own queue; there is nothing here to name or filter by
     // another person, so the path carries no batch and no user
     HttpApiEndpoint.get('listReviewInbox', '/assessment/review/inbox', {
-      query: Schema.Struct(pageQuery),
+      query: Schema.Struct({
+        ...pageQuery,
+        /** narrow the queue to one batch; the workbench always asks this way */
+        batchId: Schema.optional(id),
+      }),
       success: Schema.Struct({
         items: Schema.Array(reviewInboxItem),
         nextCursor: Schema.NullOr(Schema.String),
+        /**
+         * Decisions this reader recorded today, on the batch's own calendar.
+         * Zero when the queue was asked for without a batch - a day belongs
+         * to a timezone, and only a batch has one.
+         */
+        handledToday: Schema.Number,
       }),
       error: [BadRequest],
     }).middleware(Authenticated),
@@ -677,6 +750,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ instanceId: id }),
       payload: Schema.Struct({
         decision: Schema.Literals(['approve', 'reject', 'escalate', 'comment']),
+        /**
+         * One of the batch's configured reason labels, for reject and
+         * escalate. Required exactly when the batch configured a list for
+         * that act; free text stays in `comment`.
+         */
+        reason: Schema.optional(trimmedName(100)),
         comment: Schema.optional(boundedText(2000)),
         suggestedPayload: Schema.optional(configJson),
       }),
@@ -1067,9 +1146,15 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           descriptionMd: Schema.optional(Schema.NullOr(boundedText(65536))),
           materialRange: Schema.optional(materialRange),
           timezone: Schema.optional(trimmedName(63)),
+          reviewReasons: Schema.optional(
+            Schema.Struct({
+              reject: Schema.Array(trimmedName(100)).check(Schema.isMaxLength(30)),
+              escalate: Schema.Array(trimmedName(100)).check(Schema.isMaxLength(30)),
+            }),
+          ),
           reason: Schema.optional(boundedText(500)),
         },
-        ['name', 'descriptionMd', 'materialRange', 'timezone'],
+        ['name', 'descriptionMd', 'materialRange', 'timezone', 'reviewReasons'],
       ),
       success: Schema.Struct({ batch: batchView }),
       error: [

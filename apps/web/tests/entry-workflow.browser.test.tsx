@@ -46,6 +46,7 @@ const batch = (): BatchDto => ({
   name: '2026 春季综测',
   descriptionMd: null,
   manageable: false,
+  reviewReasons: { reject: [], escalate: [] },
   capabilities: { personal: true, review: true, record: true, manage: false },
   participantCount: 12,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
@@ -356,6 +357,8 @@ describe('judging a submission', () => {
     itemId: ITEM_ID,
     itemTitle: '退役复学',
     participantName: '张三',
+    businessNo: '2023011042',
+    unitName: '软件2023级2班',
     submittedAt: '2026-03-03T00:00:00.000Z',
     completedAt: null,
     revision: {
@@ -384,11 +387,25 @@ describe('judging a submission', () => {
       escalation: [],
       decisions: ['approve', 'reject', 'comment'],
     },
+    context: {
+      worth: {
+        each: '2.00',
+        maxEntries: 1,
+        groupName: '文体',
+        groupCap: '10.00',
+        materialRange: { start: '2026-03-01', end: '2026-09-01' },
+      },
+      siblings: [
+        { entryId: ENTRY_ID, summary: '入伍经历与退役时间', status: 'in_review', current: true },
+      ],
+      previous: null,
+    },
     events: [
       {
         kind: 'submitted',
         actorId: PARTICIPANT_ID,
         actorName: '张三',
+        reason: null,
         comment: null,
         suggestedPayload: null,
         at: '2026-03-03T00:00:00.000Z',
@@ -396,6 +413,25 @@ describe('judging a submission', () => {
     ],
     capabilities: { canDecide: true },
   }
+
+  const inboxRow = (over: Partial<Record<string, unknown>> = {}) => ({
+    instanceId: INSTANCE_ID,
+    entryId: ENTRY_ID,
+    batchId: BATCH_ID,
+    batchName: '2026 春季综测',
+    itemId: ITEM_ID,
+    itemTitle: '退役复学',
+    participantName: '张三',
+    businessNo: '2023011042',
+    unitId: null,
+    unitName: '软件2023级2班',
+    roundNo: 1,
+    route: 'normal' as const,
+    values: [{ label: '事项说明', value: '入伍经历与退役时间' }],
+    attachmentCount: 0,
+    submittedAt: '2026-03-03T00:00:00.000Z',
+    ...over,
+  })
 
   it('walks from the queue to one submission and approves it', async () => {
     const decided = vi.fn(() =>
@@ -406,30 +442,17 @@ describe('judging a submission', () => {
         listReviewInbox: () =>
           Effect.succeed({
             items: [
-              {
-                instanceId: INSTANCE_ID,
-                entryId: ENTRY_ID,
-                batchId: BATCH_ID,
-                batchName: '2026 春季综测',
-                itemId: ITEM_ID,
-                itemTitle: '退役复学',
-                participantName: '张三',
-                roundNo: 1,
-                submittedAt: '2026-03-03T00:00:00.000Z',
-              },
-              {
+              inboxRow(),
+              inboxRow({
                 instanceId: '88888888-8888-4888-8888-888888888888',
-                entryId: ENTRY_ID,
                 batchId: '99999999-9999-4999-8999-999999999999',
                 batchName: '别的批次',
-                itemId: ITEM_ID,
                 itemTitle: '不该出现',
                 participantName: '李四',
-                roundNo: 1,
-                submittedAt: '2026-03-03T00:00:00.000Z',
-              },
+              }),
             ],
             nextCursor: null,
+            handledToday: 0,
           }),
         getReviewInstance: () => Effect.succeed({ review }),
         decideReview: decided as never,
@@ -445,13 +468,23 @@ describe('judging a submission', () => {
     )
 
     // the queue shows this batch's work and nobody else's
-    await expect.element(page.getByText('退役复学')).toBeVisible()
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     expect(page.getByText('不该出现').elements()).toHaveLength(0)
 
-    await page.getByRole('button', { name: '去处理' }).click()
-    await expect.element(page.getByText('入伍经历与退役时间')).toBeVisible()
-    await page.getByRole('button', { name: '通过' }).click()
-    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce())
+    // the row itself opens the workbench; the filed answer stands under its
+    // own label in the reading pane
+    await page.getByRole('button', { name: /张三/ }).click()
+    await expect.element(page.getByText('入伍经历与退役时间').first()).toBeVisible()
+    // choosing is not submitting: 通过 arms, 提交决定 stages, and for five
+    // seconds the pill offers the way back before anything leaves
+    await page.getByRole('button', { name: /^通过/ }).click()
+    expect(decided).not.toHaveBeenCalled()
+    await page.getByRole('button', { name: /提交决定/ }).click()
+    await expect.element(page.getByText(/期间可撤回/)).toBeVisible()
+    expect(decided).not.toHaveBeenCalled()
+    // the run had one submission, so the closing screen is already up
+    await expect.element(page.getByText('这一组 1 件已审完')).toBeVisible()
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
     expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({
       payload: { decision: 'approve' },
     })
@@ -463,6 +496,8 @@ describe('judging a submission', () => {
     )
     screen(
       {
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
         getReviewInstance: () => Effect.succeed({ review }),
         decideReview: decided as never,
       },
@@ -475,13 +510,13 @@ describe('judging a submission', () => {
       ],
     )
 
-    await page.getByRole('button', { name: '退回', exact: true }).click()
-    const confirm = page.getByRole('dialog').getByRole('button', { name: '退回', exact: true })
+    await page.getByRole('button', { name: /退回/ }).click()
+    const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
     await expect.element(confirm).toBeDisabled()
     await page.getByLabelText('给申报人的说明').fill('证明日期与填报不符，请核对。')
     await expect.element(confirm).toBeEnabled()
     await confirm.click()
-    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
     expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({
       payload: { decision: 'reject', comment: '证明日期与填报不符，请核对。' },
     })
