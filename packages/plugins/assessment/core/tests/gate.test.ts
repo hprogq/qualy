@@ -89,7 +89,7 @@ describe('the phase gate matrix', () => {
     })
     // a code the profile names beyond the registry would still be gated by
     // profile membership; a gated code missing from an old profile is shut
-    expect(decide('assessment.entry.resubmit', ENTRY)).toEqual({
+    expect(decide('assessment.entry.appeal', ENTRY)).toEqual({
       allowed: false,
       reason: 'phase-closed',
     })
@@ -99,7 +99,7 @@ describe('the phase gate matrix', () => {
     const item = new Set(['item-a'])
     const profile = [
       'assessment.entry.create',
-      'assessment.entry.resubmit',
+      'assessment.entry.appeal',
       'assessment.review.process',
     ]
     expect(decide('assessment.entry.create', profile, { item }, { itemId: 'item-a' })).toEqual({
@@ -115,7 +115,7 @@ describe('the phase gate matrix', () => {
       reason: 'item-out-of-scope',
     })
     // resubmit anchors a publication row, item-agnostic by design
-    expect(decide('assessment.entry.resubmit', profile, { item })).toEqual({ allowed: true })
+    expect(decide('assessment.entry.appeal', profile, { item })).toEqual({ allowed: true })
     // review is never scoped: whatever the phase admits must be reviewable
     expect(decide('assessment.review.process', profile, { item })).toEqual({ allowed: true })
   })
@@ -125,7 +125,7 @@ describe('the phase gate matrix', () => {
     const profile = [
       'assessment.entry.create',
       'assessment.entry.submit',
-      'assessment.entry.resubmit',
+      'assessment.entry.appeal',
       'assessment.review.reopen',
     ]
     expect(
@@ -137,7 +137,7 @@ describe('the phase gate matrix', () => {
     // resubmit ignores the item allowance but honors this one
     expect(
       decide(
-        'assessment.entry.resubmit',
+        'assessment.entry.appeal',
         profile,
         { item: new Set(['item-a']), participant },
         { participantId: 'p-2' },

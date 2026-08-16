@@ -866,7 +866,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           'assessment.entry.withdraw',
           // gated but not opened by this stage, and ungated: one is refused
           // by the gate, the other passes it whatever the stage says
-          'assessment.entry.resubmit',
+          'assessment.entry.appeal',
           'assessment.result.view-self',
         ] as const
         const inside = yield* Effect.forEach(codes, (code) =>
@@ -2119,7 +2119,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
                 permissionProfile: [
                   'assessment.entry.create',
                   'assessment.entry.submit',
-                  'assessment.entry.resubmit',
+                  'assessment.entry.appeal',
                   'assessment.review.process',
                 ],
               }),
@@ -2245,8 +2245,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             itemId: itemA,
             participantId: p2,
           }),
-          resubmitCrossItem: yield* gate('assessment.entry.resubmit', { participantId: p1 }),
-          resubmitBlocked: yield* gate('assessment.entry.resubmit', { participantId: p2 }),
+          appealCrossItem: yield* gate('assessment.entry.appeal', { participantId: p1 }),
+          appealBlocked: yield* gate('assessment.entry.appeal', { participantId: p2 }),
           review: yield* gate('assessment.review.process'),
           itemA,
           p1,
@@ -2268,8 +2268,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
       reason: 'participant-out-of-scope',
     })
     // resubmit is item-agnostic but participant-bound; review is untouched
-    expect(decisions.resubmitCrossItem).toEqual({ allowed: true })
-    expect(decisions.resubmitBlocked).toEqual({
+    expect(decisions.appealCrossItem).toEqual({ allowed: true })
+    expect(decisions.appealBlocked).toEqual({
       allowed: false,
       reason: 'participant-out-of-scope',
     })

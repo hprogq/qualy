@@ -5232,3 +5232,26 @@ resubmit 更名。本轮不动 schema,全部零迁移。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 665 passed / 17 skipped;
 `pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
+
+### 题型称呼三分 + 申诉门更名(2026-08-16,§32.65 待办⑥)
+
+- **题型 UI 称呼改为「类型名 + 一句话说明」**(用户裁决):填报型(填写信息或上传材料后提交)/
+  确认型(无需填写内容,确认后提交)/ 自动型(无需用户操作,由系统自动计分)。说明行随选中
+  项变化,站在选择器正下方;driver 内部名保持技术化(evidence/declaration/constant),
+  UI 语言与领域实现各自清晰。
+- **`assessment.entry.resubmit` → `assessment.entry.appeal`**:这个 participant action 门的
+  是申诉,不是「修改后重新提交」(那是普通 entry.submit)。改码表(PARTICIPANT_ACTION_CODES、
+  STAFF 拷贝集、gate 家族)、两处 authorize 调用、能力读取、权限档案的 UI 文案键
+  (permission.assessment.entry.appeal「开放申诉」/hint「对已有结论的条目提出申诉」)。
+  迁移 20260816120000_entry-appeal-naming 仅改查询会读的存量值:batch_phases 的
+  permission_profile 逐元素替换、phase_templates.phases 文本替换;不碰 iam 表(该动作
+  从来不是 rbac 权限行)。**升级测试**照 CLAUDE 规则补齐:建旧形态(profile 与模板里存
+  resubmit)→ 跑迁移 → 断言两处都改名。历史迁移的测试(测 resubmit 退出 rbac 目录那两条)
+  保持旧码不动——它们测的就是历史。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 666 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
+
+**§32.65 唯一剩件:⑤ 补件机制**(SupplementRequest/Response/Attachment 三表、
+ReviewInstance 增 awaiting_supplement、受限 requirement builder、事件与能力),
+单独会话开工。

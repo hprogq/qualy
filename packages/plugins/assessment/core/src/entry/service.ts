@@ -448,7 +448,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         edit: yield* ask('assessment.entry.edit'),
         submit: yield* ask('assessment.entry.submit'),
         withdraw: yield* ask('assessment.entry.withdraw'),
-        appeal: yield* ask('assessment.entry.resubmit'),
+        appeal: yield* ask('assessment.entry.appeal'),
       } satisfies EntryGates
     })
 

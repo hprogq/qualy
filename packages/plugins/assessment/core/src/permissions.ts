@@ -87,10 +87,11 @@ export const PARTICIPANT_ACTION_CODES = [
   'assessment.entry.edit',
   'assessment.entry.submit',
   'assessment.entry.withdraw',
-  // asking for a decided entry to be looked at again is the participant's
-  // move (§32.14): a member of staff who wants another look reopens the
-  // review, which is a different code and a different act
-  'assessment.entry.resubmit',
+  // contesting a decided entry is the participant's move (§32.14, §32.65):
+  // a member of staff who wants another look reopens the review, which is a
+  // different code and a different act. Named for what it gates - the
+  // appeal - not for the resubmission that is plain entry.submit
+  'assessment.entry.appeal',
   'assessment.result.view-self',
 ] as const
 
@@ -132,7 +133,7 @@ export const PHASE_GATED_CODES = [
   'assessment.entry.withdraw',
   'assessment.entry.proxy',
   'assessment.entry.record',
-  'assessment.entry.resubmit',
+  'assessment.entry.appeal',
   'assessment.review.process',
   'assessment.review.escalate',
   'assessment.review.reopen',

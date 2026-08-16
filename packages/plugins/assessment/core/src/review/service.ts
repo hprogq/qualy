@@ -873,7 +873,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         return yield* refuse('appeal', 'not-your-entry')
       }
       const decision = yield* deps
-        .authorize(as, 'assessment.entry.resubmit', located.batchId, {
+        .authorize(as, 'assessment.entry.appeal', located.batchId, {
           participantId: located.participantId,
         })
         .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))

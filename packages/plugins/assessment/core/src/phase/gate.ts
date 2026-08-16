@@ -21,7 +21,7 @@ const CREATION_FAMILY: ReadonlySet<string> = new Set([
  * constrains all of it. resubmit is here but deliberately not in the
  * creation family: it anchors a publication row and is item-agnostic.
  */
-const ENTRY_FAMILY: ReadonlySet<string> = new Set([...CREATION_FAMILY, 'assessment.entry.resubmit'])
+const ENTRY_FAMILY: ReadonlySet<string> = new Set([...CREATION_FAMILY, 'assessment.entry.appeal'])
 
 export interface GateContext {
   readonly itemId?: string

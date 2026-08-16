@@ -1085,21 +1085,29 @@ const i18n = definePluginMessages({
       defaultMessage: 'Granted; nothing to file',
     },
     itemsKind: { id: 'assessment/items/kind', defaultMessage: 'Kind of question' },
-    itemsKindHint: {
-      id: 'assessment/items/kind-hint',
-      defaultMessage: 'Fixed once the question exists',
-    },
     itemsKindEvidence: {
       id: 'assessment/items/kind-evidence',
-      defaultMessage: 'Filed with evidence',
+      defaultMessage: 'Form-based',
+    },
+    itemsKindEvidenceHint: {
+      id: 'assessment/items/kind-evidence-hint',
+      defaultMessage: 'Fill in details or upload material, then submit',
     },
     itemsKindDeclaration: {
       id: 'assessment/items/kind-declaration',
-      defaultMessage: 'Declared in one press',
+      defaultMessage: 'Confirmation',
+    },
+    itemsKindDeclarationHint: {
+      id: 'assessment/items/kind-declaration-hint',
+      defaultMessage: 'Nothing to fill in; confirm and submit',
     },
     itemsKindConstant: {
       id: 'assessment/items/kind-constant',
-      defaultMessage: 'Granted to everybody',
+      defaultMessage: 'Automatic',
+    },
+    itemsKindConstantHint: {
+      id: 'assessment/items/kind-constant-hint',
+      defaultMessage: 'No action needed; the system scores it',
     },
     itemsDeclaredHint: {
       id: 'assessment/items/declared-hint',
@@ -2525,8 +2533,8 @@ const i18n = definePluginMessages({
     },
     // still spoken of on the phase editor: the gate opens and closes it by
     // name whoever it belongs to, and it belongs to the participant (§32.14)
-    'permission-hint.assessment.entry.resubmit': {
-      id: 'assessment/permission-hint/entry-resubmit',
+    'permission-hint.assessment.entry.appeal': {
+      id: 'assessment/permission-hint/entry-appeal',
       defaultMessage: 'Ask for a settled entry to be looked at again.',
     },
     'permission-hint.assessment.review.escalate': {
@@ -2580,8 +2588,8 @@ const i18n = definePluginMessages({
       id: 'assessment/permission/entry-record',
       defaultMessage: 'Record official findings',
     },
-    'permission.assessment.entry.resubmit': {
-      id: 'assessment/permission/entry-resubmit',
+    'permission.assessment.entry.appeal': {
+      id: 'assessment/permission/entry-appeal',
       defaultMessage: 'Ask for another look',
     },
     'permission.assessment.review.escalate': {

@@ -774,7 +774,18 @@ export function ItemConfigEditor({
                   />
                 )}
               </Field>
-              <Field label={format(m.itemsKind)} hint={format(m.itemsKindHint)}>
+              <Field
+                label={format(m.itemsKind)}
+                // the type name names, its own line explains: what the
+                // chosen kind means stands right under the choice
+                hint={format(
+                  draft.itemType === 'constant'
+                    ? m.itemsKindConstantHint
+                    : draft.itemType === 'declaration'
+                      ? m.itemsKindDeclarationHint
+                      : m.itemsKindEvidenceHint,
+                )}
+              >
                 {(id) => (
                   <Choice
                     id={id}

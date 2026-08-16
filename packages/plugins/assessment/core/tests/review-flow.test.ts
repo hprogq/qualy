@@ -892,7 +892,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             profile: [
               'assessment.entry.create',
               'assessment.entry.submit',
-              'assessment.entry.resubmit',
+              'assessment.entry.appeal',
               'assessment.review.process',
             ],
           })

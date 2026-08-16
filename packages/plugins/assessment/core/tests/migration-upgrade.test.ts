@@ -528,3 +528,66 @@ describe.runIf(postgresAvailable)('the review-routes migration', () => {
     }
   })
 })
+
+describe.runIf(postgresAvailable)('the entry-appeal-naming migration', () => {
+  const RENAME = '20260816120000_entry-appeal-naming.sql'
+
+  it('moves the appeal gate out of the resubmit name wherever a phase stored it', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, RENAME))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-appeal-upgrade-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file !== RENAME) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('appeal-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('appeal-upg', 'Upgrade') returning id`,
+        )
+      ).id
+      const batch = (
+        await db.row<{ id: string }>(
+          `insert into assessment_batches (tenant_id, name, material_range)
+           values ($1, 'Old profile', daterange('2026-03-01', '2026-09-01')) returning id`,
+          [tenant],
+        )
+      ).id
+      await db.row(
+        `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name, permission_profile)
+         values ($1, $2, 0, 'appeal-window', 'Appeals',
+                 '["assessment.entry.resubmit", "assessment.review.process"]'::jsonb) returning id`,
+        [tenant, batch],
+      )
+      await db.row(
+        `insert into phase_templates (tenant_id, name, phases)
+         values ($1, 'With appeals',
+                 '[{"phaseKey": "appeal", "displayName": "Appeals",
+                    "permissionProfile": ["assessment.entry.resubmit"]}]'::jsonb) returning id`,
+        [tenant],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const phase = await db.row<{ permission_profile: string[] }>(
+        `select permission_profile from batch_phases where tenant_id = $1`,
+        [tenant],
+      )
+      expect(phase.permission_profile).toEqual([
+        'assessment.entry.appeal',
+        'assessment.review.process',
+      ])
+      const template = await db.row<{ phases: { permissionProfile: string[] }[] }>(
+        `select phases from phase_templates where tenant_id = $1`,
+        [tenant],
+      )
+      expect(template.phases[0]!.permissionProfile).toEqual(['assessment.entry.appeal'])
+    } finally {
+      await db.dispose()
+    }
+  })
+})
