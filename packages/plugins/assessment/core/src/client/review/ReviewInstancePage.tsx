@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDownIcon, ChevronUpIcon, InfoIcon, TriangleAlertIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  InfoIcon,
+  Maximize2Icon,
+  TriangleAlertIcon,
+} from 'lucide-react'
 import {
   useApi,
   useApiQuery,
@@ -17,7 +23,14 @@ import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@qualy/ui/input-group'
 import { Kbd } from '@qualy/ui/kbd'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -29,7 +42,14 @@ import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 import { Basis } from '../entry/Basis.tsx'
 import { entryStatusMessage, fieldsOf, lastDay, trimAmount, type EntryDto } from '../entry/model.ts'
 import { reviewEventMessage, reviewOutcomeMessage } from './events.ts'
-import { readRunScope, runRows, timeLabel, clockLabel, type InboxItemDto } from './model.ts'
+import {
+  readRunScope,
+  runRows,
+  summaryOf,
+  timeLabel,
+  clockLabel,
+  type InboxItemDto,
+} from './model.ts'
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
 import { RejectDialog, EscalateDialog, type WordedDecision } from './decision-dialogs.tsx'
@@ -134,7 +154,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [word, setWord] = useState('')
   const [dialog, setDialog] = useState<'reject' | 'escalate' | null>(null)
   const [keysOpen, setKeysOpen] = useState(false)
-  const wordRef = useRef<HTMLTextAreaElement | null>(null)
+  const [writing, setWriting] = useState(false)
+  const [openSibling, setOpenSibling] = useState<string | null>(null)
+  const wordRef = useRef<HTMLInputElement | null>(null)
 
   /** stage a round-moving decision, log it, and put the next one on screen */
   const stageDecision = (decision: 'approve' | 'reject' | 'escalate', worded?: WordedDecision) => {
@@ -240,6 +262,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
         undoStaged()
         return
       }
+      // ⌘C, ⌃V and friends belong to the browser: only bare keys choose
+      if (mod || event.altKey) return
       const typing =
         event.target instanceof HTMLElement &&
         event.target.closest('input, textarea, [contenteditable]') !== null
@@ -372,7 +396,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 />
                 <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_19rem]">
                   <MainColumn review={review} />
-                  <ContextRail review={review} />
+                  <ContextRail review={review} onOpenSibling={setOpenSibling} />
                 </div>
                 {review.capabilities.canDecide && decisions.length > 0 && (
                   <DecisionBar
@@ -385,6 +409,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     onWord={setWord}
                     onArm={setArmed}
                     onDialog={setDialog}
+                    onExpand={() => setWriting(true)}
                     onSubmit={submitArmed}
                   />
                 )}
@@ -402,6 +427,21 @@ function Workbench({ batch }: { batch: BatchDto }) {
           <UndoPill staged={deferred.pending} deadline={deferred.deadline} onUndo={undoStaged} />
         )}
         {keysOpen && <KeysPanel onClose={() => setKeysOpen(false)} />}
+        {writing && (
+          <WritingBox
+            value={word}
+            advising={review?.chain.route === 'escalation'}
+            onChange={setWord}
+            onClose={() => setWriting(false)}
+          />
+        )}
+        {openSibling !== null && review?.context != null && (
+          <SiblingSheet
+            itemTitle={review.itemTitle}
+            sibling={review.context.siblings.find((one) => one.entryId === openSibling)!}
+            onClose={() => setOpenSibling(null)}
+          />
+        )}
 
         {dialog === 'reject' && review !== undefined && (
           <RejectDialog
@@ -778,15 +818,12 @@ function MainColumn({ review }: { review: ReviewDto }) {
               {format(m.reviewFilesKeys)}
             </span>
           </div>
-          <ul className="flex flex-wrap gap-3">
+          {/* drawn large: reading the evidence is what this screen is for */}
+          <ul className="flex flex-wrap gap-4">
             {review.revision.attachments.map((attachment, index) => (
-              <li
-                key={attachment.attachmentId}
-                data-file-slot={index + 1}
-                className="flex items-start gap-1.5"
-              >
-                {index < 9 && <Kbd className="mt-1">{index + 1}</Kbd>}
-                <AttachmentLink attachmentId={attachment.attachmentId} />
+              <li key={attachment.attachmentId} data-file-slot={index + 1} className="relative">
+                {index < 9 && <Kbd className="absolute top-1.5 left-1.5 z-10">{index + 1}</Kbd>}
+                <AttachmentLink attachmentId={attachment.attachmentId} variant="preview" />
               </li>
             ))}
           </ul>
@@ -804,7 +841,13 @@ function MainColumn({ review }: { review: ReviewDto }) {
 }
 
 /** what stands beside the filing: the terms it is judged under */
-function ContextRail({ review }: { review: ReviewDto }) {
+function ContextRail({
+  review,
+  onOpenSibling,
+}: {
+  review: ReviewDto
+  onOpenSibling: (entryId: string) => void
+}) {
   const { format, locale } = useI18n()
   const listed = useMemo(
     () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
@@ -864,23 +907,39 @@ function ContextRail({ review }: { review: ReviewDto }) {
               {format(m.reviewSiblingsCount, { count: context.siblings.length })}
             </span>
           </div>
-          <ul className="flex flex-col gap-1.5">
+          <ul className="flex flex-col gap-0.5">
             {context.siblings.map((sibling) => (
-              <li key={sibling.entryId} className="flex items-center gap-2 text-sm">
-                <span
-                  aria-hidden
-                  className={cn(
-                    'size-1.5 shrink-0 rounded-full',
-                    sibling.current ? 'bg-foreground' : 'bg-muted-foreground/40',
-                  )}
-                />
-                <span className={cn('min-w-0 flex-1 truncate', sibling.current && 'font-medium')}>
-                  {sibling.current && `${format(m.reviewSiblingThis)} · `}
-                  {sibling.summary === '' ? review.itemTitle : sibling.summary}
-                </span>
-                <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                  {format(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther)}
-                </span>
+              <li key={sibling.entryId}>
+                {/* every claim opens: reading one against another is how a
+                    duplicate is caught, and the aside is where they meet */}
+                <button
+                  type="button"
+                  onClick={() => onOpenSibling(sibling.entryId)}
+                  className="-mx-1.5 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm transition-colors hover:bg-accent/60"
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-1.5 shrink-0 rounded-full',
+                      sibling.current ? 'bg-foreground' : 'bg-muted-foreground/40',
+                    )}
+                  />
+                  <span className={cn('min-w-0 flex-1 truncate', sibling.current && 'font-medium')}>
+                    {sibling.current && (
+                      <span className="pr-1.5 text-muted-foreground">
+                        {format(m.reviewSiblingThis)}
+                      </span>
+                    )}
+                    {summaryOf(sibling.values) === ''
+                      ? review.itemTitle
+                      : summaryOf(sibling.values)}
+                  </span>
+                  <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                    {format(
+                      entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther,
+                    )}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
@@ -964,17 +1023,19 @@ function DecisionBar({
   onWord,
   onArm,
   onDialog,
+  onExpand,
   onSubmit,
 }: {
   review: ReviewDto
   decisions: readonly string[]
   armed: 'approve' | 'comment' | null
   word: string
-  wordRef: RefObject<HTMLTextAreaElement | null>
+  wordRef: RefObject<HTMLInputElement | null>
   busy: boolean
   onWord: (next: string) => void
   onArm: (next: 'approve' | 'comment' | null) => void
   onDialog: (next: 'reject' | 'escalate') => void
+  onExpand: () => void
   onSubmit: () => void
 }) {
   const { format } = useI18n()
@@ -982,16 +1043,27 @@ function DecisionBar({
   return (
     <footer className="flex flex-col gap-2 border-t px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Textarea
-          ref={wordRef}
-          rows={1}
-          value={word}
-          placeholder={format(
-            advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
-          )}
-          className="h-9 min-h-9 min-w-48 flex-1 resize-none py-2"
-          onChange={(event) => onWord(event.target.value)}
-        />
+        {/* one line at the bar, because the bar is one line; anything longer
+            is written in a box that is actually a box */}
+        <InputGroup className="min-w-48 flex-1">
+          <InputGroupInput
+            ref={wordRef}
+            value={word}
+            placeholder={format(
+              advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
+            )}
+            onChange={(event) => onWord(event.target.value)}
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              size="icon-xs"
+              aria-label={format(m.reviewWriteMore)}
+              onClick={onExpand}
+            >
+              <Maximize2Icon aria-hidden />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
         {decisions.includes('comment') && (
           <Button
             variant={armed === 'comment' ? 'secondary' : 'outline'}
@@ -1009,34 +1081,128 @@ function DecisionBar({
         )}
         {decisions.includes('reject') && (
           <Button
-            className="bg-destructive text-white hover:bg-destructive/90 [&_kbd]:bg-white/20 [&_kbd]:text-white"
+            variant="outline"
+            className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
             onClick={() => onDialog('reject')}
           >
             {format(m.reviewReject)}
-            <Kbd>R</Kbd>
+            <Kbd className="bg-rose-500/10 text-rose-700 dark:text-rose-300">R</Kbd>
           </Button>
         )}
         {decisions.includes('approve') && (
           <Button
+            variant="outline"
             className={cn(
-              'bg-emerald-600 text-white hover:bg-emerald-600/90 [&_kbd]:bg-white/20 [&_kbd]:text-white',
-              armed === 'approve' && 'ring-2 ring-emerald-600/40',
+              'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
+              armed === 'approve' && 'ring-2 ring-emerald-500/40',
             )}
             onClick={() => onArm(armed === 'approve' ? null : 'approve')}
           >
             {format(m.reviewApprove)}
-            <Kbd>A</Kbd>
+            <Kbd className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">A</Kbd>
           </Button>
         )}
-        <Button disabled={busy || armed === null} onClick={onSubmit}>
+        {/* the one solid on the bar: choosing is soft, committing is not */}
+        <Button
+          disabled={busy || armed === null}
+          className="bg-primary/90 hover:bg-primary"
+          onClick={onSubmit}
+        >
           {format(m.reviewSubmitDecision)}
-          <Kbd>⌘↵</Kbd>
+          <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
         {format(advising ? m.reviewSubmitHintAdvise : m.reviewSubmitHint)}
       </p>
     </footer>
+  )
+}
+
+/**
+ * A box for a word too long for the bar.
+ *
+ * The bar holds one line because a bar is one line; a sentence that outgrows
+ * it should not make the row of buttons jump, so it gets a real box instead.
+ * The text is the same text either way.
+ */
+function WritingBox({
+  value,
+  advising,
+  onChange,
+  onClose,
+}: {
+  value: string
+  advising: boolean
+  onChange: (next: string) => void
+  onClose: () => void
+}) {
+  const { format } = useI18n()
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-sm">{format(m.reviewComment)}</DialogTitle>
+        </DialogHeader>
+        <Textarea
+          rows={8}
+          value={value}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus
+          placeholder={format(
+            advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
+          )}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault()
+              onClose()
+            }
+          }}
+        />
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={onClose}>
+            {format(commonMessages.close)}
+            <Kbd>Esc</Kbd>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** one of the participant's other claims on this question, read in full */
+function SiblingSheet({
+  itemTitle,
+  sibling,
+  onClose,
+}: {
+  itemTitle: string
+  sibling: NonNullable<ReviewDto['context']>['siblings'][number]
+  onClose: () => void
+}) {
+  const { format } = useI18n()
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-baseline gap-2 text-sm">
+            {itemTitle}
+            <span className="text-xs font-normal text-muted-foreground">
+              {format(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther)}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+        <dl className="flex flex-col gap-2">
+          {sibling.values.map((pair) => (
+            <div key={pair.label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+              <dt className="text-sm whitespace-nowrap text-muted-foreground">{pair.label}</dt>
+              <dd className="min-w-0 text-sm">{pair.value === '' ? '—' : pair.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -1064,9 +1230,8 @@ function UndoPill({
       <span className="flex size-6 items-center justify-center rounded-full border text-xs tabular-nums">
         {left}
       </span>
-      <p className="text-sm whitespace-nowrap">
+      <p className="flex items-baseline gap-2 text-sm whitespace-nowrap">
         <span className="font-semibold">{staged.participantName}</span>
-        {' · '}
         {format(DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.reviewApprove)}
       </p>
       <p className="text-xs whitespace-nowrap text-muted-foreground">
@@ -1211,7 +1376,8 @@ function DoneScreen({
                     )}
                   />
                   <span className="min-w-0 flex-1 truncate">
-                    {entry.participantName} · {entry.itemTitle}
+                    {entry.participantName}
+                    <span className="pl-2 text-muted-foreground">{entry.itemTitle}</span>
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {format(DECISION_LABEL[entry.decision])}

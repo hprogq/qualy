@@ -1107,7 +1107,7 @@ const i18n = definePluginMessages({
     reviewFilesCount: { id: 'assessment/review/files-count', defaultMessage: '{count} files' },
     reviewEmptyRefresh: {
       id: 'assessment/review/empty-refresh',
-      defaultMessage: 'New submissions appear here; this list refreshes every 30 seconds.',
+      defaultMessage: 'New submissions appear here on their own.',
     },
     reviewNoStandingHint: {
       id: 'assessment/review/no-standing-hint',
@@ -1117,7 +1117,7 @@ const i18n = definePluginMessages({
     reviewQueueTitle: { id: 'assessment/review/queue-title', defaultMessage: 'Queue' },
     reviewRunPosition: {
       id: 'assessment/review/run-position',
-      defaultMessage: '{at} of {count} in this run',
+      defaultMessage: '{at}/{count}',
     },
     reviewRunExit: { id: 'assessment/review/run-exit', defaultMessage: 'Leave the run' },
     reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Said so far' },
@@ -1127,7 +1127,7 @@ const i18n = definePluginMessages({
     },
     reviewPreviousHint: {
       id: 'assessment/review/previous-hint',
-      defaultMessage: 'This submission came after it; check the asked-for changes were made.',
+      defaultMessage: 'Check the asked-for changes were made.',
     },
     reviewPayloadVersion: {
       id: 'assessment/review/payload-version',
@@ -1140,7 +1140,7 @@ const i18n = definePluginMessages({
     reviewInsight: { id: 'assessment/review/insight', defaultMessage: 'Smart review' },
     reviewInsightSoon: {
       id: 'assessment/review/insight-soon',
-      defaultMessage: 'Hints will appear here, pointing at what deserves a human look.',
+      defaultMessage: 'No hints yet.',
     },
     reviewAboutTitle: { id: 'assessment/review/about-title', defaultMessage: 'This question' },
     reviewAboutEach: {
@@ -1167,15 +1167,15 @@ const i18n = definePluginMessages({
     reviewSiblingThis: { id: 'assessment/review/sibling-this', defaultMessage: 'This one' },
     reviewSiblingsFull: {
       id: 'assessment/review/siblings-full',
-      defaultMessage: 'Approving this one reaches their limit on this question.',
+      defaultMessage: 'Approving reaches their limit on this question.',
     },
     reviewCommentPlaceholder: {
       id: 'assessment/review/comment-placeholder',
-      defaultMessage: 'Say why; required to send back or escalate',
+      defaultMessage: 'Say why',
     },
     reviewCommentPlaceholderAdvise: {
       id: 'assessment/review/comment-placeholder-advise',
-      defaultMessage: 'Your opinion; it travels to the deciding step',
+      defaultMessage: 'Your opinion, for the step that decides',
     },
     reviewActionNote: { id: 'assessment/review/action-note', defaultMessage: 'Note' },
     reviewSubmitDecision: {
@@ -1184,18 +1184,19 @@ const i18n = definePluginMessages({
     },
     reviewSubmitHint: {
       id: 'assessment/review/submit-hint',
-      defaultMessage:
-        'Approval counts it in; sending back lets them revise; escalation hands it over.',
+      defaultMessage: 'Five seconds to take it back after submitting.',
     },
     reviewSubmitHintAdvise: {
       id: 'assessment/review/submit-hint-advise',
-      defaultMessage: 'Your opinion travels with the round; nothing moves.',
+      defaultMessage: 'This step gives an opinion, not a decision.',
     },
     reviewPickDecision: {
       id: 'assessment/review/pick-decision',
       defaultMessage: 'Choose a decision first.',
     },
     reviewUndo: { id: 'assessment/review/undo', defaultMessage: 'Undo' },
+    reviewWriteMore: { id: 'assessment/review/write-more', defaultMessage: 'Write in a box' },
+    reviewSiblingOpen: { id: 'assessment/review/sibling-open', defaultMessage: 'Their claim' },
     reviewFirstOne: {
       id: 'assessment/review/first-one',
       defaultMessage: 'Already at the first one',
@@ -1214,7 +1215,7 @@ const i18n = definePluginMessages({
     },
     reviewEscBannerBody: {
       id: 'assessment/review/esc-banner-body',
-      defaultMessage: 'The last step decides; what you say travels with the round.',
+      defaultMessage: 'The last step decides; your opinion goes with it.',
     },
     // the keyboard panel
     reviewKeysTitle: { id: 'assessment/review/keys-title', defaultMessage: 'Keyboard' },
@@ -1224,8 +1225,7 @@ const i18n = definePluginMessages({
     },
     reviewKeysFoot: {
       id: 'assessment/review/keys-foot',
-      defaultMessage:
-        'Letters only choose; \u2318\u21b5 submits. While typing, letters go to the text.',
+      defaultMessage: 'Letters choose, \u2318\u21b5 submits. While typing, letters are text.',
     },
     reviewKeySubmit: {
       id: 'assessment/review/key-submit',
@@ -1272,7 +1272,7 @@ const i18n = definePluginMessages({
     },
     reviewDoneFinal: {
       id: 'assessment/review/done-final',
-      defaultMessage: 'Submitted for good. To correct one, say so on its record.',
+      defaultMessage: 'Submitted; no longer undoable.',
     },
     // the two dialogs that carry a word
     reviewRejectTitle: {
@@ -1281,12 +1281,12 @@ const i18n = definePluginMessages({
     },
     reviewRejectSubtitle: {
       id: 'assessment/review/reject-subtitle',
-      defaultMessage: '{item}, version {no}. They can revise and resubmit.',
+      defaultMessage: '{item}, version {no}',
     },
     reviewReasonLabel: { id: 'assessment/review/reason-label', defaultMessage: 'Reason' },
     reviewReasonHint: {
       id: 'assessment/review/reason-hint',
-      defaultMessage: 'Pick one; it goes on the record',
+      defaultMessage: 'Pick one',
     },
     reviewSuggestField: { id: 'assessment/review/suggest-field', defaultMessage: 'Field' },
     reviewSuggestTheirs: { id: 'assessment/review/suggest-theirs', defaultMessage: 'As filed' },
@@ -1294,11 +1294,11 @@ const i18n = definePluginMessages({
     reviewSuggestKeep: { id: 'assessment/review/suggest-keep', defaultMessage: 'Unchanged' },
     reviewSuggestHint: {
       id: 'assessment/review/suggest-hint',
-      defaultMessage: 'A suggestion only; theirs to take or not.',
+      defaultMessage: 'They may take it or leave it.',
     },
     reviewRejectFoot: {
       id: 'assessment/review/reject-foot',
-      defaultMessage: 'Sending back ends this round; a resubmission starts a new one.',
+      defaultMessage: 'They will see what you write here.',
     },
     reviewRejectConfirm: {
       id: 'assessment/review/reject-confirm',
@@ -1306,7 +1306,7 @@ const i18n = definePluginMessages({
     },
     reviewEscalateSubtitle: {
       id: 'assessment/review/escalate-subtitle',
-      defaultMessage: '{name} \u00b7 {item}. The escalation route concludes it from here.',
+      defaultMessage: '{name}\u3000{item}',
     },
     reviewEscalateCommentLabel: {
       id: 'assessment/review/escalate-comment-label',
@@ -1327,13 +1327,13 @@ const i18n = definePluginMessages({
     },
     reviewEscalateFoot: {
       id: 'assessment/review/escalate-foot',
-      defaultMessage: 'It leaves your queue once submitted.',
+      defaultMessage: 'It leaves your queue.',
     },
     // the reason lists, configured with the batch
     settingsReasons: { id: 'assessment/settings/reasons', defaultMessage: 'Review reasons' },
     settingsReasonsHint: {
       id: 'assessment/settings/reasons-hint',
-      defaultMessage: 'The labels a reviewer picks from when sending back or escalating.',
+      defaultMessage: 'What a reviewer picks from when sending back or escalating.',
     },
     settingsRejectReasons: {
       id: 'assessment/settings/reject-reasons',
@@ -1350,7 +1350,7 @@ const i18n = definePluginMessages({
     settingsReasonAdd: { id: 'assessment/settings/reason-add', defaultMessage: 'Add' },
     settingsReasonsEmpty: {
       id: 'assessment/settings/reasons-empty',
-      defaultMessage: 'With none configured, a written note is all that is asked.',
+      defaultMessage: 'Leave empty to ask only for a written note.',
     },
     reviewOnEscalationRoute: {
       id: 'assessment/review/on-escalation-route',

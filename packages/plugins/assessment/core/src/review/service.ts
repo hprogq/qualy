@@ -158,7 +158,7 @@ export interface ReviewContextView {
   }
   readonly siblings: readonly {
     readonly entryId: string
-    readonly summary: string
+    readonly values: readonly { readonly label: string; readonly value: string }[]
     readonly status: string
     readonly current: boolean
   }[]
@@ -425,10 +425,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           },
           siblings: others.map((one) => ({
             entryId: one.entryId,
-            summary: summaryValues(one.formConfig, one.payload, 2)
-              .map((pair) => pair.value)
-              .filter((value) => value !== '')
-              .join(' · '),
+            values: summaryValues(one.formConfig, one.payload),
             status: one.status,
             current: one.entryId === row.entryId,
           })),

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -6,7 +6,7 @@ import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { cn } from '@qualy/ui/cn'
 import { Input } from '@qualy/ui/input'
-import { Kbd } from '@qualy/ui/kbd'
+import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Textarea } from '@qualy/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -94,6 +94,37 @@ export function RejectDialog({
   const [suggested, setSuggested] = useState<Record<string, string>>({})
   const ready = comment.trim() !== '' && (reasons.length === 0 || reason !== '')
 
+  // The dialog opens with the cursor in the box, so its keys are read from
+  // the document rather than from the panel - a handler on the panel hears
+  // nothing once focus moves anywhere else, and heard the letter twice while
+  // it was inside. ⌥ carries them through while writing; bare keys work
+  // whenever the cursor is not in a field.
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      const typing =
+        event.target instanceof HTMLElement && event.target.closest('input, textarea') !== null
+      const reachable = event.altKey || !typing
+      if (event.metaKey || event.ctrlKey) return
+      if (!reachable) return
+      if (event.key === 's' || event.key === 'S' || event.code === 'KeyS') {
+        event.preventDefault()
+        setSuggesting((on) => !on)
+        return
+      }
+      const digit = event.code.startsWith('Digit') ? Number(event.code.slice(5)) : Number(event.key)
+      if (Number.isInteger(digit) && digit >= 1 && digit <= fields.length) {
+        event.preventDefault()
+        setSuggesting(true)
+        // the row has to exist before it can take the cursor
+        requestAnimationFrame(() =>
+          document.querySelector<HTMLInputElement>(`[data-suggest-slot="${digit}"]`)?.focus(),
+        )
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [fields.length])
+
   const confirm = () => {
     if (!ready) return
     const changes = Object.fromEntries(
@@ -126,9 +157,13 @@ export function RejectDialog({
             {format(commonMessages.cancel)}
             <Kbd>Esc</Kbd>
           </Button>
-          <Button variant="destructive" disabled={!ready} onClick={confirm}>
+          <Button
+            disabled={!ready}
+            className="bg-rose-600/90 text-white hover:bg-rose-600 dark:bg-rose-700/80 dark:hover:bg-rose-700"
+            onClick={confirm}
+          >
             {format(m.reviewRejectConfirm)}
-            <Kbd>⌘↵</Kbd>
+            <Kbd className="bg-white/20 text-white">⌘↵</Kbd>
           </Button>
         </div>
       }
@@ -187,7 +222,10 @@ export function RejectDialog({
                 onCheckedChange={(next) => setSuggesting(next === true)}
               />
               {format(m.reviewSuggestToggle)}
-              <Kbd>S</Kbd>
+              <KbdGroup>
+                <Kbd>⌥</Kbd>
+                <Kbd>S</Kbd>
+              </KbdGroup>
             </label>
             {suggesting && (
               <div className="grid grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-4 gap-y-2 border-t pt-3">
@@ -323,9 +361,9 @@ export function EscalateDialog({
             {format(commonMessages.cancel)}
             <Kbd>Esc</Kbd>
           </Button>
-          <Button disabled={!ready} onClick={confirm}>
+          <Button disabled={!ready} className="bg-primary/90 hover:bg-primary" onClick={confirm}>
             {format(m.reviewEscalate)}
-            <Kbd>⌘↵</Kbd>
+            <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
           </Button>
         </div>
       }

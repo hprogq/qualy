@@ -244,6 +244,9 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(context.worth.materialRange).toEqual({ start: '2026-03-01', end: '2026-09-01' })
     expect(context.siblings).toHaveLength(1)
     expect(context.siblings[0]!.current).toBe(true)
+    // a sibling carries its own answers, so a duplicate can be read against
+    // this one without a second endpoint the reviewer has no standing for
+    expect(Array.isArray(context.siblings[0]!.values)).toBe(true)
     // identity travels with the round for the header that names the person
     expect(result.round2.unitName).toBe('Class A1')
   })

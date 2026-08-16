@@ -131,12 +131,20 @@ export const matchesSearch = (row: InboxItemDto, needle: string): boolean => {
   )
 }
 
-/** what the row's answers read as on one line */
-export const rowSummary = (row: InboxItemDto): string =>
-  row.values
+/**
+ * A row's answers on one line. Separated by an ideographic space rather than
+ * a glyph: a punctuation mark between two field values reads as part of one
+ * of them.
+ */
+export const summaryOf = (
+  values: readonly { readonly label: string; readonly value: string }[],
+): string =>
+  values
     .map((pair) => pair.value)
     .filter((value) => value !== '')
-    .join(' · ')
+    .join('\u3000')
+
+export const rowSummary = (row: InboxItemDto): string => summaryOf(row.values)
 
 /** when a moment happened, in the reader's clock, without seconds */
 export const timeLabel = (iso: string): string =>

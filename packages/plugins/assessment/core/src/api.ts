@@ -551,7 +551,8 @@ const reviewDetailView = Schema.Struct({
       siblings: Schema.Array(
         Schema.Struct({
           entryId: Schema.String,
-          summary: Schema.String,
+          /** its own answers, for reading one against another */
+          values: Schema.Array(Schema.Struct({ label: Schema.String, value: Schema.String })),
           status: Schema.String,
           current: Schema.Boolean,
         }),

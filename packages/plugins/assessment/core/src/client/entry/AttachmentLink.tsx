@@ -30,17 +30,19 @@ import {
 // paint: each one waits for the scroll that reaches it, decodes off the main
 // thread, and holds its box from the start so nothing moves when it lands.
 //
-// Two sizes for two places. The tile carries a thumbnail and belongs where a
-// file is being worked with - the filing form. The line is one row of icon
-// and name, for the claim cards: a dozen tiles in a compact list would be
-// the list of somebody's files with a claim attached.
+// Three sizes for three places, one component so a file behaves the same in
+// all of them. `line` is icon and name, for a claim card - a dozen tiles in a
+// compact list would be somebody's file drawer with a claim attached. `tile`
+// carries a small thumbnail beside the name, for the filing form, where a
+// file is being worked with. `preview` draws the file large, for the review
+// screen, whose whole job is looking at what was submitted.
 
 export function AttachmentLink({
   attachmentId,
-  compact = false,
+  variant = 'tile',
 }: {
   attachmentId: string
-  compact?: boolean
+  variant?: 'line' | 'tile' | 'preview'
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
@@ -64,7 +66,7 @@ export function AttachmentLink({
     />
   )
 
-  if (compact) {
+  if (variant === 'line') {
     return (
       <PhotoProvider maskOpacity={0.85}>
         <span className="flex min-w-0 items-center gap-1.5">
@@ -113,6 +115,54 @@ export function AttachmentLink({
             </a>
           )}
         </span>
+      </PhotoProvider>
+    )
+  }
+
+  if (variant === 'preview') {
+    return (
+      <PhotoProvider maskOpacity={0.85}>
+        <figure className="flex w-56 flex-col gap-2">
+          <div className="flex h-36 items-center justify-center overflow-hidden rounded-xl border bg-muted/60 text-muted-foreground">
+            {isImage ? (
+              <PhotoView src={href}>
+                <img
+                  src={href}
+                  alt={name}
+                  loading="lazy"
+                  decoding="async"
+                  className="size-full cursor-zoom-in object-cover"
+                />
+              </PhotoView>
+            ) : (
+              <button
+                type="button"
+                disabled={!isDocument}
+                onClick={() => setReading(true)}
+                className="flex size-full flex-col items-center justify-center gap-1.5 enabled:cursor-pointer"
+              >
+                <FileTextIcon aria-hidden className="size-6" />
+                <span className="sr-only">{name}</span>
+              </button>
+            )}
+          </div>
+          <figcaption className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-xs" title={name}>
+              {name}
+            </span>
+            <a
+              href={href}
+              download={data?.filename}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <DownloadIcon aria-hidden className="size-3.5" />
+              <span className="sr-only">{name}</span>
+            </a>
+          </figcaption>
+        </figure>
+        {lightbox}
       </PhotoProvider>
     )
   }

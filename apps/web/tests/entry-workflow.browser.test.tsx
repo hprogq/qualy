@@ -396,7 +396,12 @@ describe('judging a submission', () => {
         materialRange: { start: '2026-03-01', end: '2026-09-01' },
       },
       siblings: [
-        { entryId: ENTRY_ID, summary: '入伍经历与退役时间', status: 'in_review', current: true },
+        {
+          entryId: ENTRY_ID,
+          values: [{ label: '事项说明', value: '入伍经历与退役时间' }],
+          status: 'in_review',
+          current: true,
+        },
       ],
       previous: null,
     },
