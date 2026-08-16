@@ -5079,3 +5079,26 @@ prettier 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 657 passed / 17 skipped;
 `pnpm test:browser` 55 passed;prettier 全绿。
+
+### 审核工作台:动画与筛选行对齐(2026-08-16)
+
+动画只加在「动作本身就是意思」的地方,全部经 `useReducedMotion`——减少动效时事实一条不少,
+只是不扫过去。三个新原语进 `@qualy/ui/reveal`(motion 只此一处依赖,不进第二个包免得版本分裂):
+
+- `CountdownRing`:按真实截止时间跑的倒计时环。撤回窗口本来只有一个数字,读到才知道;
+  环让它一眼可见,而且是同一个事实画两遍,所以跑的是真 deadline 而不是固定循环动画。
+- `DoneMark`:先描一圈再落一笔勾。清空队列是这份工作的目的,一个「打开页面时就在那儿」的
+  静态勾说明不了任何事;画出来才是「这是你做的」。用在一组审完与「已全部处理完」空态。
+- `Stagger`:分先后到场,给「先看标记、再看它是什么意思、再看下一步做什么」的屏。
+- `Appear`:原地来去的东西(撤回条、对照出现的「上一版」行),带 AnimatePresence,
+  否则「忽然不在了」读起来像故障。
+
+接入点:撤回条进出 + 真倒计时环;连审换下一件用 `Drill move="next"`(是走到下一件,不是换了个页);
+一组审完与空态用 DoneMark + Stagger;开启对照时每个改动字段的「上一版」行淡入。
+
+**筛选行对齐**:「按题目/按提交时间/按参评人」的 TabsList 是 h-9,而两个筛选与搜索框写死 h-8,
+所以整行差一像素级的错位。三者统一到默认 h-9;两个筛选从原生 `NativeSelect` 换成 shadcn
+`Select`(radix 不收空字符串值,「不筛选」用 `all` 作它自己的名字)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 657 passed / 17 skipped;
+`pnpm test:browser` 55 passed;`pnpm build` 通过;prettier 全绿。
