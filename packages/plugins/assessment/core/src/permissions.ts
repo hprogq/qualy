@@ -115,7 +115,7 @@ export const PARTICIPANT_ACTION_CODES = [
  */
 export const REVIEW_ACTION_CODES = ['assessment.review.escalate'] as const
 
-export const STAFF_CODES = [
+export const BATCH_STAFF_CODES = [
   'assessment.entry.proxy',
   'assessment.entry.record',
   'assessment.review.process',
@@ -148,7 +148,7 @@ const declared = new Set<string>(permissions.map((definition) => definition.code
 
 // Staff capabilities are permissions and have to be in the catalog: a batch
 // accepts them from roles, and a role can only carry what the catalog knows.
-for (const code of STAFF_CODES) {
+for (const code of BATCH_STAFF_CODES) {
   if (!declared.has(code)) {
     throw new Error(`assessment: ${code} is not a declared permission`)
   }

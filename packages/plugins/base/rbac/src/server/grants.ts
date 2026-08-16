@@ -22,7 +22,6 @@ import {
   db,
   admitsOrgType,
   admitsUserType,
-  insertScopedGrant,
   lockTenant,
   orgNodeExists,
   rolePermissionCodes,
@@ -326,8 +325,29 @@ const insertGrant = (input: {
   roleId: string
   orgNodeId: string | null
   coverage: 'self' | 'subtree' | null
+  resource: { namespace: string; type: string; id: string } | null
+  validUntil: number | null
+  createdBy: string
 }) =>
-  db.query((k) => k.insertInto('RoleGrant').values(input).returning('id').executeTakeFirstOrThrow())
+  db.query((k) =>
+    k
+      .insertInto('RoleGrant')
+      .values({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        roleId: input.roleId,
+        orgNodeId: input.orgNodeId,
+        coverage: input.coverage,
+        resourceNamespace: input.resource?.namespace ?? null,
+        resourceType: input.resource?.type ?? null,
+        resourceId: input.resource?.id ?? null,
+        validUntil:
+          input.validUntil === null ? null : sql`to_timestamp(${input.validUntil} / 1000.0)`,
+        createdBy: input.createdBy,
+      } as never)
+      .returning('id')
+      .executeTakeFirstOrThrow(),
+  )
 
 const deleteGrant = (tenantId: string, grantId: string) =>
   db.query((k) =>
@@ -614,6 +634,73 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     return offered
   })
 
+  /**
+   * The one road to a RoleGrant, whether or not it is confined to a resource.
+   *
+   * Every question is asked here, in order: nobody appoints themselves; the
+   * actor administers grants of that reach there; the administrator role's
+   * own reservation (first among the role questions, because its refusal has
+   * the more specific sentence and a rule row must not shadow it); the
+   * office is theirs to appoint; the role admits this person and this
+   * anchor; and its authority does not exceed the actor's own. A resource
+   * changes none of it - confining authority to one object is not a shorter
+   * route to holding it - so the org side and every consumer share this one
+   * function, and cannot drift apart question by question.
+   *
+   * All of it inside the tenant lock: checked outside it, the role could be
+   * disabled or the person re-typed in the gap and the insert would still
+   * go through.
+   */
+  const grantRole = Effect.fn('Rbac.grants.grantRole')(function* (
+    tenantId: string,
+    input: {
+      userId: string
+      roleId: string
+      target: GrantTarget
+      resource?: { namespace: string; type: string; id: string }
+      validUntil?: number
+    },
+    actor: Principal,
+  ) {
+    // The translation sits here rather than on the shared write wrapper: an
+    // insert is the only statement that can violate these indexes, and a
+    // delete declaring the failure would be a lie the endpoint has to carry.
+    // It also has to precede the wrapper's die, since a translator is a
+    // failure handler and cannot see a defect.
+    return yield* write(tenantId, () =>
+      Effect.gen(function* () {
+        // authority is conferred by somebody else; a resignation would be
+        // its own business action, not a self-edit here
+        if (actor.userId === input.userId) return yield* new GrantSelfForbidden()
+        yield* mayAdministerGrantsAt(actor, input.target)
+        yield* mayAdministerRole(actor, tenantId, input.roleId)
+        yield* mayAppointRole(actor, tenantId, input.roleId, input.target)
+        yield* eligible(tenantId, input)
+        yield* assertMayGrantRole(
+          authorityFor(actor),
+          yield* carriedBy(tenantId, input.roleId),
+          input.target,
+        )
+        const anchor =
+          input.target.kind === 'org-node'
+            ? { nodeId: input.target.orgNodeId, coverage: input.target.coverage }
+            : { nodeId: null, coverage: null }
+        const created = yield* insertGrant({
+          tenantId,
+          userId: input.userId,
+          roleId: input.roleId,
+          orgNodeId: anchor.nodeId,
+          coverage: anchor.coverage,
+          resource: input.resource ?? null,
+          validUntil: input.validUntil ?? null,
+          // the audit trail every grant gets, not only the confined ones
+          createdBy: actor.userId,
+        })
+        return created.id
+      }).pipe(translateConstraints(grantConstraints)),
+    )
+  })
+
   return {
     /** the grants the caller may see, with whether they may change each one */
     list: (
@@ -625,22 +712,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
 
     options,
 
-    /**
-     * A grant confined to one resource: a batch's own staff, say.
-     *
-     * Still a grant, so it walks the whole path every other grant walks -
-     * nobody appoints themselves, the actor administers grants of that reach
-     * there, the office is theirs to appoint, the role admits this person
-     * and this node, and its authority does not exceed the actor's own. A
-     * resource that could skip any of those would be a doorway around the
-     * rules the org side keeps.
-     *
-     * All of it inside the same tenant lock every other grant uses: checked
-     * outside it, the role could be disabled or the person re-typed in the
-     * gap and the insert would still go through. What stays with the caller
-     * is only what a resource alone knows: whether the node and the role
-     * make sense for the object the grant is confined to.
-     */
+    /** a resource-confined grant: the same road, with the resource named */
     scoped: (input: {
       tenantId: string
       userId: string
@@ -651,83 +723,27 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       validUntil?: number | undefined
       actor: Principal
     }) =>
-      write(input.tenantId, () =>
-        Effect.gen(function* () {
-          if (input.actor.userId === input.userId) return yield* new GrantSelfForbidden()
-          const coverage = input.includeDescendants ? ('subtree' as const) : ('self' as const)
-          const target: GrantTarget = {
+      grantRole(
+        input.tenantId,
+        {
+          userId: input.userId,
+          roleId: input.roleId,
+          target: {
             kind: 'org-node',
             orgNodeId: input.orgNodeId,
-            coverage,
-          }
-          yield* mayAdministerGrantsAt(input.actor, target)
-          yield* mayAdministerRole(input.actor, input.tenantId, input.roleId)
-          yield* mayAppointRole(input.actor, input.tenantId, input.roleId, target)
-          yield* eligible(input.tenantId, {
-            userId: input.userId,
-            roleId: input.roleId,
-            target,
-          })
-          yield* assertMayGrantRole(
-            authorityFor(input.actor),
-            yield* carriedBy(input.tenantId, input.roleId),
-            target,
-          )
-          const created = yield* insertScopedGrant({
-            tenantId: input.tenantId,
-            userId: input.userId,
-            roleId: input.roleId,
-            orgNodeId: input.orgNodeId,
-            coverage,
-            resource: input.resource,
-            validUntil: input.validUntil ?? null,
-            createdBy: input.actor.userId,
-          })
-          return created
-        }),
+            coverage: input.includeDescendants ? 'subtree' : 'self',
+          },
+          resource: input.resource,
+          ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
+        },
+        input.actor,
       ),
 
-    grant: Effect.fn('Rbac.grants.grant')(function* (
+    grant: (
       tenantId: string,
       input: { userId: string; roleId: string; target: GrantTarget },
       actor: Principal,
-    ) {
-      // The translation sits here rather than on the shared write wrapper: an
-      // insert is the only statement that can violate these indexes, and a
-      // delete declaring the failure would be a lie the endpoint has to carry.
-      // It also has to precede the wrapper's die, since a translator is a
-      // failure handler and cannot see a defect.
-      return yield* write(tenantId, () =>
-        Effect.gen(function* () {
-          // authority is conferred by somebody else; a resignation would be
-          // its own business action, not a self-edit here
-          if (actor.userId === input.userId) return yield* new GrantSelfForbidden()
-          yield* mayAdministerGrantsAt(actor, input.target)
-          // the administrator role's own reservation first: its refusal has
-          // the more specific sentence, and a rule row must not shadow it
-          yield* mayAdministerRole(actor, tenantId, input.roleId)
-          yield* mayAppointRole(actor, tenantId, input.roleId, input.target)
-          yield* eligible(tenantId, input)
-          yield* assertMayGrantRole(
-            authorityFor(actor),
-            yield* carriedBy(tenantId, input.roleId),
-            input.target,
-          )
-          const anchor =
-            input.target.kind === 'org-node'
-              ? { nodeId: input.target.orgNodeId, coverage: input.target.coverage }
-              : { nodeId: null, coverage: null }
-          const created = yield* insertGrant({
-            tenantId,
-            userId: input.userId,
-            roleId: input.roleId,
-            orgNodeId: anchor.nodeId,
-            coverage: anchor.coverage,
-          })
-          return created.id
-        }).pipe(translateConstraints(grantConstraints)),
-      )
-    }),
+    ) => grantRole(tenantId, input, actor),
 
     revoke: Effect.fn('Rbac.grants.revoke')(function* (
       tenantId: string,

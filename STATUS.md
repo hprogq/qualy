@@ -4901,3 +4901,31 @@ entity-parity/error-codes/catalogs/frozen-routes 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 653 passed / 17 skipped;
 `pnpm test:browser` 55 passed;`pnpm build` 通过;prettier 全绿。
+
+### 终审对账:两条通道、一条授权路径、一次改名(2026-08-16)
+
+与审计的最终裁决逐条核对,已做的确认、没做的补齐:
+
+- **两条通道语义核实(无需改码)**。通道 A(组织同步):`applicableAssignments` 用
+  `codes: [...BATCH_STAFF_CODES]` 让 rbac 做投影——带批次外权限的组织角色照常同步进批次,
+  只取综测认识的那部分,从不拒绝。通道 B(批次任命):`addStaff` 整体校验
+  「角色全部权限 ⊆ BATCH_STAFF_CODES」,越界即整体拒绝(`permission-not-delegatable`),
+  绝不静默裁剪;`staffOptions` 用同一判定标 `beyond-batch`,选择器与写入同判。
+- **rbac 授权合为一条内部路径**。`grants.ts` 收敛出单一 `grantRole` 核心
+  (resource 可选),`grant` 与 `scoped` 只是薄适配器;顺带修平两处不对称:
+  org 侧授权现在也写 `createdBy`(此前只有 scoped 写),scoped 路径获得
+  GrantExists 约束翻译。`insertScopedGrant` 从 db.ts 删除。
+- **STAFF_CODES → BATCH_STAFF_CODES**。改名并重写文档注释:两扇门共用这一张表,
+  `assessment.batch.manage` 被刻意排除在外——批次不得递归地把「管理批次」交出去。
+- **通道 A 钉住测试**。effect-assessment 新增
+  `syncs an office that carries more than the batch, and refuses to appoint one`:
+  一个同时带 `assessment.review.process` 与 `iam.grant.manage` 的辅导员式组织角色,
+  同步进批次(listBatches 可见、acceptance 只留综测码),而同一角色在批次内任命被
+  `ASSESSMENT_ACCESS_INVALID` 拒绝、staffOptions 标 `beyond-batch`。
+  实查:`getRolePermissions` 按活跃 catalog 过滤,测试装配里没有 org 插件,
+  批次外权限得用本装配确实注册的码(iam.grant.manage)才测得到拒绝分支。
+- 其余审计项(角色只在 RBAC 界面定义、批次里只做指派;不建 bindingMode/预设;
+  不加 assessment.batch.access.manage)核对为已满足或维持不建。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 654 passed / 17 skipped;
+`pnpm test:browser` 55 passed;prettier 全绿。无 schema 变更,不涉迁移。

@@ -142,7 +142,7 @@ const seed = (slug: string) =>
     const s1 = yield* person('S1', studentType, class1)
     const s2 = yield* person('S2', studentType, class2)
     const s3 = yield* person('S3', studentType, class3)
-    yield* person('T1', teacherType, class1)
+    const t1 = yield* person('T1', teacherType, class1)
     yield* person('Gone', studentType, class1, false)
 
     const admin = yield* person('Admin', teacherType, root)
@@ -173,6 +173,8 @@ const seed = (slug: string) =>
       s1,
       s2,
       s3,
+      t1,
+      admin,
       principal,
     }
   })
@@ -1496,6 +1498,85 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     const timeline = ok(exit)
     // what ran is over, what is coming is still to come, and nothing is now
     expect(timeline.map((entry) => entry.status)).toEqual(['ended', 'future'])
+  })
+
+  it('syncs an office that carries more than the batch, and refuses to appoint one', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-two-doors')
+        const assessment = yield* Assessment
+        // a counsellor-shaped office: real organizational authority, of
+        // which only one capability means anything to a round
+        const counsellor = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'counsellor', 'counsellor', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${counsellor}, id from permissions
+           where code in ('assessment.review.process', 'iam.grant.manage')`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage, created_by)
+          values (${f.tenant}, ${f.t1}, ${counsellor}, ${f.class1}, 'subtree', ${f.admin})`)
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Two doors',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // the sync door: the office is read as it stands, and the round
+        // accepts only the part it understands - no refusal for the rest
+        const teacher: Principal = { tenantId: f.tenant, userId: f.t1, sessionId: 's' }
+        const synced = yield* assessment.listBatches(f.tenant, { limit: 20 }, teacher)
+        const accepted = yield* runSql(sql`
+          select sp.permission_code from batch_access_sources s
+          join batch_access_source_permissions sp
+            on sp.tenant_id = s.tenant_id and sp.source_id = s.id
+          where s.batch_id = ${batch.id} and s.subject_id = ${f.t1}
+          order by sp.permission_code`)
+        // the appointment door: the same office cannot be handed out inside
+        // the batch, whole or trimmed - a grant that carried less than its
+        // role says would make "is this person a counsellor" unanswerable
+        const appointed = yield* Effect.exit(
+          assessment.addStaff(
+            f.tenant,
+            batch.id,
+            { userIds: [f.s2], orgNodeIds: [f.class1], roleId: counsellor },
+            f.principal,
+          ),
+        )
+        const offered = yield* assessment.staffOptions(
+          f.tenant,
+          batch.id,
+          { userId: f.s2, orgNodeId: f.class1 },
+          f.principal,
+        )
+        return {
+          synced,
+          accepted: (accepted as { rows: { permission_code: string }[] }).rows.map(
+            (row) => row.permission_code,
+          ),
+          appointed,
+          refusal: offered.roles.find((role) => role.id === counsellor)?.refusal,
+        }
+      }),
+    )
+    const { synced, accepted, appointed, refusal } = ok(exit)
+    // the counsellor is in: the batch appears in their working list
+    expect(synced.map((row) => row.name)).toContain('Two doors')
+    // and what was accepted is the intersection, not the office
+    expect(accepted).toEqual(['assessment.review.process'])
+    expect(tagOf(appointed)).toBe('ASSESSMENT_ACCESS_INVALID')
+    expect(refusal).toBe('beyond-batch')
   })
 
   it('takes a batch back from staff whose role no longer carries anything it accepted', async () => {

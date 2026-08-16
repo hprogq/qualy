@@ -22,7 +22,7 @@ import { effectiveState, normalizePlan } from '../phase/engine/queue.ts'
 import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
 import type { EpochMillis, PhasePlan, PhaseSnapshot } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
-import { PARTICIPANT_ACTION_CODES, STAFF_CODES } from '../permissions.ts'
+import { PARTICIPANT_ACTION_CODES, BATCH_STAFF_CODES } from '../permissions.ts'
 import { ItemTypeCatalog, ScoringCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
@@ -1472,7 +1472,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const anchors = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
       return yield* rbac.listApplicableAssignments({
         tenantId,
-        codes: [...STAFF_CODES],
+        codes: [...BATCH_STAFF_CODES],
         nodeIds: anchors,
         resource: batchResource(batchId),
       })
@@ -1868,7 +1868,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               batchId,
               yield* rbac.listApplicableAssignments({
                 tenantId,
-                codes: [...STAFF_CODES],
+                codes: [...BATCH_STAFF_CODES],
                 nodeIds,
               }),
               'inherited',
@@ -2330,7 +2330,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (input.userId === as.userId) {
         return yield* new AccessInvalid({ reason: 'self-adjustment' })
       }
-      if (!STAFF_CODES.includes(input.permission as never)) {
+      if (!BATCH_STAFF_CODES.includes(input.permission as never)) {
         return yield* new AccessInvalid({ reason: 'permission-not-known' })
       }
       return yield* withDb(
@@ -2383,7 +2383,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         }
         const carried = yield* rbac.getRolePermissions(tenantId, role.id)
         const delegatable =
-          carried.length > 0 && carried.every((code) => STAFF_CODES.includes(code as never))
+          carried.length > 0 && carried.every((code) => BATCH_STAFF_CODES.includes(code as never))
         roles.push({
           id: role.id,
           name: role.name,
@@ -2406,7 +2406,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const carried = yield* rbac.getRolePermissions(tenantId, input.roleId)
       if (carried.length === 0) return yield* new AccessInvalid({ reason: 'role-not-usable' })
       for (const code of carried) {
-        if (!STAFF_CODES.includes(code as never)) {
+        if (!BATCH_STAFF_CODES.includes(code as never)) {
           return yield* new AccessInvalid({ reason: 'permission-not-delegatable' })
         }
       }

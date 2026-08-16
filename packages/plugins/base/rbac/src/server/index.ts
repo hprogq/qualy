@@ -42,7 +42,6 @@ import { make as makeDiagnostics } from './diagnostics.ts'
 import { ESCALATE, type Authority } from './escalation.ts'
 import { type GrantScope } from './grants.ts'
 import {
-  insertScopedGrant,
   oneRoleProjected,
   revokeGrant,
   rolePermissionCodes,
