@@ -11,6 +11,7 @@ import {
 } from '../../src/plugin.ts'
 import { builtinScoringDrivers } from '../../src/scoring/builtins.ts'
 import { constantDriver } from '../../src/item/constant.ts'
+import { declarationDriver } from '../../src/item/declaration.ts'
 
 // The two prepare-phase catalogs, as a suite provides them: the built-in
 // scoring references plus one deliberately simple item-type driver.
@@ -94,6 +95,7 @@ export const catalogLayers = Layer.mergeAll(
     new Map([
       [testItemType.id, testItemType],
       [constantDriver.id, constantDriver],
+      [declarationDriver.id, declarationDriver],
     ]),
   ),
   Layer.succeed(ScoringCatalog, {

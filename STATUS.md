@@ -5203,3 +5203,16 @@ resubmit 更名。本轮不动 schema,全部零迁移。
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 664 passed / 17 skipped;
 `pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。无 schema 迁移
 (题型与政策模式都活在既有 jsonb 配置里)。
+
+### 一键声明题型 declaration(2026-08-16,§32.65 待办④)
+
+- 新题型 `declaration`(interaction `entry`,core 注册):零字段、零附件,payload 就是 `{}`,
+  一次确认即是完整申报;与 constant 的分界写在 driver 注释里——constant 是**发给**每个人,
+  declaration 是**本人声明**「这件事对我成立」,因此照走该题配置的审核(或显式免审)。
+  evidence 维持「至少一个字段」不放宽,声明是它自己的一种,不是被削掉字段的 evidence。
+- 编辑器「题目类型」三选:材料申报 / 一键声明 / 全员计分;声明隐藏填报字段节,保留
+  申报来源、条数上限、计分与审核节;configOf 抽出 aggregatorOf/reviewPolicyOf 三型共用。
+- 测试:声明 + 免审组合——一次 createEntry({}) + 提交,立即 approved,成绩 0.50。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 665 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿;零迁移。

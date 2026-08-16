@@ -236,6 +236,7 @@ export default {
   'assessment/items/kind': '题目类型',
   'assessment/items/kind-hint': '创建后不可更改',
   'assessment/items/kind-evidence': '材料申报',
+  'assessment/items/kind-declaration': '一键声明',
   'assessment/items/kind-constant': '全员计分',
   'assessment/items/granted-title': '谁会获得',
   'assessment/items/granted-hint': '无需申报，也无需审核',

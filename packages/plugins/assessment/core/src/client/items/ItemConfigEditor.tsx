@@ -97,7 +97,7 @@ export interface Draft {
   scoreGroupId: string
   maxEntries: string
   /** what kind of question this is; frozen once created */
-  itemType: 'evidence' | 'constant'
+  itemType: 'evidence' | 'declaration' | 'constant'
   entrySource: 'student' | 'administrative'
   /** whether submissions answer to a review route at all */
   reviewMode: 'workflow' | 'none'
@@ -159,7 +159,12 @@ const draftOf = (
     scoreGroupId:
       item !== null && item.scoreGroupId !== '' ? item.scoreGroupId : (groups[0]?.id ?? ''),
     maxEntries: item === null ? '1' : item.maxEntries === null ? '' : String(item.maxEntries),
-    itemType: item?.itemType === 'constant' ? 'constant' : 'evidence',
+    itemType:
+      item?.itemType === 'constant'
+        ? 'constant'
+        : item?.itemType === 'declaration'
+          ? 'declaration'
+          : 'evidence',
     entrySource: config?.entrySource ?? 'student',
     reviewMode:
       item?.itemType === 'constant' ||
@@ -247,21 +252,52 @@ const storedStage = (stage: StageDraft) => ({
 
 /** the pen back into the configuration the api validates */
 const configOf = (draft: Draft) =>
-  draft.itemType === 'constant'
+  draft.itemType === 'declaration'
     ? {
-        // granted, never filed: no form, no route, only the amount
-        entrySource: 'administrative' as const,
+        // one press is the whole filing: no fields, review as configured
+        entrySource: draft.entrySource,
         formConfig: {},
         scoringConfig: {
           calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
-          aggregator: { ref: 'sum@1', config: {} },
+          aggregator: aggregatorOf(draft),
         },
         ...(draft.description.trim() !== ''
           ? { displayConfig: { description: draft.description.trim() } }
           : {}),
-        reviewPolicy: { mode: 'none' },
+        reviewPolicy: reviewPolicyOf(draft),
       }
-    : evidenceConfigOf(draft)
+    : draft.itemType === 'constant'
+      ? {
+          // granted, never filed: no form, no route, only the amount
+          entrySource: 'administrative' as const,
+          formConfig: {},
+          scoringConfig: {
+            calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
+            aggregator: { ref: 'sum@1', config: {} },
+          },
+          ...(draft.description.trim() !== ''
+            ? { displayConfig: { description: draft.description.trim() } }
+            : {}),
+          reviewPolicy: { mode: 'none' },
+        }
+      : evidenceConfigOf(draft)
+
+const aggregatorOf = (draft: Draft) =>
+  draft.folding === 'max'
+    ? { ref: 'max@1', config: {} }
+    : draft.folding === 'top-n'
+      ? { ref: 'top-n-sum@1', config: { n: Math.max(1, Number(draft.topN) || 1) } }
+      : { ref: 'sum@1', config: {} }
+
+const reviewPolicyOf = (draft: Draft) =>
+  draft.reviewMode === 'none'
+    ? { mode: 'none' }
+    : {
+        normal: { stages: draft.stages.filter((one) => one.chain === 'normal').map(storedStage) },
+        escalation: {
+          stages: draft.stages.filter((one) => one.chain === 'escalation').map(storedStage),
+        },
+      }
 
 const evidenceConfigOf = (draft: Draft) => ({
   entrySource: draft.entrySource,
@@ -297,25 +333,12 @@ const evidenceConfigOf = (draft: Draft) => ({
   },
   scoringConfig: {
     calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
-    aggregator:
-      draft.folding === 'max'
-        ? { ref: 'max@1', config: {} }
-        : draft.folding === 'top-n'
-          ? { ref: 'top-n-sum@1', config: { n: Math.max(1, Number(draft.topN) || 1) } }
-          : { ref: 'sum@1', config: {} },
+    aggregator: aggregatorOf(draft),
   },
   ...(draft.description.trim() !== ''
     ? { displayConfig: { description: draft.description.trim() } }
     : {}),
-  reviewPolicy:
-    draft.reviewMode === 'none'
-      ? { mode: 'none' }
-      : {
-          normal: { stages: draft.stages.filter((one) => one.chain === 'normal').map(storedStage) },
-          escalation: {
-            stages: draft.stages.filter((one) => one.chain === 'escalation').map(storedStage),
-          },
-        },
+  reviewPolicy: reviewPolicyOf(draft),
 })
 
 /**
@@ -585,12 +608,13 @@ export function ItemConfigEditor({
    * saying what - and the answer is always known here.
    */
   const granted = draft.itemType === 'constant'
+  const fielded = draft.itemType === 'evidence'
   const routed = !granted && draft.reviewMode === 'workflow'
   const missing: string[] = [
     draft.title.trim() === '' ? format(m.itemsNeedTitle) : '',
     draft.scoreGroupId === '' ? format(m.itemsNeedGroup) : '',
     draft.fixedValue.trim() === '' ? format(m.itemsNeedValue) : '',
-    !granted && draft.fields.some((field) => field.label.trim() === '')
+    fielded && draft.fields.some((field) => field.label.trim() === '')
       ? format(m.itemsNeedFieldLabel)
       : '',
     routed && draft.stages.some((stage) => !stageReady(stage)) ? format(m.itemsNeedStage) : '',
@@ -758,6 +782,7 @@ export function ItemConfigEditor({
                     disabled={item !== null}
                     options={[
                       { value: 'evidence', label: format(m.itemsKindEvidence) },
+                      { value: 'declaration', label: format(m.itemsKindDeclaration) },
                       { value: 'constant', label: format(m.itemsKindConstant) },
                     ]}
                     onChange={(next) => patch({ itemType: next as Draft['itemType'] })}

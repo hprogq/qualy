@@ -19,6 +19,7 @@ import {
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { ItemTypes, Scoring } from './plugin.ts'
 import { constantDriver } from './item/constant.ts'
+import { declarationDriver } from './item/declaration.ts'
 import { builtinScoringDrivers } from './scoring/builtins.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
@@ -58,6 +59,7 @@ const plugin = Plugin.define(
   ItemTypes.provider,
   // the one kind of question core itself asks: granted, not filed
   ItemTypes.driver(constantDriver),
+  ItemTypes.driver(declarationDriver),
   Scoring.provider,
   ...builtinScoringDrivers.map((driver) => Scoring.driver(driver)),
   Access.permissions('assessment', permissions),

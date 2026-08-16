@@ -1084,6 +1084,10 @@ const i18n = definePluginMessages({
       id: 'assessment/items/kind-evidence',
       defaultMessage: 'Filed with evidence',
     },
+    itemsKindDeclaration: {
+      id: 'assessment/items/kind-declaration',
+      defaultMessage: 'Declared in one press',
+    },
     itemsKindConstant: {
       id: 'assessment/items/kind-constant',
       defaultMessage: 'Granted to everybody',
