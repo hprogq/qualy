@@ -2,6 +2,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { PencilIcon, PlusIcon } from 'lucide-react'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
@@ -101,19 +102,43 @@ export function ItemDetail({
             )}
           </div>
         </div>
-        {/* a draft already holds one of the question's places, so finishing it
-            is open even once there is no room for another */}
+        {/* A draft already holds one of the question's places, so finishing
+            it is open even once there is no room for another. A question
+            whose places are full keeps its button, disabled with the reason
+            on hover: a control that vanishes reads as a page that lost
+            something, and the reason it cannot be pressed is exactly what
+            the reader wants to know. Questions that were never this
+            person's to file - recorded ones, withdrawn ones - show nothing,
+            because there the button never existed. */}
         {draft !== undefined && item.status === 'active' ? (
           <Button className="shrink-0" onClick={() => onFile(draft)}>
             <PencilIcon aria-hidden />
             {format(m.myEntriesResumeDraft)}
           </Button>
+        ) : mayFile(item, entries) ? (
+          <Button className="shrink-0" onClick={() => onFile(null)}>
+            <PlusIcon aria-hidden />
+            {format(m.entryNew)}
+          </Button>
         ) : (
-          mayFile(item, entries) && (
-            <Button className="shrink-0" onClick={() => onFile(null)}>
-              <PlusIcon aria-hidden />
-              {format(m.entryNew)}
-            </Button>
+          item.status === 'active' &&
+          item.currentRevision?.entrySource === 'student' &&
+          (roomLeft(item, entries) ?? 1) <= 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                {/* a disabled button swallows pointer events, so the span
+                    around it is what the tooltip listens to */}
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="shrink-0">
+                    <Button disabled className="pointer-events-none">
+                      <PlusIcon aria-hidden />
+                      {format(m.entryNew)}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{format(m.refuseMaxEntries)}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )
         )}
       </div>
@@ -242,9 +267,9 @@ function FiledEntry({
               <dd className="min-w-0">
                 {field.type === 'attachment' ? (
                   Array.isArray(value) && value.length > 0 ? (
-                    <span className="flex flex-col gap-2">
+                    <span className="flex min-w-0 flex-col gap-1">
                       {value.map((id) => (
-                        <AttachmentLink key={String(id)} attachmentId={String(id)} />
+                        <AttachmentLink key={String(id)} attachmentId={String(id)} compact />
                       ))}
                     </span>
                   ) : (

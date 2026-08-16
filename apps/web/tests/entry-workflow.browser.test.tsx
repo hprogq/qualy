@@ -80,6 +80,7 @@ const item = (over: Partial<ItemDto> = {}): ItemDto => ({
     createdAt: '2026-03-01T00:00:00.000Z',
   },
   createdAt: '2026-03-01T00:00:00.000Z',
+  ...over,
 })
 
 const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
@@ -272,6 +273,75 @@ describe('filing a claim', () => {
     await expect.element(page.getByText('仅供参考。请自行修改后重新提交。')).toBeVisible()
     // advice is read, never applied: nothing offers to copy it in
     expect(page.getByRole('button', { name: '套用' }).elements()).toHaveLength(0)
+  })
+
+  it('keeps the filing button when the places are full, with the reason on hover', async () => {
+    screen(
+      {
+        listItems: () =>
+          Effect.succeed({
+            items: [
+              item({
+                maxEntries: 1,
+                currentRevision: {
+                  ...item().currentRevision!,
+                  formConfig: {
+                    fields: [
+                      { key: 'summary', type: 'text', label: '事项说明', required: true },
+                      { key: 'proof', type: 'attachment', label: '证明材料', maxCount: 2 },
+                    ],
+                  },
+                },
+              }),
+            ],
+            capabilities: { canManage: false },
+          }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              entry({
+                status: 'approved',
+                currentRevision: {
+                  ...entry().currentRevision!,
+                  payload: {
+                    summary: '2024 年入伍，2026 年退役复学',
+                    proof: ['88888888-8888-4888-8888-888888888888'],
+                  },
+                },
+                capabilities: {
+                  canEdit: false,
+                  canSubmit: false,
+                  canWithdraw: false,
+                  canAppeal: true,
+                },
+              }),
+            ],
+            nextCursor: null,
+          }),
+        describeAttachment: () =>
+          Effect.succeed({
+            id: '88888888-8888-4888-8888-888888888888',
+            filename: '退役证明.pdf',
+            declaredMime: 'application/pdf',
+            size: '204800',
+            status: 'bound',
+            delivery: { kind: 'content' as const },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    // the button stands, disabled, instead of vanishing with the last place
+    const button = page.getByRole('button', { name: '去申报' })
+    await expect.element(button).toBeVisible()
+    await expect.element(button).toBeDisabled()
+    await page.getByText('去申报').hover()
+    await expect.element(page.getByText('这个题目允许的条数已经填满了。')).toBeVisible()
+    // a cited file in the card is one line, not a tile: its name is a link
+    await expect.element(page.getByRole('link', { name: '退役证明.pdf' })).toBeVisible()
   })
 })
 

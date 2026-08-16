@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
+import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -286,12 +286,22 @@ function CitedFile({
       name={name}
       meta={data === undefined ? undefined : sizeLabel(Number(data.size))}
       actions={
-        onRemove !== undefined && (
-          <Button variant="ghost" size="icon-sm" type="button" onClick={onRemove}>
-            <XIcon aria-hidden />
-            <span className="sr-only">{format(m.entryFileRemove)}</span>
+        <>
+          {/* a staged upload is already its owner's to read back: checking
+              what actually went up should not have to wait for a submission */}
+          <Button variant="ghost" size="icon-sm" asChild>
+            <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
+              <DownloadIcon aria-hidden />
+              <span className="sr-only">{name}</span>
+            </a>
           </Button>
-        )
+          {onRemove !== undefined && (
+            <Button variant="ghost" size="icon-sm" type="button" onClick={onRemove}>
+              <XIcon aria-hidden />
+              <span className="sr-only">{format(m.entryFileRemove)}</span>
+            </Button>
+          )}
+        </>
       }
     />
   )

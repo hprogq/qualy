@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { DownloadIcon, FileTextIcon } from 'lucide-react'
+import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -22,8 +22,19 @@ import { attachmentContentUrl, LOOKS_LIKE_A_PHOTOGRAPH, sizeLabel } from './mode
 // for - so a page citing a dozen files must not fetch a dozen originals to
 // paint: each one waits for the scroll that reaches it, decodes off the main
 // thread, and holds its box from the start so nothing moves when it lands.
+//
+// Two sizes for two places. The tile carries a thumbnail and belongs where a
+// file is being worked with - the filing form. The line is one row of icon
+// and name, for the claim cards: a dozen tiles in a compact list would be
+// the list of somebody's files with a claim attached.
 
-export function AttachmentLink({ attachmentId }: { attachmentId: string }) {
+export function AttachmentLink({
+  attachmentId,
+  compact = false,
+}: {
+  attachmentId: string
+  compact?: boolean
+}) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
   const descriptor = useQuery({
@@ -35,6 +46,49 @@ export function AttachmentLink({ attachmentId }: { attachmentId: string }) {
     data?.delivery.kind === 'redirect' ? data.delivery.url : attachmentContentUrl(attachmentId)
   const name = data?.filename ?? format(m.entryFileUnnamed)
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
+
+  if (compact) {
+    return (
+      <PhotoProvider maskOpacity={0.85}>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <PaperclipIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          {/* a picture opens where it stands; anything else is a download */}
+          {isImage ? (
+            <PhotoView src={href}>
+              <button
+                type="button"
+                className="min-w-0 cursor-zoom-in truncate text-left underline-offset-2 hover:underline"
+              >
+                {name}
+              </button>
+            </PhotoView>
+          ) : (
+            <a
+              href={href}
+              download={data?.filename}
+              target="_blank"
+              rel="noreferrer"
+              className="min-w-0 truncate underline-offset-2 hover:underline"
+            >
+              {name}
+            </a>
+          )}
+          {isImage && (
+            <a
+              href={href}
+              download={data?.filename}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <DownloadIcon aria-hidden className="size-3.5" />
+              <span className="sr-only">{name}</span>
+            </a>
+          )}
+        </span>
+      </PhotoProvider>
+    )
+  }
 
   return (
     <PhotoProvider maskOpacity={0.85}>

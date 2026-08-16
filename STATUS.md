@@ -4880,3 +4880,24 @@ entity-parity/error-codes/catalogs/frozen-routes 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 653 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过;prettier 全绿。
+
+### 附件的两种大小、模态框内可下载、满额按钮不消失(2026-08-16)
+
+- **模态框里上传完就能下载**。服务端本来就允许 owner 读回自己 staged 状态的上传
+  (item-lifecycle 测试早已钉住),缺的是入口:`CitedFile` 只有移除 ✕。补一个下载按钮,
+  与已提交侧的 AttachmentLink 同款。
+- **紧凑列表里附件一行一个**。`AttachmentLink` 增加 `compact` 形态:回形针 + 文件名一行,
+  图片点名字原地看大图(另给一个小下载图标),其他类型点名字即下载。
+  「我申报的条目」卡片用 compact;填报模态框维持大 tile(那里在操作文件,缩略图有用)。
+  设计稿 2b 的条目行本来就是小图标 + 文件名。
+- **条数占满不再藏按钮**。「去申报」在满额时保留为 disabled + hover tooltip
+  (文案复用 `refuse-max-entries`)。消失的控件读起来像页面丢了东西,而按不了的原因正是
+  读者想知道的。登记题、已停用题照旧不显示——那里按钮从来就不存在。
+  disabled 按钮吞掉指针事件,tooltip 挂在包它的 span 上。
+
+浏览器回归测试一条:满额时按钮可见且 disabled、hover 出现原因、卡片里附件名是一行链接。
+顺带修了 fixture 的潜在 bug:`item(over)` 收了 override 参数却从没 spread(`entry()` 有,
+`item()` 漏了),此前所有用例恰好都用无参 `item()` 才没暴露。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 653 passed / 17 skipped;
+`pnpm test:browser` 55 passed;`pnpm build` 通过;prettier 全绿。
