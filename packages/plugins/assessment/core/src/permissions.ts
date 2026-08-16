@@ -103,6 +103,18 @@ export const PARTICIPANT_ACTION_CODES = [
  * very list, and freezing it at creation would leave an administrator
  * appointed afterwards unable to touch rounds that already exist.
  */
+/**
+ * What a reviewer may do beyond deciding, and only while a phase says so.
+ *
+ * Not permissions either, for the same shape of reason as the participant
+ * actions above: who may act on a round is already answered by
+ * `assessment.review.process` together with the level the round is standing
+ * at. A second grantable permission would mean maintaining two nearly
+ * identical ticks against every reviewing role and would buy nothing - what
+ * varies is not who, it is when.
+ */
+export const REVIEW_ACTION_CODES = ['assessment.review.raise-doubt'] as const
+
 export const STAFF_CODES = [
   'assessment.entry.proxy',
   'assessment.entry.record',
@@ -122,6 +134,7 @@ export const PHASE_GATED_CODES = [
   'assessment.entry.record',
   'assessment.entry.resubmit',
   'assessment.review.process',
+  'assessment.review.raise-doubt',
   'assessment.review.reopen',
   'assessment.result.view-peers',
   'assessment.ranking.view',
@@ -153,9 +166,18 @@ for (const code of PARTICIPANT_ACTION_CODES) {
   }
 }
 
+// Same rule for a reviewer's own actions: standing at the level is what
+// makes somebody a reviewer, and a grantable "may raise a doubt" would offer
+// to make somebody one who is not.
+for (const code of REVIEW_ACTION_CODES) {
+  if (declared.has(code)) {
+    throw new Error(`assessment: ${code} is a review action and must not be an rbac permission`)
+  }
+}
+
 // The gate spans both: it decides which actions are open now, and has no
 // interest in where the authority for one comes from.
-const gateable = new Set<string>([...declared, ...PARTICIPANT_ACTION_CODES])
+const gateable = new Set<string>([...declared, ...PARTICIPANT_ACTION_CODES, ...REVIEW_ACTION_CODES])
 for (const code of PHASE_GATED) {
   if (!gateable.has(code)) {
     throw new Error(`PHASE_GATED lists '${code}', which @qualy/plugin-assessment does not declare`)

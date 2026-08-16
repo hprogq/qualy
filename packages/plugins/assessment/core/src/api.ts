@@ -454,6 +454,8 @@ const entryView = Schema.Struct({
   createdAt: Schema.String,
   capabilities: Schema.Struct({
     canEdit: Schema.Boolean,
+    /** whether a decision on this claim is one its owner may contest */
+    canAppeal: Schema.Boolean,
     canSubmit: Schema.Boolean,
     canWithdraw: Schema.Boolean,
   }),
@@ -674,15 +676,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('decideReview', '/assessment/review/instances/:instanceId/decisions', {
       params: Schema.Struct({ instanceId: id }),
       payload: Schema.Struct({
-        decision: Schema.Literals([
-          'approve',
-          'reject',
-          'raise-doubt',
-          'forward',
-          'comment',
-          'recommend-approve',
-          'recommend-reject',
-        ]),
+        decision: Schema.Literals(['approve', 'reject', 'raise-doubt', 'comment']),
         comment: Schema.optional(boundedText(2000)),
         suggestedPayload: Schema.optional(configJson),
       }),
@@ -900,6 +894,23 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [EntryNotFound, BatchReadOnly, EntryActionRefused, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // Contesting a decision, anchored on the decision itself. An entry can
+    // carry several finished rounds, and "I disagree" has to say with what.
+    HttpApiEndpoint.post('appealReview', '/assessment/review/instances/:instanceId/appeals', {
+      params: Schema.Struct({ instanceId: id }),
+      payload: Schema.Struct({ reason: boundedText(2000) }),
+      success: Schema.Struct({ review: reviewDetailView }),
+      error: [
+        ReviewNotFound,
+        BatchNotFound,
+        BatchReadOnly,
+        EntryActionRefused,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

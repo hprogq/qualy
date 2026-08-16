@@ -4745,3 +4745,44 @@ CLAUDE 的「界面文案是引导,不是说明」此前只在新写的地方被
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 650 passed / 17 skipped;
 `pnpm test:browser` 54 passed(一处按标签取控件的断言随文案同步);`pnpm build` 通过;
 `catalogs.test` 全语言完整、无孤儿键。
+
+### 申诉与疑点:一套引擎,四个阶段开关(2026-08-16)
+
+裁决记入 §32.63。**不做两套审核状态机**——同一个 Review 引擎,三类独立动作,
+两种 ReviewInstance 行为模式。
+
+- **四个阶段开关,任意组合**:`entry.submit` / `entry.resubmit`(界面叫申诉)/
+  `review.process` / **`review.raise-doubt`(新增)**。补报期可以同时开普通提交与申诉;
+  申诉期通常只开申诉与处理审核。`raise-doubt` 不做 RBAC 权限——谁能处理当前节点已由
+  `review.process` + 节点/角色决定,再加一条可授予的权限只会让管理员维护两份几乎相同的勾选,
+  而且「可授予」会暗示它能让不是审核人的人变成审核人。它与参评动作同类,新增 `REVIEW_ACTION_CODES`
+  这一档(不进权限目录,进 PHASE_GATED),阶段编辑器自动多出这一项。
+- **`rejectPolicy` 冻结在轮次上**(`any-stage` / `terminal-only`),不从当前阶段实时读。
+  否则填报期转入疑点的那一轮,进了申诉期就突然中途不能驳回;申诉期开的那一轮,
+  窗口一关又变回任意节点可驳回。**阶段决定能不能开这种轮,轮次决定开完之后怎么走。**
+- **两个入口,一套开轮逻辑**:普通提交固定 `initial / normal / any-stage`,
+  申诉固定 `appeal / doubt / terminal-only`。这两组不给管理员配——能配出「叫申诉但第一级就能打回」
+  的组合是在造本业务没定义的流程。
+- **申诉锚定被申诉的那一轮**:`POST /assessment/review/instances/{instanceId}/appeals`,
+  目标必须 `completed` 且有结论;新轮 `revisionId` 与它相同(**申诉的是结论,不是材料**),
+  并记 `appealedInstanceId`。
+- **同一 Entry 同时只有一轮开着**(数据库 partial unique index 本来就这么约束)。
+  被驳回后二选一:改材料重新提交(normal),或不改材料申诉这次结论(doubt)。界面给两个按钮。
+  「有没有开着的轮」改看轮次自己的 state——`entries.current_review_instance_id` 在轮次结束后
+  仍指着它(那正是读者找结论的路),拿它判断会把每条已结束的申报都当成还在审。
+- **疑点链变成真正的审核链**:取消 `recommend-approve` / `recommend-reject` / `forward`,
+  中间节点「通过」即「本级无异议,转下一节点」。`ReviewDecision` 只剩四个。
+- **不设疑点次数硬上限**。「每天最多 10 条」会逼审核员在第 11 条上要么替不确定的事做决定、
+  要么等明天,并制造「今天名额不多,这条算了」的博弈——在决定奖学金的系统里这是错误的激励。
+  治理靠:理由必填(已有)、一轮最多转一次疑点(状态机天然保证)、以及日后的疑点率异常提示。
+
+新测试:①填报期的疑点全程(转入疑点后不能再转、中间级可以驳回、approve 即转下一级);
+②申诉窗口——阶段关掉 raise-doubt 后审核人收到 `phase-closed`;陌生人申诉得到
+`ASSESSMENT_REVIEW_NOT_FOUND`;空理由 `reason-required`;重复申诉 `review-already-open`;
+新轮 `origin='appeal'`、`route='doubt'`、`reject_policy='terminal-only'`、
+`revision_id` 与被申诉轮相同、`appealed_instance_id` 指回去;中间级只有 approve/comment、
+驳回被拒,链尾才 approve/reject/comment。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 651 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;
+`prettier --check` 全绿。

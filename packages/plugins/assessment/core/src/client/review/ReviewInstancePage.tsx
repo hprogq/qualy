@@ -320,10 +320,7 @@ function Route({
 const SAYINGS: Record<string, MessageDescriptor> = {
   reject: m.reviewReject,
   'raise-doubt': m.reviewRaiseDoubt,
-  forward: m.reviewForward,
   comment: m.reviewCommentAction,
-  'recommend-approve': m.reviewRecommendApprove,
-  'recommend-reject': m.reviewRecommendReject,
 }
 
 /**

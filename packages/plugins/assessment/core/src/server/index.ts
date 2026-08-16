@@ -826,6 +826,7 @@ export class Assessment extends Context.Service<
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
     readonly decideReview: ReviewMethods['decideReview']
+    readonly appealReview: ReviewMethods['appealReview']
     /** one's own provisional standing, from the one scorer */
     readonly getMyResult: ScoringMethods['getMyResult']
     /** the bytes of a business material, for whoever its story admits */
@@ -1763,6 +1764,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
   const reviewMethods = makeReviewMethods({
     withDb,
+    authorize: authorizeAction,
     // the same gate every entry act passes through, asked for review.process
     reviewGate: (tenantId, batchId) =>
       Effect.gen(function* () {
@@ -1771,6 +1773,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const now = yield* Clock.currentTimeMillis
         const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
         return decide(view, 'assessment.review.process', undefined)
+      }),
+    raiseDoubtGate: (tenantId, batchId) =>
+      Effect.gen(function* () {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
+        const now = yield* Clock.currentTimeMillis
+        const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
+        return decide(view, 'assessment.review.raise-doubt', undefined)
       }),
     rosterReach: (as, tenantId, batchId) =>
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
@@ -4515,6 +4525,20 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           groups: result.groups,
           lines: result.lines,
         }
+      }),
+    )
+    .handle(
+      'appealReview',
+      Effect.fn('assessment.appealReview.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const review = yield* assessment.appealReview(
+          principal.tenantId,
+          params.instanceId,
+          payload,
+          principal,
+        )
+        return { review: reviewDto(review) }
       }),
     )
     .handle(

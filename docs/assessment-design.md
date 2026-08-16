@@ -1127,6 +1127,70 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
   (客户端一行重建树,而递归 schema 不是一行)。
 - 层数不设硬上限(已被"一层不够"打过脸),但 UI 建议不超过三四层。
 
+**32.63 申诉是一轮走疑点链、只有链尾能驳回的审核；阶段开关是四个独立动作**（2026-08-16，用户裁决）。
+
+不做两套审核状态机。同一个 Review 引擎、三类独立动作、两种 ReviewInstance 行为模式。
+
+一、**阶段控制四个动作，任意组合，不引入「阶段类型」枚举**。
+`assessment.entry.submit`（普通提交）、`assessment.entry.resubmit`（界面叫「申诉」）、
+`assessment.review.process`（处理审核）、`assessment.review.raise-doubt`（**新增**，审核人把拿不准的
+转入疑点审核）。补报期可以同时开普通提交与申诉；申诉期通常只开申诉与处理审核。
+`raise-doubt` **不是 RBAC 权限**：谁有资格处理当前节点已经由 `review.process` + 节点/角色决定了，
+再加一条可授予的权限等于让管理员给每个审核角色维护两份几乎相同的勾选，且「可授予」会暗示它能
+让不是审核人的人变成审核人。它与参评动作同类——只有当事人才有资格做，但阶段可以临时关闭。
+
+二、**`rejectPolicy` 冻结在 ReviewInstance 上，不从当前阶段实时读**（本条最关键）。
+否则：9 月 10 日填报期转入疑点的那一轮，9 月 15 日进入申诉期后突然中途不能驳回；
+或者申诉期开的那一轮，申诉期结束后又变回任意节点可驳回。
+`rejectPolicy: 'any-stage' | 'terminal-only'` 与 `origin`、起始 route 一样，**开轮时定下，之后不变**。
+显式存列而不是运行时判 `origin === 'appeal'`：以后 staff reopen 规则不同时，旧记录不用重新解释。
+
+三、**普通提交与申诉是两个接口、两个 domain command，底层共用一套开轮逻辑**。
+```
+submitEntry  ──┐
+               ├─→ 同一套开轮：解析策略、冻结路线、arrival check、写事件
+appealReview ──┘
+```
+普通提交固定 `origin='initial' / route='normal' / rejectPolicy='any-stage'`；
+申诉固定 `origin='appeal' / route='doubt' / rejectPolicy='terminal-only'`。
+**这两组不给管理员配**：能配出「叫申诉但第一级就能打回」或「普通提交却只有链尾能驳回」的组合，
+是在制造本业务没有定义的流程。
+
+四、**申诉锚定被申诉的那次审核结果，不是锚定 Entry**。
+`POST /assessment/review/instances/:instanceId/appeals`，要求目标轮次 `completed` 且
+`outcome ∈ {approved, rejected}`。一个 Entry 可能有好几轮已结束的审核，「我不服」必须说清不服哪一次。
+新轮 `revisionId` 与被申诉轮相同（**申诉的是结论，不是材料**），并记 `appealedInstanceId`。
+（此列本可以延后，但端点存在的理由就是把「不服哪次」写下来，不存等于白要这个参数。）
+
+五、**同一 Entry 同时只能有一轮开着**。阶段同时开放普通提交与申诉 ≠ 同一条申报能两路并行。
+数据库的 partial unique index 本来就这么约束（`active`/`blocked` 都算 open），保留。
+被驳回后用户二选一：**改材料重新提交**（走 normal），或**不改材料申诉这次结论**（走 doubt）。
+界面给两个按钮，不给一个「重新提交」让系统猜。
+
+六、**疑点链是一条真正的审核链，取消 recommend/forward 词汇**。
+中间节点「通过」就等于「本级无异议，转下一节点」，不必再发明第二套词。
+决策集合收敛为：
+```
+normal：approve / reject / comment（+ raise-doubt，若阶段开着且疑点链有可进入的步骤）
+doubt + any-stage：   approve / reject / comment
+doubt + terminal-only：中间 approve / comment；链尾 approve / reject / comment
+```
+`ReviewDecision` 因此只剩 `approve | reject | raise-doubt | comment`。
+
+七、**提出疑点仍在同一轮里**，不新开 round：那还是「同一次审核中换处理路线」，
+不是对已成结论的复查。`Round #2` 留给申诉、重新提交、管理员复查这类正式新一轮。
+
+八、**不设疑点次数硬上限**。「每天最多 10 条」是很差的审核规则：它逼审核员在第 11 条上
+要么替自己不确定的事做决定、要么等明天，并制造「今天名额不多，这条算了」的博弈——
+在一个决定奖学金的系统里这是错误的激励。治理靠三条：
+①**提出疑点必须写理由**（现有「除 approve 外都必填 comment」已覆盖）；
+②**一轮最多转一次疑点**（状态机天然保证：进入 doubt 后就没有 raise-doubt 这个动作）；
+③**统计与异常提示**——「王某 审核 112 条、疑点 8 条、7.1%；李某 审核 93 条、疑点 41 条、44.1% ⚠」。
+真正要问的不是「他提了多少条」，而是「相对他处理的量，他是不是异常地把责任往上推」。
+软阈值（如处理满 20 条后疑点率 >30% 告警）与真出问题后的
+`per-reviewer-per-phase` 上限（**不是每日**，窗口要与业务周期一致，且超限走「管理员确认」
+而不是 403）都留到有实际事故再说，触发表见 notes/data-layer-retrospective.md 的元规则。
+
 **32.62 配置改了，已有条目怎么办由管理员当场决定；疑点链与普通链彻底分家**（2026-08-15，用户裁决）。
 
 推翻两处原有语义。**第一处**：此前「配置版本不可变、旧提交引用旧版本」是全部答案——管理员改完题目，

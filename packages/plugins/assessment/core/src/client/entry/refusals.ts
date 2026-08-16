@@ -17,6 +17,8 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'entry-not-submittable': m.refuseNotSubmittable,
   'entry-needs-revision': m.refuseNeedsRevision,
   'entry-not-withdrawable': m.refuseNotWithdrawable,
+  'nothing-to-appeal': m.refuseNothingToAppeal,
+  'review-already-open': m.refuseReviewOpen,
   'max-entries-reached': m.refuseMaxEntries,
   'item-not-active': m.refuseItemVoided,
   'item-not-configured': m.refuseItemUnconfigured,

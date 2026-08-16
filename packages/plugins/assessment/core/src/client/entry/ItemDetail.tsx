@@ -32,6 +32,7 @@ export function ItemDetail({
   onFile,
   onHistory,
   onStatus,
+  onAppeal,
 }: {
   row: StructureRow
   entries: readonly EntryDto[]
@@ -40,6 +41,7 @@ export function ItemDetail({
   onFile: (entry: EntryDto | null) => void
   onHistory: (entryId: string) => void
   onStatus: (entryId: string, status: 'in_review' | 'draft') => void
+  onAppeal: (entry: EntryDto) => void
 }) {
   const { format } = useI18n()
   const item = row.item
@@ -179,6 +181,7 @@ export function ItemDetail({
           busy={busy}
           onHistory={() => onHistory(entry.id)}
           onWithdraw={() => onStatus(entry.id, 'draft')}
+          onAppeal={() => onAppeal(entry)}
         />
       ))}
     </div>
@@ -193,6 +196,7 @@ function FiledEntry({
   busy,
   onHistory,
   onWithdraw,
+  onAppeal,
 }: {
   entry: EntryDto
   item: ItemDto
@@ -200,6 +204,7 @@ function FiledEntry({
   busy: boolean
   onHistory: () => void
   onWithdraw: () => void
+  onAppeal: () => void
 }) {
   const { format } = useI18n()
   const fields = fieldsOf(item.currentRevision?.formConfig)
@@ -255,6 +260,13 @@ function FiledEntry({
         {entry.capabilities.canWithdraw && (
           <Button variant="outline" size="sm" disabled={busy} onClick={onWithdraw}>
             {format(m.entryWithdraw)}
+          </Button>
+        )}
+        {/* two different things, offered as two: change the material and
+            submit again, or leave it and say the conclusion is wrong */}
+        {entry.capabilities.canAppeal && (
+          <Button variant="outline" size="sm" disabled={busy} onClick={onAppeal}>
+            {format(m.entryAppeal)}
           </Button>
         )}
       </div>

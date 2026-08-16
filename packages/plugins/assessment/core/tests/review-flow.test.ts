@@ -21,7 +21,9 @@ import {
 // standing, acceptance, the gate, distance - and watch the queue, the
 // decision and the submission refuse together.
 
-const REVIEW_OPEN = [...GATED, 'assessment.review.process']
+const REVIEW_OPEN = [...GATED, 'assessment.review.process', 'assessment.review.raise-doubt']
+/** the same round with the doubt door shut, as an appeal window has it */
+const NO_DOUBTS = [...GATED, 'assessment.review.process']
 
 /** an accepted source carrying review.process, the way a sync would write it */
 const accept = (t: string, batchId: string, subjectId: string, assignmentId: string) =>
@@ -586,35 +588,27 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const reviewer = f.principal(f.reviewer)
 
           const onNormal = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
-          // forwarding belongs to the doubt route; it is not on offer here
-          const forwardTooSoon = yield* Effect.exit(
-            assessment.decideReview(
-              f.t,
-              instanceId,
-              { decision: 'forward', comment: 'x' },
-              reviewer,
-            ),
-          )
           const raised = yield* assessment.decideReview(
             f.t,
             instanceId,
             { decision: 'raise-doubt', comment: '拿不准，转疑点' },
             reviewer,
           )
-          // the middle of the doubt route may only advise
-          const decidedTooSoon = yield* Effect.exit(
-            assessment.decideReview(f.t, instanceId, { decision: 'approve' }, reviewer),
+          // the doubt route is a review chain like the other one: approving
+          // a middle step passes it on, and during filing any step may end it
+          const inDoubt = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
+          const noSecondDoubt = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'raise-doubt', comment: '再上一次' },
+              reviewer,
+            ),
           )
-          const advised = yield* assessment.decideReview(
+          const passedOn = yield* assessment.decideReview(
             f.t,
             instanceId,
-            { decision: 'recommend-approve', comment: '建议通过' },
-            reviewer,
-          )
-          const forwarded = yield* assessment.decideReview(
-            f.t,
-            instanceId,
-            { decision: 'forward', comment: '转下一级' },
+            { decision: 'approve' },
             reviewer,
           )
           const settled = yield* assessment.decideReview(
@@ -623,7 +617,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { decision: 'approve' },
             reviewer,
           )
-          return { onNormal, forwardTooSoon, raised, decidedTooSoon, advised, forwarded, settled }
+          return { onNormal, raised, inDoubt, noSecondDoubt, passedOn, settled }
         }),
       ),
     )
@@ -637,21 +631,18 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       'raise-doubt',
       'reject',
     ])
-    expect(refusalOf(result.forwardTooSoon)?.reason).toBe('decision-not-available')
-
     // raising it leaves the ordinary route entirely rather than carrying on
     expect(result.raised.chain.route).toBe('doubt')
     expect(result.raised.chain.stageId).toBe('d1')
-    expect(refusalOf(result.decidedTooSoon)?.reason).toBe('decision-not-available')
-    // an opinion moves nothing
-    expect(result.advised.chain.stageId).toBe('d1')
-    expect(result.forwarded.chain.stageId).toBe('d2')
+    // a filing-time doubt can be ended anywhere, and cannot be raised twice
+    expect([...result.inDoubt.chain.decisions].sort()).toEqual(['approve', 'comment', 'reject'])
+    expect(refusalOf(result.noSecondDoubt)?.reason).toBe('decision-not-available')
+    expect(result.passedOn.chain.stageId).toBe('d2')
     expect(result.settled.outcome).toBe('approved')
     expect(result.settled.events.map((event) => event.kind)).toEqual([
       'submitted',
       'doubt-raised',
-      'recommend-approve',
-      'forwarded',
+      'approved',
       'approved',
     ])
   })
@@ -881,5 +872,164 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       result.rounds[1]!.round_no === 2 ? result.entry.currentReviewInstanceId : null,
     )
     expect(result.queue.map((one) => one.entryId)).toEqual([result.entry.id])
+  })
+
+  it('walks an appeal down the doubt route, endable only at its last step', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-appeal')
+          const assessment = yield* Assessment
+          // an appeal window: no filing, no doubts to raise, only appeals
+          const g = yield* runningBatch(f, {
+            profile: [
+              'assessment.entry.create',
+              'assessment.entry.submit',
+              'assessment.entry.resubmit',
+              'assessment.review.process',
+            ],
+          })
+          const admin = f.principal(f.admin)
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const at = (id: string) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+            quorum: { type: 'any' },
+          })
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '可申诉的题',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: 1,
+              config: {
+                entrySource: 'student',
+                formConfig: {},
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  normal: { stages: [at('n1')] },
+                  doubt: { stages: [at('d1'), at('d2')] },
+                },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+          const s1 = f.principal(f.s1)
+          const reviewer = f.principal(f.reviewer)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const first = sent.currentReviewInstanceId!
+          // the doubt door is shut in this window, so the reviewer decides
+          const doubtShut = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              first,
+              { decision: 'raise-doubt', comment: '想上报' },
+              reviewer,
+            ),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            first,
+            { decision: 'reject', comment: '材料不足' },
+            reviewer,
+          )
+          // somebody else's decision is not theirs to contest
+          const stranger = yield* Effect.exit(
+            assessment.appealReview(f.t, first, { reason: '不服' }, f.principal(f.s2)),
+          )
+          const wordless = yield* Effect.exit(
+            assessment.appealReview(f.t, first, { reason: '  ' }, s1),
+          )
+          const appealed = yield* assessment.appealReview(
+            f.t,
+            first,
+            { reason: '证书原件已补交，请复核' },
+            s1,
+          )
+          const second = appealed.id
+          // one open round per claim: the same decision cannot be contested twice
+          const again = yield* Effect.exit(
+            assessment.appealReview(f.t, first, { reason: '再来一次' }, s1),
+          )
+          const midway = yield* assessment.getReviewInstance(f.t, second, reviewer)
+          const rejectTooSoon = yield* Effect.exit(
+            assessment.decideReview(f.t, second, { decision: 'reject', comment: '不行' }, reviewer),
+          )
+          yield* assessment.decideReview(f.t, second, { decision: 'approve' }, reviewer)
+          const atEnd = yield* assessment.getReviewInstance(f.t, second, reviewer)
+          const settled = yield* assessment.decideReview(
+            f.t,
+            second,
+            { decision: 'reject', comment: '复核后仍不予认定' },
+            reviewer,
+          )
+          const rounds = yield* runSql(sql`
+            select round_no, origin, current_route, reject_policy, revision_id,
+                   appealed_instance_id, outcome
+            from review_instances where entry_id = ${entry.id} order by round_no`)
+          return {
+            doubtShut,
+            stranger,
+            wordless,
+            appealed,
+            again,
+            midway,
+            rejectTooSoon,
+            atEnd,
+            settled,
+            firstId: first,
+            rows: (
+              rounds as {
+                rows: {
+                  round_no: number
+                  origin: string
+                  current_route: string
+                  reject_policy: string
+                  revision_id: string
+                  appealed_instance_id: string | null
+                  outcome: string | null
+                }[]
+              }
+            ).rows,
+          }
+        }),
+      ),
+    )
+
+    // the phase, not the policy, is what shut the doubt door
+    expect(refusalOf(result.doubtShut)?.reason).toBe('phase-closed')
+    expect(errorOf<{ _tag: string }>(result.stranger)?._tag).toBe('ASSESSMENT_REVIEW_NOT_FOUND')
+    expect(refusalOf(result.wordless)?.reason).toBe('reason-required')
+    expect(refusalOf(result.again)?.reason).toBe('review-already-open')
+
+    // the appeal opens on the doubt route against the very same filing
+    expect(result.appealed.chain.route).toBe('doubt')
+    expect(result.appealed.chain.stageId).toBe('d1')
+    expect(result.rows[1]).toMatchObject({
+      round_no: 2,
+      origin: 'appeal',
+      current_route: 'doubt',
+      reject_policy: 'terminal-only',
+      revision_id: result.rows[0]!.revision_id,
+      appealed_instance_id: result.firstId,
+    })
+
+    // and only its last step can turn it down
+    expect([...result.midway.chain.decisions].sort()).toEqual(['approve', 'comment'])
+    expect(refusalOf(result.rejectTooSoon)?.reason).toBe('decision-not-available')
+    expect([...result.atEnd.chain.decisions].sort()).toEqual(['approve', 'comment', 'reject'])
+    expect(result.settled.outcome).toBe('rejected')
   })
 })

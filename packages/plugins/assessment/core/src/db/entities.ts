@@ -1043,6 +1043,18 @@ export const ReviewInstance = defineEntity({
     policyRevisionId: p.uuid(),
     /** the round this one replaced, when a policy change opened it */
     supersedesInstanceId: p.uuid().nullable(),
+    /** the decision being contested, when this round is an appeal against one */
+    appealedInstanceId: p.uuid().nullable(),
+    /**
+     * Where this round may be ended against the person who filed it.
+     *
+     * Frozen when the round opens, never read from the phase in force at the
+     * moment somebody presses a button (§32.63). An appeal opened in the
+     * appeal window keeps its terminal-only rule after that window closes,
+     * and an ordinary review that raised a doubt during filing does not
+     * silently acquire one when the appeal window opens.
+     */
+    rejectPolicy: p.string().length(16).defaultRaw(`'any-stage'`),
     // both routes, resolved once against this participant's frozen lineage
     // and frozen with the round. The column keeps its old name: what it
     // holds grew a second route, and renaming it would cost a rewrite of
@@ -1075,6 +1087,10 @@ export const ReviewInstance = defineEntity({
     {
       name: 'chk_review_instances_route',
       expression: `current_route IN ('normal', 'doubt')`,
+    },
+    {
+      name: 'chk_review_instances_reject_policy',
+      expression: `reject_policy IN ('any-stage', 'terminal-only')`,
     },
     {
       name: 'chk_review_instances_state',
@@ -1280,6 +1296,8 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, policy_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
   `alter table review_instances add constraint fk_review_instances_supersedes
      foreign key (tenant_id, supersedes_instance_id) references review_instances (tenant_id, id) on delete set null (supersedes_instance_id)`,
+  `alter table review_instances add constraint fk_review_instances_appealed
+     foreign key (tenant_id, appealed_instance_id) references review_instances (tenant_id, id) on delete set null (appealed_instance_id)`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
   `alter table entry_events add constraint fk_entry_events_entry

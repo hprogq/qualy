@@ -508,6 +508,28 @@ const i18n = definePluginMessages({
     entrySubmit: { id: 'assessment/entry/submit', defaultMessage: 'Submit' },
     entryWithdraw: { id: 'assessment/entry/withdraw', defaultMessage: 'Withdraw' },
     entrySave: { id: 'assessment/entry/save', defaultMessage: 'Save' },
+    entryAppeal: { id: 'assessment/entry/appeal', defaultMessage: 'Appeal' },
+    entryAppealTitle: {
+      id: 'assessment/entry/appeal-title',
+      defaultMessage: 'Appeal this decision',
+    },
+    entryAppealHint: {
+      id: 'assessment/entry/appeal-hint',
+      defaultMessage: 'The material stays as it is. To change it, edit and submit again instead.',
+    },
+    entryAppealReason: {
+      id: 'assessment/entry/appeal-reason',
+      defaultMessage: 'Why the decision is wrong',
+    },
+    entryAppealed: { id: 'assessment/entry/appealed', defaultMessage: 'Appeal submitted.' },
+    refuseNothingToAppeal: {
+      id: 'assessment/entry/refuse-nothing-to-appeal',
+      defaultMessage: 'There is no decision here to appeal.',
+    },
+    refuseReviewOpen: {
+      id: 'assessment/entry/refuse-review-open',
+      defaultMessage: 'This is being reviewed. Wait for the outcome.',
+    },
     entryHistoryOpen: { id: 'assessment/entry/history-open', defaultMessage: 'History' },
     entryIssueRequired: {
       id: 'assessment/entry/issue-required',
@@ -1025,20 +1047,11 @@ const i18n = definePluginMessages({
       defaultMessage: 'Skipped: no such unit above this participant',
     },
     reviewRaiseDoubt: { id: 'assessment/review/raise-doubt', defaultMessage: 'Raise a doubt' },
-    reviewForward: { id: 'assessment/review/forward', defaultMessage: 'Pass it on' },
     reviewRouteNormal: { id: 'assessment/review/route-normal', defaultMessage: 'Ordinary review' },
     reviewRouteDoubt: { id: 'assessment/review/route-doubt', defaultMessage: 'Doubt review' },
     reviewCommentAction: {
       id: 'assessment/review/comment-action',
       defaultMessage: 'Leave a note',
-    },
-    reviewRecommendApprove: {
-      id: 'assessment/review/recommend-approve',
-      defaultMessage: 'Advise approval',
-    },
-    reviewRecommendReject: {
-      id: 'assessment/review/recommend-reject',
-      defaultMessage: 'Advise sending back',
     },
     reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
     reviewOnDoubtRoute: {
@@ -2010,6 +2023,10 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/entry-resubmit',
       defaultMessage: 'Ask for a settled entry to be looked at again.',
     },
+    'permission-hint.assessment.review.raise-doubt': {
+      id: 'assessment/permission-hint/review-raise-doubt',
+      defaultMessage: 'Let a reviewer hand something they cannot judge to the doubt route.',
+    },
     'permission-hint.assessment.review.process': {
       id: 'assessment/permission-hint/review-process',
       defaultMessage: 'Approve, reject or return submitted entries.',
@@ -2060,6 +2077,10 @@ const i18n = definePluginMessages({
     'permission.assessment.entry.resubmit': {
       id: 'assessment/permission/entry-resubmit',
       defaultMessage: 'Ask for another look',
+    },
+    'permission.assessment.review.raise-doubt': {
+      id: 'assessment/permission/review-raise-doubt',
+      defaultMessage: 'Raise a doubt',
     },
     'permission.assessment.review.process': {
       id: 'assessment/permission/review-process',

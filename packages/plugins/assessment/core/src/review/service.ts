@@ -5,6 +5,7 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { cursorUnusable, pageSize, type BadRequest } from '@qualy/api-kit/schema'
 import type { ItemTypeDriver } from '../plugin.ts'
 import {
+  BatchNotFound,
   BatchReadOnly,
   EntryActionRefused,
   EntryPayloadInvalid,
@@ -12,11 +13,16 @@ import {
   ReviewNotFound,
 } from '../server/errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
-import { revisionOf } from '../item/db.ts'
+import { itemOf, revisionOf } from '../item/db.ts'
 import {
   advanceReviewInstance,
+  entryOf,
   entryRevisionOf,
+  hasOpenRound,
   insertReviewEvent,
+  insertReviewInstance,
+  nextRoundNo,
+  participantOf,
   revisionAttachmentsOf,
   setEntryState,
 } from '../entry/db.ts'
@@ -25,6 +31,8 @@ import {
   doubtOpen,
   enterableFrom,
   holdersOf,
+  readPolicy,
+  resolvePolicy,
   isRouteEnd,
   nextAfter,
   routeOf,
@@ -124,38 +132,46 @@ export interface ReviewDetailView {
 }
 
 /**
- * What a reviewer can say (§14, §32.62).
+ * What a reviewer can say (§14, §32.63).
  *
- * On the ordinary route: approve carries the round on and ends it at the
- * last step, reject ends it, and raising a doubt hands it to the other route
- * entirely - it does not carry on from where it was. On the doubt route the
- * middle steps may only advise and forward; the decision belongs to the end
- * of that route.
+ * Both routes are real review chains: approve carries the round to the next
+ * step of the route it is on and ends it at the last one, reject ends it
+ * wherever reject is on offer. Raising a doubt hands the round to the other
+ * route entirely rather than carrying on from where it was, so it is only
+ * ever offered on the ordinary one.
+ *
+ * There is no separate vocabulary for advising. A middle step approving
+ * already says "nothing here for me, pass it on", and inventing a second
+ * word for it meant a reviewer had to know which kind of chain they were
+ * standing in before they knew which button meant what.
  */
-export type ReviewDecision =
-  | 'approve'
-  | 'reject'
-  | 'raise-doubt'
-  | 'forward'
-  | 'comment'
-  | 'recommend-approve'
-  | 'recommend-reject'
+export type ReviewDecision = 'approve' | 'reject' | 'raise-doubt' | 'comment'
 
 /**
  * What may be said from where the round stands.
  *
  * One function, asked by the reader and by the writer, so a button that
  * appears is a button that works.
+ *
+ * `rejectPolicy` comes off the round, never off the phase in force at this
+ * moment: an appeal keeps its terminal-only rule after the appeal window
+ * closes, and an ordinary review does not acquire one when that window opens
+ * (§32.63).
  */
-const decisionsAt = (policy: ResolvedPolicy, here: ResolvedStage): readonly ReviewDecision[] => {
+const decisionsAt = (
+  policy: ResolvedPolicy,
+  here: ResolvedStage,
+  round: { rejectPolicy: 'any-stage' | 'terminal-only' },
+  mayRaiseDoubt: boolean,
+): readonly ReviewDecision[] => {
+  const endable = round.rejectPolicy === 'any-stage' || isRouteEnd(policy, here)
   if (here.route === 'doubt') {
-    return isRouteEnd(policy, here)
-      ? ['approve', 'reject', 'comment']
-      : ['comment', 'recommend-approve', 'recommend-reject', 'forward']
+    return endable ? ['approve', 'reject', 'comment'] : ['approve', 'comment']
   }
-  return doubtOpen(policy)
-    ? ['approve', 'reject', 'raise-doubt', 'comment']
-    : ['approve', 'reject', 'comment']
+  const said: ReviewDecision[] = endable ? ['approve', 'reject'] : ['approve']
+  if (mayRaiseDoubt && doubtOpen(policy)) said.push('raise-doubt')
+  said.push('comment')
+  return said
 }
 
 export interface ReviewDecisionInput {
@@ -184,16 +200,39 @@ export interface ReviewMethods {
     ReviewDetailView,
     ReviewNotFound | ReviewConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
   >
+  readonly appealReview: (
+    tenantId: string,
+    instanceId: string,
+    input: { reason: string },
+    as: Principal,
+  ) => Effect.Effect<
+    ReviewDetailView,
+    ReviewNotFound | BatchReadOnly | EntryActionRefused | BatchNotFound
+  >
 }
+
+/** who may act now, and why not; the same shape the entry acts pass through */
+type ActionDecision =
+  | { readonly allowed: true }
+  | { readonly allowed: false; readonly layer: string; readonly reason: string }
 
 export interface ReviewDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
   /** the phase gate's word on assessment.review.process in this batch, now */
   readonly reviewGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
+  /** and on assessment.review.raise-doubt, which a phase opens separately */
+  readonly raiseDoubtGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
   /** administrative reach over the batch, the same door getEntry uses */
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
   readonly parseRange: (text: string) => { start: string; end: string }
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
+  /** the participant-action door, for the one act a participant does here */
+  readonly authorize: (
+    principal: Principal,
+    code: string,
+    batchId: string,
+    ctx?: { participantId?: string },
+  ) => Effect.Effect<ActionDecision, BatchNotFound>
 }
 
 const refuse = (action: string, reason: string) => new EntryActionRefused({ action, reason })
@@ -236,7 +275,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const assembleDetail = (
     tenantId: string,
     row: ReviewInstanceDetailRow,
-    view: { canDecide: boolean; resolveReviewers: boolean },
+    view: { canDecide: boolean; mayRaiseDoubt?: boolean; resolveReviewers: boolean },
   ) =>
     Effect.gen(function* () {
       const revision = (yield* entryRevisionOf(tenantId, row.revisionId))!
@@ -273,7 +312,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       }
       const here = stageById(policy, row.currentRoute, row.currentStageId)
       const decisions: readonly string[] =
-        !view.canDecide || here === null ? [] : decisionsAt(policy, here)
+        !view.canDecide || here === null
+          ? []
+          : decisionsAt(policy, here, row, view.mayRaiseDoubt === true)
       const stageView = (stage: ResolvedStage): ReviewStageView => ({
         id: stage.id,
         index: stage.index,
@@ -390,8 +431,18 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     const gate = yield* deps.reviewGate(tenantId, row.batchId)
     const canDecide =
       judge && row.state === 'active' && row.batchStatus === 'active' && gate.allowed
+    // turning an ordinary review into a doubt is its own thing a phase opens
+    // and closes: during an appeal window there is nothing to raise a doubt
+    // about, because an appeal is already on the doubt route
+    const doubtGate = yield* deps.raiseDoubtGate(tenantId, row.batchId)
     return yield* dieQuery(
-      withDb(assembleDetail(tenantId, row, { canDecide, resolveReviewers: true })),
+      withDb(
+        assembleDetail(tenantId, row, {
+          canDecide,
+          mayRaiseDoubt: doubtGate.allowed,
+          resolveReviewers: true,
+        }),
+      ),
     )
   })
 
@@ -425,8 +476,21 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             // §32.62): an ordinary step carries or ends the round and may
             // hand it to the doubt route; a middle step of the doubt route
             // may only advise, because the decision belongs to its end.
-            const allowed = decisionsAt(policy, here)
-            if (!allowed.includes(action)) return yield* refuse(action, 'decision-not-available')
+            const doubtGate =
+              action === 'raise-doubt'
+                ? yield* deps.raiseDoubtGate(tenantId, row.batchId)
+                : { allowed: true as const }
+            const allowed = decisionsAt(policy, here, row, doubtGate.allowed)
+            if (!allowed.includes(action)) {
+              // a doubt refused by the phase says so in the phase's own
+              // words; anything else is simply not on offer here
+              return yield* refuse(
+                action,
+                action === 'raise-doubt' && !doubtGate.allowed
+                  ? (doubtGate as { reason: string }).reason
+                  : 'decision-not-available',
+              )
+            }
 
             const comment = input.comment?.trim() ?? ''
             if (comment === '' && action !== 'approve') {
@@ -462,7 +526,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
 
             // an opinion moves nothing; it is said and the round stays where
             // it is, waiting for whoever will decide
-            if (action === 'comment' || action.startsWith('recommend-')) {
+            if (action === 'comment') {
               yield* say(action)
               const written = (yield* instanceOf(tenantId, instanceId))!
               return yield* assembleDetail(tenantId, written, {
@@ -529,13 +593,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               state: holders.length > 0 ? 'active' : 'blocked',
             })
             if (!moved) return yield* new ReviewConflict()
-            yield* say(
-              action === 'raise-doubt'
-                ? 'doubt-raised'
-                : action === 'forward'
-                  ? 'forwarded'
-                  : 'approved',
-            )
+            yield* say(action === 'raise-doubt' ? 'doubt-raised' : 'approved')
             if (holders.length === 0) {
               yield* insertReviewEvent({
                 tenantId,
@@ -603,5 +661,152 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       return decoded.success
     })
 
-  return { listReviewInbox, getReviewInstance, decideReview }
+  /**
+   * Contesting a decision that has already been made.
+   *
+   * A round of its own, against the same filing: nothing was rewritten, and
+   * what is being disputed is the conclusion. It opens on the doubt route
+   * with only its last step able to end it, and both of those are frozen on
+   * the round rather than read from whatever phase is in force when somebody
+   * later presses a button (§32.63).
+   *
+   * The other way out of a rejection is to change the material and submit
+   * again, which is a different act on a different route. The two are
+   * offered as two, because a screen that guesses which one somebody meant
+   * gets it wrong for whoever was sure.
+   */
+  const appealReview: ReviewMethods['appealReview'] = Effect.fn('Assessment.appealReview')(
+    function* (tenantId, instanceId, input, as) {
+      const located = yield* dieQuery(withDb(instanceOf(tenantId, instanceId)))
+      if (located === null) return yield* new ReviewNotFound()
+      // only its subject appeals; to anybody else the round is not theirs to
+      // have an opinion about, and a stranger learns nothing
+      if (located.subjectUserId !== as.userId) {
+        const admin = yield* deps.rosterReach(as, tenantId, located.batchId)
+        if (!admin) return yield* new ReviewNotFound()
+        return yield* refuse('appeal', 'not-your-entry')
+      }
+      const decision = yield* deps
+        .authorize(as, 'assessment.entry.resubmit', located.batchId, {
+          participantId: located.participantId,
+        })
+        .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+      if (!decision.allowed) return yield* refuse('appeal', decision.reason)
+
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const row = yield* instanceOf(tenantId, instanceId)
+            if (row === null) return yield* new ReviewNotFound()
+            const locked = yield* lockBatch(tenantId, row.batchId)
+            if (locked!.status === 'archived') return yield* new BatchReadOnly()
+            const reason = input.reason.trim()
+            if (reason === '') return yield* refuse('appeal', 'reason-required')
+            // there has to be a decision to contest
+            if (
+              row.state !== 'completed' ||
+              (row.outcome !== 'approved' && row.outcome !== 'rejected')
+            ) {
+              return yield* refuse('appeal', 'nothing-to-appeal')
+            }
+            const entry = yield* entryOf(tenantId, row.entryId)
+            if (entry === null) return yield* new ReviewNotFound()
+            // one open round per claim: whoever is already looking at it
+            // finishes before anybody contests anything
+            if (yield* hasOpenRound(tenantId, row.entryId)) {
+              return yield* refuse('appeal', 'review-already-open')
+            }
+            const item = yield* itemOf(tenantId, row.itemId)
+            if (item === null || item.currentRevisionId === null) {
+              return yield* refuse('appeal', 'item-not-configured')
+            }
+            const live = yield* revisionOf(tenantId, item.currentRevisionId)
+            if (live === null) return yield* refuse('appeal', 'item-not-configured')
+            const participant = yield* participantOf(tenantId, row.batchId, row.participantId)
+            if (participant === null || participant.status !== 'active') {
+              return yield* refuse('appeal', 'participant-not-active')
+            }
+            const policy = yield* resolvePolicy({
+              tenantId,
+              batchId: row.batchId,
+              policy: readPolicy(live.reviewPolicy),
+              lineage: participant.anchorLineage,
+            })
+            // an appeal walks the doubt route and nothing else; a question
+            // with none configured has nowhere to hear one
+            const first = enterableFrom(policy, 'doubt', 0)
+            if (first === null || first.nodeId === null) {
+              return yield* refuse('appeal', 'review-level-missing')
+            }
+            const nodePath = yield* nodePathOf(tenantId, first.nodeId)
+            if (nodePath === null) return yield* refuse('appeal', 'review-level-missing')
+            const holders = yield* holdersOf({
+              tenantId,
+              batchId: row.batchId,
+              stage: first,
+              subjectUserId: participant.userId,
+              actorId: row.actorId,
+            })
+            const roundNo = yield* nextRoundNo(tenantId, row.entryId)
+            const opened = yield* insertReviewInstance({
+              tenantId,
+              entryId: row.entryId,
+              // the same filing: an appeal disputes the conclusion, not the
+              // material, and changing the material is the other door
+              revisionId: row.revisionId,
+              roundNo,
+              origin: 'appeal',
+              initiator: 'participant',
+              appealedInstanceId: instanceId,
+              rejectPolicy: 'terminal-only',
+              policyRevisionId: live.id,
+              effectivePolicy: policy,
+              route: 'doubt',
+              stageId: first.id,
+              roleIds: first.roleIds,
+              nodeId: first.nodeId,
+              nodePath,
+              state: holders.length > 0 ? 'active' : 'blocked',
+            })
+            yield* insertReviewEvent({
+              tenantId,
+              reviewInstanceId: opened,
+              kind: 'appealed',
+              actorId: as.userId,
+              route: 'doubt',
+              stageId: first.id,
+              comment: reason,
+            })
+            if (holders.length === 0) {
+              yield* insertReviewEvent({
+                tenantId,
+                reviewInstanceId: opened,
+                kind: 'assignee-not-found',
+                actorId: null,
+                route: 'doubt',
+                stageId: first.id,
+              })
+            }
+            // the decision is being disputed, so it is no longer settled:
+            // an approval under appeal stops counting until the appeal ends
+            const moved = yield* setEntryState({
+              tenantId,
+              entryId: row.entryId,
+              from: ['approved', 'rejected'],
+              to: 'in_review',
+              currentReviewInstanceId: opened,
+            })
+            if (!moved) return yield* refuse('appeal', 'nothing-to-appeal')
+            const written = (yield* instanceOf(tenantId, opened))!
+            return yield* assembleDetail(tenantId, written, {
+              canDecide: false,
+              resolveReviewers: false,
+            })
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+      )
+    },
+  )
+
+  return { listReviewInbox, getReviewInstance, decideReview, appealReview }
 }

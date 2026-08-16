@@ -21,6 +21,7 @@ import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { AppealDialog } from './AppealDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntryHistory } from './EntryHistory.tsx'
 import { GroupDetail } from './GroupDetail.tsx'
@@ -164,6 +165,8 @@ function Body({
   const lingeringFiling = useLingering(filing)
   const [history, setHistory] = useState<string | null>(null)
   const lingeringHistory = useLingering(history)
+  const [appealing, setAppealing] = useState<EntryDto | null>(null)
+  const lingeringAppeal = useLingering(appealing)
 
   const entriesByItem = useMemo(() => {
     const grouped = new Map<string, EntryDto[]>()
@@ -278,6 +281,7 @@ function Body({
                   onFile={(entry) => setFiling({ item: open.item!, entry, trail: open.trail })}
                   onHistory={setHistory}
                   onStatus={(entryId, status) => setStatus.mutate({ entryId, status })}
+                  onAppeal={setAppealing}
                 />
               </Drill>
             )}
@@ -311,6 +315,17 @@ function Body({
           open={history !== null}
           entryId={lingeringHistory}
           onClose={() => setHistory(null)}
+        />
+      )}
+      {lingeringAppeal?.currentReviewInstanceId != null && (
+        <AppealDialog
+          open={appealing !== null}
+          instanceId={lingeringAppeal.currentReviewInstanceId}
+          onClose={() => setAppealing(null)}
+          onDone={() => {
+            setAppealing(null)
+            refresh()
+          }}
         />
       )}
     </AsyncSection>

@@ -28,7 +28,12 @@ export interface EntryDto {
   currentRevision: EntryRevisionDto | null
   currentReviewInstanceId: string | null
   createdAt: string
-  capabilities: { canEdit: boolean; canSubmit: boolean; canWithdraw: boolean }
+  capabilities: {
+    canEdit: boolean
+    canSubmit: boolean
+    canWithdraw: boolean
+    canAppeal: boolean
+  }
 }
 
 export interface ItemDto {

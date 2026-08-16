@@ -601,6 +601,8 @@ export interface OpenRoundRow {
   state: 'active' | 'blocked'
   route: 'normal' | 'doubt'
   stageId: string
+  /** carried into the round that replaces it: an appeal stays an appeal */
+  rejectPolicy: 'any-stage' | 'terminal-only'
 }
 
 export const openRoundsOfItem = (tenantId: string, itemId: string) =>
@@ -618,6 +620,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           'ri.state',
           'ri.currentRoute',
           'ri.currentStageId',
+          'ri.rejectPolicy',
           'e.participantId',
         ])
         .where('ri.tenantId', '=', tenantId)
@@ -636,6 +639,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           state: row.state as OpenRoundRow['state'],
           route: row.currentRoute as OpenRoundRow['route'],
           stageId: String(row.currentStageId),
+          rejectPolicy: row.rejectPolicy as OpenRoundRow['rejectPolicy'],
         })),
       ),
     )

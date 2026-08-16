@@ -465,16 +465,42 @@ export const nextRoundNo = (tenantId: string, entryId: string) =>
     )
     .pipe(Effect.map(({ rows }) => Number(rows[0]!.next)))
 
+/**
+ * Whether a round of this claim is still running.
+ *
+ * Not `entries.current_review_instance_id`: that keeps pointing at the last
+ * round after it ends, which is what lets a reader find the decision. Open
+ * means the round row says so, the same two states the partial unique index
+ * counts.
+ */
+export const hasOpenRound = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .where('state', 'in', ['active', 'blocked'])
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
 export const insertReviewInstance = (input: {
   tenantId: string
   entryId: string
   revisionId: string
   roundNo: number
-  /** why this round exists; 'initial' is a submission, 'reroute' a policy change */
-  origin?: 'initial' | 'reroute'
+  /** why this round exists; 'initial' is a submission, 'appeal' contests one */
+  origin?: 'initial' | 'appeal' | 'reroute'
   initiator?: 'participant' | 'staff'
   /** the round this one replaced, when a policy change opened it */
   supersedesInstanceId?: string | null
+  /** the decision being contested, when this round is an appeal */
+  appealedInstanceId?: string | null
+  /** where this round may be ended; frozen when it opens (§32.63) */
+  rejectPolicy: 'any-stage' | 'terminal-only'
   /** which version of the question's review policy this round walks */
   policyRevisionId: string
   /** both routes, resolved and frozen for the whole round */
@@ -491,12 +517,14 @@ export const insertReviewInstance = (input: {
       sql<{ id: string }>`
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator,
-           supersedes_instance_id, policy_revision_id, effective_chain,
+           supersedes_instance_id, appealed_instance_id, reject_policy,
+           policy_revision_id, effective_chain,
            current_route, current_stage_id, state, current_role_ids, current_node_id,
            current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
                 ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
-                ${input.supersedesInstanceId ?? null}, ${input.policyRevisionId},
+                ${input.supersedesInstanceId ?? null}, ${input.appealedInstanceId ?? null},
+                ${input.rejectPolicy}, ${input.policyRevisionId},
                 ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
                 ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},

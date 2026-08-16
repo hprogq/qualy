@@ -692,10 +692,12 @@ describe('the stage plan', () => {
     // the gate's own registry, and nothing else
     await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeVisible()
     await expect.element(panel.getByRole('checkbox', { name: '审核提交的内容' })).toBeVisible()
+    // its own switch: an appeal window opens reviewing without opening doubts
+    await expect.element(panel.getByRole('checkbox', { name: '提交疑点' })).toBeVisible()
     for (const absent of ['登录', '管理组织架构', '管理测评批次', '查看角色']) {
       await expect.element(panel.getByRole('checkbox', { name: absent })).not.toBeInTheDocument()
     }
-    expect(panel.getByRole('checkbox').elements()).toHaveLength(11)
+    expect(panel.getByRole('checkbox').elements()).toHaveLength(12)
   })
 
   it('fills one stage from a stage preset, as a starting point only', async () => {

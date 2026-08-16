@@ -91,6 +91,8 @@ export interface EntryView {
     readonly canEdit: boolean
     readonly canSubmit: boolean
     readonly canWithdraw: boolean
+    /** a decision has been made and it is this person's to contest (§32.63) */
+    readonly canAppeal: boolean
   }
 }
 
@@ -430,6 +432,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             entry.status === 'needs_revision'),
         canSubmit: active && entry.status === 'draft',
         canWithdraw: active && entry.status === 'in_review',
+        // there has to be a decision to disagree with, and a round to name
+        canAppeal:
+          active &&
+          (entry.status === 'approved' || entry.status === 'rejected') &&
+          entry.currentReviewInstanceId !== null,
       },
     }
   }
@@ -788,6 +795,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 roundNo,
                 policyRevisionId: live.id,
                 effectivePolicy: policy,
+                // an ordinary submission: it walks the ordinary route, and
+                // whoever it reaches may end it (§32.63)
+                rejectPolicy: 'any-stage',
                 route: 'normal',
                 stageId: first.id,
                 roleIds: first.roleIds,

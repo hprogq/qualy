@@ -760,6 +760,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     expect(refusalOf(result.stranger)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
     expect(result.admin.id).toBeDefined()
     expect(result.ownRead.capabilities).toEqual({
+      canAppeal: false,
       canEdit: false,
       canSubmit: false,
       canWithdraw: false,

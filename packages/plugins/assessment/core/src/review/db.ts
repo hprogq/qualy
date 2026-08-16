@@ -174,6 +174,7 @@ export interface ReviewInstanceDetailRow {
   outcome: string | null
   currentRoute: 'normal' | 'doubt'
   currentStageId: string
+  rejectPolicy: 'any-stage' | 'terminal-only'
   effectivePolicy: ResolvedPolicy
   roundNo: number
   entryId: string
@@ -224,6 +225,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'ri.outcome',
           'ri.currentRoute',
           'ri.currentStageId',
+          'ri.rejectPolicy',
           'ri.effectiveChain',
           'ri.roundNo',
           'ri.entryId',
@@ -259,6 +261,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               outcome: row.outcome,
               currentRoute: row.currentRoute as ReviewInstanceDetailRow['currentRoute'],
               currentStageId: row.currentStageId,
+              rejectPolicy: row.rejectPolicy as ReviewInstanceDetailRow['rejectPolicy'],
               // rounds opened before the split stored one list with a marker
               effectivePolicy: readResolved(row.effectiveChain),
               roundNo: row.roundNo,
