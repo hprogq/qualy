@@ -4860,3 +4860,23 @@ canonical 无边直授成功;options 拒因与写入一致)、自撤回拒绝、
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 653 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;
 entity-parity/error-codes/catalogs/frozen-routes 全绿。
+
+### 我的填报按设计稿 3b:回到 wide,条目改成两列卡片(2026-08-16)
+
+设计稿 t3 的论证:default(1152)下详情栏恒为 728px——减两侧 24 内边距、352 结构栏、24 间距,
+屏幕再宽也不涨,1920 的屏两侧白掉 544;wide(1440)下详情栏 1016。不用 full:
+不设上限的容器在 2560 的屏上一条申报会长到读不回行首。
+
+- **`BatchScreen` 回到 `size="wide"`**(此前按用户指示改回过 default;本次是用户按设计稿 3b 的
+  新裁决,理由写进了代码注释)。
+- **已提交条目从"border-b 分隔的整行"改为卡片**(`rounded-xl border bg-card p-4`),
+  `xl` 以上两列并排(设计稿"可以接着说"里建议的分界正是 1280),以下单列。
+  文本答案单行截断(title 提供全文,完整内容一步进历史)——卡片是用来区分条目的,不是读全文的。
+  标签列 6rem 固定,两张卡并排读起来像同一张表。
+- 结构栏 352px(w-88)、状态"描边+圆点"样式与主题圆角本就与设计稿一致,无需改动。
+
+实测(1680×1000,临时 harness,已删):容器 max-width 1440px;四张卡两行,每行共享同一 top;
+1100 宽时四张卡各占一行。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 653 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;prettier 全绿。

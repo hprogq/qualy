@@ -172,18 +172,26 @@ export function ItemDetail({
         </div>
       ))}
 
-      {filed.map((entry) => (
-        <FiledEntry
-          key={entry.id}
-          entry={entry}
-          item={item}
-          score={entryScore(standing, entry.id)}
-          busy={busy}
-          onHistory={() => onHistory(entry.id)}
-          onWithdraw={() => onStatus(entry.id, 'draft')}
-          onAppeal={() => onAppeal(entry)}
-        />
-      ))}
+      {/* Cards, two abreast where the pane is wide enough: four claims fit
+          one screen instead of a scroll, and comparing two of them stops
+          meaning holding one in your head. One column again below that -
+          squeezed cards truncate the very answers they exist to show. */}
+      {filed.length > 0 && (
+        <div className="grid items-start gap-4 xl:grid-cols-2">
+          {filed.map((entry) => (
+            <FiledEntry
+              key={entry.id}
+              entry={entry}
+              item={item}
+              score={entryScore(standing, entry.id)}
+              busy={busy}
+              onHistory={() => onHistory(entry.id)}
+              onWithdraw={() => onStatus(entry.id, 'draft')}
+              onAppeal={() => onAppeal(entry)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -211,7 +219,7 @@ function FiledEntry({
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
 
   return (
-    <div className="flex flex-col gap-3 border-b pb-4 last:border-b-0">
+    <div className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-center gap-3">
         <Standing status={entry.status} />
         <p className="text-xs whitespace-nowrap text-muted-foreground">{when(entry)}</p>
@@ -220,15 +228,17 @@ function FiledEntry({
       </div>
 
       {/* The label column is fixed rather than sized to the longest label:
-          two claims under the same question then read as one table, and the
-          answers line up down the pane instead of stepping in and out with
-          whatever each one happened to be asked. */}
-      <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[6rem_minmax(0,1fr)]">
+          two cards side by side then read as one table, and the answers line
+          up across the pane instead of stepping in and out with whatever
+          each claim happened to be asked. Written answers stay on one line -
+          a card is for telling claims apart, and the whole text is one press
+          away in the history. */}
+      <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
         {fields.map((field) => {
           const value = payload[field.key]
           return (
-            <div key={field.key} className="sm:col-span-2 sm:grid sm:grid-cols-subgrid">
-              <dt className="text-muted-foreground">{field.label}</dt>
+            <div key={field.key} className="col-span-2 grid grid-cols-subgrid">
+              <dt className="whitespace-nowrap text-muted-foreground">{field.label}</dt>
               <dd className="min-w-0">
                 {field.type === 'attachment' ? (
                   Array.isArray(value) && value.length > 0 ? (
@@ -241,7 +251,10 @@ function FiledEntry({
                     <span className="text-muted-foreground">{format(m.entryFieldCleared)}</span>
                   )
                 ) : (
-                  <span className={cn(field.type === 'date' && 'tabular-nums')}>
+                  <span
+                    className={cn('block truncate', field.type === 'date' && 'tabular-nums')}
+                    title={typeof value === 'string' && value !== '' ? value : undefined}
+                  >
                     {typeof value === 'string' && value !== ''
                       ? value
                       : format(m.entryFieldCleared)}
@@ -253,7 +266,7 @@ function FiledEntry({
         })}
       </dl>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         <Button variant="outline" size="sm" onClick={onHistory}>
           {format(m.entryHistoryOpen)}
         </Button>

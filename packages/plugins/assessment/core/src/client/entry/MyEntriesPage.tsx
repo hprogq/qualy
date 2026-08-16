@@ -42,9 +42,13 @@ export default function MyEntriesPage() {
   const { format } = useI18n()
   const [selected, setSelected] = usePageQueryState('open')
   return (
+    // wide, not default and not full: at the default width the detail pane
+    // is 728px however wide the screen is, and unbounded a claim's line
+    // would grow past where it can be read back to its start
     <BatchScreen
       title={format(m.myEntriesTab)}
       description={format(m.myEntriesHint)}
+      size="wide"
       actions={<Totals />}
     >
       {(batch) => (
