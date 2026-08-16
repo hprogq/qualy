@@ -21,12 +21,17 @@ const WITH_ACTOR: Record<string, MessageDescriptor> = {
   'cancelled-by-submitter': m.eventWithdrawn,
   'returned-for-revision': m.eventReturnedForRevision,
   'revision-required': m.eventReturnedForRevision,
+  appealed: m.eventAppealed,
+  'abandoned-by-submitter': m.eventAbandoned,
 }
 
 const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
   'assignee-not-found': m.eventNoReviewer,
   'assignee-found': m.eventReviewerFound,
   'cancelled-item-voided': m.eventItemVoided,
+  // the route under the round changed, by an administrator's configuration
+  // decision rather than by anything anybody said about the filing
+  rerouted: m.eventRerouted,
 }
 
 /** the sentence for one event, and whether it needs the actor's name in it */
@@ -45,4 +50,16 @@ export const reviewOutcomeMessage = (outcome: string): MessageDescriptor =>
       ? m.outcomeRejected
       : outcome === 'cancelled'
         ? m.outcomeCancelled
-        : m.outcomeOther
+        : outcome === 'superseded'
+          ? m.outcomeSuperseded
+          : m.outcomeOther
+
+/** how a round began, said as its heading's second half */
+export const reviewOriginMessage = (origin: string): MessageDescriptor | null =>
+  origin === 'appeal'
+    ? m.originAppeal
+    : origin === 'reroute'
+      ? m.originReroute
+      : origin === 'reopen'
+        ? m.originReopen
+        : null

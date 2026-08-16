@@ -645,6 +645,24 @@ const i18n = definePluginMessages({
     entryNote: { id: 'assessment/entry/note', defaultMessage: 'Note' },
     entryStatusDraft: { id: 'assessment/entry/status-draft', defaultMessage: 'Draft' },
     entryStatusInReview: { id: 'assessment/entry/status-in-review', defaultMessage: 'In review' },
+    entryStatusRevising: {
+      id: 'assessment/entry/status-revising',
+      defaultMessage: 'To resubmit',
+    },
+    entryResubmit: { id: 'assessment/entry/resubmit', defaultMessage: 'Resubmit' },
+    entryAbandon: { id: 'assessment/entry/abandon', defaultMessage: 'Give up this claim' },
+    entryAbandonConfirm: {
+      id: 'assessment/entry/abandon-confirm',
+      defaultMessage: 'Give up this claim? Its place on the question opens up; the record stays.',
+    },
+    entryBlockedNow: {
+      id: 'assessment/entry/blocked-now',
+      defaultMessage: 'Not open right now.',
+    },
+    refuseNotAbandonable: {
+      id: 'assessment/entry/refuse-not-abandonable',
+      defaultMessage: 'Withdraw it from review first.',
+    },
     entryStatusNeedsRevision: {
       id: 'assessment/entry/status-needs-revision',
       defaultMessage: 'More needed',
@@ -730,6 +748,28 @@ const i18n = definePluginMessages({
       id: 'assessment/event/escalated',
       defaultMessage: '{who} escalated it for review',
     },
+    eventAppealed: {
+      id: 'assessment/event/appealed',
+      defaultMessage: '{who} contested the decision',
+    },
+    eventAbandoned: {
+      id: 'assessment/event/abandoned',
+      defaultMessage: '{who} gave the claim up',
+    },
+    eventRerouted: {
+      id: 'assessment/event/rerouted',
+      defaultMessage: 'The review route was changed by an administrator',
+    },
+    outcomeSuperseded: {
+      id: 'assessment/outcome/superseded',
+      defaultMessage: 'Continued in a later round',
+    },
+    originAppeal: { id: 'assessment/origin/appeal', defaultMessage: 'Appeal' },
+    originReroute: {
+      id: 'assessment/origin/reroute',
+      defaultMessage: 'Continued after a route change',
+    },
+    originReopen: { id: 'assessment/origin/reopen', defaultMessage: 'Reopened' },
     eventComment: { id: 'assessment/event/comment', defaultMessage: '{who} left a note' },
     eventRecommendApprove: {
       id: 'assessment/event/recommend-approve',

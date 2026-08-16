@@ -77,6 +77,11 @@ const materialRange = Schema.Struct({ start: isoDate, end: isoDate })
  * the batch; the chosen label is copied onto the review event, so these
  * lists are offer, not history.
  */
+const actionAvailability = Schema.Struct({
+  state: Schema.Literals(['available', 'blocked', 'hidden']),
+  reason: Schema.NullOr(Schema.String),
+})
+
 const reviewReasons = Schema.Struct({
   reject: Schema.Array(Schema.String),
   escalate: Schema.Array(Schema.String),
@@ -463,12 +468,17 @@ const entryView = Schema.Struct({
   currentRevision: Schema.NullOr(entryRevisionView),
   currentReviewInstanceId: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
+  /**
+   * Each act in one of three states: offered, offered disabled with the
+   * reason on hover, or not spoken of. Discovery through the same gate the
+   * act itself answers to, so an enabled button is a call that goes through.
+   */
   capabilities: Schema.Struct({
-    canEdit: Schema.Boolean,
-    /** whether a decision on this claim is one its owner may contest */
-    canAppeal: Schema.Boolean,
-    canSubmit: Schema.Boolean,
-    canWithdraw: Schema.Boolean,
+    edit: actionAvailability,
+    submit: actionAvailability,
+    withdraw: actionAvailability,
+    appeal: actionAvailability,
+    abandon: actionAvailability,
   }),
 })
 
@@ -888,6 +898,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             state: Schema.String,
             outcome: Schema.NullOr(Schema.String),
             revisionId: Schema.String,
+            /** how the round began, so a trail can say it in words */
+            origin: Schema.String,
+            supersedesInstanceId: Schema.NullOr(Schema.String),
+            appealedInstanceId: Schema.NullOr(Schema.String),
             submittedAt: Schema.String,
             completedAt: Schema.NullOr(Schema.String),
             events: Schema.Array(
@@ -895,6 +909,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
                 kind: Schema.String,
                 actorId: Schema.NullOr(Schema.String),
                 actorName: Schema.NullOr(Schema.String),
+                reason: Schema.NullOr(Schema.String),
                 comment: Schema.NullOr(Schema.String),
                 suggestedPayload: configJson,
                 at: Schema.String,
@@ -954,8 +969,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     HttpApiEndpoint.put('setEntryStatus', '/assessment/entries/:entryId/status', {
       params: Schema.Struct({ entryId: id }),
-      /** submit is status in_review; withdraw is status draft */
-      payload: Schema.Struct({ status: Schema.Literals(['in_review', 'draft']) }),
+      /** submit is in_review, withdraw is draft, abandoning the claim is voided */
+      payload: Schema.Struct({ status: Schema.Literals(['in_review', 'draft', 'voided']) }),
       success: Schema.Struct({ entry: entryView }),
       error: [EntryNotFound, BatchReadOnly, EntryActionRefused, AccessDenied, BadRequest],
     }).middleware(Authenticated),

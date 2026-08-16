@@ -88,11 +88,11 @@ export interface EntryView {
   readonly currentReviewInstanceId: string | null
   readonly createdAt: number
   readonly capabilities: {
-    readonly canEdit: boolean
-    readonly canSubmit: boolean
-    readonly canWithdraw: boolean
-    /** a decision has been made and it is this person's to contest (§32.63) */
-    readonly canAppeal: boolean
+    readonly edit: ActionAvailability
+    readonly submit: ActionAvailability
+    readonly withdraw: ActionAvailability
+    readonly appeal: ActionAvailability
+    readonly abandon: ActionAvailability
   }
 }
 
@@ -137,12 +137,16 @@ export interface EntryRoundView {
   readonly state: string
   readonly outcome: string | null
   readonly revisionId: string
+  readonly origin: string
+  readonly supersedesInstanceId: string | null
+  readonly appealedInstanceId: string | null
   readonly submittedAt: number
   readonly completedAt: number | null
   readonly events: readonly {
     readonly kind: string
     readonly actorId: string | null
     readonly actorName: string | null
+    readonly reason: string | null
     readonly comment: string | null
     readonly suggestedPayload: unknown
     readonly at: number
@@ -209,7 +213,7 @@ export interface EntryMethods {
   readonly setEntryStatus: (
     tenantId: string,
     entryId: string,
-    to: 'in_review' | 'draft',
+    to: 'in_review' | 'draft' | 'voided',
     as: Principal,
   ) => Effect.Effect<EntryView, EntryStatusError>
   readonly interveneOnEntry: (
@@ -223,6 +227,23 @@ export interface EntryMethods {
 type ActionDecision =
   | { readonly allowed: true }
   | { readonly allowed: false; readonly layer: string; readonly reason: string }
+
+/**
+ * What a screen may do with one act on one claim: offer it, offer it
+ * disabled with the reason on hover, or not speak of it at all.
+ */
+export interface ActionAvailability {
+  readonly state: 'available' | 'blocked' | 'hidden'
+  readonly reason: string | null
+}
+
+/** the four gated participant acts, decided once per request */
+interface EntryGates {
+  readonly edit: ActionDecision
+  readonly submit: ActionDecision
+  readonly withdraw: ActionDecision
+  readonly appeal: ActionDecision
+}
 
 export interface EntryDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
@@ -410,14 +431,40 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           : mime.toLowerCase() === entry.toLowerCase(),
     )
 
+  /** the phase gate's word on each participant act, asked once per request */
+  const gatesFor = (as: Principal, batchId: string, participantId: string) =>
+    Effect.gen(function* () {
+      const ask = (code: string) =>
+        deps
+          .authorize(as, code, batchId, { participantId })
+          .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+      return {
+        edit: yield* ask('assessment.entry.edit'),
+        submit: yield* ask('assessment.entry.submit'),
+        withdraw: yield* ask('assessment.entry.withdraw'),
+        appeal: yield* ask('assessment.entry.resubmit'),
+      } satisfies EntryGates
+    })
+
   const view = (
     entry: EntryRow,
     revision: EntryRevisionView | null,
     as: Principal,
     participant: ParticipantAnchor | null,
+    gates?: EntryGates,
   ): EntryView => {
     const own = participant !== null && participant.userId === as.userId
     const active = own && participant.status === 'active'
+    // ownership and state say whether an act belongs on this claim at all;
+    // the gate says whether this minute allows it. `hidden` is the first
+    // kind of no, `blocked` the second - a blocked act renders disabled
+    // with its reason, because a vanished button reads as a broken page.
+    const when = (fits: boolean, gate?: ActionDecision): ActionAvailability =>
+      !active || !fits
+        ? { state: 'hidden', reason: null }
+        : gate !== undefined && !gate.allowed
+          ? { state: 'blocked', reason: gate.reason }
+          : { state: 'available', reason: null }
     return {
       id: entry.id,
       batchId: entry.batchId,
@@ -428,21 +475,38 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       currentRevision: revision,
       currentReviewInstanceId: entry.currentReviewInstanceId,
       createdAt: entry.createdAt,
-      // discovery, not authorization: what the screen may offer, decided by
-      // ownership and state alone. The gate is asked again at the act.
+      // discovery, not authorization - the gate is asked again at the act -
+      // but the same gate, so a button that renders enabled is a call that
+      // goes through. Callers answering a write already hold the fresh row
+      // and skip the gates; the screens re-read through the gated paths.
       capabilities: {
-        canEdit:
-          active &&
-          (entry.status === 'draft' ||
+        edit: when(
+          entry.status === 'draft' ||
             entry.status === 'rejected' ||
-            entry.status === 'needs_revision'),
-        canSubmit: active && entry.status === 'draft',
-        canWithdraw: active && entry.status === 'in_review',
+            entry.status === 'needs_revision',
+          gates?.edit,
+        ),
+        // a rejected filing may go back as it stands (§32.65): the word was
+        // "no, as filed" and the answer may be "look again". What was sent
+        // back for revision may not - the round asked for different material
+        submit:
+          active && entry.status === 'needs_revision'
+            ? { state: 'blocked', reason: 'must-revise-first' }
+            : when(entry.status === 'draft' || entry.status === 'rejected', gates?.submit),
+        withdraw: when(entry.status === 'in_review', gates?.withdraw),
         // there has to be a decision to disagree with, and a round to name
-        canAppeal:
-          active &&
+        appeal: when(
           (entry.status === 'approved' || entry.status === 'rejected') &&
-          entry.currentReviewInstanceId !== null,
+            entry.currentReviewInstanceId !== null,
+          gates?.appeal,
+        ),
+        // giving a claim up needs no phase: a person must always be able to
+        // stop claiming something, or a full quota locks them in place
+        abandon: when(
+          entry.status === 'draft' ||
+            entry.status === 'rejected' ||
+            entry.status === 'needs_revision',
+        ),
       },
     }
   }
@@ -707,23 +771,33 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             const locked = yield* lockBatch(tenantId, located.batchId)
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
             const { entry, item, participant } = (yield* loadEntry(tenantId, entryId))!
-            const action = to === 'in_review' ? 'submit' : 'withdraw'
+            const action = to === 'in_review' ? 'submit' : to === 'voided' ? 'abandon' : 'withdraw'
             if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
             if (participant.status !== 'active') {
               return yield* refuse(action, 'participant-not-active')
             }
-            const code =
-              to === 'in_review' ? 'assessment.entry.submit' : 'assessment.entry.withdraw'
-            const decision = yield* deps
-              .authorize(as, code, entry.batchId, {
-                itemId: item.id,
-                participantId: participant.id,
-              })
-              .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
-            if (!decision.allowed) return yield* refuse(action, decision.reason)
+            // abandoning answers to no phase: a person must always be able
+            // to stop claiming something, or a full quota locks them in place
+            if (to !== 'voided') {
+              const code =
+                to === 'in_review' ? 'assessment.entry.submit' : 'assessment.entry.withdraw'
+              const decision = yield* deps
+                .authorize(as, code, entry.batchId, {
+                  itemId: item.id,
+                  participantId: participant.id,
+                })
+                .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+              if (!decision.allowed) return yield* refuse(action, decision.reason)
+            }
 
             if (to === 'in_review') {
-              if (entry.status !== 'draft') return yield* refuse(action, 'entry-not-submittable')
+              // draft, or rejected as it stands (§32.65): the round said no
+              // to this filing, and re-asking with the same filing is the
+              // participant's right. needs_revision is not - that round
+              // asked for different material and only a new version answers
+              if (entry.status !== 'draft' && entry.status !== 'rejected') {
+                return yield* refuse(action, 'entry-not-submittable')
+              }
               if (item.status !== 'active') return yield* refuse(action, 'item-not-active')
               if (entry.currentRevisionId === null) {
                 return yield* refuse(action, 'entry-not-submittable')
@@ -832,7 +906,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               const moved = yield* setEntryState({
                 tenantId,
                 entryId,
-                from: ['draft'],
+                from: ['draft', 'rejected'],
                 to: 'in_review',
                 currentReviewInstanceId: instanceId,
               })
@@ -840,6 +914,31 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               // checked so a future reordering fails loudly instead of
               // leaving a review round attached to nothing
               if (!moved) return yield* refuse(action, 'entry-not-submittable')
+            } else if (to === 'voided') {
+              // walking away from a claim (§32.65): the history stays - the
+              // rounds, the words, the versions - and the quota place opens.
+              // Under review it must be withdrawn first, and an approved
+              // claim is a settled scoring fact, not this person's to unmake
+              if (
+                entry.status !== 'draft' &&
+                entry.status !== 'rejected' &&
+                entry.status !== 'needs_revision'
+              ) {
+                return yield* refuse(action, 'entry-not-abandonable')
+              }
+              const moved = yield* setEntryState({
+                tenantId,
+                entryId,
+                from: ['draft', 'rejected', 'needs_revision'],
+                to: 'voided',
+              })
+              if (!moved) return yield* refuse(action, 'entry-not-abandonable')
+              yield* insertEntryEvent({
+                tenantId,
+                entryId,
+                kind: 'abandoned-by-submitter',
+                actorId: as.userId,
+              })
             } else {
               if (entry.status !== 'in_review' || entry.currentReviewInstanceId === null) {
                 return yield* refuse(action, 'entry-not-withdrawable')
@@ -894,6 +993,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const membership = yield* participantRowByUser(tenantId, batchId, as.userId)
           if (membership === null) return yield* new ParticipantNotFound()
           const participant = (yield* participantOf(tenantId, batchId, membership.id))!
+          const gates = yield* gatesFor(as, batchId, membership.id)
           const rows = yield* entriesOfParticipantPage({
             tenantId,
             batchId,
@@ -905,7 +1005,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const entries: EntryView[] = []
           for (const entry of pageRows) {
             entries.push(
-              view(entry, yield* revisionView(tenantId, entry.currentRevisionId), as, participant),
+              view(
+                entry,
+                yield* revisionView(tenantId, entry.currentRevisionId),
+                as,
+                participant,
+                gates,
+              ),
             )
           }
           const last = pageRows[pageRows.length - 1]
@@ -988,12 +1094,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               state: round.state,
               outcome: round.outcome,
               revisionId: round.revisionId,
+              origin: round.origin,
+              supersedesInstanceId: round.supersedesInstanceId,
+              appealedInstanceId: round.appealedInstanceId,
               submittedAt: round.createdAt,
               completedAt: round.completedAt,
               events: (events.get(round.id) ?? []).map((event) => ({
                 kind: event.kind,
                 actorId: event.actorId,
                 actorName: event.actorName,
+                reason: event.reason,
                 comment: event.comment,
                 suggestedPayload: event.suggestedPayload,
                 at: event.createdAt,

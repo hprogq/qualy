@@ -5,9 +5,17 @@ import { cn } from '@qualy/ui/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { PencilIcon, PlusIcon } from 'lucide-react'
 import { assessmentMessages as m } from '../i18n.ts'
+import { entryRefusalReason } from './refusals.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { Basis } from './Basis.tsx'
-import { entryStatusMessage, fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
+import {
+  entryStatusMessage,
+  fieldsOf,
+  trimAmount,
+  type ActionAvailability,
+  type EntryDto,
+  type ItemDto,
+} from './model.ts'
 import {
   chainLength,
   eachWorth,
@@ -41,7 +49,7 @@ export function ItemDetail({
   busy: boolean
   onFile: (entry: EntryDto | null) => void
   onHistory: (entryId: string) => void
-  onStatus: (entryId: string, status: 'in_review' | 'draft') => void
+  onStatus: (entryId: string, status: 'in_review' | 'draft' | 'voided') => void
   onAppeal: (entry: EntryDto) => void
 }) {
   const { format } = useI18n()
@@ -179,7 +187,7 @@ export function ItemDetail({
           key={entry.id}
           className="flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3"
         >
-          <Standing status={entry.status} />
+          <Standing status={entry.status} revised={entry.currentReviewInstanceId !== null} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-sm">{summary(entry, item)}</span>
             <span className="text-xs text-muted-foreground">
@@ -189,11 +197,13 @@ export function ItemDetail({
           <Button variant="outline" size="sm" onClick={() => onFile(entry)}>
             {format(m.myEntriesResume)}
           </Button>
-          {entry.capabilities.canSubmit && (
-            <Button size="sm" disabled={busy} onClick={() => onStatus(entry.id, 'in_review')}>
-              {format(m.entrySubmit)}
-            </Button>
-          )}
+          <Offered
+            can={entry.capabilities.submit}
+            busy={busy}
+            size="sm"
+            label={format(m.entrySubmit)}
+            onPress={() => onStatus(entry.id, 'in_review')}
+          />
         </div>
       ))}
 
@@ -211,7 +221,8 @@ export function ItemDetail({
               score={entryScore(standing, entry.id)}
               busy={busy}
               onHistory={() => onHistory(entry.id)}
-              onWithdraw={() => onStatus(entry.id, 'draft')}
+              onEdit={() => onFile(entry)}
+              onStatus={(status) => onStatus(entry.id, status)}
               onAppeal={() => onAppeal(entry)}
             />
           ))}
@@ -228,7 +239,8 @@ function FiledEntry({
   score,
   busy,
   onHistory,
-  onWithdraw,
+  onEdit,
+  onStatus,
   onAppeal,
 }: {
   entry: EntryDto
@@ -236,7 +248,8 @@ function FiledEntry({
   score: string | null
   busy: boolean
   onHistory: () => void
-  onWithdraw: () => void
+  onEdit: () => void
+  onStatus: (status: 'in_review' | 'draft' | 'voided') => void
   onAppeal: () => void
 }) {
   const { format } = useI18n()
@@ -246,7 +259,7 @@ function FiledEntry({
   return (
     <div className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Standing status={entry.status} />
+        <Standing status={entry.status} revised={entry.currentReviewInstanceId !== null} />
         <p className="text-xs whitespace-nowrap text-muted-foreground">{when(entry)}</p>
         <span className="flex-1" />
         {score !== null && <p className="text-sm tabular-nums">{score}</p>}
@@ -295,26 +308,113 @@ function FiledEntry({
         <Button variant="outline" size="sm" onClick={onHistory}>
           {format(m.entryHistoryOpen)}
         </Button>
-        {entry.capabilities.canWithdraw && (
-          <Button variant="outline" size="sm" disabled={busy} onClick={onWithdraw}>
-            {format(m.entryWithdraw)}
-          </Button>
+        <Offered
+          can={entry.capabilities.edit}
+          busy={busy}
+          label={format(m.entryEdit)}
+          onPress={onEdit}
+        />
+        {/* a rejected filing may go back as it stands; the round said no to
+            the filing and the answer may be "look again" */}
+        {entry.status !== 'draft' && (
+          <Offered
+            can={entry.capabilities.submit}
+            busy={busy}
+            label={format(m.entryResubmit)}
+            onPress={() => onStatus('in_review')}
+          />
         )}
+        <Offered
+          can={entry.capabilities.withdraw}
+          busy={busy}
+          label={format(m.entryWithdraw)}
+          onPress={() => onStatus('draft')}
+        />
         {/* two different things, offered as two: change the material and
             submit again, or leave it and say the conclusion is wrong */}
-        {entry.capabilities.canAppeal && (
-          <Button variant="outline" size="sm" disabled={busy} onClick={onAppeal}>
-            {format(m.entryAppeal)}
-          </Button>
-        )}
+        <Offered
+          can={entry.capabilities.appeal}
+          busy={busy}
+          label={format(m.entryAppeal)}
+          onPress={onAppeal}
+        />
+        <Offered
+          can={entry.capabilities.abandon}
+          busy={busy}
+          tone="quiet"
+          label={format(m.entryAbandon)}
+          onPress={() => {
+            if (window.confirm(format(m.entryAbandonConfirm))) onStatus('voided')
+          }}
+        />
       </div>
     </div>
   )
 }
 
-/** where a claim stands, as a dot and a word */
-function Standing({ status }: { status: EntryDto['status'] }) {
+/**
+ * One act on one claim, in whatever state the server offered it: a button,
+ * a disabled button with the reason on hover, or nothing. The reason is the
+ * refusal vocabulary the error catalog already speaks.
+ */
+function Offered({
+  can,
+  busy,
+  label,
+  size = 'sm',
+  tone,
+  onPress,
+}: {
+  can: ActionAvailability
+  busy: boolean
+  label: string
+  size?: 'sm' | 'default'
+  tone?: 'quiet'
+  onPress: () => void
+}) {
   const { format } = useI18n()
+  if (can.state === 'hidden') return null
+  const button = (
+    <Button
+      variant="outline"
+      size={size}
+      disabled={busy || can.state === 'blocked'}
+      className={cn(
+        can.state === 'blocked' && 'pointer-events-none',
+        tone === 'quiet' && 'text-muted-foreground',
+      )}
+      onClick={onPress}
+    >
+      {label}
+    </Button>
+  )
+  if (can.state === 'available') return button
+  const why = can.reason === null ? null : entryRefusalReason(can.reason)
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span tabIndex={0}>{button}</span>
+        </TooltipTrigger>
+        <TooltipContent>{format(why ?? m.entryBlockedNow)}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+/** where a claim stands, as a dot and a word */
+function Standing({ status, revised }: { status: EntryDto['status']; revised?: boolean }) {
+  const { format } = useI18n()
+  if (status === 'draft' && revised === true) {
+    // a draft with a round behind it is not a fresh draft: it exists
+    // because something was asked of it
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap">
+        <span aria-hidden className="size-1.5 rounded-full bg-amber-500" />
+        {format(m.entryStatusRevising)}
+      </span>
+    )
+  }
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap">
       <span

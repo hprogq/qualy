@@ -759,11 +759,15 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     // another student learns nothing, not even that it exists
     expect(refusalOf(result.stranger)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
     expect(result.admin.id).toBeDefined()
+    // an excluded person is offered nothing, not even disabled buttons:
+    // the acts are not theirs any more, so they are not spoken of
+    const nothing = { state: 'hidden', reason: null }
     expect(result.ownRead.capabilities).toEqual({
-      canAppeal: false,
-      canEdit: false,
-      canSubmit: false,
-      canWithdraw: false,
+      edit: nothing,
+      submit: nothing,
+      withdraw: nothing,
+      appeal: nothing,
+      abandon: nothing,
     })
     expect(refusalOf(result.ownEdit)?.reason).toBe('participant-not-active')
   })

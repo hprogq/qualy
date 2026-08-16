@@ -804,6 +804,10 @@ export interface EntryRoundRow {
   state: string
   outcome: string | null
   revisionId: string
+  /** how the round began: initial, appeal, reroute, reopen */
+  origin: string
+  supersedesInstanceId: string | null
+  appealedInstanceId: string | null
   createdAt: number
   completedAt: number | null
 }
@@ -814,7 +818,16 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
     .query((k) =>
       k
         .selectFrom('ReviewInstance')
-        .select(['id', 'state', 'outcome', 'roundNo', 'revisionId'])
+        .select([
+          'id',
+          'state',
+          'outcome',
+          'roundNo',
+          'revisionId',
+          'origin',
+          'supersedesInstanceId',
+          'appealedInstanceId',
+        ])
         .select([epoch('created_at').as('createdMs'), epoch('completed_at').as('completedMs')])
         .where('tenantId', '=', tenantId)
         .where('entryId', '=', entryId)
@@ -829,6 +842,9 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
           state: row.state as string,
           outcome: row.outcome,
           revisionId: row.revisionId,
+          origin: row.origin as string,
+          supersedesInstanceId: row.supersedesInstanceId,
+          appealedInstanceId: row.appealedInstanceId,
           createdAt: msOf(row.createdMs),
           completedAt: row.completedMs == null ? null : msOf(row.completedMs),
         })),
@@ -877,6 +893,7 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
             kind: string
             actorId: string | null
             actorName: string | null
+            reason: string | null
             comment: string | null
             suggestedPayload: unknown
             createdAt: number
@@ -894,6 +911,7 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
               're.reviewInstanceId',
               're.kind',
               're.actorId',
+              're.reason',
               're.comment',
               're.suggestedPayload',
               'u.displayName as actorName',
@@ -913,6 +931,7 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
                 kind: string
                 actorId: string | null
                 actorName: string | null
+                reason: string | null
                 comment: string | null
                 suggestedPayload: unknown
                 createdAt: number
@@ -923,6 +942,7 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
                 kind: row.kind,
                 actorId: row.actorId,
                 actorName: row.actorName,
+                reason: row.reason,
                 comment: row.comment,
                 suggestedPayload: row.suggestedPayload ?? null,
                 createdAt: msOf(row.createdMs),

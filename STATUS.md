@@ -5128,3 +5128,34 @@ prettier 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 657 passed / 17 skipped;
 `pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
+
+### 被驳回不再是死路:三条出路与能力三态(2026-08-16,§32.65)
+
+用户实测发现死锁:条目被驳回后不能改、不能重交、申诉又未开放、1/1 满额又不能删——
+参评人被锁死。随审计对话逐项裁决(全文见 §32.65),本轮落地 P0/P1:
+
+- **rejected 可原样重新提交**:同一 revision 开新普通轮(`from: ['draft','rejected']`);
+  needs_revision 明确不可(那一轮要的就是不同材料),界面 blocked + 「先修改再提交」。
+- **放弃申报**:draft/rejected/needs_revision 本人可置 voided(事件 `abandoned-by-submitter`),
+  名额立即释放、历史全留;in_review 先撤回;approved 不可自弃。放弃不受阶段门控。
+- **能力三态**:entry 的 edit/submit/withdraw/appeal/abandon 从四个布尔改为
+  `{state: available|blocked|hidden, reason}`,读取路径(listMyEntries/getEntry)把
+  真实 phase gate 一次问齐——按钮亮=调用通,申诉未开放时是 disabled+tooltip,不再点开必炸。
+- **待重新提交**:驳回后修改在库里就是 draft(被驳回的是上一版,不是没提交的这一版),
+  界面按 draft + currentReviewInstanceId 非空推导显示「待重新提交」,不加新库状态。
+- **卡片出口**:已提交卡片补齐 修改/重新提交/放弃 三个动作位,全部走三态渲染。
+- **历史按版本讲**:round 携带 origin/supersedes/appealed,「发生了一次变更」根因是
+  rerouted/superseded 两个已有领域词没进对照表——现在各有人话(「管理员调整了审核流程」/
+  「已转入新一轮继续」),轮次挂在它判的版本下面,空说明不再占行,事由标签上行。
+
+**测试**:review-workbench 新增「lets a rejected claim go back as it stands, or be given up」
+(原样重交 roundNo=2 但 revisionNo=1;放弃后 1/1 名额立即可再申报);entry-policy 的排除
+读改断三态;浏览器 fixtures 迁移到新能力形状。
+
+**缓建已裁决**(§32.65 待实现清单):聚合器可解释化 + max@1/top-n-sum@1(学生干部按最高
+职务计分)、基础分 = derived Item(不做 ScoreGroup.base)、reviewPolicy mode:'none'、
+declaration 题型、补件机制(SupplementRequest/awaiting_supplement/受限 requirement builder)、
+resubmit 更名。本轮不动 schema,全部零迁移。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 658 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。

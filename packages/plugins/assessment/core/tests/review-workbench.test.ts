@@ -283,4 +283,64 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.forJudge.revisions.length).toBeGreaterThan(0)
     expect(errorOf<{ _tag: string }>(result.forStranger)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
   })
+
+  it('lets a rejected claim go back as it stands, or be given up', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-way-on')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', comment: 'look again later' },
+            reviewer,
+          )
+          // the rejected claim offers the way on, gated by the same gate
+          // the act answers to
+          const rejected = yield* assessment.getEntry(f.t, entry.id, s1)
+          // and it may go back exactly as it stands: same revision, new round
+          const resent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const round2 = yield* assessment.getReviewInstance(
+            f.t,
+            resent.currentReviewInstanceId!,
+            reviewer,
+          )
+          // a second claim, given up: the record stays and the place opens
+          yield* assessment.decideReview(
+            f.t,
+            resent.currentReviewInstanceId!,
+            { decision: 'reject', comment: 'no' },
+            reviewer,
+          )
+          const abandoned = yield* assessment.setEntryStatus(f.t, entry.id, 'voided', s1)
+          const again = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          return { rejected, resent, round2, abandoned, again }
+        }),
+      ),
+    )
+    expect(result.rejected.capabilities.submit.state).toBe('available')
+    expect(result.rejected.capabilities.abandon.state).toBe('available')
+    expect(result.resent.status).toBe('in_review')
+    expect(result.round2.roundNo).toBe(2)
+    // the same filing, unrewritten
+    expect(result.round2.revision.revisionNo).toBe(1)
+    expect(result.abandoned.status).toBe('voided')
+    // maxEntries is 1 on this question, and the abandoned claim freed it
+    expect(result.again.id).not.toBe(result.abandoned.id)
+  })
 })

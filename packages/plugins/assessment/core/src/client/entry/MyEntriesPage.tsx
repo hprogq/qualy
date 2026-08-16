@@ -187,7 +187,7 @@ function Body({
   }
 
   const setStatus = useMutation({
-    mutationFn: (input: { entryId: string; status: 'in_review' | 'draft' }) =>
+    mutationFn: (input: { entryId: string; status: 'in_review' | 'draft' | 'voided' }) =>
       run(
         api.assessment.setEntryStatus({
           params: { entryId: input.entryId },

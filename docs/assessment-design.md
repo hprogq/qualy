@@ -1299,3 +1299,14 @@ stage 的成员),而"锚点相等"这一条本身已经挡住了它;多余的 `s
 概念链定案为四段:**学生声明(EntryRevision.payload)→ 审核认定 → 生效事实(effective facts)→ scorer**。"修改永远只有本人"(§7 / 上文 §13 交互)管的是**声明**——审核人永远不改学生写了什么,驳回附建议稿仍是唯一路径;它不应也不曾承诺"计分只能读声明原文"。将来落地 ReviewAdjudication(审核认定层:同一份声明,审核在通过时可附带"按认定口径计入"的结构化认定,例如日期口径、次数认定)时,改动**只发生在输入收集这一段**:`collectParticipantScoreInput()` 从"approved 声明原文"换成"approved 声明 ∘ 认定覆盖"后仍产出同形状的 effective facts;`calcParticipant(input) → Breakdown` 这个全系统唯一 scorer(§18)一行不动。
 
 M2 当前的简化随之显式化:**effective facts = approved EntryRevision.payload,逐字**——没有认定层,通过即按原文计入,审核人对内容的一切意见走驳回。这条现在写下,是因为对话 6 就要开 scorer:输入收集与计分之间的这条边界(`collectParticipantScoreInput → calcParticipant → Breakdown`)在 M2 冻结,后续任何"审核认定/口径覆盖"都不得越过它去改 scorer 本体或往 calculator 里塞审核知识(审核决定不携带分值的禁令照旧,§7)。
+
+**32.65 被驳回不是死路:原样重交、修改重交、放弃三条路;能力三态下发**(2026-08-16,用户与审计共同裁决)。
+
+- **rejected 可原样重新提交**(同一 revision,新普通轮):驳回说的是「就这份材料,不行」,参评人有权答「请再看一次」。**needs_revision 不可原样重交**——那一轮要的就是不同的材料,只有新版本算回答(界面 blocked + 原因,不静默)。
+- **放弃申报(abandon)**:draft / rejected / needs_revision 可由本人置 voided(EntryEvent `abandoned-by-submitter`),名额立即释放,历史(版本、轮次、意见)全部保留;in_review 须先撤回;approved 是已认定的计分事实,本人不得单方面撤销。放弃**不受阶段门控**——人必须永远能停止主张一件事,否则满额把人锁死。
+- **能力三态**:entry 的 edit/submit/withdraw/appeal/abandon 一律下发 `{state: available|blocked|hidden, reason}`;hidden=此人此态无此动作,blocked=有此动作但此刻不开(界面 disabled+tooltip,reason 用刷新拒绝同一词表)。发现与判定同门:能力读取问的就是 act 要过的那道 phase gate,按钮亮=调用通。
+- **驳回后修改 = draft(数据库真相),界面呈现「待重新提交」**(draft 且 currentReviewInstanceId 非空即是,不加新状态)。
+- **maxEntries 语义不变**:它限制"同时持有多少件申报事实"(非 voided 计数),与"计几条分"无关。
+- **历史按版本讲**:一轮审核属于它所判的那个版本;round 视图携带 `origin/supersedesInstanceId/appealedInstanceId`,rerouted/superseded/appealed/abandoned 各有人话,空说明不占行。
+
+**已裁决、待实现**(触发即做,先记账):①聚合器可解释化(`AggregationResult` 逐条 included/reason)+ `max@1`(学生干部"最高职务计分",terms.md 明文)+ `top-n-sum@1`;②"基础分"不做 ScoreGroup.base,建模为 `derived` Item(constant driver,scorer 增加非 Entry 的 ScoreContribution,带 provenance);③ reviewPolicy 增加显式 `mode:'none'`(无需审核,提交即 approved,严禁用空 stages 暗示);④ declaration 轻题型(零字段一键申报);⑤补件机制 `ReviewSupplementRequest/Response`(受限 requirement builder:仅文字+文件;ReviewInstance 增 `awaiting_supplement`;申诉与普通审核共用;原 revision 永不因补件改动;开放的补件请求本身即回答能力,不受后续阶段变化锁死);⑥ `assessment.entry.resubmit` 更名为申诉语义的代码(migration + 码表同步);⑦申诉收紧到首次公示后 + 申诉可配置补证策略(`reason-only|allow-supplement`)。边界一句话:**改"申报了什么"走退回修改;只补"凭什么信"走补件;申诉冻结原材料,只挑战结论**。

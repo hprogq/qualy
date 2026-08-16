@@ -4374,6 +4374,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             state: round.state,
             outcome: round.outcome,
             revisionId: round.revisionId,
+            origin: round.origin,
+            supersedesInstanceId: round.supersedesInstanceId,
+            appealedInstanceId: round.appealedInstanceId,
             submittedAt: new Date(round.submittedAt).toISOString(),
             completedAt:
               round.completedAt === null ? null : new Date(round.completedAt).toISOString(),
@@ -4381,6 +4384,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               kind: event.kind,
               actorId: event.actorId,
               actorName: event.actorName,
+              reason: event.reason,
               comment: event.comment,
               suggestedPayload: event.suggestedPayload,
               at: new Date(event.at).toISOString(),

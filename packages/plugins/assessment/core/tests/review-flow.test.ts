@@ -736,8 +736,14 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.returned.currentReviewInstanceId).toBeNull()
     // the capability is the owner's, and an administrator reading it is not
     // being offered the pen
-    expect(result.returned.capabilities.canEdit).toBe(false)
-    expect(result.asOwner.capabilities.canEdit).toBe(true)
+    expect(result.returned.capabilities.edit.state).toBe('hidden')
+    expect(result.asOwner.capabilities.edit.state).toBe('available')
+    // sent back for revision: only a new version answers, so re-sending the
+    // same one is offered disabled with the reason, never quietly
+    expect(result.asOwner.capabilities.submit).toEqual({
+      state: 'blocked',
+      reason: 'must-revise-first',
+    })
     // the round ends as superseded, not as a rejection anybody made
     expect(result.round).toEqual({ state: 'completed', outcome: 'superseded' })
     expect(result.said).toEqual(['submitted', 'assignee-not-found', 'returned-for-revision'])

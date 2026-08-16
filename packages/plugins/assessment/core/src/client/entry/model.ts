@@ -29,11 +29,18 @@ export interface EntryDto {
   currentReviewInstanceId: string | null
   createdAt: string
   capabilities: {
-    canEdit: boolean
-    canSubmit: boolean
-    canWithdraw: boolean
-    canAppeal: boolean
+    edit: ActionAvailability
+    submit: ActionAvailability
+    withdraw: ActionAvailability
+    appeal: ActionAvailability
+    abandon: ActionAvailability
   }
+}
+
+/** offered, offered disabled with its reason, or not spoken of */
+export interface ActionAvailability {
+  state: 'available' | 'blocked' | 'hidden'
+  reason: string | null
 }
 
 export interface ItemDto {

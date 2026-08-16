@@ -105,7 +105,13 @@ const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
   },
   currentReviewInstanceId: null,
   createdAt: '2026-03-02T00:00:00.000Z',
-  capabilities: { canEdit: true, canSubmit: true, canWithdraw: false, canAppeal: false },
+  capabilities: {
+    edit: { state: 'available' as const, reason: null },
+    submit: { state: 'available' as const, reason: null },
+    withdraw: { state: 'hidden' as const, reason: null },
+    appeal: { state: 'hidden' as const, reason: null },
+    abandon: { state: 'available' as const, reason: null },
+  },
   ...over,
 })
 
@@ -157,7 +163,13 @@ describe('filing a claim', () => {
       Effect.succeed({
         entry: entry({
           status: 'in_review',
-          capabilities: { canEdit: false, canSubmit: false, canWithdraw: true, canAppeal: false },
+          capabilities: {
+            edit: { state: 'hidden' as const, reason: null },
+            submit: { state: 'hidden' as const, reason: null },
+            withdraw: { state: 'available' as const, reason: null },
+            appeal: { state: 'hidden' as const, reason: null },
+            abandon: { state: 'hidden' as const, reason: null },
+          },
         }),
       }),
     )
@@ -209,10 +221,11 @@ describe('filing a claim', () => {
               entry({
                 status: 'rejected',
                 capabilities: {
-                  canEdit: true,
-                  canSubmit: true,
-                  canWithdraw: false,
-                  canAppeal: false,
+                  edit: { state: 'available' as const, reason: null },
+                  submit: { state: 'available' as const, reason: null },
+                  withdraw: { state: 'hidden' as const, reason: null },
+                  appeal: { state: 'hidden' as const, reason: null },
+                  abandon: { state: 'hidden' as const, reason: null },
                 },
               }),
             ],
@@ -312,10 +325,11 @@ describe('filing a claim', () => {
                   },
                 },
                 capabilities: {
-                  canEdit: false,
-                  canSubmit: false,
-                  canWithdraw: false,
-                  canAppeal: true,
+                  edit: { state: 'hidden' as const, reason: null },
+                  submit: { state: 'hidden' as const, reason: null },
+                  withdraw: { state: 'hidden' as const, reason: null },
+                  appeal: { state: 'available' as const, reason: null },
+                  abandon: { state: 'hidden' as const, reason: null },
                 },
               }),
             ],

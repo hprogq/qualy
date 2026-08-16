@@ -32,7 +32,13 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'phase-closed': m.refusePhaseClosed,
   'item-out-of-scope': m.refuseOutOfScope,
   'participant-out-of-scope': m.refuseOutOfScope,
+  'must-revise-first': m.refuseNeedsRevision,
+  'entry-not-abandonable': m.refuseNotAbandonable,
 }
+
+/** the sentence for a bare reason code, for a blocked act's tooltip */
+export const entryRefusalReason = (reason: string): MessageDescriptor | null =>
+  SENTENCES[reason] ?? null
 
 /** the sentence for a refusal, or null when this is not one */
 export const entryRefusalMessage = (error: unknown): MessageDescriptor | null => {
