@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:b3748fb2d8f00350a166319f713bfeda016f0ade424a858b0ed2fd6c83bc42a3",
-  "resolutionHash": "sha256:b1f9ab961cc435a9a8b4eed174c2be1a76a577f9b50581e9e35cc41773aa4761",
+  "resolutionHash": "sha256:21bfbc6ffe6cbd9f463739cd5d6313f951b2a2dcfd7181cf3eb73bf49248408a",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -147,6 +147,7 @@
             "RoleAllowedOrgType",
             "RoleAllowedUserType",
             "RoleGrant",
+            "RoleGrantRule",
             "RolePermission"
           ],
           "dependsOn": [

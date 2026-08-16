@@ -987,15 +987,27 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           wrongOrgType: yield* attempt(classesOnly, [f.root]),
           // a role its owner has taken out of circulation
           notAssignable: yield* attempt(shelved),
+          // the administrator staffing THEMSELVES: this is where "I can add
+          // myself but then cannot remove myself" used to begin, and it now
+          // dies at the grant, in rbac, before the asymmetry can exist
+          themselves: yield* Effect.exit(
+            assessment.addStaff(
+              f.tenant,
+              batch.id,
+              { userIds: [f.principal.userId], orgNodeIds: [f.class1], roleId: open },
+              f.principal,
+            ),
+          ),
           // and the one that breaks none of those rules
           allowed: yield* attempt(open),
         }
       }),
     )
-    const { wrongUserType, wrongOrgType, notAssignable, allowed } = ok(exit)
+    const { wrongUserType, wrongOrgType, notAssignable, themselves, allowed } = ok(exit)
     expect(tagOf(wrongUserType)).toBe('ACCESS_DENIED')
     expect(tagOf(wrongOrgType)).toBe('ACCESS_DENIED')
     expect(tagOf(notAssignable)).toBe('ACCESS_DENIED')
+    expect(tagOf(themselves)).toBe('ACCESS_DENIED')
     expect(Exit.isSuccess(allowed)).toBe(true)
   })
 

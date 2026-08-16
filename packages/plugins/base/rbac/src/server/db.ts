@@ -207,6 +207,116 @@ export const insertScopedGrant = (input: {
     .pipe(Effect.map((row) => row.id as string))
 
 /** withdrawn, not deleted: an authority that once existed is a fact */
+/**
+ * Whether the actor holds a role whose appointment rules name this one, with
+ * that holding in force where the new grant would anchor.
+ *
+ * The rule is read against the actor's live, general grants: revoked or
+ * expired holdings appoint nobody, and authority confined to one resource
+ * appoints nobody outside it. The holding also has to stand over the target
+ * node - a college administrator's edge to "counsellor" is an edge for their
+ * own college's subtree, not a licence to appoint counsellors anywhere. A
+ * tenant-wide holding (no anchor) stands everywhere.
+ */
+export const ruleAllowsAppointment = (input: {
+  tenantId: string
+  actorUserId: string
+  targetRoleId: string
+  /** where the new grant anchors; null for a tenant-wide grant */
+  orgNodeId: string | null
+}) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrantRule as rule')
+        .innerJoin('RoleGrant as g', (join) =>
+          join
+            .onRef('g.tenantId', '=', 'rule.tenantId')
+            .onRef('g.roleId', '=', 'rule.granterRoleId'),
+        )
+        .innerJoin('Role as gr', (join) =>
+          join
+            .onRef('gr.tenantId', '=', 'g.tenantId')
+            .onRef('gr.id', '=', 'g.roleId')
+            .on('gr.status', '=', 'active'),
+        )
+        .leftJoin('OrgNode as held', (join) =>
+          join.onRef('held.tenantId', '=', 'g.tenantId').onRef('held.id', '=', 'g.orgNodeId'),
+        )
+        .where('rule.tenantId', '=', input.tenantId)
+        .where('rule.targetRoleId', '=', input.targetRoleId)
+        .where('g.userId', '=', input.actorUserId)
+        .where('g.resourceId', 'is', null)
+        .where(
+          sql<boolean>`(
+            g.revoked_at is null
+            and (g.valid_from is null or g.valid_from <= now())
+            and (g.valid_until is null or g.valid_until > now())
+          )`,
+        )
+        .where(
+          input.orgNodeId === null
+            ? sql<boolean>`g.org_node_id is null`
+            : sql<boolean>`(
+                g.org_node_id is null
+                or (g.coverage = 'self' and g.org_node_id = ${input.orgNodeId})
+                or (g.coverage = 'subtree' and (
+                  select target.path from org_nodes target
+                  where target.tenant_id = g.tenant_id and target.id = ${input.orgNodeId}
+                ) <@ held.path)
+              )`,
+        )
+        .select('g.id')
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/** the roles a role may appoint, for the editor to read back */
+export const grantRuleTargets = (tenantId: string, granterRoleId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrantRule')
+        .select('targetRoleId')
+        .where('tenantId', '=', tenantId)
+        .where('granterRoleId', '=', granterRoleId)
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.targetRoleId as string)))
+
+/** the appointment edges, replaced whole like every other role set */
+export const replaceGrantRuleTargets = (
+  tenantId: string,
+  granterRoleId: string,
+  targetRoleIds: readonly string[],
+) =>
+  Effect.gen(function* () {
+    yield* db.query((k) =>
+      targetRoleIds.length === 0
+        ? k
+            .deleteFrom('RoleGrantRule')
+            .where('tenantId', '=', tenantId)
+            .where('granterRoleId', '=', granterRoleId)
+            .execute()
+        : k
+            .deleteFrom('RoleGrantRule')
+            .where('tenantId', '=', tenantId)
+            .where('granterRoleId', '=', granterRoleId)
+            .where('targetRoleId', 'not in', [...targetRoleIds])
+            .execute(),
+    )
+    for (const targetRoleId of new Set(targetRoleIds)) {
+      yield* db.query((k) =>
+        k
+          .insertInto('RoleGrantRule')
+          .values({ tenantId, granterRoleId, targetRoleId } as never)
+          .onConflict((oc) => oc.doNothing())
+          .execute(),
+      )
+    }
+  })
+
 export const revokeGrant = (tenantId: string, grantId: string, actorId: string | null) =>
   db
     .query((k) =>

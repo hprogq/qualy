@@ -364,12 +364,10 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     }),
 
     createScopedAssignment: Effect.fn('Rbac.createScopedAssignment')(function* (input) {
-      // Checked and written under the tenant lock, like every other grant:
-      // confining a grant to one resource says where it applies, not who may
-      // hold it, so the role's own rules - active, assignable, the user types
-      // it admits, the node types it anchors to - are the same ones. Doing it
-      // in the grants module rather than beside the insert is what puts the
-      // check and the write in one critical section.
+      // The whole grant path, under the same tenant lock as every other
+      // grant: confining authority to one resource is not a shorter route to
+      // holding it, so the actor answers the same five questions here that
+      // they would answer on the org side.
       return yield* bound(() =>
         grants.scoped({
           tenantId: input.tenantId,
@@ -379,12 +377,19 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
           includeDescendants: input.includeDescendants,
           resource: input.resource,
           ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
-          createdBy: input.createdBy,
+          actor: input.actor,
         }),
       )().pipe(
-        // one answer for every way a role can be the wrong role here: the
-        // caller is a resource, and the reasons belong to the role's owner
-        Effect.catch(() => new AccessDenied({ reason: 'role is not assignable here' })),
+        // one code across the port, with the refusal kept as its reason: the
+        // caller is a resource, and the vocabulary belongs to the role's
+        // owner - but a log that says only "denied" explains nothing
+        Effect.catch((error) =>
+          Effect.fail(
+            new AccessDenied({
+              reason: `scoped grant refused: ${(error as { _tag?: string })._tag ?? 'unknown'}`,
+            }),
+          ),
+        ),
       )
     }),
 
@@ -843,6 +848,33 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'iam.role.read')
         return yield* access.roles.getEligibility(principal.tenantId, params.roleId)
+      }),
+    )
+    .handle(
+      'getRoleGrantableRoles',
+      Effect.fn('access.getRoleGrantableRoles.handler')(function* ({ params }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.read')
+        return yield* access.roles.getGrantableRoles(principal.tenantId, params.roleId)
+      }),
+    )
+    .handle(
+      'setRoleGrantableRoles',
+      Effect.fn('access.setRoleGrantableRoles.handler')(function* ({ params, payload }) {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'iam.role.manage')
+        return {
+          version: yield* access.roles.setGrantableRoles(
+            principal.tenantId,
+            params.roleId,
+            payload.roleIds,
+            payload.version,
+          ),
+        }
       }),
     )
     .handle(

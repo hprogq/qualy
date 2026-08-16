@@ -23,6 +23,8 @@ export const FROZEN_ROUTES = [
   'DELETE /iam/roles/{roleId}',
   'GET /iam/roles/{roleId}/eligibility',
   'PUT /iam/roles/{roleId}/eligibility',
+  'GET /iam/roles/{roleId}/grantable-roles',
+  'PUT /iam/roles/{roleId}/grantable-roles',
   'GET /iam/roles/{roleId}/permissions',
   'PUT /iam/roles/{roleId}/permissions',
   'PUT /iam/roles/{roleId}/status',

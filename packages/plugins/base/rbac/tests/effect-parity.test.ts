@@ -499,15 +499,18 @@ describe.runIf(postgresAvailable).concurrent('what the cordis suite covered', ()
               where tenant_id = ${f.a.tenantId} and role_id = ${f.a.adminRole}
                 and user_id = ${f.a.admin}`),
           ).id
-          const revoke = (grantId: string) =>
+          // each revokes the OTHER's grant: one's own is refused before the
+          // race even starts, so racing over it would test the wrong rule
+          const revoke = (grantId: string, by: string) =>
             Effect.result(
-              access.grants.revoke(f.a.tenantId, grantId, actor, (tenantId) =>
+              access.grants.revoke(f.a.tenantId, grantId, as(f.a.tenantId, by), (tenantId) =>
                 rbac.assertTenantKeepsAdministrator(tenantId),
               ),
             )
-          const [a, b] = yield* Effect.all([revoke(first), revoke(second)], {
-            concurrency: 2,
-          })
+          const [a, b] = yield* Effect.all(
+            [revoke(first, f.a.manager), revoke(second, f.a.admin)],
+            { concurrency: 2 },
+          )
           const left = one<{ count: number }>(
             yield* runSql(sql`
               select count(*)::int as count from role_grants
@@ -518,14 +521,13 @@ describe.runIf(postgresAvailable).concurrent('what the cordis suite covered', ()
       )
       const answer = ok(exit)
       // Exactly one committed. Which failure the other gets depends on the
-      // order they serialize in: revoking the actor's own grant first leaves
-      // them without the authority to revoke the second, so that transaction
-      // is refused as ACCESS_DENIED rather than by the invariant. Both are
-      // correct refusals, and pinning one would pin the interleaving instead
-      // of the guarantee.
+      // order they serialize in: losing one's admin grant first leaves no
+      // authority (or no admin standing) to revoke with, and going second
+      // trips the invariant. All are correct refusals, and pinning one would
+      // pin the interleaving instead of the guarantee.
       const refused = answer.tags.filter((tag) => tag !== undefined)
       expect(refused).toHaveLength(1)
-      expect(['LAST_ADMINISTRATOR', 'ACCESS_DENIED']).toContain(refused[0])
+      expect(['LAST_ADMINISTRATOR', 'ACCESS_DENIED', 'TENANT_ADMIN_REQUIRED']).toContain(refused[0])
       // and the tenant still has a way back in, which is what all of it is for
       expect(answer.left).toBe(1)
     } finally {

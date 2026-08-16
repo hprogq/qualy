@@ -58,6 +58,23 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     }),
   )
   const options = useQuery(orpc.access.getRoleOptions.queryOptions())
+  // the canonical administrator role is fixed wherever changing it would
+  // lock a tenant out of its own administration; it also appoints everything
+  // by being what it is, so it has no appointment list to edit
+  const locked = role.systemKey !== null
+  // who this office may appoint. The candidates are every role of the
+  // tenant, because appointment edges are not confined to a kind: a tenant
+  // office can appoint org offices and the other way round is meaningless
+  // only by convention, not by rule.
+  const allRoles = useQuery(orpc.access.listRoles.queryOptions({ query: {} }))
+  const grantable = useQuery({
+    ...orpc.access.getRoleGrantableRoles.queryOptions({ params: { roleId: role.id } }),
+    enabled: !locked,
+  })
+  const [grantableIds, setGrantableIds] = useState<string[]>([])
+  useEffect(() => {
+    setGrantableIds([...(grantable.data?.roleIds ?? [])])
+  }, [grantable.data])
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.access.key() })
   // the one crossing from an effect to a promise on this screen: TanStack
@@ -113,6 +130,14 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       }),
     ),
   )
+  const saveGrantable = useMutation(
+    run(() =>
+      api.access.setRoleGrantableRoles({
+        params: { roleId: role.id },
+        payload: { version: role.version, roleIds: grantableIds },
+      }),
+    ),
+  )
   const setAssignable = useMutation(
     run((assignable: boolean) =>
       api.access.updateRole({
@@ -142,9 +167,6 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     },
   })
 
-  // the canonical administrator role is fixed wherever changing it would
-  // lock a tenant out of its own administration
-  const locked = role.systemKey !== null
   const editable = canManage && !locked
 
   return (
@@ -319,6 +341,53 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           </Button>
         </div>
       </AsyncSection>
+
+      {/* which offices this one appoints: the WHAT of granting, beside
+          iam.grant.manage's WHERE. Nothing ticked means it appoints nobody. */}
+      {!locked && (
+        <AsyncSection
+          pending={allRoles.isPending || grantable.isPending}
+          error={
+            allRoles.isError
+              ? formatError(allRoles.error)
+              : grantable.isError
+                ? formatError(grantable.error)
+                : null
+          }
+          loadingLabel={format(commonMessages.loading)}
+          retryLabel={format(commonMessages.retry)}
+          onRetry={() => {
+            void allRoles.refetch()
+            void grantable.refetch()
+          }}
+        >
+          <div className="space-y-2">
+            <CheckboxGroup
+              legend={format(m.grantableLegend)}
+              emptyLabel={format(m.noOptions)}
+              disabled={!editable}
+              options={(allRoles.data?.roles ?? [])
+                .filter((candidate) => candidate.systemKey === null)
+                .map((candidate) => ({
+                  value: candidate.id,
+                  label: candidate.name,
+                  hint: candidate.code,
+                }))}
+              selected={grantableIds}
+              onChange={setGrantableIds}
+            />
+            <p className="text-xs text-muted-foreground">{format(m.grantableHint)}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!editable || saveGrantable.isPending}
+              onClick={() => saveGrantable.mutate(undefined as never)}
+            >
+              {format(m.save)}
+            </Button>
+          </div>
+        </AsyncSection>
+      )}
 
       <ConfirmDialog
         open={confirmingDelete}

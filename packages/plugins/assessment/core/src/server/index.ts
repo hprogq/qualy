@@ -2421,28 +2421,22 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (people.length !== new Set(input.userIds).size) {
               return yield* new AccessInvalid({ reason: 'user-not-found' })
             }
-            // the units this round is in, asked once for the whole request
+            // The batch's own question, and the only one this module still
+            // answers: is this a unit the round is actually in. Otherwise
+            // staffing a batch is a way of granting authority anywhere in
+            // the tenant. Everything about WHO may hand WHAT to WHOM -
+            // grant-manage reach, the appointment rules, eligibility, the
+            // no-escalation measure, nobody appointing themselves - runs
+            // inside rbac when the grant is created, the same path every
+            // org-side grant walks (§CLAUDE 访问模型).
             const units = yield* batchUnits(
               tenantId,
               batchId,
               yield* rbac.listAuthorizedScope(as, MANAGE),
             )
             for (const orgNodeId of new Set(input.orgNodeIds)) {
-              // Delegation, the plain rule: nobody hands out authority they do
-              // not hold, over people they do not already administer.
-              if (!(yield* rbac.canAt(as, MANAGE, orgNodeId))) {
-                return yield* new AccessInvalid({ reason: 'node-out-of-reach' })
-              }
-              // and it has to be a unit this round is actually in, the same
-              // rule the options endpoint offers by: otherwise staffing a
-              // batch is a way of granting authority anywhere in the tenant
               if (!units.some((unit) => unit.id === orgNodeId)) {
                 return yield* new AccessInvalid({ reason: 'node-out-of-batch' })
-              }
-              for (const code of carried) {
-                if (!(yield* rbac.canAt(as, code, orgNodeId))) {
-                  return yield* new AccessInvalid({ reason: 'permission-not-held' })
-                }
               }
             }
             // Every pair, in one transaction: half of a request nobody
@@ -2463,7 +2457,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   includeDescendants: true,
                   resource: batchResource(batchId),
                   ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
-                  createdBy: as.userId,
+                  actor: as,
                 })
                 yield* acceptAccessSource({
                   tenantId,

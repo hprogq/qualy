@@ -145,6 +145,33 @@ export class GrantStranded extends Schema.TaggedErrorClass<GrantStranded>()(
   { httpApiStatus: 409, identifier: 'GrantStranded' },
 ) {}
 
+/**
+ * The actor holds no role whose appointment rules name this one.
+ *
+ * Deliberately not the escalation refusal: that one measures how much
+ * authority the role carries against the actor's own, and this one asks
+ * whether the office is theirs to appoint at all. Holding every permission a
+ * college administrator has does not make somebody the person who appoints
+ * college administrators.
+ */
+export class GrantRuleRefused extends Schema.TaggedErrorClass<GrantRuleRefused>()(
+  'GRANT_RULE_REFUSED',
+  {},
+  { httpApiStatus: 403, identifier: 'GrantRuleRefused' },
+) {}
+
+/**
+ * Nobody hands a role to themselves, or takes their own away.
+ *
+ * Ordinary governance: authority is conferred by somebody else. A resignation
+ * would be its own business action, not a self-edit on the grants screen.
+ */
+export class GrantSelfForbidden extends Schema.TaggedErrorClass<GrantSelfForbidden>()(
+  'GRANT_SELF_FORBIDDEN',
+  {},
+  { httpApiStatus: 403, identifier: 'GrantSelfForbidden' },
+) {}
+
 export class RoleEscalationRefused extends Schema.TaggedErrorClass<RoleEscalationRefused>()(
   'ROLE_ESCALATION_REFUSED',
   { permissions: Schema.Array(Schema.String) },

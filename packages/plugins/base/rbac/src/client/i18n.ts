@@ -72,6 +72,14 @@ const i18n = definePluginMessages({
     codeLabel: { id: 'rbac/field/code', defaultMessage: 'Code' },
     descriptionLabel: { id: 'rbac/field/description', defaultMessage: 'Description' },
     permissionsLegend: { id: 'rbac/field/permissions', defaultMessage: 'Permissions' },
+    grantableLegend: {
+      id: 'rbac/roles/grantable-legend',
+      defaultMessage: 'Roles this one may appoint',
+    },
+    grantableHint: {
+      id: 'rbac/roles/grantable-hint',
+      defaultMessage: 'Holders can grant only these, within where they administer grants.',
+    },
     // chosen at creation because it cannot be changed afterwards: it decides
     // whether the duty is anchored, and with it what the role may hold
     kindLegend: { id: 'rbac/field/kind', defaultMessage: 'Where this role applies' },
@@ -167,6 +175,14 @@ const i18n = definePluginMessages({
         defaultMessage: 'That permission is checked against an organization node.',
       },
       GRANT_EXISTS: { id: 'rbac/error/grant-exists', defaultMessage: 'That grant already exists.' },
+      GRANT_RULE_REFUSED: {
+        id: 'rbac/error/grant-rule-refused',
+        defaultMessage: 'None of your roles may appoint people to this one.',
+      },
+      GRANT_SELF_FORBIDDEN: {
+        id: 'rbac/error/grant-self-forbidden',
+        defaultMessage: 'Your own roles are for someone else to change.',
+      },
       GRANT_USER_NOT_FOUND: {
         id: 'rbac/error/grant-user-not-found',
         defaultMessage: 'That user is not in this tenant.',

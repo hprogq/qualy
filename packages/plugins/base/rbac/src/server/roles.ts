@@ -5,8 +5,10 @@ import {
   db,
   admitsOrgType,
   admitsUserType,
+  grantRuleTargets,
   lockTenant,
   oneRoleProjected,
+  replaceGrantRuleTargets,
   rolePermissionCodes,
   rolesOfTenant,
   type RoleRow as RoleProjection,
@@ -329,6 +331,18 @@ const countOrgTypes = (tenantId: string, ids: readonly string[]) =>
     .query((k) =>
       k
         .selectFrom('OrgType')
+        .select(sql<number>`count(*)::int`.as('count'))
+        .where('tenantId', '=', tenantId)
+        .where('id', 'in', ids)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.count ?? 0))
+
+const countRoles = (tenantId: string, ids: readonly string[]) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Role')
         .select(sql<number>`count(*)::int`.as('count'))
         .where('tenantId', '=', tenantId)
         .where('id', 'in', ids)
@@ -826,6 +840,46 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           // would have stranded its holders silently.
           const stranded = yield* grantsStrandedByEligibility(tenantId, role.id)
           if (stranded > 0) return yield* new GrantStranded({ grantCount: stranded })
+          yield* bumpRole(tenantId, role.id)
+          return role.version + 1
+        }),
+      )
+    }),
+
+    /** the roles this role may appoint people to */
+    getGrantableRoles: Effect.fn('Rbac.roles.getGrantableRoles')(function* (
+      tenantId: string,
+      roleId: string,
+    ) {
+      const role = yield* oneRole(tenantId, roleId).pipe(Effect.orDie)
+      if (!role) return yield* new RoleNotFound()
+      const roleIds = yield* grantRuleTargets(tenantId, roleId).pipe(Effect.orDie)
+      return { roleIds: [...roleIds].sort(), version: role.version }
+    }),
+
+    /**
+     * The appointment edges, replaced whole.
+     *
+     * The canonical administrator has none to edit: it bypasses the table
+     * because it is already the whole of the tenant's authority, and a list
+     * here would only restate that or quietly disagree with it.
+     */
+    setGrantableRoles: Effect.fn('Rbac.roles.setGrantableRoles')(function* (
+      tenantId: string,
+      roleId: string,
+      targetRoleIds: readonly string[],
+      expectedVersion: number,
+    ) {
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          const role = yield* lockRole(tenantId, roleId, expectedVersion)
+          if (role.systemKey !== null) return yield* new RoleIsSystem()
+          const wanted = [...new Set(targetRoleIds)]
+          if (wanted.length > 0) {
+            const found = yield* countRoles(tenantId, wanted)
+            if (found !== wanted.length) return yield* new RoleNotFound()
+          }
+          yield* replaceGrantRuleTargets(tenantId, role.id, wanted)
           yield* bumpRole(tenantId, role.id)
           return role.version + 1
         }),

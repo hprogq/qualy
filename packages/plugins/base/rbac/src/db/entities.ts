@@ -209,6 +209,40 @@ export const RoleAllowedUserType = defineEntity({
   },
 })
 
+/**
+ * Which roles a role may hand out (§CLAUDE 访问模型).
+ *
+ * The escalation guard answers "do you hold that much authority"; this
+ * answers a different question - "is this office yours to appoint" - and
+ * neither implies the other. A college administrator can hold every
+ * permission a college administrator carries and still not be the one who
+ * appoints college administrators.
+ *
+ * A DAG over roles, not a level number: real appointment relationships are
+ * not a ladder. No rule row means the role appoints nothing; the canonical
+ * tenant administrator bypasses the table rather than owning edges to every
+ * role, because it is already the whole of the tenant's authority.
+ */
+export const RoleGrantRule = defineEntity({
+  name: 'RoleGrantRule',
+  tableName: 'role_grant_rules',
+  properties: {
+    tenantId: tenantKeyOf('role_grant_rules_tenant_id_tenants_id_fkey'),
+    /** the role whose holders may appoint */
+    granterRoleId: p.uuid().primary(),
+    /** the role they may appoint people to */
+    targetRoleId: p.uuid().primary(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'idx_role_grant_rules_tenant_target',
+      expression:
+        'create index idx_role_grant_rules_tenant_target on role_grant_rules (tenant_id, target_role_id)',
+    },
+  ],
+})
+
 // Who holds which duty, and over what.
 //
 // A tenant role carries no node: it applies across the tenant, and pinning it
@@ -322,6 +356,10 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, role_id) references roles (tenant_id, id) on delete cascade`,
   `alter table role_allowed_user_types add constraint fk_role_allowed_user_types_type
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete cascade`,
+  `alter table role_grant_rules add constraint fk_role_grant_rules_granter
+     foreign key (tenant_id, granter_role_id) references roles (tenant_id, id) on delete cascade`,
+  `alter table role_grant_rules add constraint fk_role_grant_rules_target
+     foreign key (tenant_id, target_role_id) references roles (tenant_id, id) on delete cascade`,
   `alter table role_grants add constraint fk_role_grants_user
      foreign key (tenant_id, user_id) references users (tenant_id, id) on delete cascade`,
   `alter table role_grants add constraint fk_role_grants_role
@@ -336,5 +374,6 @@ export const entities = [
   RolePermission,
   RoleAllowedOrgType,
   RoleAllowedUserType,
+  RoleGrantRule,
   RoleGrant,
 ] as const

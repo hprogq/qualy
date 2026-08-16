@@ -181,7 +181,13 @@ export interface RbacShape {
     includeDescendants: boolean
     resource: ResourceRef
     validUntil?: number
-    createdBy: string | null
+    /**
+     * Who is handing this out. The full grant path runs against them - may
+     * they administer grants there, is the office theirs to appoint, does
+     * the role's authority exceed their own, is the subject themselves - so
+     * a resource cannot be a doorway around the rules the org side keeps.
+     */
+    actor: Principal
   }) => Effect.Effect<string, AccessDenied>
 
   readonly revokeAssignment: (input: {

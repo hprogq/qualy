@@ -4821,3 +4821,42 @@ CLAUDE 的「界面文案是引导,不是说明」此前只在新写的地方被
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 651 passed / 17 skipped;
 `pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;prettier 全绿。
+
+### 任命权成为角色的一部分:role_grant_rules(2026-08-16)
+
+用户裁决(记入 CLAUDE.md 访问模型与授权节):RBAC 负责全部「谁能给谁分配什么角色」,
+Assessment 只消费 RBAC 并维护批次对组织权限的接受状态。不做 delegation graph、不做级联撤销、
+不做 level 数字。
+
+**RBAC 新增**:
+- `role_grant_rules(tenant_id, granter_role_id, target_role_id)`——granter → target 的 DAG,
+  两个 tenant-scoped FK cascade。语义:「制度上这个岗位由谁任命」,与「你有没有这么大的权」
+  (no-escalation)互不替代——学院管理员可以持有年级管理员的全部权限,仍不是任命学院管理员的人。
+- **授予算法五问**(原四问 + 任命规则):self 禁令 → grant-manage WHERE(原有)→ canonical 角色
+  保留问(原有,先于规则以保留其专用文案)→ **任命规则 WHAT**(新)→ eligibility/anchor(原有)
+  → no-escalation(原有)。任命规则要求:actor 经有效、非 resource-scoped 的授予持有某条 rule 的
+  granter 角色,**且该持有覆盖新授予的锚点**(学院管理员对辅导员的任命边只在自己学院的子树内有效);
+  tenant-wide 持有覆盖一切。canonical tenant-admin 唯一豁免规则表(不豁免 eligibility/anchor)。
+- **self-grant / self-revoke 一律禁止**(`GRANT_SELF_FORBIDDEN`):权限由他人授予,辞任将来是
+  独立业务动作。`options`(角色选择器)同步这两条,拒因映射 'authority'——选择器不许诺写入会拒绝的。
+- **resource-scoped 授予走同一条完整路径**:`createScopedAssignment` 契约从 `createdBy` 改为
+  `actor: Principal`,`grants.scoped()` 依次跑 self/WHERE/保留问/任命规则/eligibility/escalation;
+  端口错误仍归一为 ACCESS_DENIED,但 reason 带上内部拒因标签(日志可读,不进界面)。
+- Role 新子资源 `GET/PUT /iam/roles/{roleId}/grantable-roles`(version CAS,系统角色拒编辑),
+  RoleEditor 增「本角色可任命的角色」勾选组。
+
+**Assessment 删掉的**(checklist 第十一条):addStaff 里逐权限 `canAt` 循环(自实现 no-escalation)
+与 `canAt(MANAGE, node)` 的 delegation 判断——现在只验证**批次适用性**(节点∈批次单元、
+角色权限⊆STAFF_CODES、批次管理入口),授权判断全部发生在 rbac 的授予路径里。
+**批次“人员权限”页可以把自己加成工作人员、加了又删不掉的不对称问题在根上消失**:
+自授在 rbac 被拒,removeStaff 原有的 self-adjustment 拒绝语义与之一致(自己的行由别人调整)。
+`assessment.batch.access.manage` 按裁决不加。
+
+新测试:rbac 任命矩阵(有边+覆盖 → 成功;无边(平级复制自己)→ GRANT_RULE_REFUSED;
+有边但持有不覆盖目标节点 → GRANT_RULE_REFUSED;自授 → GRANT_SELF_FORBIDDEN;
+canonical 无边直授成功;options 拒因与写入一致)、自撤回拒绝、assessment 自加工作人员被拒。
+存量测试改写三处:管理员并发撤销测试改为互撤(自撤已被禁),两处 grant 目标从 actor 本人改为他人。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 653 passed / 17 skipped;
+`pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;
+entity-parity/error-codes/catalogs/frozen-routes 全绿。

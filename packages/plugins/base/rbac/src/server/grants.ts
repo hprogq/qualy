@@ -28,6 +28,7 @@ import {
   rolePermissionCodes,
   rolePermissionMode,
   rolesOfTenant,
+  ruleAllowsAppointment,
   userExists,
 } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -38,6 +39,8 @@ import {
   GrantNodeNotFound,
   GrantNotEligible,
   GrantNotFound,
+  GrantRuleRefused,
+  GrantSelfForbidden,
   GrantUserNotFound,
   RoleNotFound,
   TenantAdminRequired,
@@ -49,6 +52,8 @@ export {
   GrantNodeNotFound,
   GrantNotEligible,
   GrantNotFound,
+  GrantRuleRefused,
+  GrantSelfForbidden,
   GrantUserNotFound,
   RoleNotFound,
   TenantAdminRequired,
@@ -56,11 +61,14 @@ export {
 
 // Handing a role to somebody, and taking it back.
 //
-// Four separate questions, deliberately not merged. Whether the caller may
-// touch grants of that reach at all; whether they may touch this particular
-// role; whether this role can be held by this person here; and how much power
-// the role carries relative to the caller's own. Being allowed to edit
-// someone's grants says nothing about how strong a role may be put in them.
+// Five separate questions, deliberately not merged. Whether the caller may
+// touch grants of that reach at all (where); whether the office is theirs to
+// appoint (what, by the role_grant_rules edges); whether they may touch this
+// particular role; whether this role can be held by this person here; and how
+// much power the role carries relative to the caller's own. Being allowed to
+// edit someone's grants says nothing about how strong a role may be put in
+// them, and holding a role's every permission says nothing about being the
+// one who appoints it.
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
@@ -302,6 +310,7 @@ const oneGrant = (tenantId: string, grantId: string) =>
     k
       .selectFrom('RoleGrant')
       .select((eb) => [
+        'userId',
         'roleId',
         'orgNodeId',
         eb.ref('coverage').$castTo<'self' | 'subtree' | null>().as('coverage'),
@@ -374,6 +383,32 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     if (mine === undefined || REACH_RANK[mine] < REACH_RANK[target.coverage as Reach]) {
       return yield* new AccessDenied({ reason: 'not allowed to administer grants of that reach' })
     }
+  })
+
+  /**
+   * Whether the office is the actor's to appoint (the WHAT beside the
+   * grant-manage WHERE).
+   *
+   * The canonical administrator bypasses the table rather than owning edges
+   * to every role: it is already the whole of the tenant's authority, and
+   * seeding an edge per role would only be the same fact written out longhand.
+   * Everything else needs a rule row, held through a live grant that stands
+   * over the place the new grant would anchor.
+   */
+  const mayAppointRole = Effect.fn('Rbac.grants.mayAppointRole')(function* (
+    actor: Principal,
+    tenantId: string,
+    roleId: string,
+    target: GrantTarget,
+  ) {
+    if (yield* holdsCanonicalAdmin(tenantId, actor.userId, CANONICAL_ADMIN_ROLE)) return
+    const allowed = yield* ruleAllowsAppointment({
+      tenantId,
+      actorUserId: actor.userId,
+      targetRoleId: roleId,
+      orgNodeId: target.kind === 'org-node' ? target.orgNodeId : null,
+    })
+    if (!allowed) return yield* new GrantRuleRefused()
   })
 
   /**
@@ -524,12 +559,14 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     for (const role of candidates) {
       const verdict = yield* transaction(
         Effect.gen(function* () {
+          if (actor.userId === request.userId) return yield* new GrantSelfForbidden()
           yield* eligible(tenantId, {
             userId: request.userId,
             roleId: role.id,
             target: request.target,
           })
           yield* mayAdministerRole(actor, tenantId, role.id)
+          yield* mayAppointRole(actor, tenantId, role.id, request.target)
           yield* assertMayGrantRole(
             authorityFor(actor),
             yield* carriedBy(tenantId, role.id),
@@ -545,6 +582,11 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           [
             'GRANT_NOT_ELIGIBLE',
             'GRANT_ESCALATION_REFUSED',
+            // the office is not this caller's to appoint, or the person is
+            // the caller: either way not on offer, with authority named as
+            // the reason
+            'GRANT_RULE_REFUSED',
+            'GRANT_SELF_FORBIDDEN',
             // in the oRPC refusal set too: a role the caller may not
             // administer is one they cannot be offered. ACCESS_DENIED is not
             // listed because nothing in this probe raises it any more - the
@@ -586,16 +628,18 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     /**
      * A grant confined to one resource: a batch's own staff, say.
      *
-     * Still a grant, so it obeys the same structural rules - a role somebody
-     * may hold, a person of a kind it admits, a node of a kind it anchors to
-     * - and it is checked and written inside the same tenant lock every other
-     * grant uses. Checking outside the lock is checking a world that can
-     * change before the row lands: disable the role, narrow its eligibility
-     * or move the person to another type in that gap and the insert would
-     * still go through.
+     * Still a grant, so it walks the whole path every other grant walks -
+     * nobody appoints themselves, the actor administers grants of that reach
+     * there, the office is theirs to appoint, the role admits this person
+     * and this node, and its authority does not exceed the actor's own. A
+     * resource that could skip any of those would be a doorway around the
+     * rules the org side keeps.
      *
-     * "Who may hand this out, and how widely" stays with the caller, because
-     * only a resource knows its own reach.
+     * All of it inside the same tenant lock every other grant uses: checked
+     * outside it, the role could be disabled or the person re-typed in the
+     * gap and the insert would still go through. What stays with the caller
+     * is only what a resource alone knows: whether the node and the role
+     * make sense for the object the grant is confined to.
      */
     scoped: (input: {
       tenantId: string
@@ -605,16 +649,30 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       includeDescendants: boolean
       resource: { namespace: string; type: string; id: string }
       validUntil?: number | undefined
-      createdBy: string | null
+      actor: Principal
     }) =>
       write(input.tenantId, () =>
         Effect.gen(function* () {
+          if (input.actor.userId === input.userId) return yield* new GrantSelfForbidden()
           const coverage = input.includeDescendants ? ('subtree' as const) : ('self' as const)
+          const target: GrantTarget = {
+            kind: 'org-node',
+            orgNodeId: input.orgNodeId,
+            coverage,
+          }
+          yield* mayAdministerGrantsAt(input.actor, target)
+          yield* mayAdministerRole(input.actor, input.tenantId, input.roleId)
+          yield* mayAppointRole(input.actor, input.tenantId, input.roleId, target)
           yield* eligible(input.tenantId, {
             userId: input.userId,
             roleId: input.roleId,
-            target: { kind: 'org-node', orgNodeId: input.orgNodeId, coverage },
+            target,
           })
+          yield* assertMayGrantRole(
+            authorityFor(input.actor),
+            yield* carriedBy(input.tenantId, input.roleId),
+            target,
+          )
           const created = yield* insertScopedGrant({
             tenantId: input.tenantId,
             userId: input.userId,
@@ -623,7 +681,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
             coverage,
             resource: input.resource,
             validUntil: input.validUntil ?? null,
-            createdBy: input.createdBy,
+            createdBy: input.actor.userId,
           })
           return created
         }),
@@ -641,8 +699,14 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       // failure handler and cannot see a defect.
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
+          // authority is conferred by somebody else; a resignation would be
+          // its own business action, not a self-edit here
+          if (actor.userId === input.userId) return yield* new GrantSelfForbidden()
           yield* mayAdministerGrantsAt(actor, input.target)
+          // the administrator role's own reservation first: its refusal has
+          // the more specific sentence, and a rule row must not shadow it
           yield* mayAdministerRole(actor, tenantId, input.roleId)
+          yield* mayAppointRole(actor, tenantId, input.roleId, input.target)
           yield* eligible(tenantId, input)
           yield* assertMayGrantRole(
             authorityFor(actor),
@@ -675,6 +739,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         Effect.gen(function* () {
           const grant = yield* oneGrant(tenantId, grantId)
           if (!grant) return yield* new GrantNotFound()
+          if (grant.userId === actor.userId) return yield* new GrantSelfForbidden()
           const target: GrantTarget =
             grant.orgNodeId === null
               ? { kind: 'tenant' }

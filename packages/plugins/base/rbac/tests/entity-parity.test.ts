@@ -12,6 +12,7 @@ import { entities, compositeForeignKeys } from '../src/db/entities.ts'
 // copy of their own gates.
 
 const TABLES = [
+  'role_grant_rules',
   'role_grants',
   'role_permissions',
   'role_allowed_org_types',

@@ -5,6 +5,8 @@ import {
   GrantNodeNotFound,
   GrantNotEligible,
   GrantNotFound,
+  GrantRuleRefused,
+  GrantSelfForbidden,
   GrantStranded,
   GrantUserNotFound,
   PermissionNotFound,
@@ -338,6 +340,29 @@ export const accessApiGroup = HttpApiGroup.make('access')
     }).middleware(Authenticated),
   )
   .add(
+    // Which roles this one may appoint people to: the WHAT of appointment,
+    // beside iam.grant.manage's WHERE. An empty list appoints nothing.
+    HttpApiEndpoint.get('getRoleGrantableRoles', '/iam/roles/:roleId/grantable-roles', {
+      params: Schema.Struct({ roleId: id }),
+      success: Schema.Struct({
+        roleIds: Schema.Array(Schema.String),
+        version: Schema.Number,
+      }),
+      error: [RoleNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('setRoleGrantableRoles', '/iam/roles/:roleId/grantable-roles', {
+      params: Schema.Struct({ roleId: id }),
+      payload: Schema.Struct({
+        version: expectedVersion,
+        roleIds: Schema.Array(id),
+      }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [RoleNotFound, RoleVersionConflict, RoleIsSystem, RoleConflict, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.delete('deleteRole', '/iam/roles/:roleId', {
       params: Schema.Struct({ roleId: id }),
       query: Schema.Struct({ version: Schema.String }),
@@ -400,6 +425,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
         GrantNodeNotFound,
         GrantNotEligible,
         GrantEscalationRefused,
+        GrantRuleRefused,
+        GrantSelfForbidden,
         TenantAdminRequired,
         AccessDenied,
       ],
@@ -409,7 +436,14 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.delete('deleteRoleGrant', '/iam/role-grants/:grantId', {
       params: Schema.Struct({ grantId: id }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [GrantNotFound, RoleNotFound, TenantAdminRequired, LastAdministrator, AccessDenied],
+      error: [
+        GrantNotFound,
+        GrantSelfForbidden,
+        RoleNotFound,
+        TenantAdminRequired,
+        LastAdministrator,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(

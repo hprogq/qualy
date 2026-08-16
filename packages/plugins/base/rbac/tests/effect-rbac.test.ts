@@ -461,11 +461,12 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             values (${f.tenant}, ${f.anchored.userId}, ${role})`)
 
           const access = yield* Access
-          // f.role is the canonical administrator
+          // f.role is the canonical administrator; the target is somebody
+          // else, because handing a role to oneself is refused before this
           const refused = yield* Effect.result(
             access.grants.grant(
               f.tenant,
-              { userId: f.anchored.userId, roleId: f.role, target: { kind: 'tenant' } },
+              { userId: f.user, roleId: f.role, target: { kind: 'tenant' } },
               f.anchored,
             ),
           )
@@ -524,15 +525,17 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             orgNodeId: f.child,
             coverage: 'self' as const,
           }
+          // to somebody other than the actor: handing a role to oneself is
+          // refused before the insert this test is about
           yield* access.grants.grant(
             f.tenant,
-            { userId: f.user, roleId: f.plainRole, target },
+            { userId: f.anchored.userId, roleId: f.plainRole, target },
             f.principal,
           )
           return yield* Effect.result(
             access.grants.grant(
               f.tenant,
-              { userId: f.user, roleId: f.plainRole, target },
+              { userId: f.anchored.userId, roleId: f.plainRole, target },
               f.principal,
             ),
           )
@@ -592,6 +595,11 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
             values (${f.tenant}, ${f.anchored.userId}, ${granterRole}, ${f.child}, 'self')`)
+          // and the office is theirs to appoint, so only the reach question
+          // remains in play
+          yield* runSql(sql`
+            insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+            values (${f.tenant}, ${granterRole}, ${f.plainRole})`)
 
           const access = yield* Access
           const wide = yield* Effect.result(
@@ -916,10 +924,12 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
             values (${f.tenant}, ${f.plainRole}, ${orgType})`)
 
+          // asked about somebody other than the asker: nothing is on offer
+          // for oneself, and that refusal would drown the ones under test
           const offered = yield* access.grants.options(
             f.tenant,
             {
-              userId: f.user,
+              userId: f.anchored.userId,
               target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' },
             },
             f.principal,
@@ -1287,6 +1297,207 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       const answer = ok(exit)
       expect(answer.mismatched).toBe('ROLE_TARGET_MISMATCH')
       expect(answer.unknown).toBe('PERMISSION_NOT_FOUND')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('appoints only what a held rule names, from where it is held', async () => {
+    const db = await createTestContext('effect-grant-rules')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const orgType = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+            ),
+          ).id
+          // a sibling subtree the actor does not stand over
+          const other = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.root}, ${orgType}, 'Other', 'r.o', 1) returning id`),
+          ).id
+          const permission = (code: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into permissions (code, plugin, name, target_kind)
+                values (${code}, 'org', ${code}, 'org-node')
+                on conflict (code) do update set code = excluded.code returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const manage = yield* permission('iam.grant.manage')
+          const tree = yield* permission('org.tree.manage')
+          const role = (code: string, permissions: readonly string[]) =>
+            Effect.gen(function* () {
+              const created = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode)
+                  values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit')
+                  returning id`),
+              ).id
+              for (const id of permissions) {
+                yield* runSql(sql`
+                  insert into role_permissions (tenant_id, role_id, permission_id)
+                  values (${f.tenant}, ${created}, ${id})`)
+              }
+              yield* runSql(sql`
+                insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+                values (${f.tenant}, ${created}, ${staff})`)
+              yield* runSql(sql`
+                insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+                values (${f.tenant}, ${created}, ${orgType})`)
+              return created
+            })
+          // Three offices with distinct jobs, so each refusal isolates one
+          // rule. `granter` carries grant administration everywhere, and
+          // nothing else: WHERE is answered wherever it is asked, and never
+          // by the office the rule hangs on. `college-admin` bears the rule
+          // and covers the counsellor's authority; `counsellor` is what gets
+          // handed out.
+          const granter = yield* role('granter', [manage])
+          const collegeAdmin = yield* role('college-admin', [tree])
+          const counsellor = yield* role('counsellor', [tree])
+          yield* runSql(sql`
+            insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+            values (${f.tenant}, ${collegeAdmin}, ${counsellor})`)
+          // a third person to appoint things to, of the admitted type
+          const li = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Li', ${staff}, ${f.child}) returning id`),
+          ).id
+          // grant administration everywhere under the root; the appointing
+          // office itself only over the child's subtree
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${granter}, ${f.root}, 'subtree')`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${collegeAdmin}, ${f.child}, 'subtree')`)
+
+          const grant = (input: {
+            userId: string
+            roleId: string
+            orgNodeId: string
+            by: Principal
+          }) =>
+            Effect.result(
+              access.grants.grant(
+                f.tenant,
+                {
+                  userId: input.userId,
+                  roleId: input.roleId,
+                  target: { kind: 'org-node', orgNodeId: input.orgNodeId, coverage: 'self' },
+                },
+                input.by,
+              ),
+            )
+
+          return {
+            // the edge names counsellor, the holding stands over the child
+            ruled: (yield* grant({
+              userId: li,
+              roleId: counsellor,
+              orgNodeId: f.child,
+              by: f.anchored,
+            }))._tag,
+            // no edge names college-admin: full authority, not their office
+            // to fill - the question no-escalation cannot ask
+            peer: tagOf(
+              yield* grant({
+                userId: li,
+                roleId: collegeAdmin,
+                orgNodeId: f.child,
+                by: f.anchored,
+              }),
+            ),
+            // the edge is held through a grant that does not stand over
+            // there: grant administration reaches the sibling, the
+            // appointing office does not
+            elsewhere: tagOf(
+              yield* grant({ userId: li, roleId: counsellor, orgNodeId: other, by: f.anchored }),
+            ),
+            // nobody appoints themselves, edge or no edge
+            themselves: tagOf(
+              yield* grant({
+                userId: f.anchored.userId,
+                roleId: counsellor,
+                orgNodeId: f.child,
+                by: f.anchored,
+              }),
+            ),
+            // the canonical administrator appoints without edges, being what
+            // it is - while eligibility still holds (the admin is not staff
+            // by type here, so the person checked is Li, not the actor)
+            canonical: (yield* grant({
+              userId: li,
+              roleId: collegeAdmin,
+              orgNodeId: f.child,
+              by: f.principal,
+            }))._tag,
+            offered: (yield* access.grants.options(
+              f.tenant,
+              {
+                userId: li,
+                target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' },
+              },
+              f.anchored,
+            )).map((candidate) => ({ code: candidate.code, refusal: candidate.refusal })),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.ruled).toBe('Success')
+      expect(answer.peer).toBe('GRANT_RULE_REFUSED')
+      expect(answer.elsewhere).toBe('GRANT_RULE_REFUSED')
+      expect(answer.themselves).toBe('GRANT_SELF_FORBIDDEN')
+      expect(answer.canonical).toBe('Success')
+      // the picker tells the same truth the write does
+      expect(answer.offered.find((role) => role.code === 'counsellor')?.refusal).toBeNull()
+      expect(answer.offered.find((role) => role.code === 'college-admin')?.refusal).toBe(
+        'authority',
+      )
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('keeps one\u2019s own grants out of one\u2019s own hands', async () => {
+    const db = await createTestContext('effect-grant-self')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // the anchored holder's own grant, revoked by themselves
+          const own = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from role_grants
+              where tenant_id = ${f.tenant} and user_id = ${f.anchored.userId}
+                and role_id = ${f.plainRole}`),
+          ).id
+          const refused = yield* Effect.result(
+            access.grants.revoke(f.tenant, own, f.anchored, (tenantId) =>
+              rbac.assertTenantKeepsAdministrator(tenantId),
+            ),
+          )
+          return tagOf(refused)
+        }),
+      )
+      expect(ok(exit)).toBe('GRANT_SELF_FORBIDDEN')
     } finally {
       await db.dispose()
     }
