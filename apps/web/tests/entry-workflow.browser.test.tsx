@@ -496,6 +496,44 @@ describe('judging a submission', () => {
     })
   })
 
+  it('sends one decision per press, however it was pressed', async () => {
+    const decided = vi.fn(() =>
+      Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),
+    )
+    screen(
+      {
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+        getReviewInstance: () => Effect.succeed({ review }),
+        decideReview: decided as never,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    // ⌘↵ inside the dialog belongs to the dialog: the page listens for the
+    // same chord, and both answering it staged a decision and then told the
+    // reviewer to choose one
+    await page.getByRole('button', { name: /退回/ }).click()
+    await page.getByLabelText('给申报人的说明').fill('证书缺少落款。')
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /确认退回/ })
+      .click()
+    expect(page.getByText('先选择一个决定。').elements()).toHaveLength(0)
+
+    // and the window sends it exactly once, however many times React runs
+    // the state updaters around it
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    await new Promise((settle) => setTimeout(settle, 600))
+    expect(decided).toHaveBeenCalledOnce()
+  })
+
   it('refuses to send back without a word for the student', async () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),

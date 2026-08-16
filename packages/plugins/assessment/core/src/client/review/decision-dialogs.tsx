@@ -171,32 +171,14 @@ export function RejectDialog({
       <div
         className="flex flex-col gap-5"
         onKeyDown={(event) => {
+          // the panel answers for the submit chord and nothing else: the
+          // suggestion keys are on the document, and a second handler for
+          // them here toggled everything twice and so not at all
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
             event.preventDefault()
+            // the page listens for this chord too; one press is one act
+            event.stopPropagation()
             confirm()
-            return
-          }
-          // ⌥ keeps working while the cursor is writing; bare keys only
-          // when it is not
-          const typing =
-            event.target instanceof HTMLElement && event.target.closest('input, textarea') !== null
-          if ((event.key === 's' || event.key === 'S') && (event.altKey || !typing)) {
-            event.preventDefault()
-            setSuggesting((on) => !on)
-            return
-          }
-          const slot = Number(event.altKey ? event.code.replace('Digit', '') : event.key)
-          if (
-            (event.altKey || !typing) &&
-            Number.isInteger(slot) &&
-            slot >= 1 &&
-            slot <= fields.length
-          ) {
-            event.preventDefault()
-            setSuggesting(true)
-            requestAnimationFrame(() => {
-              document.querySelector<HTMLInputElement>(`[data-suggest-slot="${slot}"]`)?.focus()
-            })
           }
         }}
       >
@@ -373,6 +355,8 @@ export function EscalateDialog({
         onKeyDown={(event) => {
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
             event.preventDefault()
+            // the page listens for this chord too; one press is one act
+            event.stopPropagation()
             confirm()
           }
         }}

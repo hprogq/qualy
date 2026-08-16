@@ -173,6 +173,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // which earlier version the filing is read against; null is not comparing
   const [comparing, setComparing] = useState<string | null>(null)
   const wordRef = useRef<HTMLInputElement | null>(null)
+  // Whether something over the workbench owns the keyboard. Read from a ref
+  // because the window listener runs in the same native event as the panel
+  // that just closed itself: through a render closure it saw "no overlay"
+  // and ran the page's own ⌘↵ a moment after the panel had already acted.
+  const overlaid = useRef(false)
+  overlaid.current = dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null
 
   /** stage a round-moving decision, log it, and put the next one on screen */
   const stageDecision = (decision: 'approve' | 'reject' | 'escalate', worded?: WordedDecision) => {
@@ -264,7 +270,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // cursor is in a box the letters belong to the text
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
-      if (dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null) return
+      if (overlaid.current) return
       // the photo viewer holds its own keys: Esc closes it, arrows page it
       if (document.querySelector('.PhotoView-Portal') !== null) return
       const mod = event.metaKey || event.ctrlKey

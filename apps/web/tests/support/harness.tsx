@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { StrictMode, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
@@ -88,24 +88,31 @@ export function renderScreen({
   locale?: 'zh-CN' | 'en-US'
 }) {
   localStorage.setItem('qualy.locale', locale)
+  // Under the same strictness the app runs under. Not pedantry: React
+  // re-invokes state updaters and re-runs effects here, which is how an
+  // impure updater shows itself. One that sent an api request from inside
+  // `setState` posted every review decision twice, and the suite was quiet
+  // about it because only the browser had StrictMode on.
   return render(
-    <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-      <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
-        <MemoryRouter initialEntries={[route]}>
-          {routes ? (
-            <Routes>
-              {routes.map((entry) => (
-                <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
-              ))}
-            </Routes>
-          ) : path ? (
-            <RouteHost path={path}>{children}</RouteHost>
-          ) : (
-            children
-          )}
-        </MemoryRouter>
-      </RuntimeProvider>
-    </I18nProvider>,
+    <StrictMode>
+      <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
+        <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
+          <MemoryRouter initialEntries={[route]}>
+            {routes ? (
+              <Routes>
+                {routes.map((entry) => (
+                  <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
+                ))}
+              </Routes>
+            ) : path ? (
+              <RouteHost path={path}>{children}</RouteHost>
+            ) : (
+              children
+            )}
+          </MemoryRouter>
+        </RuntimeProvider>
+      </I18nProvider>
+    </StrictMode>,
   )
 }
 

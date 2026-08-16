@@ -5102,3 +5102,29 @@ prettier 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 657 passed / 17 skipped;
 `pnpm test:browser` 55 passed;`pnpm build` 通过;prettier 全绿。
+
+### 一次按键提交了两遍:三个成因(2026-08-16)
+
+现象:按 ⌘↵ 后既弹出撤回条又提示「先选择一个决定」,五秒后再报「该条目已被他人处理」,
+刷新却发现自己其实已经审完了——「他人」就是自己一秒前那一次提交。三个独立成因:
+
+1. **副作用写在 setState updater 里**。`useDeferredDecision` 的 flush 走
+   `setPending((current) => { send(current); return null })`,而 apps/web 开着 StrictMode,
+   React 会**重复调用 updater** 以暴露不纯——于是同一个决定 POST 两次,第一次成功
+   (条目真的退回了),第二次撞 `ReviewConflict`。改为:待发的决定放 ref,`flush()` 先取走再置空
+   再发送,任何第二次调用都取到 null、什么都不做。
+2. **⌘↵ 被两个处理器各收一次**。弹层的面板处理器先跑并关掉自己,同一个原生事件继续冒泡到
+   window 上页面自己的处理器,那时它读到的「没有弹层」已是新状态,于是又跑了一遍 `submitArmed()`,
+   而此时没有任何决定被选中——「先选择一个决定」就是这么来的。改为:弹层的 ⌘↵
+   `stopPropagation()`,页面的守卫从 render 闭包改成 ref(同一 tick 内就是准的)。
+3. **退回弹层留着旧的面板键盘处理器**。它和后加的 document 监听同时在跑,S 被 toggle 两次
+   正好抵消——这正是当时「按 S 没反应」的真正原因。旧的删掉,面板只留提交和弦。
+
+**测试同步收紧**:`renderScreen` 现在在 `StrictMode` 下渲染,与应用一致。原来只有浏览器
+开严格模式,套件不开,这类不纯 updater 在测试里根本不会现形。新增浏览器用例
+「sends one decision per press, however it was pressed」:断言弹层确认后不出现
+「先选择一个决定」,且 decideReview 只被调用一次。**已实测**:把 flush 改回 updater 形式后
+该用例失败,改回来后通过——它确实钉住了这个回归。整套 56 条在严格模式下全绿。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 657 passed / 17 skipped;
+`pnpm test:browser` 56 passed;`pnpm build` 通过;prettier 全绿。
