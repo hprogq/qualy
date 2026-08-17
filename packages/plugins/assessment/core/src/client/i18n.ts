@@ -1254,10 +1254,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/previous-hint',
       defaultMessage: 'Check the asked-for changes were made.',
     },
-    reviewFilesKeys: {
-      id: 'assessment/review/files-keys',
-      defaultMessage: 'Press 1\u20139 to open a file',
-    },
     reviewInsight: { id: 'assessment/review/insight', defaultMessage: 'Smart review' },
     reviewInsightSoon: {
       id: 'assessment/review/insight-soon',
@@ -1467,6 +1463,35 @@ const i18n = definePluginMessages({
       id: 'assessment/review/awaiting-you',
       defaultMessage: 'Waiting on your decision',
     },
+    reviewInsightCaveat: {
+      id: 'assessment/review/insight-caveat',
+      defaultMessage: 'May be wrong; check it yourself',
+    },
+    reviewFileSupplement: {
+      id: 'assessment/review/file-supplement',
+      defaultMessage: 'Supplement',
+    },
+    reviewSupplementSection: {
+      id: 'assessment/review/supplement-section',
+      defaultMessage: 'Supplied on request',
+    },
+    reviewSupplementSectionNote: {
+      id: 'assessment/review/supplement-section-note',
+      defaultMessage: 'Asked for by a reviewer, so the questions differ from the ones above',
+    },
+    reviewEarlierRounds: {
+      id: 'assessment/review/earlier-rounds',
+      defaultMessage: 'Rounds before that',
+    },
+    reviewEarlierCount: {
+      id: 'assessment/review/earlier-count',
+      defaultMessage: '{count, plural, one {# more} other {# more}}',
+    },
+    reviewHadSupplements: {
+      id: 'assessment/review/had-supplements',
+      defaultMessage: 'Material was requested',
+    },
+    reviewKeysHint: { id: 'assessment/review/keys-hint', defaultMessage: 'Keyboard ?' },
     reviewQueueFold: { id: 'assessment/review/queue-fold', defaultMessage: 'Fold the queue away' },
     reviewQueueUnfold: { id: 'assessment/review/queue-unfold', defaultMessage: 'Show the queue' },
     reviewSupplementAsk: {

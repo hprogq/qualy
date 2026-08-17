@@ -657,6 +657,16 @@ const reviewDetailView = Schema.Struct({
           at: Schema.String,
         }),
       ),
+      /** the rounds before that, one line each */
+      earlier: Schema.Array(
+        Schema.Struct({
+          roundNo: Schema.Number,
+          kind: Schema.String,
+          reason: Schema.NullOr(Schema.String),
+          actorName: Schema.NullOr(Schema.String),
+          at: Schema.String,
+        }),
+      ),
     }),
   ),
   /** where the round stands, and what both routes are */

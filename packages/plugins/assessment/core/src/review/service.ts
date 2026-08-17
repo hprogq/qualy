@@ -48,6 +48,7 @@ import { nodePathOf } from '../entry/db.ts'
 import {
   activeReviewBatches,
   awaitingPage,
+  earlierConclusions,
   closeSupplementRequest,
   completeInstance,
   decisionsToday,
@@ -206,6 +207,14 @@ export interface ReviewContextView {
     readonly actorName: string | null
     readonly at: number
   } | null
+  /** the rounds before that, one line each: has this been asked twice? */
+  readonly earlier: readonly {
+    readonly roundNo: number
+    readonly kind: string
+    readonly reason: string | null
+    readonly actorName: string | null
+    readonly at: number
+  }[]
 }
 
 /**
@@ -538,6 +547,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         )?.calculator?.config?.value
         const others = yield* siblingEntries(tenantId, row.itemId, row.participantId)
         const previous = yield* previousConclusion(tenantId, row.entryId, row.roundNo)
+        const older = yield* earlierConclusions(tenantId, row.entryId, row.roundNo)
         context = {
           worth: {
             each: typeof each === 'string' ? each : null,
@@ -562,6 +572,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   actorName: previous.actorName,
                   at: previous.createdAt,
                 },
+          // everything before the one shown in full, most recent first
+          earlier: older.filter((one) => one.at !== previous?.createdAt),
         }
       }
       const stageView = (stage: ResolvedStage): ReviewStageView => ({

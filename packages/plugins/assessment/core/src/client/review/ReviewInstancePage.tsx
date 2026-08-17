@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertCircleIcon,
   ArrowLeftIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -766,7 +767,12 @@ function QueueRail({
           </Badge>
         )}
       </div>
-      <ul className={cn('min-h-0 flex-1 overflow-y-auto p-1.5', !open && 'hidden')}>
+      <ul
+        className={cn(
+          'flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5',
+          !open && 'hidden',
+        )}
+      >
         {rows.map((row) => {
           const current = row.instanceId === currentId
           return (
@@ -781,7 +787,7 @@ function QueueRail({
                     : 'border-l-transparent hover:bg-accent/50',
                 )}
               >
-                <span className="flex min-w-0 flex-1 flex-col">
+                <span className="flex min-w-0 flex-1 flex-col gap-px">
                   <span className={cn('truncate text-sm', current && 'font-semibold')}>
                     {row.participantName}
                   </span>
@@ -830,7 +836,7 @@ function RunStrip({
   const { format } = useI18n()
   const navigate = usePageNavigate()
   return (
-    <div className="flex items-center gap-3 border-b bg-muted/40 px-4 py-2">
+    <div className="flex shrink-0 items-center gap-3 border-b bg-muted/40 px-4 py-2">
       <p className="shrink-0 text-xs text-muted-foreground tabular-nums">
         {format(m.reviewRunPosition, { at, count: total })}
       </p>
@@ -875,11 +881,13 @@ function PersonStrip({
 }) {
   const { format } = useI18n()
   return (
-    <header className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
       <Avatar className="size-9">
-        <AvatarFallback>{review.participantName.slice(0, 1)}</AvatarFallback>
+        <AvatarFallback className="text-sm font-semibold">
+          {review.participantName.slice(0, 1)}
+        </AvatarFallback>
       </Avatar>
-      <div className="flex min-w-0 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-col gap-px">
         <div className="flex items-baseline gap-2.5">
           <h2 className="text-base font-semibold whitespace-nowrap">{review.participantName}</h2>
           {review.businessNo !== null && (
@@ -899,11 +907,22 @@ function PersonStrip({
       </div>
       <span className="flex-1" />
       {review.chain.route === 'escalation' && (
-        <Badge variant="outline">
+        <Badge variant="outline" className="text-xs">
           <TriangleAlertIcon aria-hidden />
           {format(m.reviewRouteEscalation)}
         </Badge>
       )}
+      {/* this filing has been round the supplement loop before: worth knowing
+          before reading it, and only the round itself can say so */}
+      {review.supplements.length > 0 && (
+        <Badge variant="outline" className="shrink-0 whitespace-nowrap">
+          <AlertCircleIcon aria-hidden />
+          {format(m.reviewHadSupplements)}
+        </Badge>
+      )}
+      <span className="shrink-0 text-xs font-medium whitespace-nowrap">
+        {format(m.reviewKeysHint)}
+      </span>
       {at !== null && (
         <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
           {format(m.reviewRunPosition, { at, count: of })}
@@ -982,6 +1001,7 @@ function EdgeButton({
 function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => void }) {
   const { format } = useI18n()
   const previous = review.context?.previous ?? null
+  const earlier = review.context?.earlier ?? []
   return (
     <section className="flex min-w-0 flex-col gap-4 overflow-y-auto p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
@@ -1004,19 +1024,22 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
           <Button variant="ghost" size="sm" className="text-xs" onClick={onTrail}>
             {format(m.reviewTrailFullOpen)}
             <Kbd>H</Kbd>
-            <ChevronRightIcon aria-hidden />
           </Button>
         </div>
         {previous !== null && (
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium">{format(m.reviewPreviousTitle)}</p>
-              <Badge variant="outline">
+              <p className="text-sm font-semibold">{format(m.reviewPreviousTitle)}</p>
+              <Badge variant="outline" className="bg-background">
                 {format(reviewEventMessage(previous.kind).message, {
                   who: previous.actorName ?? format(m.eventSomebody),
                 })}
               </Badge>
-              {previous.reason !== null && <Badge variant="outline">{previous.reason}</Badge>}
+              {previous.reason !== null && (
+                <Badge variant="outline" className="bg-background">
+                  {previous.reason}
+                </Badge>
+              )}
               <span className="flex-1" />
               <p className="text-xs text-muted-foreground tabular-nums">{timeLabel(previous.at)}</p>
             </div>
@@ -1025,14 +1048,48 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
                 {previous.comment}
               </p>
             )}
-            <p className="text-xs text-muted-foreground">{format(m.reviewPreviousHint)}</p>
+            {/* the rounds before that, a line each: whether the same thing
+                has been asked for three times is not answerable from the
+                latest round alone */}
+            {earlier.length > 0 && (
+              <div className="flex flex-col gap-1 border-t pt-2">
+                <div className="flex items-baseline gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {format(m.reviewEarlierRounds)}
+                  </p>
+                  <span className="flex-1" />
+                  <p className="text-xs text-muted-foreground">
+                    {format(m.reviewEarlierCount, { count: earlier.length })}
+                  </p>
+                </div>
+                {earlier.map((one, index) => (
+                  <span key={index} className="flex items-baseline gap-2 text-sm">
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {format(m.reviewStateRound, { round: one.roundNo })}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {one.reason ??
+                        format(reviewEventMessage(one.kind).message, {
+                          who: one.actorName ?? format(m.eventSomebody),
+                        })}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {timeLabel(one.at)}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {format(m.reviewPreviousHint)}
+            </p>
           </div>
         )}
         {/* what has happened since this round opened, told apart from the
             history above it: the card is why it came back, these are what
             has been said about the answer to that */}
-        <div className="flex items-baseline gap-2.5">
-          <p className="text-xs font-medium">{format(m.reviewThisRound)}</p>
+        <div className="flex items-baseline gap-2 border-t pt-2">
+          <p className="text-xs font-semibold text-muted-foreground">{format(m.reviewThisRound)}</p>
           <span className="flex-1" />
           {review.state !== 'completed' && review.capabilities.canDecide && (
             <p className="text-xs text-muted-foreground">{format(m.reviewAwaitingYou)}</p>
@@ -1045,8 +1102,8 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
             {review.events.map((event, index) => {
               const said = reviewEventMessage(event.kind)
               return (
-                <li key={index} className="flex gap-3">
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground tabular-nums">
+                <li key={index} className="flex gap-2.5">
+                  <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground tabular-nums">
                     {index + 1}
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -1140,14 +1197,8 @@ function FilingColumn({
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
   return (
-    <main className="flex min-w-0 flex-col gap-5 overflow-y-auto border-l p-5">
-      {/* reserved: machine reading arrives later, and the reading order
-          already keeps its place */}
-      <section className="flex flex-col gap-1.5 rounded-xl border border-dashed p-4">
-        <p className="text-sm font-medium">{format(m.reviewInsight)}</p>
-        <p className="text-sm text-muted-foreground">{format(m.reviewInsightSoon)}</p>
-      </section>
-      <section className="flex flex-col gap-3">
+    <main className="flex min-w-0 flex-col gap-4 overflow-y-auto border-l p-5">
+      <section className="flex flex-col gap-3.5">
         <div className="flex flex-col border-b pb-2">
           <div className="flex flex-wrap items-center gap-2.5">
             <h3 className="text-sm font-semibold">{format(m.reviewPayloadTitle)}</h3>
@@ -1191,7 +1242,26 @@ function FilingColumn({
             </p>
           </Appear>
         </div>
-        <dl className="flex flex-col gap-3">
+        {/* Reserved for machine reading, and it sits under the heading
+            rather than above it: what a reader checks first is the filing,
+            and a banner over the title would put a note about a feature
+            that does not exist yet ahead of the thing being reviewed. */}
+        <section className="flex items-start gap-2.5 rounded-xl border border-dashed p-3">
+          <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+              <p className="shrink-0 text-sm font-medium">{format(m.reviewInsight)}</p>
+              <span className="flex-1" />
+              <p className="shrink-0 text-xs text-muted-foreground">
+                {format(m.reviewInsightCaveat)}
+              </p>
+            </div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {format(m.reviewInsightSoon)}
+            </p>
+          </div>
+        </section>
+        <dl className="flex flex-col">
           {fields.map((field) => {
             const now = valueOf(record[field.key])
             const previous = was.get(field.key)
@@ -1205,29 +1275,26 @@ function FilingColumn({
                 ? (previous?.ids ?? []).filter((one) => !cited.includes(one))
                 : []
             return (
-              <div
-                key={field.key}
-                className={cn(
-                  // tops aligned, not baselines: a field whose answer is a
-                  // row of file cards has no baseline worth aligning to
-                  'grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-3 border-l-2 -ml-[13px] pl-[11px]',
-                  changed ? 'border-l-foreground/40' : 'border-l-transparent',
-                )}
-              >
+              // Stacked, and flush with the heading above: this column is
+              // 1.18fr of what is left after the queue and the two rails, and
+              // a fixed label gutter there costs more width than the
+              // alignment buys - a long field name wrapped to three lines
+              // against a one-line answer.
+              <div key={field.key} className="flex flex-col gap-1.5 pb-3.5">
                 {/* A field's name is what identifies its row, so a long one
                     wraps rather than being cut or shoved into the answer
                     beside it: "参加校级以上竞赛并获奖" truncated to its first
                     few characters names nothing. The count of files sits
                     under the name, in the same column. */}
-                <dt className="flex min-w-0 flex-col gap-0.5 text-sm text-muted-foreground">
-                  <span className="[overflow-wrap:anywhere]">{field.label}</span>
+                <dt className="flex min-w-0 items-baseline gap-2.5 text-sm text-muted-foreground">
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{field.label}</span>
                   {field.type === 'attachment' && cited.length > 0 && (
-                    <span className="text-xs tabular-nums">
+                    <span className="shrink-0 text-xs tabular-nums">
                       {format(m.reviewFilesCount, { count: cited.length })}
                     </span>
                   )}
                 </dt>
-                <dd className="flex min-w-0 flex-col text-sm">
+                <dd className="flex min-w-0 flex-col gap-1.5 text-base">
                   {field.type === 'attachment' ? (
                     cited.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
@@ -1252,7 +1319,9 @@ function FilingColumn({
                       </span>
                     )
                   ) : (
-                    <span className={cn(changed && 'font-medium')}>{now === '' ? '—' : now}</span>
+                    <span className={cn('leading-relaxed', changed && 'font-medium')}>
+                      {now === '' ? '—' : now}
+                    </span>
                   )}
                   {/* What the last version had here, under what this one
                       has - the same grey line for a sentence that was
@@ -1262,8 +1331,10 @@ function FilingColumn({
                       which is the opposite of what it is. */}
                   {field.type === 'attachment' ? (
                     <Appear show={gone.length > 0} collapse>
-                      <span className="flex min-w-0 flex-col gap-1 pt-1.5 text-xs text-muted-foreground">
-                        <span>{format(m.reviewFileGone)}</span>
+                      <span className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+                        <span className="self-start rounded bg-muted px-1.5 py-0.5">
+                          {format(m.reviewFileGone)}
+                        </span>
                         {gone.map((attachmentId) => (
                           // struck through, or a reviewer scanning the column
                           // reads it as one more file that is there
@@ -1275,8 +1346,10 @@ function FilingColumn({
                     </Appear>
                   ) : (
                     <Appear show={changed} collapse>
-                      <span className="flex items-baseline gap-2 pt-1.5 text-xs text-muted-foreground">
-                        <span className="shrink-0">{format(m.reviewComparePrevious)}</span>
+                      <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5">
+                          {format(m.reviewComparePrevious)}
+                        </span>
                         {before === '' ? (
                           <span>{format(m.reviewCompareBlank)}</span>
                         ) : (
@@ -1290,15 +1363,30 @@ function FilingColumn({
             )
           })}
           {review.revision.note !== null && (
-            <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-3 pl-2.5">
-              <dt className="min-w-0 text-sm [overflow-wrap:anywhere] text-muted-foreground">
-                {format(m.entryNote)}
-              </dt>
-              <dd className="min-w-0 text-sm">{review.revision.note}</dd>
+            <div className="flex flex-col gap-1.5 pb-3.5">
+              <dt className="text-sm text-muted-foreground">{format(m.entryNote)}</dt>
+              <dd className="min-w-0 text-base leading-relaxed">{review.revision.note}</dd>
             </div>
           )}
         </dl>
       </section>
+
+      {/* What a reviewer asked for mid-round and what came back, after the
+          filing and apart from it: these questions were written by whoever
+          was reviewing at the time, so they are not the item's fields and
+          must not read as though the filer answered them unprompted. */}
+      {review.supplements.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-t pt-3">
+            <p className="shrink-0 text-sm font-semibold">{format(m.reviewSupplementSection)}</p>
+            <span className="flex-1" />
+            <p className="text-xs text-muted-foreground">{format(m.reviewSupplementSectionNote)}</p>
+          </div>
+          {review.supplements.map((one) => (
+            <SupplementCard key={one.id} supplement={one} />
+          ))}
+        </section>
+      )}
 
       {/* the count and the way out, once, at the end of the filing: the
           materials are up there with the questions that asked for them */}
@@ -1307,9 +1395,6 @@ function FilingColumn({
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
             {format(m.reviewFilesNote)}
           </p>
-          <span className="hidden text-xs whitespace-nowrap text-muted-foreground lg:block">
-            {format(m.reviewFilesKeys)}
-          </span>
           <Button variant="outline" size="sm" className="text-xs" asChild>
             {/* one press per file, opened as downloads: a zip would be a
                 server-side archive nobody asked for yet */}
@@ -1363,9 +1448,11 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
           {supplement.requirements.map((asked) => {
             const value = answers[asked.key]
             return (
-              <div key={asked.key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
-                <dt className="text-sm whitespace-nowrap text-muted-foreground">{asked.label}</dt>
-                <dd className="min-w-0 text-sm">
+              <div key={asked.key} className="flex flex-col gap-1.5">
+                <dt className="min-w-0 text-sm [overflow-wrap:anywhere] text-muted-foreground">
+                  {asked.label}
+                </dt>
+                <dd className="min-w-0 text-base leading-relaxed">
                   {asked.kind === 'file' ? (
                     Array.isArray(value) && value.length > 0 ? (
                       <span className="flex flex-wrap gap-2">
@@ -1373,7 +1460,8 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
                           <AttachmentLink
                             key={String(attachmentId)}
                             attachmentId={String(attachmentId)}
-                            variant="preview"
+                            variant="card"
+                            mark="supplement"
                           />
                         ))}
                       </span>

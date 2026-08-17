@@ -3562,6 +3562,10 @@ const reviewDto = (review: ReviewDetailView) => ({
                   actorName: review.context.previous.actorName,
                   at: new Date(review.context.previous.at).toISOString(),
                 },
+          earlier: review.context.earlier.map((one) => ({
+            ...one,
+            at: new Date(one.at).toISOString(),
+          })),
         },
   events: review.events.map((event) => ({
     kind: event.kind,

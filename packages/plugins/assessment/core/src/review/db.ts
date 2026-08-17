@@ -913,6 +913,47 @@ export const previousConclusion = (tenantId: string, entryId: string, beforeRoun
     )
 
 /**
+ * How every earlier round of this claim ended, newest first.
+ *
+ * The one before is shown in full; the ones before that are one line each -
+ * a reviewer looking at a fourth submission wants to know whether the same
+ * thing has been asked for three times, and that is a question the latest
+ * round alone cannot answer.
+ */
+export const earlierConclusions = (tenantId: string, entryId: string, beforeRound: number) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewEvent as re')
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 're.tenantId').onRef('ri.id', '=', 're.reviewInstanceId'),
+        )
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
+        )
+        .select(['ri.roundNo', 're.kind', 're.reason', 'u.displayName as actorName'])
+        .select([epoch('re.created_at').as('createdMs')])
+        .where('re.tenantId', '=', tenantId)
+        .where('ri.entryId', '=', entryId)
+        .where('ri.roundNo', '<', beforeRound)
+        .where('re.kind', 'in', ['rejected', 'returned-for-revision', 'revision-required'])
+        .orderBy('ri.roundNo', 'desc')
+        .orderBy('re.createdAt', 'desc')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => ({
+          roundNo: row.roundNo,
+          kind: row.kind,
+          reason: row.reason,
+          actorName: row.actorName,
+          at: msOf(row.createdMs),
+        })),
+      ),
+    )
+
+/**
  * Decisions this person recorded on this batch today, on the batch's own
  * calendar. "Today" is the batch timezone's day, not the server's: the
  * counter greets whoever sits down in the morning, and mornings are local.

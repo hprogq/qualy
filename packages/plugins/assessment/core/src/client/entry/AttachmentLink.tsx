@@ -58,7 +58,7 @@ export function AttachmentLink({
    * There is no counterpart for a file that was taken out: that one is named
    * in grey under the row, not drawn as a card among the ones still filed.
    */
-  mark?: 'added' | undefined
+  mark?: 'added' | 'supplement' | undefined
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
@@ -151,7 +151,7 @@ export function AttachmentLink({
           <div
             className={cn(
               'relative flex h-24 items-center justify-center overflow-hidden rounded-lg border text-muted-foreground',
-              mark === 'added' ? 'border-foreground bg-muted' : 'bg-muted/50',
+              mark !== undefined ? 'border-foreground bg-muted' : 'bg-muted/50',
             )}
           >
             {isImage ? (
@@ -180,9 +180,9 @@ export function AttachmentLink({
                 {slot}
               </span>
             )}
-            {mark === 'added' && (
+            {mark !== undefined && (
               <span className="absolute top-1.5 right-1.5 rounded bg-foreground px-1.5 text-[10px] font-medium whitespace-nowrap text-background">
-                {format(m.reviewFileAdded)}
+                {format(mark === 'added' ? m.reviewFileAdded : m.reviewFileSupplement)}
               </span>
             )}
             {/* Taking a copy is a second thought, not the reason the tile is
