@@ -5704,3 +5704,36 @@ unstable/httpapi/HttpApiBuilder.ts:700-780`(query 经 ParsedSearchParams + decod
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped(review-workbench
 两处新断言在内);`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
+
+### 队列头像条、窗格 ScrollArea、挂载卡顿与三个回归(2026-08-17)
+
+**队列栏**。展开 11rem→13rem(内容放不下);标题旁的计数由 Badge 改普通小字(chip 占掉了
+标题的空间,「待审队列」曾一字一行);收起走宽度过渡(轨改 `auto`,栏自己 `w-52↔w-11` +
+`transition-[width]`,原来两个宽度写在 grid 上是瞬切);收起后列表变**头像条**:每行一个
+Avatar(中文取前两字、拉丁取前两字母大写——一排「王」认不出谁是谁),当前件带 ring,title
+提示全名,点击直达。右栏 19rem→21rem。
+
+**审核页所有滚动处换 shadcn ScrollArea**(用户点名):三栏、队列列表、选择版本 Sheet。原生
+滚动条在栏间是一条灰带。共享组件补了两处**通用缺陷**:①Viewport 加 `relative`——裁剪只对
+包含块链内的祖先生效,viewport 不是 positioning context 时,内容深处一个 sr-only(绝对定位)
+就逃出滚动区、把 shell 的滚动区撑出一屏空白(「打开对照后又出现滚动条」的回归即此,已实测
+归零);②Viewport 内层 `display:table` 改 `block!`——table 不让子元素收缩,ScrollArea 之下
+所有 truncate 都静默失效(「该参评人的其他条目」溢出即此,现已实测 ellipsis 生效)。
+
+**窄屏三段重叠**。我在窗格上写的 `min-h-0` 把 auto 网格行的内容下限归了零,三行均分一个过小
+的网格、内容互相画穿。高度约束(min-h-0 / flex-1 / grid-rows)全部改 lg 专属:窄屏是文档,
+按内容流;实测三段 379/975/532 顺序堆叠。另:换 ScrollArea 后网格 auto 行按内容参与 track
+sizing(与视觉溢出无关),两层网格行显式 `lg:grid-rows-[minmax(0,1fr)]` 钉住。
+
+**进入页面的动画卡顿**。longtask 实测:挂载一个 353ms 长任务。对照实验(去掉两张附件卡→156ms)
+定位到 PhotoProvider:每个 AttachmentLink 不论是不是图片都挂整套 lightbox。现在只有图片挂
+(353→288,文件多的页面按比例受益)。**sibling 模态框动画消失**:openSibling 状态在页面根部,
+开个对话框重渲染整个工作台。四个窗格 memo 化 + 回调 useCallback 稳定;实测打开对话框后长任务
+为零,动画不再丢帧。剩余 288ms 是 dev + StrictMode 双渲染的整页首挂,再切就要延迟渲染内容,
+与「不闪现」冲突,不做。
+
+**附件大图渐显**。原图无缩略图,大图流式解码时在占位上一行行刷。`ArrivingImg`:装载完成前
+opacity 0,完成后 300ms 淡入;缓存图在 ref 里查 `complete`,不重播。无新依赖。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircleIcon,
@@ -36,6 +45,7 @@ import {
 } from '@qualy/ui/input-group'
 import { Kbd } from '@qualy/ui/kbd'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
+import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -161,11 +171,16 @@ function Workbench({ batch }: { batch: BatchDto }) {
     },
   })
 
-  const goTo = (id: string) =>
-    navigate('assessment/review-instance', {
-      params: { batchId: batch.id, instanceId: id },
-      search: runRaw === '' ? {} : { run: runRaw },
-    })
+  const goTo = useCallback(
+    (id: string) =>
+      navigate('assessment/review-instance', {
+        params: { batchId: batch.id, instanceId: id },
+        search: runRaw === '' ? {} : { run: runRaw },
+      }),
+    [navigate, batch.id, runRaw],
+  )
+  const openTrail = useCallback(() => setTrailOpen(true), [])
+  const openVersions = useCallback(() => setVersionsOpen(true), [])
 
   // Nothing more to do here, and something else waiting.
   //
@@ -482,14 +497,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
           filling what is left needs no arithmetic and nothing to keep in
           step. Below lg the columns stack and the page scrolls as a page. */}
       <div className="relative flex min-h-96 flex-col lg:min-h-0 lg:flex-1">
-        <div
-          className={cn(
-            'grid min-h-0 flex-1',
-            railOpen
-              ? 'lg:grid-cols-[11rem_minmax(0,1fr)]'
-              : 'lg:grid-cols-[2.75rem_minmax(0,1fr)]',
-          )}
-        >
+        {/* the track is `auto`: the rail owns its width and animates it, and
+            a grid told two widths would snap between them instead */}
+        <div className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[auto_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
           <QueueRail
             rows={remaining}
             currentId={instanceId}
@@ -499,7 +509,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onOpen={goTo}
             onBack={() => navigate('assessment/batch-reviews', { params: { batchId: batch.id } })}
           />
-          <div className="flex min-h-0 min-w-0 flex-col border-t lg:border-t-0 lg:border-l">
+          <div className="flex min-w-0 flex-col border-t lg:min-h-0 lg:border-t-0 lg:border-l">
             {done ? (
               <DoneScreen
                 batchId={batch.id}
@@ -539,14 +549,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 <Drill
                   move="next"
                   drillKey={instanceId}
-                  className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_19rem]"
+                  className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem] lg:grid-rows-[minmax(0,1fr)]"
                 >
-                  <FlowColumn review={review} onTrail={() => setTrailOpen(true)} />
+                  <FlowColumn review={review} onTrail={openTrail} />
                   <FilingColumn
                     review={review}
                     comparing={comparing}
                     onCompare={setComparing}
-                    onVersions={() => setVersionsOpen(true)}
+                    onVersions={openVersions}
                   />
                   <ContextRail review={review} onOpenSibling={setOpenSibling} />
                 </Drill>
@@ -702,7 +712,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
  * take. Taking it back with ⌘Z puts it back, because then it really was not
  * dealt with.
  */
-function QueueRail({
+// The four panes are memoized: the root re-renders on every keystroke in
+// the decision bar and on every overlay opening or closing, and each of
+// those re-rendered three columns and a queue for nothing - the sibling
+// dialog's entrance visibly lost its first frames to that commit.
+const QueueRail = memo(function QueueRail({
   rows,
   currentId,
   remainingCount,
@@ -722,11 +736,18 @@ function QueueRail({
 }) {
   const { format } = useI18n()
   return (
-    <aside className="hidden min-h-0 flex-col overflow-hidden lg:flex">
+    // The rail owns its width and slides between the two, the same way the
+    // shell's own rail does; the grid track it sits in is `auto` and follows.
+    <aside
+      className={cn(
+        'hidden min-h-0 flex-col overflow-hidden transition-[width] duration-200 ease-linear lg:flex',
+        open ? 'w-52' : 'w-11',
+      )}
+    >
       <div
         className={cn(
-          'flex shrink-0 items-center gap-1.5 border-b py-2',
-          open ? 'pr-2 pl-2' : 'flex-col gap-2 px-1.5',
+          'flex shrink-0 items-center border-b py-2',
+          open ? 'gap-1 pr-1.5 pl-1' : 'flex-col gap-1.5 px-1.5',
         )}
       >
         {/* the way out: a workbench with no door back is a dead end */}
@@ -740,10 +761,12 @@ function QueueRail({
         </Button>
         {open && (
           <>
-            <p className="text-xs font-semibold">{format(m.reviewQueueTitle)}</p>
-            <Badge variant="secondary" className="tabular-nums">
+            {/* the count as plain text beside the name: a chip here cost the
+                title its room, and 待审队列 broke one character per line */}
+            <p className="min-w-0 truncate text-xs font-semibold">{format(m.reviewQueueTitle)}</p>
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
               {remainingCount}
-            </Badge>
+            </span>
             <span className="flex-1" />
           </>
         )}
@@ -756,57 +779,84 @@ function QueueRail({
           aria-label={format(open ? m.reviewQueueFold : m.reviewQueueUnfold)}
           onClick={onToggle}
         >
-          {open ? (
-            <ChevronLeftIcon aria-hidden />
-          ) : (
-            <span className="flex flex-col items-center">
-              <ChevronRightIcon aria-hidden className="size-4" />
-            </span>
-          )}
+          {open ? <ChevronLeftIcon aria-hidden /> : <ChevronRightIcon aria-hidden />}
         </Button>
-        {!open && remainingCount > 0 && (
-          <Badge variant="secondary" className="tabular-nums">
-            {remainingCount}
-          </Badge>
-        )}
       </div>
-      <ul
-        className={cn(
-          'relative flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5',
-          !open && 'hidden',
-        )}
-      >
-        {rows.map((row) => {
-          const current = row.instanceId === currentId
-          return (
-            <li key={row.instanceId}>
-              <button
-                type="button"
-                onClick={() => onOpen(row.instanceId)}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors',
-                  current
-                    ? 'border-l-foreground bg-accent'
-                    : 'border-l-transparent hover:bg-accent/50',
+      {/* One list, two renderings: open it names everybody, folded each row
+          is the face of its name - the queue stays readable at a glance and
+          the current one stays findable, instead of the fold hiding who is
+          still waiting. */}
+      <ScrollArea className="min-h-0 flex-1">
+        <ul
+          className={cn(
+            'relative flex flex-col',
+            open ? 'gap-px p-1.5' : 'items-center gap-1.5 py-1.5',
+          )}
+        >
+          {rows.map((row) => {
+            const current = row.instanceId === currentId
+            return (
+              <li key={row.instanceId} className={cn(!open && 'flex justify-center')}>
+                {open ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(row.instanceId)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors',
+                      current
+                        ? 'border-l-foreground bg-accent'
+                        : 'border-l-transparent hover:bg-accent/50',
+                    )}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col gap-px">
+                      <span className={cn('truncate text-sm', current && 'font-semibold')}>
+                        {row.participantName}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {row.itemTitle}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {clockLabel(row.submittedAt)}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    title={`${row.participantName}　${row.itemTitle}`}
+                    onClick={() => onOpen(row.instanceId)}
+                    className="rounded-full"
+                  >
+                    <Avatar
+                      className={cn(
+                        'size-8 transition-shadow',
+                        current && 'ring-2 ring-foreground ring-offset-1 ring-offset-background',
+                      )}
+                    >
+                      <AvatarFallback className="text-[10px] font-medium">
+                        {faceOf(row.participantName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="sr-only">{row.participantName}</span>
+                  </button>
                 )}
-              >
-                <span className="flex min-w-0 flex-1 flex-col gap-px">
-                  <span className={cn('truncate text-sm', current && 'font-semibold')}>
-                    {row.participantName}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">{row.itemTitle}</span>
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {clockLabel(row.submittedAt)}
-                </span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+              </li>
+            )
+          })}
+        </ul>
+      </ScrollArea>
     </aside>
   )
-}
+})
+
+/**
+ * What stands in for a name at avatar size: the first two characters, or the
+ * first two letters upcased for a name written in an alphabet. Two rather
+ * than one because a rail of queued people is full of shared surnames, and a
+ * column reading 王 王 王 names nobody.
+ */
+const faceOf = (name: string): string =>
+  /^[a-zA-Z]/.test(name) ? name.slice(0, 2).toUpperCase() : name.slice(0, 2)
 
 const DECISION_LABEL: Record<SessionEntry['decision'], MessageDescriptor> = {
   approve: m.reviewApprove,
@@ -1001,14 +1051,63 @@ function EdgeButton({
  * This one is short enough to fit a screen; the filing beside it is what
  * scrolls.
  */
-// Every scrolling pane below is `relative` on purpose. An absolutely
-// positioned descendant - a visually-hidden label, say - positions against
-// the nearest positioned ancestor, and a scroller that is not one cannot
-// clip it: one sr-only span deep in the fields escaped its column and
-// stretched the shell's scroll area by its own offset - a scrollbar into a
-// thousand pixels of nothing, present only while a comparison rendered the
-// link that carried it.
-function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => void }) {
+
+/**
+ * One workbench pane. Side by side it scrolls behind an overlay scrollbar
+ * (the native track sat as a grey band between the columns); stacked it is
+ * a section of the page and the page scrolls. ScrollArea's viewport always
+ * clips, so the stacked case renders no ScrollArea at all rather than a
+ * pane that swallows its own height. The root stays `relative` either way -
+ * an absolutely positioned descendant must belong to its pane, or it
+ * stretches the shell's scroll area from wherever it happens to sit.
+ */
+function Pane({
+  as: As,
+  className,
+  inner,
+  children,
+}: {
+  as: 'main' | 'section' | 'aside'
+  /** the pane frame: width, borders */
+  className?: string
+  /** the content column: padding and gap */
+  inner: string
+  children: ReactNode
+}) {
+  const beside = useBeside()
+  return (
+    <As className={cn('relative flex min-w-0 flex-col lg:min-h-0', className)}>
+      {beside ? (
+        <ScrollArea className="min-h-0 flex-1">
+          <div className={cn('flex flex-col', inner)}>{children}</div>
+        </ScrollArea>
+      ) : (
+        <div className={cn('flex flex-col', inner)}>{children}</div>
+      )}
+    </As>
+  )
+}
+
+/** whether the columns stand beside each other: the same line css draws at */
+function useBeside(): boolean {
+  const [beside, setBeside] = useState(true)
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 64rem)')
+    const read = () => setBeside(media.matches)
+    read()
+    media.addEventListener('change', read)
+    return () => media.removeEventListener('change', read)
+  }, [])
+  return beside
+}
+
+const FlowColumn = memo(function FlowColumn({
+  review,
+  onTrail,
+}: {
+  review: ReviewDto
+  onTrail: () => void
+}) {
   const { format } = useI18n()
   const previous = review.context?.previous ?? null
   const earlier = review.context?.earlier ?? []
@@ -1019,7 +1118,7 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
           who: previous.actorName ?? format(m.eventSomebody),
         })
   return (
-    <section className="relative flex min-w-0 flex-col gap-4 p-5 lg:overflow-y-auto">
+    <Pane as="section" inner="gap-4 p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
         <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -1180,9 +1279,9 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
           </ol>
         )}
       </section>
-    </section>
+    </Pane>
   )
-}
+})
 
 /**
  * What was actually filed, in the order it was asked for.
@@ -1191,7 +1290,7 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
  * filing is worked down item by item, and everything else on the screen is
  * there to be glanced at while doing it.
  */
-function FilingColumn({
+const FilingColumn = memo(function FilingColumn({
   review,
   comparing,
   onCompare,
@@ -1252,7 +1351,7 @@ function FilingColumn({
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
   return (
-    <main className="relative flex min-w-0 flex-col gap-4 border-l p-5 lg:overflow-y-auto">
+    <Pane as="main" className="border-l" inner="gap-4 p-5">
       <section className="flex flex-col gap-3.5">
         <div className="flex flex-col border-b pb-2">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -1472,9 +1571,9 @@ function FilingColumn({
           </Button>
         </div>
       )}
-    </main>
+    </Pane>
   )
-}
+})
 
 /** one ask and what came back, read like the filing above it */
 function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][number] }) {
@@ -1544,7 +1643,7 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
 }
 
 /** what stands beside the filing: the terms it is judged under */
-function ContextRail({
+const ContextRail = memo(function ContextRail({
   review,
   onOpenSibling,
 }: {
@@ -1563,7 +1662,7 @@ function ContextRail({
   // clause keeps a filled card, because it is quoted matter rather than this
   // screen's own words.
   return (
-    <aside className="relative flex min-w-0 flex-col gap-3 border-t p-4 lg:overflow-y-auto lg:border-t-0 lg:border-l">
+    <Pane as="aside" className="border-t lg:border-t-0 lg:border-l" inner="gap-3 p-4">
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
       <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">
@@ -1682,9 +1781,9 @@ function ContextRail({
             )}
         </section>
       )}
-    </aside>
+    </Pane>
   )
-}
+})
 
 function AboutRow({ label, value }: { label: string; value: string }) {
   return (

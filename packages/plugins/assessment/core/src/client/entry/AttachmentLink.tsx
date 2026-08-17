@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -35,6 +35,42 @@ import {
 // carries a small thumbnail beside the name, for the filing form, where a
 // file is being worked with. `preview` draws the file large, for the review
 // screen, whose whole job is looking at what was submitted.
+
+/**
+ * A photograph that arrives, not one that assembles.
+ *
+ * The tiles show originals - there is no derived size to ask for - and a
+ * large original paints top to bottom as it streams, scanline by scanline
+ * over the placeholder. Held invisible until it has fully decoded and then
+ * faded in, the tile goes from placeholder to picture in one movement. A
+ * cached image is already complete before the load handler is attached, so
+ * the ref checks rather than waits.
+ */
+function ArrivingImg({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [ready, setReady] = useState(false)
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      ref={(node) => {
+        if (node !== null && node.complete) setReady(true)
+      }}
+      onLoad={() => setReady(true)}
+      className={cn(
+        'transition-opacity duration-300',
+        ready ? 'opacity-100' : 'opacity-0',
+        className,
+      )}
+    />
+  )
+}
+
+/** the lightbox only around a picture: everything else pays nothing for it */
+function Shown({ photo, children }: { photo: boolean; children: ReactNode }) {
+  return photo ? <PhotoProvider maskOpacity={0.85}>{children}</PhotoProvider> : <>{children}</>
+}
 
 export function AttachmentLink({
   attachmentId,
@@ -78,7 +114,7 @@ export function AttachmentLink({
 
   if (variant === 'line') {
     return (
-      <PhotoProvider maskOpacity={0.85}>
+      <Shown photo={isImage}>
         <span className="flex min-w-0 items-center gap-1.5">
           <PaperclipIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           {/* a picture or a document opens where it stands; anything else
@@ -125,7 +161,7 @@ export function AttachmentLink({
             </a>
           )}
         </span>
-      </PhotoProvider>
+      </Shown>
     )
   }
 
@@ -136,7 +172,7 @@ export function AttachmentLink({
   // read as something still on offer.
   if (variant === 'card') {
     return (
-      <PhotoProvider maskOpacity={0.85}>
+      <Shown photo={isImage}>
         <figure
           data-file-slot={slot}
           className="group/file flex w-42 shrink-0 flex-col gap-1.5"
@@ -150,11 +186,9 @@ export function AttachmentLink({
           >
             {isImage ? (
               <PhotoView src={href}>
-                <img
+                <ArrivingImg
                   src={href}
                   alt={name}
-                  loading="lazy"
-                  decoding="async"
                   className="size-full cursor-zoom-in object-cover"
                 />
               </PhotoView>
@@ -203,22 +237,20 @@ export function AttachmentLink({
           </figcaption>
         </figure>
         {lightbox}
-      </PhotoProvider>
+      </Shown>
     )
   }
 
   if (variant === 'preview') {
     return (
-      <PhotoProvider maskOpacity={0.85}>
+      <Shown photo={isImage}>
         <figure className="flex w-56 flex-col gap-2">
           <div className="flex h-36 items-center justify-center overflow-hidden rounded-xl border bg-muted/60 text-muted-foreground">
             {isImage ? (
               <PhotoView src={href}>
-                <img
+                <ArrivingImg
                   src={href}
                   alt={name}
-                  loading="lazy"
-                  decoding="async"
                   className="size-full cursor-zoom-in object-cover"
                 />
               </PhotoView>
@@ -251,22 +283,20 @@ export function AttachmentLink({
           </figcaption>
         </figure>
         {lightbox}
-      </PhotoProvider>
+      </Shown>
     )
   }
 
   return (
-    <PhotoProvider maskOpacity={0.85}>
+    <Shown photo={isImage}>
       <FileTile
         className="w-full max-w-sm bg-card"
         media={
           isImage ? (
             <PhotoView src={href}>
-              <img
+              <ArrivingImg
                 src={href}
                 alt={name}
-                loading="lazy"
-                decoding="async"
                 className="size-full cursor-zoom-in object-cover"
               />
             </PhotoView>
@@ -295,6 +325,6 @@ export function AttachmentLink({
         }
       />
       {lightbox}
-    </PhotoProvider>
+    </Shown>
   )
 }

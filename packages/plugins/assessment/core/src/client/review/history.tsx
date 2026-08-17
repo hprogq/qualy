@@ -5,6 +5,7 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
+import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -123,77 +124,79 @@ export function VersionPicker({
             })}
           </p>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <AsyncSection
-            pending={history.isPending}
-            error={history.error ? formatError(history.error) : null}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
-            onRetry={() => void history.refetch()}
-            skeleton={<Skeleton className="h-32 w-full" />}
-          >
-            {revisions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{format(m.reviewCompareBlank)}</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {[...revisions].reverse().map((revision) => {
-                  const judged = revision.revisionNo === judgedRevisionNo
-                  const ended = outcomeOf(revision.id)
-                  return (
-                    <li key={revision.id}>
-                      {/* Three states a glance apart: the judged version is
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="p-4">
+            <AsyncSection
+              pending={history.isPending}
+              error={history.error ? formatError(history.error) : null}
+              loadingLabel={format(commonMessages.loading)}
+              retryLabel={format(commonMessages.retry)}
+              onRetry={() => void history.refetch()}
+              skeleton={<Skeleton className="h-32 w-full" />}
+            >
+              {revisions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{format(m.reviewCompareBlank)}</p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {[...revisions].reverse().map((revision) => {
+                    const judged = revision.revisionNo === judgedRevisionNo
+                    const ended = outcomeOf(revision.id)
+                    return (
+                      <li key={revision.id}>
+                        {/* Three states a glance apart: the judged version is
                           greyed and refuses the cursor - it is what the
                           comparison reads, not something to read against;
                           the one being compared stands marked; the rest
                           offer themselves. */}
-                      <button
-                        type="button"
-                        disabled={judged}
-                        onClick={() => setChosen(revision.id)}
-                        className={cn(
-                          'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
-                          judged
-                            ? 'cursor-not-allowed border-transparent bg-muted/40 text-muted-foreground'
-                            : revision.id === chosenId
-                              ? 'cursor-pointer border-foreground bg-accent/60'
-                              : 'cursor-pointer hover:bg-accent/50',
-                        )}
-                      >
-                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span className="flex items-baseline gap-2">
-                            <span className="text-sm font-medium">
-                              {format(m.reviewVersionName, { no: revision.revisionNo })}
-                            </span>
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {timeLabel(revision.createdAt)}
-                            </span>
-                          </span>
-                          {revision.note !== null && (
-                            <span className="min-w-0 truncate text-xs text-muted-foreground">
-                              {revision.note}
-                            </span>
+                        <button
+                          type="button"
+                          disabled={judged}
+                          onClick={() => setChosen(revision.id)}
+                          className={cn(
+                            'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
+                            judged
+                              ? 'cursor-not-allowed border-transparent bg-muted/40 text-muted-foreground'
+                              : revision.id === chosenId
+                                ? 'cursor-pointer border-foreground bg-accent/60'
+                                : 'cursor-pointer hover:bg-accent/50',
                           )}
-                        </span>
-                        {judged ? (
-                          <Badge variant="outline">{format(m.reviewVersionJudged)}</Badge>
-                        ) : revision.id === chosenId ? (
-                          <Badge>{format(m.reviewVersionComparing)}</Badge>
-                        ) : (
-                          ended !== null && (
-                            <Badge variant="outline" className="font-normal">
-                              {format(reviewOutcomeMessage(ended.outcome))}
-                              {ended.who !== null && `　${ended.who}`}
-                            </Badge>
-                          )
-                        )}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </AsyncSection>
-        </div>
+                        >
+                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            <span className="flex items-baseline gap-2">
+                              <span className="text-sm font-medium">
+                                {format(m.reviewVersionName, { no: revision.revisionNo })}
+                              </span>
+                              <span className="text-xs text-muted-foreground tabular-nums">
+                                {timeLabel(revision.createdAt)}
+                              </span>
+                            </span>
+                            {revision.note !== null && (
+                              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                                {revision.note}
+                              </span>
+                            )}
+                          </span>
+                          {judged ? (
+                            <Badge variant="outline">{format(m.reviewVersionJudged)}</Badge>
+                          ) : revision.id === chosenId ? (
+                            <Badge>{format(m.reviewVersionComparing)}</Badge>
+                          ) : (
+                            ended !== null && (
+                              <Badge variant="outline" className="font-normal">
+                                {format(reviewOutcomeMessage(ended.outcome))}
+                                {ended.who !== null && `　${ended.who}`}
+                              </Badge>
+                            )
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </AsyncSection>
+          </div>
+        </ScrollArea>
         <div className="flex items-center gap-3 border-t p-3">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
             {format(m.reviewVersionsFoot)}
