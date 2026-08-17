@@ -962,7 +962,12 @@ export const earlierConclusions = (tenantId: string, entryId: string, beforeRoun
         .where('re.tenantId', '=', tenantId)
         .where('ri.entryId', '=', entryId)
         .where('ri.roundNo', '<', beforeRound)
-        .where('re.kind', 'in', ['rejected', 'returned-for-revision', 'revision-required'])
+        .where('re.kind', 'in', [
+          'rejected',
+          'returned-for-revision',
+          'revision-required',
+          'cancelled-by-submitter',
+        ])
         .orderBy('ri.roundNo', 'desc')
         .orderBy('re.createdAt', 'desc')
         .execute(),

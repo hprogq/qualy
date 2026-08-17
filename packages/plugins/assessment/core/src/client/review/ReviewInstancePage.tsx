@@ -1111,6 +1111,9 @@ const FlowColumn = memo(function FlowColumn({
   const { format } = useI18n()
   const previous = review.context?.previous ?? null
   const earlier = review.context?.earlier ?? []
+  // A withdrawal is not a refusal: nobody judged anything, and dressing it
+  // in the refusal card's words would invent a verdict that never happened.
+  const withdrawn = previous?.kind === 'cancelled-by-submitter'
   const said =
     previous === null
       ? ''
@@ -1153,7 +1156,9 @@ const FlowColumn = memo(function FlowColumn({
         {previous !== null && (
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
             <div className="flex items-baseline gap-2">
-              <p className="shrink-0 text-sm font-semibold">{format(m.reviewPreviousTitle)}</p>
+              <p className="min-w-0 text-sm font-semibold">
+                {format(withdrawn ? m.reviewPreviousWithdrawn : m.reviewPreviousTitle)}
+              </p>
               <Badge variant="secondary" className="shrink-0 bg-background">
                 {format(m.reviewStateRound, { round: previous.roundNo })}
               </Badge>
@@ -1168,26 +1173,30 @@ const FlowColumn = memo(function FlowColumn({
                 the reason is the shorter and the more useful of the two, so
                 it keeps its width and the name ellipses. Both carry their
                 full text as a tooltip. */}
-            <div className="flex min-w-0 items-center gap-2">
-              {/* what was done, in the colour of what it was: a refusal read
-                  in the same ink as a note is one a tired reader scrolls past */}
-              <Badge
-                variant="outline"
-                title={said}
-                className="min-w-0 bg-background text-destructive"
-              >
-                <span className="truncate">{said}</span>
-              </Badge>
-              {previous.reason !== null && (
+            {/* the verdict chips only where a verdict exists: the withdrawn
+                card's title already says the whole of what happened */}
+            {!withdrawn && (
+              <div className="flex min-w-0 items-center gap-2">
+                {/* what was done, in the colour of what it was: a refusal read
+                    in the same ink as a note is one a tired reader scrolls past */}
                 <Badge
                   variant="outline"
-                  title={previous.reason}
-                  className="min-w-0 max-w-[55%] shrink bg-background"
+                  title={said}
+                  className="min-w-0 bg-background text-destructive"
                 >
-                  <span className="truncate">{previous.reason}</span>
+                  <span className="truncate">{said}</span>
                 </Badge>
-              )}
-            </div>
+                {previous.reason !== null && (
+                  <Badge
+                    variant="outline"
+                    title={previous.reason}
+                    className="min-w-0 max-w-[55%] shrink bg-background"
+                  >
+                    <span className="truncate">{previous.reason}</span>
+                  </Badge>
+                )}
+              </div>
+            )}
             {previous.comment !== null && (
               <p className="border-l-2 border-muted-foreground/30 pl-3 text-sm leading-relaxed">
                 {previous.comment}
@@ -1207,27 +1216,40 @@ const FlowColumn = memo(function FlowColumn({
                     {format(m.reviewEarlierCount, { count: earlier.length })}
                   </p>
                 </div>
-                {earlier.map((one, index) => (
-                  <span key={index} className="flex items-baseline gap-2 text-sm">
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {format(m.reviewStateRound, { round: one.roundNo })}
+                {/* Round, grounds, time - never who. This list answers
+                    "where has this been getting stuck", and the grounds
+                    answer that directly; a name only matters when tracing
+                    responsibility, which is the full trail's job. A
+                    withdrawal has no grounds to show and must not be
+                    dressed in one: nobody ruled, so the line goes grey and
+                    says exactly what happened. */}
+                {earlier.map((one, index) => {
+                  const took = one.kind === 'cancelled-by-submitter'
+                  return (
+                    <span key={index} className="flex items-baseline gap-2 text-sm">
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {format(m.reviewStateRound, { round: one.roundNo })}
+                      </span>
+                      <span
+                        className={cn('min-w-0 flex-1 truncate', took && 'text-muted-foreground')}
+                      >
+                        {took
+                          ? format(m.reviewEarlierWithdrawn)
+                          : (one.reason ?? format(m.reviewEarlierReturned))}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {timeLabel(one.at)}
+                      </span>
                     </span>
-                    <span className="min-w-0 flex-1 truncate">
-                      {one.reason ??
-                        format(reviewEventMessage(one.kind).message, {
-                          who: one.actorName ?? format(m.eventSomebody),
-                        })}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {timeLabel(one.at)}
-                    </span>
-                  </span>
-                ))}
+                  )
+                })}
               </div>
             )}
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {format(m.reviewPreviousHint)}
-            </p>
+            {!withdrawn && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {format(m.reviewPreviousHint)}
+              </p>
+            )}
           </div>
         )}
         {/* what has happened since this round opened, told apart from the
@@ -1243,17 +1265,32 @@ const FlowColumn = memo(function FlowColumn({
         {review.events.length === 0 ? (
           <p className="text-sm text-muted-foreground">—</p>
         ) : (
-          <ol className="flex flex-col gap-2.5">
+          // A timeline, not a numbered list: dots on one thread, the last
+          // solid because it is where the round stands now. The two lines of
+          // an event are told apart by weight and colour - the name of what
+          // happened in ink, the words said about it in grey - so the quote
+          // bar the comment used to carry has nothing left to add.
+          <ol className="flex flex-col">
             {review.events.map((event, index) => {
               const said = reviewEventMessage(event.kind)
+              const last = index === review.events.length - 1
               return (
-                <li key={index} className="flex gap-2.5">
-                  <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground tabular-nums">
-                    {index + 1}
+                <li key={index} className="flex gap-2.5 pb-3 last:pb-0">
+                  <span className="relative flex w-4 shrink-0 justify-center">
+                    {!last && (
+                      <span aria-hidden className="absolute top-3.5 bottom-0 w-px bg-border" />
+                    )}
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'mt-1.5 size-2 shrink-0 rounded-full',
+                        last ? 'bg-foreground' : 'bg-muted-foreground/45',
+                      )}
+                    />
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <div className="flex flex-wrap items-baseline gap-x-2">
-                      <p className="text-sm">
+                      <p className="text-sm font-medium">
                         {format(
                           said.message,
                           said.needsActor
@@ -1268,7 +1305,7 @@ const FlowColumn = memo(function FlowColumn({
                       </p>
                     </div>
                     {event.comment !== null && (
-                      <p className="border-l-2 border-border pl-2.5 text-sm leading-relaxed">
+                      <p className="text-sm leading-relaxed text-muted-foreground">
                         {event.comment}
                       </p>
                     )}

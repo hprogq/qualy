@@ -1486,6 +1486,18 @@ const i18n = definePluginMessages({
       id: 'assessment/review/supplement-section-note',
       defaultMessage: 'Asked for by a reviewer, so the questions differ from the ones above',
     },
+    reviewPreviousWithdrawn: {
+      id: 'assessment/review/previous-withdrawn',
+      defaultMessage: 'Last round went unjudged: the participant withdrew it',
+    },
+    reviewEarlierWithdrawn: {
+      id: 'assessment/review/earlier-withdrawn',
+      defaultMessage: 'Withdrawn by the participant',
+    },
+    reviewEarlierReturned: {
+      id: 'assessment/review/earlier-returned',
+      defaultMessage: 'Sent back',
+    },
     reviewEarlierRounds: {
       id: 'assessment/review/earlier-rounds',
       defaultMessage: 'Rounds before that',
