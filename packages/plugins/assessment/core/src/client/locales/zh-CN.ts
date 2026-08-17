@@ -374,7 +374,7 @@ export default {
   'assessment/review/versions-foot': '选定后回到填报内容，改动处标出。',
   'assessment/review/versions-confirm': '对照第 {no} 版',
   'assessment/review/versions-confirm-none': '选择一个版本',
-  'assessment/review/trail-full-open': '查看该条目完整经过',
+  'assessment/review/trail-full-open': '查看完整经过',
   'assessment/review/column-status': '状态',
   'assessment/review/supplement-asked': '已请对方补材料',
   'assessment/review/key-siblings': '打开该参评人的其他条目',

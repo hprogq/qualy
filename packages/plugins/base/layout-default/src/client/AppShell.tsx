@@ -16,12 +16,11 @@ export default function AppShell() {
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
       <TopBar apps={apps} activeApp={activeApp} />
       <SectionBar items={sections} />
-      {/* always scroll, never auto: a page that fits and a page that overflows
-          otherwise get different widths, and the layout shifts as you move
-          between them. A reserved gutter fixes that too, but leaves a blank
-          strip a full-width band cannot paint into - a live scrollbar track
-          reads as a scrollbar, and where they overlay it costs nothing. */}
-      <main className="min-h-0 flex-1 overflow-y-scroll">
+      {/* auto, so a page that fits shows nothing. The width this once
+          protected only moves where scrollbars take space, and there a track
+          with no thumb is its own defect; a reserved gutter is worse still,
+          being a blank strip a full-width band cannot paint into. */}
+      <main className="min-h-0 flex-1 overflow-y-auto">
         <Outlet />
       </main>
     </div>

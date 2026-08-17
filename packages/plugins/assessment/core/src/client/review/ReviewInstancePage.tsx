@@ -456,7 +456,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
     return () => window.removeEventListener('keydown', down)
   })
 
-  const [measure, height] = useRestOfTheWindow()
   // over only when this sitting decided something: an already-closed round
   // opened from elsewhere is a page to read, not a run to finish
   const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
@@ -472,13 +471,17 @@ function Workbench({ batch }: { batch: BatchDto }) {
         void detail.refetch()
       }}
       skeleton={<Skeleton className="h-96 w-full" />}
-      className="flex flex-1 flex-col"
+      className="flex min-h-0 flex-1 flex-col"
     >
-      <div
-        ref={measure}
-        style={height === null ? undefined : { height }}
-        className="relative flex min-h-96 flex-col"
-      >
+      {/* Given its height by the shell rather than measuring the window for
+          one. Measuring was wrong in both directions: taken while the pane
+          was scrolled it read too tall, and the workbench grew the scrollbar
+          it is built not to need; taken before the bands above it settled it
+          read too short, and left a screenful of nothing under the decision
+          bar. Every ancestor up to the shell's main is a flex column, so
+          filling what is left needs no arithmetic and nothing to keep in
+          step. Below lg the columns stack and the page scrolls as a page. */}
+      <div className="relative flex min-h-96 flex-col lg:min-h-0 lg:flex-1">
         <div
           className={cn(
             'grid min-h-0 flex-1',
@@ -1002,8 +1005,14 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
   const { format } = useI18n()
   const previous = review.context?.previous ?? null
   const earlier = review.context?.earlier ?? []
+  const said =
+    previous === null
+      ? ''
+      : format(reviewEventMessage(previous.kind).message, {
+          who: previous.actorName ?? format(m.eventSomebody),
+        })
   return (
-    <section className="flex min-w-0 flex-col gap-4 overflow-y-auto p-5">
+    <section className="flex min-w-0 flex-col gap-4 p-5 lg:overflow-y-auto">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
         <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -1014,14 +1023,23 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
         </div>
       )}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2.5 border-b pb-2">
-          <h3 className="text-sm font-semibold">{format(m.reviewPrior)}</h3>
-          <Badge variant="secondary">{format(m.reviewStateRound, { round: review.roundNo })}</Badge>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b pb-2">
+          <h3 className="shrink-0 text-sm font-semibold whitespace-nowrap">
+            {format(m.reviewPrior)}
+          </h3>
+          <Badge variant="secondary" className="shrink-0">
+            {format(m.reviewStateRound, { round: review.roundNo })}
+          </Badge>
           <span className="flex-1" />
           {/* What this round says is only the last part of the story, and the
               rest of it decides how to read this part. The key alone was not
               a way in: nobody finds H without being told. */}
-          <Button variant="ghost" size="sm" className="text-xs" onClick={onTrail}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 text-xs whitespace-nowrap"
+            onClick={onTrail}
+          >
             {format(m.reviewTrailFullOpen)}
             <Kbd>H</Kbd>
           </Button>
@@ -1038,17 +1056,29 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
                 {timeLabel(previous.at)}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            {/* One line, and the name gives way first. A reviewer's full
+                title runs long, and left to wrap it pushed the reason onto a
+                third line and the card into the space the comment needed;
+                the reason is the shorter and the more useful of the two, so
+                it keeps its width and the name ellipses. Both carry their
+                full text as a tooltip. */}
+            <div className="flex min-w-0 items-center gap-2">
               {/* what was done, in the colour of what it was: a refusal read
                   in the same ink as a note is one a tired reader scrolls past */}
-              <Badge variant="outline" className="bg-background text-destructive">
-                {format(reviewEventMessage(previous.kind).message, {
-                  who: previous.actorName ?? format(m.eventSomebody),
-                })}
+              <Badge
+                variant="outline"
+                title={said}
+                className="min-w-0 bg-background text-destructive"
+              >
+                <span className="truncate">{said}</span>
               </Badge>
               {previous.reason !== null && (
-                <Badge variant="outline" className="bg-background">
-                  {previous.reason}
+                <Badge
+                  variant="outline"
+                  title={previous.reason}
+                  className="min-w-0 max-w-[55%] shrink bg-background"
+                >
+                  <span className="truncate">{previous.reason}</span>
                 </Badge>
               )}
             </div>
@@ -1206,7 +1236,7 @@ function FilingColumn({
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
   return (
-    <main className="flex min-w-0 flex-col gap-4 overflow-y-auto border-l p-5">
+    <main className="flex min-w-0 flex-col gap-4 border-l p-5 lg:overflow-y-auto">
       <section className="flex flex-col gap-3.5">
         <div className="flex flex-col border-b pb-2">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -1517,7 +1547,7 @@ function ContextRail({
   // clause keeps a filled card, because it is quoted matter rather than this
   // screen's own words.
   return (
-    <aside className="flex min-w-0 flex-col gap-3 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
+    <aside className="flex min-w-0 flex-col gap-3 border-t p-4 lg:overflow-y-auto lg:border-t-0 lg:border-l">
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
       <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">
@@ -2182,36 +2212,4 @@ function DoneStat({ label, value }: { label: string; value: number | string }) {
       <span className="text-lg leading-none font-semibold tabular-nums">{value}</span>
     </span>
   )
-}
-
-/**
- * However much of the window is left below wherever this lands, so the
- * workbench fills the screen and scrolls inside its own panes - the same
- * measurement my-entries makes, for the same reason.
- */
-function useRestOfTheWindow(): [(node: HTMLDivElement | null) => void, number | null] {
-  const [node, setNode] = useState<HTMLDivElement | null>(null)
-  const [height, setHeight] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (node === null) return
-    const beside = window.matchMedia('(min-width: 64rem)')
-    const measure = () => {
-      if (!beside.matches) {
-        setHeight(null)
-        return
-      }
-      const room = window.innerHeight - node.getBoundingClientRect().top
-      setHeight(Math.max(360, Math.round(room)))
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    beside.addEventListener('change', measure)
-    return () => {
-      window.removeEventListener('resize', measure)
-      beside.removeEventListener('change', measure)
-    }
-  }, [node])
-
-  return [setNode, height]
 }

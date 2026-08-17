@@ -21,6 +21,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { useRestOfTheScroller } from '../rest-of-the-scroller.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
 import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
@@ -529,47 +530,6 @@ function useMove(rows: readonly StructureRow[], openId: string | null): DrillMov
 }
 
 /**
- * However much of the window is left below wherever this lands.
- *
- * The index should reach the bottom of the screen and no further - a height
- * of a whole viewport, measured from partway down the page, is a viewport
- * plus whatever was above it, and the page grows a scrollbar it did not need.
- * What is above it is a heading band whose height depends on the copy in it,
- * so it is measured rather than assumed.
- *
- * Only where the two panes stand side by side. Stacked, the list is a
- * section of the page like any other and a height would just crop it.
- */
-function useRestOfTheWindow(): [(node: HTMLDivElement | null) => void, number | null] {
-  const [node, setNode] = useState<HTMLDivElement | null>(null)
-  const [height, setHeight] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (node === null) return
-    const beside = window.matchMedia('(min-width: 64rem)')
-    const measure = () => {
-      if (!beside.matches) {
-        setHeight(null)
-        return
-      }
-      // the gutter is the page's own bottom padding, which the list should
-      // stop short of rather than run into
-      const room = window.innerHeight - node.getBoundingClientRect().top - 24
-      setHeight(Math.max(240, Math.round(room)))
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    beside.addEventListener('change', measure)
-    return () => {
-      window.removeEventListener('resize', measure)
-      beside.removeEventListener('change', measure)
-    }
-  }, [node])
-
-  return [setNode, height]
-}
-
-/**
  * The round, as one list of rows to choose from.
  *
  * Groups and questions sit at the same indent scale rather than as headings
@@ -595,7 +555,8 @@ function Structure({
   // narrowed to what is outstanding, the sections above it are scaffolding
   // for rows that are no longer there
   const listed = showing === 'all' ? rows : rows.filter((row) => row.todo)
-  const [measure, height] = useRestOfTheWindow()
+  // stops at the page's own bottom padding rather than running into it
+  const [measure, height] = useRestOfTheScroller(24, 240)
 
   return (
     // the structure is the page's index, so it stays put and scrolls inside

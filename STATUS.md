@@ -5607,3 +5607,38 @@ code style!`;catalogs 7 passed。
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
 code style!`。
+
+### 滚动条与底部大片空白:审核台不再自己量窗口(2026-08-17)
+
+两个症状同源。审核台原本用 JS 量「窗口高度 − 自己的 top」当作自己的高度,这个量法**两个方向都会错**:
+
+- 在**已经滚动**的面板里量,`top` 变小甚至为负,算出来比实际空间高 → 工作台长出一条它本不该有的
+  滚动条,越滚越错;
+- 在**上方各条还没排好**时量(顶栏、批次栏、页头的文案会换行),算出来偏矮 → 决定条下面留出
+  一屏白。用户截图里就是这一种。
+
+**改成不量**:从 shell 的 `main` 到工作台根节点本来就一路是 flex column,只要根节点在 lg 下写
+`flex-1 min-h-0`,剩多少就是多少——任何尺寸都对,没有需要保持同步的第二份状态。中间那层
+`AsyncSection` 补上 `min-h-0`(否则它撑不下去)。实测四种情形 `scrollHeight − clientHeight` 均为 0:
+初始、滚动后再 resize、窗口拉高、窄屏切回宽屏。
+
+**窄屏**:三栏的 `overflow-y-auto` 改成 `lg:overflow-y-auto`。并排时它们是三个窗格,堆叠时它们
+就是页面的三段,页面自己滚——否则一屏里塞三个各自滚动的盒子。窄屏实测 scrollHeight 1814 /
+clientHeight 844,滚下去是内容不是空白。
+
+**shell 的滚动条**:两个 shell 的 `main` 由 `overflow-y-scroll` 改 `overflow-y-auto`。原注释
+担心「能滚与不能滚的页面宽度不同会抖」,并特意否掉了 `scrollbar-gutter`。实测:overlay 滚动条下
+`scroll` 与 `auto` 都占 0 宽,那条宽度差在这里根本不存在;而 `scrollbar-gutter: stable` 会占掉
+15px 空白条——原注释否掉它是对的,但据此选 `scroll` 就让填满视口的页面永远挂着一条推不动的
+滚动条。
+
+顺带:量高度的 hook 两个页面各抄了一份,合并成 `rest-of-the-scroller.ts`(改为对着滚动容器量、
+加 ResizeObserver),我的填报仍用它;审核台已经不需要了。
+
+**其他**:历史退回原因的动作 chip 与原因 chip 挤成三行——改为同一行,人名先让位打省略号,
+两者都带 title;「审批流转」标题加 `whitespace-nowrap`(原来被压成一列单字);按钮文案
+「查看该条目完整经过」→「查看完整经过」。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
+code style!`。

@@ -268,10 +268,14 @@ function CapableWorkspaceShell() {
             {rail(true)}
           </aside>
         )}
-        {/* always scroll, never auto: the roster fills the viewport and the
-            overview overflows, and left to themselves the two would put their
-            headings in different places (see AppShell for why not a gutter) */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-scroll">
+        {/* auto, not scroll: the screens that fill the viewport - the review
+            workbench, my filings - then carry a scrollbar that can never
+            move, which reads as a page with somewhere to go. Measured before
+            changing it: where scrollbars overlay, `scroll` and `auto` both
+            reserve nothing, so the width the old comment protected is the
+            same either way; a reserved gutter is what costs 15px of blank
+            strip (see AppShell). */}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           <Outlet />
         </main>
       </div>
