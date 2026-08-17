@@ -596,6 +596,57 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.decided.outcome).toBe('approved')
   })
 
+  it('hands a rejected claim back with the words it was rejected in', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-refusal')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          yield* assessment.updateBatch(
+            f.t,
+            g.batch.id,
+            { reviewReasons: { reject: ['材料不清晰'], escalate: [] } },
+            admin,
+          )
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          // nothing has been said against it yet
+          const waiting = yield* assessment.getEntry(f.t, entry.id, s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', reason: '材料不清晰', comment: '证书照片缺少落款。' },
+            reviewer,
+          )
+          const back = yield* assessment.getEntry(f.t, entry.id, s1)
+          const listed = yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)
+          // taken up again: the claim is nobody's to act on but the reviewer's
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const resent = yield* assessment.getEntry(f.t, entry.id, s1)
+          return { waiting, back, listed, resent }
+        }),
+      ),
+    )
+    expect(result.waiting.refusal).toBeNull()
+    expect(result.back.refusal).toMatchObject({
+      kind: 'rejected',
+      reason: '材料不清晰',
+      comment: '证书照片缺少落款。',
+    })
+    // the same word travels with the row in the list, not only on a page read
+    expect(result.listed.entries[0]?.refusal?.comment).toBe('证书照片缺少落款。')
+    expect(result.resent.refusal).toBeNull()
+  })
+
   it('lists what the step is waiting on somebody else for, to whoever holds it', async () => {
     const result = ok(
       await run(

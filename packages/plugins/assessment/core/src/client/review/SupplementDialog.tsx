@@ -33,9 +33,12 @@ export interface WordedSupplement {
 }
 
 export function SupplementDialog({
+  open,
   onClose,
   onConfirm,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   onClose: () => void
   onConfirm: (worded: WordedSupplement) => void
 }) {
@@ -60,7 +63,7 @@ export function SupplementDialog({
 
   return (
     <FormDialog
-      open
+      open={open}
       title={format(m.supplementDialogTitle)}
       description={format(m.supplementDialogHint)}
       onClose={onClose}

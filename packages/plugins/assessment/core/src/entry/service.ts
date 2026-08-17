@@ -21,6 +21,7 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
 import {
   attachmentsOfRevisions,
+  latestRefusalOf,
   cancelReviewInstance,
   entriesOfParticipantPage,
   entryAttachmentHistory,
@@ -90,6 +91,21 @@ export interface EntryRevisionView {
   readonly createdAt: number
 }
 
+/**
+ * Why a claim is back with the person who filed it.
+ *
+ * A status word alone leaves them guessing: "sent back" without the sentence
+ * that came with it is an instruction with the instruction missing. Carried
+ * only while the claim is actually theirs to act on.
+ */
+export interface EntryRefusalView {
+  readonly kind: string
+  readonly reason: string | null
+  readonly comment: string | null
+  readonly actorName: string | null
+  readonly at: number
+}
+
 /** the open ask on this claim's round, for the screens that answer it */
 export interface EntrySupplementView {
   readonly requestId: string
@@ -118,6 +134,8 @@ export interface EntryView {
    * paths, like the capabilities.
    */
   readonly supplement: EntrySupplementView | null
+  /** the last word said against it, while it is waiting on its owner */
+  readonly refusal: EntryRefusalView | null
   readonly capabilities: {
     readonly edit: ActionAvailability
     readonly submit: ActionAvailability
@@ -493,6 +511,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     participant: ParticipantAnchor | null,
     gates?: EntryGates,
     supplement?: OpenSupplementRow | null,
+    refusal?: EntryRefusalView | null,
   ): EntryView => {
     const own = participant !== null && participant.userId === as.userId
     const active = own && participant.status === 'active'
@@ -516,6 +535,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       currentRevision: revision,
       currentReviewInstanceId: entry.currentReviewInstanceId,
       createdAt: entry.createdAt,
+      // only where it is being acted on: an approved claim's history is read
+      // in its own account, not pinned to the card
+      refusal:
+        refusal == null || (entry.status !== 'rejected' && entry.status !== 'needs_revision')
+          ? null
+          : refusal,
       supplement:
         supplement == null
           ? null
@@ -724,6 +749,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             if (Result.isFailure(reach)) return yield* new EntryNotFound()
           }
           const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
+          const said = yield* latestRefusalOf(tenantId, [entryId])
           return view(
             entry,
             yield* revisionView(tenantId, entry.currentRevisionId),
@@ -731,6 +757,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             participant,
             undefined,
             asked[0] ?? null,
+            said.get(entryId) ?? null,
           )
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
@@ -1097,6 +1124,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               pageRows.map((entry) => entry.id),
             )).map((asked) => [asked.entryId, asked]),
           )
+          // one query for the page, not one per card
+          const saidByEntry = yield* latestRefusalOf(
+            tenantId,
+            pageRows
+              .filter((one) => one.status === 'rejected' || one.status === 'needs_revision')
+              .map((one) => one.id),
+          )
           const entries: EntryView[] = []
           for (const entry of pageRows) {
             entries.push(
@@ -1107,6 +1141,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 participant,
                 gates,
                 askedByEntry.get(entry.id) ?? null,
+                saidByEntry.get(entry.id) ?? null,
               ),
             )
           }
@@ -1165,6 +1200,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           )
           const ownEvents = yield* entryEventsOf(tenantId, entryId)
           const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
+          const said = yield* latestRefusalOf(tenantId, [entryId])
           const supplements = yield* supplementsOfInstances(
             tenantId,
             rounds.map((round) => round.id),
@@ -1177,6 +1213,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               participant,
               undefined,
               asked[0] ?? null,
+              said.get(entryId) ?? null,
             ),
             revisions: revisions.map((revision) => ({
               id: revision.id,

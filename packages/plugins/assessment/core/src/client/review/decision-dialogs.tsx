@@ -73,11 +73,14 @@ function ReasonPicker({
  * never grow the evidence, so attachment fields are not here at all.
  */
 export function RejectDialog({
+  open,
   review,
   reasons,
   onClose,
   onConfirm,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   review: ReviewDto
   reasons: readonly string[]
   onClose: () => void
@@ -141,7 +144,7 @@ export function RejectDialog({
 
   return (
     <FormDialog
-      open
+      open={open}
       size="wide"
       title={format(m.reviewRejectTitle, { name: review.participantName })}
       description={format(m.reviewRejectSubtitle, {
@@ -304,11 +307,14 @@ function FieldRow({
  * step marked as the one that decides.
  */
 export function EscalateDialog({
+  open,
   review,
   reasons,
   onClose,
   onConfirm,
 }: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
   review: ReviewDto
   reasons: readonly string[]
   onClose: () => void
@@ -327,7 +333,7 @@ export function EscalateDialog({
 
   return (
     <FormDialog
-      open
+      open={open}
       size="wide"
       title={format(m.reviewEscalate)}
       description={format(m.reviewEscalateSubtitle, {

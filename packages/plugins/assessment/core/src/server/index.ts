@@ -3522,6 +3522,10 @@ const entryDto = (entry: EntryView) => ({
           requestedByName: entry.supplement.requestedByName,
           requestedAt: new Date(entry.supplement.requestedAt).toISOString(),
         },
+  refusal:
+    entry.refusal === null
+      ? null
+      : { ...entry.refusal, at: new Date(entry.refusal.at).toISOString() },
   capabilities: entry.capabilities,
 })
 

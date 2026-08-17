@@ -366,6 +366,41 @@ function FiledEntry({
         })}
       </dl>
 
+      {/* Why it came back, on the claim it came back to. A status word on
+          its own is an instruction with the instruction missing: the reader
+          is being asked to do something and the sentence saying what is one
+          screen away in the account. Same shape as the request for material
+          below it, because from here they are the same kind of thing - work
+          handed back with a reason. */}
+      {entry.refusal !== null && (
+        <div className="flex flex-col gap-2 rounded-lg bg-muted p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <AlertCircleIcon aria-hidden className="size-4 shrink-0 text-destructive" />
+            <p className="text-sm font-medium">
+              {format(
+                entry.refusal.kind === 'rejected' ? m.entryRefusedTitle : m.entryReturnedTitle,
+              )}
+            </p>
+            {entry.refusal.reason !== null && (
+              <Badge variant="outline" className="font-normal">
+                {entry.refusal.reason}
+              </Badge>
+            )}
+          </div>
+          {(entry.refusal.comment ?? '') !== '' && (
+            <p className="border-l-2 border-destructive/30 pl-2.5 text-sm leading-relaxed text-pretty">
+              {entry.refusal.comment}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {format(m.entryRefusedBy, {
+              who: entry.refusal.actorName ?? format(m.eventSomebody),
+              at: new Date(entry.refusal.at).toLocaleString(),
+            })}
+          </p>
+        </div>
+      )}
+
       {/* The reviewer's ask, on the claim it is about: what they wrote in
           full - it is an instruction, not a heading - then the pieces they
           named, then the one press that answers it. */}

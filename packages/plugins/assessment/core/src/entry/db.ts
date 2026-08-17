@@ -455,6 +455,88 @@ export const lockAttachments = (tenantId: string, attachmentIds: readonly string
       )
 }
 
+/** the last word said against a claim, when it is waiting on its owner */
+export interface RefusalRow {
+  entryId: string
+  kind: string
+  /** the label picked off the batch's list, when the act took one */
+  reason: string | null
+  comment: string | null
+  actorName: string | null
+  at: number
+}
+
+/**
+ * Why a claim came back, for the person it came back to.
+ *
+ * Two different acts leave a claim in their hands and they are recorded in
+ * two different places: a reviewer's rejection is an event of the round that
+ * judged it, and an administrator sending it back because the question
+ * changed is an event of the claim itself (§32.62), with no round at all.
+ * A screen that showed only the first would leave the second as a status
+ * word with no explanation anywhere near it.
+ *
+ * Raw sql for `distinct on`, which is how postgres says "the latest per
+ * claim" without a window function and a wrapping select.
+ */
+export const latestRefusalOf = (tenantId: string, entryIds: readonly string[]) =>
+  entryIds.length === 0
+    ? Effect.succeed(new Map<string, RefusalRow>())
+    : db
+        .query((k) =>
+          sql<{
+            entry_id: string
+            kind: string
+            reason: string | null
+            comment: string | null
+            actor_name: string | null
+            at_ms: number
+          }>`
+            with said as (
+              select ri.entry_id, re.kind, re.reason, re.comment,
+                     u.display_name as actor_name, re.created_at
+              from review_events re
+              join review_instances ri
+                on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
+              left join users u on u.tenant_id = re.tenant_id and u.id = re.actor_id
+              where re.tenant_id = ${tenantId}
+                and ri.entry_id = any(${sql.val(`{${entryIds.join(',')}}`)}::uuid[])
+                and re.kind = 'rejected'
+              union all
+              select ee.entry_id, ee.kind, ee.reason, null::text,
+                     u.display_name as actor_name, ee.created_at
+              from entry_events ee
+              left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
+              where ee.tenant_id = ${tenantId}
+                and ee.entry_id = any(${sql.val(`{${entryIds.join(',')}}`)}::uuid[])
+                and ee.kind in ('revision-required', 'returned-for-revision')
+            )
+            select distinct on (entry_id)
+              entry_id, kind, reason, comment, actor_name,
+              (extract(epoch from created_at) * 1000)::float8 as at_ms
+            from said
+            order by entry_id, created_at desc
+          `.execute(k),
+        )
+        .pipe(
+          Effect.map(
+            ({ rows }) =>
+              new Map(
+                rows.map((row): [string, RefusalRow] => [
+                  String(row.entry_id),
+                  {
+                    entryId: String(row.entry_id),
+                    kind: String(row.kind),
+                    reason: row.reason,
+                    comment: row.comment,
+                    actorName: row.actor_name,
+                    at: Number(row.at_ms ?? 0),
+                  },
+                ]),
+              ),
+          ),
+        )
+
 export const nextRoundNo = (tenantId: string, entryId: string) =>
   db
     .query((k) =>

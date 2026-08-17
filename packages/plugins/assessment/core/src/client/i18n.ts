@@ -1470,6 +1470,10 @@ const i18n = definePluginMessages({
       id: 'assessment/review/supplement-asked',
       defaultMessage: 'asked for material',
     },
+    reviewKeySiblings: {
+      id: 'assessment/review/key-siblings',
+      defaultMessage: 'Open one of their other claims',
+    },
     reviewKeySupplement: {
       id: 'assessment/review/key-supplement',
       defaultMessage: 'Ask for more material',
@@ -1599,6 +1603,15 @@ const i18n = definePluginMessages({
       id: 'assessment/event/supplement-cancelled',
       defaultMessage: '{who} withdrew the request',
     },
+    entryRefusedTitle: {
+      id: 'assessment/entry/refused-title',
+      defaultMessage: 'The reviewer sent this back',
+    },
+    entryReturnedTitle: {
+      id: 'assessment/entry/returned-title',
+      defaultMessage: 'This was sent back for revision',
+    },
+    entryRefusedBy: { id: 'assessment/entry/refused-by', defaultMessage: '{who}, {at}' },
     entrySupplementTitle: {
       id: 'assessment/entry/supplement-title',
       defaultMessage: 'The reviewer asked for more material',

@@ -5442,3 +5442,22 @@ Office 一律用扩展名而非 MIME:浏览器给 docx/xlsx 报的 mime 极不�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 669 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿;catalogs 7 passed。
+
+### 退回原因回到条目卡,以及两处快捷键与弹层动画(2026-08-17)
+
+- **被退回的条目在卡上说明原因**。原来卡片只有一个「已退回」的状态词——一句要人去做事的
+  指示,而指示本身在另一屏。新增 `EntryView.refusal`(kind/reason/comment/actorName/at),
+  与补件请求同一种面板。取数要合两处:审核人的退回是**轮次的**事件,管理员因题目改动送回是
+  **条目自己的**事件(§32.62,没有轮次),所以是一条 union + `distinct on (entry_id)` 的查询,
+  列表一次取完整页而不是每卡一次。仅在 rejected / needs_revision 时下发——已通过的条目的历史
+  在它自己的经过里读,不钉在卡上。重新提交后该字段即消失。
+- **「查看该条目完整经过」标出快捷键 H**(键早就绑好了,只是按钮没说)。
+- **「该参评人的其他条目」每行给 ⌥1–⌥9**。读 `event.code` 而不是 `event.key`:按住 Alt 时
+  数字键在多数键盘布局上报出的是符号,而数字正是这个快捷键的全部意义。
+- **三个决定弹层恢复渐隐**:退回、提请复核、请对方补材料都是「条件挂载 + 写死 open」,
+  卸载即消失,退场动画从来没机会播——只有进场看着是对的。改成受控 open + `useLingering`,
+  与本屏其他面板同一套。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped(新增
+「退回时带着退回的原话回到卡上,重新提交后消失」);`pnpm test:browser` 58 passed;
+`pnpm build` 通过;prettier 全绿;catalogs 7 passed。

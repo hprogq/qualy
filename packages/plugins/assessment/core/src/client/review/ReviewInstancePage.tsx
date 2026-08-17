@@ -189,6 +189,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [writing, setWriting] = useState(false)
   const [openSibling, setOpenSibling] = useState<string | null>(null)
   const lingeringSibling = useLingering(openSibling)
+  // which dialog to keep drawn while it shuts; a conditionally mounted one
+  // vanishes instead of closing, and only the way in ever looks right
+  const lingeringDialog = useLingering(dialog)
   // the pill has to keep its words while it animates out
   const lingeringStaged = useLingering(deferred.pending)
   const [trailOpen, setTrailOpen] = useState(false)
@@ -347,6 +350,15 @@ function Workbench({ batch }: { batch: BatchDto }) {
         event.preventDefault()
         undoStaged()
         return
+      }
+      if (event.altKey && !mod) {
+        const nth = /^Digit([1-9])$/.exec(event.code)
+        if (nth !== null) {
+          event.preventDefault()
+          const other = (review?.context?.siblings ?? [])[Number(nth[1]) - 1]
+          if (other !== undefined) setOpenSibling(other.entryId)
+          return
+        }
       }
       // ⌘C, ⌃V and friends belong to the browser: only bare keys choose
       if (mod || event.altKey) return
@@ -627,24 +639,30 @@ function Workbench({ batch }: { batch: BatchDto }) {
           </>
         )}
 
-        {dialog === 'reject' && review !== undefined && (
+        {lingeringDialog === 'reject' && review !== undefined && (
           <RejectDialog
+            open={dialog === 'reject'}
             review={review}
             reasons={batch.reviewReasons.reject}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => stageDecision('reject', worded)}
           />
         )}
-        {dialog === 'escalate' && review !== undefined && (
+        {lingeringDialog === 'escalate' && review !== undefined && (
           <EscalateDialog
+            open={dialog === 'escalate'}
             review={review}
             reasons={batch.reviewReasons.escalate}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => stageDecision('escalate', worded)}
           />
         )}
-        {dialog === 'supplement' && review !== undefined && (
-          <SupplementDialog onClose={() => setDialog(null)} onConfirm={stageSupplement} />
+        {lingeringDialog === 'supplement' && review !== undefined && (
+          <SupplementDialog
+            open={dialog === 'supplement'}
+            onClose={() => setDialog(null)}
+            onConfirm={stageSupplement}
+          />
         )}
       </div>
     </AsyncSection>
@@ -971,6 +989,7 @@ function MainColumn({
               a way in: nobody finds H without being told. */}
           <Button variant="ghost" size="sm" className="text-xs" onClick={onTrail}>
             {format(m.reviewTrailFullOpen)}
+            <Kbd>H</Kbd>
             <ChevronRightIcon aria-hidden />
           </Button>
         </div>
@@ -1358,7 +1377,7 @@ function ContextRail({
             </span>
           </div>
           <ul className="flex flex-col gap-0.5">
-            {context.siblings.map((sibling) => (
+            {context.siblings.map((sibling, index) => (
               <li key={sibling.entryId}>
                 {/* every claim opens: reading one against another is how a
                     duplicate is caught, and the aside is where they meet */}
@@ -1389,6 +1408,7 @@ function ContextRail({
                       entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther,
                     )}
                   </span>
+                  {index < 9 && <Kbd className="shrink-0">{`⌥${index + 1}`}</Kbd>}
                 </button>
               </li>
             ))}
@@ -1765,6 +1785,7 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
     ['D', m.reviewKeyCompare],
     ['⇧D', m.reviewKeyVersions],
     ['H', m.reviewKeyTrail],
+    ['⌥1–⌥9', m.reviewKeySiblings],
     ['Esc', m.reviewKeyCancel],
   ]
   return (

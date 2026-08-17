@@ -107,6 +107,7 @@ const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
   currentReviewInstanceId: null,
   createdAt: '2026-03-02T00:00:00.000Z',
   supplement: null,
+  refusal: null,
   capabilities: {
     edit: { state: 'available' as const, reason: null },
     submit: { state: 'available' as const, reason: null },

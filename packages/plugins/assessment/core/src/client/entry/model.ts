@@ -48,6 +48,14 @@ export interface EntryDto {
   currentReviewInstanceId: string | null
   createdAt: string
   supplement: EntrySupplementDto | null
+  /** why it came back, while it is waiting on its owner */
+  refusal: {
+    kind: string
+    reason: string | null
+    comment: string | null
+    actorName: string | null
+    at: string
+  } | null
   capabilities: {
     edit: ActionAvailability
     submit: ActionAvailability

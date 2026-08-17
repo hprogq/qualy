@@ -521,6 +521,21 @@ const entryView = Schema.Struct({
     }),
   ),
   /**
+   * The last word said against it, while it is waiting on its owner: the
+   * sentence that came with the rejection, or with an administrator sending
+   * it back. A status word without it is an instruction with the instruction
+   * missing.
+   */
+  refusal: Schema.NullOr(
+    Schema.Struct({
+      kind: Schema.String,
+      reason: Schema.NullOr(Schema.String),
+      comment: Schema.NullOr(Schema.String),
+      actorName: Schema.NullOr(Schema.String),
+      at: Schema.String,
+    }),
+  ),
+  /**
    * Each act in one of three states: offered, offered disabled with the
    * reason on hover, or not spoken of. Discovery through the same gate the
    * act itself answers to, so an enabled button is a call that goes through.
