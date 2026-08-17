@@ -5461,3 +5461,24 @@ Office 一律用扩展名而非 MIME:浏览器给 docx/xlsx 报的 mime 极不�
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped(新增
 「退回时带着退回的原话回到卡上,重新提交后消失」);`pnpm test:browser` 58 passed;
 `pnpm build` 通过;prettier 全绿;catalogs 7 passed。
+
+### 全站 Radix 浮层动画从未生效(2026-08-17)
+
+排查「修改」弹层没有淡入淡出时发现的:**这不是某一个弹层的问题**。overlay 组件一律写
+`data-open:animate-in` / `data-closed:animate-out`,而 Radix 发出的属性是
+`data-state="open"`。Tailwind v4 把 `data-open:` 当成内建的 data 属性简写,编成
+`[data-open]`——一个谁都不会设的属性。构建产物里确认:改前 CSS 里是 `[data-open]`,匹配数为零。
+
+于是 dialog / sheet / dropdown-menu / select / popover / tooltip / hover-card / alert-dialog
+八个组件的进出场动画**一帧都没播过**,而且改多少组件代码都不会有效果。
+
+修法是在 theme.css 补两条自定义 variant,把这两个名字接到真实属性上:
+
+    @custom-variant data-open (&[data-state='open']);
+    @custom-variant data-closed (&[data-state='closed']);
+
+一处改动,八个组件同时恢复。构建产物核对:`[data-open]` 归零,`[data-state=open]` 出现 14 条、
+`[data-state=closed]` 8 条,`animate-in` 的 `--tw-enter-opacity` 变量随之进产物。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

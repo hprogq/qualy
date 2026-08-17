@@ -5,6 +5,18 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* What "open" and "closed" mean on a panel that animates.
+ *
+ * Every overlay component is written with `data-open:animate-in` and
+ * `data-closed:animate-out`, but the primitive underneath reports itself as
+ * `data-state="open"`. Without these two lines tailwind reads the classes as
+ * the built-in data-attribute shorthand and emits `[data-open]` - an
+ * attribute nothing ever sets - so every dialog, sheet, menu, select,
+ * popover and tooltip in the product appeared and vanished instantly, and no
+ * amount of correcting the components would have shown a frame of it. */
+@custom-variant data-open (&[data-state='open']);
+@custom-variant data-closed (&[data-state='closed']);
+
 /* shadcn-style design tokens for tailwind v4; dark mode flips the variables
    on the .dark class */
 :root {
