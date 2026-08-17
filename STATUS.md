@@ -5642,3 +5642,29 @@ clientHeight 844,滚下去是内容不是空白。
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
 code style!`。
+
+### 滚动条与白屏的真凶:sr-only 逃出滚动列(2026-08-17)
+
+用户发现了决定性的复现条件:**开对照才出现,关对照就没有**。照此把夹具的 getEntryHistory 换成
+真实的长上一版(此前夹具历史为空,`against` 恒为 null,等于一直在量关着对照的页面——上一轮
+「overflow 0」的验证就是这么漏的),立刻复现:main scrollHeight 1889 / clientHeight 680,
+三栏盒子却都正确夹在 490。
+
+几何探测找不到伸出去的元素(culprits 为空),于是换暴力二分:逐个 `display:none` 子树看
+scrollHeight 掉不掉,一路钻到叶子——**AttachmentLink 下载链接里的 `<span class="sr-only">`**。
+
+机理:sr-only 是 `position:absolute`。它的包含块不是申报内容列(列是 static),而是往上第一个
+positioned 祖先——工作台根节点(`relative`,撤销胶囊需要它)。**绝对定位元素不受「非包含块」
+祖先的 overflow 裁剪**,于是这个躺在字段列表 y≈1888 处的 1px 元素逃出列的裁剪,把 main 的
+滚动区域撑到 1889。而「本轮移除」的 line 链接只在对照开启时渲染——症状与开关完全同步。
+
+修法是规则不是补丁:**会滚动的窗格必须自己是 positioning context**。四个滚动容器
+(三栏 + 队列列表)与我的填报的索引列表都加 `relative`,绝对定位后代从此归窗格管、被窗格裁。
+规则写在 FlowColumn 上方的注释里。
+
+复测(对照开、内容超一屏):宽屏 overflow 0;窄屏 scrollH 2716 == 内容底 2716,滚多远都是
+真内容。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
+code style!`。

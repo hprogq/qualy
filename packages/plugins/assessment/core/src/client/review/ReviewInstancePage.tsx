@@ -772,7 +772,7 @@ function QueueRail({
       </div>
       <ul
         className={cn(
-          'flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5',
+          'relative flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5',
           !open && 'hidden',
         )}
       >
@@ -1001,6 +1001,13 @@ function EdgeButton({
  * This one is short enough to fit a screen; the filing beside it is what
  * scrolls.
  */
+// Every scrolling pane below is `relative` on purpose. An absolutely
+// positioned descendant - a visually-hidden label, say - positions against
+// the nearest positioned ancestor, and a scroller that is not one cannot
+// clip it: one sr-only span deep in the fields escaped its column and
+// stretched the shell's scroll area by its own offset - a scrollbar into a
+// thousand pixels of nothing, present only while a comparison rendered the
+// link that carried it.
 function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => void }) {
   const { format } = useI18n()
   const previous = review.context?.previous ?? null
@@ -1012,7 +1019,7 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
           who: previous.actorName ?? format(m.eventSomebody),
         })
   return (
-    <section className="flex min-w-0 flex-col gap-4 p-5 lg:overflow-y-auto">
+    <section className="relative flex min-w-0 flex-col gap-4 p-5 lg:overflow-y-auto">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
         <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -1236,7 +1243,7 @@ function FilingColumn({
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
   return (
-    <main className="flex min-w-0 flex-col gap-4 border-l p-5 lg:overflow-y-auto">
+    <main className="relative flex min-w-0 flex-col gap-4 border-l p-5 lg:overflow-y-auto">
       <section className="flex flex-col gap-3.5">
         <div className="flex flex-col border-b pb-2">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -1547,7 +1554,7 @@ function ContextRail({
   // clause keeps a filled card, because it is quoted matter rather than this
   // screen's own words.
   return (
-    <aside className="flex min-w-0 flex-col gap-3 border-t p-4 lg:overflow-y-auto lg:border-t-0 lg:border-l">
+    <aside className="relative flex min-w-0 flex-col gap-3 border-t p-4 lg:overflow-y-auto lg:border-t-0 lg:border-l">
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
       <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">

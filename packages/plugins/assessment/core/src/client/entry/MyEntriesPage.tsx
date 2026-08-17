@@ -587,7 +587,7 @@ function Structure({
           {format(m.myEntriesFilterNone)}
         </p>
       ) : (
-        <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto rounded-xl border p-1.5 lg:flex-1">
+        <ul className="relative flex min-h-0 flex-col gap-0.5 overflow-y-auto rounded-xl border p-1.5 lg:flex-1">
           {listed.map((row) => (
             <li key={row.id}>
               <button
