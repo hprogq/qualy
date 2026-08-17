@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDownIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -9,6 +9,7 @@ import { Input } from '@qualy/ui/input'
 import { Choice } from './Choice.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
 import { lastDay } from '../entry/model.ts'
+import { acceptOf, FILE_KINDS, kindsOf, unwritableTokens } from '../file-kinds.ts'
 
 // The questions inside a question: what a participant is asked to type,
 // pick or attach.
@@ -45,10 +46,15 @@ const FIELD_TYPE_LABEL = {
   attachment: m.itemsTypeAttachment,
 } as const
 
-/** the five columns a field line reads across, once there is room for them */
-const COLUMNS = 'grid-cols-[1rem_minmax(0,1fr)_6.25rem_3.25rem_12.5rem_1.5rem] gap-3'
+/**
+ * The columns a field line reads across, once there is room for them.
+ *
+ * Four rather than five: what used to be the "required" column is now a mark
+ * beside the name, because a column whose every cell reads the same word is
+ * a column that costs width and says nothing.
+ */
 const COLUMNS_AT_SM =
-  'sm:grid-cols-[1rem_minmax(0,1fr)_6.25rem_3.25rem_12.5rem_1.5rem] sm:gap-x-3 sm:gap-y-0'
+  'sm:grid-cols-[2.25rem_minmax(0,1fr)_6.25rem_12.5rem_1.5rem] sm:gap-x-3 sm:gap-y-0'
 
 export function FieldList({
   fields,
@@ -73,6 +79,7 @@ export function FieldList({
 }) {
   const { format } = useI18n()
   const [drop, setDrop] = useState<{ key: string; edge: 'before' | 'after' } | null>(null)
+  const required = fields.filter((field) => field.required).length
 
   const edgeOf = (event: React.DragEvent) => {
     const box = event.currentTarget.getBoundingClientRect()
@@ -87,42 +94,55 @@ export function FieldList({
     onReorder(order)
   }
 
-  /** what this field will accept, in the words the column has room for */
+  /**
+   * What this field actually restricts, or nothing at all.
+   *
+   * Only limits somebody set. It used to print "no limit" on every text
+   * field and the whole round's window on every date field, so four rows
+   * carried the same eight words and none of them said anything. A field
+   * with nothing set says so with a dash, and the eye goes to the ones that
+   * do.
+   */
   const limitOf = (field: FieldDraft): string => {
     if (field.type === 'date') {
+      const from = field.min.trim()
+      const until = field.max.trim()
+      if (from === '' && until === '') return ''
       return format(m.itemsLimitDates, {
-        from: field.min.trim() === '' ? materialRange.start : field.min,
-        until: field.max.trim() === '' ? lastDay(materialRange.end) : field.max,
+        from: from === '' ? materialRange.start : from,
+        until: until === '' ? lastDay(materialRange.end) : until,
       })
     }
     if (field.type === 'attachment') {
       return format(m.itemsLimitFiles, { count: Number(field.maxCount) || 1 })
     }
     return field.maxLength.trim() === ''
-      ? format(m.itemsLimitNone)
+      ? ''
       : format(m.itemsLimitMaxLength, { count: Number(field.maxLength) })
   }
 
   return (
     <div className="flex flex-col">
-      {/* the columns need the width; narrower than that a field is its name
-          with what it accepts written underneath */}
-      <div
-        className={cn('hidden border-b px-0.5 pb-2 text-xs text-muted-foreground sm:grid', COLUMNS)}
-      >
-        <span />
-        <span>{format(m.itemsFieldLabel)}</span>
-        <span>{format(m.itemsFieldType)}</span>
-        <span>{format(m.itemsFieldRequired)}</span>
-        <span>{format(m.itemsFieldColLimit)}</span>
-        <span />
+      {/* What the header row used to be. Column names over rows this short
+          were four labels explaining four words; what is worth saying above
+          the list is how much of it there is, and that a row opens. */}
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b pb-2 text-xs text-muted-foreground">
+        <span>{format(m.itemsFieldCount, { count: fields.length })}</span>
+        {required > 0 && (
+          <>
+            <span aria-hidden className="h-3 w-px bg-border" />
+            <span>{format(m.itemsRequiredCount, { count: required })}</span>
+          </>
+        )}
+        <span className="flex-1" />
+        {fields.length > 0 && <span>{format(m.itemsFieldOpenHint)}</span>}
       </div>
 
       {fields.length === 0 && (
         <p className="py-3 text-sm text-muted-foreground">{format(m.itemsFormEmpty)}</p>
       )}
 
-      {fields.map((field) => {
+      {fields.map((field, index) => {
         const marked = drop?.key === field.key ? drop.edge : null
         const open = openKey === field.key
         return (
@@ -148,28 +168,45 @@ export function FieldList({
               onClick={() => onOpen(open ? null : field.key)}
               className={cn(
                 'cursor-pointer border-b border-border/60 px-0.5 transition-colors hover:bg-accent/30',
-                'grid grid-cols-[1rem_minmax(0,1fr)_1.5rem] items-center gap-x-3 gap-y-0.5 py-2',
+                'grid grid-cols-[2.25rem_minmax(0,1fr)_1.5rem] items-center gap-x-3 gap-y-0.5 py-2',
                 'sm:py-1.5',
                 COLUMNS_AT_SM,
                 marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
                 marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
               )}
             >
-              <GripVerticalIcon
-                aria-hidden
-                className="size-3.5 cursor-grab text-muted-foreground/60"
-              />
-              <span className="min-w-0 truncate text-sm">
-                {field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
+              <span className="flex items-center gap-1.5">
+                <GripVerticalIcon
+                  aria-hidden
+                  className="size-3.5 cursor-grab text-muted-foreground/60"
+                />
+                {/* the order is the thing "fill these in in this order"
+                    refers to, and it was the one fact the row never showed */}
+                <span className="w-3 text-xs text-muted-foreground tabular-nums">{index + 1}</span>
+              </span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-sm">
+                  {field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
+                </span>
+                {/* required as a mark on the name rather than a column of its
+                    own: it is a fact about this field, and a column of the
+                    same word repeated said nothing */}
+                {field.required && (
+                  <>
+                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-destructive" />
+                    <span className="sr-only">{format(m.itemsFieldRequired)}</span>
+                  </>
+                )}
               </span>
               <span className="hidden text-sm sm:block">
                 {format(FIELD_TYPE_LABEL[field.type])}
               </span>
-              <span className="hidden text-xs text-muted-foreground sm:block">
-                {field.required ? format(m.itemsFieldRequired) : ''}
-              </span>
               <span className="hidden truncate text-xs text-muted-foreground sm:block">
-                {limitOf(field)}
+                {limitOf(field) === '' ? (
+                  <span className="text-muted-foreground/50">—</span>
+                ) : (
+                  limitOf(field)
+                )}
               </span>
               <ChevronDownIcon
                 aria-hidden
@@ -335,17 +372,7 @@ function FieldSettings({
             )}
           </Field>
           <div className="sm:col-span-2">
-            <Field label={format(m.itemsFieldAccept)} hint={format(m.itemsFieldAcceptHint)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  className="bg-background"
-                  value={field.accept}
-                  placeholder=".pdf, image/*"
-                  onChange={(event) => onChange({ accept: event.target.value })}
-                />
-              )}
-            </Field>
+            <AcceptPicker accept={field.accept} onChange={(accept) => onChange({ accept })} />
           </div>
         </>
       )}
@@ -361,6 +388,129 @@ function FieldSettings({
         <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemove}>
           {format(m.itemsFieldRemove)}
         </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * What a file field will take, picked rather than typed.
+ *
+ * It used to be one text box with "comma separated, like .pdf, image/*"
+ * under it: an administrator had to know the notation before they dared fill
+ * it in, a wrong guess only surfaced when a participant's upload was
+ * refused, and so most were left empty. The kinds are named in words, and
+ * each one shows the notation it stands for - so the box below, which is
+ * still there for the format nobody anticipated, has a worked example above
+ * it every time.
+ *
+ * The stored value never changes shape: it is the same list of tokens
+ * either way, and what is shown here is derived back out of it.
+ */
+function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: string) => void }) {
+  const { format } = useI18n()
+  const stored = accept
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token) => token !== '')
+  const { picked, rest } = kindsOf(stored)
+  const [custom, setCustom] = useState(rest.join(', '))
+  // unticking hides the box without throwing away what was typed in it: the
+  // question is "does this field take anything else", not "delete that"
+  const [other, setOther] = useState(rest.length > 0)
+
+  const write = (nextPicked: readonly string[], nextCustom: string, nextOther: boolean) =>
+    onChange(acceptOf(nextPicked, nextOther ? nextCustom : '').join(', '))
+
+  const toggle = (id: string) => {
+    const next = picked.includes(id) ? picked.filter((one) => one !== id) : [...picked, id]
+    write(next, custom, other)
+  }
+
+  const resolved = acceptOf(picked, other ? custom : '')
+  const unwritable = other ? unwritableTokens(custom) : []
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-medium">{format(m.itemsFieldAccept)}</p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {FILE_KINDS.map((kind) => {
+          const on = picked.includes(kind.id)
+          return (
+            <button
+              key={kind.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() => toggle(kind.id)}
+              className={cn(
+                'flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-colors',
+                on ? 'border-foreground bg-accent/50' : 'bg-background hover:bg-accent/40',
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className={cn(
+                    'flex size-3.5 shrink-0 items-center justify-center rounded border',
+                    on ? 'border-foreground bg-foreground text-background' : 'border-input',
+                  )}
+                >
+                  {on && <CheckIcon className="size-2.5" />}
+                </span>
+                <span className="text-sm">{format(kind.name)}</span>
+              </span>
+              {/* the notation it stands for, so the custom box below has a
+                  worked example above it */}
+              <span className="truncate font-mono text-[11px] text-muted-foreground">
+                {kind.tokens.join(', ')}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border bg-background p-3">
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={other}
+            onCheckedChange={(next) => {
+              setOther(next === true)
+              write(picked, custom, next === true)
+            }}
+          />
+          {format(m.itemsAcceptOther)}
+        </label>
+        {other && (
+          <>
+            <Input
+              className="font-mono text-xs"
+              value={custom}
+              placeholder="application/vnd.ms-outlook"
+              onChange={(event) => {
+                setCustom(event.target.value)
+                write(picked, event.target.value, true)
+              }}
+            />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {format(m.itemsAcceptOtherHint)}
+            </p>
+            {unwritable.length > 0 && (
+              <p className="text-xs text-destructive">
+                {format(m.itemsAcceptUnwritable, { tokens: unwritable.join('、') })}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* what the two halves add up to, which is the only thing stored */}
+      <div className="flex items-baseline gap-3 rounded-lg bg-muted px-3 py-2">
+        <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+          {format(m.itemsAcceptResolved)}
+        </span>
+        <span className="min-w-0 font-mono text-xs">
+          {resolved.length === 0 ? format(m.itemsAcceptAny) : resolved.join(', ')}
+        </span>
       </div>
     </div>
   )

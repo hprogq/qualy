@@ -361,6 +361,7 @@ export function ItemConfigEditor({
   batchId,
   batchStatus,
   materialRange,
+  participantCount,
   item,
   groups,
   defaultGroupId,
@@ -379,6 +380,8 @@ export function ItemConfigEditor({
   batchStatus: string
   /** the round's own window; a date field can only narrow it, never widen it */
   materialRange: { start: string; end: string }
+  /** how many people are on the roster, for a question granted to all of them */
+  participantCount: number
   /** null while a question is being composed and has never been saved */
   item: ItemDto | null
   groups: readonly { id: string; name: string }[]
@@ -764,6 +767,15 @@ export function ItemConfigEditor({
 
           <Section title={format(m.itemsTabBasics)} hint={format(m.itemsBasicsHint)}>
             <div className="flex flex-col gap-4">
+              {/* The kind decides which of the sections below exist at all,
+                  and a dropdown hides that: what a reader needs to see when
+                  choosing is the consequence, not the word. Three cards
+                  abreast, and the page grows and shrinks under them. */}
+              <KindCards
+                value={draft.itemType}
+                locked={item !== null}
+                onChange={(itemType) => patch({ itemType })}
+              />
               <Field label={format(m.itemsFieldTitle)}>
                 {(id) => (
                   <Input
@@ -771,45 +783,6 @@ export function ItemConfigEditor({
                     value={draft.title}
                     placeholder={format(m.itemsTitlePlaceholder)}
                     onChange={(event) => patch({ title: event.target.value })}
-                  />
-                )}
-              </Field>
-              <Field
-                label={format(m.itemsKind)}
-                // the name names, the grey line in the list explains; under
-                // the closed control the chosen kind's own line remains
-                hint={format(
-                  draft.itemType === 'constant'
-                    ? m.itemsKindConstantHint
-                    : draft.itemType === 'declaration'
-                      ? m.itemsKindDeclarationHint
-                      : m.itemsKindEvidenceHint,
-                )}
-              >
-                {(id) => (
-                  <Choice
-                    id={id}
-                    value={draft.itemType}
-                    // what a question is cannot change once claims exist on it
-                    disabled={item !== null}
-                    options={[
-                      {
-                        value: 'evidence',
-                        label: format(m.itemsKindEvidence),
-                        description: format(m.itemsKindEvidenceHint),
-                      },
-                      {
-                        value: 'declaration',
-                        label: format(m.itemsKindDeclaration),
-                        description: format(m.itemsKindDeclarationHint),
-                      },
-                      {
-                        value: 'constant',
-                        label: format(m.itemsKindConstant),
-                        description: format(m.itemsKindConstantHint),
-                      },
-                    ]}
-                    onChange={(next) => patch({ itemType: next as Draft['itemType'] })}
                   />
                 )}
               </Field>
@@ -858,7 +831,22 @@ export function ItemConfigEditor({
 
           {granted && (
             <Section title={format(m.itemsGrantedTitle)} hint={format(m.itemsGrantedHint)}>
-              <p className="text-sm text-muted-foreground">{format(m.itemsGrantedBody)}</p>
+              {/* who "everybody" is, as a number: an amount granted to a list
+                  nobody can see the size of is an amount nobody can check */}
+              <div className="flex items-center gap-3.5 rounded-lg bg-muted px-3.5 py-3">
+                <div className="flex shrink-0 flex-col gap-0.5">
+                  <p className="text-xs whitespace-nowrap text-muted-foreground">
+                    {format(m.itemsGrantedRoster)}
+                  </p>
+                  <p className="text-base font-semibold tabular-nums">
+                    {format(m.itemsGrantedRosterCount, { count: participantCount })}
+                  </p>
+                </div>
+                <div aria-hidden className="h-7 w-px bg-border" />
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {format(m.itemsGrantedBody)}
+                </p>
+              </div>
             </Section>
           )}
           {declaredKind && (
@@ -982,21 +970,6 @@ export function ItemConfigEditor({
                           {format(m.itemsMaxEntriesAny)}
                         </label>
                       </div>
-                    )}
-                  </Field>
-                </div>
-                <div className="w-44">
-                  <Field label={format(m.itemsScoringMethod)}>
-                    {(id) => (
-                      // one calculator so far; the control is here because the
-                      // choice belongs to the question, not because it is empty
-                      <Choice
-                        id={id}
-                        value="fixed"
-                        disabled
-                        options={[{ value: 'fixed', label: format(m.itemsScoringMethodFixed) }]}
-                        onChange={() => undefined}
-                      />
                     )}
                   </Field>
                 </div>
@@ -1145,6 +1118,76 @@ export function ItemConfigEditor({
  * enough to separate them, and a screen of rounded boxes inside rounded
  * boxes is what these controls used to disappear into.
  */
+/**
+ * What kind of question this is, as three cards rather than a list.
+ *
+ * The kind is not one setting among the others: it decides which of the
+ * others exist. A confirmation has no fields, an automatic one has no review
+ * route either, and a control that hides that behind a closed dropdown asks
+ * an administrator to choose without seeing what they are choosing.
+ *
+ * Locked once the question exists. What a question is cannot change under
+ * the claims already filed against it, and the reason says so rather than
+ * leaving three dead cards to be puzzled over.
+ */
+function KindCards({
+  value,
+  locked,
+  onChange,
+}: {
+  value: Draft['itemType']
+  locked: boolean
+  onChange: (next: Draft['itemType']) => void
+}) {
+  const { format } = useI18n()
+  const kinds: readonly [Draft['itemType'], MessageDescriptor, MessageDescriptor][] = [
+    ['evidence', m.itemsKindEvidence, m.itemsKindEvidenceHint],
+    ['declaration', m.itemsKindDeclaration, m.itemsKindDeclarationHint],
+    ['constant', m.itemsKindConstant, m.itemsKindConstantHint],
+  ]
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium">{format(m.itemsKind)}</p>
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        {kinds.map(([kind, name, hint]) => {
+          const chosen = value === kind
+          return (
+            <button
+              key={kind}
+              type="button"
+              disabled={locked}
+              aria-pressed={chosen}
+              onClick={() => onChange(kind)}
+              className={cn(
+                'flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-colors',
+                chosen ? 'border-foreground bg-accent/50' : 'hover:bg-accent/40',
+                locked && 'cursor-default opacity-70 hover:bg-transparent',
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className={cn(
+                    'flex size-3.5 shrink-0 items-center justify-center rounded-full border',
+                    chosen ? 'border-foreground' : 'border-muted-foreground/50',
+                  )}
+                >
+                  {chosen && <span className="size-1.5 rounded-full bg-foreground" />}
+                </span>
+                <span className={cn('text-sm', chosen && 'font-semibold')}>{format(name)}</span>
+              </span>
+              <span className="text-xs leading-relaxed text-pretty text-muted-foreground">
+                {format(hint)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      {locked && <p className="text-xs text-muted-foreground">{format(m.itemsKindLocked)}</p>}
+    </div>
+  )
+}
+
 function Section({
   title,
   hint,
@@ -1238,10 +1281,15 @@ function ScoringSummary({
         </p>
       </div>
       <div aria-hidden className="h-7 w-px bg-border" />
+      {/* where the number comes from, said in the sentence rather than in a
+          control of its own. It used to be a dropdown with one option that
+          could not be changed, sitting under a heading with the same name as
+          the section around it. */}
       <p className="text-xs leading-relaxed text-muted-foreground">
         {entries === null
           ? format(m.itemsCeilingHowAny)
           : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: entries })}
+        {` ${format(m.itemsCeilingSource, { name: format(m.itemsScoringMethodFixed) })}`}
         {chain !== '' && ` ${format(m.itemsCeilingNote, { chain })}`}
       </p>
     </div>

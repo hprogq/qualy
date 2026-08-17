@@ -92,6 +92,7 @@ export default function ItemSettingsPage() {
           batchId={batch.id}
           batchStatus={batch.status}
           materialRange={batch.materialRange}
+          participantCount={batch.participantCount}
           question={question}
           onQuestion={setQuestion}
           composing={composing}
@@ -106,6 +107,7 @@ function Editor({
   batchId,
   batchStatus,
   materialRange,
+  participantCount,
   question,
   onQuestion,
   composing: composingId,
@@ -114,6 +116,8 @@ function Editor({
   batchId: string
   batchStatus: string
   materialRange: { start: string; end: string }
+  /** how many people are on the roster, for a question granted to all of them */
+  participantCount: number
   /** the saved question the address says is open, or '' for the structure */
   question: string
   onQuestion: (itemId: string) => void
@@ -399,6 +403,7 @@ function Editor({
         batchId={batchId}
         batchStatus={batchStatus}
         materialRange={materialRange}
+        participantCount={participantCount}
         item={selectedItem}
         groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
         trail={trailOf(allGroups as readonly TreeGroup[], openGroupId)}

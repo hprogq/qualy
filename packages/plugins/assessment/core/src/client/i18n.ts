@@ -1037,10 +1037,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/field-accept',
       defaultMessage: 'Accepted kinds',
     },
-    itemsFieldAcceptHint: {
-      id: 'assessment/items/field-accept-hint',
-      defaultMessage: 'Comma-separated, like .pdf, image/*. Empty accepts anything.',
-    },
     itemsFixedValue: {
       id: 'assessment/items/fixed-value',
       defaultMessage: 'Each approved entry counts',
@@ -2131,8 +2127,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/draft-version',
       defaultMessage: 'Unpublished, version {no}',
     },
-    itemsFieldColLimit: { id: 'assessment/items/field-col-limit', defaultMessage: 'Limits' },
-    itemsLimitNone: { id: 'assessment/items/limit-none', defaultMessage: 'no limit' },
     itemsLimitMaxLength: {
       id: 'assessment/items/limit-max-length',
       defaultMessage: 'up to {count} characters',
@@ -2144,7 +2138,6 @@ const i18n = definePluginMessages({
     },
     itemsFixedValueUnit: { id: 'assessment/items/fixed-value-unit', defaultMessage: 'pts' },
     itemsMaxEntriesAny: { id: 'assessment/items/max-entries-any', defaultMessage: 'No limit' },
-    itemsScoringMethod: { id: 'assessment/items/scoring-method', defaultMessage: 'How it counts' },
     itemsScoringMethodFixed: {
       id: 'assessment/items/scoring-method-fixed',
       defaultMessage: 'Fixed value per entry',
@@ -2152,6 +2145,55 @@ const i18n = definePluginMessages({
     itemsCeiling: {
       id: 'assessment/items/ceiling',
       defaultMessage: 'Most this question can count',
+    },
+    // the file kinds an administrator picks from, shared by the question's
+    // own fields and by a reviewer asking for more material
+    itemsGrantedRoster: {
+      id: 'assessment/items/granted-roster',
+      defaultMessage: 'This round\u2019s roster',
+    },
+    itemsGrantedRosterCount: {
+      id: 'assessment/items/granted-roster-count',
+      defaultMessage: '{count, plural, one {# person} other {# people}}',
+    },
+    fileKindPdf: { id: 'assessment/files/kind-pdf', defaultMessage: 'PDF' },
+    fileKindImage: { id: 'assessment/files/kind-image', defaultMessage: 'Images' },
+    fileKindWord: { id: 'assessment/files/kind-word', defaultMessage: 'Word documents' },
+    fileKindSheet: { id: 'assessment/files/kind-sheet', defaultMessage: 'Spreadsheets' },
+    itemsAcceptOther: {
+      id: 'assessment/items/accept-other',
+      defaultMessage: 'Also accept other formats',
+    },
+    itemsAcceptOtherHint: {
+      id: 'assessment/items/accept-other-hint',
+      defaultMessage:
+        'Comma separated; extensions start with a dot. A format written wrong is refused at upload, so check one real file against it.',
+    },
+    itemsAcceptResolved: { id: 'assessment/items/accept-resolved', defaultMessage: 'Accepts' },
+    itemsAcceptAny: { id: 'assessment/items/accept-any', defaultMessage: 'Anything' },
+    itemsAcceptUnwritable: {
+      id: 'assessment/items/accept-unwritable',
+      defaultMessage: 'Not a format: {tokens}',
+    },
+    itemsFieldCount: {
+      id: 'assessment/items/field-count',
+      defaultMessage: '{count, plural, =0 {No fields yet} one {# field} other {# fields}}',
+    },
+    itemsRequiredCount: {
+      id: 'assessment/items/required-count',
+      defaultMessage: '{count} required',
+    },
+    itemsFieldOpenHint: {
+      id: 'assessment/items/field-open-hint',
+      defaultMessage: 'Open a line to change it',
+    },
+    itemsKindLocked: {
+      id: 'assessment/items/kind-locked',
+      defaultMessage: 'The kind cannot change once the question exists.',
+    },
+    itemsCeilingSource: {
+      id: 'assessment/items/ceiling-source',
+      defaultMessage: 'The amount comes from {name}.',
     },
     itemsCeilingHow: {
       id: 'assessment/items/ceiling-how',
