@@ -379,6 +379,7 @@ export default {
   'assessment/review/supplement-asked': '已请对方补材料',
   'assessment/review/key-siblings': '打开该参评人的其他条目',
   'assessment/review/key-supplement': '索要补充材料',
+  'assessment/review/awaiting-empty': '目前没有等对方补材料的件。',
   'assessment/review/awaiting-title': '待对方补材料',
   'assessment/review/awaiting-count': '{count} 件',
   'assessment/review/awaiting-back': '{count} 件已补充',

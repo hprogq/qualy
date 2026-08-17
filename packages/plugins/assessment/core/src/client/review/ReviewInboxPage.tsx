@@ -35,7 +35,7 @@ import {
 // so one person's duplicates sit next to each other. Every row opens the
 // same workbench; the layout only decides which rows it walks in a run.
 
-type View = 'item' | 'time' | 'person'
+type View = 'item' | 'time' | 'person' | 'asked'
 
 export default function ReviewInboxPage() {
   const { format } = useI18n()
@@ -135,11 +135,22 @@ function Queue({
               <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
               <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
               <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>
+              {/* Its own room, not a section under the queue: what is out
+                  with somebody else is nothing to decide now, and stacked
+                  below the queue it shouted over every empty state. The
+                  count rides the tab so the door says whether it is worth
+                  opening. */}
+              <TabsTrigger value="asked">
+                {format(m.reviewAwaitingTitle)}
+                {awaiting > 0 && (
+                  <span className="rounded bg-muted px-1 text-xs tabular-nums">{awaiting}</span>
+                )}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
           {/* every control on this row is the same height as the tabs beside
               it: a row of filters that do not line up reads as two rows */}
-          {view !== 'person' && (
+          {view !== 'person' && view !== 'asked' && (
             <Filter
               label={format(m.reviewFilterAllItems)}
               value={itemFilter}
@@ -147,7 +158,7 @@ function Queue({
               onChange={setItemFilter}
             />
           )}
-          {view !== 'time' && unitOptions.length > 0 && (
+          {view !== 'time' && view !== 'asked' && unitOptions.length > 0 && (
             <Filter
               label={format(m.reviewFilterAllUnits)}
               value={unitFilter}
@@ -155,18 +166,20 @@ function Queue({
               onChange={setUnitFilter}
             />
           )}
-          <div className="relative">
-            <SearchIcon
-              aria-hidden
-              className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              className="h-9 w-60 pl-8.5"
-              value={search}
-              placeholder={format(m.reviewSearchPlaceholder)}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
+          {view !== 'asked' && (
+            <div className="relative">
+              <SearchIcon
+                aria-hidden
+                className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                className="h-9 w-60 pl-8.5"
+                value={search}
+                placeholder={format(m.reviewSearchPlaceholder)}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+          )}
           <span className="flex-1" />
           <Stats
             pending={all.length}
@@ -175,21 +188,14 @@ function Queue({
           />
         </div>
 
-        {/* An empty queue is only half the story: work this step asked
-            somebody else for is still work, and a full-screen "all done"
-            over the top of it would hide the very filings that are waiting
-            on a reply. So the empty screen shrinks to a line whenever there
-            is anything outstanding underneath. */}
-        {all.length === 0 ? (
+        {/* the awaiting view is its own room; the queue's empty states are
+            about the queue alone, so all-done gets its whole screen back */}
+        {view === 'asked' ? (
+          <AwaitingSection batchId={batchId} />
+        ) : all.length === 0 ? (
           // two different quiet days: everything handled, or nothing has
           // arrived yet. The counter is what tells them apart
-          awaiting > 0 ? (
-            <p className="rounded-xl border px-5 py-4 text-sm text-muted-foreground">
-              {format(
-                (inbox.data?.handledToday ?? 0) > 0 ? m.reviewAllDoneTitle : m.reviewNothingTitle,
-              )}
-            </p>
-          ) : (inbox.data?.handledToday ?? 0) > 0 ? (
+          (inbox.data?.handledToday ?? 0) > 0 ? (
             <EmptyScreen
               mark={<DoneMark />}
               title={format(m.reviewAllDoneTitle)}
@@ -213,10 +219,6 @@ function Queue({
         ) : (
           <ByPerson batchId={batchId} rows={rows} />
         )}
-
-        {/* below the queue, never inside it, and never filtered with it: the
-            question/unit filters are about what can be decided now */}
-        <AwaitingSection batchId={batchId} />
       </div>
     </AsyncSection>
   )

@@ -1518,6 +1518,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Ask for more material',
     },
     // the queue's other half: what this step is waiting on somebody else for
+    reviewAwaitingEmpty: {
+      id: 'assessment/review/awaiting-empty',
+      defaultMessage: 'Nothing is out with anybody right now.',
+    },
     reviewAwaitingTitle: {
       id: 'assessment/review/awaiting-title',
       defaultMessage: 'Waiting on material',

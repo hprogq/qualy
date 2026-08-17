@@ -31,9 +31,15 @@ export function AwaitingSection({ batchId }: { batchId: string }) {
     refetchInterval: 30_000,
   })
   const rows = asked.data?.items ?? []
-  // nothing outstanding is not an empty state worth drawing: the section
-  // simply is not there
-  if (rows.length === 0) return null
+  // its own view now, so an empty one says so instead of vanishing: a tab
+  // that opens onto nothing at all reads as broken, not as quiet
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-xl border px-5 py-4 text-sm text-muted-foreground">
+        {format(m.reviewAwaitingEmpty)}
+      </p>
+    )
+  }
   const answered = rows.filter((row) => row.status === 'answered').length
 
   return (
