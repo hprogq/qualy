@@ -45,7 +45,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 import { Basis } from '../entry/Basis.tsx'
-import { entryStatusMessage, fieldsOf, lastDay, trimAmount, type EntryDto } from '../entry/model.ts'
+import { entryStatusMessage, fieldsOf, trimAmount, type EntryDto } from '../entry/model.ts'
 import { reviewEventMessage, reviewOutcomeMessage } from './events.ts'
 import {
   readRunScope,
@@ -1289,7 +1289,7 @@ function FilingColumn({
               // a fixed label gutter there costs more width than the
               // alignment buys - a long field name wrapped to three lines
               // against a one-line answer.
-              <div key={field.key} className="flex flex-col gap-1.5 pb-3.5">
+              <div key={field.key} className="flex flex-col gap-1.5 pb-5">
                 {/* A field's name is what identifies its row, so a long one
                     wraps rather than being cut or shoved into the answer
                     beside it: "参加校级以上竞赛并获奖" truncated to its first
@@ -1372,7 +1372,7 @@ function FilingColumn({
             )
           })}
           {review.revision.note !== null && (
-            <div className="flex flex-col gap-1.5 pb-3.5">
+            <div className="flex flex-col gap-1.5 pb-5">
               <dt className="text-sm text-muted-foreground">{format(m.entryNote)}</dt>
               <dd className="min-w-0 text-base leading-relaxed">{review.revision.note}</dd>
             </div>
@@ -1506,27 +1506,24 @@ function ContextRail({
     [locale],
   )
   const context = review.context
-  // Four flat blocks under hairlines, not four bordered cards: at 19rem a
-  // card's border and padding cost more width than they buy, and boxing each
-  // block makes four peers read as four unrelated panels. The rail answers
-  // one question - what is this judged against - in four parts.
+  // Blocks under hairlines rather than four bordered cards: at 19rem a card's
+  // border and padding cost more width than they buy, and boxing every peer
+  // makes four parts of one question read as four unrelated panels. The
+  // clause keeps a filled card, because it is quoted matter rather than this
+  // screen's own words.
   return (
-    <aside className="flex min-w-0 flex-col gap-2.5 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
+    <aside className="flex min-w-0 flex-col gap-3 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
-      <section className="flex shrink-0 flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <p className="shrink-0 text-xs font-semibold text-muted-foreground">
-            {format(m.myEntriesBasis)}
-          </p>
-        </div>
-        <p className="border-l-2 border-muted-foreground/30 pl-2.5 text-sm leading-relaxed text-pretty text-muted-foreground">
+      <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">
+        <p className="text-sm font-semibold">{format(m.myEntriesBasis)}</p>
+        <p className="text-sm leading-relaxed text-pretty text-muted-foreground">
           {format(m.myEntriesBasisSoon)}
         </p>
       </section>
 
-      <section className="flex shrink-0 flex-col gap-2 border-t pt-2.5">
-        <p className="text-xs font-semibold text-muted-foreground">{format(m.reviewChainTitle)}</p>
+      <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
+        <p className="text-sm font-semibold">{format(m.reviewChainTitle)}</p>
         <Route
           stages={review.chain.normal}
           here={review.chain.route === 'normal' ? review.chain.stageId : null}
@@ -1544,10 +1541,8 @@ function ContextRail({
       </section>
 
       {context !== null && (
-        <section className="flex shrink-0 flex-col gap-1.5 border-t pt-2.5">
-          <p className="text-xs font-semibold text-muted-foreground">
-            {format(m.reviewAboutTitle)}
-          </p>
+        <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
+          <p className="text-sm font-semibold">{format(m.reviewAboutTitle)}</p>
           {context.worth.each !== null && (
             <AboutRow label={format(m.reviewAboutEach)} value={trimAmount(context.worth.each)} />
           )}
@@ -1566,19 +1561,13 @@ function ContextRail({
               value={trimAmount(context.worth.groupCap)}
             />
           )}
-          <AboutRow
-            label={format(m.reviewAboutRange)}
-            value={`${context.worth.materialRange.start} — ${lastDay(context.worth.materialRange.end)}`}
-          />
         </section>
       )}
 
       {context !== null && context.siblings.length > 0 && (
-        <section className="flex shrink-0 flex-col gap-2 border-t pt-2.5">
+        <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
           <div className="flex items-baseline gap-2">
-            <p className="shrink-0 text-xs font-semibold text-muted-foreground">
-              {format(m.reviewSiblingsTitle)}
-            </p>
+            <p className="shrink-0 text-sm font-semibold">{format(m.reviewSiblingsTitle)}</p>
             <span className="flex-1" />
             {/* the keys, once, over the list they open - rather than the
                 count, which the list itself already shows */}
@@ -1648,9 +1637,14 @@ function ContextRail({
 
 function AboutRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className="tabular-nums">{value}</span>
+    // A leader rules the gap so the eye carries from a short name to a value
+    // three rows down, which is what a column of unequal names needs. It
+    // wraps rather than squeezing the name: a truncated "材料时间范围" names
+    // nothing, and the range is long enough to want the width.
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+      <span className="min-w-0 truncate text-muted-foreground">{label}</span>
+      <span aria-hidden className="h-px min-w-0 flex-1 bg-border" />
+      <span className="ml-auto shrink-0 tabular-nums">{value}</span>
     </div>
   )
 }

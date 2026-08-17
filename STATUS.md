@@ -5558,3 +5558,30 @@ DOM 里所有带边框的元素,而不是靠读 HTML 猜。上一轮「字段区
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
 code style!`。
+
+### 跟上设计稿右栏的改动,并修好自己弄坏的字号(2026-08-17)
+
+重新拉了设计稿,与本地那份逐字节 diff——**右栏确实改了五处**,不是错觉:
+
+- 评分依据从平铺改回**灰底卡片**(radius 11、padding 11×12),条款号从标题旁的 chip 挪到
+  标题行右端的普通小字,正文去掉左引用线、改深色。它是被引用的条文,不是本屏自己的话,
+  留一张卡片是对的。
+- 四个分节标题**由灰改黑**。
+- 分值信息的行加了**引导线**:键名 + 一条 1px 发丝线撑满中间 + 数值。一列长短不一的键名,
+  眼睛要靠这条线走到三行外的数值。
+- aside 的 gap 10→12、padding 14/15→16/16;分值信息块 gap 5→7、pt 10→12。
+
+同轮修的:
+
+- **分值信息一栏的字巨大无比**,是我自己弄坏的:它原来在 `text-sm` 的卡片里,拆成平铺分节时
+  把 `text-sm` 一起删了,于是继承了 16px。
+- **分节标题偏小**:设计稿里标题 11.5px、正文 12px,几乎一样大,靠字重分,不靠字号分。
+  我却按 text-xs / text-sm 分了一整档。标题改回 `text-sm font-semibold`。
+- 「这道题值多少」改名**「分值信息」**,并去掉「材料时间范围」一行(用户定)。
+- **字段之间的间距 14px → 20px**。比例上我与设计稿一致(内 6 外 14 对 内 5 外 12),但我的
+  字号整体大一档,同样的绝对间距就不再读作分组边界——标签离上一条的答案比离自己的还近。
+  间距要跟着字号走。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
+code style!`;catalogs 7 passed。

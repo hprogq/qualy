@@ -1261,7 +1261,7 @@ const i18n = definePluginMessages({
     },
     reviewAboutTitle: {
       id: 'assessment/review/about-title',
-      defaultMessage: 'What this question is worth',
+      defaultMessage: 'Scoring',
     },
     reviewAboutEach: {
       id: 'assessment/review/about-each',
@@ -1272,10 +1272,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Entries per person',
     },
     reviewAboutGroupCap: { id: 'assessment/review/about-group-cap', defaultMessage: 'Group cap' },
-    reviewAboutRange: {
-      id: 'assessment/review/about-range',
-      defaultMessage: 'Material window',
-    },
     reviewSiblingsTitle: {
       id: 'assessment/review/siblings-title',
       defaultMessage: 'Their other claims',
