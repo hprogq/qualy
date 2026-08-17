@@ -336,7 +336,9 @@ function FiledEntry({
           const value = payload[field.key]
           return (
             <div key={field.key} className="col-span-2 grid grid-cols-subgrid">
-              <dt className="whitespace-nowrap text-muted-foreground">{field.label}</dt>
+              <dt className="min-w-0 [overflow-wrap:anywhere] text-muted-foreground">
+                {field.label}
+              </dt>
               <dd className="min-w-0">
                 {field.type === 'attachment' ? (
                   Array.isArray(value) && value.length > 0 ? (

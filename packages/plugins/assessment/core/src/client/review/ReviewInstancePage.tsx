@@ -938,6 +938,16 @@ function MainColumn({
       ? 0
       : fields.filter((field) => (was.get(field.key)?.value ?? '') !== valueOf(record[field.key]))
           .length
+  // The materials, numbered once across the whole filing in the order the
+  // questions ask for them - the same numbers the 1-9 keys open. A file
+  // taken out this version has no number: it is not one of the things to
+  // look at, it is a record of what used to be.
+  const slots = new Map(
+    fields
+      .filter((field) => field.type === 'attachment')
+      .flatMap((field) => idsOf(record[field.key]))
+      .map((attachmentId, index) => [attachmentId, index + 1]),
+  )
   return (
     <main className="flex min-w-0 flex-col gap-6 overflow-y-auto p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
@@ -1059,33 +1069,62 @@ function MainColumn({
               : format(m.reviewCompareCount, { count: changes, no: against.revisionNo })}
           </p>
         </div>
-        <dl className="flex flex-col gap-2">
+        <dl className="flex flex-col gap-3">
           {fields.map((field) => {
             const now = valueOf(record[field.key])
             const previous = was.get(field.key)
             const before = previous?.value ?? ''
             const changed = against !== null && before !== now
             const cited = field.type === 'attachment' ? idsOf(record[field.key]) : []
+            // only while comparing: without a version to read against, a file
+            // that is not here now was simply never here
+            const gone =
+              field.type === 'attachment'
+                ? (previous?.ids ?? []).filter((one) => !cited.includes(one))
+                : []
             return (
               <div
                 key={field.key}
                 className={cn(
-                  'grid grid-cols-[7rem_minmax(0,1fr)] gap-3 border-l-2 pl-2.5',
+                  // tops aligned, not baselines: a field whose answer is a
+                  // row of file cards has no baseline worth aligning to
+                  'grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-3 border-l-2 -ml-[13px] pl-[11px]',
                   changed ? 'border-l-foreground/40' : 'border-l-transparent',
                 )}
               >
-                <dt className="text-sm whitespace-nowrap text-muted-foreground">{field.label}</dt>
-                <dd className="flex min-w-0 flex-col gap-0.5 text-sm">
+                {/* A field's name is what identifies its row, so a long one
+                    wraps rather than being cut or shoved into the answer
+                    beside it: "参加校级以上竞赛并获奖" truncated to its first
+                    few characters names nothing. The count of files sits
+                    under the name, in the same column. */}
+                <dt className="flex min-w-0 flex-col gap-0.5 text-sm text-muted-foreground">
+                  <span className="[overflow-wrap:anywhere]">{field.label}</span>
+                  {field.type === 'attachment' && cited.length > 0 && (
+                    <span className="text-xs tabular-nums">
+                      {format(m.reviewFilesCount, { count: cited.length })}
+                    </span>
+                  )}
+                </dt>
+                <dd className="flex min-w-0 flex-col gap-1.5 text-sm">
                   {field.type === 'attachment' ? (
                     cited.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
                     ) : (
-                      <span className="flex min-w-0 flex-col gap-1">
+                      // the files themselves, under the field that asked for
+                      // them: one flat "materials" heap at the end of the page
+                      // could not say which of them was the certificate
+                      <span className="flex flex-wrap gap-2">
                         {cited.map((attachmentId) => (
                           <AttachmentLink
                             key={attachmentId}
                             attachmentId={attachmentId}
-                            variant="line"
+                            variant="card"
+                            slot={slots.get(attachmentId)}
+                            mark={
+                              previous !== undefined && !previous.ids.includes(attachmentId)
+                                ? 'added'
+                                : undefined
+                            }
                           />
                         ))}
                       </span>
@@ -1093,36 +1132,44 @@ function MainColumn({
                   ) : (
                     <span className={cn(changed && 'font-medium')}>{now === '' ? '—' : now}</span>
                   )}
-                  <Appear show={changed}>
-                    <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
-                      <span className="shrink-0">{format(m.reviewComparePrevious)}</span>
-                      {before === '' ? (
-                        <span>{format(m.reviewCompareBlank)}</span>
-                      ) : field.type === 'attachment' ? (
-                        // what was cited last time, by name: a struck-out row
-                        // of identifiers would say a change happened without
-                        // saying what changed
-                        <span className="flex min-w-0 flex-col gap-0.5 line-through">
-                          {(previous?.ids ?? []).map((attachmentId) => (
-                            <AttachmentLink
-                              key={attachmentId}
-                              attachmentId={attachmentId}
-                              variant="line"
-                            />
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="min-w-0 line-through">{before}</span>
-                      )}
-                    </span>
-                  </Appear>
+                  {/* What the last version had here, under what this one
+                      has - the same grey line for a sentence that was
+                      rewritten and for a file that was taken out. The file
+                      is named and nothing more: drawn as a card among the
+                      cards it would read as one of the materials on offer,
+                      which is the opposite of what it is. */}
+                  {field.type === 'attachment' ? (
+                    <Appear show={gone.length > 0} collapse>
+                      <span className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+                        <span>{format(m.reviewFileGone)}</span>
+                        {gone.map((attachmentId) => (
+                          <AttachmentLink
+                            key={attachmentId}
+                            attachmentId={attachmentId}
+                            variant="line"
+                          />
+                        ))}
+                      </span>
+                    </Appear>
+                  ) : (
+                    <Appear show={changed} collapse>
+                      <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                        <span className="shrink-0">{format(m.reviewComparePrevious)}</span>
+                        {before === '' ? (
+                          <span>{format(m.reviewCompareBlank)}</span>
+                        ) : (
+                          <span className="min-w-0 line-through">{before}</span>
+                        )}
+                      </span>
+                    </Appear>
+                  )}
                 </dd>
               </div>
             )
           })}
           {review.revision.note !== null && (
-            <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 pl-2.5">
-              <dt className="text-sm whitespace-nowrap text-muted-foreground">
+            <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-3 pl-2.5">
+              <dt className="min-w-0 text-sm [overflow-wrap:anywhere] text-muted-foreground">
                 {format(m.entryNote)}
               </dt>
               <dd className="min-w-0 text-sm">{review.revision.note}</dd>
@@ -1131,54 +1178,32 @@ function MainColumn({
         </dl>
       </section>
 
+      {/* the count and the way out, once, at the end of the filing: the
+          materials are up there with the questions that asked for them */}
       {review.revision.attachments.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2.5 border-b pb-2">
-            <h3 className="text-sm font-semibold">{format(m.reviewFiles)}</h3>
-            <span className="text-xs text-muted-foreground">
-              {format(m.reviewFilesCount, { count: review.revision.attachments.length })}
-            </span>
-            <span className="flex-1" />
-            <span className="hidden text-xs text-muted-foreground lg:block">
-              {format(m.reviewFilesKeys)}
-            </span>
-            <Button variant="ghost" size="sm" className="text-xs" asChild>
-              {/* one press per file, opened as downloads: a zip would be a
-                  server-side archive nobody asked for yet */}
-              <button
-                type="button"
-                onClick={() => {
-                  for (const attachment of review.revision.attachments) {
-                    window.open(attachmentContentUrl(attachment.attachmentId), '_blank')
-                  }
-                }}
-              >
-                <DownloadIcon aria-hidden />
-                {format(m.reviewDownloadAll)}
-              </button>
-            </Button>
-          </div>
-          {/* drawn large: reading the evidence is what this screen is for */}
-          <ul className="flex flex-wrap gap-4">
-            {review.revision.attachments.map((attachment, index) => (
-              <li key={attachment.attachmentId} data-file-slot={index + 1} className="relative">
-                {index < 9 && <Kbd className="absolute top-1.5 left-1.5 z-10">{index + 1}</Kbd>}
-                <AttachmentLink attachmentId={attachment.attachmentId} variant="preview" />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {review.supplements.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2.5 border-b pb-2">
-            <h3 className="text-sm font-semibold">{format(m.supplementSectionTitle)}</h3>
-          </div>
-          {review.supplements.map((supplement) => (
-            <SupplementCard key={supplement.id} supplement={supplement} />
-          ))}
-        </section>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 border-t pt-3">
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+            {format(m.reviewFilesNote)}
+          </p>
+          <span className="hidden text-xs whitespace-nowrap text-muted-foreground lg:block">
+            {format(m.reviewFilesKeys)}
+          </span>
+          <Button variant="outline" size="sm" className="text-xs" asChild>
+            {/* one press per file, opened as downloads: a zip would be a
+                server-side archive nobody asked for yet */}
+            <button
+              type="button"
+              onClick={() => {
+                for (const attachment of review.revision.attachments) {
+                  window.open(attachmentContentUrl(attachment.attachmentId), '_blank')
+                }
+              }}
+            >
+              <DownloadIcon aria-hidden />
+              {format(m.reviewDownloadAll)}
+            </button>
+          </Button>
+        </div>
       )}
 
       {/* reserved: machine reading arrives later, and the reading order
@@ -1219,7 +1244,7 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
         {supplement.instructions}
       </p>
       {supplement.response !== null && (
-        <dl className="flex flex-col gap-2">
+        <dl className="flex flex-col gap-3">
           {supplement.requirements.map((asked) => {
             const value = answers[asked.key]
             return (
@@ -1228,7 +1253,7 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
                 <dd className="min-w-0 text-sm">
                   {asked.kind === 'file' ? (
                     Array.isArray(value) && value.length > 0 ? (
-                      <span className="flex flex-wrap gap-3">
+                      <span className="flex flex-wrap gap-2">
                         {value.map((attachmentId) => (
                           <AttachmentLink
                             key={String(attachmentId)}
@@ -1657,7 +1682,7 @@ function SiblingSheet({
             </span>
           </DialogTitle>
         </DialogHeader>
-        <dl className="flex flex-col gap-2">
+        <dl className="flex flex-col gap-3">
           {(sibling?.values ?? []).map((pair) => (
             <div key={pair.label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
               <dt className="text-sm whitespace-nowrap text-muted-foreground">{pair.label}</dt>

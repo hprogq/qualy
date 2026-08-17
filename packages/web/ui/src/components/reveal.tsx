@@ -309,22 +309,41 @@ export function Stagger({
 export function Appear({
   show,
   className,
+  collapse = false,
   children,
 }: {
   show: boolean
   className?: string
+  /**
+   * Whether the room it takes goes with it.
+   *
+   * Fading alone leaves the space behind until the animation ends, and then
+   * drops it all at once - everything below jumps up a line the moment the
+   * fade finishes. Collapsing animates the height too, so the page closes
+   * over it. Only for something in normal flow: on an absolutely positioned
+   * element there is no room to give back.
+   */
+  collapse?: boolean
   children: ReactNode
 }) {
   const reduced = useReducedMotion()
+  const still = reduced === true
   return (
-    <AnimatePresence>
+    <AnimatePresence initial={false}>
       {show && (
         <motion.div
           className={className}
-          initial={{ opacity: 0, y: reduced === true ? 0 : 12, scale: reduced === true ? 1 : 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: reduced === true ? 0 : 8, scale: reduced === true ? 1 : 0.98 }}
-          transition={{ duration: reduced === true ? 0 : 0.18, ease: [0.4, 0, 0.2, 1] }}
+          style={collapse ? { overflow: 'hidden' } : undefined}
+          initial={{
+            opacity: 0,
+            ...(collapse ? { height: 0 } : { y: still ? 0 : 12, scale: still ? 1 : 0.98 }),
+          }}
+          animate={{ opacity: 1, ...(collapse ? { height: 'auto' } : { y: 0, scale: 1 }) }}
+          exit={{
+            opacity: 0,
+            ...(collapse ? { height: 0 } : { y: still ? 0 : 8, scale: still ? 1 : 0.98 }),
+          }}
+          transition={{ duration: still ? 0 : 0.18, ease: [0.4, 0, 0.2, 1] }}
         >
           {children}
         </motion.div>

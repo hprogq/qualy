@@ -4,6 +4,7 @@ import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { cn } from '@qualy/ui/cn'
 import { FileTile } from '@qualy/ui/dropzone'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
 import { assessmentApi } from '../api.ts'
@@ -40,9 +41,24 @@ import {
 export function AttachmentLink({
   attachmentId,
   variant = 'tile',
+  slot,
+  mark,
 }: {
   attachmentId: string
-  variant?: 'line' | 'tile' | 'preview'
+  variant?: 'line' | 'tile' | 'preview' | 'card'
+  /**
+   * Its number among the materials of this filing, which is also the key
+   * that opens it. Only the ones still filed have one - a file that was
+   * taken out is not the third thing to look at.
+   */
+  slot?: number | undefined
+  /**
+   * Whether this version is where it first appeared. Absent while nothing
+   * is being compared, which is when every file is simply one of the files.
+   * There is no counterpart for a file that was taken out: that one is named
+   * in grey under the row, not drawn as a card among the ones still filed.
+   */
+  mark?: 'added' | undefined
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
@@ -115,6 +131,84 @@ export function AttachmentLink({
             </a>
           )}
         </span>
+      </PhotoProvider>
+    )
+  }
+
+  // What is filed now, as the design draws it: a tile per file, numbered
+  // with the key that opens it and marked when this version is where it
+  // first appeared. A file the version took out is not one of these - it is
+  // named on its own line underneath, because a tile among the tiles would
+  // read as something still on offer.
+  if (variant === 'card') {
+    return (
+      <PhotoProvider maskOpacity={0.85}>
+        <figure
+          data-file-slot={slot}
+          className="group/file flex w-42 shrink-0 flex-col gap-1.5"
+          aria-label={name}
+        >
+          <div
+            className={cn(
+              'relative flex h-24 items-center justify-center overflow-hidden rounded-lg border text-muted-foreground',
+              mark === 'added' ? 'border-foreground bg-muted' : 'bg-muted/50',
+            )}
+          >
+            {isImage ? (
+              <PhotoView src={href}>
+                <img
+                  src={href}
+                  alt={name}
+                  loading="lazy"
+                  decoding="async"
+                  className="size-full cursor-zoom-in object-cover"
+                />
+              </PhotoView>
+            ) : (
+              <button
+                type="button"
+                disabled={!isDocument}
+                onClick={() => setReading(true)}
+                className="flex size-full items-center justify-center enabled:cursor-pointer"
+              >
+                <FileTextIcon aria-hidden className="size-5.5" />
+                <span className="sr-only">{name}</span>
+              </button>
+            )}
+            {slot !== undefined && (
+              <span className="absolute top-1.5 left-1.5 rounded border bg-background px-1 font-mono text-[10px] text-foreground">
+                {slot}
+              </span>
+            )}
+            {mark === 'added' && (
+              <span className="absolute top-1.5 right-1.5 rounded bg-foreground px-1.5 text-[10px] font-medium whitespace-nowrap text-background">
+                {format(m.reviewFileAdded)}
+              </span>
+            )}
+            {/* Taking a copy is a second thought, not the reason the tile is
+                here, so it waits in the corner of the picture until the
+                pointer arrives - and comes back for the keyboard, which
+                cannot hover. The caption belongs to the file: its name, and
+                what it weighs. */}
+            <a
+              href={href}
+              download={data?.filename}
+              target="_blank"
+              rel="noreferrer"
+              className="absolute right-1.5 bottom-1.5 flex size-6 items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/file:opacity-100 hover:text-foreground focus-visible:opacity-100"
+            >
+              <DownloadIcon aria-hidden className="size-3.5" />
+              <span className="sr-only">{name}</span>
+            </a>
+          </div>
+          <figcaption className="flex min-w-0 flex-col gap-px">
+            <span className="text-[11px] leading-snug [overflow-wrap:anywhere]">{name}</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {data === undefined ? '' : sizeLabel(Number(data.size))}
+            </span>
+          </figcaption>
+        </figure>
+        {lightbox}
       </PhotoProvider>
     )
   }

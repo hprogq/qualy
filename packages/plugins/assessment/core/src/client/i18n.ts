@@ -819,7 +819,6 @@ const i18n = definePluginMessages({
       defaultMessage: '{name} · round {round}',
     },
     reviewPayloadTitle: { id: 'assessment/review/payload-title', defaultMessage: 'What was filed' },
-    reviewFiles: { id: 'assessment/review/files', defaultMessage: 'Files' },
     // ------------------------------------------------------------------
     // one's own provisional standing
     resultTab: { id: 'assessment/result/tab', defaultMessage: 'My standing' },
@@ -1225,7 +1224,6 @@ const i18n = definePluginMessages({
     reviewColumnTime: { id: 'assessment/review/column-time', defaultMessage: 'Time' },
     reviewColumnSummary: { id: 'assessment/review/column-summary', defaultMessage: 'Summary' },
     reviewColumnState: { id: 'assessment/review/column-state', defaultMessage: 'Status' },
-    reviewColumnFiles: { id: 'assessment/review/column-files', defaultMessage: 'Files' },
     reviewStateWaiting: {
       id: 'assessment/review/state-waiting',
       defaultMessage: 'Waiting for me',
@@ -1454,6 +1452,16 @@ const i18n = definePluginMessages({
       defaultMessage: 'The last step decides; your opinion goes with it.',
     },
     // the supplement exchange: ask for more backing, answer, take back
+    reviewFileAdded: { id: 'assessment/review/file-added', defaultMessage: 'New' },
+    reviewFileGone: {
+      id: 'assessment/review/file-gone',
+      defaultMessage: 'Taken out this version',
+    },
+    reviewFilesNote: {
+      id: 'assessment/review/files-note',
+      defaultMessage:
+        'Materials sit under the field that asked for them. A file this version took out is named in grey below it, so what the last reviewer saw can still be checked.',
+    },
     reviewSupplementAsk: {
       id: 'assessment/review/supplement-ask',
       defaultMessage: 'Request material',
