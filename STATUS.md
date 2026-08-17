@@ -5585,3 +5585,25 @@ code style!`。
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
 code style!`;catalogs 7 passed。
+
+### 「本轮移除」的间距,以及它顺带暴露的老毛病(2026-08-17)
+
+字段内三档间距定为 6 / 12 / 20px(实测 computed style,不是估的):
+
+| 位置                  | 间距 |
+| --------------------- | ---- |
+| 值 → 「上一版」       | 6px  |
+| 附件卡 → 「本轮移除」 | 12px |
+| 字段 → 下一个字段     | 20px |
+
+「本轮移除」比 6px 远、比 20px 近:它属于这个字段,但一排卡片是够重的一块,底下贴 6px 会被读成
+卡片行的一部分。
+
+**做法上有个坑复发了**:这两块都是 `Appear collapse`(关对照时要收起),而间距原来挂在父级
+`dd` 的 flex `gap` 上。**gap 不算在子元素高度里**,收起动画把子元素高度收到 0,gap 还在,
+直到卸载才一帧消失——正是之前「关闭对照后布局跳动」那个 bug 的同一形状。所以 `dd` 去掉 gap,
+两块各自用 `pt-3` / `pt-1.5` 自带间距,这样它跟着高度一起动。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
+code style!`。

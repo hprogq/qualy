@@ -1303,7 +1303,7 @@ function FilingColumn({
                     </span>
                   )}
                 </dt>
-                <dd className="flex min-w-0 flex-col gap-1.5 text-base">
+                <dd className="flex min-w-0 flex-col text-base">
                   {field.type === 'attachment' ? (
                     cited.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
@@ -1340,7 +1340,12 @@ function FilingColumn({
                       which is the opposite of what it is. */}
                   {field.type === 'attachment' ? (
                     <Appear show={gone.length > 0} collapse>
-                      <span className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+                      {/* Further from the cards than they stand from each
+                          other, nearer than the next field: it belongs to
+                          this question, and a row of tiles is a heavy enough
+                          block that a hairline gap under it reads as part of
+                          the row. */}
+                      <span className="flex min-w-0 flex-col gap-1 pt-3 text-xs text-muted-foreground">
                         <span className="self-start rounded bg-muted px-1.5 py-0.5">
                           {format(m.reviewFileGone)}
                         </span>
@@ -1355,7 +1360,7 @@ function FilingColumn({
                     </Appear>
                   ) : (
                     <Appear show={changed} collapse>
-                      <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                      <span className="flex items-baseline gap-2 pt-1.5 text-xs text-muted-foreground">
                         <span className="shrink-0 rounded bg-muted px-1.5 py-0.5">
                           {format(m.reviewComparePrevious)}
                         </span>
